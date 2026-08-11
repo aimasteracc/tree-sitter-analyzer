@@ -24,9 +24,6 @@ class _Scanner:
     def __init__(self, *entries: Any) -> None:
         self._entries = iter(entries)
 
-    def __iter__(self) -> _Scanner:
-        return self
-
     def __next__(self) -> Any:
         return next(self._entries)
 
@@ -164,3 +161,330 @@ def test_builder_records_iteration_failure_as_incomplete(tmp_path):
         "INDEX_CANDIDATE_DISCOVERY_ERROR",
     )
     assert snapshot.metrics()["discovery_complete"] is False
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_posix_scanner_iteration_error_closes_owned_fd(monkeypatch):
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    class FailingScanner(_Scanner):
+        def __next__(self):
+            raise OSError("scan failed")
+
+    closed: list[int] = []
+    monkeypatch.setattr(walker.os, "open", lambda *_args, **_kwargs: 41)
+    monkeypatch.setattr(walker.os, "fstat", lambda _fd: object())
+    monkeypatch.setattr(walker.os, "scandir", lambda _fd: FailingScanner())
+    monkeypatch.setattr(walker.os, "close", closed.append)
+
+    with pytest.raises(CandidateDiscoveryError, match="INDEX_CANDIDATE"):
+        list(walk_candidate_entries("/root", **_DEFAULTS))
+    assert closed == [41]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_posix_unencodable_path_exhausts_byte_budget(monkeypatch):
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    class Entry:
+        name = "source.py"
+
+    scanner = _Scanner(Entry())
+    monkeypatch.setattr(walker.os, "open", lambda *_args, **_kwargs: 42)
+    monkeypatch.setattr(walker.os, "fstat", lambda _fd: object())
+    monkeypatch.setattr(walker.os, "scandir", lambda _fd: scanner)
+    monkeypatch.setattr(walker.os, "close", lambda _fd: None)
+    real_join = walker.os.path.join
+
+    class UnencodablePath(str):
+        def encode(self, *_args, **_kwargs):
+            raise UnicodeError("not encodable")
+
+    monkeypatch.setattr(
+        walker.os.path,
+        "join",
+        lambda parent, child: (
+            UnencodablePath("/root/source.py")
+            if parent == "/root" and child == "source.py"
+            else real_join(parent, child)
+        ),
+    )
+
+    with pytest.raises(CandidateDiscoveryBudgetExceeded, match="DISCOVERY_LIMIT"):
+        list(walk_candidate_entries("/root", **_DEFAULTS))
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_posix_entry_stat_error_closes_owned_fd(monkeypatch):
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    class Entry:
+        name = "source.py"
+
+        def is_dir(self, *, follow_symlinks):
+            assert follow_symlinks is False
+            raise OSError("entry stat failed")
+
+    closed: list[int] = []
+    monkeypatch.setattr(walker.os, "open", lambda *_args, **_kwargs: 43)
+    monkeypatch.setattr(walker.os, "fstat", lambda _fd: object())
+    monkeypatch.setattr(walker.os, "scandir", lambda _fd: _Scanner(Entry()))
+    monkeypatch.setattr(walker.os, "close", closed.append)
+
+    with pytest.raises(CandidateDiscoveryError, match="INDEX_CANDIDATE"):
+        list(walk_candidate_entries("/root", **_DEFAULTS))
+    assert closed == [43]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+@pytest.mark.parametrize("failure", ["open", "fstat", "scandir"])
+def test_posix_child_failure_closes_every_acquired_fd(monkeypatch, failure):
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    class DirectoryEntry:
+        name = "pkg"
+
+        def is_dir(self, *, follow_symlinks):
+            assert follow_symlinks is False
+            return True
+
+    root_scanner = _Scanner(DirectoryEntry())
+    closed: list[int] = []
+
+    def open_fd(*_args, **kwargs):
+        if "dir_fd" not in kwargs:
+            return 51
+        if failure == "open":
+            raise OSError("child open failed")
+        return 52
+
+    monkeypatch.setattr(walker.os, "open", open_fd)
+
+    def fstat(fd):
+        if failure == "fstat" and fd == 52:
+            raise OSError("child fstat failed")
+        return type("Info", (), {"st_mode": 0o040000})()
+
+    def scandir(fd):
+        if failure == "scandir" and fd == 52:
+            raise OSError("child scandir failed")
+        return root_scanner
+
+    monkeypatch.setattr(walker.os, "fstat", fstat)
+    monkeypatch.setattr(walker.os, "scandir", scandir)
+    monkeypatch.setattr(walker.os, "close", closed.append)
+
+    with pytest.raises(CandidateDiscoveryError, match="INDEX_CANDIDATE"):
+        list(walk_candidate_entries("/root", **_DEFAULTS))
+    assert closed == ([51] if failure == "open" else [52, 51])
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_posix_non_directory_child_fd_is_rejected(monkeypatch):
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    class DirectoryEntry:
+        name = "pkg"
+
+        def is_dir(self, *, follow_symlinks):
+            return True
+
+    closed: list[int] = []
+    monkeypatch.setattr(
+        walker.os, "open", lambda *_args, **kwargs: 61 if "dir_fd" not in kwargs else 62
+    )
+    monkeypatch.setattr(
+        walker.os,
+        "fstat",
+        lambda fd: type("Info", (), {"st_mode": 0o100000 if fd == 62 else 0o040000})(),
+    )
+    monkeypatch.setattr(walker.os, "scandir", lambda _fd: _Scanner(DirectoryEntry()))
+    monkeypatch.setattr(walker.os, "close", closed.append)
+
+    with pytest.raises(CandidateDiscoveryError, match="INDEX_CANDIDATE"):
+        list(walk_candidate_entries("/root", **_DEFAULTS))
+    assert closed == [62, 61]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_posix_cleanup_ignores_close_error_without_masking_budget(monkeypatch):
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    class Entry:
+        name = "source.py"
+
+        def is_dir(self, *, follow_symlinks):
+            return False
+
+    class CloseErrorScanner(_Scanner):
+        def close(self):
+            raise OSError("scanner close failed")
+
+    monkeypatch.setattr(walker.os, "open", lambda *_args, **_kwargs: 71)
+    monkeypatch.setattr(walker.os, "fstat", lambda _fd: object())
+    monkeypatch.setattr(walker.os, "scandir", lambda _fd: CloseErrorScanner(Entry()))
+    monkeypatch.setattr(walker.os, "close", lambda _fd: None)
+
+    iterator = walk_candidate_entries("/root", **{**_DEFAULTS, "entry_budget": 0})
+    with pytest.raises(CandidateDiscoveryBudgetExceeded, match="DISCOVERY_LIMIT"):
+        list(iterator)
+
+
+def test_path_fallback_root_scandir_error_is_typed(monkeypatch):
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    monkeypatch.setattr(walker.os, "name", "nt")
+    monkeypatch.setattr(
+        walker.os,
+        "scandir",
+        lambda _path: (_ for _ in ()).throw(OSError("root scan failed")),
+    )
+    with pytest.raises(CandidateDiscoveryError, match="INDEX_CANDIDATE"):
+        list(walk_candidate_entries("/root", **_DEFAULTS))
+
+
+def test_path_fallback_iteration_error_closes_scanner(monkeypatch):
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    class FailingScanner(_Scanner):
+        closed = False
+
+        def __next__(self):
+            raise OSError("iteration failed")
+
+        def close(self):
+            self.closed = True
+
+    scanner = FailingScanner()
+    monkeypatch.setattr(walker.os, "name", "nt")
+    monkeypatch.setattr(walker.os, "scandir", lambda _path: scanner)
+    with pytest.raises(CandidateDiscoveryError, match="INDEX_CANDIDATE"):
+        list(walk_candidate_entries("/root", **_DEFAULTS))
+    assert scanner.closed is True
+
+
+def test_path_fallback_child_scandir_error_releases_parent_lease(monkeypatch):
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    class DirectoryEntry:
+        name = "pkg"
+        path = "/root/pkg"
+
+        def is_dir(self, *, follow_symlinks):
+            return True
+
+    parent = _Scanner(DirectoryEntry())
+    closed = False
+    original_close = parent.close
+
+    def close_parent():
+        nonlocal closed
+        closed = True
+        original_close()
+
+    parent.close = close_parent
+    monkeypatch.setattr(walker.os, "name", "nt")
+    monkeypatch.setattr(
+        walker.os,
+        "scandir",
+        lambda path: (
+            parent
+            if path == "/root"
+            else (_ for _ in ()).throw(OSError("child scan failed"))
+        ),
+    )
+    with pytest.raises(CandidateDiscoveryError, match="INDEX_CANDIDATE"):
+        list(walk_candidate_entries("/root", **_DEFAULTS))
+    assert closed is True
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_posix_root_fstat_error_closes_root_fd(monkeypatch):
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    closed: list[int] = []
+    monkeypatch.setattr(walker.os, "open", lambda *_args, **_kwargs: 81)
+    monkeypatch.setattr(
+        walker.os,
+        "fstat",
+        lambda _fd: (_ for _ in ()).throw(OSError("root fstat failed")),
+    )
+    monkeypatch.setattr(walker.os, "close", closed.append)
+
+    with pytest.raises(CandidateDiscoveryError, match="INDEX_CANDIDATE"):
+        list(walk_candidate_entries("/root", **_DEFAULTS))
+    assert closed == [81]
+
+
+def test_path_fallback_yields_file_and_closes_exhausted_scanner(monkeypatch):
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    class FileEntry:
+        name = "source.py"
+        path = "/root/source.py"
+
+        def is_dir(self, *, follow_symlinks):
+            return False
+
+    class RecordingScanner(_Scanner):
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    scanner = RecordingScanner(FileEntry())
+    monkeypatch.setattr(walker.os, "name", "nt")
+    monkeypatch.setattr(walker.os, "scandir", lambda _path: scanner)
+
+    assert list(walk_candidate_entries("/root", **_DEFAULTS)) == ["/root/source.py"]
+    assert scanner.closed is True
+
+
+def test_path_fallback_excluded_directory_is_not_opened(monkeypatch):
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    class DirectoryEntry:
+        name = "vendor"
+        path = "/root/vendor"
+
+        def is_dir(self, *, follow_symlinks):
+            return True
+
+    scanner = _Scanner(DirectoryEntry())
+    calls: list[str] = []
+
+    def scandir(path):
+        calls.append(path)
+        return scanner
+
+    monkeypatch.setattr(walker.os, "name", "nt")
+    monkeypatch.setattr(walker.os, "scandir", scandir)
+    values = list(
+        walk_candidate_entries(
+            "/root", **{**_DEFAULTS, "excluded_dir_names": frozenset({"vendor"})}
+        )
+    )
+    assert (values, calls) == ([], ["/root"])
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_posix_excluded_directory_is_not_opened(monkeypatch, tmp_path):
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    excluded = tmp_path / "vendor"
+    excluded.mkdir()
+    (excluded / "hidden.py").write_text("value = 1\n")
+    opened: list[str] = []
+    real_open = walker.os.open
+
+    def recording_open(path, flags, *args, **kwargs):
+        opened.append(os.fspath(path))
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(walker.os, "open", recording_open)
+    values = list(
+        walk_candidate_entries(
+            str(tmp_path), **{**_DEFAULTS, "excluded_dir_names": frozenset({"vendor"})}
+        )
+    )
+    assert (values, opened) == ([], [str(tmp_path)])

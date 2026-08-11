@@ -738,6 +738,43 @@ def run_index_project(
             canonical_source_scope_descriptor(source_scope)
         )
     validate_full_index_source_scope(source_scope, effective_exclude, max_files)
+    if force and candidate_snapshot is not None:
+        snapshot_is_unsafe = bool(
+            candidate_snapshot.errors > 0
+            or candidate_snapshot.discovery_error is not None
+            or candidate_snapshot.truncated_by_max_files
+            or not candidate_snapshot.discovery_reconciled
+        )
+        if snapshot_is_unsafe:
+            # A forced rebuild clears every persisted generation before writing the
+            # selected snapshot.  An incomplete discovery can never authorize that
+            # destructive transition: preserve the last coherent database exactly.
+            discovery_errors = max(1, candidate_snapshot.errors)
+            return {
+                "mode_used": "full",
+                "verdict": "WARN",
+                "indexed": 0,
+                "cached": 0,
+                "errors": discovery_errors,
+                "skipped": candidate_snapshot.skipped,
+                "incomplete_skips": candidate_snapshot.skipped,
+                "processed": 0,
+                "changed_during_run": 0,
+                "changed_during_run_files": [],
+                "files": [
+                    {
+                        "file": entry.rel_path,
+                        "status": "error",
+                        "reason": entry.reason or "candidate discovery failed",
+                    }
+                    for entry in candidate_snapshot.entries
+                    if entry.decision == "error"
+                ],
+                "activation_enabled": activation_enabled,
+                "truncated_by_max_files": candidate_snapshot.truncated_by_max_files,
+                "snapshot_metrics": candidate_snapshot.metrics(),
+                "manifest_warning": "INDEX_CANDIDATE_SNAPSHOT_INCOMPLETE",
+            }
     rebuild_signaled = False
     try:
         if force:

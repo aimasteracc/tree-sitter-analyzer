@@ -254,6 +254,7 @@ def test_manifest_progress_handler_interrupts_expired_materialization(monkeypatc
     assert conn.cleared is True
 
 
+@requires_posix_fd
 def test_snapshot_lock_timeout_returns_deadline(tmp_path, monkeypatch):
     import tree_sitter_analyzer.index_snapshot as snapshot
 

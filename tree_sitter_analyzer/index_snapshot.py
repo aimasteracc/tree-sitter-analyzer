@@ -5,14 +5,12 @@ from __future__ import annotations
 import atexit
 import errno
 import os
-import secrets
 import sqlite3
 import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
-from typing import Any, Literal, cast
+from typing import Any, cast
 from urllib.parse import quote
 
 from .index_snapshot_capability import (
@@ -36,8 +34,7 @@ from .index_snapshot_capability import (
 from .index_snapshot_capability import (
     require_memory_temp_store as _require_memory_temp_store,
 )
-from .index_snapshot_registry import ensure_capacity as ensure_registry_capacity
-from .index_snapshot_registry import reuse_snapshot
+from .index_snapshot_registry import IndexSnapshot, IndexSnapshotRegistry
 from .index_snapshot_schema import (
     _deadline_ordered_rows,
     index_fingerprint,
@@ -98,156 +95,13 @@ def _index_fingerprint_with_deadline(
         return index_fingerprint(connection, root)
 
 
-@dataclass(frozen=True, slots=True)
-class IndexSnapshot:
-    snapshot_id: str | None
-    source_fingerprint: str | None
-    index_fingerprint: str | None
-    source_generation: str | None
-    completeness: Literal["complete", "partial", "unknown"]
-    reason: str | None
-    canonical_root: str | None
-    file_count: int
-    physical_storage_identity: tuple[int, int, int, int, int, int] | None = None
-
-
-@dataclass(slots=True)
-class _Entry:
-    snapshot: IndexSnapshot
-    connection: sqlite3.Connection
-    charged_bytes: int
-    expires_at: float
-    capture_deadline: float
-    readers: int = 0
-    io_lock: Any = field(default_factory=threading.RLock)
-
-
-class IndexSnapshotRegistry:
-    def __init__(self) -> None:
-        self._lock = threading.RLock()
-        self._entries: dict[str, _Entry] = {}
-
-    def ensure_capacity(self, charged_bytes: int) -> None:
-        with self._lock:
-            self._purge(_clock())
-            ensure_registry_capacity(
-                self._entries, charged_bytes, _MAX_SNAPSHOTS, _MAX_CHARGED_BYTES
-            )
-
-    def publish(
-        self,
-        snapshot: IndexSnapshot,
-        connection: sqlite3.Connection,
-        charged_bytes: int,
-        capture_deadline: float | None = None,
-        *,
-        pin: bool = False,
-    ) -> IndexSnapshot:
-        """Atomically publish/reuse a capability and optionally pin its entry."""
-        with self._lock:
-            now = _clock()
-            deadline = (
-                capture_deadline
-                if capture_deadline is not None
-                else now + _CAPTURE_DEADLINE_SECONDS
-            )
-            self._purge(now)
-            existing = reuse_snapshot(
-                self._entries,
-                snapshot,
-                connection,
-                now + _TTL_SECONDS,
-                deadline,
-            )
-            if existing is not None:
-                published = cast(IndexSnapshot, existing)
-                if pin:
-                    self._entries[cast(str, published.snapshot_id)].readers += 1
-                return published
-            self.ensure_capacity(charged_bytes)
-            snapshot_id = "idxsnap_" + secrets.token_urlsafe(24)
-            published = IndexSnapshot(
-                snapshot_id,
-                snapshot.source_fingerprint,
-                snapshot.index_fingerprint,
-                snapshot.source_generation,
-                snapshot.completeness,
-                snapshot.reason,
-                snapshot.canonical_root,
-                snapshot.file_count,
-                snapshot.physical_storage_identity,
-            )
-            self._entries[snapshot_id] = _Entry(
-                published,
-                connection,
-                charged_bytes,
-                now + _TTL_SECONDS,
-                deadline,
-                readers=int(pin),
-            )
-            return published
-
-    def release_pin(self, snapshot_id: str) -> None:
-        """Release a publication lease without exposing it through legacy capture."""
-        with self._lock:
-            entry = self._entries.get(snapshot_id)
-            if entry is None or entry.readers <= 0:
-                raise ValueError("INDEX_SNAPSHOT_UNKNOWN")
-            entry.readers -= 1
-            self._purge(_clock())
-
-    @contextmanager
-    def acquire(
-        self, snapshot_id: str, project_root: str, source_generation: str | None = None
-    ) -> Iterator[tuple[IndexSnapshot, sqlite3.Connection]]:
-        canonical_root = os.path.realpath(os.path.abspath(project_root))
-        with self._lock:
-            now = _clock()
-            self._purge(now)
-            entry = self._entries.get(snapshot_id)
-            if entry is None or entry.expires_at <= now:
-                raise ValueError("INDEX_SNAPSHOT_UNKNOWN")
-            if entry.snapshot.canonical_root != canonical_root:
-                raise ValueError("INDEX_SNAPSHOT_ROOT_MISMATCH")
-            if (
-                source_generation is not None
-                and source_generation != entry.snapshot.source_generation
-            ):
-                raise ValueError("SOURCE_GENERATION_MISMATCH")
-            entry.readers += 1
-        entry.io_lock.acquire()
-        try:
-            yield entry.snapshot, entry.connection
-        finally:
-            entry.io_lock.release()
-            with self._lock:
-                entry.readers -= 1
-                self._purge(_clock())
-
-    def capture_deadline(self, snapshot_id: str) -> float:
-        with self._lock:
-            entry = self._entries.get(snapshot_id)
-            if entry is None:
-                raise ValueError("INDEX_SNAPSHOT_UNKNOWN")
-            return entry.capture_deadline
-
-    def close_all(self) -> None:
-        with self._lock:
-            entries = tuple(self._entries.values())
-            self._entries.clear()
-        for entry in entries:
-            entry.connection.close()
-
-    def _purge(self, now: float) -> None:
-        for key in [
-            k
-            for k, v in self._entries.items()
-            if v.expires_at <= now and v.readers == 0
-        ]:
-            self._entries.pop(key).connection.close()
-
-
-REGISTRY = IndexSnapshotRegistry()
+REGISTRY = IndexSnapshotRegistry(
+    clock=lambda: _clock(),
+    max_snapshots=lambda: _MAX_SNAPSHOTS,
+    max_charged_bytes=lambda: _MAX_CHARGED_BYTES,
+    ttl_seconds=lambda: _TTL_SECONDS,
+    capture_deadline_seconds=lambda: _CAPTURE_DEADLINE_SECONDS,
+)
 _CAPTURE_LOCK = threading.Lock()
 atexit.register(REGISTRY.close_all)
 

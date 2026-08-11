@@ -520,13 +520,15 @@ class TestExecute:
         )
 
         assert _cache_total_files(tmp_path) == 1
+        assert result["verdict"] == "WARN"
         assert result["phases"]["ast_cache"]["truncated_by_max_files"] is True
+        assert result["phases"]["ast_cache"]["errors"] == 1
         assert result["phases"]["incremental_sync"]["truncated_by_max_files"] is True
         assert result["candidate_snapshot"]["discovered"] == 2
         assert result["candidate_snapshot"]["selected"] == 1
         assert result["candidate_snapshot"]["limited_by_max_files"] == 1
         assert result["candidate_snapshot"]["discovery_reconciled"] is True
-        assert result["candidate_snapshot"]["phase_totals_reconciled"] is True
+        assert result["candidate_snapshot"]["phase_totals_reconciled"] is False
 
     async def test_full_index_walks_project_once_for_both_phases(self, tmp_path):
         import tree_sitter_analyzer.mcp.tools.full_index_tool as full_index_module

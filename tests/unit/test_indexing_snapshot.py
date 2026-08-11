@@ -48,11 +48,7 @@ def _partition(snapshot: IndexCandidateSnapshot, conn: sqlite3.Connection):
         walk_fn=lambda _root: (),
         language_fn=_python_language,
         extractor_version=1,
-        make_error_entry=lambda path, reason: {
-            "file": path,
-            "status": "error",
-            "reason": reason,
-        },
+        make_error_entry=lambda p, r: {"file": p, "status": "error", "reason": r},
         candidate_snapshot=snapshot,
     )
 
@@ -149,6 +145,7 @@ def test_candidate_discovery_bounds_million_unsupported_entries(tmp_path, monkey
     import tree_sitter_analyzer.indexing_snapshot as snapshot_module
 
     monkeypatch.setattr(snapshot_module.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(snapshot_module, "_CANDIDATE_ENTRY_BUDGET", 10)
     monkeypatch.setattr(snapshot_module, "_CANDIDATE_PATH_BYTE_BUDGET", 1_000_000_000)
     consumed = 0
     closed = False
@@ -156,7 +153,7 @@ def test_candidate_discovery_bounds_million_unsupported_entries(tmp_path, monkey
     def million_unsupported(_root):
         nonlocal consumed, closed
         try:
-            for index in range(1_000_000):
+            for index in range(snapshot_module._CANDIDATE_ENTRY_BUDGET + 1):
                 consumed += 1
                 yield str(tmp_path / f"unsupported-{index}.txt")
         finally:
@@ -170,9 +167,9 @@ def test_candidate_discovery_bounds_million_unsupported_entries(tmp_path, monkey
         language_fn=_python_language,
     )
 
-    assert (consumed, closed) == (100_001, True)
-    assert len(snapshot.entries) == 100_000
-    assert len(snapshot.present_paths) == 100_000
+    assert (consumed, closed) == (11, True)
+    assert len(snapshot.entries) == 10
+    assert len(snapshot.present_paths) == 10
     assert snapshot.discovery_error == "INDEX_CANDIDATE_DISCOVERY_BUDGET"
 
 
