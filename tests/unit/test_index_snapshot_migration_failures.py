@@ -154,3 +154,25 @@ class TestSnapshotFailureContracts:
             schema._ensure_symbol_rows_backfilled(conn)
         assert self._symbol_table_count(conn) == 0
         conn.close()
+
+    def test_zero_symbol_migration_writes_global_marker_and_does_not_reparse(
+        self, monkeypatch
+    ):
+        # PR #1253 review thread 3888: empty projections still complete migration.
+        import tree_sitter_analyzer.cache.schema as schema
+
+        conn = self._legacy_symbol_connection('{"symbols": []}')
+        schema._ensure_symbol_rows_backfilled(conn)
+        marker = conn.execute(
+            "SELECT value FROM ast_cache_metadata WHERE key = ?",
+            (schema._LEGACY_SYMBOL_MIGRATION_MARKER,),
+        ).fetchone()
+        monkeypatch.setattr(
+            schema.json,
+            "loads",
+            lambda _raw: pytest.fail("completed legacy migration reparsed JSON"),
+        )
+        schema._ensure_symbol_rows_backfilled(conn)
+        conn.close()
+
+        assert marker == ("complete",)

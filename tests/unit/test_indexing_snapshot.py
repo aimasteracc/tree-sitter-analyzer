@@ -620,3 +620,110 @@ def test_validate_selected_stat_error_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr(snapshot_module.os, "stat", denied)
     with pytest.raises(ValueError, match="selected candidate is unreadable"):
         snapshot_module.validate_index_candidate_snapshot(str(tmp_path), 1, snapshot)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_supported_suffix_directory_symlink_is_writer_error(tmp_path):
+    # PR #1253 review thread 3878: os.walk exposes directory symlinks separately.
+    from tree_sitter_analyzer.cache.indexer import _walk_source_files
+
+    target = tmp_path / "vendor"
+    target.mkdir()
+    linked = tmp_path / "vendor.py"
+    linked.symlink_to(target, target_is_directory=True)
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=_walk_source_files,
+        language_fn=_python_language,
+    )
+
+    assert (snapshot.selected, snapshot.errors, snapshot.entries[0].decision) == (
+        0,
+        1,
+        "error",
+    )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_literal_backslash_supported_path_is_writer_error(tmp_path):
+    # PR #1253 review thread 1266: POSIX backslashes are filename bytes, not separators.
+    source = tmp_path / "pkg\\sample.py"
+    source.write_text("value = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=_python_language,
+    )
+
+    assert (snapshot.selected, snapshot.errors, snapshot.entries[0].rel_path) == (
+        0,
+        1,
+        "pkg\\sample.py",
+    )
+
+
+def test_windows_candidate_path_normalization_is_platform_aware(tmp_path, monkeypatch):
+    # PR #1253 review thread 1266: Windows separators remain canonical slashes.
+    import tree_sitter_analyzer.indexing_snapshot as snapshot_module
+
+    source = tmp_path / "sample.py"
+    source.write_text("value = 1\n")
+    from types import SimpleNamespace
+
+    fake_path = SimpleNamespace(
+        abspath=os.path.abspath,
+        realpath=os.path.realpath,
+        relpath=lambda *_args: "pkg\\sample.py",
+    )
+    monkeypatch.setattr(
+        snapshot_module, "os", SimpleNamespace(name="nt", path=fake_path, stat=os.stat)
+    )
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=_python_language,
+    )
+
+    assert snapshot.entries[0].rel_path == "pkg/sample.py"
+
+
+def test_windows_snapshot_validation_normalizes_expected_path(tmp_path, monkeypatch):
+    # PR #1253 review thread 1266: validation uses the same Windows-only rule.
+    import tree_sitter_analyzer.indexing_snapshot as snapshot_module
+
+    source = tmp_path / "sample.py"
+    source.write_text("value = 1\n")
+    fingerprint = IndexFileFingerprint.from_stat(source.stat())
+    entry = IndexSnapshotEntry(
+        str(source), "pkg/sample.py", "python", "selected", fingerprint=fingerprint
+    )
+    snapshot = IndexCandidateSnapshot(
+        os.path.abspath(tmp_path),
+        10,
+        (entry,),
+        frozenset({"pkg/sample.py"}),
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+    )
+    from types import SimpleNamespace
+
+    fake_path = SimpleNamespace(
+        abspath=os.path.abspath,
+        realpath=os.path.realpath,
+        relpath=lambda *_args: "pkg\\sample.py",
+    )
+    monkeypatch.setattr(
+        snapshot_module, "os", SimpleNamespace(name="nt", path=fake_path, stat=os.stat)
+    )
+
+    snapshot_module.validate_index_candidate_snapshot(str(tmp_path), 10, snapshot)

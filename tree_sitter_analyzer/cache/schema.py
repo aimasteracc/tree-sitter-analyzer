@@ -24,6 +24,7 @@ _LEGACY_SYMBOL_MIGRATION_ROW_BUDGET = 250_000
 _LEGACY_SYMBOL_MIGRATION_INPUT_BYTE_BUDGET = 256 * 1024 * 1024
 _LEGACY_SYMBOL_MIGRATION_SYMBOL_BUDGET = 2_000_000
 _LEGACY_SYMBOL_MIGRATION_CELL_BYTE_BUDGET = 1024 * 1024
+_LEGACY_SYMBOL_MIGRATION_MARKER = "symbol_rows_projection_v1"
 
 # ---------------------------------------------------------------------------
 # Schema DDL constants
@@ -713,6 +714,17 @@ def _ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
     conn.execute("SAVEPOINT ast_symbol_rows_upgrade")
     try:
         conn.execute(
+            "CREATE TABLE IF NOT EXISTS ast_cache_metadata ("
+            "key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        marker = conn.execute(
+            "SELECT value FROM ast_cache_metadata WHERE key = ?",
+            (_LEGACY_SYMBOL_MIGRATION_MARKER,),
+        ).fetchone()
+        if marker is not None:
+            conn.execute("RELEASE ast_symbol_rows_upgrade")
+            return
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS ast_symbol_rows ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, "
             "kind TEXT NOT NULL, file_path TEXT NOT NULL, language TEXT NOT NULL, "
@@ -777,6 +789,10 @@ def _ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
                         params,
                     )
                     check_budget()
+        conn.execute(
+            "INSERT INTO ast_cache_metadata (key, value) VALUES (?, ?)",
+            (_LEGACY_SYMBOL_MIGRATION_MARKER, "complete"),
+        )
         conn.execute("RELEASE ast_symbol_rows_upgrade")
     except Exception:
         conn.execute("ROLLBACK TO ast_symbol_rows_upgrade")

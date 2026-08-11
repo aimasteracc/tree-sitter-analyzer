@@ -105,9 +105,9 @@ def validate_index_candidate_snapshot(
         resolved_path = os.path.realpath(logical_path)
         if not Path(resolved_path).is_relative_to(resolved_root):
             raise ValueError(f"candidate path escapes project root: {entry.abs_path}")
-        expected_rel_path = os.path.relpath(logical_path, logical_root).replace(
-            "\\", "/"
-        )
+        expected_rel_path = os.path.relpath(logical_path, logical_root)
+        if os.name == "nt":
+            expected_rel_path = expected_rel_path.replace("\\", "/")
         if entry.rel_path != expected_rel_path:
             raise ValueError(f"candidate relative path mismatch: {entry.rel_path}")
         if entry.decision == "selected" and entry.fingerprint is None:
@@ -166,12 +166,31 @@ def build_index_candidate_snapshot(
         if resolved_path in resolved_paths:
             continue
         resolved_paths.add(resolved_path)
-        rel_path = os.path.relpath(abs_path, logical_root).replace("\\", "/")
+        rel_path = os.path.relpath(abs_path, logical_root)
+        if os.name == "nt":
+            rel_path = rel_path.replace("\\", "/")
         discovered += 1
         present_paths.add(rel_path)
 
         if discovered > normalized_max:
             limited += 1
+            continue
+
+        if (
+            os.name == "posix"
+            and "\\" in rel_path
+            and language_fn(abs_path) is not None
+        ):
+            errors += 1
+            entries.append(
+                IndexSnapshotEntry(
+                    abs_path=abs_path,
+                    rel_path=rel_path,
+                    language=language_fn(abs_path),
+                    decision="error",
+                    reason="supported source path contains a literal backslash",
+                )
+            )
             continue
 
         if any(fnmatch.fnmatch(rel_path, pattern) for pattern in exclude_patterns):

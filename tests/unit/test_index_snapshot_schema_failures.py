@@ -105,26 +105,22 @@ class TestSnapshotFailureContracts:
         with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_DEADLINE"):
             schema._check_deadline(1.0)
 
-    def test_bounded_sort_emits_multiple_canonical_runs(self, monkeypatch):
-        # PR #1253: inventories larger than one run use the heap merge path.
+    def test_source_fingerprint_is_order_independent(self):
+        # PR #1255: the set accumulator avoids full-inventory sort copies.
         import tree_sitter_analyzer.index_source_snapshot as source
 
-        monkeypatch.setattr(source, "_SORT_CHUNK_SIZE", 2)
-        ordered = tuple(source._bounded_sorted((3, 1, 2), deadline=float("inf")))
-        assert ordered == (1, 2, 3)
-
-    def test_bounded_sort_checks_deadline_for_each_merged_row(self, monkeypatch):
-        # PR #1253: merge work cannot extend past the advertised scan deadline.
-        from types import SimpleNamespace
-
-        import tree_sitter_analyzer.index_source_snapshot as source
-
-        ticks = iter((0.0, 0.0, 2.0))
-        monkeypatch.setattr(
-            source, "time", SimpleNamespace(monotonic=lambda: next(ticks))
+        rows = (("b.py", "b", "python"), ("a.py", "a", "python"))
+        assert source.inventory_fingerprint(rows) == source.inventory_fingerprint(
+            reversed(rows)
         )
-        with pytest.raises(TimeoutError):
-            tuple(source._bounded_sorted((1,), deadline=1.0))
+
+    def test_source_fingerprint_rejects_duplicate_paths(self):
+        # PR #1255: paths are unique inputs to the commutative accumulator.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        rows = (("a.py", "one", "python"), ("a.py", "two", "python"))
+        with pytest.raises(ValueError, match="SOURCE_INVENTORY_DUPLICATE_PATH"):
+            source.inventory_fingerprint(rows)
 
     def test_inventory_fingerprint_checks_deadline_inside_each_row(self, monkeypatch):
         # PR #1253: per-value framing remains within the same deadline.
@@ -198,3 +194,109 @@ class TestSnapshotFailureContracts:
 
         raw = struct.pack(">d", 1.5)
         assert _typed((1.5,)) == b"f" + len(raw).to_bytes(8, "big") + raw
+
+    def test_fingerprint_preflight_rejects_oversize_cell_before_typed_encoding(
+        self, monkeypatch
+    ):
+        # PR #1253 review thread 3883: immutable rows are bounded in SQLite first.
+        import tree_sitter_analyzer.index_snapshot_schema as schema
+
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE payload(value TEXT)")
+        conn.execute("INSERT INTO payload VALUES ('xx')")
+        monkeypatch.setattr(schema, "_FINGERPRINT_CELL_BYTE_BUDGET", 1)
+        with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_CELL_BUDGET"):
+            schema.index_fingerprint(conn, ".")
+        conn.close()
+
+    def test_resolve_state_is_excluded_from_index_fingerprint(self):
+        # PR #1253 review thread 3886: mutable control state is not graph evidence.
+        import tree_sitter_analyzer.index_snapshot_schema as schema
+
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE graph(value TEXT)")
+        conn.execute("INSERT INTO graph VALUES ('stable')")
+        conn.execute("CREATE TABLE ast_resolve_state(value TEXT)")
+        conn.execute("INSERT INTO ast_resolve_state VALUES ('one')")
+        before = schema.index_fingerprint(conn, ".")
+        conn.execute("UPDATE ast_resolve_state SET value = 'two'")
+        after = schema.index_fingerprint(conn, ".")
+        conn.close()
+
+        assert after == before
+
+    def test_fingerprint_preflight_rejects_oversize_row(self, monkeypatch):
+        # PR #1253 review thread 3883: aggregate row materialization is bounded.
+        import tree_sitter_analyzer.index_snapshot_schema as schema
+
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE payload(left_value TEXT, right_value TEXT)")
+        conn.execute("INSERT INTO payload VALUES ('a', 'b')")
+        monkeypatch.setattr(schema, "_FINGERPRINT_ROW_BYTE_BUDGET", 1)
+        with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_ROW_BUDGET"):
+            schema.index_fingerprint(conn, ".")
+        conn.close()
+
+    def test_fingerprint_preflight_enforces_global_byte_budget(self, monkeypatch):
+        # PR #1253 review thread 3883: preflight contributes to the global budget.
+        import tree_sitter_analyzer.index_snapshot_schema as schema
+
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE payload(value TEXT)")
+        conn.execute("INSERT INTO payload VALUES ('a')")
+        monkeypatch.setattr(schema, "_FINGERPRINT_BYTE_BUDGET", 0)
+        with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_BUDGET"):
+            schema._preflight_table_rows(conn, "payload", ('"value"',), float("inf"))
+        conn.close()
+
+    def test_source_fingerprint_checks_deadline_before_first_row(self, monkeypatch):
+        # PR #1255: the accumulator checks time before retaining each path.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        monkeypatch.setattr(source.time, "monotonic", lambda: 2.0)
+        with pytest.raises(TimeoutError):
+            source.inventory_fingerprint((("a.py", "hash", "python"),), deadline=1.0)
+
+    def test_recorded_rows_check_deadline_before_materializing(self, monkeypatch):
+        # PR #1255: database inventory materialization shares the deadline.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE ast_index(file_path, content_hash, language)")
+        conn.execute("INSERT INTO ast_index VALUES ('a.py', 'hash', 'python')")
+        monkeypatch.setattr(source.time, "monotonic", lambda: 2.0)
+        with pytest.raises(TimeoutError):
+            source.recorded_source_rows(conn, deadline=1.0)
+        conn.close()
+
+    def test_recorded_rows_reject_duplicate_paths(self):
+        # PR #1255: persisted paths must be unique before set comparison.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE ast_index(file_path, content_hash, language)")
+        conn.executemany(
+            "INSERT INTO ast_index VALUES (?, ?, 'python')",
+            (("a.py", "one"), ("a.py", "two")),
+        )
+        with pytest.raises(ValueError, match="SOURCE_INVENTORY_DUPLICATE_PATH"):
+            source.recorded_source_rows(conn)
+        conn.close()
+
+    def test_fingerprint_sqlite_data_error_has_stable_reason(self):
+        # PR #1253 review thread 3883: driver conversion faults map to unknown safely.
+        import tree_sitter_analyzer.index_snapshot_schema as schema
+
+        class DataErrorConnection:
+            def set_progress_handler(self, _handler, _steps):
+                return None
+
+            def execute(self, _query):
+                raise sqlite3.DataError("hostile conversion")
+
+        with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_INVALID"):
+            tuple(
+                schema._deadline_ordered_rows(
+                    DataErrorConnection(), "SELECT hostile", float("inf")
+                )
+            )

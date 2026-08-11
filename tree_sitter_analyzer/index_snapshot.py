@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import errno
 import os
+import re
 import secrets
 import sqlite3
 import threading
@@ -168,6 +169,42 @@ _CAPTURE_LOCK = threading.Lock()
 atexit.register(REGISTRY.close_all)
 
 
+_MANIFEST_FINGERPRINT = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_MANIFEST_TEXT_BYTE_BUDGET = 1024 * 1024
+_MANIFEST_SCOPE_BYTE_BUDGET = 64 * 1024
+
+
+def _validate_manifest_scalars(manifest: sqlite3.Row) -> None:
+    """Reject SQLite coercions before comparisons or descriptor parsing."""
+    root = manifest["canonical_root"]
+    source = manifest["source_fingerprint"]
+    index = manifest["index_fingerprint"]
+    count = manifest["file_count"]
+    descriptor = manifest["source_scope_descriptor"]
+    version = manifest["manifest_version"]
+    if (
+        not isinstance(root, str)
+        or not root
+        or "\0" in root
+        or len(root.encode("utf-8", "surrogatepass")) > _MANIFEST_TEXT_BYTE_BUDGET
+        or not isinstance(source, str)
+        or _MANIFEST_FINGERPRINT.fullmatch(source) is None
+        or not isinstance(index, str)
+        or _MANIFEST_FINGERPRINT.fullmatch(index) is None
+        or not isinstance(count, int)
+        or isinstance(count, bool)
+        or not 0 <= count <= 2_000_000
+        or not isinstance(descriptor, str)
+        or not descriptor
+        or len(descriptor) > _MANIFEST_SCOPE_BYTE_BUDGET
+        or not descriptor.isascii()
+        or not isinstance(version, int)
+        or isinstance(version, bool)
+        or version != 2
+    ):
+        raise ValueError("INDEX_MANIFEST_INVALID")
+
+
 def read_existing_snapshot(project_root: str) -> IndexSnapshot:
     # Absence is platform-independent and publishes no file evidence.  Report it
     # before the secure-fd capability gate so fresh Windows installs preserve the
@@ -210,6 +247,8 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                 "file_count, source_scope_descriptor, manifest_version "
                 "FROM ast_index_snapshot_manifest WHERE singleton=1"
             ).fetchone()
+            if manifest is not None:
+                _validate_manifest_scalars(manifest)
             current = None
             scope_reason = None
             if manifest is None:
@@ -217,7 +256,7 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
             else:
                 try:
                     source_scope = parse_source_scope_descriptor(
-                        str(manifest["source_scope_descriptor"])
+                        manifest["source_scope_descriptor"]
                     )
                 except (TypeError, ValueError):
                     scope_reason = "SOURCE_SCOPE_DESCRIPTOR_INVALID"
@@ -235,8 +274,8 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                 and manifest["canonical_root"] == root
                 and manifest["source_fingerprint"] == current.fingerprint
                 and manifest["index_fingerprint"] == index
-                and int(manifest["file_count"]) == count
-                and int(manifest["manifest_version"]) == 2
+                and manifest["file_count"] == count
+                and manifest["manifest_version"] == 2
             )
             call_graph_complete = _exact_call_graph_marker(connection)
             complete = exact_sources and exact_manifest and call_graph_complete
@@ -316,7 +355,7 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                 or any(x in str(exc).lower() for x in ("locked", "busy"))
                 else "CORRUPT_INDEX"
             )
-        except (OSError, ValueError, RuntimeError) as exc:
+        except (OSError, TypeError, ValueError, RuntimeError) as exc:
             reason = str(exc)
             if isinstance(exc, OSError) and getattr(exc, "errno", None) in (
                 errno.ELOOP,

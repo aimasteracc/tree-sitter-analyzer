@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import fnmatch
 import hashlib
-import heapq
 import json
 import os
 import stat
 import time
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from typing import Any, Literal, TypeVar, cast
+from typing import Any, Literal
 
 from .constants import EXCLUDE_DIRS
 from .index_source_stream import hash_source_at
@@ -25,11 +24,9 @@ _SOURCE_DISCOVERY_POLICY = "tsa-full-index-walk"
 _SOURCE_DISCOVERY_POLICY_VERSION = 2
 _SOURCE_PATH_BUDGET = KNOWLEDGE_INDEX_MAX_FILES
 # Enumeration budgets cover every directory entry, including unsupported and
-# excluded names. Sorting never operates on more than one chunk at a time.
+# excluded names; traversal and hashing never require a global ordering copy.
 _SOURCE_ENTRY_BUDGET = 1_000_000
 _SOURCE_ENTRY_PATH_BYTE_BUDGET = 128 * 1024 * 1024
-_SORT_CHUNK_SIZE = 4096
-_T = TypeVar("_T")
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +74,7 @@ def canonical_source_scope_descriptor(scope: SourceScopeDescriptor) -> str:
             "no_default_excludes": scope.no_default_excludes,
             "roots": list(scope.roots),
         },
-        ensure_ascii=False,
+        ensure_ascii=True,
         sort_keys=True,
         separators=(",", ":"),
     )
@@ -114,8 +111,13 @@ def parse_source_scope_descriptor(raw: str) -> SourceScopeDescriptor:
         or any(not isinstance(item, str) for item in roots + patterns)
     ):
         raise ValueError("SOURCE_SCOPE_DESCRIPTOR_INVALID")
-    normalized_roots = tuple(dict.fromkeys(item.replace("\\", "/") for item in roots))
-    normalized_patterns = tuple(sorted({item.replace("\\", "/") for item in patterns}))
+    normalize = (
+        (lambda item: item.replace("\\", "/"))
+        if os.name == "nt"
+        else (lambda item: item)
+    )
+    normalized_roots = tuple(dict.fromkeys(normalize(item) for item in roots))
+    normalized_patterns = tuple(sorted({normalize(item) for item in patterns}))
     if any(
         not item
         or os.path.isabs(item)
@@ -142,7 +144,10 @@ def validate_full_index_source_scope(
     max_files: int | None = None,
 ) -> None:
     """Reject descriptors that do not describe the walk being executed."""
-    normalized = frozenset(item.replace("\\", "/") for item in effective_excludes)
+    normalized = frozenset(
+        item.replace("\\", "/") if os.name == "nt" else item
+        for item in effective_excludes
+    )
     if (
         scope.roots != (".",)
         or scope.effective_excludes != normalized
@@ -153,66 +158,61 @@ def validate_full_index_source_scope(
 
 @dataclass(frozen=True, slots=True)
 class CurrentSourceSnapshot:
-    rows: tuple[tuple[str, str, str], ...]
+    rows: frozenset[tuple[str, str, str]]
     fingerprint: str | None
     generation: str | None
     state: Literal["exact", "unsafe", "unknown"]
     reason: str | None
 
 
-def _bounded_sorted(
-    values: Iterable[_T], *, deadline: float | None = None
-) -> Iterator[_T]:
-    """Sort via bounded runs and a heap merge, checking work deadlines."""
-    iterator = iter(values)
-    runs: list[list[_T]] = []
-    exhausted = False
-    while not exhausted:
-        chunk: list[_T] = []
-        for _index in range(_SORT_CHUNK_SIZE):
-            if deadline is not None and time.monotonic() > deadline:
-                raise TimeoutError
-            try:
-                chunk.append(next(iterator))
-            except StopIteration:
-                exhausted = True
-                break
-        if chunk:
-            chunk.sort()
-            runs.append(chunk)
-    merged = heapq.merge(*cast(list[list[Any]], runs))
-    for value in merged:
-        if deadline is not None and time.monotonic() > deadline:
-            raise TimeoutError
-        yield cast(_T, value)
-
-
 def inventory_fingerprint(
     rows: Iterable[tuple[str, str, str]], *, deadline: float | None = None
 ) -> str:
-    """Return the shared owner token using the canonical bounded ordering."""
-    digest = hashlib.sha256(b"tsa-index-source-v2\0")
-    for row in _bounded_sorted(rows, deadline=deadline):
+    """Hash unique rows without an ordering copy or attacker-controlled sorting."""
+    total = 0
+    count = 0
+    paths: set[str] = set()
+    modulus_mask = (1 << 256) - 1
+    for row in rows:
+        if deadline is not None and time.monotonic() > deadline:
+            raise TimeoutError
+        path = row[0]
+        if path in paths:
+            raise ValueError("SOURCE_INVENTORY_DUPLICATE_PATH")
+        paths.add(path)
+        row_digest = hashlib.sha256(b"tsa-index-source-row-v3\0")
         for value in row:
             if deadline is not None and time.monotonic() > deadline:
                 raise TimeoutError
             raw = value.encode("utf-8", "surrogatepass")
-            digest.update(len(raw).to_bytes(8, "big"))
-            digest.update(raw)
+            row_digest.update(len(raw).to_bytes(8, "big"))
+            row_digest.update(raw)
+        total = (total + int.from_bytes(row_digest.digest(), "big")) & modulus_mask
+        count += 1
+    digest = hashlib.sha256(b"tsa-index-source-set-v3\0")
+    digest.update(count.to_bytes(8, "big"))
+    digest.update(total.to_bytes(32, "big"))
     return "sha256:" + digest.hexdigest()
 
 
 def recorded_source_rows(
     conn: object, *, deadline: float | None = None
-) -> tuple[tuple[str, str, str], ...]:
-    """Read the cache's claimed source inventory in the shared bounded order."""
-    values = (
-        (str(row[0]).replace("\\", "/"), str(row[1]), str(row[2]))
-        for row in conn.execute(  # type: ignore[attr-defined]
-            "SELECT file_path, content_hash, language FROM ast_index"
-        )
-    )
-    return tuple(_bounded_sorted(values, deadline=deadline))
+) -> frozenset[tuple[str, str, str]]:
+    """Read the cache's claimed inventory directly into one bounded set."""
+    values: set[tuple[str, str, str]] = set()
+    paths: set[str] = set()
+    for row in conn.execute(  # type: ignore[attr-defined]
+        "SELECT file_path, content_hash, language FROM ast_index"
+    ):
+        if deadline is not None and time.monotonic() > deadline:
+            raise TimeoutError
+        raw_path = str(row[0])
+        path = raw_path.replace("\\", "/") if os.name == "nt" else raw_path
+        if path in paths:
+            raise ValueError("SOURCE_INVENTORY_DUPLICATE_PATH")
+        paths.add(path)
+        values.add((path, str(row[1]), str(row[2])))
+    return frozenset(values)
 
 
 def capture_current_source_snapshot(
@@ -222,7 +222,7 @@ def capture_current_source_snapshot(
     scope = source_scope or make_source_scope_descriptor()
     if os.name != "posix" or not os.path.exists("/dev/fd"):
         return CurrentSourceSnapshot(
-            (), None, None, "unsafe", "SOURCE_SCOPE_UNSUPPORTED"
+            frozenset(), None, None, "unsafe", "SOURCE_SCOPE_UNSUPPORTED"
         )
     deadline = time.monotonic() + _SOURCE_DEADLINE_SECONDS
     root = os.path.abspath(project_root)
@@ -230,14 +230,16 @@ def capture_current_source_snapshot(
         first, unsafe = _inventory(root, deadline, scope, with_content=True)
         second, unsafe_second = _inventory(root, deadline, scope, with_content=False)
     except TimeoutError:
-        return CurrentSourceSnapshot((), None, None, "unknown", "SOURCE_SCAN_DEADLINE")
+        return CurrentSourceSnapshot(
+            frozenset(), None, None, "unknown", "SOURCE_SCAN_DEADLINE"
+        )
     except OverflowError:
         return CurrentSourceSnapshot(
-            (), None, None, "unknown", "SOURCE_SCOPE_UNBOUNDED"
+            frozenset(), None, None, "unknown", "SOURCE_SCOPE_UNBOUNDED"
         )
     except OSError:
         return CurrentSourceSnapshot(
-            (), None, None, "unknown", "SOURCE_SCOPE_UNREADABLE"
+            frozenset(), None, None, "unknown", "SOURCE_SCOPE_UNREADABLE"
         )
 
     metadata = {(path, language): marker for path, marker, language in second}
@@ -245,20 +247,20 @@ def capture_current_source_snapshot(
         metadata.get((path, language)) == marker.split("|", 1)[0]
         for path, marker, language in first
     )
-    first_scope = [(r[0], r[2]) for r in first]
-    second_scope = [(r[0], r[2]) for r in second]
-    unique_scope = len(first_scope) == len(set(first_scope)) and len(
-        second_scope
-    ) == len(set(second_scope))
-    same_paths = set(first_scope) == set(second_scope)
-    rows = tuple(
+    first_scope = frozenset((r[0], r[2]) for r in first)
+    second_scope = frozenset((r[0], r[2]) for r in second)
+    unique_scope = len(first_scope) == len(first) and len(second_scope) == len(second)
+    same_paths = first_scope == second_scope
+    rows = frozenset(
         (path, marker.split("|", 1)[1], language) for path, marker, language in first
     )
     try:
         fingerprint = inventory_fingerprint(rows, deadline=deadline)
     except TimeoutError:
-        return CurrentSourceSnapshot((), None, None, "unknown", "SOURCE_SCAN_DEADLINE")
-    generation = "idxsrc-v2:" + fingerprint.removeprefix("sha256:")
+        return CurrentSourceSnapshot(
+            frozenset(), None, None, "unknown", "SOURCE_SCAN_DEADLINE"
+        )
+    generation = "idxsrc-v3:" + fingerprint.removeprefix("sha256:")
     if unsafe or unsafe_second or not stable or not same_paths or not unique_scope:
         return CurrentSourceSnapshot(
             rows, fingerprint, generation, "unsafe", "SOURCE_SCOPE_UNSAFE"
@@ -272,14 +274,16 @@ def _inventory(
     scope: SourceScopeDescriptor | None = None,
     *,
     with_content: bool,
-) -> tuple[tuple[tuple[str, str, str], ...], bool]:
+) -> tuple[frozenset[tuple[str, str, str]], bool]:
     """Walk supported sources through pinned directory descriptors on POSIX."""
     scope = scope or make_source_scope_descriptor()
+    if time.monotonic() > deadline:
+        raise TimeoutError
     if os.name != "posix" or not os.path.exists("/dev/fd"):
         # Portable pathname traversal cannot close descendant-reparse and path-swap
         # TOCTOU windows, so certification is deliberately unavailable.
-        return (), True
-    rows: list[tuple[str, str, str]] = []
+        return frozenset(), True
+    rows: set[tuple[str, str, str]] = set()
     unsafe = False
     counters = {"entries": 0, "path_bytes": 0, "input": 0, "output": 0}
     replay_limit = min(scope.certification_max_files, _SOURCE_PATH_BUDGET)
@@ -294,7 +298,11 @@ def _inventory(
         scope_roots: list[tuple[int, str]] = []
         try:
             for relative_root in scope.roots:
-                normalized = relative_root.replace("\\", "/")
+                normalized = (
+                    relative_root.replace("\\", "/")
+                    if os.name == "nt"
+                    else relative_root
+                )
                 parts = [
                     part for part in normalized.split("/") if part not in ("", ".")
                 ]
@@ -360,6 +368,8 @@ def _inventory(
                         language = EXT_TO_LANG.get(os.path.splitext(name)[1].lower())
                         if language is None:
                             continue
+                        if os.name == "posix" and "\\" in rel:
+                            unsafe = True
                         supported_count += 1
                         if supported_count > replay_limit:
                             raise OverflowError
@@ -370,12 +380,12 @@ def _inventory(
                             continue
                         if not stat.S_ISREG(mode):
                             unsafe = True
-                            rows.append(
+                            rows.add(
                                 (rel, _metadata_marker(info) + "|<unsafe>", language)
                             )
                             continue
                         if not with_content:
-                            rows.append((rel, _metadata_marker(info), language))
+                            rows.add((rel, _metadata_marker(info), language))
                             continue
                         marker, content_hash, clean = hash_source_at(
                             directory_fd,
@@ -389,7 +399,7 @@ def _inventory(
                         )
                         if not clean:
                             unsafe = True
-                        rows.append((rel, marker + "|" + content_hash, language))
+                        rows.add((rel, marker + "|" + content_hash, language))
                 finally:
                     for directory_fd, _relative_dir, _entries in stack:
                         try:
@@ -404,7 +414,7 @@ def _inventory(
                     pass
     finally:
         os.close(root_fd)
-    return tuple(_bounded_sorted(rows, deadline=deadline)), unsafe
+    return frozenset(rows), unsafe
 
 
 def _enumerate_directory(
@@ -413,8 +423,7 @@ def _enumerate_directory(
     deadline: float,
     counters: dict[str, int],
 ) -> Iterator[tuple[str, os.stat_result]]:
-    """Enumerate fully under absolute budgets, then merge bounded sorted runs."""
-    records: list[tuple[str, os.stat_result]] = []
+    """Enumerate fully under absolute entry, path-byte, and time budgets."""
     with os.scandir(directory_fd) as entries:
         for entry in entries:
             if time.monotonic() > deadline:
@@ -429,8 +438,7 @@ def _enumerate_directory(
             ):
                 raise OverflowError
             info = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
-            records.append((name, info))
-    yield from _bounded_sorted(records, deadline=deadline)
+            yield name, info
 
 
 def _metadata_marker(info: os.stat_result) -> str:

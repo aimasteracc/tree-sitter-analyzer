@@ -32,8 +32,10 @@ CREATE TABLE IF NOT EXISTS ast_index_snapshot_manifest (
 _CONTROL_TABLES = frozenset(
     {
         "ast_index_snapshot_manifest",
+        "ast_cache_metadata",
         "ast_build_state",
         "ast_call_graph_state",
+        "ast_resolve_state",
         "sqlite_sequence",
     }
 )
@@ -64,6 +66,8 @@ _REQUIRED_COLUMNS = {
 _FINGERPRINT_DEADLINE_SECONDS = 5.0
 _FINGERPRINT_ROW_BUDGET = 2_000_000
 _FINGERPRINT_BYTE_BUDGET = 512 * 1024 * 1024
+_FINGERPRINT_CELL_BYTE_BUDGET = 4 * 1024 * 1024
+_FINGERPRINT_ROW_BYTE_BUDGET = 16 * 1024 * 1024
 
 
 def apply_snapshot_migration(conn: sqlite3.Connection, record_fn: Any) -> None:
@@ -163,6 +167,14 @@ def index_fingerprint(conn: sqlite3.Connection, root: str) -> str:
         )
         _frame(digest, b"columns", _typed(columns))
         quoted_columns = tuple(_quote_identifier(column) for column in columns)
+        preflight_rows, preflight_bytes = _preflight_table_rows(
+            conn, table, quoted_columns, deadline
+        )
+        if (
+            rows_seen + preflight_rows > _FINGERPRINT_ROW_BUDGET
+            or bytes_seen + preflight_bytes > _FINGERPRINT_BYTE_BUDGET
+        ):
+            raise RuntimeError("INDEX_FINGERPRINT_BUDGET")
         order_by = ", ".join(f"{column} COLLATE BINARY" for column in quoted_columns)
         query = f"SELECT * FROM {_quote_identifier(table)} ORDER BY {order_by}"
         for row in _deadline_ordered_rows(conn, query, deadline):
@@ -180,6 +192,31 @@ def index_fingerprint(conn: sqlite3.Connection, root: str) -> str:
     return "sha256:" + digest.hexdigest()
 
 
+def _preflight_table_rows(
+    conn: sqlite3.Connection,
+    table: str,
+    quoted_columns: tuple[str, ...],
+    deadline: float,
+) -> tuple[int, int]:
+    """Bound SQLite values before Python materializes or typed-encodes them."""
+    lengths = ", ".join(f"length(CAST({column} AS BLOB))" for column in quoted_columns)
+    query = f"SELECT {lengths} FROM {_quote_identifier(table)}"
+    rows_seen = bytes_seen = 0
+    for row in _deadline_ordered_rows(conn, query, deadline):
+        _check_deadline(deadline)
+        cell_lengths = tuple(0 if value is None else int(value) for value in row)
+        if any(length > _FINGERPRINT_CELL_BYTE_BUDGET for length in cell_lengths):
+            raise RuntimeError("INDEX_FINGERPRINT_CELL_BUDGET")
+        row_bytes = sum(cell_lengths)
+        if row_bytes > _FINGERPRINT_ROW_BYTE_BUDGET:
+            raise RuntimeError("INDEX_FINGERPRINT_ROW_BUDGET")
+        rows_seen += 1
+        bytes_seen += row_bytes
+        if rows_seen > _FINGERPRINT_ROW_BUDGET or bytes_seen > _FINGERPRINT_BYTE_BUDGET:
+            raise RuntimeError("INDEX_FINGERPRINT_BUDGET")
+    return rows_seen, bytes_seen
+
+
 def _deadline_ordered_rows(
     conn: sqlite3.Connection, query: str, deadline: float
 ) -> Any:
@@ -195,6 +232,8 @@ def _deadline_ordered_rows(
         if time.monotonic() > deadline or "interrupt" in str(exc).lower():
             raise RuntimeError("INDEX_FINGERPRINT_DEADLINE") from exc
         raise
+    except sqlite3.DataError as exc:
+        raise RuntimeError("INDEX_FINGERPRINT_INVALID") from exc
     finally:
         conn.set_progress_handler(None, 0)
 

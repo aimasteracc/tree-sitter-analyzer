@@ -196,7 +196,7 @@ class TestSnapshotFailureContracts:
 
         (tmp_path / "notes.txt").write_text("ignored")
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        assert (rows, unsafe) == ((), False)
+        assert (rows, unsafe) == (frozenset(), False)
 
     def test_inventory_rejects_scope_root_escape(self, tmp_path):
         import tree_sitter_analyzer.index_source_snapshot as source
@@ -234,7 +234,7 @@ class TestSnapshotFailureContracts:
 
         monkeypatch.setattr(source.os, "open", fail_source)
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        assert (rows[0][1].endswith("|<unsafe>"), unsafe) == (True, True)
+        assert (next(iter(rows))[1].endswith("|<unsafe>"), unsafe) == (True, True)
 
     def test_inventory_read_deadline_closes_file(self, tmp_path, monkeypatch):
         import tree_sitter_analyzer.index_source_snapshot as source
@@ -264,7 +264,7 @@ class TestSnapshotFailureContracts:
         fifo = tmp_path / "pipe.py"
         os.mkfifo(fifo)
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        assert (rows[0][1].endswith("|<unsafe>"), unsafe) == (True, True)
+        assert (next(iter(rows))[1].endswith("|<unsafe>"), unsafe) == (True, True)
 
     @requires_posix_fd
     def test_nonempty_shm_does_not_block_quiescent_main_database(self, tmp_path):
@@ -327,7 +327,7 @@ class TestSnapshotFailureContracts:
         monkeypatch.setattr(source.os, "open", recording_open)
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
 
-        assert (rows[0][0], unsafe) == ("pkg/sample.py", False)
+        assert (next(iter(rows))[0], unsafe) == ("pkg/sample.py", False)
         assert calls[0] == (str(tmp_path), None)
         assert all("/" not in name and dir_fd is not None for name, dir_fd in calls[1:])
 
@@ -350,7 +350,7 @@ class TestSnapshotFailureContracts:
         monkeypatch.setattr(source.os, "read", split_read)
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
         expected = hashlib.sha256(b"\n").hexdigest()
-        assert (rows[0][1].split("|")[1], unsafe) == (expected, False)
+        assert (next(iter(rows))[1].split("|")[1], unsafe) == (expected, False)
 
     def test_portable_inventory_keeps_bounded_selection_semantics(
         self, tmp_path, monkeypatch
@@ -368,7 +368,7 @@ class TestSnapshotFailureContracts:
 
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
 
-        assert (rows, unsafe) == ((), True)
+        assert (rows, unsafe) == (frozenset(), True)
 
     def test_inventory_rejects_non_directory_root(self, tmp_path, monkeypatch):
         # PR #1253: the pinned root must itself be a directory descriptor.
@@ -407,3 +407,25 @@ class TestSnapshotFailureContracts:
         scope = source.make_source_scope_descriptor(roots=("missing",))
         with pytest.raises(FileNotFoundError):
             source._inventory(str(tmp_path), float("inf"), scope, with_content=True)
+
+    @requires_posix_fd
+    def test_supported_suffix_directory_symlink_is_replay_unsafe(self, tmp_path):
+        # PR #1253 review thread 3878: replay and writer reject the same alias.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        target = tmp_path / "vendor"
+        target.mkdir()
+        (tmp_path / "vendor.py").symlink_to(target, target_is_directory=True)
+        rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
+
+        assert (len(rows), unsafe) == (1, True)
+
+    @requires_posix_fd
+    def test_literal_backslash_supported_path_is_replay_unsafe(self, tmp_path):
+        # PR #1253 review thread 1266: POSIX names are never slash-normalized.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        (tmp_path / "pkg\\sample.py").write_text("value = 1\n")
+        rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
+
+        assert ({row[0] for row in rows}, unsafe) == ({"pkg\\sample.py"}, True)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 
 import pytest
 
@@ -161,3 +162,24 @@ class TestSnapshotFailureContracts:
         )
         result = owner.read_existing_snapshot(str(tmp_path))
         assert result.reason == "MISSING_INDEX"
+
+    @requires_posix_fd
+    @pytest.mark.asyncio
+    async def test_manifest_type_confusion_maps_to_stable_unknown(self, tmp_path):
+        # PR #1253 review thread 1262: MCP never coerces hostile SQLite scalars.
+        self._certified_cache(tmp_path)
+        conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+        conn.execute(
+            "UPDATE ast_index_snapshot_manifest SET file_count = 'not-an-integer'"
+        )
+        conn.commit()
+        conn.close()
+
+        result = await CodeGraphStatusTool(str(tmp_path)).execute(
+            {"output_format": "json"}
+        )
+
+        assert (result["completeness"], result["oracle_reason"]) == (
+            "unknown",
+            "INDEX_MANIFEST_INVALID",
+        )

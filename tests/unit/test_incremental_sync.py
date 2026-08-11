@@ -1410,3 +1410,53 @@ def test_transactional_deleted_scope_failure_rolls_back(monkeypatch):
     conn.close()
 
     assert transaction_open is False
+
+
+def test_windows_scan_normalizes_only_platform_separators(sync, project, monkeypatch):
+    # PR #1253 review thread 1266: sync inventory uses Windows slash canonicalization.
+    import tree_sitter_analyzer.incremental_sync as sync_module
+
+    source = project / "src" / "main.py"
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        sync_module,
+        "os",
+        SimpleNamespace(
+            name="nt",
+            path=SimpleNamespace(relpath=lambda *_args: "src\\main.py"),
+            stat=os.stat,
+        ),
+    )
+    monkeypatch.setattr(sync_module, "_walk_source_files", lambda _root: (str(source),))
+    disk_files, present, truncated, changed = sync._scan_disk_files(10, frozenset())
+
+    assert (set(disk_files), present, truncated, changed) == (
+        {"src/main.py"},
+        {"src/main.py"},
+        False,
+        [],
+    )
+
+
+def test_windows_change_scan_normalizes_only_platform_separators(
+    sync, project, monkeypatch
+):
+    # PR #1253 review thread 1266: change reporting matches sync path keys.
+    import tree_sitter_analyzer.incremental_sync as sync_module
+
+    source = project / "src" / "main.py"
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        sync_module,
+        "os",
+        SimpleNamespace(
+            name="nt",
+            path=SimpleNamespace(relpath=lambda *_args: "src\\main.py"),
+            stat=os.stat,
+        ),
+    )
+    monkeypatch.setattr(sync_module, "_walk_source_files", lambda _root: (str(source),))
+
+    assert sync.get_changes()["new"] == ["src/main.py"]

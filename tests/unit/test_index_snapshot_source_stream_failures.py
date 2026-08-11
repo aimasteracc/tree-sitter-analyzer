@@ -72,7 +72,7 @@ class TestSnapshotFailureContracts:
         monkeypatch.setattr(source.os, "read", lambda _fd, _size: next(chunks))
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
         expected = hashlib.sha256(b"\nX").hexdigest()
-        assert (rows[0][1].split("|")[1], unsafe) == (expected, False)
+        assert (next(iter(rows))[1].split("|")[1], unsafe) == (expected, False)
 
     def test_stream_output_deadline_and_budget_are_enforced(self):
         # PR #1253: normalized output owns both a deadline and byte budget.
@@ -92,7 +92,7 @@ class TestSnapshotFailureContracts:
             source.os, "scandir", lambda *_args: pytest.fail("traversed")
         )
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        assert (rows, unsafe) == ((), True)
+        assert (rows, unsafe) == (frozenset(), True)
 
     def test_portable_enumeration_deadline_and_budget_are_enforced(
         self, tmp_path, monkeypatch
@@ -105,7 +105,7 @@ class TestSnapshotFailureContracts:
             source.os, "scandir", lambda *_args: pytest.fail("traversed")
         )
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        assert (rows, unsafe) == ((), True)
+        assert (rows, unsafe) == (frozenset(), True)
 
     def test_portable_supported_path_budget_is_enforced(self, tmp_path, monkeypatch):
         # PR #1253: portable source certification is unsupported and never traverses.
@@ -116,7 +116,7 @@ class TestSnapshotFailureContracts:
             source.os, "scandir", lambda *_args: pytest.fail("traversed")
         )
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        assert (rows, unsafe) == ((), True)
+        assert (rows, unsafe) == (frozenset(), True)
 
     def test_portable_excluded_nonregular_and_metadata_only_policies(
         self, tmp_path, monkeypatch
@@ -129,7 +129,7 @@ class TestSnapshotFailureContracts:
             source.os, "scandir", lambda *_args: pytest.fail("traversed")
         )
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        assert (rows, unsafe) == ((), True)
+        assert (rows, unsafe) == (frozenset(), True)
 
     @requires_posix_fd
     def test_nonregular_shm_sidecar_is_rejected(self, tmp_path):
@@ -157,7 +157,7 @@ class TestSnapshotFailureContracts:
         chunks = iter((b"\xff", b"X", b""))
         monkeypatch.setattr(source.os, "read", lambda _fd, _size: next(chunks))
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        assert (rows[0][1].endswith("|<unsafe>"), unsafe) == (True, True)
+        assert (next(iter(rows))[1].endswith("|<unsafe>"), unsafe) == (True, True)
 
     def test_stream_incomplete_final_utf8_sequence_is_unsafe(self, tmp_path):
         # PR #1253: final incremental decoder state is validated strictly.
@@ -165,7 +165,7 @@ class TestSnapshotFailureContracts:
 
         (tmp_path / "sample.py").write_bytes(b"\xe2\x82")
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        assert (rows[0][1].endswith("|<unsafe>"), unsafe) == (True, True)
+        assert (next(iter(rows))[1].endswith("|<unsafe>"), unsafe) == (True, True)
 
     def test_portable_enumeration_deadline_is_enforced(self, tmp_path, monkeypatch):
         # PR #1253: portable source certification is unsupported and never traverses.
@@ -176,7 +176,7 @@ class TestSnapshotFailureContracts:
             source.os, "scandir", lambda *_args: pytest.fail("traversed")
         )
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        assert (rows, unsafe) == ((), True)
+        assert (rows, unsafe) == (frozenset(), True)
 
     @requires_posix_fd
     def test_child_directory_open_race_marks_inventory_unsafe(
@@ -195,7 +195,7 @@ class TestSnapshotFailureContracts:
 
         monkeypatch.setattr(source.os, "open", fail_child)
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        assert (rows, unsafe) == ((), True)
+        assert (rows, unsafe) == (frozenset(), True)
 
     @requires_posix_fd
     def test_child_directory_type_race_marks_inventory_unsafe(
@@ -225,7 +225,7 @@ class TestSnapshotFailureContracts:
             lambda fd: sample.stat() if fd in child_fds else original_fstat(fd),
         )
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        assert (rows, unsafe) == ((), True)
+        assert (rows, unsafe) == (frozenset(), True)
 
     @requires_posix_fd
     def test_child_directory_revalidation_error_closes_descriptor(
@@ -371,5 +371,5 @@ class TestSnapshotFailureContracts:
         assert (current.state, current.reason, current.rows) == (
             "unsafe",
             "SOURCE_SCOPE_UNSUPPORTED",
-            (),
+            frozenset(),
         )

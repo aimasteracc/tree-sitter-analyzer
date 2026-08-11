@@ -64,6 +64,12 @@ from .schema import (
 
 logger = logging.getLogger(__name__)
 
+
+def _normalize_relative_path(value: str) -> str:
+    """Treat backslash as a separator only on Windows."""
+    return value.replace("\\", "/") if os.name == "nt" else value
+
+
 # Corpus-directory patterns excluded from full-index (REQ-E-016).
 # Uses fnmatch syntax relative to the project root (forward-slash normalised).
 _DEFAULT_EXCLUDE_PATTERNS: frozenset[str] = frozenset(
@@ -113,9 +119,17 @@ _AST_CACHE_EXTRACTOR_VERSION = 14
 
 def _walk_source_files(project_root: str) -> Iterator[str]:
     for dirpath, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [
-            d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")
-        ]
+        retained: list[str] = []
+        for dirname in dirnames:
+            if dirname in _EXCLUDE_DIRS or dirname.startswith("."):
+                continue
+            candidate = os.path.join(dirpath, dirname)
+            if os.path.islink(candidate):
+                if os.path.splitext(dirname)[1].lower() in _EXT_TO_LANG:
+                    yield candidate
+                continue
+            retained.append(dirname)
+        dirnames[:] = retained
         for fname in filenames:
             ext = os.path.splitext(fname)[1].lower()
             if ext in _EXT_TO_LANG:
@@ -362,7 +376,9 @@ def walk_and_partition(
             stats["truncated_by_max_files"] = True
             break
         count += 1
-        rel_path = os.path.relpath(abs_path, cache.project_root).replace("\\", "/")
+        rel_path = _normalize_relative_path(
+            os.path.relpath(abs_path, cache.project_root)
+        )
         # REQ-E-016: skip files matching corpus-exclusion patterns.
         if exclude_patterns:
             if any(fnmatch.fnmatch(rel_path, pat) for pat in exclude_patterns):
@@ -494,7 +510,7 @@ def _snapshot_result_change_reason(
     result: dict[str, Any],
     entries: dict[str, IndexSnapshotEntry],
 ) -> tuple[str, str | None]:
-    rel_path = str(result["rel_path"]).replace("\\", "/")
+    rel_path = _normalize_relative_path(str(result["rel_path"]))
     entry = entries[rel_path]
     fingerprint = cast(IndexFileFingerprint, entry.fingerprint)
     worker_fingerprint = (
@@ -835,11 +851,11 @@ def _prune_to_selected_scope(
 ) -> int:
     """Transactionally remove primary and graph generations outside the scope."""
     selected = {entry.rel_path for entry in candidate.selected_entries}
-    stale = sorted(
-        str(row[0]).replace("\\", "/")
+    stale = {
+        _normalize_relative_path(str(row[0]))
         for row in conn.execute("SELECT file_path FROM ast_index")
-        if str(row[0]).replace("\\", "/") not in selected
-    )
+        if _normalize_relative_path(str(row[0])) not in selected
+    }
     if not stale:
         return 0
     try:
@@ -858,7 +874,7 @@ def _candidate_paths_are_exact(
     stats: Mapping[str, Any],
 ) -> bool:
     paths = {
-        str(row[0]).replace("\\", "/")
+        _normalize_relative_path(str(row[0]))
         for row in conn.execute("SELECT file_path FROM ast_index")
     }
     if candidate is None:
@@ -900,7 +916,7 @@ def _update_authoritative_manifest(
         and stats.get("changed_during_run", 0) == 0
         and stats.get("backfill_errors", 0) == 0
         and {
-            str(row["file_path"]).replace("\\", "/")
+            _normalize_relative_path(str(row["file_path"]))
             for row in conn.execute("SELECT file_path FROM ast_index")
         }
         == selected_paths
