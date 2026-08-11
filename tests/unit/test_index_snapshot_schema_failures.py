@@ -300,3 +300,29 @@ class TestSnapshotFailureContracts:
                     DataErrorConnection(), "SELECT hostile", float("inf")
                 )
             )
+
+
+class TestPostEncodingFingerprintBudgets:
+    def test_row_budget_is_enforced_after_encoding(self, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot_schema as schema
+
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE sample (value TEXT)")
+        conn.execute("INSERT INTO sample VALUES ('x')")
+        monkeypatch.setattr(schema, "_preflight_table_rows", lambda *args: (0, 0))
+        monkeypatch.setattr(schema, "_FINGERPRINT_ROW_BUDGET", 0)
+        with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_BUDGET"):
+            schema.index_fingerprint(conn, ".")
+        conn.close()
+
+    def test_byte_budget_is_enforced_after_encoding(self, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot_schema as schema
+
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE sample (value TEXT)")
+        conn.execute("INSERT INTO sample VALUES ('x')")
+        monkeypatch.setattr(schema, "_preflight_table_rows", lambda *args: (0, 0))
+        monkeypatch.setattr(schema, "_FINGERPRINT_BYTE_BUDGET", 0)
+        with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_BUDGET"):
+            schema.index_fingerprint(conn, ".")
+        conn.close()

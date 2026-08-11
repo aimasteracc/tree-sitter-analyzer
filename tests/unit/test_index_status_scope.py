@@ -316,3 +316,15 @@ def test_full_index_scope_validation_rejects_mismatched_effective_excludes():
     assert scope.certification_max_files == 40_000
     with pytest.raises(ValueError, match="SOURCE_SCOPE_DESCRIPTOR_MISMATCH"):
         validate_full_index_source_scope(scope, frozenset(), 20_000)
+
+
+@requires_posix_snapshot
+def test_writer_ignores_unsupported_suffix_directory_symlink(tmp_path):
+    from tree_sitter_analyzer.cache.indexer import _walk_source_files
+
+    target = tmp_path / "source_dir"
+    target.mkdir()
+    (target / "hidden.py").write_text("value = 1\n")
+    (tmp_path / "alias.data").symlink_to(target, target_is_directory=True)
+
+    assert list(_walk_source_files(str(tmp_path))) == [str(target / "hidden.py")]
