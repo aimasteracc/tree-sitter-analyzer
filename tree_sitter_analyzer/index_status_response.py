@@ -64,9 +64,14 @@ def build_index_status_response(
             }
             if any(stats.get(key) != value for key, value in expected_tokens.items()):
                 raise ValueError("SNAPSHOT_TOKEN_MISMATCH")
-        except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
+        except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError) as exc:
+            reason = (
+                "INDEX_SNAPSHOT_DEADLINE"
+                if str(exc) == "INDEX_SNAPSHOT_DEADLINE"
+                else "SNAPSHOT_READ_FAILED"
+            )
             snapshot = type(snapshot)(
-                None, None, None, None, "unknown", "SNAPSHOT_READ_FAILED", None, 0
+                None, None, None, None, "unknown", reason, None, 0
             )
             stats = {}
     total_files = int(stats.get("total_files", 0))

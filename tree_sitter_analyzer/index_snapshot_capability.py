@@ -52,9 +52,11 @@ def strict_call_graph_marker(
     return _exact_marker(conn, deadline=deadline)
 
 
-def exact_call_graph_marker(conn: sqlite3.Connection) -> bool:
+def exact_call_graph_marker(
+    conn: sqlite3.Connection, *, deadline: float | None = None
+) -> bool:
     """Require id=1/built=1 and absence of duplicate/sentinel rows."""
-    return strict_call_graph_marker(conn)
+    return strict_call_graph_marker(conn, deadline=deadline)
 
 
 def _open_pinned_path(

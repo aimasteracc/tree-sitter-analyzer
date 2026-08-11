@@ -470,7 +470,7 @@ class TestAuthoritativeSnapshotOracle:
             {"output_format": "json"}
         )
 
-        assert result["oracle_reason"] == "INDEX_BACKUP_BUDGET"
+        assert result["oracle_reason"] == "INDEX_SNAPSHOT_DEADLINE"
 
     @requires_posix_fd
     def test_graph_reader_requires_mapping_payload(self, tmp_path):
@@ -485,3 +485,46 @@ class TestAuthoritativeSnapshotOracle:
                 snapshot.source_generation,
                 lambda _conn: [],
             )
+
+
+@requires_posix_fd
+def test_capture_phases_share_one_absolute_deadline(tmp_path, monkeypatch):
+    # PR #1253 review 3757950772: phase budgets accumulate instead of resetting.
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "sample.py"
+    source.write_text("def sample(): pass\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    cache.close()
+
+    now = [0.0]
+    phases: list[str] = []
+
+    def validate(_connection, *, deadline):
+        phases.append("schema")
+        assert deadline == 10.0
+        now[0] += 6.0
+
+    def fingerprint(_connection, _root, *, deadline):
+        phases.append("fingerprint")
+        assert deadline == 10.0
+        now[0] += 5.0
+        return "sha256:" + "0" * 64
+
+    monkeypatch.setattr(owner, "_clock", lambda: now[0])
+    monkeypatch.setattr(owner, "validate_snapshot_schema", validate)
+    monkeypatch.setattr(owner, "index_fingerprint", fingerprint)
+    monkeypatch.setattr(
+        owner,
+        "recorded_source_rows",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("post-deadline phase ran")
+        ),
+    )
+
+    snapshot = owner.read_existing_snapshot(str(tmp_path))
+
+    assert phases == ["schema", "fingerprint"]
+    assert snapshot.reason == "INDEX_SNAPSHOT_DEADLINE"

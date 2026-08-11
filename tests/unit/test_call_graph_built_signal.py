@@ -869,3 +869,25 @@ def test_legacy_marker_writer_migration_stamps_version_zero_on_clear() -> None:
     ).fetchall()
     assert columns == ["id", "built", "built_at", "pipeline_version"]
     assert rows == [(1, 0, 0), (2, 0, 0)]
+
+
+def test_language_filtered_run_cannot_stamp_global_call_graph_marker(
+    tmp_path: Path,
+) -> None:
+    # PR #1253 review 3757950787: the persisted marker has no language scope.
+    (tmp_path / "a.py").write_text("def a(): pass\n")
+    (tmp_path / "b.js").write_text("function b() {}\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_project(language_filter="python", workers=0)
+
+        assert result["incomplete_skips"] == 1
+        assert cache.call_graph_built() is False
+        manifest_count = (
+            cache.get_conn()
+            .execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest")
+            .fetchone()[0]
+        )
+        assert manifest_count == 0
+    finally:
+        cache.close()

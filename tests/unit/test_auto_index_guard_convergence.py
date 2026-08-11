@@ -232,3 +232,81 @@ def test_ensure_indexed_does_not_mark_converged_on_resolve_failure(
         assert resolution_converged(result.get_conn()) is False
     finally:
         auto_index_guard.reset()
+
+
+def test_legacy_call_graph_marker_runs_full_cached_warmup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # PR #1253 review 3757950794: upgraded populated caches need all backfills.
+    class Cache:
+        calls: list[dict[str, Any]] = []
+
+        def get_stats(self) -> dict[str, int]:
+            return {"total_files": 2}
+
+        def index_project(self, **kwargs: Any) -> None:
+            self.calls.append(kwargs)
+
+    cache = Cache()
+    marker_results = iter((False, True))
+    monkeypatch.setattr(auto_index_guard, "_open_cache", lambda _root: cache)
+    monkeypatch.setattr(
+        auto_index_guard,
+        "_call_graph_marker_is_current",
+        lambda _cache: next(marker_results),
+    )
+    auto_index_guard.reset()
+
+    result = auto_index_guard.ensure_indexed("/legacy", max_files=17)
+
+    assert result is cache
+    assert cache.calls == [{"max_files": 17}]
+    assert auto_index_guard.is_indexed("/legacy") is True
+    auto_index_guard.reset()
+
+
+def test_failed_marker_repair_does_not_enable_fast_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # PR #1253 review 3757950794: a failed repair remains fallback-only.
+    class Cache:
+        def get_stats(self) -> dict[str, int]:
+            return {"total_files": 1}
+
+        def index_project(self, **_kwargs: Any) -> None:
+            raise RuntimeError("repair failed")
+
+    cache = Cache()
+    monkeypatch.setattr(auto_index_guard, "_open_cache", lambda _root: cache)
+    monkeypatch.setattr(
+        auto_index_guard, "_call_graph_marker_is_current", lambda _cache: False
+    )
+    auto_index_guard.reset()
+
+    result = auto_index_guard.ensure_indexed("/broken")
+
+    assert result is cache
+    assert auto_index_guard.is_indexed("/broken") is False
+    auto_index_guard.reset()
+
+
+def test_read_only_populated_cache_never_repairs_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # PR #1253 review 3757950794: auto_build=False must not mutate legacy state.
+    class Cache:
+        def get_stats(self) -> dict[str, int]:
+            return {"total_files": 1}
+
+        def index_project(self, **_kwargs: Any) -> None:
+            raise AssertionError("read-only lookup attempted a write")
+
+    cache = Cache()
+    monkeypatch.setattr(auto_index_guard, "_open_cache", lambda _root: cache)
+    auto_index_guard.reset()
+
+    result = auto_index_guard.ensure_indexed("/readonly", auto_build=False)
+
+    assert result is cache
+    assert auto_index_guard.is_indexed("/readonly") is False
+    auto_index_guard.reset()

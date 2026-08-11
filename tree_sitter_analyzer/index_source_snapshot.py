@@ -189,7 +189,10 @@ def recorded_source_rows(
 
 
 def capture_current_source_snapshot(
-    project_root: str, source_scope: SourceScopeDescriptor | None = None
+    project_root: str,
+    source_scope: SourceScopeDescriptor | None = None,
+    *,
+    deadline: float | None = None,
 ) -> CurrentSourceSnapshot:
     """Hash a stable, fully bounded view of the certified supported scope."""
     scope = source_scope or make_source_scope_descriptor()
@@ -197,7 +200,9 @@ def capture_current_source_snapshot(
         return CurrentSourceSnapshot(
             frozenset(), None, None, "unsafe", "SOURCE_SCOPE_UNSUPPORTED"
         )
-    deadline = time.monotonic() + _SOURCE_DEADLINE_SECONDS
+    deadline = (
+        time.monotonic() + _SOURCE_DEADLINE_SECONDS if deadline is None else deadline
+    )
     root = os.path.abspath(project_root)
     try:
         first, unsafe = _inventory(root, deadline, scope, with_content=True)

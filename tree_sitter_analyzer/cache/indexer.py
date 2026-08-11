@@ -348,6 +348,11 @@ def walk_and_partition(
             if entry.decision == "skipped":
                 if entry.language is None:
                     _warn_unwired_plugin_extension(entry.abs_path)
+                elif language_filter is not None:
+                    # A language-scoped run cannot certify the process-global
+                    # call-graph marker: skipped languages and their edges are
+                    # still part of the persisted global source inventory.
+                    stats["incomplete_skips"] += 1
                 stats["skipped"] += 1
                 continue
             if entry.decision == "error":
@@ -420,6 +425,7 @@ def walk_and_partition(
             continue
         if language_filter is not None and lang != language_filter:
             stats["skipped"] += 1
+            stats["incomplete_skips"] += 1
             continue
         try:
             stat = os.stat(abs_path)
@@ -989,8 +995,9 @@ def _candidate_paths_are_exact(
         and stats.get("changed_during_run", 0) == 0
     )
     if candidate is None:
-        # Default exclusions, declared language filters, and unsupported
-        # extensions are outside this run's source scope, not pipeline failures.
+        # Persisted exclusions and unsupported extensions are outside this
+        # run's source scope. Language filters are counted as incomplete skips
+        # because the call-graph marker is process-global, not scope-bound.
         return run_is_complete
     selected = {entry.rel_path for entry in candidate.selected_entries}
     return bool(

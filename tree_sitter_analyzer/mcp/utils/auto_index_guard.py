@@ -46,24 +46,13 @@ def ensure_indexed(
     *,
     auto_build: bool = True,
 ) -> Any:
-    """Return a ready-to-query ASTCache, optionally auto-indexing if empty.
+    """Return a queryable cache and repair stale pipeline certification.
 
-    Returns ``None`` when ``project_root`` is ``None``, when indexing
-    fails, or when ``auto_build=False`` and the cache is empty.
-    Thread-safe: concurrent calls for the same root block on a single
-    index build.
-
-    ``auto_build`` controls the cold-start behaviour:
-
-    * **True** (default, legacy) — synchronously index the project if
-      the cache is empty. Can take 30-60 s on a 1500-file repo and
-      regularly trips MCP clients' default 30 s tool-call timeouts,
-      surfacing as a "stuck server" report from the operator.
-    * **False** — fail fast. If the cache is empty, return ``None``
-      immediately so the calling tool can surface "run
-      codegraph_autoindex first" rather than blocking. Read-only
-    tools that don't *need* to build the cache (``codegraph_metrics``,
-    ``codegraph_status``) should pass this.
+    Populated caches remain useful as a fallback, but only a cache carrying the
+    exact current call-graph pipeline marker enters the process fast-path.  A
+    legacy/non-current marker is repaired by a normal cached ``index_project``
+    run so all three graph backfill stages execute and the current marker is
+    stamped.  ``auto_build=False`` is strictly read-only at this layer.
     """
     max_files = normalize_index_max_files(max_files)
     if project_root is None:
@@ -72,49 +61,50 @@ def ensure_indexed(
     if _indexed_roots.get(project_root):
         cache = _open_cache(project_root)
         if cache is not None:
-            return cache
+            if not auto_build or _call_graph_marker_is_current(cache):
+                return cache
+            # Persisted invalidation must defeat the in-process fast path.
+            _indexed_roots.pop(project_root, None)
 
     with _lock:
         if _indexed_roots.get(project_root):
             cache = _open_cache(project_root)
             if cache is not None:
-                return cache
+                if not auto_build or _call_graph_marker_is_current(cache):
+                    return cache
+                _indexed_roots.pop(project_root, None)
 
         cache = _open_cache(project_root)
         if cache is None:
             return None
 
         stats = cache.get_stats()
-        if stats.get("total_files", 0) > 0:
-            # Cold-start fast path: a fully-indexed cache is already queryable.
-            # The cross-file resolve pass converges in one pass and is re-run by
-            # the indexing path on every file change, so re-running it here when
-            # the index is UNCHANGED is a ~40 s no-op (the surviving pending refs
-            # are terminal — external bases / dynamic dispatch). Skip it when the
-            # resolve already converged for this exact index state; the first
-            # retrieval then returns in ms instead of blocking for ~40 s.
+        populated = stats.get("total_files", 0) > 0
+        if not auto_build:
+            return cache if populated else None
+
+        if populated and _call_graph_marker_is_current(cache):
             if not _resolution_converged(cache):
                 if _resolve_pending_unresolved_refs(cache):
                     _mark_resolution_converged(cache)
             _indexed_roots[project_root] = True
             return cache
 
-        if not auto_build:
-            # Cache is empty and the caller opted out of synchronous
-            # indexing — return ``None`` so the tool can surface a
-            # "cache empty, run codegraph_autoindex first" hint
-            # instead of blocking the MCP request for 30-60 s and
-            # tripping the client timeout.
-            return None
-
         logger.info("auto-index: warming cache for %s", project_root)
         try:
+            # Deliberately not resolve_only: legacy markers need the complete
+            # cached indexing/backfill/certification pipeline.
             cache.index_project(max_files=max_files)
         except Exception:
             logger.exception("auto-index: failed for %s", project_root)
-            return None
+            return cache if populated else None
 
-        _indexed_roots[project_root] = True
+        if _call_graph_marker_is_current(cache):
+            _indexed_roots[project_root] = True
+        else:
+            logger.warning(
+                "auto-index: pipeline marker remains non-current for %s", project_root
+            )
         return cache
 
 
@@ -125,6 +115,16 @@ def _open_cache(project_root: str) -> Any:
         return ASTCache(project_root)
     except Exception:
         return None
+
+
+def _call_graph_marker_is_current(cache: Any) -> bool:
+    """Read the exact versioned marker without creating or updating it."""
+    try:
+        from ...cache.callgraph_state import call_graph_marker_is_current
+
+        return bool(call_graph_marker_is_current(cache.get_conn()))
+    except Exception:
+        return False
 
 
 def _resolve_pending_unresolved_refs(cache: Any) -> bool:

@@ -461,3 +461,23 @@ def test_ast_cache_discards_worker_result_with_mismatched_fingerprint(tmp_path):
 
     assert rows == []
     assert result["changed_during_run_files"] == ["app.py"]
+
+
+def test_excluded_supported_symlink_is_not_a_candidate_error(tmp_path) -> None:
+    # PR #1253 review 3757950779: exclusions precede supported-path safety.
+    target = tmp_path / "target.py"
+    target.write_text("value = 1\n")
+    excluded = tmp_path / "tests" / "golden" / "corpus_link.py"
+    excluded.parent.mkdir(parents=True)
+    excluded.symlink_to(target)
+
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset({"tests/golden/*"}),
+        walk_fn=lambda _root: (str(excluded),),
+        language_fn=lambda _path: "python",
+    )
+
+    assert (snapshot.excluded, snapshot.errors) == (1, 0)
+    assert snapshot.entries[0].decision == "excluded"

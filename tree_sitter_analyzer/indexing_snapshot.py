@@ -300,6 +300,24 @@ def build_index_candidate_snapshot(
         rel_path = os.path.relpath(abs_path, logical_root)
         if os.name == "nt":
             rel_path = rel_path.replace("\\", "/")
+        excluded_match = any(
+            fnmatch.fnmatch(rel_path, pattern) for pattern in exclude_patterns
+        )
+        if excluded_match:
+            discovered += 1
+            present_paths.add(rel_path)
+            excluded += 1
+            entries.append(
+                IndexSnapshotEntry(
+                    abs_path=abs_path,
+                    rel_path=rel_path,
+                    language=None,
+                    decision="excluded",
+                    reason="excluded by pattern",
+                )
+            )
+            continue
+
         language = language_fn(abs_path)
         source_info: os.stat_result | None = None
         invalid_reason: str | None = None
@@ -338,18 +356,6 @@ def build_index_candidate_snapshot(
         discovered += 1
         present_paths.add(rel_path)
 
-        if any(fnmatch.fnmatch(rel_path, pattern) for pattern in exclude_patterns):
-            excluded += 1
-            entries.append(
-                IndexSnapshotEntry(
-                    abs_path=abs_path,
-                    rel_path=rel_path,
-                    language=None,
-                    decision="excluded",
-                    reason="excluded by pattern",
-                )
-            )
-            continue
         if language is None:
             skipped += 1
             entries.append(

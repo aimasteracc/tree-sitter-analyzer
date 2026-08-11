@@ -66,6 +66,35 @@ _BACKUP_BYTE_BUDGET = _MAX_CHARGED_BYTES - _SNAPSHOT_OVERHEAD_BYTES
 _clock = time.monotonic
 
 
+def _require_capture_budget(deadline: float) -> None:
+    if _clock() >= deadline:
+        raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+
+
+def _capture_sources_with_deadline(
+    root: str, source_scope: Any, deadline: float
+) -> Any:
+    """Keep pre-deadline two-argument test seams source-compatible."""
+    try:
+        return capture_current_source_snapshot(root, source_scope, deadline=deadline)
+    except TypeError as exc:
+        if "unexpected keyword argument 'deadline'" not in str(exc):
+            raise
+        return capture_current_source_snapshot(root, source_scope)
+
+
+def _index_fingerprint_with_deadline(
+    connection: sqlite3.Connection, root: str, deadline: float
+) -> str:
+    """Keep pre-deadline two-argument test seams source-compatible."""
+    try:
+        return index_fingerprint(connection, root, deadline=deadline)
+    except TypeError as exc:
+        if "unexpected keyword argument 'deadline'" not in str(exc):
+            raise
+        return index_fingerprint(connection, root)
+
+
 @dataclass(frozen=True, slots=True)
 class IndexSnapshot:
     snapshot_id: str | None
@@ -85,6 +114,7 @@ class _Entry:
     connection: sqlite3.Connection
     charged_bytes: int
     expires_at: float
+    capture_deadline: float
     readers: int = 0
     io_lock: Any = field(default_factory=threading.RLock)
 
@@ -106,6 +136,7 @@ class IndexSnapshotRegistry:
         snapshot: IndexSnapshot,
         connection: sqlite3.Connection,
         charged_bytes: int,
+        capture_deadline: float | None = None,
     ) -> IndexSnapshot:
         with self._lock:
             now = _clock()
@@ -129,7 +160,13 @@ class IndexSnapshotRegistry:
                 snapshot.physical_storage_identity,
             )
             self._entries[snapshot_id] = _Entry(
-                published, connection, charged_bytes, _clock() + _TTL_SECONDS
+                published,
+                connection,
+                charged_bytes,
+                _clock() + _TTL_SECONDS,
+                capture_deadline
+                if capture_deadline is not None
+                else _clock() + _CAPTURE_DEADLINE_SECONDS,
             )
             return published
 
@@ -160,6 +197,13 @@ class IndexSnapshotRegistry:
             with self._lock:
                 entry.readers -= 1
                 self._purge(_clock())
+
+    def capture_deadline(self, snapshot_id: str) -> float:
+        with self._lock:
+            entry = self._entries.get(snapshot_id)
+            if entry is None:
+                raise ValueError("INDEX_SNAPSHOT_UNKNOWN")
+            return entry.capture_deadline
 
     def close_all(self) -> None:
         with self._lock:
@@ -247,9 +291,26 @@ def _read_bounded_manifest(
         + ", ".join(columns)
         + (" FROM ast_index_snapshot_manifest WHERE singleton=1")
     )
-    cursor = connection.execute(query)
-    manifest = cursor.fetchone()
-    if manifest is None or cursor.fetchone() is not None:
+
+    def expired() -> int:
+        return int(_clock() >= deadline)
+
+    connection.set_progress_handler(expired, 1_000)
+    try:
+        _require_capture_budget(deadline)
+        cursor = connection.execute(query)
+        fetchone = getattr(cursor, "fetchone", None)
+        if callable(fetchone):
+            manifest = fetchone()
+            duplicate = fetchone()
+        else:
+            rows = iter(cursor)
+            manifest = next(rows, None)
+            duplicate = next(rows, None)
+        _require_capture_budget(deadline)
+    finally:
+        connection.set_progress_handler(None, 0)
+    if manifest is None or duplicate is not None:
         raise ValueError("INDEX_MANIFEST_INVALID")
     return cast(sqlite3.Row, manifest)
 
@@ -266,7 +327,10 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
     handles: tuple[int, int, int] | None = None
     connection: sqlite3.Connection | None = None
     evidence: sqlite3.Connection | None = None
-    with _CAPTURE_LOCK:
+    deadline = _clock() + _CAPTURE_DEADLINE_SECONDS
+    if not _CAPTURE_LOCK.acquire(timeout=max(0.0, deadline - _clock())):
+        return _unknown("INDEX_SNAPSHOT_DEADLINE")
+    try:
         try:
             root, root_fd, cache_fd, db_fd = _open_bound_database(project_root)
             handles = (root_fd, cache_fd, db_fd)
@@ -292,16 +356,18 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
             if source_bytes > _BACKUP_BYTE_BUDGET:
                 raise RuntimeError("INDEX_BACKUP_BUDGET")
             REGISTRY.ensure_capacity(source_bytes + _SNAPSHOT_OVERHEAD_BYTES)
-            validate_snapshot_schema(connection)
+            _require_capture_budget(deadline)
+            validate_snapshot_schema(connection, deadline=deadline)
             from .cache.build_state import build_in_progress
 
             if build_in_progress(connection):
                 raise ValueError("CONCURRENT_WRITER")
-            index = index_fingerprint(connection, root)
-            recorded = recorded_source_rows(connection, deadline=_clock() + 5.0)
-            manifest = _read_bounded_manifest(
-                connection, _clock() + _CAPTURE_DEADLINE_SECONDS
-            )
+            _require_capture_budget(deadline)
+            index = _index_fingerprint_with_deadline(connection, root, deadline)
+            _require_capture_budget(deadline)
+            recorded = recorded_source_rows(connection, deadline=deadline)
+            _require_capture_budget(deadline)
+            manifest = _read_bounded_manifest(connection, deadline)
             if manifest is not None:
                 _validate_manifest_scalars(manifest)
             current = None
@@ -316,7 +382,10 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                 except (TypeError, ValueError):
                     scope_reason = "SOURCE_SCOPE_DESCRIPTOR_INVALID"
                 else:
-                    current = capture_current_source_snapshot(root, source_scope)
+                    _require_capture_budget(deadline)
+                    current = _capture_sources_with_deadline(
+                        root, source_scope, deadline
+                    )
                     if current.state == "unknown":
                         raise ValueError(current.reason or "SOURCE_SCOPE_UNKNOWN")
             count = len(recorded)
@@ -332,7 +401,10 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                 and manifest["file_count"] == count
                 and manifest["manifest_version"] == 2
             )
-            call_graph_complete = _exact_call_graph_marker(connection)
+            _require_capture_budget(deadline)
+            call_graph_complete = _exact_call_graph_marker(
+                connection, deadline=deadline
+            )
             complete = exact_sources and exact_manifest and call_graph_complete
             if complete:
                 reason = None
@@ -360,7 +432,7 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
             )
             evidence = sqlite3.connect(":memory:", check_same_thread=False)
             _require_memory_temp_store(evidence)
-            deadline = _clock() + _CAPTURE_DEADLINE_SECONDS
+            _require_capture_budget(deadline)
             copied_pages = 0
             max_backup_pages = (
                 _BACKUP_BYTE_BUDGET + source_page_size - 1
@@ -375,7 +447,11 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                     or copied_bytes > _BACKUP_BYTE_BUDGET
                     or _clock() > deadline
                 ):
-                    raise RuntimeError("INDEX_BACKUP_BUDGET")
+                    raise RuntimeError(
+                        "INDEX_SNAPSHOT_DEADLINE"
+                        if _clock() > deadline
+                        else "INDEX_BACKUP_BUDGET"
+                    )
 
             connection.backup(evidence, pages=64, progress=progress, sleep=0)
             _reject_sidecars(cache_fd)
@@ -415,7 +491,8 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                 snapshot.file_count,
                 _physical_storage_identity(evidence),
             )
-            published = REGISTRY.publish(snapshot, evidence, charged)
+            _require_capture_budget(deadline)
+            published = REGISTRY.publish(snapshot, evidence, charged, deadline)
             evidence = None
             return published
         except FileNotFoundError as exc:
@@ -430,8 +507,8 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                 or any(x in str(exc).lower() for x in ("locked", "busy"))
                 else "CORRUPT_INDEX"
             )
-        except (OSError, TypeError, ValueError, RuntimeError) as exc:
-            reason = str(exc)
+        except (OSError, TimeoutError, TypeError, ValueError, RuntimeError) as exc:
+            reason = "INDEX_SNAPSHOT_DEADLINE" if _clock() >= deadline else str(exc)
             if isinstance(exc, OSError) and getattr(exc, "errno", None) in (
                 errno.ELOOP,
                 errno.ENOTDIR,
@@ -446,6 +523,8 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
             if handles is not None:
                 for fd in reversed(handles):
                     os.close(fd)
+    finally:
+        _CAPTURE_LOCK.release()
 
 
 def run_graph_snapshot_read(
@@ -474,8 +553,18 @@ def read_snapshot_stats(
     """Read status graph statistics through the production capability seam."""
     from .index_snapshot_stats import collect_snapshot_stats
 
+    try:
+        deadline = REGISTRY.capture_deadline(snapshot_id)
+    except ValueError:
+        # Lightweight reader seams can supply their own connection without the
+        # production registry; production-issued IDs always take the first path.
+        deadline = _clock() + _CAPTURE_DEADLINE_SECONDS
+    _require_capture_budget(deadline)
     return run_graph_snapshot_read(
-        snapshot_id, project_root, source_generation, collect_snapshot_stats
+        snapshot_id,
+        project_root,
+        source_generation,
+        lambda conn: collect_snapshot_stats(conn, deadline=deadline),
     )
 
 

@@ -33,10 +33,12 @@ def has_ordinary_symbol_projection(conn: sqlite3.Connection, tables: set[str]) -
 
 
 def ordinary_symbol_counts(
-    conn: sqlite3.Connection,
+    conn: sqlite3.Connection, *, deadline: float | None = None
 ) -> tuple[int, dict[str, int], dict[str, int]]:
     """Aggregate canonical rows within fixed SQLite and output budgets."""
-    deadline = time.monotonic() + _ORDINARY_DEADLINE_SECONDS
+    deadline = (
+        time.monotonic() + _ORDINARY_DEADLINE_SECONDS if deadline is None else deadline
+    )
     output_bytes = 0
 
     def check_deadline() -> None:
@@ -100,9 +102,13 @@ def ordinary_symbol_counts(
         conn.set_progress_handler(None, 0)
 
 
-def ordinary_edge_counts(conn: sqlite3.Connection) -> tuple[int, dict[str, int]]:
+def ordinary_edge_counts(
+    conn: sqlite3.Connection, *, deadline: float | None = None
+) -> tuple[int, dict[str, int]]:
     """Aggregate edge kinds under the ordinary snapshot read budgets."""
-    deadline = time.monotonic() + _ORDINARY_DEADLINE_SECONDS
+    deadline = (
+        time.monotonic() + _ORDINARY_DEADLINE_SECONDS if deadline is None else deadline
+    )
     output_bytes = 0
 
     def check_deadline() -> None:
@@ -165,15 +171,16 @@ def ordinary_edge_counts(conn: sqlite3.Connection) -> tuple[int, dict[str, int]]
 
 
 def fallback_symbol_counts(
-    conn: sqlite3.Connection,
+    conn: sqlite3.Connection, *, deadline: float | None = None
 ) -> tuple[int, dict[str, int], dict[str, int]]:
     """Count legacy symbols without materializing an unbounded JSON cell."""
     byte_budget = _FALLBACK_BYTE_BUDGET
     symbol_budget = _FALLBACK_SYMBOL_BUDGET
     input_row_budget = _FALLBACK_INPUT_ROW_BUDGET
     cell_byte_budget = _FALLBACK_CELL_BYTE_BUDGET
-    deadline_seconds = _FALLBACK_DEADLINE_SECONDS
-    deadline = time.monotonic() + deadline_seconds
+    deadline = (
+        time.monotonic() + _FALLBACK_DEADLINE_SECONDS if deadline is None else deadline
+    )
     rows_seen = bytes_seen = total = output_bytes = 0
     by_kind: dict[str, int] = {}
     by_language: dict[str, int] = {}

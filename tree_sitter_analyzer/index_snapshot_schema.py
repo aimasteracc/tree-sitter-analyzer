@@ -172,9 +172,15 @@ def stamp_full_index_manifest(
         raise
 
 
-def validate_snapshot_schema(conn: sqlite3.Connection) -> None:
+def validate_snapshot_schema(
+    conn: sqlite3.Connection, *, deadline: float | None = None
+) -> None:
     """Validate the reader schema without unbounded SQLite work or rows."""
-    deadline = time.monotonic() + _FINGERPRINT_DEADLINE_SECONDS
+    deadline = (
+        time.monotonic() + _FINGERPRINT_DEADLINE_SECONDS
+        if deadline is None
+        else deadline
+    )
     found_current = False
     schema_bytes = 0
 
@@ -277,9 +283,15 @@ def source_fingerprint(conn: sqlite3.Connection, _root: str) -> str:
         raise RuntimeError("INDEX_FINGERPRINT_DEADLINE") from exc
 
 
-def index_fingerprint(conn: sqlite3.Connection, root: str) -> str:
+def index_fingerprint(
+    conn: sqlite3.Connection, root: str, *, deadline: float | None = None
+) -> str:
     """Hash every query-visible SQLite table schema and typed row."""
-    deadline = time.monotonic() + _FINGERPRINT_DEADLINE_SECONDS
+    deadline = (
+        time.monotonic() + _FINGERPRINT_DEADLINE_SECONDS
+        if deadline is None
+        else deadline
+    )
     digest = hashlib.sha256(b"tsa-index-sqlite-v2\0")
     _frame(digest, b"root", root.encode("utf-8", "surrogatepass"))
     _preflight_schema_inventory(conn, deadline)
