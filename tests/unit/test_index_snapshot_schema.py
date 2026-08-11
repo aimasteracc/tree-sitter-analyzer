@@ -106,69 +106,6 @@ class TestSnapshotFailureContracts:
         with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_DEADLINE"):
             schema._check_deadline(1.0)
 
-    def test_source_fingerprint_is_order_independent(self):
-        # PR #1255: the set accumulator avoids full-inventory sort copies.
-        import tree_sitter_analyzer.index_source_snapshot as source
-
-        rows = (("b.py", "b", "python"), ("a.py", "a", "python"))
-        assert source.inventory_fingerprint(rows) == source.inventory_fingerprint(
-            reversed(rows)
-        )
-
-    def test_source_fingerprint_rejects_duplicate_paths(self):
-        # PR #1255: paths are unique inputs to the commutative accumulator.
-        import tree_sitter_analyzer.index_source_snapshot as source
-
-        rows = (("a.py", "one", "python"), ("a.py", "two", "python"))
-        with pytest.raises(ValueError, match="SOURCE_INVENTORY_DUPLICATE_PATH"):
-            source.inventory_fingerprint(rows)
-
-    def test_inventory_fingerprint_checks_deadline_inside_each_row(self, monkeypatch):
-        # PR #1253: per-value framing remains within the same deadline.
-        from types import SimpleNamespace
-
-        import tree_sitter_analyzer.index_source_snapshot as source
-
-        ticks = iter((0.0, 0.0, 0.0, 2.0))
-        monkeypatch.setattr(
-            source, "time", SimpleNamespace(monotonic=lambda: next(ticks))
-        )
-        with pytest.raises(TimeoutError):
-            source.inventory_fingerprint((("a", "b", "c"),), deadline=1.0)
-
-    def test_source_capture_maps_fingerprint_deadline_to_unknown(self, monkeypatch):
-        # PR #1253: canonical hashing shares the source scan deadline.
-        import tree_sitter_analyzer.index_source_snapshot as source
-
-        inventories = iter(
-            [
-                (("a.py", "meta|hash", "python"),),
-                (("a.py", "meta", "python"),),
-            ]
-        )
-        monkeypatch.setattr(
-            source, "_inventory", lambda *_a, **_k: (next(inventories), False)
-        )
-        monkeypatch.setattr(
-            source,
-            "inventory_fingerprint",
-            lambda *_a, **_k: (_ for _ in ()).throw(TimeoutError()),
-        )
-        result = source.capture_current_source_snapshot(".")
-        assert (result.state, result.reason) == ("unknown", "SOURCE_SCAN_DEADLINE")
-
-    def test_recorded_fingerprint_deadline_is_fail_closed(self, monkeypatch):
-        # PR #1253: writer-side canonical inventory hashing has the same deadline.
-        import tree_sitter_analyzer.index_snapshot_schema as schema
-
-        monkeypatch.setattr(
-            schema,
-            "recorded_source_rows",
-            lambda *_a, **_k: (_ for _ in ()).throw(TimeoutError()),
-        )
-        with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_DEADLINE"):
-            schema.source_fingerprint(sqlite3.connect(":memory:"), ".")
-
     def test_manifest_stamp_rejects_nonbuilt_marker(self, tmp_path):
         from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
@@ -248,40 +185,6 @@ class TestSnapshotFailureContracts:
         monkeypatch.setattr(schema, "_FINGERPRINT_BYTE_BUDGET", 0)
         with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_BUDGET"):
             schema._preflight_table_rows(conn, "payload", ('"value"',), float("inf"))
-        conn.close()
-
-    def test_source_fingerprint_checks_deadline_before_first_row(self, monkeypatch):
-        # PR #1255: the accumulator checks time before retaining each path.
-        import tree_sitter_analyzer.index_source_snapshot as source
-
-        monkeypatch.setattr(source.time, "monotonic", lambda: 2.0)
-        with pytest.raises(TimeoutError):
-            source.inventory_fingerprint((("a.py", "hash", "python"),), deadline=1.0)
-
-    def test_recorded_rows_check_deadline_before_materializing(self, monkeypatch):
-        # PR #1255: database inventory materialization shares the deadline.
-        import tree_sitter_analyzer.index_source_snapshot as source
-
-        conn = sqlite3.connect(":memory:")
-        conn.execute("CREATE TABLE ast_index(file_path, content_hash, language)")
-        conn.execute("INSERT INTO ast_index VALUES ('a.py', 'hash', 'python')")
-        monkeypatch.setattr(source.time, "monotonic", lambda: 2.0)
-        with pytest.raises(TimeoutError):
-            source.recorded_source_rows(conn, deadline=1.0)
-        conn.close()
-
-    def test_recorded_rows_reject_duplicate_paths(self):
-        # PR #1255: persisted paths must be unique before set comparison.
-        import tree_sitter_analyzer.index_source_snapshot as source
-
-        conn = sqlite3.connect(":memory:")
-        conn.execute("CREATE TABLE ast_index(file_path, content_hash, language)")
-        conn.executemany(
-            "INSERT INTO ast_index VALUES (?, ?, 'python')",
-            (("a.py", "one"), ("a.py", "two")),
-        )
-        with pytest.raises(ValueError, match="SOURCE_INVENTORY_DUPLICATE_PATH"):
-            source.recorded_source_rows(conn)
         conn.close()
 
     def test_fingerprint_sqlite_data_error_has_stable_reason(self):
@@ -463,3 +366,130 @@ def test_stale_cleanup_rolls_back_followup_database_failure():
     conn = FailingConnection()
     _delete_unchanged_prior_manifest(conn, ("prior",))  # type: ignore[arg-type]
     assert conn.rolled_back is True
+
+
+def test_schema_version_rejects_unknown_row_immediately():
+    # PR #1253 review thread 3755297945: unknown versions fail while streaming.
+    from tree_sitter_analyzer.index_snapshot_schema import validate_snapshot_schema
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_schema_version(version)")
+    conn.executemany("INSERT INTO ast_schema_version VALUES(?)", [(14,), (13,)])
+    with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
+        validate_snapshot_schema(conn)
+    conn.close()
+
+
+def test_schema_version_row_cap_precedes_table_inventory(monkeypatch):
+    # PR #1253 review thread 3755297945: version history has an absolute cap.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_schema_version(version)")
+    conn.executemany("INSERT INTO ast_schema_version VALUES(13)", [()] * 3)
+    monkeypatch.setattr(schema, "_SCHEMA_VALIDATION_ROW_BUDGET", 2)
+    with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
+        schema.validate_snapshot_schema(conn)
+    conn.close()
+
+
+def test_schema_table_cap_precedes_required_table_materialization(monkeypatch):
+    # PR #1253 review thread 3755297945: sqlite_master enumeration is capped.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_schema_version(version)")
+    conn.execute("INSERT INTO ast_schema_version VALUES(13)")
+    monkeypatch.setattr(schema, "_SCHEMA_TABLE_BUDGET", 0)
+    with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
+        schema.validate_snapshot_schema(conn)
+    conn.close()
+
+
+def test_schema_column_cap_is_checked_per_required_table(monkeypatch):
+    # PR #1253 review thread 3755297945: table_info enumeration is capped.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_schema_version(version)")
+    conn.execute("INSERT INTO ast_schema_version VALUES(13)")
+    conn.execute("CREATE TABLE ast_index(file_path)")
+    monkeypatch.setattr(schema, "_SCHEMA_VALIDATION_COLUMN_BUDGET", 0)
+    with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
+        schema.validate_snapshot_schema(conn)
+    conn.close()
+
+
+def test_stamp_rejects_new_source_and_deletes_old_manifest(tmp_path):
+    # PR #1253 review thread 2083: post-build additions prevent certification.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
+
+    source = tmp_path / "sample.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
+    (tmp_path / "late.py").write_text("late = True\n")
+
+    with pytest.raises(sqlite3.OperationalError, match="^SOURCE_CHANGED$"):
+        stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
+    count = (
+        cache.get_conn()
+        .execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest")
+        .fetchone()[0]
+    )
+    cache.close()
+    assert count == 0
+
+
+def test_fingerprint_ordering_interrupts_expired_sqlite_sort(monkeypatch):
+    # PR #1253: SQLite's internal ORDER BY cannot run past the deadline.
+
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    class InterruptedConnection:
+        def set_progress_handler(self, callback, _steps):
+            self.callback = callback
+
+        def execute(self, _query):
+            assert self.callback() == 1
+            raise sqlite3.OperationalError("interrupted")
+
+    monkeypatch.setattr(schema.time, "monotonic", lambda: 2.0)
+    with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_DEADLINE"):
+        list(schema._deadline_ordered_rows(InterruptedConnection(), "SELECT 1", 1.0))
+
+
+def test_fingerprint_ordering_maps_sqlite_interrupt_before_deadline(monkeypatch):
+    # PR #1253: an interrupt is exposed through the same stable budget reason.
+
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    class InterruptedConnection:
+        def set_progress_handler(self, callback, _steps):
+            self.callback = callback
+
+        def execute(self, _query):
+            raise sqlite3.OperationalError("interrupted")
+
+    monkeypatch.setattr(schema.time, "monotonic", lambda: 0.0)
+    with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_DEADLINE"):
+        list(schema._deadline_ordered_rows(InterruptedConnection(), "SELECT 1", 1.0))
+
+
+def test_fingerprint_ordering_preserves_non_budget_sqlite_error(monkeypatch):
+    # PR #1253: unrelated database faults are not mislabeled as deadlines.
+
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    class BrokenConnection:
+        def set_progress_handler(self, callback, _steps):
+            self.callback = callback
+
+        def execute(self, _query):
+            raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(schema.time, "monotonic", lambda: 0.0)
+    with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):
+        list(schema._deadline_ordered_rows(BrokenConnection(), "SELECT 1", 1.0))

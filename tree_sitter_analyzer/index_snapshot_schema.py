@@ -72,6 +72,8 @@ _FINGERPRINT_ROW_BYTE_BUDGET = 16 * 1024 * 1024
 _SCHEMA_CELL_BYTE_BUDGET = 1024 * 1024
 _SCHEMA_TOTAL_BYTE_BUDGET = 4 * 1024 * 1024
 _SCHEMA_TABLE_BUDGET = 4096
+_SCHEMA_VALIDATION_ROW_BUDGET = 64
+_SCHEMA_VALIDATION_COLUMN_BUDGET = 4096
 
 
 def apply_snapshot_migration(conn: sqlite3.Connection, record_fn: Any) -> None:
@@ -158,23 +160,80 @@ def _delete_unchanged_prior_manifest(
 
 
 def validate_snapshot_schema(conn: sqlite3.Connection) -> None:
-    versions = {
-        int(row[0]) for row in conn.execute("SELECT version FROM ast_schema_version")
-    }
-    if SNAPSHOT_SCHEMA_VERSION not in versions or any(
-        v > SNAPSHOT_SCHEMA_VERSION for v in versions
-    ):
-        raise ValueError("INCOMPATIBLE_SCHEMA")
-    tables = {
-        str(row[0])
-        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    }
-    if not set(_REQUIRED_COLUMNS).issubset(tables):
-        raise ValueError("INCOMPATIBLE_SCHEMA")
-    for table, required in _REQUIRED_COLUMNS.items():
-        columns = {str(row[1]) for row in conn.execute(f'PRAGMA table_info("{table}")')}
-        if not required.issubset(columns):
+    """Validate the reader schema without unbounded SQLite work or rows."""
+    deadline = time.monotonic() + _FINGERPRINT_DEADLINE_SECONDS
+    found_current = False
+    schema_bytes = 0
+
+    def expired() -> int:
+        return int(time.monotonic() > deadline)
+
+    conn.set_progress_handler(expired, 1_000)
+    try:
+        cursor = conn.execute("SELECT version FROM ast_schema_version")
+        version_rows = 0
+        while True:
+            _check_deadline(deadline)
+            row = cursor.fetchone()
+            if row is None:
+                break
+            version_rows += 1
+            if version_rows > _SCHEMA_VALIDATION_ROW_BUDGET:
+                raise ValueError("INCOMPATIBLE_SCHEMA")
+            value = row[0]
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise ValueError("INCOMPATIBLE_SCHEMA")
+            if value < 1 or value > SNAPSHOT_SCHEMA_VERSION:
+                raise ValueError("INCOMPATIBLE_SCHEMA")
+            if value == SNAPSHOT_SCHEMA_VERSION:
+                found_current = True
+        if not found_current:
             raise ValueError("INCOMPATIBLE_SCHEMA")
+
+        table_count_row = conn.execute(
+            "SELECT count(*) FROM sqlite_master WHERE type='table'"
+        ).fetchone()
+        _check_deadline(deadline)
+        if table_count_row is None or int(table_count_row[0]) > _SCHEMA_TABLE_BUDGET:
+            raise ValueError("INCOMPATIBLE_SCHEMA")
+        for table, required in _REQUIRED_COLUMNS.items():
+            _check_deadline(deadline)
+            present = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+                (table,),
+            ).fetchone()
+            if present is None:
+                raise ValueError("INCOMPATIBLE_SCHEMA")
+            columns: set[str] = set()
+            column_rows = 0
+            cursor = conn.execute(f'PRAGMA table_info("{table}")')
+            while True:
+                _check_deadline(deadline)
+                row = cursor.fetchone()
+                if row is None:
+                    break
+                column_rows += 1
+                if column_rows > _SCHEMA_VALIDATION_COLUMN_BUDGET:
+                    raise ValueError("INCOMPATIBLE_SCHEMA")
+                name = row[1]
+                if not isinstance(name, str):
+                    raise ValueError("INCOMPATIBLE_SCHEMA")
+                name_bytes = len(name.encode("utf-8"))
+                schema_bytes += name_bytes
+                if (
+                    name_bytes > _SCHEMA_CELL_BYTE_BUDGET
+                    or schema_bytes > _SCHEMA_TOTAL_BYTE_BUDGET
+                ):
+                    raise ValueError("INCOMPATIBLE_SCHEMA")
+                columns.add(name)
+            if not required.issubset(columns):
+                raise ValueError("INCOMPATIBLE_SCHEMA")
+    except sqlite3.OperationalError as exc:
+        if time.monotonic() > deadline or "interrupt" in str(exc).lower():
+            raise RuntimeError("INDEX_FINGERPRINT_DEADLINE") from exc
+        raise
+    finally:
+        conn.set_progress_handler(None, 0)
 
 
 def source_fingerprint(conn: sqlite3.Connection, _root: str) -> str:

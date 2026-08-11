@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sqlite3
 import time
 
 import pytest
 
 requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+requires_posix_snapshot = requires_posix_fd
 pytestmark = requires_posix_fd
 
 
@@ -29,7 +31,7 @@ def test_scope_descriptor_constructor_rejects_manifest_oversize():
 
 
 def test_scope_descriptor_canonical_encoder_enforces_shared_budget(monkeypatch):
-    from tree_sitter_analyzer import index_source_snapshot as source
+    from tree_sitter_analyzer import index_source_scope as source
 
     scope = source.make_source_scope_descriptor()
     monkeypatch.setattr(source, "SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET", 1)
@@ -57,83 +59,6 @@ class TestSnapshotFailureContracts:
         from tree_sitter_analyzer.index_snapshot import REGISTRY
 
         REGISTRY.close_all()
-
-    @requires_posix_fd
-    def test_pinned_path_stat_failure_reports_mismatch(self, monkeypatch):
-        import tree_sitter_analyzer.index_snapshot as owner
-
-        monkeypatch.setattr(
-            owner.os, "stat", lambda *_a, **_k: (_ for _ in ()).throw(OSError())
-        )
-        assert owner._path_matches_pinned_database(1, 2) is False
-
-    @requires_posix_fd
-    def test_missing_project_root_is_distinguished(self, tmp_path):
-        import tree_sitter_analyzer.index_snapshot as owner
-
-        with pytest.raises(FileNotFoundError, match="MISSING_PROJECT_ROOT"):
-            owner._open_bound_database(str(tmp_path / "absent"))
-
-    @requires_posix_fd
-    def test_missing_index_database_closes_bound_directories(self, tmp_path):
-        import tree_sitter_analyzer.index_snapshot as owner
-
-        (tmp_path / ".ast-cache").mkdir()
-        with pytest.raises(FileNotFoundError, match="MISSING_INDEX"):
-            owner._open_bound_database(str(tmp_path))
-
-    @requires_posix_fd
-    def test_nonregular_index_database_is_rejected(self, tmp_path):
-        import tree_sitter_analyzer.index_snapshot as owner
-
-        (tmp_path / ".ast-cache" / "index.db").mkdir(parents=True)
-        with pytest.raises(ValueError, match="INDEX_PATH_UNSAFE"):
-            owner._open_bound_database(str(tmp_path))
-
-    @requires_posix_fd
-    def test_cache_open_error_closes_root_handle(self, tmp_path, monkeypatch):
-        import tree_sitter_analyzer.index_snapshot as owner
-
-        original_open = owner.os.open
-
-        def fail_cache(path, flags, *args, **kwargs):
-            if path == ".ast-cache":
-                raise PermissionError("cache denied")
-            return original_open(path, flags, *args, **kwargs)
-
-        monkeypatch.setattr(owner.os, "open", fail_cache)
-        with pytest.raises(PermissionError, match="cache denied"):
-            owner._open_bound_database(str(tmp_path))
-
-    @requires_posix_fd
-    def test_database_open_error_closes_directory_handles(self, tmp_path, monkeypatch):
-        import tree_sitter_analyzer.index_snapshot as owner
-
-        (tmp_path / ".ast-cache").mkdir()
-        original_open = owner.os.open
-
-        def fail_database(path, flags, *args, **kwargs):
-            if path == "index.db":
-                raise PermissionError("database denied")
-            return original_open(path, flags, *args, **kwargs)
-
-        monkeypatch.setattr(owner.os, "open", fail_database)
-        with pytest.raises(PermissionError, match="database denied"):
-            owner._open_bound_database(str(tmp_path))
-
-    @requires_posix_fd
-    def test_empty_regular_sidecar_is_not_a_concurrent_writer(self, tmp_path):
-        import tree_sitter_analyzer.index_snapshot as owner
-
-        cache = tmp_path / ".ast-cache"
-        cache.mkdir()
-        (cache / "index.db-wal").touch()
-        fd = os.open(cache, os.O_RDONLY)
-        try:
-            owner._reject_sidecars(fd)
-        finally:
-            os.close(fd)
-        assert (cache / "index.db-wal").stat().st_size == 0
 
     def test_source_capture_maps_scan_deadline_to_unknown(self, monkeypatch):
         import tree_sitter_analyzer.index_source_snapshot as source
@@ -461,3 +386,106 @@ def test_fifo_index_database_is_rejected_without_blocking(tmp_path):
     with pytest.raises(ValueError, match="INDEX_PATH_UNSAFE"):
         open_bound_database(str(tmp_path))
     assert time.monotonic() - started < 0.2
+
+
+def test_source_fingerprint_is_order_independent():
+    # PR #1255: the set accumulator avoids full-inventory sort copies.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    rows = (("b.py", "b", "python"), ("a.py", "a", "python"))
+    assert source.inventory_fingerprint(rows) == source.inventory_fingerprint(
+        reversed(rows)
+    )
+
+
+def test_source_fingerprint_rejects_duplicate_paths():
+    # PR #1255: paths are unique inputs to the commutative accumulator.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    rows = (("a.py", "one", "python"), ("a.py", "two", "python"))
+    with pytest.raises(ValueError, match="SOURCE_INVENTORY_DUPLICATE_PATH"):
+        source.inventory_fingerprint(rows)
+
+
+def test_inventory_fingerprint_checks_deadline_inside_each_row(monkeypatch):
+    # PR #1253: per-value framing remains within the same deadline.
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    ticks = iter((0.0, 0.0, 0.0, 2.0))
+    monkeypatch.setattr(source, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
+    with pytest.raises(TimeoutError):
+        source.inventory_fingerprint((("a", "b", "c"),), deadline=1.0)
+
+
+def test_source_capture_maps_fingerprint_deadline_to_unknown(monkeypatch):
+    # PR #1253: canonical hashing shares the source scan deadline.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    inventories = iter(
+        [
+            (("a.py", "meta|hash", "python"),),
+            (("a.py", "meta", "python"),),
+        ]
+    )
+    monkeypatch.setattr(
+        source, "_inventory", lambda *_a, **_k: (next(inventories), False)
+    )
+    monkeypatch.setattr(
+        source,
+        "inventory_fingerprint",
+        lambda *_a, **_k: (_ for _ in ()).throw(TimeoutError()),
+    )
+    result = source.capture_current_source_snapshot(".")
+    assert (result.state, result.reason) == ("unknown", "SOURCE_SCAN_DEADLINE")
+
+
+def test_source_fingerprint_checks_deadline_before_first_row(monkeypatch):
+    # PR #1255: the accumulator checks time before retaining each path.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    monkeypatch.setattr(source.time, "monotonic", lambda: 2.0)
+    with pytest.raises(TimeoutError):
+        source.inventory_fingerprint((("a.py", "hash", "python"),), deadline=1.0)
+
+
+def test_recorded_rows_check_deadline_before_materializing(monkeypatch):
+    # PR #1255: database inventory materialization shares the deadline.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index(file_path, content_hash, language)")
+    conn.execute("INSERT INTO ast_index VALUES ('a.py', 'hash', 'python')")
+    monkeypatch.setattr(source.time, "monotonic", lambda: 2.0)
+    with pytest.raises(TimeoutError):
+        source.recorded_source_rows(conn, deadline=1.0)
+    conn.close()
+
+
+def test_recorded_rows_reject_duplicate_paths():
+    # PR #1255: persisted paths must be unique before set comparison.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index(file_path, content_hash, language)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, 'python')",
+        (("a.py", "one"), ("a.py", "two")),
+    )
+    with pytest.raises(ValueError, match="SOURCE_INVENTORY_DUPLICATE_PATH"):
+        source.recorded_source_rows(conn)
+    conn.close()
+
+
+def test_recorded_fingerprint_deadline_is_fail_closed(monkeypatch):
+    # PR #1253: writer-side canonical inventory hashing has the same deadline.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    monkeypatch.setattr(
+        schema,
+        "recorded_source_rows",
+        lambda *_a, **_k: (_ for _ in ()).throw(TimeoutError()),
+    )
+    with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_DEADLINE"):
+        schema.source_fingerprint(sqlite3.connect(":memory:"), ".")

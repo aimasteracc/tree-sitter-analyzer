@@ -13,18 +13,11 @@ reduces its line count / nesting depth.
 
 from __future__ import annotations
 
-import json
 import sqlite3
-import time
 from collections.abc import Callable
 from typing import Any
 
-_LEGACY_SYMBOL_MIGRATION_SECONDS = 5.0
-_LEGACY_SYMBOL_MIGRATION_ROW_BUDGET = 250_000
-_LEGACY_SYMBOL_MIGRATION_INPUT_BYTE_BUDGET = 256 * 1024 * 1024
-_LEGACY_SYMBOL_MIGRATION_SYMBOL_BUDGET = 2_000_000
-_LEGACY_SYMBOL_MIGRATION_CELL_BYTE_BUDGET = 1024 * 1024
-_LEGACY_SYMBOL_MIGRATION_MARKER = "symbol_rows_projection_v1"
+from ..index_snapshot_symbols import ensure_symbol_rows_backfilled
 
 # ---------------------------------------------------------------------------
 # Schema DDL constants
@@ -693,113 +686,6 @@ def clear_activation_for_file(conn: sqlite3.Connection, rel_path: str) -> None:
         pass
 
 
-def _ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
-    """Create symbol storage and migrate legacy JSON within absolute budgets."""
-    deadline = time.monotonic() + _LEGACY_SYMBOL_MIGRATION_SECONDS
-    max_rows = _LEGACY_SYMBOL_MIGRATION_ROW_BUDGET
-    max_input_bytes = _LEGACY_SYMBOL_MIGRATION_INPUT_BYTE_BUDGET
-    max_symbols = _LEGACY_SYMBOL_MIGRATION_SYMBOL_BUDGET
-    max_cell_bytes = _LEGACY_SYMBOL_MIGRATION_CELL_BYTE_BUDGET
-    rows_seen = input_bytes = symbols_seen = 0
-
-    def check_budget() -> None:
-        if (
-            time.monotonic() > deadline
-            or rows_seen > max_rows
-            or input_bytes > max_input_bytes
-            or symbols_seen > max_symbols
-        ):
-            raise sqlite3.OperationalError("LEGACY_SYMBOL_MIGRATION_BUDGET")
-
-    conn.execute("SAVEPOINT ast_symbol_rows_upgrade")
-    try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS ast_cache_metadata ("
-            "key TEXT PRIMARY KEY, value TEXT NOT NULL)"
-        )
-        marker = conn.execute(
-            "SELECT value FROM ast_cache_metadata WHERE key = ?",
-            (_LEGACY_SYMBOL_MIGRATION_MARKER,),
-        ).fetchone()
-        if marker is not None:
-            conn.execute("RELEASE ast_symbol_rows_upgrade")
-            return
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS ast_symbol_rows ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, "
-            "kind TEXT NOT NULL, file_path TEXT NOT NULL, language TEXT NOT NULL, "
-            "line INTEGER NOT NULL DEFAULT 0, end_line INTEGER NOT NULL DEFAULT 0)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_sym_rows_file_path "
-            "ON ast_symbol_rows(file_path)"
-        )
-        cursor = conn.execute(
-            "SELECT file_path, language, symbols_json FROM ast_index AS source "
-            "WHERE NOT EXISTS (SELECT 1 FROM ast_symbol_rows AS symbols "
-            "WHERE symbols.file_path = source.file_path)"
-        )
-        while True:
-            check_budget()
-            batch = cursor.fetchmany(128)
-            if not batch:
-                break
-            for file_path, language, raw_symbols in batch:
-                rows_seen += 1
-                check_budget()
-                if isinstance(raw_symbols, bytes):
-                    cell_bytes = len(raw_symbols)
-                elif isinstance(raw_symbols, str):
-                    if len(raw_symbols) > max_cell_bytes:
-                        raise sqlite3.OperationalError("LEGACY_SYMBOL_MIGRATION_BUDGET")
-                    cell_bytes = len(raw_symbols.encode("utf-8", "surrogatepass"))
-                else:
-                    raise ValueError("invalid legacy symbols_json")
-                if cell_bytes > max_cell_bytes:
-                    raise sqlite3.OperationalError("LEGACY_SYMBOL_MIGRATION_BUDGET")
-                input_bytes += cell_bytes
-                check_budget()
-                parsed = json.loads(raw_symbols)
-                check_budget()
-                symbols = parsed.get("symbols", []) if isinstance(parsed, dict) else []
-                if not isinstance(symbols, list):
-                    raise ValueError("invalid legacy symbols_json")
-                symbols_seen += len(symbols)
-                check_budget()
-                for offset in range(0, len(symbols), 512):
-                    check_budget()
-                    params = []
-                    for symbol in symbols[offset : offset + 512]:
-                        if not isinstance(symbol, dict):
-                            raise ValueError("invalid legacy symbol row")
-                        params.append(
-                            (
-                                symbol.get("name") or symbol.get("text", ""),
-                                symbol.get("kind", "unknown"),
-                                file_path,
-                                language,
-                                symbol.get("line", 0),
-                                symbol.get("end_line", 0),
-                            )
-                        )
-                    conn.executemany(
-                        "INSERT INTO ast_symbol_rows "
-                        "(name, kind, file_path, language, line, end_line) "
-                        "VALUES (?, ?, ?, ?, ?, ?)",
-                        params,
-                    )
-                    check_budget()
-        conn.execute(
-            "INSERT INTO ast_cache_metadata (key, value) VALUES (?, ?)",
-            (_LEGACY_SYMBOL_MIGRATION_MARKER, "complete"),
-        )
-        conn.execute("RELEASE ast_symbol_rows_upgrade")
-    except Exception:
-        conn.execute("ROLLBACK TO ast_symbol_rows_upgrade")
-        conn.execute("RELEASE ast_symbol_rows_upgrade")
-        raise
-
-
 def init_db(
     conn: sqlite3.Connection,
     fts5_available: bool | None,
@@ -810,7 +696,7 @@ def init_db(
     conn.executescript(SCHEMA_V1)
     # Ordinary symbol storage is valid and useful even when SQLite lacks FTS5.
     # Keep table creation plus legacy projection backfill in one rollback unit.
-    _ensure_symbol_rows_backfilled(conn)
+    ensure_symbol_rows_backfilled(conn)
     conn.executescript(SCHEMA_VERSIONS_DDL)
     conn.commit()
     if fts5_available is None:

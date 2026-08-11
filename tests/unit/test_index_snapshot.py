@@ -10,6 +10,7 @@ import pytest
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
 
 requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+requires_posix_fd = requires_posix_snapshot
 
 
 @requires_posix_snapshot
@@ -372,3 +373,113 @@ class TestAuthoritativeSnapshotOracle:
 
         assert result["completeness"] == "unknown"
         assert result["oracle_reason"] == "SNAPSHOT_READ_FAILED"
+
+    def test_non_posix_missing_index_preserves_missing_contract(
+        self, tmp_path, monkeypatch
+    ):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        monkeypatch.setattr(owner.os, "name", "nt")
+        result = owner.read_existing_snapshot(str(tmp_path))
+        assert result.reason == "MISSING_INDEX"
+
+    def test_non_posix_existing_index_is_explicitly_unsupported(
+        self, tmp_path, monkeypatch
+    ):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        cache_dir = tmp_path / ".ast-cache"
+        cache_dir.mkdir()
+        (cache_dir / "index.db").write_bytes(b"")
+        monkeypatch.setattr(owner.os, "name", "nt")
+        result = owner.read_existing_snapshot(str(tmp_path))
+        assert result.completeness == "unknown"
+        assert result.reason == "SECURE_FD_SNAPSHOT_UNSUPPORTED"
+
+    @requires_posix_fd
+    @pytest.mark.asyncio
+    async def test_database_size_limit_is_checked_before_read(
+        self, tmp_path, monkeypatch
+    ):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        self._certified_cache(tmp_path)
+        monkeypatch.setattr(owner, "_MAX_CHARGED_BYTES", 1)
+        result = await CodeGraphStatusTool(str(tmp_path)).execute(
+            {"output_format": "json"}
+        )
+        assert result["completeness"] == "unknown"
+        assert result["oracle_reason"] == "INDEX_SNAPSHOT_CAPACITY"
+
+    @requires_posix_fd
+    def test_512_byte_pages_can_backup_a_100_mib_database(self, tmp_path):
+        # PR #1253: backup admission is byte-based, not a fixed page count.
+        from tree_sitter_analyzer.ast_cache import ASTCache
+        from tree_sitter_analyzer.index_snapshot import read_existing_snapshot
+        from tree_sitter_analyzer.index_snapshot_schema import (
+            stamp_full_index_manifest,
+        )
+
+        cache_dir = tmp_path / ".ast-cache"
+        cache_dir.mkdir()
+        conn = sqlite3.connect(cache_dir / "index.db")
+        conn.execute("PRAGMA page_size=512")
+        conn.execute("VACUUM")
+        conn.close()
+        source = tmp_path / "sample.py"
+        source.write_text("value = 1\n")
+        cache = ASTCache(str(tmp_path))
+        cache.index_file(str(source))
+        conn = cache.get_conn()
+        conn.execute(
+            "INSERT INTO ast_cache_metadata (key, value) VALUES ('padding', zeroblob(?))",
+            (100 * 1024 * 1024,),
+        )
+        stamp_full_index_manifest(conn, str(tmp_path))
+        assert int(conn.execute("PRAGMA page_size").fetchone()[0]) == 512
+        cache.close()
+
+        snapshot = read_existing_snapshot(str(tmp_path))
+
+        assert (snapshot.completeness, snapshot.reason) == ("complete", None)
+
+    @requires_posix_fd
+    @pytest.mark.asyncio
+    async def test_backup_byte_budget_fails_closed(self, tmp_path, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        self._certified_cache(tmp_path)
+        monkeypatch.setattr(owner, "_BACKUP_BYTE_BUDGET", 0)
+        result = await CodeGraphStatusTool(str(tmp_path)).execute(
+            {"output_format": "json"}
+        )
+        assert result["completeness"] == "unknown"
+        assert result["oracle_reason"] == "INDEX_BACKUP_BUDGET"
+
+    @requires_posix_fd
+    @pytest.mark.asyncio
+    async def test_backup_deadline_fails_closed(self, tmp_path, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        self._certified_cache(tmp_path)
+        monkeypatch.setattr(owner, "_CAPTURE_DEADLINE_SECONDS", -1.0)
+
+        result = await CodeGraphStatusTool(str(tmp_path)).execute(
+            {"output_format": "json"}
+        )
+
+        assert result["oracle_reason"] == "INDEX_BACKUP_BUDGET"
+
+    @requires_posix_fd
+    def test_graph_reader_requires_mapping_payload(self, tmp_path):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        self._certified_cache(tmp_path)
+        snapshot = owner.read_existing_snapshot(str(tmp_path))
+        with pytest.raises(TypeError, match="must return a mapping"):
+            owner.run_graph_snapshot_read(
+                snapshot.snapshot_id,
+                str(tmp_path),
+                snapshot.source_generation,
+                lambda _conn: [],
+            )

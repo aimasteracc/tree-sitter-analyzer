@@ -55,9 +55,26 @@ def _newest_source_mtime(project_root: str) -> float | None:
     newest: float | None = None
     counters = {"entries": 0, "path_bytes": 0, "sources": 0}
     stack: list[tuple[int, str, Iterator[os.DirEntry[str]]]] = []
+
+    def open_entries(
+        name: str, directory_fd: int | None = None
+    ) -> tuple[int, Iterator[os.DirEntry[str]]]:
+        """Open a directory and transfer fd ownership only with a live iterator."""
+        fd = (
+            os.open(name, flags)
+            if directory_fd is None
+            else os.open(name, flags, dir_fd=directory_fd)
+        )
+        try:
+            entries = iter(os.scandir(fd))
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd, entries
+
     try:
-        root_fd = os.open(os.path.abspath(project_root), flags)
-        stack.append((root_fd, "", iter(os.scandir(root_fd))))
+        root_fd, root_entries = open_entries(os.path.abspath(project_root))
+        stack.append((root_fd, "", root_entries))
         while stack:
             directory_fd, prefix, entries = stack[-1]
             if time.monotonic() > deadline:
@@ -84,8 +101,8 @@ def _newest_source_mtime(project_root: str) -> float | None:
             if stat.S_ISDIR(info.st_mode):
                 if name in _LAG_SKIP_DIRS:
                     continue
-                child_fd = os.open(name, flags, dir_fd=directory_fd)
-                stack.append((child_fd, relative, iter(os.scandir(child_fd))))
+                child_fd, child_entries = open_entries(name, directory_fd)
+                stack.append((child_fd, relative, child_entries))
                 continue
             if not stat.S_ISREG(info.st_mode) or not name.endswith(_LAG_SOURCE_EXTS):
                 continue

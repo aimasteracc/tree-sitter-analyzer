@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 
@@ -73,67 +74,67 @@ class TestSnapshotFailureContracts:
         )
 
     def test_legacy_symbol_migration_row_budget_rolls_back(self, monkeypatch):
-        import tree_sitter_analyzer.cache.schema as schema
+        import tree_sitter_analyzer.index_snapshot_symbols as schema
 
         conn = self._legacy_symbol_connection('{"symbols": []}')
         monkeypatch.setattr(schema, "_LEGACY_SYMBOL_MIGRATION_ROW_BUDGET", 0)
         with pytest.raises(
             sqlite3.OperationalError, match="^LEGACY_SYMBOL_MIGRATION_BUDGET$"
         ):
-            schema._ensure_symbol_rows_backfilled(conn)
+            schema.ensure_symbol_rows_backfilled(conn)
         assert self._symbol_table_count(conn) == 0
         conn.close()
 
     def test_legacy_symbol_migration_input_budget_rolls_back(self, monkeypatch):
-        import tree_sitter_analyzer.cache.schema as schema
+        import tree_sitter_analyzer.index_snapshot_symbols as schema
 
         conn = self._legacy_symbol_connection('{"symbols": []}')
         monkeypatch.setattr(schema, "_LEGACY_SYMBOL_MIGRATION_INPUT_BYTE_BUDGET", 1)
         with pytest.raises(
             sqlite3.OperationalError, match="^LEGACY_SYMBOL_MIGRATION_BUDGET$"
         ):
-            schema._ensure_symbol_rows_backfilled(conn)
+            schema.ensure_symbol_rows_backfilled(conn)
         assert self._symbol_table_count(conn) == 0
         conn.close()
 
     def test_legacy_symbol_migration_cell_budget_precedes_json(self, monkeypatch):
-        import tree_sitter_analyzer.cache.schema as schema
+        import tree_sitter_analyzer.index_snapshot_symbols as schema
 
         conn = self._legacy_symbol_connection("not-json")
         monkeypatch.setattr(schema, "_LEGACY_SYMBOL_MIGRATION_CELL_BYTE_BUDGET", 1)
         with pytest.raises(
             sqlite3.OperationalError, match="^LEGACY_SYMBOL_MIGRATION_BUDGET$"
         ):
-            schema._ensure_symbol_rows_backfilled(conn)
+            schema.ensure_symbol_rows_backfilled(conn)
         assert self._symbol_table_count(conn) == 0
         conn.close()
 
     def test_legacy_symbol_migration_symbol_budget_rolls_back(self, monkeypatch):
-        import tree_sitter_analyzer.cache.schema as schema
+        import tree_sitter_analyzer.index_snapshot_symbols as schema
 
         conn = self._legacy_symbol_connection('{"symbols": [{"name": "x"}]}')
         monkeypatch.setattr(schema, "_LEGACY_SYMBOL_MIGRATION_SYMBOL_BUDGET", 0)
         with pytest.raises(
             sqlite3.OperationalError, match="^LEGACY_SYMBOL_MIGRATION_BUDGET$"
         ):
-            schema._ensure_symbol_rows_backfilled(conn)
+            schema.ensure_symbol_rows_backfilled(conn)
         assert self._symbol_table_count(conn) == 0
         conn.close()
 
     def test_legacy_symbol_migration_deadline_rolls_back(self, monkeypatch):
-        import tree_sitter_analyzer.cache.schema as schema
+        import tree_sitter_analyzer.index_snapshot_symbols as schema
 
         conn = self._legacy_symbol_connection('{"symbols": []}')
         monkeypatch.setattr(schema, "_LEGACY_SYMBOL_MIGRATION_SECONDS", -1.0)
         with pytest.raises(
             sqlite3.OperationalError, match="^LEGACY_SYMBOL_MIGRATION_BUDGET$"
         ):
-            schema._ensure_symbol_rows_backfilled(conn)
+            schema.ensure_symbol_rows_backfilled(conn)
         assert self._symbol_table_count(conn) == 0
         conn.close()
 
     def test_legacy_symbol_migration_byte_cell_budget_rolls_back(self, monkeypatch):
-        import tree_sitter_analyzer.cache.schema as schema
+        import tree_sitter_analyzer.index_snapshot_symbols as schema
 
         conn = self._legacy_symbol_connection('{"symbols": []}')
         conn.execute("UPDATE ast_index SET symbols_json = ?", (b"{}",))
@@ -141,17 +142,17 @@ class TestSnapshotFailureContracts:
         with pytest.raises(
             sqlite3.OperationalError, match="^LEGACY_SYMBOL_MIGRATION_BUDGET$"
         ):
-            schema._ensure_symbol_rows_backfilled(conn)
+            schema.ensure_symbol_rows_backfilled(conn)
         assert self._symbol_table_count(conn) == 0
         conn.close()
 
     def test_legacy_symbol_migration_rejects_non_text_cell(self):
-        import tree_sitter_analyzer.cache.schema as schema
+        import tree_sitter_analyzer.index_snapshot_symbols as schema
 
         conn = self._legacy_symbol_connection('{"symbols": []}')
         conn.execute("UPDATE ast_index SET symbols_json = NULL")
         with pytest.raises(ValueError, match="^invalid legacy symbols_json$"):
-            schema._ensure_symbol_rows_backfilled(conn)
+            schema.ensure_symbol_rows_backfilled(conn)
         assert self._symbol_table_count(conn) == 0
         conn.close()
 
@@ -159,10 +160,10 @@ class TestSnapshotFailureContracts:
         self, monkeypatch
     ):
         # PR #1253 review thread 3888: empty projections still complete migration.
-        import tree_sitter_analyzer.cache.schema as schema
+        import tree_sitter_analyzer.index_snapshot_symbols as schema
 
         conn = self._legacy_symbol_connection('{"symbols": []}')
-        schema._ensure_symbol_rows_backfilled(conn)
+        schema.ensure_symbol_rows_backfilled(conn)
         marker = conn.execute(
             "SELECT value FROM ast_cache_metadata WHERE key = ?",
             (schema._LEGACY_SYMBOL_MIGRATION_MARKER,),
@@ -172,7 +173,57 @@ class TestSnapshotFailureContracts:
             "loads",
             lambda _raw: pytest.fail("completed legacy migration reparsed JSON"),
         )
-        schema._ensure_symbol_rows_backfilled(conn)
+        schema.ensure_symbol_rows_backfilled(conn)
         conn.close()
 
         assert marker == ("complete",)
+
+
+def test_symbol_row_upgrade_failure_rolls_back_table_creation():
+    # PR #1253: malformed legacy state cannot leave an empty shadow table.
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, language TEXT, symbols_json TEXT)"
+    )
+    conn.execute("INSERT INTO ast_index VALUES ('bad.py', 'python', '{')")
+
+    with pytest.raises(json.JSONDecodeError):
+        ensure_symbol_rows_backfilled(conn)
+    table = conn.execute(
+        "SELECT name FROM sqlite_master WHERE name = 'ast_symbol_rows'"
+    ).fetchone()
+    conn.close()
+
+    assert table is None
+
+
+@pytest.mark.parametrize(
+    "symbols_json",
+    [json.dumps({"symbols": {"name": "bad"}}), json.dumps({"symbols": ["bad"]})],
+)
+def test_symbol_row_upgrade_rejects_malformed_legacy_shapes(symbols_json):
+    # PR #1253: malformed legacy symbol shapes roll back instead of shadowing JSON.
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, language TEXT, symbols_json TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('bad.py', 'python', ?)", (symbols_json,)
+    )
+
+    with pytest.raises(ValueError, match="invalid legacy"):
+        ensure_symbol_rows_backfilled(conn)
+    table = conn.execute(
+        "SELECT name FROM sqlite_master WHERE name = 'ast_symbol_rows'"
+    ).fetchone()
+    conn.close()
+
+    assert table is None

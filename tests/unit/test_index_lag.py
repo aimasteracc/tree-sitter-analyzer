@@ -114,3 +114,73 @@ def test_lag_scan_suppresses_descriptor_cleanup_error(tmp_path, monkeypatch):
     )
 
     assert lag._newest_source_mtime(str(tmp_path)) is None
+
+
+def test_root_fd_closes_when_scandir_setup_raises(tmp_path, monkeypatch):
+    # PR #1253 review thread 3755297953: open/scandir ownership is atomic.
+    import tree_sitter_analyzer.index_lag as lag
+
+    opened: list[int] = []
+    real_open = lag.os.open
+    real_close = lag.os.close
+
+    def tracked_open(*args, **kwargs):
+        fd = real_open(*args, **kwargs)
+        opened.append(fd)
+        return fd
+
+    monkeypatch.setattr(lag.os, "open", tracked_open)
+    monkeypatch.setattr(
+        lag.os, "scandir", lambda _fd: (_ for _ in ()).throw(OSError("scandir"))
+    )
+
+    assert lag._newest_source_mtime(str(tmp_path)) is None
+    assert len(opened) == 1
+    try:
+        os.fstat(opened[0])
+    except OSError:
+        closed = True
+    else:
+        closed = False
+        real_close(opened[0])
+    assert closed is True
+
+
+def test_child_fd_closes_when_scandir_setup_raises(tmp_path, monkeypatch):
+    # PR #1253 review thread 3755297953: child ownership transfers after scandir.
+    import tree_sitter_analyzer.index_lag as lag
+
+    (tmp_path / "child").mkdir()
+    opened: list[int] = []
+    real_open = lag.os.open
+    real_close = lag.os.close
+    real_scandir = lag.os.scandir
+    scans = 0
+
+    def tracked_open(*args, **kwargs):
+        fd = real_open(*args, **kwargs)
+        opened.append(fd)
+        return fd
+
+    def second_scan_raises(fd):
+        nonlocal scans
+        scans += 1
+        if scans == 2:
+            raise OSError("scandir")
+        return real_scandir(fd)
+
+    monkeypatch.setattr(lag.os, "open", tracked_open)
+    monkeypatch.setattr(lag.os, "scandir", second_scan_raises)
+
+    assert lag._newest_source_mtime(str(tmp_path)) is None
+    assert len(opened) == 2
+    states = []
+    for fd in opened:
+        try:
+            os.fstat(fd)
+        except OSError:
+            states.append(True)
+        else:
+            states.append(False)
+            real_close(fd)
+    assert states == [True, True]

@@ -197,53 +197,6 @@ class TestAuthoritativeSnapshotOracle:
         assert marker == 0
 
     @pytest.mark.asyncio
-    async def test_no_fts_snapshot_uses_json_symbol_fallback(self, tmp_path):
-        from tree_sitter_analyzer.ast_cache import ASTCache
-        from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
-
-        source = tmp_path / "sample.py"
-        source.write_text("def answer():\n    return 42\n")
-        cache = ASTCache(str(tmp_path))
-        cache.index_file(str(source))
-        conn = cache.get_conn()
-        conn.execute("DROP TABLE ast_symbols_fts")
-        conn.commit()
-        stamp_full_index_manifest(conn, str(tmp_path))
-        cache.close()
-
-        result = await CodeGraphStatusTool(str(tmp_path)).execute(
-            {"output_format": "json"}
-        )
-        assert result["fts5_available"] is False
-        assert result["total_symbols"] == 1
-        assert result["symbols_by_kind"] == {"function": 1}
-        assert result["symbols_by_language"] == {"python": 1}
-        assert result["db_auto_vacuum_mode"] == 0
-
-    @pytest.mark.asyncio
-    async def test_legacy_v13_without_symbol_table_is_readable(self, tmp_path):
-        from tree_sitter_analyzer.ast_cache import ASTCache
-        from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
-
-        source = tmp_path / "sample.py"
-        source.write_text("def answer():\n    return 42\n")
-        cache = ASTCache(str(tmp_path))
-        cache.index_file(str(source))
-        conn = cache.get_conn()
-        conn.execute("DROP TABLE ast_symbols_fts")
-        conn.execute("DROP TABLE ast_symbol_rows")
-        conn.commit()
-        stamp_full_index_manifest(conn, str(tmp_path))
-        cache.close()
-
-        result = await CodeGraphStatusTool(str(tmp_path)).execute(
-            {"output_format": "json"}
-        )
-        assert result["completeness"] == "complete"
-        assert result["fts5_available"] is False
-        assert result["total_symbols"] == 1
-
-    @pytest.mark.asyncio
     async def test_missing_call_graph_marker_makes_snapshot_partial(self, tmp_path):
         self._certified_cache(tmp_path)
         conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
@@ -280,46 +233,6 @@ class TestAuthoritativeSnapshotOracle:
             "partial",
             "CALL_GRAPH_INCOMPLETE",
         )
-
-    def test_strict_call_graph_marker_verifies_exact_rows(self):
-        from tree_sitter_analyzer.cache.callgraph_state import (
-            clear_call_graph_built_strict,
-            mark_call_graph_built_strict,
-        )
-
-        conn = sqlite3.connect(":memory:")
-        clear_call_graph_built_strict(conn)
-        mark_call_graph_built_strict(conn)
-        rows = conn.execute(
-            "SELECT id, built FROM ast_call_graph_state ORDER BY id"
-        ).fetchall()
-        conn.close()
-
-        assert rows == [(1, 1)]
-
-    def test_strict_call_graph_marker_raises_when_sentinel_survives(self):
-        from tree_sitter_analyzer.cache.callgraph_state import (
-            clear_call_graph_built_strict,
-            mark_call_graph_built_strict,
-        )
-
-        conn = sqlite3.connect(":memory:")
-        clear_call_graph_built_strict(conn)
-        conn.execute(
-            "CREATE TRIGGER keep_incomplete BEFORE DELETE ON ast_call_graph_state "
-            "WHEN OLD.id = 2 BEGIN SELECT RAISE(IGNORE); END"
-        )
-        with pytest.raises(
-            sqlite3.OperationalError, match="^CALL_GRAPH_MARKER_VERIFY_FAILED$"
-        ):
-            mark_call_graph_built_strict(conn)
-        conn.rollback()
-        rows = conn.execute(
-            "SELECT id, built FROM ast_call_graph_state ORDER BY id"
-        ).fetchall()
-        conn.close()
-
-        assert rows == [(1, 0), (2, 0)]
 
     @pytest.mark.asyncio
     async def test_marker_write_failure_keeps_index_successful_and_uncertified(
@@ -408,17 +321,6 @@ class TestAuthoritativeSnapshotOracle:
 
         assert (stats["manifest_warning"], count) == ("CALL_GRAPH_INCOMPLETE", 0)
 
-    def test_exact_call_graph_marker_missing_table_is_false(self):
-        from tree_sitter_analyzer.index_snapshot_capability import (
-            exact_call_graph_marker,
-        )
-
-        conn = sqlite3.connect(":memory:")
-        result = exact_call_graph_marker(conn)
-        conn.close()
-
-        assert result is False
-
     def test_portable_full_index_succeeds_without_manifest(self, tmp_path, monkeypatch):
         import tree_sitter_analyzer.cache.indexer as indexer
         from tree_sitter_analyzer.ast_cache import ASTCache
@@ -500,24 +402,60 @@ class TestAuthoritativeSnapshotOracle:
 
 
 @requires_posix_snapshot
-def test_stamp_rejects_new_source_and_deletes_old_manifest(tmp_path):
-    # PR #1253 review thread 2083: post-build additions prevent certification.
+@pytest.mark.asyncio
+async def test_final_pinned_path_identity_mismatch_is_concurrent_writer(
+    tmp_path, monkeypatch
+):
+    import tree_sitter_analyzer.index_snapshot as owner
     from tree_sitter_analyzer.ast_cache import ASTCache
-    from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
 
     source = tmp_path / "sample.py"
     source.write_text("value = 1\n")
     cache = ASTCache(str(tmp_path))
     cache.index_file(str(source))
-    stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
-    (tmp_path / "late.py").write_text("late = True\n")
-
-    with pytest.raises(sqlite3.OperationalError, match="^SOURCE_CHANGED$"):
-        stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
-    count = (
-        cache.get_conn()
-        .execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest")
-        .fetchone()[0]
-    )
+    owner.stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     cache.close()
-    assert count == 0
+    matches = iter((True, False))
+    monkeypatch.setattr(
+        owner, "_path_matches_pinned_database", lambda *_args: next(matches)
+    )
+
+    result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
+    assert result["oracle_reason"] == "CONCURRENT_WRITER"
+    assert result["hint"].endswith("Do NOT start another index operation.")
+    assert result["agent_summary"]["next_step"] == result["hint"]
+
+
+@pytest.mark.asyncio
+@requires_posix_snapshot
+async def test_bounded_stats_runtime_failure_returns_stable_envelope(
+    tmp_path, monkeypatch
+):
+    # PR #1253: bounded fallback exhaustion must not escape the MCP handler.
+    import tree_sitter_analyzer.index_snapshot as owner
+
+    snapshot = owner.IndexSnapshot(
+        "idxsnap_test",
+        "source",
+        "index",
+        "generation",
+        "complete",
+        None,
+        str(tmp_path),
+        1,
+    )
+    monkeypatch.setattr(owner, "read_existing_snapshot", lambda _root: snapshot)
+    monkeypatch.setattr(
+        owner,
+        "read_snapshot_stats",
+        lambda *_args: (_ for _ in ()).throw(
+            RuntimeError("INDEX_SYMBOL_FALLBACK_BUDGET")
+        ),
+    )
+
+    result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
+
+    assert (result["completeness"], result["oracle_reason"]) == (
+        "unknown",
+        "SNAPSHOT_READ_FAILED",
+    )

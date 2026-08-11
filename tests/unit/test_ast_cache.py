@@ -260,6 +260,9 @@ class TestIndexFile:
             def commit(self):
                 self._conn.commit()
 
+            def set_progress_handler(self, callback, steps):
+                self._conn.set_progress_handler(callback, steps)
+
             def close(self):
                 self._conn.close()
 
@@ -2336,26 +2339,6 @@ def test_no_fts_upgrade_backfills_legacy_symbols_for_cached_consumers(
     assert definitions == [("legacy", "legacy.py", "python")]
 
 
-def test_symbol_row_upgrade_failure_rolls_back_table_creation():
-    # PR #1253: malformed legacy state cannot leave an empty shadow table.
-    from tree_sitter_analyzer.cache.schema import _ensure_symbol_rows_backfilled
-
-    conn = sqlite3.connect(":memory:")
-    conn.execute(
-        "CREATE TABLE ast_index (file_path TEXT, language TEXT, symbols_json TEXT)"
-    )
-    conn.execute("INSERT INTO ast_index VALUES ('bad.py', 'python', '{')")
-
-    with pytest.raises(json.JSONDecodeError):
-        _ensure_symbol_rows_backfilled(conn)
-    table = conn.execute(
-        "SELECT name FROM sqlite_master WHERE name = 'ast_symbol_rows'"
-    ).fetchone()
-    conn.close()
-
-    assert table is None
-
-
 def test_fully_cached_missing_marker_reruns_every_backfill(cache, monkeypatch):
     # PR #1253: edge rows without the persisted marker are not convergence proof.
     first = cache.index_project(workers=0)
@@ -2436,32 +2419,6 @@ def test_scope_prune_failure_rolls_back_all_stale_rows(cache, monkeypatch):
     remaining = {str(row[0]) for row in conn.execute("SELECT file_path FROM ast_index")}
 
     assert remaining == original_paths
-
-
-@pytest.mark.parametrize(
-    "symbols_json",
-    [json.dumps({"symbols": {"name": "bad"}}), json.dumps({"symbols": ["bad"]})],
-)
-def test_symbol_row_upgrade_rejects_malformed_legacy_shapes(symbols_json):
-    # PR #1253: malformed legacy symbol shapes roll back instead of shadowing JSON.
-    from tree_sitter_analyzer.cache.schema import _ensure_symbol_rows_backfilled
-
-    conn = sqlite3.connect(":memory:")
-    conn.execute(
-        "CREATE TABLE ast_index (file_path TEXT, language TEXT, symbols_json TEXT)"
-    )
-    conn.execute(
-        "INSERT INTO ast_index VALUES ('bad.py', 'python', ?)", (symbols_json,)
-    )
-
-    with pytest.raises(ValueError, match="invalid legacy"):
-        _ensure_symbol_rows_backfilled(conn)
-    table = conn.execute(
-        "SELECT name FROM sqlite_master WHERE name = 'ast_symbol_rows'"
-    ).fetchone()
-    conn.close()
-
-    assert table is None
 
 
 def test_single_file_edge_write_failure_is_index_error(tmp_path, monkeypatch):
