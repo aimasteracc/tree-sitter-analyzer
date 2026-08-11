@@ -167,3 +167,144 @@ def test_module_exports_exact_focused_surface() -> None:
     from tree_sitter_analyzer import index_snapshot_manifest
 
     assert index_snapshot_manifest.__all__ == ["_read_bounded_manifest"]
+
+
+def test_capture_source_wrapper_propagates_body_type_error(monkeypatch):
+    import tree_sitter_analyzer.index_snapshot as snapshot
+
+    def broken(_root, _scope, *, deadline):
+        raise TypeError("source decoder failed")
+
+    monkeypatch.setattr(snapshot, "capture_current_source_snapshot", broken)
+
+    with pytest.raises(TypeError, match="source decoder failed"):
+        snapshot._capture_sources_with_deadline("/root", object(), 1.0)
+
+
+def test_index_fingerprint_wrapper_propagates_body_type_error(monkeypatch):
+    import tree_sitter_analyzer.index_snapshot as snapshot
+
+    def broken(_conn, _root, *, deadline):
+        raise TypeError("fingerprint query failed")
+
+    monkeypatch.setattr(snapshot, "index_fingerprint", broken)
+
+    with pytest.raises(TypeError, match="fingerprint query failed"):
+        snapshot._index_fingerprint_with_deadline(object(), "/root", 1.0)  # type: ignore[arg-type]
+
+
+def test_manifest_accepts_iterator_cursor_without_fetchone():
+    import tree_sitter_analyzer.index_snapshot as snapshot
+
+    manifest = ("/root", "source", "index", 1, "{}", 2)
+
+    class IteratorConnection:
+        def __init__(self):
+            self.calls = 0
+
+        def set_progress_handler(self, _handler, _steps):
+            return None
+
+        def execute(self, _query):
+            self.calls += 1
+            if self.calls == 1:
+                return iter(((1,),))
+            if self.calls == 2:
+                return iter(((5, 6, 5, 1, 2, 1),))
+            return iter((manifest,))
+
+    result = snapshot._read_bounded_manifest(  # type: ignore[arg-type]
+        IteratorConnection(), float("inf")
+    )
+
+    assert result == manifest
+
+
+def test_manifest_progress_handler_interrupts_expired_materialization(monkeypatch):
+    import tree_sitter_analyzer.index_snapshot as snapshot
+
+    ticks = iter((0.0, 2.0))
+    monkeypatch.setattr(snapshot, "_clock", lambda: next(ticks))
+
+    class InterruptingConnection:
+        def __init__(self):
+            self.calls = 0
+            self.handler = None
+            self.cleared = False
+
+        def set_progress_handler(self, handler, _steps):
+            self.handler = handler
+            if handler is None:
+                self.cleared = True
+
+        def execute(self, _query):
+            self.calls += 1
+            if self.calls == 1:
+                return iter(((1,),))
+            if self.calls == 2:
+                return iter(((5, 6, 5, 1, 2, 1),))
+            assert self.handler is not None
+            if self.handler() == 1:
+                raise sqlite3.DatabaseError("interrupted")
+            raise AssertionError("deadline handler did not interrupt")
+
+    conn = InterruptingConnection()
+    with pytest.raises(sqlite3.DatabaseError, match="interrupted"):
+        snapshot._read_bounded_manifest(conn, 1.0)  # type: ignore[arg-type]
+    assert conn.cleared is True
+
+
+def test_snapshot_lock_timeout_returns_deadline(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.index_snapshot as snapshot
+
+    cache_dir = tmp_path / ".ast-cache"
+    cache_dir.mkdir()
+    (cache_dir / "index.db").write_bytes(b"database")
+
+    class BusyLock:
+        def acquire(self, *, timeout):
+            assert timeout == 10.0
+            return False
+
+    monkeypatch.setattr(snapshot, "_clock", lambda: 5.0)
+    monkeypatch.setattr(snapshot, "_CAPTURE_LOCK", BusyLock())
+
+    result = snapshot.read_existing_snapshot(str(tmp_path))
+
+    assert (result.completeness, result.reason) == (
+        "unknown",
+        "INDEX_SNAPSHOT_DEADLINE",
+    )
+
+
+@requires_posix_fd
+def test_backup_expiring_during_copy_returns_deadline(tmp_path, monkeypatch):
+    import inspect
+    import time
+
+    import tree_sitter_analyzer.index_snapshot as snapshot
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
+
+    source = tmp_path / "sample.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
+    cache.close()
+    real_clock = time.monotonic
+
+    def expire_in_backup_progress():
+        caller = inspect.currentframe().f_back
+        if caller is not None and caller.f_code.co_name == "progress":
+            return real_clock() + snapshot._CAPTURE_DEADLINE_SECONDS + 1.0
+        return real_clock()
+
+    monkeypatch.setattr(snapshot, "_clock", expire_in_backup_progress)
+
+    result = snapshot.read_existing_snapshot(str(tmp_path))
+
+    assert (result.completeness, result.reason) == (
+        "unknown",
+        "INDEX_SNAPSHOT_DEADLINE",
+    )

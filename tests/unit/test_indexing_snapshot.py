@@ -260,6 +260,21 @@ def test_snapshot_deduplicates_candidates_after_path_resolution(tmp_path):
     ) == (2, 1, 1, ("selected", "error"))
 
 
+def test_snapshot_ignores_repeated_walker_path(tmp_path):
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n")
+
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source), str(source)),
+        language_fn=_python_language,
+    )
+
+    assert (snapshot.discovered, snapshot.selected, len(snapshot.entries)) == (1, 1, 1)
+
+
 def test_ast_partition_consumes_every_frozen_decision(tmp_path):
     cached = tmp_path / "cached.py"
     changed = tmp_path / "changed.py"

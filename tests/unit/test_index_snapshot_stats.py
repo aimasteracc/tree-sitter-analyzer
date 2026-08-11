@@ -299,3 +299,113 @@ def test_symbol_fallback_preserves_non_deadline_sql_errors():
     with pytest.raises(sqlite3.OperationalError, match="symbols_json"):
         owner._fallback_symbol_counts(conn)
     conn.close()
+
+
+def _minimal_stats_connection() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index(file_path TEXT)")
+    return conn
+
+
+def test_snapshot_stats_default_deadline_allows_bounded_collection(monkeypatch):
+    import tree_sitter_analyzer.index_snapshot_stats as stats_owner
+
+    conn = _minimal_stats_connection()
+    monkeypatch.setattr(stats_owner.time, "monotonic", lambda: 10.0)
+    monkeypatch.setattr(stats_owner, "has_ordinary_symbol_projection", lambda *_: False)
+    monkeypatch.setattr(
+        stats_owner, "fallback_symbol_counts", lambda *_args, **_kwargs: (0, {}, {})
+    )
+    monkeypatch.setattr(
+        stats_owner, "ordinary_edge_counts", lambda *_args, **_kwargs: (0, {})
+    )
+
+    result = stats_owner.collect_snapshot_stats(conn)
+
+    assert (result["total_files"], result["total_symbols"], result["total_edges"]) == (
+        0,
+        0,
+        0,
+    )
+    conn.close()
+
+
+def test_snapshot_stats_rejects_already_expired_deadline() -> None:
+    from tree_sitter_analyzer.index_snapshot_stats import collect_snapshot_stats
+
+    conn = _minimal_stats_connection()
+    with pytest.raises(RuntimeError, match="INDEX_SNAPSHOT_DEADLINE"):
+        collect_snapshot_stats(conn, deadline=0.0)
+    conn.close()
+
+
+def test_snapshot_stats_rechecks_deadline_after_aggregate_queries(monkeypatch):
+    import tree_sitter_analyzer.index_snapshot_stats as stats_owner
+
+    conn = _minimal_stats_connection()
+    ticks = [0.0]
+    monkeypatch.setattr(
+        stats_owner.time, "monotonic", lambda: ticks.pop() if ticks else 2.0
+    )
+    monkeypatch.setattr(stats_owner, "has_ordinary_symbol_projection", lambda *_: False)
+    monkeypatch.setattr(
+        stats_owner, "fallback_symbol_counts", lambda *_args, **_kwargs: (0, {}, {})
+    )
+    monkeypatch.setattr(
+        stats_owner, "ordinary_edge_counts", lambda *_args, **_kwargs: (0, {})
+    )
+
+    with pytest.raises(RuntimeError, match="INDEX_SNAPSHOT_DEADLINE"):
+        stats_owner.collect_snapshot_stats(conn, deadline=1.0)
+    conn.close()
+
+
+def test_snapshot_stats_normalizes_sql_interrupt_to_deadline(monkeypatch):
+    import tree_sitter_analyzer.index_snapshot_stats as stats_owner
+
+    class InterruptedConnection:
+        def __init__(self):
+            self.handler = None
+            self.cleared = False
+
+        def set_progress_handler(self, handler, _steps):
+            self.handler = handler
+            if handler is None:
+                self.cleared = True
+
+        def execute(self, _query):
+            assert self.handler is not None
+            assert self.handler() == 1
+            raise sqlite3.DatabaseError("interrupted")
+
+    ticks = [0.0]
+    monkeypatch.setattr(
+        stats_owner.time, "monotonic", lambda: ticks.pop() if ticks else 2.0
+    )
+    conn = InterruptedConnection()
+
+    with pytest.raises(RuntimeError, match="INDEX_SNAPSHOT_DEADLINE"):
+        stats_owner.collect_snapshot_stats(conn, deadline=1.0)  # type: ignore[arg-type]
+    assert conn.cleared is True
+
+
+def test_snapshot_stats_preserves_non_deadline_database_error(monkeypatch):
+    import tree_sitter_analyzer.index_snapshot_stats as stats_owner
+
+    class CorruptConnection:
+        def __init__(self):
+            self.cleared = False
+
+        def set_progress_handler(self, handler, _steps):
+            if handler is None:
+                self.cleared = True
+
+        def execute(self, _query):
+            raise sqlite3.DatabaseError("malformed database")
+
+    monkeypatch.setattr(stats_owner.time, "monotonic", lambda: 0.0)
+    conn = CorruptConnection()
+
+    with pytest.raises(sqlite3.DatabaseError, match="malformed database"):
+        stats_owner.collect_snapshot_stats(conn, deadline=1.0)  # type: ignore[arg-type]
+    assert conn.cleared is True
