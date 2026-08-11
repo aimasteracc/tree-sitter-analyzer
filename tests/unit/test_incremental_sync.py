@@ -280,6 +280,67 @@ def test_snapshot_mutation_during_backfill_is_invalidated(tmp_path):
     assert outcome == (["app.py"], 0, None, False)
 
 
+def test_late_deletion_keeps_marker_incomplete_until_callee_retarget(tmp_path):
+    # PR #1253 review 3757240531: post-pipeline deletion cannot be certified.
+    from tree_sitter_analyzer.cache.callgraph_state import clear_call_graph_built_strict
+
+    primary = tmp_path / "a.py"
+    fallback = tmp_path / "b.py"
+    caller = tmp_path / "caller.py"
+    primary.write_text("def target():\n    return 1\n")
+    fallback.write_text("def target():\n    return 2\n")
+    caller.write_text("def caller():\n    return target()\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    clear_call_graph_built_strict(cache.get_conn())
+    snapshot = _snapshot(tmp_path, primary, fallback, caller)
+    real_unresolved = cache._run_unresolved_refs_backfill
+
+    def delete_after_pipeline() -> dict:
+        primary.unlink()
+        return real_unresolved()
+
+    try:
+        with patch.object(
+            cache,
+            "_run_unresolved_refs_backfill",
+            side_effect=delete_after_pipeline,
+        ):
+            raced = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+            )
+        raced_edge = (
+            cache.get_conn()
+            .execute(
+                "SELECT callee_resolution, callee_resolved_file FROM edges "
+                "WHERE file_path = 'caller.py' AND kind = 'calls'"
+            )
+            .fetchone()
+        )
+        raced_marker = cache.call_graph_built()
+        IncrementalSync(cache).sync()
+        repaired_edge = (
+            cache.get_conn()
+            .execute(
+                "SELECT callee_resolution, callee_resolved_file FROM edges "
+                "WHERE file_path = 'caller.py' AND kind = 'calls'"
+            )
+            .fetchone()
+        )
+        repaired_marker = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert (
+        raced.changed_during_run_files,
+        tuple(raced_edge),
+        raced_marker,
+        tuple(repaired_edge),
+        repaired_marker,
+    ) == (["a.py"], ("unknown", ""), False, ("project", "b.py"), True)
+
+
 def test_empty_incremental_scan_keeps_graph_incomplete(tmp_path):
     # PR #1172: zero live candidates are not a complete call graph.
     cache = ASTCache(str(tmp_path))
@@ -1063,8 +1124,16 @@ def test_preexisting_snapshot_modification_is_only_reported_as_skipped(tmp_path)
 
     try:
         with (
-            patch.object(cache, "_run_synapse_backfill") as synapse_backfill,
-            patch.object(cache, "_run_unresolved_refs_backfill") as refs_backfill,
+            patch.object(
+                cache,
+                "_run_synapse_backfill",
+                return_value={"resolved": 0, "errors": 0},
+            ) as synapse_backfill,
+            patch.object(
+                cache,
+                "_run_unresolved_refs_backfill",
+                return_value={"resolved": 0, "errors": 0},
+            ) as refs_backfill,
         ):
             result = IncrementalSync(cache).sync(
                 max_files=10,

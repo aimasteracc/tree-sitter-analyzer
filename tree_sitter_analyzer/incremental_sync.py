@@ -120,9 +120,9 @@ class IncrementalSync:
         finally:
             self._cache._defer_single_file_backfill = previous_defer
 
-        def invalidate_snapshot_changes() -> None:
+        def invalidate_snapshot_changes() -> bool:
             if candidate_snapshot is None:
-                return
+                return False
             known_changed = set(result.changed_during_run_files)
             late_changes = [
                 (entry.rel_path, reason)
@@ -168,6 +168,7 @@ class IncrementalSync:
                 0,
                 candidate_snapshot.selected - result.changed_during_run,
             )
+            return bool(late_changes)
 
         invalidate_snapshot_changes()
         try:
@@ -185,10 +186,18 @@ class IncrementalSync:
         backfill_complete = marker_current
         if pipeline_repair_required(result, marker_current):
             backfill_complete, result.synapse_resolved = run_call_graph_pipeline(
-                self._cache
+                self._cache, result
             )
 
-        invalidate_snapshot_changes()
+        changed_after_pipeline = invalidate_snapshot_changes()
+        if changed_after_pipeline:
+            # The pipeline ran against a generation that no longer exists.  A
+            # later retry sees this explicit incomplete marker and repairs all
+            # three stages; this run must never certify its pre-race results.
+            from .cache.callgraph_state import clear_call_graph_built_strict
+
+            backfill_complete = False
+            clear_call_graph_built_strict(conn)
         indexed_paths = {
             str(row["file_path"])
             for row in conn.execute("SELECT file_path FROM ast_index").fetchall()

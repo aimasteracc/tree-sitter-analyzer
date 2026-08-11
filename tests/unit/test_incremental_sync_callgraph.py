@@ -9,6 +9,7 @@ from tree_sitter_analyzer.cache.callgraph_state import (
     call_graph_built,
     mark_call_graph_built_strict,
 )
+from tree_sitter_analyzer.incremental_sync import SyncResult
 from tree_sitter_analyzer.incremental_sync_callgraph import (
     pipeline_repair_required,
     run_call_graph_pipeline,
@@ -99,3 +100,49 @@ def test_pipeline_repair_required_for_stale_marker() -> None:
     )()
 
     assert pipeline_repair_required(result, marker_current=False) is True
+
+
+def test_pipeline_publishes_exact_diagnostic_for_each_failed_stage() -> None:
+    # PR #1253 review 3757240532: suppressed failures must reach MCP callers.
+    cache = _PipelineCache()
+    cache.cross_result = None
+    cache.synapse_result = {"resolved": 0, "errors": 2}
+
+    def unresolved_failure() -> object:
+        cache.calls.append("unresolved")
+        raise RuntimeError("failed")
+
+    cache._run_unresolved_refs_backfill = unresolved_failure
+    result = SyncResult()
+
+    complete, resolved = run_call_graph_pipeline(cache, result)
+
+    assert (complete, resolved, result.backfill_errors, result.errors) == (
+        False,
+        0,
+        3,
+        3,
+    )
+    assert result.details == [
+        {
+            "stage": "cross_file",
+            "considered": "backfill",
+            "action": "backfill",
+            "status": "warning",
+            "reason": "BACKFILL_RESULT_NOT_MAPPING",
+        },
+        {
+            "stage": "synapse",
+            "considered": "backfill",
+            "action": "backfill",
+            "status": "warning",
+            "reason": "BACKFILL_REPORTED_ERRORS",
+        },
+        {
+            "stage": "unresolved",
+            "considered": "backfill",
+            "action": "backfill",
+            "status": "warning",
+            "reason": "BACKFILL_EXCEPTION:RuntimeError",
+        },
+    ]

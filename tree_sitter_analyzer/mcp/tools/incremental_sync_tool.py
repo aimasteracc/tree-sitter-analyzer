@@ -173,6 +173,7 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
             payload["invalid_details_dropped"] = invalid_details_dropped
         result = build_response(
             verdict="WARN" if sync_result.errors > 0 else "INFO",
+            success=sync_result.backfill_errors == 0,
             project_root=self.project_root,
             mode="sync",
             **payload,

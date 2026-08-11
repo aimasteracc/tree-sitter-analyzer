@@ -8,7 +8,7 @@ import sqlite3
 import stat
 import time
 
-from .cache.callgraph_state import CALL_GRAPH_PIPELINE_VERSION
+from .cache.callgraph_state import exact_call_graph_marker as _exact_marker
 
 _CALL_GRAPH_MARKER_DEADLINE_SECONDS = 5.0
 
@@ -16,51 +16,10 @@ _CALL_GRAPH_MARKER_DEADLINE_SECONDS = 5.0
 def strict_call_graph_marker(
     conn: sqlite3.Connection, *, deadline: float | None = None
 ) -> bool:
-    """Check the exact marker using only bounded SQL scalar results."""
-    expires_at = (
-        time.monotonic() + _CALL_GRAPH_MARKER_DEADLINE_SECONDS
-        if deadline is None
-        else deadline
-    )
-
-    def expired() -> int:
-        return int(time.monotonic() > expires_at)
-
-    set_progress_handler = getattr(conn, "set_progress_handler", None)
-    if callable(set_progress_handler):
-        set_progress_handler(expired, 1_000)
-    try:
-        count_row = conn.execute(
-            "SELECT COUNT(*) FROM ast_call_graph_state WHERE id IN (1, 2)"
-        ).fetchone()
-        if (
-            time.monotonic() > expires_at
-            or count_row is None
-            or len(count_row) != 1
-            or type(count_row[0]) is not int
-            or count_row[0] != 1
-        ):
-            return False
-        marker_row = conn.execute(
-            "SELECT 1 FROM ast_call_graph_state "
-            "WHERE id = 1 AND typeof(id) = 'integer' "
-            "AND typeof(built) = 'integer' AND built = 1 "
-            "AND typeof(pipeline_version) = 'integer' "
-            "AND pipeline_version = ? LIMIT 1",
-            (CALL_GRAPH_PIPELINE_VERSION,),
-        ).fetchone()
-        return bool(
-            time.monotonic() <= expires_at
-            and marker_row is not None
-            and len(marker_row) == 1
-            and type(marker_row[0]) is int
-            and marker_row[0] == 1
-        )
-    except (sqlite3.DatabaseError, AttributeError, TypeError, ValueError):
-        return False
-    finally:
-        if callable(set_progress_handler):
-            set_progress_handler(None, 0)
+    """Check the shared exact marker predicate."""
+    if deadline is None:
+        deadline = time.monotonic() + _CALL_GRAPH_MARKER_DEADLINE_SECONDS
+    return _exact_marker(conn, deadline=deadline)
 
 
 def exact_call_graph_marker(conn: sqlite3.Connection) -> bool:

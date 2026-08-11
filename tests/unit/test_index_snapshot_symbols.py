@@ -561,3 +561,187 @@ def test_exact_v12_projection_certification_preserves_all_symbol_references(tmp_
     cache.close()
 
     assert after == before
+
+
+class _QueryResult:
+    def __init__(self, rows):
+        self._rows = iter(rows)
+
+    def fetchone(self):
+        return next(self._rows, None)
+
+
+class _MigrationQueryOverride:
+    def __init__(self, conn, override):
+        self.conn = conn
+        self.override = override
+
+    def __getattr__(self, name):
+        return getattr(self.conn, name)
+
+    def execute(self, query, params=()):
+        replacement = self.override(query, self.conn)
+        if replacement is not None:
+            return replacement
+        return self.conn.execute(query, params)
+
+
+def test_symbol_upgrade_rejects_indeterminate_ordinary_count():
+    # PR #1253: an indeterminate ordinary-row budget count fails closed.
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    conn = _untyped_legacy_connection()
+    raced = _MigrationQueryOverride(
+        conn,
+        lambda query, _raw: (
+            _QueryResult([])
+            if query == "SELECT COUNT(*) FROM ast_symbol_rows"
+            else None
+        ),
+    )
+    with pytest.raises(
+        sqlite3.OperationalError, match="LEGACY_SYMBOL_MIGRATION_BUDGET"
+    ):
+        ensure_symbol_rows_backfilled(raced)  # type: ignore[arg-type]
+    conn.close()
+
+
+def test_symbol_upgrade_rejects_malformed_ordinary_row():
+    # PR #1253: ordinary scalar types are validated before comparison.
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    conn = _untyped_legacy_connection()
+    conn.execute(
+        "CREATE TABLE ast_symbol_rows(id INTEGER PRIMARY KEY, name, kind, "
+        "file_path, language, line, end_line)"
+    )
+    conn.execute(
+        "INSERT INTO ast_symbol_rows VALUES(1, 'x', 'k', 'a.py', 'python', '1', 1)"
+    )
+    with pytest.raises(ValueError, match="invalid ordinary symbol row"):
+        ensure_symbol_rows_backfilled(conn)
+    conn.close()
+
+
+def test_symbol_upgrade_rejects_ordinary_rows_appearing_after_count():
+    # PR #1253: ordinary-row preflight must equal its bounded COUNT result.
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    conn = _untyped_legacy_connection()
+    conn.execute(
+        "CREATE TABLE ast_symbol_rows(id INTEGER PRIMARY KEY, name, kind, "
+        "file_path, language, line, end_line)"
+    )
+    conn.execute(
+        "INSERT INTO ast_symbol_rows VALUES(1, 'x', 'k', 'a.py', 'python', 1, 1)"
+    )
+
+    def add_row(query, raw):
+        if query.startswith("SELECT length(CAST(name AS BLOB))"):
+            raw.execute(
+                "INSERT INTO ast_symbol_rows VALUES(2, 'y', 'k', 'a.py', 'python', 2, 2)"
+            )
+        return None
+
+    raced = _MigrationQueryOverride(conn, add_row)
+    with pytest.raises(
+        sqlite3.OperationalError, match="LEGACY_SYMBOL_MIGRATION_BUDGET"
+    ):
+        ensure_symbol_rows_backfilled(raced)  # type: ignore[arg-type]
+    conn.close()
+
+
+def test_symbol_upgrade_rejects_indeterminate_projection_state_count():
+    # PR #1253: projection-state COUNT must be a bounded integer scalar.
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    conn = _untyped_legacy_connection()
+    raced = _MigrationQueryOverride(
+        conn,
+        lambda query, _raw: (
+            _QueryResult([])
+            if query == "SELECT COUNT(*) FROM ast_symbol_projection_state"
+            else None
+        ),
+    )
+    with pytest.raises(
+        sqlite3.OperationalError, match="LEGACY_SYMBOL_MIGRATION_BUDGET"
+    ):
+        ensure_symbol_rows_backfilled(raced)  # type: ignore[arg-type]
+    conn.close()
+
+
+def test_symbol_upgrade_rejects_invalid_symbol_scalar_types():
+    # PR #1253: parsed legacy symbol fields retain exact scalar types.
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    symbols = json.dumps({"symbols": [{"name": "x", "line": "1"}]})
+    conn = _untyped_legacy_connection(symbols_json=symbols)
+    with pytest.raises(ValueError, match="invalid legacy symbol row"):
+        ensure_symbol_rows_backfilled(conn)
+    conn.close()
+
+
+def test_symbol_upgrade_rejects_rows_disappearing_after_preflight():
+    # PR #1253: materialization must equal its bounded preflight row count.
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    conn = _untyped_legacy_connection()
+    raced = _MigrationRaceConnection(
+        conn,
+        lambda raw: raw.execute("DELETE FROM ast_index"),
+    )
+    with pytest.raises(
+        sqlite3.OperationalError, match="LEGACY_SYMBOL_MIGRATION_BUDGET"
+    ):
+        ensure_symbol_rows_backfilled(raced)  # type: ignore[arg-type]
+    conn.close()
+
+
+def test_symbol_upgrade_detects_extra_ordinary_rows_after_comparison():
+    # PR #1253: leftover ordinary rows make legacy content non-exact.
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    symbols = json.dumps(
+        {"symbols": [{"name": "x", "kind": "k", "line": 1, "end_line": 1}]}
+    )
+    conn = _untyped_legacy_connection(symbols_json=symbols)
+    conn.execute(
+        "CREATE TABLE ast_symbol_rows(id INTEGER PRIMARY KEY, name, kind, "
+        "file_path, language, line, end_line)"
+    )
+    conn.execute(
+        "INSERT INTO ast_symbol_rows VALUES(1, 'x', 'k', 'a.py', 'python', 1, 1)"
+    )
+    ordinary_rows = _QueryResult(
+        [
+            ("x", "k", "a.py", "python", 1, 1),
+            ("extra", "k", "a.py", "python", 2, 2),
+        ]
+    )
+    raced = _MigrationQueryOverride(
+        conn,
+        lambda query, _raw: (
+            ordinary_rows
+            if query.startswith("SELECT name, kind, file_path, language")
+            else None
+        ),
+    )
+    result = ensure_symbol_rows_backfilled(raced)  # type: ignore[arg-type]
+    conn.close()
+
+    assert result is False

@@ -24,6 +24,7 @@ from tree_sitter_analyzer.cache.helpers import _commit_index_results
 from tree_sitter_analyzer.cache.indexer import _clear_full_rebuild_rows
 from tree_sitter_analyzer.cache.write import invalidate_file_rows
 from tree_sitter_analyzer.core.parser import Parser
+from tree_sitter_analyzer.index_source_snapshot import make_source_scope_descriptor
 from tree_sitter_analyzer.indexing_snapshot import (
     IndexCandidateSnapshot,
     IndexFileFingerprint,
@@ -2567,3 +2568,99 @@ def test_projection_state_is_deleted_with_file_generation(tmp_path):
         cache.close()
 
     assert state is None
+
+
+def _cache_storage_bytes(project_root) -> dict[str, bytes]:
+    cache_dir = project_root / ".ast-cache"
+    return {
+        path.name: path.read_bytes()
+        for path in sorted(cache_dir.iterdir())
+        if path.is_file()
+    }
+
+
+def test_force_index_rejects_scope_mismatch_before_cache_mutation(tmp_path):
+    # PR #1253 review 3757240535: invalid force input is non-destructive.
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    before = _cache_storage_bytes(tmp_path)
+    bad_scope = make_source_scope_descriptor(certification_max_files=11)
+
+    try:
+        with pytest.raises(ValueError, match="SOURCE_SCOPE_DESCRIPTOR_MISMATCH"):
+            cache.index_project(
+                max_files=10,
+                force=True,
+                workers=0,
+                source_scope=bad_scope,
+            )
+        after = _cache_storage_bytes(tmp_path)
+    finally:
+        cache.close()
+
+    assert after == before
+
+
+def test_force_index_rejects_oversized_exclusions_before_cache_mutation(tmp_path):
+    # PR #1253 review 3757240535: descriptor budget failure preserves the cache.
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    before = _cache_storage_bytes(tmp_path)
+
+    try:
+        with pytest.raises(ValueError, match="SOURCE_SCOPE_DESCRIPTOR_TOO_LARGE"):
+            cache.index_project(
+                max_files=10,
+                force=True,
+                workers=0,
+                exclude_patterns=frozenset({"x" * 70_000}),
+            )
+        after = _cache_storage_bytes(tmp_path)
+    finally:
+        cache.close()
+
+    assert after == before
+
+
+def test_single_file_marker_write_failure_is_safely_suppressed(tmp_path):
+    # PR #1253: one failed certification write leaves indexing available.
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+
+    try:
+        with patch(
+            "tree_sitter_analyzer._ast_cache_index_mixin._mark_call_graph_built_strict",
+            side_effect=sqlite3.OperationalError("malformed marker"),
+        ) as marker:
+            cache._mark_single_file_index_complete_if_needed(
+                True,
+                {"status": "cached"},
+            )
+    finally:
+        cache.close()
+
+    assert marker.call_count == 1
+
+
+def test_projection_repair_without_fts_skips_fts_rebuild(tmp_path):
+    # PR #1253: ordinary projection repair supports SQLite without FTS5.
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    conn = cache.get_conn()
+    conn.execute("DELETE FROM ast_cache_metadata WHERE key='symbol_rows_projection_v1'")
+    conn.commit()
+    cache._fts5_available = False
+
+    try:
+        result = cache.index_project(workers=0)
+    finally:
+        cache.close()
+
+    assert (result["errors"], result["total_files"]) == (0, 1)

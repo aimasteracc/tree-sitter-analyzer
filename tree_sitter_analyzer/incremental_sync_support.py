@@ -19,6 +19,7 @@ class SyncResult:
     deleted_files: int = 0
     unchanged_files: int = 0
     errors: int = 0
+    backfill_errors: int = 0
     processed: int = 0
     changed_during_run: int = 0
     changed_during_run_files: list[str] = field(default_factory=list)
@@ -35,6 +36,7 @@ class SyncResult:
             "deleted_files": self.deleted_files,
             "unchanged_files": self.unchanged_files,
             "errors": self.errors,
+            "backfill_errors": self.backfill_errors,
             "processed": self.processed,
             "changed_during_run": self.changed_during_run,
             "changed_during_run_files": self.changed_during_run_files,

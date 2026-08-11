@@ -23,7 +23,9 @@ if TYPE_CHECKING:
 from ..constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
 from ..index_source_snapshot import (
     SourceScopeDescriptor,
+    canonical_source_scope_descriptor,
     make_source_scope_descriptor,
+    parse_source_scope_descriptor,
     validate_full_index_source_scope,
 )
 from ..index_symbol_projection import symbol_projection_is_exact
@@ -710,6 +712,22 @@ def run_index_project(
         validate_index_candidate_snapshot(
             cache.project_root, max_files, candidate_snapshot
         )
+    effective_exclude = (
+        exclude_patterns if exclude_patterns is not None else _DEFAULT_EXCLUDE_PATTERNS
+    )
+    if source_scope is None:
+        source_scope = make_source_scope_descriptor(
+            no_default_excludes=exclude_patterns is not None,
+            exclude_patterns=tuple(sorted(effective_exclude))
+            if exclude_patterns is not None
+            else (),
+            certification_max_files=max_files,
+        )
+    else:
+        source_scope = parse_source_scope_descriptor(
+            canonical_source_scope_descriptor(source_scope)
+        )
+    validate_full_index_source_scope(source_scope, effective_exclude, max_files)
     try:
         if force:
             # #578: a full rebuild empties ast_index up front (the DELETE
@@ -739,20 +757,6 @@ def run_index_project(
                     _mark_call_graph_built(conn)
                 raise
         conn = cache._get_conn()
-        effective_exclude = (
-            exclude_patterns
-            if exclude_patterns is not None
-            else _DEFAULT_EXCLUDE_PATTERNS
-        )
-        if source_scope is None:
-            source_scope = make_source_scope_descriptor(
-                no_default_excludes=exclude_patterns is not None,
-                exclude_patterns=tuple(sorted(effective_exclude))
-                if exclude_patterns is not None
-                else (),
-                certification_max_files=max_files,
-            )
-        validate_full_index_source_scope(source_scope, effective_exclude, max_files)
         projection_repair = not symbol_projection_is_exact(conn)
         stats, candidates, count = walk_and_partition(
             cache,

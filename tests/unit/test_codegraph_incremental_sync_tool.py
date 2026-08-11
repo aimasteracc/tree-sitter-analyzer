@@ -170,3 +170,29 @@ class TestCacheLifecycle:
             tool_with_root._status("json")
 
         cache.close.assert_called_once_with()
+
+
+def test_pipeline_warning_makes_incremental_response_non_success(tool_with_root):
+    # PR #1253 review 3757240532: incomplete navigation is not an INFO success.
+    cache = MagicMock()
+    pipeline_failure = SyncResult(errors=1, backfill_errors=1)
+    pipeline_failure.details.append(
+        {
+            "stage": "cross_file",
+            "considered": "backfill",
+            "action": "backfill",
+            "status": "warning",
+            "reason": "BACKFILL_REPORTED_ERRORS",
+        }
+    )
+    with (
+        patch.object(tool_with_root, "_ensure_cache", return_value=cache),
+        patch.object(IncrementalSync, "sync", return_value=pipeline_failure),
+    ):
+        result = tool_with_root._sync(10, "json")
+
+    assert (result["success"], result["verdict"], result["backfill_errors"]) == (
+        False,
+        "WARN",
+        1,
+    )

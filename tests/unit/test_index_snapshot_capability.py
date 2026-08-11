@@ -461,3 +461,87 @@ def test_pinned_component_fstat_failure_closes_descriptor(tmp_path, monkeypatch)
             )
     with pytest.raises(OSError):
         os.fstat(opened[0])
+
+
+def test_writer_marker_reader_rejects_hostile_duplicate_blob_rows() -> None:
+    # PR #1253 review 3757240529: writer paths share the bounded scalar predicate.
+    from tree_sitter_analyzer.cache.callgraph_state import call_graph_built
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_call_graph_state(id, built, built_at, pipeline_version)"
+    )
+    payload = sqlite3.Binary(b"x" * 1024 * 1024)
+    conn.executemany(
+        "INSERT INTO ast_call_graph_state VALUES(1, ?, 0, ?)",
+        ((payload, payload), (1, 2)),
+    )
+    result = call_graph_built(conn)
+    conn.close()
+
+    assert result is False
+
+
+def test_call_graph_schema_migration_accepts_another_writer_winning_race() -> None:
+    # PR #1253: the migration race is accepted only after schema reinspection.
+    import tree_sitter_analyzer.cache.callgraph_state as state
+
+    class RaceConnection:
+        pragma_calls = 0
+
+        def execute(self, sql):
+            if sql.startswith("CREATE TABLE"):
+                return []
+            if sql.startswith("PRAGMA"):
+                self.pragma_calls += 1
+                columns = ["id", "built", "built_at"]
+                if self.pragma_calls == 2:
+                    columns.append("pipeline_version")
+                return [(index, name) for index, name in enumerate(columns)]
+            raise sqlite3.OperationalError("duplicate column")
+
+    conn = RaceConnection()
+    state._ensure_state_schema(conn)  # type: ignore[arg-type]
+
+    assert conn.pragma_calls == 2
+
+
+def test_call_graph_schema_migration_reraises_unrepaired_race() -> None:
+    # PR #1253: an ALTER failure without the new column remains fatal.
+    import tree_sitter_analyzer.cache.callgraph_state as state
+
+    class BrokenConnection:
+        pragma_calls = 0
+
+        def execute(self, sql):
+            if sql.startswith("CREATE TABLE"):
+                return []
+            if sql.startswith("PRAGMA"):
+                self.pragma_calls += 1
+                return [(0, "id"), (1, "built"), (2, "built_at")]
+            raise sqlite3.OperationalError("locked")
+
+    conn = BrokenConnection()
+    with pytest.raises(sqlite3.OperationalError, match="locked"):
+        state._ensure_state_schema(conn)  # type: ignore[arg-type]
+
+    assert conn.pragma_calls == 2
+
+
+def test_symbol_projection_exact_returns_false_on_database_error() -> None:
+    # PR #1253: malformed projection schemas fail closed and clear the handler.
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    class BrokenConnection:
+        handlers: list[object] = []
+
+        def set_progress_handler(self, handler, _steps):
+            self.handlers.append(handler)
+
+        def execute(self, _sql):
+            raise sqlite3.DatabaseError("malformed")
+
+    conn = BrokenConnection()
+    result = symbol_projection_is_exact(conn)  # type: ignore[arg-type]
+
+    assert (result, conn.handlers[-1]) == (False, None)
