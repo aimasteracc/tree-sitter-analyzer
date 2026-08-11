@@ -210,10 +210,10 @@ class TestSnapshotFailureContracts:
         marker_queries = [
             statement
             for statement in statements
-            if statement.startswith("SELECT 1 FROM ast_cache_metadata")
+            if statement.startswith("SELECT 1, typeof(value)")
         ]
         assert len(marker_queries) == 1
-        assert marker_queries[0].startswith("SELECT 1 FROM ast_cache_metadata")
+        assert "FROM ast_cache_metadata" in marker_queries[0]
 
     def test_zero_symbol_migration_writes_global_marker_and_does_not_reparse(
         self, monkeypatch
@@ -239,7 +239,7 @@ class TestSnapshotFailureContracts:
 
 
 @pytest.mark.parametrize("rows_to_keep", [0, 1])
-def test_complete_marker_repairs_incomplete_ordinary_rows(rows_to_keep):
+def test_complete_marker_marks_incomplete_ordinary_rows_for_reindex(rows_to_keep):
     # PR #1253 review thread 3756380009: the marker is not projection evidence.
     from tree_sitter_analyzer.index_snapshot_symbols import (
         ensure_symbol_rows_backfilled,
@@ -275,8 +275,9 @@ def test_complete_marker_repairs_incomplete_ordinary_rows(rows_to_keep):
     ).fetchone()
     conn.close()
 
-    assert rows == [("first",), ("second",)]
-    assert state == ("hash-a", 2)
+    expected_rows = [] if rows_to_keep == 0 else [("first",)]
+    assert rows == expected_rows
+    assert state is None
 
 
 def test_complete_marker_repairs_projection_hash_mismatch():
@@ -488,3 +489,75 @@ def test_symbol_upgrade_progress_handler_interrupt_is_bounded(monkeypatch):
         schema.ensure_symbol_rows_backfilled(raced)  # type: ignore[arg-type]
     assert state["expired"] == 1
     conn.close()
+
+
+def test_exact_v12_projection_certification_preserves_all_symbol_references(tmp_path):
+    # PR #1253 thread 3756769301: certification must never renumber exact rows.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    source = tmp_path / "app.py"
+    source.write_text(
+        "def target():\n    return 1\ndef caller():\n    return target()\n"
+    )
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    conn = cache.get_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO ast_symbol_activation "
+        "(symbol_id, file_path, computed_at, git_state) VALUES (1, 'app.py', 1, 'clean')"
+    )
+    before = {
+        "rows": [
+            tuple(row)
+            for row in conn.execute("SELECT id, name FROM ast_symbol_rows ORDER BY id")
+        ],
+        "fts": [
+            tuple(row)
+            for row in conn.execute("SELECT rowid FROM ast_symbols_fts ORDER BY rowid")
+        ],
+        "activation": [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT symbol_id, file_path FROM ast_symbol_activation ORDER BY symbol_id"
+            )
+        ],
+        "callees": [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT callee_symbol_id FROM edges WHERE kind='calls' ORDER BY id"
+            )
+        ],
+    }
+    conn.execute("DELETE FROM ast_cache_metadata WHERE key='symbol_rows_projection_v1'")
+    conn.execute("DELETE FROM ast_symbol_projection_state")
+    conn.commit()
+
+    assert ensure_symbol_rows_backfilled(conn) is True
+    after = {
+        "rows": [
+            tuple(row)
+            for row in conn.execute("SELECT id, name FROM ast_symbol_rows ORDER BY id")
+        ],
+        "fts": [
+            tuple(row)
+            for row in conn.execute("SELECT rowid FROM ast_symbols_fts ORDER BY rowid")
+        ],
+        "activation": [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT symbol_id, file_path FROM ast_symbol_activation ORDER BY symbol_id"
+            )
+        ],
+        "callees": [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT callee_symbol_id FROM edges WHERE kind='calls' ORDER BY id"
+            )
+        ],
+    }
+    cache.close()
+
+    assert after == before

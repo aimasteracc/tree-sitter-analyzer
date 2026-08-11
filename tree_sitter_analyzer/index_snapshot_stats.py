@@ -12,6 +12,7 @@ from .index_snapshot_symbols import (
     ordinary_edge_counts,
     ordinary_symbol_counts,
 )
+from .index_symbol_projection import symbol_projection_is_exact
 
 
 def collect_snapshot_stats(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -24,7 +25,9 @@ def collect_snapshot_stats(conn: sqlite3.Connection) -> dict[str, Any]:
     page_count = int(conn.execute("PRAGMA page_count").fetchone()[0])
     free_pages = int(conn.execute("PRAGMA freelist_count").fetchone()[0])
     fts5_available = {"ast_symbols_fts", "ast_symbol_rows"}.issubset(tables)
-    if has_ordinary_symbol_projection(conn, tables):
+    if has_ordinary_symbol_projection(conn, tables) and symbol_projection_is_exact(
+        conn
+    ):
         total_symbols, symbols_by_kind, symbols_by_language = ordinary_symbol_counts(
             conn
         )

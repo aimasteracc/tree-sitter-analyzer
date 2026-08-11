@@ -249,7 +249,7 @@ def test_projection_upsert_deletes_state_without_source():
     assert remaining == 0
 
 
-@pytest.mark.parametrize("malformed_table", ["rows", "state"])
+@pytest.mark.parametrize("malformed_table", ["rows", "state", "metadata"])
 def test_projection_exactness_rejects_malformed_schema(malformed_table):
     # PR #1253: projection evidence requires both exact trusted schemas.
     from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
@@ -259,18 +259,22 @@ def test_projection_exactness_rejects_malformed_schema(malformed_table):
         "CREATE TABLE ast_index(file_path TEXT, symbols_json TEXT, content_hash TEXT)"
     )
     row_columns = (
-        "file_path TEXT, name TEXT, kind TEXT, language TEXT, "
+        "file_path TEXT"
+        if malformed_table == "rows"
+        else "file_path TEXT, name TEXT, kind TEXT, language TEXT, "
         "line INTEGER, end_line INTEGER"
-        if malformed_table == "state"
-        else "file_path TEXT"
     )
     state_columns = (
-        "file_path TEXT, content_hash TEXT, symbol_count INTEGER"
-        if malformed_table == "rows"
-        else "file_path TEXT, symbol_count INTEGER"
+        "file_path TEXT, symbol_count INTEGER"
+        if malformed_table == "state"
+        else "file_path TEXT, content_hash TEXT, symbol_count INTEGER"
     )
     conn.execute(f"CREATE TABLE ast_symbol_rows({row_columns})")
     conn.execute(f"CREATE TABLE ast_symbol_projection_state({state_columns})")
+    metadata_columns = (
+        "key TEXT" if malformed_table == "metadata" else "key TEXT, value TEXT"
+    )
+    conn.execute(f"CREATE TABLE ast_cache_metadata({metadata_columns})")
 
     result = symbol_projection_is_exact(conn, 10)
     conn.close()

@@ -109,8 +109,8 @@ def clear_call_graph_built_strict(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def call_graph_built(conn: sqlite3.Connection) -> bool:
-    """Return True only for the singleton current-pipeline certification."""
+def call_graph_marker_is_current(conn: sqlite3.Connection) -> bool:
+    """Return True only for exact integer current-pipeline certification."""
     try:
         rows = conn.execute(
             "SELECT id, built, pipeline_version FROM ast_call_graph_state "
@@ -125,3 +125,8 @@ def call_graph_built(conn: sqlite3.Connection) -> bool:
         and all(type(value) is int for value in exact[0])
         and exact[0] == (_BUILT_MARKER_ID, 1, CALL_GRAPH_PIPELINE_VERSION)
     )
+
+
+def call_graph_built(conn: sqlite3.Connection) -> bool:
+    """Compatibility name for the shared exact marker predicate."""
+    return call_graph_marker_is_current(conn)

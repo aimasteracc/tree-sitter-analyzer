@@ -26,6 +26,7 @@ from ..index_source_snapshot import (
     make_source_scope_descriptor,
     validate_full_index_source_scope,
 )
+from ..index_symbol_projection import symbol_projection_is_exact
 from ..indexing_limits import normalize_index_max_files
 from ..indexing_snapshot import (
     IndexCandidateSnapshot,
@@ -752,11 +753,12 @@ def run_index_project(
                 certification_max_files=max_files,
             )
         validate_full_index_source_scope(source_scope, effective_exclude, max_files)
+        projection_repair = not symbol_projection_is_exact(conn)
         stats, candidates, count = walk_and_partition(
             cache,
             conn,
             max_files,
-            force,
+            force or projection_repair,
             activation_enabled,
             _walk_source_files,
             _language_from_ext,
@@ -843,6 +845,36 @@ def run_index_project(
                 entries=snapshot_entries,
                 stats=stats,
             )
+        if projection_repair and stats["errors"] == 0:
+            # A partial projection cannot use the unchanged-file fast path. Every
+            # canonical file has now been rewritten with ordinary/FTS/activation
+            # rows in its writer transaction; remove only orphan derived paths.
+            conn.execute(
+                "DELETE FROM ast_symbol_rows WHERE file_path NOT IN "
+                "(SELECT file_path FROM ast_index)"
+            )
+            if cache.fts5_available:
+                # Contentless FTS5 cannot reliably predicate-delete stale rows.
+                # Rebuild it from the now-exact ordinary projection instead.
+                conn.execute(
+                    "INSERT INTO ast_symbols_fts(ast_symbols_fts) VALUES('delete-all')"
+                )
+                conn.execute(
+                    "INSERT INTO ast_symbols_fts"
+                    "(rowid, name, kind, file_path, language) "
+                    "SELECT id, name, kind, file_path, language "
+                    "FROM ast_symbol_rows ORDER BY id"
+                )
+            for table in ("ast_symbol_projection_state", "ast_symbol_activation"):
+                conn.execute(
+                    f"DELETE FROM {table} WHERE file_path NOT IN "  # nosec B608
+                    "(SELECT file_path FROM ast_index)"
+                )
+            conn.commit()
+            from ..index_snapshot_symbols import ensure_symbol_rows_backfilled
+
+            if not ensure_symbol_rows_backfilled(conn):
+                stats["backfill_errors"] = stats.get("backfill_errors", 0) + 1
         if stats["changed_during_run"] > 0:
             _clear_call_graph_built(conn)
         stats["total_files"] = count
@@ -893,10 +925,10 @@ def run_index_project(
 
 
 def _call_graph_marker_is_built(conn: sqlite3.Connection) -> bool:
-    """Require the singleton marker for the current authoritative pipeline."""
-    from .callgraph_state import call_graph_built
+    """Require the shared exact current-pipeline marker predicate."""
+    from .callgraph_state import call_graph_marker_is_current
 
-    return call_graph_built(conn)
+    return call_graph_marker_is_current(conn)
 
 
 def _prune_to_selected_scope(

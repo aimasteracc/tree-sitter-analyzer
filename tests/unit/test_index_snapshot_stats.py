@@ -66,19 +66,34 @@ def test_snapshot_stats_uses_ordinary_symbol_rows_without_fts(monkeypatch):
 
     conn = sqlite3.connect(":memory:")
     conn.execute(
-        "CREATE TABLE ast_index(file_path TEXT, symbols_json TEXT, language TEXT)"
+        "CREATE TABLE ast_index(file_path TEXT, symbols_json TEXT, language TEXT, "
+        "content_hash TEXT)"
     )
-    conn.execute("INSERT INTO ast_index VALUES ('sample.py', 'not-json', 'python')")
     conn.execute(
-        "CREATE TABLE ast_symbol_rows(name TEXT, kind TEXT, language TEXT, "
-        "file_path TEXT)"
+        "INSERT INTO ast_index VALUES ('sample.py', 'not-json', 'python', 'hash')"
+    )
+    conn.execute(
+        "CREATE TABLE ast_symbol_rows(id INTEGER PRIMARY KEY, name TEXT, kind TEXT, "
+        "language TEXT, file_path TEXT, line INTEGER, end_line INTEGER)"
     )
     conn.executemany(
-        "INSERT INTO ast_symbol_rows VALUES (?, ?, ?, ?)",
+        "INSERT INTO ast_symbol_rows VALUES (?, ?, ?, ?, ?, 0, 0)",
         (
-            ("Thing", "class", "python", "sample.py"),
-            ("run", "function", "python", "sample.py"),
+            (1, "Thing", "class", "python", "sample.py"),
+            (2, "run", "function", "python", "sample.py"),
         ),
+    )
+    conn.execute(
+        "CREATE TABLE ast_symbol_projection_state("
+        "file_path TEXT, content_hash TEXT, symbol_count INTEGER)"
+    )
+    conn.execute(
+        "INSERT INTO ast_symbol_projection_state VALUES ('sample.py', 'hash', 2)"
+    )
+    conn.execute("CREATE TABLE ast_cache_metadata(key TEXT, value TEXT)")
+    conn.execute(
+        "INSERT INTO ast_cache_metadata VALUES "
+        "('symbol_rows_projection_v1', 'complete')"
     )
     conn.execute("CREATE TABLE edges(kind TEXT)")
     monkeypatch.setattr(

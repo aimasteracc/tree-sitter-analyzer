@@ -7,12 +7,6 @@ import sqlite3
 import time
 
 from .index_symbol_projection import (
-    index_content_hash_sql as _index_content_hash_sql,
-)
-from .index_symbol_projection import (
-    projection_schema_columns as _projection_schema_columns,
-)
-from .index_symbol_projection import (
     symbol_projection_is_exact as _symbol_projection_is_exact,
 )
 
@@ -291,200 +285,19 @@ _LEGACY_SYMBOL_MIGRATION_MARKER = "symbol_rows_projection_v1"
 _LEGACY_SYMBOL_MIGRATION_MARKER_VALUE = "complete"
 
 
-def ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
-    """Create and verify symbol projection storage within absolute budgets."""
-    deadline = time.monotonic() + _LEGACY_SYMBOL_MIGRATION_SECONDS
-    max_rows = _LEGACY_SYMBOL_MIGRATION_ROW_BUDGET
-    max_input_bytes = _LEGACY_SYMBOL_MIGRATION_INPUT_BYTE_BUDGET
-    max_symbols = _LEGACY_SYMBOL_MIGRATION_SYMBOL_BUDGET
-    max_cell_bytes = _LEGACY_SYMBOL_MIGRATION_CELL_BYTE_BUDGET
-    rows_seen = input_bytes = symbols_seen = 0
+def ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> bool:
+    """Create or non-destructively certify the ordinary symbol projection."""
+    from .index_symbol_migration import ensure_symbol_rows_backfilled as migrate
 
-    def check_budget() -> None:
-        if (
-            time.monotonic() > deadline
-            or rows_seen > max_rows
-            or input_bytes > max_input_bytes
-            or symbols_seen > max_symbols
-        ):
-            raise sqlite3.OperationalError("LEGACY_SYMBOL_MIGRATION_BUDGET")
-
-    def expired() -> int:
-        return int(time.monotonic() > deadline)
-
-    savepoint_started = False
-    conn.set_progress_handler(expired, 1_000)
-    try:
-        conn.execute("SAVEPOINT ast_symbol_rows_upgrade")
-        savepoint_started = True
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS ast_cache_metadata ("
-            "key TEXT PRIMARY KEY, value TEXT NOT NULL)"
-        )
-        metadata_sql_length = conn.execute(
-            "SELECT length(CAST(sql AS BLOB)) FROM sqlite_master "
-            "WHERE type = 'table' AND name = 'ast_cache_metadata' LIMIT 1"
-        ).fetchone()
-        check_budget()
-        if (
-            metadata_sql_length is None
-            or not isinstance(metadata_sql_length[0], int)
-            or metadata_sql_length[0] > _LEGACY_SYMBOL_MIGRATION_SCHEMA_BYTE_BUDGET
-        ):
-            raise ValueError("invalid ast_cache_metadata schema")
-        metadata_columns = _projection_schema_columns(conn, "ast_cache_metadata")
-        check_budget()
-        if metadata_columns != ("key", "value"):
-            raise ValueError("invalid ast_cache_metadata schema")
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS ast_symbol_rows ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, "
-            "kind TEXT NOT NULL, file_path TEXT NOT NULL, language TEXT NOT NULL, "
-            "line INTEGER NOT NULL DEFAULT 0, end_line INTEGER NOT NULL DEFAULT 0)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_sym_rows_file_path "
-            "ON ast_symbol_rows(file_path)"
-        )
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS ast_symbol_projection_state ("
-            "file_path TEXT PRIMARY KEY, content_hash TEXT NOT NULL, "
-            "symbol_count INTEGER NOT NULL CHECK(symbol_count >= 0))"
-        )
-        marker = conn.execute(
-            "SELECT 1 FROM ast_cache_metadata WHERE key = ? AND value = ? LIMIT 1",
-            (_LEGACY_SYMBOL_MIGRATION_MARKER, _LEGACY_SYMBOL_MIGRATION_MARKER_VALUE),
-        ).fetchone()
-        check_budget()
-        if marker is not None and _symbol_projection_is_exact(conn, max_symbols):
-            conn.execute("RELEASE ast_symbol_rows_upgrade")
-            savepoint_started = False
-            return
-        if marker is not None:
-            # A forged/stale marker must not be restored if the bounded repair fails.
-            conn.execute(
-                "DELETE FROM ast_cache_metadata WHERE key = ?",
-                (_LEGACY_SYMBOL_MIGRATION_MARKER,),
-            )
-            conn.execute("RELEASE ast_symbol_rows_upgrade")
-            savepoint_started = False
-            conn.commit()
-            conn.execute("SAVEPOINT ast_symbol_rows_upgrade")
-            savepoint_started = True
-
-        conn.execute("DELETE FROM ast_symbol_rows")
-        conn.execute("DELETE FROM ast_symbol_projection_state")
-        hash_sql = _index_content_hash_sql(conn)
-        hash_column = "content_hash" if hash_sql != "''" else "''"
-        preflight = conn.execute(
-            "SELECT length(CAST(file_path AS BLOB)), "
-            "length(CAST(language AS BLOB)), length(CAST(symbols_json AS BLOB)), "
-            f"length(CAST({hash_column} AS BLOB)) FROM ast_index"
-        )
-        while True:
-            check_budget()
-            length_row = preflight.fetchone()
-            if length_row is None:
-                break
-            rows_seen += 1
-            cell_lengths = tuple(length_row)
-            if cell_lengths[2] is None:
-                raise ValueError("invalid legacy symbols_json")
-            if any(
-                value is None
-                for value in (cell_lengths[0], cell_lengths[1], cell_lengths[3])
-            ):
-                raise ValueError("invalid legacy symbol source row")
-            if any(
-                not isinstance(value, int) or value > max_cell_bytes
-                for value in cell_lengths
-            ):
-                raise sqlite3.OperationalError("LEGACY_SYMBOL_MIGRATION_BUDGET")
-            input_bytes += sum(cell_lengths)
-            check_budget()
-
-        cursor = conn.execute(
-            f"SELECT file_path, language, symbols_json, {hash_column} FROM ast_index"
-        )
-        materialized_rows = 0
-        while True:
-            check_budget()
-            row = cursor.fetchone()
-            if row is None:
-                break
-            file_path, language, raw_symbols, content_hash = row
-            materialized_rows += 1
-            if materialized_rows > rows_seen:
-                raise sqlite3.OperationalError("LEGACY_SYMBOL_MIGRATION_BUDGET")
-            materialized = (file_path, language, raw_symbols, content_hash)
-            if not isinstance(raw_symbols, (bytes, str)):
-                raise ValueError("invalid legacy symbols_json")
-            if any(
-                not isinstance(value, (bytes, str))
-                for value in (file_path, language, content_hash)
-            ):
-                raise ValueError("invalid legacy symbol source row")
-            cell_lengths = tuple(
-                len(value)
-                if isinstance(value, bytes)
-                else len(value.encode("utf-8", "surrogatepass"))
-                for value in materialized
-            )
-            if any(length > max_cell_bytes for length in cell_lengths):
-                raise sqlite3.OperationalError("LEGACY_SYMBOL_MIGRATION_BUDGET")
-            parsed = json.loads(raw_symbols)
-            check_budget()
-            symbols = parsed.get("symbols", []) if isinstance(parsed, dict) else []
-            if not isinstance(symbols, list):
-                raise ValueError("invalid legacy symbols_json")
-            symbols_seen += len(symbols)
-            check_budget()
-            for offset in range(0, len(symbols), 512):
-                check_budget()
-                params = []
-                for symbol in symbols[offset : offset + 512]:
-                    if not isinstance(symbol, dict):
-                        raise ValueError("invalid legacy symbol row")
-                    params.append(
-                        (
-                            symbol.get("name") or symbol.get("text", ""),
-                            symbol.get("kind", "unknown"),
-                            file_path,
-                            language,
-                            symbol.get("line", 0),
-                            symbol.get("end_line", 0),
-                        )
-                    )
-                conn.executemany(
-                    "INSERT INTO ast_symbol_rows "
-                    "(name, kind, file_path, language, line, end_line) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    params,
-                )
-                check_budget()
-            conn.execute(
-                "INSERT INTO ast_symbol_projection_state "
-                "(file_path, content_hash, symbol_count) VALUES (?, ?, ?)",
-                (file_path, content_hash, len(symbols)),
-            )
-        if not _symbol_projection_is_exact(conn, max_symbols):
-            raise sqlite3.OperationalError("LEGACY_SYMBOL_PROJECTION_INVALID")
-        conn.execute(
-            "INSERT INTO ast_cache_metadata (key, value) VALUES (?, ?) "
-            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (_LEGACY_SYMBOL_MIGRATION_MARKER, _LEGACY_SYMBOL_MIGRATION_MARKER_VALUE),
-        )
-        conn.execute("RELEASE ast_symbol_rows_upgrade")
-        savepoint_started = False
-    except Exception as exc:
-        conn.set_progress_handler(None, 0)
-        if savepoint_started:
-            conn.execute("ROLLBACK TO ast_symbol_rows_upgrade")
-            conn.execute("RELEASE ast_symbol_rows_upgrade")
-        if isinstance(exc, sqlite3.OperationalError) and (
-            time.monotonic() > deadline or "interrupt" in str(exc).lower()
-        ):
-            raise sqlite3.OperationalError("LEGACY_SYMBOL_MIGRATION_BUDGET") from exc
-        raise
-    finally:
-        conn.set_progress_handler(None, 0)
+    return migrate(
+        conn,
+        seconds=_LEGACY_SYMBOL_MIGRATION_SECONDS,
+        row_budget=_LEGACY_SYMBOL_MIGRATION_ROW_BUDGET,
+        input_byte_budget=_LEGACY_SYMBOL_MIGRATION_INPUT_BYTE_BUDGET,
+        symbol_budget=_LEGACY_SYMBOL_MIGRATION_SYMBOL_BUDGET,
+        cell_byte_budget=_LEGACY_SYMBOL_MIGRATION_CELL_BYTE_BUDGET,
+        schema_byte_budget=_LEGACY_SYMBOL_MIGRATION_SCHEMA_BYTE_BUDGET,
+        marker_key=_LEGACY_SYMBOL_MIGRATION_MARKER,
+        marker_value=_LEGACY_SYMBOL_MIGRATION_MARKER_VALUE,
+        exact_validator=_symbol_projection_is_exact,
+    )

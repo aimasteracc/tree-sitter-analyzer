@@ -399,3 +399,60 @@ def test_module_exports_exact_focused_surface() -> None:
         "changed_since_snapshot",
         "validate_index_candidate_snapshot",
     ]
+
+
+def test_partial_projection_forces_full_file_repair_and_callee_rebind(tmp_path):
+    # PR #1253 thread 3756769301: partial ordinary rows disable cache fast paths.
+    source = tmp_path / "app.py"
+    source.write_text(
+        "def target():\n    return 1\ndef caller():\n    return target()\n"
+    )
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    conn = cache.get_conn()
+    conn.execute("DELETE FROM ast_symbol_rows WHERE name='caller'")
+    conn.execute(
+        "INSERT OR REPLACE INTO ast_symbol_activation "
+        "(symbol_id, file_path, computed_at, git_state) VALUES (999, 'orphan.py', 1, 'clean')"
+    )
+    conn.commit()
+    cache.close()
+
+    cache = ASTCache(str(tmp_path))
+    conn = cache.get_conn()
+    constructor_rows = [
+        tuple(row)
+        for row in conn.execute("SELECT id, name FROM ast_symbol_rows ORDER BY id")
+    ]
+    result = cache.index_project(workers=1)
+    repaired_rows = [
+        tuple(row)
+        for row in conn.execute("SELECT id, name FROM ast_symbol_rows ORDER BY id")
+    ]
+    fts_rowids = [
+        row[0]
+        for row in conn.execute("SELECT rowid FROM ast_symbols_fts ORDER BY rowid")
+    ]
+    activation_paths = [
+        row[0]
+        for row in conn.execute(
+            "SELECT file_path FROM ast_symbol_activation ORDER BY file_path"
+        )
+    ]
+    target_id = conn.execute(
+        "SELECT id FROM ast_symbol_rows WHERE name='target'"
+    ).fetchone()[0]
+    callee_ids = [
+        row[0]
+        for row in conn.execute(
+            "SELECT callee_symbol_id FROM edges WHERE kind='calls' ORDER BY id"
+        )
+    ]
+    cache.close()
+
+    assert constructor_rows == [(1, "target")]
+    assert (result["indexed"], result["cached"]) == (1, 0)
+    assert [name for _symbol_id, name in repaired_rows] == ["target", "caller"]
+    assert fts_rowids == [symbol_id for symbol_id, _name in repaired_rows]
+    assert activation_paths == []
+    assert callee_ids == [target_id]
