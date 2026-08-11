@@ -11,7 +11,7 @@ import stat
 import time
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal, TypeVar, cast
 
 from .constants import EXCLUDE_DIRS
 from .index_source_stream import hash_source_at, inventory_portable
@@ -180,10 +180,11 @@ def _bounded_sorted(
         if chunk:
             chunk.sort()
             runs.append(chunk)
-    for value in heapq.merge(*runs):
+    merged = heapq.merge(*cast(list[list[Any]], runs))
+    for value in merged:
         if deadline is not None and time.monotonic() > deadline:
             raise TimeoutError
-        yield value
+        yield cast(_T, value)
 
 
 def inventory_fingerprint(
