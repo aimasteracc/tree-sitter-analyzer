@@ -306,7 +306,21 @@ def walk_and_partition(
         "truncated_by_max_files": False,
     }
     if force:
-        indexed_map: dict[str, tuple[int, int, int]] = {}
+        indexed_map: dict[str, tuple[Any, ...]] = {}
+    elif candidate_snapshot is not None:
+        rows = conn.execute(
+            "SELECT file_path, mtime_ns, file_size, extractor_version, content_hash "
+            "FROM ast_index"
+        ).fetchall()
+        indexed_map = {
+            r["file_path"]: (
+                r["mtime_ns"],
+                r["file_size"],
+                r["extractor_version"],
+                r["content_hash"],
+            )
+            for r in rows
+        }
     else:
         rows = conn.execute(
             "SELECT file_path, mtime_ns, file_size, extractor_version FROM ast_index"
@@ -361,6 +375,7 @@ def walk_and_partition(
                 and row[0] == fingerprint.mtime_ns
                 and row[1] == fingerprint.file_size
                 and row[2] >= extractor_version
+                and row[3] == fingerprint.content_hash
             ):
                 already_cached.append(
                     {

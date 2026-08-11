@@ -314,58 +314,71 @@ def test_manifest_stamp_blocks_concurrent_sqlite_epoch_mutation(tmp_path, monkey
     conn.close()
 
 
-def test_stale_cleanup_preserves_a_later_manifest_epoch():
-    # PR #1253 review 3755216340: follow-up cleanup cannot delete a new stamp.
-    from tree_sitter_analyzer.index_snapshot_schema import (
-        _delete_unchanged_prior_manifest,
-        _manifest_row,
-    )
+def test_failed_stamp_invalidates_manifest_before_releasing_writer_lock():
+    # PR #1253 review 3755386842: cleanup stays in the failed writer transaction.
+    from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
 
-    conn = sqlite3.connect(":memory:")
-    conn.execute(
-        "CREATE TABLE ast_index_snapshot_manifest ("
-        "singleton INTEGER PRIMARY KEY, canonical_root TEXT, "
-        "source_fingerprint TEXT, index_fingerprint TEXT, file_count INTEGER, "
-        "source_scope_descriptor TEXT, manifest_version INTEGER)"
-    )
-    conn.execute(
-        "INSERT INTO ast_index_snapshot_manifest VALUES (1, 'root', 's1', "
-        "'i1', 1, '{}', 2)"
-    )
-    prior = _manifest_row(conn)
-    conn.commit()
-    conn.execute("UPDATE ast_index_snapshot_manifest SET index_fingerprint = 'i2'")
-    conn.commit()
+    class FailingStampConnection:
+        def __init__(self):
+            self.events: list[str] = []
+            self.in_transaction = False
 
-    _delete_unchanged_prior_manifest(conn, prior)
-
-    assert (
-        conn.execute(
-            "SELECT index_fingerprint FROM ast_index_snapshot_manifest"
-        ).fetchone()[0]
-        == "i2"
-    )
-    conn.close()
-
-
-def test_stale_cleanup_rolls_back_followup_database_failure():
-    # PR #1253 review 3755216340: cleanup failures leave no open transaction.
-    from tree_sitter_analyzer.index_snapshot_schema import (
-        _delete_unchanged_prior_manifest,
-    )
-
-    class FailingConnection:
-        rolled_back = False
-
-        def execute(self, _query):
-            raise sqlite3.OperationalError("busy")
+        def commit(self):
+            self.events.append("COMMIT")
+            self.in_transaction = False
 
         def rollback(self):
-            self.rolled_back = True
+            self.events.append("ROLLBACK")
+            self.in_transaction = False
 
-    conn = FailingConnection()
-    _delete_unchanged_prior_manifest(conn, ("prior",))  # type: ignore[arg-type]
-    assert conn.rolled_back is True
+        def execute(self, query, _params=()):
+            operation = " ".join(query.split())
+            self.events.append(operation)
+            if operation == "BEGIN IMMEDIATE":
+                self.in_transaction = True
+                return self
+            if operation.startswith("SELECT id, built"):
+                raise sqlite3.OperationalError("broken marker")
+            return self
+
+    conn = FailingStampConnection()
+    with pytest.raises(sqlite3.OperationalError, match="CALL_GRAPH_INCOMPLETE"):
+        stamp_full_index_manifest(conn, ".")  # type: ignore[arg-type]
+
+    assert conn.events == [
+        "COMMIT",
+        "BEGIN IMMEDIATE",
+        "SELECT id, built FROM ast_call_graph_state WHERE id IN (1, 2) ORDER BY id",
+        "DELETE FROM ast_index_snapshot_manifest WHERE singleton = 1",
+        "COMMIT",
+    ]
+
+
+def test_begin_failure_does_not_attempt_manifest_cleanup():
+    # PR #1253 review 3755386842: no lock means cleanup would race a later epoch.
+    from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
+
+    class BusyConnection:
+        in_transaction = False
+
+        def __init__(self):
+            self.events: list[str] = []
+
+        def commit(self):
+            self.events.append("COMMIT")
+
+        def rollback(self):
+            self.events.append("ROLLBACK")
+
+        def execute(self, query, _params=()):
+            self.events.append(query)
+            raise sqlite3.OperationalError("database is locked")
+
+    conn = BusyConnection()
+    with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+        stamp_full_index_manifest(conn, ".")  # type: ignore[arg-type]
+
+    assert conn.events == ["COMMIT", "BEGIN IMMEDIATE"]
 
 
 def test_schema_version_rejects_unknown_row_immediately():
@@ -493,3 +506,104 @@ def test_fingerprint_ordering_preserves_non_budget_sqlite_error(monkeypatch):
     monkeypatch.setattr(schema.time, "monotonic", lambda: 0.0)
     with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):
         list(schema._deadline_ordered_rows(BrokenConnection(), "SELECT 1", 1.0))
+
+
+def test_failed_manifest_invalidation_rolls_back_locked_transaction():
+    # PR #1253 review 3755386842: cleanup failure releases the original lock.
+    from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
+
+    class CleanupFailureConnection:
+        in_transaction = False
+        rolled_back = False
+
+        def commit(self):
+            self.in_transaction = False
+
+        def rollback(self):
+            self.rolled_back = True
+            self.in_transaction = False
+
+        def execute(self, query, _params=()):
+            if query == "BEGIN IMMEDIATE":
+                self.in_transaction = True
+            elif query.startswith("SELECT id, built"):
+                raise sqlite3.OperationalError("marker failure")
+            elif query.startswith("DELETE FROM ast_index_snapshot_manifest"):
+                raise sqlite3.OperationalError("delete failure")
+            return self
+
+    conn = CleanupFailureConnection()
+    with pytest.raises(sqlite3.OperationalError, match="CALL_GRAPH_INCOMPLETE"):
+        stamp_full_index_manifest(conn, ".")  # type: ignore[arg-type]
+    assert (conn.rolled_back, conn.in_transaction) == (True, False)
+
+
+def test_schema_version_rejects_text_version():
+    # PR #1253: schema versions are strictly typed SQLite integers.
+    from tree_sitter_analyzer.index_snapshot_schema import validate_snapshot_schema
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_schema_version(version)")
+    conn.execute("INSERT INTO ast_schema_version VALUES ('13')")
+    with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
+        validate_snapshot_schema(conn)
+    conn.close()
+
+
+def test_schema_column_name_budget_rejects_first_column(monkeypatch):
+    # PR #1253: required-table column metadata has an absolute byte cap.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_schema_version(version)")
+    conn.execute("INSERT INTO ast_schema_version VALUES (13)")
+    conn.execute("CREATE TABLE ast_index(file_path)")
+    monkeypatch.setattr(schema, "_SCHEMA_CELL_BYTE_BUDGET", 0)
+    with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
+        schema.validate_snapshot_schema(conn)
+    conn.close()
+
+
+def test_schema_validation_normalizes_sqlite_interrupt(monkeypatch):
+    # PR #1253: progress-handler interruption is a stable deadline failure.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    class InterruptedConnection:
+        def set_progress_handler(self, handler, _steps):
+            if handler is not None:
+                assert handler() == 1
+
+        def execute(self, _query, _params=()):
+            raise sqlite3.OperationalError("interrupted")
+
+    monkeypatch.setattr(schema, "_FINGERPRINT_DEADLINE_SECONDS", -1.0)
+    with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_DEADLINE"):
+        schema.validate_snapshot_schema(InterruptedConnection())  # type: ignore[arg-type]
+
+
+def test_schema_rejects_nontext_pragma_column_name():
+    # PR #1253: hostile schema metadata cannot be decoded implicitly.
+    from tree_sitter_analyzer.index_snapshot_schema import validate_snapshot_schema
+
+    class Cursor:
+        def __init__(self, rows):
+            self.rows = iter(rows)
+
+        def fetchone(self):
+            return next(self.rows, None)
+
+    class HostileConnection:
+        def set_progress_handler(self, _handler, _steps):
+            return None
+
+        def execute(self, query, _params=()):
+            if query.startswith("SELECT version"):
+                return Cursor([(13,)])
+            if query.startswith("SELECT count"):
+                return Cursor([(1,)])
+            if query.startswith("SELECT 1"):
+                return Cursor([(1,)])
+            return Cursor([(0, b"not-text")])
+
+    with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
+        validate_snapshot_schema(HostileConnection())  # type: ignore[arg-type]

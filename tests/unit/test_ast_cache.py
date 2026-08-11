@@ -1969,6 +1969,34 @@ def test_disabled_synapse_backfill_returns_complete_zero_stats(tmp_path, monkeyp
     assert result == {"total": 0, "resolved": 0, "unchanged": 0, "errors": 0}
 
 
+def test_candidate_hash_change_reindexes_with_preserved_mtime_and_size(tmp_path):
+    # PR #1253 review 3755386837: candidate cache reuse is content-bound.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    admitted = path.stat()
+    path.write_text("value = 2\n")
+    os.utime(path, ns=(admitted.st_atime_ns, admitted.st_mtime_ns))
+    snapshot = _snapshot(tmp_path, path)
+
+    try:
+        result = cache.index_project(max_files=10, candidate_snapshot=snapshot)
+        stored_hash = (
+            cache.get_conn()
+            .execute("SELECT content_hash FROM ast_index WHERE file_path = 'app.py'")
+            .fetchone()[0]
+        )
+    finally:
+        cache.close()
+
+    assert (result["indexed"], result["cached"], stored_hash) == (
+        1,
+        0,
+        _content_hash("value = 2\n"),
+    )
+
+
 def test_cached_snapshot_mutation_does_not_stamp_graph_complete(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")

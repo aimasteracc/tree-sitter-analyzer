@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -16,6 +17,7 @@ from tree_sitter_analyzer.indexing_snapshot import (
     build_index_candidate_snapshot,
     changed_since_snapshot,
 )
+from tree_sitter_analyzer.source_oracle import SourceOracleError
 
 
 def _python_language(path: str) -> str | None:
@@ -233,7 +235,7 @@ def test_ast_partition_consumes_every_frozen_decision(tmp_path):
         "INSERT INTO ast_index VALUES (?, ?, ?, ?, ?)",
         (
             "cached.py",
-            "hash",
+            fingerprint.content_hash,
             fingerprint.mtime_ns,
             fingerprint.file_size,
             1,
@@ -791,4 +793,118 @@ def test_posix_worker_never_parses_symlink_swap_target(tmp_path, monkeypatch):
     assert (result["status"], result["reason"]) == (
         "source_changed",
         "file changed after candidate snapshot",
+    )
+
+
+def test_worker_rejects_nonfile_oracle_result(tmp_path, monkeypatch):
+    # PR #1253: workers reject special-file oracle responses before parsing.
+    from tree_sitter_analyzer.cache import extraction
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n")
+    monkeypatch.setattr(
+        extraction,
+        "safe_workspace_path",
+        lambda *_a, **_k: SimpleNamespace(kind="directory", data=None),
+    )
+    result = extraction._worker_index_file((str(source), str(tmp_path), "python"))
+    assert result["status"] == "io_error"
+
+
+def test_worker_rejects_content_hash_mismatch(tmp_path):
+    # PR #1253: descriptor identity alone cannot authorize changed bytes.
+    from dataclasses import replace
+
+    from tree_sitter_analyzer.cache import extraction
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=1,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: [str(source)],
+        language_fn=_python_language,
+    )
+    expected = replace(snapshot.selected_entries[0].fingerprint, content_hash="forged")
+    result = extraction._worker_index_file(
+        (str(source), str(tmp_path), "python", expected)
+    )
+    assert result["status"] == "source_changed"
+
+
+def test_windows_worker_reads_the_admitted_regular_file(tmp_path, monkeypatch):
+    # PR #1253: the legacy non-POSIX worker path remains functional.
+    from tree_sitter_analyzer.cache import extraction
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n")
+    monkeypatch.setattr(
+        extraction, "os", SimpleNamespace(name="nt", path=os.path, stat=os.stat)
+    )
+    result = extraction._worker_index_file((str(source), str(tmp_path), "python"))
+    assert (result["status"], result["file_size"]) == ("ok", 10)
+
+
+def test_candidate_capture_rejects_nonfile_oracle(tmp_path, monkeypatch):
+    # PR #1253: candidate capture accepts only regular-file oracle bytes.
+    import tree_sitter_analyzer.indexing_snapshot as snapshot_module
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n")
+    monkeypatch.setattr(
+        snapshot_module,
+        "safe_workspace_path",
+        lambda *_a, **_k: SimpleNamespace(kind="directory", data=None),
+    )
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_SPECIAL_FILE"):
+        snapshot_module._capture_candidate_fingerprint(
+            str(tmp_path), "app.py", source.stat()
+        )
+
+
+def test_candidate_capture_rejects_lstat_open_identity_mismatch(tmp_path, monkeypatch):
+    # PR #1253: capture must bind the admitted lstat identity to opened bytes.
+    import tree_sitter_analyzer.indexing_snapshot as snapshot_module
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n")
+    admitted = source.stat()
+    metadata = (b"0,0,0,0,0,0",)
+    monkeypatch.setattr(
+        snapshot_module,
+        "safe_workspace_path",
+        lambda *_a, **_k: SimpleNamespace(
+            kind="file", data=b"value = 1\n", metadata=metadata
+        ),
+    )
+    monkeypatch.setattr(snapshot_module, "stable_descriptor_chain", lambda _m: ())
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_SOURCE_CHANGED"):
+        snapshot_module._capture_candidate_fingerprint(
+            str(tmp_path), "app.py", admitted
+        )
+
+
+def test_candidate_capture_failure_becomes_snapshot_error(tmp_path, monkeypatch):
+    # PR #1253: an oracle race is recorded instead of selecting unsafe work.
+    import tree_sitter_analyzer.indexing_snapshot as snapshot_module
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n")
+    monkeypatch.setattr(
+        snapshot_module,
+        "_capture_candidate_fingerprint",
+        lambda *_a: (_ for _ in ()).throw(SourceOracleError("changed")),
+    )
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=1,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: [str(source)],
+        language_fn=_python_language,
+    )
+    assert (snapshot.selected, snapshot.errors, snapshot.entries[0].reason) == (
+        0,
+        1,
+        "changed",
     )

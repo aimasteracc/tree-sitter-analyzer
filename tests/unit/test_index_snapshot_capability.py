@@ -184,6 +184,7 @@ def test_nonregular_index_database_is_rejected(tmp_path):
 def test_cache_open_error_closes_root_handle(tmp_path, monkeypatch):
     import tree_sitter_analyzer.index_snapshot as owner
 
+    (tmp_path / ".ast-cache").mkdir()
     original_open = owner.os.open
 
     def fail_cache(path, flags, *args, **kwargs):
@@ -201,6 +202,7 @@ def test_database_open_error_closes_directory_handles(tmp_path, monkeypatch):
     import tree_sitter_analyzer.index_snapshot as owner
 
     (tmp_path / ".ast-cache").mkdir()
+    (tmp_path / ".ast-cache" / "index.db").touch()
     original_open = owner.os.open
 
     def fail_database(path, flags, *args, **kwargs):
@@ -211,6 +213,58 @@ def test_database_open_error_closes_directory_handles(tmp_path, monkeypatch):
     monkeypatch.setattr(owner.os, "open", fail_database)
     with pytest.raises(PermissionError, match="database denied"):
         owner._open_bound_database(str(tmp_path))
+
+
+@requires_posix_fd
+def test_canonical_root_symlink_swap_is_rejected(tmp_path, monkeypatch):
+    # PR #1253 review 3755386843: canonical root open must not follow a swap.
+    import tree_sitter_analyzer.index_snapshot_capability as capability
+
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    (root / ".ast-cache").mkdir(parents=True)
+    outside.mkdir()
+    (root / ".ast-cache" / "index.db").touch()
+    original_open = capability.os.open
+    swapped = False
+
+    def swap_before_root_open(path, flags, *args, **kwargs):
+        nonlocal swapped
+        if path == str(root.resolve()) and kwargs.get("dir_fd") is None and not swapped:
+            swapped = True
+            root.rename(tmp_path / "original-root")
+            root.symlink_to(outside, target_is_directory=True)
+        return original_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(capability.os, "open", swap_before_root_open)
+    with pytest.raises(ValueError, match="INDEX_PATH_SYMLINK"):
+        capability.open_bound_database(str(root))
+    assert swapped is True
+
+
+@requires_posix_fd
+def test_canonical_root_directory_swap_fails_identity_check(tmp_path, monkeypatch):
+    # PR #1253 review 3755386843: an attacker-controlled directory is not anchored.
+    import tree_sitter_analyzer.index_snapshot_capability as capability
+
+    root = tmp_path / "root"
+    (root / ".ast-cache").mkdir(parents=True)
+    (root / ".ast-cache" / "index.db").touch()
+    original_open = capability.os.open
+    swapped = False
+
+    def swap_before_root_open(path, flags, *args, **kwargs):
+        nonlocal swapped
+        if path == str(root.resolve()) and kwargs.get("dir_fd") is None and not swapped:
+            swapped = True
+            root.rename(tmp_path / "original-root")
+            root.mkdir()
+        return original_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(capability.os, "open", swap_before_root_open)
+    with pytest.raises(ValueError, match="INDEX_PATH_UNSAFE"):
+        capability.open_bound_database(str(root))
+    assert swapped is True
 
 
 @requires_posix_fd
@@ -261,3 +315,70 @@ def test_bound_database_disappearing_is_missing(tmp_path, monkeypatch):
     )
     result = owner.read_existing_snapshot(str(tmp_path))
     assert result.reason == "MISSING_INDEX"
+
+
+@requires_posix_fd
+def test_canonical_root_disappearance_is_missing_project(tmp_path, monkeypatch):
+    # PR #1253: a root removed after admission remains a missing-root outcome.
+    import tree_sitter_analyzer.index_snapshot_capability as capability
+
+    root = tmp_path / "root"
+    root.mkdir()
+    monkeypatch.setattr(
+        capability,
+        "_open_pinned_path",
+        lambda *_a, **_k: (_ for _ in ()).throw(FileNotFoundError()),
+    )
+    with pytest.raises(FileNotFoundError, match="MISSING_PROJECT_ROOT"):
+        capability.open_bound_database(str(root))
+
+
+@requires_posix_fd
+def test_snapshot_maps_nofollow_open_error_to_symlink_reason(tmp_path, monkeypatch):
+    # PR #1253: platform ELOOP is normalized without leaking OS-specific text.
+    import errno
+
+    import tree_sitter_analyzer.index_snapshot as owner
+
+    cache = tmp_path / ".ast-cache"
+    cache.mkdir()
+    (cache / "index.db").touch()
+    monkeypatch.setattr(
+        owner,
+        "_open_bound_database",
+        lambda *_a: (_ for _ in ()).throw(OSError(errno.ELOOP, "loop")),
+    )
+    result = owner.read_existing_snapshot(str(tmp_path))
+    assert result.reason == "INDEX_PATH_SYMLINK"
+
+
+@requires_posix_fd
+def test_pinned_component_fstat_failure_closes_descriptor(tmp_path, monkeypatch):
+    # PR #1253: descriptor validation failures cannot leak capabilities.
+    import tree_sitter_analyzer.index_snapshot_capability as capability
+
+    path = tmp_path / "root"
+    path.mkdir()
+    opened: list[int] = []
+    original_open = capability.os.open
+    original_fstat = capability.os.fstat
+
+    def recording_open(*args, **kwargs):
+        fd = original_open(*args, **kwargs)
+        opened.append(fd)
+        return fd
+
+    def failing_fstat(fd):
+        if fd in opened:
+            raise OSError("fstat failed")
+        return original_fstat(fd)
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(capability.os, "open", recording_open)
+        patcher.setattr(capability.os, "fstat", failing_fstat)
+        with pytest.raises(OSError, match="fstat failed"):
+            capability._open_pinned_path(
+                str(path), os.O_RDONLY | os.O_DIRECTORY, directory=True
+            )
+    with pytest.raises(OSError):
+        os.fstat(opened[0])

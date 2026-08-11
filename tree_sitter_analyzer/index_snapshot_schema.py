@@ -98,10 +98,10 @@ def stamp_full_index_manifest(
         raise sqlite3.OperationalError("SOURCE_SCOPE_UNSUPPORTED")
     # Finish all preceding indexing work before the certification transaction.
     conn.commit()
-    prior_manifest: tuple[Any, ...] | None = None
+    transaction_started = False
     try:
         conn.execute("BEGIN IMMEDIATE")
-        prior_manifest = _manifest_row(conn)
+        transaction_started = True
         try:
             marker_rows = conn.execute(
                 "SELECT id, built FROM ast_call_graph_state "
@@ -130,33 +130,15 @@ def stamp_full_index_manifest(
         )
         conn.commit()
     except BaseException:
-        conn.rollback()
-        _delete_unchanged_prior_manifest(conn, prior_manifest)
+        if transaction_started and conn.in_transaction:
+            try:
+                conn.execute(
+                    "DELETE FROM ast_index_snapshot_manifest WHERE singleton = 1"
+                )
+                conn.commit()
+            except BaseException:
+                conn.rollback()
         raise
-
-
-def _manifest_row(conn: sqlite3.Connection) -> tuple[Any, ...] | None:
-    row = conn.execute(
-        "SELECT canonical_root, source_fingerprint, index_fingerprint, file_count, "
-        "source_scope_descriptor, manifest_version "
-        "FROM ast_index_snapshot_manifest WHERE singleton = 1"
-    ).fetchone()
-    return None if row is None else tuple(row)
-
-
-def _delete_unchanged_prior_manifest(
-    conn: sqlite3.Connection, prior_manifest: tuple[Any, ...] | None
-) -> None:
-    """Remove stale evidence without deleting a later writer's certification."""
-    if prior_manifest is None:
-        return
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        if _manifest_row(conn) == prior_manifest:
-            conn.execute("DELETE FROM ast_index_snapshot_manifest WHERE singleton = 1")
-        conn.commit()
-    except BaseException:
-        conn.rollback()
 
 
 def validate_snapshot_schema(conn: sqlite3.Connection) -> None:
