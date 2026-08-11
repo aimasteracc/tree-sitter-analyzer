@@ -21,6 +21,10 @@ if TYPE_CHECKING:
     pass
 
 from ..constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
+from ..index_candidate_walker import (
+    CandidateDiscoveryBudgetExceeded,
+    CandidateDiscoveryError,
+)
 from ..index_source_snapshot import (
     SourceScopeDescriptor,
     canonical_source_scope_descriptor,
@@ -148,27 +152,43 @@ def _bounded_selected_supported_paths(
     exclude_patterns: frozenset[str] | None,
 ) -> set[str] | None:
     """Rediscover the candidate-less run's exact bounded persisted path scope."""
+    # The legacy indexing walk may finish on every platform, but only the POSIX
+    # descriptor-relative walker can authoritatively certify its global scope.
+    if os.name != "posix":  # pragma: no cover - exercised by Windows CI
+        return None
+
     selected: set[str] = set()
     count = 0
-    for abs_path in _walk_source_files(project_root):
-        if count >= max_files:
-            return None
-        count += 1
-        rel_path = _normalize_relative_path(os.path.relpath(abs_path, project_root))
-        if exclude_patterns and any(
-            fnmatch.fnmatch(rel_path, pattern) for pattern in exclude_patterns
-        ):
-            continue
-        language = _language_from_ext(abs_path)
-        if language is None or (
-            language_filter is not None and language != language_filter
-        ):
-            continue
-        try:
-            os.stat(abs_path)
-        except OSError:
-            return None
-        selected.add(rel_path)
+    try:
+        candidates = walk_index_candidate_entries(
+            project_root, excluded_dir_names=frozenset(_EXCLUDE_DIRS)
+        )
+        for abs_path in candidates:
+            # Match the legacy walk's supported-extension window: unsupported
+            # entries are still charged by the authoritative walker, but do not
+            # consume max_files.
+            if os.path.splitext(abs_path)[1].lower() not in _EXT_TO_LANG:
+                continue
+            if count >= max_files:
+                return None
+            count += 1
+            rel_path = _normalize_relative_path(os.path.relpath(abs_path, project_root))
+            if exclude_patterns and any(
+                fnmatch.fnmatch(rel_path, pattern) for pattern in exclude_patterns
+            ):
+                continue
+            language = _language_from_ext(abs_path)
+            if language is None or (
+                language_filter is not None and language != language_filter
+            ):
+                continue
+            try:
+                os.stat(abs_path, follow_symlinks=False)
+            except OSError:
+                return None
+            selected.add(rel_path)
+    except (CandidateDiscoveryBudgetExceeded, CandidateDiscoveryError, OSError):
+        return None
     return selected
 
 

@@ -5,6 +5,7 @@ import os
 import sqlite3
 import sys
 import time
+from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
@@ -1684,6 +1685,42 @@ def test_marker_certification_failure_is_one_incomplete_backfill(tmp_path):
         result.details[-1]["reason"],
         manifest_count,
     ) == (1, 0, False, "CALL_GRAPH_MARKER_CERTIFICATION_FAILED", 0)
+
+
+@requires_posix_fd
+def test_incremental_scan_rejects_invalid_materialized_snapshot(tmp_path):
+    # PR #1253: a frozen path alone cannot authorize incremental replay.
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        release_index_candidate_snapshot,
+    )
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    tampered = replace(
+        snapshot,
+        entries=(
+            replace(
+                snapshot.selected_entries[0], frozen_path=str(tmp_path / "missing")
+            ),
+        ),
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        with pytest.raises(ValueError, match="INDEX_CANDIDATE_FROZEN_EVIDENCE_INVALID"):
+            IncrementalSync(cache)._scan_disk_files(
+                10, frozenset(), candidate_snapshot=tampered
+            )
+    finally:
+        cache.close()
+        release_index_candidate_snapshot(snapshot)
 
 
 @requires_posix_fd

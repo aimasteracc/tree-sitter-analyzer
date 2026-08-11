@@ -2830,6 +2830,62 @@ def test_frozen_candidate_reader_rejects_growth_past_limit(tmp_path, monkeypatch
         extraction._read_frozen_candidate(str(candidate))
 
 
+@pytest.mark.parametrize("missing", ["fingerprint", "identity"])
+def test_index_file_rejects_incomplete_frozen_evidence(tmp_path, missing):
+    # PR #1253: frozen source paths require both captured evidence fields.
+    logical = tmp_path / "app.py"
+    frozen = tmp_path / "frozen"
+    frozen.write_text("value = 1\n", encoding="utf-8")
+    fingerprint = IndexFileFingerprint(0, 0, 10)
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_file(
+            str(logical),
+            language="python",
+            _source_path=str(frozen),
+            _source_fingerprint=None if missing == "fingerprint" else fingerprint,
+            _frozen_identity=None if missing == "identity" else (0, 0, 0),
+        )
+    finally:
+        cache.close()
+
+    assert (result["status"], result["reason"]) == (
+        "error",
+        "INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING",
+    )
+
+
+def test_index_file_reports_unavailable_frozen_evidence(tmp_path, monkeypatch):
+    # PR #1253: a vanished frozen source must fail closed before parsing.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    logical = tmp_path / "app.py"
+    fingerprint = IndexFileFingerprint(0, 0, 10)
+    monkeypatch.setattr(
+        materialization,
+        "read_frozen_candidate",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            OSError("frozen evidence unavailable")
+        ),
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_file(
+            str(logical),
+            language="python",
+            _source_path=str(tmp_path / "missing"),
+            _source_fingerprint=fingerprint,
+            _frozen_identity=(0, 0, 0),
+        )
+    finally:
+        cache.close()
+
+    assert (result["status"], result["reason"]) == (
+        "error",
+        "frozen evidence unavailable",
+    )
+
+
 @requires_posix_fd
 def test_frozen_worker_requires_captured_fingerprint(tmp_path):
     # PR #1253 thread 3759852177: a frozen pathname alone is not evidence.

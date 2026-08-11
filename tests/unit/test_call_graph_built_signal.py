@@ -921,3 +921,76 @@ def test_deleted_stale_row_cannot_certify_candidate_less_cached_run(
         )
     finally:
         cache.close()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+@pytest.mark.parametrize("failure", ["open", "iteration"])
+def test_descendant_walk_error_cannot_certify_matching_candidate_less_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    # PR #1253 thread 3761288443: os.walk silently suppresses descendant errors.
+    source = tmp_path / "a.py"
+    descendant = tmp_path / "descendant"
+    descendant.mkdir()
+    source.write_text("def a():\n    return 1\n", encoding="utf-8")
+    (descendant / "ignored.txt").write_text("ignored\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        initial = cache.index_project(workers=0)
+        assert (initial["indexed"], cache.call_graph_built()) == (1, True)
+        callgraph_state.clear_call_graph_built(cache.get_conn())
+
+        real_scandir = os.scandir
+        fd_scans = 0
+
+        class FailingIteration:
+            def __init__(self, scanner: Any) -> None:
+                self.scanner = scanner
+
+            def __enter__(self) -> FailingIteration:
+                return self
+
+            def __exit__(self, *_args: Any) -> None:
+                self.close()
+
+            def __iter__(self) -> FailingIteration:
+                return self
+
+            def __next__(self) -> Any:
+                raise OSError("descendant iteration failed")
+
+            def close(self) -> None:
+                self.scanner.close()
+
+        def failing_scandir(path: Any) -> Any:
+            nonlocal fd_scans
+            is_descendant_path = not isinstance(path, int) and Path(path) == descendant
+            if isinstance(path, int):
+                fd_scans += 1
+            is_descendant_fd = isinstance(path, int) and fd_scans == 2
+            if not (is_descendant_path or is_descendant_fd):
+                return real_scandir(path)
+            if failure == "open":
+                raise OSError("descendant scandir failed")
+            return FailingIteration(real_scandir(path))
+
+        monkeypatch.setattr(os, "scandir", failing_scandir)
+        rerun = cache.index_project(workers=0)
+        persisted = {
+            str(row[0])
+            for row in cache.get_conn().execute("SELECT file_path FROM ast_index")
+        }
+        manifest_count = (
+            cache.get_conn()
+            .execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest")
+            .fetchone()[0]
+        )
+
+        assert (
+            rerun["cached"],
+            persisted,
+            cache.call_graph_built(),
+            manifest_count,
+        ) == (1, {"a.py"}, False, 0)
+    finally:
+        cache.close()

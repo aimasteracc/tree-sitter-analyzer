@@ -1056,3 +1056,23 @@ def test_parse_and_write_returns_exact_parser_failure():
         "status": "error",
         "reason": "invalid source",
     }
+
+
+def test_candidate_less_scope_certification_is_unsupported_on_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1253 thread 3761288443: legacy indexing is not global certification.
+    import tree_sitter_analyzer.cache.indexer as indexer
+
+    monkeypatch.setattr(indexer, "os", _OsProxy(name="nt"))
+    monkeypatch.setattr(
+        indexer,
+        "walk_index_candidate_entries",
+        lambda *_args, **_kwargs: pytest.fail("insecure candidate walk attempted"),
+    )
+
+    result = indexer._bounded_selected_supported_paths(
+        str(tmp_path), 10, None, frozenset()
+    )
+
+    assert result is None
