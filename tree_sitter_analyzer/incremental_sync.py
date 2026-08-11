@@ -13,6 +13,7 @@ from .index_source_snapshot import (
     make_source_scope_descriptor,
     validate_full_index_source_scope,
 )
+from .index_symbol_projection import delete_projection_state_if_present
 from .indexing_limits import normalize_index_max_files
 from .indexing_snapshot import (
     IndexCandidateSnapshot,
@@ -414,6 +415,7 @@ class IncrementalSync:
                     conn.execute(
                         "DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,)
                     )
+                delete_projection_state_if_present(conn, rel_path)
             except Exception:
                 logger.debug("Cleanup DELETE failed for %s — continuing", rel_path)
             # Issue #806/#805: catch all per-file errors so one pathological
@@ -463,6 +465,7 @@ class IncrementalSync:
                     conn.execute(
                         "DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,)
                     )
+                delete_projection_state_if_present(conn, rel_path)
             except Exception:
                 logger.debug("Cleanup DELETE failed for %s — continuing", rel_path)
             # Issue #806/#805: same broad guard for re-index path.

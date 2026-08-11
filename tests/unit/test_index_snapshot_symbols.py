@@ -199,14 +199,18 @@ class TestSnapshotFailureContracts:
         )
         statements = []
         conn.set_trace_callback(statements.append)
-        with pytest.raises(sqlite3.IntegrityError, match="UNIQUE constraint failed"):
-            schema.ensure_symbol_rows_backfilled(conn)
+        schema.ensure_symbol_rows_backfilled(conn)
+        marker = conn.execute(
+            "SELECT value FROM ast_cache_metadata WHERE key = ?",
+            (schema._LEGACY_SYMBOL_MIGRATION_MARKER,),
+        ).fetchone()
         conn.close()
 
+        assert marker == ("complete",)
         marker_queries = [
             statement
             for statement in statements
-            if "ast_cache_metadata WHERE" in statement
+            if statement.startswith("SELECT 1 FROM ast_cache_metadata")
         ]
         assert len(marker_queries) == 1
         assert marker_queries[0].startswith("SELECT 1 FROM ast_cache_metadata")
@@ -232,6 +236,74 @@ class TestSnapshotFailureContracts:
         conn.close()
 
         assert marker == ("complete",)
+
+
+@pytest.mark.parametrize("rows_to_keep", [0, 1])
+def test_complete_marker_repairs_incomplete_ordinary_rows(rows_to_keep):
+    # PR #1253 review thread 3756380009: the marker is not projection evidence.
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT PRIMARY KEY, content_hash TEXT, "
+        "language TEXT, symbols_json TEXT)"
+    )
+    payload = json.dumps(
+        {
+            "symbols": [
+                {"name": "first", "kind": "function"},
+                {"name": "second", "kind": "class"},
+            ]
+        }
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('a.py', 'hash-a', 'python', ?)", (payload,)
+    )
+    ensure_symbol_rows_backfilled(conn)
+    conn.execute(
+        "DELETE FROM ast_symbol_rows WHERE id NOT IN "
+        "(SELECT id FROM ast_symbol_rows ORDER BY id LIMIT ?)",
+        (rows_to_keep,),
+    )
+
+    ensure_symbol_rows_backfilled(conn)
+    rows = conn.execute("SELECT name FROM ast_symbol_rows ORDER BY name").fetchall()
+    state = conn.execute(
+        "SELECT content_hash, symbol_count FROM ast_symbol_projection_state"
+    ).fetchone()
+    conn.close()
+
+    assert rows == [("first",), ("second",)]
+    assert state == ("hash-a", 2)
+
+
+def test_complete_marker_repairs_projection_hash_mismatch():
+    # PR #1253 review thread 3756380009: state must bind the ast_index generation.
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT PRIMARY KEY, content_hash TEXT, "
+        "language TEXT, symbols_json TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES (?, ?, ?, ?)",
+        ("a.py", "hash-a", "python", json.dumps({"symbols": []})),
+    )
+    ensure_symbol_rows_backfilled(conn)
+    conn.execute("UPDATE ast_index SET content_hash = 'hash-b'")
+
+    ensure_symbol_rows_backfilled(conn)
+    state = conn.execute(
+        "SELECT content_hash, symbol_count FROM ast_symbol_projection_state"
+    ).fetchone()
+    conn.close()
+
+    assert state == ("hash-b", 0)
 
 
 def test_symbol_row_upgrade_failure_rolls_back_table_creation():
@@ -356,7 +428,10 @@ def test_symbol_upgrade_rejects_rows_appearing_after_preflight():
     )
     conn.execute("INSERT INTO ast_symbol_rows VALUES (1, '', '', 'a.py', '', 0, 0)")
     raced = _MigrationRaceConnection(
-        conn, lambda raw: raw.execute("DELETE FROM ast_symbol_rows")
+        conn,
+        lambda raw: raw.execute(
+            "INSERT INTO ast_index VALUES ('b.py', 'python', '{}')"
+        ),
     )
     with pytest.raises(
         sqlite3.OperationalError, match="LEGACY_SYMBOL_MIGRATION_BUDGET"

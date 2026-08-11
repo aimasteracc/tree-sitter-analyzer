@@ -14,6 +14,7 @@ zero hits against ``dispatch_legacy`` / ``_dispatch``. After switching
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
 import pytest
@@ -187,6 +188,19 @@ class TestV12MigrationRebuild:
                 "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
                 "VALUES (?, ?, ?, ?, 'python')",
                 (row_id, name, kind, file_path),
+            )
+        for file_path in sorted({item[2] for item in _SYMBOLS}):
+            symbols = [
+                {"name": name, "kind": kind, "line": line, "end_line": line + 5}
+                for name, kind, path, line in _SYMBOLS
+                if path == file_path
+            ]
+            conn.execute(
+                "INSERT INTO ast_index "
+                "(file_path, content_hash, language, mtime_ns, file_size, "
+                "symbols_json, imports_json, structure_json, indexed_at) "
+                "VALUES (?, ?, 'python', 0, 0, ?, '[]', '{}', 'legacy')",
+                (file_path, f"hash-{file_path}", json.dumps({"symbols": symbols})),
             )
         conn.commit()
         # Pre-migration baseline: legacy tokenizer cannot stem.

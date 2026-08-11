@@ -2514,3 +2514,53 @@ def test_cached_graph_refresh_propagates_edge_write_failure(monkeypatch):
         conn.close()
 
     assert refreshed is False
+
+
+def test_projection_state_tracks_file_update(tmp_path):
+    # PR #1253 review thread 3756380009: writers bind rows to the current hash.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "state_update.py"
+    source.write_text("def before():\n    pass\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        source.write_text("def after():\n    pass\n")
+        cache.index_file(str(source))
+        row = (
+            cache.get_conn()
+            .execute(
+                "SELECT state.content_hash, state.symbol_count, idx.content_hash "
+                "FROM ast_symbol_projection_state AS state JOIN ast_index AS idx "
+                "ON idx.file_path=state.file_path WHERE state.file_path='state_update.py'"
+            )
+            .fetchone()
+        )
+    finally:
+        cache.close()
+
+    assert tuple(row) == (row[2], 1, row[2])
+
+
+def test_projection_state_is_deleted_with_file_generation(tmp_path):
+    # PR #1253 review thread 3756380009: invalidation removes projection evidence.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "state_delete.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        invalidate_file_rows(cache.get_conn(), "state_delete.py", cache.fts5_available)
+        state = (
+            cache.get_conn()
+            .execute(
+                "SELECT file_path FROM ast_symbol_projection_state "
+                "WHERE file_path='state_delete.py'"
+            )
+            .fetchone()
+        )
+    finally:
+        cache.close()
+
+    assert state is None

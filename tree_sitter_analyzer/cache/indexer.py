@@ -448,7 +448,12 @@ def _clear_full_rebuild_rows(cache: Any, conn: sqlite3.Connection) -> None:
             "INSERT INTO ast_symbols_fts(ast_symbols_fts) VALUES('delete-all')"
         )
     _delete_all_rows_if_present(conn, "ast_symbol_rows")
-    for table in ("ast_imports", "ast_symbol_activation", "edges"):
+    for table in (
+        "ast_symbol_projection_state",
+        "ast_imports",
+        "ast_symbol_activation",
+        "edges",
+    ):
         _delete_all_rows_if_present(conn, table)
 
 

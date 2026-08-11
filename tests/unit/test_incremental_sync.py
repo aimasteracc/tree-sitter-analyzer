@@ -11,6 +11,7 @@ import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.incremental_sync import IncrementalSync
+from tree_sitter_analyzer.index_source_snapshot import make_source_scope_descriptor
 from tree_sitter_analyzer.indexing_snapshot import (
     IndexCandidateSnapshot,
     IndexSnapshotEntry,
@@ -748,6 +749,21 @@ class TestFailedFileCleanup:
         )
         conn.close()
         assert (detail["status"], counts) == ("error", expected_counts)
+
+
+def test_incremental_sync_accepts_explicit_source_scope(tmp_path):
+    first = tmp_path / "a.py"
+    first.write_text("a = 1\n")
+    scope = make_source_scope_descriptor(
+        no_default_excludes=True, certification_max_files=10
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = IncrementalSync(cache).sync(max_files=10, source_scope=scope)
+    finally:
+        cache.close()
+
+    assert result.new_files == 1
 
 
 def test_incremental_sync_preserves_snapshot_candidate_order(tmp_path):

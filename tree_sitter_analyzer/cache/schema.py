@@ -553,7 +553,7 @@ EXPECTED_SCHEMA_VERSIONS: list[Any] = [
     (
         13,
         "Authoritative index snapshot manifest",
-        {"tables": ["ast_index_snapshot_manifest"]},
+        {"tables": ["ast_index_snapshot_manifest", "ast_symbol_projection_state"]},
     ),
 ]
 

@@ -6,6 +6,16 @@ import json
 import sqlite3
 import time
 
+from .index_symbol_projection import (
+    index_content_hash_sql as _index_content_hash_sql,
+)
+from .index_symbol_projection import (
+    projection_schema_columns as _projection_schema_columns,
+)
+from .index_symbol_projection import (
+    symbol_projection_is_exact as _symbol_projection_is_exact,
+)
+
 _FALLBACK_BYTE_BUDGET = 256 * 1024 * 1024
 _FALLBACK_SYMBOL_BUDGET = 2_000_000
 _FALLBACK_INPUT_ROW_BUDGET = 250_000
@@ -282,7 +292,7 @@ _LEGACY_SYMBOL_MIGRATION_MARKER_VALUE = "complete"
 
 
 def ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
-    """Create symbol storage and migrate legacy JSON within absolute budgets."""
+    """Create and verify symbol projection storage within absolute budgets."""
     deadline = time.monotonic() + _LEGACY_SYMBOL_MIGRATION_SECONDS
     max_rows = _LEGACY_SYMBOL_MIGRATION_ROW_BUDGET
     max_input_bytes = _LEGACY_SYMBOL_MIGRATION_INPUT_BYTE_BUDGET
@@ -322,24 +332,10 @@ def ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
             or metadata_sql_length[0] > _LEGACY_SYMBOL_MIGRATION_SCHEMA_BYTE_BUDGET
         ):
             raise ValueError("invalid ast_cache_metadata schema")
-        metadata_columns = tuple(
-            row[1] for row in conn.execute("PRAGMA table_info(ast_cache_metadata)")
-        )
+        metadata_columns = _projection_schema_columns(conn, "ast_cache_metadata")
         check_budget()
         if metadata_columns != ("key", "value"):
             raise ValueError("invalid ast_cache_metadata schema")
-        marker = conn.execute(
-            "SELECT 1 FROM ast_cache_metadata WHERE key = ? AND value = ? LIMIT 1",
-            (
-                _LEGACY_SYMBOL_MIGRATION_MARKER,
-                _LEGACY_SYMBOL_MIGRATION_MARKER_VALUE,
-            ),
-        ).fetchone()
-        check_budget()
-        if marker is not None:
-            conn.execute("RELEASE ast_symbol_rows_upgrade")
-            savepoint_started = False
-            return
         conn.execute(
             "CREATE TABLE IF NOT EXISTS ast_symbol_rows ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, "
@@ -350,16 +346,40 @@ def ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
             "CREATE INDEX IF NOT EXISTS idx_sym_rows_file_path "
             "ON ast_symbol_rows(file_path)"
         )
-        missing_rows = (
-            " FROM ast_index AS source WHERE NOT EXISTS "
-            "(SELECT 1 FROM ast_symbol_rows AS symbols "
-            "WHERE symbols.file_path = source.file_path)"
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS ast_symbol_projection_state ("
+            "file_path TEXT PRIMARY KEY, content_hash TEXT NOT NULL, "
+            "symbol_count INTEGER NOT NULL CHECK(symbol_count >= 0))"
         )
+        marker = conn.execute(
+            "SELECT 1 FROM ast_cache_metadata WHERE key = ? AND value = ? LIMIT 1",
+            (_LEGACY_SYMBOL_MIGRATION_MARKER, _LEGACY_SYMBOL_MIGRATION_MARKER_VALUE),
+        ).fetchone()
+        check_budget()
+        if marker is not None and _symbol_projection_is_exact(conn, max_symbols):
+            conn.execute("RELEASE ast_symbol_rows_upgrade")
+            savepoint_started = False
+            return
+        if marker is not None:
+            # A forged/stale marker must not be restored if the bounded repair fails.
+            conn.execute(
+                "DELETE FROM ast_cache_metadata WHERE key = ?",
+                (_LEGACY_SYMBOL_MIGRATION_MARKER,),
+            )
+            conn.execute("RELEASE ast_symbol_rows_upgrade")
+            savepoint_started = False
+            conn.commit()
+            conn.execute("SAVEPOINT ast_symbol_rows_upgrade")
+            savepoint_started = True
 
+        conn.execute("DELETE FROM ast_symbol_rows")
+        conn.execute("DELETE FROM ast_symbol_projection_state")
+        hash_sql = _index_content_hash_sql(conn)
+        hash_column = "content_hash" if hash_sql != "''" else "''"
         preflight = conn.execute(
             "SELECT length(CAST(file_path AS BLOB)), "
-            "length(CAST(language AS BLOB)), "
-            "length(CAST(symbols_json AS BLOB))" + missing_rows
+            "length(CAST(language AS BLOB)), length(CAST(symbols_json AS BLOB)), "
+            f"length(CAST({hash_column} AS BLOB)) FROM ast_index"
         )
         while True:
             check_budget()
@@ -370,7 +390,10 @@ def ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
             cell_lengths = tuple(length_row)
             if cell_lengths[2] is None:
                 raise ValueError("invalid legacy symbols_json")
-            if any(value is None for value in cell_lengths[:2]):
+            if any(
+                value is None
+                for value in (cell_lengths[0], cell_lengths[1], cell_lengths[3])
+            ):
                 raise ValueError("invalid legacy symbol source row")
             if any(
                 not isinstance(value, int) or value > max_cell_bytes
@@ -380,21 +403,26 @@ def ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
             input_bytes += sum(cell_lengths)
             check_budget()
 
-        cursor = conn.execute("SELECT file_path, language, symbols_json" + missing_rows)
+        cursor = conn.execute(
+            f"SELECT file_path, language, symbols_json, {hash_column} FROM ast_index"
+        )
         materialized_rows = 0
         while True:
             check_budget()
             row = cursor.fetchone()
             if row is None:
                 break
-            file_path, language, raw_symbols = row
+            file_path, language, raw_symbols, content_hash = row
             materialized_rows += 1
             if materialized_rows > rows_seen:
                 raise sqlite3.OperationalError("LEGACY_SYMBOL_MIGRATION_BUDGET")
-            materialized = (file_path, language, raw_symbols)
+            materialized = (file_path, language, raw_symbols, content_hash)
             if not isinstance(raw_symbols, (bytes, str)):
                 raise ValueError("invalid legacy symbols_json")
-            if any(not isinstance(value, (bytes, str)) for value in materialized[:2]):
+            if any(
+                not isinstance(value, (bytes, str))
+                for value in (file_path, language, content_hash)
+            ):
                 raise ValueError("invalid legacy symbol source row")
             cell_lengths = tuple(
                 len(value)
@@ -434,12 +462,17 @@ def ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
                     params,
                 )
                 check_budget()
+            conn.execute(
+                "INSERT INTO ast_symbol_projection_state "
+                "(file_path, content_hash, symbol_count) VALUES (?, ?, ?)",
+                (file_path, content_hash, len(symbols)),
+            )
+        if not _symbol_projection_is_exact(conn, max_symbols):
+            raise sqlite3.OperationalError("LEGACY_SYMBOL_PROJECTION_INVALID")
         conn.execute(
-            "INSERT INTO ast_cache_metadata (key, value) VALUES (?, ?)",
-            (
-                _LEGACY_SYMBOL_MIGRATION_MARKER,
-                _LEGACY_SYMBOL_MIGRATION_MARKER_VALUE,
-            ),
+            "INSERT INTO ast_cache_metadata (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (_LEGACY_SYMBOL_MIGRATION_MARKER, _LEGACY_SYMBOL_MIGRATION_MARKER_VALUE),
         )
         conn.execute("RELEASE ast_symbol_rows_upgrade")
         savepoint_started = False
