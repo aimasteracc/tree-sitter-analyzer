@@ -533,3 +533,182 @@ def test_recorded_fingerprint_deadline_is_fail_closed(monkeypatch):
     )
     with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_DEADLINE"):
         schema.source_fingerprint(sqlite3.connect(":memory:"), ".")
+
+
+def test_recorded_rows_rejects_count_before_materialization(monkeypatch):
+    # PR #1253 review 3756101913: retained source inventories have a row cap.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index(file_path, content_hash, language)")
+    conn.execute("INSERT INTO ast_index VALUES ('a.py', 'hash', 'python')")
+    monkeypatch.setattr(source, "_RECORDED_SOURCE_ROW_BUDGET", 0)
+    with pytest.raises(OverflowError, match="SOURCE_INVENTORY_BUDGET"):
+        source.recorded_source_rows(conn)
+    conn.close()
+
+
+def test_recorded_rows_rejects_oversized_path_before_materialization(monkeypatch):
+    # PR #1253 review 3756101913: hostile path cells are bounded in SQLite.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index(file_path, content_hash, language)")
+    conn.execute("INSERT INTO ast_index VALUES ('ab', 'h', 'python')")
+    monkeypatch.setattr(source, "_RECORDED_SOURCE_CELL_BYTE_BUDGET", 1)
+    with pytest.raises(OverflowError, match="SOURCE_INVENTORY_BUDGET"):
+        source.recorded_source_rows(conn)
+    conn.close()
+
+
+def test_recorded_rows_recharges_materialized_rows(monkeypatch):
+    # PR #1253 review 3756101913: post-preflight values are charged per fetch.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index(file_path, content_hash, language)")
+    conn.execute("INSERT INTO ast_index VALUES ('a', 'h', 'p')")
+
+    class EnlargingConnection:
+        def set_progress_handler(self, handler, steps):
+            return conn.set_progress_handler(handler, steps)
+
+        def execute(self, query, params=()):
+            if query.startswith("SELECT file_path"):
+                conn.execute("UPDATE ast_index SET language = 'oversized'")
+            return conn.execute(query, params)
+
+    monkeypatch.setattr(source, "_RECORDED_SOURCE_TOTAL_BYTE_BUDGET", 3)
+    with pytest.raises(OverflowError, match="SOURCE_INVENTORY_BUDGET"):
+        source.recorded_source_rows(EnlargingConnection())  # type: ignore[arg-type]
+    conn.close()
+
+
+def test_recorded_rows_rejects_missing_preflight_row():
+    # PR #1253 review 3756101913: malformed preflight results fail closed.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    class EmptyPreflight:
+        def set_progress_handler(self, _handler, _steps):
+            return None
+
+        def execute(self, _query, _params=()):
+            return self
+
+        def fetchone(self):
+            return None
+
+    with pytest.raises(OverflowError, match="SOURCE_INVENTORY_BUDGET"):
+        source.recorded_source_rows(EmptyPreflight())  # type: ignore[arg-type]
+
+
+def test_recorded_rows_rejects_untyped_count():
+    # PR #1253 review 3756101913: preflight count coercions are rejected.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    class UntypedPreflight:
+        def set_progress_handler(self, _handler, _steps):
+            return None
+
+        def execute(self, _query, _params=()):
+            return self
+
+        def fetchone(self):
+            return ("1", 1, 1, 3)
+
+    with pytest.raises(OverflowError, match="SOURCE_INVENTORY_BUDGET"):
+        source.recorded_source_rows(UntypedPreflight())  # type: ignore[arg-type]
+
+
+def test_recorded_rows_rejects_rows_added_after_preflight():
+    # PR #1253 review 3756101913: fetches cannot exceed the admitted row count.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index(file_path, content_hash, language)")
+    conn.execute("INSERT INTO ast_index VALUES ('a', 'h', 'p')")
+
+    class GrowingConnection:
+        def set_progress_handler(self, handler, steps):
+            return conn.set_progress_handler(handler, steps)
+
+        def execute(self, query, params=()):
+            if query.startswith("SELECT file_path"):
+                conn.execute("INSERT INTO ast_index VALUES ('b', 'h', 'p')")
+            return conn.execute(query, params)
+
+    with pytest.raises(OverflowError, match="SOURCE_INVENTORY_BUDGET"):
+        source.recorded_source_rows(GrowingConnection())  # type: ignore[arg-type]
+    conn.close()
+
+
+def test_recorded_rows_rejects_rows_removed_after_preflight():
+    # PR #1253 review 3756101913: materialization must match the admitted count.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index(file_path, content_hash, language)")
+    conn.execute("INSERT INTO ast_index VALUES ('a', 'h', 'p')")
+
+    class ShrinkingConnection:
+        def set_progress_handler(self, handler, steps):
+            return conn.set_progress_handler(handler, steps)
+
+        def execute(self, query, params=()):
+            if query.startswith("SELECT file_path"):
+                conn.execute("DELETE FROM ast_index")
+            return conn.execute(query, params)
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        source.recorded_source_rows(ShrinkingConnection())  # type: ignore[arg-type]
+    conn.close()
+
+
+def test_recorded_rows_rejects_non_text_materialization():
+    # PR #1253 review 3756101913: hostile SQLite scalar types are not coerced.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index(file_path, content_hash, language)")
+    conn.execute("INSERT INTO ast_index VALUES ('a', X'68', 'p')")
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        source.recorded_source_rows(conn)
+    conn.close()
+
+
+def test_recorded_rows_progress_interrupt_maps_to_timeout(monkeypatch):
+    # PR #1253 review 3756101913: interrupted SQL preserves deadline semantics.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    class InterruptedConnection:
+        def __init__(self):
+            self.expired = None
+
+        def set_progress_handler(self, handler, _steps):
+            if handler is not None:
+                self.expired = handler()
+
+        def execute(self, _query, _params=()):
+            raise sqlite3.OperationalError("interrupted")
+
+    conn = InterruptedConnection()
+    monkeypatch.setattr(source.time, "monotonic", lambda: 0.0)
+    with pytest.raises(TimeoutError):
+        source.recorded_source_rows(conn)  # type: ignore[arg-type]
+    assert conn.expired == 0
+
+
+def test_recorded_rows_preserves_non_deadline_sql_errors(monkeypatch):
+    # PR #1253 review 3756101913: unrelated SQLite failures are not timeouts.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    class BrokenConnection:
+        def set_progress_handler(self, _handler, _steps):
+            return None
+
+        def execute(self, _query, _params=()):
+            raise sqlite3.OperationalError("missing table")
+
+    monkeypatch.setattr(source.time, "monotonic", lambda: 0.0)
+    with pytest.raises(sqlite3.OperationalError, match="missing table"):
+        source.recorded_source_rows(BrokenConnection())  # type: ignore[arg-type]

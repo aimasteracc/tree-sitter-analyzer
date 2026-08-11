@@ -96,6 +96,70 @@ def ordinary_symbol_counts(
         conn.set_progress_handler(None, 0)
 
 
+def ordinary_edge_counts(conn: sqlite3.Connection) -> tuple[int, dict[str, int]]:
+    """Aggregate edge kinds under the ordinary snapshot read budgets."""
+    deadline = time.monotonic() + _ORDINARY_DEADLINE_SECONDS
+    output_bytes = 0
+
+    def check_deadline() -> None:
+        if time.monotonic() > deadline:
+            raise RuntimeError("SNAPSHOT_READ_FAILED")
+
+    def expired() -> int:
+        return int(time.monotonic() > deadline)
+
+    conn.set_progress_handler(expired, 1_000)
+    try:
+        check_deadline()
+        total_row = conn.execute("SELECT COUNT(*) FROM edges").fetchone()
+        check_deadline()
+        if (
+            total_row is None
+            or not isinstance(total_row[0], int)
+            or total_row[0] < 0
+            or total_row[0] > _ORDINARY_ROW_BUDGET
+        ):
+            raise RuntimeError("SNAPSHOT_READ_FAILED")
+
+        result: dict[str, int] = {}
+        cursor = conn.execute(
+            "SELECT length(CAST(kind AS BLOB)), "
+            "CASE WHEN length(CAST(kind AS BLOB)) <= ? THEN kind END, "
+            "COUNT(*) FROM edges GROUP BY kind ORDER BY kind",
+            (_ORDINARY_CELL_BYTE_BUDGET,),
+        )
+        groups = 0
+        while True:
+            check_deadline()
+            row = cursor.fetchone()
+            check_deadline()
+            if row is None:
+                break
+            groups += 1
+            if groups > _ORDINARY_GROUP_BUDGET:
+                raise RuntimeError("SNAPSHOT_READ_FAILED")
+            cell_bytes, key, count = row
+            if (
+                not isinstance(cell_bytes, int)
+                or cell_bytes < 0
+                or cell_bytes > _ORDINARY_CELL_BYTE_BUDGET
+                or not isinstance(key, str)
+                or not isinstance(count, int)
+                or count < 0
+                or count > _ORDINARY_ROW_BUDGET
+            ):
+                raise RuntimeError("SNAPSHOT_READ_FAILED")
+            output_bytes += cell_bytes + len(str(count).encode("ascii"))
+            if output_bytes > _ORDINARY_OUTPUT_BYTE_BUDGET:
+                raise RuntimeError("SNAPSHOT_READ_FAILED")
+            result[key] = count
+        return total_row[0], result
+    except (sqlite3.DatabaseError, UnicodeError, ValueError, OverflowError) as exc:
+        raise RuntimeError("SNAPSHOT_READ_FAILED") from exc
+    finally:
+        conn.set_progress_handler(None, 0)
+
+
 def fallback_symbol_counts(
     conn: sqlite3.Connection,
 ) -> tuple[int, dict[str, int], dict[str, int]]:
@@ -106,7 +170,7 @@ def fallback_symbol_counts(
     cell_byte_budget = _FALLBACK_CELL_BYTE_BUDGET
     deadline_seconds = _FALLBACK_DEADLINE_SECONDS
     deadline = time.monotonic() + deadline_seconds
-    rows_seen = bytes_seen = total = 0
+    rows_seen = bytes_seen = total = output_bytes = 0
     by_kind: dict[str, int] = {}
     by_language: dict[str, int] = {}
 
@@ -121,6 +185,25 @@ def fallback_symbol_counts(
 
     def expired() -> int:
         return int(time.monotonic() > deadline)
+
+    def increment_group(target: dict[str, int], key: str) -> None:
+        nonlocal output_bytes
+        key_bytes = len(key.encode("utf-8", "surrogatepass"))
+        if key_bytes > _ORDINARY_CELL_BYTE_BUDGET:
+            raise RuntimeError("INDEX_SYMBOL_FALLBACK_BUDGET")
+        previous = target.get(key)
+        if previous is None:
+            if len(target) >= _ORDINARY_GROUP_BUDGET:
+                raise RuntimeError("INDEX_SYMBOL_FALLBACK_BUDGET")
+            next_count = 1
+            added_bytes = key_bytes + 1
+        else:
+            next_count = previous + 1
+            added_bytes = len(str(next_count)) - len(str(previous))
+        if output_bytes + added_bytes > _ORDINARY_OUTPUT_BYTE_BUDGET:
+            raise RuntimeError("INDEX_SYMBOL_FALLBACK_BUDGET")
+        output_bytes += added_bytes
+        target[key] = next_count
 
     conn.set_progress_handler(expired, 1_000)
     try:
@@ -177,8 +260,8 @@ def fallback_symbol_counts(
                     if isinstance(symbol, dict)
                     else "unknown"
                 )
-                by_kind[kind] = by_kind.get(kind, 0) + 1
-                by_language[language] = by_language.get(language, 0) + 1
+                increment_group(by_kind, kind)
+                increment_group(by_language, language)
         return total, dict(sorted(by_kind.items())), dict(sorted(by_language.items()))
     except sqlite3.OperationalError as exc:
         if time.monotonic() > deadline or "interrupt" in str(exc).lower():

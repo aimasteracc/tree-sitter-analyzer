@@ -815,3 +815,15 @@ def test_single_file_indeterminate_backfill_keeps_marker_incomplete(tmp_path) ->
         cache.close()
 
     assert graph_built is False
+
+
+def test_call_graph_built_rejects_untyped_marker_values() -> None:
+    # PR #1253: hostile marker scalars cannot certify a call graph.
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE ast_call_graph_state(id, built)")
+        conn.execute("INSERT INTO ast_call_graph_state VALUES (1, 'yes')")
+        _make_edges_table(conn, with_row=True)
+        assert callgraph_state.call_graph_built(conn) is False
+    finally:
+        conn.close()

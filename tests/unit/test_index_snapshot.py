@@ -565,7 +565,55 @@ def test_manifest_materialization_disappearance_fails_closed():
 
         def execute(self, _query):
             self.calls += 1
-            return iter([(1, 1, 1, 1, 2, 1)]) if self.calls == 1 else EmptyCursor()
+            if self.calls == 1:
+                return iter([(1,)])
+            if self.calls == 2:
+                return iter([(1, 1, 1, 1, 2, 1)])
+            return EmptyCursor()
 
     with pytest.raises(ValueError, match="INDEX_MANIFEST_INVALID"):
         snapshot._read_bounded_manifest(RacedConnection(), float("inf"))  # type: ignore[arg-type]
+
+
+def test_manifest_duplicate_count_rejects_before_length_preflight():
+    # PR #1253 review 3756101926: ambiguity is rejected before any cell fetch.
+    import tree_sitter_analyzer.index_snapshot as snapshot
+
+    class DuplicateCountConnection:
+        def __init__(self):
+            self.queries = []
+
+        def set_progress_handler(self, _handler, _steps):
+            return None
+
+        def execute(self, query):
+            self.queries.append(query)
+            if query.startswith("SELECT COUNT(*)"):
+                return iter([(2,)])
+            raise AssertionError("length preflight reached")
+
+    conn = DuplicateCountConnection()
+    with pytest.raises(ValueError, match="INDEX_MANIFEST_INVALID"):
+        snapshot._read_bounded_manifest(conn, float("inf"))  # type: ignore[arg-type]
+    assert len(conn.queries) == 1
+
+
+def test_manifest_missing_length_row_is_invalid():
+    # PR #1253 review 3756101926: admitted singleton loss cannot look absent.
+    import tree_sitter_analyzer.index_snapshot as snapshot
+
+    class MissingLengthConnection:
+        def __init__(self):
+            self.calls = 0
+
+        def set_progress_handler(self, _handler, _steps):
+            return None
+
+        def execute(self, _query):
+            self.calls += 1
+            return iter([(1,)]) if self.calls == 1 else iter(())
+
+    with pytest.raises(ValueError, match="INDEX_MANIFEST_INVALID"):
+        snapshot._read_bounded_manifest(  # type: ignore[arg-type]
+            MissingLengthConnection(), float("inf")
+        )

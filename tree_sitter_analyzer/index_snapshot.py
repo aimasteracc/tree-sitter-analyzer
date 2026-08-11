@@ -5,7 +5,6 @@ from __future__ import annotations
 import atexit
 import errno
 import os
-import re
 import secrets
 import sqlite3
 import threading
@@ -27,7 +26,6 @@ from .index_snapshot_capability import reject_sidecars as _reject_sidecars
 from .index_snapshot_registry import ensure_capacity as ensure_registry_capacity
 from .index_snapshot_registry import reuse_snapshot
 from .index_snapshot_schema import (
-    SNAPSHOT_SCHEMA_VERSION,
     _deadline_ordered_rows,
     index_fingerprint,
     validate_snapshot_schema,
@@ -35,13 +33,12 @@ from .index_snapshot_schema import (
 from .index_snapshot_schema import (
     stamp_full_index_manifest as stamp_full_index_manifest,
 )
-from .index_snapshot_symbols import (
-    fallback_symbol_counts as _fallback_symbol_counts,
+from .index_snapshot_schema import (
+    validate_manifest_scalars as _validate_manifest_scalars,
 )
 from .index_snapshot_symbols import (
-    has_ordinary_symbol_projection as _has_ordinary_symbol_projection,
+    fallback_symbol_counts as _fallback_symbol_counts,  # noqa: F401
 )
-from .index_snapshot_symbols import ordinary_symbol_counts as _ordinary_symbol_counts
 from .index_source_snapshot import (
     SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET,
     capture_current_source_snapshot,
@@ -173,7 +170,6 @@ _CAPTURE_LOCK = threading.Lock()
 atexit.register(REGISTRY.close_all)
 
 
-_MANIFEST_FINGERPRINT = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _MANIFEST_TEXT_BYTE_BUDGET = 1024 * 1024
 _MANIFEST_SCOPE_BYTE_BUDGET = SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET
 _MANIFEST_TOTAL_BYTE_BUDGET = 3 * 1024 * 1024
@@ -191,6 +187,24 @@ def _read_bounded_manifest(
         "source_scope_descriptor",
         "manifest_version",
     )
+    count_rows = _deadline_ordered_rows(
+        connection,
+        "SELECT COUNT(*) FROM ast_index_snapshot_manifest WHERE singleton=1",
+        deadline,
+    )
+    count_row = next(count_rows, None)
+    if (
+        count_row is None
+        or len(count_row) != 1
+        or not isinstance(count_row[0], int)
+        or next(count_rows, None) is not None
+    ):
+        raise ValueError("INDEX_MANIFEST_INVALID")
+    if count_row[0] == 0:
+        return None
+    if count_row[0] != 1:
+        raise ValueError("INDEX_MANIFEST_INVALID")
+
     length_query = (
         "SELECT "
         + ", ".join(f"length(CAST({column} AS BLOB))" for column in columns)
@@ -198,9 +212,7 @@ def _read_bounded_manifest(
     )
     length_rows = _deadline_ordered_rows(connection, length_query, deadline)
     first_lengths = next(length_rows, None)
-    if first_lengths is None:
-        return None
-    if next(length_rows, None) is not None:
+    if first_lengths is None or next(length_rows, None) is not None:
         raise ValueError("INDEX_MANIFEST_INVALID")
     lengths = tuple(0 if value is None else int(value) for value in first_lengths)
     per_cell = (
@@ -228,37 +240,6 @@ def _read_bounded_manifest(
     if manifest is None or cursor.fetchone() is not None:
         raise ValueError("INDEX_MANIFEST_INVALID")
     return cast(sqlite3.Row, manifest)
-
-
-def _validate_manifest_scalars(manifest: sqlite3.Row) -> None:
-    """Reject SQLite coercions before comparisons or descriptor parsing."""
-    root = manifest["canonical_root"]
-    source = manifest["source_fingerprint"]
-    index = manifest["index_fingerprint"]
-    count = manifest["file_count"]
-    descriptor = manifest["source_scope_descriptor"]
-    version = manifest["manifest_version"]
-    if (
-        not isinstance(root, str)
-        or not root
-        or "\0" in root
-        or len(root.encode("utf-8", "surrogatepass")) > _MANIFEST_TEXT_BYTE_BUDGET
-        or not isinstance(source, str)
-        or _MANIFEST_FINGERPRINT.fullmatch(source) is None
-        or not isinstance(index, str)
-        or _MANIFEST_FINGERPRINT.fullmatch(index) is None
-        or not isinstance(count, int)
-        or isinstance(count, bool)
-        or not 0 <= count <= 2_000_000
-        or not isinstance(descriptor, str)
-        or not descriptor
-        or len(descriptor) > _MANIFEST_SCOPE_BYTE_BUDGET
-        or not descriptor.isascii()
-        or not isinstance(version, int)
-        or isinstance(version, bool)
-        or version != 2
-    ):
-        raise ValueError("INDEX_MANIFEST_INVALID")
 
 
 def read_existing_snapshot(project_root: str) -> IndexSnapshot:
@@ -304,7 +285,7 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
             if build_in_progress(connection):
                 raise ValueError("CONCURRENT_WRITER")
             index = index_fingerprint(connection, root)
-            recorded = recorded_source_rows(connection)
+            recorded = recorded_source_rows(connection, deadline=_clock() + 5.0)
             manifest = _read_bounded_manifest(
                 connection, _clock() + _CAPTURE_DEADLINE_SECONDS
             )
@@ -466,58 +447,11 @@ def read_snapshot_stats(
     snapshot_id: str, project_root: str, source_generation: str | None
 ) -> dict[str, Any]:
     """Read status graph statistics through the production capability seam."""
+    from .index_snapshot_stats import collect_snapshot_stats
 
-    def reader(conn: sqlite3.Connection) -> dict[str, Any]:
-        tables = {
-            str(row[0])
-            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        }
-        page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
-        page_count = int(conn.execute("PRAGMA page_count").fetchone()[0])
-        free_pages = int(conn.execute("PRAGMA freelist_count").fetchone()[0])
-
-        def grouped(sql: str) -> dict[str, int]:
-            return {str(row[0]): int(row[1]) for row in conn.execute(sql)}
-
-        fts5_available = {
-            "ast_symbols_fts",
-            "ast_symbol_rows",
-        }.issubset(tables)
-        if _has_ordinary_symbol_projection(conn, tables):
-            total_symbols, symbols_by_kind, symbols_by_language = (
-                _ordinary_symbol_counts(conn)
-            )
-        else:
-            total_symbols, symbols_by_kind, symbols_by_language = (
-                _fallback_symbol_counts(conn)
-            )
-
-        return {
-            "total_files": int(
-                conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()[0]
-            ),
-            "total_symbols": total_symbols,
-            "total_edges": int(
-                conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
-            ),
-            "symbols_by_kind": symbols_by_kind,
-            "symbols_by_language": symbols_by_language,
-            "edges_by_kind": grouped(
-                "SELECT kind, COUNT(*) FROM edges GROUP BY kind ORDER BY kind"
-            ),
-            "fts5_available": fts5_available,
-            "schema_version": SNAPSHOT_SCHEMA_VERSION,
-            "db_size_bytes": page_size * page_count,
-            "db_page_size": page_size,
-            "db_page_count": page_count,
-            "db_free_pages": free_pages,
-            "db_free_bytes": free_pages * page_size,
-            "db_auto_vacuum_mode": int(
-                conn.execute("PRAGMA auto_vacuum").fetchone()[0]
-            ),
-        }
-
-    return run_graph_snapshot_read(snapshot_id, project_root, source_generation, reader)
+    return run_graph_snapshot_read(
+        snapshot_id, project_root, source_generation, collect_snapshot_stats
+    )
 
 
 def acquire_index_snapshot(

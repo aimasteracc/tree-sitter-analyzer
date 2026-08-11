@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import os
+import sqlite3
 import stat
 import time
 from collections.abc import Iterable, Iterator
@@ -42,6 +43,9 @@ _SOURCE_PATH_BUDGET = KNOWLEDGE_INDEX_MAX_FILES
 # excluded names; traversal and hashing never require a global ordering copy.
 _SOURCE_ENTRY_BUDGET = 1_000_000
 _SOURCE_ENTRY_PATH_BYTE_BUDGET = 128 * 1024 * 1024
+_RECORDED_SOURCE_ROW_BUDGET = 100_000
+_RECORDED_SOURCE_CELL_BYTE_BUDGET = 1024 * 1024
+_RECORDED_SOURCE_TOTAL_BYTE_BUDGET = 64 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,20 +91,101 @@ def recorded_source_rows(
     conn: object, *, deadline: float | None = None
 ) -> frozenset[tuple[str, str, str]]:
     """Read the cache's claimed inventory directly into one bounded set."""
-    values: set[tuple[str, str, str]] = set()
-    paths: set[str] = set()
-    for row in conn.execute(  # type: ignore[attr-defined]
-        "SELECT file_path, content_hash, language FROM ast_index"
-    ):
-        if deadline is not None and time.monotonic() > deadline:
+    connection = conn  # Keep the boundary typed for lightweight test doubles.
+    effective_deadline = (
+        deadline
+        if deadline is not None
+        else time.monotonic() + _SOURCE_DEADLINE_SECONDS
+    )
+
+    def expired() -> int:
+        return int(time.monotonic() > effective_deadline)
+
+    def check_deadline() -> None:
+        if time.monotonic() > effective_deadline:
             raise TimeoutError
-        raw_path = str(row[0])
-        path = raw_path.replace("\\", "/") if os.name == "nt" else raw_path
-        if path in paths:
-            raise ValueError("SOURCE_INVENTORY_DUPLICATE_PATH")
-        paths.add(path)
-        values.add((path, str(row[1]), str(row[2])))
-    return frozenset(values)
+
+    connection.set_progress_handler(expired, 1_000)  # type: ignore[attr-defined]
+    try:
+        check_deadline()
+        preflight = connection.execute(  # type: ignore[attr-defined]
+            "SELECT COUNT(*), "
+            "MAX(length(CAST(file_path AS BLOB))), "
+            "MAX(length(CAST(content_hash AS BLOB))), "
+            "SUM(COALESCE(length(CAST(file_path AS BLOB)), ?) + "
+            "COALESCE(length(CAST(content_hash AS BLOB)), ?) + "
+            "COALESCE(length(CAST(language AS BLOB)), ?)) FROM ast_index",
+            (_RECORDED_SOURCE_TOTAL_BYTE_BUDGET + 1,) * 3,
+        ).fetchone()
+        check_deadline()
+        if preflight is None or len(preflight) != 4:
+            raise OverflowError("SOURCE_INVENTORY_BUDGET")
+        count, max_path, max_hash, total_bytes = preflight
+        if not isinstance(count, int):
+            raise OverflowError("SOURCE_INVENTORY_BUDGET")
+        if count < 0 or count > _RECORDED_SOURCE_ROW_BUDGET:
+            raise OverflowError("SOURCE_INVENTORY_BUDGET")
+        if count == 0:
+            return frozenset()
+        if (
+            not isinstance(max_path, int)
+            or not isinstance(max_hash, int)
+            or not isinstance(total_bytes, int)
+            or max_path > _RECORDED_SOURCE_CELL_BYTE_BUDGET
+            or max_hash > _RECORDED_SOURCE_CELL_BYTE_BUDGET
+            or total_bytes > _RECORDED_SOURCE_TOTAL_BYTE_BUDGET
+        ):
+            raise OverflowError("SOURCE_INVENTORY_BUDGET")
+
+        cursor = connection.execute(  # type: ignore[attr-defined]
+            "SELECT file_path, content_hash, language FROM ast_index ORDER BY file_path"
+        )
+
+        def rows() -> Iterator[tuple[str, str, str]]:
+            previous_path: str | None = None
+            fetched = charged_bytes = 0
+            while True:
+                check_deadline()
+                row = cursor.fetchone()
+                check_deadline()
+                if row is None:
+                    break
+                fetched += 1
+                if fetched > count:
+                    raise OverflowError("SOURCE_INVENTORY_BUDGET")
+                raw_path, content_hash, language = row
+                if not all(
+                    isinstance(value, str)
+                    for value in (raw_path, content_hash, language)
+                ):
+                    raise ValueError("CORRUPT_INDEX")
+                cell_bytes = tuple(
+                    len(value.encode("utf-8", "surrogatepass"))
+                    for value in (raw_path, content_hash, language)
+                )
+                charged_bytes += sum(cell_bytes)
+                if (
+                    cell_bytes[0] > _RECORDED_SOURCE_CELL_BYTE_BUDGET
+                    or cell_bytes[1] > _RECORDED_SOURCE_CELL_BYTE_BUDGET
+                    or charged_bytes > _RECORDED_SOURCE_TOTAL_BYTE_BUDGET
+                ):
+                    raise OverflowError("SOURCE_INVENTORY_BUDGET")
+                path = raw_path.replace("\\", "/") if os.name == "nt" else raw_path
+                if path == previous_path:
+                    raise ValueError("SOURCE_INVENTORY_DUPLICATE_PATH")
+                previous_path = path
+                yield path, content_hash, language
+            if fetched != count:
+                raise ValueError("CORRUPT_INDEX")
+
+        # The generator streams directly into the sole retained inventory object.
+        return frozenset(rows())
+    except sqlite3.OperationalError as exc:
+        if time.monotonic() > effective_deadline or "interrupt" in str(exc).lower():
+            raise TimeoutError from exc
+        raise
+    finally:
+        connection.set_progress_handler(None, 0)  # type: ignore[attr-defined]
 
 
 def capture_current_source_snapshot(

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import sqlite3
 import struct
 import time
 from typing import Any
 
 from .index_source_snapshot import (
+    SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET,
     SourceScopeDescriptor,
     canonical_source_scope_descriptor,
     capture_current_source_snapshot,
@@ -74,6 +76,41 @@ _SCHEMA_TOTAL_BYTE_BUDGET = 4 * 1024 * 1024
 _SCHEMA_TABLE_BUDGET = 4096
 _SCHEMA_VALIDATION_ROW_BUDGET = 64
 _SCHEMA_VALIDATION_COLUMN_BUDGET = 4096
+
+
+_MANIFEST_FINGERPRINT = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_MANIFEST_TEXT_BYTE_BUDGET = 1024 * 1024
+
+
+def validate_manifest_scalars(manifest: sqlite3.Row) -> None:
+    """Reject SQLite coercions before comparisons or descriptor parsing."""
+    root = manifest["canonical_root"]
+    source = manifest["source_fingerprint"]
+    index = manifest["index_fingerprint"]
+    count = manifest["file_count"]
+    descriptor = manifest["source_scope_descriptor"]
+    version = manifest["manifest_version"]
+    if (
+        not isinstance(root, str)
+        or not root
+        or "\0" in root
+        or len(root.encode("utf-8", "surrogatepass")) > _MANIFEST_TEXT_BYTE_BUDGET
+        or not isinstance(source, str)
+        or _MANIFEST_FINGERPRINT.fullmatch(source) is None
+        or not isinstance(index, str)
+        or _MANIFEST_FINGERPRINT.fullmatch(index) is None
+        or not isinstance(count, int)
+        or isinstance(count, bool)
+        or not 0 <= count <= 2_000_000
+        or not isinstance(descriptor, str)
+        or not descriptor
+        or len(descriptor) > SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET
+        or not descriptor.isascii()
+        or not isinstance(version, int)
+        or isinstance(version, bool)
+        or version != 2
+    ):
+        raise ValueError("INDEX_MANIFEST_INVALID")
 
 
 def apply_snapshot_migration(conn: sqlite3.Connection, record_fn: Any) -> None:

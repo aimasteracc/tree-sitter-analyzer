@@ -466,3 +466,122 @@ def test_symbol_upgrade_savepoint_open_failure_preserves_original_error():
 
     with pytest.raises(sqlite3.OperationalError, match="savepoint denied"):
         symbols.ensure_symbol_rows_backfilled(SavepointFailure())  # type: ignore[arg-type]
+
+
+def test_ordinary_edge_counts_rejects_excess_groups(monkeypatch):
+    # PR #1253 review 3756101917: edge-kind output has an absolute group cap.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE edges(kind TEXT)")
+    conn.executemany("INSERT INTO edges VALUES (?)", (("a",), ("b",)))
+    monkeypatch.setattr(symbols, "_ORDINARY_GROUP_BUDGET", 1)
+    with pytest.raises(RuntimeError, match="^SNAPSHOT_READ_FAILED$"):
+        symbols.ordinary_edge_counts(conn)
+    conn.close()
+
+
+def test_ordinary_edge_counts_rejects_oversized_kind(monkeypatch):
+    # PR #1253 review 3756101917: oversized edge kinds never enter Python output.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE edges(kind TEXT)")
+    conn.execute("INSERT INTO edges VALUES ('ab')")
+    monkeypatch.setattr(symbols, "_ORDINARY_CELL_BYTE_BUDGET", 1)
+    with pytest.raises(RuntimeError, match="^SNAPSHOT_READ_FAILED$"):
+        symbols.ordinary_edge_counts(conn)
+    conn.close()
+
+
+def test_ordinary_edge_counts_rejects_excess_total(monkeypatch):
+    # PR #1253 review 3756101917: the edge COUNT cannot exceed its row cap.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE edges(kind TEXT)")
+    conn.execute("INSERT INTO edges VALUES ('call')")
+    monkeypatch.setattr(symbols, "_ORDINARY_ROW_BUDGET", 0)
+    with pytest.raises(RuntimeError, match="^SNAPSHOT_READ_FAILED$"):
+        symbols.ordinary_edge_counts(conn)
+    conn.close()
+
+
+def test_fallback_symbol_counts_rejects_excess_kind_groups(monkeypatch):
+    # PR #1253 review 3756101919: legacy JSON cannot retain unbounded kind keys.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols
+
+    conn = _untyped_legacy_connection(
+        symbols_json='{"symbols":[{"kind":"a"},{"kind":"b"}]}'
+    )
+    monkeypatch.setattr(symbols, "_ORDINARY_GROUP_BUDGET", 1)
+    with pytest.raises(RuntimeError, match="INDEX_SYMBOL_FALLBACK_BUDGET"):
+        symbols.fallback_symbol_counts(conn)
+    conn.close()
+
+
+def test_fallback_symbol_counts_rejects_oversized_kind_key(monkeypatch):
+    # PR #1253 review 3756101919: legacy keys are checked before dict insertion.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols
+
+    conn = _untyped_legacy_connection(symbols_json='{"symbols":[{"kind":"ab"}]}')
+    monkeypatch.setattr(symbols, "_ORDINARY_CELL_BYTE_BUDGET", 1)
+    with pytest.raises(RuntimeError, match="INDEX_SYMBOL_FALLBACK_BUDGET"):
+        symbols.fallback_symbol_counts(conn)
+    conn.close()
+
+
+def test_fallback_symbol_counts_rejects_output_budget(monkeypatch):
+    # PR #1253 review 3756101919: legacy breakdown output has a shared byte cap.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols
+
+    conn = _untyped_legacy_connection(symbols_json='{"symbols":[{"kind":"a"}]}')
+    monkeypatch.setattr(symbols, "_ORDINARY_OUTPUT_BYTE_BUDGET", 0)
+    with pytest.raises(RuntimeError, match="INDEX_SYMBOL_FALLBACK_BUDGET"):
+        symbols.fallback_symbol_counts(conn)
+    conn.close()
+
+
+def test_ordinary_edge_counts_rejects_output_budget(monkeypatch):
+    # PR #1253 review 3756101917: edge breakdown bytes are bounded.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE edges(kind TEXT)")
+    conn.execute("INSERT INTO edges VALUES ('call')")
+    monkeypatch.setattr(symbols, "_ORDINARY_OUTPUT_BYTE_BUDGET", 0)
+    with pytest.raises(RuntimeError, match="^SNAPSHOT_READ_FAILED$"):
+        symbols.ordinary_edge_counts(conn)
+    conn.close()
+
+
+def test_ordinary_edge_counts_deadline_interrupt_is_stable(monkeypatch):
+    # PR #1253 review 3756101917: progress interruption has one stable failure.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols
+
+    class InterruptedConnection:
+        def __init__(self):
+            self.expired = None
+
+        def set_progress_handler(self, handler, _steps):
+            if handler is not None:
+                self.expired = handler()
+
+        def execute(self, _query, _params=()):
+            raise sqlite3.OperationalError("interrupted")
+
+    conn = InterruptedConnection()
+    monkeypatch.setattr(symbols, "_ORDINARY_DEADLINE_SECONDS", -1.0)
+    with pytest.raises(RuntimeError, match="^SNAPSHOT_READ_FAILED$"):
+        symbols.ordinary_edge_counts(conn)  # type: ignore[arg-type]
+    assert conn.expired == 1
+
+
+def test_ordinary_edge_counts_wraps_sqlite_errors():
+    # PR #1253 review 3756101917: SQLite failures use one stable read reason.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols
+
+    conn = sqlite3.connect(":memory:")
+    with pytest.raises(RuntimeError, match="^SNAPSHOT_READ_FAILED$"):
+        symbols.ordinary_edge_counts(conn)
+    conn.close()
