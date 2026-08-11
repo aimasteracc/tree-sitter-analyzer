@@ -11,11 +11,17 @@ import stat
 import time
 from collections.abc import Iterator
 
+from .languages.lang_extension_map import supported_extensions
+
 _LAG_WALK_FILE_CAP = 5000
 _LAG_ENTRY_CAP = 100_000
 _LAG_PATH_BYTE_CAP = 16 * 1024 * 1024
 _LAG_DEADLINE_SECONDS = 0.5
-_LAG_SOURCE_EXTS = (".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".go", ".rs")
+_LAG_SOURCE_EXTS = tuple(
+    sorted(
+        {f".{extension.lstrip('.')}".lower() for extension in supported_extensions()}
+    )
+)
 _LAG_SKIP_DIRS = frozenset(
     {
         ".ast-cache",
@@ -104,7 +110,9 @@ def _newest_source_mtime(project_root: str) -> float | None:
                 child_fd, child_entries = open_entries(name, directory_fd)
                 stack.append((child_fd, relative, child_entries))
                 continue
-            if not stat.S_ISREG(info.st_mode) or not name.endswith(_LAG_SOURCE_EXTS):
+            if not stat.S_ISREG(info.st_mode) or not name.lower().endswith(
+                _LAG_SOURCE_EXTS
+            ):
                 continue
             counters["sources"] += 1
             if counters["sources"] > _LAG_WALK_FILE_CAP:

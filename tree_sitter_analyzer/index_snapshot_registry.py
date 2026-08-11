@@ -52,6 +52,7 @@ def reuse_snapshot(
             and existing.completeness == snapshot.completeness
             and existing.reason == snapshot.reason
             and existing.file_count == snapshot.file_count
+            and existing.symbol_projection_exact == snapshot.symbol_projection_exact
         )
         if not same_logical_identity:
             continue
@@ -91,6 +92,7 @@ class IndexSnapshot:
     canonical_root: str | None
     file_count: int
     physical_storage_identity: tuple[int, int, int, int, int, int] | None = None
+    symbol_projection_exact: bool | None = None
 
 
 @dataclass(slots=True)
@@ -176,6 +178,7 @@ class IndexSnapshotRegistry:
                 snapshot.canonical_root,
                 snapshot.file_count,
                 snapshot.physical_storage_identity,
+                snapshot.symbol_projection_exact,
             )
             self._entries[snapshot_id] = _Entry(
                 published,
@@ -229,6 +232,14 @@ class IndexSnapshotRegistry:
             if entry is None:
                 raise ValueError("INDEX_SNAPSHOT_UNKNOWN")
             return entry.capture_deadline
+
+    def symbol_projection_exact(self, snapshot_id: str) -> bool | None:
+        """Return the projection verdict cached during private-copy capture."""
+        with self._lock:
+            entry = self._entries.get(snapshot_id)
+            if entry is None:
+                raise ValueError("INDEX_SNAPSHOT_UNKNOWN")
+            return entry.snapshot.symbol_projection_exact
 
     def close_all(self) -> None:
         with self._lock:

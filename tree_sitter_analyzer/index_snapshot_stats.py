@@ -20,7 +20,10 @@ from .index_symbol_projection import (
 
 
 def collect_snapshot_stats(
-    conn: sqlite3.Connection, *, deadline: float | None = None
+    conn: sqlite3.Connection,
+    *,
+    deadline: float | None = None,
+    projection_exact: bool | None = None,
 ) -> dict[str, Any]:
     """Collect status fields within the owner capture's absolute deadline."""
     if deadline is None:
@@ -45,13 +48,14 @@ def collect_snapshot_stats(
             fts5_supported is True
             and {"ast_symbols_fts", "ast_symbol_rows"}.issubset(tables)
         )
-        projection_exact = bool(
-            fts5_supported is not None
-            and has_ordinary_symbol_projection(conn, tables)
-            and symbol_projection_is_exact(
-                conn, deadline=deadline, require_fts=fts5_supported
+        if projection_exact is None:
+            projection_exact = bool(
+                fts5_supported is not None
+                and has_ordinary_symbol_projection(conn, tables)
+                and symbol_projection_is_exact(
+                    conn, deadline=deadline, require_fts=fts5_supported
+                )
             )
-        )
         if projection_exact:
             total_symbols, symbols_by_kind, symbols_by_language = (
                 ordinary_symbol_counts(conn, deadline=deadline)

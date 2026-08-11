@@ -112,15 +112,16 @@ def recorded_source_rows(
             "SELECT COUNT(*), "
             "MAX(length(CAST(file_path AS BLOB))), "
             "MAX(length(CAST(content_hash AS BLOB))), "
+            "MAX(length(CAST(language AS BLOB))), "
             "SUM(COALESCE(length(CAST(file_path AS BLOB)), ?) + "
             "COALESCE(length(CAST(content_hash AS BLOB)), ?) + "
             "COALESCE(length(CAST(language AS BLOB)), ?)) FROM ast_index",
             (_RECORDED_SOURCE_TOTAL_BYTE_BUDGET + 1,) * 3,
         ).fetchone()
         check_deadline()
-        if preflight is None or len(preflight) != 4:
+        if preflight is None or len(preflight) != 5:
             raise OverflowError("SOURCE_INVENTORY_BUDGET")
-        count, max_path, max_hash, total_bytes = preflight
+        count, max_path, max_hash, max_language, total_bytes = preflight
         if not isinstance(count, int):
             raise OverflowError("SOURCE_INVENTORY_BUDGET")
         if count < 0 or count > _RECORDED_SOURCE_ROW_BUDGET:
@@ -130,15 +131,26 @@ def recorded_source_rows(
         if (
             not isinstance(max_path, int)
             or not isinstance(max_hash, int)
+            or not isinstance(max_language, int)
             or not isinstance(total_bytes, int)
             or max_path > _RECORDED_SOURCE_CELL_BYTE_BUDGET
             or max_hash > _RECORDED_SOURCE_CELL_BYTE_BUDGET
+            or max_language > _RECORDED_SOURCE_CELL_BYTE_BUDGET
             or total_bytes > _RECORDED_SOURCE_TOTAL_BYTE_BUDGET
         ):
             raise OverflowError("SOURCE_INVENTORY_BUDGET")
 
+        # Repeat the cell guards in the payload query so a value enlarged after
+        # preflight is replaced with NULL inside SQLite instead of crossing the
+        # SQLite/Python boundary. The Python loop still recharges every cell and
+        # the total from the values it actually receives.
         cursor = connection.execute(  # type: ignore[attr-defined]
-            "SELECT file_path, content_hash, language FROM ast_index ORDER BY file_path"
+            "SELECT "
+            "CASE WHEN typeof(file_path)='text' AND length(CAST(file_path AS BLOB)) <= ? THEN file_path END, "
+            "CASE WHEN typeof(content_hash)='text' AND length(CAST(content_hash AS BLOB)) <= ? THEN content_hash END, "
+            "CASE WHEN typeof(language)='text' AND length(CAST(language AS BLOB)) <= ? THEN language END "
+            "FROM ast_index ORDER BY file_path",
+            (_RECORDED_SOURCE_CELL_BYTE_BUDGET,) * 3,
         )
 
         def rows() -> Iterator[tuple[str, str, str]]:
@@ -165,8 +177,7 @@ def recorded_source_rows(
                 )
                 charged_bytes += sum(cell_bytes)
                 if (
-                    cell_bytes[0] > _RECORDED_SOURCE_CELL_BYTE_BUDGET
-                    or cell_bytes[1] > _RECORDED_SOURCE_CELL_BYTE_BUDGET
+                    any(size > _RECORDED_SOURCE_CELL_BYTE_BUDGET for size in cell_bytes)
                     or charged_bytes > _RECORDED_SOURCE_TOTAL_BYTE_BUDGET
                 ):
                     raise OverflowError("SOURCE_INVENTORY_BUDGET")

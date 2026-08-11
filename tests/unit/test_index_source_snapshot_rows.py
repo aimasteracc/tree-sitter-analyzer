@@ -163,6 +163,42 @@ def test_recorded_rows_rejects_oversized_path_before_materialization(monkeypatch
     conn.close()
 
 
+def test_recorded_rows_rejects_oversized_language_before_materialization(monkeypatch):
+    # PR #1253 thread 3760724577: language shares the per-cell SQLite preflight.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index(file_path, content_hash, language)")
+    conn.execute("INSERT INTO ast_index VALUES ('a', 'h', 'python')")
+    monkeypatch.setattr(source, "_RECORDED_SOURCE_CELL_BYTE_BUDGET", 5)
+    with pytest.raises(OverflowError, match="SOURCE_INVENTORY_BUDGET"):
+        source.recorded_source_rows(conn)
+    conn.close()
+
+
+def test_recorded_rows_guards_language_again_during_materialization(monkeypatch):
+    # PR #1253 thread 3760724577: a post-preflight growth is nulled inside SQLite.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index(file_path, content_hash, language)")
+    conn.execute("INSERT INTO ast_index VALUES ('a', 'h', 'py')")
+
+    class EnlargingLanguageConnection:
+        def __getattr__(self, name):
+            return getattr(conn, name)
+
+        def execute(self, query, params=()):
+            if query.startswith("SELECT CASE"):
+                conn.execute("UPDATE ast_index SET language = 'oversized'")
+            return conn.execute(query, params)
+
+    monkeypatch.setattr(source, "_RECORDED_SOURCE_CELL_BYTE_BUDGET", 2)
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        source.recorded_source_rows(EnlargingLanguageConnection())  # type: ignore[arg-type]
+    conn.close()
+
+
 def test_recorded_rows_recharges_materialized_rows(monkeypatch):
     # PR #1253 review 3756101913: post-preflight values are charged per fetch.
     import tree_sitter_analyzer.index_source_snapshot as source
@@ -176,8 +212,8 @@ def test_recorded_rows_recharges_materialized_rows(monkeypatch):
             return conn.set_progress_handler(handler, steps)
 
         def execute(self, query, params=()):
-            if query.startswith("SELECT file_path"):
-                conn.execute("UPDATE ast_index SET language = 'oversized'")
+            if query.startswith("SELECT CASE"):
+                conn.execute("UPDATE ast_index SET language = 'xx'")
             return conn.execute(query, params)
 
     monkeypatch.setattr(source, "_RECORDED_SOURCE_TOTAL_BYTE_BUDGET", 3)
@@ -235,7 +271,7 @@ def test_recorded_rows_rejects_rows_added_after_preflight():
             return conn.set_progress_handler(handler, steps)
 
         def execute(self, query, params=()):
-            if query.startswith("SELECT file_path"):
+            if query.startswith("SELECT CASE"):
                 conn.execute("INSERT INTO ast_index VALUES ('b', 'h', 'p')")
             return conn.execute(query, params)
 
@@ -257,7 +293,7 @@ def test_recorded_rows_rejects_rows_removed_after_preflight():
             return conn.set_progress_handler(handler, steps)
 
         def execute(self, query, params=()):
-            if query.startswith("SELECT file_path"):
+            if query.startswith("SELECT CASE"):
                 conn.execute("DELETE FROM ast_index")
             return conn.execute(query, params)
 

@@ -35,6 +35,20 @@ def test_lag_uses_newest_supported_source_and_clamps_at_zero(tmp_path):
 
 
 @requires_posix_fd
+@pytest.mark.parametrize("extension", (".c", ".swift"))
+def test_lag_uses_indexer_extension_registry(tmp_path, extension):
+    # PR #1253 thread 3760724586: lag and indexing share one extension surface.
+    cache = tmp_path / "index.db"
+    source = tmp_path / f"app{extension.upper()}"
+    cache.write_bytes(b"db")
+    source.write_text("source\n")
+    os.utime(cache, (10, 10))
+    os.utime(source, (25, 25))
+
+    assert compute_qualitative_lag(str(tmp_path), str(cache)) == 15.0
+
+
+@requires_posix_fd
 def test_source_scan_stops_at_cap(tmp_path, monkeypatch):
     import tree_sitter_analyzer.index_lag as lag
 

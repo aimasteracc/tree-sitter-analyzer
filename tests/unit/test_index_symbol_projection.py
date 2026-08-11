@@ -446,6 +446,107 @@ class _ProjectionConnection:
         return _ProjectionCursor([])
 
 
+class _ProjectionMaterializationOverride(_ProjectionConnection):
+    def __init__(self, *, prefix: str, rows, **kwargs):
+        super().__init__(**kwargs)
+        self.prefix = prefix
+        self.rows = rows
+
+    def execute(self, query, params=()):
+        if query.startswith(self.prefix):
+            return _ProjectionCursor(self.rows)
+        return super().execute(query, params)
+
+
+def _valid_projection_values():
+    from tree_sitter_analyzer.index_symbol_projection import symbol_rows_digest
+
+    row = (1, "name", "kind", "a.py", "python", 1, 1, 4, 4, 4, 6)
+    digest = symbol_rows_digest((row[:7],))
+    return row, ("a.py", 1, digest)
+
+
+def test_projection_rejects_noninteger_materialized_state_id() -> None:
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    _row, state = _valid_projection_values()
+    conn = _ProjectionMaterializationOverride(
+        prefix="SELECT rowid FROM", rows=(("bad",),), states=(state,)
+    )
+
+    assert symbol_projection_is_exact(conn) is False
+
+
+def test_projection_rejects_state_removed_after_preflight() -> None:
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    _row, state = _valid_projection_values()
+    conn = _ProjectionMaterializationOverride(
+        prefix="SELECT file_path, symbol_count", rows=(), states=(state,)
+    )
+
+    assert symbol_projection_is_exact(conn) is False
+
+
+def test_projection_rejects_state_type_changed_after_preflight() -> None:
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    _row, state = _valid_projection_values()
+    conn = _ProjectionMaterializationOverride(
+        prefix="SELECT file_path, symbol_count",
+        rows=(("a.py", "1", state[2]),),
+        states=(state,),
+    )
+
+    assert symbol_projection_is_exact(conn) is False
+
+
+def test_projection_rejects_noninteger_materialized_symbol_id() -> None:
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    row, state = _valid_projection_values()
+    conn = _ProjectionMaterializationOverride(
+        prefix="SELECT id FROM ast_symbol_rows",
+        rows=(("bad",),),
+        states=(state,),
+        symbol_rows=(row,),
+    )
+
+    assert symbol_projection_is_exact(conn) is False
+
+
+def test_projection_rejects_symbol_removed_after_preflight() -> None:
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    row, state = _valid_projection_values()
+    conn = _ProjectionMaterializationOverride(
+        prefix="SELECT id, name, kind", rows=(), states=(state,), symbol_rows=(row,)
+    )
+
+    assert symbol_projection_is_exact(conn) is False
+
+
+def test_projection_rejects_materialized_digest_mismatch() -> None:
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    row, state = _valid_projection_values()
+    wrong_state = (state[0], state[1], "sha256:" + "0" * 64)
+    conn = _ProjectionConnection(states=(wrong_state,), symbol_rows=(row,))
+
+    assert symbol_projection_is_exact(conn) is False
+
+
+def test_projection_rejects_state_added_after_preflight() -> None:
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    row, state = _valid_projection_values()
+    conn = _ProjectionMaterializationOverride(
+        prefix="SELECT rowid, ", rows=(), states=(state,), symbol_rows=(row,)
+    )
+
+    assert symbol_projection_is_exact(conn) is False
+
+
 def test_symbol_projection_rejects_wrong_state_schema() -> None:
     from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
 

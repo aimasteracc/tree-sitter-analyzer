@@ -145,6 +145,50 @@ class TestAuthoritativeSnapshotOracle:
         assert "Use nav/search normally" in result["hint"]
 
     @pytest.mark.asyncio
+    async def test_fts_projection_is_verified_on_private_copy_before_query_only(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 thread 3760724568: rank=1 integrity runs once on writable evidence.
+        import tree_sitter_analyzer.index_snapshot as owner
+        import tree_sitter_analyzer.index_snapshot_stats as stats_owner
+
+        self._certified_cache(tmp_path)
+        real_validator = owner.symbol_projection_is_exact
+        observed: list[tuple[int, str]] = []
+
+        def recording_validator(conn, *args, **kwargs):
+            observed.append(
+                (
+                    int(conn.execute("PRAGMA query_only").fetchone()[0]),
+                    str(conn.execute("PRAGMA database_list").fetchone()[2]),
+                )
+            )
+            return real_validator(conn, *args, **kwargs)
+
+        monkeypatch.setattr(owner, "symbol_projection_is_exact", recording_validator)
+        monkeypatch.setattr(
+            stats_owner,
+            "symbol_projection_is_exact",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("cached projection verdict was not used")
+            ),
+        )
+        monkeypatch.setattr(
+            stats_owner,
+            "fallback_symbol_counts",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("healthy FTS projection used JSON fallback")
+            ),
+        )
+
+        result = await CodeGraphStatusTool(str(tmp_path)).execute(
+            {"access_mode": "read_existing", "output_format": "json"}
+        )
+
+        assert observed == [(0, "")]
+        assert (result["fts5_available"], result["total_symbols"]) == (True, 1)
+
+    @pytest.mark.asyncio
     async def test_successful_full_index_writes_exact_authoritative_manifest(
         self, tmp_path
     ):

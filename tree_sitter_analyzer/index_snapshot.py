@@ -49,11 +49,16 @@ from .index_snapshot_schema import (
 from .index_snapshot_symbols import (
     fallback_symbol_counts as _fallback_symbol_counts,  # noqa: F401
 )
+from .index_snapshot_symbols import has_ordinary_symbol_projection
 from .index_source_snapshot import (
     SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET,
     capture_current_source_snapshot,
     parse_source_scope_descriptor,
     recorded_source_rows,
+)
+from .index_symbol_projection import (
+    sqlite_compile_supports_fts5,
+    symbol_projection_is_exact,
 )
 
 ACTION_VERSION = "index.status/v1"
@@ -344,6 +349,24 @@ def _capture_existing_snapshot(
                     )
 
             connection.backup(evidence, pages=64, progress=progress, sleep=0)
+            # FTS5's rank=1 integrity control command is a transactional write.
+            # Run it exactly once on the private in-memory evidence copy while it
+            # is still writable, then cache the result on the capability before
+            # query_only is enabled. The immutable workspace source is never used.
+            evidence_tables = {
+                str(row[0])
+                for row in evidence.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            evidence_fts5 = sqlite_compile_supports_fts5(evidence)
+            projection_exact = bool(
+                evidence_fts5 is not None
+                and has_ordinary_symbol_projection(evidence, evidence_tables)
+                and symbol_projection_is_exact(
+                    evidence, deadline=deadline, require_fts=evidence_fts5
+                )
+            )
             if source_scope is not None and current is not None:
                 _require_capture_budget(deadline)
                 final_current = _capture_sources_with_deadline(
@@ -393,6 +416,7 @@ def _capture_existing_snapshot(
                 snapshot.canonical_root,
                 snapshot.file_count,
                 _physical_storage_identity(evidence),
+                projection_exact,
             )
             _require_capture_budget(deadline)
             if not _hierarchy_matches_pinned_database(root, root_fd, cache_fd, db_fd):
@@ -482,16 +506,20 @@ def read_snapshot_stats(
 
     try:
         deadline = REGISTRY.capture_deadline(snapshot_id)
+        projection_exact = REGISTRY.symbol_projection_exact(snapshot_id)
     except ValueError:
         # Lightweight reader seams can supply their own connection without the
         # production registry; production-issued IDs always take the first path.
         deadline = _clock() + _CAPTURE_DEADLINE_SECONDS
+        projection_exact = None
     _require_capture_budget(deadline)
     return run_graph_snapshot_read(
         snapshot_id,
         project_root,
         source_generation,
-        lambda conn: collect_snapshot_stats(conn, deadline=deadline),
+        lambda conn: collect_snapshot_stats(
+            conn, deadline=deadline, projection_exact=projection_exact
+        ),
     )
 
 
