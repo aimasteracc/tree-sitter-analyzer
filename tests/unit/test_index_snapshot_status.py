@@ -363,6 +363,62 @@ class TestAuthoritativeSnapshotOracle:
             "CALL_GRAPH_INCOMPLETE",
         )
 
+    def test_exact_paths_without_strict_marker_clear_manifest(
+        self, tmp_path, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        import tree_sitter_analyzer.cache.indexer as indexer
+        import tree_sitter_analyzer.index_snapshot_schema as schema
+        from tree_sitter_analyzer.ast_cache import ASTCache
+        from tree_sitter_analyzer.index_source_snapshot import (
+            make_source_scope_descriptor,
+        )
+
+        source = tmp_path / "sample.py"
+        source.write_text("value = 1\n")
+        cache = ASTCache(str(tmp_path))
+        cache.index_file(str(source))
+        conn = cache.get_conn()
+        conn.execute("DELETE FROM ast_call_graph_state")
+        conn.execute(
+            "INSERT INTO ast_index_snapshot_manifest VALUES "
+            "(1, 'root', 'source', 'index', 1, '{}', 2)"
+        )
+        conn.commit()
+        candidate = SimpleNamespace(
+            selected_entries=(SimpleNamespace(rel_path="sample.py"),),
+            limited=0,
+            errors=0,
+        )
+        stats = {"errors": 0, "changed_during_run": 0, "backfill_errors": 0}
+        monkeypatch.setattr(
+            schema,
+            "stamp_full_index_manifest",
+            lambda *_args: pytest.fail("strict-marker stamp was called"),
+        )
+
+        indexer._update_authoritative_manifest(
+            cache, candidate, stats, make_source_scope_descriptor()
+        )
+        count = conn.execute(
+            "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
+        ).fetchone()[0]
+        cache.close()
+
+        assert (stats["manifest_warning"], count) == ("CALL_GRAPH_INCOMPLETE", 0)
+
+    def test_exact_call_graph_marker_missing_table_is_false(self):
+        from tree_sitter_analyzer.index_snapshot_capability import (
+            exact_call_graph_marker,
+        )
+
+        conn = sqlite3.connect(":memory:")
+        result = exact_call_graph_marker(conn)
+        conn.close()
+
+        assert result is False
+
     def test_portable_full_index_succeeds_without_manifest(self, tmp_path, monkeypatch):
         import tree_sitter_analyzer.cache.indexer as indexer
         from tree_sitter_analyzer.ast_cache import ASTCache

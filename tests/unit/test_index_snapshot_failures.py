@@ -53,7 +53,9 @@ class TestSnapshotFailureContracts:
     ):
         import tree_sitter_analyzer.index_snapshot as owner
 
-        self._certified_cache(tmp_path)
+        cache_dir = tmp_path / ".ast-cache"
+        cache_dir.mkdir()
+        (cache_dir / "index.db").write_bytes(b"")
         monkeypatch.setattr(owner.os, "name", "nt")
         result = owner.read_existing_snapshot(str(tmp_path))
         assert result.completeness == "unknown"

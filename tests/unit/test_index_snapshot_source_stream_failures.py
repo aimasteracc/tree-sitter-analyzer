@@ -8,6 +8,7 @@ import os
 import pytest
 
 requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+pytestmark = requires_posix_fd
 
 
 def _fd_is_closed(fd: int) -> bool:

@@ -183,6 +183,7 @@ async def test_bounded_stats_runtime_failure_returns_stable_envelope(
     )
 
 
+@requires_posix_snapshot
 def test_source_inventory_charges_actual_growth_chunks(tmp_path, monkeypatch):
     # PR #1253: a post-stat growth race cannot allocate beyond the source budget.
     import tree_sitter_analyzer.index_source_snapshot as source_owner
