@@ -3,14 +3,24 @@
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import os
 import stat
+import time
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
 from .indexing_limits import normalize_index_max_files
+from .source_oracle import (
+    SourceOracleError,
+    safe_workspace_path,
+    stable_descriptor_chain,
+)
+
+_INDEX_SOURCE_BYTE_LIMIT = 64 * 1024 * 1024
+_INDEX_SOURCE_READ_SECONDS = 5.0
 
 SnapshotDecision = Literal["selected", "excluded", "skipped", "error"]
 
@@ -22,14 +32,72 @@ class IndexFileFingerprint:
     mtime_ns: int
     ctime_ns: int
     file_size: int
+    device: int = 0
+    inode: int = 0
+    mode: int = 0
+    content_hash: str = field(default="", compare=False)
+    descriptor_chain: tuple[bytes, ...] = field(default=(), compare=False)
 
     @classmethod
-    def from_stat(cls, stat: os.stat_result) -> IndexFileFingerprint:
+    def from_stat(
+        cls,
+        stat_result: os.stat_result,
+        *,
+        content_hash: str = "",
+        descriptor_chain: tuple[bytes, ...] = (),
+    ) -> IndexFileFingerprint:
         return cls(
-            mtime_ns=int(stat.st_mtime_ns),
-            ctime_ns=int(stat.st_ctime_ns),
-            file_size=int(stat.st_size),
+            mtime_ns=int(stat_result.st_mtime_ns),
+            ctime_ns=int(stat_result.st_ctime_ns),
+            file_size=int(stat_result.st_size),
+            device=int(stat_result.st_dev),
+            inode=int(stat_result.st_ino),
+            mode=int(stat_result.st_mode),
+            content_hash=content_hash,
+            descriptor_chain=descriptor_chain,
         )
+
+
+def decode_index_source(data: bytes) -> str:
+    """Match text-mode UTF-8 replacement and universal-newline semantics."""
+    return (
+        data.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+    )
+
+
+def index_source_content_hash(source: str) -> str:
+    return hashlib.sha256(source.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _capture_candidate_fingerprint(
+    root: str, rel_path: str, admitted: os.stat_result
+) -> IndexFileFingerprint:
+    captured = safe_workspace_path(
+        root,
+        rel_path,
+        deadline=time.monotonic() + _INDEX_SOURCE_READ_SECONDS,
+        limit=_INDEX_SOURCE_BYTE_LIMIT,
+    )
+    if captured.kind != "file" or captured.data is None:
+        raise SourceOracleError("DIFF_SNAPSHOT_SPECIAL_FILE")
+    fingerprint = IndexFileFingerprint.from_stat(
+        admitted,
+        content_hash=index_source_content_hash(decode_index_source(captured.data)),
+        descriptor_chain=stable_descriptor_chain(captured.metadata),
+    )
+    leaf = captured.metadata[-1].split(b",")
+    captured_identity = tuple(int(value) for value in leaf)
+    expected_identity = (
+        fingerprint.device,
+        fingerprint.inode,
+        fingerprint.mode,
+        fingerprint.file_size,
+        fingerprint.mtime_ns,
+        fingerprint.ctime_ns,
+    )
+    if captured_identity != expected_identity:
+        raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
+    return fingerprint
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,6 +310,24 @@ def build_index_candidate_snapshot(
 
         # Supported candidates were lstat-validated before realpath de-duplication.
         assert source_info is not None
+        try:
+            fingerprint = (
+                _capture_candidate_fingerprint(resolved_root, rel_path, source_info)
+                if os.name == "posix"
+                else IndexFileFingerprint.from_stat(source_info)
+            )
+        except (OSError, SourceOracleError) as exc:
+            errors += 1
+            entries.append(
+                IndexSnapshotEntry(
+                    abs_path=abs_path,
+                    rel_path=rel_path,
+                    language=language,
+                    decision="error",
+                    reason=str(exc),
+                )
+            )
+            continue
         selected += 1
         entries.append(
             IndexSnapshotEntry(
@@ -249,7 +335,7 @@ def build_index_candidate_snapshot(
                 rel_path=rel_path,
                 language=language,
                 decision="selected",
-                fingerprint=IndexFileFingerprint.from_stat(source_info),
+                fingerprint=fingerprint,
             )
         )
 
@@ -273,9 +359,25 @@ def changed_since_snapshot(entry: IndexSnapshotEntry) -> str | None:
     if entry.decision != "selected" or fingerprint is None:
         return None
     try:
-        current = IndexFileFingerprint.from_stat(os.stat(entry.abs_path))
+        current = IndexFileFingerprint.from_stat(
+            os.stat(entry.abs_path, follow_symlinks=False)
+        )
     except OSError:
         return "file disappeared after candidate snapshot"
-    if current != fingerprint:
+    if (
+        current.mtime_ns,
+        current.ctime_ns,
+        current.file_size,
+        current.device,
+        current.inode,
+        current.mode,
+    ) != (
+        fingerprint.mtime_ns,
+        fingerprint.ctime_ns,
+        fingerprint.file_size,
+        fingerprint.device,
+        fingerprint.inode,
+        fingerprint.mode,
+    ):
         return "file changed after candidate snapshot"
     return None

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import time
 
 import pytest
 
@@ -377,3 +378,28 @@ class TestSnapshotFailureContracts:
             "SOURCE_SCOPE_UNSUPPORTED",
             frozenset(),
         )
+
+
+def test_regular_source_replaced_by_fifo_is_unsafe_without_blocking(tmp_path):
+    # PR #1253 review 3755216355: replay must reach its type check immediately.
+    from tree_sitter_analyzer.index_source_stream import hash_source_at
+
+    source = tmp_path / "sample.py"
+    source.write_text("value = 1")
+    admitted = source.stat()
+    source.unlink()
+    os.mkfifo(source)
+    started = time.monotonic()
+    marker, digest, clean = hash_source_at(
+        None,
+        str(source),
+        admitted,
+        float("inf"),
+        {"input": 0, "output": 0},
+        100,
+        lambda info: str(info.st_mode),
+        lambda *_args: True,
+    )
+    assert (digest, clean) == ("<unsafe>", False)
+    assert marker == str(source.stat().st_mode)
+    assert time.monotonic() - started < 0.2

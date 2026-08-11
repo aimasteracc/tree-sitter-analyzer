@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import time
 
 import pytest
 
@@ -447,3 +448,16 @@ class TestSnapshotFailureContracts:
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
 
         assert ({row[0] for row in rows}, unsafe) == ({"pkg\\sample.py"}, True)
+
+
+def test_fifo_index_database_is_rejected_without_blocking(tmp_path):
+    # PR #1253 review 3755216346: untrusted FIFO opens must be nonblocking.
+    from tree_sitter_analyzer.index_snapshot_capability import open_bound_database
+
+    cache = tmp_path / ".ast-cache"
+    cache.mkdir()
+    os.mkfifo(cache / "index.db")
+    started = time.monotonic()
+    with pytest.raises(ValueError, match="INDEX_PATH_UNSAFE"):
+        open_bound_database(str(tmp_path))
+    assert time.monotonic() - started < 0.2

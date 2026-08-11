@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
 
 import pytest
 
@@ -354,3 +355,111 @@ def test_schema_inventory_table_count_is_bounded(monkeypatch):
     with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_SCHEMA_BUDGET"):
         schema.index_fingerprint(conn, ".")
     conn.close()
+
+
+def test_manifest_stamp_blocks_concurrent_sqlite_epoch_mutation(tmp_path, monkeypatch):
+    # PR #1253 review 3755216340: fingerprints and manifest share one writer lock.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "sample.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    schema.stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
+    db_path = cache.db_path
+    cache.close()
+    entered = threading.Event()
+    release = threading.Event()
+    original_capture = schema.capture_current_source_snapshot
+
+    def blocked_capture(*args, **kwargs):
+        entered.set()
+        assert release.wait(2.0) is True
+        return original_capture(*args, **kwargs)
+
+    monkeypatch.setattr(schema, "capture_current_source_snapshot", blocked_capture)
+    errors: list[BaseException] = []
+
+    def certify() -> None:
+        conn = sqlite3.connect(db_path, timeout=2.0)
+        try:
+            schema.stamp_full_index_manifest(conn, str(tmp_path))
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            conn.close()
+
+    thread = threading.Thread(target=certify)
+    thread.start()
+    assert entered.wait(2.0) is True
+    writer = sqlite3.connect(db_path, timeout=0.05)
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="locked"):
+            writer.execute("UPDATE ast_index SET language = 'mutated'")
+            writer.commit()
+    finally:
+        writer.close()
+        release.set()
+        thread.join(2.0)
+    assert (thread.is_alive(), errors) == (False, [])
+    conn = sqlite3.connect(db_path)
+    manifest = conn.execute(
+        "SELECT index_fingerprint FROM ast_index_snapshot_manifest"
+    ).fetchone()[0]
+    assert manifest == schema.index_fingerprint(conn, os.path.realpath(str(tmp_path)))
+    conn.close()
+
+
+def test_stale_cleanup_preserves_a_later_manifest_epoch():
+    # PR #1253 review 3755216340: follow-up cleanup cannot delete a new stamp.
+    from tree_sitter_analyzer.index_snapshot_schema import (
+        _delete_unchanged_prior_manifest,
+        _manifest_row,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_index_snapshot_manifest ("
+        "singleton INTEGER PRIMARY KEY, canonical_root TEXT, "
+        "source_fingerprint TEXT, index_fingerprint TEXT, file_count INTEGER, "
+        "source_scope_descriptor TEXT, manifest_version INTEGER)"
+    )
+    conn.execute(
+        "INSERT INTO ast_index_snapshot_manifest VALUES (1, 'root', 's1', "
+        "'i1', 1, '{}', 2)"
+    )
+    prior = _manifest_row(conn)
+    conn.commit()
+    conn.execute("UPDATE ast_index_snapshot_manifest SET index_fingerprint = 'i2'")
+    conn.commit()
+
+    _delete_unchanged_prior_manifest(conn, prior)
+
+    assert (
+        conn.execute(
+            "SELECT index_fingerprint FROM ast_index_snapshot_manifest"
+        ).fetchone()[0]
+        == "i2"
+    )
+    conn.close()
+
+
+def test_stale_cleanup_rolls_back_followup_database_failure():
+    # PR #1253 review 3755216340: cleanup failures leave no open transaction.
+    from tree_sitter_analyzer.index_snapshot_schema import (
+        _delete_unchanged_prior_manifest,
+    )
+
+    class FailingConnection:
+        rolled_back = False
+
+        def execute(self, _query):
+            raise sqlite3.OperationalError("busy")
+
+        def rollback(self):
+            self.rolled_back = True
+
+    conn = FailingConnection()
+    _delete_unchanged_prior_manifest(conn, ("prior",))  # type: ignore[arg-type]
+    assert conn.rolled_back is True

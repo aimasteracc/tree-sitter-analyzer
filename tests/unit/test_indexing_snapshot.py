@@ -756,3 +756,39 @@ def test_regular_candidate_then_symlink_alias_still_records_error(tmp_path):
         snapshot.errors,
         tuple(entry.decision for entry in snapshot.entries),
     ) == (2, 1, 1, ("selected", "error"))
+
+
+def test_posix_worker_never_parses_symlink_swap_target(tmp_path, monkeypatch):
+    # PR #1253 review 3755216342: parsing consumes only the pinned oracle bytes.
+    if os.name != "posix":
+        pytest.skip("GH-1253: descriptor-backed worker is POSIX-only")
+    from tree_sitter_analyzer.cache import extraction
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n")
+    outside = tmp_path.parent / "outside.py"
+    outside.write_text("outside_secret = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=1,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: [str(source)],
+        language_fn=_python_language,
+    )
+    expected = snapshot.selected_entries[0].fingerprint
+    source.unlink()
+    source.symlink_to(outside)
+    monkeypatch.setattr(
+        extraction.Parser,
+        "parse_code",
+        lambda *_args, **_kwargs: pytest.fail("parser reached swapped target"),
+    )
+
+    result = extraction._worker_index_file(
+        (str(source), str(tmp_path), "python", expected)
+    )
+
+    assert (result["status"], result["reason"]) == (
+        "source_changed",
+        "file changed after candidate snapshot",
+    )

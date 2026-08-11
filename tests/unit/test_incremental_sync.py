@@ -1531,3 +1531,42 @@ def test_windows_change_scan_normalizes_only_platform_separators(
     monkeypatch.setattr(sync_module, "_walk_source_files", lambda _root: (str(source),))
 
     assert sync.get_changes()["new"] == ["src/main.py"]
+
+
+def test_get_changes_normalizes_windows_relative_paths(monkeypatch, tmp_path):
+    # PR #1253: platform spelling is normalized before set classification.
+    import tree_sitter_analyzer.incremental_sync_support as support
+
+    source = tmp_path / "sample.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        monkeypatch.setattr(support.os, "name", "nt")
+        changes = support.get_changes(
+            cache,
+            lambda *_args: False,
+            lambda _root: [str(source)],
+        )
+    finally:
+        cache.close()
+    assert changes == {
+        "new": ["sample.py"],
+        "modified": [],
+        "deleted": [],
+    }
+
+
+def test_get_changes_ignores_disappeared_walk_entry(tmp_path):
+    # PR #1253: a scan race is omitted rather than aborting reconciliation.
+    import tree_sitter_analyzer.incremental_sync_support as support
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        changes = support.get_changes(
+            cache,
+            lambda *_args: False,
+            lambda _root: [str(tmp_path / "disappeared.py")],
+        )
+    finally:
+        cache.close()
+    assert changes == {"new": [], "modified": [], "deleted": []}

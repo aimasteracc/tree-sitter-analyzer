@@ -501,7 +501,10 @@ def insert_index_row(
 
 
 def index_parallel(
-    cache: Any, candidates: list[tuple[str, str]], workers: int
+    cache: Any,
+    candidates: list[tuple[str, str]],
+    workers: int,
+    fingerprints: Mapping[str, IndexFileFingerprint] | None = None,
 ) -> list[dict[str, Any]]:
     """Dispatch parse+extract to a spawn process pool (safe on macOS/Linux)."""
     from multiprocessing import get_context
@@ -509,7 +512,15 @@ def index_parallel(
     from .extraction import _init_worker_parser, _worker_index_file
 
     ctx = get_context("spawn")
-    args_iter = [(p, cache.project_root, lang) for p, lang in candidates]
+    args_iter = [
+        (
+            path,
+            cache.project_root,
+            language,
+            fingerprints.get(path) if fingerprints is not None else None,
+        )
+        for path, language in candidates
+    ]
     with ctx.Pool(processes=workers, initializer=_init_worker_parser) as pool:
         return list(pool.imap_unordered(_worker_index_file, args_iter, chunksize=8))
 
@@ -520,6 +531,8 @@ def _snapshot_result_change_reason(
 ) -> tuple[str, str | None]:
     rel_path = _normalize_relative_path(str(result["rel_path"]))
     entry = entries[rel_path]
+    if result.get("status") == "source_changed":
+        return rel_path, "file changed after candidate snapshot"
     fingerprint = cast(IndexFileFingerprint, entry.fingerprint)
     worker_fingerprint = (
         int(result.get("mtime_ns", fingerprint.mtime_ns)),
@@ -732,15 +745,30 @@ def run_index_project(
             effective_exclude,
             candidate_snapshot,
         )
+        candidate_fingerprints = (
+            {
+                entry.abs_path: cast(IndexFileFingerprint, entry.fingerprint)
+                for entry in candidate_snapshot.selected_entries
+            }
+            if candidate_snapshot is not None
+            else {}
+        )
         workers = cache._resolve_worker_count(workers, candidates)
         if workers and workers >= 2 and len(candidates) >= 2:
-            results = index_parallel(cache, candidates, workers)
+            results = index_parallel(cache, candidates, workers, candidate_fingerprints)
         else:
             from .extraction import _worker_index_file
 
             results = [
-                _worker_index_file((p, cache.project_root, lang))
-                for p, lang in candidates
+                _worker_index_file(
+                    (
+                        path,
+                        cache.project_root,
+                        language,
+                        candidate_fingerprints.get(path),
+                    )
+                )
+                for path, language in candidates
             ]
         indexed_at = datetime.now(timezone.utc).isoformat()
         from .. import ast_cache as _ast_cache_mod
@@ -936,13 +964,14 @@ def _update_authoritative_manifest(
             stamp_full_index_manifest(conn, cache.project_root, source_scope)
             return
         except Exception:
-            # Certification is optional evidence, not indexing work.  Never
-            # leave a stale manifest behind when its bounded stamp fails.
+            # The stamper rolls back its epoch and conditionally removes only
+            # the stale manifest it observed.  Do not race a later certifier
+            # with an unconditional delete here.
             logger.warning(
                 "index snapshot manifest certification failed", exc_info=True
             )
             stats["manifest_warning"] = "INDEX_MANIFEST_CERTIFICATION_FAILED"
-            conn.rollback()
+            return
     if not source_certification_supported:
         stats["manifest_warning"] = "SOURCE_SCOPE_UNSUPPORTED"
     elif exact_paths and not _call_graph_marker_is_built(conn):

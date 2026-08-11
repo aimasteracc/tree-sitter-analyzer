@@ -34,7 +34,11 @@ def open_bound_database(project_root: str) -> tuple[str, int, int, int]:
         os.close(root_fd)
         raise
     try:
-        db_fd = os.open("index.db", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=cache_fd)
+        db_fd = os.open(
+            "index.db",
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=cache_fd,
+        )
         if not stat.S_ISREG(os.fstat(db_fd).st_mode):
             os.close(db_fd)
             raise ValueError("INDEX_PATH_UNSAFE")

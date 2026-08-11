@@ -91,39 +91,70 @@ def stamp_full_index_manifest(
     project_root: str,
     source_scope: SourceScopeDescriptor | None = None,
 ) -> None:
-    """Atomically certify canonical graph rows and the recorded source inventory."""
+    """Certify one source/index epoch while excluding every SQLite writer."""
     if os.name != "posix" or not os.path.exists("/dev/fd"):
         raise sqlite3.OperationalError("SOURCE_SCOPE_UNSUPPORTED")
-    try:
-        marker_rows = conn.execute(
-            "SELECT id, built FROM ast_call_graph_state WHERE id IN (1, 2) ORDER BY id"
-        ).fetchall()
-    except sqlite3.OperationalError as exc:
-        raise sqlite3.OperationalError("CALL_GRAPH_INCOMPLETE") from exc
-    if [(int(row[0]), int(row[1])) for row in marker_rows] != [(1, 1)]:
-        raise sqlite3.OperationalError("CALL_GRAPH_INCOMPLETE")
-    root = os.path.realpath(os.path.abspath(project_root))
-    scope = source_scope or make_source_scope_descriptor()
-    scope_json = canonical_source_scope_descriptor(scope)
-    source = source_fingerprint(conn, root)
-    index = index_fingerprint(conn, root)
-    recorded = recorded_source_rows(conn)
-    current = capture_current_source_snapshot(root, scope)
-    if current.state != "exact" or current.rows != recorded:
-        conn.rollback()
-        conn.execute("DELETE FROM ast_index_snapshot_manifest")
-        conn.commit()
-        raise sqlite3.OperationalError("SOURCE_CHANGED")
-    count = len(recorded)
-    conn.execute("DELETE FROM ast_index_snapshot_manifest")
-    conn.execute(
-        "INSERT INTO ast_index_snapshot_manifest "
-        "(singleton, canonical_root, source_fingerprint, index_fingerprint, "
-        "file_count, source_scope_descriptor, manifest_version) "
-        "VALUES (1, ?, ?, ?, ?, ?, 2)",
-        (root, source, index, count, scope_json),
-    )
+    # Finish all preceding indexing work before the certification transaction.
     conn.commit()
+    prior_manifest: tuple[Any, ...] | None = None
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        prior_manifest = _manifest_row(conn)
+        try:
+            marker_rows = conn.execute(
+                "SELECT id, built FROM ast_call_graph_state "
+                "WHERE id IN (1, 2) ORDER BY id"
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            raise sqlite3.OperationalError("CALL_GRAPH_INCOMPLETE") from exc
+        if [(int(row[0]), int(row[1])) for row in marker_rows] != [(1, 1)]:
+            raise sqlite3.OperationalError("CALL_GRAPH_INCOMPLETE")
+        root = os.path.realpath(os.path.abspath(project_root))
+        scope = source_scope or make_source_scope_descriptor()
+        scope_json = canonical_source_scope_descriptor(scope)
+        source = source_fingerprint(conn, root)
+        index = index_fingerprint(conn, root)
+        recorded = recorded_source_rows(conn)
+        current = capture_current_source_snapshot(root, scope)
+        if current.state != "exact" or current.rows != recorded:
+            raise sqlite3.OperationalError("SOURCE_CHANGED")
+        conn.execute("DELETE FROM ast_index_snapshot_manifest")
+        conn.execute(
+            "INSERT INTO ast_index_snapshot_manifest "
+            "(singleton, canonical_root, source_fingerprint, index_fingerprint, "
+            "file_count, source_scope_descriptor, manifest_version) "
+            "VALUES (1, ?, ?, ?, ?, ?, 2)",
+            (root, source, index, len(recorded), scope_json),
+        )
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        _delete_unchanged_prior_manifest(conn, prior_manifest)
+        raise
+
+
+def _manifest_row(conn: sqlite3.Connection) -> tuple[Any, ...] | None:
+    row = conn.execute(
+        "SELECT canonical_root, source_fingerprint, index_fingerprint, file_count, "
+        "source_scope_descriptor, manifest_version "
+        "FROM ast_index_snapshot_manifest WHERE singleton = 1"
+    ).fetchone()
+    return None if row is None else tuple(row)
+
+
+def _delete_unchanged_prior_manifest(
+    conn: sqlite3.Connection, prior_manifest: tuple[Any, ...] | None
+) -> None:
+    """Remove stale evidence without deleting a later writer's certification."""
+    if prior_manifest is None:
+        return
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        if _manifest_row(conn) == prior_manifest:
+            conn.execute("DELETE FROM ast_index_snapshot_manifest WHERE singleton = 1")
+        conn.commit()
+    except BaseException:
+        conn.rollback()
 
 
 def validate_snapshot_schema(conn: sqlite3.Connection) -> None:

@@ -21,7 +21,7 @@ def hash_source_at(
     same_file_metadata: Any,
 ) -> tuple[str, str, bool]:
     """Hash the writer's replacement-decoded, newline-normalized source stream."""
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
         fd = (
             os.open(name, flags)
