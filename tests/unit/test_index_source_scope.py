@@ -73,8 +73,8 @@ async def test_new_file_inside_certified_scope_is_detected(tmp_path):
 
 @pytest.mark.asyncio
 @requires_posix_snapshot
-async def test_excluded_supported_file_beyond_certified_max_is_bounded(tmp_path):
-    # PR #1253: max_files is charged before persisted exclusions during replay.
+async def test_excluded_supported_file_does_not_consume_replay_max_files(tmp_path):
+    # PR #1253 thread 3756001882: replay must match candidate selection.
     from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
 
     (tmp_path / "a.py").write_text("value = 1\n")
@@ -90,10 +90,7 @@ async def test_excluded_supported_file_beyond_certified_max_is_bounded(tmp_path)
 
     result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
 
-    assert (result["completeness"], result["oracle_reason"]) == (
-        "unknown",
-        "SOURCE_SCOPE_UNBOUNDED",
-    )
+    assert (result["completeness"], result["oracle_reason"]) == ("complete", None)
 
 
 @requires_posix_snapshot

@@ -314,8 +314,8 @@ def test_manifest_stamp_blocks_concurrent_sqlite_epoch_mutation(tmp_path, monkey
     conn.close()
 
 
-def test_failed_stamp_invalidates_manifest_before_releasing_writer_lock():
-    # PR #1253 review 3755386842: cleanup stays in the failed writer transaction.
+def test_failed_stamp_rolls_back_without_deleting_an_unowned_manifest_epoch():
+    # PR #1253 thread 3756001890: failed stamps never own cleanup rights.
     from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
 
     class FailingStampConnection:
@@ -349,8 +349,7 @@ def test_failed_stamp_invalidates_manifest_before_releasing_writer_lock():
         "COMMIT",
         "BEGIN IMMEDIATE",
         "SELECT id, built FROM ast_call_graph_state WHERE id IN (1, 2) ORDER BY id",
-        "DELETE FROM ast_index_snapshot_manifest WHERE singleton = 1",
-        "COMMIT",
+        "ROLLBACK",
     ]
 
 
@@ -433,7 +432,7 @@ def test_schema_column_cap_is_checked_per_required_table(monkeypatch):
     conn.close()
 
 
-def test_stamp_rejects_new_source_and_deletes_old_manifest(tmp_path):
+def test_stamp_rejects_new_source_and_preserves_old_manifest(tmp_path):
     # PR #1253 review thread 2083: post-build additions prevent certification.
     from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
@@ -453,7 +452,7 @@ def test_stamp_rejects_new_source_and_deletes_old_manifest(tmp_path):
         .fetchone()[0]
     )
     cache.close()
-    assert count == 0
+    assert count == 1
 
 
 def test_fingerprint_ordering_interrupts_expired_sqlite_sort(monkeypatch):

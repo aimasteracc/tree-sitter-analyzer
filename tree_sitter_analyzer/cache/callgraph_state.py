@@ -47,12 +47,17 @@ def mark_call_graph_built_strict(conn: sqlite3.Connection) -> None:
     ).fetchall()
     exact = [
         (
-            int(row["id"] if isinstance(row, sqlite3.Row) else row[0]),
-            int(row["built"] if isinstance(row, sqlite3.Row) else row[1]),
+            row["id"] if isinstance(row, sqlite3.Row) else row[0],
+            row["built"] if isinstance(row, sqlite3.Row) else row[1],
         )
         for row in rows
     ]
-    if exact != [(_BUILT_MARKER_ID, 1)]:
+    if not (
+        len(exact) == 1
+        and type(exact[0][0]) is int
+        and type(exact[0][1]) is int
+        and exact[0] == (_BUILT_MARKER_ID, 1)
+    ):
         raise sqlite3.OperationalError("CALL_GRAPH_MARKER_VERIFY_FAILED")
     conn.commit()
 
@@ -105,21 +110,22 @@ def call_graph_built(conn: sqlite3.Connection) -> bool:
         ).fetchall()
     except sqlite3.OperationalError:
         rows = []  # marker table missing — fall through to the edges probe
-    marker_values = {
-        int(row["id"] if isinstance(row, sqlite3.Row) else row[0]): int(
-            row["built"] if isinstance(row, sqlite3.Row) else row[1]
-        )
-        for row in rows
-    }
-    if _EXPLICITLY_INCOMPLETE_ID in marker_values:
+    marker_values: dict[int, int] = {}
+    marker_invalid = False
+    for row in rows:
+        marker_id = row["id"] if isinstance(row, sqlite3.Row) else row[0]
+        built = row["built"] if isinstance(row, sqlite3.Row) else row[1]
+        if type(marker_id) is not int or type(built) is not int:
+            marker_invalid = True
+            break
+        marker_values[marker_id] = built
+    if marker_invalid or _EXPLICITLY_INCOMPLETE_ID in marker_values:
         return False
-    if _BUILT_MARKER_ID in marker_values:
-        built = marker_values[_BUILT_MARKER_ID]
-        if bool(built):
-            return True
+    if marker_values.get(_BUILT_MARKER_ID) == 1:
+        return True
     # Safety net: a populated edges table means the graph exists.
     try:
         edge_count = conn.execute("SELECT COUNT(*) FROM edges").fetchone()
     except sqlite3.OperationalError:
         return False
-    return bool(edge_count and edge_count[0] > 0)
+    return bool(edge_count and type(edge_count[0]) is int and edge_count[0] > 0)

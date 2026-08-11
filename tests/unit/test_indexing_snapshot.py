@@ -144,8 +144,12 @@ def test_candidate_discovery_closes_generator_after_first_overflow(tmp_path):
     assert snapshot.present_paths == frozenset(path.name for path in paths)
 
 
-def test_candidate_discovery_bounds_million_unsupported_entries(tmp_path):
+def test_candidate_discovery_bounds_million_unsupported_entries(tmp_path, monkeypatch):
     # PR #1253 review thread 3755842989: every yielded path consumes discovery budget.
+    import tree_sitter_analyzer.indexing_snapshot as snapshot_module
+
+    monkeypatch.setattr(snapshot_module.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(snapshot_module, "_CANDIDATE_PATH_BYTE_BUDGET", 1_000_000_000)
     consumed = 0
     closed = False
 
@@ -980,4 +984,49 @@ def test_candidate_capture_failure_becomes_snapshot_error(tmp_path, monkeypatch)
         0,
         1,
         "changed",
+    )
+
+
+def test_empty_candidate_hash_uses_windows_metadata_cache_semantics(tmp_path):
+    # PR #1253 thread 3756001907: Windows fingerprints carry no captured hash.
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=1,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: [str(source)],
+        language_fn=_python_language,
+    )
+    entry = snapshot.selected_entries[0]
+    empty = replace(entry.fingerprint, content_hash="")
+    snapshot = replace(snapshot, entries=(replace(entry, fingerprint=empty),))
+    conn = _index_conn()
+    conn.execute(
+        "INSERT INTO ast_index VALUES (?, ?, ?, ?, ?)",
+        ("app.py", "writer-hash", empty.mtime_ns, empty.file_size, 1),
+    )
+
+    stats, candidates, count = _partition(snapshot, conn)
+
+    assert (stats["cached"], candidates, count) == (1, [], 1)
+
+
+def test_candidate_discovery_rejects_unstringifiable_path_without_close(tmp_path):
+    # PR #1253: malformed walker entries consume the bounded error path.
+    class BadPath:
+        def __str__(self):
+            raise UnicodeError("bad path")
+
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=1,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: iter((BadPath(),)),
+        language_fn=_python_language,
+    )
+
+    assert (snapshot.errors, snapshot.discovery_error) == (
+        1,
+        "INDEX_CANDIDATE_DISCOVERY_BUDGET",
     )

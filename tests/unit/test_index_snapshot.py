@@ -483,3 +483,89 @@ class TestAuthoritativeSnapshotOracle:
                 snapshot.source_generation,
                 lambda _conn: [],
             )
+
+
+def test_manifest_preflight_rejects_huge_control_cell_before_fetch():
+    # PR #1253 thread 3756001898: control rows are size-checked inside SQLite.
+    from tree_sitter_analyzer.index_snapshot import _read_bounded_manifest
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index_snapshot_manifest("
+        "singleton, canonical_root, source_fingerprint, index_fingerprint, "
+        "file_count, source_scope_descriptor, manifest_version)"
+    )
+    conn.execute(
+        "INSERT INTO ast_index_snapshot_manifest VALUES "
+        "(1, zeroblob(2097152), 'source', 'index', 0, '{}', 2)"
+    )
+
+    with pytest.raises(ValueError, match="INDEX_MANIFEST_INVALID"):
+        _read_bounded_manifest(conn, float("inf"))
+
+    conn.close()
+
+
+def test_manifest_preflight_rejects_duplicate_singleton_rows():
+    # PR #1253 thread 3756001898: malformed control tables remain bounded.
+    from tree_sitter_analyzer.index_snapshot import _read_bounded_manifest
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index_snapshot_manifest("
+        "singleton, canonical_root, source_fingerprint, index_fingerprint, "
+        "file_count, source_scope_descriptor, manifest_version)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index_snapshot_manifest VALUES (1, ?, 's', 'i', 0, '{}', 2)",
+        [("first",), ("second",)],
+    )
+    with pytest.raises(ValueError, match="INDEX_MANIFEST_INVALID"):
+        _read_bounded_manifest(conn, float("inf"))
+    conn.close()
+
+
+def test_manifest_preflight_enforces_total_budget(monkeypatch):
+    # PR #1253 thread 3756001898: aggregate scalar bytes are bounded before fetch.
+    import tree_sitter_analyzer.index_snapshot as snapshot
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index_snapshot_manifest("
+        "singleton, canonical_root, source_fingerprint, index_fingerprint, "
+        "file_count, source_scope_descriptor, manifest_version)"
+    )
+    conn.execute(
+        "INSERT INTO ast_index_snapshot_manifest VALUES "
+        "(1, zeroblob(10), zeroblob(10), zeroblob(10), 0, '{}', 2)"
+    )
+    monkeypatch.setattr(snapshot, "_MANIFEST_TOTAL_BYTE_BUDGET", 20)
+    with pytest.raises(ValueError, match="INDEX_MANIFEST_INVALID"):
+        snapshot._read_bounded_manifest(conn, float("inf"))
+    conn.close()
+
+
+def test_manifest_materialization_disappearance_fails_closed():
+    # PR #1253 thread 3756001898: a preflight/fetch race cannot look absent.
+    import tree_sitter_analyzer.index_snapshot as snapshot
+
+    class EmptyCursor:
+        def fetchone(self):
+            return None
+
+    class RacedConnection:
+        def __init__(self):
+            self.calls = 0
+
+        def set_progress_handler(self, _handler, _steps):
+            return None
+
+        def execute(self, _query):
+            self.calls += 1
+            return iter([(1, 1, 1, 1, 2, 1)]) if self.calls == 1 else EmptyCursor()
+
+    with pytest.raises(ValueError, match="INDEX_MANIFEST_INVALID"):
+        snapshot._read_bounded_manifest(RacedConnection(), float("inf"))  # type: ignore[arg-type]

@@ -109,7 +109,13 @@ def stamp_full_index_manifest(
             ).fetchall()
         except sqlite3.OperationalError as exc:
             raise sqlite3.OperationalError("CALL_GRAPH_INCOMPLETE") from exc
-        if [(int(row[0]), int(row[1])) for row in marker_rows] != [(1, 1)]:
+        if not (
+            len(marker_rows) == 1
+            and type(marker_rows[0][0]) is int
+            and type(marker_rows[0][1]) is int
+            and marker_rows[0][0] == 1
+            and marker_rows[0][1] == 1
+        ):
             raise sqlite3.OperationalError("CALL_GRAPH_INCOMPLETE")
         root = os.path.realpath(os.path.abspath(project_root))
         scope = source_scope or make_source_scope_descriptor()
@@ -130,14 +136,11 @@ def stamp_full_index_manifest(
         )
         conn.commit()
     except BaseException:
+        # A failed certifier does not own any published manifest epoch. Roll the
+        # transaction back so a prior valid (or observably stale) epoch remains;
+        # status fingerprints determine staleness without destructive cleanup.
         if transaction_started and conn.in_transaction:
-            try:
-                conn.execute(
-                    "DELETE FROM ast_index_snapshot_manifest WHERE singleton = 1"
-                )
-                conn.commit()
-            except BaseException:
-                conn.rollback()
+            conn.rollback()
         raise
 
 

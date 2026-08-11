@@ -28,6 +28,7 @@ from .index_snapshot_registry import ensure_capacity as ensure_registry_capacity
 from .index_snapshot_registry import reuse_snapshot
 from .index_snapshot_schema import (
     SNAPSHOT_SCHEMA_VERSION,
+    _deadline_ordered_rows,
     index_fingerprint,
     validate_snapshot_schema,
 )
@@ -175,6 +176,58 @@ atexit.register(REGISTRY.close_all)
 _MANIFEST_FINGERPRINT = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _MANIFEST_TEXT_BYTE_BUDGET = 1024 * 1024
 _MANIFEST_SCOPE_BYTE_BUDGET = SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET
+_MANIFEST_TOTAL_BYTE_BUDGET = 3 * 1024 * 1024
+
+
+def _read_bounded_manifest(
+    connection: sqlite3.Connection, deadline: float
+) -> sqlite3.Row | None:
+    """Preflight manifest cell sizes inside SQLite before decoding values."""
+    columns = (
+        "canonical_root",
+        "source_fingerprint",
+        "index_fingerprint",
+        "file_count",
+        "source_scope_descriptor",
+        "manifest_version",
+    )
+    length_query = (
+        "SELECT "
+        + ", ".join(f"length(CAST({column} AS BLOB))" for column in columns)
+        + " FROM ast_index_snapshot_manifest WHERE singleton=1"
+    )
+    length_rows = _deadline_ordered_rows(connection, length_query, deadline)
+    first_lengths = next(length_rows, None)
+    if first_lengths is None:
+        return None
+    if next(length_rows, None) is not None:
+        raise ValueError("INDEX_MANIFEST_INVALID")
+    lengths = tuple(0 if value is None else int(value) for value in first_lengths)
+    per_cell = (
+        _MANIFEST_TEXT_BYTE_BUDGET,
+        _MANIFEST_TEXT_BYTE_BUDGET,
+        _MANIFEST_TEXT_BYTE_BUDGET,
+        _MANIFEST_TEXT_BYTE_BUDGET,
+        _MANIFEST_SCOPE_BYTE_BUDGET,
+        _MANIFEST_TEXT_BYTE_BUDGET,
+    )
+    if any(
+        length < 0 or length > budget
+        for length, budget in zip(lengths, per_cell, strict=True)
+    ):
+        raise ValueError("INDEX_MANIFEST_INVALID")
+    if sum(lengths) > _MANIFEST_TOTAL_BYTE_BUDGET:
+        raise ValueError("INDEX_MANIFEST_INVALID")
+    query = (
+        "SELECT "
+        + ", ".join(columns)
+        + (" FROM ast_index_snapshot_manifest WHERE singleton=1")
+    )
+    cursor = connection.execute(query)
+    manifest = cursor.fetchone()
+    if manifest is None or cursor.fetchone() is not None:
+        raise ValueError("INDEX_MANIFEST_INVALID")
+    return cast(sqlite3.Row, manifest)
 
 
 def _validate_manifest_scalars(manifest: sqlite3.Row) -> None:
@@ -252,11 +305,9 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                 raise ValueError("CONCURRENT_WRITER")
             index = index_fingerprint(connection, root)
             recorded = recorded_source_rows(connection)
-            manifest = connection.execute(
-                "SELECT canonical_root, source_fingerprint, index_fingerprint, "
-                "file_count, source_scope_descriptor, manifest_version "
-                "FROM ast_index_snapshot_manifest WHERE singleton=1"
-            ).fetchone()
+            manifest = _read_bounded_manifest(
+                connection, _clock() + _CAPTURE_DEADLINE_SECONDS
+            )
             if manifest is not None:
                 _validate_manifest_scalars(manifest)
             current = None

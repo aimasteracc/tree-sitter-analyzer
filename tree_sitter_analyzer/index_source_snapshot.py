@@ -260,9 +260,6 @@ def _inventory(
                             continue
                         if os.name == "posix" and "\\" in rel:
                             unsafe = True
-                        supported_count += 1
-                        if supported_count > replay_limit:
-                            raise OverflowError
                         if any(
                             fnmatch.fnmatch(rel, pattern)
                             for pattern in scope.effective_excludes
@@ -274,6 +271,12 @@ def _inventory(
                                 (rel, _metadata_marker(info) + "|<unsafe>", language)
                             )
                             continue
+                        # Match candidate discovery: max_files is consumed only by
+                        # selected, supported regular files. Persisted exclusions
+                        # and unsafe special files never consume that budget.
+                        supported_count += 1
+                        if supported_count > replay_limit:
+                            raise OverflowError
                         if not with_content:
                             rows.add((rel, _metadata_marker(info), language))
                             continue

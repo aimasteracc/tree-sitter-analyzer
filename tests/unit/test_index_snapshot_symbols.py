@@ -413,3 +413,56 @@ def test_symbol_upgrade_progress_handler_interrupt_is_bounded(monkeypatch):
         schema.ensure_symbol_rows_backfilled(raced)  # type: ignore[arg-type]
     assert state["expired"] == 1
     conn.close()
+
+
+def test_ordinary_symbol_counts_enforces_output_budget(monkeypatch):
+    # PR #1253: grouped output bytes are independently bounded.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_symbol_rows(kind TEXT, language TEXT)")
+    conn.execute("INSERT INTO ast_symbol_rows VALUES ('function', 'python')")
+    monkeypatch.setattr(symbols, "_ORDINARY_OUTPUT_BYTE_BUDGET", 0)
+    with pytest.raises(RuntimeError, match="SNAPSHOT_READ_FAILED"):
+        symbols.ordinary_symbol_counts(conn)
+    conn.close()
+
+
+def test_ordinary_symbol_counts_rejects_excessive_total(monkeypatch):
+    # PR #1253: total symbol count obeys the row budget.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_symbol_rows(kind TEXT, language TEXT)")
+    conn.execute("INSERT INTO ast_symbol_rows VALUES ('function', 'python')")
+    monkeypatch.setattr(symbols, "_ORDINARY_ROW_BUDGET", 0)
+    with pytest.raises(RuntimeError, match="SNAPSHOT_READ_FAILED"):
+        symbols.ordinary_symbol_counts(conn)
+    conn.close()
+
+
+def test_ordinary_symbol_counts_wraps_sqlite_errors():
+    # PR #1253: missing projections expose one stable read failure.
+    from tree_sitter_analyzer.index_snapshot_symbols import ordinary_symbol_counts
+
+    conn = sqlite3.connect(":memory:")
+    with pytest.raises(RuntimeError, match="SNAPSHOT_READ_FAILED"):
+        ordinary_symbol_counts(conn)
+    conn.close()
+
+
+def test_symbol_upgrade_savepoint_open_failure_preserves_original_error():
+    # PR #1253: rollback is attempted only after savepoint ownership.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols
+
+    class SavepointFailure:
+        def set_progress_handler(self, _handler, _steps):
+            return None
+
+        def execute(self, query, _params=()):
+            if query.startswith("SAVEPOINT"):
+                raise sqlite3.OperationalError("savepoint denied")
+            raise AssertionError(query)
+
+    with pytest.raises(sqlite3.OperationalError, match="savepoint denied"):
+        symbols.ensure_symbol_rows_backfilled(SavepointFailure())  # type: ignore[arg-type]

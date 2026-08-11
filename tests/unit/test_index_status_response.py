@@ -276,7 +276,7 @@ class TestAuthoritativeSnapshotOracle:
             "CALL_GRAPH_INCOMPLETE",
         )
 
-    def test_exact_paths_without_strict_marker_clear_manifest(
+    def test_exact_paths_without_strict_marker_preserve_stale_manifest(
         self, tmp_path, monkeypatch
     ):
         from types import SimpleNamespace
@@ -319,7 +319,7 @@ class TestAuthoritativeSnapshotOracle:
         ).fetchone()[0]
         cache.close()
 
-        assert (stats["manifest_warning"], count) == ("CALL_GRAPH_INCOMPLETE", 0)
+        assert (stats["manifest_warning"], count) == ("CALL_GRAPH_INCOMPLETE", 1)
 
     def test_indexer_stamp_failure_only_records_warning(self, tmp_path, monkeypatch):
         # PR #1253 review 3755736546: failed certifiers retain later manifests.
@@ -545,3 +545,61 @@ async def test_malformed_stats_schema_returns_stable_envelope(tmp_path, monkeypa
         "SNAPSHOT_READ_FAILED",
         0,
     )
+
+
+@pytest.mark.parametrize(
+    ("marker_id", "built"),
+    [("1", 1), (1, "1"), (1, float("inf")), (1, float("nan"))],
+)
+@pytest.mark.asyncio
+async def test_call_graph_marker_requires_exact_sqlite_integers(
+    tmp_path, marker_id, built
+):
+    # PR #1253 thread 3756001905: coercible and non-finite markers fail closed.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
+
+    source = tmp_path / "sample.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
+    conn = cache.get_conn()
+    conn.execute("DROP TABLE ast_call_graph_state")
+    conn.execute("CREATE TABLE ast_call_graph_state(id, built, built_at)")
+    conn.execute(
+        "INSERT INTO ast_call_graph_state VALUES (?, ?, 0)", (marker_id, built)
+    )
+    conn.commit()
+    cache.close()
+
+    result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
+
+    assert (result["completeness"], result["oracle_reason"]) == (
+        "partial",
+        "CALL_GRAPH_INCOMPLETE",
+    )
+
+
+def test_collect_final_stats_without_stamp_preserves_existing_manifest(tmp_path):
+    # PR #1253 thread 3756001890: stats collection is never a cleanup writer.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    cache = ASTCache(str(tmp_path))
+    conn = cache.get_conn()
+    conn.execute(
+        "INSERT INTO ast_index_snapshot_manifest VALUES "
+        "(1, 'old', 'source', 'index', 0, '{}', 2)"
+    )
+    conn.commit()
+    cache.close()
+
+    CodeGraphFullIndexTool(str(tmp_path))._collect_final_stats(stamp_manifest=False)
+
+    conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+    row = conn.execute(
+        "SELECT canonical_root FROM ast_index_snapshot_manifest WHERE singleton=1"
+    ).fetchone()
+    conn.close()
+    assert row == ("old",)

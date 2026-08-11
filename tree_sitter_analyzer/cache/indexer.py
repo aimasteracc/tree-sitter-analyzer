@@ -375,7 +375,7 @@ def walk_and_partition(
                 and row[0] == fingerprint.mtime_ns
                 and row[1] == fingerprint.file_size
                 and row[2] >= extractor_version
-                and row[3] == fingerprint.content_hash
+                and (not fingerprint.content_hash or row[3] == fingerprint.content_hash)
             ):
                 already_cached.append(
                     {
@@ -995,8 +995,8 @@ def _update_authoritative_manifest(
         stats["manifest_warning"] = "SOURCE_SCOPE_UNSUPPORTED"
     elif exact_paths and not _call_graph_marker_is_built(conn):
         stats["manifest_warning"] = "CALL_GRAPH_INCOMPLETE"
-    conn.execute("DELETE FROM ast_index_snapshot_manifest")
-    conn.commit()
+    # Do not delete a manifest epoch this operation did not publish. Status
+    # compares source/index/marker fingerprints and classifies it as stale.
 
 
 def _record_backfill_result(stats: dict[str, Any], key: str, result: Any) -> None:

@@ -16,7 +16,13 @@ def exact_call_graph_marker(conn: sqlite3.Connection) -> bool:
         ).fetchall()
     except sqlite3.OperationalError:
         return False
-    return [(int(row[0]), int(row[1])) for row in rows] == [(1, 1)]
+    return bool(
+        len(rows) == 1
+        and type(rows[0][0]) is int
+        and type(rows[0][1]) is int
+        and rows[0][0] == 1
+        and rows[0][1] == 1
+    )
 
 
 def _open_pinned_path(

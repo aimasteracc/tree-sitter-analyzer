@@ -682,10 +682,6 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                         "index snapshot manifest certification failed", exc_info=True
                     )
                     manifest_warning = "INDEX_MANIFEST_CERTIFICATION_FAILED"
-            else:
-                conn = cache.get_conn()
-                conn.execute("DELETE FROM ast_index_snapshot_manifest")
-                conn.commit()
             stats = cache.get_stats()
             result = {
                 "_manifest_certified": stamp_manifest and manifest_warning is None,
