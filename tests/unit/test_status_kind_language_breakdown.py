@@ -20,6 +20,7 @@ may still emit those as kind="function" in this worktree.
 from __future__ import annotations
 
 import sqlite3
+from contextlib import nullcontext
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -386,8 +387,8 @@ class TestCodeGraphStatusBreakdowns:
         }
         with (
             patch(
-                "tree_sitter_analyzer.index_snapshot.read_existing_snapshot",
-                return_value=snapshot,
+                "tree_sitter_analyzer.index_snapshot.lease_existing_snapshot",
+                return_value=nullcontext(snapshot),
             ),
             patch(
                 "tree_sitter_analyzer.index_snapshot.read_snapshot_stats",

@@ -28,7 +28,11 @@ def ensure_capacity(
 
 
 def reuse_snapshot(
-    entries: dict[str, Any], snapshot: Any, connection: Any, expires_at: float
+    entries: dict[str, Any],
+    snapshot: Any,
+    connection: Any,
+    expires_at: float,
+    capture_deadline: float,
 ) -> Any | None:
     """Reuse only an identity whose logical and physical status is unchanged."""
     for key, entry in tuple(entries.items()):
@@ -46,6 +50,7 @@ def reuse_snapshot(
             continue
         if existing.physical_storage_identity == snapshot.physical_storage_identity:
             entry.expires_at = expires_at
+            entry.capture_deadline = capture_deadline
             connection.close()
             return existing
         # A VACUUM or other physical-only rewrite must not refresh a capability

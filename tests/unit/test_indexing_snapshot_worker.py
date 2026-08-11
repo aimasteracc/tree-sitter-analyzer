@@ -302,6 +302,7 @@ def test_module_exports_exact_focused_surface() -> None:
     ]
 
 
+@requires_posix_fd
 def test_candidate_captures_share_one_absolute_discovery_deadline(
     tmp_path, monkeypatch
 ):

@@ -89,6 +89,8 @@ def test_snapshot_freezes_order_scope_and_reconciled_metrics(tmp_path):
         "limited_by_max_files": 0,
         "truncated_by_max_files": False,
         "discovery_reconciled": True,
+        "discovery_complete": True,
+        "truncated_by_discovery_error": False,
     }
 
 

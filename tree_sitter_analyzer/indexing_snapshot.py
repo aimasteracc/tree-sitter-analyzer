@@ -15,6 +15,9 @@ from typing import Literal
 from .index_candidate_walker import (
     CandidateDiscoveryBudgetExceeded as _CandidateDiscoveryBudgetExceeded,
 )
+from .index_candidate_walker import (
+    CandidateDiscoveryError as _CandidateDiscoveryError,
+)
 from .index_candidate_walker import walk_candidate_entries as _walk_candidate_entries
 from .indexing_limits import normalize_index_max_files
 from .source_oracle import (
@@ -183,6 +186,8 @@ class IndexCandidateSnapshot:
             "limited_by_max_files": self.limited,
             "truncated_by_max_files": self.truncated_by_max_files,
             "discovery_reconciled": self.discovery_reconciled,
+            "discovery_complete": self.discovery_error is None,
+            "truncated_by_discovery_error": self.discovery_error is not None,
         }
 
 
@@ -265,10 +270,14 @@ def build_index_candidate_snapshot(
             raw_path = next(walker)
         except StopIteration:
             break
-        except _CandidateDiscoveryBudgetExceeded:
+        except (_CandidateDiscoveryBudgetExceeded, _CandidateDiscoveryError) as exc:
             discovered += 1
             errors += 1
-            discovery_error = _CANDIDATE_DISCOVERY_BUDGET_ERROR
+            discovery_error = (
+                _CANDIDATE_DISCOVERY_BUDGET_ERROR
+                if isinstance(exc, _CandidateDiscoveryBudgetExceeded)
+                else str(exc) or "INDEX_CANDIDATE_DISCOVERY_ERROR"
+            )
             close = getattr(walker, "close", None)
             if callable(close):
                 close()

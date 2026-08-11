@@ -19,6 +19,9 @@ from .index_snapshot_capability import (
     exact_call_graph_marker as _exact_call_graph_marker,
 )
 from .index_snapshot_capability import (
+    hierarchy_matches_pinned_database as _hierarchy_matches_pinned_database,
+)
+from .index_snapshot_capability import (
     open_bound_database as _open_bound_database,
 )
 from .index_snapshot_capability import (
@@ -137,15 +140,30 @@ class IndexSnapshotRegistry:
         connection: sqlite3.Connection,
         charged_bytes: int,
         capture_deadline: float | None = None,
+        *,
+        pin: bool = False,
     ) -> IndexSnapshot:
+        """Atomically publish/reuse a capability and optionally pin its entry."""
         with self._lock:
             now = _clock()
+            deadline = (
+                capture_deadline
+                if capture_deadline is not None
+                else now + _CAPTURE_DEADLINE_SECONDS
+            )
             self._purge(now)
             existing = reuse_snapshot(
-                self._entries, snapshot, connection, now + _TTL_SECONDS
+                self._entries,
+                snapshot,
+                connection,
+                now + _TTL_SECONDS,
+                deadline,
             )
             if existing is not None:
-                return cast(IndexSnapshot, existing)
+                published = cast(IndexSnapshot, existing)
+                if pin:
+                    self._entries[cast(str, published.snapshot_id)].readers += 1
+                return published
             self.ensure_capacity(charged_bytes)
             snapshot_id = "idxsnap_" + secrets.token_urlsafe(24)
             published = IndexSnapshot(
@@ -163,12 +181,20 @@ class IndexSnapshotRegistry:
                 published,
                 connection,
                 charged_bytes,
-                _clock() + _TTL_SECONDS,
-                capture_deadline
-                if capture_deadline is not None
-                else _clock() + _CAPTURE_DEADLINE_SECONDS,
+                now + _TTL_SECONDS,
+                deadline,
+                readers=int(pin),
             )
             return published
+
+    def release_pin(self, snapshot_id: str) -> None:
+        """Release a publication lease without exposing it through legacy capture."""
+        with self._lock:
+            entry = self._entries.get(snapshot_id)
+            if entry is None or entry.readers <= 0:
+                raise ValueError("INDEX_SNAPSHOT_UNKNOWN")
+            entry.readers -= 1
+            self._purge(_clock())
 
     @contextmanager
     def acquire(
@@ -315,7 +341,9 @@ def _read_bounded_manifest(
     return cast(sqlite3.Row, manifest)
 
 
-def read_existing_snapshot(project_root: str) -> IndexSnapshot:
+def _capture_existing_snapshot(
+    project_root: str, *, pin: bool = False
+) -> IndexSnapshot:
     # Absence is platform-independent and publishes no file evidence.  Report it
     # before the secure-fd capability gate so fresh Windows installs preserve the
     # established missing-index contract; an existing database still fails closed.
@@ -492,7 +520,9 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                 _physical_storage_identity(evidence),
             )
             _require_capture_budget(deadline)
-            published = REGISTRY.publish(snapshot, evidence, charged, deadline)
+            if not _hierarchy_matches_pinned_database(root, root_fd, cache_fd, db_fd):
+                raise ValueError("CONCURRENT_WRITER")
+            published = REGISTRY.publish(snapshot, evidence, charged, deadline, pin=pin)
             evidence = None
             return published
         except FileNotFoundError as exc:
@@ -525,6 +555,22 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                     os.close(fd)
     finally:
         _CAPTURE_LOCK.release()
+
+
+def read_existing_snapshot(project_root: str) -> IndexSnapshot:
+    """Capture a legacy unpinned capability for direct graph-reader clients."""
+    return _capture_existing_snapshot(project_root)
+
+
+@contextmanager
+def lease_existing_snapshot(project_root: str) -> Iterator[IndexSnapshot]:
+    """Keep a successfully published capability pinned until response assembly."""
+    snapshot = _capture_existing_snapshot(project_root, pin=True)
+    try:
+        yield snapshot
+    finally:
+        if snapshot.snapshot_id is not None:
+            REGISTRY.release_pin(snapshot.snapshot_id)
 
 
 def run_graph_snapshot_read(

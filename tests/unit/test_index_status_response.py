@@ -280,3 +280,11 @@ class TestAuthoritativeSnapshotOracle:
             "partial",
             "CALL_GRAPH_INCOMPLETE",
         )
+
+
+def test_storage_fields_ignore_missing_and_null_values():
+    from tree_sitter_analyzer.index_status_response import _storage_fields
+
+    result = _storage_fields({"db_size_bytes": 4096, "db_page_size": None})
+
+    assert result == {"db_size_bytes": 4096}

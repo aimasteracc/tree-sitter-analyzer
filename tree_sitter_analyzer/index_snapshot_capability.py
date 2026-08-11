@@ -152,6 +152,40 @@ def path_matches_pinned_database(cache_fd: int, db_fd: int) -> bool:
     )
 
 
+def hierarchy_matches_pinned_database(
+    canonical_root: str, root_fd: int, cache_fd: int, db_fd: int
+) -> bool:
+    """Reopen the published pathname and compare every pinned hierarchy inode."""
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    current_root: int | None = None
+    current_cache: int | None = None
+    try:
+        current_root = os.open(canonical_root, directory_flags)
+        if _fd_identity(current_root) != _fd_identity(root_fd):
+            return False
+        current_cache = os.open(".ast-cache", directory_flags, dir_fd=current_root)
+        if _fd_identity(current_cache) != _fd_identity(cache_fd):
+            return False
+        return path_matches_pinned_database(current_cache, db_fd)
+    except OSError:
+        return False
+    finally:
+        if current_cache is not None:
+            os.close(current_cache)
+        if current_root is not None:
+            os.close(current_root)
+
+
+def _fd_identity(fd: int) -> tuple[int, int]:
+    info = os.fstat(fd)
+    return int(info.st_dev), int(info.st_ino)
+
+
 def reject_sidecars(cache_fd: int) -> None:
     # A quiescent WAL database commonly retains a non-empty shared-memory
     # index. Only durable write payloads (WAL/journal) prove it is not safe to

@@ -47,33 +47,35 @@ def build_index_status_response(
         )
         return apply_toon_format_to_response(result, output_format)
 
-    snapshot = index_snapshot.read_existing_snapshot(project_root)
-    stats: dict[str, Any] = {}
-    if snapshot.snapshot_id is not None:
-        try:
-            stats = index_snapshot.read_snapshot_stats(
-                snapshot.snapshot_id,
-                project_root,
-                snapshot.source_generation,
-            )
-            expected_tokens = {
-                "snapshot_id": snapshot.snapshot_id,
-                "source_generation": snapshot.source_generation,
-                "source_fingerprint": snapshot.source_fingerprint,
-                "index_fingerprint": snapshot.index_fingerprint,
-            }
-            if any(stats.get(key) != value for key, value in expected_tokens.items()):
-                raise ValueError("SNAPSHOT_TOKEN_MISMATCH")
-        except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError) as exc:
-            reason = (
-                "INDEX_SNAPSHOT_DEADLINE"
-                if str(exc) == "INDEX_SNAPSHOT_DEADLINE"
-                else "SNAPSHOT_READ_FAILED"
-            )
-            snapshot = type(snapshot)(
-                None, None, None, None, "unknown", reason, None, 0
-            )
-            stats = {}
+    with index_snapshot.lease_existing_snapshot(project_root) as snapshot:
+        stats: dict[str, Any] = {}
+        if snapshot.snapshot_id is not None:
+            try:
+                stats = index_snapshot.read_snapshot_stats(
+                    snapshot.snapshot_id,
+                    project_root,
+                    snapshot.source_generation,
+                )
+                expected_tokens = {
+                    "snapshot_id": snapshot.snapshot_id,
+                    "source_generation": snapshot.source_generation,
+                    "source_fingerprint": snapshot.source_fingerprint,
+                    "index_fingerprint": snapshot.index_fingerprint,
+                }
+                if any(
+                    stats.get(key) != value for key, value in expected_tokens.items()
+                ):
+                    raise ValueError("SNAPSHOT_TOKEN_MISMATCH")
+            except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError) as exc:
+                reason = (
+                    "INDEX_SNAPSHOT_DEADLINE"
+                    if str(exc) == "INDEX_SNAPSHOT_DEADLINE"
+                    else "SNAPSHOT_READ_FAILED"
+                )
+                snapshot = type(snapshot)(
+                    None, None, None, None, "unknown", reason, None, 0
+                )
+                stats = {}
     total_files = int(stats.get("total_files", 0))
     total_symbols = int(stats.get("total_symbols", 0))
     total_edges = int(stats.get("total_edges", 0))

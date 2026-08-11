@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from contextlib import nullcontext
 
 import pytest
 
@@ -121,7 +122,9 @@ class TestLagCompatibility:
             str(tmp_path),
             1,
         )
-        monkeypatch.setattr(owner, "read_existing_snapshot", lambda _root: snapshot)
+        monkeypatch.setattr(
+            owner, "lease_existing_snapshot", lambda _root: nullcontext(snapshot)
+        )
         monkeypatch.setattr(
             owner,
             "read_snapshot_stats",
@@ -162,7 +165,9 @@ class TestLagCompatibility:
             str(tmp_path),
             1,
         )
-        monkeypatch.setattr(owner, "read_existing_snapshot", lambda _root: snapshot)
+        monkeypatch.setattr(
+            owner, "lease_existing_snapshot", lambda _root: nullcontext(snapshot)
+        )
         monkeypatch.setattr(
             owner,
             "read_snapshot_stats",

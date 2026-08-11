@@ -132,6 +132,57 @@ class TestIndexSnapshotRegistry:
         owner.REGISTRY.ensure_capacity(0)
         assert expiring.snapshot_id not in owner.REGISTRY._entries
 
+    def test_reuse_refreshes_absolute_capture_deadline_after_ten_seconds(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 thread 3758377125: TTL reuse must not retain an expired budget.
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        now = [0.0]
+        monkeypatch.setattr(owner, "_clock", lambda: now[0])
+        first = owner.REGISTRY.publish(
+            self._snapshot(tmp_path), sqlite3.connect(":memory:"), 0, 10.0
+        )
+        now[0] = 11.0
+        reused = owner.REGISTRY.publish(
+            self._snapshot(tmp_path),
+            sqlite3.connect(":memory:"),
+            0,
+            21.0,
+            pin=True,
+        )
+
+        assert reused.snapshot_id == first.snapshot_id
+        assert owner.REGISTRY.capture_deadline(first.snapshot_id) == 21.0
+        assert owner.REGISTRY._entries[first.snapshot_id].readers == 1
+        owner.REGISTRY.release_pin(first.snapshot_id)
+
+    def test_release_rejects_unknown_or_unpinned_capability(self):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        with pytest.raises(ValueError, match="INDEX_SNAPSHOT_UNKNOWN"):
+            owner.REGISTRY.release_pin("idxsnap_unknown")
+
+    def test_published_pin_prevents_capacity_eviction_until_release(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 thread 3758212523: publication and reader pin are atomic.
+        from dataclasses import replace
+
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        monkeypatch.setattr(owner, "_MAX_SNAPSHOTS", 1)
+        first = owner.REGISTRY.publish(
+            self._snapshot(tmp_path), sqlite3.connect(":memory:"), 0, pin=True
+        )
+        different = replace(self._snapshot(tmp_path), source_fingerprint="other")
+        with pytest.raises(RuntimeError, match="INDEX_SNAPSHOT_CAPACITY"):
+            owner.REGISTRY.publish(different, sqlite3.connect(":memory:"), 0)
+        owner.REGISTRY.release_pin(first.snapshot_id)
+        second = owner.REGISTRY.publish(different, sqlite3.connect(":memory:"), 0)
+
+        assert second.snapshot_id != first.snapshot_id
+
 
 def test_exact_call_graph_marker_rejects_duplicate_ids_without_materializing_built():
     # PR #1253 thread 3756228858: duplicate markers fail via bounded SQL scalars.
@@ -344,6 +395,30 @@ def test_canonical_root_directory_swap_fails_identity_check(tmp_path, monkeypatc
     with pytest.raises(ValueError, match="INDEX_PATH_UNSAFE"):
         capability.open_bound_database(str(root))
     assert swapped is True
+
+
+@requires_posix_fd
+def test_reopened_root_hierarchy_rejects_renamed_replacement(tmp_path):
+    # PR #1253 thread 3758212507: pinned orphan DBs cannot be published.
+    import tree_sitter_analyzer.index_snapshot_capability as capability
+
+    root = tmp_path / "root"
+    (root / ".ast-cache").mkdir(parents=True)
+    (root / ".ast-cache" / "index.db").touch()
+    canonical, root_fd, cache_fd, db_fd = capability.open_bound_database(str(root))
+    original = tmp_path / "original-root"
+    root.rename(original)
+    (root / ".ast-cache").mkdir(parents=True)
+    (root / ".ast-cache" / "index.db").touch()
+    try:
+        matches = capability.hierarchy_matches_pinned_database(
+            canonical, root_fd, cache_fd, db_fd
+        )
+    finally:
+        for fd in (db_fd, cache_fd, root_fd):
+            os.close(fd)
+
+    assert matches is False
 
 
 @requires_posix_fd

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from contextlib import nullcontext
 
 import pytest
 
@@ -233,6 +234,28 @@ async def test_final_pinned_path_identity_mismatch_is_concurrent_writer(
 
 @pytest.mark.asyncio
 @requires_posix_snapshot
+async def test_replaced_root_hierarchy_is_concurrent_writer(tmp_path, monkeypatch):
+    # PR #1253 thread 3758212507: reject an orphaned pinned root at publication.
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "sample.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    owner.stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
+    cache.close()
+    monkeypatch.setattr(
+        owner, "_hierarchy_matches_pinned_database", lambda *_args: False
+    )
+
+    result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
+
+    assert result["oracle_reason"] == "CONCURRENT_WRITER"
+
+
+@pytest.mark.asyncio
+@requires_posix_snapshot
 async def test_bounded_stats_runtime_failure_returns_stable_envelope(
     tmp_path, monkeypatch
 ):
@@ -249,7 +272,9 @@ async def test_bounded_stats_runtime_failure_returns_stable_envelope(
         str(tmp_path),
         1,
     )
-    monkeypatch.setattr(owner, "read_existing_snapshot", lambda _root: snapshot)
+    monkeypatch.setattr(
+        owner, "lease_existing_snapshot", lambda _root: nullcontext(snapshot)
+    )
     monkeypatch.setattr(
         owner,
         "read_snapshot_stats",
@@ -282,7 +307,9 @@ async def test_malformed_stats_schema_returns_stable_envelope(tmp_path, monkeypa
         str(tmp_path),
         1,
     )
-    monkeypatch.setattr(owner, "read_existing_snapshot", lambda _root: snapshot)
+    monkeypatch.setattr(
+        owner, "lease_existing_snapshot", lambda _root: nullcontext(snapshot)
+    )
     monkeypatch.setattr(
         owner,
         "read_snapshot_stats",
