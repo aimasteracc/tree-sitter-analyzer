@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.indexer import walk_and_partition
 from tree_sitter_analyzer.indexing_snapshot import (
     IndexCandidateSnapshot,
@@ -330,3 +331,141 @@ def test_candidate_captures_share_one_absolute_discovery_deadline(
         deadlines[0],
         deadlines[0],
     )
+
+
+def test_production_scandir_charges_unsupported_entries_and_closes(
+    monkeypatch, tmp_path
+):
+    # PR #1253 review thread 3757754336: filtered names must consume discovery budget.
+    import tree_sitter_analyzer.indexing_snapshot as snapshot_module
+
+    class UnsupportedEntries:
+        def __init__(self) -> None:
+            self.consumed = 0
+            self.closed = False
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            if self.consumed == 1_000_000:
+                raise StopIteration
+            self.consumed += 1
+            return SimpleNamespace(
+                path=str(tmp_path / f"unsupported-{self.consumed}.txt"),
+                name=f"unsupported-{self.consumed}.txt",
+                is_dir=lambda *, follow_symlinks: False,
+            )
+
+        def close(self) -> None:
+            self.closed = True
+
+    entries = UnsupportedEntries()
+    monkeypatch.setattr(snapshot_module, "_CANDIDATE_ENTRY_BUDGET", 3)
+    monkeypatch.setattr(snapshot_module.os, "scandir", lambda _path: entries)
+
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=snapshot_module.walk_index_candidate_entries,
+        language_fn=_python_language,
+    )
+
+    assert (entries.consumed, entries.closed) == (4, True)
+    assert (snapshot.skipped, snapshot.errors, snapshot.discovery_error) == (
+        3,
+        1,
+        "INDEX_CANDIDATE_DISCOVERY_BUDGET",
+    )
+
+
+@pytest.mark.parametrize("workers", [0, 2])
+def test_definition_rewrite_rebinds_incoming_call_before_marker(
+    tmp_path, monkeypatch, workers
+):
+    # PR #1253 review thread 3757754342: generation IDs must not outlive rewrites.
+    from tree_sitter_analyzer.cache import indexer
+
+    callee = tmp_path / "callee.py"
+    caller = tmp_path / "caller.py"
+    callee.write_text("def target():\n    return 1\n")
+    caller.write_text(
+        "from callee import target\n\ndef caller():\n    return target()\n"
+    )
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=workers)
+    conn = cache.get_conn()
+    old_id = conn.execute(
+        "SELECT callee_symbol_id FROM edges WHERE kind='calls'"
+    ).fetchone()[0]
+    observed_at_marker = []
+    real_marker = indexer._mark_call_graph_built_strict
+
+    def assert_rebound_before_marker(connection):
+        edge_id = connection.execute(
+            "SELECT callee_symbol_id FROM edges WHERE kind='calls'"
+        ).fetchone()[0]
+        target_id = connection.execute(
+            "SELECT id FROM ast_symbol_rows WHERE name='target'"
+        ).fetchone()[0]
+        observed_at_marker.append((edge_id, target_id))
+        real_marker(connection)
+
+    monkeypatch.setattr(
+        indexer, "_mark_call_graph_built_strict", assert_rebound_before_marker
+    )
+    callee.write_text("def helper():\n    return 0\n\ndef target():\n    return 200\n")
+    result = cache.index_project(workers=workers)
+    current_id = conn.execute(
+        "SELECT id FROM ast_symbol_rows WHERE name='target'"
+    ).fetchone()[0]
+    cache.close()
+
+    assert (result["indexed"], observed_at_marker) == (1, [(current_id, current_id)])
+    assert current_id != old_id
+
+
+def test_candidate_budget_exception_without_close_is_stable(tmp_path):
+    # PR #1253 review thread 3757754336: custom walkers need not expose close().
+    import tree_sitter_analyzer.indexing_snapshot as snapshot_module
+
+    class ExhaustedWalker:
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            raise snapshot_module._CandidateDiscoveryBudgetExceeded
+
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: ExhaustedWalker(),
+        language_fn=_python_language,
+    )
+
+    assert (snapshot.errors, snapshot.discovery_error) == (
+        1,
+        "INDEX_CANDIDATE_DISCOVERY_BUDGET",
+    )
+
+
+def test_import_write_stops_when_schema_insert_is_rejected(monkeypatch):
+    # PR #1253: a rejected import projection must stop the current generation.
+    from tree_sitter_analyzer.cache import write
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_imports (file_path TEXT, language TEXT, module_path TEXT)"
+    )
+    rejected = []
+
+    def reject(*args):
+        rejected.append(args)
+        return False
+
+    monkeypatch.setattr(write, "_insert_import_entry", reject)
+    write.write_imports_for_file(conn, "sample.py", "python", ["import package"])
+
+    assert len(rejected) == 1

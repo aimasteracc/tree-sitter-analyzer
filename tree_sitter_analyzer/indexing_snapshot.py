@@ -12,6 +12,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from .index_candidate_walker import (
+    CandidateDiscoveryBudgetExceeded as _CandidateDiscoveryBudgetExceeded,
+)
+from .index_candidate_walker import walk_candidate_entries as _walk_candidate_entries
 from .indexing_limits import normalize_index_max_files
 from .source_oracle import (
     SourceOracleError,
@@ -27,6 +31,22 @@ _CANDIDATE_DISCOVERY_SECONDS = 5.0
 _CANDIDATE_DISCOVERY_BUDGET_ERROR = "INDEX_CANDIDATE_DISCOVERY_BUDGET"
 
 SnapshotDecision = Literal["selected", "excluded", "skipped", "error"]
+
+
+def walk_index_candidate_entries(
+    project_root: str,
+    *,
+    excluded_dir_names: frozenset[str] = frozenset(),
+) -> Iterable[str]:
+    """Incrementally enumerate candidates while charging every directory entry."""
+    return _walk_candidate_entries(
+        project_root,
+        excluded_dir_names=excluded_dir_names,
+        entry_budget=_CANDIDATE_ENTRY_BUDGET,
+        path_byte_budget=_CANDIDATE_PATH_BYTE_BUDGET,
+        discovery_seconds=_CANDIDATE_DISCOVERY_SECONDS,
+        budget_error=_CANDIDATE_DISCOVERY_BUDGET_ERROR,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,7 +260,19 @@ def build_index_candidate_snapshot(
     deadline = time.monotonic() + _CANDIDATE_DISCOVERY_SECONDS
 
     walker = iter(walk_fn(logical_root))
-    for raw_path in walker:
+    while True:
+        try:
+            raw_path = next(walker)
+        except StopIteration:
+            break
+        except _CandidateDiscoveryBudgetExceeded:
+            discovered += 1
+            errors += 1
+            discovery_error = _CANDIDATE_DISCOVERY_BUDGET_ERROR
+            close = getattr(walker, "close", None)
+            if callable(close):
+                close()
+            break
         # Charge every yielded entry before exclusions, language detection, path
         # validation, or de-duplication can continue the loop.  In particular,
         # an infinite stream of unsupported names must remain bounded.

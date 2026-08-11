@@ -122,6 +122,13 @@ def invalidate_file_rows(
     return removed
 
 
+def _clear_symbol_resolver_context() -> None:
+    """Invalidate resolver snapshots containing replaced symbol-row IDs."""
+    from ..synapse_resolver._context import clear_resolver_context_cache
+
+    clear_resolver_context_cache()
+
+
 def write_fts5_symbols(
     conn: sqlite3.Connection,
     rel_path: str,
@@ -130,7 +137,10 @@ def write_fts5_symbols(
     fts5_available: bool = True,
 ) -> list[dict[str, Any]]:
     """Replace ordinary symbol rows and, when available, their FTS projection."""
+    if _table_exists(conn, "edges"):
+        _reset_incoming_edge_resolutions(conn, rel_path)
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
+    _clear_symbol_resolver_context()
     if fts5_available:
         conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
     sym_list = symbols.get("symbols", [])
@@ -182,7 +192,10 @@ def write_fts5_symbols_from_tuples(
     fts5_available: bool = True,
 ) -> list[dict[str, Any]]:
     """Insert ordinary worker symbol rows and optional FTS projection."""
+    if _table_exists(conn, "edges"):
+        _reset_incoming_edge_resolutions(conn, rel_path)
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
+    _clear_symbol_resolver_context()
     if fts5_available:
         conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
     if not symbol_rows:

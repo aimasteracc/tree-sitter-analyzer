@@ -282,3 +282,73 @@ def test_module_exports_exact_focused_surface() -> None:
     from tree_sitter_analyzer import index_snapshot_schema_validation
 
     assert index_snapshot_schema_validation.__all__ == ["validate_snapshot_schema"]
+
+
+@requires_posix_fd
+def test_read_existing_forces_memory_temp_store_before_fingerprint(
+    tmp_path, monkeypatch
+):
+    # PR #1253 review thread 3757754345: ORDER BY sorters must never spill to disk.
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "sample.py"
+    source.write_text("def sample():\n    return 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    cache.close()
+    sqlite_tmp = tmp_path / "sqlite-tmp"
+    sqlite_tmp.mkdir()
+    sqlite_tmp.chmod(0o500)
+    monkeypatch.setenv("SQLITE_TMPDIR", str(sqlite_tmp))
+    observed = []
+    real_fingerprint = owner.index_fingerprint
+
+    def fingerprint_with_temp_store_check(connection, root):
+        observed.append(connection.execute("PRAGMA temp_store").fetchone()[0])
+        return real_fingerprint(connection, root)
+
+    monkeypatch.setattr(owner, "index_fingerprint", fingerprint_with_temp_store_check)
+    try:
+        snapshot = owner.read_existing_snapshot(str(tmp_path))
+        with owner.acquire_index_snapshot(
+            snapshot.snapshot_id, str(tmp_path)
+        ) as acquired:
+            evidence_temp_store = acquired[1].execute("PRAGMA temp_store").fetchone()[0]
+        temp_names = sorted(path.name for path in sqlite_tmp.iterdir())
+    finally:
+        sqlite_tmp.chmod(0o700)
+
+    assert (observed, evidence_temp_store, temp_names) == ([2], 2, [])
+
+
+def test_memory_temp_store_configuration_failure_is_stable():
+    # PR #1253 review thread 3757754345: pragma refusal fails with one stable reason.
+    from tree_sitter_analyzer.index_snapshot_capability import require_memory_temp_store
+
+    class RefusingConnection:
+        def execute(self, query):
+            if query == "PRAGMA temp_store=MEMORY":
+                raise sqlite3.OperationalError("refused")
+            return self
+
+        def fetchone(self):
+            return (1,)
+
+    with pytest.raises(ValueError, match="^INDEX_TEMP_STORE_MEMORY_REQUIRED$"):
+        require_memory_temp_store(RefusingConnection())
+
+
+def test_memory_temp_store_unaccepted_value_is_stable():
+    # PR #1253 review thread 3757754345: a silently ignored pragma also fails closed.
+    from tree_sitter_analyzer.index_snapshot_capability import require_memory_temp_store
+
+    class IgnoringConnection:
+        def execute(self, _query):
+            return self
+
+        def fetchone(self):
+            return (1,)
+
+    with pytest.raises(ValueError, match="^INDEX_TEMP_STORE_MEMORY_REQUIRED$"):
+        require_memory_temp_store(IgnoringConnection())

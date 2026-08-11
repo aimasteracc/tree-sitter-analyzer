@@ -529,16 +529,16 @@ class TestExecute:
         assert result["candidate_snapshot"]["phase_totals_reconciled"] is True
 
     async def test_full_index_walks_project_once_for_both_phases(self, tmp_path):
-        from tree_sitter_analyzer.cache import indexer
+        import tree_sitter_analyzer.mcp.tools.full_index_tool as full_index_module
 
         (tmp_path / "a.py").write_text("a = 1\n")
         (tmp_path / "b.py").write_text("b = 2\n")
         full_tool = CodeGraphFullIndexTool(str(tmp_path))
 
         with patch.object(
-            indexer,
-            "_walk_source_files",
-            wraps=indexer._walk_source_files,
+            full_index_module,
+            "walk_index_candidate_entries",
+            wraps=full_index_module.walk_index_candidate_entries,
         ) as walk:
             result = await full_tool.execute(
                 {

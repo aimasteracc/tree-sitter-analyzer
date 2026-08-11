@@ -18,11 +18,21 @@ from urllib.parse import quote
 from .index_snapshot_capability import (
     exact_call_graph_marker as _exact_call_graph_marker,
 )
-from .index_snapshot_capability import open_bound_database as _open_bound_database
+from .index_snapshot_capability import (
+    open_bound_database as _open_bound_database,
+)
 from .index_snapshot_capability import (
     path_matches_pinned_database as _path_matches_pinned_database,
 )
-from .index_snapshot_capability import reject_sidecars as _reject_sidecars
+from .index_snapshot_capability import (
+    physical_storage_identity as _physical_storage_identity,
+)
+from .index_snapshot_capability import (
+    reject_sidecars as _reject_sidecars,
+)
+from .index_snapshot_capability import (
+    require_memory_temp_store as _require_memory_temp_store,
+)
 from .index_snapshot_registry import ensure_capacity as ensure_registry_capacity
 from .index_snapshot_registry import reuse_snapshot
 from .index_snapshot_schema import (
@@ -244,24 +254,6 @@ def _read_bounded_manifest(
     return cast(sqlite3.Row, manifest)
 
 
-def _physical_storage_identity(
-    conn: sqlite3.Connection,
-) -> tuple[int, int, int, int, int, int]:
-    """Return every physical storage field published by snapshot status."""
-    page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
-    page_count = int(conn.execute("PRAGMA page_count").fetchone()[0])
-    free_pages = int(conn.execute("PRAGMA freelist_count").fetchone()[0])
-    auto_vacuum = int(conn.execute("PRAGMA auto_vacuum").fetchone()[0])
-    return (
-        page_size * page_count,
-        page_count,
-        page_size,
-        free_pages,
-        free_pages * page_size,
-        auto_vacuum,
-    )
-
-
 def read_existing_snapshot(project_root: str) -> IndexSnapshot:
     # Absence is platform-independent and publishes no file evidence.  Report it
     # before the secure-fd capability gate so fresh Windows installs preserve the
@@ -286,6 +278,7 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
             connection = sqlite3.connect(
                 uri, uri=True, timeout=0, isolation_level=None, check_same_thread=False
             )
+            _require_memory_temp_store(connection)
             if not _path_matches_pinned_database(cache_fd, db_fd):
                 raise ValueError("CONCURRENT_WRITER")
             connection.row_factory = sqlite3.Row
@@ -366,6 +359,7 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                 count,
             )
             evidence = sqlite3.connect(":memory:", check_same_thread=False)
+            _require_memory_temp_store(evidence)
             deadline = _clock() + _CAPTURE_DEADLINE_SECONDS
             copied_pages = 0
             max_backup_pages = (

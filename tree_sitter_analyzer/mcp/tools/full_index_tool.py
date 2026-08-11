@@ -29,6 +29,7 @@ from ...indexing_limits import normalize_index_max_files
 from ...indexing_snapshot import (
     IndexCandidateSnapshot,
     build_index_candidate_snapshot,
+    walk_index_candidate_entries,
 )
 from ...utils import setup_logger
 from ..utils.auto_index_guard import mark_dirty
@@ -411,14 +412,16 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         max_files: int,
         exclude_patterns: frozenset[str],
     ) -> IndexCandidateSnapshot:
-        from ...cache.indexer import _walk_source_files
+        from ...constants import EXCLUDE_DIRS
         from ...project_graph import _language_from_ext
 
         return build_index_candidate_snapshot(
             self.project_root or ".",
             max_files=max_files,
             exclude_patterns=exclude_patterns,
-            walk_fn=_walk_source_files,
+            walk_fn=lambda root: walk_index_candidate_entries(
+                root, excluded_dir_names=frozenset(EXCLUDE_DIRS)
+            ),
             language_fn=_language_from_ext,
         )
 

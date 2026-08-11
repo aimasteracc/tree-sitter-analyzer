@@ -10,7 +10,37 @@ import time
 
 from .cache.callgraph_state import exact_call_graph_marker as _exact_marker
 
+
+def require_memory_temp_store(conn: sqlite3.Connection) -> None:
+    """Keep read-existing sorters in memory and verify SQLite accepted it."""
+    try:
+        conn.execute("PRAGMA temp_store=MEMORY")
+        row = conn.execute("PRAGMA temp_store").fetchone()
+    except sqlite3.DatabaseError as exc:
+        raise ValueError("INDEX_TEMP_STORE_MEMORY_REQUIRED") from exc
+    if row is None or int(row[0]) != 2:
+        raise ValueError("INDEX_TEMP_STORE_MEMORY_REQUIRED")
+
+
 _CALL_GRAPH_MARKER_DEADLINE_SECONDS = 5.0
+
+
+def physical_storage_identity(
+    conn: sqlite3.Connection,
+) -> tuple[int, int, int, int, int, int]:
+    """Return every physical storage field published by snapshot status."""
+    page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
+    page_count = int(conn.execute("PRAGMA page_count").fetchone()[0])
+    free_pages = int(conn.execute("PRAGMA freelist_count").fetchone()[0])
+    auto_vacuum = int(conn.execute("PRAGMA auto_vacuum").fetchone()[0])
+    return (
+        page_size * page_count,
+        page_count,
+        page_size,
+        free_pages,
+        free_pages * page_size,
+        auto_vacuum,
+    )
 
 
 def strict_call_graph_marker(
