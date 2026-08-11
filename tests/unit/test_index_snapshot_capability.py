@@ -57,6 +57,49 @@ class TestIndexSnapshotRegistry:
             ):
                 pass
 
+    def test_registry_retires_logical_match_when_physical_stats_change(self, tmp_path):
+        # PR #1253 thread 3756228871: VACUUM-only changes cannot reuse metrics.
+        from dataclasses import replace
+
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        first_conn = sqlite3.connect(":memory:")
+        first = replace(
+            self._snapshot(tmp_path), physical_storage_identity=(4096, 1, 4096, 0, 0, 0)
+        )
+        published = owner.REGISTRY.publish(first, first_conn, 0)
+        second_conn = sqlite3.connect(":memory:")
+        second = replace(first, physical_storage_identity=(8192, 2, 4096, 1, 4096, 2))
+        replacement = owner.REGISTRY.publish(second, second_conn, 0)
+
+        assert replacement.snapshot_id != published.snapshot_id
+        assert tuple(owner.REGISTRY._entries) == (replacement.snapshot_id,)
+        with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+            first_conn.execute("SELECT 1")
+
+    def test_registry_marks_pinned_physical_identity_stale(self, tmp_path):
+        # PR #1253 thread 3756228871: pinned stale metrics close on release.
+        from dataclasses import replace
+
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        first = replace(
+            self._snapshot(tmp_path), physical_storage_identity=(4096, 1, 4096, 0, 0, 0)
+        )
+        first_conn = sqlite3.connect(":memory:")
+        published = owner.REGISTRY.publish(first, first_conn, 0)
+        entry = owner.REGISTRY._entries[published.snapshot_id]
+        entry.readers = 1
+        second = replace(first, physical_storage_identity=(8192, 2, 4096, 1, 4096, 2))
+        replacement = owner.REGISTRY.publish(second, sqlite3.connect(":memory:"), 0)
+
+        assert replacement.snapshot_id != published.snapshot_id
+        assert entry.expires_at == float("-inf")
+        entry.readers = 0
+        owner.REGISTRY.ensure_capacity(0)
+        with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+            first_conn.execute("SELECT 1")
+
     def test_registry_rejects_generation_mismatch(self, tmp_path):
         import tree_sitter_analyzer.index_snapshot as owner
 
@@ -88,6 +131,22 @@ class TestIndexSnapshotRegistry:
         owner.REGISTRY._entries[expiring.snapshot_id].expires_at = 1.0
         owner.REGISTRY.ensure_capacity(0)
         assert expiring.snapshot_id not in owner.REGISTRY._entries
+
+
+def test_exact_call_graph_marker_rejects_duplicate_ids_without_materializing_built():
+    # PR #1253 thread 3756228858: duplicate markers fail via bounded SQL scalars.
+    from tree_sitter_analyzer.index_snapshot_capability import exact_call_graph_marker
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_call_graph_state(id, built)")
+    conn.executemany(
+        "INSERT INTO ast_call_graph_state VALUES(1, ?)",
+        [(1,), (sqlite3.Binary(b"x" * 1024 * 1024),)],
+    )
+    result = exact_call_graph_marker(conn)
+    conn.close()
+
+    assert result is False
 
 
 def test_strict_call_graph_marker_verifies_exact_rows():
@@ -130,6 +189,26 @@ def test_strict_call_graph_marker_raises_when_sentinel_survives():
     conn.close()
 
     assert rows == [(1, 0), (2, 0)]
+
+
+def test_exact_call_graph_marker_deadline_interrupts_sql(monkeypatch):
+    # PR #1253 thread 3756228858: hostile scans are progress-handler bounded.
+    import tree_sitter_analyzer.index_snapshot_capability as capability
+
+    class InterruptedConnection:
+        def set_progress_handler(self, handler, _steps):
+            if handler is not None:
+                assert handler() == 1
+
+        def execute(self, _query):
+            raise sqlite3.OperationalError("interrupted")
+
+    monkeypatch.setattr(capability.time, "monotonic", lambda: 2.0)
+    result = capability.strict_call_graph_marker(  # type: ignore[arg-type]
+        InterruptedConnection(), deadline=1.0
+    )
+
+    assert result is False
 
 
 def test_exact_call_graph_marker_missing_table_is_false():

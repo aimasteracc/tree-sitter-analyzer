@@ -10,6 +10,7 @@ import struct
 import time
 from typing import Any
 
+from .index_snapshot_capability import strict_call_graph_marker
 from .index_source_snapshot import (
     SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET,
     SourceScopeDescriptor,
@@ -139,20 +140,7 @@ def stamp_full_index_manifest(
     try:
         conn.execute("BEGIN IMMEDIATE")
         transaction_started = True
-        try:
-            marker_rows = conn.execute(
-                "SELECT id, built FROM ast_call_graph_state "
-                "WHERE id IN (1, 2) ORDER BY id"
-            ).fetchall()
-        except sqlite3.OperationalError as exc:
-            raise sqlite3.OperationalError("CALL_GRAPH_INCOMPLETE") from exc
-        if not (
-            len(marker_rows) == 1
-            and type(marker_rows[0][0]) is int
-            and type(marker_rows[0][1]) is int
-            and marker_rows[0][0] == 1
-            and marker_rows[0][1] == 1
-        ):
+        if not strict_call_graph_marker(conn):
             raise sqlite3.OperationalError("CALL_GRAPH_INCOMPLETE")
         root = os.path.realpath(os.path.abspath(project_root))
         scope = source_scope or make_source_scope_descriptor()
@@ -192,7 +180,19 @@ def validate_snapshot_schema(conn: sqlite3.Connection) -> None:
 
     conn.set_progress_handler(expired, 1_000)
     try:
-        cursor = conn.execute("SELECT version FROM ast_schema_version")
+        cursor = conn.execute(
+            "SELECT typeof(version), length(CAST(version AS BLOB)), "
+            "CASE WHEN typeof(version) = 'integer' "
+            "AND version BETWEEN 1 AND ? THEN 1 ELSE 0 END, "
+            "CASE WHEN typeof(version) = 'integer' "
+            "AND version = ? THEN 1 ELSE 0 END "
+            "FROM ast_schema_version LIMIT ?",
+            (
+                SNAPSHOT_SCHEMA_VERSION,
+                SNAPSHOT_SCHEMA_VERSION,
+                _SCHEMA_VALIDATION_ROW_BUDGET + 1,
+            ),
+        )
         version_rows = 0
         while True:
             _check_deadline(deadline)
@@ -202,12 +202,18 @@ def validate_snapshot_schema(conn: sqlite3.Connection) -> None:
             version_rows += 1
             if version_rows > _SCHEMA_VALIDATION_ROW_BUDGET:
                 raise ValueError("INCOMPATIBLE_SCHEMA")
-            value = row[0]
-            if not isinstance(value, int) or isinstance(value, bool):
+            if (
+                len(row) != 4
+                or row[0] != "integer"
+                or type(row[1]) is not int
+                or not 0 <= row[1] <= 32
+                or type(row[2]) is not int
+                or row[2] != 1
+                or type(row[3]) is not int
+                or row[3] not in (0, 1)
+            ):
                 raise ValueError("INCOMPATIBLE_SCHEMA")
-            if value < 1 or value > SNAPSHOT_SCHEMA_VERSION:
-                raise ValueError("INCOMPATIBLE_SCHEMA")
-            if value == SNAPSHOT_SCHEMA_VERSION:
+            if row[3] == 1:
                 found_current = True
         if not found_current:
             raise ValueError("INCOMPATIBLE_SCHEMA")

@@ -337,7 +337,7 @@ def test_failed_stamp_rolls_back_without_deleting_an_unowned_manifest_epoch():
             if operation == "BEGIN IMMEDIATE":
                 self.in_transaction = True
                 return self
-            if operation.startswith("SELECT id, built"):
+            if operation.startswith("SELECT COUNT(*) FROM ast_call_graph_state"):
                 raise sqlite3.OperationalError("broken marker")
             return self
 
@@ -348,7 +348,7 @@ def test_failed_stamp_rolls_back_without_deleting_an_unowned_manifest_epoch():
     assert conn.events == [
         "COMMIT",
         "BEGIN IMMEDIATE",
-        "SELECT id, built FROM ast_call_graph_state WHERE id IN (1, 2) ORDER BY id",
+        "SELECT COUNT(*) FROM ast_call_graph_state WHERE id IN (1, 2)",
         "ROLLBACK",
     ]
 
@@ -525,7 +525,7 @@ def test_failed_manifest_invalidation_rolls_back_locked_transaction():
         def execute(self, query, _params=()):
             if query == "BEGIN IMMEDIATE":
                 self.in_transaction = True
-            elif query.startswith("SELECT id, built"):
+            elif query.startswith("SELECT COUNT(*) FROM ast_call_graph_state"):
                 raise sqlite3.OperationalError("marker failure")
             elif query.startswith("DELETE FROM ast_index_snapshot_manifest"):
                 raise sqlite3.OperationalError("delete failure")
@@ -535,6 +535,18 @@ def test_failed_manifest_invalidation_rolls_back_locked_transaction():
     with pytest.raises(sqlite3.OperationalError, match="CALL_GRAPH_INCOMPLETE"):
         stamp_full_index_manifest(conn, ".")  # type: ignore[arg-type]
     assert (conn.rolled_back, conn.in_transaction) == (True, False)
+
+
+def test_schema_version_rejects_huge_blob_without_fetching_value():
+    # PR #1253 thread 3756228865: only typeof/length/booleans cross the boundary.
+    from tree_sitter_analyzer.index_snapshot_schema import validate_snapshot_schema
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_schema_version(version)")
+    conn.execute("INSERT INTO ast_schema_version VALUES(zeroblob(1048576))")
+    with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
+        validate_snapshot_schema(conn)
+    conn.close()
 
 
 def test_schema_version_rejects_text_version():
@@ -596,8 +608,8 @@ def test_schema_rejects_nontext_pragma_column_name():
             return None
 
         def execute(self, query, _params=()):
-            if query.startswith("SELECT version"):
-                return Cursor([(13,)])
+            if query.startswith("SELECT typeof(version)"):
+                return Cursor([("integer", 2, 1, 1)])
             if query.startswith("SELECT count"):
                 return Cursor([(1,)])
             if query.startswith("SELECT 1"):

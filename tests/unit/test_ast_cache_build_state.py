@@ -130,6 +130,17 @@ def test_build_in_progress_stale_when_rebuilder_pid_is_dead() -> None:
         conn.close()
 
 
+def test_build_in_progress_treats_malformed_scalars_as_active() -> None:
+    # PR #1253 thread 3756228880: no SQLite text/blob value is coerced in Python.
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_build_state(id, building, started_at, pid)")
+    conn.execute("INSERT INTO ast_build_state VALUES(1, '1', zeroblob(1048576), '42')")
+    result = bs.build_in_progress(conn)
+    conn.close()
+
+    assert result is True
+
+
 def test_pid_alive_branches(monkeypatch) -> None:
     """_pid_alive maps os.kill outcomes correctly: gone→False, EPERM→alive."""
     assert bs._pid_alive(0) is False  # non-positive pid is never alive

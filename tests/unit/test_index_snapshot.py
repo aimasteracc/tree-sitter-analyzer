@@ -598,6 +598,24 @@ def test_manifest_duplicate_count_rejects_before_length_preflight():
     assert len(conn.queries) == 1
 
 
+@pytest.mark.parametrize("rows", [[], [()], [("1",)], [(1,), (1,)]])
+def test_manifest_count_scalar_shape_is_strict(rows):
+    # PR #1253: the bounded aggregate must return exactly one integer scalar.
+    import tree_sitter_analyzer.index_snapshot as snapshot
+
+    class CountConnection:
+        def set_progress_handler(self, _handler, _steps):
+            return None
+
+        def execute(self, _query):
+            return iter(rows)
+
+    with pytest.raises(ValueError, match="INDEX_MANIFEST_INVALID"):
+        snapshot._read_bounded_manifest(  # type: ignore[arg-type]
+            CountConnection(), float("inf")
+        )
+
+
 def test_manifest_missing_length_row_is_invalid():
     # PR #1253 review 3756101926: admitted singleton loss cannot look absent.
     import tree_sitter_analyzer.index_snapshot as snapshot

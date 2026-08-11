@@ -66,6 +66,7 @@ class IndexSnapshot:
     reason: str | None
     canonical_root: str | None
     file_count: int
+    physical_storage_identity: tuple[int, int, int, int, int, int] | None = None
 
 
 @dataclass(slots=True)
@@ -115,6 +116,7 @@ class IndexSnapshotRegistry:
                 snapshot.reason,
                 snapshot.canonical_root,
                 snapshot.file_count,
+                snapshot.physical_storage_identity,
             )
             self._entries[snapshot_id] = _Entry(
                 published, connection, charged_bytes, _clock() + _TTL_SECONDS
@@ -240,6 +242,24 @@ def _read_bounded_manifest(
     if manifest is None or cursor.fetchone() is not None:
         raise ValueError("INDEX_MANIFEST_INVALID")
     return cast(sqlite3.Row, manifest)
+
+
+def _physical_storage_identity(
+    conn: sqlite3.Connection,
+) -> tuple[int, int, int, int, int, int]:
+    """Return every physical storage field published by snapshot status."""
+    page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
+    page_count = int(conn.execute("PRAGMA page_count").fetchone()[0])
+    free_pages = int(conn.execute("PRAGMA freelist_count").fetchone()[0])
+    auto_vacuum = int(conn.execute("PRAGMA auto_vacuum").fetchone()[0])
+    return (
+        page_size * page_count,
+        page_count,
+        page_size,
+        free_pages,
+        free_pages * page_size,
+        auto_vacuum,
+    )
 
 
 def read_existing_snapshot(project_root: str) -> IndexSnapshot:
@@ -389,6 +409,17 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                 int(evidence.execute("PRAGMA page_size").fetchone()[0])
                 * int(evidence.execute("PRAGMA page_count").fetchone()[0])
                 + _SNAPSHOT_OVERHEAD_BYTES
+            )
+            snapshot = IndexSnapshot(
+                snapshot.snapshot_id,
+                snapshot.source_fingerprint,
+                snapshot.index_fingerprint,
+                snapshot.source_generation,
+                snapshot.completeness,
+                snapshot.reason,
+                snapshot.canonical_root,
+                snapshot.file_count,
+                _physical_storage_identity(evidence),
             )
             published = REGISTRY.publish(snapshot, evidence, charged)
             evidence = None

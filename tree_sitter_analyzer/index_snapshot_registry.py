@@ -30,10 +30,10 @@ def ensure_capacity(
 def reuse_snapshot(
     entries: dict[str, Any], snapshot: Any, connection: Any, expires_at: float
 ) -> Any | None:
-    """Refresh an identical capability and close its redundant new copy."""
-    for entry in entries.values():
+    """Reuse only an identity whose logical and physical status is unchanged."""
+    for key, entry in tuple(entries.items()):
         existing = entry.snapshot
-        if (
+        same_logical_identity = (
             existing.canonical_root == snapshot.canonical_root
             and existing.source_fingerprint == snapshot.source_fingerprint
             and existing.index_fingerprint == snapshot.index_fingerprint
@@ -41,10 +41,20 @@ def reuse_snapshot(
             and existing.completeness == snapshot.completeness
             and existing.reason == snapshot.reason
             and existing.file_count == snapshot.file_count
-        ):
+        )
+        if not same_logical_identity:
+            continue
+        if existing.physical_storage_identity == snapshot.physical_storage_identity:
             entry.expires_at = expires_at
             connection.close()
             return existing
+        # A VACUUM or other physical-only rewrite must not refresh a capability
+        # whose published metrics are stale. Retire it as soon as it is unpinned.
+        if entry.readers == 0:
+            entries.pop(key)
+            entry.connection.close()
+        else:
+            entry.expires_at = float("-inf")
     return None
 
 
