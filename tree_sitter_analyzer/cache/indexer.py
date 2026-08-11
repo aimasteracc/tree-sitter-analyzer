@@ -189,9 +189,11 @@ def check_cache_or_read(
     conn: sqlite3.Connection,
     rel_path: str,
     abs_path: str,
-    stat: os.stat_result,
+    stat: Any,
     content_hash_fn: Any,
     extractor_version: int,
+    *,
+    source_code: str | None = None,
 ) -> dict[str, Any] | tuple[str, str]:
     """Return cached-response dict or (source_code, content_hash) if stale."""
     row = conn.execute(
@@ -205,11 +207,12 @@ def check_cache_or_read(
         and row["extractor_version"] >= extractor_version
     ):
         return {"file": rel_path, "status": "cached", "reason": "unchanged"}
-    try:
-        with open(abs_path, encoding="utf-8", errors="replace") as f:
-            source_code = f.read()
-    except OSError as e:
-        return {"file": rel_path, "status": "error", "reason": str(e)}
+    if source_code is None:
+        try:
+            with open(abs_path, encoding="utf-8", errors="replace") as f:
+                source_code = f.read()
+        except OSError as e:
+            return {"file": rel_path, "status": "error", "reason": str(e)}
     content_hash = content_hash_fn(source_code)
     if (
         row is not None
@@ -231,10 +234,12 @@ def parse_and_write(
     abs_path: str,
     rel_path: str,
     language: str,
-    stat: os.stat_result,
+    stat: Any,
     source_code: str,
     content_hash: str,
     extractor_version: int,
+    *,
+    source_is_frozen: bool = False,
 ) -> dict[str, Any]:
     """Parse a file and write all cache rows. Returns result dict."""
     from .extraction import (
@@ -244,7 +249,11 @@ def parse_and_write(
         _extract_symbols,
     )
 
-    result = cache.parser.parse_file(abs_path, language)
+    result = (
+        cache.parser.parse_code(source_code, language, filename=abs_path)
+        if source_is_frozen
+        else cache.parser.parse_file(abs_path, language)
+    )
     if not result.success:
         return {
             "file": rel_path,
@@ -1363,6 +1372,10 @@ def _update_authoritative_manifest(
                 "index snapshot manifest certification failed", exc_info=True
             )
             stats["manifest_warning"] = "INDEX_MANIFEST_CERTIFICATION_FAILED"
+            stats["manifest_certification_failed"] = True
+            stats["certification_errors"] = stats.get("certification_errors", 0) + 1
+            stats["scope_complete"] = False
+            stats["verdict"] = "WARN"
             return
     if not source_certification_supported:
         stats["manifest_warning"] = "SOURCE_SCOPE_UNSUPPORTED"

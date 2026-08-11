@@ -1074,10 +1074,35 @@ def test_final_stats_stamp_failure_does_not_delete_later_manifest(tmp_path):
         .fetchone()
     )
     cache.close()
-    assert (result["manifest_warning"], manifest[0]) == (
-        "INDEX_MANIFEST_CERTIFICATION_FAILED",
-        "index",
+    assert (
+        result["manifest_warning"],
+        result["manifest_certification_failed"],
+        result["certification_errors"],
+        result["scope_complete"],
+        manifest[0],
+    ) == ("INDEX_MANIFEST_CERTIFICATION_FAILED", True, 1, False, "index")
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+async def test_full_index_accepts_configured_symlink_root(tmp_path):
+    # PR #1253 review 3761093597: canonicalize once before no-follow traversal.
+    real_root = tmp_path / "real"
+    real_root.mkdir()
+    (real_root / "sample.py").write_text("value = 1\n")
+    link_root = tmp_path / "configured-root"
+    link_root.symlink_to(real_root, target_is_directory=True)
+
+    result = await CodeGraphFullIndexTool(str(link_root)).execute(
+        {"mode": "full", "output_format": "json"}
     )
+
+    assert (
+        result["success"],
+        result["verdict"],
+        result["total_files"],
+        result["phases"]["incremental_sync"]["completeness"],
+    ) == (True, "INFO", 1, "complete")
 
 
 class TestIncrementalPhaseScope:

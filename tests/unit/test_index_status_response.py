@@ -157,7 +157,7 @@ class TestAuthoritativeSnapshotOracle:
         )
 
     @pytest.mark.asyncio
-    async def test_manifest_stamp_failure_keeps_index_successful_and_uncertified(
+    async def test_manifest_stamp_failure_reports_warn_and_uncertified(
         self, tmp_path, monkeypatch
     ):
         import tree_sitter_analyzer.index_snapshot_schema as schema
@@ -190,11 +190,25 @@ class TestAuthoritativeSnapshotOracle:
             "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
         ).fetchone()[0]
         conn.close()
-        assert result["success"] is True
-        assert result["total_files"] == 1
-        assert result["manifest_warning"] == "INDEX_MANIFEST_CERTIFICATION_FAILED"
-        assert manifest_count == 0
-        assert marker == 0
+        assert (
+            result["success"],
+            result["verdict"],
+            result["total_files"],
+            result["manifest_warning"],
+            result["certification_errors"],
+            result["scope_complete"],
+            manifest_count,
+            marker,
+        ) == (
+            False,
+            "WARN",
+            1,
+            "INDEX_MANIFEST_CERTIFICATION_FAILED",
+            1,
+            False,
+            0,
+            0,
+        )
 
     @pytest.mark.asyncio
     async def test_missing_call_graph_marker_makes_snapshot_partial(self, tmp_path):
@@ -235,7 +249,7 @@ class TestAuthoritativeSnapshotOracle:
         )
 
     @pytest.mark.asyncio
-    async def test_marker_write_failure_keeps_index_successful_and_uncertified(
+    async def test_marker_write_failure_reports_incomplete_and_uncertified(
         self, tmp_path, monkeypatch
     ):
         import tree_sitter_analyzer.cache.indexer as indexer
@@ -274,8 +288,14 @@ class TestAuthoritativeSnapshotOracle:
         status = await CodeGraphStatusTool(str(tmp_path)).execute(
             {"access_mode": "read_existing", "output_format": "json"}
         )
-        assert result["success"] is True
-        assert (manifest_count, rows) == (0, [(1, 0), (2, 0)])
+        assert (
+            result["success"],
+            result["verdict"],
+            result["phases"]["incremental_sync"]["backfill_errors"],
+            result["phases"]["incremental_sync"]["completeness"],
+            manifest_count,
+            rows,
+        ) == (False, "WARN", 1, "incomplete", 0, [(1, 0), (2, 0)])
         assert (status["completeness"], status["oracle_reason"]) == (
             "partial",
             "CALL_GRAPH_INCOMPLETE",

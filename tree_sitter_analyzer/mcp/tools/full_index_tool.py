@@ -18,6 +18,7 @@ CodeGraph parity: equivalent to CodeGraph's "index everything" single command.
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -315,6 +316,9 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 arguments.get("output_format", "toon"),
             )
 
+        # Resolve a configured symlink exactly once at the operation boundary.
+        # Every later walk/open/status phase uses this canonical descriptor root.
+        self.project_root = os.path.realpath(os.path.abspath(self.project_root))
         mode = arguments.get("mode", "incremental")
         max_files = arguments["max_files"]
         resolve_synapse = arguments.get("resolve_synapse", True)
@@ -454,7 +458,10 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             summary_line = f"codegraph_full_index: completed with {top_verdict.lower()}"
 
             result = {
-                "success": True,
+                "success": not (
+                    incremental_phase.get("completeness") == "incomplete"
+                    or stats.get("manifest_certification_failed", False)
+                ),
                 "verdict": top_verdict,
                 "summary_line": summary_line,
                 "agent_summary": {
@@ -650,7 +657,10 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             # so they never raise but also must NOT be silently reported as "ok".
             status = (
                 "error"
-                if result.errors > 0 or error_summary["error_details_total"] > 0
+                if result.errors > 0
+                or result.backfill_errors > 0
+                or not result.scope_complete
+                or error_summary["error_details_total"] > 0
                 else "ok"
             )
             return {
@@ -662,6 +672,9 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "deleted_files": result.deleted_files,
                 "unchanged_files": result.unchanged_files,
                 "errors": result.errors,
+                "backfill_errors": result.backfill_errors,
+                "completeness": "complete" if result.scope_complete else "incomplete",
+                "manifest_certification_failed": result.manifest_certification_failed,
                 "processed": result.processed,
                 "changed_during_run": result.changed_during_run,
                 "changed_during_run_files": result.changed_during_run_files,
@@ -771,6 +784,9 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             stats = cache.get_stats()
             result = {
                 "_manifest_certified": stamp_manifest and manifest_warning is None,
+                "manifest_certification_failed": manifest_warning is not None,
+                "certification_errors": 1 if manifest_warning is not None else 0,
+                "scope_complete": stamp_manifest and manifest_warning is None,
                 "total_files": stats.get("total_files", 0),
                 "total_symbols": stats.get("total_symbols", 0),
                 "by_language": stats.get("by_language", {}),

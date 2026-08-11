@@ -265,9 +265,24 @@ class IncrementalSync:
 
             try:
                 mark_call_graph_built_strict(conn)
-            except sqlite3.OperationalError:
+            except Exception:
+                logger.warning(
+                    "incremental call-graph marker certification failed",
+                    exc_info=True,
+                )
                 backfill_complete = False
+                result.scope_complete = False
+                result.backfill_errors += 1
+                result.details.append(
+                    {
+                        "file": "",
+                        "status": "warning",
+                        "reason": "CALL_GRAPH_MARKER_CERTIFICATION_FAILED",
+                    }
+                )
                 clear_call_graph_built_strict(conn)
+                conn.execute("DELETE FROM ast_index_snapshot_manifest")
+                conn.commit()
         expected_paths = set(disk_files)
         if (
             result.scope_complete
@@ -283,6 +298,16 @@ class IncrementalSync:
                 logger.warning(
                     "incremental snapshot manifest certification failed",
                     exc_info=True,
+                )
+                result.scope_complete = False
+                result.manifest_certification_failed = True
+                result.errors += 1
+                result.details.append(
+                    {
+                        "file": "",
+                        "status": "warning",
+                        "reason": "INDEX_MANIFEST_CERTIFICATION_FAILED",
+                    }
                 )
 
         return result
@@ -316,6 +341,16 @@ class IncrementalSync:
             validate_index_candidate_snapshot(
                 self._cache.project_root, max_files, candidate_snapshot
             )
+            if any(
+                entry.frozen_path is not None
+                for entry in candidate_snapshot.selected_entries
+            ):
+                from .indexing_candidate_materialization import (
+                    index_candidate_snapshot_is_materialized,
+                )
+
+                if not index_candidate_snapshot_is_materialized(candidate_snapshot):
+                    raise ValueError("INDEX_CANDIDATE_FROZEN_EVIDENCE_INVALID")
             changed_files: list[tuple[str, str]] = []
             for entry in candidate_snapshot.selected_entries:
                 change_reason = (
@@ -329,7 +364,12 @@ class IncrementalSync:
                 fingerprint = entry.fingerprint
                 assert fingerprint is not None
                 disk_files[entry.rel_path] = {
-                    "abs_path": entry.frozen_path or entry.abs_path,
+                    "abs_path": entry.abs_path,
+                    "source_path": entry.frozen_path or entry.abs_path,
+                    "language": entry.language,
+                    "fingerprint": fingerprint,
+                    "frozen_identity": entry.frozen_identity,
+                    "frozen_deadline": candidate_snapshot.frozen_read_deadline,
                     "mtime_ns": fingerprint.mtime_ns,
                     "file_size": fingerprint.file_size,
                 }
@@ -357,6 +397,8 @@ class IncrementalSync:
                 stat = os.stat(abs_path)
                 disk_files[rel] = {
                     "abs_path": abs_path,
+                    "source_path": abs_path,
+                    "language": None,
                     "mtime_ns": int(stat.st_mtime_ns),
                     "file_size": stat.st_size,
                 }
@@ -412,11 +454,11 @@ class IncrementalSync:
         for rel, info in items:
             indexed_info = indexed_rows.get(rel)
             if indexed_info is None:
-                detail = self._index_new_file(rel, info["abs_path"], conn)
+                detail = self._index_new_file(rel, info, conn)
                 result.new_files += 1
                 action_by_file[rel] = "new"
             elif self._file_changed(info, indexed_info, rel):
-                detail = self._reindex_modified(rel, info["abs_path"], conn)
+                detail = self._reindex_modified(rel, info, conn)
                 result.updated_files += 1
                 action_by_file[rel] = "updated"
             else:
@@ -442,12 +484,14 @@ class IncrementalSync:
     def _index_new_file(
         self,
         rel_path: str,
-        abs_path: str,
+        info: dict[str, Any] | str,
         conn: sqlite3.Connection,
     ) -> dict[str, Any]:
         # Keep attempted action separate from the cache layer's actual status.
+        if isinstance(info, str):
+            info = {"abs_path": info, "source_path": info}
         try:
-            index_result = self._cache.index_file(abs_path)
+            index_result = self._index_logical_file(info)
         except Exception as exc:
             # #886: if index_file wrote partial rows before raising, clean the
             # complete generation through the shared ordered external-FTS helper.
@@ -490,12 +534,14 @@ class IncrementalSync:
     def _reindex_modified(
         self,
         rel_path: str,
-        abs_path: str,
+        info: dict[str, Any] | str,
         conn: sqlite3.Connection,
     ) -> dict[str, Any]:
-        self._cache.invalidate(abs_path)
+        if isinstance(info, str):
+            info = {"abs_path": info, "source_path": info}
+        self._cache.invalidate(info["abs_path"])
         try:
-            index_result = self._cache.index_file(abs_path)
+            index_result = self._index_logical_file(info)
         except Exception as exc:
             # #886: same shared ordered cleanup as _index_new_file.
             try:
@@ -531,6 +577,21 @@ class IncrementalSync:
         if status == "error" and "reason" in index_result:
             detail["reason"] = index_result["reason"]
         return detail
+
+    def _index_logical_file(self, info: dict[str, Any]) -> dict[str, Any]:
+        """Index certified bytes under their original logical cache key."""
+        logical_path = str(info["abs_path"])
+        source_path = str(info.get("source_path", logical_path))
+        if source_path == logical_path:
+            return self._cache.index_file(logical_path)
+        return self._cache.index_file(
+            logical_path,
+            info.get("language"),
+            _source_path=source_path,
+            _source_fingerprint=info.get("fingerprint"),
+            _frozen_identity=info.get("frozen_identity"),
+            _frozen_deadline=info.get("frozen_deadline"),
+        )
 
     def get_changes(self) -> dict[str, list[str]]:
         """Return live new, modified, and deleted paths without re-indexing."""

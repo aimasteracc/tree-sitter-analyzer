@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import sqlite3
+from types import SimpleNamespace
 from typing import Any
 
 from ._ast_cache_database_mixin import ASTCacheSurface
@@ -70,7 +71,17 @@ def _refresh_cached_graph_row(conn: sqlite3.Connection, row: sqlite3.Row) -> boo
 class ASTCacheIndexMixin(ASTCacheSurface):
     """Stable indexing methods delegated to focused cache modules."""
 
-    def index_file(self, file_path: str, language: str | None = None) -> dict[str, Any]:
+    def index_file(
+        self,
+        file_path: str,
+        language: str | None = None,
+        *,
+        _source_path: str | None = None,
+        _source_fingerprint: Any | None = None,
+        _frozen_identity: tuple[int, int, int] | None = None,
+        _frozen_deadline: float | None = None,
+    ) -> dict[str, Any]:
+        """Index one logical path; private frozen inputs are engine-only evidence."""
         abs_path = os.path.abspath(file_path)
         rel_path = os.path.relpath(abs_path, self.project_root).replace("\\", "/")
         if language is None:
@@ -81,13 +92,40 @@ class ASTCacheIndexMixin(ASTCacheSurface):
                 "status": "skipped",
                 "reason": "unsupported language",
             }
-        try:
-            stat = os.stat(abs_path)
-        except OSError as exc:
-            return {"file": rel_path, "status": "error", "reason": str(exc)}
+        frozen_source: str | None = None
+        stat_value: Any
+        if _source_path is not None:
+            if _source_fingerprint is None or _frozen_identity is None:
+                return {
+                    "file": rel_path,
+                    "status": "error",
+                    "reason": "INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING",
+                }
+            from .indexing_candidate_materialization import read_frozen_candidate
+
+            try:
+                frozen_source = read_frozen_candidate(
+                    _source_path,
+                    expected=_source_fingerprint,
+                    frozen_identity=_frozen_identity,
+                    deadline=_frozen_deadline,
+                )
+            except OSError as exc:
+                return {"file": rel_path, "status": "error", "reason": str(exc)}
+            stat_value = SimpleNamespace(
+                st_mtime_ns=_source_fingerprint.mtime_ns,
+                st_size=_source_fingerprint.file_size,
+            )
+        else:
+            try:
+                stat_value = os.stat(abs_path)
+            except OSError as exc:
+                return {"file": rel_path, "status": "error", "reason": str(exc)}
         conn = self._get_conn()
         had_built_marker = self.call_graph_built()
-        cached_or_source = self._check_cache_or_read(conn, rel_path, abs_path, stat)
+        cached_or_source = self._check_cache_or_read(
+            conn, rel_path, abs_path, stat_value, source_code=frozen_source
+        )
         if isinstance(cached_or_source, dict):
             self._mark_single_file_index_complete_if_needed(
                 had_built_marker,
@@ -102,9 +140,10 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             abs_path,
             rel_path,
             language,
-            stat,
+            stat_value,
             source_code,
             content_hash,
+            source_is_frozen=_source_path is not None,
         )
         self._mark_single_file_index_complete_if_needed(had_built_marker, result)
         return result
@@ -137,7 +176,9 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         conn: sqlite3.Connection,
         rel_path: str,
         abs_path: str,
-        stat: os.stat_result,
+        stat: Any,
+        *,
+        source_code: str | None = None,
     ) -> dict[str, Any] | tuple[str, str]:
         """Return a cached response or source plus its content hash."""
         return _indexer.check_cache_or_read(
@@ -147,6 +188,7 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             stat,
             _content_hash,
             self._extractor_version,
+            source_code=source_code,
         )
 
     def _parse_and_write(
@@ -155,9 +197,11 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         abs_path: str,
         rel_path: str,
         language: str,
-        stat: os.stat_result,
+        stat: Any,
         source_code: str,
         content_hash: str,
+        *,
+        source_is_frozen: bool = False,
     ) -> dict[str, Any]:
         """Parse a file and write all cache rows."""
         return _indexer.parse_and_write(
@@ -170,6 +214,7 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             source_code,
             content_hash,
             self._extractor_version,
+            source_is_frozen=source_is_frozen,
         )
 
     def _write_activation_for_file(

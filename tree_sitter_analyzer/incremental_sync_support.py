@@ -26,6 +26,7 @@ class SyncResult:
     truncated_by_max_files: bool = False
     scope_complete: bool = True
     synapse_resolved: int = 0
+    manifest_certification_failed: bool = False
     details: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -44,6 +45,7 @@ class SyncResult:
             "truncated_by_max_files": self.truncated_by_max_files,
             "completeness": "complete" if self.scope_complete else "incomplete",
             "synapse_resolved": self.synapse_resolved,
+            "manifest_certification_failed": self.manifest_certification_failed,
             "details": self.details,
         }
 
@@ -63,9 +65,9 @@ def file_changed(disk_info: dict[str, Any], indexed_info: dict[str, Any]) -> boo
         return True
     if disk_info["mtime_ns"] != indexed_info["mtime_ns"]:
         try:
-            return file_content_hash(disk_info["abs_path"]) != str(
-                indexed_info["content_hash"]
-            )
+            return file_content_hash(
+                disk_info.get("source_path", disk_info["abs_path"])
+            ) != str(indexed_info["content_hash"])
         except OSError:
             return True
     return False

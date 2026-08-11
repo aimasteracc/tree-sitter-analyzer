@@ -1630,7 +1630,9 @@ def test_incremental_stamp_failure_does_not_delete_manifest(tmp_path):
             "stamp_full_index_manifest",
             side_effect=RuntimeError("busy"),
         ) as stamp:
-            IncrementalSync(cache).sync(max_files=10, candidate_snapshot=snapshot)
+            result = IncrementalSync(cache).sync(
+                max_files=10, candidate_snapshot=snapshot
+            )
         after = (
             cache.get_conn()
             .execute("SELECT index_fingerprint FROM ast_index_snapshot_manifest")
@@ -1639,7 +1641,96 @@ def test_incremental_stamp_failure_does_not_delete_manifest(tmp_path):
     finally:
         cache.close()
 
-    assert (stamp.call_count, after) == (1, before)
+    assert (
+        stamp.call_count,
+        after,
+        result.errors,
+        result.manifest_certification_failed,
+        result.scope_complete,
+        result.details[-1]["reason"],
+    ) == (
+        1,
+        before,
+        1,
+        True,
+        False,
+        "INDEX_MANIFEST_CERTIFICATION_FAILED",
+    )
+
+
+def test_marker_certification_failure_is_one_incomplete_backfill(tmp_path):
+    # PR #1253 review 3761093585: every marker failure must fail closed once.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        with patch(
+            "tree_sitter_analyzer.cache.callgraph_state.mark_call_graph_built_strict",
+            side_effect=RuntimeError("marker unavailable"),
+        ):
+            result = IncrementalSync(cache).sync()
+        manifest_count = (
+            cache.get_conn()
+            .execute("SELECT count(*) FROM ast_index_snapshot_manifest")
+            .fetchone()[0]
+        )
+    finally:
+        cache.close()
+
+    assert (
+        result.backfill_errors,
+        result.errors,
+        result.scope_complete,
+        result.details[-1]["reason"],
+        manifest_count,
+    ) == (1, 0, False, "CALL_GRAPH_MARKER_CERTIFICATION_FAILED", 0)
+
+
+@requires_posix_fd
+def test_frozen_incremental_uses_logical_key_and_language(tmp_path):
+    # PR #1253 review 3761093594: opaque extensionless evidence is not a cache key.
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        release_index_candidate_snapshot,
+    )
+
+    path = tmp_path / "app.py"
+    path.write_text("def frozen_symbol():\n    return 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    frozen_path = snapshot.selected_entries[0].frozen_path
+    assert frozen_path is not None
+    path.write_text("def later_live_symbol():\n    return 2\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+            certify_manifest=False,
+        )
+        row = (
+            cache.get_conn()
+            .execute("SELECT file_path, language FROM ast_index")
+            .fetchone()
+        )
+        names = [
+            symbol["name"] for symbol in cache.lookup(str(path))["symbols"]["symbols"]
+        ]
+    finally:
+        cache.close()
+        release_index_candidate_snapshot(snapshot)
+
+    assert (
+        os.path.splitext(frozen_path)[1],
+        tuple(row),
+        names,
+        result.new_files,
+    ) == ("", ("app.py", "python"), ["frozen_symbol"], 1)
 
 
 def test_modified_base_rebuilds_resolved_hierarchy_edge(tmp_path):
