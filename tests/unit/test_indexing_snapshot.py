@@ -144,6 +144,34 @@ def test_candidate_discovery_closes_generator_after_first_overflow(tmp_path):
     assert snapshot.present_paths == frozenset(path.name for path in paths)
 
 
+def test_candidate_discovery_bounds_million_unsupported_entries(tmp_path):
+    # PR #1253 review thread 3755842989: every yielded path consumes discovery budget.
+    consumed = 0
+    closed = False
+
+    def million_unsupported(_root):
+        nonlocal consumed, closed
+        try:
+            for index in range(1_000_000):
+                consumed += 1
+                yield str(tmp_path / f"unsupported-{index}.txt")
+        finally:
+            closed = True
+
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=1,
+        exclude_patterns=frozenset(),
+        walk_fn=million_unsupported,
+        language_fn=_python_language,
+    )
+
+    assert (consumed, closed) == (100_001, True)
+    assert len(snapshot.entries) == 100_000
+    assert len(snapshot.present_paths) == 100_000
+    assert snapshot.discovery_error == "INDEX_CANDIDATE_DISCOVERY_BUDGET"
+
+
 def test_snapshot_detects_modification(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")

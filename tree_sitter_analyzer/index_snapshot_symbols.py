@@ -11,6 +11,11 @@ _FALLBACK_SYMBOL_BUDGET = 2_000_000
 _FALLBACK_INPUT_ROW_BUDGET = 250_000
 _FALLBACK_CELL_BYTE_BUDGET = 1024 * 1024
 _FALLBACK_DEADLINE_SECONDS = 5.0
+_ORDINARY_DEADLINE_SECONDS = 5.0
+_ORDINARY_ROW_BUDGET = 2_000_000
+_ORDINARY_GROUP_BUDGET = 4096
+_ORDINARY_CELL_BYTE_BUDGET = 1024 * 1024
+_ORDINARY_OUTPUT_BYTE_BUDGET = 4 * 1024 * 1024
 
 
 def has_ordinary_symbol_projection(conn: sqlite3.Connection, tables: set[str]) -> bool:
@@ -21,6 +26,74 @@ def has_ordinary_symbol_projection(conn: sqlite3.Connection, tables: set[str]) -
         str(row[1]) for row in conn.execute("PRAGMA table_info(ast_symbol_rows)")
     }
     return {"name", "kind", "language", "file_path"}.issubset(columns)
+
+
+def ordinary_symbol_counts(
+    conn: sqlite3.Connection,
+) -> tuple[int, dict[str, int], dict[str, int]]:
+    """Aggregate canonical rows within fixed SQLite and output budgets."""
+    deadline = time.monotonic() + _ORDINARY_DEADLINE_SECONDS
+    output_bytes = 0
+
+    def check_deadline() -> None:
+        if time.monotonic() > deadline:
+            raise RuntimeError("SNAPSHOT_READ_FAILED")
+
+    def expired() -> int:
+        return int(time.monotonic() > deadline)
+
+    def grouped(column: str) -> dict[str, int]:
+        nonlocal output_bytes
+        result: dict[str, int] = {}
+        groups = 0
+        # CASE prevents an oversized key from crossing the SQLite/Python boundary.
+        cursor = conn.execute(
+            f"SELECT length(CAST({column} AS BLOB)), "
+            f"CASE WHEN length(CAST({column} AS BLOB)) <= ? THEN {column} END, "
+            f"COUNT(*) FROM ast_symbol_rows GROUP BY {column} ORDER BY {column}",
+            (_ORDINARY_CELL_BYTE_BUDGET,),
+        )
+        while True:
+            check_deadline()
+            row = cursor.fetchone()
+            if row is None:
+                break
+            groups += 1
+            if groups > _ORDINARY_GROUP_BUDGET:
+                raise RuntimeError("SNAPSHOT_READ_FAILED")
+            cell_bytes, key, count = row
+            if (
+                not isinstance(cell_bytes, int)
+                or cell_bytes > _ORDINARY_CELL_BYTE_BUDGET
+                or not isinstance(key, str)
+                or not isinstance(count, int)
+                or count < 0
+                or count > _ORDINARY_ROW_BUDGET
+            ):
+                raise RuntimeError("SNAPSHOT_READ_FAILED")
+            output_bytes += cell_bytes + len(str(count).encode("ascii"))
+            if output_bytes > _ORDINARY_OUTPUT_BYTE_BUDGET:
+                raise RuntimeError("SNAPSHOT_READ_FAILED")
+            result[key] = count
+        return result
+
+    conn.set_progress_handler(expired, 1_000)
+    try:
+        check_deadline()
+        row = conn.execute("SELECT COUNT(*) FROM ast_symbol_rows").fetchone()
+        check_deadline()
+        if (
+            row is None
+            or not isinstance(row[0], int)
+            or row[0] < 0
+            or row[0] > _ORDINARY_ROW_BUDGET
+        ):
+            raise RuntimeError("SNAPSHOT_READ_FAILED")
+        return row[0], grouped("kind"), grouped("language")
+    except sqlite3.OperationalError as exc:
+        raise RuntimeError("SNAPSHOT_READ_FAILED") from exc
+    finally:
+        conn.set_progress_handler(None, 0)
 
 
 def fallback_symbol_counts(

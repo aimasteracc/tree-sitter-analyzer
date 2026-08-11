@@ -40,6 +40,7 @@ from .index_snapshot_symbols import (
 from .index_snapshot_symbols import (
     has_ordinary_symbol_projection as _has_ordinary_symbol_projection,
 )
+from .index_snapshot_symbols import ordinary_symbol_counts as _ordinary_symbol_counts
 from .index_source_snapshot import (
     SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET,
     capture_current_source_snapshot,
@@ -432,15 +433,8 @@ def read_snapshot_stats(
             "ast_symbol_rows",
         }.issubset(tables)
         if _has_ordinary_symbol_projection(conn, tables):
-            total_symbols = int(
-                conn.execute("SELECT COUNT(*) FROM ast_symbol_rows").fetchone()[0]
-            )
-            symbols_by_kind = grouped(
-                "SELECT kind, COUNT(*) FROM ast_symbol_rows GROUP BY kind ORDER BY kind"
-            )
-            symbols_by_language = grouped(
-                "SELECT language, COUNT(*) FROM ast_symbol_rows "
-                "GROUP BY language ORDER BY language"
+            total_symbols, symbols_by_kind, symbols_by_language = (
+                _ordinary_symbol_counts(conn)
             )
         else:
             total_symbols, symbols_by_kind, symbols_by_language = (

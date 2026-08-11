@@ -385,6 +385,54 @@ def test_snapshot_stats_uses_ordinary_symbol_rows_without_fts(monkeypatch):
     conn.close()
 
 
+def test_snapshot_stats_rejects_too_many_ordinary_groups():
+    # PR #1253 review thread 3755842993: GROUP BY output has an absolute row cap.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols_owner
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_symbol_rows(kind TEXT, language TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_symbol_rows VALUES (?, 'python')",
+        ((f"kind-{index}",) for index in range(4097)),
+    )
+
+    with pytest.raises(RuntimeError, match="^SNAPSHOT_READ_FAILED$"):
+        symbols_owner.ordinary_symbol_counts(conn)
+    assert conn.execute("SELECT 1").fetchone() == (1,)
+    conn.close()
+
+
+def test_snapshot_stats_rejects_oversized_ordinary_cell():
+    # PR #1253 review thread 3755842993: oversized group keys never enter output.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols_owner
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_symbol_rows(kind TEXT, language TEXT)")
+    conn.execute(
+        "INSERT INTO ast_symbol_rows VALUES (?, 'python')",
+        ("x" * (1024 * 1024 + 1),),
+    )
+
+    with pytest.raises(RuntimeError, match="^SNAPSHOT_READ_FAILED$"):
+        symbols_owner.ordinary_symbol_counts(conn)
+    conn.close()
+
+
+def test_snapshot_stats_ordinary_deadline_clears_progress_handler(monkeypatch):
+    # PR #1253 review thread 3755842993: interrupted reads fail closed and clean up.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols_owner
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_symbol_rows(kind TEXT, language TEXT)")
+    conn.execute("INSERT INTO ast_symbol_rows VALUES ('function', 'python')")
+    monkeypatch.setattr(symbols_owner, "_ORDINARY_DEADLINE_SECONDS", -1.0)
+
+    with pytest.raises(RuntimeError, match="^SNAPSHOT_READ_FAILED$"):
+        symbols_owner.ordinary_symbol_counts(conn)
+    assert conn.execute("SELECT 1").fetchone() == (1,)
+    conn.close()
+
+
 def test_snapshot_stats_malformed_ordinary_rows_use_legacy_json(monkeypatch):
     # PR #1253 review thread 3755591659: incomplete projections fall back safely.
     import tree_sitter_analyzer.index_snapshot as owner

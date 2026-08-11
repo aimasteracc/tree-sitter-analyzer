@@ -21,6 +21,10 @@ from .source_oracle import (
 
 _INDEX_SOURCE_BYTE_LIMIT = 64 * 1024 * 1024
 _INDEX_SOURCE_READ_SECONDS = 5.0
+_CANDIDATE_ENTRY_BUDGET = 100_000
+_CANDIDATE_PATH_BYTE_BUDGET = 16 * 1024 * 1024
+_CANDIDATE_DISCOVERY_SECONDS = 5.0
+_CANDIDATE_DISCOVERY_BUDGET_ERROR = "INDEX_CANDIDATE_DISCOVERY_BUDGET"
 
 SnapshotDecision = Literal["selected", "excluded", "skipped", "error"]
 
@@ -126,6 +130,7 @@ class IndexCandidateSnapshot:
     skipped: int
     errors: int
     limited: int
+    discovery_error: str | None = None
 
     @property
     def selected_entries(self) -> tuple[IndexSnapshotEntry, ...]:
@@ -224,10 +229,36 @@ def build_index_candidate_snapshot(
     present_paths: set[str] = set()
     resolved_paths: set[str] = set()
     discovered = selected = excluded = skipped = errors = limited = 0
+    yielded = path_bytes = 0
+    discovery_error: str | None = None
+    deadline = time.monotonic() + _CANDIDATE_DISCOVERY_SECONDS
 
     walker = iter(walk_fn(logical_root))
     for raw_path in walker:
-        abs_path = os.path.abspath(raw_path)
+        # Charge every yielded entry before exclusions, language detection, path
+        # validation, or de-duplication can continue the loop.  In particular,
+        # an infinite stream of unsupported names must remain bounded.
+        yielded += 1
+        try:
+            raw_path_text = str(raw_path)
+            path_bytes += len(raw_path_text.encode("utf-8", errors="surrogatepass"))
+        except (TypeError, UnicodeError):
+            raw_path_text = ""
+            path_bytes = _CANDIDATE_PATH_BYTE_BUDGET + 1
+        if (
+            yielded > _CANDIDATE_ENTRY_BUDGET
+            or path_bytes > _CANDIDATE_PATH_BYTE_BUDGET
+            or time.monotonic() > deadline
+        ):
+            discovered += 1
+            errors += 1
+            discovery_error = _CANDIDATE_DISCOVERY_BUDGET_ERROR
+            close = getattr(walker, "close", None)
+            if callable(close):
+                close()
+            break
+
+        abs_path = os.path.abspath(raw_path_text)
         rel_path = os.path.relpath(abs_path, logical_root)
         if os.name == "nt":
             rel_path = rel_path.replace("\\", "/")
@@ -357,6 +388,7 @@ def build_index_candidate_snapshot(
         skipped=skipped,
         errors=errors,
         limited=limited,
+        discovery_error=discovery_error,
     )
 
 
