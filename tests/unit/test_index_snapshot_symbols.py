@@ -745,3 +745,138 @@ def test_symbol_upgrade_detects_extra_ordinary_rows_after_comparison():
     conn.close()
 
     assert result is False
+
+
+def test_projection_digest_rejects_same_count_payload_forgery(tmp_path):
+    # PR #1253 thread 3757429365: counts cannot certify changed query payloads.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    source = tmp_path / "app.py"
+    source.write_text("def target():\n    return 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    conn = cache.get_conn()
+    before = symbol_projection_is_exact(conn)
+    conn.execute(
+        "UPDATE ast_symbol_rows SET kind = 'forged' WHERE file_path = 'app.py'"
+    )
+    conn.commit()
+    after = symbol_projection_is_exact(conn)
+    cache.close()
+
+    assert (before, after) == (True, False)
+
+
+def test_symbol_migration_preserves_its_progress_handler_during_validation():
+    # PR #1253 thread 3757429359: nested validation must not replace the deadline.
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    raw = sqlite3.connect(":memory:")
+    raw.execute(
+        "CREATE TABLE ast_index (file_path TEXT, content_hash TEXT, "
+        "language TEXT, symbols_json TEXT)"
+    )
+    raw.execute("INSERT INTO ast_index VALUES ('a.py', 'h', 'python', '{}')")
+    installs = []
+
+    class RecordingConnection:
+        def __getattr__(self, name):
+            return getattr(raw, name)
+
+        def set_progress_handler(self, handler, steps):
+            installs.append(handler)
+            return raw.set_progress_handler(handler, steps)
+
+    result = ensure_symbol_rows_backfilled(RecordingConnection())  # type: ignore[arg-type]
+    raw.close()
+
+    assert (result, sum(handler is not None for handler in installs)) == (True, 1)
+
+
+def test_projection_digest_frames_null_scalar():
+    # PR #1253 thread 3757429365: canonical frames preserve SQLite NULL type.
+    from tree_sitter_analyzer.index_symbol_projection import symbol_rows_digest
+
+    digest = symbol_rows_digest(((None,),))
+
+    assert (
+        digest
+        == "sha256:9341e618b6e0444481fc01888844bdb8d9c2b092bd917393078c79ab221bc537"
+    )
+
+
+def test_projection_digest_frames_blob_scalar():
+    # PR #1253 thread 3757429365: canonical frames preserve SQLite BLOB type.
+    from tree_sitter_analyzer.index_symbol_projection import symbol_rows_digest
+
+    digest = symbol_rows_digest(((b"x",),))
+
+    assert (
+        digest
+        == "sha256:b2ea8094e147336ca6cf3359184d9f32d518f9ca5af67180ae3445ccc718dce5"
+    )
+
+
+def test_projection_digest_frames_float_scalar():
+    # PR #1253 thread 3757429365: canonical frames preserve SQLite REAL type.
+    from tree_sitter_analyzer.index_symbol_projection import symbol_rows_digest
+
+    digest = symbol_rows_digest(((1.5,),))
+
+    assert (
+        digest
+        == "sha256:b81c87f201095f1f3f84950ae64551bfbbb82de2b70390188a66df7831bcda98"
+    )
+
+
+def test_projection_digest_rejects_unsupported_scalar():
+    # PR #1253 thread 3757429365: non-SQLite objects are never string-coerced.
+    from tree_sitter_analyzer.index_symbol_projection import symbol_rows_digest
+
+    with pytest.raises(ValueError, match="invalid ordinary symbol scalar"):
+        symbol_rows_digest(((object(),),))
+
+
+def test_symbol_upgrade_adds_digest_to_legacy_state_schema():
+    # PR #1253 thread 3757429365: v1 projection state upgrades in place.
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    conn = _untyped_legacy_connection()
+    conn.execute(
+        "CREATE TABLE ast_symbol_projection_state("
+        "file_path TEXT PRIMARY KEY, content_hash TEXT NOT NULL, "
+        "symbol_count INTEGER NOT NULL)"
+    )
+
+    result = ensure_symbol_rows_backfilled(conn)
+    columns = tuple(
+        row[1] for row in conn.execute("PRAGMA table_info(ast_symbol_projection_state)")
+    )
+    conn.close()
+
+    assert (result, columns) == (
+        True,
+        ("file_path", "content_hash", "symbol_count", "projection_digest"),
+    )
+
+
+def test_projection_validator_enforces_total_payload_budget(tmp_path, monkeypatch):
+    # PR #1253 thread 3757429365: ordinary payload bytes have an absolute cap.
+    import tree_sitter_analyzer.index_symbol_projection as projection
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    monkeypatch.setattr(projection, "_PROJECTION_TOTAL_BYTE_BUDGET", -1)
+
+    result = projection.symbol_projection_is_exact(cache.get_conn())
+    cache.close()
+
+    assert result is False

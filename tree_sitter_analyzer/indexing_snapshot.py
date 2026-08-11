@@ -74,12 +74,18 @@ def index_source_content_hash(source: str) -> str:
 
 
 def _capture_candidate_fingerprint(
-    root: str, rel_path: str, admitted: os.stat_result
+    root: str,
+    rel_path: str,
+    admitted: os.stat_result,
+    deadline: float | None = None,
 ) -> IndexFileFingerprint:
+    expires_at = (
+        time.monotonic() + _INDEX_SOURCE_READ_SECONDS if deadline is None else deadline
+    )
     captured = safe_workspace_path(
         root,
         rel_path,
-        deadline=time.monotonic() + _INDEX_SOURCE_READ_SECONDS,
+        deadline=expires_at,
         limit=_INDEX_SOURCE_BYTE_LIMIT,
     )
     if captured.kind != "file" or captured.data is None:
@@ -350,7 +356,9 @@ def build_index_candidate_snapshot(
         assert source_info is not None
         try:
             fingerprint = (
-                _capture_candidate_fingerprint(resolved_root, rel_path, source_info)
+                _capture_candidate_fingerprint(
+                    resolved_root, rel_path, source_info, deadline
+                )
                 if os.name == "posix"
                 else IndexFileFingerprint.from_stat(source_info)
             )

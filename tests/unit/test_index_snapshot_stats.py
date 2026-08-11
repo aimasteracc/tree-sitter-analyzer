@@ -83,12 +83,22 @@ def test_snapshot_stats_uses_ordinary_symbol_rows_without_fts(monkeypatch):
             (2, "run", "function", "python", "sample.py"),
         ),
     )
-    conn.execute(
-        "CREATE TABLE ast_symbol_projection_state("
-        "file_path TEXT, content_hash TEXT, symbol_count INTEGER)"
+    from tree_sitter_analyzer.index_symbol_projection import symbol_rows_digest
+
+    digest = symbol_rows_digest(
+        conn.execute(
+            "SELECT id, name, kind, file_path, language, line, end_line "
+            "FROM ast_symbol_rows ORDER BY id"
+        )
     )
     conn.execute(
-        "INSERT INTO ast_symbol_projection_state VALUES ('sample.py', 'hash', 2)"
+        "CREATE TABLE ast_symbol_projection_state("
+        "file_path TEXT, content_hash TEXT, symbol_count INTEGER, "
+        "projection_digest TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO ast_symbol_projection_state VALUES ('sample.py', 'hash', 2, ?)",
+        (digest,),
     )
     conn.execute("CREATE TABLE ast_cache_metadata(key TEXT, value TEXT)")
     conn.execute(

@@ -146,3 +146,13 @@ def test_pipeline_publishes_exact_diagnostic_for_each_failed_stage() -> None:
             "reason": "BACKFILL_EXCEPTION:RuntimeError",
         },
     ]
+
+
+def test_noninteger_synapse_resolved_count_is_not_published() -> None:
+    # PR #1253: malformed counters cannot cross the pipeline boundary.
+    cache = _PipelineCache()
+    cache.synapse_result = {"resolved": "2", "errors": 0}
+
+    complete, resolved = run_call_graph_pipeline(cache)
+
+    assert (complete, resolved) == (True, 0)

@@ -11,6 +11,9 @@ from .index_symbol_projection import index_content_hash_sql as _index_content_ha
 from .index_symbol_projection import (
     projection_schema_columns as _projection_schema_columns,
 )
+from .index_symbol_projection import (
+    symbol_rows_digest as _symbol_rows_digest,
+)
 
 
 def ensure_symbol_rows_backfilled(
@@ -24,7 +27,7 @@ def ensure_symbol_rows_backfilled(
     schema_byte_budget: int,
     marker_key: str,
     marker_value: str,
-    exact_validator: Callable[[sqlite3.Connection, int], bool],
+    exact_validator: Callable[..., bool],
 ) -> bool:
     """Certify legacy rows without ever replacing a non-empty projection.
 
@@ -87,8 +90,15 @@ def ensure_symbol_rows_backfilled(
         conn.execute(
             "CREATE TABLE IF NOT EXISTS ast_symbol_projection_state ("
             "file_path TEXT PRIMARY KEY, content_hash TEXT NOT NULL, "
-            "symbol_count INTEGER NOT NULL CHECK(symbol_count >= 0))"
+            "symbol_count INTEGER NOT NULL CHECK(symbol_count >= 0), "
+            "projection_digest TEXT NOT NULL)"
         )
+        state_columns = _projection_schema_columns(conn, "ast_symbol_projection_state")
+        if "projection_digest" not in state_columns:
+            conn.execute(
+                "ALTER TABLE ast_symbol_projection_state ADD COLUMN "
+                "projection_digest TEXT NOT NULL DEFAULT ''"
+            )
         marker_row = conn.execute(
             "SELECT 1, typeof(value)='text' AND value = ? "
             "FROM ast_cache_metadata WHERE key = ? LIMIT 1",
@@ -101,7 +111,9 @@ def ensure_symbol_rows_backfilled(
             if marker_row is not None and tuple(marker_row) == (1, 1)
             else None
         )
-        if marker is not None and exact_validator(conn, max_symbols):
+        if marker is not None and exact_validator(
+            conn, max_symbols, deadline=deadline, install_progress=False
+        ):
             conn.execute("RELEASE ast_symbol_rows_upgrade")
             savepoint_started = False
             return True
@@ -297,18 +309,29 @@ def ensure_symbol_rows_backfilled(
                     "FROM ast_symbol_rows ORDER BY id"
                 )
         conn.execute("DELETE FROM ast_symbol_projection_state")
-        for state_row in state_rows:
+        for file_path, content_hash, symbol_count in state_rows:
+            check_budget()
+            digest_rows = conn.execute(
+                "SELECT id, name, kind, file_path, language, line, end_line "
+                "FROM ast_symbol_rows WHERE file_path = ? ORDER BY id",
+                (file_path,),
+            )
+            projection_digest = _symbol_rows_digest(digest_rows, check_budget)
+            check_budget()
             conn.execute(
                 "INSERT INTO ast_symbol_projection_state "
-                "(file_path, content_hash, symbol_count) VALUES (?, ?, ?)",
-                state_row,
+                "(file_path, content_hash, symbol_count, projection_digest) "
+                "VALUES (?, ?, ?, ?)",
+                (file_path, content_hash, symbol_count, projection_digest),
             )
         conn.execute(
             "INSERT INTO ast_cache_metadata (key, value) VALUES (?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (marker_key, marker_value),
         )
-        if not exact_validator(conn, max_symbols):
+        if not exact_validator(
+            conn, max_symbols, deadline=deadline, install_progress=False
+        ):
             raise sqlite3.OperationalError("LEGACY_SYMBOL_PROJECTION_INVALID")
         conn.execute("RELEASE ast_symbol_rows_upgrade")
         savepoint_started = False

@@ -287,7 +287,9 @@ def test_symbol_upgrade_rejects_inexact_rebuilt_projection(monkeypatch):
     import tree_sitter_analyzer.index_snapshot_symbols as symbols
 
     conn = _untyped_legacy_connection(symbols_json='{"symbols": []}')
-    monkeypatch.setattr(symbols, "_symbol_projection_is_exact", lambda *_args: False)
+    monkeypatch.setattr(
+        symbols, "_symbol_projection_is_exact", lambda *_args, **_kwargs: False
+    )
 
     with pytest.raises(
         sqlite3.OperationalError, match="^LEGACY_SYMBOL_PROJECTION_INVALID$"

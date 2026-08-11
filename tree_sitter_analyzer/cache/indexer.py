@@ -728,6 +728,7 @@ def run_index_project(
             canonical_source_scope_descriptor(source_scope)
         )
     validate_full_index_source_scope(source_scope, effective_exclude, max_files)
+    rebuild_signaled = False
     try:
         if force:
             # #578: a full rebuild empties ast_index up front (the DELETE
@@ -741,6 +742,7 @@ def run_index_project(
             conn = cache._get_conn()
             had_call_graph = cache.call_graph_built()
             _mark_build_in_progress(conn)
+            rebuild_signaled = True
             _clear_call_graph_built(conn)
             try:
                 _clear_full_rebuild_rows(cache, conn)
@@ -758,6 +760,15 @@ def run_index_project(
                 raise
         conn = cache._get_conn()
         projection_repair = not symbol_projection_is_exact(conn)
+        if projection_repair and not rebuild_signaled:
+            # Repair rewrites ordinary rows in committed batches just like a full
+            # rebuild. Publish incomplete evidence before the first batch so no
+            # concurrent reader can trust the old manifest/call-graph epoch.
+            _mark_build_in_progress(conn)
+            rebuild_signaled = True
+            _clear_call_graph_built_strict(conn)
+            _delete_all_rows_if_present(conn, "ast_index_snapshot_manifest")
+            conn.commit()
         stats, candidates, count = walk_and_partition(
             cache,
             conn,
@@ -924,7 +935,7 @@ def run_index_project(
             )
         return stats
     finally:
-        if force:
+        if rebuild_signaled:
             _clear_build_in_progress(cache._get_conn())
 
 

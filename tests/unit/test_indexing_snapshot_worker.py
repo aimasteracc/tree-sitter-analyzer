@@ -299,3 +299,34 @@ def test_module_exports_exact_focused_surface() -> None:
         "IndexFileFingerprint",
         "IndexSnapshotEntry",
     ]
+
+
+def test_candidate_captures_share_one_absolute_discovery_deadline(
+    tmp_path, monkeypatch
+):
+    # PR #1253 thread 3757429372: each file consumes the outer five-second budget.
+    import tree_sitter_analyzer.indexing_snapshot as snapshot_module
+
+    sources = [tmp_path / "a.py", tmp_path / "b.py"]
+    for source in sources:
+        source.write_text("value = 1\n")
+    deadlines = []
+
+    def capture(_root, _rel_path, admitted, deadline=None):
+        deadlines.append(deadline)
+        return snapshot_module.IndexFileFingerprint.from_stat(admitted)
+
+    monkeypatch.setattr(snapshot_module, "_capture_candidate_fingerprint", capture)
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=2,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: [str(source) for source in sources],
+        language_fn=_python_language,
+    )
+
+    assert (snapshot.selected, deadlines[0], deadlines[1]) == (
+        2,
+        deadlines[0],
+        deadlines[0],
+    )

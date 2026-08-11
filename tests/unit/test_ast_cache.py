@@ -2664,3 +2664,70 @@ def test_projection_repair_without_fts_skips_fts_rebuild(tmp_path):
         cache.close()
 
     assert (result["errors"], result["total_files"]) == (0, 1)
+
+
+def test_projection_repair_signals_incomplete_epoch_before_batch_write(tmp_path):
+    # PR #1253 thread 3757429352: concurrent readers cannot trust repair batches.
+    import tree_sitter_analyzer.ast_cache as ast_cache_module
+    from tree_sitter_analyzer.cache.build_state import build_in_progress
+    from tree_sitter_analyzer.cache.callgraph_state import call_graph_built
+
+    source = tmp_path / "app.py"
+    source.write_text("def target():\n    return 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    conn = cache.get_conn()
+    conn.execute(
+        "UPDATE ast_symbol_rows SET kind = 'forged' WHERE file_path = 'app.py'"
+    )
+    conn.commit()
+    observed = []
+    original = ast_cache_module._commit_index_results
+
+    def inspect_reader(*args, **kwargs):
+        reader = sqlite3.connect(cache.db_path)
+        try:
+            observed.append(
+                (
+                    build_in_progress(reader),
+                    call_graph_built(reader),
+                    reader.execute(
+                        "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
+                    ).fetchone()[0],
+                )
+            )
+        finally:
+            reader.close()
+        return original(*args, **kwargs)
+
+    try:
+        with patch.object(ast_cache_module, "_commit_index_results", inspect_reader):
+            result = cache.index_project(workers=0)
+    finally:
+        cache.close()
+
+    assert (result["errors"], observed) == (0, [(True, False, 0)])
+
+
+def test_projection_repair_records_failed_projection_certification(tmp_path):
+    # PR #1253 thread 3757429352: failed repair certification remains visible.
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    conn = cache.get_conn()
+    conn.execute(
+        "DELETE FROM ast_cache_metadata WHERE key = 'symbol_rows_projection_v1'"
+    )
+    conn.commit()
+
+    try:
+        with patch(
+            "tree_sitter_analyzer.index_snapshot_symbols.ensure_symbol_rows_backfilled",
+            return_value=False,
+        ):
+            result = cache.index_project(workers=0)
+    finally:
+        cache.close()
+
+    assert result["backfill_errors"] == 1
