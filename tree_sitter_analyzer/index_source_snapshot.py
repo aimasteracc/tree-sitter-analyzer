@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import fnmatch
 import hashlib
+import heapq
 import json
 import os
 import stat
 import time
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 from .constants import EXCLUDE_DIRS
+from .index_source_stream import hash_source_at, inventory_portable
 from .indexing_limits import DEFAULT_INDEX_MAX_FILES, KNOWLEDGE_INDEX_MAX_FILES
 from .languages.lang_extension_map import EXT_TO_LANG
 
@@ -22,6 +24,12 @@ _DEFAULT_EXCLUDES = frozenset({"tests/golden/corpus_*"})
 _SOURCE_DISCOVERY_POLICY = "tsa-full-index-walk"
 _SOURCE_DISCOVERY_POLICY_VERSION = 2
 _SOURCE_PATH_BUDGET = KNOWLEDGE_INDEX_MAX_FILES
+# Enumeration budgets cover every directory entry, including unsupported and
+# excluded names. Sorting never operates on more than one chunk at a time.
+_SOURCE_ENTRY_BUDGET = 1_000_000
+_SOURCE_ENTRY_PATH_BYTE_BUDGET = 128 * 1024 * 1024
+_SORT_CHUNK_SIZE = 4096
+_T = TypeVar("_T")
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,27 +160,58 @@ class CurrentSourceSnapshot:
     reason: str | None
 
 
-def inventory_fingerprint(rows: tuple[tuple[str, str, str], ...]) -> str:
-    """Return the shared owner token for path/content/language inventory."""
+def _bounded_sorted(
+    values: Iterable[_T], *, deadline: float | None = None
+) -> Iterator[_T]:
+    """Sort via bounded runs and a heap merge, checking work deadlines."""
+    iterator = iter(values)
+    runs: list[list[_T]] = []
+    exhausted = False
+    while not exhausted:
+        chunk: list[_T] = []
+        for _index in range(_SORT_CHUNK_SIZE):
+            if deadline is not None and time.monotonic() > deadline:
+                raise TimeoutError
+            try:
+                chunk.append(next(iterator))
+            except StopIteration:
+                exhausted = True
+                break
+        if chunk:
+            chunk.sort()
+            runs.append(chunk)
+    for value in heapq.merge(*runs):
+        if deadline is not None and time.monotonic() > deadline:
+            raise TimeoutError
+        yield value
+
+
+def inventory_fingerprint(
+    rows: Iterable[tuple[str, str, str]], *, deadline: float | None = None
+) -> str:
+    """Return the shared owner token using the canonical bounded ordering."""
     digest = hashlib.sha256(b"tsa-index-source-v2\0")
-    for row in sorted(rows):
+    for row in _bounded_sorted(rows, deadline=deadline):
         for value in row:
+            if deadline is not None and time.monotonic() > deadline:
+                raise TimeoutError
             raw = value.encode("utf-8", "surrogatepass")
             digest.update(len(raw).to_bytes(8, "big"))
             digest.update(raw)
     return "sha256:" + digest.hexdigest()
 
 
-def recorded_source_rows(conn: object) -> tuple[tuple[str, str, str], ...]:
-    """Read the cache's claimed source inventory without filesystem access."""
-    return tuple(
-        sorted(
-            (str(row[0]).replace("\\", "/"), str(row[1]), str(row[2]))
-            for row in conn.execute(  # type: ignore[attr-defined]
-                "SELECT file_path, content_hash, language FROM ast_index"
-            )
+def recorded_source_rows(
+    conn: object, *, deadline: float | None = None
+) -> tuple[tuple[str, str, str], ...]:
+    """Read the cache's claimed source inventory in the shared bounded order."""
+    values = (
+        (str(row[0]).replace("\\", "/"), str(row[1]), str(row[2]))
+        for row in conn.execute(  # type: ignore[attr-defined]
+            "SELECT file_path, content_hash, language FROM ast_index"
         )
     )
+    return tuple(_bounded_sorted(values, deadline=deadline))
 
 
 def capture_current_source_snapshot(
@@ -181,7 +220,7 @@ def capture_current_source_snapshot(
     """Hash a stable, fully bounded view of the certified supported scope."""
     scope = source_scope or make_source_scope_descriptor()
     deadline = time.monotonic() + _SOURCE_DEADLINE_SECONDS
-    root = os.path.realpath(os.path.abspath(project_root))
+    root = os.path.abspath(project_root)
     try:
         first, unsafe = _inventory(root, deadline, scope, with_content=True)
         second, unsafe_second = _inventory(root, deadline, scope, with_content=False)
@@ -210,7 +249,10 @@ def capture_current_source_snapshot(
     rows = tuple(
         (path, marker.split("|", 1)[1], language) for path, marker, language in first
     )
-    fingerprint = inventory_fingerprint(rows)
+    try:
+        fingerprint = inventory_fingerprint(rows, deadline=deadline)
+    except TimeoutError:
+        return CurrentSourceSnapshot((), None, None, "unknown", "SOURCE_SCAN_DEADLINE")
     generation = "idxsrc-v2:" + fingerprint.removeprefix("sha256:")
     if unsafe or unsafe_second or not stable or not same_paths or not unique_scope:
         return CurrentSourceSnapshot(
@@ -226,92 +268,174 @@ def _inventory(
     *,
     with_content: bool,
 ) -> tuple[tuple[tuple[str, str, str], ...], bool]:
+    """Walk supported sources through pinned directory descriptors on POSIX."""
     scope = scope or make_source_scope_descriptor()
+    if os.name != "posix":
+        return inventory_portable(
+            root,
+            deadline,
+            scope,
+            with_content=with_content,
+            entry_budget=_SOURCE_ENTRY_BUDGET,
+            entry_path_byte_budget=_SOURCE_ENTRY_PATH_BYTE_BUDGET,
+            path_budget=_SOURCE_PATH_BUDGET,
+            byte_budget=_SOURCE_BYTE_BUDGET,
+            bounded_sorted=_bounded_sorted,
+            metadata_marker=_metadata_marker,
+            same_file_metadata=_same_file_metadata,
+        )
     rows: list[tuple[str, str, str]] = []
     unsafe = False
-    byte_count = 0
+    counters = {"entries": 0, "path_bytes": 0, "input": 0, "output": 0}
+    replay_limit = min(scope.certification_max_files, _SOURCE_PATH_BUDGET)
     supported_count = 0
-    stack: list[str] = []
-    for relative_root in reversed(scope.roots):
-        candidate = os.path.realpath(os.path.join(root, relative_root))
-        if not Path(candidate).is_relative_to(root):
-            raise OSError("source root escapes project")
-        stack.append(candidate)
-    while stack:
-        if time.monotonic() > deadline:
-            raise TimeoutError
-        directory = stack.pop()
-        entries = sorted(os.scandir(directory), key=lambda item: item.name)
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+    root_fd = os.open(root, directory_flags)
+    try:
+        root_info = os.fstat(root_fd)
+        if not stat.S_ISDIR(root_info.st_mode):
+            raise OSError("source root is not a directory")
+        scope_roots: list[tuple[int, str]] = []
+        try:
+            for relative_root in scope.roots:
+                normalized = relative_root.replace("\\", "/")
+                parts = [
+                    part for part in normalized.split("/") if part not in ("", ".")
+                ]
+                if any(part == ".." for part in parts) or normalized.startswith("/"):
+                    raise OSError("source root escapes project")
+                current = os.dup(root_fd)
+                try:
+                    for part in parts:
+                        child = os.open(part, directory_flags, dir_fd=current)
+                        os.close(current)
+                        current = child
+                    scope_roots.append((current, "/".join(parts)))
+                except Exception:
+                    os.close(current)
+                    raise
+
+            while scope_roots:
+                scope_fd, prefix = scope_roots.pop(0)
+                stack: list[tuple[int, str, Iterator[tuple[str, os.stat_result]]]] = []
+                try:
+                    stack.append(
+                        (
+                            scope_fd,
+                            prefix,
+                            _enumerate_directory(scope_fd, prefix, deadline, counters),
+                        )
+                    )
+                    while stack:
+                        directory_fd, relative_dir, entries = stack[-1]
+                        try:
+                            name, info = next(entries)
+                        except StopIteration:
+                            os.close(directory_fd)
+                            stack.pop()
+                            continue
+                        rel = f"{relative_dir}/{name}" if relative_dir else name
+                        mode = info.st_mode
+                        if stat.S_ISDIR(mode):
+                            if name in EXCLUDE_DIRS or name.startswith("."):
+                                continue
+                            try:
+                                child_fd = os.open(
+                                    name, directory_flags, dir_fd=directory_fd
+                                )
+                            except OSError:
+                                unsafe = True
+                                continue
+                            try:
+                                child_info = os.fstat(child_fd)
+                                if not stat.S_ISDIR(child_info.st_mode):
+                                    unsafe = True
+                                    os.close(child_fd)
+                                    continue
+                                child_entries = _enumerate_directory(
+                                    child_fd, rel, deadline, counters
+                                )
+                            except Exception:
+                                os.close(child_fd)
+                                raise
+                            stack.append((child_fd, rel, child_entries))
+                            continue
+
+                        language = EXT_TO_LANG.get(os.path.splitext(name)[1].lower())
+                        if language is None:
+                            continue
+                        supported_count += 1
+                        if supported_count > replay_limit:
+                            raise OverflowError
+                        if any(
+                            fnmatch.fnmatch(rel, pattern)
+                            for pattern in scope.effective_excludes
+                        ):
+                            continue
+                        if not stat.S_ISREG(mode):
+                            unsafe = True
+                            rows.append(
+                                (rel, _metadata_marker(info) + "|<unsafe>", language)
+                            )
+                            continue
+                        if not with_content:
+                            rows.append((rel, _metadata_marker(info), language))
+                            continue
+                        marker, content_hash, clean = hash_source_at(
+                            directory_fd,
+                            name,
+                            info,
+                            deadline,
+                            counters,
+                            _SOURCE_BYTE_BUDGET,
+                            _metadata_marker,
+                            _same_file_metadata,
+                        )
+                        if not clean:
+                            unsafe = True
+                        rows.append((rel, marker + "|" + content_hash, language))
+                finally:
+                    for directory_fd, _relative_dir, _entries in stack:
+                        try:
+                            os.close(directory_fd)
+                        except OSError:
+                            pass
+        finally:
+            for scope_fd, _prefix in scope_roots:
+                try:
+                    os.close(scope_fd)
+                except OSError:
+                    pass
+    finally:
+        os.close(root_fd)
+    return tuple(_bounded_sorted(rows, deadline=deadline)), unsafe
+
+
+def _enumerate_directory(
+    directory_fd: int,
+    prefix: str,
+    deadline: float,
+    counters: dict[str, int],
+) -> Iterator[tuple[str, os.stat_result]]:
+    """Enumerate fully under absolute budgets, then merge bounded sorted runs."""
+    records: list[tuple[str, os.stat_result]] = []
+    with os.scandir(directory_fd) as entries:
         for entry in entries:
             if time.monotonic() > deadline:
                 raise TimeoutError
-            rel = os.path.relpath(entry.path, root).replace("\\", "/")
-            info = entry.stat(follow_symlinks=False)
-            mode = info.st_mode
-            if stat.S_ISDIR(mode):
-                if entry.name not in EXCLUDE_DIRS and not entry.name.startswith("."):
-                    stack.append(entry.path)
-                continue
-            language = EXT_TO_LANG.get(Path(entry.name).suffix.lower())
-            if language is None:
-                continue
-            supported_count += 1
-            replay_limit = min(scope.certification_max_files, _SOURCE_PATH_BUDGET)
-            if supported_count > replay_limit:
+            name = entry.name
+            rel = f"{prefix}/{name}" if prefix else name
+            counters["entries"] += 1
+            counters["path_bytes"] += len(rel.encode("utf-8", "surrogatepass"))
+            if (
+                counters["entries"] > _SOURCE_ENTRY_BUDGET
+                or counters["path_bytes"] > _SOURCE_ENTRY_PATH_BYTE_BUDGET
+            ):
                 raise OverflowError
-            if any(fnmatch.fnmatch(rel, p) for p in scope.effective_excludes):
-                continue
-            if not stat.S_ISREG(mode):
-                unsafe = True
-                rows.append((rel, _metadata_marker(info) + "|<unsafe>", language))
-                continue
-            if not with_content:
-                rows.append((rel, _metadata_marker(info), language))
-                continue
-            # Pre-stat is admission-only. Actual reads below own the budget so
-            # a file that grows after stat cannot over-allocate the snapshot.
-            if int(info.st_size) > _SOURCE_BYTE_BUDGET - byte_count:
-                raise OverflowError
-            try:
-                fd = os.open(entry.path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-            except OSError:
-                unsafe = True
-                rows.append((rel, _metadata_marker(info) + "|<unsafe>", language))
-                continue
-            try:
-                opened = os.fstat(fd)
-                data = bytearray()
-                while True:
-                    chunk = os.read(fd, 65536)
-                    if not chunk:
-                        break
-                    byte_count += len(chunk)
-                    if byte_count > _SOURCE_BYTE_BUDGET:
-                        raise OverflowError
-                    data.extend(chunk)
-                    if time.monotonic() > deadline:
-                        raise TimeoutError
-                after = os.fstat(fd)
-            finally:
-                os.close(fd)
-            marker = _metadata_marker(after)
-            if not _same_file_metadata(info, after) or not stat.S_ISREG(opened.st_mode):
-                unsafe = True
-            # Match ``open(..., encoding="utf-8", errors="replace")`` in the
-            # indexer: TextIOWrapper performs universal-newline translation
-            # before the UTF-8 text is hashed.
-            content = bytes(data).decode("utf-8", "replace")
-            normalized = content.replace("\r\n", "\n").replace("\r", "\n")
-            rows.append(
-                (
-                    rel,
-                    marker
-                    + "|"
-                    + hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
-                    language,
-                )
-            )
-    return tuple(sorted(rows)), unsafe
+            info = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            records.append((name, info))
+    yield from _bounded_sorted(records, deadline=deadline)
 
 
 def _metadata_marker(info: os.stat_result) -> str:

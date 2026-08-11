@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sqlite3
 
@@ -384,11 +385,14 @@ class TestSnapshotFailureContracts:
         import tree_sitter_analyzer.index_source_snapshot as source
 
         (tmp_path / "sample.py").write_text("x = 1")
-        monkeypatch.setattr(
-            source.os,
-            "open",
-            lambda *_a, **_k: (_ for _ in ()).throw(PermissionError()),
-        )
+        original_open = source.os.open
+
+        def fail_source(name, flags, *args, **kwargs):
+            if name == "sample.py":
+                raise PermissionError
+            return original_open(name, flags, *args, **kwargs)
+
+        monkeypatch.setattr(source.os, "open", fail_source)
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
         assert (rows[0][1].endswith("|<unsafe>"), unsafe) == (True, True)
 
@@ -421,6 +425,213 @@ class TestSnapshotFailureContracts:
         os.mkfifo(fifo)
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
         assert (rows[0][1].endswith("|<unsafe>"), unsafe) == (True, True)
+
+    @requires_posix_fd
+    def test_nonempty_shm_does_not_block_quiescent_main_database(self, tmp_path):
+        # PR #1253: WAL shared memory alone is not uncheckpointed write evidence.
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        cache = tmp_path / ".ast-cache"
+        cache.mkdir()
+        (cache / "index.db-shm").write_bytes(b"shared-memory")
+        fd = os.open(cache, os.O_RDONLY)
+        try:
+            owner._reject_sidecars(fd)
+        finally:
+            os.close(fd)
+        assert (cache / "index.db-shm").read_bytes() == b"shared-memory"
+
+    @requires_posix_fd
+    def test_nonempty_wal_still_blocks_immutable_read(self, tmp_path):
+        # PR #1253: WAL payload remains authoritative concurrent-write evidence.
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        cache = tmp_path / ".ast-cache"
+        cache.mkdir()
+        (cache / "index.db-wal").write_bytes(b"wal")
+        fd = os.open(cache, os.O_RDONLY)
+        try:
+            with pytest.raises(ValueError, match="CONCURRENT_WRITER"):
+                owner._reject_sidecars(fd)
+        finally:
+            os.close(fd)
+
+    def test_inventory_counts_unsupported_entries_against_absolute_budget(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253: unsupported names cannot evade the enumeration budget.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        (tmp_path / "notes.txt").write_text("ignored")
+        monkeypatch.setattr(source, "_SOURCE_ENTRY_BUDGET", 0)
+        with pytest.raises(OverflowError):
+            source._inventory(str(tmp_path), float("inf"), with_content=True)
+
+    @requires_posix_fd
+    def test_inventory_opens_children_only_relative_to_pinned_descriptors(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253: no traversed child may be reopened by workspace path.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        nested = tmp_path / "pkg"
+        nested.mkdir()
+        (nested / "sample.py").write_text("x = 1\n")
+        original_open = source.os.open
+        calls = []
+
+        def recording_open(name, flags, *args, **kwargs):
+            calls.append((os.fspath(name), kwargs.get("dir_fd")))
+            return original_open(name, flags, *args, **kwargs)
+
+        monkeypatch.setattr(source.os, "open", recording_open)
+        rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
+
+        assert (rows[0][0], unsafe) == ("pkg/sample.py", False)
+        assert calls[0] == (str(tmp_path), None)
+        assert all("/" not in name and dir_fd is not None for name, dir_fd in calls[1:])
+
+    def test_inventory_normalizes_crlf_split_across_read_chunks(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253: CRLF state is preserved between bounded raw-byte chunks.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        target = tmp_path / "sample.py"
+        target.write_bytes(b"\r\n")
+        original_read = source.os.read
+        chunks = iter((b"\r", b"\n", b""))
+
+        def split_read(fd, size):
+            if size == 65536:
+                return next(chunks)
+            return original_read(fd, size)
+
+        monkeypatch.setattr(source.os, "read", split_read)
+        rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
+        expected = hashlib.sha256(b"\n").hexdigest()
+        assert (rows[0][1].split("|")[1], unsafe) == (expected, False)
+
+    def test_portable_inventory_keeps_bounded_selection_semantics(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253: non-POSIX platforms retain the same canonical inventory.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        nested = tmp_path / "pkg"
+        nested.mkdir()
+        (nested / "sample.py").write_text("x = 1\r\n")
+        (nested / "notes.txt").write_text("ignored")
+        monkeypatch.setattr(source.os, "name", "nt")
+
+        rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
+
+        assert (rows[0][0], rows[0][2], unsafe) == ("pkg/sample.py", "python", False)
+
+    def test_bounded_sort_emits_multiple_canonical_runs(self, monkeypatch):
+        # PR #1253: inventories larger than one run use the heap merge path.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        monkeypatch.setattr(source, "_SORT_CHUNK_SIZE", 2)
+        ordered = tuple(source._bounded_sorted((3, 1, 2), deadline=float("inf")))
+        assert ordered == (1, 2, 3)
+
+    def test_bounded_sort_checks_deadline_for_each_merged_row(self, monkeypatch):
+        # PR #1253: merge work cannot extend past the advertised scan deadline.
+        from types import SimpleNamespace
+
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        ticks = iter((0.0, 0.0, 2.0))
+        monkeypatch.setattr(
+            source, "time", SimpleNamespace(monotonic=lambda: next(ticks))
+        )
+        with pytest.raises(TimeoutError):
+            tuple(source._bounded_sorted((1,), deadline=1.0))
+
+    def test_inventory_fingerprint_checks_deadline_inside_each_row(self, monkeypatch):
+        # PR #1253: per-value framing remains within the same deadline.
+        from types import SimpleNamespace
+
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        ticks = iter((0.0, 0.0, 0.0, 2.0))
+        monkeypatch.setattr(
+            source, "time", SimpleNamespace(monotonic=lambda: next(ticks))
+        )
+        with pytest.raises(TimeoutError):
+            source.inventory_fingerprint((("a", "b", "c"),), deadline=1.0)
+
+    def test_source_capture_maps_fingerprint_deadline_to_unknown(self, monkeypatch):
+        # PR #1253: canonical hashing shares the source scan deadline.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        inventories = iter(
+            [
+                (("a.py", "meta|hash", "python"),),
+                (("a.py", "meta", "python"),),
+            ]
+        )
+        monkeypatch.setattr(
+            source, "_inventory", lambda *_a, **_k: (next(inventories), False)
+        )
+        monkeypatch.setattr(
+            source,
+            "inventory_fingerprint",
+            lambda *_a, **_k: (_ for _ in ()).throw(TimeoutError()),
+        )
+        result = source.capture_current_source_snapshot(".")
+        assert (result.state, result.reason) == ("unknown", "SOURCE_SCAN_DEADLINE")
+
+    def test_inventory_rejects_non_directory_root(self, tmp_path, monkeypatch):
+        # PR #1253: the pinned root must itself be a directory descriptor.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        root = tmp_path / "root.py"
+        root.write_text("x = 1")
+        original_open = source.os.open
+
+        def admit_file(path, flags, *args, **kwargs):
+            if os.fspath(path) == str(root):
+                flags &= ~getattr(os, "O_DIRECTORY", 0)
+            return original_open(path, flags, *args, **kwargs)
+
+        monkeypatch.setattr(source.os, "open", admit_file)
+        with pytest.raises(OSError, match="source root is not a directory"):
+            source._inventory(str(root), float("inf"), with_content=True)
+
+    def test_inventory_opens_declared_scope_root_relative_to_root_fd(self, tmp_path):
+        # PR #1253: configured subroots are pinned with openat before traversal.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        package = tmp_path / "pkg"
+        package.mkdir()
+        (package / "sample.py").write_text("x = 1")
+        scope = source.make_source_scope_descriptor(roots=("pkg",))
+        rows, unsafe = source._inventory(
+            str(tmp_path), float("inf"), scope, with_content=True
+        )
+        assert ([row[0] for row in rows], unsafe) == (["pkg/sample.py"], False)
+
+    def test_inventory_scope_root_open_failure_closes_pinned_fd(self, tmp_path):
+        # PR #1253: failed openat traversal propagates without retaining descriptors.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        scope = source.make_source_scope_descriptor(roots=("missing",))
+        with pytest.raises(FileNotFoundError):
+            source._inventory(str(tmp_path), float("inf"), scope, with_content=True)
+
+    def test_recorded_fingerprint_deadline_is_fail_closed(self, monkeypatch):
+        # PR #1253: writer-side canonical inventory hashing has the same deadline.
+        import tree_sitter_analyzer.index_snapshot_schema as schema
+
+        monkeypatch.setattr(
+            schema,
+            "recorded_source_rows",
+            lambda *_a, **_k: (_ for _ in ()).throw(TimeoutError()),
+        )
+        with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_DEADLINE"):
+            schema.source_fingerprint(sqlite3.connect(":memory:"), ".")
 
     def test_status_rejects_non_read_existing_access_mode(self, tmp_path):
         with pytest.raises(ValueError, match="read_existing"):

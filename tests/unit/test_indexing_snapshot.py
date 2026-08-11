@@ -531,3 +531,29 @@ def test_ast_partition_rejects_selected_entry_without_language(tmp_path):
 
     with pytest.raises(ValueError, match="lacks language"):
         _partition(malformed, _index_conn())
+
+
+def test_supported_symlink_is_candidate_error_and_never_selected(tmp_path):
+    # PR #1253: writer selection matches the status oracle's no-symlink policy.
+    target = tmp_path / "target.py"
+    target.write_text("value = 1\n")
+    linked = tmp_path / "linked.py"
+    try:
+        linked.symlink_to(target)
+    except OSError:
+        pytest.skip("GH-1253: symlink creation unavailable")
+
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: [str(linked)],
+        language_fn=_python_language,
+    )
+
+    assert (
+        snapshot.selected,
+        snapshot.errors,
+        snapshot.entries[0].decision,
+        snapshot.entries[0].reason,
+    ) == (0, 1, "error", "supported source is symlinked or non-regular")

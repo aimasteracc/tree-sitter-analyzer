@@ -117,8 +117,13 @@ def validate_snapshot_schema(conn: sqlite3.Connection) -> None:
 
 
 def source_fingerprint(conn: sqlite3.Connection, _root: str) -> str:
-    """Hash the cache-recorded path/content/language inventory."""
-    return inventory_fingerprint(recorded_source_rows(conn))
+    """Hash recorded inventory with the shared bounded, deadline-aware order."""
+    deadline = time.monotonic() + _FINGERPRINT_DEADLINE_SECONDS
+    try:
+        rows = recorded_source_rows(conn, deadline=deadline)
+        return inventory_fingerprint(rows, deadline=deadline)
+    except TimeoutError as exc:
+        raise RuntimeError("INDEX_FINGERPRINT_DEADLINE") from exc
 
 
 def index_fingerprint(conn: sqlite3.Connection, root: str) -> str:

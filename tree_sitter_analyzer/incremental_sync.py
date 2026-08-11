@@ -123,8 +123,17 @@ class IncrementalSync:
             if callback:
                 callback(detail)
 
-        # Never infer deletions from a capped prefix of the live source set.
-        if not truncated or candidate_snapshot is not None:
+        # Never infer deletions from a capped prefix. For an exact candidate,
+        # excluded/unsupported paths are intentionally outside the selected DB
+        # scope and must be pruned before any certification can proceed.
+        if (
+            candidate_snapshot is not None
+            and not truncated
+            and not candidate_snapshot.errors
+        ):
+            deleted_paths = set(indexed_rows) - set(disk_files)
+            self._invalidate_deleted_files(deleted_paths, result, callback)
+        elif candidate_snapshot is None and not truncated:
             deleted_paths = set(indexed_rows) - present_paths
             self._invalidate_deleted_files(deleted_paths, result, callback)
         previous_defer = getattr(self._cache, "_defer_single_file_backfill", False)
@@ -235,6 +244,7 @@ class IncrementalSync:
             not result.truncated_by_max_files
             and result.errors == 0
             and result.changed_during_run == 0
+            and backfill_complete
             and candidate_snapshot is not None
             and candidate_snapshot.errors == 0
             and indexed_paths == expected_paths
@@ -331,13 +341,26 @@ class IncrementalSync:
         result: SyncResult,
         callback: Any | None,
     ) -> None:
-        """Drop supported-language cache rows for files absent from disk."""
-        for rel in deleted_paths:
-            ext = os.path.splitext(rel)[1].lower()
-            if ext not in _EXT_TO_LANG:
-                continue
-            abs_del = os.path.join(self._cache.project_root, rel)
-            self._cache.invalidate(abs_del)
+        """Transactionally drop primary and graph rows outside the exact scope."""
+        supported = sorted(
+            rel
+            for rel in deleted_paths
+            if os.path.splitext(rel)[1].lower() in _EXT_TO_LANG
+        )
+        if not supported:
+            return
+        from .cache import write as cache_write
+        from .cache.callgraph_state import clear_call_graph_built_strict
+
+        conn = self._cache.get_conn()
+        try:
+            for rel in supported:
+                cache_write.discard_file_rows(conn, rel, self._cache.fts5_available)
+            clear_call_graph_built_strict(conn)
+        except Exception:
+            conn.rollback()
+            raise
+        for rel in supported:
             result.deleted_files += 1
             detail = {"file": rel, "considered": "deleted", "action": "deleted"}
             result.details.append(detail)

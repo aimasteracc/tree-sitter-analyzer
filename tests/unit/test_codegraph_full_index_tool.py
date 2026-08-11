@@ -869,3 +869,41 @@ def test_call_edge_stats_converts_cache_failure_to_phase_error(tmp_path, monkeyp
     result = CodeGraphFullIndexTool(str(tmp_path))._phase_call_edge_stats()
 
     assert (result["status"], result["error"]) == ("error", "RuntimeError: open failed")
+
+
+@pytest.mark.asyncio
+async def test_incremental_scope_change_prunes_newly_excluded_rows(tmp_path):
+    # PR #1253: a newly excluded file cannot survive in primary or graph rows.
+    keep = tmp_path / "keep.py"
+    drop = tmp_path / "drop.py"
+    keep.write_text("def keep():\n    return 1\n")
+    drop.write_text("def drop():\n    return keep()\n")
+    tool = CodeGraphFullIndexTool(str(tmp_path))
+    first = await tool.execute(
+        {"mode": "full", "resolve_synapse": False, "output_format": "json"}
+    )
+    assert first["success"] is True
+
+    second = await tool.execute(
+        {
+            "mode": "incremental",
+            "exclude_patterns": ["drop.py"],
+            "resolve_synapse": False,
+            "output_format": "json",
+        }
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        paths = {
+            str(row[0])
+            for row in cache.get_conn().execute("SELECT file_path FROM ast_index")
+        }
+        graph_rows = (
+            cache.get_conn()
+            .execute("SELECT COUNT(*) FROM edges WHERE file_path = 'drop.py'")
+            .fetchone()[0]
+        )
+    finally:
+        cache.close()
+
+    assert (second["success"], paths, graph_rows) == (True, {"keep.py"}, 0)

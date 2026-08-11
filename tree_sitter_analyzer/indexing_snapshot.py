@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import stat
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -104,7 +105,9 @@ def validate_index_candidate_snapshot(
         resolved_path = os.path.realpath(logical_path)
         if not Path(resolved_path).is_relative_to(resolved_root):
             raise ValueError(f"candidate path escapes project root: {entry.abs_path}")
-        expected_rel_path = os.path.relpath(logical_path, logical_root).replace("\\", "/")
+        expected_rel_path = os.path.relpath(logical_path, logical_root).replace(
+            "\\", "/"
+        )
         if entry.rel_path != expected_rel_path:
             raise ValueError(f"candidate relative path mismatch: {entry.rel_path}")
         if entry.decision == "selected" and entry.fingerprint is None:
@@ -115,6 +118,20 @@ def validate_index_candidate_snapshot(
             raise ValueError(
                 f"selected candidate lacks metadata; lacks language: {entry.rel_path}"
             )
+        if entry.decision == "selected":
+            try:
+                source_info = os.stat(logical_path, follow_symlinks=False)
+            except FileNotFoundError:
+                # Deletion after capture is reported by changed_since_snapshot.
+                continue
+            except OSError as exc:
+                raise ValueError(
+                    f"selected candidate is unreadable: {entry.rel_path}"
+                ) from exc
+            if not stat.S_ISREG(source_info.st_mode):
+                raise ValueError(
+                    f"selected candidate is symlinked or non-regular: {entry.rel_path}"
+                )
 
 
 def build_index_candidate_snapshot(
@@ -197,7 +214,7 @@ def build_index_candidate_snapshot(
             continue
 
         try:
-            fingerprint = IndexFileFingerprint.from_stat(os.stat(abs_path))
+            source_info = os.stat(abs_path, follow_symlinks=False)
         except OSError as exc:
             errors += 1
             entries.append(
@@ -210,6 +227,19 @@ def build_index_candidate_snapshot(
                 )
             )
             continue
+        if not stat.S_ISREG(source_info.st_mode):
+            errors += 1
+            entries.append(
+                IndexSnapshotEntry(
+                    abs_path=abs_path,
+                    rel_path=rel_path,
+                    language=language,
+                    decision="error",
+                    reason="supported source is symlinked or non-regular",
+                )
+            )
+            continue
+        fingerprint = IndexFileFingerprint.from_stat(source_info)
 
         selected += 1
         entries.append(

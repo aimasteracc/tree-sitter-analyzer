@@ -490,10 +490,19 @@ def _path_matches_pinned_database(cache_fd: int, db_fd: int) -> bool:
 
 
 def _reject_sidecars(cache_fd: int) -> None:
-    for name in ("index.db-wal", "index.db-shm", "index.db-journal"):
+    # A quiescent WAL database commonly retains a non-empty shared-memory
+    # index. Only durable write payloads (WAL/journal) prove it is not safe to
+    # open the pinned main database immutably.
+    for name in ("index.db-wal", "index.db-journal"):
         try:
             info = os.stat(name, dir_fd=cache_fd, follow_symlinks=False)
         except FileNotFoundError:
             continue
         if not stat.S_ISREG(info.st_mode) or info.st_size:
             raise ValueError("CONCURRENT_WRITER")
+    try:
+        shm = os.stat("index.db-shm", dir_fd=cache_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    if not stat.S_ISREG(shm.st_mode):
+        raise ValueError("CONCURRENT_WRITER")

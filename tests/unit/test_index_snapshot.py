@@ -389,7 +389,6 @@ class TestAuthoritativeSnapshotOracle:
             b"def answer():\n    return 42\n",
             b"def answer():\r\n    return 42\r\n",
             b"def answer():\r    return 42\r",
-            b"value = '\xff'\r\n",
         ],
     )
     @pytest.mark.asyncio
@@ -410,6 +409,62 @@ class TestAuthoritativeSnapshotOracle:
             {"output_format": "json"}
         )
         assert result["completeness"] == "complete"
+
+    @pytest.mark.asyncio
+    async def test_invalid_utf8_source_is_not_certified(self, tmp_path):
+        # PR #1253: the source oracle validates UTF-8 strictly while streaming.
+        from tree_sitter_analyzer.ast_cache import ASTCache
+        from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
+
+        source = tmp_path / "sample.py"
+        source.write_bytes(b"value = '\xff'\r\n")
+        cache = ASTCache(str(tmp_path))
+        cache.index_file(str(source))
+        stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
+        cache.close()
+
+        result = await CodeGraphStatusTool(str(tmp_path)).execute(
+            {"output_format": "json"}
+        )
+        assert (result["completeness"], result["oracle_reason"]) == (
+            "partial",
+            "SOURCE_SCOPE_UNSAFE",
+        )
+
+    @pytest.mark.asyncio
+    async def test_quiescent_wal_connection_with_nonempty_shm_allows_immutable_read(
+        self, tmp_path
+    ):
+        # PR #1253: a persistent reader's SHM file is compatible with a pinned read.
+        from tree_sitter_analyzer.ast_cache import ASTCache
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        source = tmp_path / "sample.py"
+        source.write_text("value = 1\n")
+        indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+            {"mode": "full", "resolve_synapse": False, "output_format": "json"}
+        )
+        assert indexed["success"] is True
+        cache = ASTCache(str(tmp_path))
+        cache.get_conn().execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+        shm = tmp_path / ".ast-cache" / "index.db-shm"
+        if not shm.exists() or shm.stat().st_size == 0:
+            cache.close()
+            pytest.skip("GH-1253: SQLite did not retain WAL shared memory")
+
+        try:
+            result = await CodeGraphStatusTool(str(tmp_path)).execute(
+                {"output_format": "json"}
+            )
+        finally:
+            cache.close()
+
+        assert (result["completeness"], result["oracle_reason"]) == (
+            "complete",
+            "NO_EXACT_FULL_INDEX_MANIFEST",
+        )
 
     @pytest.mark.asyncio
     async def test_manifest_stamp_failure_keeps_index_successful_and_uncertified(

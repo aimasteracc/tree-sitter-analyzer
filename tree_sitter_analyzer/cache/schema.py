@@ -13,6 +13,7 @@ reduces its line count / nesting depth.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Callable
 from typing import Any
@@ -684,6 +685,59 @@ def clear_activation_for_file(conn: sqlite3.Connection, rel_path: str) -> None:
         pass
 
 
+def _ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
+    """Create ordinary symbol storage and fill missing legacy JSON projections."""
+    conn.execute("SAVEPOINT ast_symbol_rows_upgrade")
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS ast_symbol_rows ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, "
+            "kind TEXT NOT NULL, file_path TEXT NOT NULL, language TEXT NOT NULL, "
+            "line INTEGER NOT NULL DEFAULT 0, end_line INTEGER NOT NULL DEFAULT 0)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sym_rows_file_path "
+            "ON ast_symbol_rows(file_path)"
+        )
+        cursor = conn.execute(
+            "SELECT file_path, language, symbols_json FROM ast_index AS source "
+            "WHERE NOT EXISTS (SELECT 1 FROM ast_symbol_rows AS symbols "
+            "WHERE symbols.file_path = source.file_path)"
+        )
+        while batch := cursor.fetchmany(128):
+            for file_path, language, raw_symbols in batch:
+                parsed = json.loads(raw_symbols)
+                symbols = parsed.get("symbols", []) if isinstance(parsed, dict) else []
+                if not isinstance(symbols, list):
+                    raise ValueError("invalid legacy symbols_json")
+                for offset in range(0, len(symbols), 512):
+                    params = []
+                    for symbol in symbols[offset : offset + 512]:
+                        if not isinstance(symbol, dict):
+                            raise ValueError("invalid legacy symbol row")
+                        params.append(
+                            (
+                                symbol.get("name") or symbol.get("text", ""),
+                                symbol.get("kind", "unknown"),
+                                file_path,
+                                language,
+                                symbol.get("line", 0),
+                                symbol.get("end_line", 0),
+                            )
+                        )
+                    conn.executemany(
+                        "INSERT INTO ast_symbol_rows "
+                        "(name, kind, file_path, language, line, end_line) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        params,
+                    )
+        conn.execute("RELEASE ast_symbol_rows_upgrade")
+    except Exception:
+        conn.execute("ROLLBACK TO ast_symbol_rows_upgrade")
+        conn.execute("RELEASE ast_symbol_rows_upgrade")
+        raise
+
+
 def init_db(
     conn: sqlite3.Connection,
     fts5_available: bool | None,
@@ -693,7 +747,8 @@ def init_db(
     """Apply schema DDL and migrations. Returns updated fts5_available flag."""
     conn.executescript(SCHEMA_V1)
     # Ordinary symbol storage is valid and useful even when SQLite lacks FTS5.
-    conn.executescript(SCHEMA_SYMBOL_ROWS)
+    # Keep table creation plus legacy projection backfill in one rollback unit.
+    _ensure_symbol_rows_backfilled(conn)
     conn.executescript(SCHEMA_VERSIONS_DDL)
     conn.commit()
     if fts5_available is None:

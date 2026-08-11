@@ -1359,3 +1359,26 @@ def test_modified_base_rebuilds_resolved_hierarchy_edge(tmp_path):
         cache.close()
 
     assert targets == ["base.py:Base:1", "class:Base"]
+
+
+def test_file_changed_fails_closed_when_rehash_becomes_unreadable(
+    tmp_path, monkeypatch
+):
+    # PR #1253: a metadata change plus read failure cannot be treated as cached.
+    import tree_sitter_analyzer.incremental_sync as sync_module
+    from tree_sitter_analyzer.incremental_sync import IncrementalSync
+
+    source = tmp_path / "sample.py"
+    source.write_text("x = 1\n")
+    monkeypatch.setattr(
+        sync_module,
+        "_file_content_hash",
+        lambda _path: (_ for _ in ()).throw(PermissionError()),
+    )
+    changed = IncrementalSync(object())._file_changed(
+        {"file_size": 6, "mtime_ns": 2, "abs_path": str(source)},
+        {"file_size": 6, "mtime_ns": 1, "content_hash": "old"},
+        "sample.py",
+    )
+
+    assert changed is True

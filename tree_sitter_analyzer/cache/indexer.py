@@ -46,6 +46,9 @@ from .callgraph_state import (
     clear_call_graph_built as _clear_call_graph_built,
 )
 from .callgraph_state import (
+    clear_call_graph_built_strict as _clear_call_graph_built_strict,
+)
+from .callgraph_state import (
     mark_call_graph_built as _mark_call_graph_built,
 )
 from .helpers import (
@@ -768,47 +771,29 @@ def run_index_project(
             _clear_call_graph_built(conn)
         stats["total_files"] = count
         stats["workers"] = workers
-        if stats["indexed"] > 0:
-            post_index_backfill(
-                cache,
-                stats,
-            )
-            if stats.get(
-                "backfill_errors", 0
-            ) == 0 and cache._completed_full_index_sweep(stats):
-                _mark_call_graph_built(cache._get_conn())
-            else:
-                _clear_call_graph_built(cache._get_conn())
-        # #978: a fully-cached re-run (indexed == 0) over an already-complete
-        # index never reaches the branch above, so a project whose marker was
-        # cleared (e.g. predates #708) would stay permanently un-stamped and
-        # leave callers/lineage hinting "--full-index". Stamp it when the
-        # index actually covers the whole source set.
-        # _indexed_source_files_are_complete() returns False for an empty,
-        # truncated, errored, or otherwise incomplete index, so this keeps
-        # #970's false-positive guard intact.
-        elif (
+        if (
             candidate_snapshot is not None
-            and all(
-                changed_since_snapshot(entry) is None
-                for entry in candidate_snapshot.selected_entries
-            )
             and not candidate_snapshot.truncated_by_max_files
-            and candidate_snapshot.excluded == 0
-            and candidate_snapshot.skipped == 0
             and candidate_snapshot.errors == 0
-            and candidate_snapshot.selected > 0
-            and {
-                str(row["file_path"]).replace("\\", "/")
-                for row in cache._get_conn()
-                .execute("SELECT file_path FROM ast_index")
-                .fetchall()
-            }
-            == candidate_snapshot.present_paths
-        ) or (
-            candidate_snapshot is None and cache._indexed_source_files_are_complete()
+            and stats.get("changed_during_run", 0) == 0
         ):
-            _mark_call_graph_built(cache._get_conn())
+            stats["pruned"] = _prune_to_selected_scope(cache, conn, candidate_snapshot)
+        # A missing marker is persisted evidence that a previous backfill did
+        # not converge. Fully cached retries must run the complete chain again.
+        needs_backfill = bool(
+            stats["indexed"] > 0
+            or stats.get("pruned", 0) > 0
+            or not _call_graph_marker_is_built(conn)
+        )
+        if needs_backfill:
+            _clear_call_graph_built(conn)
+            post_index_backfill(cache, stats)
+            if stats.get("backfill_errors", 0) == 0 and _candidate_paths_are_exact(
+                conn, candidate_snapshot, stats
+            ):
+                _mark_call_graph_built(conn)
+            else:
+                _clear_call_graph_built(conn)
         if force:
             stats["db_maintenance"] = (
                 _ast_cache_mod._reclaim_storage_after_full_rebuild(conn, cache.db_path)
@@ -818,6 +803,67 @@ def run_index_project(
     finally:
         if force:
             _clear_build_in_progress(cache._get_conn())
+
+
+def _call_graph_marker_is_built(conn: sqlite3.Connection) -> bool:
+    """Require the persisted success marker; derived rows alone are not proof."""
+    try:
+        row = conn.execute(
+            "SELECT built FROM ast_call_graph_state WHERE id = 1"
+        ).fetchone()
+        incomplete = conn.execute(
+            "SELECT 1 FROM ast_call_graph_state WHERE id = 2"
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return False
+    return bool(row and int(row[0]) == 1 and incomplete is None)
+
+
+def _prune_to_selected_scope(
+    cache: Any, conn: sqlite3.Connection, candidate: IndexCandidateSnapshot
+) -> int:
+    """Transactionally remove primary and graph generations outside the scope."""
+    selected = {entry.rel_path for entry in candidate.selected_entries}
+    stale = sorted(
+        str(row[0]).replace("\\", "/")
+        for row in conn.execute("SELECT file_path FROM ast_index")
+        if str(row[0]).replace("\\", "/") not in selected
+    )
+    if not stale:
+        return 0
+    try:
+        for rel_path in stale:
+            _discard_snapshot_generation(cache, conn, rel_path)
+        _clear_call_graph_built_strict(conn)
+    except Exception:
+        conn.rollback()
+        raise
+    return len(stale)
+
+
+def _candidate_paths_are_exact(
+    conn: sqlite3.Connection,
+    candidate: IndexCandidateSnapshot | None,
+    stats: Mapping[str, Any],
+) -> bool:
+    paths = {
+        str(row[0]).replace("\\", "/")
+        for row in conn.execute("SELECT file_path FROM ast_index")
+    }
+    if candidate is None:
+        return (
+            bool(paths)
+            and not stats.get("truncated_by_max_files", False)
+            and not (stats.get("errors", 0) or stats.get("skipped", 0))
+        )
+    selected = {entry.rel_path for entry in candidate.selected_entries}
+    return bool(selected) and bool(
+        not candidate.truncated_by_max_files
+        and candidate.errors == 0
+        and stats.get("errors", 0) == 0
+        and stats.get("changed_during_run", 0) == 0
+        and paths == selected
+    )
 
 
 def _update_authoritative_manifest(

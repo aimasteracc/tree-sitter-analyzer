@@ -1,5 +1,6 @@
 """Tests for the pre-indexed AST cache (ast_cache module)."""
 
+import json
 import os
 import sqlite3
 from dataclasses import replace
@@ -2293,3 +2294,145 @@ def test_no_fts_symbol_search_reads_ordinary_rows(tmp_path):
     assert [(row["name"], row["file"], row["kind"]) for row in results] == [
         ("answer", "sample.py", "function")
     ]
+
+
+def test_no_fts_upgrade_backfills_legacy_symbols_for_cached_consumers(
+    tmp_path, monkeypatch
+):
+    # PR #1253: unchanged legacy rows must become visible without re-indexing.
+    import tree_sitter_analyzer.ast_cache as ast_cache_module
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache.schema import SCHEMA_V1
+    from tree_sitter_analyzer.miswire_audit import _iter_symbol_defs
+
+    cache_dir = tmp_path / ".ast-cache"
+    cache_dir.mkdir()
+    conn = sqlite3.connect(cache_dir / "index.db")
+    conn.executescript(SCHEMA_V1)
+    conn.execute(
+        "INSERT INTO ast_index "
+        "(file_path, content_hash, language, mtime_ns, file_size, "
+        "extractor_version, symbols_json, imports_json, structure_json, indexed_at) "
+        "VALUES (?, ?, ?, 0, 0, 0, ?, '[]', '{}', 'now')",
+        (
+            "legacy.py",
+            "hash",
+            "python",
+            json.dumps(
+                {"symbols": [{"name": "legacy", "kind": "function", "line": 3}]}
+            ),
+        ),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(ast_cache_module, "_has_fts5", lambda _conn: False)
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        definitions = _iter_symbol_defs(cache.get_conn())
+    finally:
+        cache.close()
+
+    assert definitions == [("legacy", "legacy.py", "python")]
+
+
+def test_symbol_row_upgrade_failure_rolls_back_table_creation():
+    # PR #1253: malformed legacy state cannot leave an empty shadow table.
+    from tree_sitter_analyzer.cache.schema import _ensure_symbol_rows_backfilled
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, language TEXT, symbols_json TEXT)"
+    )
+    conn.execute("INSERT INTO ast_index VALUES ('bad.py', 'python', '{')")
+
+    with pytest.raises(json.JSONDecodeError):
+        _ensure_symbol_rows_backfilled(conn)
+    table = conn.execute(
+        "SELECT name FROM sqlite_master WHERE name = 'ast_symbol_rows'"
+    ).fetchone()
+    conn.close()
+
+    assert table is None
+
+
+def test_fully_cached_missing_marker_reruns_every_backfill(cache, monkeypatch):
+    # PR #1253: edge rows without the persisted marker are not convergence proof.
+    first = cache.index_project(workers=0)
+    assert first["indexed"] == 2
+    conn = cache.get_conn()
+    conn.execute("DELETE FROM ast_call_graph_state")
+    conn.commit()
+    calls = {name: 0 for name, _key in _BACKFILL_ROUTES}
+
+    for name, _key in _BACKFILL_ROUTES:
+
+        def clean(name=name):
+            calls[name] += 1
+            return {"errors": 0}
+
+        monkeypatch.setattr(cache, name, clean)
+    second = cache.index_project(workers=0)
+
+    assert (second["indexed"], calls, cache.call_graph_built()) == (
+        0,
+        {name: 1 for name, _key in _BACKFILL_ROUTES},
+        True,
+    )
+
+
+def test_fully_cached_failed_retry_keeps_marker_clear(cache, monkeypatch):
+    # PR #1253: failed cached backfill retries must remain visibly incomplete.
+    cache.index_project(workers=0)
+    conn = cache.get_conn()
+    conn.execute("DELETE FROM ast_call_graph_state")
+    conn.commit()
+    for name, _key in _BACKFILL_ROUTES:
+        monkeypatch.setattr(cache, name, lambda: {"errors": 0})
+    monkeypatch.setattr(cache, "_run_synapse_backfill", lambda: {"errors": 1})
+
+    result = cache.index_project(workers=0)
+    marker = conn.execute(
+        "SELECT built FROM ast_call_graph_state WHERE id = 1"
+    ).fetchone()
+    manifest_count = conn.execute(
+        "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
+    ).fetchone()[0]
+
+    assert (result["backfill_errors"], marker[0], manifest_count) == (1, 0, 0)
+
+
+def test_scope_prune_failure_rolls_back_all_stale_rows(cache, monkeypatch):
+    # PR #1253: scope reconciliation is atomic before certification.
+    from tree_sitter_analyzer.cache import indexer
+    from tree_sitter_analyzer.indexing_snapshot import IndexCandidateSnapshot
+
+    cache.index_project(workers=0)
+    conn = cache.get_conn()
+    original_paths = {
+        str(row[0]) for row in conn.execute("SELECT file_path FROM ast_index")
+    }
+    selected_path = sorted(original_paths)[0]
+    candidate = IndexCandidateSnapshot(
+        project_root=cache.project_root,
+        max_files=10,
+        entries=(),
+        present_paths=frozenset({selected_path}),
+        discovered=1,
+        selected=0,
+        excluded=0,
+        skipped=0,
+        errors=0,
+        limited=0,
+    )
+    monkeypatch.setattr(
+        indexer,
+        "_discard_snapshot_generation",
+        lambda *_args: (_ for _ in ()).throw(sqlite3.OperationalError("prune failed")),
+    )
+
+    with pytest.raises(sqlite3.OperationalError, match="prune failed"):
+        indexer._prune_to_selected_scope(cache, conn, candidate)
+    remaining = {str(row[0]) for row in conn.execute("SELECT file_path FROM ast_index")}
+
+    assert remaining == original_paths
