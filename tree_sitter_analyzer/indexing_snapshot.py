@@ -225,7 +225,8 @@ def build_index_candidate_snapshot(
     resolved_paths: set[str] = set()
     discovered = selected = excluded = skipped = errors = limited = 0
 
-    for raw_path in walk_fn(logical_root):
+    walker = iter(walk_fn(logical_root))
+    for raw_path in walker:
         abs_path = os.path.abspath(raw_path)
         rel_path = os.path.relpath(abs_path, logical_root)
         if os.name == "nt":
@@ -268,9 +269,6 @@ def build_index_candidate_snapshot(
         discovered += 1
         present_paths.add(rel_path)
 
-        if discovered > normalized_max:
-            limited += 1
-            continue
         if any(fnmatch.fnmatch(rel_path, pattern) for pattern in exclude_patterns):
             excluded += 1
             entries.append(
@@ -307,6 +305,15 @@ def build_index_candidate_snapshot(
                 )
             )
             continue
+
+        # Stop at the first supported candidate beyond the selection budget.  Do
+        # not continue walking merely to populate advisory presence/error data.
+        if selected >= normalized_max:
+            limited = 1
+            close = getattr(walker, "close", None)
+            if callable(close):
+                close()
+            break
 
         # Supported candidates were lstat-validated before realpath de-duplication.
         assert source_info is not None

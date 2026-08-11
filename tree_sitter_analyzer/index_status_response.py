@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 from typing import Any
 
 from . import index_lag, index_snapshot
@@ -63,7 +64,7 @@ def build_index_status_response(
             }
             if any(stats.get(key) != value for key, value in expected_tokens.items()):
                 raise ValueError("SNAPSHOT_TOKEN_MISMATCH")
-        except (OSError, ValueError, RuntimeError):
+        except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
             snapshot = type(snapshot)(
                 None, None, None, None, "unknown", "SNAPSHOT_READ_FAILED", None, 0
             )

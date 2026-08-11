@@ -459,3 +459,41 @@ async def test_bounded_stats_runtime_failure_returns_stable_envelope(
         "unknown",
         "SNAPSHOT_READ_FAILED",
     )
+
+
+@pytest.mark.asyncio
+@requires_posix_snapshot
+async def test_malformed_stats_schema_returns_stable_envelope(tmp_path, monkeypatch):
+    # PR #1253 review thread 3755591659: SQLite schema errors never escape MCP.
+    import tree_sitter_analyzer.index_snapshot as owner
+
+    snapshot = owner.IndexSnapshot(
+        "idxsnap_test",
+        "source",
+        "index",
+        "generation",
+        "complete",
+        None,
+        str(tmp_path),
+        1,
+    )
+    monkeypatch.setattr(owner, "read_existing_snapshot", lambda _root: snapshot)
+    monkeypatch.setattr(
+        owner,
+        "read_snapshot_stats",
+        lambda *_args: (_ for _ in ()).throw(
+            sqlite3.OperationalError("no such column")
+        ),
+    )
+
+    result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
+
+    assert (
+        result["completeness"],
+        result["oracle_reason"],
+        result["total_symbols"],
+    ) == (
+        "unknown",
+        "SNAPSHOT_READ_FAILED",
+        0,
+    )

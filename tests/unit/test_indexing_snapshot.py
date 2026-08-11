@@ -78,38 +78,70 @@ def test_snapshot_freezes_order_scope_and_reconciled_metrics(tmp_path):
     assert [entry.rel_path for entry in snapshot.entries] == [
         "a.py",
         "generated.py",
+        "z.py",
     ]
-    assert [entry.rel_path for entry in snapshot.selected_entries] == ["a.py"]
+    assert [entry.rel_path for entry in snapshot.selected_entries] == ["a.py", "z.py"]
     assert snapshot.present_paths == frozenset({"a.py", "generated.py", "z.py"})
     assert snapshot.metrics() == {
         "discovered": 3,
-        "selected": 1,
+        "selected": 2,
         "excluded": 1,
         "skipped": 0,
         "errors": 0,
-        "limited_by_max_files": 1,
-        "truncated_by_max_files": True,
+        "limited_by_max_files": 0,
+        "truncated_by_max_files": False,
         "discovery_reconciled": True,
     }
 
 
-def test_max_files_window_is_evaluated_before_exclusions(tmp_path):
+def test_exclusions_do_not_consume_the_selected_file_budget(tmp_path):
     excluded = tmp_path / "generated.py"
     later = tmp_path / "later.py"
+    overflow = tmp_path / "overflow.py"
     excluded.write_text("generated = 1\n")
     later.write_text("later = 1\n")
+    overflow.write_text("overflow = 1\n")
 
     snapshot = build_index_candidate_snapshot(
         str(tmp_path),
         max_files=1,
         exclude_patterns=frozenset({"generated.py"}),
-        walk_fn=lambda _root: (str(excluded), str(later)),
+        walk_fn=lambda _root: (str(excluded), str(later), str(overflow)),
         language_fn=_python_language,
     )
 
-    assert snapshot.selected == 0
+    assert snapshot.selected == 1
     assert snapshot.excluded == 1
     assert snapshot.limited == 1
+
+
+def test_candidate_discovery_closes_generator_after_first_overflow(tmp_path):
+    # PR #1253 review thread 3755591652: discovery must consume max_files + 1.
+    paths = [tmp_path / f"candidate-{index}.py" for index in range(4)]
+    for path in paths:
+        path.write_text("value = 1\n")
+    consumed = 0
+    closed = False
+
+    def million_candidates(_root):
+        nonlocal consumed, closed
+        try:
+            for index in range(1_000_000):
+                consumed += 1
+                yield str(paths[index]) if index < len(paths) else str(tmp_path / index)
+        finally:
+            closed = True
+
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=3,
+        exclude_patterns=frozenset(),
+        walk_fn=million_candidates,
+        language_fn=_python_language,
+    )
+
+    assert (snapshot.selected, snapshot.limited, consumed, closed) == (3, 1, 4, True)
+    assert snapshot.present_paths == frozenset(path.name for path in paths)
 
 
 def test_snapshot_detects_modification(tmp_path):

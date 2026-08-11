@@ -6,40 +6,113 @@ import json
 import sqlite3
 import time
 
+_FALLBACK_BYTE_BUDGET = 256 * 1024 * 1024
+_FALLBACK_SYMBOL_BUDGET = 2_000_000
+_FALLBACK_INPUT_ROW_BUDGET = 250_000
+_FALLBACK_CELL_BYTE_BUDGET = 1024 * 1024
+_FALLBACK_DEADLINE_SECONDS = 5.0
+
+
+def has_ordinary_symbol_projection(conn: sqlite3.Connection, tables: set[str]) -> bool:
+    """Return whether canonical symbol rows contain the status query columns."""
+    if "ast_symbol_rows" not in tables:
+        return False
+    columns = {
+        str(row[1]) for row in conn.execute("PRAGMA table_info(ast_symbol_rows)")
+    }
+    return {"name", "kind", "language", "file_path"}.issubset(columns)
+
 
 def fallback_symbol_counts(
     conn: sqlite3.Connection,
-    byte_budget: int,
-    row_budget: int,
 ) -> tuple[int, dict[str, int], dict[str, int]]:
-    """Count legacy/no-FTS symbols from bounded primary index JSON rows."""
-    total = bytes_seen = 0
+    """Count legacy symbols without materializing an unbounded JSON cell."""
+    byte_budget = _FALLBACK_BYTE_BUDGET
+    symbol_budget = _FALLBACK_SYMBOL_BUDGET
+    input_row_budget = _FALLBACK_INPUT_ROW_BUDGET
+    cell_byte_budget = _FALLBACK_CELL_BYTE_BUDGET
+    deadline_seconds = _FALLBACK_DEADLINE_SECONDS
+    deadline = time.monotonic() + deadline_seconds
+    rows_seen = bytes_seen = total = 0
     by_kind: dict[str, int] = {}
     by_language: dict[str, int] = {}
-    for row in conn.execute(
-        "SELECT symbols_json, language FROM ast_index ORDER BY file_path"
-    ):
-        raw = str(row[0])
-        bytes_seen += len(raw.encode("utf-8", "surrogatepass"))
-        if bytes_seen > byte_budget:
+
+    def check_budget() -> None:
+        if (
+            time.monotonic() > deadline
+            or rows_seen > input_row_budget
+            or bytes_seen > byte_budget
+            or total > symbol_budget
+        ):
             raise RuntimeError("INDEX_SYMBOL_FALLBACK_BUDGET")
-        payload = json.loads(raw)
-        symbols = payload.get("symbols", []) if isinstance(payload, dict) else []
-        if not isinstance(symbols, list):
-            raise ValueError("CORRUPT_INDEX")
-        language = str(row[1])
-        for symbol in symbols:
-            total += 1
-            if total > row_budget:
+
+    def expired() -> int:
+        return int(time.monotonic() > deadline)
+
+    conn.set_progress_handler(expired, 1_000)
+    try:
+        # SQLite computes BLOB lengths without transferring the potentially large
+        # values into Python.  Reject every oversized cell before json.loads.
+        preflight = conn.execute(
+            "SELECT length(CAST(symbols_json AS BLOB)), "
+            "length(CAST(language AS BLOB)) FROM ast_index ORDER BY file_path"
+        )
+        while True:
+            check_budget()
+            length_row = preflight.fetchone()
+            if length_row is None:
+                break
+            rows_seen += 1
+            lengths = tuple(length_row)
+            if any(value is None or not isinstance(value, int) for value in lengths):
+                raise ValueError("CORRUPT_INDEX")
+            if any(value > cell_byte_budget for value in lengths):
                 raise RuntimeError("INDEX_SYMBOL_FALLBACK_BUDGET")
-            kind = (
-                str(symbol.get("kind", "unknown"))
-                if isinstance(symbol, dict)
-                else "unknown"
+            bytes_seen += sum(lengths)
+            check_budget()
+
+        cursor = conn.execute(
+            "SELECT symbols_json, language FROM ast_index ORDER BY file_path"
+        )
+        while True:
+            check_budget()
+            row = cursor.fetchone()
+            if row is None:
+                break
+            raw, language_value = row
+            if not isinstance(raw, (bytes, str)) or not isinstance(
+                language_value, (bytes, str)
+            ):
+                raise ValueError("CORRUPT_INDEX")
+            payload = json.loads(raw)
+            check_budget()
+            symbols = payload.get("symbols", []) if isinstance(payload, dict) else []
+            if not isinstance(symbols, list):
+                raise ValueError("CORRUPT_INDEX")
+            language = (
+                language_value.decode("utf-8", errors="replace")
+                if isinstance(language_value, bytes)
+                else language_value
             )
-            by_kind[kind] = by_kind.get(kind, 0) + 1
-            by_language[language] = by_language.get(language, 0) + 1
-    return total, dict(sorted(by_kind.items())), dict(sorted(by_language.items()))
+            total += len(symbols)
+            check_budget()
+            for index, symbol in enumerate(symbols):
+                if index % 512 == 0:
+                    check_budget()
+                kind = (
+                    str(symbol.get("kind", "unknown"))
+                    if isinstance(symbol, dict)
+                    else "unknown"
+                )
+                by_kind[kind] = by_kind.get(kind, 0) + 1
+                by_language[language] = by_language.get(language, 0) + 1
+        return total, dict(sorted(by_kind.items())), dict(sorted(by_language.items()))
+    except sqlite3.OperationalError as exc:
+        if time.monotonic() > deadline or "interrupt" in str(exc).lower():
+            raise RuntimeError("INDEX_SYMBOL_FALLBACK_BUDGET") from exc
+        raise
+    finally:
+        conn.set_progress_handler(None, 0)
 
 
 _LEGACY_SYMBOL_MIGRATION_SECONDS = 5.0

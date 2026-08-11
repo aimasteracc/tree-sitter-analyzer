@@ -35,7 +35,10 @@ from .index_snapshot_schema import (
     stamp_full_index_manifest as stamp_full_index_manifest,
 )
 from .index_snapshot_symbols import (
-    fallback_symbol_counts as _fallback_symbol_counts_impl,
+    fallback_symbol_counts as _fallback_symbol_counts,
+)
+from .index_snapshot_symbols import (
+    has_ordinary_symbol_projection as _has_ordinary_symbol_projection,
 )
 from .index_source_snapshot import (
     SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET,
@@ -51,8 +54,6 @@ _TTL_SECONDS = 35.0
 _SNAPSHOT_OVERHEAD_BYTES = 2 * 1024 * 1024
 _CAPTURE_DEADLINE_SECONDS = 10.0
 _BACKUP_BYTE_BUDGET = _MAX_CHARGED_BYTES - _SNAPSHOT_OVERHEAD_BYTES
-_SYMBOL_FALLBACK_BYTE_BUDGET = 512 * 1024 * 1024
-_SYMBOL_FALLBACK_ROW_BUDGET = 2_000_000
 _clock = time.monotonic
 
 
@@ -430,7 +431,7 @@ def read_snapshot_stats(
             "ast_symbols_fts",
             "ast_symbol_rows",
         }.issubset(tables)
-        if fts5_available:
+        if _has_ordinary_symbol_projection(conn, tables):
             total_symbols = int(
                 conn.execute("SELECT COUNT(*) FROM ast_symbol_rows").fetchone()[0]
             )
@@ -472,14 +473,6 @@ def read_snapshot_stats(
         }
 
     return run_graph_snapshot_read(snapshot_id, project_root, source_generation, reader)
-
-
-def _fallback_symbol_counts(
-    conn: sqlite3.Connection,
-) -> tuple[int, dict[str, int], dict[str, int]]:
-    return _fallback_symbol_counts_impl(
-        conn, _SYMBOL_FALLBACK_BYTE_BUDGET, _SYMBOL_FALLBACK_ROW_BUDGET
-    )
 
 
 def acquire_index_snapshot(
