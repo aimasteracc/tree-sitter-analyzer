@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
@@ -160,3 +162,77 @@ class TestExecute:
         assert result["indexed"] is False
         assert result["cache_stats"] is not None
         assert result["cache_stats"]["total_files"] == 0
+
+
+def test_external_marker_clear_cycles_do_not_accumulate_open_resources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # PR #1253 thread 3758928337: stale fast-path SQLite handles must be closed.
+    root = "/externally-invalidated"
+    marker = {"current": False}
+    resources = {"opened": 0, "closed": 0, "active": 0}
+
+    class Cache:
+        def __init__(self) -> None:
+            self.closed = False
+            resources["opened"] += 1
+            resources["active"] += 1
+
+        def get_stats(self) -> dict[str, int]:
+            return {"total_files": 1}
+
+        def index_project(self, **_kwargs: Any) -> None:
+            marker["current"] = True
+
+        def close(self) -> None:
+            assert self.closed is False
+            self.closed = True
+            resources["closed"] += 1
+            resources["active"] -= 1
+
+    monkeypatch.setattr(auto_index_guard, "_open_cache", lambda _root: Cache())
+    monkeypatch.setattr(
+        auto_index_guard,
+        "_call_graph_marker_is_current",
+        lambda _cache: marker["current"],
+    )
+    auto_index_guard.reset()
+
+    for _cycle in range(6):
+        marker["current"] = False
+        cache = auto_index_guard.ensure_indexed(root)
+        cache.close()
+
+    assert resources == {"opened": 11, "closed": 11, "active": 0}
+    auto_index_guard.reset()
+
+
+def test_lock_recheck_with_unavailable_cache_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = "/unavailable-after-lock"
+
+    class MarkedLock:
+        def __enter__(self) -> None:
+            auto_index_guard._indexed_roots[root] = True
+
+        def __exit__(self, *_args: Any) -> None:
+            return None
+
+    auto_index_guard.reset()
+    monkeypatch.setattr(auto_index_guard, "_lock", MarkedLock())
+    monkeypatch.setattr(auto_index_guard, "_open_cache", lambda _root: None)
+
+    assert auto_index_guard.ensure_indexed(root) is None
+    auto_index_guard._indexed_roots.clear()
+
+
+def test_open_cache_construction_failure_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_construction(_root: str) -> None:
+        raise OSError("database unavailable")
+
+    monkeypatch.setattr("tree_sitter_analyzer.ast_cache.ASTCache", fail_construction)
+
+    assert auto_index_guard._open_cache("/unavailable") is None

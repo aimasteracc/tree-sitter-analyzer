@@ -332,12 +332,16 @@ def test_stale_process_fast_path_runs_warmup_repair(
     class Cache:
         def __init__(self) -> None:
             self.calls: list[dict[str, Any]] = []
+            self.close_calls = 0
 
         def get_stats(self) -> dict[str, int]:
             return {"total_files": 1}
 
         def index_project(self, **kwargs: Any) -> None:
             self.calls.append(kwargs)
+
+        def close(self) -> None:
+            self.close_calls += 1
 
     cache = Cache()
     markers = iter((False, False, True))
@@ -352,9 +356,15 @@ def test_stale_process_fast_path_runs_warmup_repair(
 
     result = auto_index_guard.ensure_indexed("/stale", max_files=23)
 
-    assert (result, cache.calls, auto_index_guard.is_indexed("/stale")) == (
+    assert (
+        result,
+        cache.calls,
+        cache.close_calls,
+        auto_index_guard.is_indexed("/stale"),
+    ) == (
         cache,
         [{"max_files": 23}],
+        1,
         True,
     )
     auto_index_guard.reset()
@@ -391,12 +401,16 @@ def test_lock_recheck_discards_stale_marker_before_warmup(
     class Cache:
         def __init__(self) -> None:
             self.calls: list[dict[str, Any]] = []
+            self.close_calls = 0
 
         def get_stats(self) -> dict[str, int]:
             return {"total_files": 1}
 
         def index_project(self, **kwargs: Any) -> None:
             self.calls.append(kwargs)
+
+        def close(self) -> None:
+            self.close_calls += 1
 
     class StaleLock:
         def __enter__(self):
@@ -418,9 +432,15 @@ def test_lock_recheck_discards_stale_marker_before_warmup(
 
     result = auto_index_guard.ensure_indexed(root, max_files=29)
 
-    assert (result, cache.calls, auto_index_guard.is_indexed(root)) == (
+    assert (
+        result,
+        cache.calls,
+        cache.close_calls,
+        auto_index_guard.is_indexed(root),
+    ) == (
         cache,
         [{"max_files": 29}],
+        1,
         True,
     )
     auto_index_guard._indexed_roots.clear()

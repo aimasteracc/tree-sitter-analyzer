@@ -88,10 +88,10 @@ def walk_candidate_entries(
             ):
                 raise CandidateDiscoveryBudgetExceeded(budget_error)
             try:
-                is_directory = entry.is_dir(follow_symlinks=False)
+                entry_info = entry.stat(follow_symlinks=False)
             except OSError as exc:
                 raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
-            if not is_directory:
+            if not stat.S_ISDIR(entry_info.st_mode):
                 yield abs_path
                 continue
             if entry.name in excluded_dir_names or entry.name.startswith("."):
@@ -104,8 +104,18 @@ def walk_candidate_entries(
                     dir_fd=parent_fd,
                 )
                 child_info = os.fstat(child_fd)
-                if not stat.S_ISDIR(child_info.st_mode):
-                    raise OSError("candidate child is not a directory")
+                enumerated_identity = (
+                    entry_info.st_dev,
+                    entry_info.st_ino,
+                    entry_info.st_mode,
+                )
+                opened_identity = (
+                    child_info.st_dev,
+                    child_info.st_ino,
+                    child_info.st_mode,
+                )
+                if opened_identity != enumerated_identity:
+                    raise OSError("candidate child identity changed before open")
                 child_scanner = os.scandir(child_fd)
             except OSError as exc:
                 if child_fd is not None:

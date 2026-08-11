@@ -4,6 +4,8 @@ import os
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.indexer import walk_and_partition
 from tree_sitter_analyzer.index_candidate_walker import walk_candidate_entries
@@ -112,6 +114,85 @@ def test_force_with_root_scandir_error_preserves_every_persisted_generation(
     )
 
     assert (snapshot.errors, snapshot.discovery_error) == (
+        1,
+        "INDEX_CANDIDATE_DISCOVERY_ERROR",
+    )
+    assert (result["verdict"], result["errors"], result["indexed"]) == (
+        "WARN",
+        1,
+        0,
+    )
+    assert persisted_rows() == before
+    cache.close()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_force_with_renamed_directory_swap_preserves_persisted_rows(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    # PR #1253 thread 3758928326: a regular-directory swap is incomplete discovery.
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    package = tmp_path / "pkg"
+    package.mkdir()
+    source = package / "app.py"
+    source.write_text("def answer():\n    return 42\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
+    conn = cache.get_conn()
+    tables = (
+        "ast_index",
+        "ast_symbol_rows",
+        "edges",
+        "ast_index_snapshot_manifest",
+    )
+
+    def persisted_rows() -> dict[str, list[tuple[object, ...]]]:
+        return {
+            table: [tuple(row) for row in conn.execute(f"SELECT * FROM {table}")]
+            for table in tables
+        }
+
+    before = persisted_rows()
+    real_open = walker.os.open
+    swapped = False
+
+    def swap_before_child_open(path, flags, *args, **kwargs):
+        nonlocal swapped
+        if path == "pkg" and kwargs.get("dir_fd") is not None and not swapped:
+            swapped = True
+            package.rename(tmp_path / "original-pkg")
+            package.mkdir()
+        return real_open(path, flags, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(walker.os, "open", swap_before_child_open)
+        snapshot = build_index_candidate_snapshot(
+            str(tmp_path),
+            max_files=10,
+            exclude_patterns=frozenset(),
+            walk_fn=lambda root: walk_candidate_entries(
+                root,
+                excluded_dir_names=frozenset(),
+                entry_budget=10,
+                path_byte_budget=10_000,
+                discovery_seconds=10.0,
+                budget_error="INDEX_CANDIDATE_DISCOVERY_BUDGET",
+            ),
+            language_fn=lambda path: "python" if path.endswith(".py") else None,
+        )
+
+    result = cache.index_project(
+        max_files=10,
+        force=True,
+        exclude_patterns=frozenset(),
+        candidate_snapshot=snapshot,
+    )
+
+    assert (swapped, snapshot.errors, snapshot.discovery_error) == (
+        True,
         1,
         "INDEX_CANDIDATE_DISCOVERY_ERROR",
     )

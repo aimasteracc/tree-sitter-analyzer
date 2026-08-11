@@ -221,7 +221,7 @@ def test_posix_entry_stat_error_closes_owned_fd(monkeypatch):
     class Entry:
         name = "source.py"
 
-        def is_dir(self, *, follow_symlinks):
+        def stat(self, *, follow_symlinks):
             assert follow_symlinks is False
             raise OSError("entry stat failed")
 
@@ -244,9 +244,9 @@ def test_posix_child_failure_closes_every_acquired_fd(monkeypatch, failure):
     class DirectoryEntry:
         name = "pkg"
 
-        def is_dir(self, *, follow_symlinks):
+        def stat(self, *, follow_symlinks):
             assert follow_symlinks is False
-            return True
+            return type("Info", (), {"st_dev": 1, "st_ino": 2, "st_mode": 0o040000})()
 
     root_scanner = _Scanner(DirectoryEntry())
     closed: list[int] = []
@@ -263,7 +263,7 @@ def test_posix_child_failure_closes_every_acquired_fd(monkeypatch, failure):
     def fstat(fd):
         if failure == "fstat" and fd == 52:
             raise OSError("child fstat failed")
-        return type("Info", (), {"st_mode": 0o040000})()
+        return type("Info", (), {"st_dev": 1, "st_ino": 2, "st_mode": 0o040000})()
 
     def scandir(fd):
         if failure == "scandir" and fd == 52:
@@ -286,8 +286,9 @@ def test_posix_non_directory_child_fd_is_rejected(monkeypatch):
     class DirectoryEntry:
         name = "pkg"
 
-        def is_dir(self, *, follow_symlinks):
-            return True
+        def stat(self, *, follow_symlinks):
+            assert follow_symlinks is False
+            return type("Info", (), {"st_dev": 1, "st_ino": 2, "st_mode": 0o040000})()
 
     closed: list[int] = []
     monkeypatch.setattr(
@@ -296,7 +297,15 @@ def test_posix_non_directory_child_fd_is_rejected(monkeypatch):
     monkeypatch.setattr(
         walker.os,
         "fstat",
-        lambda fd: type("Info", (), {"st_mode": 0o100000 if fd == 62 else 0o040000})(),
+        lambda fd: type(
+            "Info",
+            (),
+            {
+                "st_dev": 1,
+                "st_ino": 2,
+                "st_mode": 0o100000 if fd == 62 else 0o040000,
+            },
+        )(),
     )
     monkeypatch.setattr(walker.os, "scandir", lambda _fd: _Scanner(DirectoryEntry()))
     monkeypatch.setattr(walker.os, "close", closed.append)

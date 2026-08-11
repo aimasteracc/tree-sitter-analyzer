@@ -64,7 +64,10 @@ def ensure_indexed(
             if not auto_build or _call_graph_marker_is_current(cache):
                 return cache
             # Persisted invalidation must defeat the in-process fast path.
-            _indexed_roots.pop(project_root, None)
+            try:
+                cache.close()
+            finally:
+                _indexed_roots.pop(project_root, None)
 
     with _lock:
         if _indexed_roots.get(project_root):
@@ -72,7 +75,10 @@ def ensure_indexed(
             if cache is not None:
                 if not auto_build or _call_graph_marker_is_current(cache):
                     return cache
-                _indexed_roots.pop(project_root, None)
+                try:
+                    cache.close()
+                finally:
+                    _indexed_roots.pop(project_root, None)
 
         cache = _open_cache(project_root)
         if cache is None:
