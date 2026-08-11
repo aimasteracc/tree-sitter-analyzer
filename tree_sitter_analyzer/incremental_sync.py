@@ -13,7 +13,6 @@ from .index_source_snapshot import (
     make_source_scope_descriptor,
     validate_full_index_source_scope,
 )
-from .index_symbol_projection import delete_projection_state_if_present
 from .indexing_limits import normalize_index_max_files
 from .indexing_snapshot import (
     IndexCandidateSnapshot,
@@ -230,23 +229,35 @@ class IncrementalSync:
             str(row["file_path"])
             for row in conn.execute("SELECT file_path FROM ast_index").fetchall()
         }
-        snapshot_scope_complete = bool(
-            disk_files if candidate_snapshot is None else candidate_snapshot.selected
-        ) and (candidate_snapshot is None or candidate_snapshot.errors == 0)
         certified_paths = (
             set(disk_files) if candidate_snapshot is not None else present_paths
         )
-        if (
-            not result.truncated_by_max_files
-            and result.errors == 0
-            and (
-                result.changed_during_run == 0
-                or set(result.changed_during_run_files) == disappeared_paths
+        candidate_scope_exact = bool(
+            candidate_snapshot is None
+            or (
+                candidate_snapshot.errors == 0
+                and candidate_snapshot.discovery_error is None
+                and not candidate_snapshot.truncated_by_max_files
+                and candidate_snapshot.discovery_reconciled
             )
+        )
+        result.scope_complete = bool(
+            result.errors == 0
+            and result.backfill_errors == 0
+            and not result.truncated_by_max_files
+            and result.changed_during_run == 0
             and backfill_complete
-            and snapshot_scope_complete
+            and candidate_scope_exact
+            and (candidate_snapshot is not None or bool(certified_paths))
             and indexed_paths == certified_paths
-        ):
+        )
+        if not result.scope_complete:
+            from .cache.callgraph_state import clear_call_graph_built_strict
+
+            clear_call_graph_built_strict(conn)
+            conn.execute("DELETE FROM ast_index_snapshot_manifest")
+            conn.commit()
+        if result.scope_complete:
             from .cache.callgraph_state import (
                 clear_call_graph_built_strict,
                 mark_call_graph_built_strict,
@@ -259,12 +270,8 @@ class IncrementalSync:
                 clear_call_graph_built_strict(conn)
         expected_paths = set(disk_files)
         if (
-            not result.truncated_by_max_files
-            and result.errors == 0
-            and result.changed_during_run == 0
-            and backfill_complete
+            result.scope_complete
             and candidate_snapshot is not None
-            and candidate_snapshot.errors == 0
             and indexed_paths == expected_paths
             and certify_manifest
         ):
@@ -442,21 +449,15 @@ class IncrementalSync:
         try:
             index_result = self._cache.index_file(abs_path)
         except Exception as exc:
-            # #886: if index_file wrote partial rows before raising, clean them
-            # all up (ast_index + ast_symbol_rows + ast_symbols_fts) so the next
-            # sync treats the file as new rather than silently "unchanged" with
-            # missing symbols. Codex P2: wrap best-effort cleanup so a locked/
-            # full DB doesn't abort the whole sync — we already have the error.
+            # #886: if index_file wrote partial rows before raising, clean the
+            # complete generation through the shared ordered external-FTS helper.
+            # Codex P2: cleanup remains best effort for locked/full databases.
             try:
-                conn.execute("DELETE FROM ast_index WHERE file_path = ?", (rel_path,))
-                conn.execute(
-                    "DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,)
+                from .cache import write as cache_write
+
+                cache_write.discard_file_rows(
+                    conn, rel_path, self._cache.fts5_available
                 )
-                if self._cache.fts5_available:
-                    conn.execute(
-                        "DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,)
-                    )
-                delete_projection_state_if_present(conn, rel_path)
             except Exception:
                 logger.debug("Cleanup DELETE failed for %s — continuing", rel_path)
             # Issue #806/#805: catch all per-file errors so one pathological
@@ -496,17 +497,13 @@ class IncrementalSync:
         try:
             index_result = self._cache.index_file(abs_path)
         except Exception as exc:
-            # #886: same three-table cleanup as _index_new_file (Codex P2 parity).
+            # #886: same shared ordered cleanup as _index_new_file.
             try:
-                conn.execute("DELETE FROM ast_index WHERE file_path = ?", (rel_path,))
-                conn.execute(
-                    "DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,)
+                from .cache import write as cache_write
+
+                cache_write.discard_file_rows(
+                    conn, rel_path, self._cache.fts5_available
                 )
-                if self._cache.fts5_available:
-                    conn.execute(
-                        "DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,)
-                    )
-                delete_projection_state_if_present(conn, rel_path)
             except Exception:
                 logger.debug("Cleanup DELETE failed for %s — continuing", rel_path)
             # Issue #806/#805: same broad guard for re-index path.

@@ -225,8 +225,8 @@ class TestSnapshotFailureContracts:
 
 
 @pytest.mark.parametrize("rows_to_keep", [0, 1])
-def test_complete_marker_marks_incomplete_ordinary_rows_for_reindex(rows_to_keep):
-    # PR #1253 review thread 3756380009: the marker is not projection evidence.
+def test_complete_marker_uses_schema_only_migration_fastpath(rows_to_keep):
+    # PR #1253 thread 3760178967: ordinary cache opens must not rescan payloads.
     from tree_sitter_analyzer.index_snapshot_symbols import (
         ensure_symbol_rows_backfilled,
     )
@@ -263,11 +263,11 @@ def test_complete_marker_marks_incomplete_ordinary_rows_for_reindex(rows_to_keep
 
     expected_rows = [] if rows_to_keep == 0 else [("first",)]
     assert rows == expected_rows
-    assert state is None
+    assert state == ("hash-a", 2)
 
 
-def test_complete_marker_repairs_projection_hash_mismatch():
-    # PR #1253 review thread 3756380009: state must bind the ast_index generation.
+def test_complete_marker_defers_hash_certification_to_operation_boundary():
+    # PR #1253 thread 3760178967: migration checks only marker and small schemas.
     from tree_sitter_analyzer.index_snapshot_symbols import (
         ensure_symbol_rows_backfilled,
     )
@@ -290,7 +290,7 @@ def test_complete_marker_repairs_projection_hash_mismatch():
     ).fetchone()
     conn.close()
 
-    assert state == ("hash-b", 0)
+    assert state == ("hash-a", 0)
 
 
 def test_symbol_row_upgrade_failure_rolls_back_table_creation():
@@ -475,3 +475,31 @@ def test_symbol_upgrade_progress_handler_interrupt_is_bounded(monkeypatch):
         schema.ensure_symbol_rows_backfilled(raced)  # type: ignore[arg-type]
     assert state["expired"] == 1
     conn.close()
+
+
+def test_missing_marker_detects_same_count_payload_mismatch() -> None:
+    # PR #1253 thread 3760178967: repair scans remain strict when marker is absent.
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT PRIMARY KEY, content_hash TEXT, "
+        "language TEXT, symbols_json TEXT)"
+    )
+    payload = json.dumps({"symbols": [{"name": "expected", "kind": "function"}]})
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('a.py', 'hash-a', 'python', ?)", (payload,)
+    )
+    ensure_symbol_rows_backfilled(conn)
+    conn.execute("UPDATE ast_symbol_rows SET name='different'")
+    conn.execute("DELETE FROM ast_cache_metadata WHERE key='symbol_rows_projection_v1'")
+
+    result = ensure_symbol_rows_backfilled(conn)
+    state = conn.execute("SELECT COUNT(*) FROM ast_symbol_projection_state").fetchone()[
+        0
+    ]
+    conn.close()
+
+    assert (result, state) == (False, 0)

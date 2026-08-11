@@ -89,6 +89,29 @@ def delete_fts_rows(
             raise
 
 
+def _fts_terms_are_exact(conn: sqlite3.Connection) -> bool:
+    """Run FTS5's official external-content integrity check without persisting writes."""
+    savepoint = "ast_symbols_fts_integrity"
+    started = False
+    try:
+        conn.execute(f"SAVEPOINT {savepoint}")
+        started = True
+        # FTS5 rank=1 also compares the indexed terms with external content.
+        conn.execute(
+            "INSERT INTO ast_symbols_fts(ast_symbols_fts, rank) "
+            "VALUES('integrity-check', 1)"
+        )
+        return True
+    except sqlite3.DatabaseError:
+        return False
+    finally:
+        if started:
+            try:
+                conn.execute(f"ROLLBACK TO {savepoint}")
+            finally:
+                conn.execute(f"RELEASE {savepoint}")
+
+
 def _typed(values: Iterable[Any]) -> bytes:
     """Encode SQLite scalars without ambiguous concatenation or Python hash()."""
     result = bytearray()
@@ -269,19 +292,78 @@ def symbol_projection_is_exact(
                 "SELECT 1 FROM ast_symbols_fts_docsize AS docs LEFT JOIN "
                 "ast_symbol_rows AS rows ON rows.id=docs.id "
                 "WHERE rows.id IS NULL LIMIT 1",
-                "SELECT 1 FROM ast_symbols_fts AS f JOIN ast_symbol_rows AS rows "
-                "ON rows.id=f.rowid WHERE f.name IS NOT rows.name "
-                "OR f.kind IS NOT rows.kind OR f.file_path IS NOT rows.file_path "
-                "OR f.language IS NOT rows.language LIMIT 1",
             )
             if any(conn.execute(query).fetchone() is not None for query in fts_checks):
                 return False
-        states = conn.execute(
-            "SELECT file_path, symbol_count, projection_digest "
-            "FROM ast_symbol_projection_state ORDER BY file_path"
+
+        # Preflight every potentially large cell using integer-only projections.
+        # No TEXT payload reaches Python until every cell, row, and total budget
+        # has passed; payload rows are then fetched individually by integer ID.
+        state_preflight = conn.execute(
+            "SELECT rowid, "
+            "CASE WHEN typeof(file_path)='text' THEN length(CAST(file_path AS BLOB)) ELSE -1 END, "
+            "CASE WHEN typeof(projection_digest)='text' THEN length(CAST(projection_digest AS BLOB)) ELSE -1 END "
+            "FROM ast_symbol_projection_state ORDER BY rowid"
         )
-        for state in states:
+        state_count = 0
+        for state_lengths in state_preflight:
             check_budget()
+            if (
+                len(state_lengths) != 3
+                or any(type(value) is not int for value in state_lengths)
+                or state_lengths[0] < 1
+                or any(
+                    value < 0 or value > _PROJECTION_CELL_BYTE_BUDGET
+                    for value in state_lengths[1:]
+                )
+            ):
+                return False
+            state_count += 1
+            if state_count > max_symbols:
+                return False
+            bytes_seen += sum(state_lengths[1:])
+            check_budget()
+
+        row_preflight = conn.execute(
+            "SELECT id, "
+            "CASE WHEN typeof(name)='text' THEN length(CAST(name AS BLOB)) ELSE -1 END, "
+            "CASE WHEN typeof(kind)='text' THEN length(CAST(kind AS BLOB)) ELSE -1 END, "
+            "CASE WHEN typeof(file_path)='text' THEN length(CAST(file_path AS BLOB)) ELSE -1 END, "
+            "CASE WHEN typeof(language)='text' THEN length(CAST(language AS BLOB)) ELSE -1 END, "
+            "CASE WHEN typeof(line)='integer' THEN length(CAST(line AS BLOB)) ELSE -1 END, "
+            "CASE WHEN typeof(end_line)='integer' THEN length(CAST(end_line AS BLOB)) ELSE -1 END "
+            "FROM ast_symbol_rows ORDER BY id"
+        )
+        for row_lengths in row_preflight:
+            if (
+                len(row_lengths) != 7
+                or any(type(value) is not int for value in row_lengths)
+                or row_lengths[0] < 1
+                or any(
+                    value < 0 or value > _PROJECTION_CELL_BYTE_BUDGET
+                    for value in row_lengths[1:]
+                )
+            ):
+                return False
+            rows_seen += 1
+            bytes_seen += sum(row_lengths[1:])
+            check_budget()
+
+        state_ids = conn.execute(
+            "SELECT rowid FROM ast_symbol_projection_state ORDER BY file_path"
+        )
+        materialized_states = 0
+        for (state_id,) in state_ids:
+            check_budget()
+            if type(state_id) is not int:
+                return False
+            state = conn.execute(
+                "SELECT file_path, symbol_count, projection_digest "
+                "FROM ast_symbol_projection_state WHERE rowid = ?",
+                (state_id,),
+            ).fetchone()
+            if state is None:
+                return False
             file_path, expected_count, expected_digest = state
             if (
                 type(file_path) is not str
@@ -289,37 +371,32 @@ def symbol_projection_is_exact(
                 or type(expected_digest) is not str
             ):
                 return False
-            cursor = conn.execute(
-                "SELECT id, name, kind, file_path, language, line, end_line, "
-                "length(CAST(name AS BLOB)), length(CAST(kind AS BLOB)), "
-                "length(CAST(file_path AS BLOB)), length(CAST(language AS BLOB)) "
-                "FROM ast_symbol_rows WHERE file_path = ? ORDER BY id",
-                (file_path,),
-            )
+            materialized_states += 1
             digest = hashlib.sha256(b"tsa-symbol-projection-v1\0")
             file_count = 0
-            while True:
+            row_ids = conn.execute(
+                "SELECT id FROM ast_symbol_rows WHERE file_path = ? ORDER BY id",
+                (file_path,),
+            )
+            for (row_id,) in row_ids:
                 check_budget()
-                row = cursor.fetchone()
-                if row is None:
-                    break
-                values, lengths = tuple(row[:7]), tuple(row[7:])
+                if type(row_id) is not int:
+                    return False
+                values = conn.execute(
+                    "SELECT id, name, kind, file_path, language, line, end_line "
+                    "FROM ast_symbol_rows WHERE id = ?",
+                    (row_id,),
+                ).fetchone()
                 if (
-                    type(values[0]) is not int
+                    values is None
+                    or type(values[0]) is not int
                     or any(type(value) is not str for value in values[1:5])
                     or type(values[5]) is not int
                     or type(values[6]) is not int
-                    or any(
-                        type(length) is not int or length > _PROJECTION_CELL_BYTE_BUDGET
-                        for length in lengths
-                    )
                 ):
                     return False
                 encoded = _typed(values)
                 file_count += 1
-                rows_seen += 1
-                bytes_seen += sum(lengths) + len(encoded)
-                check_budget()
                 digest.update(len(encoded).to_bytes(8, "big"))
                 digest.update(encoded)
             if (
@@ -327,7 +404,9 @@ def symbol_projection_is_exact(
                 or "sha256:" + digest.hexdigest() != expected_digest
             ):
                 return False
-        return True
+        if materialized_states != state_count:
+            return False
+        return not require_fts or _fts_terms_are_exact(conn)
     except (sqlite3.DatabaseError, UnicodeError, ValueError, OverflowError):
         return False
     finally:

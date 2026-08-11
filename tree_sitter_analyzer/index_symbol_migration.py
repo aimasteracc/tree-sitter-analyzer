@@ -112,13 +112,35 @@ def ensure_symbol_rows_backfilled(
             if marker_row is not None and tuple(marker_row) == (1, 1)
             else None
         )
-        if marker is not None and exact_validator(
-            conn,
-            max_symbols,
-            deadline=deadline,
-            install_progress=False,
-            require_fts=require_fts,
-        ):
+        row_columns = _projection_schema_columns(conn, "ast_symbol_rows")
+        metadata_columns = _projection_schema_columns(conn, "ast_cache_metadata")
+        fts_schema_valid = True
+        if require_fts:
+            fts_columns = _projection_schema_columns(conn, "ast_symbols_fts")
+            fts_sql = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' "
+                "AND name='ast_symbols_fts'"
+            ).fetchone()
+            fts_schema_valid = bool(
+                fts_columns == ("name", "kind", "file_path", "language")
+                and fts_sql is not None
+                and isinstance(fts_sql[0], str)
+                and "content='ast_symbol_rows'" in fts_sql[0]
+                and "content_rowid='id'" in fts_sql[0]
+            )
+        schema_valid = bool(
+            row_columns
+            == ("id", "name", "kind", "file_path", "language", "line", "end_line")
+            and state_columns
+            == ("file_path", "content_hash", "symbol_count", "projection_digest")
+            and metadata_columns == ("key", "value")
+            and fts_schema_valid
+        )
+        if marker is not None and schema_valid:
+            # Ordinary cache construction is a migration gate, not an
+            # authoritative certification boundary.  The persisted marker plus
+            # exact small schemas is the cheap path; status and index_project
+            # perform one full payload/FTS certification per operation.
             conn.execute("RELEASE ast_symbol_rows_upgrade")
             savepoint_started = False
             return True

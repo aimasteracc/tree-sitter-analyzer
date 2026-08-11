@@ -168,9 +168,13 @@ class TestSyncDeletedFile:
             "_run_synapse_backfill",
             return_value={"resolved": 0, "errors": 1},
         ):
-            sync.sync()
+            result = sync.sync()
 
-        assert cache.call_graph_built() is False
+        assert (
+            result.backfill_errors,
+            result.to_dict()["completeness"],
+            cache.call_graph_built(),
+        ) == (1, "incomplete", False)
 
     def test_deletion_sync_indeterminate_backfill_keeps_graph_incomplete(
         self, sync, cache, project
@@ -756,7 +760,7 @@ class TestSavepointRollbackOnPartialWrite:
         ):
             result = sync.sync()
 
-        assert result.errors == 1
+        assert (result.errors, result.to_dict()["completeness"]) == (1, "incomplete")
 
         # #886: savepoint must have rolled back the partial ast_index row so
         # the file does NOT silently appear unchanged on the next sync.
@@ -847,6 +851,32 @@ class TestFailedFileCleanup:
         )
         conn.close()
         assert (detail["status"], counts) == ("error", expected_counts)
+
+    @pytest.mark.parametrize("method_name", ["_index_new_file", "_reindex_modified"])
+    def test_failure_removes_external_fts_terms_and_docsize(
+        self, tmp_path, method_name
+    ):
+        # PR #1253 thread 3760178975: FTS delete must precede external content.
+        from unittest.mock import patch
+
+        source = tmp_path / "flaky.py"
+        source.write_text("def residue():\n    return 1\n")
+        cache = ASTCache(str(tmp_path))
+        cache.index_file(str(source))
+        conn = cache.get_conn()
+        sync = IncrementalSync(cache)
+        with patch.object(cache, "index_file", side_effect=RuntimeError("partial")):
+            detail = getattr(sync, method_name)("flaky.py", str(source), conn)
+        residue = conn.execute(
+            "SELECT COUNT(*) FROM ast_symbols_fts WHERE ast_symbols_fts MATCH 'residue'"
+        ).fetchone()[0]
+        docsize = conn.execute(
+            "SELECT COUNT(*) FROM ast_symbols_fts_docsize"
+        ).fetchone()[0]
+        ordinary = conn.execute("SELECT COUNT(*) FROM ast_symbol_rows").fetchone()[0]
+        cache.close()
+
+        assert (detail["status"], residue, docsize, ordinary) == ("error", 0, 0, 0)
 
 
 def test_incremental_sync_accepts_explicit_source_scope(tmp_path):
@@ -1251,7 +1281,8 @@ def test_preexisting_snapshot_deletion_runs_backfills_and_restores_marker(tmp_pa
         refs_backfill.call_count,
         cached,
         graph_built,
-    ) == (1, [expected_detail], [expected_detail], 1, 1, None, True)
+        result.to_dict()["completeness"],
+    ) == (1, [expected_detail], [expected_detail], 1, 1, None, False, "incomplete")
 
 
 def test_preexisting_snapshot_mutation_removes_ladybug_mirror(tmp_path):

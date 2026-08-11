@@ -1076,11 +1076,10 @@ def run_index_project(
                     "(SELECT file_path FROM ast_index)"
                 )
             conn.commit()
-            from ..index_snapshot_symbols import ensure_symbol_rows_backfilled
-
-            if not ensure_symbol_rows_backfilled(
-                conn, require_fts=cache.fts5_available
-            ):
+            # The operation-boundary validator detected the repair and forced
+            # every canonical file through the writer path.  Certify the repaired
+            # ordinary rows and real FTS terms before any manifest can be stamped.
+            if not symbol_projection_is_exact(conn, require_fts=cache.fts5_available):
                 stats["backfill_errors"] = stats.get("backfill_errors", 0) + 1
         frozen_epoch = bool(
             candidate_snapshot is not None
