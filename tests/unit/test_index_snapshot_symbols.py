@@ -660,3 +660,101 @@ def test_ordinary_edge_counts_wraps_sqlite_errors():
     with pytest.raises(RuntimeError, match="^SNAPSHOT_READ_FAILED$"):
         symbols.ordinary_edge_counts(conn)
     conn.close()
+
+
+def test_index_content_hash_probe_preserves_unrelated_sqlite_error():
+    # PR #1253: compatibility fallback accepts only a missing-column error.
+    from tree_sitter_analyzer.index_symbol_projection import index_content_hash_sql
+
+    class LockedConnection:
+        def execute(self, _query):
+            raise sqlite3.OperationalError("database is locked")
+
+    with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+        index_content_hash_sql(LockedConnection())  # type: ignore[arg-type]
+
+
+def test_projection_state_delete_preserves_unrelated_sqlite_error():
+    # PR #1253: compatibility cleanup accepts only a missing-table error.
+    from tree_sitter_analyzer.index_symbol_projection import (
+        delete_projection_state_if_present,
+    )
+
+    class LockedConnection:
+        def execute(self, _query, _params):
+            raise sqlite3.OperationalError("database is locked")
+
+    with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+        delete_projection_state_if_present(LockedConnection(), "app.py")  # type: ignore[arg-type]
+
+
+def test_projection_upsert_deletes_state_without_source():
+    # PR #1253: removed sources cannot retain authoritative projection state.
+    from tree_sitter_analyzer.index_symbol_projection import (
+        upsert_symbol_projection_state,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index(file_path TEXT, content_hash TEXT)")
+    conn.execute(
+        "CREATE TABLE ast_symbol_projection_state("
+        "file_path TEXT PRIMARY KEY, content_hash TEXT, symbol_count INTEGER)"
+    )
+    conn.execute("CREATE TABLE ast_symbol_rows(file_path TEXT)")
+    conn.execute("INSERT INTO ast_symbol_projection_state VALUES ('app.py', 'old', 1)")
+
+    upsert_symbol_projection_state(conn, "app.py")
+    remaining = conn.execute(
+        "SELECT COUNT(*) FROM ast_symbol_projection_state"
+    ).fetchone()[0]
+    conn.close()
+
+    assert remaining == 0
+
+
+@pytest.mark.parametrize("malformed_table", ["rows", "state"])
+def test_projection_exactness_rejects_malformed_schema(malformed_table):
+    # PR #1253: projection evidence requires both exact trusted schemas.
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_index(file_path TEXT, symbols_json TEXT, content_hash TEXT)"
+    )
+    row_columns = (
+        "file_path TEXT, name TEXT, kind TEXT, language TEXT, "
+        "line INTEGER, end_line INTEGER"
+        if malformed_table == "state"
+        else "file_path TEXT"
+    )
+    state_columns = (
+        "file_path TEXT, content_hash TEXT, symbol_count INTEGER"
+        if malformed_table == "rows"
+        else "file_path TEXT, symbol_count INTEGER"
+    )
+    conn.execute(f"CREATE TABLE ast_symbol_rows({row_columns})")
+    conn.execute(f"CREATE TABLE ast_symbol_projection_state({state_columns})")
+
+    result = symbol_projection_is_exact(conn, 10)
+    conn.close()
+
+    assert result is False
+
+
+def test_symbol_upgrade_rejects_inexact_rebuilt_projection(monkeypatch):
+    # PR #1253: a rebuilt projection is certified before its marker is written.
+    import tree_sitter_analyzer.index_snapshot_symbols as symbols
+
+    conn = _untyped_legacy_connection(symbols_json='{"symbols": []}')
+    monkeypatch.setattr(symbols, "_symbol_projection_is_exact", lambda *_args: False)
+
+    with pytest.raises(
+        sqlite3.OperationalError, match="^LEGACY_SYMBOL_PROJECTION_INVALID$"
+    ):
+        symbols.ensure_symbol_rows_backfilled(conn)
+    marker_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ast_cache_metadata'"
+    ).fetchone()
+    conn.close()
+
+    assert marker_table is None

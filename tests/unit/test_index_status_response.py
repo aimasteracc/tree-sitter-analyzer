@@ -547,6 +547,7 @@ async def test_malformed_stats_schema_returns_stable_envelope(tmp_path, monkeypa
     )
 
 
+@requires_posix_snapshot
 @pytest.mark.parametrize(
     ("marker_id", "built"),
     [("1", 1), (1, "1"), (1, float("inf")), (1, float("nan"))],

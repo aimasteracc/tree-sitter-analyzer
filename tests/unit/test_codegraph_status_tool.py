@@ -19,9 +19,6 @@ def tool():
     return CodeGraphStatusTool()
 
 
-requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
-
-
 @pytest.fixture
 def tool_with_root(tmp_path):
     return CodeGraphStatusTool(str(tmp_path))
@@ -229,6 +226,7 @@ class TestSnapshotFallbackBounds:
         conn.close()
 
 
+@requires_posix_fd
 @pytest.mark.asyncio
 async def test_no_fts_snapshot_uses_json_symbol_fallback(tmp_path):
     from tree_sitter_analyzer.ast_cache import ASTCache
@@ -252,6 +250,7 @@ async def test_no_fts_snapshot_uses_json_symbol_fallback(tmp_path):
     assert result["db_auto_vacuum_mode"] == 0
 
 
+@requires_posix_fd
 @pytest.mark.asyncio
 async def test_legacy_v13_without_symbol_table_is_readable(tmp_path):
     from tree_sitter_analyzer.ast_cache import ASTCache

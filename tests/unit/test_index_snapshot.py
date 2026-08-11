@@ -13,6 +13,30 @@ requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253
 requires_posix_fd = requires_posix_snapshot
 
 
+class TestNonPosixSnapshotContract:
+    def test_non_posix_missing_index_preserves_missing_contract(
+        self, tmp_path, monkeypatch
+    ):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        monkeypatch.setattr(owner.os, "name", "nt")
+        result = owner.read_existing_snapshot(str(tmp_path))
+        assert result.reason == "MISSING_INDEX"
+
+    def test_non_posix_existing_index_is_explicitly_unsupported(
+        self, tmp_path, monkeypatch
+    ):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        cache_dir = tmp_path / ".ast-cache"
+        cache_dir.mkdir()
+        (cache_dir / "index.db").write_bytes(b"")
+        monkeypatch.setattr(owner.os, "name", "nt")
+        result = owner.read_existing_snapshot(str(tmp_path))
+        assert result.completeness == "unknown"
+        assert result.reason == "SECURE_FD_SNAPSHOT_UNSUPPORTED"
+
+
 @requires_posix_snapshot
 class TestAuthoritativeSnapshotOracle:
     @pytest.fixture(autouse=True)
@@ -373,28 +397,6 @@ class TestAuthoritativeSnapshotOracle:
 
         assert result["completeness"] == "unknown"
         assert result["oracle_reason"] == "SNAPSHOT_READ_FAILED"
-
-    def test_non_posix_missing_index_preserves_missing_contract(
-        self, tmp_path, monkeypatch
-    ):
-        import tree_sitter_analyzer.index_snapshot as owner
-
-        monkeypatch.setattr(owner.os, "name", "nt")
-        result = owner.read_existing_snapshot(str(tmp_path))
-        assert result.reason == "MISSING_INDEX"
-
-    def test_non_posix_existing_index_is_explicitly_unsupported(
-        self, tmp_path, monkeypatch
-    ):
-        import tree_sitter_analyzer.index_snapshot as owner
-
-        cache_dir = tmp_path / ".ast-cache"
-        cache_dir.mkdir()
-        (cache_dir / "index.db").write_bytes(b"")
-        monkeypatch.setattr(owner.os, "name", "nt")
-        result = owner.read_existing_snapshot(str(tmp_path))
-        assert result.completeness == "unknown"
-        assert result.reason == "SECURE_FD_SNAPSHOT_UNSUPPORTED"
 
     @requires_posix_fd
     @pytest.mark.asyncio

@@ -12743,6 +12743,60 @@ def test_qualification_external_audit_protocol_verifies_exact_signed_request(
     assert envelope["audit"] == request
 
 
+def test_qualification_external_audit_accepts_early_response_close(
+    tmp_path: Path, monkeypatch
+):
+    # GH-1253: macOS may report ENOTCONN after the authority closes its response.
+    import errno
+    import socket
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import audit_authority_client
+    from benchmarks.codegraph_compare.host_auditor import DOMAIN, _authority
+
+    monkeypatch.setattr(
+        audit_authority_client,
+        "_peer_credentials",
+        lambda client: (1, os.getuid(), os.getgid()),
+    )
+    key = b"\x33" * 32
+    socket_path = Path("/tmp") / f"tsa-early-{os.getpid()}-{tmp_path.name[-6:]}.sock"
+    thread = _diagnostic_authority_server(socket_path, key)
+    real_socket = socket.socket
+
+    class ShutdownRaceSocket:
+        def __init__(self, *args, **kwargs):
+            self._socket = real_socket(*args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(self._socket, name)
+
+        def shutdown(self, _how):
+            raise OSError(errno.ENOTCONN, "authority already closed")
+
+    monkeypatch.setattr(audit_authority_client.socket, "socket", ShutdownRaceSocket)
+    authority = {
+        "key_id": "auditor",
+        "public_key_hex": Ed25519PrivateKey.from_private_bytes(key)
+        .public_key()
+        .public_bytes_raw()
+        .hex(),
+        "peer_uid": os.getuid(),
+    }
+    request = {
+        "protocol": "no1-008a-audit-v1",
+        "phase": "terminal",
+        "service_measurement": "d" * 64,
+        "audit": {"producer_container_id": "immutable-id"},
+    }
+
+    envelope = _authority(request, socket_path, authority, DOMAIN)
+    thread.join(timeout=5)
+
+    assert envelope["audit"] == request
+
+
 def test_qualification_external_audit_protocol_rejects_forged_reply(
     tmp_path: Path, monkeypatch
 ):

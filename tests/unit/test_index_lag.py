@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from tree_sitter_analyzer.index_lag import _newest_source_mtime, compute_qualitative_lag
+
+requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 
 
 def test_missing_cache_has_unknown_lag(tmp_path):
@@ -15,6 +19,7 @@ def test_missing_project_has_no_source_mtime(tmp_path):
     assert _newest_source_mtime(str(tmp_path / "missing")) is None
 
 
+@requires_posix_fd
 def test_lag_uses_newest_supported_source_and_clamps_at_zero(tmp_path):
     cache = tmp_path / "index.db"
     source = tmp_path / "app.py"
@@ -29,6 +34,7 @@ def test_lag_uses_newest_supported_source_and_clamps_at_zero(tmp_path):
     assert compute_qualitative_lag(str(tmp_path), str(cache)) == 0.0
 
 
+@requires_posix_fd
 def test_source_scan_stops_at_cap(tmp_path, monkeypatch):
     import tree_sitter_analyzer.index_lag as lag
 
@@ -39,6 +45,7 @@ def test_source_scan_stops_at_cap(tmp_path, monkeypatch):
     assert lag._newest_source_mtime(str(tmp_path)) is None
 
 
+@requires_posix_fd
 def test_symlink_source_is_not_lag_evidence(tmp_path):
     # PR #1253 review thread 2081: lag traversal never follows source aliases.
     target = tmp_path / "target.py"
@@ -55,6 +62,7 @@ def test_symlink_source_is_not_lag_evidence(tmp_path):
     assert _newest_source_mtime(str(tmp_path)) is None
 
 
+@requires_posix_fd
 def test_lag_scan_counts_unsupported_entries(tmp_path, monkeypatch):
     # PR #1253 review thread 2081: unsupported names consume the all-entry budget.
     import tree_sitter_analyzer.index_lag as lag
@@ -66,6 +74,7 @@ def test_lag_scan_counts_unsupported_entries(tmp_path, monkeypatch):
     assert lag._newest_source_mtime(str(tmp_path)) is None
 
 
+@requires_posix_fd
 def test_lag_scan_enforces_total_path_byte_budget(tmp_path, monkeypatch):
     # PR #1253 review thread 2081: relative path bytes are globally bounded.
     import tree_sitter_analyzer.index_lag as lag
@@ -88,6 +97,7 @@ def test_non_posix_lag_is_unavailable(tmp_path, monkeypatch):
     ) == (None, None)
 
 
+@requires_posix_fd
 def test_lag_scan_stops_at_deadline(tmp_path, monkeypatch):
     # PR #1253: lag traversal obeys its wall-clock budget before reading entries.
     import tree_sitter_analyzer.index_lag as lag
@@ -101,6 +111,7 @@ def test_lag_scan_stops_at_deadline(tmp_path, monkeypatch):
     assert lag._newest_source_mtime(str(tmp_path)) is None
 
 
+@requires_posix_fd
 def test_lag_scan_suppresses_descriptor_cleanup_error(tmp_path, monkeypatch):
     # PR #1253: cleanup failure cannot turn unavailable lag into a hard failure.
     import tree_sitter_analyzer.index_lag as lag
@@ -116,6 +127,7 @@ def test_lag_scan_suppresses_descriptor_cleanup_error(tmp_path, monkeypatch):
     assert lag._newest_source_mtime(str(tmp_path)) is None
 
 
+@requires_posix_fd
 def test_root_fd_closes_when_scandir_setup_raises(tmp_path, monkeypatch):
     # PR #1253 review thread 3755297953: open/scandir ownership is atomic.
     import tree_sitter_analyzer.index_lag as lag
@@ -146,6 +158,7 @@ def test_root_fd_closes_when_scandir_setup_raises(tmp_path, monkeypatch):
     assert closed is True
 
 
+@requires_posix_fd
 def test_child_fd_closes_when_scandir_setup_raises(tmp_path, monkeypatch):
     # PR #1253 review thread 3755297953: child ownership transfers after scandir.
     import tree_sitter_analyzer.index_lag as lag

@@ -19,6 +19,8 @@ from tree_sitter_analyzer.indexing_snapshot import (
 )
 from tree_sitter_analyzer.source_oracle import SourceOracleError
 
+requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+
 
 def _python_language(path: str) -> str | None:
     return "python" if path.endswith(".py") else None
@@ -873,6 +875,7 @@ def test_indexer_classifies_worker_source_changed_without_restat():
     )
 
 
+@requires_posix_fd
 def test_worker_rejects_nonfile_oracle_result(tmp_path, monkeypatch):
     # PR #1253: workers reject special-file oracle responses before parsing.
     from tree_sitter_analyzer.cache import extraction
@@ -888,6 +891,7 @@ def test_worker_rejects_nonfile_oracle_result(tmp_path, monkeypatch):
     assert result["status"] == "io_error"
 
 
+@requires_posix_fd
 def test_worker_rejects_content_hash_mismatch(tmp_path):
     # PR #1253: descriptor identity alone cannot authorize changed bytes.
     from dataclasses import replace
@@ -920,7 +924,8 @@ def test_windows_worker_reads_the_admitted_regular_file(tmp_path, monkeypatch):
         extraction, "os", SimpleNamespace(name="nt", path=os.path, stat=os.stat)
     )
     result = extraction._worker_index_file((str(source), str(tmp_path), "python"))
-    assert (result["status"], result["file_size"]) == ("ok", 10)
+    physical_size = os.stat(source).st_size
+    assert (result["status"], result["file_size"]) == ("ok", physical_size)
 
 
 def test_candidate_capture_rejects_nonfile_oracle(tmp_path, monkeypatch):
@@ -962,6 +967,7 @@ def test_candidate_capture_rejects_lstat_open_identity_mismatch(tmp_path, monkey
         )
 
 
+@requires_posix_fd
 def test_candidate_capture_failure_becomes_snapshot_error(tmp_path, monkeypatch):
     # PR #1253: an oracle race is recorded instead of selecting unsafe work.
     import tree_sitter_analyzer.indexing_snapshot as snapshot_module

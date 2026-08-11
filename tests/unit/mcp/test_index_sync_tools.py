@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Tests for codegraph_full_index, codegraph_autoindex, and codegraph_incremental_sync MCP tools."""
 
+import os
+
 import pytest
 
 
@@ -80,7 +82,8 @@ class TestCodeGraphFullIndexTool:
             {"mode": "incremental", "max_files": 10, "output_format": "json"}
         )
         assert result["success"] is True
-        assert result["verdict"] == "INFO"
+        expected_verdict = "WARN" if os.name == "nt" else "INFO"
+        assert result["verdict"] == expected_verdict
         assert "phases" in result
 
     @pytest.mark.asyncio

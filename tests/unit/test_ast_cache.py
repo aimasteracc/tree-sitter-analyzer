@@ -31,6 +31,8 @@ from tree_sitter_analyzer.indexing_snapshot import (
     build_index_candidate_snapshot,
 )
 
+requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+
 
 @pytest.fixture
 def tmp_project(tmp_path):
@@ -1969,6 +1971,7 @@ def test_disabled_synapse_backfill_returns_complete_zero_stats(tmp_path, monkeyp
     assert result == {"total": 0, "resolved": 0, "unchanged": 0, "errors": 0}
 
 
+@requires_posix_fd
 def test_candidate_hash_change_reindexes_with_preserved_mtime_and_size(tmp_path):
     # PR #1253 review 3755386837: candidate cache reuse is content-bound.
     path = tmp_path / "app.py"

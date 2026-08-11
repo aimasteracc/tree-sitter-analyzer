@@ -18,6 +18,8 @@ from tree_sitter_analyzer.indexing_snapshot import (
     build_index_candidate_snapshot,
 )
 
+requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+
 
 @pytest.fixture
 def project(tmp_path):
@@ -1470,6 +1472,7 @@ def test_modified_file_cleanup_failure_preserves_original_index_error():
     assert (result["status"], result["error_message"]) == ("error", "parse failed")
 
 
+@requires_posix_fd
 def test_incremental_stamp_failure_does_not_delete_manifest(tmp_path):
     # PR #1253 review 3755736546: the stamper exclusively owns failed-epoch cleanup.
     import tree_sitter_analyzer.index_snapshot_schema as schema
