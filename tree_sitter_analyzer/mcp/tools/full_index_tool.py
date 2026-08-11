@@ -244,7 +244,8 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 },
                 "exclude_patterns": {
                     "type": "array",
-                    "items": {"type": "string"},
+                    "maxItems": 1024,
+                    "items": {"type": "string", "maxLength": 65_000},
                     "description": (
                         "Additional fnmatch glob patterns (relative to project root) "
                         'to exclude from indexing. Example: ["tests/golden/corpus_*"]. '
@@ -270,6 +271,23 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         if mode not in ("full", "incremental"):
             raise ValueError(f"Invalid mode: {mode}. Must be 'full' or 'incremental'")
         arguments["max_files"] = normalize_index_max_files(arguments.get("max_files"))
+        extra_patterns = arguments.get("exclude_patterns", [])
+        if not isinstance(extra_patterns, list) or any(
+            not isinstance(pattern, str) for pattern in extra_patterns
+        ):
+            raise ValueError("exclude_patterns must be an array of strings")
+        no_default_excludes = arguments.get("no_default_excludes", False)
+        if not isinstance(no_default_excludes, bool):
+            raise ValueError("no_default_excludes must be a boolean")
+        normalized_patterns = sorted(
+            {pattern.replace("\\", "/") for pattern in extra_patterns}
+        )
+        make_source_scope_descriptor(
+            no_default_excludes=no_default_excludes,
+            exclude_patterns=tuple(normalized_patterns),
+            certification_max_files=arguments["max_files"],
+        )
+        arguments["exclude_patterns"] = normalized_patterns
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -366,10 +384,19 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             ),
             source_scope=source_scope,
         )
+        manifest_certified = bool(stats.pop("_manifest_certified", False))
+        if not manifest_certified or stats.get("manifest_warning") is not None:
+            top_verdict = "WARN"
+        summary_line = f"codegraph_full_index: completed with {top_verdict.lower()}"
 
         result: dict[str, Any] = {
             "success": True,
             "verdict": top_verdict,
+            "summary_line": summary_line,
+            "agent_summary": {
+                "verdict": top_verdict,
+                "summary_line": summary_line,
+            },
             "mode": mode,
             "elapsed_seconds": elapsed,
             "phases": phases,
@@ -663,6 +690,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 conn.commit()
             stats = cache.get_stats()
             result = {
+                "_manifest_certified": stamp_manifest and manifest_warning is None,
                 "total_files": stats.get("total_files", 0),
                 "total_symbols": stats.get("total_symbols", 0),
                 "by_language": stats.get("by_language", {}),

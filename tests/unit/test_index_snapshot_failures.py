@@ -116,16 +116,62 @@ class TestSnapshotFailureContracts:
         assert result["oracle_reason"] == "SOURCE_SCAN_DEADLINE"
 
     @requires_posix_fd
+    def test_512_byte_pages_can_backup_a_100_mib_database(self, tmp_path):
+        # PR #1253: backup admission is byte-based, not a fixed page count.
+        from tree_sitter_analyzer.ast_cache import ASTCache
+        from tree_sitter_analyzer.index_snapshot import read_existing_snapshot
+        from tree_sitter_analyzer.index_snapshot_schema import (
+            stamp_full_index_manifest,
+        )
+
+        cache_dir = tmp_path / ".ast-cache"
+        cache_dir.mkdir()
+        conn = sqlite3.connect(cache_dir / "index.db")
+        conn.execute("PRAGMA page_size=512")
+        conn.execute("VACUUM")
+        conn.close()
+        source = tmp_path / "sample.py"
+        source.write_text("value = 1\n")
+        cache = ASTCache(str(tmp_path))
+        cache.index_file(str(source))
+        conn = cache.get_conn()
+        conn.execute(
+            "INSERT INTO ast_cache_metadata (key, value) VALUES ('padding', zeroblob(?))",
+            (100 * 1024 * 1024,),
+        )
+        stamp_full_index_manifest(conn, str(tmp_path))
+        assert int(conn.execute("PRAGMA page_size").fetchone()[0]) == 512
+        cache.close()
+
+        snapshot = read_existing_snapshot(str(tmp_path))
+
+        assert (snapshot.completeness, snapshot.reason) == ("complete", None)
+
+    @requires_posix_fd
     @pytest.mark.asyncio
-    async def test_backup_page_budget_fails_closed(self, tmp_path, monkeypatch):
+    async def test_backup_byte_budget_fails_closed(self, tmp_path, monkeypatch):
         import tree_sitter_analyzer.index_snapshot as owner
 
         self._certified_cache(tmp_path)
-        monkeypatch.setattr(owner, "_BACKUP_PAGE_BUDGET", -1)
+        monkeypatch.setattr(owner, "_BACKUP_BYTE_BUDGET", 0)
         result = await CodeGraphStatusTool(str(tmp_path)).execute(
             {"output_format": "json"}
         )
         assert result["completeness"] == "unknown"
+        assert result["oracle_reason"] == "INDEX_BACKUP_BUDGET"
+
+    @requires_posix_fd
+    @pytest.mark.asyncio
+    async def test_backup_deadline_fails_closed(self, tmp_path, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        self._certified_cache(tmp_path)
+        monkeypatch.setattr(owner, "_CAPTURE_DEADLINE_SECONDS", -1.0)
+
+        result = await CodeGraphStatusTool(str(tmp_path)).execute(
+            {"output_format": "json"}
+        )
+
         assert result["oracle_reason"] == "INDEX_BACKUP_BUDGET"
 
     @requires_posix_fd

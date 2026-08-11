@@ -27,6 +27,7 @@ _SOURCE_PATH_BUDGET = KNOWLEDGE_INDEX_MAX_FILES
 # excluded names; traversal and hashing never require a global ordering copy.
 _SOURCE_ENTRY_BUDGET = 1_000_000
 _SOURCE_ENTRY_PATH_BYTE_BUDGET = 128 * 1024 * 1024
+SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET = 64 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +40,12 @@ class SourceScopeDescriptor:
     certification_max_files: int
     discovery_policy: str = _SOURCE_DISCOVERY_POLICY
     discovery_policy_version: int = _SOURCE_DISCOVERY_POLICY_VERSION
+
+    def __post_init__(self) -> None:
+        if len(_encode_source_scope_descriptor(self).encode("ascii")) > (
+            SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET
+        ):
+            raise ValueError("SOURCE_SCOPE_DESCRIPTOR_TOO_LARGE")
 
     @property
     def effective_excludes(self) -> frozenset[str]:
@@ -63,8 +70,7 @@ def make_source_scope_descriptor(
     return parse_source_scope_descriptor(canonical_source_scope_descriptor(descriptor))
 
 
-def canonical_source_scope_descriptor(scope: SourceScopeDescriptor) -> str:
-    """Serialize a scope with stable keys, values, and separators."""
+def _encode_source_scope_descriptor(scope: SourceScopeDescriptor) -> str:
     return json.dumps(
         {
             "certification_max_files": scope.certification_max_files,
@@ -78,6 +84,14 @@ def canonical_source_scope_descriptor(scope: SourceScopeDescriptor) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
+
+
+def canonical_source_scope_descriptor(scope: SourceScopeDescriptor) -> str:
+    """Serialize a scope within the shared manifest reader/writer budget."""
+    encoded = _encode_source_scope_descriptor(scope)
+    if len(encoded.encode("ascii")) > SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET:
+        raise ValueError("SOURCE_SCOPE_DESCRIPTOR_TOO_LARGE")
+    return encoded
 
 
 def parse_source_scope_descriptor(raw: str) -> SourceScopeDescriptor:

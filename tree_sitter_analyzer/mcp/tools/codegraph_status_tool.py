@@ -160,8 +160,8 @@ class CodeGraphStatusTool(BaseMCPTool):
         total_files = int(stats.get("total_files", 0))
         total_symbols = int(stats.get("total_symbols", 0))
         total_edges = int(stats.get("total_edges", 0))
-        indexed = total_files > 0
         complete = snapshot.completeness == "complete"
+        indexed = complete or total_files > 0
         verdict = "INFO" if indexed and complete else "WARN"
         cache_path = (
             os.path.join(snapshot.canonical_root, ".ast-cache", "index.db")

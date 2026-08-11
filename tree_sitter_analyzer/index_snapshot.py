@@ -38,6 +38,7 @@ from .index_snapshot_symbols import (
     fallback_symbol_counts as _fallback_symbol_counts_impl,
 )
 from .index_source_snapshot import (
+    SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET,
     capture_current_source_snapshot,
     parse_source_scope_descriptor,
     recorded_source_rows,
@@ -49,7 +50,7 @@ _MAX_CHARGED_BYTES = 512 * 1024 * 1024
 _TTL_SECONDS = 35.0
 _SNAPSHOT_OVERHEAD_BYTES = 2 * 1024 * 1024
 _CAPTURE_DEADLINE_SECONDS = 10.0
-_BACKUP_PAGE_BUDGET = 131_072
+_BACKUP_BYTE_BUDGET = _MAX_CHARGED_BYTES - _SNAPSHOT_OVERHEAD_BYTES
 _SYMBOL_FALLBACK_BYTE_BUDGET = 512 * 1024 * 1024
 _SYMBOL_FALLBACK_ROW_BUDGET = 2_000_000
 _clock = time.monotonic
@@ -171,7 +172,7 @@ atexit.register(REGISTRY.close_all)
 
 _MANIFEST_FINGERPRINT = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _MANIFEST_TEXT_BYTE_BUDGET = 1024 * 1024
-_MANIFEST_SCOPE_BYTE_BUDGET = 64 * 1024
+_MANIFEST_SCOPE_BYTE_BUDGET = SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET
 
 
 def _validate_manifest_scalars(manifest: sqlite3.Row) -> None:
@@ -225,7 +226,6 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
             if initial.st_size + _SNAPSHOT_OVERHEAD_BYTES > _MAX_CHARGED_BYTES:
                 raise RuntimeError("INDEX_SNAPSHOT_CAPACITY")
             _reject_sidecars(cache_fd)
-            REGISTRY.ensure_capacity(initial.st_size + _SNAPSHOT_OVERHEAD_BYTES)
             uri = f"file:{quote('/dev/fd/' + str(db_fd), safe='/')}?mode=ro&immutable=1"
             connection = sqlite3.connect(
                 uri, uri=True, timeout=0, isolation_level=None, check_same_thread=False
@@ -235,6 +235,14 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
             connection.row_factory = sqlite3.Row
             connection.execute("PRAGMA query_only=ON")
             connection.execute("PRAGMA busy_timeout=0")
+            source_page_size = int(connection.execute("PRAGMA page_size").fetchone()[0])
+            source_page_count = int(
+                connection.execute("PRAGMA page_count").fetchone()[0]
+            )
+            source_bytes = source_page_size * source_page_count
+            if source_bytes > _BACKUP_BYTE_BUDGET:
+                raise RuntimeError("INDEX_BACKUP_BUDGET")
+            REGISTRY.ensure_capacity(source_bytes + _SNAPSHOT_OVERHEAD_BYTES)
             validate_snapshot_schema(connection)
             from .cache.build_state import build_in_progress
 
@@ -306,11 +314,19 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
             evidence = sqlite3.connect(":memory:", check_same_thread=False)
             deadline = _clock() + _CAPTURE_DEADLINE_SECONDS
             copied_pages = 0
+            max_backup_pages = (
+                _BACKUP_BYTE_BUDGET + source_page_size - 1
+            ) // source_page_size
 
             def progress(_status: int, remaining: int, total: int) -> None:
                 nonlocal copied_pages
                 copied_pages = total - remaining
-                if copied_pages > _BACKUP_PAGE_BUDGET or _clock() > deadline:
+                copied_bytes = copied_pages * source_page_size
+                if (
+                    copied_pages > max_backup_pages
+                    or copied_bytes > _BACKUP_BYTE_BUDGET
+                    or _clock() > deadline
+                ):
                     raise RuntimeError("INDEX_BACKUP_BUDGET")
 
             connection.backup(evidence, pages=64, progress=progress, sleep=0)

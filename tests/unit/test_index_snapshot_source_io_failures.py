@@ -19,6 +19,24 @@ def _fd_is_closed(fd: int) -> bool:
     return False
 
 
+def test_scope_descriptor_constructor_rejects_manifest_oversize():
+    # PR #1253: writers cannot construct a descriptor the reader rejects.
+    from tree_sitter_analyzer.index_source_snapshot import SourceScopeDescriptor
+
+    with pytest.raises(ValueError, match="SOURCE_SCOPE_DESCRIPTOR_TOO_LARGE"):
+        SourceScopeDescriptor((".",), False, ("x" * (64 * 1024),), 20_000)
+
+
+def test_scope_descriptor_canonical_encoder_enforces_shared_budget(monkeypatch):
+    from tree_sitter_analyzer import index_source_snapshot as source
+
+    scope = source.make_source_scope_descriptor()
+    monkeypatch.setattr(source, "SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET", 1)
+
+    with pytest.raises(ValueError, match="SOURCE_SCOPE_DESCRIPTOR_TOO_LARGE"):
+        source.canonical_source_scope_descriptor(scope)
+
+
 class TestSnapshotFailureContracts:
     @staticmethod
     def _certified_cache(root):

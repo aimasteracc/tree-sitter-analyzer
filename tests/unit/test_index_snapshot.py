@@ -45,6 +45,7 @@ class TestAuthoritativeSnapshotOracle:
 
         assert result["completeness"] == "unknown"
         assert result["oracle_reason"] == "MISSING_INDEX"
+        assert result["indexed"] is False
         assert (tmp_path / ".ast-cache").exists() is False
 
     @pytest.mark.asyncio
@@ -293,8 +294,37 @@ class TestAuthoritativeSnapshotOracle:
         )
 
         assert build["verdict"] == "INFO"
-        assert result["total_files"] == 0
-        assert result["completeness"] == "complete"
+        assert (
+            result["total_files"],
+            result["completeness"],
+            result["indexed"],
+            result["verdict"],
+        ) == (0, "complete", True, "INFO")
+        assert result["hint"].startswith("Index is complete.")
+
+    @pytest.mark.asyncio
+    async def test_empty_partial_snapshot_remains_unindexed(self, tmp_path):
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        await CodeGraphFullIndexTool(str(tmp_path)).execute(
+            {"mode": "full", "output_format": "json"}
+        )
+        conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+        conn.execute("DELETE FROM ast_call_graph_state")
+        conn.commit()
+        conn.close()
+
+        result = await CodeGraphStatusTool(str(tmp_path)).execute(
+            {"output_format": "json"}
+        )
+
+        assert (result["total_files"], result["completeness"], result["indexed"]) == (
+            0,
+            "partial",
+            False,
+        )
 
     @pytest.mark.asyncio
     async def test_path_swap_after_fd_pin_reads_original_inode(

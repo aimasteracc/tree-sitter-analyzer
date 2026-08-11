@@ -140,6 +140,22 @@ class TestExecute:
         result = await tool.execute({"mode": "incremental", "output_format": "json"})
         assert result["success"] is False
 
+    async def test_oversize_scope_is_rejected_before_index_discovery(
+        self, tool_with_root
+    ):
+        # PR #1253: invalid public scope input cannot mutate the index.
+        with patch.object(tool_with_root, "_build_candidate_snapshot") as discover:
+            with pytest.raises(ValueError, match="SOURCE_SCOPE_DESCRIPTOR_TOO_LARGE"):
+                await tool_with_root.execute(
+                    {
+                        "mode": "full",
+                        "exclude_patterns": ["x" * (64 * 1024)],
+                        "output_format": "json",
+                    }
+                )
+
+        discover.assert_not_called()
+
     async def test_incremental_on_empty_project(self, tool_with_root):
         result = await tool_with_root.execute(
             {"mode": "incremental", "output_format": "json"}
@@ -232,6 +248,51 @@ class TestExecute:
         assert result["success"] is True
         assert result["verdict"] == "WARN"
         assert collect_stats.call_args.kwargs["stamp_manifest"] is False
+
+    async def test_manifest_certification_warning_escalates_all_verdicts(
+        self, tool_with_root
+    ):
+        clean_phase = {"status": "ok", "processed": 1}
+        with (
+            patch.object(tool_with_root, "_phase_ast_cache", return_value=clean_phase),
+            patch.object(
+                tool_with_root, "_phase_incremental_sync", return_value=clean_phase
+            ),
+            patch.object(
+                tool_with_root, "_phase_fts5_stats", return_value={"status": "ok"}
+            ),
+            patch.object(
+                tool_with_root,
+                "_phase_call_edge_stats",
+                return_value={"status": "ok"},
+            ),
+            patch.object(
+                tool_with_root,
+                "_collect_final_stats",
+                return_value={
+                    "manifest_warning": "INDEX_MANIFEST_CERTIFICATION_FAILED"
+                },
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {
+                    "mode": "full",
+                    "resolve_synapse": False,
+                    "output_format": "json",
+                }
+            )
+
+        assert (
+            result["verdict"],
+            result["agent_summary"]["verdict"],
+            result["summary_line"],
+            result["agent_summary"]["summary_line"],
+        ) == (
+            "WARN",
+            "WARN",
+            "codegraph_full_index: completed with warn",
+            "codegraph_full_index: completed with warn",
+        )
 
     async def test_synapse_phase_inherits_ast_backfill_failure(self, tool_with_root):
         result = tool_with_root._phase_synapse({"status": "ok", "backfill_errors": 1})
@@ -368,6 +429,51 @@ class TestExecute:
         snapshot = call_kwargs["candidate_snapshot"]
         assert snapshot.max_files == 3
         assert snapshot.selected == 1
+
+    async def test_normalized_patterns_are_persisted_in_both_phase_scopes(
+        self, tool_with_root
+    ):
+        with (
+            patch.object(
+                tool_with_root,
+                "_phase_ast_cache",
+                return_value={"status": "ok", "processed": 0},
+            ) as ast_phase,
+            patch.object(
+                tool_with_root,
+                "_phase_incremental_sync",
+                return_value={"status": "ok", "processed": 0},
+            ) as sync_phase,
+            patch.object(
+                tool_with_root, "_phase_fts5_stats", return_value={"status": "ok"}
+            ),
+            patch.object(
+                tool_with_root,
+                "_phase_call_edge_stats",
+                return_value={"status": "ok"},
+            ),
+            patch.object(
+                tool_with_root,
+                "_collect_final_stats",
+                return_value={"_manifest_certified": True},
+            ),
+        ):
+            await tool_with_root.execute(
+                {
+                    "mode": "full",
+                    "exclude_patterns": [r"src\generated\*"],
+                    "no_default_excludes": True,
+                    "resolve_synapse": False,
+                    "output_format": "json",
+                }
+            )
+
+        ast_scope = ast_phase.call_args.kwargs["source_scope"]
+        sync_scope = sync_phase.call_args.kwargs["source_scope"]
+        assert (ast_scope.exclude_patterns, sync_scope.exclude_patterns) == (
+            ("src/generated/*",),
+            ("src/generated/*",),
+        )
 
     async def test_full_mode_max_files_bounds_both_phases(self, tmp_path):
         # Incident 2026-07-26: sync re-indexed files beyond the requested cap.
