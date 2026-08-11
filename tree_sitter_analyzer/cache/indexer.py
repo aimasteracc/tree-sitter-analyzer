@@ -51,6 +51,9 @@ from .callgraph_state import (
 from .callgraph_state import (
     mark_call_graph_built as _mark_call_graph_built,
 )
+from .callgraph_state import (
+    mark_call_graph_built_strict as _mark_call_graph_built_strict,
+)
 from .helpers import (
     _make_error_entry,
     _project_index_activation_enabled,
@@ -791,7 +794,15 @@ def run_index_project(
             if stats.get("backfill_errors", 0) == 0 and _candidate_paths_are_exact(
                 conn, candidate_snapshot, stats
             ):
-                _mark_call_graph_built(conn)
+                try:
+                    _mark_call_graph_built_strict(conn)
+                except sqlite3.OperationalError:
+                    logger.warning(
+                        "call-graph marker certification failed", exc_info=True
+                    )
+                    stats["backfill_errors"] = stats.get("backfill_errors", 0) + 1
+                    stats["manifest_warning"] = "CALL_GRAPH_MARKER_CERTIFICATION_FAILED"
+                    _clear_call_graph_built(conn)
             else:
                 _clear_call_graph_built(conn)
         if force:
@@ -857,7 +868,7 @@ def _candidate_paths_are_exact(
             and not (stats.get("errors", 0) or stats.get("skipped", 0))
         )
     selected = {entry.rel_path for entry in candidate.selected_entries}
-    return bool(selected) and bool(
+    return bool(
         not candidate.truncated_by_max_files
         and candidate.errors == 0
         and stats.get("errors", 0) == 0
@@ -879,8 +890,10 @@ def _update_authoritative_manifest(
         if candidate_snapshot is not None
         else set()
     )
+    source_certification_supported = os.name == "posix" and os.path.exists("/dev/fd")
     exact_paths = bool(
-        candidate_snapshot is not None
+        source_certification_supported
+        and candidate_snapshot is not None
         and candidate_snapshot.limited == 0
         and candidate_snapshot.errors == 0
         and stats.get("errors", 0) == 0
@@ -892,7 +905,7 @@ def _update_authoritative_manifest(
         }
         == selected_paths
     )
-    if exact_paths:
+    if exact_paths and _call_graph_marker_is_built(conn):
         from ..index_snapshot_schema import stamp_full_index_manifest
 
         try:
@@ -906,6 +919,10 @@ def _update_authoritative_manifest(
             )
             stats["manifest_warning"] = "INDEX_MANIFEST_CERTIFICATION_FAILED"
             conn.rollback()
+    if not source_certification_supported:
+        stats["manifest_warning"] = "SOURCE_SCOPE_UNSUPPORTED"
+    elif exact_paths and not _call_graph_marker_is_built(conn):
+        stats["manifest_warning"] = "CALL_GRAPH_INCOMPLETE"
     conn.execute("DELETE FROM ast_index_snapshot_manifest")
     conn.commit()
 

@@ -30,7 +30,12 @@ CREATE TABLE IF NOT EXISTS ast_index_snapshot_manifest (
 );
 """
 _CONTROL_TABLES = frozenset(
-    {"ast_index_snapshot_manifest", "ast_build_state", "sqlite_sequence"}
+    {
+        "ast_index_snapshot_manifest",
+        "ast_build_state",
+        "ast_call_graph_state",
+        "sqlite_sequence",
+    }
 )
 _REQUIRED_COLUMNS = {
     "ast_index": frozenset(
@@ -79,6 +84,16 @@ def stamp_full_index_manifest(
     source_scope: SourceScopeDescriptor | None = None,
 ) -> None:
     """Atomically certify canonical graph rows and the recorded source inventory."""
+    if os.name != "posix" or not os.path.exists("/dev/fd"):
+        raise sqlite3.OperationalError("SOURCE_SCOPE_UNSUPPORTED")
+    try:
+        marker_rows = conn.execute(
+            "SELECT id, built FROM ast_call_graph_state WHERE id IN (1, 2) ORDER BY id"
+        ).fetchall()
+    except sqlite3.OperationalError as exc:
+        raise sqlite3.OperationalError("CALL_GRAPH_INCOMPLETE") from exc
+    if [(int(row[0]), int(row[1])) for row in marker_rows] != [(1, 1)]:
+        raise sqlite3.OperationalError("CALL_GRAPH_INCOMPLETE")
     root = os.path.realpath(os.path.abspath(project_root))
     scope = source_scope or make_source_scope_descriptor()
     scope_json = canonical_source_scope_descriptor(scope)

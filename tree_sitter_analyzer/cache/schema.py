@@ -15,8 +15,15 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from collections.abc import Callable
 from typing import Any
+
+_LEGACY_SYMBOL_MIGRATION_SECONDS = 5.0
+_LEGACY_SYMBOL_MIGRATION_ROW_BUDGET = 250_000
+_LEGACY_SYMBOL_MIGRATION_INPUT_BYTE_BUDGET = 256 * 1024 * 1024
+_LEGACY_SYMBOL_MIGRATION_SYMBOL_BUDGET = 2_000_000
+_LEGACY_SYMBOL_MIGRATION_CELL_BYTE_BUDGET = 1024 * 1024
 
 # ---------------------------------------------------------------------------
 # Schema DDL constants
@@ -686,7 +693,23 @@ def clear_activation_for_file(conn: sqlite3.Connection, rel_path: str) -> None:
 
 
 def _ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
-    """Create ordinary symbol storage and fill missing legacy JSON projections."""
+    """Create symbol storage and migrate legacy JSON within absolute budgets."""
+    deadline = time.monotonic() + _LEGACY_SYMBOL_MIGRATION_SECONDS
+    max_rows = _LEGACY_SYMBOL_MIGRATION_ROW_BUDGET
+    max_input_bytes = _LEGACY_SYMBOL_MIGRATION_INPUT_BYTE_BUDGET
+    max_symbols = _LEGACY_SYMBOL_MIGRATION_SYMBOL_BUDGET
+    max_cell_bytes = _LEGACY_SYMBOL_MIGRATION_CELL_BYTE_BUDGET
+    rows_seen = input_bytes = symbols_seen = 0
+
+    def check_budget() -> None:
+        if (
+            time.monotonic() > deadline
+            or rows_seen > max_rows
+            or input_bytes > max_input_bytes
+            or symbols_seen > max_symbols
+        ):
+            raise sqlite3.OperationalError("LEGACY_SYMBOL_MIGRATION_BUDGET")
+
     conn.execute("SAVEPOINT ast_symbol_rows_upgrade")
     try:
         conn.execute(
@@ -704,13 +727,35 @@ def _ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
             "WHERE NOT EXISTS (SELECT 1 FROM ast_symbol_rows AS symbols "
             "WHERE symbols.file_path = source.file_path)"
         )
-        while batch := cursor.fetchmany(128):
+        while True:
+            check_budget()
+            batch = cursor.fetchmany(128)
+            if not batch:
+                break
             for file_path, language, raw_symbols in batch:
+                rows_seen += 1
+                check_budget()
+                if isinstance(raw_symbols, bytes):
+                    cell_bytes = len(raw_symbols)
+                elif isinstance(raw_symbols, str):
+                    if len(raw_symbols) > max_cell_bytes:
+                        raise sqlite3.OperationalError("LEGACY_SYMBOL_MIGRATION_BUDGET")
+                    cell_bytes = len(raw_symbols.encode("utf-8", "surrogatepass"))
+                else:
+                    raise ValueError("invalid legacy symbols_json")
+                if cell_bytes > max_cell_bytes:
+                    raise sqlite3.OperationalError("LEGACY_SYMBOL_MIGRATION_BUDGET")
+                input_bytes += cell_bytes
+                check_budget()
                 parsed = json.loads(raw_symbols)
+                check_budget()
                 symbols = parsed.get("symbols", []) if isinstance(parsed, dict) else []
                 if not isinstance(symbols, list):
                     raise ValueError("invalid legacy symbols_json")
+                symbols_seen += len(symbols)
+                check_budget()
                 for offset in range(0, len(symbols), 512):
+                    check_budget()
                     params = []
                     for symbol in symbols[offset : offset + 512]:
                         if not isinstance(symbol, dict):
@@ -731,6 +776,7 @@ def _ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
                         "VALUES (?, ?, ?, ?, ?, ?)",
                         params,
                     )
+                    check_budget()
         conn.execute("RELEASE ast_symbol_rows_upgrade")
     except Exception:
         conn.execute("ROLLBACK TO ast_symbol_rows_upgrade")

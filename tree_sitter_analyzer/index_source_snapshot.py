@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, TypeVar, cast
 
 from .constants import EXCLUDE_DIRS
-from .index_source_stream import hash_source_at, inventory_portable
+from .index_source_stream import hash_source_at
 from .indexing_limits import DEFAULT_INDEX_MAX_FILES, KNOWLEDGE_INDEX_MAX_FILES
 from .languages.lang_extension_map import EXT_TO_LANG
 
@@ -220,6 +220,10 @@ def capture_current_source_snapshot(
 ) -> CurrentSourceSnapshot:
     """Hash a stable, fully bounded view of the certified supported scope."""
     scope = source_scope or make_source_scope_descriptor()
+    if os.name != "posix" or not os.path.exists("/dev/fd"):
+        return CurrentSourceSnapshot(
+            (), None, None, "unsafe", "SOURCE_SCOPE_UNSUPPORTED"
+        )
     deadline = time.monotonic() + _SOURCE_DEADLINE_SECONDS
     root = os.path.abspath(project_root)
     try:
@@ -271,20 +275,10 @@ def _inventory(
 ) -> tuple[tuple[tuple[str, str, str], ...], bool]:
     """Walk supported sources through pinned directory descriptors on POSIX."""
     scope = scope or make_source_scope_descriptor()
-    if os.name != "posix":
-        return inventory_portable(
-            root,
-            deadline,
-            scope,
-            with_content=with_content,
-            entry_budget=_SOURCE_ENTRY_BUDGET,
-            entry_path_byte_budget=_SOURCE_ENTRY_PATH_BYTE_BUDGET,
-            path_budget=_SOURCE_PATH_BUDGET,
-            byte_budget=_SOURCE_BYTE_BUDGET,
-            bounded_sorted=_bounded_sorted,
-            metadata_marker=_metadata_marker,
-            same_file_metadata=_same_file_metadata,
-        )
+    if os.name != "posix" or not os.path.exists("/dev/fd"):
+        # Portable pathname traversal cannot close descendant-reparse and path-swap
+        # TOCTOU windows, so certification is deliberately unavailable.
+        return (), True
     rows: list[tuple[str, str, str]] = []
     unsafe = False
     counters = {"entries": 0, "path_bytes": 0, "input": 0, "output": 0}

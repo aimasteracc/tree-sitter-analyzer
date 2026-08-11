@@ -19,24 +19,42 @@ _EXPLICITLY_INCOMPLETE_ID = 2
 
 
 def mark_call_graph_built(conn: sqlite3.Connection) -> None:
-    """Record that the call-graph derivation completed for this cache."""
+    """Best-effort wrapper for callers that cannot publish certification."""
     try:
-        conn.execute(_CREATE_DDL)
-        conn.execute(
-            "INSERT INTO ast_call_graph_state (id, built, built_at) "
-            "VALUES (1, 1, ?) "
-            "ON CONFLICT(id) DO UPDATE SET "
-            "built = excluded.built, "
-            "built_at = excluded.built_at",
-            (time.time(),),
-        )
-        conn.execute(
-            "DELETE FROM ast_call_graph_state WHERE id = ?",
-            (_EXPLICITLY_INCOMPLETE_ID,),
-        )
-        conn.commit()
+        mark_call_graph_built_strict(conn)
     except sqlite3.OperationalError:
         logger.debug("could not mark call-graph-built", exc_info=True)
+
+
+def mark_call_graph_built_strict(conn: sqlite3.Connection) -> None:
+    """Persist and verify the exact authoritative built marker."""
+    conn.execute(_CREATE_DDL)
+    conn.execute(
+        "INSERT INTO ast_call_graph_state (id, built, built_at) "
+        "VALUES (1, 1, ?) "
+        "ON CONFLICT(id) DO UPDATE SET "
+        "built = excluded.built, "
+        "built_at = excluded.built_at",
+        (time.time(),),
+    )
+    conn.execute(
+        "DELETE FROM ast_call_graph_state WHERE id = ?",
+        (_EXPLICITLY_INCOMPLETE_ID,),
+    )
+    rows = conn.execute(
+        "SELECT id, built FROM ast_call_graph_state WHERE id IN (?, ?) ORDER BY id",
+        (_BUILT_MARKER_ID, _EXPLICITLY_INCOMPLETE_ID),
+    ).fetchall()
+    exact = [
+        (
+            int(row["id"] if isinstance(row, sqlite3.Row) else row[0]),
+            int(row["built"] if isinstance(row, sqlite3.Row) else row[1]),
+        )
+        for row in rows
+    ]
+    if exact != [(_BUILT_MARKER_ID, 1)]:
+        raise sqlite3.OperationalError("CALL_GRAPH_MARKER_VERIFY_FAILED")
+    conn.commit()
 
 
 def clear_call_graph_built(conn: sqlite3.Connection) -> None:

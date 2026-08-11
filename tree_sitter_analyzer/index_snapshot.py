@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import atexit
 import errno
-import json
 import os
 import secrets
 import sqlite3
-import stat
 import threading
 import time
 from collections.abc import Iterator
@@ -17,6 +15,14 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 from urllib.parse import quote
 
+from .index_snapshot_capability import (
+    exact_call_graph_marker as _exact_call_graph_marker,
+)
+from .index_snapshot_capability import open_bound_database as _open_bound_database
+from .index_snapshot_capability import (
+    path_matches_pinned_database as _path_matches_pinned_database,
+)
+from .index_snapshot_capability import reject_sidecars as _reject_sidecars
 from .index_snapshot_registry import ensure_capacity as ensure_registry_capacity
 from .index_snapshot_registry import reuse_snapshot
 from .index_snapshot_schema import (
@@ -26,6 +32,9 @@ from .index_snapshot_schema import (
 )
 from .index_snapshot_schema import (
     stamp_full_index_manifest as stamp_full_index_manifest,
+)
+from .index_snapshot_symbols import (
+    fallback_symbol_counts as _fallback_symbol_counts_impl,
 )
 from .index_source_snapshot import (
     capture_current_source_snapshot,
@@ -229,14 +238,22 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                 and int(manifest["file_count"]) == count
                 and int(manifest["manifest_version"]) == 2
             )
-            complete = exact_sources and exact_manifest
-            reason = None if complete else scope_reason
-            if reason is None:
+            call_graph_complete = _exact_call_graph_marker(connection)
+            complete = exact_sources and exact_manifest and call_graph_complete
+            if complete:
+                reason = None
+            elif not call_graph_complete:
+                reason = "CALL_GRAPH_INCOMPLETE"
+            elif scope_reason is not None:
+                reason = scope_reason
+            elif not exact_sources:
                 reason = (
                     current.reason or "SOURCE_INDEX_MISMATCH"
-                    if not exact_sources and current
-                    else "NO_EXACT_FULL_INDEX_MANIFEST"
+                    if current
+                    else "SOURCE_INDEX_MISMATCH"
                 )
+            else:
+                reason = "NO_EXACT_FULL_INDEX_MANIFEST"
             snapshot = IndexSnapshot(
                 None,
                 current.fingerprint if current else None,
@@ -405,34 +422,9 @@ def read_snapshot_stats(
 def _fallback_symbol_counts(
     conn: sqlite3.Connection,
 ) -> tuple[int, dict[str, int], dict[str, int]]:
-    """Count legacy/no-FTS symbols from bounded primary index JSON rows."""
-    total = bytes_seen = 0
-    by_kind: dict[str, int] = {}
-    by_language: dict[str, int] = {}
-    for row in conn.execute(
-        "SELECT symbols_json, language FROM ast_index ORDER BY file_path"
-    ):
-        raw = str(row[0])
-        bytes_seen += len(raw.encode("utf-8", "surrogatepass"))
-        if bytes_seen > _SYMBOL_FALLBACK_BYTE_BUDGET:
-            raise RuntimeError("INDEX_SYMBOL_FALLBACK_BUDGET")
-        payload = json.loads(raw)
-        symbols = payload.get("symbols", []) if isinstance(payload, dict) else []
-        if not isinstance(symbols, list):
-            raise ValueError("CORRUPT_INDEX")
-        language = str(row[1])
-        for symbol in symbols:
-            total += 1
-            if total > _SYMBOL_FALLBACK_ROW_BUDGET:
-                raise RuntimeError("INDEX_SYMBOL_FALLBACK_BUDGET")
-            kind = (
-                str(symbol.get("kind", "unknown"))
-                if isinstance(symbol, dict)
-                else "unknown"
-            )
-            by_kind[kind] = by_kind.get(kind, 0) + 1
-            by_language[language] = by_language.get(language, 0) + 1
-    return total, dict(sorted(by_kind.items())), dict(sorted(by_language.items()))
+    return _fallback_symbol_counts_impl(
+        conn, _SYMBOL_FALLBACK_BYTE_BUDGET, _SYMBOL_FALLBACK_ROW_BUDGET
+    )
 
 
 def acquire_index_snapshot(
@@ -443,66 +435,3 @@ def acquire_index_snapshot(
 
 def _unknown(reason: str) -> IndexSnapshot:
     return IndexSnapshot(None, None, None, None, "unknown", reason, None, 0)
-
-
-def _open_bound_database(project_root: str) -> tuple[str, int, int, int]:
-    logical = os.path.abspath(project_root)
-    if not os.path.isdir(logical):
-        raise FileNotFoundError("MISSING_PROJECT_ROOT")
-    root = os.path.realpath(logical)
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-    root_fd = os.open(root, flags)
-    try:
-        cache_fd = os.open(".ast-cache", flags | os.O_NOFOLLOW, dir_fd=root_fd)
-    except FileNotFoundError:
-        os.close(root_fd)
-        raise FileNotFoundError("MISSING_INDEX") from None
-    except Exception:
-        os.close(root_fd)
-        raise
-    try:
-        db_fd = os.open("index.db", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=cache_fd)
-        if not stat.S_ISREG(os.fstat(db_fd).st_mode):
-            os.close(db_fd)
-            raise ValueError("INDEX_PATH_UNSAFE")
-    except FileNotFoundError:
-        os.close(cache_fd)
-        os.close(root_fd)
-        raise FileNotFoundError("MISSING_INDEX") from None
-    except Exception:
-        os.close(cache_fd)
-        os.close(root_fd)
-        raise
-    return root, root_fd, cache_fd, db_fd
-
-
-def _path_matches_pinned_database(cache_fd: int, db_fd: int) -> bool:
-    """Return whether the cache path still names the securely pinned inode."""
-    try:
-        path_info = os.stat("index.db", dir_fd=cache_fd, follow_symlinks=False)
-        pinned_info = os.fstat(db_fd)
-    except OSError:
-        return False
-    return (path_info.st_dev, path_info.st_ino) == (
-        pinned_info.st_dev,
-        pinned_info.st_ino,
-    )
-
-
-def _reject_sidecars(cache_fd: int) -> None:
-    # A quiescent WAL database commonly retains a non-empty shared-memory
-    # index. Only durable write payloads (WAL/journal) prove it is not safe to
-    # open the pinned main database immutably.
-    for name in ("index.db-wal", "index.db-journal"):
-        try:
-            info = os.stat(name, dir_fd=cache_fd, follow_symlinks=False)
-        except FileNotFoundError:
-            continue
-        if not stat.S_ISREG(info.st_mode) or info.st_size:
-            raise ValueError("CONCURRENT_WRITER")
-    try:
-        shm = os.stat("index.db-shm", dir_fd=cache_fd, follow_symlinks=False)
-    except FileNotFoundError:
-        return
-    if not stat.S_ISREG(shm.st_mode):
-        raise ValueError("CONCURRENT_WRITER")
