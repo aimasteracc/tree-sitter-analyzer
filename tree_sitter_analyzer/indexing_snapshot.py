@@ -143,6 +143,7 @@ class IndexSnapshotEntry:
     decision: SnapshotDecision
     reason: str | None = None
     fingerprint: IndexFileFingerprint | None = None
+    frozen_path: str | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +161,8 @@ class IndexCandidateSnapshot:
     errors: int
     limited: int
     discovery_error: str | None = None
+    frozen_root: str | None = field(default=None, repr=False, compare=False)
+    frozen_error: str | None = field(default=None, repr=False, compare=False)
 
     @property
     def selected_entries(self) -> tuple[IndexSnapshotEntry, ...]:
@@ -246,6 +249,7 @@ def build_index_candidate_snapshot(
     walk_fn: Callable[[str], Iterable[str]],
     language_fn: Callable[[str], str | None],
     language_filter: str | None = None,
+    materialize: bool = False,
 ) -> IndexCandidateSnapshot:
     """Walk once and freeze file ordering, scope decisions, and fingerprints.
 
@@ -438,7 +442,7 @@ def build_index_candidate_snapshot(
             )
         )
 
-    return IndexCandidateSnapshot(
+    snapshot = IndexCandidateSnapshot(
         project_root=logical_root,
         max_files=normalized_max,
         entries=tuple(entries),
@@ -451,6 +455,13 @@ def build_index_candidate_snapshot(
         limited=limited,
         discovery_error=discovery_error,
     )
+    if materialize:
+        from .indexing_candidate_materialization import (
+            materialize_index_candidate_snapshot,
+        )
+
+        return materialize_index_candidate_snapshot(snapshot)
+    return snapshot
 
 
 def changed_since_snapshot(entry: IndexSnapshotEntry) -> str | None:

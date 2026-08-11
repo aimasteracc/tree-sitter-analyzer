@@ -154,7 +154,12 @@ def _candidate_snapshot_report(
     incremental_processed = int(incremental_phase.get("processed", 0))
     selected_paths = {entry.rel_path for entry in snapshot.selected_entries}
     changed_paths = set(changed_files)
-    processed = len(selected_paths - changed_paths)
+    frozen_epoch = all(
+        entry.frozen_path is not None for entry in snapshot.selected_entries
+    )
+    processed = (
+        len(selected_paths) if frozen_epoch else len(selected_paths - changed_paths)
+    )
     report: dict[str, Any] = {
         **snapshot.metrics(),
         "processed": processed,
@@ -167,12 +172,18 @@ def _candidate_snapshot_report(
         ),
     }
     report["selection_reconciled"] = changed_paths <= selected_paths and (
-        snapshot.selected == processed + len(changed_paths)
+        snapshot.selected == processed
+        if frozen_epoch
+        else snapshot.selected == processed + len(changed_paths)
     )
-    report["phase_totals_reconciled"] = snapshot.selected == ast_processed + int(
-        ast_phase.get("changed_during_run", 0)
-    ) and snapshot.selected == incremental_processed + int(
-        incremental_phase.get("changed_during_run", 0)
+    report["phase_totals_reconciled"] = (
+        snapshot.selected == ast_processed
+        and snapshot.selected == incremental_processed
+        if frozen_epoch
+        else snapshot.selected
+        == ast_processed + int(ast_phase.get("changed_during_run", 0))
+        and snapshot.selected
+        == incremental_processed + int(incremental_phase.get("changed_during_run", 0))
     )
     return report
 
@@ -321,128 +332,149 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             certification_max_files=max_files,
         )
         t_start = time.monotonic()
-        candidate_snapshot = self._build_candidate_snapshot(
-            max_files,
-            exclude_patterns,
+        candidate_snapshot = (
+            self._build_candidate_snapshot(
+                max_files,
+                exclude_patterns,
+                materialize=True,
+            )
+            if mode == "full"
+            else self._build_candidate_snapshot(max_files, exclude_patterns)
         )
 
-        phases: dict[str, Any] = {}
+        try:
+            phases: dict[str, Any] = {}
 
-        if mode == "full":
-            mark_dirty(self.project_root)
+            if mode == "full":
+                mark_dirty(self.project_root)
 
-        ast_phase = self._phase_ast_cache(
-            mode == "full",
-            max_files,
-            include_activation=include_activation,
-            exclude_patterns=exclude_patterns,
-            candidate_snapshot=candidate_snapshot,
-            source_scope=source_scope,
-        )
-        phases["ast_cache"] = ast_phase
-        if ast_phase.get("abort_remaining_phases") is True:
-            # The force pre-clear authorization failed.  Do not construct another
-            # cache owner: incremental sync, backfills, stats helpers, and final
-            # manifest stamping are all forbidden write opportunities here.
-            phases["remaining_phases"] = {
-                "status": "skipped",
-                "reason": "unsafe force snapshot; no write phases were run",
-            }
+            ast_phase = self._phase_ast_cache(
+                mode == "full",
+                max_files,
+                include_activation=include_activation,
+                exclude_patterns=exclude_patterns,
+                candidate_snapshot=candidate_snapshot,
+                source_scope=source_scope,
+            )
+            phases["ast_cache"] = ast_phase
+            if ast_phase.get("abort_remaining_phases") is True:
+                # The force pre-clear authorization failed.  Do not construct another
+                # cache owner: incremental sync, backfills, stats helpers, and final
+                # manifest stamping are all forbidden write opportunities here.
+                phases["remaining_phases"] = {
+                    "status": "skipped",
+                    "reason": "unsafe force snapshot; no write phases were run",
+                }
+                elapsed = round(time.monotonic() - t_start, 3)
+                summary_line = (
+                    "codegraph_full_index: unsafe force snapshot; phases aborted"
+                )
+                result = {
+                    "success": True,
+                    "verdict": "WARN",
+                    "summary_line": summary_line,
+                    "agent_summary": {
+                        "verdict": "WARN",
+                        "summary_line": summary_line,
+                    },
+                    "mode": mode,
+                    "elapsed_seconds": elapsed,
+                    "phases": phases,
+                    "candidate_snapshot": {
+                        **candidate_snapshot.metrics(),
+                        "processed": 0,
+                        "changed_during_run": int(
+                            ast_phase.get("changed_during_run", 0)
+                        ),
+                        "changed_during_run_files": list(
+                            ast_phase.get("changed_during_run_files", [])
+                        )[:_ERROR_DETAILS_CAP],
+                    },
+                }
+                return apply_toon_format_to_response(result, output_format)
+
+            incremental_phase = self._phase_incremental_sync(
+                max_files,
+                exclude_patterns,
+                candidate_snapshot=candidate_snapshot,
+                source_scope=source_scope,
+            )
+            phases["incremental_sync"] = incremental_phase
+            phases["fts5"] = self._phase_fts5_stats()
+
+            if resolve_synapse:
+                # A1: the ast_cache phase already ran the complete backfill chain
+                # (cross-file + synapse + edge-store refresh + unresolved_refs) via
+                # _post_index_backfill. Re-running index_project(resolve_only=True)
+                # here repeated the whole O(edges) chain a second time — on large
+                # Java repos that doubled backfill time and was a primary stall/OOM
+                # cause. Report from the already-computed stats instead of re-running.
+                phases["synapse_resolution"] = self._phase_synapse(ast_phase)
+
+            phases["call_edges"] = self._phase_call_edge_stats()
+
             elapsed = round(time.monotonic() - t_start, 3)
-            summary_line = "codegraph_full_index: unsafe force snapshot; phases aborted"
+
+            # #860: propagate phase-level errors to top-level verdict so callers
+            # don't receive "success: True / verdict: INFO" when a DB flush failed.
+            any_phase_error = any(
+                p.get("status") == "error"
+                for p in phases.values()
+                if isinstance(p, dict)
+            )
+            snapshot_report = _candidate_snapshot_report(
+                candidate_snapshot,
+                ast_phase,
+                incremental_phase,
+            )
+            snapshot_warning = (
+                snapshot_report["changed_during_run"] > 0
+                or int(ast_phase.get("backfill_errors", 0)) > 0
+                or not snapshot_report["selection_reconciled"]
+                or not snapshot_report["phase_totals_reconciled"]
+            )
+            top_verdict = "WARN" if any_phase_error or snapshot_warning else "INFO"
+            stats = self._collect_final_stats(
+                stamp_manifest=(
+                    top_verdict == "INFO"
+                    and not candidate_snapshot.truncated_by_max_files
+                ),
+                source_scope=source_scope,
+            )
+            manifest_certified = bool(stats.pop("_manifest_certified", False))
+            if not manifest_certified or stats.get("manifest_warning") is not None:
+                top_verdict = "WARN"
+            summary_line = f"codegraph_full_index: completed with {top_verdict.lower()}"
+
             result = {
                 "success": True,
-                "verdict": "WARN",
+                "verdict": top_verdict,
                 "summary_line": summary_line,
                 "agent_summary": {
-                    "verdict": "WARN",
+                    "verdict": top_verdict,
                     "summary_line": summary_line,
                 },
                 "mode": mode,
                 "elapsed_seconds": elapsed,
                 "phases": phases,
-                "candidate_snapshot": {
-                    **candidate_snapshot.metrics(),
-                    "processed": 0,
-                    "changed_during_run": int(ast_phase.get("changed_during_run", 0)),
-                    "changed_during_run_files": list(
-                        ast_phase.get("changed_during_run_files", [])
-                    )[:_ERROR_DETAILS_CAP],
-                },
+                "candidate_snapshot": snapshot_report,
+                **stats,
             }
+
             return apply_toon_format_to_response(result, output_format)
+        finally:
+            from ...indexing_candidate_materialization import (
+                cleanup_index_candidate_snapshot,
+            )
 
-        incremental_phase = self._phase_incremental_sync(
-            max_files,
-            exclude_patterns,
-            candidate_snapshot=candidate_snapshot,
-            source_scope=source_scope,
-        )
-        phases["incremental_sync"] = incremental_phase
-        phases["fts5"] = self._phase_fts5_stats()
-
-        if resolve_synapse:
-            # A1: the ast_cache phase already ran the complete backfill chain
-            # (cross-file + synapse + edge-store refresh + unresolved_refs) via
-            # _post_index_backfill. Re-running index_project(resolve_only=True)
-            # here repeated the whole O(edges) chain a second time — on large
-            # Java repos that doubled backfill time and was a primary stall/OOM
-            # cause. Report from the already-computed stats instead of re-running.
-            phases["synapse_resolution"] = self._phase_synapse(ast_phase)
-
-        phases["call_edges"] = self._phase_call_edge_stats()
-
-        elapsed = round(time.monotonic() - t_start, 3)
-
-        # #860: propagate phase-level errors to top-level verdict so callers
-        # don't receive "success: True / verdict: INFO" when a DB flush failed.
-        any_phase_error = any(
-            p.get("status") == "error" for p in phases.values() if isinstance(p, dict)
-        )
-        snapshot_report = _candidate_snapshot_report(
-            candidate_snapshot,
-            ast_phase,
-            incremental_phase,
-        )
-        snapshot_warning = (
-            snapshot_report["changed_during_run"] > 0
-            or int(ast_phase.get("backfill_errors", 0)) > 0
-            or not snapshot_report["selection_reconciled"]
-            or not snapshot_report["phase_totals_reconciled"]
-        )
-        top_verdict = "WARN" if any_phase_error or snapshot_warning else "INFO"
-        stats = self._collect_final_stats(
-            stamp_manifest=(
-                top_verdict == "INFO" and not candidate_snapshot.truncated_by_max_files
-            ),
-            source_scope=source_scope,
-        )
-        manifest_certified = bool(stats.pop("_manifest_certified", False))
-        if not manifest_certified or stats.get("manifest_warning") is not None:
-            top_verdict = "WARN"
-        summary_line = f"codegraph_full_index: completed with {top_verdict.lower()}"
-
-        result = {
-            "success": True,
-            "verdict": top_verdict,
-            "summary_line": summary_line,
-            "agent_summary": {
-                "verdict": top_verdict,
-                "summary_line": summary_line,
-            },
-            "mode": mode,
-            "elapsed_seconds": elapsed,
-            "phases": phases,
-            "candidate_snapshot": snapshot_report,
-            **stats,
-        }
-
-        return apply_toon_format_to_response(result, output_format)
+            cleanup_index_candidate_snapshot(candidate_snapshot)
 
     def _build_candidate_snapshot(
         self,
         max_files: int,
         exclude_patterns: frozenset[str],
+        *,
+        materialize: bool = False,
     ) -> IndexCandidateSnapshot:
         from ...constants import EXCLUDE_DIRS
         from ...project_graph import _language_from_ext
@@ -455,6 +487,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 root, excluded_dir_names=frozenset(EXCLUDE_DIRS)
             ),
             language_fn=_language_from_ext,
+            materialize=materialize,
         )
 
     def _phase_ast_cache(
@@ -501,12 +534,12 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             changed_details = [
                 {
                     "file": detail.get("file"),
-                    "status": "skipped",
+                    "status": detail.get("status", "skipped"),
                     "reason": detail.get("reason"),
                 }
                 for detail in result.get("files", [])
                 if isinstance(detail, dict)
-                and detail.get("status") == "skipped"
+                and detail.get("status") in ("skipped", "warning")
                 and "candidate snapshot" in str(detail.get("reason", ""))
             ]
             return {
@@ -590,12 +623,12 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             changed_details = [
                 {
                     "file": detail.get("file"),
-                    "status": "skipped",
+                    "status": detail.get("status", "skipped"),
                     "reason": detail.get("reason"),
                 }
                 for detail in result.details
                 if isinstance(detail, dict)
-                and detail.get("status") == "skipped"
+                and detail.get("status") in ("skipped", "warning")
                 and "candidate snapshot" in str(detail.get("reason", ""))
             ]
             # #860: surface DB flush failures — sync catches them into result.errors

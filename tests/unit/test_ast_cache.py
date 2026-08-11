@@ -1489,14 +1489,22 @@ def test_force_index_rejects_missing_metadata_before_clearing_cache(tmp_path):
     assert row == before
 
 
-def test_force_index_discards_all_stale_derived_rows(tmp_path):
+def test_force_index_retains_complete_frozen_epoch_on_live_mutation(tmp_path):
     from tree_sitter_analyzer.cache import extraction
 
     path = tmp_path / "app.py"
     path.write_text("import os\n\ndef stale():\n    return os.getcwd()\n")
     cache = ASTCache(str(tmp_path))
     cache.index_file(str(path))
-    snapshot = _snapshot(tmp_path, path)
+    # PR #1253 thread 3759852177: frozen rows survive final live replay drift.
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+        materialize=True,
+    )
     mirror = tmp_path / ".ast-cache" / "knowledge-graph.lbug"
     mirror.write_text("stale mirror")
     real_worker = extraction._worker_index_file
@@ -1531,19 +1539,28 @@ def test_force_index_discards_all_stale_derived_rows(tmp_path):
                 "edges",
             )
         }
+        graph_built = cache.call_graph_built()
+        manifest_count = conn.execute(
+            "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
+        ).fetchone()[0]
         mirror_exists = mirror.exists()
     finally:
+        from tree_sitter_analyzer.indexing_candidate_materialization import (
+            cleanup_index_candidate_snapshot,
+        )
+
+        cleanup_index_candidate_snapshot(snapshot)
         cache.close()
 
     assert counts == {
-        "ast_index": 0,
-        "ast_symbol_rows": 0,
-        "ast_symbols_fts": 0,
-        "ast_imports": 0,
+        "ast_index": 1,
+        "ast_symbol_rows": 2,
+        "ast_symbols_fts": 2,
+        "ast_imports": 1,
         "ast_symbol_activation": 0,
-        "edges": 0,
+        "edges": 2,
     }
-    assert mirror_exists is False
+    assert (graph_built, manifest_count, mirror_exists) == (True, 0, False)
 
 
 def test_snapshot_revalidates_pending_rows_at_batch_commit(tmp_path):
@@ -2780,3 +2797,71 @@ def test_projection_repair_records_failed_projection_certification(tmp_path):
         cache.close()
 
     assert result["backfill_errors"] == 1
+
+
+@requires_posix_fd
+def test_frozen_candidate_reader_rejects_non_regular_leaf(tmp_path):
+    # PR #1253 thread 3759852177: workers accept regular private bytes only.
+    from tree_sitter_analyzer.cache.extraction import _read_frozen_candidate
+
+    directory = tmp_path / "candidate"
+    directory.mkdir()
+    with pytest.raises(OSError, match="invalid frozen candidate"):
+        _read_frozen_candidate(str(directory))
+
+
+@requires_posix_fd
+def test_frozen_candidate_reader_rejects_growth_past_limit(tmp_path, monkeypatch):
+    # PR #1253 thread 3759852177: a growing frozen leaf remains bounded.
+    from tree_sitter_analyzer.cache import extraction
+
+    candidate = tmp_path / "candidate"
+    candidate.write_bytes(b"12345")
+    real_fstat = extraction.os.fstat
+
+    def admitted_size(fd):
+        info = real_fstat(fd)
+        return SimpleNamespace(st_mode=info.st_mode, st_size=4)
+
+    monkeypatch.setattr(extraction, "_MAX_FROZEN_FILE_BYTES", 4)
+    monkeypatch.setattr(extraction.os, "fstat", admitted_size)
+    with pytest.raises(OSError, match="exceeds byte limit"):
+        extraction._read_frozen_candidate(str(candidate))
+
+
+@requires_posix_fd
+def test_frozen_worker_requires_captured_fingerprint(tmp_path):
+    # PR #1253 thread 3759852177: a frozen pathname alone is not evidence.
+    from tree_sitter_analyzer.cache.extraction import _worker_index_file
+
+    logical = tmp_path / "app.py"
+    frozen = tmp_path / "candidate"
+    frozen.write_text("value = 1\n")
+    result = _worker_index_file(
+        (str(logical), str(tmp_path), "python", None, str(frozen))
+    )
+    assert (result["status"], result["reason"]) == (
+        "io_error",
+        "INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING",
+    )
+
+
+@requires_posix_fd
+def test_frozen_worker_rejects_bytes_outside_captured_epoch(tmp_path):
+    # PR #1253 thread 3759852177: worker bytes stay content-bound to capture.
+    from tree_sitter_analyzer.cache.extraction import _worker_index_file
+
+    logical = tmp_path / "app.py"
+    logical.write_text("value = 1\n")
+    snapshot = _snapshot(tmp_path, logical)
+    fingerprint = snapshot.selected_entries[0].fingerprint
+    assert fingerprint is not None
+    frozen = tmp_path / "candidate"
+    frozen.write_text("value = 2\n")
+    result = _worker_index_file(
+        (str(logical), str(tmp_path), "python", fingerprint, str(frozen))
+    )
+    assert (result["status"], result["reason"]) == (
+        "source_changed",
+        "file changed after candidate snapshot",
+    )

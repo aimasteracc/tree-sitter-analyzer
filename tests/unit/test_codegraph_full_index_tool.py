@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from unittest.mock import patch
 
@@ -757,20 +758,29 @@ class TestExecute:
         incremental = result["phases"]["incremental_sync"]
         assert result["verdict"] == "WARN"
         assert scope["selected"] == 1
-        assert scope["processed"] == 0
+        # PR #1253: the complete frozen epoch remains indexed despite live drift.
+        assert scope["processed"] == 1
         assert scope["changed_during_run"] == 1
         assert scope["changed_during_run_files"] == ["app.py"]
         assert scope["changed_during_run_details"] == [
             {
                 "file": "app.py",
-                "status": "skipped",
+                "status": "warning",
                 "reason": "file changed after candidate snapshot",
             }
         ]
         assert scope["selection_reconciled"] is True
         assert scope["phase_totals_reconciled"] is True
         assert incremental["changed_during_run"] == 1
-        assert incremental["processed"] == 0
+        assert incremental["processed"] == 1
+        cache = ASTCache(str(tmp_path))
+        row = (
+            cache.get_conn()
+            .execute("SELECT content_hash FROM ast_index WHERE file_path='app.py'")
+            .fetchone()
+        )
+        cache.close()
+        assert row["content_hash"] == hashlib.sha256(b"value = 1\n").hexdigest()
 
     async def test_default_exclude_is_not_reintroduced_by_sync(self, tmp_path):
         # Incident 2026-07-26: sync reintroduced a default-excluded corpus file.

@@ -290,8 +290,42 @@ class TestAuthoritativeSnapshotOracle:
             {"output_format": "json"}
         )
 
-        assert result["completeness"] == "partial"
+        # PR #1253: post-backup source recapture requires an exact scope.
+        assert result["completeness"] == "unknown"
         assert result["oracle_reason"] == "SOURCE_SCOPE_UNSAFE"
+
+    @pytest.mark.asyncio
+    async def test_source_change_during_backup_is_not_published(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 thread 3759852190: the post-backup epoch must match capture.
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        self._certified_cache(tmp_path)
+        source = tmp_path / "sample.py"
+        real_capture = owner._capture_sources_with_deadline
+        calls = 0
+
+        def capture_then_change(root, scope, deadline):
+            nonlocal calls
+            captured = real_capture(root, scope, deadline)
+            calls += 1
+            if calls == 1:
+                source.write_text("def answer():\n    return 99\n")
+            return captured
+
+        monkeypatch.setattr(
+            owner, "_capture_sources_with_deadline", capture_then_change
+        )
+        result = await CodeGraphStatusTool(str(tmp_path)).execute(
+            {"output_format": "json"}
+        )
+
+        assert (calls, result["completeness"], result["oracle_reason"]) == (
+            2,
+            "unknown",
+            "CONCURRENT_SOURCE",
+        )
 
     @pytest.mark.asyncio
     async def test_nonempty_wal_is_rejected_before_read(self, tmp_path):

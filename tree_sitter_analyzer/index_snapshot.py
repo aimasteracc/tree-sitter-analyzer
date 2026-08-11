@@ -260,6 +260,7 @@ def _capture_existing_snapshot(
             if manifest is not None:
                 _validate_manifest_scalars(manifest)
             current = None
+            source_scope = None
             scope_reason = None
             if manifest is None:
                 scope_reason = "SOURCE_SCOPE_DESCRIPTOR_MISSING"
@@ -343,6 +344,19 @@ def _capture_existing_snapshot(
                     )
 
             connection.backup(evidence, pages=64, progress=progress, sleep=0)
+            if source_scope is not None and current is not None:
+                _require_capture_budget(deadline)
+                final_current = _capture_sources_with_deadline(
+                    root, source_scope, deadline
+                )
+                if final_current.state != "exact":
+                    raise ValueError(final_current.reason or "SOURCE_INDEX_MISMATCH")
+                if (
+                    current.state != "exact"
+                    or final_current.rows != current.rows
+                    or final_current.fingerprint != current.fingerprint
+                ):
+                    raise ValueError("CONCURRENT_SOURCE")
             _reject_sidecars(cache_fd)
             final = os.fstat(db_fd)
             if (

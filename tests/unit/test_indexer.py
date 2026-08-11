@@ -203,3 +203,80 @@ def test_force_with_renamed_directory_swap_preserves_persisted_rows(
     )
     assert persisted_rows() == before
     cache.close()
+
+
+def test_force_without_materialized_evidence_preserves_existing_cache(
+    tmp_path: Path,
+) -> None:
+    # PR #1253 thread 3759852177: live-path evidence cannot authorize a clear.
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    before = [tuple(row) for row in cache.get_conn().execute("SELECT * FROM ast_index")]
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=lambda _path: "python",
+    )
+
+    result = cache.index_project(
+        max_files=10,
+        force=True,
+        exclude_patterns=frozenset(),
+        candidate_snapshot=snapshot,
+    )
+
+    after = [tuple(row) for row in cache.get_conn().execute("SELECT * FROM ast_index")]
+    assert (result["verdict"], result["indexed"], after) == ("WARN", 0, before)
+    cache.close()
+
+
+def test_incomplete_cached_noop_clears_current_global_marker(tmp_path: Path) -> None:
+    # PR #1253 thread 3760046643: no-op scope gaps still revoke certification.
+    source = tmp_path / "client.js"
+    source.write_text("const value = 1;\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    initial = cache.index_project(max_files=10)
+    assert (initial["errors"], cache.call_graph_built()) == (0, True)
+
+    result = cache.index_project(max_files=10, language_filter="python")
+
+    assert (
+        result["indexed"],
+        result["incomplete_skips"],
+        result["verdict"],
+        cache.call_graph_built(),
+    ) == (0, 1, "WARN", False)
+    cache.close()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_owned_truncated_force_materialization_is_cleaned_before_abort(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1253 thread 3759852177: failed authorization cleans private bytes.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    (tmp_path / "a.py").write_text("a = 1\n")
+    (tmp_path / "b.py").write_text("b = 1\n")
+    cache = ASTCache(str(tmp_path))
+    created: list[str] = []
+    real_mkdtemp = materialization.tempfile.mkdtemp
+
+    def remember_root(*args, **kwargs):
+        root = real_mkdtemp(*args, **kwargs)
+        created.append(root)
+        return root
+
+    monkeypatch.setattr(materialization.tempfile, "mkdtemp", remember_root)
+    result = cache.index_project(max_files=1, force=True)
+
+    assert (result["verdict"], len(created), os.path.exists(created[0])) == (
+        "WARN",
+        1,
+        False,
+    )
+    cache.close()

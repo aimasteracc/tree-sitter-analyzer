@@ -116,6 +116,14 @@ class IncrementalSync:
         finally:
             self._cache._defer_single_file_backfill = previous_defer
 
+        frozen_epoch = bool(
+            candidate_snapshot is not None
+            and all(
+                entry.frozen_path is not None
+                for entry in candidate_snapshot.selected_entries
+            )
+        )
+
         def invalidate_snapshot_changes() -> bool:
             if candidate_snapshot is None:
                 return False
@@ -126,6 +134,16 @@ class IncrementalSync:
                 if entry.rel_path not in known_changed
                 and (reason := changed_since_snapshot(entry)) is not None
             ]
+            if frozen_epoch:
+                known_changed.update(path for path, _reason in late_changes)
+                result.changed_during_run_files = sorted(known_changed)
+                result.changed_during_run = len(result.changed_during_run_files)
+                result.processed = max(0, candidate_snapshot.selected)
+                for rel_path, reason in sorted(late_changes):
+                    result.details.append(
+                        {"file": rel_path, "status": "warning", "reason": reason}
+                    )
+                return False
             for rel_path, reason in sorted(late_changes):
                 self._cache.invalidate(os.path.join(self._cache.project_root, rel_path))
                 for index in range(len(result.details) - 1, -1, -1):
@@ -166,7 +184,8 @@ class IncrementalSync:
             )
             return bool(late_changes)
 
-        invalidate_snapshot_changes()
+        if not frozen_epoch:
+            invalidate_snapshot_changes()
         result.scope_complete = bool(
             not result.truncated_by_max_files
             and result.changed_during_run == 0
@@ -292,14 +311,18 @@ class IncrementalSync:
             )
             changed_files: list[tuple[str, str]] = []
             for entry in candidate_snapshot.selected_entries:
-                change_reason = changed_since_snapshot(entry)
+                change_reason = (
+                    None
+                    if entry.frozen_path is not None
+                    else changed_since_snapshot(entry)
+                )
                 if change_reason is not None:
                     changed_files.append((entry.rel_path, change_reason))
                     continue
                 fingerprint = entry.fingerprint
                 assert fingerprint is not None
                 disk_files[entry.rel_path] = {
-                    "abs_path": entry.abs_path,
+                    "abs_path": entry.frozen_path or entry.abs_path,
                     "mtime_ns": fingerprint.mtime_ns,
                     "file_size": fingerprint.file_size,
                 }

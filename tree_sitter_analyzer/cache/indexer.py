@@ -34,8 +34,10 @@ from ..indexing_snapshot import (
     IndexCandidateSnapshot,
     IndexFileFingerprint,
     IndexSnapshotEntry,
+    build_index_candidate_snapshot,
     changed_since_snapshot,
     validate_index_candidate_snapshot,
+    walk_index_candidate_entries,
 )
 from ..languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
 from ..project_graph import _language_from_ext
@@ -362,7 +364,9 @@ def walk_and_partition(
                 )
                 continue
 
-            change_reason = changed_since_snapshot(entry)
+            change_reason = (
+                None if entry.frozen_path is not None else changed_since_snapshot(entry)
+            )
             if change_reason is not None:
                 stats["skipped"] += 1
                 stats["incomplete_skips"] += 1
@@ -536,6 +540,7 @@ def index_parallel(
     candidates: list[tuple[str, str]],
     workers: int,
     fingerprints: Mapping[str, IndexFileFingerprint] | None = None,
+    frozen_paths: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Dispatch parse+extract to a spawn process pool (safe on macOS/Linux)."""
     from multiprocessing import get_context
@@ -549,6 +554,7 @@ def index_parallel(
             cache.project_root,
             language,
             fingerprints.get(path) if fingerprints is not None else None,
+            frozen_paths.get(path) if frozen_paths is not None else None,
         )
         for path, language in candidates
     ]
@@ -573,6 +579,8 @@ def _snapshot_result_change_reason(
     return rel_path, (
         "file changed after candidate snapshot"
         if worker_fingerprint != expected_fingerprint
+        else None
+        if entry.frozen_path is not None
         else changed_since_snapshot(entry)
     )
 
@@ -679,28 +687,71 @@ def _revalidate_committed_snapshot(
         _record_snapshot_change(stats, rel_path, change_reason)
 
 
+def _record_frozen_replay_mismatches(
+    entries: dict[str, IndexSnapshotEntry], stats: dict[str, Any]
+) -> None:
+    """Report live divergence without deleting the complete frozen epoch."""
+    changed = [
+        (rel_path, reason)
+        for rel_path, entry in entries.items()
+        if (reason := changed_since_snapshot(entry)) is not None
+    ]
+    if not changed:
+        return
+    known = set(stats.get("changed_during_run_files", []))
+    known.update(rel_path for rel_path, _reason in changed)
+    stats["changed_during_run_files"] = sorted(known)
+    stats["changed_during_run"] = len(known)
+    stats["live_source_replay_mismatch"] = True
+    stats["manifest_warning"] = "INDEX_CANDIDATE_SNAPSHOT_CHANGED"
+    for rel_path, reason in changed:
+        stats["files"].append({"file": rel_path, "status": "warning", "reason": reason})
+
+
 def _unsafe_force_snapshot_result(
-    candidate_snapshot: IndexCandidateSnapshot,
+    candidate_snapshot: IndexCandidateSnapshot | None,
     activation_enabled: bool,
     *,
     changed: list[tuple[IndexSnapshotEntry, str]] | None = None,
 ) -> dict[str, Any]:
     """Return a terminal force result before any persistent state is touched."""
     changed = changed or []
-    discovery_details = [
-        {
-            "file": entry.rel_path,
-            "status": "error",
-            "reason": entry.reason or "candidate discovery failed",
-        }
-        for entry in candidate_snapshot.entries
-        if entry.decision == "error"
-    ]
+    discovery_details = (
+        [
+            {
+                "file": entry.rel_path,
+                "status": "error",
+                "reason": entry.reason or "candidate discovery failed",
+            }
+            for entry in candidate_snapshot.entries
+            if entry.decision == "error"
+        ]
+        if candidate_snapshot is not None
+        else []
+    )
+    frozen_reason = (
+        candidate_snapshot.frozen_error
+        or (
+            "INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING"
+            if candidate_snapshot.frozen_root is None
+            else None
+        )
+        if candidate_snapshot is not None
+        else "INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING"
+    )
+    if frozen_reason and not changed:
+        discovery_details.append(
+            {"file": "", "status": "error", "reason": frozen_reason}
+        )
     changed_details = [
         {"file": entry.rel_path, "status": "error", "reason": reason}
         for entry, reason in changed
     ]
-    errors = max(1, candidate_snapshot.errors + len(changed_details))
+    errors = max(
+        1,
+        (candidate_snapshot.errors if candidate_snapshot is not None else 0)
+        + len(changed_details),
+    )
     return {
         "mode_used": "full",
         "verdict": "WARN",
@@ -708,15 +759,20 @@ def _unsafe_force_snapshot_result(
         "indexed": 0,
         "cached": 0,
         "errors": errors,
-        "skipped": candidate_snapshot.skipped,
-        "incomplete_skips": candidate_snapshot.skipped + len(changed_details),
+        "skipped": candidate_snapshot.skipped if candidate_snapshot is not None else 0,
+        "incomplete_skips": (
+            candidate_snapshot.skipped if candidate_snapshot is not None else 0
+        )
+        + len(changed_details),
         "processed": 0,
         "changed_during_run": len(changed_details),
         "changed_during_run_files": [detail["file"] for detail in changed_details],
         "files": discovery_details + changed_details,
         "activation_enabled": activation_enabled,
-        "truncated_by_max_files": candidate_snapshot.truncated_by_max_files,
-        "snapshot_metrics": candidate_snapshot.metrics(),
+        "truncated_by_max_files": bool(
+            candidate_snapshot and candidate_snapshot.truncated_by_max_files
+        ),
+        "snapshot_metrics": candidate_snapshot.metrics() if candidate_snapshot else {},
         "manifest_warning": (
             "INDEX_CANDIDATE_SNAPSHOT_CHANGED"
             if changed_details
@@ -764,13 +820,27 @@ def run_index_project(
             "unresolved_refs_backfill": unresolved,
             "activation_enabled": activation_enabled,
         }
+    effective_exclude = (
+        exclude_patterns if exclude_patterns is not None else _DEFAULT_EXCLUDE_PATTERNS
+    )
+    owns_candidate_snapshot = False
+    if force and candidate_snapshot is None:
+        candidate_snapshot = build_index_candidate_snapshot(
+            cache.project_root,
+            max_files=max_files,
+            exclude_patterns=effective_exclude,
+            walk_fn=lambda root: walk_index_candidate_entries(
+                root, excluded_dir_names=frozenset(_EXCLUDE_DIRS)
+            ),
+            language_fn=_language_from_ext,
+            language_filter=language_filter,
+            materialize=True,
+        )
+        owns_candidate_snapshot = True
     if candidate_snapshot is not None:
         validate_index_candidate_snapshot(
             cache.project_root, max_files, candidate_snapshot
         )
-    effective_exclude = (
-        exclude_patterns if exclude_patterns is not None else _DEFAULT_EXCLUDE_PATTERNS
-    )
     if source_scope is None:
         source_scope = make_source_scope_descriptor(
             no_default_excludes=exclude_patterns is not None,
@@ -784,16 +854,44 @@ def run_index_project(
             canonical_source_scope_descriptor(source_scope)
         )
     validate_full_index_source_scope(source_scope, effective_exclude, max_files)
-    if force and candidate_snapshot is not None:
+    if force:
+        from ..indexing_candidate_materialization import (
+            index_candidate_snapshot_is_materialized,
+        )
+
+        materialized = bool(
+            candidate_snapshot is not None
+            and index_candidate_snapshot_is_materialized(candidate_snapshot)
+        )
         snapshot_is_unsafe = bool(
-            candidate_snapshot.errors > 0
+            candidate_snapshot is None
+            or candidate_snapshot.errors > 0
             or candidate_snapshot.discovery_error is not None
             or candidate_snapshot.truncated_by_max_files
             or not candidate_snapshot.discovery_reconciled
+            or not materialized
         )
         if snapshot_is_unsafe:
-            # An incomplete discovery cannot authorize a destructive transition.
-            return _unsafe_force_snapshot_result(candidate_snapshot, activation_enabled)
+            # Destructive rebuilds consume only a fully materialized frozen epoch.
+            changed = (
+                [
+                    (entry, reason)
+                    for entry in candidate_snapshot.selected_entries
+                    if (reason := changed_since_snapshot(entry)) is not None
+                ]
+                if candidate_snapshot is not None and not materialized
+                else []
+            )
+            result = _unsafe_force_snapshot_result(
+                candidate_snapshot, activation_enabled, changed=changed
+            )
+            if owns_candidate_snapshot and candidate_snapshot is not None:
+                from ..indexing_candidate_materialization import (
+                    cleanup_index_candidate_snapshot,
+                )
+
+                cleanup_index_candidate_snapshot(candidate_snapshot)
+            return result
 
     rebuild_signaled = False
     try:
@@ -807,21 +905,8 @@ def run_index_project(
             # DELETE/commit itself raises (e.g. SQLITE_FULL) — otherwise a
             # failed rebuild would leave a stuck marker until TTL expiry.
             conn = cache._get_conn()
-            if candidate_snapshot is not None:
-                # Last authorization check, adjacent to the destructive clear and
-                # still inside the index owner's call boundary.  Secure re-open and
-                # content hashing catch edits, deletes, and regular-file type swaps.
-                changed = [
-                    (entry, reason)
-                    for entry in candidate_snapshot.selected_entries
-                    if (reason := changed_since_snapshot(entry)) is not None
-                ]
-                if changed:
-                    return _unsafe_force_snapshot_result(
-                        candidate_snapshot,
-                        activation_enabled,
-                        changed=changed,
-                    )
+            # The only destructive authorization is the immutable materialized
+            # epoch validated above; live path replay must never gate the clear.
             had_call_graph = cache.call_graph_built()
             _mark_build_in_progress(conn)
             rebuild_signaled = True
@@ -875,9 +960,24 @@ def run_index_project(
             if candidate_snapshot is not None
             else {}
         )
+        candidate_frozen_paths = (
+            {
+                entry.abs_path: entry.frozen_path
+                for entry in candidate_snapshot.selected_entries
+                if entry.frozen_path is not None
+            }
+            if candidate_snapshot is not None
+            else {}
+        )
         workers = cache._resolve_worker_count(workers, candidates)
         if workers and workers >= 2 and len(candidates) >= 2:
-            results = index_parallel(cache, candidates, workers, candidate_fingerprints)
+            results = index_parallel(
+                cache,
+                candidates,
+                workers,
+                candidate_fingerprints,
+                candidate_frozen_paths,
+            )
         else:
             from .extraction import _worker_index_file
 
@@ -888,6 +988,7 @@ def run_index_project(
                         cache.project_root,
                         language,
                         candidate_fingerprints.get(path),
+                        candidate_frozen_paths.get(path),
                     )
                 )
                 for path, language in candidates
@@ -938,12 +1039,17 @@ def run_index_project(
             batch_guard=batch_guard,
         )
         if snapshot_entries is not None:
-            _revalidate_committed_snapshot(
-                cache=cache,
-                conn=conn,
-                entries=snapshot_entries,
-                stats=stats,
-            )
+            if all(
+                entry.frozen_path is not None for entry in snapshot_entries.values()
+            ):
+                _record_frozen_replay_mismatches(snapshot_entries, stats)
+            else:
+                _revalidate_committed_snapshot(
+                    cache=cache,
+                    conn=conn,
+                    entries=snapshot_entries,
+                    stats=stats,
+                )
         if projection_repair and stats["errors"] == 0:
             # A partial projection cannot use the unchanged-file fast path. Every
             # canonical file has now been rewritten with ordinary/FTS/activation
@@ -976,7 +1082,14 @@ def run_index_project(
                 conn, require_fts=cache.fts5_available
             ):
                 stats["backfill_errors"] = stats.get("backfill_errors", 0) + 1
-        if stats["changed_during_run"] > 0:
+        frozen_epoch = bool(
+            candidate_snapshot is not None
+            and all(
+                entry.frozen_path is not None
+                for entry in candidate_snapshot.selected_entries
+            )
+        )
+        if stats["changed_during_run"] > 0 and not frozen_epoch:
             _clear_call_graph_built(conn)
         stats["total_files"] = count
         stats["workers"] = workers
@@ -984,9 +1097,38 @@ def run_index_project(
             candidate_snapshot is not None
             and not candidate_snapshot.truncated_by_max_files
             and candidate_snapshot.errors == 0
-            and stats.get("changed_during_run", 0) == 0
+            and (
+                stats.get("changed_during_run", 0) == 0
+                or all(
+                    entry.frozen_path is not None
+                    for entry in candidate_snapshot.selected_entries
+                )
+            )
         ):
             stats["pruned"] = _prune_to_selected_scope(cache, conn, candidate_snapshot)
+        run_incomplete = bool(
+            stats.get("incomplete_skips", 0)
+            or stats.get("truncated_by_max_files", False)
+            or stats.get("errors", 0)
+            or (
+                candidate_snapshot is not None
+                and (
+                    candidate_snapshot.errors
+                    or candidate_snapshot.discovery_error is not None
+                    or candidate_snapshot.truncated_by_max_files
+                    or not candidate_snapshot.discovery_reconciled
+                )
+            )
+        )
+        if run_incomplete:
+            # Global certification is invalid regardless of whether this run
+            # happened to rewrite or prune a row.
+            _clear_call_graph_built_strict(conn)
+            conn.execute("DELETE FROM ast_index_snapshot_manifest")
+            conn.commit()
+            stats["verdict"] = "WARN"
+            stats["manifest_warning"] = "INDEX_RUN_INCOMPLETE"
+
         # A missing marker is persisted evidence that a previous backfill did
         # not converge. Fully cached retries must run the complete chain again.
         needs_backfill = bool(
@@ -1023,6 +1165,12 @@ def run_index_project(
     finally:
         if rebuild_signaled:
             _clear_build_in_progress(cache._get_conn())
+        if owns_candidate_snapshot and candidate_snapshot is not None:
+            from ..indexing_candidate_materialization import (
+                cleanup_index_candidate_snapshot,
+            )
+
+            cleanup_index_candidate_snapshot(candidate_snapshot)
 
 
 def _call_graph_marker_is_built(conn: sqlite3.Connection) -> bool:
@@ -1063,12 +1211,16 @@ def _candidate_paths_are_exact(
         _normalize_relative_path(str(row[0]))
         for row in conn.execute("SELECT file_path FROM ast_index")
     }
+    frozen_epoch = bool(
+        candidate is not None
+        and all(entry.frozen_path is not None for entry in candidate.selected_entries)
+    )
     run_is_complete = bool(
         not stats.get("truncated_by_max_files", False)
         and stats.get("errors", 0) == 0
         and stats.get("backfill_errors", 0) == 0
         and stats.get("incomplete_skips", 0) == 0
-        and stats.get("changed_during_run", 0) == 0
+        and (stats.get("changed_during_run", 0) == 0 or frozen_epoch)
     )
     if candidate is None:
         # Persisted exclusions and unsupported extensions are outside this

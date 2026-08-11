@@ -14,6 +14,7 @@ import json
 import os
 import re
 import sqlite3
+import stat
 import time
 from typing import Any
 
@@ -80,6 +81,7 @@ from ._symbol_walker import (
     _walk_for_symbols,
 )
 
+_MAX_FROZEN_FILE_BYTES = 64 * 1024 * 1024
 _EXCLUDE_DIRS = EXCLUDE_DIRS
 _worker_parser: Parser | None = None
 
@@ -106,16 +108,53 @@ def _init_worker_parser() -> None:
     _worker_parser = Parser()
 
 
+def _read_frozen_candidate(path: str) -> bytes:
+    """Read one private materialization without following a replaced leaf."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags)
+    try:
+        source_stat = os.fstat(fd)
+        if (
+            not stat.S_ISREG(source_stat.st_mode)
+            or source_stat.st_size > 64 * 1024 * 1024
+        ):
+            raise OSError("invalid frozen candidate")
+        chunks: list[bytes] = []
+        remaining = _MAX_FROZEN_FILE_BYTES + 1
+        while remaining:
+            chunk = os.read(fd, min(65536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        data = b"".join(chunks)
+        if len(data) > _MAX_FROZEN_FILE_BYTES:
+            raise OSError("frozen candidate exceeds byte limit")
+        return data
+    finally:
+        os.close(fd)
+
+
 def _worker_index_file(
-    args: tuple[str, str, str] | tuple[str, str, str, IndexFileFingerprint | None],
+    args: tuple[str, str, str]
+    | tuple[str, str, str, IndexFileFingerprint | None]
+    | tuple[str, str, str, IndexFileFingerprint | None, str | None],
 ) -> dict[str, Any]:
     """Parse one immutable descriptor-backed source on POSIX."""
     global _worker_parser
     abs_path, project_root, language = args[:3]
-    expected = args[3] if len(args) == 4 else None
+    expected = args[3] if len(args) >= 4 else None
+    frozen_path = args[4] if len(args) >= 5 else None
     rel_path = os.path.relpath(abs_path, project_root).replace("\\", "/")
     try:
-        if os.name == "posix":
+        if frozen_path is not None:
+            if expected is None:
+                raise SourceOracleError("INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING")
+            source_code = decode_index_source(_read_frozen_candidate(frozen_path))
+            if index_source_content_hash(source_code) != expected.content_hash:
+                raise SourceOracleError("INDEX_CANDIDATE_FROZEN_SOURCE_CHANGED")
+            opened = expected
+        elif os.name == "posix":
             captured = safe_workspace_path(
                 os.path.realpath(project_root),
                 rel_path,

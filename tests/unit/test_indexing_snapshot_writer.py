@@ -110,7 +110,7 @@ def test_ast_cache_revalidates_each_result_at_write_point(tmp_path):
     )
 
 
-def test_partial_force_snapshot_does_not_fallback_to_existing_edges(tmp_path):
+def test_unmaterialized_force_snapshot_does_not_publish_edges(tmp_path):
     from tree_sitter_analyzer.cache import extraction
 
     changed = tmp_path / "a.py"
@@ -151,7 +151,8 @@ def test_partial_force_snapshot_does_not_fallback_to_existing_edges(tmp_path):
     finally:
         cache.close()
 
-    assert (has_edges, graph_built) == (True, False)
+    # PR #1253 thread 3759852177: no frozen evidence means no destructive run.
+    assert (has_edges, graph_built) == (False, False)
 
 
 def test_ast_partition_rejects_selected_entry_without_metadata(tmp_path):
