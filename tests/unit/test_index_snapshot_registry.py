@@ -182,3 +182,11 @@ class TestIndexSnapshotRegistry:
         second = owner.REGISTRY.publish(different, sqlite3.connect(":memory:"), 0)
 
         assert second.snapshot_id != first.snapshot_id
+
+
+def test_symbol_projection_verdict_rejects_unknown_snapshot():
+    # PR #1253: projection evidence is available only for registered snapshots.
+    from tree_sitter_analyzer.index_snapshot import REGISTRY
+
+    with pytest.raises(ValueError, match="^INDEX_SNAPSHOT_UNKNOWN$"):
+        REGISTRY.symbol_projection_exact("idxsnap_unknown")

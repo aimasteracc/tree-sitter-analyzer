@@ -415,3 +415,87 @@ class TestSnapshotFailureContracts:
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
 
         assert ({row[0] for row in rows}, unsafe) == ({"pkg\\sample.py"}, True)
+
+    @requires_posix_fd
+    def test_inventory_rejects_root_swapped_for_ordinary_directory(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 thread 3760944078: opened root identity must match its lstat.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        root = tmp_path / "root"
+        root.mkdir()
+        (root / "old.py").write_text("old = 1\n")
+        original_open = source.os.open
+        swapped = False
+
+        def swap_root(path, flags, *args, **kwargs):
+            nonlocal swapped
+            if os.fspath(path) == str(root) and not swapped:
+                swapped = True
+                root.rename(tmp_path / "old-root")
+                root.mkdir()
+                (root / "new.py").write_text("new = 1\n")
+            return original_open(path, flags, *args, **kwargs)
+
+        monkeypatch.setattr(source.os, "open", swap_root)
+        rows, unsafe = source._inventory(str(root), float("inf"), with_content=True)
+
+        assert (rows, unsafe) == (frozenset(), True)
+
+    @requires_posix_fd
+    def test_inventory_rejects_child_swapped_for_ordinary_directory(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 thread 3760944078: openat must bind the enumerated child identity.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        child = tmp_path / "pkg"
+        child.mkdir()
+        (child / "old.py").write_text("old = 1\n")
+        original_open = source.os.open
+        swapped = False
+
+        def swap_child(path, flags, *args, **kwargs):
+            nonlocal swapped
+            if path == "pkg" and kwargs.get("dir_fd") is not None and not swapped:
+                swapped = True
+                child.rename(tmp_path / "old-pkg")
+                child.mkdir()
+                (child / "new.py").write_text("new = 1\n")
+            return original_open(path, flags, *args, **kwargs)
+
+        monkeypatch.setattr(source.os, "open", swap_child)
+        rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
+
+        assert (rows, unsafe) == (frozenset(), True)
+
+    @requires_posix_fd
+    def test_inventory_rejects_declared_scope_swapped_for_ordinary_directory(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 thread 3760944078: configured openat roots retain lstat identity.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        child = tmp_path / "pkg"
+        child.mkdir()
+        (child / "old.py").write_text("old = 1\n")
+        scope = source.make_source_scope_descriptor(roots=("pkg",))
+        original_open = source.os.open
+        swapped = False
+
+        def swap_child(path, flags, *args, **kwargs):
+            nonlocal swapped
+            if path == "pkg" and kwargs.get("dir_fd") is not None and not swapped:
+                swapped = True
+                child.rename(tmp_path / "old-pkg")
+                child.mkdir()
+                (child / "new.py").write_text("new = 1\n")
+            return original_open(path, flags, *args, **kwargs)
+
+        monkeypatch.setattr(source.os, "open", swap_child)
+        rows, unsafe = source._inventory(
+            str(tmp_path), float("inf"), scope, with_content=True
+        )
+
+        assert (rows, unsafe) == (frozenset(), True)

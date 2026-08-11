@@ -1023,3 +1023,36 @@ def test_release_helper_suppresses_unexpected_cleanup_exception(
         "success": True,
         "cleanup_warning": "INDEX_CANDIDATE_CLEANUP_FAILED: unexpected",
     }
+
+
+def test_parse_and_write_returns_exact_parser_failure():
+    # PR #1253: parse failures never enter any index writer transaction.
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.cache.indexer import parse_and_write
+
+    cache = SimpleNamespace(
+        parser=SimpleNamespace(
+            parse_file=lambda *_args: SimpleNamespace(
+                success=False, error_message="invalid source"
+            )
+        )
+    )
+
+    result = parse_and_write(
+        cache,
+        None,
+        "/project/bad.py",
+        "bad.py",
+        "python",
+        None,
+        "bad source",
+        "hash",
+        14,
+    )
+
+    assert result == {
+        "file": "bad.py",
+        "status": "error",
+        "reason": "invalid source",
+    }

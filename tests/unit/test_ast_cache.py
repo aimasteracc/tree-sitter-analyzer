@@ -2949,3 +2949,132 @@ def test_frozen_worker_rejects_expired_absolute_deadline(tmp_path):
         "source_changed",
         "file changed after candidate snapshot",
     )
+
+
+def test_oversized_legacy_projection_opens_incomplete_then_repairs(
+    tmp_path, monkeypatch
+):
+    # PR #1253 thread 3760944100: migration budgets must not brick cache opening.
+    import tree_sitter_analyzer.ast_cache as ast_cache_module
+    import tree_sitter_analyzer.index_snapshot_symbols as snapshot_symbols
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache.schema import SCHEMA_V1
+
+    source = tmp_path / "legacy.py"
+    source.write_text("def repaired():\n    return 1\n", encoding="utf-8")
+    cache_dir = tmp_path / ".ast-cache"
+    cache_dir.mkdir()
+    conn = sqlite3.connect(cache_dir / "index.db")
+    conn.executescript(SCHEMA_V1)
+    conn.execute(
+        "INSERT INTO ast_index "
+        "(file_path, content_hash, language, mtime_ns, file_size, "
+        "extractor_version, symbols_json, imports_json, structure_json, indexed_at) "
+        "VALUES ('legacy.py', 'old', 'python', 0, 0, 0, ?, '[]', '{}', 'now')",
+        (json.dumps({"symbols": [{"name": "legacy", "kind": "function"}]}),),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(ast_cache_module, "_has_fts5", lambda _conn: False)
+
+    with monkeypatch.context() as migration_budget:
+        migration_budget.setattr(
+            snapshot_symbols, "_LEGACY_SYMBOL_MIGRATION_ROW_BUDGET", 0
+        )
+        cache = ASTCache(str(tmp_path))
+    try:
+        marker_before = (
+            cache.get_conn()
+            .execute(
+                "SELECT value FROM ast_cache_metadata "
+                "WHERE key='symbol_rows_projection_v1'"
+            )
+            .fetchone()
+        )
+        repaired = cache.index_project(workers=0)
+        marker_after_row = (
+            cache.get_conn()
+            .execute(
+                "SELECT value FROM ast_cache_metadata "
+                "WHERE key='symbol_rows_projection_v1'"
+            )
+            .fetchone()
+        )
+        marker_after = tuple(marker_after_row) if marker_after_row is not None else None
+
+        assert (marker_before, repaired["indexed"], marker_after) == (
+            None,
+            1,
+            ("complete",),
+        )
+    finally:
+        cache.close()
+
+
+@requires_posix_fd
+def test_force_rebuild_later_frozen_worker_gets_fresh_read_deadline(
+    tmp_path, monkeypatch
+):
+    # PR #1253 thread 3760944067: build duration cannot expire immutable inputs.
+    import tree_sitter_analyzer.cache.indexer as indexer
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+    from tree_sitter_analyzer.cache.extraction import _worker_index_file
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        cleanup_index_candidate_snapshot,
+    )
+
+    first = tmp_path / "first.py"
+    later = tmp_path / "later.py"
+    first.write_text("first = 1\n", encoding="utf-8")
+    later.write_text("later = 2\n", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(first), str(later)),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    assert snapshot.frozen_read_deadline is not None
+    observed_deadlines = []
+
+    def delayed_parallel(
+        cache,
+        candidates,
+        workers,
+        fingerprints,
+        frozen_paths,
+        frozen_identities,
+        frozen_deadline,
+    ):
+        observed_deadlines.append(frozen_deadline)
+        advanced = snapshot.frozen_read_deadline + 1.0
+        monkeypatch.setattr(
+            materialization, "time", SimpleNamespace(monotonic=lambda: advanced)
+        )
+        return [
+            _worker_index_file(
+                (
+                    path,
+                    cache.project_root,
+                    language,
+                    fingerprints[path],
+                    frozen_paths[path],
+                    frozen_identities[path],
+                    frozen_deadline,
+                )
+            )
+            for path, language in candidates
+        ]
+
+    monkeypatch.setattr(indexer, "index_parallel", delayed_parallel)
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_project(
+            max_files=10, force=True, workers=2, candidate_snapshot=snapshot
+        )
+    finally:
+        cache.close()
+        cleanup_index_candidate_snapshot(snapshot)
+
+    assert (result["indexed"], result["errors"], observed_deadlines) == (2, 0, [None])

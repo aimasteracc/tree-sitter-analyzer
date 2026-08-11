@@ -10,6 +10,15 @@ import time
 from typing import Any
 
 
+def opened_entry_matches(before: os.stat_result, opened: os.stat_result) -> bool:
+    """Bind an opened descriptor to the exact enumerated directory entry."""
+    return (before.st_dev, before.st_ino, before.st_mode) == (
+        opened.st_dev,
+        opened.st_ino,
+        opened.st_mode,
+    )
+
+
 def hash_source_at(
     directory_fd: int | None,
     name: str,
@@ -35,7 +44,7 @@ def hash_source_at(
     pending_cr = False
     try:
         opened = os.fstat(fd)
-        if not stat.S_ISREG(opened.st_mode):
+        if not stat.S_ISREG(opened.st_mode) or not opened_entry_matches(before, opened):
             return metadata_marker(opened), "<unsafe>", False
         while True:
             chunk = os.read(fd, 65536)

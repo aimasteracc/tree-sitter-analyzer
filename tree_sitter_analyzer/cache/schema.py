@@ -733,7 +733,9 @@ def init_db(
             migration_fn(conn, record_schema_version)
     # Migration exact-state fast paths must include FTS whenever this runtime
     # supports it; FTS-less SQLite keeps the ordinary-only projection legal.
-    ensure_symbol_rows_backfilled(conn, require_fts=bool(fts5_available))
+    ensure_symbol_rows_backfilled(
+        conn, require_fts=bool(fts5_available), allow_incomplete=True
+    )
     apply_large_repo_indexes(conn)
     conn.commit()
     return bool(fts5_available)

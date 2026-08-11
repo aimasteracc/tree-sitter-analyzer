@@ -293,21 +293,51 @@ _LEGACY_SYMBOL_MIGRATION_MARKER_VALUE = "complete"
 
 
 def ensure_symbol_rows_backfilled(
-    conn: sqlite3.Connection, *, require_fts: bool = False
+    conn: sqlite3.Connection,
+    *,
+    require_fts: bool = False,
+    allow_incomplete: bool = False,
 ) -> bool:
     """Create or non-destructively certify the ordinary symbol projection."""
     from .index_symbol_migration import ensure_symbol_rows_backfilled as migrate
 
-    return migrate(
-        conn,
-        seconds=_LEGACY_SYMBOL_MIGRATION_SECONDS,
-        row_budget=_LEGACY_SYMBOL_MIGRATION_ROW_BUDGET,
-        input_byte_budget=_LEGACY_SYMBOL_MIGRATION_INPUT_BYTE_BUDGET,
-        symbol_budget=_LEGACY_SYMBOL_MIGRATION_SYMBOL_BUDGET,
-        cell_byte_budget=_LEGACY_SYMBOL_MIGRATION_CELL_BYTE_BUDGET,
-        schema_byte_budget=_LEGACY_SYMBOL_MIGRATION_SCHEMA_BYTE_BUDGET,
-        marker_key=_LEGACY_SYMBOL_MIGRATION_MARKER,
-        marker_value=_LEGACY_SYMBOL_MIGRATION_MARKER_VALUE,
-        exact_validator=_symbol_projection_is_exact,
-        require_fts=require_fts,
-    )
+    try:
+        return migrate(
+            conn,
+            seconds=_LEGACY_SYMBOL_MIGRATION_SECONDS,
+            row_budget=_LEGACY_SYMBOL_MIGRATION_ROW_BUDGET,
+            input_byte_budget=_LEGACY_SYMBOL_MIGRATION_INPUT_BYTE_BUDGET,
+            symbol_budget=_LEGACY_SYMBOL_MIGRATION_SYMBOL_BUDGET,
+            cell_byte_budget=_LEGACY_SYMBOL_MIGRATION_CELL_BYTE_BUDGET,
+            schema_byte_budget=_LEGACY_SYMBOL_MIGRATION_SCHEMA_BYTE_BUDGET,
+            marker_key=_LEGACY_SYMBOL_MIGRATION_MARKER,
+            marker_value=_LEGACY_SYMBOL_MIGRATION_MARKER_VALUE,
+            exact_validator=_symbol_projection_is_exact,
+            require_fts=require_fts,
+        )
+    except sqlite3.OperationalError as exc:
+        # Oversized legacy payloads must remain openable so index_project can
+        # perform its normal full projection repair.  Catch only migration's
+        # explicit incomplete outcomes; corruption and unrelated SQLite errors
+        # continue to fail closed.
+        if not allow_incomplete or str(exc) not in {
+            "LEGACY_SYMBOL_MIGRATION_BUDGET",
+            "LEGACY_SYMBOL_PROJECTION_INVALID",
+        }:
+            raise
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS ast_cache_metadata "
+            "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS ast_symbol_projection_state ("
+            "file_path TEXT PRIMARY KEY, content_hash TEXT NOT NULL, "
+            "symbol_count INTEGER NOT NULL CHECK(symbol_count >= 0), "
+            "projection_digest TEXT NOT NULL)"
+        )
+        conn.execute("DELETE FROM ast_symbol_projection_state")
+        conn.execute(
+            "DELETE FROM ast_cache_metadata WHERE key = ?",
+            (_LEGACY_SYMBOL_MIGRATION_MARKER,),
+        )
+        return False

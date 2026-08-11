@@ -22,7 +22,7 @@ from .index_source_scope import (
     parse_source_scope_descriptor,
     validate_full_index_source_scope,
 )
-from .index_source_stream import hash_source_at
+from .index_source_stream import hash_source_at, opened_entry_matches
 from .indexing_limits import KNOWLEDGE_INDEX_MAX_FILES
 from .languages.lang_extension_map import EXT_TO_LANG
 
@@ -281,11 +281,14 @@ def _inventory(
     supported_count = 0
     directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
     directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+    root_before = os.stat(root, follow_symlinks=False)
     root_fd = os.open(root, directory_flags)
     try:
         root_info = os.fstat(root_fd)
         if not stat.S_ISDIR(root_info.st_mode):
             raise OSError("source root is not a directory")
+        if not opened_entry_matches(root_before, root_info):
+            return frozenset(), True
         scope_roots: list[tuple[int, str]] = []
         try:
             for relative_root in scope.roots:
@@ -301,11 +304,22 @@ def _inventory(
                     raise OSError("source root escapes project")
                 current = os.dup(root_fd)
                 try:
+                    scope_root_safe = True
                     for part in parts:
+                        before = os.stat(part, dir_fd=current, follow_symlinks=False)
                         child = os.open(part, directory_flags, dir_fd=current)
+                        child_info = os.fstat(child)
+                        if not opened_entry_matches(before, child_info):
+                            os.close(child)
+                            unsafe = True
+                            scope_root_safe = False
+                            break
                         os.close(current)
                         current = child
-                    scope_roots.append((current, "/".join(parts)))
+                    if scope_root_safe:
+                        scope_roots.append((current, "/".join(parts)))
+                    else:
+                        os.close(current)
                 except Exception:
                     os.close(current)
                     raise
@@ -343,7 +357,9 @@ def _inventory(
                                 continue
                             try:
                                 child_info = os.fstat(child_fd)
-                                if not stat.S_ISDIR(child_info.st_mode):
+                                if not stat.S_ISDIR(
+                                    child_info.st_mode
+                                ) or not opened_entry_matches(info, child_info):
                                     unsafe = True
                                     os.close(child_fd)
                                     continue

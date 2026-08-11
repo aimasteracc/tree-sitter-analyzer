@@ -141,6 +141,37 @@ def _walk_source_files(project_root: str) -> Iterator[str]:
                 yield os.path.join(dirpath, fname)
 
 
+def _bounded_selected_supported_paths(
+    project_root: str,
+    max_files: int,
+    language_filter: str | None,
+    exclude_patterns: frozenset[str] | None,
+) -> set[str] | None:
+    """Rediscover the candidate-less run's exact bounded persisted path scope."""
+    selected: set[str] = set()
+    count = 0
+    for abs_path in _walk_source_files(project_root):
+        if count >= max_files:
+            return None
+        count += 1
+        rel_path = _normalize_relative_path(os.path.relpath(abs_path, project_root))
+        if exclude_patterns and any(
+            fnmatch.fnmatch(rel_path, pattern) for pattern in exclude_patterns
+        ):
+            continue
+        language = _language_from_ext(abs_path)
+        if language is None or (
+            language_filter is not None and language != language_filter
+        ):
+            continue
+        try:
+            os.stat(abs_path)
+        except OSError:
+            return None
+        selected.add(rel_path)
+    return selected
+
+
 def _warn_unwired_plugin_extension(abs_path: str) -> None:
     """Emit the existing one-time warning for unsupported plugin extensions."""
     ext = os.path.splitext(abs_path)[1].lower()
@@ -986,11 +1017,11 @@ def run_index_project(
             if candidate_snapshot is not None
             else {}
         )
-        frozen_read_deadline = (
-            candidate_snapshot.frozen_read_deadline
-            if candidate_snapshot is not None
-            else None
-        )
+        # The snapshot-wide absolute deadline protects only freeze/pre-clear
+        # validation.  Once the destructive clear is authorized, every immutable
+        # worker gets its own bounded read window so a long parse/build cannot
+        # expire later frozen inputs before their reads begin.
+        frozen_read_deadline = None
         workers = cache._resolve_worker_count(workers, candidates)
         if workers and workers >= 2 and len(candidates) >= 2:
             results = index_parallel(
@@ -1103,10 +1134,18 @@ def run_index_project(
                 )
             conn.commit()
             # The operation-boundary validator detected the repair and forced
-            # every canonical file through the writer path.  Certify the repaired
-            # ordinary rows and real FTS terms before any manifest can be stamped.
-            if not symbol_projection_is_exact(conn, require_fts=cache.fts5_available):
+            # every canonical file through the writer path.  The bounded migration
+            # certifier publishes the projection marker only after exact payload,
+            # state, and FTS validation; an oversized repair remains incomplete.
+            from ..index_snapshot_symbols import ensure_symbol_rows_backfilled
+
+            if not ensure_symbol_rows_backfilled(
+                conn,
+                require_fts=cache.fts5_available,
+                allow_incomplete=True,
+            ):
                 stats["backfill_errors"] = stats.get("backfill_errors", 0) + 1
+            conn.commit()
         frozen_epoch = bool(
             candidate_snapshot is not None
             and all(
@@ -1165,7 +1204,13 @@ def run_index_project(
             _clear_call_graph_built(conn)
             post_index_backfill(cache, stats)
             if stats.get("backfill_errors", 0) == 0 and _candidate_paths_are_exact(
-                conn, candidate_snapshot, stats
+                cache,
+                conn,
+                candidate_snapshot,
+                stats,
+                max_files,
+                language_filter,
+                effective_exclude,
             ):
                 try:
                     _mark_call_graph_built_strict(conn)
@@ -1233,9 +1278,13 @@ def _prune_to_selected_scope(
 
 
 def _candidate_paths_are_exact(
+    cache: Any,
     conn: sqlite3.Connection,
     candidate: IndexCandidateSnapshot | None,
     stats: Mapping[str, Any],
+    max_files: int,
+    language_filter: str | None,
+    exclude_patterns: frozenset[str] | None,
 ) -> bool:
     paths = {
         _normalize_relative_path(str(row[0]))
@@ -1253,10 +1302,16 @@ def _candidate_paths_are_exact(
         and (stats.get("changed_during_run", 0) == 0 or frozen_epoch)
     )
     if candidate is None:
-        # Persisted exclusions and unsupported extensions are outside this
-        # run's source scope. Language filters are counted as incomplete skips
-        # because the call-graph marker is process-global, not scope-bound.
-        return run_is_complete
+        # A cached legacy run may still contain rows for sources deleted since
+        # its previous marker.  Reapply the same bounded max/exclude/language
+        # selection semantics and certify only exact persisted path equality.
+        discovered = _bounded_selected_supported_paths(
+            cache.project_root,
+            max_files,
+            language_filter,
+            exclude_patterns,
+        )
+        return bool(run_is_complete and discovered is not None and paths == discovered)
     selected = {entry.rel_path for entry in candidate.selected_entries}
     return bool(
         run_is_complete

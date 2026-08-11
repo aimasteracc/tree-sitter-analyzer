@@ -252,7 +252,7 @@ def test_recorded_rows_rejects_untyped_count():
             return self
 
         def fetchone(self):
-            return ("1", 1, 1, 3)
+            return ("1", 1, 1, 1, 3)
 
     with pytest.raises(OverflowError, match="SOURCE_INVENTORY_BUDGET"):
         source.recorded_source_rows(UntypedPreflight())  # type: ignore[arg-type]

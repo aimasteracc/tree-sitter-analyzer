@@ -891,3 +891,33 @@ def test_language_filtered_run_cannot_stamp_global_call_graph_marker(
         assert manifest_count == 0
     finally:
         cache.close()
+
+
+def test_deleted_stale_row_cannot_certify_candidate_less_cached_run(
+    tmp_path: Path,
+) -> None:
+    # PR #1253 thread 3760944092: persisted paths must equal bounded discovery.
+    first_source = tmp_path / "a.py"
+    deleted_source = tmp_path / "deleted.py"
+    first_source.write_text("def a():\n    return 1\n", encoding="utf-8")
+    deleted_source.write_text("def deleted():\n    return 2\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        initial = cache.index_project(workers=0)
+        assert initial["indexed"] == 2
+        deleted_source.unlink()
+        callgraph_state.clear_call_graph_built(cache.get_conn())
+
+        rerun = cache.index_project(workers=0)
+        persisted = {
+            str(row[0])
+            for row in cache.get_conn().execute("SELECT file_path FROM ast_index")
+        }
+
+        assert (rerun["cached"], persisted, cache.call_graph_built()) == (
+            1,
+            {"a.py", "deleted.py"},
+            False,
+        )
+    finally:
+        cache.close()
