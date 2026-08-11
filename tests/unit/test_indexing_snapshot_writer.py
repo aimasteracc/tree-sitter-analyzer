@@ -225,6 +225,28 @@ def test_supported_symlink_is_candidate_error_and_never_selected(tmp_path):
     ) == (0, 1, "error", "supported source is symlinked or non-regular")
 
 
+def test_unsupported_symlink_does_not_claim_later_supported_target(tmp_path):
+    # PR #1253 review 3759391285: unsupported aliases are advisory-only.
+    target = tmp_path / "target.py"
+    target.write_text("value = 1\n")
+    linked = tmp_path / "linked.txt"
+    try:
+        linked.symlink_to(target)
+    except OSError:
+        pytest.skip("GH-1253: symlink creation unavailable")
+
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: [str(linked), str(target)],
+        language_fn=_python_language,
+    )
+
+    assert [entry.decision for entry in snapshot.entries] == ["skipped", "selected"]
+    assert [entry.rel_path for entry in snapshot.selected_entries] == ["target.py"]
+
+
 def test_validate_selected_symlink_is_rejected(tmp_path):
     # PR #1253: forged selected symlink candidates cannot reach certification.
     from tree_sitter_analyzer.indexing_snapshot import validate_index_candidate_snapshot

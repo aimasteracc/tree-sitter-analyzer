@@ -679,6 +679,52 @@ def _revalidate_committed_snapshot(
         _record_snapshot_change(stats, rel_path, change_reason)
 
 
+def _unsafe_force_snapshot_result(
+    candidate_snapshot: IndexCandidateSnapshot,
+    activation_enabled: bool,
+    *,
+    changed: list[tuple[IndexSnapshotEntry, str]] | None = None,
+) -> dict[str, Any]:
+    """Return a terminal force result before any persistent state is touched."""
+    changed = changed or []
+    discovery_details = [
+        {
+            "file": entry.rel_path,
+            "status": "error",
+            "reason": entry.reason or "candidate discovery failed",
+        }
+        for entry in candidate_snapshot.entries
+        if entry.decision == "error"
+    ]
+    changed_details = [
+        {"file": entry.rel_path, "status": "error", "reason": reason}
+        for entry, reason in changed
+    ]
+    errors = max(1, candidate_snapshot.errors + len(changed_details))
+    return {
+        "mode_used": "full",
+        "verdict": "WARN",
+        "abort_remaining_phases": True,
+        "indexed": 0,
+        "cached": 0,
+        "errors": errors,
+        "skipped": candidate_snapshot.skipped,
+        "incomplete_skips": candidate_snapshot.skipped + len(changed_details),
+        "processed": 0,
+        "changed_during_run": len(changed_details),
+        "changed_during_run_files": [detail["file"] for detail in changed_details],
+        "files": discovery_details + changed_details,
+        "activation_enabled": activation_enabled,
+        "truncated_by_max_files": candidate_snapshot.truncated_by_max_files,
+        "snapshot_metrics": candidate_snapshot.metrics(),
+        "manifest_warning": (
+            "INDEX_CANDIDATE_SNAPSHOT_CHANGED"
+            if changed_details
+            else "INDEX_CANDIDATE_SNAPSHOT_INCOMPLETE"
+        ),
+    }
+
+
 def run_index_project(
     cache: Any,
     max_files: int = 20_000,
@@ -746,35 +792,9 @@ def run_index_project(
             or not candidate_snapshot.discovery_reconciled
         )
         if snapshot_is_unsafe:
-            # A forced rebuild clears every persisted generation before writing the
-            # selected snapshot.  An incomplete discovery can never authorize that
-            # destructive transition: preserve the last coherent database exactly.
-            discovery_errors = max(1, candidate_snapshot.errors)
-            return {
-                "mode_used": "full",
-                "verdict": "WARN",
-                "indexed": 0,
-                "cached": 0,
-                "errors": discovery_errors,
-                "skipped": candidate_snapshot.skipped,
-                "incomplete_skips": candidate_snapshot.skipped,
-                "processed": 0,
-                "changed_during_run": 0,
-                "changed_during_run_files": [],
-                "files": [
-                    {
-                        "file": entry.rel_path,
-                        "status": "error",
-                        "reason": entry.reason or "candidate discovery failed",
-                    }
-                    for entry in candidate_snapshot.entries
-                    if entry.decision == "error"
-                ],
-                "activation_enabled": activation_enabled,
-                "truncated_by_max_files": candidate_snapshot.truncated_by_max_files,
-                "snapshot_metrics": candidate_snapshot.metrics(),
-                "manifest_warning": "INDEX_CANDIDATE_SNAPSHOT_INCOMPLETE",
-            }
+            # An incomplete discovery cannot authorize a destructive transition.
+            return _unsafe_force_snapshot_result(candidate_snapshot, activation_enabled)
+
     rebuild_signaled = False
     try:
         if force:
@@ -787,6 +807,21 @@ def run_index_project(
             # DELETE/commit itself raises (e.g. SQLITE_FULL) — otherwise a
             # failed rebuild would leave a stuck marker until TTL expiry.
             conn = cache._get_conn()
+            if candidate_snapshot is not None:
+                # Last authorization check, adjacent to the destructive clear and
+                # still inside the index owner's call boundary.  Secure re-open and
+                # content hashing catch edits, deletes, and regular-file type swaps.
+                changed = [
+                    (entry, reason)
+                    for entry in candidate_snapshot.selected_entries
+                    if (reason := changed_since_snapshot(entry)) is not None
+                ]
+                if changed:
+                    return _unsafe_force_snapshot_result(
+                        candidate_snapshot,
+                        activation_enabled,
+                        changed=changed,
+                    )
             had_call_graph = cache.call_graph_built()
             _mark_build_in_progress(conn)
             rebuild_signaled = True

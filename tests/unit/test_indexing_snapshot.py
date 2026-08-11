@@ -205,6 +205,24 @@ def test_snapshot_detects_deletion(tmp_path):
     assert changed_since_snapshot(entry) == "file disappeared after candidate snapshot"
 
 
+def test_snapshot_detects_regular_file_type_swap(tmp_path):
+    # PR #1253 review 3759391262: a special-file swap is unsafe before clear.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+    )
+    entry = snapshot.selected_entries[0]
+    path.unlink()
+    path.mkdir()
+
+    assert changed_since_snapshot(entry) == "file changed after candidate snapshot"
+
+
 def test_non_selected_entry_never_reports_snapshot_change(tmp_path):
     # PR #1172 review 2026-07-27: validation covers every snapshot decision.
     entry = IndexSnapshotEntry(

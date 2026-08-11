@@ -2179,6 +2179,54 @@ def test_file_invalidation_rolls_back_marker_clear_failure(tmp_path):
     assert after == before
 
 
+@requires_posix_fd
+def test_force_snapshot_edit_aborts_before_any_database_table_changes(tmp_path):
+    # PR #1253 review 3759391262: force-clear authorization is content-bound.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    snapshot = _snapshot(tmp_path, path)
+    before = "\n".join(cache.get_conn().iterdump())
+    path.write_text("value = 2\n")
+
+    try:
+        result = cache.index_project(
+            max_files=10, force=True, candidate_snapshot=snapshot
+        )
+        after = "\n".join(cache.get_conn().iterdump())
+    finally:
+        cache.close()
+
+    assert (result["verdict"], result["abort_remaining_phases"]) == ("WARN", True)
+    assert result["changed_during_run_files"] == ["app.py"]
+    assert after == before
+
+
+@requires_posix_fd
+def test_force_snapshot_delete_aborts_before_any_database_table_changes(tmp_path):
+    # PR #1253 review 3759391262: deletion cannot authorize a force clear.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    snapshot = _snapshot(tmp_path, path)
+    before = "\n".join(cache.get_conn().iterdump())
+    path.unlink()
+
+    try:
+        result = cache.index_project(
+            max_files=10, force=True, candidate_snapshot=snapshot
+        )
+        after = "\n".join(cache.get_conn().iterdump())
+    finally:
+        cache.close()
+
+    assert (result["verdict"], result["abort_remaining_phases"]) == ("WARN", True)
+    assert result["changed_during_run_files"] == ["app.py"]
+    assert after == before
+
+
 def test_force_rebuild_clear_failure_preserves_existing_index(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")

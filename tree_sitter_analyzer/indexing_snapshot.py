@@ -356,16 +356,12 @@ def build_index_candidate_snapshot(
             )
             continue
 
-        resolved_path = os.path.realpath(abs_path)
-        if not Path(resolved_path).is_relative_to(resolved_root):
-            raise ValueError(f"candidate path escapes project root: {raw_path}")
-        if resolved_path in resolved_paths:
-            continue
-        resolved_paths.add(resolved_path)
-        discovered += 1
-        present_paths.add(rel_path)
-
+        # Unsupported extensions are advisory-only and must never claim the
+        # canonical target of a later supported path (including symlink aliases).
+        # Lexical exclusions have already run, so neither class influences de-dup.
         if language is None:
+            discovered += 1
+            present_paths.add(rel_path)
             skipped += 1
             entries.append(
                 IndexSnapshotEntry(
@@ -377,6 +373,16 @@ def build_index_candidate_snapshot(
                 )
             )
             continue
+
+        resolved_path = os.path.realpath(abs_path)
+        if not Path(resolved_path).is_relative_to(resolved_root):
+            raise ValueError(f"candidate path escapes project root: {raw_path}")
+        if resolved_path in resolved_paths:
+            continue
+        resolved_paths.add(resolved_path)
+        discovered += 1
+        present_paths.add(rel_path)
+
         if language_filter is not None and language != language_filter:
             skipped += 1
             entries.append(
@@ -448,30 +454,44 @@ def build_index_candidate_snapshot(
 
 
 def changed_since_snapshot(entry: IndexSnapshotEntry) -> str | None:
-    """Return a stable skip reason when a selected file changed or disappeared."""
+    """Securely compare a selected file with its captured identity and content."""
     fingerprint = entry.fingerprint
     if entry.decision != "selected" or fingerprint is None:
         return None
     try:
-        current = IndexFileFingerprint.from_stat(
-            os.stat(entry.abs_path, follow_symlinks=False)
+        current_stat = os.stat(entry.abs_path, follow_symlinks=False)
+        if not stat.S_ISREG(current_stat.st_mode):
+            return "file changed after candidate snapshot"
+        root = entry.abs_path
+        for _part in Path(entry.rel_path).parts:
+            root = os.path.dirname(root)
+        current = (
+            _capture_candidate_fingerprint(
+                root,
+                entry.rel_path,
+                current_stat,
+                time.monotonic() + _INDEX_SOURCE_READ_SECONDS,
+            )
+            if os.name == "posix"
+            else IndexFileFingerprint.from_stat(current_stat)
         )
-    except OSError:
+    except (OSError, SourceOracleError):
         return "file disappeared after candidate snapshot"
     if (
         current.mtime_ns,
-        current.ctime_ns,
         current.file_size,
         current.device,
         current.inode,
         current.mode,
     ) != (
         fingerprint.mtime_ns,
-        fingerprint.ctime_ns,
         fingerprint.file_size,
         fingerprint.device,
         fingerprint.inode,
         fingerprint.mode,
+    ) or (
+        bool(fingerprint.content_hash)
+        and current.content_hash != fingerprint.content_hash
     ):
         return "file changed after candidate snapshot"
     return None

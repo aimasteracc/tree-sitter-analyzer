@@ -57,6 +57,13 @@ from .index_source_snapshot import (
 )
 
 ACTION_VERSION = "index.status/v1"
+
+
+def _close_pinned_descriptor(fd: int) -> None:
+    """Module-local seam for independently closing one pinned handle."""
+    os.close(fd)
+
+
 _MAX_SNAPSHOTS = 16
 _MAX_CHARGED_BYTES = 512 * 1024 * 1024
 _TTL_SECONDS = 35.0
@@ -406,7 +413,13 @@ def _capture_existing_snapshot(
                 evidence.close()
             if handles is not None:
                 for fd in reversed(handles):
-                    os.close(fd)
+                    try:
+                        _close_pinned_descriptor(fd)
+                    except OSError:
+                        # Every pinned descriptor owns an independent resource;
+                        # one cleanup failure must not leak the remaining chain or
+                        # replace the already-determined snapshot classification.
+                        pass
     finally:
         _CAPTURE_LOCK.release()
 

@@ -58,6 +58,29 @@ class TestAuthoritativeSnapshotOracle:
         stamp_full_index_manifest(cache.get_conn(), str(root))
         cache.close()
 
+    def test_descriptor_cleanup_continues_after_first_close_error(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 review 3759391278: pinned handles are independent resources.
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        self._certified_cache(tmp_path)
+        original_close = owner.os.close
+        attempted: list[int] = []
+
+        def flaky_close(fd: int) -> None:
+            attempted.append(fd)
+            if len(attempted) == 1:
+                raise OSError("simulated close failure")
+            original_close(fd)
+
+        monkeypatch.setattr(owner, "_close_pinned_descriptor", flaky_close)
+        result = owner.read_existing_snapshot(str(tmp_path))
+        original_close(attempted[0])
+
+        assert result.completeness == "complete"
+        assert len(attempted) == 3
+
     @pytest.mark.asyncio
     async def test_public_facade_defaults_to_read_existing_without_creation(
         self, tmp_path

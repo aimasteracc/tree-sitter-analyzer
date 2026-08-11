@@ -96,6 +96,7 @@ class ASTCacheSurface:
     _parser: Parser
     _fts5_available: bool | None
     _extractor_version: int
+    _index_lock: Any
 
     def _get_conn(self) -> sqlite3.Connection:
         raise NotImplementedError

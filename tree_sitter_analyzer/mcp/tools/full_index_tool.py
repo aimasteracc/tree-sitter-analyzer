@@ -340,6 +340,38 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             source_scope=source_scope,
         )
         phases["ast_cache"] = ast_phase
+        if ast_phase.get("abort_remaining_phases") is True:
+            # The force pre-clear authorization failed.  Do not construct another
+            # cache owner: incremental sync, backfills, stats helpers, and final
+            # manifest stamping are all forbidden write opportunities here.
+            phases["remaining_phases"] = {
+                "status": "skipped",
+                "reason": "unsafe force snapshot; no write phases were run",
+            }
+            elapsed = round(time.monotonic() - t_start, 3)
+            summary_line = "codegraph_full_index: unsafe force snapshot; phases aborted"
+            result = {
+                "success": True,
+                "verdict": "WARN",
+                "summary_line": summary_line,
+                "agent_summary": {
+                    "verdict": "WARN",
+                    "summary_line": summary_line,
+                },
+                "mode": mode,
+                "elapsed_seconds": elapsed,
+                "phases": phases,
+                "candidate_snapshot": {
+                    **candidate_snapshot.metrics(),
+                    "processed": 0,
+                    "changed_during_run": int(ast_phase.get("changed_during_run", 0)),
+                    "changed_during_run_files": list(
+                        ast_phase.get("changed_during_run_files", [])
+                    )[:_ERROR_DETAILS_CAP],
+                },
+            }
+            return apply_toon_format_to_response(result, output_format)
+
         incremental_phase = self._phase_incremental_sync(
             max_files,
             exclude_patterns,
@@ -390,7 +422,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             top_verdict = "WARN"
         summary_line = f"codegraph_full_index: completed with {top_verdict.lower()}"
 
-        result: dict[str, Any] = {
+        result = {
             "success": True,
             "verdict": top_verdict,
             "summary_line": summary_line,
@@ -484,6 +516,9 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                     or int(result.get("backfill_errors", 0)) > 0
                     or error_summary["error_details_total"] > 0
                     else "ok"
+                ),
+                "abort_remaining_phases": bool(
+                    result.get("abort_remaining_phases", False)
                 ),
                 "elapsed_seconds": elapsed,
                 "files_indexed": indexed,

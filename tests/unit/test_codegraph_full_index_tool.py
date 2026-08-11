@@ -519,16 +519,44 @@ class TestExecute:
             }
         )
 
-        assert _cache_total_files(tmp_path) == 1
+        assert _cache_total_files(tmp_path) == 0
         assert result["verdict"] == "WARN"
         assert result["phases"]["ast_cache"]["truncated_by_max_files"] is True
         assert result["phases"]["ast_cache"]["errors"] == 1
-        assert result["phases"]["incremental_sync"]["truncated_by_max_files"] is True
+        assert result["phases"]["ast_cache"]["abort_remaining_phases"] is True
+        assert result["phases"]["remaining_phases"]["status"] == "skipped"
+        assert "incremental_sync" not in result["phases"]
         assert result["candidate_snapshot"]["discovered"] == 2
         assert result["candidate_snapshot"]["selected"] == 1
         assert result["candidate_snapshot"]["limited_by_max_files"] == 1
         assert result["candidate_snapshot"]["discovery_reconciled"] is True
-        assert result["candidate_snapshot"]["phase_totals_reconciled"] is False
+
+    async def test_unsafe_force_abort_never_calls_incremental_or_final_writes(
+        self, tmp_path
+    ):
+        # PR #1253 review 3759391272: terminal force results stop the pipeline.
+        (tmp_path / "app.py").write_text("value = 1\n")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+
+        with (
+            patch.object(
+                full_tool,
+                "_phase_ast_cache",
+                return_value={
+                    "status": "error",
+                    "abort_remaining_phases": True,
+                    "changed_during_run": 1,
+                    "changed_during_run_files": ["app.py"],
+                },
+            ),
+            patch.object(full_tool, "_phase_incremental_sync") as incremental,
+            patch.object(full_tool, "_collect_final_stats") as final_stats,
+        ):
+            result = await full_tool.execute({"mode": "full", "output_format": "json"})
+
+        incremental.assert_not_called()
+        final_stats.assert_not_called()
+        assert result["phases"]["remaining_phases"]["status"] == "skipped"
 
     async def test_full_index_walks_project_once_for_both_phases(self, tmp_path):
         import tree_sitter_analyzer.mcp.tools.full_index_tool as full_index_module

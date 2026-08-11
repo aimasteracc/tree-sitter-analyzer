@@ -239,19 +239,23 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         certify_manifest: bool = True,
     ) -> dict[str, Any]:
         """Index every source file below the project root."""
-        return _indexer.run_index_project(
-            self,
-            max_files,
-            force,
-            workers=workers,
-            resolve_only=resolve_only,
-            include_activation=include_activation,
-            language_filter=language_filter,
-            exclude_patterns=exclude_patterns,
-            candidate_snapshot=candidate_snapshot,
-            source_scope=source_scope,
-            certify_manifest=certify_manifest,
-        )
+        # One cache owner serializes validation, destructive clear, and writes.
+        # SQLite still arbitrates across processes; this lock closes the in-owner
+        # thread window between the final source authorization and the clear.
+        with self._index_lock:
+            return _indexer.run_index_project(
+                self,
+                max_files,
+                force,
+                workers=workers,
+                resolve_only=resolve_only,
+                include_activation=include_activation,
+                language_filter=language_filter,
+                exclude_patterns=exclude_patterns,
+                candidate_snapshot=candidate_snapshot,
+                source_scope=source_scope,
+                certify_manifest=certify_manifest,
+            )
 
     def _post_index_backfill(self, stats: dict[str, Any]) -> None:
         """Run graph backfills after project indexing."""
