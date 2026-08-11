@@ -145,10 +145,9 @@ def build_index_candidate_snapshot(
 ) -> IndexCandidateSnapshot:
     """Walk once and freeze file ordering, scope decisions, and fingerprints.
 
-    The max-files window is applied before exclusions to preserve the public
-    indexing contract. Files beyond the window are still counted and retained
-    in ``present_paths`` so deletion detection does not mistake an unselected
-    live file for a deleted one.
+    Supported paths are validated as yielded, before canonical-path de-duplication.
+    This prevents a regular path followed by a symlink alias from hiding unsafe
+    source-scope evidence.
     """
     normalized_max = normalize_index_max_files(max_files)
     logical_root = os.path.abspath(project_root)
@@ -160,39 +159,50 @@ def build_index_candidate_snapshot(
 
     for raw_path in walk_fn(logical_root):
         abs_path = os.path.abspath(raw_path)
+        rel_path = os.path.relpath(abs_path, logical_root)
+        if os.name == "nt":
+            rel_path = rel_path.replace("\\", "/")
+        language = language_fn(abs_path)
+        source_info: os.stat_result | None = None
+        invalid_reason: str | None = None
+        if language is not None:
+            if os.name == "posix" and "\\" in rel_path:
+                invalid_reason = "supported source path contains a literal backslash"
+            else:
+                try:
+                    source_info = os.stat(abs_path, follow_symlinks=False)
+                except OSError as exc:
+                    invalid_reason = str(exc)
+                else:
+                    if not stat.S_ISREG(source_info.st_mode):
+                        invalid_reason = "supported source is symlinked or non-regular"
+        if invalid_reason is not None:
+            discovered += 1
+            present_paths.add(rel_path)
+            errors += 1
+            entries.append(
+                IndexSnapshotEntry(
+                    abs_path=abs_path,
+                    rel_path=rel_path,
+                    language=language,
+                    decision="error",
+                    reason=invalid_reason,
+                )
+            )
+            continue
+
         resolved_path = os.path.realpath(abs_path)
         if not Path(resolved_path).is_relative_to(resolved_root):
             raise ValueError(f"candidate path escapes project root: {raw_path}")
         if resolved_path in resolved_paths:
             continue
         resolved_paths.add(resolved_path)
-        rel_path = os.path.relpath(abs_path, logical_root)
-        if os.name == "nt":
-            rel_path = rel_path.replace("\\", "/")
         discovered += 1
         present_paths.add(rel_path)
 
         if discovered > normalized_max:
             limited += 1
             continue
-
-        if (
-            os.name == "posix"
-            and "\\" in rel_path
-            and language_fn(abs_path) is not None
-        ):
-            errors += 1
-            entries.append(
-                IndexSnapshotEntry(
-                    abs_path=abs_path,
-                    rel_path=rel_path,
-                    language=language_fn(abs_path),
-                    decision="error",
-                    reason="supported source path contains a literal backslash",
-                )
-            )
-            continue
-
         if any(fnmatch.fnmatch(rel_path, pattern) for pattern in exclude_patterns):
             excluded += 1
             entries.append(
@@ -205,8 +215,6 @@ def build_index_candidate_snapshot(
                 )
             )
             continue
-
-        language = language_fn(abs_path)
         if language is None:
             skipped += 1
             entries.append(
@@ -232,34 +240,8 @@ def build_index_candidate_snapshot(
             )
             continue
 
-        try:
-            source_info = os.stat(abs_path, follow_symlinks=False)
-        except OSError as exc:
-            errors += 1
-            entries.append(
-                IndexSnapshotEntry(
-                    abs_path=abs_path,
-                    rel_path=rel_path,
-                    language=language,
-                    decision="error",
-                    reason=str(exc),
-                )
-            )
-            continue
-        if not stat.S_ISREG(source_info.st_mode):
-            errors += 1
-            entries.append(
-                IndexSnapshotEntry(
-                    abs_path=abs_path,
-                    rel_path=rel_path,
-                    language=language,
-                    decision="error",
-                    reason="supported source is symlinked or non-regular",
-                )
-            )
-            continue
-        fingerprint = IndexFileFingerprint.from_stat(source_info)
-
+        # Supported candidates were lstat-validated before realpath de-duplication.
+        assert source_info is not None
         selected += 1
         entries.append(
             IndexSnapshotEntry(
@@ -267,7 +249,7 @@ def build_index_candidate_snapshot(
                 rel_path=rel_path,
                 language=language,
                 decision="selected",
-                fingerprint=fingerprint,
+                fingerprint=IndexFileFingerprint.from_stat(source_info),
             )
         )
 

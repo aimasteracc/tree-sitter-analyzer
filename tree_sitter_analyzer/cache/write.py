@@ -353,7 +353,7 @@ def write_graph_edges_for_file(
     call_edges: list[dict[str, Any]],
     *,
     preserve_calls: bool = False,
-) -> None:
+) -> bool:
     """Refresh unified EdgeStore rows derived from one indexed file.
 
     ``preserve_calls=True`` rebuilds only the structural edges (EXTENDS /
@@ -374,7 +374,7 @@ def write_graph_edges_for_file(
         from ..synapse_resolver import parse_imports
     except Exception as exc:  # pragma: no cover
         logger.debug("edge store import failed for %s: %s", rel_path, exc)
-        return
+        return False
 
     symbol_items = symbols.get("symbols", [])
     class_nodes = {
@@ -473,3 +473,5 @@ def write_graph_edges_for_file(
         )
     except sqlite3.OperationalError as exc:
         logger.debug("edge store write failed for %s: %s", rel_path, exc)
+        return False
+    return True

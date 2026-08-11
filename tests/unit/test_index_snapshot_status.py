@@ -497,3 +497,27 @@ class TestAuthoritativeSnapshotOracle:
             cache.close()
 
         assert count == 0
+
+
+@requires_posix_snapshot
+def test_stamp_rejects_new_source_and_deletes_old_manifest(tmp_path):
+    # PR #1253 review thread 2083: post-build additions prevent certification.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
+
+    source = tmp_path / "sample.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
+    (tmp_path / "late.py").write_text("late = True\n")
+
+    with pytest.raises(sqlite3.OperationalError, match="^SOURCE_CHANGED$"):
+        stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
+    count = (
+        cache.get_conn()
+        .execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest")
+        .fetchone()[0]
+    )
+    cache.close()
+    assert count == 0

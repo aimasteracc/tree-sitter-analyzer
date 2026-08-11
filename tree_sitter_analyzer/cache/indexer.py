@@ -247,9 +247,16 @@ def parse_and_write(
     cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
     # CALLS rows live in the unified ``edges`` table (B1.3 — no ast_call_edges).
     # Write the edges first so synapse resolution can UPDATE them in place.
-    _write.write_graph_edges_for_file(
+    if not _write.write_graph_edges_for_file(
         conn, rel_path, language, symbols, imports, call_edges
-    )
+    ):
+        conn.rollback()
+        return {
+            "file": rel_path,
+            "status": "error",
+            "reason": "graph edge write failed",
+            "certification_errors": 1,
+        }
     cache._resolve_call_edges_for_file(conn, rel_path)  # noqa: SLF001
     conn.commit()
     return {
@@ -483,9 +490,10 @@ def insert_index_row(
     symbols = json.loads(r.get("symbols_json", "{}"))
     # CALLS rows live in the unified ``edges`` table (B1.3 — no ast_call_edges).
     # Cross-file / synapse resolution UPDATEs these rows in the post-index pass.
-    _write.write_graph_edges_for_file(
+    if not _write.write_graph_edges_for_file(
         conn, rel_path, r["language"], symbols, imports_list, call_edges
-    )
+    ):
+        raise sqlite3.OperationalError("GRAPH_EDGE_WRITE_FAILED")
     if include_activation:
         cache._write_activation_for_file(conn, rel_path, inserted_symbol_rows)  # noqa: SLF001
     else:

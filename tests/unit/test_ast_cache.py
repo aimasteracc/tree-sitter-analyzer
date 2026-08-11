@@ -2462,3 +2462,47 @@ def test_symbol_row_upgrade_rejects_malformed_legacy_shapes(symbols_json):
     conn.close()
 
     assert table is None
+
+
+def test_single_file_edge_write_failure_is_index_error(tmp_path, monkeypatch):
+    # PR #1253 review thread 2088: primary rows cannot certify without graph edges.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache import write
+
+    source = tmp_path / "sample.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    monkeypatch.setattr(
+        write, "write_graph_edges_for_file", lambda *_args, **_kwargs: False
+    )
+
+    result = cache.index_file(str(source))
+    indexed = cache.get_conn().execute("SELECT COUNT(*) FROM ast_index").fetchone()[0]
+    complete = cache.call_graph_built()
+    cache.close()
+    assert (result["status"], result["certification_errors"], indexed, complete) == (
+        "error",
+        1,
+        0,
+        False,
+    )
+
+
+def test_project_edge_write_failure_rolls_back_batch(tmp_path, monkeypatch):
+    # PR #1253 review thread 2088: worker-result commits propagate edge failure.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache import write
+
+    source = tmp_path / "sample.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    monkeypatch.setattr(
+        write, "write_graph_edges_for_file", lambda *_args, **_kwargs: False
+    )
+
+    with pytest.raises(sqlite3.OperationalError, match="^GRAPH_EDGE_WRITE_FAILED$"):
+        cache.index_project(force=True, workers=1)
+    indexed = cache.get_conn().execute("SELECT COUNT(*) FROM ast_index").fetchone()[0]
+    complete = cache.call_graph_built()
+    cache.close()
+    assert (indexed, complete) == (0, False)

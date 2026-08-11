@@ -326,3 +326,31 @@ class TestPostEncodingFingerprintBudgets:
         with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_BUDGET"):
             schema.index_fingerprint(conn, ".")
         conn.close()
+
+
+def test_schema_inventory_cell_is_bounded_before_text_decode():
+    # PR #1253 review thread 2074: sqlite_master text is length-checked in SQLite.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    class HostileSchemaConnection:
+        def set_progress_handler(self, _handler, _steps):
+            return None
+
+        def execute(self, query):
+            assert "length(CAST(name AS BLOB))" in query
+            return [(schema._SCHEMA_CELL_BYTE_BUDGET + 1, 0)]
+
+    with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_SCHEMA_CELL_BUDGET"):
+        schema.index_fingerprint(HostileSchemaConnection(), ".")
+
+
+def test_schema_inventory_table_count_is_bounded(monkeypatch):
+    # PR #1253 review thread 2074: table inventory cannot grow without bound.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE sample(value TEXT)")
+    monkeypatch.setattr(schema, "_SCHEMA_TABLE_BUDGET", 0)
+    with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_SCHEMA_BUDGET"):
+        schema.index_fingerprint(conn, ".")
+    conn.close()

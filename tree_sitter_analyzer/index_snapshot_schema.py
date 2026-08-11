@@ -12,6 +12,7 @@ from typing import Any
 from .index_source_snapshot import (
     SourceScopeDescriptor,
     canonical_source_scope_descriptor,
+    capture_current_source_snapshot,
     inventory_fingerprint,
     make_source_scope_descriptor,
     recorded_source_rows,
@@ -68,6 +69,9 @@ _FINGERPRINT_ROW_BUDGET = 2_000_000
 _FINGERPRINT_BYTE_BUDGET = 512 * 1024 * 1024
 _FINGERPRINT_CELL_BYTE_BUDGET = 4 * 1024 * 1024
 _FINGERPRINT_ROW_BYTE_BUDGET = 16 * 1024 * 1024
+_SCHEMA_CELL_BYTE_BUDGET = 1024 * 1024
+_SCHEMA_TOTAL_BYTE_BUDGET = 4 * 1024 * 1024
+_SCHEMA_TABLE_BUDGET = 4096
 
 
 def apply_snapshot_migration(conn: sqlite3.Connection, record_fn: Any) -> None:
@@ -103,7 +107,14 @@ def stamp_full_index_manifest(
     scope_json = canonical_source_scope_descriptor(scope)
     source = source_fingerprint(conn, root)
     index = index_fingerprint(conn, root)
-    count = int(conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()[0])
+    recorded = recorded_source_rows(conn)
+    current = capture_current_source_snapshot(root, scope)
+    if current.state != "exact" or current.rows != recorded:
+        conn.rollback()
+        conn.execute("DELETE FROM ast_index_snapshot_manifest")
+        conn.commit()
+        raise sqlite3.OperationalError("SOURCE_CHANGED")
+    count = len(recorded)
     conn.execute("DELETE FROM ast_index_snapshot_manifest")
     conn.execute(
         "INSERT INTO ast_index_snapshot_manifest "
@@ -150,10 +161,13 @@ def index_fingerprint(conn: sqlite3.Connection, root: str) -> str:
     deadline = time.monotonic() + _FINGERPRINT_DEADLINE_SECONDS
     digest = hashlib.sha256(b"tsa-index-sqlite-v2\0")
     _frame(digest, b"root", root.encode("utf-8", "surrogatepass"))
+    _preflight_schema_inventory(conn, deadline)
     inventory = [
         (str(row[0]), str(row[1] or ""))
-        for row in conn.execute(
-            "SELECT name, sql FROM sqlite_master WHERE type='table' ORDER BY name"
+        for row in _deadline_ordered_rows(
+            conn,
+            "SELECT name, sql FROM sqlite_master WHERE type='table' ORDER BY name",
+            deadline,
         )
         if str(row[0]) not in _CONTROL_TABLES
     ]
@@ -190,6 +204,24 @@ def index_fingerprint(conn: sqlite3.Connection, root: str) -> str:
             _frame(digest, b"row", encoded)
             _check_deadline(deadline)
     return "sha256:" + digest.hexdigest()
+
+
+def _preflight_schema_inventory(conn: sqlite3.Connection, deadline: float) -> None:
+    """Bound schema text inside SQLite before Python decodes sqlite_master."""
+    query = (
+        "SELECT length(CAST(name AS BLOB)), length(CAST(sql AS BLOB)) "
+        "FROM sqlite_master WHERE type='table'"
+    )
+    tables = total = 0
+    for row in _deadline_ordered_rows(conn, query, deadline):
+        _check_deadline(deadline)
+        lengths = tuple(0 if value is None else int(value) for value in row)
+        if any(length > _SCHEMA_CELL_BYTE_BUDGET for length in lengths):
+            raise RuntimeError("INDEX_FINGERPRINT_SCHEMA_CELL_BUDGET")
+        tables += 1
+        total += sum(lengths)
+        if tables > _SCHEMA_TABLE_BUDGET or total > _SCHEMA_TOTAL_BYTE_BUDGET:
+            raise RuntimeError("INDEX_FINGERPRINT_SCHEMA_BUDGET")
 
 
 def _preflight_table_rows(

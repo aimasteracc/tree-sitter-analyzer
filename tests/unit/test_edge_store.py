@@ -763,7 +763,7 @@ def test_write_graph_edges_handles_empty_imports_and_missing_parent(
     conn.row_factory = sqlite3.Row
     try:
         EdgeStore(conn)
-        write_graph_edges_for_file(
+        written = write_graph_edges_for_file(
             conn,
             "pkg/sample.py",
             "python",
@@ -784,6 +784,7 @@ def test_write_graph_edges_handles_empty_imports_and_missing_parent(
                 }
             ],
         )
+        assert written is True
         store = EdgeStore(conn)
         kinds = {row["kind"] for row in conn.execute("SELECT kind FROM edges")}
         assert {"calls", "extends", "imports"}.issubset(kinds)
@@ -808,7 +809,7 @@ def test_write_graph_edges_logs_operational_error(
     monkeypatch.setattr(edge_store_module, "EdgeStore", BrokenEdgeStore)
     conn = sqlite3.connect(str(tmp_path / "edges.db"))
     try:
-        write_graph_edges_for_file(
+        written = write_graph_edges_for_file(
             conn,
             "pkg/sample.py",
             "python",
@@ -816,5 +817,6 @@ def test_write_graph_edges_logs_operational_error(
             [],
             [],
         )
+        assert written is False
     finally:
         conn.close()

@@ -188,7 +188,12 @@ def test_snapshot_deduplicates_candidates_after_path_resolution(tmp_path):
             walk_fn=lambda _root: (str(target), str(alias)),
             language_fn=_python_language,
         )
-    assert (snapshot.discovered, snapshot.selected, len(snapshot.entries)) == (1, 1, 1)
+    assert (
+        snapshot.discovered,
+        snapshot.selected,
+        snapshot.errors,
+        tuple(entry.decision for entry in snapshot.entries),
+    ) == (2, 1, 1, ("selected", "error"))
 
 
 def test_ast_partition_consumes_every_frozen_decision(tmp_path):
@@ -727,3 +732,27 @@ def test_windows_snapshot_validation_normalizes_expected_path(tmp_path, monkeypa
     )
 
     snapshot_module.validate_index_candidate_snapshot(str(tmp_path), 10, snapshot)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_regular_candidate_then_symlink_alias_still_records_error(tmp_path):
+    # PR #1253 review thread 2077: realpath de-dup must not hide an unsafe alias.
+    target = tmp_path / "target.py"
+    target.write_text("value = 1\n")
+    linked = tmp_path / "linked.py"
+    linked.symlink_to(target)
+
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: [str(target), str(linked)],
+        language_fn=_python_language,
+    )
+
+    assert (
+        snapshot.discovered,
+        snapshot.selected,
+        snapshot.errors,
+        tuple(entry.decision for entry in snapshot.entries),
+    ) == (2, 1, 1, ("selected", "error"))

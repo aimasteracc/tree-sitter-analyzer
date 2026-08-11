@@ -52,7 +52,7 @@ def _refresh_cached_graph_row(conn: sqlite3.Connection, row: sqlite3.Row) -> boo
     try:
         symbols = json.loads(row["symbols_json"] or "{}")
         imports = json.loads(row["imports_json"] or "[]")
-        _write.write_graph_edges_for_file(
+        if not _write.write_graph_edges_for_file(
             conn,
             row["file_path"],
             row["language"],
@@ -60,7 +60,8 @@ def _refresh_cached_graph_row(conn: sqlite3.Connection, row: sqlite3.Row) -> boo
             imports,
             [],
             preserve_calls=True,
-        )
+        ):
+            return False
     except (json.JSONDecodeError, sqlite3.OperationalError):
         return False
     return True
