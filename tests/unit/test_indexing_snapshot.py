@@ -828,6 +828,19 @@ def test_posix_worker_never_parses_symlink_swap_target(tmp_path, monkeypatch):
     )
 
 
+def test_indexer_classifies_worker_source_changed_without_restat():
+    # PR #1253: worker admission failures propagate as candidate changes.
+    from tree_sitter_analyzer.cache.indexer import _snapshot_result_change_reason
+
+    result = {"rel_path": "app.py", "status": "source_changed"}
+    entry = SimpleNamespace()
+
+    assert _snapshot_result_change_reason(result, {"app.py": entry}) == (
+        "app.py",
+        "file changed after candidate snapshot",
+    )
+
+
 def test_worker_rejects_nonfile_oracle_result(tmp_path, monkeypatch):
     # PR #1253: workers reject special-file oracle responses before parsing.
     from tree_sitter_analyzer.cache import extraction

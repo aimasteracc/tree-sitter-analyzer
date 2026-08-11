@@ -1404,6 +1404,90 @@ def test_late_mutation_unresolves_edges_from_other_files(tmp_path):
     ) == ("target.py", "unknown", "", None, "unknown", "", None)
 
 
+def test_new_file_cleanup_failure_preserves_original_index_error():
+    # Issue #886: failed best-effort cleanup cannot replace the parse failure.
+    class FailingCache:
+        fts5_available = False
+
+        @staticmethod
+        def index_file(_path):
+            raise RuntimeError("parse failed")
+
+    class FailingConnection:
+        @staticmethod
+        def execute(*_args):
+            raise sqlite3.OperationalError("cleanup failed")
+
+    result = IncrementalSync(FailingCache())._index_new_file(
+        "app.py",
+        "/workspace/app.py",
+        FailingConnection(),  # type: ignore[arg-type]
+    )
+
+    assert (result["status"], result["error_message"]) == ("error", "parse failed")
+
+
+def test_modified_file_cleanup_failure_preserves_original_index_error():
+    # Issue #886: modified-file cleanup has the same best-effort contract.
+    class FailingCache:
+        fts5_available = False
+
+        @staticmethod
+        def invalidate(_path):
+            return None
+
+        @staticmethod
+        def index_file(_path):
+            raise RuntimeError("parse failed")
+
+    class FailingConnection:
+        @staticmethod
+        def execute(*_args):
+            raise sqlite3.OperationalError("cleanup failed")
+
+    result = IncrementalSync(FailingCache())._reindex_modified(
+        "app.py",
+        "/workspace/app.py",
+        FailingConnection(),  # type: ignore[arg-type]
+    )
+
+    assert (result["status"], result["error_message"]) == ("error", "parse failed")
+
+
+def test_incremental_stamp_failure_does_not_delete_manifest(tmp_path):
+    # PR #1253 review 3755736546: the stamper exclusively owns failed-epoch cleanup.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    snapshot = _snapshot(tmp_path, path)
+    schema.stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
+    before = (
+        cache.get_conn()
+        .execute("SELECT index_fingerprint FROM ast_index_snapshot_manifest")
+        .fetchone()[0]
+    )
+
+    try:
+        with patch.object(
+            schema,
+            "stamp_full_index_manifest",
+            side_effect=RuntimeError("busy"),
+        ) as stamp:
+            IncrementalSync(cache).sync(max_files=10, candidate_snapshot=snapshot)
+        after = (
+            cache.get_conn()
+            .execute("SELECT index_fingerprint FROM ast_index_snapshot_manifest")
+            .fetchone()[0]
+        )
+    finally:
+        cache.close()
+
+    assert (stamp.call_count, after) == (1, before)
+
+
 def test_modified_base_rebuilds_resolved_hierarchy_edge(tmp_path):
     # PR #1172 review 2026-07-27: incremental sync deleted but never rebuilt it.
     base = tmp_path / "base.py"

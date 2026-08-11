@@ -235,6 +235,7 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         exclude_patterns: frozenset[str] | None = None,
         candidate_snapshot: IndexCandidateSnapshot | None = None,
         source_scope: SourceScopeDescriptor | None = None,
+        certify_manifest: bool = True,
     ) -> dict[str, Any]:
         """Index every source file below the project root."""
         return _indexer.run_index_project(
@@ -248,6 +249,7 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             exclude_patterns=exclude_patterns,
             candidate_snapshot=candidate_snapshot,
             source_scope=source_scope,
+            certify_manifest=certify_manifest,
         )
 
     def _post_index_backfill(self, stats: dict[str, Any]) -> None:

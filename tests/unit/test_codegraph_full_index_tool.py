@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import patch
 
 import pytest
@@ -308,8 +309,25 @@ class TestExecute:
     async def test_synapse_phase_inherits_ast_backfill_failure(self, tool_with_root):
         result = tool_with_root._phase_synapse({"status": "ok", "backfill_errors": 1})
 
-        assert result["status"] == "error"
-        assert result["backfill_errors"] == 1
+        assert (result["status"], result["backfill_errors"]) == ("error", 1)
+
+    async def test_synapse_phase_counts_unresolved_backfill(self, tool_with_root):
+        result = tool_with_root._phase_synapse(
+            {"status": "ok", "unresolved_refs_backfill": {"resolved": 2}}
+        )
+
+        assert result["resolved_edges"] == 2
+
+    async def test_synapse_phase_ignores_non_mapping_backfills(self, tool_with_root):
+        result = tool_with_root._phase_synapse(
+            {
+                "status": "ok",
+                "synapse_backfill": "invalid",
+                "unresolved_refs_backfill": "invalid",
+            }
+        )
+
+        assert result["resolved_edges"] == 0
 
     async def test_default_toon_surfaces_truncation_metadata(self, tool_with_root):
         incremental_phase = {
@@ -922,6 +940,18 @@ class TestErrorTransparency:
         assert phase["errors"] == 0
         assert phase["status"] == "error"
 
+    def test_orchestrated_ast_phase_defers_manifest_certification(self, tool_with_root):
+        # PR #1253 review 3755736551: only the final phase may certify.
+        ast_result = {"indexed": 0, "cached": 0, "errors": 0, "files": []}
+        with patch("tree_sitter_analyzer.ast_cache.ASTCache") as cache_cls:
+            cache_cls.return_value.index_project.return_value = ast_result
+            tool_with_root._phase_ast_cache(False, 10)
+
+        assert (
+            cache_cls.return_value.index_project.call_args.kwargs["certify_manifest"]
+            is False
+        )
+
     def test_ast_cache_closes_after_index_exception(self, tool_with_root):
         with patch("tree_sitter_analyzer.ast_cache.ASTCache") as cache_cls:
             cache_cls.return_value.index_project.side_effect = RuntimeError("boom")
@@ -955,6 +985,61 @@ class TestErrorTransparency:
         assert phase["error_truncated"] is True
 
 
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+async def test_full_orchestration_stamps_manifest_exactly_once(tmp_path):
+    # PR #1253 review 3755736551: intermediate engines must not re-certify.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    (tmp_path / "sample.py").write_text("value = 1\n")
+    tool = CodeGraphFullIndexTool(str(tmp_path))
+    with patch.object(
+        schema,
+        "stamp_full_index_manifest",
+        wraps=schema.stamp_full_index_manifest,
+    ) as stamp:
+        result = await tool.execute({"mode": "full", "output_format": "json"})
+
+    assert (result["verdict"], stamp.call_count) == ("INFO", 1)
+
+
+def test_final_stats_stamp_failure_does_not_delete_later_manifest(tmp_path):
+    # PR #1253 review 3755736546: callers only downgrade stamper failures.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    cache = ASTCache(str(tmp_path))
+    conn = cache.get_conn()
+    conn.execute(
+        "INSERT INTO ast_index_snapshot_manifest "
+        "(singleton, canonical_root, source_fingerprint, index_fingerprint, "
+        "file_count, source_scope_descriptor, manifest_version) "
+        "VALUES (1, 'root', 'source', 'index', 0, 'scope', 2)"
+    )
+    conn.commit()
+    cache.close()
+
+    tool = CodeGraphFullIndexTool(str(tmp_path))
+    with patch.object(
+        schema,
+        "stamp_full_index_manifest",
+        side_effect=RuntimeError("busy"),
+    ):
+        result = tool._collect_final_stats(stamp_manifest=True)
+
+    cache = ASTCache(str(tmp_path))
+    manifest = (
+        cache.get_conn()
+        .execute("SELECT index_fingerprint FROM ast_index_snapshot_manifest")
+        .fetchone()
+    )
+    cache.close()
+    assert (result["manifest_warning"], manifest[0]) == (
+        "INDEX_MANIFEST_CERTIFICATION_FAILED",
+        "index",
+    )
+
+
 class TestIncrementalPhaseScope:
     def test_forwards_limit_above_old_hardcoded_cap_to_engine(self, tool_with_root):
         # Incident 2026-07-26: the phase hard-coded a 20,000-file ceiling.
@@ -970,6 +1055,7 @@ class TestIncrementalPhaseScope:
         sync_cls.return_value.sync.assert_called_once_with(
             max_files=25_001,
             exclude_patterns=exclude_patterns,
+            certify_manifest=False,
         )
 
 

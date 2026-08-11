@@ -14,6 +14,7 @@ from typing import Literal
 from .constants import EXCLUDE_DIRS
 from .index_source_scope import (
     SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET,
+    SOURCE_SCOPE_ROOT_COUNT_BUDGET,
     SourceScopeDescriptor,
     canonical_source_scope_descriptor,
     make_source_scope_descriptor,
@@ -26,6 +27,7 @@ from .languages.lang_extension_map import EXT_TO_LANG
 
 __all__ = [
     "SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET",
+    "SOURCE_SCOPE_ROOT_COUNT_BUDGET",
     "SourceScopeDescriptor",
     "canonical_source_scope_descriptor",
     "make_source_scope_descriptor",
@@ -163,6 +165,8 @@ def _inventory(
 ) -> tuple[frozenset[tuple[str, str, str]], bool]:
     """Walk supported sources through pinned directory descriptors on POSIX."""
     scope = scope or make_source_scope_descriptor()
+    if len(scope.roots) > SOURCE_SCOPE_ROOT_COUNT_BUDGET:
+        raise OverflowError
     if time.monotonic() > deadline:
         raise TimeoutError
     if os.name != "posix" or not os.path.exists("/dev/fd"):

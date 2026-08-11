@@ -321,6 +321,54 @@ class TestAuthoritativeSnapshotOracle:
 
         assert (stats["manifest_warning"], count) == ("CALL_GRAPH_INCOMPLETE", 0)
 
+    def test_indexer_stamp_failure_only_records_warning(self, tmp_path, monkeypatch):
+        # PR #1253 review 3755736546: failed certifiers retain later manifests.
+        from types import SimpleNamespace
+
+        import tree_sitter_analyzer.cache.indexer as indexer
+        import tree_sitter_analyzer.index_snapshot_schema as schema
+        from tree_sitter_analyzer.ast_cache import ASTCache
+        from tree_sitter_analyzer.cache.callgraph_state import mark_call_graph_built
+        from tree_sitter_analyzer.index_source_snapshot import (
+            make_source_scope_descriptor,
+        )
+
+        source = tmp_path / "sample.py"
+        source.write_text("value = 1\n")
+        cache = ASTCache(str(tmp_path))
+        cache.index_file(str(source))
+        conn = cache.get_conn()
+        mark_call_graph_built(conn)
+        conn.execute(
+            "INSERT INTO ast_index_snapshot_manifest VALUES "
+            "(1, 'root', 'source', 'later', 1, '{}', 2)"
+        )
+        conn.commit()
+        candidate = SimpleNamespace(
+            selected_entries=(SimpleNamespace(rel_path="sample.py"),),
+            limited=0,
+            errors=0,
+        )
+        stats = {"errors": 0, "changed_during_run": 0, "backfill_errors": 0}
+        monkeypatch.setattr(
+            schema,
+            "stamp_full_index_manifest",
+            lambda *_args: (_ for _ in ()).throw(RuntimeError("busy")),
+        )
+
+        indexer._update_authoritative_manifest(
+            cache, candidate, stats, make_source_scope_descriptor()
+        )
+        manifest = conn.execute(
+            "SELECT index_fingerprint FROM ast_index_snapshot_manifest"
+        ).fetchone()[0]
+        cache.close()
+
+        assert (stats["manifest_warning"], manifest) == (
+            "INDEX_MANIFEST_CERTIFICATION_FAILED",
+            "later",
+        )
+
     def test_portable_full_index_succeeds_without_manifest(self, tmp_path, monkeypatch):
         import tree_sitter_analyzer.cache.indexer as indexer
         from tree_sitter_analyzer.ast_cache import ASTCache

@@ -39,6 +39,7 @@ class IncrementalSync:
         exclude_patterns: frozenset[str] | None = None,
         candidate_snapshot: IndexCandidateSnapshot | None = None,
         source_scope: SourceScopeDescriptor | None = None,
+        certify_manifest: bool = True,
     ) -> SyncResult:
         """Sync the on-disk source tree with the AST cache."""
         max_files = normalize_index_max_files(max_files)
@@ -227,6 +228,7 @@ class IncrementalSync:
             and candidate_snapshot is not None
             and candidate_snapshot.errors == 0
             and indexed_paths == expected_paths
+            and certify_manifest
         ):
             from .index_snapshot_schema import stamp_full_index_manifest
 
@@ -237,9 +239,6 @@ class IncrementalSync:
                     "incremental snapshot manifest certification failed",
                     exc_info=True,
                 )
-                conn.rollback()
-                conn.execute("DELETE FROM ast_index_snapshot_manifest")
-                conn.commit()
 
         return result
 

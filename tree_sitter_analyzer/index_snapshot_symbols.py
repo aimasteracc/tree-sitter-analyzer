@@ -120,7 +120,9 @@ _LEGACY_SYMBOL_MIGRATION_ROW_BUDGET = 250_000
 _LEGACY_SYMBOL_MIGRATION_INPUT_BYTE_BUDGET = 256 * 1024 * 1024
 _LEGACY_SYMBOL_MIGRATION_SYMBOL_BUDGET = 2_000_000
 _LEGACY_SYMBOL_MIGRATION_CELL_BYTE_BUDGET = 1024 * 1024
+_LEGACY_SYMBOL_MIGRATION_SCHEMA_BYTE_BUDGET = 4096
 _LEGACY_SYMBOL_MIGRATION_MARKER = "symbol_rows_projection_v1"
+_LEGACY_SYMBOL_MIGRATION_MARKER_VALUE = "complete"
 
 
 def ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
@@ -141,18 +143,46 @@ def ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
         ):
             raise sqlite3.OperationalError("LEGACY_SYMBOL_MIGRATION_BUDGET")
 
-    conn.execute("SAVEPOINT ast_symbol_rows_upgrade")
+    def expired() -> int:
+        return int(time.monotonic() > deadline)
+
+    savepoint_started = False
+    conn.set_progress_handler(expired, 1_000)
     try:
+        conn.execute("SAVEPOINT ast_symbol_rows_upgrade")
+        savepoint_started = True
         conn.execute(
             "CREATE TABLE IF NOT EXISTS ast_cache_metadata ("
             "key TEXT PRIMARY KEY, value TEXT NOT NULL)"
         )
-        marker = conn.execute(
-            "SELECT value FROM ast_cache_metadata WHERE key = ?",
-            (_LEGACY_SYMBOL_MIGRATION_MARKER,),
+        metadata_sql_length = conn.execute(
+            "SELECT length(CAST(sql AS BLOB)) FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'ast_cache_metadata' LIMIT 1"
         ).fetchone()
+        check_budget()
+        if (
+            metadata_sql_length is None
+            or not isinstance(metadata_sql_length[0], int)
+            or metadata_sql_length[0] > _LEGACY_SYMBOL_MIGRATION_SCHEMA_BYTE_BUDGET
+        ):
+            raise ValueError("invalid ast_cache_metadata schema")
+        metadata_columns = tuple(
+            row[1] for row in conn.execute("PRAGMA table_info(ast_cache_metadata)")
+        )
+        check_budget()
+        if metadata_columns != ("key", "value"):
+            raise ValueError("invalid ast_cache_metadata schema")
+        marker = conn.execute(
+            "SELECT 1 FROM ast_cache_metadata WHERE key = ? AND value = ? LIMIT 1",
+            (
+                _LEGACY_SYMBOL_MIGRATION_MARKER,
+                _LEGACY_SYMBOL_MIGRATION_MARKER_VALUE,
+            ),
+        ).fetchone()
+        check_budget()
         if marker is not None:
             conn.execute("RELEASE ast_symbol_rows_upgrade")
+            savepoint_started = False
             return
         conn.execute(
             "CREATE TABLE IF NOT EXISTS ast_symbol_rows ("
@@ -170,10 +200,6 @@ def ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
             "WHERE symbols.file_path = source.file_path)"
         )
 
-        def expired() -> int:
-            return int(time.monotonic() > deadline)
-
-        conn.set_progress_handler(expired, 1_000)
         preflight = conn.execute(
             "SELECT length(CAST(file_path AS BLOB)), "
             "length(CAST(language AS BLOB)), "
@@ -254,16 +280,22 @@ def ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> None:
                 check_budget()
         conn.execute(
             "INSERT INTO ast_cache_metadata (key, value) VALUES (?, ?)",
-            (_LEGACY_SYMBOL_MIGRATION_MARKER, "complete"),
+            (
+                _LEGACY_SYMBOL_MIGRATION_MARKER,
+                _LEGACY_SYMBOL_MIGRATION_MARKER_VALUE,
+            ),
         )
-        conn.set_progress_handler(None, 0)
         conn.execute("RELEASE ast_symbol_rows_upgrade")
+        savepoint_started = False
     except Exception as exc:
         conn.set_progress_handler(None, 0)
-        conn.execute("ROLLBACK TO ast_symbol_rows_upgrade")
-        conn.execute("RELEASE ast_symbol_rows_upgrade")
+        if savepoint_started:
+            conn.execute("ROLLBACK TO ast_symbol_rows_upgrade")
+            conn.execute("RELEASE ast_symbol_rows_upgrade")
         if isinstance(exc, sqlite3.OperationalError) and (
             time.monotonic() > deadline or "interrupt" in str(exc).lower()
         ):
             raise sqlite3.OperationalError("LEGACY_SYMBOL_MIGRATION_BUDGET") from exc
         raise
+    finally:
+        conn.set_progress_handler(None, 0)

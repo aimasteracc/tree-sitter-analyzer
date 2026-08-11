@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
@@ -154,6 +155,37 @@ async def test_missing_scope_manifest_cannot_certify_complete(tmp_path):
 def test_source_scope_descriptor_rejects_noncanonical_policy(raw):
     # PR #1253: status only replays the exact known canonical policy.
     from tree_sitter_analyzer.index_source_snapshot import parse_source_scope_descriptor
+
+    with pytest.raises(ValueError, match="SOURCE_SCOPE_DESCRIPTOR_INVALID"):
+        parse_source_scope_descriptor(raw)
+
+
+def test_source_scope_descriptor_constructor_rejects_more_than_64_roots():
+    # PR #1253 review 3755736553: in-memory scopes obey the same FD cap.
+    from tree_sitter_analyzer.index_source_snapshot import SourceScopeDescriptor
+
+    with pytest.raises(ValueError, match="SOURCE_SCOPE_DESCRIPTOR_INVALID"):
+        SourceScopeDescriptor(
+            tuple(f"root-{index}" for index in range(65)), False, (), 20_000
+        )
+
+
+def test_source_scope_descriptor_rejects_more_than_64_roots():
+    # PR #1253 review 3755736553: persisted scope cannot exhaust process FDs.
+    from tree_sitter_analyzer.index_source_snapshot import parse_source_scope_descriptor
+
+    raw = json.dumps(
+        {
+            "certification_max_files": 20_000,
+            "discovery_policy": "tsa-full-index-walk",
+            "discovery_policy_version": 2,
+            "exclude_patterns": [],
+            "no_default_excludes": False,
+            "roots": [f"root-{index}" for index in range(65)],
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
     with pytest.raises(ValueError, match="SOURCE_SCOPE_DESCRIPTOR_INVALID"):
         parse_source_scope_descriptor(raw)

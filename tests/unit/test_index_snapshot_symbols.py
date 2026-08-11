@@ -156,6 +156,61 @@ class TestSnapshotFailureContracts:
         assert self._symbol_table_count(conn) == 0
         conn.close()
 
+    def test_legacy_symbol_migration_rejects_oversized_metadata_schema_before_pragma(
+        self,
+    ):
+        # PR #1253 review 3755736540: malformed setup is bounded before column decode.
+        import tree_sitter_analyzer.index_snapshot_symbols as schema
+
+        conn = self._legacy_symbol_connection('{"symbols": []}')
+        conn.execute(
+            "CREATE TABLE ast_cache_metadata (key TEXT, value TEXT, "
+            f"extra TEXT CHECK (extra != '{'x' * 5000}'))"
+        )
+        statements = []
+        conn.set_trace_callback(statements.append)
+        with pytest.raises(ValueError, match="invalid ast_cache_metadata schema"):
+            schema.ensure_symbol_rows_backfilled(conn)
+        conn.close()
+
+        assert not any("table_info" in statement for statement in statements)
+
+    def test_legacy_symbol_migration_rejects_wrong_metadata_columns(self):
+        # PR #1253 review 3755736540: marker lookup requires validated columns.
+        import tree_sitter_analyzer.index_snapshot_symbols as schema
+
+        conn = self._legacy_symbol_connection('{"symbols": []}')
+        conn.execute("CREATE TABLE ast_cache_metadata (key TEXT, other TEXT)")
+        with pytest.raises(ValueError, match="invalid ast_cache_metadata schema"):
+            schema.ensure_symbol_rows_backfilled(conn)
+        conn.close()
+
+    def test_legacy_symbol_migration_does_not_materialize_wrong_huge_marker(self):
+        # PR #1253 review 3755736540: marker evidence selects only bounded existence.
+        import tree_sitter_analyzer.index_snapshot_symbols as schema
+
+        conn = self._legacy_symbol_connection('{"symbols": []}')
+        conn.execute(
+            "CREATE TABLE ast_cache_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO ast_cache_metadata VALUES (?, ?)",
+            (schema._LEGACY_SYMBOL_MIGRATION_MARKER, "x" * 4096),
+        )
+        statements = []
+        conn.set_trace_callback(statements.append)
+        with pytest.raises(sqlite3.IntegrityError, match="UNIQUE constraint failed"):
+            schema.ensure_symbol_rows_backfilled(conn)
+        conn.close()
+
+        marker_queries = [
+            statement
+            for statement in statements
+            if "ast_cache_metadata WHERE" in statement
+        ]
+        assert len(marker_queries) == 1
+        assert marker_queries[0].startswith("SELECT 1 FROM ast_cache_metadata")
+
     def test_zero_symbol_migration_writes_global_marker_and_does_not_reparse(
         self, monkeypatch
     ):

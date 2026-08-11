@@ -344,6 +344,50 @@ class TestSnapshotFailureContracts:
         )
         assert ([row[0] for row in rows], unsafe) == (["pkg/sample.py"], False)
 
+    def test_inventory_rejects_excess_roots_before_open(self, tmp_path, monkeypatch):
+        # PR #1253 review 3755736553: root-count validation precedes every FD open.
+        from types import SimpleNamespace
+
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        scope = SimpleNamespace(roots=tuple(f"root-{index}" for index in range(65)))
+        monkeypatch.setattr(
+            source.os,
+            "open",
+            lambda *_args, **_kwargs: pytest.fail("opened FD before root-count check"),
+        )
+
+        with pytest.raises(OverflowError):
+            source._inventory(
+                str(tmp_path),
+                float("inf"),
+                scope,
+                with_content=True,  # type: ignore[arg-type]
+            )
+
+    def test_inventory_later_scope_root_failure_closes_all_prior_fds(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 review 3755736553: later root failure closes prior pinned roots.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        (tmp_path / "first").mkdir()
+        scope = source.make_source_scope_descriptor(roots=("first", "missing"))
+        original_open = source.os.open
+        opened_first = []
+
+        def recording_open(path, flags, *args, **kwargs):
+            fd = original_open(path, flags, *args, **kwargs)
+            if path == "first":
+                opened_first.append(fd)
+            return fd
+
+        monkeypatch.setattr(source.os, "open", recording_open)
+        with pytest.raises(FileNotFoundError):
+            source._inventory(str(tmp_path), float("inf"), scope, with_content=True)
+
+        assert (len(opened_first), _fd_is_closed(opened_first[0])) == (1, True)
+
     def test_inventory_scope_root_open_failure_closes_pinned_fd(self, tmp_path):
         # PR #1253: failed openat traversal propagates without retaining descriptors.
         import tree_sitter_analyzer.index_source_snapshot as source

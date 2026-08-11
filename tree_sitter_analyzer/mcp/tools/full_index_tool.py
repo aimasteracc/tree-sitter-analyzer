@@ -446,6 +446,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "force": force,
                 "include_activation": include_activation,
                 "exclude_patterns": exclude_patterns,
+                "certify_manifest": False,
             }
             if source_scope is not None:
                 index_kwargs["source_scope"] = source_scope
@@ -534,6 +535,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             sync_kwargs: dict[str, Any] = {
                 "max_files": max_files,
                 "exclude_patterns": exclude_patterns,
+                "certify_manifest": False,
             }
             if source_scope is not None:
                 sync_kwargs["source_scope"] = source_scope
@@ -680,10 +682,6 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                         "index snapshot manifest certification failed", exc_info=True
                     )
                     manifest_warning = "INDEX_MANIFEST_CERTIFICATION_FAILED"
-                    conn = cache.get_conn()
-                    conn.rollback()
-                    conn.execute("DELETE FROM ast_index_snapshot_manifest")
-                    conn.commit()
             else:
                 conn = cache.get_conn()
                 conn.execute("DELETE FROM ast_index_snapshot_manifest")

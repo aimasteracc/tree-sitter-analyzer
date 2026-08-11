@@ -674,6 +674,7 @@ def run_index_project(
     exclude_patterns: frozenset[str] | None = None,
     candidate_snapshot: IndexCandidateSnapshot | None = None,
     source_scope: SourceScopeDescriptor | None = None,
+    certify_manifest: bool = True,
 ) -> dict[str, Any]:
     """Orchestrate a full ASTCache project index run.
 
@@ -876,7 +877,10 @@ def run_index_project(
             stats["db_maintenance"] = (
                 _ast_cache_mod._reclaim_storage_after_full_rebuild(conn, cache.db_path)
             )
-        _update_authoritative_manifest(cache, candidate_snapshot, stats, source_scope)
+        if certify_manifest:
+            _update_authoritative_manifest(
+                cache, candidate_snapshot, stats, source_scope
+            )
         return stats
     finally:
         if force:

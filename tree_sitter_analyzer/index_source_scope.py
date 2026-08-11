@@ -13,6 +13,7 @@ _DEFAULT_EXCLUDES = frozenset({"tests/golden/corpus_*"})
 _SOURCE_DISCOVERY_POLICY = "tsa-full-index-walk"
 _SOURCE_DISCOVERY_POLICY_VERSION = 2
 SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET = 64 * 1024
+SOURCE_SCOPE_ROOT_COUNT_BUDGET = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +28,8 @@ class SourceScopeDescriptor:
     discovery_policy_version: int = _SOURCE_DISCOVERY_POLICY_VERSION
 
     def __post_init__(self) -> None:
+        if len(self.roots) > SOURCE_SCOPE_ROOT_COUNT_BUDGET:
+            raise ValueError("SOURCE_SCOPE_DESCRIPTOR_INVALID")
         if len(_encode_source_scope_descriptor(self).encode("ascii")) > (
             SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET
         ):
@@ -106,6 +109,7 @@ def parse_source_scope_descriptor(raw: str) -> SourceScopeDescriptor:
         or not isinstance(value["no_default_excludes"], bool)
         or not isinstance(roots, list)
         or not roots
+        or len(roots) > SOURCE_SCOPE_ROOT_COUNT_BUDGET
         or not isinstance(patterns, list)
         or any(not isinstance(item, str) for item in roots + patterns)
     ):
