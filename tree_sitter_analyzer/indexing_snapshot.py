@@ -164,6 +164,9 @@ class IndexCandidateSnapshot:
     errors: int
     limited: int
     discovery_error: str | None = None
+    root_identity: tuple[str, int, int] | None = field(
+        default=None, repr=False, compare=False
+    )
     frozen_root: str | None = field(default=None, repr=False, compare=False)
     frozen_error: str | None = field(default=None, repr=False, compare=False)
     frozen_read_deadline: float | None = field(default=None, repr=False, compare=False)
@@ -264,6 +267,10 @@ def build_index_candidate_snapshot(
     normalized_max = normalize_index_max_files(max_files)
     logical_root = os.path.abspath(project_root)
     resolved_root = os.path.realpath(logical_root)
+    root_info = os.stat(resolved_root, follow_symlinks=True)
+    if not stat.S_ISDIR(root_info.st_mode):
+        raise ValueError("candidate project root is not a directory")
+    root_identity = (resolved_root, int(root_info.st_dev), int(root_info.st_ino))
     entries: list[IndexSnapshotEntry] = []
     present_paths: set[str] = set()
     resolved_paths: set[str] = set()
@@ -458,6 +465,7 @@ def build_index_candidate_snapshot(
         errors=errors,
         limited=limited,
         discovery_error=discovery_error,
+        root_identity=root_identity,
     )
     if materialize:
         from .indexing_candidate_materialization import (

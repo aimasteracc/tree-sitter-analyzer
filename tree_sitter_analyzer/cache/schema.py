@@ -733,9 +733,21 @@ def init_db(
             migration_fn(conn, record_schema_version)
     # Migration exact-state fast paths must include FTS whenever this runtime
     # supports it; FTS-less SQLite keeps the ordinary-only projection legal.
-    ensure_symbol_rows_backfilled(
+    projection_complete = ensure_symbol_rows_backfilled(
         conn, require_fts=bool(fts5_available), allow_incomplete=True
     )
+    if not projection_complete:
+        # Reopening a partially migrated projection must revoke every older
+        # completeness signal before any fast path can trust stale symbol rows.
+        from .callgraph_state import clear_call_graph_built_strict
+
+        clear_call_graph_built_strict(conn)
+        manifest_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='ast_index_snapshot_manifest'"
+        ).fetchone()
+        if manifest_exists is not None:
+            conn.execute("DELETE FROM ast_index_snapshot_manifest")
     apply_large_repo_indexes(conn)
     conn.commit()
     return bool(fts5_available)

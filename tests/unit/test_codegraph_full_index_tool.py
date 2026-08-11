@@ -521,6 +521,7 @@ class TestExecute:
         )
 
         assert _cache_total_files(tmp_path) == 0
+        assert result["success"] is False
         assert result["verdict"] == "WARN"
         assert result["phases"]["ast_cache"]["truncated_by_max_files"] is True
         assert result["phases"]["ast_cache"]["errors"] == 1
@@ -557,6 +558,7 @@ class TestExecute:
 
         incremental.assert_not_called()
         final_stats.assert_not_called()
+        assert result["success"] is False
         assert result["phases"]["remaining_phases"]["status"] == "skipped"
 
     async def test_full_index_walks_project_once_for_both_phases(self, tmp_path):

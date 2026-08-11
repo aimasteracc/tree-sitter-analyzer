@@ -3092,6 +3092,140 @@ def test_oversized_legacy_projection_opens_incomplete_then_repairs(
         cache.close()
 
 
+def test_reopen_revokes_certification_when_projection_backfill_is_incomplete(
+    tmp_path, monkeypatch
+):
+    # PR #1253 thread 3761703241: an incomplete migration cannot retain an
+    # earlier call-graph or authoritative-manifest completeness signal.
+    import tree_sitter_analyzer.cache.schema as cache_schema
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache.callgraph_state import mark_call_graph_built_strict
+
+    cache = ASTCache(str(tmp_path))
+    conn = cache.get_conn()
+    mark_call_graph_built_strict(conn)
+    conn.execute(
+        "INSERT OR REPLACE INTO ast_index_snapshot_manifest "
+        "(singleton, canonical_root, source_fingerprint, index_fingerprint, "
+        "file_count, source_scope_descriptor, manifest_version) "
+        "VALUES (1, ?, 'source', 'index', 0, '{}', 2)",
+        (str(tmp_path.resolve()),),
+    )
+    conn.commit()
+    cache.close()
+
+    monkeypatch.setattr(
+        cache_schema, "ensure_symbol_rows_backfilled", lambda *_args, **_kwargs: False
+    )
+    reopened = ASTCache(str(tmp_path))
+    try:
+        reopened_conn = reopened.get_conn()
+        marker = reopened.call_graph_built()
+        manifest_count = reopened_conn.execute(
+            "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
+        ).fetchone()[0]
+    finally:
+        reopened.close()
+
+    assert (marker, manifest_count) == (False, 0)
+
+
+def test_force_rebuild_without_secure_materialization_keeps_legacy_data_plane(
+    tmp_path, monkeypatch
+):
+    # PR #1253: Windows lacks authoritative frozen materialization, but its
+    # established full-index data plane and operational marker remain available.
+    from dataclasses import replace
+
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=_python_language,
+    )
+    snapshot = replace(snapshot, frozen_error="SECURE_MATERIALIZATION_UNSUPPORTED")
+    monkeypatch.setattr(
+        materialization, "secure_candidate_materialization_supported", lambda: False
+    )
+    monkeypatch.setattr(
+        materialization, "index_candidate_snapshot_is_materialized", lambda _item: False
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_project(
+            force=True, max_files=10, candidate_snapshot=snapshot, workers=0
+        )
+        marker = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert (result["indexed"], result["mode_used"], marker) == (
+        1,
+        "full",
+        True,
+    )
+
+
+@requires_posix_fd
+def test_force_rebuild_rejects_replaced_root_before_destructive_clear(
+    tmp_path, monkeypatch
+):
+    # PR #1253 thread 3761703249: frozen files from a displaced root cannot
+    # authorize clearing the cache now visible at the original pathname.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        cleanup_index_candidate_snapshot,
+    )
+
+    root = tmp_path / "project"
+    root.mkdir()
+    source = root / "old.py"
+    source.write_text("old = 1\n", encoding="utf-8")
+    cache = ASTCache(str(root))
+    cache.index_file(str(source))
+    snapshot = build_index_candidate_snapshot(
+        str(root),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    displaced = tmp_path / "displaced"
+    root.rename(displaced)
+    root.mkdir()
+    (root / "replacement.py").write_text("replacement = 1\n", encoding="utf-8")
+    # Simulate the pathname swap after the initial materialization predicate;
+    # the independent pre-clear root recheck must still reject it.
+    monkeypatch.setattr(
+        materialization, "index_candidate_snapshot_is_materialized", lambda _item: True
+    )
+    try:
+        result = cache.index_project(
+            force=True, max_files=10, candidate_snapshot=snapshot, workers=0
+        )
+        persisted = (
+            cache.get_conn()
+            .execute("SELECT file_path FROM ast_index ORDER BY file_path")
+            .fetchall()
+        )
+    finally:
+        cleanup_index_candidate_snapshot(snapshot)
+        cache.close()
+
+    assert (result["abort_remaining_phases"], [row[0] for row in persisted]) == (
+        True,
+        ["old.py"],
+    )
+
+
 @requires_posix_fd
 def test_force_rebuild_later_frozen_worker_gets_fresh_read_deadline(
     tmp_path, monkeypatch

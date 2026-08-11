@@ -33,6 +33,27 @@ class CandidateMaterializationError(RuntimeError):
     """The destructive rebuild could not freeze its complete input epoch."""
 
 
+def secure_candidate_materialization_supported() -> bool:
+    """Whether this host can produce authoritative private frozen evidence."""
+    return os.name == "posix" and hasattr(os, "O_NOFOLLOW")
+
+
+def index_candidate_snapshot_root_is_current(snapshot: Any) -> bool:
+    """Revalidate the canonical project-root object captured at discovery."""
+    expected = getattr(snapshot, "root_identity", None)
+    if expected is None:
+        return False
+    try:
+        root = os.path.realpath(os.path.abspath(snapshot.project_root))
+        info = os.stat(root, follow_symlinks=True)
+    except OSError:
+        return False
+    return bool(
+        stat.S_ISDIR(info.st_mode)
+        and (root, int(info.st_dev), int(info.st_ino)) == expected
+    )
+
+
 def _write_private_file(root_fd: int, name: str, data: bytes) -> tuple[int, int, int]:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     flags |= getattr(os, "O_CLOEXEC", 0)
@@ -118,6 +139,7 @@ def index_candidate_snapshot_is_materialized(snapshot: Any) -> bool:
         not root
         or getattr(snapshot, "frozen_error", None) is not None
         or deadline is None
+        or not index_candidate_snapshot_root_is_current(snapshot)
     ):
         return False
     try:
@@ -238,7 +260,7 @@ def materialize_index_candidate_snapshot(
     snapshot: IndexCandidateSnapshot,
 ) -> IndexCandidateSnapshot:
     """Copy every selected POSIX source into one bounded private directory."""
-    if os.name != "posix" or not hasattr(os, "O_NOFOLLOW"):
+    if not secure_candidate_materialization_supported():
         return replace(snapshot, frozen_error="SECURE_MATERIALIZATION_UNSUPPORTED")
     selected = snapshot.selected_entries
     if len(selected) > min(snapshot.max_files, _MAX_FILES):

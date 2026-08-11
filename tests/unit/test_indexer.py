@@ -467,6 +467,39 @@ def test_candidate_materialization_reports_fail_closed_reason(
     assert result.frozen_error == expected
 
 
+def test_materialized_candidate_without_root_identity_is_not_current(tmp_path) -> None:
+    # PR #1253 thread 3761703249: legacy/forged snapshots cannot authorize clear.
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        index_candidate_snapshot_root_is_current,
+    )
+
+    snapshot = SimpleNamespace(project_root=str(tmp_path), root_identity=None)
+
+    assert index_candidate_snapshot_root_is_current(snapshot) is False
+
+
+def test_materialized_candidate_missing_root_is_not_current(tmp_path) -> None:
+    # PR #1253 thread 3761703249: a disappeared root fails closed.
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        index_candidate_snapshot_root_is_current,
+    )
+
+    missing = tmp_path / "missing"
+    snapshot = SimpleNamespace(
+        project_root=str(missing),
+        root_identity=(str(missing.resolve()), 1, 1),
+    )
+
+    assert index_candidate_snapshot_root_is_current(snapshot) is False
+
+
+@pytest.mark.skipif(
+    os.name != "posix", reason="GH-1253: dir_fd private writer is POSIX-only"
+)
 def test_private_candidate_write_rejects_zero_progress(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -588,6 +621,9 @@ def test_candidate_materialization_reports_cleanup_failure(
     assert result.frozen_error == "INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING"
 
 
+@pytest.mark.skipif(
+    os.name != "posix", reason="GH-1253: dir_fd private writer is POSIX-only"
+)
 def test_private_candidate_write_works_without_nofollow_flag(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -1058,18 +1094,64 @@ def test_parse_and_write_returns_exact_parser_failure():
     }
 
 
-def test_candidate_less_scope_certification_is_unsupported_on_windows(
+def test_candidate_less_windows_scope_restores_only_operational_marker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # PR #1253 thread 3761288443: legacy indexing is not global certification.
+    # PR #1253: Windows keeps legacy call-graph availability while the separate
+    # authoritative manifest remains unsupported without descriptor snapshots.
     import tree_sitter_analyzer.cache.indexer as indexer
 
+    (tmp_path / "app.py").write_text("def app(): pass\n", encoding="utf-8")
     monkeypatch.setattr(indexer, "os", _OsProxy(name="nt"))
     monkeypatch.setattr(
         indexer,
         "walk_index_candidate_entries",
-        lambda *_args, **_kwargs: pytest.fail("insecure candidate walk attempted"),
+        lambda *_args, **_kwargs: pytest.fail("secure candidate walk attempted"),
     )
+
+    result = indexer._bounded_selected_supported_paths(
+        str(tmp_path), 10, None, frozenset()
+    )
+
+    assert result == {"app.py"}
+
+
+def test_candidate_less_windows_scope_matches_legacy_directory_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1253: operational completeness excludes hidden/cache directories and
+    # preserves the legacy source-looking symlink-directory selection policy.
+    import tree_sitter_analyzer.cache.indexer as indexer
+
+    (tmp_path / ".hidden").mkdir()
+    (tmp_path / ".hidden" / "ignored.py").write_text("ignored = 1\n")
+    (tmp_path / "visible").mkdir()
+    (tmp_path / "visible" / "kept.py").write_text("kept = 1\n")
+    (tmp_path / "target").mkdir()
+    (tmp_path / "module.py").symlink_to(tmp_path / "target", target_is_directory=True)
+    (tmp_path / "alias").symlink_to(tmp_path / "target", target_is_directory=True)
+    monkeypatch.setattr(indexer, "os", _OsProxy(name="nt"))
+
+    result = indexer._bounded_selected_supported_paths(
+        str(tmp_path), 10, None, frozenset()
+    )
+
+    assert result == {"module.py", "visible/kept.py"}
+
+
+def test_candidate_less_windows_scope_fails_closed_on_walk_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1253: operational path equality cannot be issued from a partial walk.
+    import tree_sitter_analyzer.cache.indexer as indexer
+
+    class WalkErrorProxy(_OsProxy):
+        def walk(self, root, onerror=None):
+            assert onerror is not None
+            onerror(OSError("enumeration denied"))
+            return iter(())
+
+    monkeypatch.setattr(indexer, "os", WalkErrorProxy(name="nt"))
 
     result = indexer._bounded_selected_supported_paths(
         str(tmp_path), 10, None, frozenset()

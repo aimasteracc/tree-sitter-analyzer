@@ -190,3 +190,40 @@ def test_dangling_call_resolution_rejects_pipeline_marker(
         mark_call_graph_built_strict(conn)
 
     assert call_graph_built(conn) is False
+
+
+def test_dangling_resolved_file_without_index_table_is_inconsistent() -> None:
+    # PR #1253 thread 3761514123: absence of canonical file rows is fail-closed.
+    from tree_sitter_analyzer.cache.callgraph_state import (
+        call_graph_edges_are_consistent,
+    )
+    from tree_sitter_analyzer.graph.edge_store import EdgeStore
+
+    conn = sqlite3.connect(":memory:")
+    EdgeStore(conn)
+    conn.execute(
+        "INSERT INTO edges (source_node_id, target_node_id, kind, "
+        "callee_resolved_file) VALUES ('caller', 'target', 'calls', 'missing.py')"
+    )
+
+    assert call_graph_edges_are_consistent(conn) is False
+
+
+def test_dangling_symbol_without_symbol_table_is_inconsistent() -> None:
+    # PR #1253 thread 3761514123: absence of canonical symbol rows is fail-closed.
+    from tree_sitter_analyzer.cache.callgraph_state import (
+        call_graph_edges_are_consistent,
+    )
+    from tree_sitter_analyzer.graph.edge_store import EdgeStore
+
+    conn = sqlite3.connect(":memory:")
+    EdgeStore(conn)
+    conn.execute("CREATE TABLE ast_index (file_path TEXT PRIMARY KEY)")
+    conn.execute("INSERT INTO ast_index(file_path) VALUES ('present.py')")
+    conn.execute(
+        "INSERT INTO edges (source_node_id, target_node_id, kind, "
+        "callee_resolved_file, callee_symbol_id) "
+        "VALUES ('caller', 'target', 'calls', 'present.py', 999)"
+    )
+
+    assert call_graph_edges_are_consistent(conn) is False

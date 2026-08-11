@@ -152,16 +152,40 @@ def _bounded_selected_supported_paths(
     exclude_patterns: frozenset[str] | None,
 ) -> set[str] | None:
     """Rediscover the candidate-less run's exact bounded persisted path scope."""
-    # The legacy indexing walk may finish on every platform, but only the POSIX
-    # descriptor-relative walker can authoritatively certify its global scope.
-    if os.name != "posix":  # pragma: no cover - exercised by Windows CI
-        return None
-
     selected: set[str] = set()
     count = 0
+
+    def legacy_candidates() -> Iterator[str]:
+        # This fallback restores the pre-P0.1 operational marker on Windows.
+        # It is never used by the authoritative manifest path, which remains
+        # POSIX descriptor-bound and reports unsupported on this platform.
+        def raise_walk_error(exc: OSError) -> None:
+            raise exc
+
+        for dirpath, dirnames, filenames in os.walk(
+            project_root, onerror=raise_walk_error
+        ):
+            retained: list[str] = []
+            for dirname in dirnames:
+                if dirname in _EXCLUDE_DIRS or dirname.startswith("."):
+                    continue
+                candidate = os.path.join(dirpath, dirname)
+                if os.path.islink(candidate):
+                    if os.path.splitext(dirname)[1].lower() in _EXT_TO_LANG:
+                        yield candidate
+                    continue
+                retained.append(dirname)
+            dirnames[:] = retained
+            for filename in filenames:
+                yield os.path.join(dirpath, filename)
+
     try:
-        candidates = walk_index_candidate_entries(
-            project_root, excluded_dir_names=frozenset(_EXCLUDE_DIRS)
+        candidates = (
+            walk_index_candidate_entries(
+                project_root, excluded_dir_names=frozenset(_EXCLUDE_DIRS)
+            )
+            if os.name == "posix"
+            else legacy_candidates()
         )
         for abs_path in candidates:
             # Match the legacy walk's supported-extension window: unsupported
@@ -926,11 +950,17 @@ def run_index_project(
     if force:
         from ..indexing_candidate_materialization import (
             index_candidate_snapshot_is_materialized,
+            secure_candidate_materialization_supported,
         )
 
         materialized = bool(
             candidate_snapshot is not None
             and index_candidate_snapshot_is_materialized(candidate_snapshot)
+        )
+        legacy_materialization = bool(
+            candidate_snapshot is not None
+            and candidate_snapshot.frozen_error == "SECURE_MATERIALIZATION_UNSUPPORTED"
+            and not secure_candidate_materialization_supported()
         )
         snapshot_is_unsafe = bool(
             candidate_snapshot is None
@@ -938,7 +968,7 @@ def run_index_project(
             or candidate_snapshot.discovery_error is not None
             or candidate_snapshot.truncated_by_max_files
             or not candidate_snapshot.discovery_reconciled
-            or not materialized
+            or (not materialized and not legacy_materialization)
         )
         if snapshot_is_unsafe:
             # Destructive rebuilds consume only a fully materialized frozen epoch.
@@ -966,6 +996,16 @@ def run_index_project(
     rebuild_signaled = False
     try:
         if force:
+            if materialized:
+                from ..indexing_candidate_materialization import (
+                    index_candidate_snapshot_root_is_current,
+                )
+
+                if not index_candidate_snapshot_root_is_current(candidate_snapshot):
+                    cleanup_result = _unsafe_force_snapshot_result(
+                        candidate_snapshot, activation_enabled, changed=[]
+                    )
+                    return cleanup_result
             # #578: a full rebuild empties ast_index up front (the DELETE
             # below commits), then re-populates in bounded batches over
             # ~70 s. Stamp a persisted marker across that window so
@@ -1177,6 +1217,8 @@ def run_index_project(
                 allow_incomplete=True,
             ):
                 stats["backfill_errors"] = stats.get("backfill_errors", 0) + 1
+                _clear_call_graph_built_strict(conn)
+                conn.execute("DELETE FROM ast_index_snapshot_manifest")
             conn.commit()
         frozen_epoch = bool(
             candidate_snapshot is not None

@@ -356,6 +356,7 @@ def test_production_scandir_charges_unsupported_entries_and_closes(
             return SimpleNamespace(
                 path=str(tmp_path / f"unsupported-{self.consumed}.txt"),
                 name=f"unsupported-{self.consumed}.txt",
+                is_dir=lambda *, follow_symlinks: False,
                 stat=lambda *, follow_symlinks: SimpleNamespace(
                     st_dev=1,
                     st_ino=self.consumed,

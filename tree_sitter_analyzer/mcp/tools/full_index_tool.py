@@ -375,7 +375,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                     "codegraph_full_index: unsafe force snapshot; phases aborted"
                 )
                 result = {
-                    "success": True,
+                    "success": False,
                     "verdict": "WARN",
                     "summary_line": summary_line,
                     "agent_summary": {

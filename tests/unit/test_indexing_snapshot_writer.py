@@ -479,3 +479,18 @@ def test_partial_projection_forces_full_file_repair_and_callee_rebind(tmp_path):
     assert fts_rowids == [symbol_id for symbol_id, _name in repaired_rows]
     assert activation_paths == []
     assert callee_ids == [target_id]
+
+
+def test_candidate_snapshot_rejects_non_directory_project_root(tmp_path) -> None:
+    # PR #1253 thread 3761703249: the captured root authority must be a directory.
+    root_file = tmp_path / "not-a-directory"
+    root_file.write_text("data", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="project root is not a directory"):
+        build_index_candidate_snapshot(
+            str(root_file),
+            max_files=10,
+            exclude_patterns=frozenset(),
+            walk_fn=lambda _root: (),
+            language_fn=_python_language,
+        )
