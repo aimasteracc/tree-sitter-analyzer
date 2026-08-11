@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import codecs
+import logging
 import os
 import shutil
 import stat
@@ -11,25 +13,29 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .indexing_snapshot import IndexCandidateSnapshot
+    from .indexing_snapshot import IndexCandidateSnapshot, IndexFileFingerprint
 
-from .indexing_snapshot import decode_index_source, index_source_content_hash
+from .indexing_snapshot import index_source_content_hash
 from .source_oracle import SourceOracleError, safe_workspace_path
+
+logger = logging.getLogger(__name__)
 
 _MAX_FILE_BYTES = 64 * 1024 * 1024
 _MAX_TOTAL_BYTES = 512 * 1024 * 1024
 _MAX_FILES = 100_000
+_MAX_READ_CHUNK = 1024 * 1024
 _MATERIALIZE_SECONDS = 10.0
+_FROZEN_READ_SECONDS = 35.0
+_CLEANUP_WARNING_CHARS = 240
 
 
 class CandidateMaterializationError(RuntimeError):
     """The destructive rebuild could not freeze its complete input epoch."""
 
 
-def _write_private_file(root_fd: int, name: str, data: bytes) -> None:
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
+def _write_private_file(root_fd: int, name: str, data: bytes) -> tuple[int, int, int]:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0)
     fd = os.open(name, flags, 0o600, dir_fd=root_fd)
     try:
         view = memoryview(data)
@@ -39,14 +45,80 @@ def _write_private_file(root_fd: int, name: str, data: bytes) -> None:
                 raise OSError("candidate materialization made no write progress")
             view = view[written:]
         os.fchmod(fd, 0o600)
+        info = os.fstat(fd)
+        return (int(info.st_dev), int(info.st_ino), int(info.st_size))
+    finally:
+        os.close(fd)
+
+
+def read_frozen_candidate(
+    path: str,
+    *,
+    expected: IndexFileFingerprint | None = None,
+    frozen_identity: tuple[int, int, int] | None = None,
+    deadline: float | None = None,
+    limit: int = _MAX_FILE_BYTES,
+) -> str:
+    """Read and certify one frozen leaf without pathname-following or blocking IO."""
+    if deadline is None:
+        deadline = time.monotonic() + _FROZEN_READ_SECONDS
+    if time.monotonic() >= deadline:
+        raise OSError("frozen candidate read deadline exceeded")
+    flags = os.O_RDONLY | os.O_NOFOLLOW
+    flags |= getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0)
+    fd = os.open(path, flags)
+    try:
+        info = os.fstat(fd)
+        identity = (
+            int(getattr(info, "st_dev", 0)),
+            int(getattr(info, "st_ino", 0)),
+            int(info.st_size),
+        )
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_size > limit
+            or (frozen_identity is not None and identity != frozen_identity)
+        ):
+            raise OSError("invalid frozen candidate")
+        if expected is not None and info.st_size != expected.file_size:
+            raise OSError("frozen candidate source size changed")
+
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        pieces: list[str] = []
+        total = 0
+        while True:
+            if time.monotonic() >= deadline:
+                raise OSError("frozen candidate read deadline exceeded")
+            chunk = os.read(fd, min(_MAX_READ_CHUNK, limit - total + 1))
+            if time.monotonic() >= deadline:
+                raise OSError("frozen candidate read deadline exceeded")
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > limit:
+                raise OSError("frozen candidate exceeds byte limit")
+            pieces.append(decoder.decode(chunk, final=False))
+        pieces.append(decoder.decode(b"", final=True))
+        source = "".join(pieces).replace("\r\n", "\n").replace("\r", "\n")
+        if expected is not None and (
+            total != expected.file_size
+            or index_source_content_hash(source) != expected.content_hash
+        ):
+            raise OSError("frozen candidate source fingerprint changed")
+        return source
     finally:
         os.close(fd)
 
 
 def index_candidate_snapshot_is_materialized(snapshot: Any) -> bool:
-    """Validate the private root and every opaque frozen leaf."""
+    """Preflight the private root and re-read every opaque frozen leaf."""
     root = getattr(snapshot, "frozen_root", None)
-    if not root or getattr(snapshot, "frozen_error", None) is not None:
+    deadline = getattr(snapshot, "frozen_read_deadline", None)
+    if (
+        not root
+        or getattr(snapshot, "frozen_error", None) is not None
+        or deadline is None
+    ):
         return False
     try:
         root_info = os.stat(root, follow_symlinks=False)
@@ -62,38 +134,110 @@ def index_candidate_snapshot_is_materialized(snapshot: Any) -> bool:
             return False
         for entry in selected:
             path = entry.frozen_path
-            if path is None or os.path.dirname(path) != root:
+            fingerprint = entry.fingerprint
+            if (
+                path is None
+                or os.path.dirname(path) != root
+                or fingerprint is None
+                or entry.frozen_identity is None
+            ):
                 return False
             info = os.stat(path, follow_symlinks=False)
             if (
                 not stat.S_ISREG(info.st_mode)
                 or stat.S_IMODE(info.st_mode) != 0o600
                 or info.st_nlink != 1
-                or info.st_size > _MAX_FILE_BYTES
                 or (hasattr(os, "getuid") and info.st_uid != os.getuid())
             ):
                 return False
+            read_frozen_candidate(
+                path,
+                expected=fingerprint,
+                frozen_identity=entry.frozen_identity,
+                deadline=deadline,
+            )
         return len(os.listdir(root)) == len(selected)
     except OSError:
         return False
 
 
-def cleanup_index_candidate_snapshot(snapshot: IndexCandidateSnapshot) -> None:
-    """Remove a snapshot's process-private materialization, if it owns one."""
+def _cleanup_warning(exc: BaseException) -> str:
+    detail = " ".join(str(exc).split()) or type(exc).__name__
+    return f"INDEX_CANDIDATE_CLEANUP_FAILED: {detail}"[:_CLEANUP_WARNING_CHARS]
+
+
+def cleanup_index_candidate_snapshot(snapshot: IndexCandidateSnapshot) -> str | None:
+    """Best-effort idempotent cleanup which never masks a committed result."""
     root = getattr(snapshot, "frozen_root", None)
     if not root:
-        return
-    shutil.rmtree(root)
+        return None
+    errors: list[BaseException] = []
+    root_fd: int | None = None
+    try:
+        root_fd = os.open(
+            root,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0),
+        )
+    except FileNotFoundError:
+        return None
+    except Exception as exc:
+        errors.append(exc)
+
+    if root_fd is not None:
+        for entry in snapshot.selected_entries:
+            path = entry.frozen_path
+            if path is None or os.path.dirname(path) != root:
+                continue
+            name = os.path.basename(path)
+            try:
+                os.unlink(name, dir_fd=root_fd)
+                continue
+            except FileNotFoundError:
+                continue
+            except Exception:
+                pass
+            try:
+                os.chmod(name, 0o600, dir_fd=root_fd, follow_symlinks=False)
+                os.unlink(name, dir_fd=root_fd)
+            except FileNotFoundError:
+                pass
+            except Exception as exc:
+                errors.append(exc)
+        try:
+            os.close(root_fd)
+        except OSError as exc:
+            errors.append(exc)
+
+    try:
+        shutil.rmtree(root)
+    except FileNotFoundError:
+        pass
+    except Exception as exc:
+        errors.append(exc)
+    if not errors:
+        return None
+    warning = _cleanup_warning(errors[-1])
+    logger.warning("candidate materialization cleanup warning: %s", warning)
+    return warning
+
+
+def release_index_candidate_snapshot(
+    snapshot: IndexCandidateSnapshot, result: dict[str, Any] | None = None
+) -> None:
+    """Release once at an ownership boundary and attach a non-fatal metric."""
+    try:
+        warning = cleanup_index_candidate_snapshot(snapshot)
+    except Exception as exc:  # final ownership boundary: never mask primary output
+        warning = _cleanup_warning(exc)
+        logger.warning("candidate materialization cleanup warning: %s", warning)
+    if warning is not None and result is not None:
+        result["cleanup_warning"] = warning
 
 
 def materialize_index_candidate_snapshot(
     snapshot: IndexCandidateSnapshot,
 ) -> IndexCandidateSnapshot:
-    """Copy every selected POSIX source into one bounded private directory.
-
-    Logical paths remain in the snapshot entries.  ``frozen_path`` is opaque
-    process-internal evidence and is never part of an MCP payload or identifier.
-    """
+    """Copy every selected POSIX source into one bounded private directory."""
     if os.name != "posix" or not hasattr(os, "O_NOFOLLOW"):
         return replace(snapshot, frozen_error="SECURE_MATERIALIZATION_UNSUPPORTED")
     selected = snapshot.selected_entries
@@ -103,7 +247,9 @@ def materialize_index_candidate_snapshot(
     root = tempfile.mkdtemp(prefix="tsa-index-candidate-")
     os.chmod(root, 0o700)
     root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    deadline = time.monotonic() + _MATERIALIZE_SECONDS
+    started = time.monotonic()
+    deadline = started + _MATERIALIZE_SECONDS
+    read_deadline = started + _FROZEN_READ_SECONDS
     total = 0
     replacements: dict[str, Any] = {}
     try:
@@ -132,26 +278,42 @@ def materialize_index_candidate_snapshot(
                 raise CandidateMaterializationError(
                     "INDEX_CANDIDATE_MATERIALIZATION_BUDGET"
                 )
-            content_hash = index_source_content_hash(decode_index_source(data))
-            if content_hash != fingerprint.content_hash:
+            if (
+                len(data) != fingerprint.file_size
+                or index_source_content_hash(
+                    data.decode("utf-8", errors="replace")
+                    .replace("\r\n", "\n")
+                    .replace("\r", "\n")
+                )
+                != fingerprint.content_hash
+            ):
                 raise CandidateMaterializationError("INDEX_CANDIDATE_SOURCE_CHANGED")
             name = f"candidate-{ordinal:08x}"
-            _write_private_file(root_fd, name, data)
+            identity = _write_private_file(root_fd, name, data)
             replacements[entry.rel_path] = replace(
-                entry, frozen_path=os.path.join(root, name)
+                entry,
+                frozen_path=os.path.join(root, name),
+                frozen_identity=identity,
             )
         entries = tuple(
             replacements.get(entry.rel_path, entry) for entry in snapshot.entries
         )
-        return replace(snapshot, entries=entries, frozen_root=root, frozen_error=None)
+        return replace(
+            snapshot,
+            entries=entries,
+            frozen_root=root,
+            frozen_error=None,
+            frozen_read_deadline=read_deadline,
+        )
     except (OSError, SourceOracleError, CandidateMaterializationError) as exc:
-        try:
-            shutil.rmtree(root)
-        except OSError as cleanup_exc:
-            return replace(
-                snapshot,
-                frozen_error=f"INDEX_CANDIDATE_CLEANUP_FAILED: {cleanup_exc}",
-            )
-        return replace(snapshot, frozen_error=str(exc) or type(exc).__name__)
+        partial_entries = tuple(
+            replacements.get(entry.rel_path, entry) for entry in snapshot.entries
+        )
+        failed = replace(snapshot, entries=partial_entries, frozen_root=root)
+        cleanup_warning = cleanup_index_candidate_snapshot(failed)
+        reason = str(exc) or type(exc).__name__
+        if cleanup_warning is not None:
+            logger.warning("freeze failure followed by %s", cleanup_warning)
+        return replace(snapshot, frozen_error=reason)
     finally:
         os.close(root_fd)

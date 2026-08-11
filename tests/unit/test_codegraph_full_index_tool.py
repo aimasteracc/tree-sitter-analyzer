@@ -1156,3 +1156,18 @@ async def test_incremental_scope_change_prunes_newly_excluded_rows(tmp_path):
         0,
         True,
     )
+
+
+async def test_execute_exception_releases_materialized_candidate(tool_with_root):
+    # PR #1253 thread 3760428941: exceptional exits share the release boundary.
+    with (
+        patch.object(
+            tool_with_root,
+            "_phase_ast_cache",
+            side_effect=RuntimeError("primary phase failed"),
+        ),
+        pytest.raises(RuntimeError, match="primary phase failed"),
+    ):
+        await tool_with_root.execute(
+            {"mode": "full", "max_files": 10, "output_format": "json"}
+        )

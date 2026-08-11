@@ -18,6 +18,14 @@ class _CacheRoot:
         self.project_root = project_root
 
 
+class _OsProxy:
+    def __init__(self, **overrides) -> None:
+        self._overrides = overrides
+
+    def __getattr__(self, name):
+        return self._overrides.get(name, getattr(os, name))
+
+
 def test_language_scoped_partition_marks_other_language_skip_incomplete(
     tmp_path: Path,
 ) -> None:
@@ -552,7 +560,7 @@ def test_candidate_materialization_rejects_nonfile_capture(
 def test_candidate_materialization_reports_cleanup_failure(
     tmp_path: Path, monkeypatch
 ) -> None:
-    # PR #1253: failed private cleanup remains explicit incomplete evidence.
+    # PR #1253 thread 3760428941: cleanup cannot mask the primary freeze failure.
     from dataclasses import replace
 
     import tree_sitter_analyzer.indexing_candidate_materialization as materialization
@@ -577,7 +585,7 @@ def test_candidate_materialization_reports_cleanup_failure(
 
     result = materialization.materialize_index_candidate_snapshot(snapshot)
 
-    assert result.frozen_error == "INDEX_CANDIDATE_CLEANUP_FAILED: cleanup denied"
+    assert result.frozen_error == "INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING"
 
 
 def test_private_candidate_write_works_without_nofollow_flag(
@@ -600,3 +608,418 @@ def test_private_candidate_write_works_without_nofollow_flag(
         os.close(root_fd)
 
     assert (tmp_path / "leaf").read_bytes() == b"x"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_owned_cleanup_failure_preserves_success_and_attempts_every_leaf(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1253 thread 3760428941: cleanup is bounded telemetry, never authority.
+    import shutil
+
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    (tmp_path / "a.py").write_text("a = 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("b = 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    attempted: list[str] = []
+    created: list[str] = []
+    real_unlink = materialization.os.unlink
+    real_mkdtemp = materialization.tempfile.mkdtemp
+
+    def record_root(*args, **kwargs):
+        root = real_mkdtemp(*args, **kwargs)
+        created.append(root)
+        return root
+
+    def record_unlink(path, *args, **kwargs):
+        attempted.append(str(path))
+        return real_unlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(materialization.tempfile, "mkdtemp", record_root)
+        patcher.setattr(materialization.os, "unlink", record_unlink)
+        patcher.setattr(
+            materialization.shutil,
+            "rmtree",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("busy")),
+        )
+        result = cache.index_project(max_files=10, force=True, workers=0)
+    cache.close()
+    for root in created:
+        shutil.rmtree(root, ignore_errors=True)
+
+    assert (result["indexed"], result["errors"]) == (2, 0)
+    assert result["cleanup_warning"] == "INDEX_CANDIDATE_CLEANUP_FAILED: busy"
+    assert attempted == ["candidate-00000000", "candidate-00000001"]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_force_preflight_hash_change_preserves_existing_rows(tmp_path: Path) -> None:
+    # PR #1253 thread 3760428948: every frozen leaf is hashed before force clear.
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        cleanup_index_candidate_snapshot,
+    )
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    before = [tuple(row) for row in cache.get_conn().execute("SELECT * FROM ast_index")]
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=lambda _path: "python",
+        materialize=True,
+    )
+    frozen_path = Path(snapshot.selected_entries[0].frozen_path or "")
+    frozen_path.write_text("value = 2\n", encoding="utf-8")
+    try:
+        result = cache.index_project(
+            max_files=10,
+            force=True,
+            workers=0,
+            exclude_patterns=frozenset(),
+            candidate_snapshot=snapshot,
+        )
+        after = [
+            tuple(row) for row in cache.get_conn().execute("SELECT * FROM ast_index")
+        ]
+    finally:
+        cleanup_index_candidate_snapshot(snapshot)
+        cache.close()
+
+    assert (result["verdict"], result["indexed"], after) == ("WARN", 0, before)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_certified_frozen_reader_rejects_original_size_mismatch(tmp_path: Path) -> None:
+    # PR #1253 thread 3760428948: original byte size is part of replay authority.
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        read_frozen_candidate,
+    )
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=lambda _path: "python",
+    )
+    fingerprint = snapshot.selected_entries[0].fingerprint
+    if fingerprint is None:
+        pytest.fail("selected source fingerprint was not captured")
+    source.write_text("x", encoding="utf-8")
+
+    with pytest.raises(OSError, match="source size changed"):
+        read_frozen_candidate(str(source), expected=fingerprint)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_certified_frozen_reader_checks_deadline_before_each_read(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1253 thread 3760428948: elapsed clocks stop replay before another read.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    source = tmp_path / "candidate"
+    source.write_bytes(b"x")
+    from types import SimpleNamespace
+
+    ticks = iter((0.0, 2.0))
+    monkeypatch.setattr(
+        materialization, "time", SimpleNamespace(monotonic=lambda: next(ticks))
+    )
+
+    with pytest.raises(OSError, match="read deadline exceeded"):
+        materialization.read_frozen_candidate(str(source), deadline=1.0)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_certified_frozen_reader_checks_deadline_after_each_read(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1253 thread 3760428948: a stalled read cannot publish late bytes.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    source = tmp_path / "candidate"
+    source.write_bytes(b"x")
+    from types import SimpleNamespace
+
+    ticks = iter((0.0, 0.0, 2.0))
+    monkeypatch.setattr(
+        materialization, "time", SimpleNamespace(monotonic=lambda: next(ticks))
+    )
+
+    with pytest.raises(OSError, match="read deadline exceeded"):
+        materialization.read_frozen_candidate(str(source), deadline=1.0)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_candidate_cleanup_is_idempotent_after_root_disappears(tmp_path: Path) -> None:
+    # PR #1253 thread 3760428941: a released root is an idempotent no-op.
+    from dataclasses import replace
+
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        cleanup_index_candidate_snapshot,
+    )
+
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (),
+        language_fn=lambda _path: None,
+    )
+    missing = replace(snapshot, frozen_root=str(tmp_path / "gone"))
+
+    assert cleanup_index_candidate_snapshot(missing) is None
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_candidate_cleanup_suppresses_root_open_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1253 thread 3760428941: root-open errors become bounded telemetry.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    root = tmp_path / "candidate-root"
+    root.mkdir()
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (),
+        language_fn=lambda _path: None,
+    )
+    from dataclasses import replace
+
+    frozen = replace(snapshot, frozen_root=str(root))
+    monkeypatch.setattr(
+        materialization,
+        "os",
+        _OsProxy(
+            open=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                PermissionError("denied")
+            )
+        ),
+    )
+
+    warning = materialization.cleanup_index_candidate_snapshot(frozen)
+
+    assert warning == "INDEX_CANDIDATE_CLEANUP_FAILED: denied"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_candidate_cleanup_tolerates_leaf_already_unlinked(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1253 thread 3760428941: every missing leaf remains an idempotent success.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    source = tmp_path / "app.py"
+    source.write_text("x = 1\n", encoding="utf-8")
+    frozen = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=lambda _path: "python",
+        materialize=True,
+    )
+    monkeypatch.setattr(
+        materialization,
+        "os",
+        _OsProxy(
+            unlink=lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError())
+        ),
+    )
+
+    assert materialization.cleanup_index_candidate_snapshot(frozen) is None
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_candidate_cleanup_chmods_then_retries_denied_unlink(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1253 thread 3760428941: permission denial gets one secure chmod retry.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    source = tmp_path / "app.py"
+    source.write_text("x = 1\n", encoding="utf-8")
+    frozen = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=lambda _path: "python",
+        materialize=True,
+    )
+    real_unlink = materialization.os.unlink
+    calls = 0
+
+    def deny_once(path, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise PermissionError("readonly")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(materialization, "os", _OsProxy(unlink=deny_once))
+
+    assert (materialization.cleanup_index_candidate_snapshot(frozen), calls) == (
+        None,
+        2,
+    )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_candidate_cleanup_tolerates_leaf_disappearing_during_retry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1253 thread 3760428941: a retry race cannot become a primary failure.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    source = tmp_path / "app.py"
+    source.write_text("x = 1\n", encoding="utf-8")
+    frozen = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=lambda _path: "python",
+        materialize=True,
+    )
+    outcomes = iter((PermissionError("readonly"), FileNotFoundError()))
+
+    def fail_unlink(*_args, **_kwargs):
+        raise next(outcomes)
+
+    monkeypatch.setattr(materialization, "os", _OsProxy(unlink=fail_unlink))
+
+    assert materialization.cleanup_index_candidate_snapshot(frozen) is None
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_candidate_cleanup_reports_failed_chmod_retry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1253 thread 3760428941: exhausted retry is warning-only telemetry.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    source = tmp_path / "app.py"
+    source.write_text("x = 1\n", encoding="utf-8")
+    frozen = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=lambda _path: "python",
+        materialize=True,
+    )
+    monkeypatch.setattr(
+        materialization,
+        "os",
+        _OsProxy(
+            unlink=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                PermissionError("readonly")
+            ),
+            chmod=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                PermissionError("still denied")
+            ),
+        ),
+    )
+
+    warning = materialization.cleanup_index_candidate_snapshot(frozen)
+
+    assert warning == "INDEX_CANDIDATE_CLEANUP_FAILED: still denied"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_candidate_cleanup_reports_close_failure(tmp_path: Path, monkeypatch) -> None:
+    # PR #1253 thread 3760428941: descriptor-close errors never escape cleanup.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (),
+        language_fn=lambda _path: None,
+        materialize=True,
+    )
+    real_close = materialization.os.close
+
+    def close_then_report(fd):
+        real_close(fd)
+        raise OSError("close failed")
+
+    monkeypatch.setattr(materialization, "os", _OsProxy(close=close_then_report))
+
+    warning = materialization.cleanup_index_candidate_snapshot(snapshot)
+
+    assert warning == "INDEX_CANDIDATE_CLEANUP_FAILED: close failed"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_candidate_cleanup_tolerates_rmtree_missing_race(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1253 thread 3760428941: missing-at-rmtree remains successful cleanup.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (),
+        language_fn=lambda _path: None,
+        materialize=True,
+    )
+    root = snapshot.frozen_root or ""
+    monkeypatch.setattr(
+        materialization.shutil,
+        "rmtree",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError()),
+    )
+    try:
+        warning = materialization.cleanup_index_candidate_snapshot(snapshot)
+    finally:
+        try:
+            os.rmdir(root)
+        except FileNotFoundError:
+            pass
+
+    assert warning is None
+
+
+def test_release_helper_suppresses_unexpected_cleanup_exception(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1253 thread 3760428941: final ownership boundary preserves primary output.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (),
+        language_fn=lambda _path: None,
+    )
+    monkeypatch.setattr(
+        materialization,
+        "cleanup_index_candidate_snapshot",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("unexpected")),
+    )
+    result = {"success": True}
+
+    materialization.release_index_candidate_snapshot(snapshot, result)
+
+    assert result == {
+        "success": True,
+        "cleanup_warning": "INDEX_CANDIDATE_CLEANUP_FAILED: unexpected",
+    }

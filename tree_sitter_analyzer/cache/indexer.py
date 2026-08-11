@@ -541,6 +541,8 @@ def index_parallel(
     workers: int,
     fingerprints: Mapping[str, IndexFileFingerprint] | None = None,
     frozen_paths: Mapping[str, str] | None = None,
+    frozen_identities: Mapping[str, tuple[int, int, int]] | None = None,
+    frozen_deadline: float | None = None,
 ) -> list[dict[str, Any]]:
     """Dispatch parse+extract to a spawn process pool (safe on macOS/Linux)."""
     from multiprocessing import get_context
@@ -555,6 +557,8 @@ def index_parallel(
             language,
             fingerprints.get(path) if fingerprints is not None else None,
             frozen_paths.get(path) if frozen_paths is not None else None,
+            frozen_identities.get(path) if frozen_identities is not None else None,
+            frozen_deadline,
         )
         for path, language in candidates
     ]
@@ -824,6 +828,8 @@ def run_index_project(
         exclude_patterns if exclude_patterns is not None else _DEFAULT_EXCLUDE_PATTERNS
     )
     owns_candidate_snapshot = False
+    candidate_released = False
+    cleanup_result: dict[str, Any] | None = None
     if force and candidate_snapshot is None:
         candidate_snapshot = build_index_candidate_snapshot(
             cache.project_root,
@@ -887,10 +893,11 @@ def run_index_project(
             )
             if owns_candidate_snapshot and candidate_snapshot is not None:
                 from ..indexing_candidate_materialization import (
-                    cleanup_index_candidate_snapshot,
+                    release_index_candidate_snapshot,
                 )
 
-                cleanup_index_candidate_snapshot(candidate_snapshot)
+                release_index_candidate_snapshot(candidate_snapshot, result)
+                candidate_released = True
             return result
 
     rebuild_signaled = False
@@ -952,6 +959,7 @@ def run_index_project(
             effective_exclude,
             candidate_snapshot,
         )
+        cleanup_result = stats
         candidate_fingerprints = (
             {
                 entry.abs_path: cast(IndexFileFingerprint, entry.fingerprint)
@@ -969,6 +977,20 @@ def run_index_project(
             if candidate_snapshot is not None
             else {}
         )
+        candidate_frozen_identities = (
+            {
+                entry.abs_path: entry.frozen_identity
+                for entry in candidate_snapshot.selected_entries
+                if entry.frozen_identity is not None
+            }
+            if candidate_snapshot is not None
+            else {}
+        )
+        frozen_read_deadline = (
+            candidate_snapshot.frozen_read_deadline
+            if candidate_snapshot is not None
+            else None
+        )
         workers = cache._resolve_worker_count(workers, candidates)
         if workers and workers >= 2 and len(candidates) >= 2:
             results = index_parallel(
@@ -977,6 +999,8 @@ def run_index_project(
                 workers,
                 candidate_fingerprints,
                 candidate_frozen_paths,
+                candidate_frozen_identities,
+                frozen_read_deadline,
             )
         else:
             from .extraction import _worker_index_file
@@ -989,6 +1013,8 @@ def run_index_project(
                         language,
                         candidate_fingerprints.get(path),
                         candidate_frozen_paths.get(path),
+                        candidate_frozen_identities.get(path),
+                        frozen_read_deadline,
                     )
                 )
                 for path, language in candidates
@@ -1164,12 +1190,17 @@ def run_index_project(
     finally:
         if rebuild_signaled:
             _clear_build_in_progress(cache._get_conn())
-        if owns_candidate_snapshot and candidate_snapshot is not None:
+        if (
+            owns_candidate_snapshot
+            and candidate_snapshot is not None
+            and not candidate_released
+        ):
             from ..indexing_candidate_materialization import (
-                cleanup_index_candidate_snapshot,
+                release_index_candidate_snapshot,
             )
 
-            cleanup_index_candidate_snapshot(candidate_snapshot)
+            release_index_candidate_snapshot(candidate_snapshot, cleanup_result)
+            candidate_released = True
 
 
 def _call_graph_marker_is_built(conn: sqlite3.Connection) -> bool:

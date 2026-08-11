@@ -3,6 +3,7 @@
 import json
 import os
 import sqlite3
+import time
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import get_type_hints
@@ -2861,6 +2862,89 @@ def test_frozen_worker_rejects_bytes_outside_captured_epoch(tmp_path):
     result = _worker_index_file(
         (str(logical), str(tmp_path), "python", fingerprint, str(frozen))
     )
+    assert (result["status"], result["reason"]) == (
+        "source_changed",
+        "file changed after candidate snapshot",
+    )
+
+
+@requires_posix_fd
+def test_frozen_worker_rejects_fifo_replacement_without_blocking(tmp_path):
+    # PR #1253 thread 3760428948: O_NONBLOCK rejects a replaced FIFO immediately.
+    from tree_sitter_analyzer.cache.extraction import _worker_index_file
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        cleanup_index_candidate_snapshot,
+    )
+
+    logical = tmp_path / "app.py"
+    logical.write_text("value = 1\n", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(logical),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    entry = snapshot.selected_entries[0]
+    assert entry.frozen_path is not None
+    os.unlink(entry.frozen_path)
+    os.mkfifo(entry.frozen_path)
+    try:
+        result = _worker_index_file(
+            (
+                str(logical),
+                str(tmp_path),
+                "python",
+                entry.fingerprint,
+                entry.frozen_path,
+                entry.frozen_identity,
+                snapshot.frozen_read_deadline,
+            )
+        )
+    finally:
+        cleanup_index_candidate_snapshot(snapshot)
+
+    assert (result["status"], result["reason"]) == (
+        "source_changed",
+        "file changed after candidate snapshot",
+    )
+
+
+@requires_posix_fd
+def test_frozen_worker_rejects_expired_absolute_deadline(tmp_path):
+    # PR #1253 thread 3760428948: worker reads inherit an absolute snapshot deadline.
+    from tree_sitter_analyzer.cache.extraction import _worker_index_file
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        cleanup_index_candidate_snapshot,
+    )
+
+    logical = tmp_path / "app.py"
+    logical.write_text("value = 1\n", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(logical),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    entry = snapshot.selected_entries[0]
+    try:
+        result = _worker_index_file(
+            (
+                str(logical),
+                str(tmp_path),
+                "python",
+                entry.fingerprint,
+                entry.frozen_path,
+                entry.frozen_identity,
+                time.monotonic() - 1.0,
+            )
+        )
+    finally:
+        cleanup_index_candidate_snapshot(snapshot)
+
     assert (result["status"], result["reason"]) == (
         "source_changed",
         "file changed after candidate snapshot",

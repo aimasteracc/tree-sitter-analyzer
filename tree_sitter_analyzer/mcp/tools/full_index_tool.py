@@ -341,6 +341,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             if mode == "full"
             else self._build_candidate_snapshot(max_files, exclude_patterns)
         )
+        candidate_released = False
 
         try:
             phases: dict[str, Any] = {}
@@ -391,6 +392,12 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                         )[:_ERROR_DETAILS_CAP],
                     },
                 }
+                from ...indexing_candidate_materialization import (
+                    release_index_candidate_snapshot,
+                )
+
+                release_index_candidate_snapshot(candidate_snapshot, result)
+                candidate_released = True
                 return apply_toon_format_to_response(result, output_format)
 
             incremental_phase = self._phase_incremental_sync(
@@ -461,13 +468,21 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 **stats,
             }
 
-            return apply_toon_format_to_response(result, output_format)
-        finally:
             from ...indexing_candidate_materialization import (
-                cleanup_index_candidate_snapshot,
+                release_index_candidate_snapshot,
             )
 
-            cleanup_index_candidate_snapshot(candidate_snapshot)
+            release_index_candidate_snapshot(candidate_snapshot, result)
+            candidate_released = True
+            return apply_toon_format_to_response(result, output_format)
+        finally:
+            if not candidate_released:
+                from ...indexing_candidate_materialization import (
+                    release_index_candidate_snapshot,
+                )
+
+                release_index_candidate_snapshot(candidate_snapshot)
+                candidate_released = True
 
     def _build_candidate_snapshot(
         self,

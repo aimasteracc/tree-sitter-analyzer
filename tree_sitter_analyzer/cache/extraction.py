@@ -14,12 +14,12 @@ import json
 import os
 import re
 import sqlite3
-import stat
 import time
 from typing import Any
 
 from ..constants import EXCLUDE_DIRS
 from ..core.parser import Parser
+from ..indexing_candidate_materialization import read_frozen_candidate
 from ..indexing_snapshot import (
     IndexFileFingerprint,
     decode_index_source,
@@ -109,50 +109,44 @@ def _init_worker_parser() -> None:
 
 
 def _read_frozen_candidate(path: str) -> bytes:
-    """Read one private materialization without following a replaced leaf."""
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(path, flags)
-    try:
-        source_stat = os.fstat(fd)
-        if (
-            not stat.S_ISREG(source_stat.st_mode)
-            or source_stat.st_size > 64 * 1024 * 1024
-        ):
-            raise OSError("invalid frozen candidate")
-        chunks: list[bytes] = []
-        remaining = _MAX_FROZEN_FILE_BYTES + 1
-        while remaining:
-            chunk = os.read(fd, min(65536, remaining))
-            if not chunk:
-                break
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        data = b"".join(chunks)
-        if len(data) > _MAX_FROZEN_FILE_BYTES:
-            raise OSError("frozen candidate exceeds byte limit")
-        return data
-    finally:
-        os.close(fd)
+    """Compatibility wrapper for the certified frozen reader."""
+    return read_frozen_candidate(path, limit=_MAX_FROZEN_FILE_BYTES).encode(
+        "utf-8", errors="replace"
+    )
 
 
 def _worker_index_file(
     args: tuple[str, str, str]
     | tuple[str, str, str, IndexFileFingerprint | None]
-    | tuple[str, str, str, IndexFileFingerprint | None, str | None],
+    | tuple[str, str, str, IndexFileFingerprint | None, str | None]
+    | tuple[
+        str,
+        str,
+        str,
+        IndexFileFingerprint | None,
+        str | None,
+        tuple[int, int, int] | None,
+        float | None,
+    ],
 ) -> dict[str, Any]:
     """Parse one immutable descriptor-backed source on POSIX."""
     global _worker_parser
     abs_path, project_root, language = args[:3]
     expected = args[3] if len(args) >= 4 else None
     frozen_path = args[4] if len(args) >= 5 else None
+    frozen_identity = args[5] if len(args) >= 6 else None
+    frozen_deadline = args[6] if len(args) >= 7 else None
     rel_path = os.path.relpath(abs_path, project_root).replace("\\", "/")
     try:
         if frozen_path is not None:
             if expected is None:
                 raise SourceOracleError("INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING")
-            source_code = decode_index_source(_read_frozen_candidate(frozen_path))
-            if index_source_content_hash(source_code) != expected.content_hash:
-                raise SourceOracleError("INDEX_CANDIDATE_FROZEN_SOURCE_CHANGED")
+            source_code = read_frozen_candidate(
+                frozen_path,
+                expected=expected,
+                frozen_identity=frozen_identity,
+                deadline=frozen_deadline,
+            )
             opened = expected
         elif os.name == "posix":
             captured = safe_workspace_path(

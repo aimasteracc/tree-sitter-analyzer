@@ -144,6 +144,9 @@ class IndexSnapshotEntry:
     reason: str | None = None
     fingerprint: IndexFileFingerprint | None = None
     frozen_path: str | None = field(default=None, repr=False, compare=False)
+    frozen_identity: tuple[int, int, int] | None = field(
+        default=None, repr=False, compare=False
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,6 +166,7 @@ class IndexCandidateSnapshot:
     discovery_error: str | None = None
     frozen_root: str | None = field(default=None, repr=False, compare=False)
     frozen_error: str | None = field(default=None, repr=False, compare=False)
+    frozen_read_deadline: float | None = field(default=None, repr=False, compare=False)
 
     @property
     def selected_entries(self) -> tuple[IndexSnapshotEntry, ...]:
