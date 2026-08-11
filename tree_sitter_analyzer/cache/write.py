@@ -1,10 +1,4 @@
-"""Write helper functions for ASTCache indexing pipeline.
-
-Pure functions extracted from ASTCache._write_* methods to reduce
-ast_cache.py line count. Each takes explicit parameters instead of self.
-
-ASTCache keeps thin wrapper methods that delegate here.
-"""
+"""Pure ASTCache write helpers with explicit parameters."""
 
 from __future__ import annotations
 
@@ -85,6 +79,10 @@ def discard_file_rows(
     fts5_available: bool | None,
 ) -> bool:
     """Remove one file generation without committing the current transaction."""
+    # Resolver contexts retain symbol-row IDs and project targets independently
+    # of SQLite transactions.  Clear them before the first mutation so the
+    # ensuing pipeline cannot resurrect a deleted/replaced generation.
+    _clear_symbol_resolver_context()
     if fts5_available:
         _delete_fts_rows(conn, rel_path)
     _delete_file_rows_if_table_present(conn, "ast_symbol_rows", rel_path)
@@ -139,12 +137,12 @@ def write_fts5_symbols(
     fts5_available: bool = True,
 ) -> list[dict[str, Any]]:
     """Replace ordinary symbol rows and, when available, their FTS projection."""
+    _clear_symbol_resolver_context()
     if _table_exists(conn, "edges"):
         _reset_incoming_edge_resolutions(conn, rel_path)
     if fts5_available:
         _delete_fts_rows(conn, rel_path)
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
-    _clear_symbol_resolver_context()
     sym_list = symbols.get("symbols", [])
     if not sym_list:
         upsert_symbol_projection_state(conn, rel_path)
@@ -194,12 +192,12 @@ def write_fts5_symbols_from_tuples(
     fts5_available: bool = True,
 ) -> list[dict[str, Any]]:
     """Insert ordinary worker symbol rows and optional FTS projection."""
+    _clear_symbol_resolver_context()
     if _table_exists(conn, "edges"):
         _reset_incoming_edge_resolutions(conn, rel_path)
     if fts5_available:
         _delete_fts_rows(conn, rel_path)
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
-    _clear_symbol_resolver_context()
     if not symbol_rows:
         upsert_symbol_projection_state(conn, rel_path)
         return []

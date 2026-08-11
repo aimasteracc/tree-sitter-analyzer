@@ -171,13 +171,16 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
             invalid_details_dropped += 1
         if invalid_details_dropped:
             payload["invalid_details_dropped"] = invalid_details_dropped
+        sync_complete = bool(
+            sync_result.errors == 0
+            and sync_result.backfill_errors == 0
+            and sync_result.scope_complete
+            and payload.get("completeness") == "complete"
+            and not sync_result.manifest_certification_failed
+        )
         result = build_response(
-            verdict=(
-                "WARN"
-                if sync_result.errors > 0 or not sync_result.scope_complete
-                else "INFO"
-            ),
-            success=sync_result.backfill_errors == 0,
+            verdict="INFO" if sync_complete else "WARN",
+            success=sync_complete,
             project_root=self.project_root,
             mode="sync",
             **payload,

@@ -53,6 +53,8 @@ def mark_call_graph_built(conn: sqlite3.Connection) -> None:
 
 def mark_call_graph_built_strict(conn: sqlite3.Connection) -> None:
     """Persist and verify the exact current pipeline marker."""
+    if not call_graph_edges_are_consistent(conn):
+        raise sqlite3.OperationalError("CALL_GRAPH_DANGLING_RESOLUTION")
     _ensure_state_schema(conn)
     conn.execute(
         "INSERT INTO ast_call_graph_state (id, built, built_at, pipeline_version) "
@@ -149,9 +151,72 @@ def exact_call_graph_marker(
             set_progress_handler(None, 0)
 
 
+def call_graph_edges_are_consistent(
+    conn: sqlite3.Connection, *, deadline: float | None = None
+) -> bool:
+    """Reject resolved call targets that no longer have canonical rows."""
+    expires_at = (
+        time.monotonic() + _CALL_GRAPH_MARKER_DEADLINE_SECONDS
+        if deadline is None
+        else deadline
+    )
+
+    def expired() -> int:
+        return int(time.monotonic() > expires_at)
+
+    set_progress_handler = getattr(conn, "set_progress_handler", None)
+    if callable(set_progress_handler):
+        set_progress_handler(expired, 1_000)
+    try:
+        tables = {
+            str(row[0])
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' "
+                "AND name IN ('edges', 'ast_index', 'ast_symbol_rows')"
+            ).fetchall()
+        }
+        if "edges" not in tables:
+            return True
+        if "ast_index" in tables:
+            missing_file = conn.execute(
+                "SELECT 1 FROM edges AS e WHERE e.kind = 'calls' "
+                "AND e.callee_resolved_file <> '' AND NOT EXISTS ("
+                "SELECT 1 FROM ast_index AS i "
+                "WHERE i.file_path = e.callee_resolved_file) LIMIT 1"
+            ).fetchone()
+        else:
+            missing_file = conn.execute(
+                "SELECT 1 FROM edges WHERE kind = 'calls' "
+                "AND callee_resolved_file <> '' LIMIT 1"
+            ).fetchone()
+        if missing_file is not None:
+            return False
+        if "ast_symbol_rows" in tables:
+            missing_symbol = conn.execute(
+                "SELECT 1 FROM edges AS e WHERE e.kind = 'calls' "
+                "AND e.callee_symbol_id IS NOT NULL AND NOT EXISTS ("
+                "SELECT 1 FROM ast_symbol_rows AS s "
+                "WHERE s.id = e.callee_symbol_id) LIMIT 1"
+            ).fetchone()
+        else:
+            missing_symbol = conn.execute(
+                "SELECT 1 FROM edges WHERE kind = 'calls' "
+                "AND callee_symbol_id IS NOT NULL LIMIT 1"
+            ).fetchone()
+        return bool(time.monotonic() <= expires_at and missing_symbol is None)
+    except (sqlite3.DatabaseError, AttributeError, TypeError, ValueError):
+        return False
+    finally:
+        if callable(set_progress_handler):
+            set_progress_handler(None, 0)
+
+
 def call_graph_marker_is_current(conn: sqlite3.Connection) -> bool:
-    """Return True only for exact integer current-pipeline certification."""
-    return exact_call_graph_marker(conn)
+    """Require both the exact marker and non-dangling resolved call targets."""
+    deadline = time.monotonic() + _CALL_GRAPH_MARKER_DEADLINE_SECONDS
+    return exact_call_graph_marker(
+        conn, deadline=deadline
+    ) and call_graph_edges_are_consistent(conn, deadline=deadline)
 
 
 def call_graph_built(conn: sqlite3.Connection) -> bool:

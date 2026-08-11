@@ -285,6 +285,44 @@ def test_snapshot_mutation_during_backfill_is_invalidated(tmp_path):
     assert outcome == (["app.py"], 0, None, False)
 
 
+def test_deleted_target_cannot_be_reresolved_from_cached_context(tmp_path):
+    # PR #1253 thread 3761514123: resolver snapshots must not resurrect deletions.
+    from tree_sitter_analyzer.synapse_resolver import build_resolver_context
+
+    target = tmp_path / "target.py"
+    caller = tmp_path / "caller.py"
+    target.write_text("def target():\n    return 1\n")
+    caller.write_text(
+        "from target import target\n\ndef caller():\n    return target()\n"
+    )
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    conn = cache.get_conn()
+    before = conn.execute(
+        "SELECT callee_resolution, callee_resolved_file FROM edges "
+        "WHERE kind = 'calls' AND file_path = 'caller.py'"
+    ).fetchone()
+    build_resolver_context(cache)
+    target.unlink()
+
+    try:
+        result = IncrementalSync(cache).sync()
+        after = conn.execute(
+            "SELECT callee_resolution, callee_resolved_file, callee_symbol_id "
+            "FROM edges WHERE kind = 'calls' AND file_path = 'caller.py'"
+        ).fetchone()
+        marker_current = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert (
+        tuple(before),
+        result.deleted_files,
+        tuple(after),
+        marker_current,
+    ) == (("project", "target.py"), 1, ("external", "", None), True)
+
+
 def test_late_deletion_keeps_marker_incomplete_until_callee_retarget(tmp_path):
     # PR #1253 review 3757240531: post-pipeline deletion cannot be certified.
     from tree_sitter_analyzer.cache.callgraph_state import clear_call_graph_built_strict
@@ -1555,7 +1593,7 @@ def test_late_mutation_unresolves_edges_from_other_files(tmp_path):
         metadata["callee_resolution"],
         metadata["callee_resolved_file"],
         metadata["callee_symbol_id"],
-    ) == ("target.py", "project", "target.py", 3, "unknown", "", None)
+    ) == ("target.py", "external", "", None, "unknown", "", None)
 
 
 def test_new_file_cleanup_failure_preserves_original_index_error():

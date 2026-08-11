@@ -517,6 +517,9 @@ def walk_and_partition(
 
 def _clear_full_rebuild_rows(cache: Any, conn: sqlite3.Connection) -> None:
     """Clear primary and derived index rows before a forced rebuild."""
+    from .write import _clear_symbol_resolver_context
+
+    _clear_symbol_resolver_context()
     conn.execute("DELETE FROM ast_index")
     if cache.fts5_available:
         conn.execute(

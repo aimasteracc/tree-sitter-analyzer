@@ -85,6 +85,31 @@ class TestContentHash:
         assert _content_hash(b"hello") == _content_hash("hello")
 
 
+def test_check_cache_read_reports_source_open_error(tmp_path):
+    # PR #1253: an unreadable stale source returns exact per-file attribution.
+    from tree_sitter_analyzer.cache.indexer import check_cache_or_read
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        with patch("builtins.open", side_effect=OSError("read denied")):
+            result = check_cache_or_read(
+                cache.get_conn(),
+                "missing.py",
+                str(tmp_path / "missing.py"),
+                SimpleNamespace(st_mtime_ns=1, st_size=2),
+                lambda source: source,
+                _AST_CACHE_EXTRACTOR_VERSION,
+            )
+    finally:
+        cache.close()
+
+    assert result == {
+        "file": "missing.py",
+        "status": "error",
+        "reason": "read denied",
+    }
+
+
 class TestAstCacheWriteHelpers:
     def test_empty_fts5_symbol_batches_return_empty(self):
         from tree_sitter_analyzer.cache.write import (

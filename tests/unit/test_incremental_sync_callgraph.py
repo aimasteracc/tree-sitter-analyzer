@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import sqlite3
 
+import pytest
+
 from tree_sitter_analyzer.cache.callgraph_state import (
     CALL_GRAPH_PIPELINE_VERSION,
     call_graph_built,
@@ -156,3 +158,35 @@ def test_noninteger_synapse_resolved_count_is_not_published() -> None:
     complete, resolved = run_call_graph_pipeline(cache)
 
     assert (complete, resolved) == (True, 0)
+
+
+@pytest.mark.parametrize(
+    ("resolved_file", "symbol_id"),
+    [("missing.py", None), ("present.py", 999)],
+)
+def test_dangling_call_resolution_rejects_pipeline_marker(
+    resolved_file: str,
+    symbol_id: int | None,
+) -> None:
+    # PR #1253 thread 3761514123: certification rejects both dangling keys.
+    from tree_sitter_analyzer.graph.edge_store import EdgeStore
+
+    conn = sqlite3.connect(":memory:")
+    EdgeStore(conn)
+    conn.execute("CREATE TABLE ast_index (file_path TEXT PRIMARY KEY)")
+    conn.execute("INSERT INTO ast_index(file_path) VALUES ('present.py')")
+    conn.execute(
+        "CREATE TABLE ast_symbol_rows (id INTEGER PRIMARY KEY, file_path TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO edges (source_node_id, target_node_id, kind, "
+        "callee_resolved_file, callee_symbol_id) VALUES (?, ?, 'calls', ?, ?)",
+        ("caller.py:caller:1", "function:target", resolved_file, symbol_id),
+    )
+
+    with pytest.raises(
+        sqlite3.OperationalError, match="CALL_GRAPH_DANGLING_RESOLUTION"
+    ):
+        mark_call_graph_built_strict(conn)
+
+    assert call_graph_built(conn) is False

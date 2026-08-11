@@ -172,6 +172,45 @@ class TestCacheLifecycle:
         cache.close.assert_called_once_with()
 
 
+def test_parse_failure_makes_incremental_response_non_success(tool_with_root):
+    # PR #1253 thread 3761514130: missing parsed rows are not MCP success.
+    cache = MagicMock()
+    parse_failure = SyncResult(errors=1, scope_complete=False)
+    with (
+        patch.object(tool_with_root, "_ensure_cache", return_value=cache),
+        patch.object(IncrementalSync, "sync", return_value=parse_failure),
+    ):
+        result = tool_with_root._sync(10, "json")
+
+    assert (result["success"], result["verdict"], result["completeness"]) == (
+        False,
+        "WARN",
+        "incomplete",
+    )
+
+
+def test_manifest_stamp_failure_makes_incremental_response_non_success(
+    tool_with_root,
+):
+    # PR #1253 thread 3761514130: failed certification is not MCP success.
+    cache = MagicMock()
+    stamp_failure = SyncResult(
+        scope_complete=False,
+        manifest_certification_failed=True,
+    )
+    with (
+        patch.object(tool_with_root, "_ensure_cache", return_value=cache),
+        patch.object(IncrementalSync, "sync", return_value=stamp_failure),
+    ):
+        result = tool_with_root._sync(10, "json")
+
+    assert (
+        result["success"],
+        result["verdict"],
+        result["manifest_certification_failed"],
+    ) == (False, "WARN", True)
+
+
 def test_pipeline_warning_makes_incremental_response_non_success(tool_with_root):
     # PR #1253 review 3757240532: incomplete navigation is not an INFO success.
     cache = MagicMock()
