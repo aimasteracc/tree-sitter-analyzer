@@ -378,3 +378,90 @@ def test_begin_failure_does_not_attempt_manifest_cleanup():
         stamp_full_index_manifest(conn, ".")  # type: ignore[arg-type]
 
     assert conn.events == ["COMMIT", "BEGIN IMMEDIATE"]
+
+
+def test_generated_column_is_rejected_before_expression_evaluation() -> None:
+    # PR #1253 review 3757662081: generated values must never bypass preflight.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    calls = 0
+
+    def huge_value() -> bytes:
+        nonlocal calls
+        calls += 1
+        return b"x" * 1_000_000
+
+    conn = sqlite3.connect(":memory:")
+    conn.create_function("huge_value", 0, huge_value, deterministic=True)
+    conn.execute(
+        "CREATE TABLE payload(seed INTEGER, value BLOB "
+        "GENERATED ALWAYS AS (huge_value()) VIRTUAL)"
+    )
+    conn.execute("INSERT INTO payload(seed) VALUES (1)")
+    calls = 0
+
+    with pytest.raises(RuntimeError, match="^INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA$"):
+        schema.index_fingerprint(conn, ".")
+    conn.close()
+
+    assert calls == 0
+
+
+def test_generated_column_snapshot_status_is_stable_unknown(tmp_path) -> None:
+    # PR #1253 review 3757662081: hostile schemas degrade to a stable status.
+    from tree_sitter_analyzer.index_snapshot import read_existing_snapshot
+
+    TestSnapshotFailureContracts._certified_cache(tmp_path)
+    db_path = tmp_path / ".ast-cache" / "index.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE payload(seed INTEGER, value BLOB "
+        "GENERATED ALWAYS AS (zeroblob(1000000000)) VIRTUAL)"
+    )
+    conn.commit()
+    conn.close()
+
+    snapshot = read_existing_snapshot(str(tmp_path))
+
+    assert snapshot.completeness == "unknown"
+    assert snapshot.reason == "INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA"
+
+
+def test_virtual_table_hidden_columns_are_outside_select_scope() -> None:
+    # PR #1253 review 3757662081: SELECT * omits virtual-table hidden columns.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE VIRTUAL TABLE search USING fts5(content)")
+
+    columns = schema._query_visible_columns(conn, "search", float("inf"))
+    conn.close()
+
+    assert columns == ("content",)
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        (0,),
+        (0, 42, "", 0, None, 0, 0),
+        (0, "hidden", "", 0, None, 0, 4),
+        (0, "hidden", "", 0, None, 0, 1),
+    ],
+)
+def test_unsupported_table_xinfo_metadata_fails_closed(row: tuple[object, ...]) -> None:
+    # PR #1253 review 3757662081: unknown xinfo layouts never reach SELECT.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    class Connection:
+        def execute(self, _query: str):
+            class Cursor:
+                rows = iter((row,))
+
+                def fetchone(self):
+                    return next(self.rows, None)
+
+            return Cursor()
+
+    with pytest.raises(RuntimeError, match="^INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA$"):
+        schema._query_visible_columns(Connection(), "payload", float("inf"))

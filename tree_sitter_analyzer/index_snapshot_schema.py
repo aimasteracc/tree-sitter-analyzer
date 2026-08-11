@@ -292,14 +292,19 @@ def index_fingerprint(conn: sqlite3.Connection, root: str) -> str:
         )
         if str(row[0]) not in _CONTROL_TABLES
     ]
+    # Inventory every table with table_xinfo before any row expression runs.
+    # Generated columns can allocate arbitrarily large values even in a tiny DB;
+    # hidden virtual-table columns, unlike generated columns, are omitted by
+    # SELECT * and therefore are intentionally outside the query-visible scope.
+    table_columns = {
+        table: _query_visible_columns(conn, table, deadline) for table, _ in inventory
+    }
     rows_seen = bytes_seen = 0
     for table, schema in inventory:
         _check_deadline(deadline)
         _frame(digest, b"table", table.encode("utf-8", "surrogatepass"))
         _frame(digest, b"schema", schema.encode("utf-8", "surrogatepass"))
-        columns = tuple(
-            str(row[1]) for row in conn.execute(f'PRAGMA table_info("{table}")')
-        )
+        columns = table_columns[table]
         _frame(digest, b"columns", _typed(columns))
         quoted_columns = tuple(_quote_identifier(column) for column in columns)
         preflight_rows, preflight_bytes = _preflight_table_rows(
@@ -311,7 +316,8 @@ def index_fingerprint(conn: sqlite3.Connection, root: str) -> str:
         ):
             raise RuntimeError("INDEX_FINGERPRINT_BUDGET")
         order_by = ", ".join(f"{column} COLLATE BINARY" for column in quoted_columns)
-        query = f"SELECT * FROM {_quote_identifier(table)} ORDER BY {order_by}"
+        selected = ", ".join(quoted_columns)
+        query = f"SELECT {selected} FROM {_quote_identifier(table)} ORDER BY {order_by}"
         for row in _deadline_ordered_rows(conn, query, deadline):
             _check_deadline(deadline)
             encoded = _typed(tuple(row))
@@ -325,6 +331,31 @@ def index_fingerprint(conn: sqlite3.Connection, root: str) -> str:
             _frame(digest, b"row", encoded)
             _check_deadline(deadline)
     return "sha256:" + digest.hexdigest()
+
+
+def _query_visible_columns(
+    conn: sqlite3.Connection, table: str, deadline: float
+) -> tuple[str, ...]:
+    """Return SELECT-visible columns and reject generated expressions."""
+    columns: list[str] = []
+    cursor = conn.execute(f"PRAGMA table_xinfo({_quote_identifier(table)})")
+    while True:
+        _check_deadline(deadline)
+        row = cursor.fetchone()
+        if row is None:
+            break
+        if len(row) < 7 or not isinstance(row[1], str):
+            raise RuntimeError("INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA")
+        hidden = row[6]
+        if hidden in (2, 3):
+            raise RuntimeError("INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA")
+        if hidden == 0:
+            columns.append(row[1])
+        elif hidden != 1:
+            raise RuntimeError("INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA")
+    if not columns:
+        raise RuntimeError("INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA")
+    return tuple(columns)
 
 
 def _preflight_schema_inventory(conn: sqlite3.Connection, deadline: float) -> None:

@@ -1911,6 +1911,7 @@ def test_snapshot_batch_revalidation_handles_missing_error_detail(tmp_path):
         "errors": 0,
         "indexed": 0,
         "skipped": 1,
+        "incomplete_skips": 1,
         "processed": 0,
         "changed_during_run": 1,
         "changed_during_run_files": ["app.py"],

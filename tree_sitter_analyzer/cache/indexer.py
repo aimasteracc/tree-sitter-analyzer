@@ -301,6 +301,7 @@ def walk_and_partition(
         "cached": 0,
         "errors": 0,
         "skipped": 0,
+        "incomplete_skips": 0,
         "processed": 0,
         "changed_during_run": 0,
         "changed_during_run_files": [],
@@ -359,6 +360,7 @@ def walk_and_partition(
             change_reason = changed_since_snapshot(entry)
             if change_reason is not None:
                 stats["skipped"] += 1
+                stats["incomplete_skips"] += 1
                 stats["changed_during_run"] += 1
                 stats["changed_during_run_files"].append(entry.rel_path)
                 stats["files"].append(
@@ -574,6 +576,7 @@ def _record_snapshot_change(
 ) -> None:
     """Replace one processed result with a deterministic snapshot skip."""
     stats["skipped"] += 1
+    stats["incomplete_skips"] = stats.get("incomplete_skips", 0) + 1
     stats["processed"] = max(0, int(stats["processed"]) - 1)
     stats["changed_during_run"] += 1
     stats["changed_during_run_files"].append(rel_path)
@@ -702,6 +705,7 @@ def run_index_project(
             "cached": 0,
             "errors": 0,
             "skipped": 0,
+            "incomplete_skips": 0,
             "files": [],
             "synapse_backfill": synapse,
             "edge_store_refresh": edge_store_refresh,
@@ -977,18 +981,22 @@ def _candidate_paths_are_exact(
         _normalize_relative_path(str(row[0]))
         for row in conn.execute("SELECT file_path FROM ast_index")
     }
+    run_is_complete = bool(
+        not stats.get("truncated_by_max_files", False)
+        and stats.get("errors", 0) == 0
+        and stats.get("backfill_errors", 0) == 0
+        and stats.get("incomplete_skips", 0) == 0
+        and stats.get("changed_during_run", 0) == 0
+    )
     if candidate is None:
-        return (
-            bool(paths)
-            and not stats.get("truncated_by_max_files", False)
-            and not (stats.get("errors", 0) or stats.get("skipped", 0))
-        )
+        # Default exclusions, declared language filters, and unsupported
+        # extensions are outside this run's source scope, not pipeline failures.
+        return run_is_complete
     selected = {entry.rel_path for entry in candidate.selected_entries}
     return bool(
-        not candidate.truncated_by_max_files
+        run_is_complete
+        and not candidate.truncated_by_max_files
         and candidate.errors == 0
-        and stats.get("errors", 0) == 0
-        and stats.get("changed_during_run", 0) == 0
         and paths == selected
     )
 

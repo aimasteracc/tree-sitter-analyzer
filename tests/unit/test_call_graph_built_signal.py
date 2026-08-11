@@ -630,6 +630,31 @@ def test_mixed_incremental_rerun_keeps_marker_true(
         cache.close()
 
 
+def test_default_corpus_exclusion_certifies_without_repeating_backfill(
+    tmp_path: Path,
+) -> None:
+    # PR #1253 review 3757662090: scope exclusions are not pipeline failures.
+    corpus = tmp_path / "tests" / "golden"
+    corpus.mkdir(parents=True)
+    (corpus / "corpus_sample.py").write_text("def excluded(): pass\n")
+    (tmp_path / "included.py").write_text("def included(): pass\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        first = cache.index_project(workers=0)
+        assert first["skipped"] == 1
+        assert first["incomplete_skips"] == 0
+        assert cache.call_graph_built() is True
+
+        with mock.patch.object(cache, "_run_synapse_backfill") as backfill:
+            second = cache.index_project(workers=0)
+
+        assert second["skipped"] == 1
+        assert cache.call_graph_built() is True
+        backfill.assert_not_called()
+    finally:
+        cache.close()
+
+
 def test_truncated_rerun_does_not_stamp_marker_when_incomplete(
     tmp_path: Path,
 ) -> None:

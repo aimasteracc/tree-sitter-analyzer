@@ -880,3 +880,91 @@ def test_projection_validator_enforces_total_payload_budget(tmp_path, monkeypatc
     cache.close()
 
     assert result is False
+
+
+class _ProjectionCursor:
+    def __init__(self, rows):
+        self._rows = iter(rows)
+
+    def fetchone(self):
+        return next(self._rows, None)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._rows)
+
+
+class _ProjectionConnection:
+    row_columns = ("id", "name", "kind", "file_path", "language", "line", "end_line")
+    state_columns = ("file_path", "content_hash", "symbol_count", "projection_digest")
+    metadata_columns = ("key", "value")
+
+    def __init__(self, *, states=(), symbol_rows=()):
+        self.states = states
+        self.symbol_rows = symbol_rows
+
+    def set_progress_handler(self, callback, _steps):
+        if callback is not None:
+            assert callback() == 0
+
+    def execute(self, query, _params=()):
+        if query.startswith("PRAGMA table_info"):
+            table = query.removeprefix("PRAGMA table_info(").removesuffix(")")
+            columns = {
+                "ast_symbol_rows": self.row_columns,
+                "ast_symbol_projection_state": self.state_columns,
+                "ast_cache_metadata": self.metadata_columns,
+            }[table]
+            return _ProjectionCursor(
+                [(index, name) for index, name in enumerate(columns)]
+            )
+        if "COUNT(*) FILTER" in query:
+            return _ProjectionCursor([(1, 1)])
+        if query.startswith("SELECT content_hash FROM ast_index"):
+            return _ProjectionCursor([])
+        if query.startswith("SELECT 1 FROM"):
+            return _ProjectionCursor([])
+        if query.startswith("SELECT file_path, symbol_count"):
+            return _ProjectionCursor(self.states)
+        if query.startswith("SELECT id, name, kind"):
+            return _ProjectionCursor(self.symbol_rows)
+        return _ProjectionCursor([])
+
+
+def test_symbol_projection_rejects_wrong_state_schema() -> None:
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    conn = _ProjectionConnection()
+    conn.state_columns = ("wrong",)
+
+    assert symbol_projection_is_exact(conn) is False
+
+
+def test_symbol_projection_rejects_wrong_metadata_schema() -> None:
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    conn = _ProjectionConnection()
+    conn.metadata_columns = ("wrong",)
+
+    assert symbol_projection_is_exact(conn) is False
+
+
+def test_symbol_projection_rejects_malformed_state_scalar() -> None:
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    conn = _ProjectionConnection(states=((1, 0, "sha256:" + "0" * 64),))
+
+    assert symbol_projection_is_exact(conn) is False
+
+
+def test_symbol_projection_rejects_malformed_symbol_scalar() -> None:
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    conn = _ProjectionConnection(
+        states=(("a.py", 1, "sha256:" + "0" * 64),),
+        symbol_rows=(("bad", "name", "kind", "a.py", "python", 1, 1, 4, 4, 4, 6),),
+    )
+
+    assert symbol_projection_is_exact(conn) is False
