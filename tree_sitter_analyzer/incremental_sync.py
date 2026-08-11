@@ -131,7 +131,10 @@ class IncrementalSync:
             and not truncated
             and not candidate_snapshot.errors
         ):
-            deleted_paths = set(indexed_rows) - set(disk_files)
+            selected_paths = {
+                entry.rel_path for entry in candidate_snapshot.selected_entries
+            }
+            deleted_paths = set(indexed_rows) - selected_paths
             self._invalidate_deleted_files(deleted_paths, result, callback)
         elif candidate_snapshot is None and not truncated:
             deleted_paths = set(indexed_rows) - present_paths

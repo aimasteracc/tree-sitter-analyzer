@@ -999,19 +999,26 @@ def test_incremental_sync_reports_preexisting_snapshot_change_to_callback(tmp_pa
     ]
 
 
-def test_preexisting_snapshot_modification_invalidates_cached_rows(tmp_path):
+def test_preexisting_snapshot_modification_is_only_reported_as_skipped(tmp_path):
+    # PR #1253 review 3754914626: selected mutations are not scope deletions.
     path = tmp_path / "app.py"
     path.write_text("import os\n\ndef before():\n    return os.getcwd()\n")
     cache = ASTCache(str(tmp_path))
     cache.index_file(str(path))
     snapshot = _snapshot(tmp_path, path)
     path.write_text("def after():\n    return 2\n")
+    callback_details: list[dict] = []
 
     try:
-        IncrementalSync(cache).sync(
-            max_files=10,
-            candidate_snapshot=snapshot,
-        )
+        with (
+            patch.object(cache, "_run_synapse_backfill") as synapse_backfill,
+            patch.object(cache, "_run_unresolved_refs_backfill") as refs_backfill,
+        ):
+            result = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+                callback=callback_details.append,
+            )
         conn = cache.get_conn()
         counts = {
             table: conn.execute(
@@ -1030,6 +1037,20 @@ def test_preexisting_snapshot_modification_invalidates_cached_rows(tmp_path):
     finally:
         cache.close()
 
+    expected_detail = {
+        "file": "app.py",
+        "considered": "skipped",
+        "action": "skipped",
+        "status": "skipped",
+        "reason": "file changed after candidate snapshot",
+    }
+    assert (
+        result.deleted_files,
+        result.details,
+        callback_details,
+        synapse_backfill.call_count,
+        refs_backfill.call_count,
+    ) == (0, [expected_detail], [expected_detail], 0, 0)
     assert counts == {
         "ast_index": 0,
         "ast_symbol_rows": 0,
@@ -1038,6 +1059,29 @@ def test_preexisting_snapshot_modification_invalidates_cached_rows(tmp_path):
         "ast_symbol_activation": 0,
         "edges": 0,
     }
+
+
+def test_candidate_snapshot_prunes_cached_row_outside_selected_scope(tmp_path):
+    # PR #1253 review 3754914626: genuine out-of-scope rows remain deletions.
+    selected = tmp_path / "selected.py"
+    outside = tmp_path / "outside.py"
+    selected.write_text("selected = True\n")
+    outside.write_text("outside = True\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(selected))
+    cache.index_file(str(outside))
+    snapshot = _snapshot(tmp_path, selected)
+
+    try:
+        result = IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+        )
+        remaining = cache.lookup(str(outside))
+    finally:
+        cache.close()
+
+    assert (result.deleted_files, remaining) == (1, None)
 
 
 def test_preexisting_snapshot_deletion_invalidates_cached_row(tmp_path):

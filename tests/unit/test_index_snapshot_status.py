@@ -101,8 +101,8 @@ class TestAuthoritativeSnapshotOracle:
         assert result["completeness"] == "complete"
 
     @pytest.mark.asyncio
-    async def test_invalid_utf8_source_is_not_certified(self, tmp_path):
-        # PR #1253: the source oracle validates UTF-8 strictly while streaming.
+    async def test_invalid_utf8_source_is_immediately_certified(self, tmp_path):
+        # PR #1253 review 3754914627: replay matches writer errors="replace".
         from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
@@ -117,8 +117,8 @@ class TestAuthoritativeSnapshotOracle:
             {"output_format": "json"}
         )
         assert (result["completeness"], result["oracle_reason"]) == (
-            "partial",
-            "SOURCE_SCOPE_UNSAFE",
+            "complete",
+            None,
         )
 
     @pytest.mark.asyncio

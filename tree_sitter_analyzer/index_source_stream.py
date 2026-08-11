@@ -20,7 +20,7 @@ def hash_source_at(
     metadata_marker: Any,
     same_file_metadata: Any,
 ) -> tuple[str, str, bool]:
-    """Validate UTF-8 and hash newline-normalized raw bytes in bounded chunks."""
+    """Hash the writer's replacement-decoded, newline-normalized source stream."""
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
         fd = (
@@ -31,8 +31,7 @@ def hash_source_at(
     except OSError:
         return metadata_marker(before), "<unsafe>", False
     digest = hashlib.sha256()
-    decoder = codecs.getincrementaldecoder("utf-8")("strict")
-    valid_utf8 = True
+    decoder = codecs.getincrementaldecoder("utf-8")("replace")
     pending_cr = False
     try:
         opened = os.fstat(fd)
@@ -47,26 +46,18 @@ def hash_source_at(
                 raise OverflowError
             if time.monotonic() > deadline:
                 raise TimeoutError
-            if valid_utf8:
-                try:
-                    decoder.decode(chunk, final=False)
-                except UnicodeDecodeError:
-                    valid_utf8 = False
-            if valid_utf8:
-                pending_cr = _hash_normalized_chunk(
-                    digest, chunk, pending_cr, deadline, counters, byte_budget
-                )
-        if valid_utf8:
-            try:
-                decoder.decode(b"", final=True)
-            except UnicodeDecodeError:
-                valid_utf8 = False
-        if valid_utf8 and pending_cr:
-            _hash_output(digest, b"\n", deadline, counters, byte_budget)
+            decoded = decoder.decode(chunk, final=False)
+            pending_cr = _hash_normalized_chunk(
+                digest, decoded, pending_cr, deadline, counters, byte_budget
+            )
+        decoded = decoder.decode(b"", final=True)
+        _hash_normalized_chunk(
+            digest, decoded, pending_cr, deadline, counters, byte_budget
+        )
         after = os.fstat(fd)
     finally:
         os.close(fd)
-    clean = valid_utf8 and same_file_metadata(before, after)
+    clean = same_file_metadata(before, after)
     return (
         metadata_marker(after),
         digest.hexdigest() if clean else "<unsafe>",
@@ -76,30 +67,37 @@ def hash_source_at(
 
 def _hash_normalized_chunk(
     digest: Any,
-    chunk: bytes,
+    chunk: str,
     pending_cr: bool,
     deadline: float,
     counters: dict[str, int],
     byte_budget: int,
 ) -> bool:
-    """Hash CRLF/CR as LF without constructing a normalized buffer."""
+    """Hash decoded text with universal-newline translation in bounded spans."""
     index = 0
     if pending_cr:
         _hash_output(digest, b"\n", deadline, counters, byte_budget)
-        if chunk.startswith(b"\n"):
+        if chunk.startswith("\n"):
             index = 1
     while index < len(chunk):
-        carriage = chunk.find(b"\r", index)
+        carriage = chunk.find("\r", index)
         if carriage < 0:
-            _hash_output(digest, chunk[index:], deadline, counters, byte_budget)
+            _hash_text(digest, chunk[index:], deadline, counters, byte_budget)
             return False
         if carriage > index:
-            _hash_output(digest, chunk[index:carriage], deadline, counters, byte_budget)
+            _hash_text(digest, chunk[index:carriage], deadline, counters, byte_budget)
         if carriage + 1 == len(chunk):
             return True
         _hash_output(digest, b"\n", deadline, counters, byte_budget)
-        index = carriage + (2 if chunk[carriage + 1] == 10 else 1)
+        index = carriage + (2 if chunk[carriage + 1] == "\n" else 1)
     return False
+
+
+def _hash_text(
+    digest: Any, text: str, deadline: float, counters: dict[str, int], byte_budget: int
+) -> None:
+    """Encode one decoded span exactly as the index writer hashes it."""
+    _hash_output(digest, text.encode("utf-8"), deadline, counters, byte_budget)
 
 
 def _hash_output(

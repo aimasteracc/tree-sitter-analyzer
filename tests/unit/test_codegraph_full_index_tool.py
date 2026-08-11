@@ -123,6 +123,17 @@ class TestValidation:
         assert tool.validate_arguments(arguments) is True
         assert arguments["max_files"] == 20_000
 
+    @pytest.mark.parametrize("value", [None, "src/*", [1]])
+    def test_invalid_exclude_patterns_are_rejected(self, tool, value):
+        # PR #1253: persisted source-scope patterns must be strings in an array.
+        with pytest.raises(ValueError, match="exclude_patterns must be an array"):
+            tool.validate_arguments({"exclude_patterns": value})
+
+    def test_non_boolean_no_default_excludes_is_rejected(self, tool):
+        # PR #1253: source-scope policy flags cannot rely on truthiness.
+        with pytest.raises(ValueError, match="no_default_excludes must be a boolean"):
+            tool.validate_arguments({"no_default_excludes": 1})
+
 
 class TestExcludeResolution:
     def test_no_default_excludes_can_resolve_to_empty_scope(self):

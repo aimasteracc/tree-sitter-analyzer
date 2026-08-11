@@ -146,26 +146,30 @@ class TestSnapshotFailureContracts:
         finally:
             os.close(fd)
 
-    def test_stream_invalid_utf8_remains_unsafe_across_later_chunks(
+    def test_stream_invalid_utf8_matches_writer_replacement_across_chunks(
         self, tmp_path, monkeypatch
     ):
-        # PR #1253: strict validation remains failed after the offending chunk.
+        # PR #1253 review 3754914627: replay uses the writer's replacement decode.
         import tree_sitter_analyzer.index_source_snapshot as source
 
         target = tmp_path / "sample.py"
-        target.write_bytes(b"\xffX")
-        chunks = iter((b"\xff", b"X", b""))
+        target.write_bytes(b"\xe2\x82\xac\xffX")
+        chunks = iter((b"\xe2", b"\x82", b"\xac\xffX", b""))
         monkeypatch.setattr(source.os, "read", lambda _fd, _size: next(chunks))
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        assert (next(iter(rows))[1].endswith("|<unsafe>"), unsafe) == (True, True)
+        expected = hashlib.sha256("€\ufffdX".encode()).hexdigest()
+        assert (next(iter(rows))[1].split("|")[1], unsafe) == (expected, False)
 
-    def test_stream_incomplete_final_utf8_sequence_is_unsafe(self, tmp_path):
-        # PR #1253: final incremental decoder state is validated strictly.
+    def test_stream_incomplete_final_utf8_sequence_matches_writer_replacement(
+        self, tmp_path
+    ):
+        # PR #1253 review 3754914627: final decoder state emits U+FFFD like TextIO.
         import tree_sitter_analyzer.index_source_snapshot as source
 
-        (tmp_path / "sample.py").write_bytes(b"\xe2\x82")
+        (tmp_path / "sample.py").write_bytes(b"\xe2\x82\r")
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        assert (next(iter(rows))[1].endswith("|<unsafe>"), unsafe) == (True, True)
+        expected = hashlib.sha256("\ufffd\n".encode()).hexdigest()
+        assert (next(iter(rows))[1].split("|")[1], unsafe) == (expected, False)
 
     def test_portable_enumeration_deadline_is_enforced(self, tmp_path, monkeypatch):
         # PR #1253: portable source certification is unsupported and never traverses.
