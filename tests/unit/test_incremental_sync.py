@@ -184,7 +184,7 @@ class TestSyncDeletedFile:
         assert cache.call_graph_built() is False
 
 
-def test_noop_sync_preserves_incomplete_backfill_state(tmp_path):
+def test_noop_sync_repairs_incomplete_backfill_state(tmp_path):
     # PR #1172 review 2026-07-27: a no-op retry certified a failed backfill.
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
@@ -203,7 +203,42 @@ def test_noop_sync_preserves_incomplete_backfill_state(tmp_path):
     finally:
         cache.close()
 
-    assert graph_built is False
+    assert graph_built is True
+
+
+def test_fully_cached_legacy_marker_repairs_complete_pipeline(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    conn = cache.get_conn()
+    conn.execute(
+        "UPDATE ast_call_graph_state SET built = 1, pipeline_version = 1 WHERE id = 1"
+    )
+    conn.execute("DELETE FROM ast_call_graph_state WHERE id = 2")
+    conn.commit()
+
+    try:
+        with (
+            patch.object(
+                cache, "backfill_cross_file_edges", return_value={"errors": 0}
+            ) as cross,
+            patch.object(
+                cache, "_run_synapse_backfill", return_value={"errors": 0}
+            ) as synapse,
+            patch.object(
+                cache, "_run_unresolved_refs_backfill", return_value={"errors": 0}
+            ) as unresolved,
+        ):
+            IncrementalSync(cache).sync()
+        marker = conn.execute(
+            "SELECT id, built, pipeline_version FROM ast_call_graph_state"
+        ).fetchall()
+    finally:
+        cache.close()
+
+    assert (cross.call_count, synapse.call_count, unresolved.call_count) == (1, 1, 1)
+    assert [tuple(row) for row in marker] == [(1, 1, 2)]
 
 
 class TestSyncNewFile:
@@ -1067,7 +1102,7 @@ def test_preexisting_snapshot_modification_is_only_reported_as_skipped(tmp_path)
         callback_details,
         synapse_backfill.call_count,
         refs_backfill.call_count,
-    ) == (0, [expected_detail], [expected_detail], 0, 0)
+    ) == (0, [expected_detail], [expected_detail], 1, 1)
     assert counts == {
         "ast_index": 0,
         "ast_symbol_rows": 0,
@@ -1419,7 +1454,7 @@ def test_late_mutation_unresolves_edges_from_other_files(tmp_path):
         metadata["callee_resolution"],
         metadata["callee_resolved_file"],
         metadata["callee_symbol_id"],
-    ) == ("target.py", "unknown", "", None, "unknown", "", None)
+    ) == ("target.py", "project", "target.py", 3, "unknown", "", None)
 
 
 def test_new_file_cleanup_failure_preserves_original_index_error():

@@ -14,7 +14,7 @@ from .cache.callgraph_state import (
     clear_call_graph_built as _clear_call_graph_built,
 )
 from .cache.callgraph_state import (
-    mark_call_graph_built as _mark_call_graph_built,
+    mark_call_graph_built_strict as _mark_call_graph_built_strict,
 )
 from .cache.extraction import _content_hash
 from .cache.schema import clear_activation_for_file as _clear_activation_for_file_fn
@@ -121,15 +121,16 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             return
         if not had_built_marker and not self._indexed_source_files_are_complete():
             return
-        if result.get("status") == "indexed":
-            try:
-                backfill = self._run_synapse_backfill()
-            except Exception:
-                logger.debug("single-file Synapse backfill failed", exc_info=True)
+        if result.get("status") == "indexed" or not had_built_marker:
+            from .incremental_sync_callgraph import run_call_graph_pipeline
+
+            complete, _resolved = run_call_graph_pipeline(self)
+            if not complete:
                 return
-            if backfill is None or int(backfill.get("errors", 0)) > 0:
-                return
-        _mark_call_graph_built(self._get_conn())
+        try:
+            _mark_call_graph_built_strict(self._get_conn())
+        except sqlite3.OperationalError:
+            logger.debug("single-file call-graph certification failed", exc_info=True)
 
     def _check_cache_or_read(
         self,

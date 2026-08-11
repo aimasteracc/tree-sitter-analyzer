@@ -22,7 +22,6 @@ from .indexing_snapshot import (
 )
 
 logger = logging.getLogger(__name__)
-
 _DISAPPEARED_REASON = "file disappeared after candidate snapshot"
 
 
@@ -177,23 +176,17 @@ class IncrementalSync:
             logger.error("Final DB commit failed after partial sync: %s", exc)
             result.errors += 1
 
-        backfill_complete = self._cache.call_graph_built()
-        if result.new_files or result.updated_files or result.deleted_files:
-            try:
-                stats = self._cache._run_synapse_backfill()
-                if stats is None:
-                    backfill_complete = False
-                else:
-                    result.synapse_resolved = int(stats.get("resolved", 0))
-                    backfill_complete = int(stats.get("errors", 0)) == 0
-            except Exception:  # pragma: no cover - backfill is best-effort
-                backfill_complete = False
-            try:
-                stats = self._cache._run_unresolved_refs_backfill()
-                clean = stats is not None and not int(stats.get("errors", 0))
-                backfill_complete = bool(backfill_complete and clean)
-            except Exception:  # pragma: no cover - backfill is best-effort
-                backfill_complete = False
+        marker_current = self._cache.call_graph_built()
+        from .incremental_sync_callgraph import (
+            pipeline_repair_required,
+            run_call_graph_pipeline,
+        )
+
+        backfill_complete = marker_current
+        if pipeline_repair_required(result, marker_current):
+            backfill_complete, result.synapse_resolved = run_call_graph_pipeline(
+                self._cache
+            )
 
         invalidate_snapshot_changes()
         indexed_paths = {
@@ -217,9 +210,16 @@ class IncrementalSync:
             and snapshot_scope_complete
             and indexed_paths == certified_paths
         ):
-            from .cache.callgraph_state import mark_call_graph_built
+            from .cache.callgraph_state import (
+                clear_call_graph_built_strict,
+                mark_call_graph_built_strict,
+            )
 
-            mark_call_graph_built(conn)
+            try:
+                mark_call_graph_built_strict(conn)
+            except sqlite3.OperationalError:
+                backfill_complete = False
+                clear_call_graph_built_strict(conn)
         expected_paths = set(disk_files)
         if (
             not result.truncated_by_max_files

@@ -8,6 +8,8 @@ import sqlite3
 import stat
 import time
 
+from .cache.callgraph_state import CALL_GRAPH_PIPELINE_VERSION
+
 _CALL_GRAPH_MARKER_DEADLINE_SECONDS = 5.0
 
 
@@ -42,7 +44,10 @@ def strict_call_graph_marker(
         marker_row = conn.execute(
             "SELECT 1 FROM ast_call_graph_state "
             "WHERE id = 1 AND typeof(id) = 'integer' "
-            "AND typeof(built) = 'integer' AND built = 1 LIMIT 1"
+            "AND typeof(built) = 'integer' AND built = 1 "
+            "AND typeof(pipeline_version) = 'integer' "
+            "AND pipeline_version = ? LIMIT 1",
+            (CALL_GRAPH_PIPELINE_VERSION,),
         ).fetchone()
         return bool(
             time.monotonic() <= expires_at

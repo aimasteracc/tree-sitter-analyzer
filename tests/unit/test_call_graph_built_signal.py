@@ -102,15 +102,13 @@ def _make_edges_table(conn: sqlite3.Connection, *, with_row: bool) -> None:
     conn.commit()
 
 
-def test_call_graph_built_recovers_from_missing_marker_table() -> None:
-    # #1005 root cause: a legacy/crashed cache can hold a fully populated edges
-    # table with NO ast_call_graph_state marker. call_graph_built() must treat a
-    # populated edges table as a safety net and return True.
+def test_call_graph_built_rejects_missing_marker_table() -> None:
+    # Current pipeline certification cannot be inferred from derived edges.
     conn = sqlite3.connect(":memory:")
     try:
         _make_edges_table(conn, with_row=True)
         # No marker table exists at all.
-        assert callgraph_state.call_graph_built(conn) is True
+        assert callgraph_state.call_graph_built(conn) is False
     finally:
         conn.close()
 
@@ -125,14 +123,14 @@ def test_call_graph_built_marker_set_takes_fast_path() -> None:
         conn.close()
 
 
-def test_call_graph_built_recovers_legacy_zero_marker_with_edges() -> None:
+def test_call_graph_built_rejects_legacy_zero_marker_with_edges() -> None:
     # Legacy marker table has built=0 but no explicit-incomplete sentinel.
     conn = sqlite3.connect(":memory:")
     try:
         callgraph_state.clear_call_graph_built(conn)  # built = 0
         conn.execute("DELETE FROM ast_call_graph_state WHERE id = 2")
         _make_edges_table(conn, with_row=True)
-        assert callgraph_state.call_graph_built(conn) is True
+        assert callgraph_state.call_graph_built(conn) is False
     finally:
         conn.close()
 
@@ -223,7 +221,7 @@ def _seed_call_edges_without_built_marker(root: Path) -> None:
         callgraph_state.clear_call_graph_built(cache.get_conn())
         cache.get_conn().execute("DELETE FROM ast_call_graph_state WHERE id = 2")
         cache.get_conn().commit()
-        assert cache.call_graph_built() is True
+        assert cache.call_graph_built() is False
     finally:
         cache.close()
 
@@ -437,9 +435,8 @@ def _seed_call_edges_with_marker_table_dropped(root: Path) -> None:
         conn = cache.get_conn()
         conn.execute("DROP TABLE IF EXISTS ast_call_graph_state")
         conn.commit()
-        # Root cause: missing marker table -> reported as not-built BEFORE the
-        # edges safety net; now recovered to True.
-        assert cache.call_graph_built() is True
+        # Derived edges do not certify the current pipeline version.
+        assert cache.call_graph_built() is False
     finally:
         cache.close()
 
@@ -827,3 +824,23 @@ def test_call_graph_built_rejects_untyped_marker_values() -> None:
         assert callgraph_state.call_graph_built(conn) is False
     finally:
         conn.close()
+
+
+def test_legacy_marker_writer_migration_stamps_version_zero_on_clear() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_call_graph_state("
+        "id INTEGER PRIMARY KEY, built INTEGER NOT NULL, built_at REAL NOT NULL)"
+    )
+    conn.execute("INSERT INTO ast_call_graph_state VALUES (1, 1, 1.0)")
+
+    callgraph_state.clear_call_graph_built_strict(conn)
+
+    columns = [
+        row[1] for row in conn.execute("PRAGMA table_info(ast_call_graph_state)")
+    ]
+    rows = conn.execute(
+        "SELECT id, built, pipeline_version FROM ast_call_graph_state ORDER BY id"
+    ).fetchall()
+    assert columns == ["id", "built", "built_at", "pipeline_version"]
+    assert rows == [(1, 0, 0), (2, 0, 0)]

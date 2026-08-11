@@ -875,9 +875,9 @@ def run_index_project(
                     )
                     stats["backfill_errors"] = stats.get("backfill_errors", 0) + 1
                     stats["manifest_warning"] = "CALL_GRAPH_MARKER_CERTIFICATION_FAILED"
-                    _clear_call_graph_built(conn)
+                    _clear_call_graph_built_strict(conn)
             else:
-                _clear_call_graph_built(conn)
+                _clear_call_graph_built_strict(conn)
         if force:
             stats["db_maintenance"] = (
                 _ast_cache_mod._reclaim_storage_after_full_rebuild(conn, cache.db_path)
@@ -893,17 +893,10 @@ def run_index_project(
 
 
 def _call_graph_marker_is_built(conn: sqlite3.Connection) -> bool:
-    """Require the persisted success marker; derived rows alone are not proof."""
-    try:
-        row = conn.execute(
-            "SELECT built FROM ast_call_graph_state WHERE id = 1"
-        ).fetchone()
-        incomplete = conn.execute(
-            "SELECT 1 FROM ast_call_graph_state WHERE id = 2"
-        ).fetchone()
-    except sqlite3.OperationalError:
-        return False
-    return bool(row and int(row[0]) == 1 and incomplete is None)
+    """Require the singleton marker for the current authoritative pipeline."""
+    from .callgraph_state import call_graph_built
+
+    return call_graph_built(conn)
 
 
 def _prune_to_selected_scope(
