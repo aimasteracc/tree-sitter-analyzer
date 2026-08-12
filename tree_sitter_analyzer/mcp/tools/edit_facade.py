@@ -70,8 +70,10 @@ _EDIT_DESCRIPTION = (
     "- action=refactor — refactoring-opportunity analysis for a source file: extract "
     "candidates, complexity hotspots, skeleton. Params: file_path, language, "
     "max_suggestions, include_extractions, include_skeleton, output_format.\n"
-    "- action=constraints — scan the project for constraint/rule violations "
-    "(architecture, naming, coupling). Params: severity_min, output_format.\n"
+    "- action=constraints — scan the project for constraint/rule violations. "
+    "For RFC-0022 frozen read-only evaluation pass persist=false, "
+    "diff_snapshot_id, and the impact-produced scope_paths. "
+    "Params: severity_min, persist, diff_snapshot_id, scope_paths, output_format.\n"
     "- action=pr — AI review of a PR diff via codegraph: structural issues, "
     "blast-radius, test-coverage gaps (codegraph_pr_review equivalent). "
     "Params: pr_url or diff (see inner schema).\n"
@@ -208,7 +210,26 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
             },
             "diff_snapshot_id": {
                 "type": "string",
-                "description": "RFC-0022 frozen diff ID for classify/ast_diff/release_snapshot.",
+                "description": (
+                    "RFC-0022 frozen diff ID for constraints/classify/ast_diff/"
+                    "release_snapshot."
+                ),
+            },
+            "persist": {
+                "type": "boolean",
+                "default": True,
+                "description": (
+                    "Write evaluated violations through to the cache. Set false for "
+                    "RFC-0022 read-only evaluation; no database or file is created."
+                ),
+            },
+            "scope_paths": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Primitive-issued frozen scope for action=constraints, or impact "
+                    "capture scope for action=impact."
+                ),
             },
             "route_lease_id": {
                 "type": "string",

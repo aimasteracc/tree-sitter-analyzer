@@ -42,6 +42,9 @@ def install_fake_snapshot_materializer(
 
     monkeypatch.setattr(snapshots, "oracle_generation", fake_oracle)
     monkeypatch.setattr(
+        snapshots, "shared_source_generation", lambda *_a, **_k: "sg_test"
+    )
+    monkeypatch.setattr(
         snapshots,
         "capture_inventory",
         lambda *args, **kwargs: tuple(inventory_paths),

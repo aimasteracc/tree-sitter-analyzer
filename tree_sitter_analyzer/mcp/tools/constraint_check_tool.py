@@ -27,7 +27,12 @@ from ...constraints import (
     evaluate,
     load_constraints,
 )
-from ...constraints.parser import ConstraintParseError, _compile_glob
+from ...constraints.parser import (
+    ConstraintParseError,
+    _compile_glob,
+    load_constraints_bytes,
+)
+from ...git_path_codec import path_to_wire
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 
@@ -59,6 +64,26 @@ TOOL_SCHEMA: dict[str, Any] = {
                 "Default 'warn' suppresses info-level rules from agent output."
             ),
         },
+        "persist": {
+            "type": "boolean",
+            "default": True,
+            "description": (
+                "Write evaluated violations through to the cache. Set false for "
+                "RFC-0022 read-only evaluation; no database or file is created."
+            ),
+        },
+        "diff_snapshot_id": {
+            "type": "string",
+            "description": "RFC-0022 frozen diff snapshot to evaluate against.",
+        },
+        "scope_paths": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Primitive-issued assessed_scope_paths. With diff_snapshot_id the "
+                "list must exactly match the frozen snapshot scope."
+            ),
+        },
         "output_format": {
             "type": "string",
             "enum": ["json", "toon"],
@@ -87,9 +112,12 @@ class ConstraintCheckTool(BaseMCPTool):
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {
-                "readOnlyHint": True,
+                # The legacy/default route writes the violation cache.  MCP
+                # annotations describe the whole tool, not one argument shape;
+                # persist=false is the explicitly read-only sub-route.
+                "readOnlyHint": False,
                 "destructiveHint": False,
-                "idempotentHint": True,
+                "idempotentHint": False,
                 "openWorldHint": False,
             },
         }
@@ -104,6 +132,24 @@ class ConstraintCheckTool(BaseMCPTool):
                 f"severity_min must be one of {sorted(_SEVERITY_ORDER)}; "
                 f"got {severity_min!r}"
             )
+        persist = arguments.get("persist", True)
+        if not isinstance(persist, bool):
+            raise ValueError("persist must be a boolean")
+        snapshot_id = arguments.get("diff_snapshot_id")
+        scope_paths = arguments.get("scope_paths")
+        if snapshot_id is not None:
+            if not isinstance(snapshot_id, str) or not snapshot_id:
+                raise ValueError("diff_snapshot_id must be a non-empty string")
+            if persist:
+                raise ValueError("diff_snapshot_id requires persist=false")
+            if not isinstance(scope_paths, list) or any(
+                not isinstance(path, str) for path in scope_paths
+            ):
+                raise ValueError("diff_snapshot_id requires scope_paths as strings")
+            if arguments.get("path_filter"):
+                raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
+        elif scope_paths is not None:
+            raise ValueError("scope_paths requires diff_snapshot_id")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -114,6 +160,9 @@ class ConstraintCheckTool(BaseMCPTool):
                 "success": False,
                 "error": "Project root not set. Call set_project_path first.",
             }
+
+        if arguments.get("diff_snapshot_id") is not None:
+            return self._execute_frozen(arguments)
 
         path_filter = arguments.get("path_filter", "") or ""
         severity_min = arguments.get("severity_min", "warn")
@@ -136,9 +185,6 @@ class ConstraintCheckTool(BaseMCPTool):
 
         db_path = Path(self.project_root) / ".ast-cache" / "index.db"
         if not db_path.is_file():
-            # No cache yet: nothing to evaluate. Return SAFE with rule
-            # count so the caller can see the rules loaded — without a
-            # cache we can't say whether they pass or fail.
             return apply_toon_format_to_response(
                 {
                     "success": True,
@@ -154,19 +200,20 @@ class ConstraintCheckTool(BaseMCPTool):
                 output_format,
             )
 
-        # Run a fresh evaluation against the cache and write the result
-        # through to the violations table so downstream tools (safe_to_edit,
-        # change_impact) see consistent data.
-        violations, evaluated_edges = self._run_and_persist(db_path, constraints)
-
-        # Apply read-side filters (severity floor + path glob) to build
-        # the response payload. The persisted table is full-fidelity so
-        # later queries can use different filters without re-evaluating.
-        filtered_rows = self._read_filtered_violations(
-            db_path,
-            path_filter=path_filter,
-            min_severity_rank=min_severity_rank,
-        )
+        if arguments.get("persist", True):
+            _, evaluated_edges = self._run_and_persist(db_path, constraints)
+            filtered_rows = self._read_filtered_violations(
+                db_path,
+                path_filter=path_filter,
+                min_severity_rank=min_severity_rank,
+            )
+        else:
+            filtered_rows, evaluated_edges = self._run_read_only(
+                db_path,
+                constraints,
+                path_filter=path_filter,
+                min_severity_rank=min_severity_rank,
+            )
 
         verdict = self._compute_verdict(filtered_rows)
         return apply_toon_format_to_response(
@@ -180,9 +227,226 @@ class ConstraintCheckTool(BaseMCPTool):
             output_format,
         )
 
+    def _execute_frozen(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Evaluate frozen config and DB capabilities bound to one generation."""
+        from ...diff_snapshot_registry import REGISTRY as DIFF_REGISTRY
+        from ...index_snapshot import lease_existing_snapshot
+        from ...source_oracle import SourceOracleError, safe_workspace_path
+
+        output_format = arguments.get("output_format", "json")
+        snapshot_id = str(arguments["diff_snapshot_id"])
+        project_root = self.project_root
+        if project_root is None:
+            return self._snapshot_error("MISSING_PROJECT_ROOT", output_format)
+        consumer, error = DIFF_REGISTRY.acquire(snapshot_id, project_root)
+        if error:
+            return self._snapshot_error(error, output_format)
+        assert consumer is not None
+        try:
+            diff = consumer.snapshot
+            frozen_scope = [path_to_wire(path) for path in diff.assessed_scope_paths]
+            if arguments["scope_paths"] != frozen_scope:
+                return self._snapshot_error(
+                    "DIFF_SNAPSHOT_SCOPE_MISMATCH", output_format
+                )
+            try:
+                with lease_existing_snapshot(project_root) as index:
+                    if (
+                        index.snapshot_id is None
+                        or index.completeness != "complete"
+                        or index.source_generation != diff.source_generation
+                    ):
+                        return self._snapshot_error(
+                            index.reason or "SOURCE_GENERATION_MISMATCH", output_format
+                        )
+                    # Configuration discovery and bytes are owned by impact's
+                    # immutable registry entry, not reread as initial evidence.
+                    config_name = diff.constraint_config_path
+                    config_data = diff.constraint_config_data
+                    if config_name is None:
+                        response: dict[str, Any] = {
+                            "success": True,
+                            "state": "not_applicable",
+                            "reason": "NO_CONFIG",
+                            "verdict": "INFO",
+                            "violations": [],
+                            "rule_count": 0,
+                            "evaluated_edge_count": 0,
+                        }
+                    else:
+                        try:
+                            constraints = load_constraints_bytes(
+                                config_data or b"", config_name
+                            )
+                        except ConstraintParseError as exc:
+                            return self._snapshot_error(
+                                "CONSTRAINT_CONFIG_INVALID", output_format, str(exc)
+                            )
+                        try:
+                            from ...index_snapshot import acquire_index_snapshot
+
+                            with acquire_index_snapshot(
+                                index.snapshot_id,
+                                project_root,
+                                diff.source_generation,
+                            ) as (_, conn):
+                                rows, edge_count = self._evaluate_connection(
+                                    conn,
+                                    constraints,
+                                    min_severity_rank=_SEVERITY_ORDER[
+                                        arguments.get("severity_min", "warn")
+                                    ],
+                                    scope_paths=frozenset(frozen_scope),
+                                )
+                        except (sqlite3.DatabaseError, ValueError) as exc:
+                            return self._snapshot_error(
+                                "CONSTRAINT_INDEX_UNKNOWN", output_format, str(exc)
+                            )
+                        response = {
+                            "success": True,
+                            "state": "applicable",
+                            "verdict": self._compute_verdict(rows),
+                            "violations": rows,
+                            "rule_count": len(constraints),
+                            "evaluated_edge_count": edge_count,
+                        }
+                    # Revalidate current discovery against impact-owned bytes and
+                    # descriptor identities before publishing.
+                    rechecked = None
+                    rechecked_name = None
+                    for candidate in (
+                        "architectural-constraints.yml",
+                        ".tree-sitter-analyzer/constraints.yml",
+                    ):
+                        probe = safe_workspace_path(
+                            index.canonical_root or project_root,
+                            candidate,
+                            deadline=time.monotonic() + 10.0,
+                            limit=1024 * 1024,
+                        )
+                        rechecked = probe
+                        if probe.kind != "missing":
+                            rechecked_name = candidate
+                            break
+                    if (
+                        rechecked is None
+                        or config_name != rechecked_name
+                        or config_data != rechecked.data
+                        or diff.constraint_config_metadata != rechecked.metadata
+                    ):
+                        return self._snapshot_error(
+                            "CONSTRAINT_CONFIG_CHANGED", output_format
+                        )
+
+                    response.update(
+                        diff_snapshot_id=diff.snapshot_id,
+                        snapshot_id=index.snapshot_id,
+                        source_generation=diff.source_generation,
+                        index_fingerprint=index.index_fingerprint,
+                        assessed_scope_paths=frozen_scope,
+                    )
+            except (
+                OSError,
+                RuntimeError,
+                SourceOracleError,
+                sqlite3.DatabaseError,
+            ) as exc:
+                return self._snapshot_error(
+                    "CONSTRAINT_CAPTURE_UNKNOWN", output_format, str(exc)
+                )
+            error = DIFF_REGISTRY.validate_publish(consumer)
+            if error:
+                return self._snapshot_error(error, output_format)
+            return apply_toon_format_to_response(response, output_format)
+        finally:
+            consumer.release()
+
+    @staticmethod
+    def _snapshot_error(
+        code: str, output_format: str, detail: str | None = None
+    ) -> dict[str, Any]:
+        return apply_toon_format_to_response(
+            {
+                "success": False,
+                "verdict": "ERROR",
+                "error_code": code,
+                "error": detail or code,
+            },
+            output_format,
+        )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _run_read_only(
+        self,
+        db_path: Path,
+        constraints: list[Any],
+        *,
+        path_filter: str,
+        min_severity_rank: int,
+        scope_paths: frozenset[str] | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Evaluate through a SQLite read-only connection and write nothing."""
+        conn = sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
+        try:
+            return self._evaluate_connection(
+                conn,
+                constraints,
+                path_filter=path_filter,
+                min_severity_rank=min_severity_rank,
+                scope_paths=scope_paths,
+            )
+        finally:
+            conn.close()
+
+    def _evaluate_connection(
+        self,
+        conn: sqlite3.Connection,
+        constraints: list[Any],
+        *,
+        path_filter: str = "",
+        min_severity_rank: int,
+        scope_paths: frozenset[str] | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Evaluate one caller-owned immutable index connection; fail closed."""
+        edge_count = self._count_edges(conn, fail_closed=True)
+        violations = evaluate(constraints, conn)
+        path_re = _compile_glob(path_filter) if path_filter else None
+        rows: list[dict[str, Any]] = []
+        for violation in violations:
+            caller = path_to_wire(violation.caller_file)
+            callee = path_to_wire(violation.callee_file)
+            if scope_paths is not None and not (
+                caller in scope_paths or callee in scope_paths
+            ):
+                continue
+            if _SEVERITY_ORDER.get(violation.severity, 0) < min_severity_rank:
+                continue
+            if path_re is not None and path_re.fullmatch(caller) is None:
+                continue
+            rows.append(
+                {
+                    "rule_id": violation.rule_id,
+                    "caller_file": caller,
+                    "caller_name": violation.caller_name,
+                    "caller_line": violation.caller_line,
+                    "callee_name": violation.callee_name,
+                    "callee_file": callee,
+                    "severity": violation.severity,
+                    "detected_at": violation.detected_at,
+                }
+            )
+        rows.sort(
+            key=lambda row: (
+                -_SEVERITY_ORDER.get(str(row["severity"]), 0),
+                str(row["caller_file"]),
+                int(row["caller_line"]),
+                str(row["rule_id"]),
+            )
+        )
+        return rows, edge_count
 
     def _run_and_persist(
         self,
@@ -250,7 +514,7 @@ class ConstraintCheckTool(BaseMCPTool):
             conn.close()
 
     @staticmethod
-    def _count_edges(conn: sqlite3.Connection) -> int:
+    def _count_edges(conn: sqlite3.Connection, *, fail_closed: bool = False) -> int:
         """Return the CALLS row count of the unified ``edges`` table, or 0."""
         try:
             row = conn.execute(
@@ -258,8 +522,8 @@ class ConstraintCheckTool(BaseMCPTool):
             ).fetchone()
             return int(row[0]) if row else 0
         except sqlite3.OperationalError:
-            # Table missing — fresh DB or a test fixture that built
-            # only the violations table.
+            if fail_closed:
+                raise
             return 0
 
     def _read_filtered_violations(

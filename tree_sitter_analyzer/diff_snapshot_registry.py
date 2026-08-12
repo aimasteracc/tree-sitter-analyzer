@@ -35,6 +35,7 @@ from .source_oracle import (
     canonical_root,
     capture_inventory,
     oracle_generation,
+    safe_workspace_path,
 )
 from .source_oracle_git import GitEpoch
 
@@ -47,6 +48,24 @@ MAX_SCOPE_BYTES = 1024 * 1024
 _PROCESS_LEASE_KEY = secrets.token_bytes(32)
 _SNAPSHOT_ID_PATTERN = re.compile(r"ds_[A-Za-z0-9_-]{32}", re.ASCII)
 _ROUTE_LEASE_PATTERN = re.compile(r"dl_[A-Za-z0-9_-]{43}", re.ASCII)
+
+
+def shared_source_generation(project_root: str, deadline: float) -> str:
+    """Return the P0.1 source-oracle token, replaying its certified scope."""
+    from .index_snapshot import lease_existing_snapshot
+    from .index_source_snapshot import capture_current_source_snapshot
+
+    if time.monotonic() > deadline:
+        raise SourceOracleError("DIFF_SNAPSHOT_TIMEOUT")
+    with lease_existing_snapshot(project_root) as existing:
+        if existing.source_generation is not None:
+            return existing.source_generation
+        if existing.reason not in ("MISSING_INDEX",):
+            raise SourceOracleError(existing.reason or "DIFF_SNAPSHOT_SOURCE_CHANGED")
+    current = capture_current_source_snapshot(project_root, deadline=deadline)
+    if current.state != "exact" or current.generation is None:
+        raise SourceOracleError(current.reason or "DIFF_SNAPSHOT_SOURCE_CHANGED")
+    return current.generation
 
 
 @dataclass
@@ -134,6 +153,7 @@ class DiffSnapshotRegistry:
             self._reservations[reservation] = ceiling
         try:
             root, identity = canonical_root(project_root)
+            shared_before = shared_source_generation(root, deadline)
             pre_manifest: dict[str, WorkspaceManifestEntry] = {}
             epochs: list[GitEpoch] = []
             oracle_call: Callable[..., tuple[str, RootIdentity]] = oracle_generation
@@ -201,10 +221,44 @@ class DiffSnapshotRegistry:
                 manifest=post_manifest,
                 **oracle_budget,
             )
+            shared_after = shared_source_generation(root, deadline)
             if (
-                before != after
+                shared_before != shared_after
+                or before != after
                 or identity != after_identity
                 or pre_manifest != post_manifest
+            ):
+                raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
+            constraint_config = None
+            constraint_config_path = None
+            for candidate in (
+                "architectural-constraints.yml",
+                ".tree-sitter-analyzer/constraints.yml",
+            ):
+                probe = safe_workspace_path(
+                    root, candidate, deadline=deadline, limit=1024 * 1024
+                )
+                constraint_config = probe
+                if probe.kind != "missing":
+                    if probe.kind != "file" or probe.data is None:
+                        raise SourceOracleError("CONSTRAINT_CONFIG_UNSAFE")
+                    constraint_config_path = candidate
+                    break
+            assert constraint_config is not None
+            final_manifest: dict[str, WorkspaceManifestEntry] = {}
+            final_git, final_identity = oracle_call(
+                root,
+                mode,
+                deadline=deadline,
+                manifest=final_manifest,
+                **oracle_budget,
+            )
+            final_shared = shared_source_generation(root, deadline)
+            if (
+                final_shared != shared_before
+                or final_git != before
+                or final_identity != identity
+                or final_manifest != pre_manifest
             ):
                 raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
             paths = set(normalized_input)
@@ -218,24 +272,34 @@ class DiffSnapshotRegistry:
                 + path_collection_storage(paths)
                 + path_collection_storage(inventory_paths)
                 + record_storage(files)
+                + len(constraint_config.data or b"")
+                + sum(len(item) for item in constraint_config.metadata)
             )
             if size > ceiling:
                 raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
             sid = "ds_" + secrets.token_urlsafe(24)
             lease = route_lease(self._lease_key, sid)
             snapshot = FrozenDiffSnapshot(
-                sid,
-                before,
-                identity,
-                mode,
-                patch,
-                files,
-                inventory_paths,
-                tuple(sorted(paths, key=path_to_raw)),
-                started,
-                size,
-                tuple(sorted(path_to_raw(path) for path in inventory_paths)),
-                tuple(sorted(path_to_raw(path) for path in paths)),
+                snapshot_id=sid,
+                source_generation=shared_before,
+                git_generation=before,
+                root_identity=identity,
+                mode=mode,
+                normalized_patch=patch,
+                files=files,
+                inventory_paths=inventory_paths,
+                assessed_scope_paths=tuple(sorted(paths, key=path_to_raw)),
+                created_monotonic=started,
+                materialized_bytes=size,
+                constraint_config_path=constraint_config_path,
+                constraint_config_data=constraint_config.data,
+                constraint_config_metadata=constraint_config.metadata,
+                _inventory_raw_paths=tuple(
+                    sorted(path_to_raw(path) for path in inventory_paths)
+                ),
+                _assessed_scope_raw_paths=tuple(
+                    sorted(path_to_raw(path) for path in paths)
+                ),
             )
             with self._lock:
                 self._reservations.pop(reservation, None)
@@ -259,7 +323,7 @@ class DiffSnapshotRegistry:
                 "success": True,
                 "diff_snapshot_id": sid,
                 "route_lease_id": lease,
-                "source_generation": before,
+                "source_generation": shared_before,
                 "changed_records": [x.record.to_dict() for x in files],
                 "assessed_scope_paths": [
                     path_to_wire(path) for path in snapshot.assessed_scope_paths
@@ -303,6 +367,14 @@ class DiffSnapshotRegistry:
                 consumer.snapshot.mode,
                 deadline=time.monotonic() + remaining,
             )
+            shared_generation = shared_source_generation(
+                identity.realpath, time.monotonic() + remaining
+            )
+            generation_after, identity_after = oracle_generation(
+                identity.realpath,
+                consumer.snapshot.mode,
+                deadline=time.monotonic() + remaining,
+            )
         except SourceOracleError as exc:
             consumer.release()
             return None, str(exc)
@@ -323,7 +395,10 @@ class DiffSnapshotRegistry:
                 return None, "DIFF_SNAPSHOT_EXPIRED"
             if (
                 current_identity != identity
-                or generation != consumer.snapshot.source_generation
+                or identity_after != identity
+                or generation != generation_after
+                or generation != consumer.snapshot.git_generation
+                or shared_generation != consumer.snapshot.source_generation
             ):
                 consumer.release()
                 return None, "DIFF_SNAPSHOT_SOURCE_CHANGED"
@@ -413,6 +488,19 @@ class DiffSnapshotRegistry:
                 generation, identity = oracle_generation(
                     snapshot.root_identity.realpath, snapshot.mode
                 )
+            shared_generation = shared_source_generation(
+                snapshot.root_identity.realpath, time.monotonic() + remaining
+            )
+            if "deadline" in oracle_params:
+                generation_after, identity_after = oracle_generation(
+                    snapshot.root_identity.realpath,
+                    snapshot.mode,
+                    deadline=time.monotonic() + remaining,
+                )
+            else:
+                generation_after, identity_after = oracle_generation(
+                    snapshot.root_identity.realpath, snapshot.mode
+                )
         except SourceOracleError as exc:
             return str(exc)
         with self._lock:
@@ -437,11 +525,15 @@ class DiffSnapshotRegistry:
             if (
                 state.snapshot.root_identity != snapshot.root_identity
                 or identity != state.snapshot.root_identity
+                or identity_after != state.snapshot.root_identity
             ):
                 return "DIFF_SNAPSHOT_ROOT_MISMATCH"
+            if generation != generation_after:
+                return "DIFF_SNAPSHOT_SOURCE_CHANGED"
             if (
                 state.snapshot.source_generation != snapshot.source_generation
-                or generation != state.snapshot.source_generation
+                or generation != state.snapshot.git_generation
+                or shared_generation != state.snapshot.source_generation
             ):
                 return "DIFF_SNAPSHOT_SOURCE_CHANGED"
         return None

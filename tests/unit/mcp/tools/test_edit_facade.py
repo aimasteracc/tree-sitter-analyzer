@@ -937,3 +937,76 @@ def test_change_impact_annotation_is_non_idempotent_for_optional_capture() -> No
 
     definition = ChangeImpactTool().get_tool_definition()
     assert definition["annotations"]["idempotentHint"] is False
+
+
+@pytest.mark.asyncio
+async def test_edit_constraints_projects_exact_frozen_scope_arguments(
+    monkeypatch,
+) -> None:
+    from tree_sitter_analyzer.mcp.tools.constraint_check_tool import ConstraintCheckTool
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    seen: list[dict[str, object]] = []
+
+    async def fake_execute(self, arguments):
+        seen.append(dict(arguments))
+        return {"success": True}
+
+    monkeypatch.setattr(ConstraintCheckTool, "execute", fake_execute)
+    await build_edit_facade(None).execute(
+        {
+            "action": "constraints",
+            "persist": False,
+            "diff_snapshot_id": "ds_contract",
+            "scope_paths": ["src/a.py", "src/b.py"],
+            "output_format": "json",
+        }
+    )
+
+    assert seen == [
+        {
+            "persist": False,
+            "diff_snapshot_id": "ds_contract",
+            "scope_paths": ["src/a.py", "src/b.py"],
+            "output_format": "json",
+        }
+    ]
+
+
+def test_edit_constraints_snapshot_parameters_are_schema_discoverable() -> None:
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    properties = build_edit_facade(None).get_tool_definition()["inputSchema"][
+        "properties"
+    ]
+
+    assert properties["persist"] == {
+        "type": "boolean",
+        "default": True,
+        "description": (
+            "Write evaluated violations through to the cache. Set false for "
+            "RFC-0022 read-only evaluation; no database or file is created."
+        ),
+    }
+    assert properties["scope_paths"] == {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": (
+            "Primitive-issued frozen scope for action=constraints, or impact "
+            "capture scope for action=impact."
+        ),
+    }
+
+
+@pytest.mark.asyncio
+async def test_edit_constraints_rejects_snapshot_without_persist_false() -> None:
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    with pytest.raises(ValueError, match="diff_snapshot_id requires persist=false"):
+        await build_edit_facade(None).execute(
+            {
+                "action": "constraints",
+                "diff_snapshot_id": "ds_contract",
+                "scope_paths": ["src/a.py"],
+            }
+        )

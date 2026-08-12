@@ -405,7 +405,7 @@ def test_validate_publish_bounds_oracle_by_remaining_lifetime(
     result = registry.validate_publish(consumer)
 
     assert result is None
-    assert deadlines == [101.0]
+    assert deadlines == [101.0, 101.0]
     consumer.release()
 
 

@@ -108,70 +108,65 @@ _ALLOWED_SEVERITIES: frozenset[str] = frozenset({"error", "warn", "info"})
 _ALLOWED_RULES: frozenset[str] = frozenset({"forbid"})
 
 
-def load_constraints(project_root: str | Path) -> list[Constraint]:
-    """Load and validate architectural-constraints from ``project_root``.
-
-    Returns an empty list when no config file is present — a repo with
-    no constraints.yml is a perfectly valid state.
-
-    Raises:
-        ConstraintParseError: on malformed YAML or unknown top-level
-            keys. Per-rule problems (unknown keys, bad severity, missing
-            required keys) emit a warning and skip the rule rather than
-            failing the whole load.
-    """
-    root = Path(project_root)
-    config_path = _find_config_file(root)
-    if config_path is None:
-        return []
-
+def load_constraints_bytes(
+    raw_bytes: bytes, config_path: str | Path
+) -> list[Constraint]:
+    """Parse constraints from caller-owned immutable bytes."""
+    path = Path(config_path)
     try:
-        raw_text = config_path.read_text(encoding="utf-8")
-    except OSError as exc:
+        raw_text = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
         raise ConstraintParseError(
-            f"Could not read constraints file at line 1 of {config_path}: {exc}"
+            f"Could not decode constraints file at line 1 of {path}: {exc}"
         ) from exc
-
     try:
         data = yaml.safe_load(raw_text)
     except yaml.YAMLError as exc:
-        # Surface the mark/line so the agent can jump straight to the
-        # offending location instead of re-reading the file.
         line_hint = _extract_line(exc)
         raise ConstraintParseError(
-            f"Malformed YAML in {config_path} at line {line_hint}: {exc}"
+            f"Malformed YAML in {path} at line {line_hint}: {exc}"
         ) from exc
 
     if data is None:
         return []
-
     if not isinstance(data, dict):
         raise ConstraintParseError(
-            f"Top-level of {config_path} must be a mapping at line 1, "
+            f"Top-level of {path} must be a mapping at line 1, "
             f"got {type(data).__name__}"
         )
-
-    # Strict on the top level: unknown keys are fatal.
     for key in data:
         if key not in _ALLOWED_TOP_LEVEL:
             raise ConstraintParseError(
-                f"unknown top-level key: {key!r} in {config_path} at line 1. "
+                f"unknown top-level key: {key!r} in {path} at line 1. "
                 f"Allowed: {sorted(_ALLOWED_TOP_LEVEL)}"
             )
-
     rules_raw = data.get("constraints") or []
     if not isinstance(rules_raw, list):
         raise ConstraintParseError(
-            f"'constraints' must be a list at line 1 of {config_path}, "
+            f"'constraints' must be a list at line 1 of {path}, "
             f"got {type(rules_raw).__name__}"
         )
-
     constraints: list[Constraint] = []
     for index, rule_raw in enumerate(rules_raw, start=1):
-        parsed = _parse_rule(rule_raw, index, config_path)
+        parsed = _parse_rule(rule_raw, index, path)
         if parsed is not None:
             constraints.append(parsed)
     return constraints
+
+
+def load_constraints(project_root: str | Path) -> list[Constraint]:
+    """Load and validate architectural-constraints from ``project_root``."""
+    root = Path(project_root)
+    config_path = _find_config_file(root)
+    if config_path is None:
+        return []
+    try:
+        raw_bytes = config_path.read_bytes()
+    except OSError as exc:
+        raise ConstraintParseError(
+            f"Could not read constraints file at line 1 of {config_path}: {exc}"
+        ) from exc
+    return load_constraints_bytes(raw_bytes, config_path)
 
 
 def match_glob(pattern: str, path: str) -> bool:

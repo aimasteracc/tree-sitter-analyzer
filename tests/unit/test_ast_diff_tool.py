@@ -27,10 +27,17 @@ def _create_stable_consumer_snapshot(
     created = snapshots.REGISTRY.create(str(root), "diff", [])
     identity = snapshots.canonical_root(str(root))[1]
     generation = str(created["source_generation"])
+    state = snapshots.REGISTRY._states[str(created["diff_snapshot_id"])]
+    git_generation = state.snapshot.git_generation
     monkeypatch.setattr(
         snapshots,
         "oracle_generation",
-        lambda project_root, mode="diff", *, deadline=None: (generation, identity),
+        lambda project_root, mode="diff", *, deadline=None: (git_generation, identity),
+    )
+    monkeypatch.setattr(
+        snapshots,
+        "shared_source_generation",
+        lambda *_args, **_kwargs: generation,
     )
     return created
 
