@@ -561,6 +561,126 @@ class TestExecute:
         assert result["success"] is False
         assert result["phases"]["remaining_phases"]["status"] == "skipped"
 
+    async def test_full_mode_shared_cache_construction_failure_aborts_handoff(
+        self, tmp_path
+    ):
+        # PR #1253 P1: full mode never falls back to a second pathname owner.
+        (tmp_path / "app.py").write_text("value = 1\n")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+
+        with (
+            patch(
+                "tree_sitter_analyzer.ast_cache.ASTCache",
+                side_effect=OSError("injected cache construction failure"),
+            ),
+            patch.object(full_tool, "_phase_ast_cache") as ast_phase,
+            patch.object(full_tool, "_phase_incremental_sync") as incremental,
+        ):
+            result = await full_tool.execute({"mode": "full", "output_format": "json"})
+
+        ast_phase.assert_not_called()
+        incremental.assert_not_called()
+        assert result["success"] is False
+        assert result["phases"]["ast_cache"]["abort_remaining_phases"] is True
+        assert result["phases"]["ast_cache"]["error"] == (
+            "OSError: injected cache construction failure"
+        )
+
+    async def test_full_mode_legacy_platform_reaches_incremental_phase(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253: unsupported root leases preserve the Windows legacy data plane.
+        import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+        (tmp_path / "app.py").write_text("value = 1\n")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        monkeypatch.setattr(
+            materialization,
+            "secure_candidate_materialization_supported",
+            lambda: False,
+        )
+
+        result = await full_tool.execute(
+            {"mode": "full", "resolve_synapse": False, "output_format": "json"}
+        )
+
+        assert result["phases"]["ast_cache"]["abort_remaining_phases"] is False
+        assert result["phases"]["incremental_sync"]["status"] == "ok"
+
+    @pytest.mark.skipif(
+        os.name != "posix", reason="GH-1253: requires POSIX root rename"
+    )
+    async def test_full_mode_root_swap_before_handoff_check_aborts(self, tmp_path):
+        (tmp_path / "app.py").write_text("value = 1\n")
+        displaced = tmp_path.with_name(f"{tmp_path.name}-displaced")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+
+        def swap_root(*_args, **_kwargs):
+            tmp_path.rename(displaced)
+            tmp_path.mkdir()
+            return {"status": "ok", "changed_during_run": 0}
+
+        with (
+            patch.object(full_tool, "_phase_ast_cache", side_effect=swap_root),
+            patch.object(full_tool, "_phase_incremental_sync") as incremental,
+        ):
+            result = await full_tool.execute({"mode": "full", "output_format": "json"})
+
+        incremental.assert_not_called()
+        assert result["phases"]["ast_cache"]["snapshot_handoff_error"] == (
+            "INDEX_CANDIDATE_FROZEN_EVIDENCE_INVALID"
+        )
+
+    @pytest.mark.skipif(
+        os.name != "posix", reason="GH-1253: requires POSIX root rename"
+    )
+    async def test_full_mode_root_swap_after_handoff_check_reuses_cache_owner(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 P1: replacement after the handoff check receives no cache owner.
+        import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+        (tmp_path / "app.py").write_text("value = 1\n")
+        displaced = tmp_path.with_name(f"{tmp_path.name}-displaced")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        real_check = materialization.index_candidate_snapshot_is_materialized
+        phase_caches = []
+
+        def check_then_swap(snapshot):
+            assert real_check(snapshot) is True
+            tmp_path.rename(displaced)
+            tmp_path.mkdir()
+            (tmp_path / "sentinel").write_text("replacement\n")
+            return True
+
+        def ast_phase(*_args, _cache=None, **_kwargs):
+            phase_caches.append(_cache)
+            return {"status": "ok", "changed_during_run": 0}
+
+        def incremental_phase(*_args, _cache=None, **_kwargs):
+            phase_caches.append(_cache)
+            return {"status": "error", "processed": 0, "changed_during_run": 1}
+
+        monkeypatch.setattr(
+            materialization,
+            "index_candidate_snapshot_is_materialized",
+            check_then_swap,
+        )
+        with (
+            patch.object(full_tool, "_phase_ast_cache", side_effect=ast_phase),
+            patch.object(
+                full_tool,
+                "_phase_incremental_sync",
+                side_effect=incremental_phase,
+            ),
+        ):
+            result = await full_tool.execute({"mode": "full", "output_format": "json"})
+
+        assert phase_caches[0] is phase_caches[1]
+        assert phase_caches[0] is not None
+        assert result["phases"]["incremental_sync"]["status"] == "error"
+        assert sorted(path.name for path in tmp_path.iterdir()) == ["sentinel"]
+
     async def test_full_index_walks_project_once_for_both_phases(self, tmp_path):
         import tree_sitter_analyzer.mcp.tools.full_index_tool as full_index_module
 

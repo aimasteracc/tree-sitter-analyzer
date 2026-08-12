@@ -38,20 +38,56 @@ def secure_candidate_materialization_supported() -> bool:
     return os.name == "posix" and hasattr(os, "O_NOFOLLOW")
 
 
+def open_index_candidate_snapshot_root(snapshot: Any) -> int | None:
+    """Open and identity-bind the captured root for fd-relative mutations."""
+    expected = getattr(snapshot, "root_identity", None)
+    if expected is None or not secure_candidate_materialization_supported():
+        return None
+    root = os.path.realpath(os.path.abspath(snapshot.project_root))
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    fd: int | None = None
+    try:
+        fd = os.open(root, flags)
+        info = os.fstat(fd)
+    except OSError:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        return None
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or (
+            root,
+            int(info.st_dev),
+            int(info.st_ino),
+        )
+        != expected
+    ):
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        return None
+    return fd
+
+
 def index_candidate_snapshot_root_is_current(snapshot: Any) -> bool:
     """Revalidate the canonical project-root object captured at discovery."""
-    expected = getattr(snapshot, "root_identity", None)
-    if expected is None:
+    fd = open_index_candidate_snapshot_root(snapshot)
+    if fd is None:
         return False
     try:
-        root = os.path.realpath(os.path.abspath(snapshot.project_root))
-        info = os.stat(root, follow_symlinks=True)
+        os.close(fd)
     except OSError:
         return False
-    return bool(
-        stat.S_ISDIR(info.st_mode)
-        and (root, int(info.st_dev), int(info.st_ino)) == expected
-    )
+    return True
 
 
 def _write_private_file(root_fd: int, name: str, data: bytes) -> tuple[int, int, int]:

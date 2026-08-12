@@ -79,6 +79,36 @@ def _normalize_relative_path(value: str) -> str:
     return value.replace("\\", "/") if os.name == "nt" else value
 
 
+def _remove_ladybug_from_pinned_root(root_fd: int) -> bool:
+    """Remove the optional mirror relative to an identity-bound root fd."""
+    cache_fd: int | None = None
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    try:
+        cache_fd = os.open(".ast-cache", flags, dir_fd=root_fd)
+        os.stat("knowledge-graph.lbug", dir_fd=cache_fd, follow_symlinks=False)
+        os.unlink("knowledge-graph.lbug", dir_fd=cache_fd)
+        return True
+    except FileNotFoundError:
+        return False
+    finally:
+        if cache_fd is not None:
+            os.close(cache_fd)
+
+
+def _invalidate_ladybug(cache: Any, root_fd: int | None) -> bool:
+    """Invalidate the mirror without leaving a pinned-root mutation boundary."""
+    if root_fd is not None:
+        return _remove_ladybug_from_pinned_root(root_fd)
+    from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
+
+    return LadybugKnowledgeGraphStore(cache.project_root).remove_if_exists()
+
+
 # Corpus-directory patterns excluded from full-index (REQ-E-016).
 # Uses fnmatch syntax relative to the project root (forward-slash normalised).
 _DEFAULT_EXCLUDE_PATTERNS: frozenset[str] = frozenset(
@@ -694,17 +724,30 @@ def _discard_snapshot_generation(
     cache: Any,
     conn: sqlite3.Connection,
     rel_path: str,
+    *,
+    root_fd: int | None = None,
 ) -> None:
     """Remove canonical rows and invalidate their derived graph projection."""
     from . import write as _write
 
     _write.discard_file_rows(conn, rel_path, cache.fts5_available)
     try:
-        from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
-
-        LadybugKnowledgeGraphStore(cache.project_root).remove_if_exists()
+        _invalidate_ladybug(cache, root_fd)
     except Exception:
         logger.debug("could not invalidate Ladybug mirror", exc_info=True)
+
+
+def _discard_with_root_lease(
+    cache: Any,
+    conn: sqlite3.Connection,
+    rel_path: str,
+    root_fd: int | None,
+) -> None:
+    """Preserve the legacy call seam when no pinned lease is active."""
+    if root_fd is None:
+        _discard_snapshot_generation(cache, conn, rel_path)
+    else:
+        _discard_snapshot_generation(cache, conn, rel_path, root_fd=root_fd)
 
 
 def _snapshot_result_is_stable(
@@ -714,13 +757,14 @@ def _snapshot_result_is_stable(
     *,
     cache: Any,
     conn: sqlite3.Connection,
+    root_fd: int | None = None,
 ) -> bool:
     """Validate one worker result immediately before its database write."""
     rel_path, change_reason = _snapshot_result_change_reason(result, entries)
     if change_reason is None:
         return True
 
-    _discard_snapshot_generation(cache, conn, rel_path)
+    _discard_with_root_lease(cache, conn, rel_path, root_fd)
     _record_snapshot_change(stats, rel_path, change_reason)
     return False
 
@@ -732,13 +776,14 @@ def _revalidate_snapshot_batch(
     conn: sqlite3.Connection,
     entries: dict[str, IndexSnapshotEntry],
     stats: dict[str, Any],
+    root_fd: int | None = None,
 ) -> None:
     """Discard pending generations that changed before their batch commit."""
     for result in pending_results:
         rel_path, change_reason = _snapshot_result_change_reason(result, entries)
         if change_reason is None:
             continue
-        _discard_snapshot_generation(cache, conn, rel_path)
+        _discard_with_root_lease(cache, conn, rel_path, root_fd)
         if result["status"] in ("io_error", "parse_failed"):
             stats["errors"] -= 1
         else:
@@ -756,6 +801,7 @@ def _revalidate_committed_snapshot(
     conn: sqlite3.Connection,
     entries: dict[str, IndexSnapshotEntry],
     stats: dict[str, Any],
+    root_fd: int | None = None,
 ) -> None:
     """Invalidate any earlier committed generation changed before backfill."""
     known_changed = set(stats["changed_during_run_files"])
@@ -765,7 +811,7 @@ def _revalidate_committed_snapshot(
         )
         if change_reason is None:
             continue
-        _discard_snapshot_generation(cache, conn, rel_path)
+        _discard_with_root_lease(cache, conn, rel_path, root_fd)
         detail_files = [detail["file"] for detail in stats["files"]]
         detail_index = detail_files.index(rel_path)
         detail = stats["files"].pop(detail_index)
@@ -994,14 +1040,16 @@ def run_index_project(
             return result
 
     rebuild_signaled = False
+    root_lease_fd: int | None = None
     try:
         if force:
             if materialized:
                 from ..indexing_candidate_materialization import (
-                    index_candidate_snapshot_root_is_current,
+                    open_index_candidate_snapshot_root,
                 )
 
-                if not index_candidate_snapshot_root_is_current(candidate_snapshot):
+                root_lease_fd = open_index_candidate_snapshot_root(candidate_snapshot)
+                if root_lease_fd is None:
                     cleanup_result = _unsafe_force_snapshot_result(
                         candidate_snapshot, activation_enabled, changed=[]
                     )
@@ -1025,9 +1073,7 @@ def run_index_project(
                 _clear_full_rebuild_rows(cache, conn)
                 conn.commit()
                 try:
-                    from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
-
-                    LadybugKnowledgeGraphStore(cache.project_root).remove_if_exists()
+                    _invalidate_ladybug(cache, root_lease_fd)
                 except Exception:
                     logger.debug("could not invalidate Ladybug mirror", exc_info=True)
             except Exception:
@@ -1137,6 +1183,7 @@ def run_index_project(
                 stats=stats,
                 cache=cache,
                 conn=conn,
+                root_fd=root_lease_fd,
             )
             if snapshot_entries is not None
             else None
@@ -1148,6 +1195,7 @@ def run_index_project(
                 conn=conn,
                 entries=snapshot_entries,
                 stats=stats,
+                root_fd=root_lease_fd,
             )
             if snapshot_entries is not None
             else None
@@ -1178,6 +1226,7 @@ def run_index_project(
                     conn=conn,
                     entries=snapshot_entries,
                     stats=stats,
+                    root_fd=root_lease_fd,
                 )
         if projection_repair and stats["errors"] == 0:
             # A partial projection cannot use the unchanged-file fast path. Every
@@ -1243,7 +1292,9 @@ def run_index_project(
                 )
             )
         ):
-            stats["pruned"] = _prune_to_selected_scope(cache, conn, candidate_snapshot)
+            stats["pruned"] = _prune_to_selected_scope(
+                cache, conn, candidate_snapshot, root_fd=root_lease_fd
+            )
         run_incomplete = bool(
             stats.get("incomplete_skips", 0)
             or stats.get("truncated_by_max_files", False)
@@ -1276,7 +1327,7 @@ def run_index_project(
         )
         if needs_backfill:
             _clear_call_graph_built(conn)
-            post_index_backfill(cache, stats)
+            post_index_backfill(cache, stats, root_fd=root_lease_fd)
             if stats.get("backfill_errors", 0) == 0 and _candidate_paths_are_exact(
                 cache,
                 conn,
@@ -1307,19 +1358,28 @@ def run_index_project(
             )
         return stats
     finally:
-        if rebuild_signaled:
-            _clear_build_in_progress(cache._get_conn())
-        if (
-            owns_candidate_snapshot
-            and candidate_snapshot is not None
-            and not candidate_released
-        ):
-            from ..indexing_candidate_materialization import (
-                release_index_candidate_snapshot,
-            )
+        try:
+            if root_lease_fd is not None:
+                try:
+                    os.close(root_lease_fd)
+                except OSError:
+                    logger.warning("could not close project-root lease", exc_info=True)
+        finally:
+            try:
+                if rebuild_signaled:
+                    _clear_build_in_progress(cache._get_conn())
+            finally:
+                if (
+                    owns_candidate_snapshot
+                    and candidate_snapshot is not None
+                    and not candidate_released
+                ):
+                    from ..indexing_candidate_materialization import (
+                        release_index_candidate_snapshot,
+                    )
 
-            release_index_candidate_snapshot(candidate_snapshot, cleanup_result)
-            candidate_released = True
+                    release_index_candidate_snapshot(candidate_snapshot, cleanup_result)
+                    candidate_released = True
 
 
 def _call_graph_marker_is_built(conn: sqlite3.Connection) -> bool:
@@ -1330,7 +1390,11 @@ def _call_graph_marker_is_built(conn: sqlite3.Connection) -> bool:
 
 
 def _prune_to_selected_scope(
-    cache: Any, conn: sqlite3.Connection, candidate: IndexCandidateSnapshot
+    cache: Any,
+    conn: sqlite3.Connection,
+    candidate: IndexCandidateSnapshot,
+    *,
+    root_fd: int | None = None,
 ) -> int:
     """Transactionally remove primary and graph generations outside the scope."""
     selected = {entry.rel_path for entry in candidate.selected_entries}
@@ -1343,7 +1407,7 @@ def _prune_to_selected_scope(
         return 0
     try:
         for rel_path in stale:
-            _discard_snapshot_generation(cache, conn, rel_path)
+            _discard_with_root_lease(cache, conn, rel_path, root_fd)
         _clear_call_graph_built_strict(conn)
     except Exception:
         conn.rollback()
@@ -1460,6 +1524,8 @@ def _record_backfill_result(stats: dict[str, Any], key: str, result: Any) -> Non
 def post_index_backfill(
     cache: Any,
     stats: dict[str, Any],
+    *,
+    root_fd: int | None = None,
 ) -> None:
     """Run backfills, recording suppressed failures for certification gates."""
     stats.setdefault("backfill_errors", 0)
@@ -1498,13 +1564,9 @@ def post_index_backfill(
         except Exception:
             logger.debug("could not mark resolution converged", exc_info=True)
     try:
-        from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
-
         # SQLite is the canonical graph index. LadybugDB is a derived projection
         # and must never survive an SQLite update as an implicitly fresh mirror.
-        ladybug_removed = LadybugKnowledgeGraphStore(
-            cache.project_root
-        ).remove_if_exists()
+        ladybug_removed = _invalidate_ladybug(cache, root_fd)
         if ladybug_removed:
             stats["knowledge_graph"] = {"ladybug_stale_removed": True}
     except Exception:

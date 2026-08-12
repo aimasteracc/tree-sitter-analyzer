@@ -1,5 +1,6 @@
 """Tests for the pre-indexed AST cache (ast_cache module)."""
 
+import errno
 import json
 import os
 import sqlite3
@@ -2304,8 +2305,7 @@ def test_force_rebuild_tolerates_ladybug_cleanup_failure(tmp_path):
 
     try:
         with patch(
-            "tree_sitter_analyzer.knowledge_graph.stores."
-            "LadybugKnowledgeGraphStore.remove_if_exists",
+            "tree_sitter_analyzer.cache.indexer._invalidate_ladybug",
             side_effect=OSError("mirror is busy"),
         ):
             result = cache.index_project(force=True, workers=0)
@@ -3224,6 +3224,199 @@ def test_force_rebuild_rejects_replaced_root_before_destructive_clear(
         True,
         ["old.py"],
     )
+
+
+@requires_posix_fd
+def test_force_rebuild_root_swap_keeps_replacement_mirror_isolated(
+    tmp_path, monkeypatch
+):
+    # PR #1253 thread 3761703249: cleanup after destructive clear must remain
+    # bound to the root directory that authorized the frozen force rebuild.
+    import tree_sitter_analyzer.cache.indexer as indexer
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        cleanup_index_candidate_snapshot,
+    )
+
+    root = tmp_path / "project"
+    root.mkdir()
+    source = root / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    cache = ASTCache(str(root))
+    cache.index_file(str(source))
+    old_mirror = root / ".ast-cache" / "knowledge-graph.lbug"
+    old_mirror.write_text("old mirror", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(root),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    displaced = tmp_path / "displaced"
+    replacement_mirror = root / ".ast-cache" / "knowledge-graph.lbug"
+    real_clear = indexer._clear_full_rebuild_rows
+
+    def clear_then_replace_root(cache_arg, conn):
+        real_clear(cache_arg, conn)
+        root.rename(displaced)
+        root.mkdir()
+        replacement_mirror.parent.mkdir()
+        replacement_mirror.write_text("replacement mirror", encoding="utf-8")
+
+    monkeypatch.setattr(indexer, "_clear_full_rebuild_rows", clear_then_replace_root)
+    try:
+        result = cache.index_project(
+            force=True, max_files=10, candidate_snapshot=snapshot, workers=0
+        )
+        observed = (
+            result["indexed"],
+            cache.get_conn().execute("SELECT COUNT(*) FROM ast_index").fetchone()[0],
+            (displaced / ".ast-cache" / "knowledge-graph.lbug").exists(),
+            replacement_mirror.read_text(encoding="utf-8"),
+        )
+    finally:
+        cache.close()
+        cleanup_index_candidate_snapshot(snapshot)
+
+    assert observed == (1, 1, False, "replacement mirror")
+
+
+@requires_posix_fd
+def test_snapshot_root_identity_mismatch_closes_rejected_fd(tmp_path, monkeypatch):
+    # PR #1253 thread 3761703249: a mismatched root lease fails closed without
+    # retaining the descriptor opened for identity verification.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    snapshot = _snapshot(tmp_path, source)
+    root_info = tmp_path.stat()
+    mismatched = replace(
+        snapshot,
+        root_identity=(snapshot.project_root, root_info.st_dev, root_info.st_ino + 1),
+    )
+    real_open = materialization.os.open
+    opened = []
+
+    def record_open(*args, **kwargs):
+        fd = real_open(*args, **kwargs)
+        opened.append(fd)
+        return fd
+
+    monkeypatch.setattr(materialization.os, "open", record_open)
+    lease = materialization.open_index_candidate_snapshot_root(mismatched)
+
+    assert (lease, len(opened)) == (None, 1)
+    with pytest.raises(OSError) as exc_info:
+        os.fstat(opened[0])
+    assert exc_info.value.errno == errno.EBADF
+
+    real_fstat = os.fstat
+    opened.clear()
+
+    def fail_fstat(_fd):
+        raise OSError(errno.EIO, "injected fstat failure")
+
+    monkeypatch.setattr(materialization.os, "fstat", fail_fstat)
+    lease = materialization.open_index_candidate_snapshot_root(snapshot)
+
+    assert (lease, len(opened)) == (None, 1)
+    with pytest.raises(OSError) as exc_info:
+        real_fstat(opened[0])
+    assert exc_info.value.errno == errno.EBADF
+
+    real_close = os.close
+
+    def fail_close(_fd):
+        raise OSError(errno.EIO, "injected close failure")
+
+    opened.clear()
+    monkeypatch.setattr(materialization.os, "close", fail_close)
+    lease = materialization.open_index_candidate_snapshot_root(snapshot)
+    assert (lease, len(opened), real_fstat(opened[0]).st_ino) == (
+        None,
+        1,
+        root_info.st_ino,
+    )
+    real_close(opened[0])
+
+    opened.clear()
+    monkeypatch.setattr(materialization.os, "fstat", real_fstat)
+    lease = materialization.open_index_candidate_snapshot_root(mismatched)
+    assert (lease, len(opened), real_fstat(opened[0]).st_ino) == (
+        None,
+        1,
+        root_info.st_ino,
+    )
+    real_close(opened[0])
+
+    opened.clear()
+    assert materialization.index_candidate_snapshot_root_is_current(snapshot) is False
+    assert len(opened) == 1
+    real_close(opened[0])
+
+
+@requires_posix_fd
+def test_root_lease_close_error_still_runs_owned_cleanup(tmp_path, monkeypatch):
+    # PR #1253 P2: a close failure cannot strand the build marker or frozen tree.
+    import tree_sitter_analyzer.cache.indexer as indexer
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+    from tree_sitter_analyzer.cache.build_state import build_in_progress
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    created_roots = []
+    root_fds = set()
+    armed = False
+    real_mkdtemp = materialization.tempfile.mkdtemp
+    real_open_root = materialization.open_index_candidate_snapshot_root
+    real_close = os.close
+    real_clear = indexer._clear_full_rebuild_rows
+
+    def record_mkdtemp(*args, **kwargs):
+        path = real_mkdtemp(*args, **kwargs)
+        created_roots.append(path)
+        return path
+
+    def record_root_fd(snapshot):
+        fd = real_open_root(snapshot)
+        if fd is not None:
+            root_fds.add(fd)
+        return fd
+
+    def clear_and_arm(cache_arg, conn):
+        nonlocal armed
+        real_clear(cache_arg, conn)
+        armed = True
+
+    def fail_armed_root_close(fd):
+        if armed and fd in root_fds:
+            root_fds.remove(fd)
+            real_close(fd)
+            raise OSError(errno.EIO, "injected root lease close failure")
+        real_close(fd)
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(materialization.tempfile, "mkdtemp", record_mkdtemp)
+        patcher.setattr(
+            materialization, "open_index_candidate_snapshot_root", record_root_fd
+        )
+        patcher.setattr(indexer, "_clear_full_rebuild_rows", clear_and_arm)
+        patcher.setattr(indexer.os, "close", fail_armed_root_close)
+        result = cache.index_project(force=True, max_files=10, workers=0)
+
+    try:
+        observed = (
+            result["indexed"],
+            build_in_progress(cache.get_conn()),
+            [os.path.exists(path) for path in created_roots],
+        )
+    finally:
+        cache.close()
+
+    assert observed == (1, False, [False])
 
 
 @requires_posix_fd

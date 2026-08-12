@@ -193,6 +193,26 @@ class TestSelfCheckDetection:
             f"Expected error to mention ast_imports (got: {exc_info.value!r})"
         )
 
+    def test_missing_manifest_with_incomplete_projection_reports_integrity_error(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        # PR #1253: projection revocation must preserve damaged-DB diagnostics.
+        import tree_sitter_analyzer.cache.schema as cache_schema
+
+        proj_root, db_path = _make_proj(tmp_path)
+        _seed_healthy_db(str(db_path))
+        _drop_table_raw(str(db_path), "ast_index_snapshot_manifest")
+        monkeypatch.setattr(
+            cache_schema,
+            "ensure_symbol_rows_backfilled",
+            lambda *_args, **_kwargs: False,
+        )
+
+        with pytest.raises(SchemaIntegrityError) as exc_info:
+            ASTCache(str(proj_root), db_path=str(db_path))
+
+        assert "ast_index_snapshot_manifest" in str(exc_info.value)
+
     def test_self_check_error_message_lists_all_problems(self, tmp_path: Path) -> None:
         """Multiple missing things → error lists ALL of them in one raise.
 

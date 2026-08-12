@@ -346,29 +346,64 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             else self._build_candidate_snapshot(max_files, exclude_patterns)
         )
         candidate_released = False
+        shared_cache: Any | None = None
+        shared_cache_error: Exception | None = None
 
         try:
             phases: dict[str, Any] = {}
 
             if mode == "full":
                 mark_dirty(self.project_root)
+                try:
+                    from ...ast_cache import ASTCache
 
-            ast_phase = self._phase_ast_cache(
-                mode == "full",
-                max_files,
-                include_activation=include_activation,
-                exclude_patterns=exclude_patterns,
-                candidate_snapshot=candidate_snapshot,
-                source_scope=source_scope,
-            )
+                    shared_cache = ASTCache(self.project_root or ".")
+                except Exception as exc:
+                    shared_cache_error = exc
+
+            if shared_cache_error is not None:
+                ast_phase = _phase_error(
+                    shared_cache_error,
+                    str(self.project_root) if self.project_root else None,
+                    elapsed_seconds=round(time.monotonic() - t_start, 3),
+                )
+                ast_phase["abort_remaining_phases"] = True
+            else:
+                ast_phase = self._phase_ast_cache(
+                    mode == "full",
+                    max_files,
+                    include_activation=include_activation,
+                    exclude_patterns=exclude_patterns,
+                    candidate_snapshot=candidate_snapshot,
+                    source_scope=source_scope,
+                    _cache=shared_cache,
+                )
             phases["ast_cache"] = ast_phase
+            if (
+                mode == "full"
+                and candidate_snapshot.frozen_root is not None
+                and ast_phase.get("abort_remaining_phases") is not True
+            ):
+                from ...indexing_candidate_materialization import (
+                    index_candidate_snapshot_is_materialized,
+                )
+
+                if not index_candidate_snapshot_is_materialized(candidate_snapshot):
+                    ast_phase["abort_remaining_phases"] = True
+                    ast_phase["snapshot_handoff_error"] = (
+                        "INDEX_CANDIDATE_FROZEN_EVIDENCE_INVALID"
+                    )
             if ast_phase.get("abort_remaining_phases") is True:
-                # The force pre-clear authorization failed.  Do not construct another
-                # cache owner: incremental sync, backfills, stats helpers, and final
-                # manifest stamping are all forbidden write opportunities here.
+                # The force authorization or phase-handoff validation failed. Do not
+                # construct another cache owner: incremental sync, backfills, stats
+                # helpers, and final manifest stamping are forbidden opportunities.
                 phases["remaining_phases"] = {
                     "status": "skipped",
-                    "reason": "unsafe force snapshot; no write phases were run",
+                    "reason": (
+                        "unsafe force snapshot; no later write phases were run"
+                        if "snapshot_handoff_error" in ast_phase
+                        else "unsafe force snapshot; no write phases were run"
+                    ),
                 }
                 elapsed = round(time.monotonic() - t_start, 3)
                 summary_line = (
@@ -409,9 +444,10 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 exclude_patterns,
                 candidate_snapshot=candidate_snapshot,
                 source_scope=source_scope,
+                _cache=shared_cache,
             )
             phases["incremental_sync"] = incremental_phase
-            phases["fts5"] = self._phase_fts5_stats()
+            phases["fts5"] = self._phase_fts5_stats(_cache=shared_cache)
 
             if resolve_synapse:
                 # A1: the ast_cache phase already ran the complete backfill chain
@@ -422,7 +458,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 # cause. Report from the already-computed stats instead of re-running.
                 phases["synapse_resolution"] = self._phase_synapse(ast_phase)
 
-            phases["call_edges"] = self._phase_call_edge_stats()
+            phases["call_edges"] = self._phase_call_edge_stats(_cache=shared_cache)
 
             elapsed = round(time.monotonic() - t_start, 3)
 
@@ -446,6 +482,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             )
             top_verdict = "WARN" if any_phase_error or snapshot_warning else "INFO"
             stats = self._collect_final_stats(
+                _cache=shared_cache,
                 stamp_manifest=(
                     top_verdict == "INFO"
                     and not candidate_snapshot.truncated_by_max_files
@@ -483,6 +520,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             candidate_released = True
             return apply_toon_format_to_response(result, output_format)
         finally:
+            _safe_close_cache(shared_cache)
             if not candidate_released:
                 from ...indexing_candidate_materialization import (
                     release_index_candidate_snapshot,
@@ -521,16 +559,19 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         exclude_patterns: frozenset[str] | None = None,
         candidate_snapshot: IndexCandidateSnapshot | None = None,
         source_scope: SourceScopeDescriptor | None = None,
+        _cache: Any | None = None,
     ) -> dict[str, Any]:
         t0 = time.monotonic()
-        cache: Any | None = None
+        cache: Any | None = _cache
+        owns_cache = cache is None
         try:
-            from ...ast_cache import ASTCache
+            if cache is None:
+                from ...ast_cache import ASTCache
 
+                cache = ASTCache(self.project_root or ".")
             if exclude_patterns is None:
                 exclude_patterns = _resolve_exclude_patterns([], False)
 
-            cache = ASTCache(self.project_root or ".")
             index_kwargs: dict[str, Any] = {
                 "max_files": max_files,
                 "force": force,
@@ -605,7 +646,8 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 elapsed_seconds=round(time.monotonic() - t0, 3),
             )
         finally:
-            _safe_close_cache(cache)
+            if owns_cache:
+                _safe_close_cache(cache)
 
     def _phase_incremental_sync(
         self,
@@ -614,16 +656,20 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         *,
         candidate_snapshot: IndexCandidateSnapshot | None = None,
         source_scope: SourceScopeDescriptor | None = None,
+        _cache: Any | None = None,
     ) -> dict[str, Any]:
         t0 = time.monotonic()
-        cache: Any | None = None
+        cache: Any | None = _cache
+        owns_cache = cache is None
         try:
-            from ...ast_cache import ASTCache
             from ...incremental_sync import IncrementalSync
 
             if exclude_patterns is None:
                 exclude_patterns = _resolve_exclude_patterns([], False)
-            cache = ASTCache(self.project_root or ".")
+            if cache is None:
+                from ...ast_cache import ASTCache
+
+                cache = ASTCache(self.project_root or ".")
             sync = IncrementalSync(cache)
             sync_kwargs: dict[str, Any] = {
                 "max_files": max_files,
@@ -689,14 +735,17 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 elapsed_seconds=round(time.monotonic() - t0, 3),
             )
         finally:
-            _safe_close_cache(cache)
+            if owns_cache:
+                _safe_close_cache(cache)
 
-    def _phase_fts5_stats(self) -> dict[str, Any]:
-        cache: Any | None = None
+    def _phase_fts5_stats(self, *, _cache: Any | None = None) -> dict[str, Any]:
+        cache: Any | None = _cache
+        owns_cache = cache is None
         try:
-            from ...ast_cache import ASTCache
+            if cache is None:
+                from ...ast_cache import ASTCache
 
-            cache = ASTCache(self.project_root or ".")
+                cache = ASTCache(self.project_root or ".")
             stats = cache.get_stats()
             return {
                 "status": "ok",
@@ -708,7 +757,8 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 exc, str(self.project_root) if self.project_root else None
             )
         finally:
-            _safe_close_cache(cache)
+            if owns_cache:
+                _safe_close_cache(cache)
 
     def _phase_synapse(self, ast_phase: dict[str, Any]) -> dict[str, Any]:
         """Report cross-file resolution results.
@@ -736,12 +786,14 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             "note": "resolved during ast_cache phase (single-pass backfill)",
         }
 
-    def _phase_call_edge_stats(self) -> dict[str, Any]:
-        cache: Any | None = None
+    def _phase_call_edge_stats(self, *, _cache: Any | None = None) -> dict[str, Any]:
+        cache: Any | None = _cache
+        owns_cache = cache is None
         try:
-            from ...ast_cache import ASTCache
+            if cache is None:
+                from ...ast_cache import ASTCache
 
-            cache = ASTCache(self.project_root or ".")
+                cache = ASTCache(self.project_root or ".")
             has_edges = cache.has_call_edges()
             stats = cache.get_stats()
             return {
@@ -755,19 +807,23 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 exc, str(self.project_root) if self.project_root else None
             )
         finally:
-            _safe_close_cache(cache)
+            if owns_cache:
+                _safe_close_cache(cache)
 
     def _collect_final_stats(
         self,
         *,
         stamp_manifest: bool = False,
         source_scope: SourceScopeDescriptor | None = None,
+        _cache: Any | None = None,
     ) -> dict[str, Any]:
-        cache: Any | None = None
+        cache: Any | None = _cache
+        owns_cache = cache is None
         try:
-            from ...ast_cache import ASTCache
+            if cache is None:
+                from ...ast_cache import ASTCache
 
-            cache = ASTCache(self.project_root or ".")
+                cache = ASTCache(self.project_root or ".")
             manifest_warning: str | None = None
             if stamp_manifest:
                 from ...index_snapshot_schema import stamp_full_index_manifest
@@ -799,4 +855,5 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         except Exception:
             return {}
         finally:
-            _safe_close_cache(cache)
+            if owns_cache:
+                _safe_close_cache(cache)
