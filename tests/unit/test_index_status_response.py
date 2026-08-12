@@ -356,6 +356,9 @@ def test_status_lag_scans_snapshot_canonical_root(monkeypatch):
     )
 
     assert observed == [
-        ("/canonical/project", "/canonical/project/.ast-cache/index.db")
+        (
+            "/canonical/project",
+            os.path.join("/canonical/project", ".ast-cache", "index.db"),
+        )
     ]
     assert result["lag_seconds"] == 3.0
