@@ -65,12 +65,23 @@ def collect_snapshot_stats(
                 fallback_symbol_counts(conn, deadline=deadline)
             )
         total_edges, edges_by_kind = ordinary_edge_counts(conn, deadline=deadline)
-        if time.monotonic() >= deadline:
-            raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+
+        def final_scalar(query: str) -> int:
+            # Nested aggregators own and clear SQLite's single progress handler.
+            # Reinstall it for every trailing query, then reject results that
+            # completed after the absolute capture deadline.
+            if time.monotonic() >= deadline:
+                raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+            conn.set_progress_handler(expired, 1_000)
+            row = conn.execute(query).fetchone()
+            if time.monotonic() >= deadline:
+                raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+            return int(row[0])
+
+        total_files = final_scalar("SELECT COUNT(*) FROM ast_index")
+        auto_vacuum_mode = final_scalar("PRAGMA auto_vacuum")
         return {
-            "total_files": int(
-                conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()[0]
-            ),
+            "total_files": total_files,
             "total_symbols": total_symbols,
             "total_edges": total_edges,
             "symbols_by_kind": symbols_by_kind,
@@ -83,9 +94,7 @@ def collect_snapshot_stats(
             "db_page_count": page_count,
             "db_free_pages": free_pages,
             "db_free_bytes": free_pages * page_size,
-            "db_auto_vacuum_mode": int(
-                conn.execute("PRAGMA auto_vacuum").fetchone()[0]
-            ),
+            "db_auto_vacuum_mode": auto_vacuum_mode,
         }
     except sqlite3.DatabaseError as exc:
         if time.monotonic() >= deadline or "interrupt" in str(exc).lower():

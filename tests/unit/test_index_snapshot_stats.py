@@ -364,6 +364,96 @@ def test_snapshot_stats_rechecks_deadline_after_aggregate_queries(monkeypatch):
     conn.close()
 
 
+def test_snapshot_stats_reinstalls_handler_for_each_final_query(monkeypatch):
+    # PR #1253 Codex review 3764611254: edge aggregation clears the handler.
+    import tree_sitter_analyzer.index_snapshot_stats as stats_owner
+
+    native = _minimal_stats_connection()
+
+    class TrackingConnection:
+        def __init__(self):
+            self.handler_active = False
+            self.final_queries: list[tuple[str, bool]] = []
+
+        def set_progress_handler(self, handler, steps):
+            self.handler_active = handler is not None
+            native.set_progress_handler(handler, steps)
+
+        def execute(self, query, parameters=()):
+            if query in {"SELECT COUNT(*) FROM ast_index", "PRAGMA auto_vacuum"}:
+                self.final_queries.append((query, self.handler_active))
+            return native.execute(query, parameters)
+
+    conn = TrackingConnection()
+    monkeypatch.setattr(stats_owner.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(stats_owner, "sqlite_compile_supports_fts5", lambda *_: False)
+    monkeypatch.setattr(stats_owner, "has_ordinary_symbol_projection", lambda *_: False)
+    monkeypatch.setattr(
+        stats_owner, "fallback_symbol_counts", lambda *_args, **_kwargs: (0, {}, {})
+    )
+
+    def edge_counts(connection, **_kwargs):
+        connection.set_progress_handler(None, 0)
+        return 0, {}
+
+    monkeypatch.setattr(stats_owner, "ordinary_edge_counts", edge_counts)
+
+    result = stats_owner.collect_snapshot_stats(conn, deadline=10.0)  # type: ignore[arg-type]
+
+    assert (result["total_files"], result["db_auto_vacuum_mode"]) == (0, 0)
+    assert conn.final_queries == [
+        ("SELECT COUNT(*) FROM ast_index", True),
+        ("PRAGMA auto_vacuum", True),
+    ]
+    assert conn.handler_active is False
+    native.close()
+
+
+def test_snapshot_stats_rejects_final_count_finishing_after_deadline(monkeypatch):
+    # PR #1253 Codex review 3764611254: a completed final query cannot escape timeout.
+    import tree_sitter_analyzer.index_snapshot_stats as stats_owner
+
+    native = _minimal_stats_connection()
+    now = [0.0]
+
+    class DeadlineConnection:
+        def __init__(self):
+            self.handler_active = False
+            self.final_queries: list[str] = []
+
+        def set_progress_handler(self, handler, steps):
+            self.handler_active = handler is not None
+            native.set_progress_handler(handler, steps)
+
+        def execute(self, query, parameters=()):
+            cursor = native.execute(query, parameters)
+            if query in {"SELECT COUNT(*) FROM ast_index", "PRAGMA auto_vacuum"}:
+                self.final_queries.append(query)
+            if query == "SELECT COUNT(*) FROM ast_index":
+                now[0] = 2.0
+            return cursor
+
+    conn = DeadlineConnection()
+    monkeypatch.setattr(stats_owner.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(stats_owner, "sqlite_compile_supports_fts5", lambda *_: False)
+    monkeypatch.setattr(stats_owner, "has_ordinary_symbol_projection", lambda *_: False)
+    monkeypatch.setattr(
+        stats_owner, "fallback_symbol_counts", lambda *_args, **_kwargs: (0, {}, {})
+    )
+
+    def edge_counts(connection, **_kwargs):
+        connection.set_progress_handler(None, 0)
+        return 0, {}
+
+    monkeypatch.setattr(stats_owner, "ordinary_edge_counts", edge_counts)
+
+    with pytest.raises(RuntimeError, match="^INDEX_SNAPSHOT_DEADLINE$"):
+        stats_owner.collect_snapshot_stats(conn, deadline=1.0)  # type: ignore[arg-type]
+    assert conn.final_queries == ["SELECT COUNT(*) FROM ast_index"]
+    assert conn.handler_active is False
+    native.close()
+
+
 def test_snapshot_stats_normalizes_sql_interrupt_to_deadline(monkeypatch):
     import tree_sitter_analyzer.index_snapshot_stats as stats_owner
 

@@ -460,10 +460,22 @@ class IncrementalSync:
                 _invalidate_ladybug(
                     self._cache, getattr(self._cache, "_cache_dir_fd", None)
                 )
-            except Exception:
-                logger.warning(
+            except Exception as exc:
+                # Codex review 3764611251: the derived mirror may still expose
+                # deleted nodes, so this epoch cannot be certified as complete.
+                logger.error(
                     "failed to invalidate Ladybug mirror after deletion", exc_info=True
                 )
+                result.errors += 1
+                result.scope_complete = False
+                detail = {
+                    "file": "",
+                    "status": "error",
+                    "reason": "LADYBUG_MIRROR_INVALIDATION_FAILED",
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                }
+                result.details.append(detail)
         for rel in supported:
             result.deleted_files += 1
             detail = {"file": rel, "considered": "deleted", "action": "deleted"}

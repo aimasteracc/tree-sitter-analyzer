@@ -1359,7 +1359,8 @@ def test_preexisting_snapshot_deletion_runs_backfills_and_restores_marker(tmp_pa
     )
 
 
-def test_deletion_mirror_cleanup_failure_is_warning_only(tmp_path, monkeypatch):
+def test_deletion_mirror_cleanup_failure_rejects_certification(tmp_path, monkeypatch):
+    # Codex review 3764611251: stale deleted nodes must fail the certified epoch.
     import tree_sitter_analyzer.cache.indexer as indexer
 
     path = tmp_path / "app.py"
@@ -1367,20 +1368,51 @@ def test_deletion_mirror_cleanup_failure_is_warning_only(tmp_path, monkeypatch):
     cache = ASTCache(str(tmp_path))
     cache.index_file(str(path))
     path.unlink()
+    snapshot = _snapshot(tmp_path)
     monkeypatch.setattr(
         indexer,
         "_invalidate_ladybug",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("cleanup denied")),
     )
     try:
-        result = IncrementalSync(cache).sync(max_files=10)
+        result = IncrementalSync(cache).sync(max_files=10, candidate_snapshot=snapshot)
         remaining = cache.lookup(str(path))
+        manifest_count = (
+            cache.get_conn()
+            .execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest")
+            .fetchone()[0]
+        )
     finally:
         cache.close()
-    assert (result.deleted_files, remaining) == (1, None)
+    assert (
+        result.deleted_files,
+        result.errors,
+        result.to_dict()["completeness"],
+        result.details,
+        remaining,
+        manifest_count,
+    ) == (
+        1,
+        1,
+        "incomplete",
+        [
+            {
+                "file": "",
+                "status": "error",
+                "reason": "LADYBUG_MIRROR_INVALIDATION_FAILED",
+                "error_type": "OSError",
+                "error_message": "cleanup denied",
+            },
+            {"file": "app.py", "considered": "deleted", "action": "deleted"},
+        ],
+        None,
+        0,
+    )
 
 
-def test_custom_db_deletion_does_not_mutate_project_mirror(tmp_path):
+def test_custom_db_deletion_does_not_mutate_project_mirror(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.cache.indexer as indexer
+
     project = tmp_path / "project"
     project.mkdir()
     path = project / "app.py"
@@ -1391,12 +1423,22 @@ def test_custom_db_deletion_does_not_mutate_project_mirror(tmp_path):
     mirror.parent.mkdir()
     mirror.write_text("other owner", encoding="utf-8")
     path.unlink()
+    snapshot = _snapshot(project)
+    monkeypatch.setattr(
+        indexer,
+        "_invalidate_ladybug",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("must not run")),
+    )
     try:
-        result = IncrementalSync(cache).sync(max_files=10)
+        result = IncrementalSync(cache).sync(max_files=10, candidate_snapshot=snapshot)
     finally:
         cache.close()
-    assert result.deleted_files == 1
-    assert mirror.read_text(encoding="utf-8") == "other owner"
+    assert (
+        result.deleted_files,
+        result.errors,
+        result.to_dict()["completeness"],
+        mirror.read_text(encoding="utf-8"),
+    ) == (1, 0, "complete", "other owner")
 
 
 def test_preexisting_snapshot_mutation_removes_ladybug_mirror(tmp_path):

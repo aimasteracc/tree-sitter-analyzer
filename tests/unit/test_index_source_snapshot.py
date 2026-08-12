@@ -901,3 +901,41 @@ def test_revalidate_source_rows_is_exact_below_rlimit_with_300_files(tmp_path):
         resource.setrlimit(resource.RLIMIT_NOFILE, original_limits)
 
     assert exact is True
+
+
+@requires_posix_fd
+def test_revalidate_source_rows_checks_deadline_before_leaf_open(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    package = tmp_path / "pkg"
+    package.mkdir()
+    target = package / "app.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    rows = (("pkg/app.py", source._metadata_marker(target.stat()), "python"),)
+    calls = 0
+
+    def deadline_at_leaf():
+        nonlocal calls
+        calls += 1
+        return 2.0 if calls == 2 else 0.0
+
+    monkeypatch.setattr(source, "time", SimpleNamespace(monotonic=deadline_at_leaf))
+    with pytest.raises(TimeoutError):
+        source._revalidate_source_rows(str(tmp_path), rows, 1.0)
+
+
+@requires_posix_fd
+def test_revalidate_source_rows_reopened_root_error_is_unsafe(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    target = tmp_path / "app.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    rows = (("app.py", source._metadata_marker(target.stat()), "python"),)
+    monkeypatch.setattr(
+        source,
+        "_reopened_root_matches",
+        lambda *_args: (_ for _ in ()).throw(OSError("root probe")),
+    )
+    assert source._revalidate_source_rows(str(tmp_path), rows, float("inf")) is False
