@@ -830,6 +830,14 @@ def test_edit_impact_rejects_clean_tracked_transient_write_restore(
     dependency = root / "gone.py"
     changed.write_text("value = 2\n")
     original = dependency.read_bytes()
+    from tree_sitter_analyzer.diff_snapshot_capture import ChangedFile
+
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        root,
+        records=[ChangedFile("old.py", "M", True, True, False)],
+        inventory_paths=["old.py"],
+    )
     observations: list[bytes] = []
 
     def legacy_dependency_analysis(_project_root):

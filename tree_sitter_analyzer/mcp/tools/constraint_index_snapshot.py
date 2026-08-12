@@ -145,6 +145,11 @@ def _sidecar_state(
     return tuple(states)
 
 
+def _close_optional_fd(fd: int | None) -> None:
+    if fd is not None:
+        os.close(fd)
+
+
 def _deadline(deadline: float) -> None:
     if time.monotonic() >= deadline:
         raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
@@ -243,32 +248,44 @@ def portable_ordinary_snapshot(
         with _temporary_copy(data, root) as copy_path:
             # SQLite is intentionally given only the private copy's pathname,
             # never the mutable project database pathname.
-            uri = copy_path.as_uri() + "?mode=ro&immutable=1"
-            source = sqlite3.connect(uri, uri=True, timeout=0, isolation_level=None)
-            source.execute("PRAGMA query_only=ON")
-            source.execute("PRAGMA busy_timeout=0")
-            require_memory_temp_store(source)
-            page_size = int(source.execute("PRAGMA page_size").fetchone()[0])
-            page_count = int(source.execute("PRAGMA page_count").fetchone()[0])
-            if page_size * page_count > _MAX_BACKUP_BYTES:
-                raise RuntimeError("INDEX_BACKUP_BUDGET")
-            private = sqlite3.connect(":memory:")
-            require_memory_temp_store(private)
-
-            def progress(_status: int, _remaining: int, total: int) -> None:
-                if total * page_size > _MAX_BACKUP_BYTES:
+            copy_complete = False
+            try:
+                uri = copy_path.as_uri() + "?mode=ro&immutable=1"
+                source = sqlite3.connect(uri, uri=True, timeout=0, isolation_level=None)
+                source.execute("PRAGMA query_only=ON")
+                source.execute("PRAGMA busy_timeout=0")
+                require_memory_temp_store(source)
+                page_size = int(source.execute("PRAGMA page_size").fetchone()[0])
+                page_count = int(source.execute("PRAGMA page_count").fetchone()[0])
+                if page_size * page_count > _MAX_BACKUP_BYTES:
                     raise RuntimeError("INDEX_BACKUP_BUDGET")
-                _deadline(deadline)
+                private = sqlite3.connect(":memory:")
+                require_memory_temp_store(private)
 
-            source.backup(
-                private,
-                pages=max(64, (512 * 1024) // page_size),
-                progress=progress,
-                sleep=0,
-            )
-            source.close()
-            source = None
+                def progress(_status: int, _remaining: int, total: int) -> None:
+                    if total * page_size > _MAX_BACKUP_BYTES:
+                        raise RuntimeError("INDEX_BACKUP_BUDGET")
+                    _deadline(deadline)
 
+                source.backup(
+                    private,
+                    pages=max(64, (512 * 1024) // page_size),
+                    progress=progress,
+                    sleep=0,
+                )
+                copy_complete = True
+            finally:
+                try:
+                    if source is not None:
+                        source.close()
+                        source = None
+                finally:
+                    if not copy_complete and private is not None:
+                        private.close()
+                        private = None
+
+        if private is None:
+            raise ValueError("CONSTRAINT_INDEX_UNKNOWN")
         if (
             _stat_identity(os.fstat(db_fd)) != db_before
             or _identity(root_path, directory=True) != root_before
@@ -291,12 +308,15 @@ def portable_ordinary_snapshot(
         private.execute("BEGIN")
         yield snapshot, private
     finally:
-        if source is not None:
-            source.close()
-        if private is not None:
-            private.close()
-        if db_fd is not None:
-            os.close(db_fd)
+        try:
+            if source is not None:
+                source.close()
+        finally:
+            try:
+                if private is not None:
+                    private.close()
+            finally:
+                _close_optional_fd(db_fd)
 
 
 def ordinary_source_scope_is_full(source_scope: object) -> bool:

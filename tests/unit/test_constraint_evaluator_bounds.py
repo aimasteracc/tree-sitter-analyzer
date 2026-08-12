@@ -74,3 +74,73 @@ def test_evaluator_capacity_bounds_materialized_violations(
             object(),
             capacity=0,
         )
+
+
+def test_iter_violations_checks_deadline_and_filters_scope_before_rules(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tree_sitter_analyzer.constraints import Constraint
+    from tree_sitter_analyzer.constraints import evaluator as evaluator_module
+    from tree_sitter_analyzer.constraints.parser import compile_constraints
+
+    rows = [
+        ("caller", "src/a.py", 1, "missing", None),
+        ("caller", "src/a.py", 2, "outside", "vendor/b.py"),
+        ("caller", "src/a.py", 3, "inside", "lib/b.py"),
+    ]
+
+    class Connection:
+        def execute(self, _sql: str, _params: object):
+            return iter(rows)
+
+    monkeypatch.setattr(evaluator_module, "_build_import_index", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        evaluator_module, "_build_select_query", lambda *_a: ("SELECT", ())
+    )
+    callbacks: list[str] = []
+    result = list(
+        evaluator_module._iter_violations(
+            compile_constraints(
+                [Constraint("rule", "warn", "forbid", "src/**", "lib/**", "boundary")]
+            ),
+            Connection(),
+            7,
+            scope_predicate=lambda _caller, callee: callee.startswith("lib/"),
+            check_callback=lambda: callbacks.append("checked"),
+        )
+    )
+
+    assert [(item.rule_id, item.callee_file, item.detected_at) for item in result] == [
+        ("rule", "lib/b.py", 7)
+    ]
+    assert callbacks == ["checked", "checked", "checked", "checked"]
+
+
+def test_iter_violations_accepts_optional_callbacks_and_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tree_sitter_analyzer.constraints import Constraint
+    from tree_sitter_analyzer.constraints import evaluator as evaluator_module
+    from tree_sitter_analyzer.constraints.parser import compile_constraints
+
+    class Connection:
+        def execute(self, _sql: str, _params: object):
+            return iter((("caller", "src/a.py", 4, "callee", "lib/b.py"),))
+
+    monkeypatch.setattr(evaluator_module, "_build_import_index", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        evaluator_module, "_build_select_query", lambda *_a: ("SELECT", ())
+    )
+    result = list(
+        evaluator_module._iter_violations(
+            compile_constraints(
+                [Constraint("rule", "warn", "forbid", "src/**", "lib/**", "boundary")]
+            ),
+            Connection(),
+            9,
+        )
+    )
+
+    assert [(item.rule_id, item.caller_line, item.callee_file) for item in result] == [
+        ("rule", 4, "lib/b.py")
+    ]

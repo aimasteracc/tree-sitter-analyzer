@@ -178,6 +178,7 @@ class ConstraintCheckTool(BaseMCPTool):
                 )
             except (
                 sqlite3.DatabaseError,
+                OSError,
                 RuntimeError,
                 ValueError,
                 TypeError,

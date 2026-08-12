@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -450,3 +451,95 @@ def test_portable_snapshot_rejects_pathname_swap_before_open(
             str(tmp_path), deadline=time.monotonic() + 1.0
         ):
             pytest.fail("mismatched opened descriptor published")
+
+
+@pytest.mark.parametrize("failure", [FileNotFoundError, OSError])
+def test_portable_missing_cache_is_structured_index_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: type[OSError],
+) -> None:
+    # Windows CI incident 2026-07-01: portable acquisition may see a missing cache.
+    import tree_sitter_analyzer.mcp.tools.constraint_index_snapshot as owner
+
+    _stage_minimal_constraints(tmp_path)
+    monkeypatch.setattr(owner, "portable_snapshot_required", lambda: True)
+    monkeypatch.setattr(
+        owner,
+        "_identity",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            failure("portable cache unavailable")
+        ),
+    )
+
+    result = _run(
+        _make_tool(tmp_path).execute({"persist": False, "output_format": "json"})
+    )
+
+    assert result == {
+        "success": False,
+        "verdict": "ERROR",
+        "error_code": "CONSTRAINT_INDEX_UNKNOWN",
+        "error": "portable cache unavailable",
+    }
+
+
+def test_portable_corrupt_copy_closes_connections_before_temporary_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Windows CI incident 2026-07-01: open SQLite handles block temp unlink.
+    import tree_sitter_analyzer.mcp.tools.constraint_index_snapshot as owner
+
+    cache = tmp_path / ".ast-cache"
+    cache.mkdir()
+    database = cache / "index.db"
+    sqlite3.connect(database).close()
+    events: list[str] = []
+
+    class Source:
+        def execute(self, _sql):
+            return self
+
+        def fetchone(self):
+            return (4096,)
+
+        def backup(self, *_args, **_kwargs):
+            raise sqlite3.DatabaseError("corrupt private copy")
+
+        def close(self):
+            events.append("source.close")
+
+    class Private:
+        def execute(self, _sql):
+            return self
+
+        def fetchone(self):
+            return (2,)
+
+        def close(self):
+            events.append("private.close")
+
+    connections = iter((Source(), Private()))
+
+    @contextmanager
+    def locked_temporary_copy(_data, _root):
+        try:
+            yield tmp_path / "private-index.db"
+        finally:
+            events.append("temporary.exit")
+            if events[:2] != ["source.close", "private.close"]:
+                raise PermissionError("temporary copy is still locked")
+
+    monkeypatch.setattr(owner, "_temporary_copy", locked_temporary_copy)
+    monkeypatch.setattr(
+        owner.sqlite3, "connect", lambda *_args, **_kwargs: next(connections)
+    )
+    monkeypatch.setattr(owner, "require_memory_temp_store", lambda _conn: None)
+
+    with pytest.raises(sqlite3.DatabaseError, match="^corrupt private copy$"):
+        with owner.portable_ordinary_snapshot(
+            str(tmp_path), deadline=time.monotonic() + 1.0
+        ):
+            pytest.fail("corrupt snapshot published")
+
+    assert events == ["source.close", "private.close", "temporary.exit"]
