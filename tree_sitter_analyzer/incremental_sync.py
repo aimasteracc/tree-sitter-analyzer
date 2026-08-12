@@ -443,6 +443,17 @@ class IncrementalSync:
         except Exception:
             conn.rollback()
             raise
+        if getattr(self._cache, "_uses_project_mirror", True):
+            try:
+                from .cache.indexer import _invalidate_ladybug
+
+                _invalidate_ladybug(
+                    self._cache, getattr(self._cache, "_cache_dir_fd", None)
+                )
+            except Exception:
+                logger.warning(
+                    "failed to invalidate Ladybug mirror after deletion", exc_info=True
+                )
         for rel in supported:
             result.deleted_files += 1
             detail = {"file": rel, "considered": "deleted", "action": "deleted"}

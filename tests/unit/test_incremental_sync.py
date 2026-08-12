@@ -1301,6 +1301,8 @@ def test_preexisting_snapshot_deletion_runs_backfills_and_restores_marker(tmp_pa
     path.write_text("value = 1\n")
     cache = ASTCache(str(tmp_path))
     cache.index_file(str(path))
+    mirror = tmp_path / ".ast-cache" / "knowledge-graph.lbug"
+    mirror.write_text("stale mirror", encoding="utf-8")
     snapshot = _snapshot(tmp_path, path)
     path.unlink()
     callback_details: list[dict] = []
@@ -1325,6 +1327,7 @@ def test_preexisting_snapshot_deletion_runs_backfills_and_restores_marker(tmp_pa
             )
         cached = cache.lookup(str(path))
         graph_built = cache.call_graph_built()
+        mirror_exists = mirror.exists()
     finally:
         cache.close()
 
@@ -1342,7 +1345,37 @@ def test_preexisting_snapshot_deletion_runs_backfills_and_restores_marker(tmp_pa
         cached,
         graph_built,
         result.to_dict()["completeness"],
-    ) == (1, [expected_detail], [expected_detail], 1, 1, None, False, "incomplete")
+        mirror_exists,
+    ) == (
+        1,
+        [expected_detail],
+        [expected_detail],
+        1,
+        1,
+        None,
+        False,
+        "incomplete",
+        False,
+    )
+
+
+def test_custom_db_deletion_does_not_mutate_project_mirror(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    path = project / "app.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    cache = ASTCache(str(project), db_path=str(tmp_path / "external" / "index.db"))
+    cache.index_file(str(path))
+    mirror = project / ".ast-cache" / "knowledge-graph.lbug"
+    mirror.parent.mkdir()
+    mirror.write_text("other owner", encoding="utf-8")
+    path.unlink()
+    try:
+        result = IncrementalSync(cache).sync(max_files=10)
+    finally:
+        cache.close()
+    assert result.deleted_files == 1
+    assert mirror.read_text(encoding="utf-8") == "other owner"
 
 
 def test_preexisting_snapshot_mutation_removes_ladybug_mirror(tmp_path):

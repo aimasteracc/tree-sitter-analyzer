@@ -99,6 +99,7 @@ class ASTCacheSurface:
     _extractor_version: int
     _index_lock: Any
     _cache_dir_fd: int | None
+    _uses_project_mirror: bool
 
     def _get_conn(self) -> sqlite3.Connection:
         raise NotImplementedError

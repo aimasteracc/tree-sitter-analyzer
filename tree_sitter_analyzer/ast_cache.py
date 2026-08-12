@@ -81,6 +81,7 @@ class ASTCache(
         uses_project_mirror = os.path.abspath(db_path) == os.path.abspath(
             default_db_path
         )
+        self._uses_project_mirror = uses_project_mirror
         if uses_project_mirror:
             os.makedirs(cache_dir, exist_ok=True)
         if os.name == "posix" and uses_project_mirror:

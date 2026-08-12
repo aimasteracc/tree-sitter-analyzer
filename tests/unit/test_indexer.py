@@ -1227,6 +1227,82 @@ def test_candidate_cleanup_rejects_path_identity_change_after_fd_cleanup(
 
 
 @pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_candidate_materialization_chmod_failure_removes_unowned_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    source = tmp_path / "app.py"
+    source.write_text("x = 1\n", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=lambda _path: "python",
+    )
+    roots: list[str] = []
+    real_mkdtemp = materialization.tempfile.mkdtemp
+
+    def record_root(*args, **kwargs):
+        root = real_mkdtemp(*args, **kwargs)
+        roots.append(root)
+        return root
+
+    monkeypatch.setattr(materialization.tempfile, "mkdtemp", record_root)
+    monkeypatch.setattr(
+        materialization.os,
+        "chmod",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("chmod denied")),
+    )
+    result = materialization.materialize_index_candidate_snapshot(snapshot)
+    assert result.frozen_error == "chmod denied"
+    assert roots and not Path(roots[0]).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_candidate_cleanup_fstat_failure_is_warning_and_closes_fd(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    source = tmp_path / "app.py"
+    source.write_text("x = 1\n", encoding="utf-8")
+    frozen = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=lambda _path: "python",
+        materialize=True,
+    )
+    real_fstat = materialization.os.fstat
+    real_open = materialization.os.open
+    opened: list[int] = []
+
+    def record_open(*args, **kwargs):
+        fd = real_open(*args, **kwargs)
+        opened.append(fd)
+        return fd
+
+    monkeypatch.setattr(materialization.os, "open", record_open)
+    monkeypatch.setattr(
+        materialization.os,
+        "fstat",
+        lambda _fd: (_ for _ in ()).throw(OSError("fstat denied")),
+    )
+    warning = materialization.cleanup_index_candidate_snapshot(frozen)
+    monkeypatch.setattr(materialization.os, "fstat", real_fstat)
+    assert warning == "INDEX_CANDIDATE_CLEANUP_FAILED: fstat denied"
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        real_fstat(opened[0])
+    import shutil
+
+    shutil.rmtree(frozen.frozen_root or "")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 def test_candidate_materialization_fstat_failure_closes_fd_and_root(
     tmp_path: Path, monkeypatch
 ) -> None:

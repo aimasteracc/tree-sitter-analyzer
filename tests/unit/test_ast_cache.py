@@ -3688,6 +3688,38 @@ def test_custom_db_path_does_not_create_project_cache_directory(tmp_path):
 
 
 @requires_posix_fd
+def test_custom_db_path_force_rebuild_uses_root_lease_without_mirror(tmp_path):
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        cleanup_index_candidate_snapshot,
+    )
+
+    project = tmp_path / "project"
+    project.mkdir()
+    source = project / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    external = tmp_path / "external" / "index.db"
+    cache = ASTCache(str(project), db_path=str(external))
+    snapshot = build_index_candidate_snapshot(
+        str(project),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    try:
+        result = cache.index_project(
+            max_files=10, force=True, workers=0, candidate_snapshot=snapshot
+        )
+        count = cache.get_conn().execute("SELECT COUNT(*) FROM ast_index").fetchone()[0]
+    finally:
+        cache.close()
+        cleanup_index_candidate_snapshot(snapshot)
+    assert (result["indexed"], result["errors"], count) == (1, 0, 1)
+    assert (project / ".ast-cache").exists() is False
+
+
+@requires_posix_fd
 def test_cache_constructor_closes_directory_fd_when_fstat_fails(tmp_path, monkeypatch):
     # PR #1253 thread 3763183168: an fd acquired before identity capture is owned.
     import tree_sitter_analyzer.ast_cache as ast_cache_module

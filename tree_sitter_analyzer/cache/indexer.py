@@ -92,6 +92,8 @@ def _remove_ladybug_from_pinned_cache(cache_fd: int) -> bool:
 def _invalidate_ladybug(cache: Any, root_fd: int | None) -> bool:
     """Invalidate the mirror without leaving a pinned-cache mutation boundary."""
     if root_fd is not None:
+        if not getattr(cache, "_uses_project_mirror", True):
+            return False
         cache_fd = getattr(cache, "_cache_dir_fd", None)
         if cache_fd is None:
             raise OSError("AST_CACHE_DIRECTORY_UNBOUND")
@@ -1041,10 +1043,14 @@ def run_index_project(
                 )
 
                 root_lease_fd = open_index_candidate_snapshot_root(candidate_snapshot)
-                cache_dir_current = False
+                cache_dir_current = not getattr(cache, "_uses_project_mirror", True)
                 probe_fd: int | None = None
                 try:
-                    if root_lease_fd is not None and cache._cache_dir_fd is not None:
+                    if (
+                        root_lease_fd is not None
+                        and getattr(cache, "_uses_project_mirror", True)
+                        and cache._cache_dir_fd is not None
+                    ):
                         flags = (
                             os.O_RDONLY
                             | getattr(os, "O_DIRECTORY", 0)
