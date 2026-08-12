@@ -306,10 +306,14 @@ class TestConstraintCheckFiltering:
 # ---------------------------------------------------------------------------
 
 
-def _create_frozen_scope(monkeypatch, project: Path, paths: list[str]):
+def _create_frozen_scope(
+    monkeypatch, project: Path, paths: list[str], *, source_scope=None
+):
     """Install an isolated registry and create one leased frozen scope."""
     import tree_sitter_analyzer.index_snapshot as index_snapshots
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
 
+    source_scope = source_scope or make_source_scope_descriptor()
     index_snapshots.REGISTRY.close_all()
     install_fake_snapshot_materializer(monkeypatch, project)
     registry = snapshots.DiffSnapshotRegistry()
@@ -329,6 +333,7 @@ def _create_frozen_scope(monkeypatch, project: Path, paths: list[str]):
             reason=None,
             canonical_root=str(project.resolve()),
             index_fingerprint="sha256:" + "1" * 64,
+            source_scope=source_scope,
         )
 
     @contextmanager
@@ -684,6 +689,37 @@ def test_staged_frozen_constraints_without_config_precedes_divergent_source(
     )
 
 
+def test_staged_frozen_no_config_final_guard_does_not_probe_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3766246581: staged NO_CONFIG stays on the index plane.
+    registry, created = _create_frozen_scope(monkeypatch, tmp_path, ["src/a.py"])
+    from dataclasses import replace
+
+    state = registry._states[str(created["diff_snapshot_id"])]
+    state.snapshot = replace(state.snapshot, mode="staged")
+
+    from tree_sitter_analyzer.mcp.tools import constraint_check_frozen
+
+    def reject_worktree_probe(*args, **kwargs):
+        raise AssertionError("staged NO_CONFIG probed the worktree")
+
+    monkeypatch.setattr(
+        constraint_check_frozen.source_oracle,
+        "safe_workspace_path",
+        reject_worktree_probe,
+    )
+
+    result = _run(_make_tool(tmp_path).execute(_frozen_arguments(created)))
+
+    assert (result["success"], result["state"], result["reason"]) == (
+        True,
+        "not_applicable",
+        "NO_CONFIG",
+    )
+    assert registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
+
+
 def test_read_only_missing_edges_returns_structured_index_error(tmp_path: Path) -> None:
     # PR #1254 review 3765918809: persist=false must not leak SQLite failures.
     _stage_minimal_constraints(tmp_path)
@@ -890,6 +926,30 @@ def test_frozen_constraints_require_matching_complete_index_capability(
     assert registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
 
 
+def test_frozen_constraints_reject_supported_path_outside_index_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3766246604: graph evidence cannot cover paths it omitted.
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    _stage_minimal_constraints(tmp_path)
+    registry, created = _create_frozen_scope(
+        monkeypatch,
+        tmp_path,
+        ["src/a.py", "README.md"],
+        source_scope=make_source_scope_descriptor(roots=("lib",)),
+    )
+
+    result = _run(_make_tool(tmp_path).execute(_frozen_arguments(created)))
+
+    assert (result["success"], result["error_code"], result["verdict"]) == (
+        False,
+        "CONSTRAINT_INDEX_SCOPE_MISMATCH",
+        "ERROR",
+    )
+    assert registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
+
+
 def test_frozen_constraints_map_index_capture_failure_to_structured_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1008,3 +1068,31 @@ def test_scope_predicate_accepts_caller_or_callee_and_rejects_outside(
         0,
         ["callee", "caller"],
     )
+
+
+def test_frozen_scope_rejects_missing_source_scope_descriptor() -> None:
+    from tree_sitter_analyzer.mcp.tools.constraint_check_frozen import (
+        _supported_scope_is_covered,
+    )
+
+    assert _supported_scope_is_covered(["src/a.py"], None) is False
+
+
+def test_frozen_scope_rejects_supported_excluded_path() -> None:
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+    from tree_sitter_analyzer.mcp.tools.constraint_check_frozen import (
+        _supported_scope_is_covered,
+    )
+
+    scope = make_source_scope_descriptor(exclude_patterns=("src/*.py",))
+
+    assert _supported_scope_is_covered(["src/a.py"], scope) is False
+
+
+def test_constraint_arguments_reject_snapshot_with_default_persistence(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="^diff_snapshot_id requires persist=false$"):
+        _make_tool(tmp_path).validate_arguments(
+            {"diff_snapshot_id": "ds_snapshot", "scope_paths": []}
+        )

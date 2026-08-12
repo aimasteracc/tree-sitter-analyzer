@@ -637,6 +637,7 @@ class TestEvaluateWithExplicitFile:
         severity_min: str = "warn",
         path_filter: str = "",
         output_format: str = "json",
+        persist: bool = True,
     ) -> dict:
         return _evaluate_with_explicit_file(
             project_root=str(tmp_path),
@@ -644,6 +645,7 @@ class TestEvaluateWithExplicitFile:
             severity_min=severity_min,
             path_filter=path_filter,
             output_format=output_format,
+            persist=persist,
         )
 
     def test_file_not_found_returns_failure(self, tmp_path):
@@ -687,6 +689,71 @@ class TestEvaluateWithExplicitFile:
         assert result["verdict"] == "SAFE"
         assert result["success"] is True
         assert result["evaluated_edge_count"] == 5
+
+    def test_read_only_missing_edges_fails_closed_with_nonzero_exit(self, tmp_path):
+        # PR #1254 review 3766246590: an absent edge capability is not SAFE.
+        yaml_file = tmp_path / "constraints.yml"
+        yaml_file.write_text("")
+        db_dir = tmp_path / ".ast-cache"
+        db_dir.mkdir()
+        sqlite3.connect(str(db_dir / "index.db")).close()
+
+        with patch(_LOAD_EXPLICIT, return_value=[]):
+            with patch(_APPLY_TOON, side_effect=lambda p, fmt: p):
+                result = self._call(tmp_path, str(yaml_file), persist=False)
+
+        assert (
+            result["success"],
+            result["verdict"],
+            result["error_code"],
+            result["error"],
+            result["violations"],
+            result["rule_count"],
+            _exit_code_for(result),
+        ) == (
+            False,
+            "ERROR",
+            "CONSTRAINT_INDEX_UNKNOWN",
+            "no such table: edges",
+            [],
+            0,
+            1,
+        )
+
+    def test_read_only_corrupt_edges_fails_closed_with_nonzero_exit(self, tmp_path):
+        # PR #1254 review 3766246590: evaluator database failures are not SAFE.
+        yaml_file = tmp_path / "constraints.yml"
+        yaml_file.write_text("")
+        db_dir = tmp_path / ".ast-cache"
+        db_dir.mkdir()
+        conn = sqlite3.connect(str(db_dir / "index.db"))
+        conn.execute("CREATE TABLE edges(kind TEXT)")
+        conn.execute("INSERT INTO edges VALUES ('calls')")
+        conn.commit()
+        conn.close()
+
+        with patch(_LOAD_EXPLICIT, return_value=[]):
+            with patch(_EVALUATE, side_effect=sqlite3.DatabaseError("bad edge row")):
+                with patch(_APPLY_TOON, side_effect=lambda p, fmt: p):
+                    result = self._call(tmp_path, str(yaml_file), persist=False)
+
+        assert (
+            result["success"],
+            result["verdict"],
+            result["error_code"],
+            result["error"],
+            result["violations"],
+            result["rule_count"],
+            _exit_code_for(result),
+        ) == (
+            False,
+            "ERROR",
+            "CONSTRAINT_INDEX_UNKNOWN",
+            "bad edge row",
+            [],
+            0,
+            1,
+        )
 
     def test_constraint_file_path_included_in_result(self, tmp_path):
         yaml_file = tmp_path / "constraints.yml"

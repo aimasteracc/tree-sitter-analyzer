@@ -80,8 +80,9 @@ def shared_source_generation(project_root: str, deadline: float) -> str:
     with lease_existing_snapshot(project_root) as existing:
         if existing.source_generation is not None:
             return existing.source_generation
-        if existing.reason not in ("MISSING_INDEX",):
-            raise SourceOracleError(existing.reason or "DIFF_SNAPSHOT_SOURCE_CHANGED")
+    # An unusable index is not authoritative for source-only consumers.  Fall
+    # back to the direct default-scope oracle; graph consumers independently
+    # require and validate a complete leased index capability.
     current = capture_current_source_snapshot(project_root, deadline=deadline)
     if current.state != "exact" or current.generation is None:
         raise SourceOracleError(current.reason or "DIFF_SNAPSHOT_SOURCE_CHANGED")

@@ -586,11 +586,15 @@ def test_shared_generation_uses_fresh_reusable_capability(monkeypatch):
     )
 
 
-def test_shared_generation_fails_closed_on_incompatible_index(monkeypatch):
+def test_shared_generation_falls_back_to_direct_oracle_for_incompatible_index(
+    monkeypatch,
+):
+    # PR #1254 review 3766246594: source-only capture must not require graph usability.
     from contextlib import contextmanager
     from types import SimpleNamespace
 
     import tree_sitter_analyzer.index_snapshot as index_snapshot
+    import tree_sitter_analyzer.index_source_snapshot as source_snapshot
 
     @contextmanager
     def none(_root):
@@ -600,10 +604,24 @@ def test_shared_generation_fails_closed_on_incompatible_index(monkeypatch):
     def incompatible(_root):
         yield SimpleNamespace(source_generation=None, reason="INCOMPATIBLE_SCHEMA")
 
+    captures = []
+
+    def capture(root, *, deadline):
+        captures.append((root, deadline))
+        return SimpleNamespace(
+            state="exact", generation="idxsrc-v3:direct", reason=None
+        )
+
     monkeypatch.setattr(index_snapshot, "lease_reusable_snapshot", none)
     monkeypatch.setattr(index_snapshot, "lease_existing_snapshot", incompatible)
-    with pytest.raises(snapshots.SourceOracleError, match="INCOMPATIBLE_SCHEMA"):
-        snapshots.shared_source_generation("/repo", float("inf"))
+    monkeypatch.setattr(source_snapshot, "capture_current_source_snapshot", capture)
+
+    result = snapshots.shared_source_generation("/repo", float("inf"))
+
+    assert (result, captures) == (
+        "idxsrc-v3:direct",
+        [("/repo", float("inf"))],
+    )
 
 
 def test_shared_generation_uses_existing_index_token(monkeypatch):
@@ -625,3 +643,80 @@ def test_shared_generation_uses_existing_index_token(monkeypatch):
     assert snapshots.shared_source_generation("/repo", float("inf")) == (
         "idxsrc-v3:existing"
     )
+
+
+def test_staged_snapshot_preserves_live_config_metadata_when_index_matches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tree_sitter_analyzer.source_epoch import GitEpoch
+
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    config = tmp_path / "architectural-constraints.yml"
+    config.write_bytes(b"version: 1\nconstraints: []\n")
+    live = snapshots.safe_workspace_path(
+        str(tmp_path.resolve()), config.name, deadline=float("inf"), limit=1024 * 1024
+    )
+    epoch = GitEpoch(b"head", "sha1", (), (), (), ())
+    identity = snapshots.RootIdentity(str(tmp_path.resolve()), 1, 2)
+
+    def oracle(root, mode="diff", *, deadline=None, manifest=None, epoch_out=None):
+        if epoch_out is not None:
+            epoch_out.append(epoch)
+        return "sg_test", identity
+
+    monkeypatch.setattr(snapshots, "oracle_generation", oracle)
+    monkeypatch.setattr(
+        snapshots,
+        "frozen_index_constraint_config",
+        lambda *_a, **_k: (config.name, live.data, ("index-metadata",)),
+    )
+    registry = snapshots.DiffSnapshotRegistry()
+    result = registry.create(str(tmp_path), "staged", [])
+    consumer, error = registry.acquire(str(result["diff_snapshot_id"]), str(tmp_path))
+
+    assert error is None
+    assert consumer is not None
+    assert (
+        consumer.snapshot.constraint_config_path,
+        consumer.snapshot.constraint_config_data,
+        consumer.snapshot.constraint_config_metadata,
+        consumer.snapshot.staged_config_matches_worktree,
+    ) == (config.name, live.data, live.metadata, True)
+    consumer.release()
+
+
+def test_staged_snapshot_retains_index_config_metadata_when_worktree_differs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tree_sitter_analyzer.source_epoch import GitEpoch
+
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    epoch = GitEpoch(b"head", "sha1", (), (), (), ())
+    identity = snapshots.RootIdentity(str(tmp_path.resolve()), 1, 2)
+
+    def oracle(root, mode="diff", *, deadline=None, manifest=None, epoch_out=None):
+        if epoch_out is not None:
+            epoch_out.append(epoch)
+        return "sg_test", identity
+
+    monkeypatch.setattr(snapshots, "oracle_generation", oracle)
+    monkeypatch.setattr(
+        snapshots,
+        "frozen_index_constraint_config",
+        lambda *_a, **_k: (
+            "architectural-constraints.yml",
+            b"version: 1\nconstraints: []\n",
+            ("index-metadata",),
+        ),
+    )
+    registry = snapshots.DiffSnapshotRegistry()
+    result = registry.create(str(tmp_path), "staged", [])
+    consumer, error = registry.acquire(str(result["diff_snapshot_id"]), str(tmp_path))
+
+    assert error is None
+    assert consumer is not None
+    assert (
+        consumer.snapshot.constraint_config_metadata,
+        consumer.snapshot.staged_config_matches_worktree,
+    ) == (("index-metadata",), False)
+    consumer.release()

@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import fnmatch
+import os
 import sqlite3
 import time
 from collections.abc import Callable
 from typing import Any, cast
 
 from ... import source_oracle
+from ...constants import EXCLUDE_DIRS
 from ...constraints.parser import ConstraintParseError, load_constraints_bytes
 from ...git_path_codec import path_to_wire
+from ...index_source_scope import SourceScopeDescriptor
+from ...languages.lang_extension_map import EXT_TO_LANG
 from ...source_oracle import SourceOracleError
 from ..utils.format_helper import apply_toon_format_to_response
 
@@ -21,6 +26,13 @@ _CONFIG_CANDIDATES = (
 
 def _config_publish_guard(diff: Any, project_root: str) -> Callable[[], str | None]:
     """Build the final-publish guard for impact-owned configuration bytes."""
+
+    if diff.mode == "staged" and diff.constraint_config_path is None:
+        # Stage zero is the authoritative configuration plane.  The registry's
+        # final staged generation check already protects the captured index;
+        # probing the worktree here would both cross planes and turn an
+        # unrelated untracked config into a false CONFIG_CHANGED result.
+        return lambda: None
 
     def validate() -> str | None:
         rechecked = None
@@ -46,6 +58,41 @@ def _config_publish_guard(diff: Any, project_root: str) -> Callable[[], str | No
         return None
 
     return validate
+
+
+def _supported_scope_is_covered(paths: list[str], source_scope: object) -> bool:
+    """Return whether every graph-supported path is selected by the index scope."""
+    if not isinstance(source_scope, SourceScopeDescriptor):
+        return False
+    for path in paths:
+        normalized = path.replace("\\", "/") if os.name == "nt" else path
+        if EXT_TO_LANG.get(os.path.splitext(normalized)[1].lower()) is None:
+            continue
+        if any(
+            fnmatch.fnmatch(normalized, pattern)
+            for pattern in source_scope.effective_excludes
+        ):
+            return False
+        path_parts = tuple(part for part in normalized.split("/") if part)
+        covered = False
+        for root in source_scope.roots:
+            root_parts = tuple(
+                part
+                for part in root.replace("\\", "/").split("/")
+                if part not in ("", ".")
+            )
+            if path_parts[: len(root_parts)] != root_parts:
+                continue
+            descendants = path_parts[len(root_parts) : -1]
+            if any(
+                part in EXCLUDE_DIRS or part.startswith(".") for part in descendants
+            ):
+                continue
+            covered = True
+            break
+        if not covered:
+            return False
+    return True
 
 
 def _snapshot_error(
@@ -119,6 +166,12 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
                             tool,
                             index.reason or "SOURCE_GENERATION_MISMATCH",
                             output_format,
+                        )
+                    if not _supported_scope_is_covered(
+                        frozen_scope, index.source_scope
+                    ):
+                        return _snapshot_error(
+                            tool, "CONSTRAINT_INDEX_SCOPE_MISMATCH", output_format
                         )
                     with acquire_index_snapshot(
                         index.snapshot_id, project_root, diff.source_generation

@@ -155,7 +155,20 @@ def _evaluate_with_explicit_file(
         )
 
     min_severity_rank = _SEVERITY_ORDER.get(severity_min, 1)
-    violations, edge_count = _run_and_persist(db_path, constraints, persist=persist)
+    try:
+        violations, edge_count = _run_and_persist(db_path, constraints, persist=persist)
+    except sqlite3.DatabaseError as exc:
+        return _format_response(
+            {
+                "success": False,
+                "verdict": "ERROR",
+                "error_code": "CONSTRAINT_INDEX_UNKNOWN",
+                "error": str(exc),
+                "violations": [],
+                "rule_count": len(constraints),
+            },
+            output_format,
+        )
     filtered = _filter_violations(
         violations,
         path_filter=path_filter,
@@ -219,12 +232,16 @@ def _run_and_persist(
                 ).fetchone()[0]
             )
         except sqlite3.OperationalError:
+            if not persist:
+                raise
             edge_count = 0
         if edge_count == 0:
             return [], 0
         try:
             violations = evaluate(constraints, conn)
-        except Exception:  # noqa: BLE001 — degrade rather than crash CLI
+        except Exception:  # noqa: BLE001 — legacy write path degrades
+            if not persist:
+                raise
             return [], edge_count
 
         if not persist:
