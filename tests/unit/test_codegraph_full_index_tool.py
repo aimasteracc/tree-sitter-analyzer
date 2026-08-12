@@ -646,6 +646,7 @@ class TestExecute:
         assert result["phases"]["ast_cache"]["abort_remaining_phases"] is False
         assert result["phases"]["incremental_sync"]["status"] == "ok"
 
+    @pytest.mark.skipif(os.name != "posix", reason="GH-1253: frozen handoff")
     async def test_full_handoff_validation_gets_fresh_bounded_deadline(
         self, tmp_path, monkeypatch
     ):
