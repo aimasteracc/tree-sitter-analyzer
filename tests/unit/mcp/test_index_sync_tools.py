@@ -96,7 +96,7 @@ class TestCodeGraphFullIndexTool:
         result = await tool.execute(
             {"mode": "full", "max_files": 10, "output_format": "json"}
         )
-        assert result["success"] is True
+        assert result["success"] is (os.name != "nt")
         assert "phases" in result
         assert "elapsed_seconds" in result
 

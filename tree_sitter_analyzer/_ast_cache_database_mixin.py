@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from typing import Any, cast
 
@@ -97,6 +98,7 @@ class ASTCacheSurface:
     _fts5_available: bool | None
     _extractor_version: int
     _index_lock: Any
+    _cache_dir_fd: int | None
 
     def _get_conn(self) -> sqlite3.Connection:
         raise NotImplementedError
@@ -192,7 +194,15 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
         )
 
     def close(self) -> None:
-        conn = getattr(self._local, "conn", None)
-        if conn is not None:
-            conn.close()
-            self._local.conn = None
+        try:
+            conn = getattr(self._local, "conn", None)
+            if conn is not None:
+                conn.close()
+                self._local.conn = None
+        finally:
+            cache_dir_fd = getattr(self, "_cache_dir_fd", None)
+            if cache_dir_fd is not None:
+                try:
+                    os.close(cache_dir_fd)
+                finally:
+                    self._cache_dir_fd = None

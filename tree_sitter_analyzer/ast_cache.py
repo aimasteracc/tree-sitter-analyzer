@@ -72,8 +72,33 @@ class ASTCache(
         self._parser = Parser()
         self._index_lock = threading.Lock()
         self._fts5_available: bool | None = None
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        self._init_db()
+        self._cache_dir_fd: int | None = None
+        self._cache_dir_identity: tuple[int, int] | None = None
+        db_dir = os.path.dirname(db_path)
+        os.makedirs(db_dir, exist_ok=True)
+        cache_dir = os.path.join(self.project_root, ".ast-cache")
+        os.makedirs(cache_dir, exist_ok=True)
+        if os.name == "posix":
+            flags = (
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+            )
+            self._cache_dir_fd = os.open(cache_dir, flags)
+            info = os.fstat(self._cache_dir_fd)
+            self._cache_dir_identity = (info.st_dev, info.st_ino)
+        try:
+            self._init_db()
+            if self._cache_dir_fd is not None:
+                info = os.stat(cache_dir, follow_symlinks=False)
+                if (info.st_dev, info.st_ino) != self._cache_dir_identity:
+                    raise RuntimeError(
+                        "AST cache directory changed while opening database"
+                    )
+        except BaseException:
+            self.close()
+            raise
 
 
 def _walk_source_files(project_root: str) -> Iterator[str]:

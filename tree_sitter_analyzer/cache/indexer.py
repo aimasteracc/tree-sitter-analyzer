@@ -79,31 +79,23 @@ def _normalize_relative_path(value: str) -> str:
     return value.replace("\\", "/") if os.name == "nt" else value
 
 
-def _remove_ladybug_from_pinned_root(root_fd: int) -> bool:
-    """Remove the optional mirror relative to an identity-bound root fd."""
-    cache_fd: int | None = None
-    flags = (
-        os.O_RDONLY
-        | getattr(os, "O_DIRECTORY", 0)
-        | getattr(os, "O_NOFOLLOW", 0)
-        | getattr(os, "O_CLOEXEC", 0)
-    )
+def _remove_ladybug_from_pinned_cache(cache_fd: int) -> bool:
+    """Remove the optional mirror relative to its identity-bound directory."""
     try:
-        cache_fd = os.open(".ast-cache", flags, dir_fd=root_fd)
         os.stat("knowledge-graph.lbug", dir_fd=cache_fd, follow_symlinks=False)
         os.unlink("knowledge-graph.lbug", dir_fd=cache_fd)
         return True
     except FileNotFoundError:
         return False
-    finally:
-        if cache_fd is not None:
-            os.close(cache_fd)
 
 
 def _invalidate_ladybug(cache: Any, root_fd: int | None) -> bool:
-    """Invalidate the mirror without leaving a pinned-root mutation boundary."""
+    """Invalidate the mirror without leaving a pinned-cache mutation boundary."""
     if root_fd is not None:
-        return _remove_ladybug_from_pinned_root(root_fd)
+        cache_fd = getattr(cache, "_cache_dir_fd", None)
+        if cache_fd is None:
+            raise OSError("AST_CACHE_DIRECTORY_UNBOUND")
+        return _remove_ladybug_from_pinned_cache(cache_fd)
     from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
 
     return LadybugKnowledgeGraphStore(cache.project_root).remove_if_exists()
@@ -1049,7 +1041,29 @@ def run_index_project(
                 )
 
                 root_lease_fd = open_index_candidate_snapshot_root(candidate_snapshot)
-                if root_lease_fd is None:
+                cache_dir_current = False
+                probe_fd: int | None = None
+                try:
+                    if root_lease_fd is not None and cache._cache_dir_fd is not None:
+                        flags = (
+                            os.O_RDONLY
+                            | getattr(os, "O_DIRECTORY", 0)
+                            | getattr(os, "O_NOFOLLOW", 0)
+                            | getattr(os, "O_CLOEXEC", 0)
+                        )
+                        probe_fd = os.open(".ast-cache", flags, dir_fd=root_lease_fd)
+                        expected = os.fstat(cache._cache_dir_fd)
+                        observed = os.fstat(probe_fd)
+                        cache_dir_current = (expected.st_dev, expected.st_ino) == (
+                            observed.st_dev,
+                            observed.st_ino,
+                        )
+                except OSError:
+                    cache_dir_current = False
+                finally:
+                    if probe_fd is not None:
+                        os.close(probe_fd)
+                if root_lease_fd is None or not cache_dir_current:
                     cleanup_result = _unsafe_force_snapshot_result(
                         candidate_snapshot, activation_enabled, changed=[]
                     )

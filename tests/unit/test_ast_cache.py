@@ -1516,6 +1516,7 @@ def test_force_index_rejects_missing_metadata_before_clearing_cache(tmp_path):
     assert row == before
 
 
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253: authoritative frozen epoch")
 def test_force_index_retains_complete_frozen_epoch_on_live_mutation(tmp_path):
     from tree_sitter_analyzer.cache import extraction
 
@@ -3296,6 +3297,109 @@ def test_force_rebuild_root_swap_keeps_replacement_mirror_isolated(
         cleanup_index_candidate_snapshot(snapshot)
 
     assert observed == (1, 1, False, "replacement mirror")
+
+
+def test_pinned_mirror_invalidation_rejects_unbound_cache_dir(tmp_path):
+    import tree_sitter_analyzer.cache.indexer as indexer
+
+    cache = SimpleNamespace(project_root=str(tmp_path), _cache_dir_fd=None)
+    with pytest.raises(OSError, match="AST_CACHE_DIRECTORY_UNBOUND"):
+        indexer._invalidate_ladybug(cache, root_fd=17)
+
+
+@requires_posix_fd
+def test_force_rebuild_rejects_replaced_cache_dir_before_clear(tmp_path):
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        cleanup_index_candidate_snapshot,
+    )
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    cache_dir = tmp_path / ".ast-cache"
+    displaced = tmp_path / ".ast-cache-displaced"
+    cache_dir.rename(displaced)
+    cache_dir.mkdir()
+    replacement_mirror = cache_dir / "knowledge-graph.lbug"
+    replacement_mirror.write_text("replacement", encoding="utf-8")
+
+    try:
+        result = cache.index_project(
+            force=True, max_files=10, candidate_snapshot=snapshot, workers=0
+        )
+        persisted = (
+            cache.get_conn().execute("SELECT COUNT(*) FROM ast_index").fetchone()[0]
+        )
+    finally:
+        cache.close()
+        cleanup_index_candidate_snapshot(snapshot)
+
+    assert result["abort_remaining_phases"] is True
+    assert persisted == 1
+    assert replacement_mirror.read_text(encoding="utf-8") == "replacement"
+
+
+@requires_posix_fd
+def test_force_rebuild_cache_dir_swap_keeps_replacement_mirror_isolated(
+    tmp_path, monkeypatch
+):
+    # PR #1253 review 3762869113: mirror cleanup follows the opened DB owner.
+    import tree_sitter_analyzer.cache.indexer as indexer
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        cleanup_index_candidate_snapshot,
+    )
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    cache_dir = tmp_path / ".ast-cache"
+    displaced = tmp_path / ".ast-cache-displaced"
+    old_mirror = cache_dir / "knowledge-graph.lbug"
+    old_mirror.write_text("old mirror", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    replacement_mirror = cache_dir / "knowledge-graph.lbug"
+    real_clear = indexer._clear_full_rebuild_rows
+
+    def clear_then_replace_cache(cache_arg, conn):
+        real_clear(cache_arg, conn)
+        cache_dir.rename(displaced)
+        cache_dir.mkdir()
+        replacement_mirror.write_text("replacement mirror", encoding="utf-8")
+
+    monkeypatch.setattr(indexer, "_clear_full_rebuild_rows", clear_then_replace_cache)
+    try:
+        result = cache.index_project(
+            force=True, max_files=10, candidate_snapshot=snapshot, workers=0
+        )
+        observed = (
+            result["indexed"],
+            cache.get_conn().execute("SELECT COUNT(*) FROM ast_index").fetchone()[0],
+            (displaced / "knowledge-graph.lbug").exists(),
+            replacement_mirror.read_text(encoding="utf-8"),
+            sorted(path.name for path in cache_dir.iterdir()),
+        )
+    finally:
+        cache.close()
+        cleanup_index_candidate_snapshot(snapshot)
+
+    assert observed == (1, 1, False, "replacement mirror", ["knowledge-graph.lbug"])
 
 
 @requires_posix_fd

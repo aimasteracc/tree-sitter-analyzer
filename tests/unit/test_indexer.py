@@ -69,6 +69,7 @@ def test_language_scoped_partition_marks_other_language_skip_incomplete(
     conn.close()
 
 
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253: authoritative manifest")
 def test_force_with_root_scandir_error_preserves_every_persisted_generation(
     tmp_path: Path,
     monkeypatch,
