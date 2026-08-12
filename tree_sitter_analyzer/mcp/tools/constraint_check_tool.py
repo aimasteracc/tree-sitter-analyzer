@@ -27,11 +27,7 @@ from ...constraints import (
     evaluate,
     load_constraints,
 )
-from ...constraints.parser import (
-    ConstraintParseError,
-    _compile_glob,
-    load_constraints_bytes,
-)
+from ...constraints.parser import ConstraintParseError, _compile_glob
 from ...git_path_codec import path_to_wire
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
@@ -228,138 +224,15 @@ class ConstraintCheckTool(BaseMCPTool):
         )
 
     def _execute_frozen(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Evaluate frozen config and DB capabilities bound to one generation."""
-        from ...diff_snapshot_registry import REGISTRY as DIFF_REGISTRY
-        from ...index_snapshot import lease_existing_snapshot
-        from ...source_oracle import SourceOracleError, safe_workspace_path
+        """Delegate the frozen capability path to its focused production module."""
+        from .constraint_check_frozen import execute_frozen
 
-        output_format = arguments.get("output_format", "json")
-        snapshot_id = str(arguments["diff_snapshot_id"])
-        project_root = self.project_root
-        if project_root is None:
-            return self._snapshot_error("MISSING_PROJECT_ROOT", output_format)
-        consumer, error = DIFF_REGISTRY.acquire(snapshot_id, project_root)
-        if error:
-            return self._snapshot_error(error, output_format)
-        assert consumer is not None
-        try:
-            diff = consumer.snapshot
-            frozen_scope = [path_to_wire(path) for path in diff.assessed_scope_paths]
-            if arguments["scope_paths"] != frozen_scope:
-                return self._snapshot_error(
-                    "DIFF_SNAPSHOT_SCOPE_MISMATCH", output_format
-                )
-            try:
-                with lease_existing_snapshot(project_root) as index:
-                    if (
-                        index.snapshot_id is None
-                        or index.completeness != "complete"
-                        or index.source_generation != diff.source_generation
-                    ):
-                        return self._snapshot_error(
-                            index.reason or "SOURCE_GENERATION_MISMATCH", output_format
-                        )
-                    # Configuration discovery and bytes are owned by impact's
-                    # immutable registry entry, not reread as initial evidence.
-                    config_name = diff.constraint_config_path
-                    config_data = diff.constraint_config_data
-                    if config_name is None:
-                        response: dict[str, Any] = {
-                            "success": True,
-                            "state": "not_applicable",
-                            "reason": "NO_CONFIG",
-                            "verdict": "INFO",
-                            "violations": [],
-                            "rule_count": 0,
-                            "evaluated_edge_count": 0,
-                        }
-                    else:
-                        try:
-                            constraints = load_constraints_bytes(
-                                config_data or b"", config_name
-                            )
-                        except ConstraintParseError as exc:
-                            return self._snapshot_error(
-                                "CONSTRAINT_CONFIG_INVALID", output_format, str(exc)
-                            )
-                        try:
-                            from ...index_snapshot import acquire_index_snapshot
+        return execute_frozen(self, arguments)
 
-                            with acquire_index_snapshot(
-                                index.snapshot_id,
-                                project_root,
-                                diff.source_generation,
-                            ) as (_, conn):
-                                rows, edge_count = self._evaluate_connection(
-                                    conn,
-                                    constraints,
-                                    min_severity_rank=_SEVERITY_ORDER[
-                                        arguments.get("severity_min", "warn")
-                                    ],
-                                    scope_paths=frozenset(frozen_scope),
-                                )
-                        except (sqlite3.DatabaseError, ValueError) as exc:
-                            return self._snapshot_error(
-                                "CONSTRAINT_INDEX_UNKNOWN", output_format, str(exc)
-                            )
-                        response = {
-                            "success": True,
-                            "state": "applicable",
-                            "verdict": self._compute_verdict(rows),
-                            "violations": rows,
-                            "rule_count": len(constraints),
-                            "evaluated_edge_count": edge_count,
-                        }
-                    # Revalidate current discovery against impact-owned bytes and
-                    # descriptor identities before publishing.
-                    rechecked = None
-                    rechecked_name = None
-                    for candidate in (
-                        "architectural-constraints.yml",
-                        ".tree-sitter-analyzer/constraints.yml",
-                    ):
-                        probe = safe_workspace_path(
-                            index.canonical_root or project_root,
-                            candidate,
-                            deadline=time.monotonic() + 10.0,
-                            limit=1024 * 1024,
-                        )
-                        rechecked = probe
-                        if probe.kind != "missing":
-                            rechecked_name = candidate
-                            break
-                    if (
-                        rechecked is None
-                        or config_name != rechecked_name
-                        or config_data != rechecked.data
-                        or diff.constraint_config_metadata != rechecked.metadata
-                    ):
-                        return self._snapshot_error(
-                            "CONSTRAINT_CONFIG_CHANGED", output_format
-                        )
-
-                    response.update(
-                        diff_snapshot_id=diff.snapshot_id,
-                        snapshot_id=index.snapshot_id,
-                        source_generation=diff.source_generation,
-                        index_fingerprint=index.index_fingerprint,
-                        assessed_scope_paths=frozen_scope,
-                    )
-            except (
-                OSError,
-                RuntimeError,
-                SourceOracleError,
-                sqlite3.DatabaseError,
-            ) as exc:
-                return self._snapshot_error(
-                    "CONSTRAINT_CAPTURE_UNKNOWN", output_format, str(exc)
-                )
-            error = DIFF_REGISTRY.validate_publish(consumer)
-            if error:
-                return self._snapshot_error(error, output_format)
-            return apply_toon_format_to_response(response, output_format)
-        finally:
-            consumer.release()
+    @staticmethod
+    def severity_rank(severity: str) -> int:
+        """Return the canonical ordering used by both live and frozen paths."""
+        return _SEVERITY_ORDER[severity]
 
     @staticmethod
     def _snapshot_error(

@@ -30,6 +30,8 @@ class FrozenDiffSnapshot:
     constraint_config_path: str | None = None
     constraint_config_data: bytes | None = None
     constraint_config_metadata: tuple[bytes, ...] = ()
+    staged_source_matches_worktree: bool = True
+    staged_config_matches_worktree: bool = True
     _inventory_raw_paths: tuple[bytes, ...] = ()
     _assessed_scope_raw_paths: tuple[bytes, ...] = ()
 

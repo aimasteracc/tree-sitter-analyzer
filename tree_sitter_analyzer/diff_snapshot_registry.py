@@ -12,8 +12,13 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from typing import cast
 
-from .diff_snapshot_capture import _capture_payload
+from .diff_snapshot_capture import (
+    _capture_payload,
+    frozen_index_constraint_config,
+    frozen_index_sources_match_worktree,
+)
 from .diff_snapshot_expiry import SnapshotExpiryScheduler, schedule_expiry
 from .diff_snapshot_leases import (
     FrozenDiffSnapshot,
@@ -52,11 +57,14 @@ _ROUTE_LEASE_PATTERN = re.compile(r"dl_[A-Za-z0-9_-]{43}", re.ASCII)
 
 def shared_source_generation(project_root: str, deadline: float) -> str:
     """Return the P0.1 source-oracle token, replaying its certified scope."""
-    from .index_snapshot import lease_existing_snapshot
+    from .index_snapshot import lease_existing_snapshot, lease_reusable_snapshot
     from .index_source_snapshot import capture_current_source_snapshot
 
     if time.monotonic() > deadline:
         raise SourceOracleError("DIFF_SNAPSHOT_TIMEOUT")
+    with lease_reusable_snapshot(project_root) as reusable:
+        if reusable is not None and reusable.source_generation is not None:
+            return reusable.source_generation
     with lease_existing_snapshot(project_root) as existing:
         if existing.source_generation is not None:
             return existing.source_generation
@@ -229,8 +237,8 @@ class DiffSnapshotRegistry:
                 or pre_manifest != post_manifest
             ):
                 raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
-            constraint_config = None
-            constraint_config_path = None
+            live_config = None
+            live_config_path = None
             for candidate in (
                 "architectural-constraints.yml",
                 ".tree-sitter-analyzer/constraints.yml",
@@ -238,13 +246,44 @@ class DiffSnapshotRegistry:
                 probe = safe_workspace_path(
                     root, candidate, deadline=deadline, limit=1024 * 1024
                 )
-                constraint_config = probe
+                live_config = probe
                 if probe.kind != "missing":
                     if probe.kind != "file" or probe.data is None:
                         raise SourceOracleError("CONSTRAINT_CONFIG_UNSAFE")
-                    constraint_config_path = candidate
+                    live_config_path = candidate
                     break
-            assert constraint_config is not None
+            assert live_config is not None
+            staged_source_matches_worktree = True
+            staged_config_matches_worktree = True
+            if mode == "staged":
+                if epoch is None and "epoch_out" in oracle_params:
+                    raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+                staged_epoch = cast(GitEpoch, epoch)
+                (
+                    constraint_config_path,
+                    constraint_config_data,
+                    constraint_config_metadata,
+                ) = frozen_index_constraint_config(
+                    root, staged_epoch, deadline, ceiling
+                )
+                staged_source_matches_worktree = frozen_index_sources_match_worktree(
+                    root,
+                    staged_epoch,
+                    deadline,
+                    min(16 * 1024 * 1024, ceiling),
+                )
+                staged_config_matches_worktree = (
+                    constraint_config_path == live_config_path
+                    and constraint_config_data == live_config.data
+                )
+                if staged_config_matches_worktree:
+                    # Preserve the worktree descriptor evidence used by the
+                    # final publish guard; stage-zero identity is held by epoch.
+                    constraint_config_metadata = live_config.metadata
+            else:
+                constraint_config_path = live_config_path
+                constraint_config_data = live_config.data
+                constraint_config_metadata = live_config.metadata
             final_manifest: dict[str, WorkspaceManifestEntry] = {}
             final_git, final_identity = oracle_call(
                 root,
@@ -253,10 +292,8 @@ class DiffSnapshotRegistry:
                 manifest=final_manifest,
                 **oracle_budget,
             )
-            final_shared = shared_source_generation(root, deadline)
             if (
-                final_shared != shared_before
-                or final_git != before
+                final_git != before
                 or final_identity != identity
                 or final_manifest != pre_manifest
             ):
@@ -272,8 +309,8 @@ class DiffSnapshotRegistry:
                 + path_collection_storage(paths)
                 + path_collection_storage(inventory_paths)
                 + record_storage(files)
-                + len(constraint_config.data or b"")
-                + sum(len(item) for item in constraint_config.metadata)
+                + len(constraint_config_data or b"")
+                + sum(len(item) for item in constraint_config_metadata)
             )
             if size > ceiling:
                 raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
@@ -292,8 +329,10 @@ class DiffSnapshotRegistry:
                 created_monotonic=started,
                 materialized_bytes=size,
                 constraint_config_path=constraint_config_path,
-                constraint_config_data=constraint_config.data,
-                constraint_config_metadata=constraint_config.metadata,
+                constraint_config_data=constraint_config_data,
+                constraint_config_metadata=constraint_config_metadata,
+                staged_source_matches_worktree=staged_source_matches_worktree,
+                staged_config_matches_worktree=staged_config_matches_worktree,
                 _inventory_raw_paths=tuple(
                     sorted(path_to_raw(path) for path in inventory_paths)
                 ),
@@ -459,7 +498,12 @@ class DiffSnapshotRegistry:
             consumer._snapshot = updated
             self._charged_bytes += delta
         return None
-    def validate_publish(self, consumer: SnapshotConsumer) -> str | None:
+    def validate_publish(
+        self,
+        consumer: SnapshotConsumer,
+        publish_guard: Callable[[], str | None] | None = None,
+    ) -> str | None:
+        """Revalidate the snapshot and an optional response guard in one publish window."""
         with self._lock:
             self._sweep()
             snapshot = consumer._snapshot
@@ -489,6 +533,10 @@ class DiffSnapshotRegistry:
                     snapshot.root_identity.realpath, snapshot.mode
                 )
             shared_generation = shared_source_generation(
+                snapshot.root_identity.realpath, time.monotonic() + remaining
+            )
+            guard_error = publish_guard() if publish_guard is not None else None
+            shared_generation_after = shared_source_generation(
                 snapshot.root_identity.realpath, time.monotonic() + remaining
             )
             if "deadline" in oracle_params:
@@ -534,8 +582,11 @@ class DiffSnapshotRegistry:
                 state.snapshot.source_generation != snapshot.source_generation
                 or generation != state.snapshot.git_generation
                 or shared_generation != state.snapshot.source_generation
+                or shared_generation_after != shared_generation
             ):
                 return "DIFF_SNAPSHOT_SOURCE_CHANGED"
+            if guard_error is not None:
+                return guard_error
         return None
     verify = validate_publish
     def _release(self, sid: str, pin: str, owner: int) -> None:

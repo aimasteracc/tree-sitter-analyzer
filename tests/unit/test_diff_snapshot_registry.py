@@ -497,3 +497,108 @@ def test_release_rejects_well_formed_but_wrong_capability() -> None:
     result = registry.release_route_lease(snapshot_id, "dl_" + "a" * 43)
 
     assert result == "DIFF_SNAPSHOT_LEASE_MISMATCH"
+
+
+def test_snapshot_rejects_unsafe_constraint_config(tmp_path, monkeypatch):
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    from tree_sitter_analyzer.source_oracle import SafePath
+
+    monkeypatch.setattr(
+        snapshots,
+        "safe_workspace_path",
+        lambda *_a, **_k: SafePath(None, (), "symlink"),
+    )
+    result = snapshots.DiffSnapshotRegistry().create(str(tmp_path), "diff", [])
+    assert result == {"success": False, "error_code": "CONSTRAINT_CONFIG_UNSAFE"}
+
+
+def test_staged_snapshot_requires_production_git_epoch(tmp_path, monkeypatch):
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    identity = snapshots.RootIdentity(str(tmp_path.resolve()), 1, 2)
+
+    def production_shape(
+        root, mode="diff", *, deadline=None, manifest=None, epoch_out=None
+    ):
+        return "sg_test", identity
+
+    monkeypatch.setattr(snapshots, "oracle_generation", production_shape)
+    result = snapshots.DiffSnapshotRegistry().create(str(tmp_path), "staged", [])
+    assert result == {"success": False, "error_code": "DIFF_SNAPSHOT_GIT_ERROR"}
+
+
+def test_snapshot_rejects_final_git_generation_drift(tmp_path, monkeypatch):
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    identity = snapshots.RootIdentity(str(tmp_path.resolve()), 1, 2)
+    calls = 0
+
+    def drift(root, mode="diff", *, deadline=None, manifest=None):
+        nonlocal calls
+        calls += 1
+        return ("changed" if calls == 3 else "sg_test"), identity
+
+    monkeypatch.setattr(snapshots, "oracle_generation", drift)
+    result = snapshots.DiffSnapshotRegistry().create(str(tmp_path), "diff", [])
+    assert result == {"success": False, "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED"}
+
+
+def test_shared_generation_deadline_is_exact(monkeypatch):
+    monkeypatch.setattr(snapshots.time, "monotonic", lambda: 2.0)
+    with pytest.raises(snapshots.SourceOracleError, match="DIFF_SNAPSHOT_TIMEOUT"):
+        snapshots.shared_source_generation("/repo", 1.0)
+
+
+def test_shared_generation_uses_fresh_reusable_capability(monkeypatch):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_snapshot as index_snapshot
+
+    @contextmanager
+    def reusable(_root):
+        yield SimpleNamespace(source_generation="idxsrc-v3:fresh")
+
+    monkeypatch.setattr(index_snapshot, "lease_reusable_snapshot", reusable)
+    assert (
+        snapshots.shared_source_generation("/repo", float("inf")) == "idxsrc-v3:fresh"
+    )
+
+
+def test_shared_generation_fails_closed_on_incompatible_index(monkeypatch):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_snapshot as index_snapshot
+
+    @contextmanager
+    def none(_root):
+        yield None
+
+    @contextmanager
+    def incompatible(_root):
+        yield SimpleNamespace(source_generation=None, reason="INCOMPATIBLE_SCHEMA")
+
+    monkeypatch.setattr(index_snapshot, "lease_reusable_snapshot", none)
+    monkeypatch.setattr(index_snapshot, "lease_existing_snapshot", incompatible)
+    with pytest.raises(snapshots.SourceOracleError, match="INCOMPATIBLE_SCHEMA"):
+        snapshots.shared_source_generation("/repo", float("inf"))
+
+
+def test_shared_generation_uses_existing_index_token(monkeypatch):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_snapshot as index_snapshot
+
+    @contextmanager
+    def none(_root):
+        yield None
+
+    @contextmanager
+    def existing(_root):
+        yield SimpleNamespace(source_generation="idxsrc-v3:existing", reason=None)
+
+    monkeypatch.setattr(index_snapshot, "lease_reusable_snapshot", none)
+    monkeypatch.setattr(index_snapshot, "lease_existing_snapshot", existing)
+    assert snapshots.shared_source_generation("/repo", float("inf")) == (
+        "idxsrc-v3:existing"
+    )

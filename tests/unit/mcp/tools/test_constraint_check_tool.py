@@ -612,3 +612,148 @@ def test_frozen_constraints_rejects_config_changed_during_index_read(
         registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
         is True
     )
+
+
+@pytest.mark.parametrize(
+    "divergent_field",
+    ["staged_source_matches_worktree", "staged_config_matches_worktree"],
+)
+def test_staged_frozen_constraints_reject_live_graph_for_divergent_plane(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, divergent_field: str
+) -> None:
+    # PR #1254 reviews 3765536002/3765536016: fail closed without staged graph capability.
+    registry, created = _create_frozen_scope(monkeypatch, tmp_path, ["src/a.py"])
+    from dataclasses import replace
+
+    state = registry._states[str(created["diff_snapshot_id"])]
+    state.snapshot = replace(
+        state.snapshot,
+        mode="staged",
+        **{divergent_field: False},
+    )
+
+    result = _run(
+        _make_tool(tmp_path).execute(
+            {
+                "persist": False,
+                "diff_snapshot_id": created["diff_snapshot_id"],
+                "scope_paths": created["assessed_scope_paths"],
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert (result["success"], result["error_code"], result["verdict"]) == (
+        False,
+        "CONSTRAINT_STAGED_INDEX_UNKNOWN",
+        "ERROR",
+    )
+
+
+def test_persist_path_writes_evaluated_violations(tmp_path, monkeypatch):
+    from tree_sitter_analyzer.constraints import Violation
+
+    db_path = tmp_path / "index.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE edges(kind TEXT)")
+    conn.execute("INSERT INTO edges VALUES ('calls')")
+    conn.commit()
+    conn.close()
+    item = Violation("r", "src/a.py", "a", 4, "b", "src/b.py", "warn", 0)
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.evaluate",
+        lambda constraints, conn: [item],
+    )
+    rows, count = _make_tool(tmp_path)._run_and_persist(db_path, [object()])
+    conn = sqlite3.connect(db_path)
+    persisted = conn.execute(
+        "SELECT rule_id, caller_file, severity FROM ast_constraint_violations"
+    ).fetchall()
+    conn.close()
+    assert (rows, count, persisted) == ([item], 1, [("r", "src/a.py", "warn")])
+
+
+def test_persist_path_evaluator_failure_preserves_cache(tmp_path, monkeypatch):
+    db_path = tmp_path / "index.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE edges(kind TEXT)")
+    conn.execute("INSERT INTO edges VALUES ('calls')")
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.evaluate",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("broken")),
+    )
+    assert _make_tool(tmp_path)._run_and_persist(db_path, [object()]) == ([], 1)
+
+
+def test_cached_violation_filters_severity_and_path(tmp_path):
+    db_path = tmp_path / "index.db"
+    _init_violations_db(db_path)
+    _seed_violation(
+        db_path,
+        rule_id="warn",
+        caller_file="src/a.py",
+        callee_file="dst.py",
+        severity="warn",
+    )
+    _seed_violation(
+        db_path,
+        rule_id="info",
+        caller_file="other/b.py",
+        callee_file="dst.py",
+        severity="info",
+    )
+    rows = _make_tool(tmp_path)._read_filtered_violations(
+        db_path, path_filter="src/**", min_severity_rank=1
+    )
+    assert [row["rule_id"] for row in rows] == ["warn"]
+
+
+def test_read_only_evaluation_closes_connection_and_filters_rows(tmp_path, monkeypatch):
+    from tree_sitter_analyzer.constraints import Violation
+
+    db_path = tmp_path / "index.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE edges(kind TEXT)")
+    conn.execute("INSERT INTO edges VALUES ('calls')")
+    conn.commit()
+    conn.close()
+    rows = [
+        Violation("low", "src/a.py", "a", 1, "b", "dst.py", "info", 1),
+        Violation("path", "other/a.py", "a", 2, "b", "dst.py", "warn", 1),
+        Violation("keep", "src/b.py", "a", 3, "b", "dst.py", "warn", 1),
+    ]
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.evaluate",
+        lambda *_args: rows,
+    )
+    result, count = _make_tool(tmp_path)._run_read_only(
+        db_path,
+        [object()],
+        path_filter="src/**",
+        min_severity_rank=1,
+    )
+    assert (count, [row["rule_id"] for row in result]) == (1, ["keep"])
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        ({"diff_snapshot_id": "", "persist": False}, "non-empty string"),
+        ({"diff_snapshot_id": "ds", "persist": False}, "scope_paths as strings"),
+        (
+            {
+                "diff_snapshot_id": "ds",
+                "persist": False,
+                "scope_paths": [],
+                "path_filter": "src/**",
+            },
+            "DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS",
+        ),
+        ({"scope_paths": []}, "scope_paths requires diff_snapshot_id"),
+    ],
+)
+def test_constraint_snapshot_argument_conflicts_are_exact(tmp_path, arguments, message):
+    with pytest.raises(ValueError, match=message):
+        _make_tool(tmp_path).validate_arguments(arguments)

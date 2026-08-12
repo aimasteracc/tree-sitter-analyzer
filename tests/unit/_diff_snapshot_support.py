@@ -46,6 +46,14 @@ def install_fake_snapshot_materializer(
     )
     monkeypatch.setattr(
         snapshots,
+        "frozen_index_constraint_config",
+        lambda *_a, **_k: (None, None, ()),
+    )
+    monkeypatch.setattr(
+        snapshots, "frozen_index_sources_match_worktree", lambda *_a, **_k: True
+    )
+    monkeypatch.setattr(
+        snapshots,
         "capture_inventory",
         lambda *args, **kwargs: tuple(inventory_paths),
     )

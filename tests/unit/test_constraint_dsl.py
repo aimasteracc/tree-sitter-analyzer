@@ -1024,3 +1024,28 @@ class TestEvaluator:
         assert v.rule_id == "dogfood-mcp-no-cli"
         assert v.caller_file == "tree_sitter_analyzer/mcp/x.py"
         assert v.callee_file == "tree_sitter_analyzer/cli/y.py"
+
+
+def test_constraint_bytes_reject_non_utf8():
+    from tree_sitter_analyzer.constraints.parser import (
+        ConstraintParseError,
+        load_constraints_bytes,
+    )
+
+    with pytest.raises(ConstraintParseError, match="Could not decode"):
+        load_constraints_bytes(b"\xff", "constraints.yml")
+
+
+def test_constraint_loader_wraps_read_failure(tmp_path, monkeypatch):
+    from tree_sitter_analyzer.constraints.parser import (
+        ConstraintParseError,
+        load_constraints,
+    )
+
+    config = tmp_path / "architectural-constraints.yml"
+    config.write_text("version: 1\nconstraints: []\n")
+    monkeypatch.setattr(
+        Path, "read_bytes", lambda _self: (_ for _ in ()).throw(OSError("denied"))
+    )
+    with pytest.raises(ConstraintParseError, match="Could not read"):
+        load_constraints(tmp_path)

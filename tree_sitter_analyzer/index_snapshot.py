@@ -428,6 +428,7 @@ def _capture_existing_snapshot(
                 count,
                 _physical_storage_identity(evidence),
                 projection_exact,
+                source_scope,
             )
             _require_capture_budget(deadline)
             if not _hierarchy_matches_pinned_database(root, root_fd, cache_fd, db_fd):
@@ -487,6 +488,28 @@ def lease_existing_snapshot(project_root: str) -> Iterator[IndexSnapshot]:
     finally:
         if snapshot.snapshot_id is not None:
             REGISTRY.release_pin(snapshot.snapshot_id)
+
+
+@contextmanager
+def lease_reusable_snapshot(project_root: str) -> Iterator[IndexSnapshot | None]:
+    """Pin a capability only while its source generation remains current."""
+    with REGISTRY.pin_reusable(project_root) as snapshot:
+        if (
+            snapshot is None
+            or snapshot.source_scope is None
+            or snapshot.source_generation is None
+        ):
+            yield None
+            return
+        current = capture_current_source_snapshot(
+            project_root,
+            snapshot.source_scope,
+            deadline=_clock() + _CAPTURE_DEADLINE_SECONDS,
+        )
+        if current.state != "exact" or current.generation != snapshot.source_generation:
+            yield None
+            return
+        yield snapshot
 
 
 def run_graph_snapshot_read(

@@ -93,6 +93,7 @@ class IndexSnapshot:
     file_count: int
     physical_storage_identity: tuple[int, int, int, int, int, int] | None = None
     symbol_projection_exact: bool | None = None
+    source_scope: Any | None = None
 
 
 @dataclass(slots=True)
@@ -197,6 +198,30 @@ class IndexSnapshotRegistry:
                 raise ValueError("INDEX_SNAPSHOT_UNKNOWN")
             entry.readers -= 1
             self._purge(self._clock())
+
+    @contextmanager
+    def pin_reusable(self, project_root: str) -> Iterator[IndexSnapshot | None]:
+        """Pin the newest live capability for ``project_root`` without recopying it."""
+        canonical_root = os.path.realpath(os.path.abspath(project_root))
+        with self._lock:
+            now = self._clock()
+            self._purge(now)
+            candidates = [
+                entry
+                for entry in self._entries.values()
+                if entry.snapshot.canonical_root == canonical_root
+                and entry.expires_at > now
+            ]
+            entry = max(candidates, key=lambda item: item.expires_at, default=None)
+            if entry is not None:
+                entry.readers += 1
+        try:
+            yield entry.snapshot if entry is not None else None
+        finally:
+            if entry is not None:
+                with self._lock:
+                    entry.readers -= 1
+                    self._purge(self._clock())
 
     @contextmanager
     def acquire(
