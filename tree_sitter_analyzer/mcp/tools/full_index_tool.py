@@ -498,6 +498,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "success": not (
                     incremental_phase.get("completeness") == "incomplete"
                     or stats.get("manifest_certification_failed", False)
+                    or (mode == "full" and not manifest_certified)
                 ),
                 "verdict": top_verdict,
                 "summary_line": summary_line,

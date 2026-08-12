@@ -241,7 +241,7 @@ class IncrementalSync:
                 and candidate_snapshot.discovery_reconciled
             )
         )
-        result.scope_complete = bool(
+        operational_complete = bool(
             result.errors == 0
             and result.backfill_errors == 0
             and not result.truncated_by_max_files
@@ -251,13 +251,13 @@ class IncrementalSync:
             and (candidate_snapshot is not None or bool(certified_paths))
             and indexed_paths == certified_paths
         )
-        if not result.scope_complete:
+        if not operational_complete:
             from .cache.callgraph_state import clear_call_graph_built_strict
 
             clear_call_graph_built_strict(conn)
             conn.execute("DELETE FROM ast_index_snapshot_manifest")
             conn.commit()
-        if result.scope_complete:
+        if operational_complete:
             from .cache.callgraph_state import (
                 clear_call_graph_built_strict,
                 mark_call_graph_built_strict,
@@ -271,7 +271,7 @@ class IncrementalSync:
                     exc_info=True,
                 )
                 backfill_complete = False
-                result.scope_complete = False
+                operational_complete = False
                 result.backfill_errors += 1
                 result.details.append(
                     {
@@ -283,6 +283,11 @@ class IncrementalSync:
                 clear_call_graph_built_strict(conn)
                 conn.execute("DELETE FROM ast_index_snapshot_manifest")
                 conn.commit()
+        # A live legacy walk remains operationally useful, but it is not frozen
+        # candidate evidence and therefore cannot certify authoritative scope.
+        result.scope_complete = bool(
+            operational_complete and candidate_snapshot is not None
+        )
         expected_paths = set(disk_files)
         if (
             result.scope_complete
@@ -309,6 +314,13 @@ class IncrementalSync:
                         "reason": "INDEX_MANIFEST_CERTIFICATION_FAILED",
                     }
                 )
+                # The call-graph marker was published only as a prerequisite
+                # for this manifest epoch. Revoke it when final certification
+                # fails so no SQL reader can trust the rejected epoch.
+                from .cache.callgraph_state import clear_call_graph_built_strict
+
+                clear_call_graph_built_strict(conn)
+                conn.commit()
 
         return result
 

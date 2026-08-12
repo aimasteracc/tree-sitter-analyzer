@@ -137,20 +137,27 @@ def _read_bounded_manifest(
     )
     count_rows = _deadline_ordered_rows(
         connection,
-        "SELECT COUNT(*) FROM ast_index_snapshot_manifest WHERE singleton=1",
+        "SELECT COUNT(*), MIN(singleton), MAX(singleton) "
+        "FROM ast_index_snapshot_manifest",
         deadline,
     )
     count_row = next(count_rows, None)
     if (
         count_row is None
-        or len(count_row) != 1
+        or len(count_row) != 3
         or not isinstance(count_row[0], int)
         or next(count_rows, None) is not None
     ):
         raise ValueError("INDEX_MANIFEST_INVALID")
     if count_row[0] == 0:
         return None
-    if count_row[0] != 1:
+    if (
+        count_row[0] != 1
+        or type(count_row[1]) is not int
+        or count_row[1] != 1
+        or type(count_row[2]) is not int
+        or count_row[2] != 1
+    ):
         raise ValueError("INDEX_MANIFEST_INVALID")
 
     length_query = (

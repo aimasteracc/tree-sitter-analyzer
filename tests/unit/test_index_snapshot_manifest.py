@@ -53,6 +53,27 @@ def test_manifest_preflight_rejects_duplicate_singleton_rows():
     conn.close()
 
 
+def test_manifest_preflight_rejects_extra_non_singleton_authority_row():
+    # PR #1253 review 3762603018: every row in the authority table is counted.
+    from tree_sitter_analyzer.index_snapshot import _read_bounded_manifest
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index_snapshot_manifest("
+        "singleton, canonical_root, source_fingerprint, index_fingerprint, "
+        "file_count, source_scope_descriptor, manifest_version)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index_snapshot_manifest VALUES (?, ?, 's', 'i', 0, '{}', 2)",
+        [(1, "valid"), (2, "extra")],
+    )
+
+    with pytest.raises(ValueError, match="INDEX_MANIFEST_INVALID"):
+        _read_bounded_manifest(conn, float("inf"))
+    conn.close()
+
+
 def test_manifest_preflight_enforces_total_budget(monkeypatch):
     # PR #1253 thread 3756001898: aggregate scalar bytes are bounded before fetch.
     import tree_sitter_analyzer.index_snapshot as snapshot
@@ -92,7 +113,7 @@ def test_manifest_materialization_disappearance_fails_closed():
         def execute(self, _query):
             self.calls += 1
             if self.calls == 1:
-                return iter([(1,)])
+                return iter([(1, 1, 1)])
             if self.calls == 2:
                 return iter([(1, 1, 1, 1, 2, 1)])
             return EmptyCursor()
@@ -115,7 +136,7 @@ def test_manifest_duplicate_count_rejects_before_length_preflight():
         def execute(self, query):
             self.queries.append(query)
             if query.startswith("SELECT COUNT(*)"):
-                return iter([(2,)])
+                return iter([(2, 1, 1)])
             raise AssertionError("length preflight reached")
 
     conn = DuplicateCountConnection()
@@ -124,7 +145,10 @@ def test_manifest_duplicate_count_rejects_before_length_preflight():
     assert len(conn.queries) == 1
 
 
-@pytest.mark.parametrize("rows", [[], [()], [("1",)], [(1,), (1,)]])
+@pytest.mark.parametrize(
+    "rows",
+    [[], [()], [("1", 1, 1)], [(1, 1, 1), (1, 1, 1)], [(1, None, None)]],
+)
 def test_manifest_count_scalar_shape_is_strict(rows):
     # PR #1253: the bounded aggregate must return exactly one integer scalar.
     import tree_sitter_analyzer.index_snapshot as snapshot
@@ -155,7 +179,7 @@ def test_manifest_missing_length_row_is_invalid():
 
         def execute(self, _query):
             self.calls += 1
-            return iter([(1,)]) if self.calls == 1 else iter(())
+            return iter([(1, 1, 1)]) if self.calls == 1 else iter(())
 
     with pytest.raises(ValueError, match="INDEX_MANIFEST_INVALID"):
         snapshot._read_bounded_manifest(  # type: ignore[arg-type]
@@ -208,7 +232,7 @@ def test_manifest_accepts_iterator_cursor_without_fetchone():
         def execute(self, _query):
             self.calls += 1
             if self.calls == 1:
-                return iter(((1,),))
+                return iter(((1, 1, 1),))
             if self.calls == 2:
                 return iter(((5, 6, 5, 1, 2, 1),))
             return iter((manifest,))
@@ -240,7 +264,7 @@ def test_manifest_progress_handler_interrupts_expired_materialization(monkeypatc
         def execute(self, _query):
             self.calls += 1
             if self.calls == 1:
-                return iter(((1,),))
+                return iter(((1, 1, 1),))
             if self.calls == 2:
                 return iter(((5, 6, 5, 1, 2, 1),))
             assert self.handler is not None

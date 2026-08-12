@@ -189,6 +189,27 @@ class TestSyncDeletedFile:
         assert cache.call_graph_built() is False
 
 
+def test_candidate_less_sync_is_operational_but_not_authoritative(tmp_path):
+    # PR #1253 review 3762603012: a live walk cannot certify complete scope.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = IncrementalSync(cache).sync()
+        indexed = cache.lookup(str(path)) is not None
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert (
+        result.new_files,
+        result.errors,
+        result.to_dict()["completeness"],
+        indexed,
+        graph_built,
+    ) == (1, 0, "incomplete", True, True)
+
+
 def test_noop_sync_repairs_incomplete_backfill_state(tmp_path):
     # PR #1172 review 2026-07-27: a no-op retry certified a failed backfill.
     path = tmp_path / "app.py"
@@ -1677,6 +1698,7 @@ def test_incremental_stamp_failure_does_not_delete_manifest(tmp_path):
             .execute("SELECT index_fingerprint FROM ast_index_snapshot_manifest")
             .fetchone()[0]
         )
+        graph_built = cache.call_graph_built()
     finally:
         cache.close()
 
@@ -1687,6 +1709,7 @@ def test_incremental_stamp_failure_does_not_delete_manifest(tmp_path):
         result.manifest_certification_failed,
         result.scope_complete,
         result.details[-1]["reason"],
+        graph_built,
     ) == (
         1,
         before,
@@ -1694,6 +1717,7 @@ def test_incremental_stamp_failure_does_not_delete_manifest(tmp_path):
         True,
         False,
         "INDEX_MANIFEST_CERTIFICATION_FAILED",
+        False,
     )
 
 

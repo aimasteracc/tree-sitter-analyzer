@@ -3227,6 +3227,22 @@ def test_force_rebuild_rejects_replaced_root_before_destructive_clear(
 
 
 @requires_posix_fd
+def test_discard_root_lease_dispatch_is_exact(monkeypatch):
+    import tree_sitter_analyzer.cache.indexer as indexer
+
+    calls = []
+    monkeypatch.setattr(
+        indexer,
+        "_discard_snapshot_generation",
+        lambda *_args, **kwargs: calls.append(kwargs),
+    )
+
+    indexer._discard_with_root_lease(object(), object(), "a.py", None)
+    indexer._discard_with_root_lease(object(), object(), "b.py", 17)
+
+    assert calls == [{}, {"root_fd": 17}]
+
+
 def test_force_rebuild_root_swap_keeps_replacement_mirror_isolated(
     tmp_path, monkeypatch
 ):

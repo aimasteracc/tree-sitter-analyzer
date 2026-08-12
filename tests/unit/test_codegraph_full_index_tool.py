@@ -296,11 +296,13 @@ class TestExecute:
             )
 
         assert (
+            result["success"],
             result["verdict"],
             result["agent_summary"]["verdict"],
             result["summary_line"],
             result["agent_summary"]["summary_line"],
         ) == (
+            False,
             "WARN",
             "WARN",
             "codegraph_full_index: completed with warn",

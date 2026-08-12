@@ -240,8 +240,13 @@ class TestCodeGraphIncrementalSyncTool:
         result = await tool.execute(
             {"mode": "sync", "max_files": 10, "output_format": "json"}
         )
-        assert result["success"] is True
-        assert "mode" in result
+        # PR #1253 review 3762603012: a live walk is operational, not authority.
+        assert (result["success"], result["verdict"], result["completeness"]) == (
+            False,
+            "WARN",
+            "incomplete",
+        )
+        assert result["mode"] == "sync"
 
     @pytest.mark.asyncio
     async def test_execute_changes(self, project_root):

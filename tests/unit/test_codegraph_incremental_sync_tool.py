@@ -172,6 +172,25 @@ class TestCacheLifecycle:
         cache.close.assert_called_once_with()
 
 
+def test_candidate_less_incremental_response_is_not_authoritative_success(
+    tool_with_root,
+):
+    # PR #1253 review 3762603012: public sync has no frozen candidate evidence.
+    cache = MagicMock()
+    live_walk = SyncResult(scope_complete=False)
+    with (
+        patch.object(tool_with_root, "_ensure_cache", return_value=cache),
+        patch.object(IncrementalSync, "sync", return_value=live_walk),
+    ):
+        result = tool_with_root._sync(10, "json")
+
+    assert (result["success"], result["verdict"], result["completeness"]) == (
+        False,
+        "WARN",
+        "incomplete",
+    )
+
+
 def test_parse_failure_makes_incremental_response_non_success(tool_with_root):
     # PR #1253 thread 3761514130: missing parsed rows are not MCP success.
     cache = MagicMock()
