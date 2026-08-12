@@ -4,6 +4,7 @@ import fnmatch
 import logging
 import os
 import sqlite3
+import time
 from typing import Any
 
 from .ast_cache import _EXT_TO_LANG, _walk_source_files
@@ -358,10 +359,14 @@ class IncrementalSync:
                 for entry in candidate_snapshot.selected_entries
             ):
                 from .indexing_candidate_materialization import (
+                    _FROZEN_READ_SECONDS,
                     index_candidate_snapshot_is_materialized,
                 )
 
-                if not index_candidate_snapshot_is_materialized(candidate_snapshot):
+                if not index_candidate_snapshot_is_materialized(
+                    candidate_snapshot,
+                    deadline=time.monotonic() + _FROZEN_READ_SECONDS,
+                ):
                     raise ValueError("INDEX_CANDIDATE_FROZEN_EVIDENCE_INVALID")
             changed_files: list[tuple[str, str]] = []
             for entry in candidate_snapshot.selected_entries:
@@ -384,6 +389,7 @@ class IncrementalSync:
                     "frozen_deadline": candidate_snapshot.frozen_read_deadline,
                     "mtime_ns": fingerprint.mtime_ns,
                     "file_size": fingerprint.file_size,
+                    "content_hash": fingerprint.content_hash,
                 }
             return (
                 disk_files,

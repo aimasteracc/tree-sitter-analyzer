@@ -63,6 +63,9 @@ def file_changed(disk_info: dict[str, Any], indexed_info: dict[str, Any]) -> boo
     """Compare live file metadata and content with a cached row."""
     if disk_info["file_size"] != indexed_info["file_size"]:
         return True
+    candidate_hash = disk_info.get("content_hash")
+    if candidate_hash:
+        return str(candidate_hash) != str(indexed_info["content_hash"])
     if disk_info["mtime_ns"] != indexed_info["mtime_ns"]:
         try:
             return file_content_hash(

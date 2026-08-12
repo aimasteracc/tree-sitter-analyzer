@@ -1359,6 +1359,27 @@ def test_preexisting_snapshot_deletion_runs_backfills_and_restores_marker(tmp_pa
     )
 
 
+def test_deletion_mirror_cleanup_failure_is_warning_only(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.cache.indexer as indexer
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    path.unlink()
+    monkeypatch.setattr(
+        indexer,
+        "_invalidate_ladybug",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("cleanup denied")),
+    )
+    try:
+        result = IncrementalSync(cache).sync(max_files=10)
+        remaining = cache.lookup(str(path))
+    finally:
+        cache.close()
+    assert (result.deleted_files, remaining) == (1, None)
+
+
 def test_custom_db_deletion_does_not_mutate_project_mirror(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
@@ -1891,6 +1912,40 @@ def test_modified_base_rebuilds_resolved_hierarchy_edge(tmp_path):
         cache.close()
 
     assert targets == ["base.py:Base:1", "class:Base"]
+
+
+@requires_posix_fd
+def test_candidate_hash_detects_equal_size_and_mtime_change(tmp_path):
+    # PR #1253 review 3763401195: candidate evidence outranks equal metadata.
+    path = tmp_path / "app.py"
+    path.write_text("def old():\n    return 1\n")
+    original_stat = path.stat()
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    path.write_text("def new():\n    return 2\n")
+    os.utime(path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    snapshot = _snapshot(tmp_path, path)
+
+    try:
+        result = IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+            certify_manifest=False,
+        )
+        cached_hash = (
+            cache.get_conn()
+            .execute("SELECT content_hash FROM ast_index WHERE file_path = 'app.py'")
+            .fetchone()[0]
+        )
+    finally:
+        cache.close()
+
+    expected_hash = snapshot.selected_entries[0].fingerprint.content_hash
+    assert (
+        result.updated_files,
+        result.unchanged_files,
+        cached_hash,
+    ) == (1, 0, expected_hash)
 
 
 def test_file_changed_fails_closed_when_rehash_becomes_unreadable(

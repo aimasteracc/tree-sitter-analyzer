@@ -444,6 +444,36 @@ class TestSnapshotFailureContracts:
         assert (rows, unsafe) == (frozenset(), True)
 
     @requires_posix_fd
+    def test_capture_reopens_root_after_final_inventory(self, tmp_path, monkeypatch):
+        # PR #1253 review 3763401191: final inventory cannot authenticate a stale root.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        root = tmp_path / "root"
+        root.mkdir()
+        (root / "old.py").write_text("old = 1\n")
+        original_inventory = source._inventory
+        calls = 0
+
+        def inventory_then_swap(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            result = original_inventory(*args, **kwargs)
+            if calls == 2:
+                root.rename(tmp_path / "old-root")
+                root.mkdir()
+                (root / "new.py").write_text("new = 1\n")
+            return result
+
+        monkeypatch.setattr(source, "_inventory", inventory_then_swap)
+        snapshot = source.capture_current_source_snapshot(str(root))
+
+        assert (calls, snapshot.state, snapshot.reason) == (
+            2,
+            "unsafe",
+            "SOURCE_SCOPE_UNSAFE",
+        )
+
+    @requires_posix_fd
     def test_inventory_rejects_child_swapped_for_ordinary_directory(
         self, tmp_path, monkeypatch
     ):

@@ -166,10 +166,13 @@ def read_frozen_candidate(
         os.close(fd)
 
 
-def index_candidate_snapshot_is_materialized(snapshot: Any) -> bool:
+def index_candidate_snapshot_is_materialized(
+    snapshot: Any, *, deadline: float | None = None
+) -> bool:
     """Preflight the private root and re-read every opaque frozen leaf."""
     root = getattr(snapshot, "frozen_root", None)
-    deadline = getattr(snapshot, "frozen_read_deadline", None)
+    if deadline is None:
+        deadline = getattr(snapshot, "frozen_read_deadline", None)
     if (
         not root
         or getattr(snapshot, "frozen_error", None) is not None

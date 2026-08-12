@@ -3755,3 +3755,28 @@ def test_cache_constructor_closes_directory_fd_when_fstat_fails(tmp_path, monkey
         ASTCache(str(tmp_path))
 
     assert closed == opened
+
+
+@requires_posix_fd
+def test_direct_force_rebuild_canonicalizes_symlink_project_root_once(tmp_path):
+    # PR #1253 thread 3763401189: direct ASTCache force must accept a root alias.
+    physical_root = tmp_path / "physical"
+    logical_root = tmp_path / "logical"
+    physical_root.mkdir()
+    logical_root.symlink_to(physical_root, target_is_directory=True)
+    source = physical_root / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+
+    cache = ASTCache(str(logical_root))
+    try:
+        result = cache.index_project(force=True, max_files=10, workers=0)
+        observed = (
+            cache.project_root,
+            result["indexed"],
+            result["errors"],
+            cache.lookup(str(source)) is not None,
+        )
+    finally:
+        cache.close()
+
+    assert observed == (os.path.realpath(logical_root), 1, 0, True)

@@ -216,8 +216,10 @@ def capture_current_source_snapshot(
     )
     root = os.path.abspath(project_root)
     try:
+        root_before = os.stat(root, follow_symlinks=False)
         first, unsafe = _inventory(root, deadline, scope, with_content=True)
         second, unsafe_second = _inventory(root, deadline, scope, with_content=False)
+        root_current = _reopened_root_matches(root, root_before)
     except TimeoutError:
         return CurrentSourceSnapshot(
             frozenset(), None, None, "unknown", "SOURCE_SCAN_DEADLINE"
@@ -250,11 +252,33 @@ def capture_current_source_snapshot(
             frozenset(), None, None, "unknown", "SOURCE_SCAN_DEADLINE"
         )
     generation = "idxsrc-v3:" + fingerprint.removeprefix("sha256:")
-    if unsafe or unsafe_second or not stable or not same_paths or not unique_scope:
+    if (
+        unsafe
+        or unsafe_second
+        or not root_current
+        or not stable
+        or not same_paths
+        or not unique_scope
+    ):
         return CurrentSourceSnapshot(
             rows, fingerprint, generation, "unsafe", "SOURCE_SCOPE_UNSAFE"
         )
     return CurrentSourceSnapshot(rows, fingerprint, generation, "exact", None)
+
+
+def _reopened_root_matches(root: str, expected: os.stat_result) -> bool:
+    """Reopen the root after final inventory and authenticate its identity."""
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    current_path = os.stat(root, follow_symlinks=False)
+    root_fd = os.open(root, flags)
+    try:
+        current_open = os.fstat(root_fd)
+        return opened_entry_matches(expected, current_path) and opened_entry_matches(
+            current_path, current_open
+        )
+    finally:
+        os.close(root_fd)
 
 
 def _inventory(

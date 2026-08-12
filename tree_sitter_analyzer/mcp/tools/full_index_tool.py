@@ -404,10 +404,14 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 and ast_phase.get("abort_remaining_phases") is not True
             ):
                 from ...indexing_candidate_materialization import (
+                    _FROZEN_READ_SECONDS,
                     index_candidate_snapshot_is_materialized,
                 )
 
-                if not index_candidate_snapshot_is_materialized(candidate_snapshot):
+                handoff_deadline = time.monotonic() + _FROZEN_READ_SECONDS
+                if not index_candidate_snapshot_is_materialized(
+                    candidate_snapshot, deadline=handoff_deadline
+                ):
                     ast_phase["abort_remaining_phases"] = True
                     ast_phase["snapshot_handoff_error"] = (
                         "INDEX_CANDIDATE_FROZEN_EVIDENCE_INVALID"

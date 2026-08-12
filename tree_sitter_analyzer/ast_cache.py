@@ -64,7 +64,10 @@ class ASTCache(
     _extractor_version = _AST_CACHE_EXTRACTOR_VERSION
 
     def __init__(self, project_root: str, db_path: str | None = None) -> None:
-        self.project_root = os.path.abspath(project_root)
+        # Bind every entry path to one canonical root.  In particular, direct
+        # force rebuilds use an O_NOFOLLOW walker and cannot safely rediscover a
+        # project through a symlink spelling.
+        self.project_root = os.path.realpath(os.path.abspath(project_root))
         default_db_path = os.path.join(self.project_root, ".ast-cache", "index.db")
         if db_path is None:
             db_path = default_db_path

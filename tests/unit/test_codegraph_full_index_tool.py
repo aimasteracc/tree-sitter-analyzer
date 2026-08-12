@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import sqlite3
+from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -645,6 +646,64 @@ class TestExecute:
         assert result["phases"]["ast_cache"]["abort_remaining_phases"] is False
         assert result["phases"]["incremental_sync"]["status"] == "ok"
 
+    async def test_full_handoff_validation_gets_fresh_bounded_deadline(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 thread 3763401188: AST duration must not expire handoff evidence.
+        import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+        (tmp_path / "app.py").write_text("value = 1\n")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        snapshot = full_tool._build_candidate_snapshot(
+            20_000, frozenset(), materialize=True
+        )
+        assert snapshot.frozen_read_deadline is not None
+        expired_at_handoff = snapshot.frozen_read_deadline + 1.0
+        observed_deadlines = []
+
+        def validate_handoff(candidate, *, deadline=None):
+            observed_deadlines.append(deadline)
+            return deadline is not None and deadline > expired_at_handoff
+
+        monkeypatch.setattr(
+            materialization,
+            "index_candidate_snapshot_is_materialized",
+            validate_handoff,
+        )
+        monkeypatch.setattr(
+            "tree_sitter_analyzer.mcp.tools.full_index_tool.time",
+            SimpleNamespace(monotonic=lambda: expired_at_handoff),
+        )
+        with (
+            patch.object(full_tool, "_build_candidate_snapshot", return_value=snapshot),
+            patch.object(
+                full_tool,
+                "_phase_ast_cache",
+                return_value={"status": "ok", "changed_during_run": 0},
+            ),
+            patch.object(
+                full_tool,
+                "_phase_incremental_sync",
+                return_value={"status": "ok", "processed": 1},
+            ) as incremental,
+            patch.object(full_tool, "_phase_fts5_stats", return_value={"status": "ok"}),
+            patch.object(
+                full_tool, "_phase_call_edge_stats", return_value={"status": "ok"}
+            ),
+            patch.object(
+                full_tool,
+                "_collect_final_stats",
+                return_value={"_manifest_certified": True},
+            ),
+        ):
+            result = await full_tool.execute(
+                {"mode": "full", "resolve_synapse": False, "output_format": "json"}
+            )
+
+        incremental.assert_called_once()
+        assert observed_deadlines == [expired_at_handoff + 35.0]
+        assert "snapshot_handoff_error" not in result["phases"]["ast_cache"]
+
     @pytest.mark.skipif(
         os.name != "posix", reason="GH-1253: requires POSIX root rename"
     )
@@ -684,8 +743,8 @@ class TestExecute:
         real_check = materialization.index_candidate_snapshot_is_materialized
         phase_caches = []
 
-        def check_then_swap(snapshot):
-            assert real_check(snapshot) is True
+        def check_then_swap(snapshot, *, deadline=None):
+            assert real_check(snapshot, deadline=deadline) is True
             tmp_path.rename(displaced)
             tmp_path.mkdir()
             (tmp_path / "sentinel").write_text("replacement\n")
