@@ -78,6 +78,9 @@ def install_fake_snapshot_materializer(
         )
 
     monkeypatch.setattr(snapshots, "safe_workspace_path", fake_safe_workspace_path)
+    import tree_sitter_analyzer.source_oracle as source_oracle
+
+    monkeypatch.setattr(source_oracle, "safe_workspace_path", fake_safe_workspace_path)
     monkeypatch.setattr(
         snapshots,
         "frozen_index_constraint_config",

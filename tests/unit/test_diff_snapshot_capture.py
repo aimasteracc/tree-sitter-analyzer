@@ -39,6 +39,7 @@ def test_create_rejects_payload_larger_than_reservation(
 ) -> None:
     root = _repo(tmp_path)
     registry = snapshots.DiffSnapshotRegistry()
+    install_fake_snapshot_materializer(monkeypatch, root)
     identity = snapshots.RootIdentity(str(root), 1, 2)
     monkeypatch.setattr(snapshots, "MAX_MATERIALIZED_BYTES", 1)
     monkeypatch.setattr(
