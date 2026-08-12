@@ -69,14 +69,6 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
     assert consumer is not None
     try:
         diff = consumer.snapshot
-        if diff.mode == "staged" and not (
-            diff.staged_source_matches_worktree and diff.staged_config_matches_worktree
-        ):
-            # Available index capabilities certify only the live source plane.
-            # A divergent stage-zero plane must never borrow that live graph.
-            return _snapshot_error(
-                tool, "CONSTRAINT_STAGED_INDEX_UNKNOWN", output_format
-            )
         frozen_scope = [path_to_wire(path) for path in diff.assessed_scope_paths]
         if arguments["scope_paths"] != frozen_scope:
             return _snapshot_error(tool, "DIFF_SNAPSHOT_SCOPE_MISMATCH", output_format)
@@ -94,6 +86,15 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
                 "evaluated_edge_count": 0,
             }
         else:
+            if diff.mode == "staged" and not (
+                diff.staged_source_matches_worktree
+                and diff.staged_config_matches_worktree
+            ):
+                # Available index capabilities certify only the live source plane.
+                # A divergent stage-zero plane must never borrow that live graph.
+                return _snapshot_error(
+                    tool, "CONSTRAINT_STAGED_INDEX_UNKNOWN", output_format
+                )
             try:
                 constraints = load_constraints_bytes(
                     diff.constraint_config_data or b"", config_name

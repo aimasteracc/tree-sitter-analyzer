@@ -61,6 +61,7 @@ Categories of CLI surface:
 - `--call-graph` — caller/callee graph
 
 ### Code Quality
+- `--check-constraints [--constraints-read-only]` — evaluate architecture constraints; read-only mode forwards `persist=false` and never updates violation rows
 - `--code-patterns` — smell detection
 - `--refactor` — concrete refactor recipes
 - `--outline` — hierarchical outline (package → class → method, no bodies)

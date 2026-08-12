@@ -180,6 +180,7 @@ class IndexSnapshotRegistry:
                 snapshot.file_count,
                 snapshot.physical_storage_identity,
                 snapshot.symbol_projection_exact,
+                snapshot.source_scope,
             )
             self._entries[snapshot_id] = _Entry(
                 published,

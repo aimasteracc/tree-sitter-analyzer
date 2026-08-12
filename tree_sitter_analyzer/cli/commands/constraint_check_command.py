@@ -57,6 +57,7 @@ def run_check_constraints(args: Any, project_root: str) -> int:
     severity_min = getattr(args, "severity_min", None) or "warn"
     path_filter = getattr(args, "constraint_path_filter", "") or ""
     constraint_file = getattr(args, "constraint_file", None)
+    read_only = bool(getattr(args, "constraints_read_only", False))
 
     if constraint_file:
         # CLI-only path: explicit constraint file, evaluate directly so
@@ -68,6 +69,7 @@ def run_check_constraints(args: Any, project_root: str) -> int:
             severity_min=severity_min,
             path_filter=path_filter,
             output_format=output_format,
+            persist=not read_only,
         )
     else:
         # Default path: delegate to the MCP tool so CLI and MCP share a
@@ -78,6 +80,7 @@ def run_check_constraints(args: Any, project_root: str) -> int:
                 severity_min=severity_min,
                 path_filter=path_filter,
                 output_format=output_format,
+                persist=not read_only,
             )
         )
 
@@ -90,16 +93,18 @@ def _run_tool(
     severity_min: str,
     path_filter: str,
     output_format: str,
+    persist: bool = True,
 ) -> Any:
     """Await the MCP ConstraintCheckTool with CLI-supplied arguments."""
     tool = ConstraintCheckTool(project_root=project_root)
-    return tool.execute(
-        {
-            "path_filter": path_filter,
-            "severity_min": severity_min,
-            "output_format": output_format,
-        }
-    )
+    tool_arguments: dict[str, Any] = {
+        "path_filter": path_filter,
+        "severity_min": severity_min,
+        "output_format": output_format,
+    }
+    if not persist:
+        tool_arguments["persist"] = False
+    return tool.execute(tool_arguments)
 
 
 def _evaluate_with_explicit_file(
@@ -109,6 +114,7 @@ def _evaluate_with_explicit_file(
     severity_min: str,
     path_filter: str,
     output_format: str,
+    persist: bool = True,
 ) -> dict[str, Any]:
     """Evaluate against an explicit constraint file (CLI-only override).
 
@@ -149,7 +155,7 @@ def _evaluate_with_explicit_file(
         )
 
     min_severity_rank = _SEVERITY_ORDER.get(severity_min, 1)
-    violations, edge_count = _run_and_persist(db_path, constraints)
+    violations, edge_count = _run_and_persist(db_path, constraints, persist=persist)
     filtered = _filter_violations(
         violations,
         path_filter=path_filter,
@@ -195,11 +201,17 @@ def _load_explicit(config_path: Path) -> list[Any]:
 def _run_and_persist(
     db_path: Path,
     constraints: list[Any],
+    *,
+    persist: bool = True,
 ) -> tuple[list[Any], int]:
-    """Run evaluator + persist violations (mirrors the MCP tool's path)."""
-    conn = sqlite3.connect(str(db_path))
+    """Run evaluator and optionally persist violations."""
+    connection_target = (
+        str(db_path) if persist else f"{db_path.resolve().as_uri()}?mode=ro"
+    )
+    conn = sqlite3.connect(connection_target, uri=not persist)
     try:
-        conn.execute(_violations_ddl())
+        if persist:
+            conn.execute(_violations_ddl())
         try:
             edge_count = int(
                 conn.execute(
@@ -215,6 +227,8 @@ def _run_and_persist(
         except Exception:  # noqa: BLE001 — degrade rather than crash CLI
             return [], edge_count
 
+        if not persist:
+            return violations, edge_count
         conn.execute("DELETE FROM ast_constraint_violations")
         now = int(time.time())
         conn.executemany(

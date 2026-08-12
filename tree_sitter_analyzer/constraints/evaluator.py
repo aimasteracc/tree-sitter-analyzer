@@ -34,7 +34,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 from .parser import _CompiledConstraint, compile_constraints
 from .schema import Constraint, Violation
@@ -47,6 +47,8 @@ _MAX_SQL_PREFIX_FILTERS = 256
 def evaluate(
     constraints: list[Constraint],
     db_conn: sqlite3.Connection,
+    *,
+    scope_predicate: Callable[[str, str], bool] | None = None,
 ) -> list[Violation]:
     """Evaluate constraints against the unified ``edges`` table (CALLS rows).
 
@@ -70,13 +72,22 @@ def evaluate(
     if not compiled:
         return []
     detected_at = int(time.time())
-    return list(_iter_violations(compiled, db_conn, detected_at))
+    return list(
+        _iter_violations(
+            compiled,
+            db_conn,
+            detected_at,
+            scope_predicate=scope_predicate,
+        )
+    )
 
 
 def _iter_violations(
     compiled: list[_CompiledConstraint],
     db_conn: sqlite3.Connection,
     detected_at: int,
+    *,
+    scope_predicate: Callable[[str, str], bool] | None = None,
 ) -> Iterator[Violation]:
     """Stream edges from the DB and yield matching violations.
 
@@ -106,6 +117,13 @@ def _iter_violations(
         if not callee_file:
             # Unresolved cross-file call — MVP skips it to avoid noisy
             # false positives on dynamic / external symbols.
+            continue
+        if scope_predicate is not None and not scope_predicate(
+            caller_file, callee_file
+        ):
+            # Scope is part of edge eligibility. Applying it before PK
+            # deduplication prevents an out-of-scope resolution candidate from
+            # hiding an in-scope candidate for the same logical call site.
             continue
         for cc in compiled:
             if cc.from_prefix and not caller_file.startswith(cc.from_prefix):

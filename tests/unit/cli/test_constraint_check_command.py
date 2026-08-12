@@ -690,6 +690,7 @@ def _ns(**kwargs: object) -> SimpleNamespace:
         severity_min=kwargs.get("severity_min", "warn"),
         constraint_path_filter=kwargs.get("constraint_path_filter", ""),
         constraint_file=kwargs.get("constraint_file", None),
+        constraints_read_only=kwargs.get("constraints_read_only", False),
     )
 
 
@@ -764,3 +765,21 @@ class TestRunCheckConstraints:
                     run_check_constraints(args, str(tmp_path))
         called_kwargs = mock_eval.call_args.kwargs
         assert called_kwargs["path_filter"] == "src/**"
+
+
+def test_read_only_option_forwards_persist_false(tmp_path):
+    args = _ns(constraints_read_only=True)
+    safe_result = {"success": True, "verdict": "SAFE"}
+    with patch(_RESOLVE_OFMT, return_value="json"):
+        with patch(_ASYNCIO_RUN, return_value=safe_result):
+            with patch(_PRINT_RESULT):
+                with patch(
+                    "tree_sitter_analyzer.cli.commands.constraint_check_command._run_tool"
+                ) as run_tool:
+
+                    async def result():
+                        return safe_result
+
+                    run_tool.return_value = result()
+                    run_check_constraints(args, str(tmp_path))
+    assert run_tool.call_args.kwargs["persist"] is False

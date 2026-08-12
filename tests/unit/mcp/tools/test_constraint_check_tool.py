@@ -308,6 +308,9 @@ class TestConstraintCheckFiltering:
 
 def _create_frozen_scope(monkeypatch, project: Path, paths: list[str]):
     """Install an isolated registry and create one leased frozen scope."""
+    import tree_sitter_analyzer.index_snapshot as index_snapshots
+
+    index_snapshots.REGISTRY.close_all()
     install_fake_snapshot_materializer(monkeypatch, project)
     registry = snapshots.DiffSnapshotRegistry()
     monkeypatch.setattr(snapshots, "REGISTRY", registry)
@@ -316,8 +319,6 @@ def _create_frozen_scope(monkeypatch, project: Path, paths: list[str]):
 
     from contextlib import contextmanager
     from types import SimpleNamespace
-
-    import tree_sitter_analyzer.index_snapshot as index_snapshots
 
     @contextmanager
     def lease(_root):
@@ -406,7 +407,7 @@ def test_frozen_scope_intersection_excludes_outside_project_debt(
     ]
     monkeypatch.setattr(
         "tree_sitter_analyzer.mcp.tools.constraint_check_tool.evaluate",
-        lambda constraints, conn: violations,
+        lambda constraints, conn, **_kwargs: violations,
     )
 
     result = _run(
@@ -596,7 +597,7 @@ def test_frozen_constraints_rejects_config_changed_during_index_read(
     monkeypatch.setattr(oracle, "safe_workspace_path", changed_config)
     monkeypatch.setattr(
         "tree_sitter_analyzer.mcp.tools.constraint_check_tool.evaluate",
-        lambda constraints, conn: [],
+        lambda constraints, conn, **_kwargs: [],
     )
     result = _run(
         _make_tool(tmp_path).execute(
@@ -622,6 +623,7 @@ def test_staged_frozen_constraints_reject_live_graph_for_divergent_plane(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, divergent_field: str
 ) -> None:
     # PR #1254 reviews 3765536002/3765536016: fail closed without staged graph capability.
+    _stage_minimal_constraints(tmp_path)
     registry, created = _create_frozen_scope(monkeypatch, tmp_path, ["src/a.py"])
     from dataclasses import replace
 
@@ -646,6 +648,52 @@ def test_staged_frozen_constraints_reject_live_graph_for_divergent_plane(
     assert (result["success"], result["error_code"], result["verdict"]) == (
         False,
         "CONSTRAINT_STAGED_INDEX_UNKNOWN",
+        "ERROR",
+    )
+
+
+def test_staged_frozen_constraints_without_config_precedes_divergent_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3765918788: no graph is needed when no config exists.
+    registry, created = _create_frozen_scope(monkeypatch, tmp_path, ["src/a.py"])
+    from dataclasses import replace
+
+    state = registry._states[str(created["diff_snapshot_id"])]
+    state.snapshot = replace(
+        state.snapshot,
+        mode="staged",
+        staged_source_matches_worktree=False,
+    )
+
+    result = _run(
+        _make_tool(tmp_path).execute(
+            {
+                "persist": False,
+                "diff_snapshot_id": created["diff_snapshot_id"],
+                "scope_paths": created["assessed_scope_paths"],
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert (result["success"], result["state"], result["reason"]) == (
+        True,
+        "not_applicable",
+        "NO_CONFIG",
+    )
+
+
+def test_read_only_missing_edges_returns_structured_index_error(tmp_path: Path) -> None:
+    # PR #1254 review 3765918809: persist=false must not leak SQLite failures.
+    _stage_minimal_constraints(tmp_path)
+    _init_violations_db(tmp_path / ".ast-cache" / "index.db")
+
+    result = _run(_make_tool(tmp_path).execute({"persist": False}))
+
+    assert (result["success"], result["error_code"], result["verdict"]) == (
+        False,
+        "CONSTRAINT_INDEX_UNKNOWN",
         "ERROR",
     )
 
@@ -757,3 +805,195 @@ def test_read_only_evaluation_closes_connection_and_filters_rows(tmp_path, monke
 def test_constraint_snapshot_argument_conflicts_are_exact(tmp_path, arguments, message):
     with pytest.raises(ValueError, match=message):
         _make_tool(tmp_path).validate_arguments(arguments)
+
+
+def _frozen_arguments(created: dict[str, object]) -> dict[str, object]:
+    return {
+        "persist": False,
+        "diff_snapshot_id": created["diff_snapshot_id"],
+        "scope_paths": created["assessed_scope_paths"],
+        "output_format": "json",
+    }
+
+
+def test_frozen_executor_reports_missing_project_root() -> None:
+    from tree_sitter_analyzer.mcp.tools.constraint_check_frozen import execute_frozen
+    from tree_sitter_analyzer.mcp.tools.constraint_check_tool import ConstraintCheckTool
+
+    result = execute_frozen(
+        ConstraintCheckTool(None),
+        {"diff_snapshot_id": "ds_missing", "output_format": "json"},
+    )
+
+    assert (result["success"], result["error_code"]) == (
+        False,
+        "MISSING_PROJECT_ROOT",
+    )
+
+
+def test_frozen_constraints_reject_invalid_captured_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "architectural-constraints.yml").write_text("constraints: [")
+    registry, created = _create_frozen_scope(monkeypatch, tmp_path, ["src/a.py"])
+
+    result = _run(_make_tool(tmp_path).execute(_frozen_arguments(created)))
+
+    assert (result["success"], result["error_code"]) == (
+        False,
+        "CONSTRAINT_CONFIG_INVALID",
+    )
+    assert registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
+
+
+@pytest.mark.parametrize(
+    ("snapshot_id", "completeness", "generation", "reason", "error_code"),
+    [
+        (None, "complete", "captured", "NO_INDEX", "NO_INDEX"),
+        ("is_test", "partial", "captured", "INDEX_PARTIAL", "INDEX_PARTIAL"),
+        ("is_test", "complete", "other", None, "SOURCE_GENERATION_MISMATCH"),
+    ],
+)
+def test_frozen_constraints_require_matching_complete_index_capability(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot_id,
+    completeness,
+    generation,
+    reason,
+    error_code,
+) -> None:
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_snapshot as index_snapshots
+
+    _stage_minimal_constraints(tmp_path)
+    registry, created = _create_frozen_scope(monkeypatch, tmp_path, ["src/a.py"])
+
+    @contextmanager
+    def lease(_root):
+        yield SimpleNamespace(
+            snapshot_id=snapshot_id,
+            completeness=completeness,
+            source_generation=(
+                created["source_generation"] if generation == "captured" else generation
+            ),
+            reason=reason,
+        )
+
+    monkeypatch.setattr(index_snapshots, "lease_existing_snapshot", lease)
+
+    result = _run(_make_tool(tmp_path).execute(_frozen_arguments(created)))
+
+    assert (result["success"], result["error_code"]) == (False, error_code)
+    assert registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
+
+
+def test_frozen_constraints_map_index_capture_failure_to_structured_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from contextlib import contextmanager
+
+    import tree_sitter_analyzer.index_snapshot as index_snapshots
+
+    _stage_minimal_constraints(tmp_path)
+    registry, created = _create_frozen_scope(monkeypatch, tmp_path, ["src/a.py"])
+
+    @contextmanager
+    def failed_lease(_root):
+        raise OSError("index disappeared")
+        yield
+
+    monkeypatch.setattr(index_snapshots, "lease_existing_snapshot", failed_lease)
+
+    result = _run(_make_tool(tmp_path).execute(_frozen_arguments(created)))
+
+    assert (result["success"], result["error_code"]) == (
+        False,
+        "CONSTRAINT_CAPTURE_UNKNOWN",
+    )
+    assert result["error"] == "index disappeared"
+    assert registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
+
+
+def test_frozen_constraints_release_consumer_after_snapshot_read_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tree_sitter_analyzer.mcp.tools.constraint_check_frozen import execute_frozen
+
+    released = []
+
+    class BrokenConsumer:
+        @property
+        def snapshot(self):
+            raise OSError("snapshot unavailable")
+
+        def release(self):
+            released.append(True)
+
+    class BrokenRegistry:
+        def acquire(self, snapshot_id, project_root):
+            return BrokenConsumer(), None
+
+    monkeypatch.setattr(snapshots, "REGISTRY", BrokenRegistry())
+
+    result = execute_frozen(
+        _make_tool(tmp_path),
+        {
+            "diff_snapshot_id": "ds_broken",
+            "scope_paths": [],
+            "output_format": "json",
+        },
+    )
+
+    assert (result["error_code"], result["error"], released) == (
+        "CONSTRAINT_CAPTURE_UNKNOWN",
+        "snapshot unavailable",
+        [True],
+    )
+
+
+def test_constraint_arguments_reject_non_boolean_persist(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="^persist must be a boolean$"):
+        _make_tool(tmp_path).validate_arguments({"persist": "false"})
+
+
+def test_scope_predicate_accepts_caller_or_callee_and_rejects_outside(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tree_sitter_analyzer.constraints import Violation
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE edges(kind TEXT)")
+    candidates = [
+        Violation("caller", "src/in.py", "a", 1, "b", "out.py", "warn", 1),
+        Violation("callee", "out.py", "a", 2, "b", "src/in.py", "warn", 1),
+        Violation("outside", "a.py", "a", 3, "b", "b.py", "warn", 1),
+    ]
+
+    def scoped_evaluate(_constraints, _conn, *, scope_predicate):
+        return [
+            item
+            for item in candidates
+            if scope_predicate(item.caller_file, item.callee_file)
+        ]
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.evaluate",
+        scoped_evaluate,
+    )
+    try:
+        rows, edge_count = _make_tool(tmp_path)._evaluate_connection(
+            conn,
+            [object()],
+            min_severity_rank=1,
+            scope_paths=frozenset({"src/in.py"}),
+        )
+    finally:
+        conn.close()
+
+    assert (edge_count, [row["rule_id"] for row in rows]) == (
+        0,
+        ["callee", "caller"],
+    )

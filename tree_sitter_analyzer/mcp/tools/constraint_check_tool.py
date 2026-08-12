@@ -204,12 +204,17 @@ class ConstraintCheckTool(BaseMCPTool):
                 min_severity_rank=min_severity_rank,
             )
         else:
-            filtered_rows, evaluated_edges = self._run_read_only(
-                db_path,
-                constraints,
-                path_filter=path_filter,
-                min_severity_rank=min_severity_rank,
-            )
+            try:
+                filtered_rows, evaluated_edges = self._run_read_only(
+                    db_path,
+                    constraints,
+                    path_filter=path_filter,
+                    min_severity_rank=min_severity_rank,
+                )
+            except sqlite3.DatabaseError as exc:
+                return self._snapshot_error(
+                    "CONSTRAINT_INDEX_UNKNOWN", output_format, str(exc)
+                )
 
         verdict = self._compute_verdict(filtered_rows)
         return apply_toon_format_to_response(
@@ -285,12 +290,28 @@ class ConstraintCheckTool(BaseMCPTool):
     ) -> tuple[list[dict[str, Any]], int]:
         """Evaluate one caller-owned immutable index connection; fail closed."""
         edge_count = self._count_edges(conn, fail_closed=True)
-        violations = evaluate(constraints, conn)
+        if scope_paths is None:
+            violations = evaluate(constraints, conn)
+        else:
+
+            def in_scope(caller: str, callee: str) -> bool:
+                return (
+                    path_to_wire(caller) in scope_paths
+                    or path_to_wire(callee) in scope_paths
+                )
+
+            violations = evaluate(
+                constraints,
+                conn,
+                scope_predicate=in_scope,
+            )
         path_re = _compile_glob(path_filter) if path_filter else None
         rows: list[dict[str, Any]] = []
         for violation in violations:
             caller = path_to_wire(violation.caller_file)
             callee = path_to_wire(violation.callee_file)
+            # Keep a defensive output filter for injected/custom evaluators;
+            # the production evaluator receives the same scope before dedup.
             if scope_paths is not None and not (
                 caller in scope_paths or callee in scope_paths
             ):

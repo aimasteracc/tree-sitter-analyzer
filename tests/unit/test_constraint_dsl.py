@@ -915,6 +915,44 @@ class TestEvaluator:
         assert v.caller_line == caller_line
         assert v.callee_name == callee_name
 
+    def test_scope_predicate_filters_before_duplicate_pk_resolution(
+        self, tmp_path: Path
+    ) -> None:
+        # PR #1254 review 3765918811: an out-of-scope duplicate must not win dedup.
+        from tree_sitter_analyzer.constraints import Constraint, evaluate
+
+        conn = sqlite3.connect(tmp_path / "scope.db")
+        try:
+            conn.execute(
+                "CREATE TABLE edges (kind TEXT, caller_name TEXT, file_path TEXT, "
+                "caller_line INTEGER, callee_name TEXT, callee_resolved_file TEXT)"
+            )
+            conn.executemany(
+                "INSERT INTO edges VALUES ('calls', 'caller', 'outside/caller.py', "
+                "7, 'target', ?)",
+                [("targets/outside.py",), ("targets/in_scope.py",)],
+            )
+            rule = Constraint(
+                id="scoped",
+                severity="error",
+                rule="forbid",
+                from_glob="outside/**",
+                to_glob="targets/**",
+                reason="test",
+            )
+
+            violations = evaluate(
+                [rule],
+                conn,
+                scope_predicate=lambda _caller, callee: callee == "targets/in_scope.py",
+            )
+        finally:
+            conn.close()
+
+        assert [violation.callee_file for violation in violations] == [
+            "targets/in_scope.py"
+        ]
+
     def test_phantom_bare_name_resolution_skipped_when_no_import(
         self, tmp_path: Path
     ) -> None:

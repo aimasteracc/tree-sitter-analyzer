@@ -59,6 +59,21 @@ class TestIndexSnapshotRegistry:
             ):
                 pass
 
+    def test_registry_publish_preserves_source_scope(self, tmp_path):
+        # PR #1254 review 3765918784: reusable snapshots need their scan scope.
+        from dataclasses import replace
+
+        import tree_sitter_analyzer.index_snapshot as owner
+        from tree_sitter_analyzer.index_source_scope import (
+            make_source_scope_descriptor,
+        )
+
+        scope = make_source_scope_descriptor(roots=("src",))
+        candidate = replace(self._snapshot(tmp_path), source_scope=scope)
+        published = owner.REGISTRY.publish(candidate, sqlite3.connect(":memory:"), 0)
+
+        assert published.source_scope == scope
+
     def test_registry_retires_logical_match_when_physical_stats_change(self, tmp_path):
         # PR #1253 thread 3756228871: VACUUM-only changes cannot reuse metrics.
         from dataclasses import replace
@@ -485,3 +500,77 @@ class TestAuthoritativeSnapshotTransitions:
 
         assert result["completeness"] == "unknown"
         assert result["oracle_reason"] == "SNAPSHOT_READ_FAILED"
+
+
+class TestReusableSnapshotLease:
+    def test_registry_reusable_pin_is_held_only_inside_context(self, tmp_path):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        published = owner.REGISTRY.publish(
+            TestIndexSnapshotRegistry._snapshot(tmp_path),
+            sqlite3.connect(":memory:"),
+            0,
+        )
+
+        with owner.REGISTRY.pin_reusable(str(tmp_path)) as snapshot:
+            assert snapshot.snapshot_id == published.snapshot_id
+            assert owner.REGISTRY._entries[published.snapshot_id].readers == 1
+
+        assert owner.REGISTRY._entries[published.snapshot_id].readers == 0
+        owner.REGISTRY.close_all()
+
+    def test_registry_reusable_pin_returns_none_without_capability(self, tmp_path):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        with owner.REGISTRY.pin_reusable(str(tmp_path)) as snapshot:
+            assert snapshot is None
+
+    def test_reusable_lease_rejects_capability_without_source_scope(self, tmp_path):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        owner.REGISTRY.publish(
+            TestIndexSnapshotRegistry._snapshot(tmp_path),
+            sqlite3.connect(":memory:"),
+            0,
+        )
+
+        with owner.lease_reusable_snapshot(str(tmp_path)) as snapshot:
+            assert snapshot is None
+        owner.REGISTRY.close_all()
+
+    @pytest.mark.parametrize(
+        ("current_state", "current_generation", "is_reused"),
+        [
+            ("unknown", "generation", False),
+            ("exact", "different", False),
+            ("exact", "generation", True),
+        ],
+    )
+    def test_reusable_lease_requires_exact_current_generation(
+        self, tmp_path, monkeypatch, current_state, current_generation, is_reused
+    ):
+        from dataclasses import replace
+        from types import SimpleNamespace
+
+        import tree_sitter_analyzer.index_snapshot as owner
+        from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+        candidate = replace(
+            TestIndexSnapshotRegistry._snapshot(tmp_path),
+            source_scope=make_source_scope_descriptor(roots=("src",)),
+        )
+        published = owner.REGISTRY.publish(candidate, sqlite3.connect(":memory:"), 0)
+        monkeypatch.setattr(
+            owner,
+            "capture_current_source_snapshot",
+            lambda *_args, **_kwargs: SimpleNamespace(
+                state=current_state, generation=current_generation
+            ),
+        )
+
+        with owner.lease_reusable_snapshot(str(tmp_path)) as snapshot:
+            assert (snapshot is not None) is is_reused
+            assert owner.REGISTRY._entries[published.snapshot_id].readers == 1
+
+        assert owner.REGISTRY._entries[published.snapshot_id].readers == 0
+        owner.REGISTRY.close_all()
