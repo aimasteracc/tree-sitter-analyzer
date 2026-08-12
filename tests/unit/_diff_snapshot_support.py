@@ -56,11 +56,28 @@ def install_fake_snapshot_materializer(
             state="exact", generation="sg_test", reason=None
         ),
     )
-    monkeypatch.setattr(
-        snapshots,
-        "safe_workspace_path",
-        lambda *_a, **_k: SafePath(data=None, metadata=(b"missing",), kind="missing"),
-    )
+
+    original_safe_workspace_path = snapshots.safe_workspace_path
+
+    def fake_safe_workspace_path(_root, relative, **kwargs):
+        try:
+            return original_safe_workspace_path(_root, relative, **kwargs)
+        except Exception as exc:
+            if "WORKSPACE_UNSUPPORTED" not in str(exc):
+                raise
+        target = root / relative
+        if not target.exists():
+            return SafePath(data=None, metadata=(b"missing",), kind="missing")
+        if not target.is_file():
+            return SafePath(data=None, metadata=(b"unsafe",), kind="unsafe")
+        data = target.read_bytes()
+        return SafePath(
+            data=data,
+            metadata=(b"test," + str(len(data)).encode("ascii"),),
+            kind="file",
+        )
+
+    monkeypatch.setattr(snapshots, "safe_workspace_path", fake_safe_workspace_path)
     monkeypatch.setattr(
         snapshots,
         "frozen_index_constraint_config",
