@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
@@ -146,9 +145,7 @@ class TestEvaluateWithExplicitFile:
             with patch(_APPLY_TOON, side_effect=lambda p, fmt: p):
                 result = self._call(tmp_path, str(yaml_file), persist=False)
 
-        expected_error = (
-            "CORRUPT_INDEX" if os.name == "posix" else "SECURE_FD_SNAPSHOT_UNSUPPORTED"
-        )
+        expected_error = "CORRUPT_INDEX"
         assert (
             result["success"],
             result["verdict"],
@@ -184,9 +181,7 @@ class TestEvaluateWithExplicitFile:
                 with patch(_APPLY_TOON, side_effect=lambda p, fmt: p):
                     result = self._call(tmp_path, str(yaml_file), persist=False)
 
-        expected_error = (
-            "CORRUPT_INDEX" if os.name == "posix" else "SECURE_FD_SNAPSHOT_UNSUPPORTED"
-        )
+        expected_error = "CORRUPT_INDEX"
         assert (
             result["success"],
             result["verdict"],

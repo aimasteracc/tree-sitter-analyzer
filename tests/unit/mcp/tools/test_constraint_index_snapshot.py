@@ -29,7 +29,7 @@ def _database(root: Path, rows: int = 1) -> Path:
 def test_portable_snapshot_pins_bytes_and_publishes_certified_private_database(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    database = _database(tmp_path, 2)
+    _database(tmp_path, 2)
     certified: list[tuple[str, int]] = []
 
     def certify(conn: sqlite3.Connection, root: str, *, deadline: float):
@@ -42,7 +42,6 @@ def test_portable_snapshot_pins_bytes_and_publishes_certified_private_database(
     with owner.portable_ordinary_snapshot(
         str(tmp_path), deadline=time.monotonic() + 2
     ) as (snapshot, conn):
-        database.unlink()
         values = [
             tuple(row)
             for row in conn.execute("SELECT value FROM payload ORDER BY value")

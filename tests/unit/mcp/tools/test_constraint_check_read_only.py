@@ -367,6 +367,10 @@ def test_read_only_supports_legacy_index_snapshot_seams(
             conn.close()
 
     monkeypatch.setattr(index_snapshots, "lease_existing_snapshot", legacy_lease)
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_index_snapshot.portable_snapshot_required",
+        lambda: False,
+    )
     monkeypatch.setattr(index_snapshots, "acquire_index_snapshot", legacy_acquire)
 
     rows, edge_count = _make_tool(tmp_path)._run_read_only(
