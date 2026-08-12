@@ -1549,3 +1549,30 @@ def test_progress_handler_timeout_rolls_back_and_removes_handler(
     assert conn.in_transaction is False
     assert conn.execute("SELECT COUNT(*) FROM edges").fetchone() == (0,)
     conn.close()
+
+
+def test_read_only_deadline_interrupts_response_materialization(tmp_path, monkeypatch):
+    # Final zero gate: Python row assembly belongs to the same absolute deadline.
+    from tree_sitter_analyzer.constraints.schema import Violation
+
+    calls = {"count": 0}
+
+    def clock():
+        calls["count"] += 1
+        return 1.0 if calls["count"] < 3 else 3.0
+
+    monkeypatch.setattr(time, "monotonic", clock)
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE edges (kind TEXT)")
+    conn.execute("INSERT INTO edges VALUES ('calls')")
+    row = Violation("r", "a.py", "a", 1, "b", "b.py", "warn", 0)
+    with pytest.raises(RuntimeError, match="INDEX_SNAPSHOT_DEADLINE"):
+        _make_tool(tmp_path)._evaluate_connection(
+            conn,
+            [object()],
+            path_filter="",
+            min_severity_rank=0,
+            evaluator=lambda *_args, **_kwargs: [row],
+            deadline=2.0,
+        )
+    conn.close()

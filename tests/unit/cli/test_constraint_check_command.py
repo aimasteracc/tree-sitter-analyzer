@@ -495,6 +495,19 @@ class TestRunAndPersist:
         assert result == ([violation], 1)
         assert tables == []
 
+    def test_read_only_missing_edges_table_reraises_operational_error(self, tmp_path):
+        db = self._empty_db(tmp_path)
+
+        with pytest.raises(sqlite3.OperationalError, match="no such table: edges"):
+            _run_and_persist(db, [], persist=False)
+
+    def test_read_only_evaluator_exception_is_not_degraded(self, tmp_path):
+        db = self._db_with_edges(tmp_path)
+
+        with patch(_EVALUATE, side_effect=RuntimeError("evaluation failed")):
+            with pytest.raises(RuntimeError, match="^evaluation failed$"):
+                _run_and_persist(db, [], persist=False)
+
     def test_violations_table_cleared_before_insert(self, tmp_path):
         db = self._db_with_edges(tmp_path)
         # Pre-populate violations table with a stale row

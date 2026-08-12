@@ -10,7 +10,7 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, cast
+from typing import Any
 from urllib.parse import quote
 
 from .index_snapshot_capability import (
@@ -34,12 +34,9 @@ from .index_snapshot_capability import (
 from .index_snapshot_capability import (
     require_memory_temp_store as _require_memory_temp_store,
 )
+from .index_snapshot_manifest import _read_bounded_manifest_impl
 from .index_snapshot_registry import IndexSnapshot, IndexSnapshotRegistry
-from .index_snapshot_schema import (
-    _deadline_ordered_rows,
-    index_fingerprint,
-    validate_snapshot_schema,
-)
+from .index_snapshot_schema import index_fingerprint, validate_snapshot_schema
 from .index_snapshot_schema import (
     stamp_full_index_manifest as stamp_full_index_manifest,
 )
@@ -126,97 +123,16 @@ _MANIFEST_TOTAL_BYTE_BUDGET = 3 * 1024 * 1024
 def _read_bounded_manifest(
     connection: sqlite3.Connection, deadline: float
 ) -> sqlite3.Row | None:
-    """Preflight manifest cell sizes inside SQLite before decoding values."""
-    columns = (
-        "canonical_root",
-        "source_fingerprint",
-        "index_fingerprint",
-        "file_count",
-        "source_scope_descriptor",
-        "manifest_version",
-    )
-    valid_singleton = "typeof(singleton) = 'integer' AND singleton = 1"
-    count_rows = _deadline_ordered_rows(
+    """Read a manifest with owner-module budgets and monkeypatch seams."""
+    return _read_bounded_manifest_impl(
         connection,
-        "SELECT COUNT(*), "
-        f"CASE WHEN COUNT(CASE WHEN {valid_singleton} THEN 1 END) = COUNT(*) "
-        "THEN 1 ELSE 0 END, "
-        f"CASE WHEN COUNT(CASE WHEN {valid_singleton} THEN 1 END) = 1 "
-        "THEN 1 ELSE 0 END "
-        "FROM ast_index_snapshot_manifest",
         deadline,
+        clock=_clock,
+        require_budget=_require_capture_budget,
+        text_byte_budget=_MANIFEST_TEXT_BYTE_BUDGET,
+        scope_byte_budget=_MANIFEST_SCOPE_BYTE_BUDGET,
+        total_byte_budget=_MANIFEST_TOTAL_BYTE_BUDGET,
     )
-    count_row = next(count_rows, None)
-    if (
-        count_row is None
-        or len(count_row) != 3
-        or not isinstance(count_row[0], int)
-        or next(count_rows, None) is not None
-    ):
-        raise ValueError("INDEX_MANIFEST_INVALID")
-    if count_row[0] == 0:
-        return None
-    if (
-        count_row[0] != 1
-        or type(count_row[1]) is not int
-        or count_row[1] != 1
-        or type(count_row[2]) is not int
-        or count_row[2] != 1
-    ):
-        raise ValueError("INDEX_MANIFEST_INVALID")
-
-    length_query = (
-        "SELECT "
-        + ", ".join(f"length(CAST({column} AS BLOB))" for column in columns)
-        + " FROM ast_index_snapshot_manifest WHERE singleton=1"
-    )
-    length_rows = _deadline_ordered_rows(connection, length_query, deadline)
-    first_lengths = next(length_rows, None)
-    if first_lengths is None or next(length_rows, None) is not None:
-        raise ValueError("INDEX_MANIFEST_INVALID")
-    lengths = tuple(0 if value is None else int(value) for value in first_lengths)
-    per_cell = (
-        _MANIFEST_TEXT_BYTE_BUDGET,
-        _MANIFEST_TEXT_BYTE_BUDGET,
-        _MANIFEST_TEXT_BYTE_BUDGET,
-        _MANIFEST_TEXT_BYTE_BUDGET,
-        _MANIFEST_SCOPE_BYTE_BUDGET,
-        _MANIFEST_TEXT_BYTE_BUDGET,
-    )
-    if any(
-        length < 0 or length > budget
-        for length, budget in zip(lengths, per_cell, strict=True)
-    ):
-        raise ValueError("INDEX_MANIFEST_INVALID")
-    if sum(lengths) > _MANIFEST_TOTAL_BYTE_BUDGET:
-        raise ValueError("INDEX_MANIFEST_INVALID")
-    query = (
-        "SELECT "
-        + ", ".join(columns)
-        + (" FROM ast_index_snapshot_manifest WHERE singleton=1")
-    )
-
-    def expired() -> int:
-        return int(_clock() >= deadline)
-
-    connection.set_progress_handler(expired, 1_000)
-    try:
-        _require_capture_budget(deadline)
-        cursor = connection.execute(query)
-        fetchone = getattr(cursor, "fetchone", None)
-        if callable(fetchone):
-            manifest = fetchone()
-            duplicate = fetchone()
-        else:
-            rows = iter(cursor)
-            manifest = next(rows, None)
-            duplicate = next(rows, None)
-        _require_capture_budget(deadline)
-    finally:
-        connection.set_progress_handler(None, 0)
-    if manifest is None or duplicate is not None:
-        raise ValueError("INDEX_MANIFEST_INVALID")
-    return cast(sqlite3.Row, manifest)
 
 
 def _capture_existing_snapshot(

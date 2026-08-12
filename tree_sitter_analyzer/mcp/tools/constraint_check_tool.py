@@ -311,6 +311,8 @@ class ConstraintCheckTool(BaseMCPTool):
         path_re = _compile_glob(path_filter) if path_filter else None
         rows: list[dict[str, Any]] = []
         for violation in violations:
+            if interrupted():
+                raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
             caller = path_to_wire(violation.caller_file)
             callee = path_to_wire(violation.callee_file)
             # Keep a defensive output filter for injected/custom evaluators;
@@ -343,6 +345,8 @@ class ConstraintCheckTool(BaseMCPTool):
                 str(row["rule_id"]),
             )
         )
+        if interrupted():
+            raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
         return rows, edge_count
 
     def _run_and_persist(

@@ -633,3 +633,90 @@ def test_registry_acquire_deadline_fails_before_io_lock_wait(monkeypatch) -> Non
     assert lock.timeouts == [2.5]
     assert entry.readers == 0
     owner.REGISTRY.close_all()
+
+
+def test_registry_acquire_rejects_already_expired_deadline(monkeypatch) -> None:
+    import tree_sitter_analyzer.index_snapshot as owner
+
+    owner.REGISTRY.close_all()
+    snapshot = owner.IndexSnapshot(
+        None, "source", "index", "generation", "complete", None, "/project", 1
+    )
+    published = owner.REGISTRY.publish(
+        snapshot, sqlite3.connect(":memory:", check_same_thread=False), 1, 50.0
+    )
+    entry = owner.REGISTRY._entries[str(published.snapshot_id)]
+    monkeypatch.setattr(owner.REGISTRY, "_clock", lambda: 10.0)
+
+    try:
+        with pytest.raises(RuntimeError, match="^INDEX_SNAPSHOT_DEADLINE$"):
+            with owner.REGISTRY.acquire(
+                str(published.snapshot_id), "/project", deadline=10.0
+            ):
+                pytest.fail("expired acquisition yielded")
+        assert entry.readers == 0
+    finally:
+        owner.REGISTRY.close_all()
+
+
+def test_registry_acquire_rechecks_deadline_after_io_lock(monkeypatch) -> None:
+    import tree_sitter_analyzer.index_snapshot as owner
+
+    owner.REGISTRY.close_all()
+    snapshot = owner.IndexSnapshot(
+        None, "source", "index", "generation", "complete", None, "/project", 1
+    )
+    published = owner.REGISTRY.publish(
+        snapshot, sqlite3.connect(":memory:", check_same_thread=False), 1, 50.0
+    )
+    entry = owner.REGISTRY._entries[str(published.snapshot_id)]
+
+    class DeadlineCrossingLock:
+        def __init__(self) -> None:
+            self.events: list[tuple[str, float] | tuple[str]] = []
+
+        def acquire(self, *, timeout: float) -> bool:
+            self.events.append(("acquire", timeout))
+            return True
+
+        def release(self) -> None:
+            self.events.append(("release",))
+
+    lock = DeadlineCrossingLock()
+    entry.io_lock = lock
+    clock_values = iter((1.0, 2.0, 3.0, 4.0))
+    monkeypatch.setattr(owner.REGISTRY, "_clock", lambda: next(clock_values))
+
+    try:
+        with pytest.raises(RuntimeError, match="^INDEX_SNAPSHOT_DEADLINE$"):
+            with owner.REGISTRY.acquire(
+                str(published.snapshot_id), "/project", deadline=3.0
+            ):
+                pytest.fail("deadline-crossing acquisition yielded")
+        assert lock.events == [("acquire", 1.0), ("release",)]
+        assert entry.readers == 0
+    finally:
+        owner.REGISTRY.close_all()
+
+
+def test_registry_acquire_yields_when_io_lock_precedes_deadline(monkeypatch) -> None:
+    import tree_sitter_analyzer.index_snapshot as owner
+
+    owner.REGISTRY.close_all()
+    snapshot = owner.IndexSnapshot(
+        None, "source", "index", "generation", "complete", None, "/project", 1
+    )
+    published = owner.REGISTRY.publish(
+        snapshot, sqlite3.connect(":memory:", check_same_thread=False), 1, 50.0
+    )
+    entry = owner.REGISTRY._entries[str(published.snapshot_id)]
+    monkeypatch.setattr(owner.REGISTRY, "_clock", lambda: 1.0)
+
+    try:
+        with owner.REGISTRY.acquire(
+            str(published.snapshot_id), "/project", deadline=3.0
+        ) as acquired:
+            assert acquired == (published, entry.connection)
+        assert entry.readers == 0
+    finally:
+        owner.REGISTRY.close_all()
