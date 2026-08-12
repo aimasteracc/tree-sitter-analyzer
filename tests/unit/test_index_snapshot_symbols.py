@@ -7,6 +7,8 @@ import sqlite3
 
 import pytest
 
+from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
+
 requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 
 
@@ -143,3 +145,44 @@ def test_exact_v12_projection_certification_preserves_all_symbol_references(tmp_
     cache.close()
 
     assert after == before
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+class TestSnapshotProjectionCompleteness:
+    @pytest.fixture(autouse=True)
+    def _close_snapshot_capabilities(self):
+        yield
+        from tree_sitter_analyzer.index_snapshot import REGISTRY
+
+        REGISTRY.close_all()
+
+    @staticmethod
+    def _certified_cache(root):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+        from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
+
+        source = root / "sample.py"
+        source.write_text("def answer():\n    return 42\n")
+        cache = ASTCache(str(root))
+        cache.index_file(str(source))
+        stamp_full_index_manifest(cache.get_conn(), str(root))
+        cache.close()
+
+    @pytest.mark.asyncio
+    async def test_inexact_symbol_projection_makes_snapshot_partial(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 thread 3763655050: completeness includes exact projection.
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        self._certified_cache(tmp_path)
+        monkeypatch.setattr(owner, "symbol_projection_is_exact", lambda *a, **k: False)
+
+        result = await CodeGraphStatusTool(str(tmp_path)).execute(
+            {"output_format": "json"}
+        )
+
+        assert (result["completeness"], result["oracle_reason"]) == (
+            "partial",
+            "SYMBOL_PROJECTION_INCOMPLETE",
+        )

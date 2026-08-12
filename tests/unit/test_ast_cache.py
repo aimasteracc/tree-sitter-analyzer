@@ -1588,7 +1588,7 @@ def test_force_index_retains_complete_frozen_epoch_on_live_mutation(tmp_path):
         "ast_symbol_activation": 0,
         "edges": 2,
     }
-    assert (graph_built, manifest_count, mirror_exists) == (True, 0, False)
+    assert (graph_built, manifest_count, mirror_exists) == (False, 0, False)
 
 
 def test_snapshot_revalidates_pending_rows_at_batch_commit(tmp_path):

@@ -219,6 +219,7 @@ def capture_current_source_snapshot(
         root_before = os.stat(root, follow_symlinks=False)
         first, unsafe = _inventory(root, deadline, scope, with_content=True)
         second, unsafe_second = _inventory(root, deadline, scope, with_content=False)
+        revalidated = _revalidate_source_rows(root, second, deadline)
         root_current = _reopened_root_matches(root, root_before)
     except TimeoutError:
         return CurrentSourceSnapshot(
@@ -257,6 +258,7 @@ def capture_current_source_snapshot(
         or unsafe_second
         or not root_current
         or not stable
+        or not revalidated
         or not same_paths
         or not unique_scope
     ):
@@ -264,6 +266,49 @@ def capture_current_source_snapshot(
             rows, fingerprint, generation, "unsafe", "SOURCE_SCOPE_UNSAFE"
         )
     return CurrentSourceSnapshot(rows, fingerprint, generation, "exact", None)
+
+
+def _revalidate_source_rows(
+    root: str,
+    rows: Iterable[tuple[str, str, str]],
+    deadline: float,
+) -> bool:
+    """Reopen every final-inventory leaf and compare its ctime-inclusive marker."""
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+    leaf_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    leaf_flags |= getattr(os, "O_NONBLOCK", 0)
+    root_fd = os.open(root, directory_flags)
+    try:
+        for relative, expected_marker, _language in rows:
+            if time.monotonic() > deadline:
+                raise TimeoutError
+            parts = relative.split("/")
+            current = os.dup(root_fd)
+            try:
+                for component in parts[:-1]:
+                    child = os.open(component, directory_flags, dir_fd=current)
+                    os.close(current)
+                    current = child
+                before = os.stat(parts[-1], dir_fd=current, follow_symlinks=False)
+                leaf = os.open(parts[-1], leaf_flags, dir_fd=current)
+                try:
+                    opened = os.fstat(leaf)
+                    if (
+                        not stat.S_ISREG(opened.st_mode)
+                        or not opened_entry_matches(before, opened)
+                        or _metadata_marker(opened) != expected_marker
+                    ):
+                        return False
+                finally:
+                    os.close(leaf)
+            except OSError:
+                return False
+            finally:
+                os.close(current)
+        return True
+    finally:
+        os.close(root_fd)
 
 
 def _reopened_root_matches(root: str, expected: os.stat_result) -> bool:
@@ -480,12 +525,17 @@ def _metadata_marker(info: os.stat_result) -> str:
 
 
 def _same_file_metadata(before: os.stat_result, after: os.stat_result) -> bool:
-    """Compare path/fd metadata without relying on platform-specific ctime."""
+    """Compare identity and mutation-sensitive metadata around one content read."""
     identity_matches = not (before.st_ino and after.st_ino) or (
         before.st_dev,
         before.st_ino,
     ) == (after.st_dev, after.st_ino)
-    return identity_matches and (before.st_size, before.st_mtime_ns) == (
+    return identity_matches and (
+        before.st_size,
+        before.st_mtime_ns,
+        before.st_ctime_ns,
+    ) == (
         after.st_size,
         after.st_mtime_ns,
+        after.st_ctime_ns,
     )

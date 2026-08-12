@@ -227,3 +227,55 @@ def test_dangling_symbol_without_symbol_table_is_inconsistent() -> None:
     )
 
     assert call_graph_edges_are_consistent(conn) is False
+
+
+def test_resolved_symbol_must_belong_to_resolved_file() -> None:
+    # PR #1253 thread 3763655048: symbol identity and file target are one fact.
+    from tree_sitter_analyzer.cache.callgraph_state import (
+        call_graph_edges_are_consistent,
+    )
+    from tree_sitter_analyzer.graph.edge_store import EdgeStore
+
+    conn = sqlite3.connect(":memory:")
+    EdgeStore(conn)
+    conn.execute("CREATE TABLE ast_index (file_path TEXT PRIMARY KEY)")
+    conn.executemany(
+        "INSERT INTO ast_index(file_path) VALUES (?)",
+        [("resolved.py",), ("other.py",)],
+    )
+    conn.execute(
+        "CREATE TABLE ast_symbol_rows (id INTEGER PRIMARY KEY, file_path TEXT)"
+    )
+    conn.execute("INSERT INTO ast_symbol_rows VALUES (7, 'other.py')")
+    conn.execute(
+        "INSERT INTO edges (source_node_id, target_node_id, kind, "
+        "callee_resolved_file, callee_symbol_id) "
+        "VALUES ('caller', 'target', 'calls', 'resolved.py', 7)"
+    )
+
+    assert call_graph_edges_are_consistent(conn) is False
+
+
+def test_marker_certification_rechecks_consistency_after_writer_lock(
+    monkeypatch,
+) -> None:
+    # PR #1253 thread 3763600672: marker publication and final check are atomic.
+    from tree_sitter_analyzer.cache import callgraph_state
+
+    conn = sqlite3.connect(":memory:")
+    checks = iter((True, False))
+    monkeypatch.setattr(
+        callgraph_state,
+        "call_graph_edges_are_consistent",
+        lambda _conn: next(checks),
+    )
+
+    with pytest.raises(
+        sqlite3.OperationalError, match="CALL_GRAPH_DANGLING_RESOLUTION"
+    ):
+        callgraph_state.mark_call_graph_built_strict(conn)
+
+    rows = conn.execute(
+        "SELECT id, built, pipeline_version FROM ast_call_graph_state"
+    ).fetchall()
+    assert rows == []

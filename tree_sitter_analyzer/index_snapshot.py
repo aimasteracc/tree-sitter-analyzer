@@ -225,7 +225,10 @@ def _capture_existing_snapshot(
     # Absence is platform-independent and publishes no file evidence.  Report it
     # before the secure-fd capability gate so fresh Windows installs preserve the
     # established missing-index contract; an existing database still fails closed.
-    candidate = os.path.join(os.path.realpath(project_root), ".ast-cache", "index.db")
+    canonical_root = os.path.realpath(project_root)
+    if not os.path.isdir(canonical_root):
+        return _unknown("MISSING_PROJECT_ROOT")
+    candidate = os.path.join(canonical_root, ".ast-cache", "index.db")
     if not os.path.lexists(candidate):
         return _unknown("MISSING_INDEX")
     if os.name != "posix" or not os.path.exists("/dev/fd"):
@@ -327,16 +330,6 @@ def _capture_existing_snapshot(
                 )
             else:
                 reason = "NO_EXACT_FULL_INDEX_MANIFEST"
-            snapshot = IndexSnapshot(
-                None,
-                current.fingerprint if current else None,
-                index,
-                current.generation if current else None,
-                "complete" if complete else "partial",
-                reason,
-                root,
-                count,
-            )
             evidence = sqlite3.connect(":memory:", check_same_thread=False)
             _require_memory_temp_store(evidence)
             _require_capture_budget(deadline)
@@ -421,15 +414,18 @@ def _capture_existing_snapshot(
                 * int(evidence.execute("PRAGMA page_count").fetchone()[0])
                 + _SNAPSHOT_OVERHEAD_BYTES
             )
+            if complete and not projection_exact:
+                complete = False
+                reason = "SYMBOL_PROJECTION_INCOMPLETE"
             snapshot = IndexSnapshot(
-                snapshot.snapshot_id,
-                snapshot.source_fingerprint,
-                snapshot.index_fingerprint,
-                snapshot.source_generation,
-                snapshot.completeness,
-                snapshot.reason,
-                snapshot.canonical_root,
-                snapshot.file_count,
+                None,
+                current.fingerprint if current else None,
+                index,
+                current.generation if current else None,
+                "complete" if complete else "partial",
+                reason,
+                root,
+                count,
                 _physical_storage_identity(evidence),
                 projection_exact,
             )

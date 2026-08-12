@@ -273,7 +273,8 @@ async def test_legacy_v13_without_symbol_table_is_readable(tmp_path):
     cache.close()
 
     result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
-    assert result["completeness"] == "complete"
+    assert result["completeness"] == "partial"
+    assert result["oracle_reason"] == "SYMBOL_PROJECTION_INCOMPLETE"
     assert result["fts5_available"] is False
     assert result["total_symbols"] == 1
 

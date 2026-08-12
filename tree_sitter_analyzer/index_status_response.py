@@ -104,8 +104,10 @@ def build_index_status_response(
             "full-index manifest."
         )
     lag_seconds = None
-    if include_lag and cache_path is not None:
-        lag_seconds = index_lag.compute_qualitative_lag(project_root, cache_path)
+    if include_lag and cache_path is not None and snapshot.canonical_root is not None:
+        lag_seconds = index_lag.compute_qualitative_lag(
+            snapshot.canonical_root, cache_path
+        )
 
     result = build_response(
         verdict=verdict,

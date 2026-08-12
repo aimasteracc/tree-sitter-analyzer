@@ -52,24 +52,37 @@ def mark_call_graph_built(conn: sqlite3.Connection) -> None:
 
 
 def mark_call_graph_built_strict(conn: sqlite3.Connection) -> None:
-    """Persist and verify the exact current pipeline marker."""
+    """Persist and verify the exact current pipeline marker transactionally."""
     if not call_graph_edges_are_consistent(conn):
         raise sqlite3.OperationalError("CALL_GRAPH_DANGLING_RESOLUTION")
     _ensure_state_schema(conn)
-    conn.execute(
-        "INSERT INTO ast_call_graph_state (id, built, built_at, pipeline_version) "
-        "VALUES (1, 1, ?, ?) "
-        "ON CONFLICT(id) DO UPDATE SET "
-        "built = excluded.built, built_at = excluded.built_at, "
-        "pipeline_version = excluded.pipeline_version",
-        (time.time(), CALL_GRAPH_PIPELINE_VERSION),
-    )
-    conn.execute(
-        "DELETE FROM ast_call_graph_state WHERE id = ?",
-        (_EXPLICITLY_INCOMPLETE_ID,),
-    )
-    if not exact_call_graph_marker(conn):
-        raise sqlite3.OperationalError("CALL_GRAPH_MARKER_VERIFY_FAILED")
+    savepoint = "call_graph_marker_certification"
+    conn.execute(f"SAVEPOINT {savepoint}")
+    try:
+        # This write obtains SQLite's writer lock.  Rechecking the canonical
+        # graph after it closes the gap between the optimistic check above and
+        # marker publication without discarding an existing caller transaction.
+        conn.execute(
+            "INSERT INTO ast_call_graph_state (id, built, built_at, pipeline_version) "
+            "VALUES (1, 1, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET "
+            "built = excluded.built, built_at = excluded.built_at, "
+            "pipeline_version = excluded.pipeline_version",
+            (time.time(), CALL_GRAPH_PIPELINE_VERSION),
+        )
+        conn.execute(
+            "DELETE FROM ast_call_graph_state WHERE id = ?",
+            (_EXPLICITLY_INCOMPLETE_ID,),
+        )
+        if not call_graph_edges_are_consistent(conn):
+            raise sqlite3.OperationalError("CALL_GRAPH_DANGLING_RESOLUTION")
+        if not exact_call_graph_marker(conn):
+            raise sqlite3.OperationalError("CALL_GRAPH_MARKER_VERIFY_FAILED")
+    except Exception:
+        conn.execute(f"ROLLBACK TO {savepoint}")
+        conn.execute(f"RELEASE {savepoint}")
+        raise
+    conn.execute(f"RELEASE {savepoint}")
     conn.commit()
 
 
@@ -196,7 +209,8 @@ def call_graph_edges_are_consistent(
                 "SELECT 1 FROM edges AS e WHERE e.kind = 'calls' "
                 "AND e.callee_symbol_id IS NOT NULL AND NOT EXISTS ("
                 "SELECT 1 FROM ast_symbol_rows AS s "
-                "WHERE s.id = e.callee_symbol_id) LIMIT 1"
+                "WHERE s.id = e.callee_symbol_id "
+                "AND s.file_path = e.callee_resolved_file) LIMIT 1"
             ).fetchone()
         else:
             missing_symbol = conn.execute(

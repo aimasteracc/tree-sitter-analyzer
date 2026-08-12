@@ -200,6 +200,18 @@ def test_schema_version_rejects_text_version():
     conn.close()
 
 
+def test_schema_requires_current_version_row(monkeypatch):
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_schema_version(version)")
+    conn.execute("INSERT INTO ast_schema_version VALUES (13)")
+    monkeypatch.setattr(schema, "SNAPSHOT_SCHEMA_VERSION", 99)
+    with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
+        schema.validate_snapshot_schema(conn)
+    conn.close()
+
+
 def test_schema_column_name_budget_rejects_first_column(monkeypatch):
     # PR #1253: required-table column metadata has an absolute byte cap.
     import tree_sitter_analyzer.index_snapshot_schema as schema

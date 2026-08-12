@@ -403,3 +403,43 @@ def test_regular_source_replaced_by_fifo_is_unsafe_without_blocking(tmp_path):
     assert (digest, clean) == ("<unsafe>", False)
     assert marker == str(source.stat().st_mode)
     assert time.monotonic() - started < 0.2
+
+
+def test_in_place_rewrite_with_restored_mtime_is_unsafe(tmp_path, monkeypatch):
+    # PR #1253 review 3763562831: ctime closes the same-size/restored-mtime race.
+    import tree_sitter_analyzer.index_source_snapshot as snapshot
+    import tree_sitter_analyzer.index_source_stream as stream
+
+    target = tmp_path / "sample.py"
+    target.write_bytes(b"old = 1\n")
+    admitted = target.stat()
+    real_read = stream.os.read
+    rewritten = False
+
+    def rewrite_after_eof(fd, size):
+        nonlocal rewritten
+        chunk = real_read(fd, size)
+        if not chunk and not rewritten:
+            rewritten = True
+            target.write_bytes(b"new = 2\n")
+            os.utime(target, ns=(admitted.st_atime_ns, admitted.st_mtime_ns))
+        return chunk
+
+    monkeypatch.setattr(stream.os, "read", rewrite_after_eof)
+    marker, digest, clean = stream.hash_source_at(
+        None,
+        str(target),
+        admitted,
+        float("inf"),
+        {"input": 0, "output": 0},
+        100,
+        snapshot._metadata_marker,
+        snapshot._same_file_metadata,
+    )
+
+    assert (rewritten, marker, digest, clean) == (
+        True,
+        snapshot._metadata_marker(target.stat()),
+        "<unsafe>",
+        False,
+    )

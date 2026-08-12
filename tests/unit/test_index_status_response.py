@@ -308,3 +308,54 @@ def test_storage_fields_ignore_missing_and_null_values():
     result = _storage_fields({"db_size_bytes": 4096, "db_page_size": None})
 
     assert result == {"db_size_bytes": 4096}
+
+
+def test_status_lag_scans_snapshot_canonical_root(monkeypatch):
+    # PR #1253 review 3763600670: O_NOFOLLOW requires the owner-resolved root.
+    from contextlib import contextmanager
+
+    from tree_sitter_analyzer import index_status_response as response
+    from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
+
+    snapshot = IndexSnapshot(
+        "idxsnap_test",
+        "sha256:source",
+        "sha256:index",
+        "idxsrc-v3:source",
+        "complete",
+        None,
+        "/canonical/project",
+        1,
+    )
+
+    @contextmanager
+    def lease(_project_root):
+        yield snapshot
+
+    monkeypatch.setattr(response.index_snapshot, "lease_existing_snapshot", lease)
+    monkeypatch.setattr(
+        response.index_snapshot,
+        "read_snapshot_stats",
+        lambda *_args: {
+            "snapshot_id": snapshot.snapshot_id,
+            "source_generation": snapshot.source_generation,
+            "source_fingerprint": snapshot.source_fingerprint,
+            "index_fingerprint": snapshot.index_fingerprint,
+            "total_files": 1,
+        },
+    )
+    observed = []
+    monkeypatch.setattr(
+        response.index_lag,
+        "compute_qualitative_lag",
+        lambda root, cache: observed.append((root, cache)) or 3.0,
+    )
+
+    result = response.build_index_status_response(
+        "/logical/project", "json", include_lag=True
+    )
+
+    assert observed == [
+        ("/canonical/project", "/canonical/project/.ast-cache/index.db")
+    ]
+    assert result["lag_seconds"] == 3.0

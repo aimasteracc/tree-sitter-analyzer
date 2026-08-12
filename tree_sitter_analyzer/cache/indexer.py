@@ -1240,6 +1240,10 @@ def run_index_project(
                 entry.frozen_path is not None for entry in snapshot_entries.values()
             ):
                 _record_frozen_replay_mismatches(snapshot_entries, stats)
+                if stats.get("changed_during_run", 0) > 0:
+                    # The frozen epoch remains internally coherent, but it no
+                    # longer certifies the live workspace consumed by readers.
+                    _clear_call_graph_built_strict(conn)
             else:
                 _revalidate_committed_snapshot(
                     cache=cache,
@@ -1448,16 +1452,12 @@ def _candidate_paths_are_exact(
         _normalize_relative_path(str(row[0]))
         for row in conn.execute("SELECT file_path FROM ast_index")
     }
-    frozen_epoch = bool(
-        candidate is not None
-        and all(entry.frozen_path is not None for entry in candidate.selected_entries)
-    )
     run_is_complete = bool(
         not stats.get("truncated_by_max_files", False)
         and stats.get("errors", 0) == 0
         and stats.get("backfill_errors", 0) == 0
         and stats.get("incomplete_skips", 0) == 0
-        and (stats.get("changed_during_run", 0) == 0 or frozen_epoch)
+        and stats.get("changed_during_run", 0) == 0
     )
     if candidate is None:
         # A cached legacy run may still contain rows for sources deleted since

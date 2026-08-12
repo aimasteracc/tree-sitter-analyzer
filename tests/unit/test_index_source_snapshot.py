@@ -444,6 +444,37 @@ class TestSnapshotFailureContracts:
         assert (rows, unsafe) == (frozenset(), True)
 
     @requires_posix_fd
+    def test_capture_revalidates_each_leaf_after_final_inventory(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 review 3763655036: a final-pass leaf may change after its yield.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        target = tmp_path / "sample.py"
+        target.write_text("old = 1\n")
+        original_inventory = source._inventory
+        calls = 0
+
+        def inventory_then_rewrite(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            result = original_inventory(*args, **kwargs)
+            if calls == 2:
+                original_mtime = target.stat().st_mtime_ns
+                target.write_text("new = 2\n")
+                os.utime(target, ns=(original_mtime, original_mtime))
+            return result
+
+        monkeypatch.setattr(source, "_inventory", inventory_then_rewrite)
+        snapshot = source.capture_current_source_snapshot(str(tmp_path))
+
+        assert (calls, snapshot.state, snapshot.reason) == (
+            2,
+            "unsafe",
+            "SOURCE_SCOPE_UNSAFE",
+        )
+
+    @requires_posix_fd
     def test_capture_reopens_root_after_final_inventory(self, tmp_path, monkeypatch):
         # PR #1253 review 3763401191: final inventory cannot authenticate a stale root.
         import tree_sitter_analyzer.index_source_snapshot as source
@@ -529,3 +560,12 @@ class TestSnapshotFailureContracts:
         )
 
         assert (rows, unsafe) == (frozenset(), True)
+
+
+def test_revalidate_source_rows_enforces_absolute_deadline(tmp_path):
+    from tree_sitter_analyzer.index_source_snapshot import _revalidate_source_rows
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    with pytest.raises(TimeoutError):
+        _revalidate_source_rows(str(tmp_path), (("app.py", "marker", "python"),), -1.0)
