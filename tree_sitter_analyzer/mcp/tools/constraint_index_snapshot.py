@@ -227,8 +227,11 @@ def portable_ordinary_snapshot(
     cache_path = root_path / ".ast-cache"
     db_path = cache_path / "index.db"
     root_before = _identity(root_path, directory=True)
-    cache_before = _identity(cache_path, directory=True)
-    db_before = _identity(db_path, directory=False)
+    try:
+        cache_before = _identity(cache_path, directory=True)
+        db_before = _identity(db_path, directory=False)
+    except FileNotFoundError as exc:
+        raise ValueError("MISSING_INDEX") from exc
     sidecars_before = _sidecar_state(db_path)
     _deadline(deadline)
     db_fd: int | None = None

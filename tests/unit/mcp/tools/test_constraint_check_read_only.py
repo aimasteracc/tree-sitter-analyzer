@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sqlite3
 import time
 from pathlib import Path
@@ -117,9 +116,7 @@ def test_read_only_rejects_symlinked_index(tmp_path: Path) -> None:
     link.parent.mkdir()
     link.symlink_to(real)
 
-    expected = (
-        "INDEX_PATH_SYMLINK" if os.name == "posix" else "SECURE_FD_SNAPSHOT_UNSUPPORTED"
-    )
+    expected = "INDEX_PATH_SYMLINK"
     with pytest.raises(ValueError, match=f"^{expected}$"):
         _make_tool(tmp_path)._run_read_only(
             link, [object()], path_filter="", min_severity_rank=1
@@ -132,9 +129,7 @@ def test_read_only_rejects_nonempty_writer_sidecar(tmp_path: Path, suffix: str) 
     _edges_db(db_path)
     Path(str(db_path) + suffix).write_bytes(b"active writer")
 
-    expected = (
-        "CONCURRENT_WRITER" if os.name == "posix" else "SECURE_FD_SNAPSHOT_UNSUPPORTED"
-    )
+    expected = "CONCURRENT_WRITER"
     with pytest.raises(ValueError, match=f"^{expected}$"):
         _make_tool(tmp_path)._run_read_only(
             db_path, [object()], path_filter="", min_severity_rank=1
