@@ -136,14 +136,23 @@ class TestEvaluateWithExplicitFile:
     def test_read_only_missing_edges_fails_closed_with_nonzero_exit(self, tmp_path):
         # PR #1254 review 3766246590: an absent edge capability is not SAFE.
         yaml_file = tmp_path / "constraints.yml"
-        yaml_file.write_text("")
+        yaml_file.write_text(
+            """version: 1
+constraints:
+  - id: no-cli-to-mcp
+    severity: error
+    rule: forbid
+    from: cli/**
+    to: mcp/**
+    reason: boundary
+"""
+        )
         db_dir = tmp_path / ".ast-cache"
         db_dir.mkdir()
         sqlite3.connect(str(db_dir / "index.db")).close()
 
-        with patch(_LOAD_EXPLICIT, return_value=[object()]):
-            with patch(_APPLY_TOON, side_effect=lambda p, fmt: p):
-                result = self._call(tmp_path, str(yaml_file), persist=False)
+        with patch(_APPLY_TOON, side_effect=lambda p, fmt: p):
+            result = self._call(tmp_path, str(yaml_file), persist=False)
 
         expected_error = "CORRUPT_INDEX"
         assert (
@@ -167,7 +176,17 @@ class TestEvaluateWithExplicitFile:
     def test_read_only_corrupt_edges_fails_closed_with_nonzero_exit(self, tmp_path):
         # PR #1254 review 3766246590: evaluator database failures are not SAFE.
         yaml_file = tmp_path / "constraints.yml"
-        yaml_file.write_text("")
+        yaml_file.write_text(
+            """version: 1
+constraints:
+  - id: no-cli-to-mcp
+    severity: error
+    rule: forbid
+    from: cli/**
+    to: mcp/**
+    reason: boundary
+"""
+        )
         db_dir = tmp_path / ".ast-cache"
         db_dir.mkdir()
         conn = sqlite3.connect(str(db_dir / "index.db"))
@@ -176,10 +195,9 @@ class TestEvaluateWithExplicitFile:
         conn.commit()
         conn.close()
 
-        with patch(_LOAD_EXPLICIT, return_value=[object()]):
-            with patch(_EVALUATE, side_effect=sqlite3.DatabaseError("CORRUPT_INDEX")):
-                with patch(_APPLY_TOON, side_effect=lambda p, fmt: p):
-                    result = self._call(tmp_path, str(yaml_file), persist=False)
+        with patch(_EVALUATE, side_effect=sqlite3.DatabaseError("CORRUPT_INDEX")):
+            with patch(_APPLY_TOON, side_effect=lambda p, fmt: p):
+                result = self._call(tmp_path, str(yaml_file), persist=False)
 
         expected_error = "CORRUPT_INDEX"
         assert (
@@ -356,3 +374,120 @@ def test_read_only_explicit_zero_rules_is_safe_without_index(tmp_path: Path) -> 
         "constraint_file": str(config),
     }
     assert not (tmp_path / ".ast-cache").exists()
+
+
+def test_read_only_explicit_file_parses_bytes_without_temporary_staging(
+    tmp_path: Path,
+) -> None:
+    # PR #1254 review 3768614254: read-only CLI must not honor project-local TMPDIR.
+    config = tmp_path / "candidate.yml"
+    config.write_text("version: 1\nconstraints: []\n")
+
+    with patch(
+        "tree_sitter_analyzer.cli.commands.constraint_check_command._load_explicit",
+        side_effect=AssertionError("read-only route staged the config"),
+    ):
+        result = _evaluate_with_explicit_file(
+            project_root=str(tmp_path),
+            constraint_file=str(config),
+            severity_min="warn",
+            path_filter="",
+            output_format="json",
+            persist=False,
+        )
+
+    assert result == {
+        "success": True,
+        "verdict": "SAFE",
+        "violations": [],
+        "rule_count": 0,
+        "evaluated_edge_count": 0,
+        "constraint_file": str(config),
+    }
+
+
+def test_read_only_explicit_file_maps_portable_oserror_to_index_error(
+    tmp_path: Path,
+) -> None:
+    # PR #1254 review 3768452298: explicit-file portable errors stay structured.
+    config = tmp_path / "candidate.yml"
+    config.write_text(
+        """version: 1
+constraints:
+  - id: no-cli-to-mcp
+    severity: error
+    rule: forbid
+    from: cli/**
+    to: mcp/**
+    reason: boundary
+"""
+    )
+
+    with patch.object(
+        __import__(
+            "tree_sitter_analyzer.cli.commands.constraint_check_command",
+            fromlist=["ConstraintCheckTool"],
+        ).ConstraintCheckTool,
+        "_run_read_only",
+        side_effect=OSError("portable index disappeared"),
+    ):
+        result = _evaluate_with_explicit_file(
+            project_root=str(tmp_path),
+            constraint_file=str(config),
+            severity_min="warn",
+            path_filter="",
+            output_format="json",
+            persist=False,
+        )
+
+    assert result == {
+        "success": False,
+        "verdict": "ERROR",
+        "error_code": "CONSTRAINT_INDEX_UNKNOWN",
+        "error": "portable index disappeared",
+        "violations": [],
+        "rule_count": 1,
+    }
+
+
+def test_explicit_persist_capacity_failure_is_structured(
+    tmp_path: Path,
+) -> None:
+    # PR #1254 review 3768096795: explicit-file persistence must fail closed.
+    config = tmp_path / "candidate.yml"
+    config.write_text(
+        """version: 1
+constraints:
+  - id: no-cli-to-mcp
+    severity: error
+    rule: forbid
+    from: cli/**
+    to: mcp/**
+    reason: boundary
+"""
+    )
+    db_path = tmp_path / ".ast-cache" / "index.db"
+    db_path.parent.mkdir()
+    db_path.touch()
+
+    with patch(
+        "tree_sitter_analyzer.cli.commands.constraint_check_command._run_and_persist",
+        side_effect=RuntimeError("CONSTRAINT_EVALUATION_CAPACITY"),
+    ):
+        result = _evaluate_with_explicit_file(
+            project_root=str(tmp_path),
+            constraint_file=str(config),
+            severity_min="warn",
+            path_filter="",
+            output_format="json",
+            persist=True,
+        )
+
+    assert result == {
+        "success": False,
+        "verdict": "ERROR",
+        "error_code": "CONSTRAINT_EVALUATION_CAPACITY",
+        "error": "CONSTRAINT_EVALUATION_CAPACITY",
+        "violations": [],
+        "rule_count": 1,
+    }

@@ -20,8 +20,16 @@ from ...constraints import (
 )
 from ...constraints.parser import ConstraintParseError, _compile_glob
 from ...git_path_codec import path_to_wire
+from ...source_oracle import SourceOracleError
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
+from .constraint_check_live import (
+    config_changed_response as _config_changed_response,
+)
+from .constraint_check_live import live_config_snapshot as _live_config_snapshot
+from .constraint_check_live import load_live_constraints
+from .constraint_check_live import path_is_in_scope as _path_is_in_scope
+from .constraint_check_persistence import read_filtered_violations
 from .constraint_check_schema import TOOL_SCHEMA
 
 logger = logging.getLogger(__name__)
@@ -31,18 +39,6 @@ _WARNING_SEVERITIES: frozenset[str] = frozenset({"warn"})
 
 _SEVERITY_ORDER: dict[str, int] = {"info": 0, "warn": 1, "error": 2}
 _MAX_MATERIALIZED_VIOLATIONS = 10_000
-
-
-def _path_is_in_scope(path: str, scope_paths: frozenset[str]) -> bool:
-    """Match an exact frozen path or a descendant of a frozen directory."""
-    wire_path = path_to_wire(path).rstrip("/")
-    for scope in scope_paths:
-        normalized = scope.rstrip("/")
-        if normalized in {"", "."}:
-            return True
-        if wire_path == normalized or wire_path.startswith(normalized + "/"):
-            return True
-    return False
 
 
 class ConstraintCheckTool(BaseMCPTool):
@@ -116,8 +112,16 @@ class ConstraintCheckTool(BaseMCPTool):
         output_format = arguments.get("output_format", "json")
         min_severity_rank = _SEVERITY_ORDER[severity_min]
 
+        persist = arguments.get("persist", True)
+        config_deadline = time.monotonic() + 10.0
+        config_before = None
         try:
-            constraints = load_constraints(self.project_root)
+            if not persist:
+                config_before, constraints = load_live_constraints(
+                    self.project_root, config_deadline
+                )
+            else:
+                constraints = load_constraints(self.project_root)
         except ConstraintParseError as exc:
             return apply_toon_format_to_response(
                 {
@@ -129,9 +133,23 @@ class ConstraintCheckTool(BaseMCPTool):
                 },
                 output_format,
             )
+        except (OSError, RuntimeError, SourceOracleError) as exc:
+            return self._snapshot_error(
+                "CONSTRAINT_CONFIG_UNKNOWN", output_format, str(exc)
+            )
 
-        persist = arguments.get("persist", True)
         if not constraints and not persist:
+            assert config_before is not None
+            changed = _config_changed_response(
+                self.project_root,
+                config_before,
+                config_deadline,
+                output_format,
+                self._snapshot_error,
+                _live_config_snapshot,
+            )
+            if changed is not None:
+                return changed
             return apply_toon_format_to_response(
                 {
                     "success": True,
@@ -161,12 +179,19 @@ class ConstraintCheckTool(BaseMCPTool):
             )
 
         if persist:
-            _, evaluated_edges = self._run_and_persist(db_path, constraints)
-            filtered_rows = self._read_filtered_violations(
-                db_path,
-                path_filter=path_filter,
-                min_severity_rank=min_severity_rank,
-            )
+            try:
+                _, evaluated_edges = self._run_and_persist(db_path, constraints)
+                filtered_rows = self._read_filtered_violations(
+                    db_path,
+                    path_filter=path_filter,
+                    min_severity_rank=min_severity_rank,
+                )
+            except RuntimeError as exc:
+                if str(exc) != "CONSTRAINT_EVALUATION_CAPACITY":
+                    raise
+                return self._snapshot_error(
+                    "CONSTRAINT_EVALUATION_CAPACITY", output_format, str(exc)
+                )
         else:
             try:
                 filtered_rows, evaluated_edges = self._run_read_only(
@@ -187,6 +212,19 @@ class ConstraintCheckTool(BaseMCPTool):
                 return self._snapshot_error(
                     "CONSTRAINT_INDEX_UNKNOWN", output_format, str(exc)
                 )
+
+        if not persist:
+            assert config_before is not None
+            changed = _config_changed_response(
+                self.project_root,
+                config_before,
+                config_deadline,
+                output_format,
+                self._snapshot_error,
+                _live_config_snapshot,
+            )
+            if changed is not None:
+                return changed
 
         verdict = self._compute_verdict(filtered_rows)
         return apply_toon_format_to_response(
@@ -224,10 +262,6 @@ class ConstraintCheckTool(BaseMCPTool):
             },
             output_format,
         )
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
 
     def _run_read_only(
         self,
@@ -312,15 +346,18 @@ class ConstraintCheckTool(BaseMCPTool):
             check_deadline()
             if violation_number > _MAX_MATERIALIZED_VIOLATIONS:
                 raise RuntimeError("CONSTRAINT_EVALUATION_CAPACITY")
-            caller = path_to_wire(violation.caller_file)
-            callee = path_to_wire(violation.callee_file)
-            # Keep a defensive output filter for injected/custom evaluators;
-            # the production evaluator receives the same scope before dedup.
+            # Keep raw endpoints until the defensive scope check. Wire values
+            # beginning with git-path-b64: are escaped by path_to_wire(), so feeding
+            # an already-wired endpoint back into _path_is_in_scope() double-encodes it.
+            caller_raw = violation.caller_file
+            callee_raw = violation.callee_file
             if scope_paths is not None and not (
-                _path_is_in_scope(caller, scope_paths)
-                or _path_is_in_scope(callee, scope_paths)
+                _path_is_in_scope(caller_raw, scope_paths)
+                or _path_is_in_scope(callee_raw, scope_paths)
             ):
                 continue
+            caller = path_to_wire(caller_raw)
+            callee = path_to_wire(callee_raw)
             if _SEVERITY_ORDER.get(violation.severity, 0) < min_severity_rank:
                 continue
             if path_re is not None and path_re.fullmatch(caller) is None:
@@ -365,6 +402,11 @@ class ConstraintCheckTool(BaseMCPTool):
 
             try:
                 violations = evaluate(constraints, conn)
+            except RuntimeError as exc:
+                if str(exc) == "CONSTRAINT_EVALUATION_CAPACITY":
+                    raise
+                logger.warning("constraint evaluation failed: %s", exc)
+                return [], edge_count
             except Exception as exc:  # noqa: BLE001 — log + degrade
                 logger.warning("constraint evaluation failed: %s", exc)
                 return [], edge_count
@@ -419,51 +461,13 @@ class ConstraintCheckTool(BaseMCPTool):
         path_filter: str,
         min_severity_rank: int,
     ) -> list[dict[str, Any]]:
-        """Read violations with canonical Python glob filtering."""
-        conn = sqlite3.connect(str(db_path))
-        try:
-            conn.execute(self._violations_ddl())
-            cursor = conn.execute(
-                """
-                SELECT rule_id, caller_file, caller_name, caller_line,
-                       callee_name, callee_file, severity, detected_at
-                FROM ast_constraint_violations
-                ORDER BY severity DESC, caller_file, caller_line
-                """
-            )
-            path_re = _compile_glob(path_filter) if path_filter else None
-            results: list[dict[str, Any]] = []
-            for row in cursor:
-                (
-                    rule_id,
-                    caller_file,
-                    caller_name,
-                    caller_line,
-                    callee_name,
-                    callee_file,
-                    severity,
-                    detected_at,
-                ) = row
-                rank = _SEVERITY_ORDER.get(severity, 0)
-                if rank < min_severity_rank:
-                    continue
-                if path_re is not None and path_re.fullmatch(caller_file) is None:
-                    continue
-                results.append(
-                    {
-                        "rule_id": rule_id,
-                        "caller_file": caller_file,
-                        "caller_name": caller_name,
-                        "caller_line": caller_line,
-                        "callee_name": callee_name,
-                        "callee_file": callee_file,
-                        "severity": severity,
-                        "detected_at": detected_at,
-                    }
-                )
-            return results
-        finally:
-            conn.close()
+        return read_filtered_violations(
+            db_path,
+            path_filter=path_filter,
+            min_severity_rank=min_severity_rank,
+            severity_order=_SEVERITY_ORDER,
+            ddl=self._violations_ddl(),
+        )
 
     @staticmethod
     def _compute_verdict(rows: list[dict[str, Any]]) -> str:

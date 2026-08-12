@@ -386,3 +386,81 @@ def test_read_only_supports_legacy_index_snapshot_seams(
         ("lease", str(tmp_path)),
         ("acquire", "is_legacy", str(tmp_path), "sg_legacy"),
     ]
+
+
+def test_persist_capacity_failure_is_structured_and_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3768096795: capacity exhaustion cannot return SAFE.
+    _stage_minimal_constraints(tmp_path)
+    db_path = tmp_path / ".ast-cache" / "index.db"
+    db_path.parent.mkdir()
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE edges(kind TEXT)")
+    conn.execute("INSERT INTO edges VALUES ('calls')")
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.evaluate",
+        lambda *_args: (_ for _ in ()).throw(
+            RuntimeError("CONSTRAINT_EVALUATION_CAPACITY")
+        ),
+    )
+
+    result = _run(_make_tool(tmp_path).execute({"output_format": "json"}))
+
+    assert result == {
+        "success": False,
+        "verdict": "ERROR",
+        "error_code": "CONSTRAINT_EVALUATION_CAPACITY",
+        "error": "CONSTRAINT_EVALUATION_CAPACITY",
+    }
+
+
+def test_read_only_zero_rules_rechecks_live_config_before_safe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3768708964: an empty rules read cannot race a new rule.
+    import tree_sitter_analyzer.mcp.tools.constraint_check_tool as constraint_tool
+
+    config = tmp_path / "architectural-constraints.yml"
+    config.write_text("version: 1\nconstraints: []\n")
+    real_load = constraint_tool.load_live_constraints
+
+    def load_then_tighten(root: str, deadline: float):
+        snapshot, rules = real_load(root, deadline)
+        config.write_text(
+            "version: 1\nconstraints:\n"
+            "  - {id: r, severity: error, rule: forbid, from: 'a/**', "
+            "to: 'b/**', reason: tightened}\n"
+        )
+        return snapshot, rules
+
+    monkeypatch.setattr(constraint_tool, "load_live_constraints", load_then_tighten)
+    result = _run(_make_tool(tmp_path).execute({"persist": False}))
+
+    assert (result["success"], result["error_code"]) == (
+        False,
+        "CONSTRAINT_CONFIG_CHANGED",
+    )
+
+
+def test_read_only_nonempty_rules_rechecks_live_config_after_evaluation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3768708964: a completed graph read cannot publish stale rules.
+    _stage_minimal_constraints(tmp_path)
+    tool = _make_tool(tmp_path)
+
+    def evaluate_then_tighten(*_args, **_kwargs):
+        config = tmp_path / "architectural-constraints.yml"
+        config.write_text(config.read_text() + "\n# tightened\n")
+        return [], 0
+
+    monkeypatch.setattr(tool, "_run_read_only", evaluate_then_tighten)
+    result = _run(tool.execute({"persist": False, "output_format": "json"}))
+
+    assert (result["success"], result["error_code"]) == (
+        False,
+        "CONSTRAINT_CONFIG_CHANGED",
+    )

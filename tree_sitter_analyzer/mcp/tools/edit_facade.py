@@ -200,6 +200,7 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
         # agents. Surface it with the authoritative enum from the inner tool
         # so facade/inner never drift. Never added to required[] (runtime-
         # resolved param convention, locked #397 family).
+        action_scoped_params={"persist": frozenset({"constraints"})},
         extra_public_params={
             "capture_diff_snapshot": {
                 "type": "boolean",

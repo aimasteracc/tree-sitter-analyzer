@@ -141,6 +141,10 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
 
         guard = _config_publish_guard(diff, project_root, deadline)
         config_name = diff.constraint_config_path
+        config_changed = bool(
+            config_name is not None and config_name in diff.assessed_scope_paths
+        )
+        evaluation_scope = None if config_changed else frozenset(frozen_scope)
         if config_name is None:
             response: dict[str, Any] = {
                 "success": True,
@@ -228,7 +232,7 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
                                 min_severity_rank=tool.severity_rank(
                                     arguments.get("severity_min", "warn")
                                 ),
-                                scope_paths=frozenset(frozen_scope),
+                                scope_paths=evaluation_scope,
                                 deadline=deadline,
                             )
                         response = {

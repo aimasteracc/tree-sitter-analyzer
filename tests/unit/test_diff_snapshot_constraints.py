@@ -136,3 +136,25 @@ def test_frozen_source_match_clears_index_hints_before_worktree_compare(
         )
         is False
     )
+
+
+def test_frozen_source_match_rejects_dirty_gitlink_container(monkeypatch) -> None:
+    # PR #1254 review 3768096801: extensionless gitlinks own indexed descendants.
+    outputs = iter((b"libs/component\0", b""))
+    monkeypatch.setattr(
+        constraints, "frozen_index_output", lambda *args, **kwargs: next(outputs)
+    )
+    entry = b"160000 " + b"a" * 40 + b" 0"
+    epoch = GitEpoch(
+        b"a" * 40,
+        "sha1",
+        ((b"libs/component", entry),),
+        (b"libs/component",),
+        (),
+        (),
+        index_bytes=b"index",
+    )
+
+    result = constraints.frozen_index_sources_match_worktree(".", epoch, 1e20, 1024)
+
+    assert result is False

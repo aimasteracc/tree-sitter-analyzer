@@ -88,8 +88,15 @@ def frozen_index_sources_match_worktree(
     )
     paths = {path for path in dirty_raw.split(b"\0") if path}
     paths.update(path for path in untracked_raw.split(b"\0") if path)
+    indexed_paths = epoch.index_map()
     for raw in paths:
         path = raw_to_path(raw)
         if EXT_TO_LANG.get(os.path.splitext(path)[1].lower()) is not None:
+            return False
+        entry = indexed_paths.get(raw)
+        if entry is not None and entry.startswith(b"160000 "):
+            # The live full-index walker can index supported descendants of a
+            # submodule. Any dirty gitlink therefore diverges from stage zero
+            # even though Git reports only the extensionless container path.
             return False
     return True

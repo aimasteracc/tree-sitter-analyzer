@@ -300,3 +300,44 @@ def test_frozen_constraints_rejects_config_changed_during_index_read(
         registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
         is True
     )
+
+
+def test_config_only_frozen_change_evaluates_full_source_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3768452296: tightening rules governs existing source too.
+    _stage_minimal_constraints(tmp_path)
+    db_path = tmp_path / ".ast-cache" / "index.db"
+    _init_violations_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE edges(kind TEXT)")
+    registry, created = _create_frozen_scope(
+        monkeypatch, tmp_path, ["architectural-constraints.yml"]
+    )
+    observed: list[object] = []
+
+    def evaluator(_constraints, _conn, **kwargs):
+        observed.append(kwargs.get("scope_predicate", "absent"))
+        return []
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.evaluate", evaluator
+    )
+    result = _run(
+        _make_tool(tmp_path).execute(
+            {
+                "persist": False,
+                "diff_snapshot_id": created["diff_snapshot_id"],
+                "scope_paths": created["assessed_scope_paths"],
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert result["verdict"] == "SAFE"
+    assert created["assessed_scope_paths"] == ["architectural-constraints.yml"]
+    assert observed == ["absent"]
+    assert (
+        registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
+        is True
+    )

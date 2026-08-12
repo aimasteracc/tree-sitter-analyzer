@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 import sqlite3
 import time
@@ -66,8 +67,8 @@ def test_portable_snapshot_removes_private_temporary_directory(
     real_copy = owner._temporary_copy
 
     @contextmanager
-    def observe(data: bytes, root: str):
-        with real_copy(data, root) as path:
+    def observe(fd: int, expected: tuple[int, ...], root: str, *, deadline: float):
+        with real_copy(fd, expected, root, deadline=deadline) as path:
             staged.append(path.parent)
             yield path
 
@@ -96,39 +97,41 @@ def test_open_database_fd_rejects_descriptor_identity_mismatch(
         owner._open_database_fd(database, expected)
 
 
-def test_read_pinned_database_returns_exact_advertised_bytes(tmp_path: Path) -> None:
+def test_copy_pinned_database_writes_exact_advertised_bytes(tmp_path: Path) -> None:
     path = tmp_path / "bytes"
     path.write_bytes(b"abcdef")
+    output = tmp_path / "copy"
     fd = os.open(path, os.O_RDONLY)
     try:
         expected = owner._stat_identity(os.fstat(fd))
-        assert (
-            owner._read_pinned_database(fd, expected, deadline=time.monotonic() + 1)
-            == b"abcdef"
-        )
+        with output.open("xb", buffering=0) as stream:
+            owner._copy_pinned_database(
+                fd, expected, stream, deadline=time.monotonic() + 1
+            )
     finally:
         os.close(fd)
 
+    assert output.read_bytes() == b"abcdef"
 
-def test_read_pinned_database_rejects_backup_budget(
+
+def test_copy_pinned_database_rejects_backup_budget(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "bytes"
-    path.write_bytes(b"x")
+    path.write_bytes(b"xx")
     fd = os.open(path, os.O_RDONLY)
-    expected = list(owner._stat_identity(os.fstat(fd)))
-    expected[2] = 2
+    expected = owner._stat_identity(os.fstat(fd))
     monkeypatch.setattr(owner, "_MAX_BACKUP_BYTES", 1)
     try:
         with pytest.raises(RuntimeError, match="^INDEX_BACKUP_BUDGET$"):
-            owner._read_pinned_database(
-                fd, tuple(expected), deadline=time.monotonic() + 1
+            owner._copy_pinned_database(
+                fd, expected, io.BytesIO(), deadline=time.monotonic() + 1
             )
     finally:
         os.close(fd)
 
 
-def test_read_pinned_database_rejects_truncation(tmp_path: Path) -> None:
+def test_copy_pinned_database_rejects_truncation(tmp_path: Path) -> None:
     path = tmp_path / "bytes"
     path.write_bytes(b"x")
     fd = os.open(path, os.O_RDONLY)
@@ -136,14 +139,14 @@ def test_read_pinned_database_rejects_truncation(tmp_path: Path) -> None:
     expected[2] = 2
     try:
         with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
-            owner._read_pinned_database(
-                fd, tuple(expected), deadline=time.monotonic() + 1
+            owner._copy_pinned_database(
+                fd, tuple(expected), io.BytesIO(), deadline=time.monotonic() + 1
             )
     finally:
         os.close(fd)
 
 
-def test_read_pinned_database_rejects_growth(tmp_path: Path) -> None:
+def test_copy_pinned_database_rejects_growth(tmp_path: Path) -> None:
     path = tmp_path / "bytes"
     path.write_bytes(b"xy")
     fd = os.open(path, os.O_RDONLY)
@@ -151,14 +154,14 @@ def test_read_pinned_database_rejects_growth(tmp_path: Path) -> None:
     expected[2] = 1
     try:
         with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
-            owner._read_pinned_database(
-                fd, tuple(expected), deadline=time.monotonic() + 1
+            owner._copy_pinned_database(
+                fd, tuple(expected), io.BytesIO(), deadline=time.monotonic() + 1
             )
     finally:
         os.close(fd)
 
 
-def test_read_pinned_database_enforces_deadline(
+def test_copy_pinned_database_enforces_deadline(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "bytes"
@@ -168,7 +171,7 @@ def test_read_pinned_database_enforces_deadline(
     monkeypatch.setattr(owner.time, "monotonic", lambda: 2.0)
     try:
         with pytest.raises(RuntimeError, match="^INDEX_SNAPSHOT_DEADLINE$"):
-            owner._read_pinned_database(fd, expected, deadline=1.0)
+            owner._copy_pinned_database(fd, expected, io.BytesIO(), deadline=1.0)
     finally:
         os.close(fd)
 
@@ -217,10 +220,22 @@ def test_temporary_copy_rejects_project_local_temp(
         def __exit__(self, *_args):
             return None
 
+    source = tmp_path / "source"
+    source.write_bytes(b"data")
+    fd = os.open(source, os.O_RDONLY)
+    expected = owner._stat_identity(os.fstat(fd))
     monkeypatch.setattr(owner.tempfile, "TemporaryDirectory", LocalTemporaryDirectory)
-    with pytest.raises(ValueError, match="^INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED$"):
-        with owner._temporary_copy(b"data", str(tmp_path.resolve())):
-            pytest.fail("unsafe temporary copy published")
+    try:
+        with pytest.raises(ValueError, match="^INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED$"):
+            with owner._temporary_copy(
+                fd,
+                expected,
+                str(tmp_path.resolve()),
+                deadline=time.monotonic() + 1,
+            ):
+                pytest.fail("unsafe temporary copy published")
+    finally:
+        os.close(fd)
 
 
 def _certification_dependencies(
@@ -455,96 +470,3 @@ def test_evaluate_ordinary_snapshot_rejects_registry_scope_mismatch(
             evaluator=None,
             deadline=1.0,
         )
-
-
-def test_portable_snapshot_rejects_page_count_budget_after_pinned_read(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _database(tmp_path)
-
-    class Source:
-        def execute(self, sql: str):
-            self.sql = sql
-            return self
-
-        def fetchone(self):
-            if "page_count" in self.sql:
-                monkeypatch.setattr(owner, "_MAX_BACKUP_BYTES", 1)
-                return (1,)
-            return (4096,)
-
-        def close(self):
-            pass
-
-    monkeypatch.setattr(owner.sqlite3, "connect", lambda *_a, **_k: Source())
-    monkeypatch.setattr(owner, "require_memory_temp_store", lambda _conn: None)
-
-    with pytest.raises(RuntimeError, match="^INDEX_BACKUP_BUDGET$"):
-        with owner.portable_ordinary_snapshot(
-            str(tmp_path), deadline=time.monotonic() + 1
-        ):
-            pytest.fail("oversized page set published")
-
-
-def test_portable_snapshot_progress_rechecks_backup_budget(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _database(tmp_path)
-
-    class Source:
-        def execute(self, sql: str):
-            self.sql = sql
-            return self
-
-        def fetchone(self):
-            return (4096,) if "page_size" in self.sql else (0,)
-
-        def backup(self, _private, **kwargs):
-            monkeypatch.setattr(owner, "_MAX_BACKUP_BYTES", 1)
-            kwargs["progress"](0, 0, 1)
-
-        def close(self):
-            pass
-
-    class Private:
-        def close(self):
-            pass
-
-    connections = iter((Source(), Private()))
-    monkeypatch.setattr(owner.sqlite3, "connect", lambda *_a, **_k: next(connections))
-    monkeypatch.setattr(owner, "require_memory_temp_store", lambda _conn: None)
-
-    with pytest.raises(RuntimeError, match="^INDEX_BACKUP_BUDGET$"):
-        with owner.portable_ordinary_snapshot(
-            str(tmp_path), deadline=time.monotonic() + 1
-        ):
-            pytest.fail("progress budget violation published")
-
-
-@pytest.mark.parametrize("changed_on_call", [3, 4])
-def test_portable_snapshot_rechecks_sidecars_before_and_after_certification(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changed_on_call: int
-) -> None:
-    _database(tmp_path)
-    calls = 0
-    stable = (("-wal", None), ("-journal", None), ("-shm", None))
-
-    def sidecars(_path: Path):
-        nonlocal calls
-        calls += 1
-        return stable if calls != changed_on_call else (("-wal", (1, 2, 3, 4, 5)),)
-
-    monkeypatch.setattr(owner, "_sidecar_state", sidecars)
-    monkeypatch.setattr(
-        owner,
-        "_certify_private_copy",
-        lambda *_a, **_k: owner.OrdinaryConstraintSnapshot("complete", None, None),
-    )
-
-    with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
-        with owner.portable_ordinary_snapshot(
-            str(tmp_path), deadline=time.monotonic() + 1
-        ):
-            pytest.fail("changed sidecar state published")
-
-    assert calls == changed_on_call

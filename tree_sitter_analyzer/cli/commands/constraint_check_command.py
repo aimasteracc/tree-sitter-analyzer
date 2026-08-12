@@ -22,7 +22,11 @@ from pathlib import Path
 from typing import Any
 
 from ...constraints import evaluate, load_constraints
-from ...constraints.parser import ConstraintParseError, _compile_glob
+from ...constraints.parser import (
+    ConstraintParseError,
+    _compile_glob,
+    load_constraints_bytes,
+)
 from ...mcp.tools.constraint_check_tool import ConstraintCheckTool
 
 _SEVERITY_ORDER: dict[str, int] = {"info": 0, "warn": 1, "error": 2}
@@ -133,8 +137,12 @@ def _evaluate_with_explicit_file(
     # temporarily point it at the YAML's parent — keeping the parse path
     # identical to the default flow.
     try:
-        constraints = _load_explicit(config_path)
-    except ConstraintParseError as exc:
+        constraints = (
+            load_constraints_bytes(config_path.read_bytes(), config_path)
+            if not persist
+            else _load_explicit(config_path)
+        )
+    except (ConstraintParseError, OSError) as exc:
         return _failure_envelope(f"constraint parse error: {exc}", output_format)
 
     if not constraints and not persist:
@@ -191,16 +199,22 @@ def _evaluate_with_explicit_file(
             )
     except (
         sqlite3.DatabaseError,
+        OSError,
         RuntimeError,
         ValueError,
         TypeError,
         AttributeError,
     ) as exc:
+        error_code = (
+            "CONSTRAINT_EVALUATION_CAPACITY"
+            if str(exc) == "CONSTRAINT_EVALUATION_CAPACITY"
+            else "CONSTRAINT_INDEX_UNKNOWN"
+        )
         return _format_response(
             {
                 "success": False,
                 "verdict": "ERROR",
-                "error_code": "CONSTRAINT_INDEX_UNKNOWN",
+                "error_code": error_code,
                 "error": str(exc),
                 "violations": [],
                 "rule_count": len(constraints),
@@ -272,6 +286,10 @@ def _run_and_persist(
             return [], 0
         try:
             violations = evaluate(constraints, conn)
+        except RuntimeError as exc:
+            if not persist or str(exc) == "CONSTRAINT_EVALUATION_CAPACITY":
+                raise
+            return [], edge_count
         except Exception:  # noqa: BLE001 — legacy write path degrades
             if not persist:
                 raise

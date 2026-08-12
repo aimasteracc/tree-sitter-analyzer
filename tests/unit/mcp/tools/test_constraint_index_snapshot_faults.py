@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import sqlite3
 import time
 from pathlib import Path
@@ -28,7 +29,7 @@ def test_identity_rejects_non_directory_and_non_regular_paths(tmp_path: Path) ->
         owner._identity(directory, directory=False)
 
 
-def test_read_pinned_database_rejects_identity_change(
+def test_copy_pinned_database_rejects_identity_change(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "bytes"
@@ -38,7 +39,9 @@ def test_read_pinned_database_rejects_identity_change(
     monkeypatch.setattr(owner, "_stat_identity", lambda _info: (9, 9, 9, 9, 9))
     try:
         with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
-            owner._read_pinned_database(fd, expected, deadline=time.monotonic() + 1)
+            owner._copy_pinned_database(
+                fd, expected, io.BytesIO(), deadline=time.monotonic() + 1
+            )
     finally:
         owner.os.close(fd)
 
@@ -51,8 +54,17 @@ def test_temporary_copy_handles_incomparable_paths(
         owner.os.path, "commonpath", lambda _paths: (_ for _ in ()).throw(ValueError())
     )
 
-    with owner._temporary_copy(b"exact", str(tmp_path)) as copy:
-        contents = copy.read_bytes()
+    source = tmp_path / "source"
+    source.write_bytes(b"exact")
+    fd = owner._open(source, owner.os.O_RDONLY)
+    try:
+        expected = owner._stat_identity(owner.os.fstat(fd))
+        with owner._temporary_copy(
+            fd, expected, str(tmp_path), deadline=time.monotonic() + 1
+        ) as copy:
+            contents = copy.read_bytes()
+    finally:
+        owner.os.close(fd)
 
     monkeypatch.setattr(owner.os.path, "commonpath", real_commonpath)
     assert contents == b"exact"

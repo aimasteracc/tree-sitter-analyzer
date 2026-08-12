@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sqlite3
 import time
-from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -262,43 +261,6 @@ def test_malformed_path_scalar_is_structured_index_error(
     assert result["error"] == "caller_file must be text"
 
 
-def test_portable_snapshot_rejects_symlinked_database(
-    tmp_path: Path,
-) -> None:
-    # PR #1254 review 3767273223: pathname fallback must never follow links.
-    from tree_sitter_analyzer.mcp.tools.constraint_index_snapshot import (
-        portable_ordinary_snapshot,
-    )
-
-    cache = tmp_path / ".ast-cache"
-    cache.mkdir()
-    real = tmp_path / "real.db"
-    sqlite3.connect(real).close()
-    (cache / "index.db").symlink_to(real)
-
-    with pytest.raises(ValueError, match="^INDEX_PATH_SYMLINK$"):
-        with portable_ordinary_snapshot(str(tmp_path), deadline=time.monotonic() + 1.0):
-            pytest.fail("symlink snapshot published")
-
-
-def test_portable_snapshot_rejects_nonempty_writer_sidecar(
-    tmp_path: Path,
-) -> None:
-    # PR #1254 review 3767273223: WAL bytes make a pathname copy ambiguous.
-    from tree_sitter_analyzer.mcp.tools.constraint_index_snapshot import (
-        portable_ordinary_snapshot,
-    )
-
-    cache = tmp_path / ".ast-cache"
-    cache.mkdir()
-    sqlite3.connect(cache / "index.db").close()
-    (cache / "index.db-wal").write_bytes(b"writer")
-
-    with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
-        with portable_ordinary_snapshot(str(tmp_path), deadline=time.monotonic() + 1.0):
-            pytest.fail("sidecar snapshot published")
-
-
 def test_tool_schema_reexport_preserves_public_api(tmp_path: Path) -> None:
     from tree_sitter_analyzer.mcp.tools.constraint_check_schema import (
         TOOL_SCHEMA as extracted_schema,
@@ -420,126 +382,69 @@ def test_root_directory_scope_contains_all_relative_paths():
     assert _path_is_in_scope("src/a.py", frozenset({""})) is True
 
 
-def test_portable_snapshot_rejects_pathname_swap_before_open(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # PR #1254 P1: an opened fd must match the exact pre-open lstat identity.
-    import os
+def test_defensive_scope_filter_uses_raw_reserved_prefix_path(tmp_path: Path) -> None:
+    # PR #1254 review 3768614243: wire normalization must occur exactly once.
+    from tree_sitter_analyzer.constraints.schema import Violation
+    from tree_sitter_analyzer.git_path_codec import path_to_wire
 
-    import tree_sitter_analyzer.mcp.tools.constraint_index_snapshot as owner
+    raw_path = "git-path-b64:literal.py"
+    violation = Violation(
+        "reserved", raw_path, "caller", 1, "callee", "outside.py", "warn", 0
+    )
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE edges(kind TEXT)")
+    try:
+        rows, edge_count = _make_tool(tmp_path)._evaluate_connection(
+            conn,
+            [object()],
+            min_severity_rank=0,
+            scope_paths=frozenset({path_to_wire(raw_path)}),
+            evaluator=lambda _constraints, _conn, **_kwargs: [violation],
+        )
+    finally:
+        conn.close()
 
-    cache = tmp_path / ".ast-cache"
-    cache.mkdir()
-    database = cache / "index.db"
-    replacement = cache / "replacement.db"
-    sqlite3.connect(database).close()
-    sqlite3.connect(replacement).close()
-    real_open = owner._open
-    swapped = False
-
-    def swap_then_open(path, flags):
-        nonlocal swapped
-        if not swapped and Path(path) == database:
-            swapped = True
-            os.replace(replacement, database)
-        return real_open(path, flags)
-
-    monkeypatch.setattr(owner, "_open", swap_then_open)
-
-    with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
-        with owner.portable_ordinary_snapshot(
-            str(tmp_path), deadline=time.monotonic() + 1.0
-        ):
-            pytest.fail("mismatched opened descriptor published")
+    assert edge_count == 0
+    assert [row["rule_id"] for row in rows] == ["reserved"]
+    assert rows[0]["caller_file"] == path_to_wire(raw_path)
 
 
-@pytest.mark.parametrize("failure", [FileNotFoundError, OSError])
-def test_portable_missing_cache_is_structured_index_error(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    failure: type[OSError],
-) -> None:
-    # Windows CI incident 2026-07-01: portable acquisition may see a missing cache.
-    import tree_sitter_analyzer.mcp.tools.constraint_index_snapshot as owner
+def test_read_only_config_filesystem_failure_is_structured(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.mcp.tools.constraint_check_tool as owner
 
-    _stage_minimal_constraints(tmp_path)
-    monkeypatch.setattr(owner, "portable_snapshot_required", lambda: True)
     monkeypatch.setattr(
         owner,
-        "_identity",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            failure("portable cache unavailable")
-        ),
+        "load_live_constraints",
+        lambda *_args: (_ for _ in ()).throw(OSError("config unreadable")),
+    )
+    result = _run(_make_tool(tmp_path).execute({"persist": False}))
+    assert (
+        result["success"],
+        result["verdict"],
+        result["error_code"],
+        result["error"],
+    ) == (
+        False,
+        "ERROR",
+        "CONSTRAINT_CONFIG_UNKNOWN",
+        "config unreadable",
     )
 
-    result = _run(
-        _make_tool(tmp_path).execute({"persist": False, "output_format": "json"})
-    )
 
-    assert result == {
-        "success": False,
-        "verdict": "ERROR",
-        "error_code": "CONSTRAINT_INDEX_UNKNOWN",
-        "error": "portable cache unavailable",
-    }
+def test_persistent_generic_evaluator_failure_preserves_legacy_degradation(
+    tmp_path, monkeypatch
+):
+    import tree_sitter_analyzer.mcp.tools.constraint_check_tool as owner
 
-
-def test_portable_corrupt_copy_closes_connections_before_temporary_cleanup(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # Windows CI incident 2026-07-01: open SQLite handles block temp unlink.
-    import tree_sitter_analyzer.mcp.tools.constraint_index_snapshot as owner
-
-    cache = tmp_path / ".ast-cache"
-    cache.mkdir()
-    database = cache / "index.db"
-    sqlite3.connect(database).close()
-    events: list[str] = []
-
-    class Source:
-        def execute(self, _sql):
-            return self
-
-        def fetchone(self):
-            return (4096,)
-
-        def backup(self, *_args, **_kwargs):
-            raise sqlite3.DatabaseError("corrupt private copy")
-
-        def close(self):
-            events.append("source.close")
-
-    class Private:
-        def execute(self, _sql):
-            return self
-
-        def fetchone(self):
-            return (2,)
-
-        def close(self):
-            events.append("private.close")
-
-    connections = iter((Source(), Private()))
-
-    @contextmanager
-    def locked_temporary_copy(_data, _root):
-        try:
-            yield tmp_path / "private-index.db"
-        finally:
-            events.append("temporary.exit")
-            if events[:2] != ["source.close", "private.close"]:
-                raise PermissionError("temporary copy is still locked")
-
-    monkeypatch.setattr(owner, "_temporary_copy", locked_temporary_copy)
+    db_path = tmp_path / "index.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE edges(kind TEXT)")
+    conn.execute("INSERT INTO edges VALUES ('calls')")
+    conn.commit()
+    conn.close()
     monkeypatch.setattr(
-        owner.sqlite3, "connect", lambda *_args, **_kwargs: next(connections)
+        owner,
+        "evaluate",
+        lambda *_args: (_ for _ in ()).throw(ValueError("bad evaluator")),
     )
-    monkeypatch.setattr(owner, "require_memory_temp_store", lambda _conn: None)
-
-    with pytest.raises(sqlite3.DatabaseError, match="^corrupt private copy$"):
-        with owner.portable_ordinary_snapshot(
-            str(tmp_path), deadline=time.monotonic() + 1.0
-        ):
-            pytest.fail("corrupt snapshot published")
-
-    assert events == ["source.close", "private.close", "temporary.exit"]
+    assert _make_tool(tmp_path)._run_and_persist(db_path, [object()]) == ([], 1)

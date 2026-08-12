@@ -28,6 +28,7 @@ from ...index_symbol_projection import (
     sqlite_compile_supports_fts5,
     symbol_projection_is_exact,
 )
+from ...portable_source_snapshot import capture_portable_source_snapshot
 
 _MAX_BACKUP_BYTES = 510 * 1024 * 1024
 
@@ -85,36 +86,50 @@ def _open_database_fd(db_path: Path, expected: tuple[int, int, int, int, int]) -
     return fd
 
 
-def _read_pinned_database(
+def _copy_pinned_database(
     fd: int,
     expected: tuple[int, int, int, int, int],
+    stream: Any,
     *,
     deadline: float,
-) -> bytes:
-    """Read exactly the lstat-advertised bytes from one stable pinned fd."""
+) -> None:
+    """Stream one pinned database to ``stream`` under size and time bounds."""
     size = expected[2]
     if size > _MAX_BACKUP_BYTES:
         raise RuntimeError("INDEX_BACKUP_BUDGET")
-    chunks: list[bytes] = []
     remaining = size
     while remaining:
         _deadline(deadline)
         chunk = os.read(fd, min(64 * 1024, remaining))
         if not chunk:
             raise ValueError("CONCURRENT_WRITER")
-        chunks.append(chunk)
+        view = memoryview(chunk)
+        while view:
+            _deadline(deadline)
+            written = stream.write(view)
+            if not isinstance(written, int) or written <= 0 or written > len(view):
+                raise OSError("INDEX_STAGE_WRITE_FAILED")
+            view = view[written:]
+            _deadline(deadline)
         remaining -= len(chunk)
     _deadline(deadline)
     if os.read(fd, 1):
         raise ValueError("CONCURRENT_WRITER")
+    _deadline(deadline)
     if _stat_identity(os.fstat(fd)) != expected:
         raise ValueError("CONCURRENT_WRITER")
-    return b"".join(chunks)
+    _deadline(deadline)
 
 
 @contextmanager
-def _temporary_copy(data: bytes, root: str) -> Iterator[Path]:
-    """Stage captured bytes in a private temporary directory outside the project."""
+def _temporary_copy(
+    fd: int,
+    expected: tuple[int, int, int, int, int],
+    root: str,
+    *,
+    deadline: float,
+) -> Iterator[Path]:
+    """Stream a pinned database into a private directory outside the project."""
     with tempfile.TemporaryDirectory(prefix="tsa-constraint-index-") as tmp:
         tmp_real = os.path.realpath(tmp)
         try:
@@ -124,8 +139,8 @@ def _temporary_copy(data: bytes, root: str) -> Iterator[Path]:
         if inside_project:
             raise ValueError("INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED")
         copy_path = Path(tmp_real) / "index.db"
-        with copy_path.open("xb") as stream:
-            stream.write(data)
+        with copy_path.open("xb", buffering=0) as stream:
+            _copy_pinned_database(fd, expected, stream, deadline=deadline)
         yield copy_path
 
 
@@ -155,6 +170,13 @@ def _deadline(deadline: float) -> None:
         raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
 
 
+def _capture_constraint_sources(root: str, source_scope: Any, deadline: float) -> Any:
+    """Select the secure source certifier available on the current platform."""
+    if portable_snapshot_required():
+        return capture_portable_source_snapshot(root, source_scope, deadline=deadline)
+    return capture_current_source_snapshot(root, source_scope, deadline=deadline)
+
+
 def _certify_private_copy(
     conn: sqlite3.Connection, root: str, *, deadline: float
 ) -> OrdinaryConstraintSnapshot:
@@ -180,7 +202,7 @@ def _certify_private_copy(
         return OrdinaryConstraintSnapshot(
             "partial", "SOURCE_SCOPE_DESCRIPTOR_INVALID", None
         )
-    current = capture_current_source_snapshot(root, source_scope, deadline=deadline)
+    current = _capture_constraint_sources(root, source_scope, deadline)
     if current.state != "exact":
         return OrdinaryConstraintSnapshot(
             "partial", current.reason or "SOURCE_SCOPE_UNKNOWN", source_scope
@@ -214,6 +236,18 @@ def _certify_private_copy(
         return OrdinaryConstraintSnapshot(
             "partial", "SYMBOL_PROJECTION_INCOMPLETE", source_scope
         )
+    final_current = _capture_constraint_sources(root, source_scope, deadline)
+    if final_current.state != "exact":
+        return OrdinaryConstraintSnapshot(
+            "partial",
+            final_current.reason or "SOURCE_SCOPE_UNKNOWN",
+            source_scope,
+        )
+    if (
+        final_current.rows != current.rows
+        or final_current.fingerprint != current.fingerprint
+    ):
+        raise ValueError("CONCURRENT_SOURCE")
     return OrdinaryConstraintSnapshot("complete", None, source_scope)
 
 
@@ -239,16 +273,14 @@ def portable_ordinary_snapshot(
     private: sqlite3.Connection | None = None
     try:
         db_fd = _open_database_fd(db_path, db_before)
-        data = _read_pinned_database(db_fd, db_before, deadline=deadline)
-        if (
-            _identity(root_path, directory=True) != root_before
-            or _identity(cache_path, directory=True) != cache_before
-            or _identity(db_path, directory=False) != db_before
-            or _sidecar_state(db_path) != sidecars_before
-        ):
-            raise ValueError("CONCURRENT_WRITER")
-
-        with _temporary_copy(data, root) as copy_path:
+        with _temporary_copy(db_fd, db_before, root, deadline=deadline) as copy_path:
+            if (
+                _identity(root_path, directory=True) != root_before
+                or _identity(cache_path, directory=True) != cache_before
+                or _identity(db_path, directory=False) != db_before
+                or _sidecar_state(db_path) != sidecars_before
+            ):
+                raise ValueError("CONCURRENT_WRITER")
             # SQLite is intentionally given only the private copy's pathname,
             # never the mutable project database pathname.
             copy_complete = False
