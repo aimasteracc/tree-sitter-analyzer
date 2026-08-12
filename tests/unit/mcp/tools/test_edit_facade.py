@@ -773,13 +773,23 @@ async def test_edit_snapshot_consumer_accepts_only_frozen_arguments() -> None:
 
 
 @POSIX_SNAPSHOT_TEST
-def test_edit_impact_snapshot_opt_in_does_not_write(tmp_path: Path) -> None:
+def test_edit_impact_snapshot_opt_in_does_not_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import asyncio
 
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     root = make_repo(tmp_path)
     (root / "old.py").write_text("value = 2\n")
+    from tree_sitter_analyzer.diff_snapshot_capture import ChangedFile
+
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        root,
+        records=[ChangedFile("old.py", "M", True, True, False)],
+        inventory_paths=["old.py"],
+    )
     before = {path.relative_to(root) for path in root.rglob("*")}
     facade = build_edit_facade(str(root))
 
