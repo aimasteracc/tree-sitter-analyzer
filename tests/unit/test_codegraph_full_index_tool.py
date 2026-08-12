@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -308,6 +308,41 @@ class TestExecute:
             "codegraph_full_index: completed with warn",
             "codegraph_full_index: completed with warn",
         )
+
+    async def test_incremental_manifest_certification_failure_is_operational_success(
+        self, tool_with_root
+    ):
+        clean_phase = {"status": "ok", "processed": 1}
+        with (
+            patch.object(tool_with_root, "_phase_ast_cache", return_value=clean_phase),
+            patch.object(
+                tool_with_root, "_phase_incremental_sync", return_value=clean_phase
+            ),
+            patch.object(
+                tool_with_root, "_phase_fts5_stats", return_value={"status": "ok"}
+            ),
+            patch.object(
+                tool_with_root, "_phase_call_edge_stats", return_value={"status": "ok"}
+            ),
+            patch.object(
+                tool_with_root,
+                "_collect_final_stats",
+                return_value={
+                    "_manifest_certified": False,
+                    "manifest_certification_failed": True,
+                    "manifest_warning": "INDEX_MANIFEST_CERTIFICATION_FAILED",
+                },
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {
+                    "mode": "incremental",
+                    "resolve_synapse": False,
+                    "output_format": "json",
+                }
+            )
+
+        assert (result["success"], result["verdict"]) == (True, "WARN")
 
     async def test_synapse_phase_inherits_ast_backfill_failure(self, tool_with_root):
         result = tool_with_root._phase_synapse({"status": "ok", "backfill_errors": 1})
@@ -854,6 +889,9 @@ class TestExecute:
         assert events == ["clock", "snapshot", "clock"]
         assert result["elapsed_seconds"] == 5.0
 
+    @pytest.mark.skipif(
+        os.name != "posix", reason="GH-1253: authoritative frozen epoch"
+    )
     async def test_mutation_between_phases_is_skipped_and_reported(self, tmp_path):
         path = tmp_path / "app.py"
         path.write_text("value = 1\n")
@@ -1205,6 +1243,16 @@ def test_final_stats_stamp_failure_does_not_delete_later_manifest(tmp_path):
         result["scope_complete"],
         manifest[0],
     ) == ("INDEX_MANIFEST_CERTIFICATION_FAILED", True, 1, False, "index")
+
+
+def test_collect_final_stats_returns_empty_on_cache_failure(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.ast_cache as ast_cache
+
+    monkeypatch.setattr(
+        ast_cache, "ASTCache", Mock(side_effect=RuntimeError("cache unavailable"))
+    )
+    result = CodeGraphFullIndexTool(str(tmp_path))._collect_final_stats()
+    assert result == {}
 
 
 @pytest.mark.asyncio

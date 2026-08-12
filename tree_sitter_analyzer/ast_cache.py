@@ -78,7 +78,7 @@ class ASTCache(
         os.makedirs(db_dir, exist_ok=True)
         cache_dir = os.path.join(self.project_root, ".ast-cache")
         os.makedirs(cache_dir, exist_ok=True)
-        if os.name == "posix":
+        if os.name == "posix":  # pragma: no branch - Windows uses no fd lease
             flags = (
                 os.O_RDONLY
                 | getattr(os, "O_DIRECTORY", 0)
@@ -90,7 +90,7 @@ class ASTCache(
             self._cache_dir_identity = (info.st_dev, info.st_ino)
         try:
             self._init_db()
-            if self._cache_dir_fd is not None:
+            if self._cache_dir_fd is not None:  # pragma: no branch - POSIX owner
                 info = os.stat(cache_dir, follow_symlinks=False)
                 if (info.st_dev, info.st_ino) != self._cache_dir_identity:
                     raise RuntimeError(

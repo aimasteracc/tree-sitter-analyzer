@@ -3244,6 +3244,7 @@ def test_discard_root_lease_dispatch_is_exact(monkeypatch):
     assert calls == [{}, {"root_fd": 17}]
 
 
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253: POSIX root lease")
 def test_force_rebuild_root_swap_keeps_replacement_mirror_isolated(
     tmp_path, monkeypatch
 ):
@@ -3299,12 +3300,74 @@ def test_force_rebuild_root_swap_keeps_replacement_mirror_isolated(
     assert observed == (1, 1, False, "replacement mirror")
 
 
+@requires_posix_fd
+def test_cache_constructor_rejects_cache_dir_replacement_during_db_open(
+    tmp_path, monkeypatch
+):
+    real_init = ASTCache._init_db
+    cache_dir = tmp_path / ".ast-cache"
+    displaced = tmp_path / ".ast-cache-displaced"
+
+    def init_then_replace(cache):
+        real_init(cache)
+        cache_dir.rename(displaced)
+        cache_dir.mkdir()
+
+    monkeypatch.setattr(ASTCache, "_init_db", init_then_replace)
+    with pytest.raises(RuntimeError, match="directory changed while opening database"):
+        ASTCache(str(tmp_path))
+
+
 def test_pinned_mirror_invalidation_rejects_unbound_cache_dir(tmp_path):
     import tree_sitter_analyzer.cache.indexer as indexer
 
     cache = SimpleNamespace(project_root=str(tmp_path), _cache_dir_fd=None)
     with pytest.raises(OSError, match="AST_CACHE_DIRECTORY_UNBOUND"):
         indexer._invalidate_ladybug(cache, root_fd=17)
+
+
+@requires_posix_fd
+def test_force_rebuild_rejects_cache_dir_probe_error_before_clear(
+    tmp_path, monkeypatch
+):
+    import tree_sitter_analyzer.cache.indexer as indexer
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        cleanup_index_candidate_snapshot,
+    )
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    real_open = indexer.os.open
+
+    def fail_cache_probe(path, flags, *args, **kwargs):
+        if path == ".ast-cache" and kwargs.get("dir_fd") is not None:
+            raise OSError("probe denied")
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(indexer.os, "open", fail_cache_probe)
+    try:
+        result = cache.index_project(
+            force=True, max_files=10, candidate_snapshot=snapshot, workers=0
+        )
+        persisted = (
+            cache.get_conn().execute("SELECT COUNT(*) FROM ast_index").fetchone()[0]
+        )
+    finally:
+        cache.close()
+        cleanup_index_candidate_snapshot(snapshot)
+
+    assert result["abort_remaining_phases"] is True
+    assert persisted == 1
 
 
 @requires_posix_fd
