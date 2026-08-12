@@ -298,7 +298,10 @@ def portable_ordinary_snapshot(
         ):
             raise ValueError("CONCURRENT_WRITER")
         private.row_factory = sqlite3.Row
-        snapshot = _certify_private_copy(private, root, deadline=deadline)
+        try:
+            snapshot = _certify_private_copy(private, root, deadline=deadline)
+        except sqlite3.DatabaseError as exc:
+            raise ValueError("CORRUPT_INDEX") from exc
         if (
             _stat_identity(os.fstat(db_fd)) != db_before
             or _identity(root_path, directory=True) != root_before

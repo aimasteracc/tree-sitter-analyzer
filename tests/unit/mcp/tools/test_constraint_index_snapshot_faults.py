@@ -282,3 +282,17 @@ def test_close_optional_fd_handles_absent_and_open_descriptor(monkeypatch):
     owner._close_optional_fd(None)
     owner._close_optional_fd(7)
     assert calls == [7]
+
+
+def test_portable_snapshot_maps_certification_database_error(tmp_path, monkeypatch):
+    _database(tmp_path)
+    monkeypatch.setattr(
+        owner,
+        "_certify_private_copy",
+        lambda *_a, **_kw: (_ for _ in ()).throw(sqlite3.DatabaseError("bad schema")),
+    )
+    with pytest.raises(ValueError, match="^CORRUPT_INDEX$"):
+        with owner.portable_ordinary_snapshot(
+            str(tmp_path), deadline=time.monotonic() + 1
+        ):
+            pytest.fail("corrupt certification published")
