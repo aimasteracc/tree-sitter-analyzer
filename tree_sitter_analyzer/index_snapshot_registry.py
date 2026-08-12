@@ -53,6 +53,7 @@ def reuse_snapshot(
             and existing.reason == snapshot.reason
             and existing.file_count == snapshot.file_count
             and existing.symbol_projection_exact == snapshot.symbol_projection_exact
+            and existing.source_scope == snapshot.source_scope
         )
         if not same_logical_identity:
             continue

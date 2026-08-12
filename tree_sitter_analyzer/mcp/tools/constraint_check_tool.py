@@ -1,17 +1,7 @@
 #!/usr/bin/env python3
-"""``check_constraints`` MCP tool — architectural-constraint DSL gate.
+"""``check_constraints`` architectural-constraint DSL gate.
 
-Reads architectural-constraints.yml from project root, evaluates rules
-against the cached call-edge index, writes the result into
-``ast_constraint_violations``, and returns the verdict.
-
-Verdict mapping (Feature 3 spec):
-    error severity present → UNSAFE
-    only warn severity     → CAUTION
-    no violations          → SAFE
-
-This is the ONLY tool in MVP that emits the UNSAFE verdict; safe_to_edit
-and analyze_change_impact read it through the violations table.
+Evaluates cached call edges and optionally persists exact violations.
 """
 
 from __future__ import annotations
@@ -33,10 +23,7 @@ from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 
 logger = logging.getLogger(__name__)
-
-# Severities that block (verdict UNSAFE) vs warn (verdict CAUTION) vs
-# silent (no verdict impact). Order in the lists determines the verdict
-# escalation precedence — error > warn > info — and is asserted by tests.
+# Exact verdict escalation: error > warn > info.
 _BLOCKING_SEVERITIES: frozenset[str] = frozenset({"error"})
 _WARNING_SEVERITIES: frozenset[str] = frozenset({"warn"})
 

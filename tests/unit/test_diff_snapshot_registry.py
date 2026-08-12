@@ -409,6 +409,29 @@ def test_validate_publish_bounds_oracle_by_remaining_lifetime(
     consumer.release()
 
 
+def test_validate_publish_rejects_generation_change_during_validation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = tmp_path
+    identity = install_fake_snapshot_materializer(monkeypatch, root)
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "diff", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert error is None
+    assert consumer is not None
+    generations = iter(("before", "after"))
+    monkeypatch.setattr(
+        snapshots,
+        "oracle_generation",
+        lambda *args, **kwargs: (next(generations), identity),
+    )
+
+    result = registry.validate_publish(consumer)
+
+    assert result == "DIFF_SNAPSHOT_SOURCE_CHANGED"
+    consumer.release()
+
+
 def test_validate_publish_marks_closed_pinned_state_expired(
     tmp_path: Path, monkeypatch
 ) -> None:

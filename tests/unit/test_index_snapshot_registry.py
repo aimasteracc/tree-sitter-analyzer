@@ -74,6 +74,29 @@ class TestIndexSnapshotRegistry:
 
         assert published.source_scope == scope
 
+    def test_registry_retires_logical_match_when_source_scope_changes(self, tmp_path):
+        # Final gate: a capability must retain the exact certified scope descriptor.
+        from dataclasses import replace
+
+        import tree_sitter_analyzer.index_snapshot as owner
+        from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+        first = replace(
+            self._snapshot(tmp_path),
+            source_scope=make_source_scope_descriptor(roots=("src",)),
+        )
+        published = owner.REGISTRY.publish(first, sqlite3.connect(":memory:"), 0)
+        second = replace(
+            first, source_scope=make_source_scope_descriptor(roots=("lib",))
+        )
+        replacement = owner.REGISTRY.publish(second, sqlite3.connect(":memory:"), 0)
+
+        assert replacement.snapshot_id != published.snapshot_id
+        assert tuple(owner.REGISTRY._entries) == (
+            published.snapshot_id,
+            replacement.snapshot_id,
+        )
+
     def test_registry_retires_logical_match_when_physical_stats_change(self, tmp_path):
         # PR #1253 thread 3756228871: VACUUM-only changes cannot reuse metrics.
         from dataclasses import replace

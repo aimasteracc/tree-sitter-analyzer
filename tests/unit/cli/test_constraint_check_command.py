@@ -477,6 +477,24 @@ class TestRunAndPersist:
             _, edge_count = _run_and_persist(db, [])
         assert edge_count == 1
 
+    def test_read_only_evaluation_returns_rows_without_creating_cache_table(
+        self, tmp_path
+    ):
+        db = self._db_with_edges(tmp_path)
+        violation = _v()
+
+        with patch(_EVALUATE, return_value=[violation]):
+            result = _run_and_persist(db, ["c"], persist=False)
+
+        conn = sqlite3.connect(str(db))
+        tables = conn.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'ast_constraint_violations'"
+        ).fetchall()
+        conn.close()
+        assert result == ([violation], 1)
+        assert tables == []
+
     def test_violations_table_cleared_before_insert(self, tmp_path):
         db = self._db_with_edges(tmp_path)
         # Pre-populate violations table with a stale row
@@ -585,6 +603,24 @@ class TestRunTool:
         assert called_payload["severity_min"] == "error"
         assert called_payload["path_filter"] == "src/*"
         assert called_payload["output_format"] == "toon"
+
+    def test_read_only_omits_persistence_from_tool_execution(self, tmp_path):
+        import asyncio
+
+        mock_tool = MagicMock()
+        mock_tool.execute = AsyncMock(return_value={"success": True})
+
+        with patch(_CCT_CLS, return_value=mock_tool):
+            asyncio.run(_run_tool(str(tmp_path), "warn", "", "json", persist=False))
+
+        mock_tool.execute.assert_awaited_once_with(
+            {
+                "path_filter": "",
+                "severity_min": "warn",
+                "output_format": "json",
+                "persist": False,
+            }
+        )
 
 
 # ---------------------------------------------------------------------------

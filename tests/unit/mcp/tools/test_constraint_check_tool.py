@@ -959,6 +959,17 @@ def test_constraint_arguments_reject_non_boolean_persist(tmp_path: Path) -> None
         _make_tool(tmp_path).validate_arguments({"persist": "false"})
 
 
+def test_constraint_arguments_reject_unknown_severity(tmp_path: Path) -> None:
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"^severity_min must be one of \['error', 'info', 'warn'\]; "
+            r"got 'critical'$"
+        ),
+    ):
+        _make_tool(tmp_path).validate_arguments({"severity_min": "critical"})
+
+
 def test_scope_predicate_accepts_caller_or_callee_and_rejects_outside(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
