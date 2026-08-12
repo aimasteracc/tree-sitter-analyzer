@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
@@ -715,6 +716,9 @@ class TestEvaluateWithExplicitFile:
             with patch(_APPLY_TOON, side_effect=lambda p, fmt: p):
                 result = self._call(tmp_path, str(yaml_file), persist=False)
 
+        expected_error = (
+            "CORRUPT_INDEX" if os.name == "posix" else "SECURE_FD_SNAPSHOT_UNSUPPORTED"
+        )
         assert (
             result["success"],
             result["verdict"],
@@ -727,7 +731,7 @@ class TestEvaluateWithExplicitFile:
             False,
             "ERROR",
             "CONSTRAINT_INDEX_UNKNOWN",
-            "CORRUPT_INDEX",
+            expected_error,
             [],
             0,
             1,
@@ -750,6 +754,9 @@ class TestEvaluateWithExplicitFile:
                 with patch(_APPLY_TOON, side_effect=lambda p, fmt: p):
                     result = self._call(tmp_path, str(yaml_file), persist=False)
 
+        expected_error = (
+            "CORRUPT_INDEX" if os.name == "posix" else "SECURE_FD_SNAPSHOT_UNSUPPORTED"
+        )
         assert (
             result["success"],
             result["verdict"],
@@ -762,7 +769,7 @@ class TestEvaluateWithExplicitFile:
             False,
             "ERROR",
             "CONSTRAINT_INDEX_UNKNOWN",
-            "CORRUPT_INDEX",
+            expected_error,
             [],
             0,
             1,
