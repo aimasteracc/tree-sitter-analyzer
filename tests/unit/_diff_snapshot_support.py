@@ -44,6 +44,17 @@ def install_fake_snapshot_materializer(
     monkeypatch.setattr(
         snapshots, "shared_source_generation", lambda *_a, **_k: "sg_test"
     )
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_source_snapshot as source_snapshot
+
+    monkeypatch.setattr(
+        source_snapshot,
+        "capture_current_source_snapshot",
+        lambda *_a, **_k: SimpleNamespace(
+            state="exact", generation="sg_test", reason=None
+        ),
+    )
     monkeypatch.setattr(
         snapshots,
         "frozen_index_constraint_config",
