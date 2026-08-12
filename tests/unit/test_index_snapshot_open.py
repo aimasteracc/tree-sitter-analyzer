@@ -50,8 +50,11 @@ class TestAuthoritativeSnapshotOracle:
         assert result["oracle_reason"] == "INDEX_SNAPSHOT_CAPACITY"
 
     @requires_posix_fd
+    @pytest.mark.slow_ok
     def test_512_byte_pages_can_backup_a_100_mib_database(self, tmp_path):
-        # PR #1253: backup admission is byte-based, not a fixed page count.
+        # PR #1253: intentional 100 MiB I/O can exceed 5 s under macOS xdist load;
+        # this is a correctness boundary, not a per-call performance assertion.
+        # Backup admission is byte-based, not a fixed page count.
         from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import read_existing_snapshot
         from tree_sitter_analyzer.index_snapshot_schema import (
