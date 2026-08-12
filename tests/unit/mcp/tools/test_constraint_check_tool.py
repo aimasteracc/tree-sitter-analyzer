@@ -30,6 +30,7 @@ exactly what we want for a RED test.
 from __future__ import annotations
 
 import asyncio
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -1211,7 +1212,10 @@ def test_read_only_rejects_symlinked_index(tmp_path: Path) -> None:
     link.parent.mkdir()
     link.symlink_to(real)
 
-    with pytest.raises(ValueError, match="^INDEX_PATH_SYMLINK$"):
+    expected = (
+        "INDEX_PATH_SYMLINK" if os.name == "posix" else "SECURE_FD_SNAPSHOT_UNSUPPORTED"
+    )
+    with pytest.raises(ValueError, match=f"^{expected}$"):
         _make_tool(tmp_path)._run_read_only(
             link, [object()], path_filter="", min_severity_rank=1
         )
@@ -1223,7 +1227,10 @@ def test_read_only_rejects_nonempty_writer_sidecar(tmp_path: Path, suffix: str) 
     _edges_db(db_path)
     Path(str(db_path) + suffix).write_bytes(b"active writer")
 
-    with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
+    expected = (
+        "CONCURRENT_WRITER" if os.name == "posix" else "SECURE_FD_SNAPSHOT_UNSUPPORTED"
+    )
+    with pytest.raises(ValueError, match=f"^{expected}$"):
         _make_tool(tmp_path)._run_read_only(
             db_path, [object()], path_filter="", min_severity_rank=1
         )
@@ -1576,3 +1583,36 @@ def test_read_only_deadline_interrupts_response_materialization(tmp_path, monkey
             deadline=2.0,
         )
     conn.close()
+
+
+def test_evaluate_connection_rejects_deadline_after_response_sort(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tree_sitter_analyzer.constraints.schema import Violation
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE edges (kind TEXT)")
+    conn.execute("INSERT INTO edges VALUES ('calls')")
+    conn.commit()
+    calls = 0
+
+    def clock() -> float:
+        nonlocal calls
+        calls += 1
+        return 0.0 if calls < 4 else 2.0
+
+    monkeypatch.setattr(time, "monotonic", clock)
+    violation = Violation("r", "a.py", "a", 1, "b", "b.py", "warn", 0)
+    try:
+        with pytest.raises(RuntimeError, match="^INDEX_SNAPSHOT_DEADLINE$"):
+            _make_tool(tmp_path)._evaluate_connection(
+                conn,
+                [object()],
+                min_severity_rank=0,
+                evaluator=lambda *_args, **_kwargs: [violation],
+                deadline=1.0,
+            )
+    finally:
+        conn.close()
+
+    assert calls == 4

@@ -363,3 +363,42 @@ def test_backup_expiring_during_copy_returns_deadline(tmp_path, monkeypatch):
         "unknown",
         "INDEX_SNAPSHOT_DEADLINE",
     )
+
+
+def test_manifest_empty_authority_returns_none() -> None:
+    import tree_sitter_analyzer.index_snapshot as snapshot
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index_snapshot_manifest("
+        "singleton, canonical_root, source_fingerprint, index_fingerprint, "
+        "file_count, source_scope_descriptor, manifest_version)"
+    )
+    try:
+        result = snapshot._read_bounded_manifest(conn, float("inf"))
+    finally:
+        conn.close()
+
+    assert result is None
+
+
+def test_manifest_boundary_delegates_connection_and_deadline(monkeypatch) -> None:
+    from tree_sitter_analyzer import index_snapshot, index_snapshot_manifest
+
+    connection = object()
+    expected = object()
+    observed = []
+
+    def read_bounded_manifest(received_connection, received_deadline):
+        observed.append((received_connection, received_deadline))
+        return expected
+
+    monkeypatch.setattr(index_snapshot, "_read_bounded_manifest", read_bounded_manifest)
+
+    result = index_snapshot_manifest._read_bounded_manifest(  # type: ignore[arg-type]
+        connection, 7.5
+    )
+
+    assert result is expected
+    assert observed == [(connection, 7.5)]

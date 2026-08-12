@@ -605,7 +605,14 @@ def test_registry_acquire_deadline_fails_before_io_lock_wait(monkeypatch) -> Non
 
     owner.REGISTRY.close_all()
     snapshot = owner.IndexSnapshot(
-        None, "source", "index", "generation", "complete", None, "/project", 1
+        None,
+        "source",
+        "index",
+        "generation",
+        "complete",
+        None,
+        os.path.realpath("/project"),
+        1,
     )
     connection = sqlite3.connect(":memory:", check_same_thread=False)
     published = owner.REGISTRY.publish(snapshot, connection, 1, 50.0)
@@ -640,7 +647,14 @@ def test_registry_acquire_rejects_already_expired_deadline(monkeypatch) -> None:
 
     owner.REGISTRY.close_all()
     snapshot = owner.IndexSnapshot(
-        None, "source", "index", "generation", "complete", None, "/project", 1
+        None,
+        "source",
+        "index",
+        "generation",
+        "complete",
+        None,
+        os.path.realpath("/project"),
+        1,
     )
     published = owner.REGISTRY.publish(
         snapshot, sqlite3.connect(":memory:", check_same_thread=False), 1, 50.0
@@ -664,7 +678,14 @@ def test_registry_acquire_rechecks_deadline_after_io_lock(monkeypatch) -> None:
 
     owner.REGISTRY.close_all()
     snapshot = owner.IndexSnapshot(
-        None, "source", "index", "generation", "complete", None, "/project", 1
+        None,
+        "source",
+        "index",
+        "generation",
+        "complete",
+        None,
+        os.path.realpath("/project"),
+        1,
     )
     published = owner.REGISTRY.publish(
         snapshot, sqlite3.connect(":memory:", check_same_thread=False), 1, 50.0
@@ -704,7 +725,14 @@ def test_registry_acquire_yields_when_io_lock_precedes_deadline(monkeypatch) -> 
 
     owner.REGISTRY.close_all()
     snapshot = owner.IndexSnapshot(
-        None, "source", "index", "generation", "complete", None, "/project", 1
+        None,
+        "source",
+        "index",
+        "generation",
+        "complete",
+        None,
+        os.path.realpath("/project"),
+        1,
     )
     published = owner.REGISTRY.publish(
         snapshot, sqlite3.connect(":memory:", check_same_thread=False), 1, 50.0

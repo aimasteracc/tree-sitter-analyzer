@@ -68,6 +68,8 @@ def install_fake_snapshot_materializer(
         target = root / relative
         if not target.exists():
             return SafePath(data=None, metadata=(b"missing",), kind="missing")
+        if target.is_dir():
+            return SafePath(data=None, metadata=(b"directory",), kind="directory")
         if not target.is_file():
             return SafePath(data=None, metadata=(b"unsafe",), kind="unsafe")
         data = target.read_bytes()
