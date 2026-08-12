@@ -138,7 +138,7 @@ def _evaluate_with_explicit_file(
         return _failure_envelope(f"constraint parse error: {exc}", output_format)
 
     db_path = Path(project_root) / ".ast-cache" / "index.db"
-    if not db_path.is_file():
+    if persist and not db_path.is_file():
         return _format_response(
             {
                 "success": True,
@@ -156,8 +156,27 @@ def _evaluate_with_explicit_file(
 
     min_severity_rank = _SEVERITY_ORDER.get(severity_min, 1)
     try:
-        violations, edge_count = _run_and_persist(db_path, constraints, persist=persist)
-    except sqlite3.DatabaseError as exc:
+        if persist:
+            violations, edge_count = _run_and_persist(
+                db_path, constraints, persist=True
+            )
+            filtered = _filter_violations(
+                violations,
+                path_filter=path_filter,
+                min_severity_rank=min_severity_rank,
+            )
+        else:
+            filtered, edge_count = ConstraintCheckTool(
+                project_root=project_root
+            )._run_read_only(
+                db_path,
+                constraints,
+                path_filter=path_filter,
+                min_severity_rank=min_severity_rank,
+                evaluator=evaluate,
+                deadline=time.monotonic() + 10.0,
+            )
+    except (sqlite3.DatabaseError, RuntimeError, ValueError) as exc:
         return _format_response(
             {
                 "success": False,
@@ -169,11 +188,6 @@ def _evaluate_with_explicit_file(
             },
             output_format,
         )
-    filtered = _filter_violations(
-        violations,
-        path_filter=path_filter,
-        min_severity_rank=min_severity_rank,
-    )
     verdict = _compute_verdict(filtered)
     return _format_response(
         {

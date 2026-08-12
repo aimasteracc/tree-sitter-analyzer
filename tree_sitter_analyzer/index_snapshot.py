@@ -220,7 +220,7 @@ def _read_bounded_manifest(
 
 
 def _capture_existing_snapshot(
-    project_root: str, *, pin: bool = False
+    project_root: str, *, pin: bool = False, deadline: float | None = None
 ) -> IndexSnapshot:
     # Absence is platform-independent and publishes no file evidence.  Report it
     # before the secure-fd capability gate so fresh Windows installs preserve the
@@ -236,7 +236,7 @@ def _capture_existing_snapshot(
     handles: tuple[int, int, int] | None = None
     connection: sqlite3.Connection | None = None
     evidence: sqlite3.Connection | None = None
-    deadline = _clock() + _CAPTURE_DEADLINE_SECONDS
+    deadline = _clock() + _CAPTURE_DEADLINE_SECONDS if deadline is None else deadline
     if not _CAPTURE_LOCK.acquire(timeout=max(0.0, deadline - _clock())):
         return _unknown("INDEX_SNAPSHOT_DEADLINE")
     try:
@@ -480,9 +480,11 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
 
 
 @contextmanager
-def lease_existing_snapshot(project_root: str) -> Iterator[IndexSnapshot]:
+def lease_existing_snapshot(
+    project_root: str, *, deadline: float | None = None
+) -> Iterator[IndexSnapshot]:
     """Keep a successfully published capability pinned until response assembly."""
-    snapshot = _capture_existing_snapshot(project_root, pin=True)
+    snapshot = _capture_existing_snapshot(project_root, pin=True, deadline=deadline)
     try:
         yield snapshot
     finally:
@@ -491,7 +493,9 @@ def lease_existing_snapshot(project_root: str) -> Iterator[IndexSnapshot]:
 
 
 @contextmanager
-def lease_reusable_snapshot(project_root: str) -> Iterator[IndexSnapshot | None]:
+def lease_reusable_snapshot(
+    project_root: str, *, deadline: float | None = None
+) -> Iterator[IndexSnapshot | None]:
     """Pin a capability only while its source generation remains current."""
     with REGISTRY.pin_reusable(project_root) as snapshot:
         if (
@@ -504,7 +508,9 @@ def lease_reusable_snapshot(project_root: str) -> Iterator[IndexSnapshot | None]
         current = capture_current_source_snapshot(
             project_root,
             snapshot.source_scope,
-            deadline=_clock() + _CAPTURE_DEADLINE_SECONDS,
+            deadline=(
+                _clock() + _CAPTURE_DEADLINE_SECONDS if deadline is None else deadline
+            ),
         )
         if current.state != "exact" or current.generation != snapshot.source_generation:
             yield None
@@ -558,9 +564,16 @@ def read_snapshot_stats(
 
 
 def acquire_index_snapshot(
-    snapshot_id: str, project_root: str, source_generation: str | None = None
+    snapshot_id: str,
+    project_root: str,
+    source_generation: str | None = None,
+    *,
+    deadline: float | None = None,
 ) -> Any:
-    return REGISTRY.acquire(snapshot_id, project_root, source_generation)
+    """Acquire the registry-owned private copy, optionally with an absolute deadline."""
+    return REGISTRY.acquire(
+        snapshot_id, project_root, source_generation, deadline=deadline
+    )
 
 
 def _unknown(reason: str) -> IndexSnapshot:

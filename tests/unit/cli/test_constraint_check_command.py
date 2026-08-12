@@ -714,7 +714,7 @@ class TestEvaluateWithExplicitFile:
             False,
             "ERROR",
             "CONSTRAINT_INDEX_UNKNOWN",
-            "no such table: edges",
+            "CORRUPT_INDEX",
             [],
             0,
             1,
@@ -733,7 +733,7 @@ class TestEvaluateWithExplicitFile:
         conn.close()
 
         with patch(_LOAD_EXPLICIT, return_value=[]):
-            with patch(_EVALUATE, side_effect=sqlite3.DatabaseError("bad edge row")):
+            with patch(_EVALUATE, side_effect=sqlite3.DatabaseError("CORRUPT_INDEX")):
                 with patch(_APPLY_TOON, side_effect=lambda p, fmt: p):
                     result = self._call(tmp_path, str(yaml_file), persist=False)
 
@@ -749,7 +749,7 @@ class TestEvaluateWithExplicitFile:
             False,
             "ERROR",
             "CONSTRAINT_INDEX_UNKNOWN",
-            "bad edge row",
+            "CORRUPT_INDEX",
             [],
             0,
             1,

@@ -5,7 +5,6 @@ from __future__ import annotations
 import inspect
 import secrets
 import threading
-import time
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
@@ -27,6 +26,7 @@ def acquire(
     canonicalize_root: Callable[
         [str | None], tuple[str, RootIdentity]
     ] = canonical_root,
+    deadline: float | None = None,
 ) -> tuple[SnapshotConsumer | None, str | None]:
     try:
         _, identity = canonicalize_root(project_root)
@@ -49,19 +49,27 @@ def acquire(
         if remaining <= 0:
             consumer.release()
             return None, "DIFF_SNAPSHOT_EXPIRED"
+        snapshot_deadline = (
+            state.snapshot.created_monotonic + hard_lifetime_seconds
+            if deadline is None
+            else min(deadline, state.snapshot.created_monotonic + hard_lifetime_seconds)
+        )
+        if registry._clock() >= snapshot_deadline:
+            consumer.release()
+            return None, "DIFF_SNAPSHOT_EXPIRED"
     try:
         generation, current_identity = oracle_generation(
             identity.realpath,
             consumer.snapshot.mode,
-            deadline=time.monotonic() + remaining,
+            deadline=snapshot_deadline,
         )
         shared_generation = shared_source_generation(
-            identity.realpath, time.monotonic() + remaining
+            identity.realpath, snapshot_deadline
         )
         generation_after, identity_after = oracle_generation(
             identity.realpath,
             consumer.snapshot.mode,
-            deadline=time.monotonic() + remaining,
+            deadline=snapshot_deadline,
         )
     except SourceOracleError as exc:
         consumer.release()
@@ -162,6 +170,7 @@ def validate_publish(
     oracle_generation: Callable[..., tuple[str, RootIdentity]],
     shared_source_generation: Callable[[str, float], str],
     hard_lifetime_seconds: float,
+    deadline: float | None = None,
 ) -> str | None:
     """Revalidate the snapshot and an optional response guard in one publish window."""
     with registry._lock:
@@ -180,30 +189,37 @@ def validate_publish(
                 state.lease_open = False
             return "DIFF_SNAPSHOT_EXPIRED"
         assert snapshot is not None
+        snapshot_deadline = (
+            snapshot.created_monotonic + hard_lifetime_seconds
+            if deadline is None
+            else min(deadline, snapshot.created_monotonic + hard_lifetime_seconds)
+        )
+        if registry._clock() >= snapshot_deadline:
+            return "DIFF_SNAPSHOT_EXPIRED"
     try:
         oracle_params = inspect.signature(oracle_generation).parameters
         if "deadline" in oracle_params:
             generation, identity = oracle_generation(
                 snapshot.root_identity.realpath,
                 snapshot.mode,
-                deadline=time.monotonic() + remaining,
+                deadline=snapshot_deadline,
             )
         else:  # compatibility for injected platform seams
             generation, identity = oracle_generation(
                 snapshot.root_identity.realpath, snapshot.mode
             )
         shared_generation = shared_source_generation(
-            snapshot.root_identity.realpath, time.monotonic() + remaining
+            snapshot.root_identity.realpath, snapshot_deadline
         )
         guard_error = publish_guard() if publish_guard is not None else None
         shared_generation_after = shared_source_generation(
-            snapshot.root_identity.realpath, time.monotonic() + remaining
+            snapshot.root_identity.realpath, snapshot_deadline
         )
         if "deadline" in oracle_params:
             generation_after, identity_after = oracle_generation(
                 snapshot.root_identity.realpath,
                 snapshot.mode,
-                deadline=time.monotonic() + remaining,
+                deadline=snapshot_deadline,
             )
         else:
             generation_after, identity_after = oracle_generation(

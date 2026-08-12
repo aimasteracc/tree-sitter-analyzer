@@ -153,6 +153,47 @@ def test_registry_defensive_capacity_and_mode_errors(tmp_path: Path) -> None:
     assert called == [True]
 
 
+def test_create_rejects_lifetime_elapsed_during_materialization(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = [0.0]
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    registry = snapshots.DiffSnapshotRegistry(clock=lambda: now[0])
+    capture = snapshots._capture_payload
+
+    def finish_after_expiry(*args, **kwargs):
+        result = capture(*args, **kwargs)
+        now[0] = snapshots.HARD_LIFETIME_SECONDS
+        return result
+
+    monkeypatch.setattr(snapshots, "_capture_payload", finish_after_expiry)
+
+    result = registry.create(str(tmp_path), "diff", [])
+
+    assert result == {"success": False, "error_code": "DIFF_SNAPSHOT_TIMEOUT"}
+    assert registry.stats() == (0, 0)
+
+
+def test_create_rechecks_capacity_after_materialization(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    registry = snapshots.DiffSnapshotRegistry()
+    capture = snapshots._capture_payload
+
+    def reserve_capacity_while_capturing(*args, **kwargs):
+        result = capture(*args, **kwargs)
+        registry._reservations["competing"] = snapshots.MAX_MATERIALIZED_BYTES
+        return result
+
+    monkeypatch.setattr(snapshots, "_capture_payload", reserve_capacity_while_capturing)
+
+    result = registry.create(str(tmp_path), "diff", [])
+
+    assert result == {"success": False, "error_code": "DIFF_SNAPSHOT_CAPACITY"}
+    assert registry.stats() == (0, 0)
+
+
 def _created(tmp_path: Path, monkeypatch):
     """Create registry state without invoking the POSIX workspace oracle."""
     install_fake_snapshot_materializer(monkeypatch, tmp_path)
@@ -405,7 +446,7 @@ def test_validate_publish_bounds_oracle_by_remaining_lifetime(
     result = registry.validate_publish(consumer)
 
     assert result is None
-    assert deadlines == [101.0, 101.0]
+    assert deadlines == [35.0, 35.0]
     consumer.release()
 
 
@@ -474,6 +515,19 @@ def test_validate_publish_rejects_expiry_during_bounded_oracle(
 
     assert result == "DIFF_SNAPSHOT_EXPIRED"
     consumer.release()
+
+
+def test_validate_publish_rejects_consumer_released_by_publish_guard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, registry, created = _created(tmp_path, monkeypatch)
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert error is None
+    assert consumer is not None
+
+    result = registry.validate_publish(consumer, publish_guard=consumer.release)
+
+    assert result == "DIFF_SNAPSHOT_EXPIRED"
 
 
 def test_validate_publish_rejects_erased_snapshot_before_oracle(
@@ -562,6 +616,23 @@ def test_snapshot_rejects_final_git_generation_drift(tmp_path, monkeypatch):
     monkeypatch.setattr(snapshots, "oracle_generation", drift)
     result = snapshots.DiffSnapshotRegistry().create(str(tmp_path), "diff", [])
     assert result == {"success": False, "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED"}
+
+
+def test_shared_generation_preserves_oracle_monkeypatch_seam(monkeypatch) -> None:
+    def oracle(*_args, **_kwargs):
+        return "generation", None
+
+    observed = []
+
+    def resolve(root, deadline, *, oracle_generation):
+        observed.append((root, deadline, oracle_generation))
+        return "shared"
+
+    monkeypatch.setattr(snapshots, "oracle_generation", oracle)
+    monkeypatch.setattr(snapshots, "resolve_shared_source_generation", resolve)
+
+    assert snapshots.shared_source_generation("/repo", 4.0) == "shared"
+    assert observed == [("/repo", 4.0, oracle)]
 
 
 def test_shared_generation_deadline_is_exact(monkeypatch):
@@ -719,4 +790,58 @@ def test_staged_snapshot_retains_index_config_metadata_when_worktree_differs(
         consumer.snapshot.constraint_config_metadata,
         consumer.snapshot.staged_config_matches_worktree,
     ) == (("index-metadata",), False)
+    consumer.release()
+
+
+def test_snapshot_constraint_config_directory_falls_back_to_second_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    (tmp_path / "architectural-constraints.yml").mkdir()
+    fallback = tmp_path / ".tree-sitter-analyzer" / "constraints.yml"
+    fallback.parent.mkdir()
+    fallback.write_text("version: 1\nconstraints: []\n")
+
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(tmp_path), "diff", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(tmp_path))
+
+    assert error is None
+    assert consumer is not None
+    assert consumer.snapshot.constraint_config_path == (
+        ".tree-sitter-analyzer/constraints.yml"
+    )
+    assert consumer.snapshot.constraint_config_data == fallback.read_bytes()
+    consumer.release()
+
+
+def test_acquire_rejects_elapsed_caller_deadline_and_releases_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    registry = snapshots.DiffSnapshotRegistry(clock=lambda: 5.0)
+    created = registry.create(str(tmp_path), "diff", [])
+
+    consumer, error = registry.acquire(
+        str(created["diff_snapshot_id"]), str(tmp_path), deadline=5.0
+    )
+
+    assert (consumer, error) == (None, "DIFF_SNAPSHOT_EXPIRED")
+    state = registry._states[str(created["diff_snapshot_id"])]
+    assert state.pins == {}
+
+
+def test_validate_publish_rejects_elapsed_caller_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    registry = snapshots.DiffSnapshotRegistry(clock=lambda: 5.0)
+    created = registry.create(str(tmp_path), "diff", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(tmp_path))
+    assert error is None
+    assert consumer is not None
+
+    result = registry.validate_publish(consumer, deadline=5.0)
+
+    assert result == "DIFF_SNAPSHOT_EXPIRED"
     consumer.release()

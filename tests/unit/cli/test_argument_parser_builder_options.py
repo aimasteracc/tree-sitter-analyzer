@@ -456,6 +456,14 @@ class TestAddMcpEquivalentOptions:
         assert "change_impact" in dests
         assert "smart_context" in dests
 
+    def test_constraints_read_only_option_sets_exact_destination(self):
+        parser = self._make_parser()
+        _add_mcp_equivalent_options(parser)
+
+        args = parser.parse_args(["--constraints-read-only"])
+
+        assert args.constraints_read_only is True
+
 
 class TestAddAgentSkillsOptions:
     def _make_parser(self):

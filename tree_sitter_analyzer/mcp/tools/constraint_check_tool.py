@@ -6,6 +6,7 @@ Evaluates cached call edges and optionally persists exact violations.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import sqlite3
 import time
@@ -21,62 +22,12 @@ from ...constraints.parser import ConstraintParseError, _compile_glob
 from ...git_path_codec import path_to_wire
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
+from .constraint_check_schema import TOOL_SCHEMA
 
 logger = logging.getLogger(__name__)
 # Exact verdict escalation: error > warn > info.
 _BLOCKING_SEVERITIES: frozenset[str] = frozenset({"error"})
 _WARNING_SEVERITIES: frozenset[str] = frozenset({"warn"})
-
-TOOL_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "path_filter": {
-            "type": "string",
-            "default": "",
-            "description": (
-                "Optional fnmatch-style glob applied to caller_file. "
-                "Use to narrow results to a queue scope, e.g. 'mcp/**'."
-            ),
-        },
-        "severity_min": {
-            "type": "string",
-            "enum": ["error", "warn", "info"],
-            "default": "warn",
-            "description": (
-                "Minimum severity to include in the response. "
-                "Default 'warn' suppresses info-level rules from agent output."
-            ),
-        },
-        "persist": {
-            "type": "boolean",
-            "default": True,
-            "description": (
-                "Write evaluated violations through to the cache. Set false for "
-                "RFC-0022 read-only evaluation; no database or file is created."
-            ),
-        },
-        "diff_snapshot_id": {
-            "type": "string",
-            "description": "RFC-0022 frozen diff snapshot to evaluate against.",
-        },
-        "scope_paths": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": (
-                "Primitive-issued assessed_scope_paths. With diff_snapshot_id the "
-                "list must exactly match the frozen snapshot scope."
-            ),
-        },
-        "output_format": {
-            "type": "string",
-            "enum": ["json", "toon"],
-            "default": "json",
-            "description": "Response format.",
-        },
-    },
-    "additionalProperties": False,
-}
-
 
 _SEVERITY_ORDER: dict[str, int] = {"info": 0, "warn": 1, "error": 2}
 
@@ -166,8 +117,21 @@ class ConstraintCheckTool(BaseMCPTool):
                 output_format,
             )
 
+        persist = arguments.get("persist", True)
+        if not constraints and not persist:
+            return apply_toon_format_to_response(
+                {
+                    "success": True,
+                    "verdict": "SAFE",
+                    "violations": [],
+                    "rule_count": 0,
+                    "evaluated_edge_count": 0,
+                },
+                output_format,
+            )
+
         db_path = Path(self.project_root) / ".ast-cache" / "index.db"
-        if not db_path.is_file():
+        if persist and not db_path.is_file():
             return apply_toon_format_to_response(
                 {
                     "success": True,
@@ -183,7 +147,7 @@ class ConstraintCheckTool(BaseMCPTool):
                 output_format,
             )
 
-        if arguments.get("persist", True):
+        if persist:
             _, evaluated_edges = self._run_and_persist(db_path, constraints)
             filtered_rows = self._read_filtered_violations(
                 db_path,
@@ -197,8 +161,9 @@ class ConstraintCheckTool(BaseMCPTool):
                     constraints,
                     path_filter=path_filter,
                     min_severity_rank=min_severity_rank,
+                    deadline=time.monotonic() + 10.0,
                 )
-            except sqlite3.DatabaseError as exc:
+            except (sqlite3.DatabaseError, RuntimeError, ValueError) as exc:
                 return self._snapshot_error(
                     "CONSTRAINT_INDEX_UNKNOWN", output_format, str(exc)
                 )
@@ -252,19 +217,49 @@ class ConstraintCheckTool(BaseMCPTool):
         path_filter: str,
         min_severity_rank: int,
         scope_paths: frozenset[str] | None = None,
+        evaluator: Any = None,
+        deadline: float | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
-        """Evaluate through a SQLite read-only connection and write nothing."""
-        conn = sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
-        try:
-            return self._evaluate_connection(
-                conn,
-                constraints,
-                path_filter=path_filter,
-                min_severity_rank=min_severity_rank,
-                scope_paths=scope_paths,
+        """Evaluate the registry-owned private snapshot; never trust a pathname URI."""
+        from ...index_snapshot import acquire_index_snapshot, lease_existing_snapshot
+
+        del (
+            db_path
+        )  # Compatibility-only argument; pathname evidence is never opened here.
+        absolute_deadline = time.monotonic() + 10.0 if deadline is None else deadline
+        if time.monotonic() >= absolute_deadline:
+            raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+        lease_kwargs = (
+            {"deadline": absolute_deadline}
+            if "deadline" in inspect.signature(lease_existing_snapshot).parameters
+            else {}
+        )
+        project_root = self.project_root
+        if project_root is None:
+            raise ValueError("MISSING_PROJECT_ROOT")
+        with lease_existing_snapshot(project_root, **lease_kwargs) as index:
+            if index.snapshot_id is None or index.completeness != "complete":
+                raise ValueError(index.reason or "CONSTRAINT_INDEX_UNKNOWN")
+            acquire_kwargs = (
+                {"deadline": absolute_deadline}
+                if "deadline" in inspect.signature(acquire_index_snapshot).parameters
+                else {}
             )
-        finally:
-            conn.close()
+            with acquire_index_snapshot(
+                index.snapshot_id,
+                project_root,
+                index.source_generation,
+                **acquire_kwargs,
+            ) as (_, conn):
+                return self._evaluate_connection(
+                    conn,
+                    constraints,
+                    path_filter=path_filter,
+                    min_severity_rank=min_severity_rank,
+                    scope_paths=scope_paths,
+                    evaluator=evaluator,
+                    deadline=absolute_deadline,
+                )
 
     def _evaluate_connection(
         self,
@@ -274,24 +269,45 @@ class ConstraintCheckTool(BaseMCPTool):
         path_filter: str = "",
         min_severity_rank: int,
         scope_paths: frozenset[str] | None = None,
+        evaluator: Any = None,
+        deadline: float | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         """Evaluate one caller-owned immutable index connection; fail closed."""
-        edge_count = self._count_edges(conn, fail_closed=True)
-        if scope_paths is None:
-            violations = evaluate(constraints, conn)
-        else:
+        evaluator = evaluate if evaluator is None else evaluator
+        absolute_deadline = time.monotonic() + 10.0 if deadline is None else deadline
 
-            def in_scope(caller: str, callee: str) -> bool:
-                return (
-                    path_to_wire(caller) in scope_paths
-                    or path_to_wire(callee) in scope_paths
+        def interrupted() -> int:
+            return int(time.monotonic() >= absolute_deadline)
+
+        if interrupted():
+            raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+        owns_transaction = not conn.in_transaction
+        conn.set_progress_handler(interrupted, 1_000)
+        if owns_transaction:
+            conn.execute("BEGIN")
+        try:
+            edge_count = self._count_edges(conn, fail_closed=True)
+            if scope_paths is None:
+                violations = evaluator(constraints, conn)
+            else:
+
+                def in_scope(caller: str, callee: str) -> bool:
+                    return (
+                        path_to_wire(caller) in scope_paths
+                        or path_to_wire(callee) in scope_paths
+                    )
+
+                violations = evaluator(
+                    constraints,
+                    conn,
+                    scope_predicate=in_scope,
                 )
-
-            violations = evaluate(
-                constraints,
-                conn,
-                scope_predicate=in_scope,
-            )
+        finally:
+            if owns_transaction:
+                conn.rollback()
+            conn.set_progress_handler(None, 0)
+        if interrupted():
+            raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
         path_re = _compile_glob(path_filter) if path_filter else None
         rows: list[dict[str, Any]] = []
         for violation in violations:
@@ -334,21 +350,7 @@ class ConstraintCheckTool(BaseMCPTool):
         db_path: Path,
         constraints: list[Any],
     ) -> tuple[list[Violation], int]:
-        """Run the evaluator and write-through into ``ast_constraint_violations``.
-
-        Returns (violations, edge_count) for diagnostics. The
-        ``evaluated_edge_count`` is best-effort — we count whatever the
-        evaluator sees, which is a useful sanity signal even if it
-        doesn't perfectly match the rule-count cross-product.
-
-        Cache-then-read contract: if there are no CALLS rows in the unified
-        ``edges`` table we DO NOT touch the existing violations table.
-        That preserves rows that were seeded by another producer (the
-        ``analyze_change_impact`` indexer, an earlier full run, or — in
-        tests — directly by a fixture). Without this guard we'd wipe out
-        legitimate cached state every time an agent ran the tool against
-        a fresh repo.
-        """
+        """Evaluate and persist, preserving cached rows when no CALLS exist."""
         conn = sqlite3.connect(str(db_path))
         try:
             conn.execute(self._violations_ddl())
@@ -414,13 +416,7 @@ class ConstraintCheckTool(BaseMCPTool):
         path_filter: str,
         min_severity_rank: int,
     ) -> list[dict[str, Any]]:
-        """Read violations from the table with severity + path filters applied.
-
-        The path filter is applied in Python (not SQL) because SQLite's
-        GLOB is glob-but-not-globstar — we want our ``**`` semantics,
-        which means re-using the same ``_compile_glob`` the evaluator
-        uses.
-        """
+        """Read violations with canonical Python glob filtering."""
         conn = sqlite3.connect(str(db_path))
         try:
             conn.execute(self._violations_ddl())
@@ -479,11 +475,7 @@ class ConstraintCheckTool(BaseMCPTool):
 
     @staticmethod
     def _violations_ddl() -> str:
-        """Self-healing DDL — keeps the tool usable even if the global
-        migration hasn't run yet (e.g. a test that builds a fresh DB).
-
-        The DDL must stay in sync with ``ast_cache._SCHEMA_V6_VIOLATIONS``.
-        """
+        """Return DDL kept in sync with the cache violation schema."""
         return """
         CREATE TABLE IF NOT EXISTS ast_constraint_violations (
             rule_id      TEXT NOT NULL,

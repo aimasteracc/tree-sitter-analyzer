@@ -229,7 +229,7 @@ def test_acquire_uses_remaining_lifetime_and_rechecks_expiry(tmp_path, monkeypat
     assert (consumer, error, deadlines) == (
         None,
         "DIFF_SNAPSHOT_EXPIRED",
-        [135.0, 135.0],
+        [35.0, 35.0],
     )
 
 

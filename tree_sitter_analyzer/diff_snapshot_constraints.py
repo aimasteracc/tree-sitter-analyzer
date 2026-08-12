@@ -80,7 +80,7 @@ def frozen_index_sources_match_worktree(
     untracked_raw = frozen_index_output(
         root,
         epoch.index_bytes,
-        ["ls-files", "--others", "--exclude-standard", "-z"],
+        ["ls-files", "--others", "-z"],
         deadline=deadline,
         limit=limit,
         object_format=epoch.object_format,

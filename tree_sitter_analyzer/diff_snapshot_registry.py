@@ -31,6 +31,7 @@ from .diff_snapshot_validation import (
     bind_assessed_scope as bind_snapshot_scope,
     validate_publish as validate_snapshot_publish,
 )
+from .diff_snapshot_source import resolve_shared_source_generation
 from .diff_snapshot_paths import (
     epoch_inventory,
     normalize_bounded_paths,
@@ -61,32 +62,12 @@ _ROUTE_LEASE_PATTERN = re.compile(r"dl_[A-Za-z0-9_-]{43}", re.ASCII)
 
 
 def shared_source_generation(project_root: str, deadline: float) -> str:
-    """Return the P0.1 source-oracle token, replaying its certified scope."""
-    from .index_snapshot import lease_existing_snapshot, lease_reusable_snapshot
-    from .index_source_snapshot import capture_current_source_snapshot
-
-    if time.monotonic() > deadline:
-        raise SourceOracleError("DIFF_SNAPSHOT_TIMEOUT")
-    # Lightweight injected registry seams predate the shared-oracle bridge.
-    # Production oracle_generation always exposes epoch_out.
-    if "epoch_out" not in inspect.signature(oracle_generation).parameters:
-        generation, _identity = oracle_generation(
-            project_root, "diff", deadline=deadline
-        )
-        return generation
-    with lease_reusable_snapshot(project_root) as reusable:
-        if reusable is not None and reusable.source_generation is not None:
-            return reusable.source_generation
-    with lease_existing_snapshot(project_root) as existing:
-        if existing.source_generation is not None:
-            return existing.source_generation
-    # An unusable index is not authoritative for source-only consumers.  Fall
-    # back to the direct default-scope oracle; graph consumers independently
-    # require and validate a complete leased index capability.
-    current = capture_current_source_snapshot(project_root, deadline=deadline)
-    if current.state != "exact" or current.generation is None:
-        raise SourceOracleError(current.reason or "DIFF_SNAPSHOT_SOURCE_CHANGED")
-    return current.generation
+    """Return the P0.1 source-oracle token, preserving registry patch seams."""
+    return resolve_shared_source_generation(
+        project_root,
+        deadline,
+        oracle_generation=oracle_generation,
+    )
 
 
 @dataclass
@@ -257,14 +238,19 @@ class DiffSnapshotRegistry:
                 ".tree-sitter-analyzer/constraints.yml",
             ):
                 probe = safe_workspace_path(
-                    root, candidate, deadline=deadline, limit=1024 * 1024
+                    root,
+                    candidate,
+                    deadline=deadline,
+                    limit=1024 * 1024,
+                    allow_directory=True,
                 )
                 live_config = probe
-                if probe.kind != "missing":
-                    if probe.kind != "file" or probe.data is None:
-                        raise SourceOracleError("CONSTRAINT_CONFIG_UNSAFE")
-                    live_config_path = candidate
-                    break
+                if probe.kind in {"missing", "directory"}:
+                    continue
+                if probe.kind != "file" or probe.data is None:
+                    raise SourceOracleError("CONSTRAINT_CONFIG_UNSAFE")
+                live_config_path = candidate
+                break
             assert live_config is not None
             staged_source_matches_worktree = True
             staged_config_matches_worktree = True
@@ -390,7 +376,11 @@ class DiffSnapshotRegistry:
                 self._reservations.pop(reservation, None)
             return snapshot_error("DIFF_SNAPSHOT_CAPTURE_ERROR")
     def acquire(
-        self, snapshot_id: str, project_root: str | None
+        self,
+        snapshot_id: str,
+        project_root: str | None,
+        *,
+        deadline: float | None = None,
     ) -> tuple[SnapshotConsumer | None, str | None]:
         return acquire_snapshot(
             self,
@@ -400,6 +390,7 @@ class DiffSnapshotRegistry:
             shared_source_generation=shared_source_generation,
             hard_lifetime_seconds=HARD_LIFETIME_SECONDS,
             canonicalize_root=canonical_root,
+            deadline=deadline,
         )
 
     def bind_assessed_scope(
@@ -419,6 +410,8 @@ class DiffSnapshotRegistry:
         self,
         consumer: SnapshotConsumer,
         publish_guard: Callable[[], str | None] | None = None,
+        *,
+        deadline: float | None = None,
     ) -> str | None:
         return validate_snapshot_publish(
             self,
@@ -427,6 +420,7 @@ class DiffSnapshotRegistry:
             oracle_generation=oracle_generation,
             shared_source_generation=shared_source_generation,
             hard_lifetime_seconds=HARD_LIFETIME_SECONDS,
+            deadline=deadline,
         )
 
     verify = validate_publish

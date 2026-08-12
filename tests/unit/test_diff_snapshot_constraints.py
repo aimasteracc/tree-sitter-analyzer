@@ -79,3 +79,29 @@ def test_frozen_source_match_allows_dirty_unsupported_file(monkeypatch) -> None:
     result = constraints.frozen_index_sources_match_worktree(".", _epoch(), 1e20, 1024)
 
     assert result is True
+
+
+def test_frozen_source_match_includes_ignored_untracked_sources(monkeypatch) -> None:
+    calls = []
+
+    def output(_root, _index, args, **_kwargs):
+        calls.append(args)
+        return b"" if len(calls) == 1 else b"ignored.py\0"
+
+    monkeypatch.setattr(constraints, "frozen_index_output", output)
+
+    assert (
+        constraints.frozen_index_sources_match_worktree(".", _epoch(), 1e20, 1024)
+        is False
+    )
+    assert calls == [
+        [
+            "diff-files",
+            "--name-only",
+            "-z",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--ignore-submodules=none",
+        ],
+        ["ls-files", "--others", "-z"],
+    ]

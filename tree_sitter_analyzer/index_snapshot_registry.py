@@ -227,11 +227,18 @@ class IndexSnapshotRegistry:
 
     @contextmanager
     def acquire(
-        self, snapshot_id: str, project_root: str, source_generation: str | None = None
+        self,
+        snapshot_id: str,
+        project_root: str,
+        source_generation: str | None = None,
+        *,
+        deadline: float | None = None,
     ) -> Iterator[tuple[IndexSnapshot, sqlite3.Connection]]:
         canonical_root = os.path.realpath(os.path.abspath(project_root))
         with self._lock:
             now = self._clock()
+            if deadline is not None and now >= deadline:
+                raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
             self._purge(now)
             entry = self._entries.get(snapshot_id)
             if entry is None or entry.expires_at <= now:
@@ -244,11 +251,23 @@ class IndexSnapshotRegistry:
             ):
                 raise ValueError("SOURCE_GENERATION_MISMATCH")
             entry.readers += 1
-        entry.io_lock.acquire()
+        acquired = False
         try:
+            if deadline is None:
+                entry.io_lock.acquire()
+                acquired = True
+            else:
+                acquired = entry.io_lock.acquire(
+                    timeout=max(0.0, deadline - self._clock())
+                )
+                if not acquired:
+                    raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+                if self._clock() >= deadline:
+                    raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
             yield entry.snapshot, entry.connection
         finally:
-            entry.io_lock.release()
+            if acquired:
+                entry.io_lock.release()
             with self._lock:
                 entry.readers -= 1
                 self._purge(self._clock())
