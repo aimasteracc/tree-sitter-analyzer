@@ -360,7 +360,10 @@ def _capture_existing_snapshot(
                         else "INDEX_BACKUP_BUDGET"
                     )
 
-            connection.backup(evidence, pages=64, progress=progress, sleep=0)
+            # Copy in bounded 512 KiB chunks at the minimum SQLite page size;
+            # this avoids thousands of Python callbacks for large certified caches.
+            backup_pages = max(64, (512 * 1024) // source_page_size)
+            connection.backup(evidence, pages=backup_pages, progress=progress, sleep=0)
             # FTS5's rank=1 integrity control command is a transactional write.
             # Run it exactly once on the private in-memory evidence copy while it
             # is still writable, then cache the result on the capability before
