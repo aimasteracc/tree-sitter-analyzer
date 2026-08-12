@@ -42,6 +42,7 @@ from .schema import Constraint, Violation
 logger = logging.getLogger(__name__)
 
 _MAX_SQL_PREFIX_FILTERS = 256
+_MAX_MATERIALIZED_ITEMS = 10_000
 
 
 def evaluate(
@@ -49,6 +50,8 @@ def evaluate(
     db_conn: sqlite3.Connection,
     *,
     scope_predicate: Callable[[str, str], bool] | None = None,
+    check_callback: Callable[[], None] | None = None,
+    capacity: int = _MAX_MATERIALIZED_ITEMS,
 ) -> list[Violation]:
     """Evaluate constraints against the unified ``edges`` table (CALLS rows).
 
@@ -71,15 +74,24 @@ def evaluate(
     compiled = compile_constraints(constraints)
     if not compiled:
         return []
+    if capacity < 0:
+        raise ValueError("capacity must be non-negative")
     detected_at = int(time.time())
-    return list(
-        _iter_violations(
-            compiled,
-            db_conn,
-            detected_at,
-            scope_predicate=scope_predicate,
-        )
-    )
+    violations: list[Violation] = []
+    for violation in _iter_violations(
+        compiled,
+        db_conn,
+        detected_at,
+        scope_predicate=scope_predicate,
+        check_callback=check_callback,
+        capacity=capacity,
+    ):
+        if check_callback is not None:
+            check_callback()
+        if len(violations) >= capacity:
+            raise RuntimeError("CONSTRAINT_EVALUATION_CAPACITY")
+        violations.append(violation)
+    return violations
 
 
 def _iter_violations(
@@ -88,6 +100,8 @@ def _iter_violations(
     detected_at: int,
     *,
     scope_predicate: Callable[[str, str], bool] | None = None,
+    check_callback: Callable[[], None] | None = None,
+    capacity: int = _MAX_MATERIALIZED_ITEMS,
 ) -> Iterator[Violation]:
     """Stream edges from the DB and yield matching violations.
 
@@ -109,10 +123,14 @@ def _iter_violations(
     but deterministic and the PK is the same violation regardless).
     """
     seen: set[tuple[str, str, int, str]] = set()
-    import_index = _build_import_index(db_conn)
+    import_index = _build_import_index(
+        db_conn, check_callback=check_callback, capacity=capacity
+    )
     select_sql, select_params = _build_select_query(db_conn, compiled)
     cursor = db_conn.execute(select_sql, select_params)
     for row in cursor:
+        if check_callback is not None:
+            check_callback()
         caller_name, caller_file, caller_line, callee_name, callee_file = row
         if not callee_file:
             # Unresolved cross-file call — MVP skips it to avoid noisy
@@ -126,6 +144,8 @@ def _iter_violations(
             # hiding an in-scope candidate for the same logical call site.
             continue
         for cc in compiled:
+            if check_callback is not None:
+                check_callback()
             if cc.from_prefix and not caller_file.startswith(cc.from_prefix):
                 continue
             if cc.from_re.fullmatch(caller_file) is None:
@@ -180,6 +200,9 @@ def _is_excepted(caller_file: str, compiled: _CompiledConstraint) -> bool:
 
 def _build_import_index(
     db_conn: sqlite3.Connection,
+    *,
+    check_callback: Callable[[], None] | None = None,
+    capacity: int = _MAX_MATERIALIZED_ITEMS,
 ) -> dict[str, set[str]] | None:
     """Build a lookup of {file_path: set(module_path_suffixes)} from ast_imports.
 
@@ -199,9 +222,15 @@ def _build_import_index(
         return None
 
     index: dict[str, set[str]] = {}
+    materialized = 0
     for file_path, module_path in cursor:
+        if check_callback is not None:
+            check_callback()
         if not file_path or not module_path:
             continue
+        materialized += 1
+        if materialized > capacity:
+            raise RuntimeError("CONSTRAINT_EVALUATION_CAPACITY")
         entry = index.setdefault(file_path, set())
         # Store full module_path (handles absolute imports).
         entry.add(module_path)

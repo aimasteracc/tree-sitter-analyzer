@@ -137,7 +137,11 @@ def reconstructed_index_file(
 
 
 def invalidate_index_stat_cache(
-    index_bytes: bytes, *, object_format: str, assume_valid: bool = False
+    index_bytes: bytes,
+    *,
+    object_format: str,
+    assume_valid: bool = False,
+    clear_hints: bool = False,
 ) -> bytes:
     """Derive an index with forced checks, or frozen assume-valid entries."""
     hash_size = 32 if object_format == "sha256" else 20
@@ -154,6 +158,7 @@ def invalidate_index_stat_cache(
         flags = int.from_bytes(
             index_bytes[offset + flags_offset : offset + flags_offset + 2], "big"
         )
+        extended_offset = offset + flags_offset + 2
         if assume_valid:
             result[offset + flags_offset : offset + flags_offset + 2] = (
                 flags | 0x8000
@@ -161,6 +166,19 @@ def invalidate_index_stat_cache(
         else:
             result[offset : offset + 24] = b"\0" * 24
             result[offset + 28 : offset + 40] = b"\0" * 12
+            if clear_hints:
+                # This comparison asks about bytes, so advisory index bits must
+                # not suppress examination of the worktree.
+                result[offset + flags_offset : offset + flags_offset + 2] = (
+                    flags & ~0x8000
+                ).to_bytes(2, "big")
+                if flags & 0x4000:
+                    extended = int.from_bytes(
+                        index_bytes[extended_offset : extended_offset + 2], "big"
+                    )
+                    result[extended_offset : extended_offset + 2] = (
+                        extended & ~0x4000
+                    ).to_bytes(2, "big")
         offset += flags_offset + 2 + (2 if flags & 0x4000 else 0)
         if version == 4:
             while offset < content_end and index_bytes[offset] & 0x80:
@@ -185,13 +203,16 @@ def frozen_index_output(
     deadline: float,
     limit: int,
     refresh: bool = False,
+    clear_hints: bool = False,
     object_format: str = "sha1",
     input_: bytes | None = None,
     extra_env: dict[str, str] | None = None,
 ) -> bytes:
     """Run Git against an external mode-0600 byte-for-byte index snapshot."""
     materialized = (
-        invalidate_index_stat_cache(index_bytes, object_format=object_format)
+        invalidate_index_stat_cache(
+            index_bytes, object_format=object_format, clear_hints=clear_hints
+        )
         if refresh and index_bytes
         else index_bytes
     )

@@ -29,11 +29,11 @@ def _config_publish_guard(
 ) -> Callable[[], str | None]:
     """Build the final-publish guard for impact-owned configuration bytes."""
 
-    if diff.mode == "staged" and diff.constraint_config_path is None:
+    if diff.mode == "staged":
         # Stage zero is the authoritative configuration plane.  The registry's
         # final staged generation check already protects the captured index;
-        # probing the worktree here would both cross planes and turn an
-        # unrelated untracked config into a false CONFIG_CHANGED result.
+        # the worktree config is neither consumed nor authoritative, including
+        # when the captured config contains zero rules.
         return lambda: None
 
     def validate() -> str | None:
@@ -241,7 +241,12 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
                             "snapshot_id": index.snapshot_id,
                             "index_fingerprint": index.index_fingerprint,
                         }
-                except (sqlite3.DatabaseError, ValueError) as exc:
+                except (
+                    sqlite3.DatabaseError,
+                    ValueError,
+                    TypeError,
+                    AttributeError,
+                ) as exc:
                     return _snapshot_error(
                         tool, "CONSTRAINT_INDEX_UNKNOWN", output_format, str(exc)
                     )

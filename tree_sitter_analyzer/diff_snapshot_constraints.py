@@ -75,6 +75,7 @@ def frozen_index_sources_match_worktree(
         deadline=deadline,
         limit=limit,
         refresh=True,
+        clear_hints=True,
         object_format=epoch.object_format,
     )
     untracked_raw = frozen_index_output(

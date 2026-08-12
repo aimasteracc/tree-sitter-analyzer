@@ -30,6 +30,19 @@ _BLOCKING_SEVERITIES: frozenset[str] = frozenset({"error"})
 _WARNING_SEVERITIES: frozenset[str] = frozenset({"warn"})
 
 _SEVERITY_ORDER: dict[str, int] = {"info": 0, "warn": 1, "error": 2}
+_MAX_MATERIALIZED_VIOLATIONS = 10_000
+
+
+def _path_is_in_scope(path: str, scope_paths: frozenset[str]) -> bool:
+    """Match an exact frozen path or a descendant of a frozen directory."""
+    wire_path = path_to_wire(path).rstrip("/")
+    for scope in scope_paths:
+        normalized = scope.rstrip("/")
+        if normalized in {"", "."}:
+            return True
+        if wire_path == normalized or wire_path.startswith(normalized + "/"):
+            return True
+    return False
 
 
 class ConstraintCheckTool(BaseMCPTool):
@@ -163,7 +176,13 @@ class ConstraintCheckTool(BaseMCPTool):
                     min_severity_rank=min_severity_rank,
                     deadline=time.monotonic() + 10.0,
                 )
-            except (sqlite3.DatabaseError, RuntimeError, ValueError) as exc:
+            except (
+                sqlite3.DatabaseError,
+                RuntimeError,
+                ValueError,
+                TypeError,
+                AttributeError,
+            ) as exc:
                 return self._snapshot_error(
                     "CONSTRAINT_INDEX_UNKNOWN", output_format, str(exc)
                 )
@@ -220,46 +239,22 @@ class ConstraintCheckTool(BaseMCPTool):
         evaluator: Any = None,
         deadline: float | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
-        """Evaluate the registry-owned private snapshot; never trust a pathname URI."""
-        from ...index_snapshot import acquire_index_snapshot, lease_existing_snapshot
+        """Evaluate one certified private snapshot without project writes."""
+        from .constraint_index_snapshot import evaluate_ordinary_snapshot
 
-        del (
-            db_path
-        )  # Compatibility-only argument; pathname evidence is never opened here.
+        del db_path  # Compatibility-only; authority selects its own stable source.
         absolute_deadline = time.monotonic() + 10.0 if deadline is None else deadline
         if time.monotonic() >= absolute_deadline:
             raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
-        lease_kwargs = (
-            {"deadline": absolute_deadline}
-            if "deadline" in inspect.signature(lease_existing_snapshot).parameters
-            else {}
+        return evaluate_ordinary_snapshot(
+            self,
+            constraints,
+            path_filter=path_filter,
+            min_severity_rank=min_severity_rank,
+            scope_paths=scope_paths,
+            evaluator=evaluator,
+            deadline=absolute_deadline,
         )
-        project_root = self.project_root
-        if project_root is None:
-            raise ValueError("MISSING_PROJECT_ROOT")
-        with lease_existing_snapshot(project_root, **lease_kwargs) as index:
-            if index.snapshot_id is None or index.completeness != "complete":
-                raise ValueError(index.reason or "CONSTRAINT_INDEX_UNKNOWN")
-            acquire_kwargs = (
-                {"deadline": absolute_deadline}
-                if "deadline" in inspect.signature(acquire_index_snapshot).parameters
-                else {}
-            )
-            with acquire_index_snapshot(
-                index.snapshot_id,
-                project_root,
-                index.source_generation,
-                **acquire_kwargs,
-            ) as (_, conn):
-                return self._evaluate_connection(
-                    conn,
-                    constraints,
-                    path_filter=path_filter,
-                    min_severity_rank=min_severity_rank,
-                    scope_paths=scope_paths,
-                    evaluator=evaluator,
-                    deadline=absolute_deadline,
-                )
 
     def _evaluate_connection(
         self,
@@ -279,46 +274,50 @@ class ConstraintCheckTool(BaseMCPTool):
         def interrupted() -> int:
             return int(time.monotonic() >= absolute_deadline)
 
-        if interrupted():
-            raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+        def check_deadline() -> None:
+            if interrupted():
+                raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+
+        check_deadline()
         owns_transaction = not conn.in_transaction
         conn.set_progress_handler(interrupted, 1_000)
         if owns_transaction:
             conn.execute("BEGIN")
         try:
             edge_count = self._count_edges(conn, fail_closed=True)
-            if scope_paths is None:
-                violations = evaluator(constraints, conn)
-            else:
+            evaluator_kwargs: dict[str, Any] = {}
+            evaluator_parameters = inspect.signature(evaluator).parameters
+            if "check_callback" in evaluator_parameters:
+                evaluator_kwargs["check_callback"] = check_deadline
+            if "capacity" in evaluator_parameters:
+                evaluator_kwargs["capacity"] = _MAX_MATERIALIZED_VIOLATIONS
+            if scope_paths is not None:
 
                 def in_scope(caller: str, callee: str) -> bool:
-                    return (
-                        path_to_wire(caller) in scope_paths
-                        or path_to_wire(callee) in scope_paths
+                    return _path_is_in_scope(caller, scope_paths) or _path_is_in_scope(
+                        callee, scope_paths
                     )
 
-                violations = evaluator(
-                    constraints,
-                    conn,
-                    scope_predicate=in_scope,
-                )
+                evaluator_kwargs["scope_predicate"] = in_scope
+            violations = evaluator(constraints, conn, **evaluator_kwargs)
         finally:
             if owns_transaction:
                 conn.rollback()
             conn.set_progress_handler(None, 0)
-        if interrupted():
-            raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+        check_deadline()
         path_re = _compile_glob(path_filter) if path_filter else None
         rows: list[dict[str, Any]] = []
-        for violation in violations:
-            if interrupted():
-                raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+        for violation_number, violation in enumerate(violations, start=1):
+            check_deadline()
+            if violation_number > _MAX_MATERIALIZED_VIOLATIONS:
+                raise RuntimeError("CONSTRAINT_EVALUATION_CAPACITY")
             caller = path_to_wire(violation.caller_file)
             callee = path_to_wire(violation.callee_file)
             # Keep a defensive output filter for injected/custom evaluators;
             # the production evaluator receives the same scope before dedup.
             if scope_paths is not None and not (
-                caller in scope_paths or callee in scope_paths
+                _path_is_in_scope(caller, scope_paths)
+                or _path_is_in_scope(callee, scope_paths)
             ):
                 continue
             if _SEVERITY_ORDER.get(violation.severity, 0) < min_severity_rank:
@@ -345,8 +344,7 @@ class ConstraintCheckTool(BaseMCPTool):
                 str(row["rule_id"]),
             )
         )
-        if interrupted():
-            raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+        check_deadline()
         return rows, edge_count
 
     def _run_and_persist(

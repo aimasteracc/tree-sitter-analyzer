@@ -137,6 +137,19 @@ def _evaluate_with_explicit_file(
     except ConstraintParseError as exc:
         return _failure_envelope(f"constraint parse error: {exc}", output_format)
 
+    if not constraints and not persist:
+        return _format_response(
+            {
+                "success": True,
+                "verdict": "SAFE",
+                "violations": [],
+                "rule_count": 0,
+                "evaluated_edge_count": 0,
+                "constraint_file": str(config_path),
+            },
+            output_format,
+        )
+
     db_path = Path(project_root) / ".ast-cache" / "index.db"
     if persist and not db_path.is_file():
         return _format_response(
@@ -176,7 +189,13 @@ def _evaluate_with_explicit_file(
                 evaluator=evaluate,
                 deadline=time.monotonic() + 10.0,
             )
-    except (sqlite3.DatabaseError, RuntimeError, ValueError) as exc:
+    except (
+        sqlite3.DatabaseError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        AttributeError,
+    ) as exc:
         return _format_response(
             {
                 "success": False,

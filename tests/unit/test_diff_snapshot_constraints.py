@@ -105,3 +105,34 @@ def test_frozen_source_match_includes_ignored_untracked_sources(monkeypatch) -> 
         ],
         ["ls-files", "--others", "-z"],
     ]
+
+
+@pytest.mark.parametrize("hint", ["--assume-unchanged", "--skip-worktree"])
+def test_frozen_source_match_clears_index_hints_before_worktree_compare(
+    tmp_path, hint
+) -> None:
+    # PR #1254 reviews 3767273213/3767273219: advisory index bits cannot hide bytes.
+    import subprocess
+
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+    source = tmp_path / "main.py"
+    source.write_text("old\n")
+    subprocess.run(["git", "add", "main.py"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "base"], cwd=tmp_path, check=True, capture_output=True
+    )
+    subprocess.run(["git", "update-index", hint, "main.py"], cwd=tmp_path, check=True)
+    index_bytes = (tmp_path / ".git" / "index").read_bytes()
+    source.write_text("new\n")
+    epoch = GitEpoch(b"a" * 40, "sha1", (), (), (), (), index_bytes=index_bytes)
+
+    assert (
+        constraints.frozen_index_sources_match_worktree(
+            str(tmp_path), epoch, __import__("time").monotonic() + 30, 1024
+        )
+        is False
+    )
