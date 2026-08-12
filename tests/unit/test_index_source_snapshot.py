@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import stat
 
 import pytest
 
@@ -475,6 +476,76 @@ class TestSnapshotFailureContracts:
         )
 
     @requires_posix_fd
+    def test_capture_epoch_rechecks_earlier_leaf_after_later_admission(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 thread 3763790622: one exact fd epoch closes post-check mutation.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        first = tmp_path / "a.py"
+        second = tmp_path / "b.py"
+        first.write_text("old = 1\n")
+        second.write_text("stable = 1\n")
+        real_fstat = source.os.fstat
+        source_fstats = 0
+
+        def mutate_after_later_admission(fd):
+            nonlocal source_fstats
+            observed = real_fstat(fd)
+            if stat.S_ISREG(observed.st_mode):
+                source_fstats += 1
+                if source_fstats == 2:
+                    first.write_text("new = 2\n")
+            return observed
+
+        monkeypatch.setattr(source.os, "fstat", mutate_after_later_admission)
+        rows = tuple(
+            (path.name, source._metadata_marker(path.stat()), "python")
+            for path in (first, second)
+        )
+
+        exact = source._revalidate_source_rows(str(tmp_path), rows, float("inf"))
+
+        assert (exact, source_fstats) == (False, 3)
+
+    @requires_posix_fd
+    def test_capture_epoch_reauthenticates_ancestor_after_later_admission(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253: a stable leaf fd cannot certify a replaced ancestor chain.
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        ancestor = tmp_path / "a"
+        ancestor.mkdir()
+        nested = ancestor / "x.py"
+        later = tmp_path / "b.py"
+        nested.write_text("old = 1\n")
+        later.write_text("stable = 1\n")
+        rows = (
+            ("a/x.py", source._metadata_marker(nested.stat()), "python"),
+            ("b.py", source._metadata_marker(later.stat()), "python"),
+        )
+        real_fstat = source.os.fstat
+        source_fstats = 0
+
+        def swap_ancestor_during_second_admission(fd):
+            nonlocal source_fstats
+            observed = real_fstat(fd)
+            if stat.S_ISREG(observed.st_mode):
+                source_fstats += 1
+                if source_fstats == 2:
+                    ancestor.rename(tmp_path / "old-a")
+                    ancestor.mkdir()
+                    (ancestor / "x.py").write_text("replacement = 1\n")
+            return observed
+
+        monkeypatch.setattr(source.os, "fstat", swap_ancestor_during_second_admission)
+
+        exact = source._revalidate_source_rows(str(tmp_path), rows, float("inf"))
+
+        assert (exact, source_fstats) == (False, 2)
+
+    @requires_posix_fd
     def test_capture_reopens_root_after_final_inventory(self, tmp_path, monkeypatch):
         # PR #1253 review 3763401191: final inventory cannot authenticate a stale root.
         import tree_sitter_analyzer.index_source_snapshot as source
@@ -569,3 +640,264 @@ def test_revalidate_source_rows_enforces_absolute_deadline(tmp_path):
     path.write_text("value = 1\n", encoding="utf-8")
     with pytest.raises(TimeoutError):
         _revalidate_source_rows(str(tmp_path), (("app.py", "marker", "python"),), -1.0)
+
+
+@requires_posix_fd
+def test_revalidate_source_rows_rejects_root_identity_change(tmp_path, monkeypatch):
+    # PR #1253: reopening the root must authenticate the inventoried root identity.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    monkeypatch.setattr(source, "opened_entry_matches", lambda *_args: False)
+
+    assert source._revalidate_source_rows(str(tmp_path), (), float("inf")) is False
+
+
+@requires_posix_fd
+def test_revalidate_source_rows_rejects_noncanonical_relative_path(tmp_path):
+    # PR #1253: replay rejects path components that could escape the pinned root.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    rows = (("../app.py", "marker", "python"),)
+
+    assert source._revalidate_source_rows(str(tmp_path), rows, float("inf")) is False
+
+
+@requires_posix_fd
+def test_revalidate_source_rows_fails_closed_on_initial_leaf_open_error(
+    tmp_path, monkeypatch
+):
+    # PR #1253: an admission failure cannot retain or authenticate a partial chain.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    target = tmp_path / "app.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    rows = ((target.name, source._metadata_marker(target.stat()), "python"),)
+    real_stat = source.os.stat
+    stat_calls = 0
+
+    def fail_initial_leaf(*args, **kwargs):
+        nonlocal stat_calls
+        stat_calls += 1
+        if stat_calls == 2:
+            raise PermissionError("leaf unavailable")
+        return real_stat(*args, **kwargs)
+
+    monkeypatch.setattr(source.os, "stat", fail_initial_leaf)
+
+    exact = source._revalidate_source_rows(str(tmp_path), rows, float("inf"))
+
+    assert (exact, stat_calls) == (False, 2)
+
+
+@requires_posix_fd
+def test_revalidate_source_rows_tolerates_absent_cleanup_local(tmp_path, monkeypatch):
+    # PR #1253: both short-lived chain phases guard cleanup before consulting fds.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    target = tmp_path / "app.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    rows = ((target.name, source._metadata_marker(target.stat()), "python"),)
+    real_open = source.os.open
+    real_dup = source.os.dup
+    real_close = source.os.close
+    opened_fds = []
+
+    def recording_open(*args, **kwargs):
+        fd = real_open(*args, **kwargs)
+        opened_fds.append(fd)
+        return fd
+
+    def recording_dup(fd):
+        duplicate = real_dup(fd)
+        opened_fds.append(duplicate)
+        return duplicate
+
+    monkeypatch.setattr(source.os, "open", recording_open)
+    monkeypatch.setattr(source.os, "dup", recording_dup)
+    monkeypatch.setattr(source, "locals", lambda: {}, raising=False)
+    try:
+        exact = source._revalidate_source_rows(str(tmp_path), rows, float("inf"))
+    finally:
+        for fd in reversed(opened_fds):
+            try:
+                real_close(fd)
+            except OSError:
+                pass
+
+    assert exact is True
+
+
+@requires_posix_fd
+def test_revalidate_source_rows_rejects_changed_pinned_ancestor(tmp_path, monkeypatch):
+    # PR #1253: every reuse of a pinned ancestor must retain its admitted identity.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    package = tmp_path / "pkg"
+    package.mkdir()
+    first = package / "a.py"
+    second = package / "b.py"
+    first.write_text("first = 1\n", encoding="utf-8")
+    second.write_text("second = 1\n", encoding="utf-8")
+    matches = iter((True, True, True, False))
+    identity_checks = 0
+
+    def reject_reused_ancestor(*_args):
+        nonlocal identity_checks
+        identity_checks += 1
+        return next(matches)
+
+    monkeypatch.setattr(source, "opened_entry_matches", reject_reused_ancestor)
+    rows = tuple(
+        (f"pkg/{path.name}", source._metadata_marker(path.stat()), "python")
+        for path in (first, second)
+    )
+
+    exact = source._revalidate_source_rows(str(tmp_path), rows, float("inf"))
+
+    assert (exact, identity_checks) == (False, 4)
+
+
+@requires_posix_fd
+def test_revalidate_source_rows_enforces_leaf_recheck_deadline(tmp_path, monkeypatch):
+    # PR #1253: the post-admission leaf recheck remains inside the deadline.
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    target = tmp_path / "app.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    rows = (("app.py", source._metadata_marker(target.stat()), "python"),)
+    ticks = iter((0.0, 2.0))
+    monkeypatch.setattr(source, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
+
+    with pytest.raises(TimeoutError):
+        source._revalidate_source_rows(str(tmp_path), rows, 1.0)
+
+
+@requires_posix_fd
+def test_revalidate_source_rows_enforces_directory_recheck_deadline(
+    tmp_path, monkeypatch
+):
+    # PR #1253: pinned directory metadata rechecks remain inside the deadline.
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    package = tmp_path / "pkg"
+    package.mkdir()
+    target = package / "app.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    rows = (("pkg/app.py", source._metadata_marker(target.stat()), "python"),)
+    ticks = iter((0.0, 0.0, 2.0))
+    monkeypatch.setattr(source, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
+
+    with pytest.raises(TimeoutError):
+        source._revalidate_source_rows(str(tmp_path), rows, 1.0)
+
+
+@requires_posix_fd
+def test_revalidate_source_rows_fails_closed_on_chain_reopen_deadline(
+    tmp_path, monkeypatch
+):
+    # PR #1253: ancestor-chain reauthentication remains inside the deadline.
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    package = tmp_path / "pkg"
+    package.mkdir()
+    target = package / "app.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    rows = (("pkg/app.py", source._metadata_marker(target.stat()), "python"),)
+    ticks = iter((0.0, 0.0, 0.0, 2.0))
+    time_checks = 0
+
+    def monotonic():
+        nonlocal time_checks
+        time_checks += 1
+        return next(ticks)
+
+    monkeypatch.setattr(source, "time", SimpleNamespace(monotonic=monotonic))
+
+    exact = source._revalidate_source_rows(str(tmp_path), rows, 1.0)
+
+    assert (exact, time_checks) == (False, 4)
+
+
+@requires_posix_fd
+def test_revalidate_source_rows_rejects_changed_reopened_ancestor(
+    tmp_path, monkeypatch
+):
+    # PR #1253: a stale pinned ancestor cannot authenticate its replacement path.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    package = tmp_path / "pkg"
+    package.mkdir()
+    target = package / "app.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    rows = (("pkg/app.py", source._metadata_marker(target.stat()), "python"),)
+    metadata_checks = 0
+
+    def reject_reopened_ancestor(*_args):
+        nonlocal metadata_checks
+        metadata_checks += 1
+        return metadata_checks != 3
+
+    monkeypatch.setattr(source, "_same_file_metadata", reject_reopened_ancestor)
+
+    exact = source._revalidate_source_rows(str(tmp_path), rows, float("inf"))
+
+    assert (exact, metadata_checks) == (False, 3)
+
+
+@requires_posix_fd
+def test_revalidate_source_rows_rejects_unreadable_reopened_chain(
+    tmp_path, monkeypatch
+):
+    # PR #1253: a chain that becomes unreadable during reauthentication fails closed.
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    package = tmp_path / "pkg"
+    package.mkdir()
+    target = package / "app.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    rows = (("pkg/app.py", source._metadata_marker(target.stat()), "python"),)
+    real_stat = source.os.stat
+    stat_calls = 0
+
+    def fail_chain_reopen(*args, **kwargs):
+        nonlocal stat_calls
+        stat_calls += 1
+        if stat_calls == 5:
+            raise PermissionError("ancestor unavailable")
+        return real_stat(*args, **kwargs)
+
+    monkeypatch.setattr(source.os, "stat", fail_chain_reopen)
+
+    exact = source._revalidate_source_rows(str(tmp_path), rows, float("inf"))
+
+    assert (exact, stat_calls) == (False, 5)
+
+
+@requires_posix_fd
+def test_revalidate_source_rows_is_exact_below_rlimit_with_300_files(tmp_path):
+    # PR #1253 zero gate B1: O(depth) epoch fds must authenticate a stable repo.
+    import resource
+
+    import tree_sitter_analyzer.index_source_snapshot as source
+
+    rows = []
+    for index in range(300):
+        target = tmp_path / f"source_{index:03d}.py"
+        target.write_text(f"value = {index}\n", encoding="utf-8")
+        rows.append((target.name, source._metadata_marker(target.stat()), "python"))
+
+    original_limits = resource.getrlimit(resource.RLIMIT_NOFILE)
+    lowered_soft = min(256, original_limits[0])
+    resource.setrlimit(resource.RLIMIT_NOFILE, (lowered_soft, original_limits[1]))
+    try:
+        exact = source._revalidate_source_rows(str(tmp_path), tuple(rows), float("inf"))
+    finally:
+        resource.setrlimit(resource.RLIMIT_NOFILE, original_limits)
+
+    assert exact is True

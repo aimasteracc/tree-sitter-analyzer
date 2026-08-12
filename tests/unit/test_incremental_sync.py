@@ -1840,6 +1840,85 @@ def test_incremental_scan_rejects_invalid_materialized_snapshot(tmp_path):
 
 
 @requires_posix_fd
+def test_incremental_scan_rejects_changed_materialized_cache_hierarchy(
+    tmp_path, monkeypatch
+):
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        release_index_candidate_snapshot,
+    )
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    cache = ASTCache(str(tmp_path))
+    monkeypatch.setattr(
+        materialization, "index_candidate_cache_hierarchy_is_current", lambda *_a: False
+    )
+    try:
+        with pytest.raises(ValueError, match="INDEX_CACHE_HIERARCHY_CHANGED"):
+            IncrementalSync(cache)._scan_disk_files(
+                10, frozenset(), candidate_snapshot=snapshot
+            )
+    finally:
+        cache.close()
+        release_index_candidate_snapshot(snapshot)
+
+
+@requires_posix_fd
+def test_frozen_incremental_read_gets_fresh_per_file_deadline(tmp_path, monkeypatch):
+    # PR #1253 thread 3763790625: capture age cannot expire a later repair read.
+    import tree_sitter_analyzer.incremental_sync as sync_module
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    observed = []
+    cache = ASTCache(str(tmp_path))
+    sync = IncrementalSync(cache)
+    info = {
+        "abs_path": str(path),
+        "source_path": snapshot.selected_entries[0].frozen_path,
+        "language": "python",
+        "fingerprint": snapshot.selected_entries[0].fingerprint,
+        "frozen_identity": snapshot.selected_entries[0].frozen_identity,
+    }
+    monkeypatch.setattr(sync_module.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(
+        cache,
+        "index_file",
+        lambda *_args, **kwargs: (
+            observed.append(kwargs["_frozen_deadline"]) or {"status": "indexed"}
+        ),
+    )
+    try:
+        result = sync._index_logical_file(info)
+    finally:
+        cache.close()
+        from tree_sitter_analyzer.indexing_candidate_materialization import (
+            release_index_candidate_snapshot,
+        )
+
+        release_index_candidate_snapshot(snapshot)
+
+    assert (observed, result) == ([135.0], {"status": "indexed"})
+
+
+@requires_posix_fd
 def test_frozen_incremental_uses_logical_key_and_language(tmp_path):
     # PR #1253 review 3761093594: opaque extensionless evidence is not a cache key.
     from tree_sitter_analyzer.indexing_candidate_materialization import (

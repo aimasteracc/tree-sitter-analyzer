@@ -360,6 +360,7 @@ class IncrementalSync:
             ):
                 from .indexing_candidate_materialization import (
                     _FROZEN_READ_SECONDS,
+                    index_candidate_cache_hierarchy_is_current,
                     index_candidate_snapshot_is_materialized,
                 )
 
@@ -368,6 +369,10 @@ class IncrementalSync:
                     deadline=time.monotonic() + _FROZEN_READ_SECONDS,
                 ):
                     raise ValueError("INDEX_CANDIDATE_FROZEN_EVIDENCE_INVALID")
+                if not index_candidate_cache_hierarchy_is_current(
+                    candidate_snapshot, self._cache
+                ):
+                    raise ValueError("INDEX_CACHE_HIERARCHY_CHANGED")
             changed_files: list[tuple[str, str]] = []
             for entry in candidate_snapshot.selected_entries:
                 change_reason = (
@@ -386,7 +391,6 @@ class IncrementalSync:
                     "language": entry.language,
                     "fingerprint": fingerprint,
                     "frozen_identity": entry.frozen_identity,
-                    "frozen_deadline": candidate_snapshot.frozen_read_deadline,
                     "mtime_ns": fingerprint.mtime_ns,
                     "file_size": fingerprint.file_size,
                     "content_hash": fingerprint.content_hash,
@@ -613,13 +617,15 @@ class IncrementalSync:
         source_path = str(info.get("source_path", logical_path))
         if source_path == logical_path:
             return self._cache.index_file(logical_path)
+        from .indexing_candidate_materialization import _FROZEN_READ_SECONDS
+
         return self._cache.index_file(
             logical_path,
             info.get("language"),
             _source_path=source_path,
             _source_fingerprint=info.get("fingerprint"),
             _frozen_identity=info.get("frozen_identity"),
-            _frozen_deadline=info.get("frozen_deadline"),
+            _frozen_deadline=time.monotonic() + _FROZEN_READ_SECONDS,
         )
 
     def get_changes(self) -> dict[str, list[str]]:

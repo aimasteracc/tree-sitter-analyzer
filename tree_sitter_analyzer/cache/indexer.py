@@ -957,6 +957,7 @@ def run_index_project(
     owns_candidate_snapshot = False
     candidate_released = False
     cleanup_result: dict[str, Any] | None = None
+    materialized = False
     if force and candidate_snapshot is None:
         candidate_snapshot = build_index_candidate_snapshot(
             cache.project_root,
@@ -987,12 +988,12 @@ def run_index_project(
             canonical_source_scope_descriptor(source_scope)
         )
     validate_full_index_source_scope(source_scope, effective_exclude, max_files)
-    if force:
-        from ..indexing_candidate_materialization import (
-            index_candidate_snapshot_is_materialized,
-            secure_candidate_materialization_supported,
-        )
+    from ..indexing_candidate_materialization import (
+        index_candidate_snapshot_is_materialized,
+        secure_candidate_materialization_supported,
+    )
 
+    if force:
         materialized = bool(
             candidate_snapshot is not None
             and index_candidate_snapshot_is_materialized(candidate_snapshot)
@@ -1036,44 +1037,33 @@ def run_index_project(
     rebuild_signaled = False
     root_lease_fd: int | None = None
     try:
-        if force:
-            if materialized:
-                from ..indexing_candidate_materialization import (
-                    open_index_candidate_snapshot_root,
-                )
+        if (
+            candidate_snapshot is not None
+            and secure_candidate_materialization_supported()
+            and getattr(cache, "_uses_project_mirror", True)
+        ):
+            from ..indexing_candidate_materialization import (
+                index_candidate_cache_hierarchy_is_current,
+                open_index_candidate_snapshot_root,
+            )
 
-                root_lease_fd = open_index_candidate_snapshot_root(candidate_snapshot)
-                cache_dir_current = not getattr(cache, "_uses_project_mirror", True)
-                probe_fd: int | None = None
-                try:
-                    if (
-                        root_lease_fd is not None
-                        and getattr(cache, "_uses_project_mirror", True)
-                        and cache._cache_dir_fd is not None
-                    ):
-                        flags = (
-                            os.O_RDONLY
-                            | getattr(os, "O_DIRECTORY", 0)
-                            | getattr(os, "O_NOFOLLOW", 0)
-                            | getattr(os, "O_CLOEXEC", 0)
-                        )
-                        probe_fd = os.open(".ast-cache", flags, dir_fd=root_lease_fd)
-                        expected = os.fstat(cache._cache_dir_fd)
-                        observed = os.fstat(probe_fd)
-                        cache_dir_current = (expected.st_dev, expected.st_ino) == (
-                            observed.st_dev,
-                            observed.st_ino,
-                        )
-                except OSError:
-                    cache_dir_current = False
-                finally:
-                    if probe_fd is not None:
-                        os.close(probe_fd)
-                if root_lease_fd is None or not cache_dir_current:
-                    cleanup_result = _unsafe_force_snapshot_result(
-                        candidate_snapshot, activation_enabled, changed=[]
-                    )
-                    return cleanup_result
+            root_lease_fd = open_index_candidate_snapshot_root(candidate_snapshot)
+            if root_lease_fd is None or not index_candidate_cache_hierarchy_is_current(
+                candidate_snapshot, cache, root_fd=root_lease_fd
+            ):
+                cleanup_result = _unsafe_force_snapshot_result(
+                    candidate_snapshot, activation_enabled, changed=[]
+                )
+                cleanup_result["mode_used"] = "full" if force else "incremental"
+                cleanup_result["files"] = [
+                    {
+                        "file": "",
+                        "status": "error",
+                        "reason": "INDEX_CACHE_HIERARCHY_CHANGED",
+                    }
+                ]
+                return cleanup_result
+        if force:
             # #578: a full rebuild empties ast_index up front (the DELETE
             # below commits), then re-populates in bounded batches over
             # ~70 s. Stamp a persisted marker across that window so

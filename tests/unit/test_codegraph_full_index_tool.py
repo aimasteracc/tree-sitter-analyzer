@@ -735,7 +735,8 @@ class TestExecute:
     async def test_full_mode_root_swap_after_handoff_check_reuses_cache_owner(
         self, tmp_path, monkeypatch
     ):
-        # PR #1253 P1: replacement after the handoff check receives no cache owner.
+        # PR #1253 thread 3763821273: a replacement after frozen validation is
+        # rejected by the independent visible-hierarchy validation.
         import tree_sitter_analyzer.indexing_candidate_materialization as materialization
 
         (tmp_path / "app.py").write_text("value = 1\n")
@@ -774,10 +775,76 @@ class TestExecute:
         ):
             result = await full_tool.execute({"mode": "full", "output_format": "json"})
 
-        assert phase_caches[0] is phase_caches[1]
+        assert len(phase_caches) == 1
         assert phase_caches[0] is not None
-        assert result["phases"]["incremental_sync"]["status"] == "error"
+        assert result["phases"]["ast_cache"]["snapshot_handoff_error"] == (
+            "INDEX_CACHE_HIERARCHY_CHANGED"
+        )
+        assert result["phases"]["remaining_phases"]["status"] == "skipped"
         assert sorted(path.name for path in tmp_path.iterdir()) == ["sentinel"]
+
+    @pytest.mark.skipif(
+        os.name != "posix", reason="GH-1253: requires POSIX cache hierarchy"
+    )
+    async def test_full_mode_cache_swap_after_ast_phase_aborts_later_writes(
+        self, tmp_path
+    ):
+        # PR #1253 thread 3763821273: later phases revalidate the pinned cache.
+        (tmp_path / "app.py").write_text("value = 1\n", encoding="utf-8")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        displaced_cache = tmp_path / ".ast-cache-displaced"
+
+        def ast_then_swap(*_args, _cache=None, **_kwargs):
+            assert _cache is not None
+            (tmp_path / ".ast-cache").rename(displaced_cache)
+            (tmp_path / ".ast-cache").mkdir()
+            (tmp_path / ".ast-cache" / "replacement").write_text(
+                "untouched\n", encoding="utf-8"
+            )
+            return {"status": "ok", "changed_during_run": 0}
+
+        with (
+            patch.object(full_tool, "_phase_ast_cache", side_effect=ast_then_swap),
+            patch.object(full_tool, "_phase_incremental_sync") as incremental,
+            patch.object(full_tool, "_collect_final_stats") as final_stats,
+        ):
+            result = await full_tool.execute({"mode": "full", "output_format": "json"})
+
+        incremental.assert_not_called()
+        final_stats.assert_not_called()
+        assert (
+            result["phases"]["ast_cache"]["abort_remaining_phases"],
+            result["phases"]["ast_cache"]["snapshot_handoff_error"],
+            (tmp_path / ".ast-cache" / "replacement").read_text(encoding="utf-8"),
+        ) == (True, "INDEX_CACHE_HIERARCHY_CHANGED", "untouched\n")
+
+    @pytest.mark.skipif(
+        os.name != "posix", reason="GH-1253: requires POSIX cache hierarchy"
+    )
+    async def test_full_mode_cache_swap_after_incremental_aborts_final_stats(
+        self, tmp_path
+    ):
+        (tmp_path / "app.py").write_text("value = 1\n", encoding="utf-8")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        displaced = tmp_path / ".ast-cache-displaced"
+
+        def incremental_then_swap(*_args, **_kwargs):
+            (tmp_path / ".ast-cache").rename(displaced)
+            (tmp_path / ".ast-cache").mkdir()
+            return {"status": "ok", "processed": 1, "changed_during_run": 0}
+
+        with (
+            patch.object(
+                full_tool, "_phase_incremental_sync", side_effect=incremental_then_swap
+            ),
+            patch.object(full_tool, "_collect_final_stats") as final_stats,
+        ):
+            result = await full_tool.execute({"mode": "full", "output_format": "json"})
+        final_stats.assert_not_called()
+        assert (result["success"], result["phases"]["remaining_phases"]["status"]) == (
+            False,
+            "skipped",
+        )
 
     async def test_full_index_walks_project_once_for_both_phases(self, tmp_path):
         import tree_sitter_analyzer.mcp.tools.full_index_tool as full_index_module
@@ -1336,6 +1403,18 @@ async def test_full_index_accepts_configured_symlink_root(tmp_path):
         result["total_files"],
         result["phases"]["incremental_sync"]["completeness"],
     ) == (True, "INFO", 1, "complete")
+
+
+def test_incremental_phase_converts_cache_failure_to_phase_error(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.ast_cache as cache_module
+
+    monkeypatch.setattr(
+        cache_module,
+        "ASTCache",
+        lambda _root: (_ for _ in ()).throw(RuntimeError("open failed")),
+    )
+    result = CodeGraphFullIndexTool(str(tmp_path))._phase_incremental_sync()
+    assert (result["status"], result["error"]) == ("error", "RuntimeError: open failed")
 
 
 class TestIncrementalPhaseScope:

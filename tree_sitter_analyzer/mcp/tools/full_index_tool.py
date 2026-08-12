@@ -405,16 +405,23 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             ):
                 from ...indexing_candidate_materialization import (
                     _FROZEN_READ_SECONDS,
+                    index_candidate_cache_hierarchy_is_current,
                     index_candidate_snapshot_is_materialized,
                 )
 
                 handoff_deadline = time.monotonic() + _FROZEN_READ_SECONDS
-                if not index_candidate_snapshot_is_materialized(
+                frozen_current = index_candidate_snapshot_is_materialized(
                     candidate_snapshot, deadline=handoff_deadline
-                ):
+                )
+                hierarchy_current = index_candidate_cache_hierarchy_is_current(
+                    candidate_snapshot, shared_cache
+                )
+                if not frozen_current or not hierarchy_current:
                     ast_phase["abort_remaining_phases"] = True
                     ast_phase["snapshot_handoff_error"] = (
                         "INDEX_CANDIDATE_FROZEN_EVIDENCE_INVALID"
+                        if not frozen_current
+                        else "INDEX_CACHE_HIERARCHY_CHANGED"
                     )
             if ast_phase.get("abort_remaining_phases") is True:
                 # The force authorization or phase-handoff validation failed. Do not
@@ -470,6 +477,59 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 _cache=shared_cache,
             )
             phases["incremental_sync"] = incremental_phase
+            if mode == "full":
+                from ...indexing_candidate_materialization import (
+                    index_candidate_cache_hierarchy_is_current,
+                    secure_candidate_materialization_supported,
+                )
+
+                if (
+                    secure_candidate_materialization_supported()
+                    and not index_candidate_cache_hierarchy_is_current(
+                        candidate_snapshot, shared_cache
+                    )
+                ):
+                    ast_phase["abort_remaining_phases"] = True
+                    ast_phase["snapshot_handoff_error"] = (
+                        "INDEX_CACHE_HIERARCHY_CHANGED"
+                    )
+                    phases["remaining_phases"] = {
+                        "status": "skipped",
+                        "reason": "unsafe force snapshot; no later write phases were run",
+                    }
+                    elapsed = round(time.monotonic() - t_start, 3)
+                    summary_line = (
+                        "codegraph_full_index: cache hierarchy changed; phases aborted"
+                    )
+                    result = {
+                        "success": False,
+                        "verdict": "WARN",
+                        "summary_line": summary_line,
+                        "agent_summary": {
+                            "verdict": "WARN",
+                            "summary_line": summary_line,
+                        },
+                        "mode": mode,
+                        "elapsed_seconds": elapsed,
+                        "phases": phases,
+                        "candidate_snapshot": {
+                            **candidate_snapshot.metrics(),
+                            "processed": int(incremental_phase.get("processed", 0)),
+                            "changed_during_run": int(
+                                incremental_phase.get("changed_during_run", 0)
+                            ),
+                            "changed_during_run_files": list(
+                                incremental_phase.get("changed_during_run_files", [])
+                            )[:_ERROR_DETAILS_CAP],
+                        },
+                    }
+                    from ...indexing_candidate_materialization import (
+                        release_index_candidate_snapshot,
+                    )
+
+                    release_index_candidate_snapshot(candidate_snapshot, result)
+                    candidate_released = True
+                    return apply_toon_format_to_response(result, output_format)
             phases["fts5"] = self._phase_fts5_stats(_cache=shared_cache)
 
             if resolve_synapse:

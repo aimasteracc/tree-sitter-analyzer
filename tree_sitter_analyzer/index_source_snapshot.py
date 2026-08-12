@@ -273,39 +273,124 @@ def _revalidate_source_rows(
     rows: Iterable[tuple[str, str, str]],
     deadline: float,
 ) -> bool:
-    """Reopen every final-inventory leaf and compare its ctime-inclusive marker."""
+    """Authenticate one epoch while retaining only O(path depth) descriptors.
+
+    Admission walks each leaf from the pinned root, recording identity and
+    mutation-sensitive metadata for every ancestor and the leaf, then closes
+    that chain.  Once all leaves have been admitted, every chain is reopened
+    from the same pinned root and compared with its admission record.  Thus an
+    early leaf's stable interval reaches the recheck phase while a late leaf's
+    interval starts in the admission phase, without retaining O(files) fds.
+    """
     directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
     directory_flags |= getattr(os, "O_NOFOLLOW", 0)
     leaf_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     leaf_flags |= getattr(os, "O_NONBLOCK", 0)
+    root_before = os.stat(root, follow_symlinks=False)
     root_fd = os.open(root, directory_flags)
+    root_opened = os.fstat(root_fd)
+    admitted_rows: list[
+        tuple[tuple[str, ...], tuple[os.stat_result, ...], os.stat_result]
+    ] = []
+
+    def open_chain(
+        parts: tuple[str, ...], *, check_deadline: bool
+    ) -> tuple[int, list[int], tuple[os.stat_result, ...], os.stat_result]:
+        current = os.dup(root_fd)
+        opened_fds = [current]
+        ancestors: list[os.stat_result] = []
+        try:
+            for component in parts[:-1]:
+                if check_deadline and time.monotonic() > deadline:
+                    raise TimeoutError
+                before = os.stat(component, dir_fd=current, follow_symlinks=False)
+                child = os.open(component, directory_flags, dir_fd=current)
+                opened_fds.append(child)
+                opened = os.fstat(child)
+                if not stat.S_ISDIR(opened.st_mode) or not opened_entry_matches(
+                    before, opened
+                ):
+                    raise OSError("source ancestor changed")
+                ancestors.append(opened)
+                current = child
+            if check_deadline and time.monotonic() > deadline:
+                raise TimeoutError
+            before = os.stat(parts[-1], dir_fd=current, follow_symlinks=False)
+            leaf = os.open(parts[-1], leaf_flags, dir_fd=current)
+            opened_fds.append(leaf)
+            opened = os.fstat(leaf)
+            if not stat.S_ISREG(opened.st_mode) or not opened_entry_matches(
+                before, opened
+            ):
+                raise OSError("source leaf changed")
+            return leaf, opened_fds, tuple(ancestors), opened
+        except Exception:
+            for fd in reversed(opened_fds):
+                os.close(fd)
+            raise
+
     try:
+        if not stat.S_ISDIR(root_opened.st_mode) or not opened_entry_matches(
+            root_before, root_opened
+        ):
+            return False
+
+        # Admission: each descriptor chain is short-lived, but its complete
+        # identity/ctime record survives until the common recheck boundary.
         for relative, expected_marker, _language in rows:
             if time.monotonic() > deadline:
                 raise TimeoutError
-            parts = relative.split("/")
-            current = os.dup(root_fd)
+            parts = tuple(relative.split("/"))
+            if not parts or any(part in ("", ".", "..") for part in parts):
+                return False
             try:
-                for component in parts[:-1]:
-                    child = os.open(component, directory_flags, dir_fd=current)
-                    os.close(current)
-                    current = child
-                before = os.stat(parts[-1], dir_fd=current, follow_symlinks=False)
-                leaf = os.open(parts[-1], leaf_flags, dir_fd=current)
-                try:
-                    opened = os.fstat(leaf)
-                    if (
-                        not stat.S_ISREG(opened.st_mode)
-                        or not opened_entry_matches(before, opened)
-                        or _metadata_marker(opened) != expected_marker
-                    ):
-                        return False
-                finally:
-                    os.close(leaf)
+                _leaf, fds, ancestors, opened = open_chain(parts, check_deadline=False)
+                if _metadata_marker(opened) != expected_marker:
+                    return False
+                admitted_rows.append((parts, ancestors, opened))
             except OSError:
                 return False
             finally:
-                os.close(current)
+                if "fds" in locals():
+                    for fd in reversed(fds):
+                        os.close(fd)
+                    del fds
+
+        # The pinned root itself must still name the caller-visible root before
+        # chain replay; otherwise a stable but renamed tree could authenticate.
+        if time.monotonic() > deadline:
+            raise TimeoutError
+        try:
+            if not _reopened_root_matches(root, root_opened):
+                return False
+        except OSError:
+            return False
+
+        # Recheck: reopen every admitted chain from the pinned root and compare
+        # both identity and ctime-bearing mutation metadata.
+        for parts, admitted_ancestors, admitted_leaf in admitted_rows:
+            if time.monotonic() > deadline:
+                raise TimeoutError
+            try:
+                _leaf, fds, current_ancestors, current_leaf = open_chain(
+                    parts, check_deadline=True
+                )
+                if not _same_file_metadata(admitted_leaf, current_leaf):
+                    return False
+                if len(admitted_ancestors) != len(current_ancestors) or any(
+                    not _same_file_metadata(admitted, current)
+                    for admitted, current in zip(
+                        admitted_ancestors, current_ancestors, strict=True
+                    )
+                ):
+                    return False
+            except OSError:
+                return False
+            finally:
+                if "fds" in locals():
+                    for fd in reversed(fds):
+                        os.close(fd)
+                    del fds
         return True
     finally:
         os.close(root_fd)
@@ -319,8 +404,10 @@ def _reopened_root_matches(root: str, expected: os.stat_result) -> bool:
     root_fd = os.open(root, flags)
     try:
         current_open = os.fstat(root_fd)
-        return opened_entry_matches(expected, current_path) and opened_entry_matches(
-            current_path, current_open
+        return (
+            opened_entry_matches(expected, current_path)
+            and opened_entry_matches(current_path, current_open)
+            and _same_file_metadata(expected, current_open)
         )
     finally:
         os.close(root_fd)

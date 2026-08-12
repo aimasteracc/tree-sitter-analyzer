@@ -89,6 +89,54 @@ def index_candidate_snapshot_root_is_current(snapshot: Any) -> bool:
     return True
 
 
+def index_candidate_cache_hierarchy_is_current(
+    snapshot: Any, cache: Any, *, root_fd: int | None = None
+) -> bool:
+    """Require the pinned cache directory to remain visible below the captured root."""
+    if not getattr(cache, "_uses_project_mirror", True):
+        return True
+    cache_fd = getattr(cache, "_cache_dir_fd", None)
+    if cache_fd is None or not secure_candidate_materialization_supported():
+        return False
+    owns_root = root_fd is None
+    if root_fd is None:
+        root_fd = open_index_candidate_snapshot_root(snapshot)
+    if root_fd is None:
+        return False
+    probe_fd: int | None = None
+    try:
+        expected_root = getattr(snapshot, "root_identity", None)
+        root_info = os.fstat(root_fd)
+        if expected_root is None or (
+            int(root_info.st_dev),
+            int(root_info.st_ino),
+        ) != (expected_root[1], expected_root[2]):
+            return False
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+        )
+        probe_fd = os.open(".ast-cache", flags, dir_fd=root_fd)
+        expected = os.fstat(cache_fd)
+        observed = os.fstat(probe_fd)
+        return (expected.st_dev, expected.st_ino) == (
+            observed.st_dev,
+            observed.st_ino,
+        )
+    except OSError:
+        return False
+    finally:
+        if probe_fd is not None:
+            os.close(probe_fd)
+        if owns_root:
+            try:
+                os.close(root_fd)
+            except OSError:
+                pass
+
+
 def _write_private_file(root_fd: int, name: str, data: bytes) -> tuple[int, int, int]:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     flags |= getattr(os, "O_CLOEXEC", 0)
