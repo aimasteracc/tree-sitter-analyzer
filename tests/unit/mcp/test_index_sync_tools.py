@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Tests for codegraph_full_index, codegraph_autoindex, and codegraph_incremental_sync MCP tools."""
 
+import os
+
 import pytest
 
 
@@ -80,7 +82,8 @@ class TestCodeGraphFullIndexTool:
             {"mode": "incremental", "max_files": 10, "output_format": "json"}
         )
         assert result["success"] is True
-        assert result["verdict"] == "INFO"
+        expected_verdict = "WARN" if os.name == "nt" else "INFO"
+        assert result["verdict"] == expected_verdict
         assert "phases" in result
 
     @pytest.mark.asyncio
@@ -93,7 +96,7 @@ class TestCodeGraphFullIndexTool:
         result = await tool.execute(
             {"mode": "full", "max_files": 10, "output_format": "json"}
         )
-        assert result["success"] is True
+        assert result["success"] is (os.name != "nt")
         assert "phases" in result
         assert "elapsed_seconds" in result
 
@@ -237,8 +240,13 @@ class TestCodeGraphIncrementalSyncTool:
         result = await tool.execute(
             {"mode": "sync", "max_files": 10, "output_format": "json"}
         )
-        assert result["success"] is True
-        assert "mode" in result
+        # PR #1253 review 3762603012: a live walk is operational, not authority.
+        assert (result["success"], result["verdict"], result["completeness"]) == (
+            False,
+            "WARN",
+            "incomplete",
+        )
+        assert result["mode"] == "sync"
 
     @pytest.mark.asyncio
     async def test_execute_changes(self, project_root):

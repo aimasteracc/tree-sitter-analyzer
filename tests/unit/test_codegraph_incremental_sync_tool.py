@@ -170,3 +170,87 @@ class TestCacheLifecycle:
             tool_with_root._status("json")
 
         cache.close.assert_called_once_with()
+
+
+def test_candidate_less_incremental_response_is_not_authoritative_success(
+    tool_with_root,
+):
+    # PR #1253 review 3762603012: public sync has no frozen candidate evidence.
+    cache = MagicMock()
+    live_walk = SyncResult(scope_complete=False)
+    with (
+        patch.object(tool_with_root, "_ensure_cache", return_value=cache),
+        patch.object(IncrementalSync, "sync", return_value=live_walk),
+    ):
+        result = tool_with_root._sync(10, "json")
+
+    assert (result["success"], result["verdict"], result["completeness"]) == (
+        False,
+        "WARN",
+        "incomplete",
+    )
+
+
+def test_parse_failure_makes_incremental_response_non_success(tool_with_root):
+    # PR #1253 thread 3761514130: missing parsed rows are not MCP success.
+    cache = MagicMock()
+    parse_failure = SyncResult(errors=1, scope_complete=False)
+    with (
+        patch.object(tool_with_root, "_ensure_cache", return_value=cache),
+        patch.object(IncrementalSync, "sync", return_value=parse_failure),
+    ):
+        result = tool_with_root._sync(10, "json")
+
+    assert (result["success"], result["verdict"], result["completeness"]) == (
+        False,
+        "WARN",
+        "incomplete",
+    )
+
+
+def test_manifest_stamp_failure_makes_incremental_response_non_success(
+    tool_with_root,
+):
+    # PR #1253 thread 3761514130: failed certification is not MCP success.
+    cache = MagicMock()
+    stamp_failure = SyncResult(
+        scope_complete=False,
+        manifest_certification_failed=True,
+    )
+    with (
+        patch.object(tool_with_root, "_ensure_cache", return_value=cache),
+        patch.object(IncrementalSync, "sync", return_value=stamp_failure),
+    ):
+        result = tool_with_root._sync(10, "json")
+
+    assert (
+        result["success"],
+        result["verdict"],
+        result["manifest_certification_failed"],
+    ) == (False, "WARN", True)
+
+
+def test_pipeline_warning_makes_incremental_response_non_success(tool_with_root):
+    # PR #1253 review 3757240532: incomplete navigation is not an INFO success.
+    cache = MagicMock()
+    pipeline_failure = SyncResult(errors=1, backfill_errors=1)
+    pipeline_failure.details.append(
+        {
+            "stage": "cross_file",
+            "considered": "backfill",
+            "action": "backfill",
+            "status": "warning",
+            "reason": "BACKFILL_REPORTED_ERRORS",
+        }
+    )
+    with (
+        patch.object(tool_with_root, "_ensure_cache", return_value=cache),
+        patch.object(IncrementalSync, "sync", return_value=pipeline_failure),
+    ):
+        result = tool_with_root._sync(10, "json")
+
+    assert (result["success"], result["verdict"], result["backfill_errors"]) == (
+        False,
+        "WARN",
+        1,
+    )

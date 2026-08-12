@@ -18,13 +18,20 @@ CodeGraph parity: equivalent to CodeGraph's "index everything" single command.
 
 from __future__ import annotations
 
+import os
+import sqlite3
 import time
 from typing import Any
 
+from ...index_source_snapshot import (
+    SourceScopeDescriptor,
+    make_source_scope_descriptor,
+)
 from ...indexing_limits import normalize_index_max_files
 from ...indexing_snapshot import (
     IndexCandidateSnapshot,
     build_index_candidate_snapshot,
+    walk_index_candidate_entries,
 )
 from ...utils import setup_logger
 from ..utils.auto_index_guard import mark_dirty
@@ -149,7 +156,12 @@ def _candidate_snapshot_report(
     incremental_processed = int(incremental_phase.get("processed", 0))
     selected_paths = {entry.rel_path for entry in snapshot.selected_entries}
     changed_paths = set(changed_files)
-    processed = len(selected_paths - changed_paths)
+    frozen_epoch = all(
+        entry.frozen_path is not None for entry in snapshot.selected_entries
+    )
+    processed = (
+        len(selected_paths) if frozen_epoch else len(selected_paths - changed_paths)
+    )
     report: dict[str, Any] = {
         **snapshot.metrics(),
         "processed": processed,
@@ -162,12 +174,18 @@ def _candidate_snapshot_report(
         ),
     }
     report["selection_reconciled"] = changed_paths <= selected_paths and (
-        snapshot.selected == processed + len(changed_paths)
+        snapshot.selected == processed
+        if frozen_epoch
+        else snapshot.selected == processed + len(changed_paths)
     )
-    report["phase_totals_reconciled"] = snapshot.selected == ast_processed + int(
-        ast_phase.get("changed_during_run", 0)
-    ) and snapshot.selected == incremental_processed + int(
-        incremental_phase.get("changed_during_run", 0)
+    report["phase_totals_reconciled"] = (
+        snapshot.selected == ast_processed
+        and snapshot.selected == incremental_processed
+        if frozen_epoch
+        else snapshot.selected
+        == ast_processed + int(ast_phase.get("changed_during_run", 0))
+        and snapshot.selected
+        == incremental_processed + int(incremental_phase.get("changed_during_run", 0))
     )
     return report
 
@@ -240,7 +258,8 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 },
                 "exclude_patterns": {
                     "type": "array",
-                    "items": {"type": "string"},
+                    "maxItems": 1024,
+                    "items": {"type": "string", "maxLength": 65_000},
                     "description": (
                         "Additional fnmatch glob patterns (relative to project root) "
                         'to exclude from indexing. Example: ["tests/golden/corpus_*"]. '
@@ -266,6 +285,23 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         if mode not in ("full", "incremental"):
             raise ValueError(f"Invalid mode: {mode}. Must be 'full' or 'incremental'")
         arguments["max_files"] = normalize_index_max_files(arguments.get("max_files"))
+        extra_patterns = arguments.get("exclude_patterns", [])
+        if not isinstance(extra_patterns, list) or any(
+            not isinstance(pattern, str) for pattern in extra_patterns
+        ):
+            raise ValueError("exclude_patterns must be an array of strings")
+        no_default_excludes = arguments.get("no_default_excludes", False)
+        if not isinstance(no_default_excludes, bool):
+            raise ValueError("no_default_excludes must be a boolean")
+        normalized_patterns = sorted(
+            {pattern.replace("\\", "/") for pattern in extra_patterns}
+        )
+        make_source_scope_descriptor(
+            no_default_excludes=no_default_excludes,
+            exclude_patterns=tuple(normalized_patterns),
+            certification_max_files=arguments["max_files"],
+        )
+        arguments["exclude_patterns"] = normalized_patterns
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -281,6 +317,9 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 arguments.get("output_format", "toon"),
             )
 
+        # Resolve a configured symlink exactly once at the operation boundary.
+        # Every later walk/open/status phase uses this canonical descriptor root.
+        self.project_root = os.path.realpath(os.path.abspath(self.project_root))
         mode = arguments.get("mode", "incremental")
         max_files = arguments["max_files"]
         resolve_synapse = arguments.get("resolve_synapse", True)
@@ -292,91 +331,313 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             extra_patterns,
             no_default_excludes,
         )
+        source_scope = make_source_scope_descriptor(
+            no_default_excludes=no_default_excludes,
+            exclude_patterns=tuple(extra_patterns),
+            certification_max_files=max_files,
+        )
         t_start = time.monotonic()
-        candidate_snapshot = self._build_candidate_snapshot(
-            max_files,
-            exclude_patterns,
-        )
+        try:
+            candidate_snapshot = (
+                self._build_candidate_snapshot(
+                    max_files,
+                    exclude_patterns,
+                    materialize=True,
+                )
+                if mode == "full"
+                else self._build_candidate_snapshot(max_files, exclude_patterns)
+            )
+        except Exception as exc:
+            error, truncated = bounded_safe_error_message(
+                exc,
+                str(self.project_root),
+                prefix="Candidate discovery failed: ",
+            )
+            return apply_toon_format_to_response(
+                {
+                    "success": False,
+                    "verdict": "ERROR",
+                    "error": error,
+                    "error_truncated": truncated,
+                    "mode": mode,
+                    "phase": "candidate_discovery",
+                },
+                output_format,
+            )
+        candidate_released = False
+        shared_cache: Any | None = None
+        shared_cache_error: Exception | None = None
 
-        phases: dict[str, Any] = {}
+        try:
+            phases: dict[str, Any] = {}
 
-        if mode == "full":
-            mark_dirty(self.project_root)
+            if mode == "full":
+                mark_dirty(self.project_root)
+                try:
+                    from ...ast_cache import ASTCache
 
-        ast_phase = self._phase_ast_cache(
-            mode == "full",
-            max_files,
-            include_activation=include_activation,
-            exclude_patterns=exclude_patterns,
-            candidate_snapshot=candidate_snapshot,
-        )
-        phases["ast_cache"] = ast_phase
-        incremental_phase = self._phase_incremental_sync(
-            max_files,
-            exclude_patterns,
-            candidate_snapshot=candidate_snapshot,
-        )
-        phases["incremental_sync"] = incremental_phase
-        phases["fts5"] = self._phase_fts5_stats()
+                    shared_cache = ASTCache(self.project_root or ".")
+                except Exception as exc:
+                    shared_cache_error = exc
 
-        if resolve_synapse:
-            # A1: the ast_cache phase already ran the complete backfill chain
-            # (cross-file + synapse + edge-store refresh + unresolved_refs) via
-            # _post_index_backfill. Re-running index_project(resolve_only=True)
-            # here repeated the whole O(edges) chain a second time — on large
-            # Java repos that doubled backfill time and was a primary stall/OOM
-            # cause. Report from the already-computed stats instead of re-running.
-            phases["synapse_resolution"] = self._phase_synapse(ast_phase)
+            if shared_cache_error is not None:
+                ast_phase = _phase_error(
+                    shared_cache_error,
+                    str(self.project_root) if self.project_root else None,
+                    elapsed_seconds=round(time.monotonic() - t_start, 3),
+                )
+                ast_phase["abort_remaining_phases"] = True
+            else:
+                ast_phase = self._phase_ast_cache(
+                    mode == "full",
+                    max_files,
+                    include_activation=include_activation,
+                    exclude_patterns=exclude_patterns,
+                    candidate_snapshot=candidate_snapshot,
+                    source_scope=source_scope,
+                    _cache=shared_cache,
+                )
+            phases["ast_cache"] = ast_phase
+            if (
+                mode == "full"
+                and candidate_snapshot.frozen_root is not None
+                and ast_phase.get("abort_remaining_phases") is not True
+            ):
+                from ...indexing_candidate_materialization import (
+                    _FROZEN_READ_SECONDS,
+                    index_candidate_cache_hierarchy_is_current,
+                    index_candidate_snapshot_is_materialized,
+                )
 
-        phases["call_edges"] = self._phase_call_edge_stats()
+                handoff_deadline = time.monotonic() + _FROZEN_READ_SECONDS
+                frozen_current = index_candidate_snapshot_is_materialized(
+                    candidate_snapshot, deadline=handoff_deadline
+                )
+                hierarchy_current = index_candidate_cache_hierarchy_is_current(
+                    candidate_snapshot, shared_cache
+                )
+                if not frozen_current or not hierarchy_current:
+                    ast_phase["abort_remaining_phases"] = True
+                    ast_phase["snapshot_handoff_error"] = (
+                        "INDEX_CANDIDATE_FROZEN_EVIDENCE_INVALID"
+                        if not frozen_current
+                        else "INDEX_CACHE_HIERARCHY_CHANGED"
+                    )
+            if ast_phase.get("abort_remaining_phases") is True:
+                # The force authorization or phase-handoff validation failed. Do not
+                # construct another cache owner: incremental sync, backfills, stats
+                # helpers, and final manifest stamping are forbidden opportunities.
+                phases["remaining_phases"] = {
+                    "status": "skipped",
+                    "reason": (
+                        "unsafe force snapshot; no later write phases were run"
+                        if "snapshot_handoff_error" in ast_phase
+                        else "unsafe force snapshot; no write phases were run"
+                    ),
+                }
+                elapsed = round(time.monotonic() - t_start, 3)
+                summary_line = (
+                    "codegraph_full_index: unsafe force snapshot; phases aborted"
+                )
+                result = {
+                    "success": False,
+                    "verdict": "WARN",
+                    "summary_line": summary_line,
+                    "agent_summary": {
+                        "verdict": "WARN",
+                        "summary_line": summary_line,
+                    },
+                    "mode": mode,
+                    "elapsed_seconds": elapsed,
+                    "phases": phases,
+                    "candidate_snapshot": {
+                        **candidate_snapshot.metrics(),
+                        "processed": 0,
+                        "changed_during_run": int(
+                            ast_phase.get("changed_during_run", 0)
+                        ),
+                        "changed_during_run_files": list(
+                            ast_phase.get("changed_during_run_files", [])
+                        )[:_ERROR_DETAILS_CAP],
+                    },
+                }
+                from ...indexing_candidate_materialization import (
+                    release_index_candidate_snapshot,
+                )
 
-        elapsed = round(time.monotonic() - t_start, 3)
+                release_index_candidate_snapshot(candidate_snapshot, result)
+                candidate_released = True
+                return apply_toon_format_to_response(result, output_format)
 
-        stats = self._collect_final_stats()
+            incremental_phase = self._phase_incremental_sync(
+                max_files,
+                exclude_patterns,
+                candidate_snapshot=candidate_snapshot,
+                source_scope=source_scope,
+                _cache=shared_cache,
+            )
+            phases["incremental_sync"] = incremental_phase
+            if mode == "full":
+                from ...indexing_candidate_materialization import (
+                    index_candidate_cache_hierarchy_is_current,
+                    secure_candidate_materialization_supported,
+                )
 
-        # #860: propagate phase-level errors to top-level verdict so callers
-        # don't receive "success: True / verdict: INFO" when a DB flush failed.
-        any_phase_error = any(
-            p.get("status") == "error" for p in phases.values() if isinstance(p, dict)
-        )
-        snapshot_report = _candidate_snapshot_report(
-            candidate_snapshot,
-            ast_phase,
-            incremental_phase,
-        )
-        snapshot_warning = (
-            snapshot_report["changed_during_run"] > 0
-            or not snapshot_report["selection_reconciled"]
-            or not snapshot_report["phase_totals_reconciled"]
-        )
-        top_verdict = "WARN" if any_phase_error or snapshot_warning else "INFO"
+                if (
+                    secure_candidate_materialization_supported()
+                    and not index_candidate_cache_hierarchy_is_current(
+                        candidate_snapshot, shared_cache
+                    )
+                ):
+                    ast_phase["abort_remaining_phases"] = True
+                    ast_phase["snapshot_handoff_error"] = (
+                        "INDEX_CACHE_HIERARCHY_CHANGED"
+                    )
+                    phases["remaining_phases"] = {
+                        "status": "skipped",
+                        "reason": "unsafe force snapshot; no later write phases were run",
+                    }
+                    elapsed = round(time.monotonic() - t_start, 3)
+                    summary_line = (
+                        "codegraph_full_index: cache hierarchy changed; phases aborted"
+                    )
+                    result = {
+                        "success": False,
+                        "verdict": "WARN",
+                        "summary_line": summary_line,
+                        "agent_summary": {
+                            "verdict": "WARN",
+                            "summary_line": summary_line,
+                        },
+                        "mode": mode,
+                        "elapsed_seconds": elapsed,
+                        "phases": phases,
+                        "candidate_snapshot": {
+                            **candidate_snapshot.metrics(),
+                            "processed": int(incremental_phase.get("processed", 0)),
+                            "changed_during_run": int(
+                                incremental_phase.get("changed_during_run", 0)
+                            ),
+                            "changed_during_run_files": list(
+                                incremental_phase.get("changed_during_run_files", [])
+                            )[:_ERROR_DETAILS_CAP],
+                        },
+                    }
+                    from ...indexing_candidate_materialization import (
+                        release_index_candidate_snapshot,
+                    )
 
-        result: dict[str, Any] = {
-            "success": True,
-            "verdict": top_verdict,
-            "mode": mode,
-            "elapsed_seconds": elapsed,
-            "phases": phases,
-            "candidate_snapshot": snapshot_report,
-            **stats,
-        }
+                    release_index_candidate_snapshot(candidate_snapshot, result)
+                    candidate_released = True
+                    return apply_toon_format_to_response(result, output_format)
+            phases["fts5"] = self._phase_fts5_stats(_cache=shared_cache)
 
-        return apply_toon_format_to_response(result, output_format)
+            if resolve_synapse:
+                # A1: the ast_cache phase already ran the complete backfill chain
+                # (cross-file + synapse + edge-store refresh + unresolved_refs) via
+                # _post_index_backfill. Re-running index_project(resolve_only=True)
+                # here repeated the whole O(edges) chain a second time — on large
+                # Java repos that doubled backfill time and was a primary stall/OOM
+                # cause. Report from the already-computed stats instead of re-running.
+                phases["synapse_resolution"] = self._phase_synapse(ast_phase)
+
+            phases["call_edges"] = self._phase_call_edge_stats(_cache=shared_cache)
+
+            elapsed = round(time.monotonic() - t_start, 3)
+
+            # #860: propagate phase-level errors to top-level verdict so callers
+            # don't receive "success: True / verdict: INFO" when a DB flush failed.
+            any_phase_error = any(
+                p.get("status") == "error"
+                for p in phases.values()
+                if isinstance(p, dict)
+            )
+            snapshot_report = _candidate_snapshot_report(
+                candidate_snapshot,
+                ast_phase,
+                incremental_phase,
+            )
+            snapshot_warning = (
+                snapshot_report["changed_during_run"] > 0
+                or int(ast_phase.get("backfill_errors", 0)) > 0
+                or not snapshot_report["selection_reconciled"]
+                or not snapshot_report["phase_totals_reconciled"]
+            )
+            top_verdict = "WARN" if any_phase_error or snapshot_warning else "INFO"
+            stats = self._collect_final_stats(
+                _cache=shared_cache,
+                stamp_manifest=(
+                    top_verdict == "INFO"
+                    and not candidate_snapshot.truncated_by_max_files
+                ),
+                source_scope=source_scope,
+            )
+            manifest_certified = bool(stats.pop("_manifest_certified", False))
+            manifest_warning = stats.get("manifest_warning")
+            if not manifest_certified or manifest_warning is not None:
+                top_verdict = "WARN"
+            operational_manifest_only = (
+                mode == "incremental"
+                and manifest_warning == "SOURCE_SCOPE_UNSUPPORTED"
+                and not stats.get("manifest_certification_failed", False)
+                and int(stats.get("certification_errors", 0)) == 0
+            )
+            summary_line = f"codegraph_full_index: completed with {top_verdict.lower()}"
+
+            result = {
+                "success": not any_phase_error
+                and not snapshot_warning
+                and incremental_phase.get("completeness") != "incomplete"
+                and (manifest_certified or operational_manifest_only),
+                "verdict": top_verdict,
+                "summary_line": summary_line,
+                "agent_summary": {
+                    "verdict": top_verdict,
+                    "summary_line": summary_line,
+                },
+                "mode": mode,
+                "elapsed_seconds": elapsed,
+                "phases": phases,
+                "candidate_snapshot": snapshot_report,
+                **stats,
+            }
+
+            from ...indexing_candidate_materialization import (
+                release_index_candidate_snapshot,
+            )
+
+            release_index_candidate_snapshot(candidate_snapshot, result)
+            candidate_released = True
+            return apply_toon_format_to_response(result, output_format)
+        finally:
+            _safe_close_cache(shared_cache)
+            if not candidate_released:
+                from ...indexing_candidate_materialization import (
+                    release_index_candidate_snapshot,
+                )
+
+                release_index_candidate_snapshot(candidate_snapshot)
+                candidate_released = True
 
     def _build_candidate_snapshot(
         self,
         max_files: int,
         exclude_patterns: frozenset[str],
+        *,
+        materialize: bool = False,
     ) -> IndexCandidateSnapshot:
-        from ...cache.indexer import _walk_source_files
+        from ...constants import EXCLUDE_DIRS
         from ...project_graph import _language_from_ext
 
         return build_index_candidate_snapshot(
             self.project_root or ".",
             max_files=max_files,
             exclude_patterns=exclude_patterns,
-            walk_fn=_walk_source_files,
+            walk_fn=lambda root: walk_index_candidate_entries(
+                root, excluded_dir_names=frozenset(EXCLUDE_DIRS)
+            ),
             language_fn=_language_from_ext,
+            materialize=materialize,
         )
 
     def _phase_ast_cache(
@@ -387,22 +648,29 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         include_activation: bool = False,
         exclude_patterns: frozenset[str] | None = None,
         candidate_snapshot: IndexCandidateSnapshot | None = None,
+        source_scope: SourceScopeDescriptor | None = None,
+        _cache: Any | None = None,
     ) -> dict[str, Any]:
         t0 = time.monotonic()
-        cache: Any | None = None
+        cache: Any | None = _cache
+        owns_cache = cache is None
         try:
-            from ...ast_cache import ASTCache
+            if cache is None:
+                from ...ast_cache import ASTCache
 
+                cache = ASTCache(self.project_root or ".")
             if exclude_patterns is None:
                 exclude_patterns = _resolve_exclude_patterns([], False)
 
-            cache = ASTCache(self.project_root or ".")
             index_kwargs: dict[str, Any] = {
                 "max_files": max_files,
                 "force": force,
                 "include_activation": include_activation,
                 "exclude_patterns": exclude_patterns,
+                "certify_manifest": False,
             }
+            if source_scope is not None:
+                index_kwargs["source_scope"] = source_scope
             if candidate_snapshot is not None:
                 index_kwargs["candidate_snapshot"] = candidate_snapshot
             result = cache.index_project(**index_kwargs)
@@ -419,24 +687,30 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             changed_details = [
                 {
                     "file": detail.get("file"),
-                    "status": "skipped",
+                    "status": detail.get("status", "skipped"),
                     "reason": detail.get("reason"),
                 }
                 for detail in result.get("files", [])
                 if isinstance(detail, dict)
-                and detail.get("status") == "skipped"
+                and detail.get("status") in ("skipped", "warning")
                 and "candidate snapshot" in str(detail.get("reason", ""))
             ]
             return {
                 "status": (
                     "error"
-                    if errors > 0 or error_summary["error_details_total"] > 0
+                    if errors > 0
+                    or int(result.get("backfill_errors", 0)) > 0
+                    or error_summary["error_details_total"] > 0
                     else "ok"
+                ),
+                "abort_remaining_phases": bool(
+                    result.get("abort_remaining_phases", False)
                 ),
                 "elapsed_seconds": elapsed,
                 "files_indexed": indexed,
                 "files_cached": cached,
                 "errors": errors,
+                "backfill_errors": int(result.get("backfill_errors", 0)),
                 "processed": int(result.get("processed", indexed + cached)),
                 "changed_during_run": int(result.get("changed_during_run", 0)),
                 "changed_during_run_files": sorted(
@@ -450,6 +724,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 ),
                 # Surface the backfill counts produced by _post_index_backfill so
                 # the synapse_resolution phase can report without re-running (A1).
+                "cross_file_backfill": result.get("cross_file_backfill"),
                 "synapse_backfill": result.get("synapse_backfill"),
                 "unresolved_refs_backfill": result.get("unresolved_refs_backfill"),
                 **error_summary,
@@ -461,7 +736,8 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 elapsed_seconds=round(time.monotonic() - t0, 3),
             )
         finally:
-            _safe_close_cache(cache)
+            if owns_cache:
+                _safe_close_cache(cache)
 
     def _phase_incremental_sync(
         self,
@@ -469,21 +745,29 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         exclude_patterns: frozenset[str] | None = None,
         *,
         candidate_snapshot: IndexCandidateSnapshot | None = None,
+        source_scope: SourceScopeDescriptor | None = None,
+        _cache: Any | None = None,
     ) -> dict[str, Any]:
         t0 = time.monotonic()
-        cache: Any | None = None
+        cache: Any | None = _cache
+        owns_cache = cache is None
         try:
-            from ...ast_cache import ASTCache
             from ...incremental_sync import IncrementalSync
 
             if exclude_patterns is None:
                 exclude_patterns = _resolve_exclude_patterns([], False)
-            cache = ASTCache(self.project_root or ".")
+            if cache is None:
+                from ...ast_cache import ASTCache
+
+                cache = ASTCache(self.project_root or ".")
             sync = IncrementalSync(cache)
             sync_kwargs: dict[str, Any] = {
                 "max_files": max_files,
                 "exclude_patterns": exclude_patterns,
+                "certify_manifest": False,
             }
+            if source_scope is not None:
+                sync_kwargs["source_scope"] = source_scope
             if candidate_snapshot is not None:
                 sync_kwargs["candidate_snapshot"] = candidate_snapshot
             result = sync.sync(**sync_kwargs)
@@ -497,19 +781,22 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             changed_details = [
                 {
                     "file": detail.get("file"),
-                    "status": "skipped",
+                    "status": detail.get("status", "skipped"),
                     "reason": detail.get("reason"),
                 }
                 for detail in result.details
                 if isinstance(detail, dict)
-                and detail.get("status") == "skipped"
+                and detail.get("status") in ("skipped", "warning")
                 and "candidate snapshot" in str(detail.get("reason", ""))
             ]
             # #860: surface DB flush failures — sync catches them into result.errors
             # so they never raise but also must NOT be silently reported as "ok".
             status = (
                 "error"
-                if result.errors > 0 or error_summary["error_details_total"] > 0
+                if result.errors > 0
+                or result.backfill_errors > 0
+                or not result.scope_complete
+                or error_summary["error_details_total"] > 0
                 else "ok"
             )
             return {
@@ -521,6 +808,9 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "deleted_files": result.deleted_files,
                 "unchanged_files": result.unchanged_files,
                 "errors": result.errors,
+                "backfill_errors": result.backfill_errors,
+                "completeness": "complete" if result.scope_complete else "incomplete",
+                "manifest_certification_failed": result.manifest_certification_failed,
                 "processed": result.processed,
                 "changed_during_run": result.changed_during_run,
                 "changed_during_run_files": result.changed_during_run_files,
@@ -535,14 +825,17 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 elapsed_seconds=round(time.monotonic() - t0, 3),
             )
         finally:
-            _safe_close_cache(cache)
+            if owns_cache:
+                _safe_close_cache(cache)
 
-    def _phase_fts5_stats(self) -> dict[str, Any]:
-        cache: Any | None = None
+    def _phase_fts5_stats(self, *, _cache: Any | None = None) -> dict[str, Any]:
+        cache: Any | None = _cache
+        owns_cache = cache is None
         try:
-            from ...ast_cache import ASTCache
+            if cache is None:
+                from ...ast_cache import ASTCache
 
-            cache = ASTCache(self.project_root or ".")
+                cache = ASTCache(self.project_root or ".")
             stats = cache.get_stats()
             return {
                 "status": "ok",
@@ -554,7 +847,8 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 exc, str(self.project_root) if self.project_root else None
             )
         finally:
-            _safe_close_cache(cache)
+            if owns_cache:
+                _safe_close_cache(cache)
 
     def _phase_synapse(self, ast_phase: dict[str, Any]) -> dict[str, Any]:
         """Report cross-file resolution results.
@@ -572,19 +866,24 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             resolved_edges += int(synapse.get("resolved", 0))
         if isinstance(unresolved, dict):
             resolved_edges += int(unresolved.get("resolved", 0))
+        backfill_errors = int(ast_phase.get("backfill_errors", 0))
+        phase_failed = ast_phase.get("status") == "error" or backfill_errors > 0
         return {
-            "status": "ok",
+            "status": "error" if phase_failed else "ok",
             "elapsed_seconds": 0.0,
             "resolved_edges": resolved_edges,
+            "backfill_errors": backfill_errors,
             "note": "resolved during ast_cache phase (single-pass backfill)",
         }
 
-    def _phase_call_edge_stats(self) -> dict[str, Any]:
-        cache: Any | None = None
+    def _phase_call_edge_stats(self, *, _cache: Any | None = None) -> dict[str, Any]:
+        cache: Any | None = _cache
+        owns_cache = cache is None
         try:
-            from ...ast_cache import ASTCache
+            if cache is None:
+                from ...ast_cache import ASTCache
 
-            cache = ASTCache(self.project_root or ".")
+                cache = ASTCache(self.project_root or ".")
             has_edges = cache.has_call_edges()
             stats = cache.get_stats()
             return {
@@ -598,23 +897,65 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 exc, str(self.project_root) if self.project_root else None
             )
         finally:
-            _safe_close_cache(cache)
+            if owns_cache:
+                _safe_close_cache(cache)
 
-    def _collect_final_stats(self) -> dict[str, Any]:
-        cache: Any | None = None
+    def _collect_final_stats(
+        self,
+        *,
+        stamp_manifest: bool = False,
+        source_scope: SourceScopeDescriptor | None = None,
+        _cache: Any | None = None,
+    ) -> dict[str, Any]:
+        cache: Any | None = _cache
+        owns_cache = cache is None
         try:
-            from ...ast_cache import ASTCache
+            if cache is None:
+                from ...ast_cache import ASTCache
 
-            cache = ASTCache(self.project_root or ".")
+                cache = ASTCache(self.project_root or ".")
+            manifest_warning: str | None = None
+            if stamp_manifest:
+                from ...index_snapshot_schema import stamp_full_index_manifest
+
+                try:
+                    stamp_full_index_manifest(
+                        cache.get_conn(), self.project_root or ".", source_scope
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "index snapshot manifest certification failed", exc_info=True
+                    )
+                    manifest_warning = (
+                        "SOURCE_SCOPE_UNSUPPORTED"
+                        if isinstance(exc, sqlite3.OperationalError)
+                        and str(exc) == "SOURCE_SCOPE_UNSUPPORTED"
+                        else "INDEX_MANIFEST_CERTIFICATION_FAILED"
+                    )
             stats = cache.get_stats()
-            return {
+            operational_unsupported = manifest_warning == "SOURCE_SCOPE_UNSUPPORTED"
+            result = {
+                "_manifest_certified": stamp_manifest and manifest_warning is None,
+                "manifest_certification_failed": (
+                    manifest_warning is not None and not operational_unsupported
+                ),
+                "certification_errors": (
+                    1
+                    if manifest_warning is not None and not operational_unsupported
+                    else 0
+                ),
+                "scope_complete": stamp_manifest and manifest_warning is None,
                 "total_files": stats.get("total_files", 0),
                 "total_symbols": stats.get("total_symbols", 0),
                 "by_language": stats.get("by_language", {}),
                 "fts5_available": stats.get("fts5_available", False),
                 "fts_indexed_symbols": stats.get("fts_indexed_symbols", 0),
             }
+            if manifest_warning is not None:
+                result["manifest_warning"] = manifest_warning
+            return result
         except Exception:
             return {}
         finally:
-            _safe_close_cache(cache)
+            if owns_cache:
+                _safe_close_cache(cache)

@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from datetime import datetime, timezone
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
@@ -21,13 +21,27 @@ if TYPE_CHECKING:
     pass
 
 from ..constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
+from ..index_candidate_walker import (
+    CandidateDiscoveryBudgetExceeded,
+    CandidateDiscoveryError,
+)
+from ..index_source_snapshot import (
+    SourceScopeDescriptor,
+    canonical_source_scope_descriptor,
+    make_source_scope_descriptor,
+    parse_source_scope_descriptor,
+    validate_full_index_source_scope,
+)
+from ..index_symbol_projection import symbol_projection_is_exact
 from ..indexing_limits import normalize_index_max_files
 from ..indexing_snapshot import (
     IndexCandidateSnapshot,
     IndexFileFingerprint,
     IndexSnapshotEntry,
+    build_index_candidate_snapshot,
     changed_since_snapshot,
     validate_index_candidate_snapshot,
+    walk_index_candidate_entries,
 )
 from ..languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
 from ..project_graph import _language_from_ext
@@ -41,7 +55,13 @@ from .callgraph_state import (
     clear_call_graph_built as _clear_call_graph_built,
 )
 from .callgraph_state import (
+    clear_call_graph_built_strict as _clear_call_graph_built_strict,
+)
+from .callgraph_state import (
     mark_call_graph_built as _mark_call_graph_built,
+)
+from .callgraph_state import (
+    mark_call_graph_built_strict as _mark_call_graph_built_strict,
 )
 from .helpers import (
     _make_error_entry,
@@ -52,6 +72,36 @@ from .schema import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_relative_path(value: str) -> str:
+    """Treat backslash as a separator only on Windows."""
+    return value.replace("\\", "/") if os.name == "nt" else value
+
+
+def _remove_ladybug_from_pinned_cache(cache_fd: int) -> bool:
+    """Remove the optional mirror relative to its identity-bound directory."""
+    try:
+        os.stat("knowledge-graph.lbug", dir_fd=cache_fd, follow_symlinks=False)
+        os.unlink("knowledge-graph.lbug", dir_fd=cache_fd)
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def _invalidate_ladybug(cache: Any, root_fd: int | None) -> bool:
+    """Invalidate the mirror without leaving a pinned-cache mutation boundary."""
+    if root_fd is not None:
+        if not getattr(cache, "_uses_project_mirror", True):
+            return False
+        cache_fd = getattr(cache, "_cache_dir_fd", None)
+        if cache_fd is None:
+            raise OSError("AST_CACHE_DIRECTORY_UNBOUND")
+        return _remove_ladybug_from_pinned_cache(cache_fd)
+    from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
+
+    return LadybugKnowledgeGraphStore(cache.project_root).remove_if_exists()
+
 
 # Corpus-directory patterns excluded from full-index (REQ-E-016).
 # Uses fnmatch syntax relative to the project root (forward-slash normalised).
@@ -102,13 +152,92 @@ _AST_CACHE_EXTRACTOR_VERSION = 14
 
 def _walk_source_files(project_root: str) -> Iterator[str]:
     for dirpath, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [
-            d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")
-        ]
+        retained: list[str] = []
+        for dirname in dirnames:
+            if dirname in _EXCLUDE_DIRS or dirname.startswith("."):
+                continue
+            candidate = os.path.join(dirpath, dirname)
+            if os.path.islink(candidate):
+                if os.path.splitext(dirname)[1].lower() in _EXT_TO_LANG:
+                    yield candidate
+                continue
+            retained.append(dirname)
+        dirnames[:] = retained
         for fname in filenames:
             ext = os.path.splitext(fname)[1].lower()
             if ext in _EXT_TO_LANG:
                 yield os.path.join(dirpath, fname)
+
+
+def _bounded_selected_supported_paths(
+    project_root: str,
+    max_files: int,
+    language_filter: str | None,
+    exclude_patterns: frozenset[str] | None,
+) -> set[str] | None:
+    """Rediscover the candidate-less run's exact bounded persisted path scope."""
+    selected: set[str] = set()
+    count = 0
+
+    def legacy_candidates() -> Iterator[str]:
+        # This fallback restores the pre-P0.1 operational marker on Windows.
+        # It is never used by the authoritative manifest path, which remains
+        # POSIX descriptor-bound and reports unsupported on this platform.
+        def raise_walk_error(exc: OSError) -> None:
+            raise exc
+
+        for dirpath, dirnames, filenames in os.walk(
+            project_root, onerror=raise_walk_error
+        ):
+            retained: list[str] = []
+            for dirname in dirnames:
+                if dirname in _EXCLUDE_DIRS or dirname.startswith("."):
+                    continue
+                candidate = os.path.join(dirpath, dirname)
+                if os.path.islink(candidate):
+                    if os.path.splitext(dirname)[1].lower() in _EXT_TO_LANG:
+                        yield candidate
+                    continue
+                retained.append(dirname)
+            dirnames[:] = retained
+            for filename in filenames:
+                yield os.path.join(dirpath, filename)
+
+    try:
+        candidates = (
+            walk_index_candidate_entries(
+                project_root, excluded_dir_names=frozenset(_EXCLUDE_DIRS)
+            )
+            if os.name == "posix"
+            else legacy_candidates()
+        )
+        for abs_path in candidates:
+            # Match the legacy walk's supported-extension window: unsupported
+            # entries are still charged by the authoritative walker, but do not
+            # consume max_files.
+            if os.path.splitext(abs_path)[1].lower() not in _EXT_TO_LANG:
+                continue
+            if count >= max_files:
+                return None
+            count += 1
+            rel_path = _normalize_relative_path(os.path.relpath(abs_path, project_root))
+            if exclude_patterns and any(
+                fnmatch.fnmatch(rel_path, pattern) for pattern in exclude_patterns
+            ):
+                continue
+            language = _language_from_ext(abs_path)
+            if language is None or (
+                language_filter is not None and language != language_filter
+            ):
+                continue
+            try:
+                os.stat(abs_path, follow_symlinks=False)
+            except OSError:
+                return None
+            selected.add(rel_path)
+    except (CandidateDiscoveryBudgetExceeded, CandidateDiscoveryError, OSError):
+        return None
+    return selected
 
 
 def _warn_unwired_plugin_extension(abs_path: str) -> None:
@@ -128,9 +257,11 @@ def check_cache_or_read(
     conn: sqlite3.Connection,
     rel_path: str,
     abs_path: str,
-    stat: os.stat_result,
+    stat: Any,
     content_hash_fn: Any,
     extractor_version: int,
+    *,
+    source_code: str | None = None,
 ) -> dict[str, Any] | tuple[str, str]:
     """Return cached-response dict or (source_code, content_hash) if stale."""
     row = conn.execute(
@@ -144,11 +275,12 @@ def check_cache_or_read(
         and row["extractor_version"] >= extractor_version
     ):
         return {"file": rel_path, "status": "cached", "reason": "unchanged"}
-    try:
-        with open(abs_path, encoding="utf-8", errors="replace") as f:
-            source_code = f.read()
-    except OSError as e:
-        return {"file": rel_path, "status": "error", "reason": str(e)}
+    if source_code is None:
+        try:
+            with open(abs_path, encoding="utf-8", errors="replace") as f:
+                source_code = f.read()
+        except OSError as e:
+            return {"file": rel_path, "status": "error", "reason": str(e)}
     content_hash = content_hash_fn(source_code)
     if (
         row is not None
@@ -170,10 +302,12 @@ def parse_and_write(
     abs_path: str,
     rel_path: str,
     language: str,
-    stat: os.stat_result,
+    stat: Any,
     source_code: str,
     content_hash: str,
     extractor_version: int,
+    *,
+    source_is_frozen: bool = False,
 ) -> dict[str, Any]:
     """Parse a file and write all cache rows. Returns result dict."""
     from .extraction import (
@@ -183,7 +317,11 @@ def parse_and_write(
         _extract_symbols,
     )
 
-    result = cache.parser.parse_file(abs_path, language)
+    result = (
+        cache.parser.parse_code(source_code, language, filename=abs_path)
+        if source_is_frozen
+        else cache.parser.parse_file(abs_path, language)
+    )
     if not result.success:
         return {
             "file": rel_path,
@@ -215,18 +353,23 @@ def parse_and_write(
     )
     from . import write as _write
 
-    inserted: list[dict[str, Any]] = (
-        _write.write_fts5_symbols(conn, rel_path, language, symbols)
-        if cache.fts5_available
-        else []
+    inserted = _write.write_fts5_symbols(
+        conn, rel_path, language, symbols, cache.fts5_available
     )
     cache._write_imports_for_file(conn, rel_path, language, imports)  # noqa: SLF001
     cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
     # CALLS rows live in the unified ``edges`` table (B1.3 — no ast_call_edges).
     # Write the edges first so synapse resolution can UPDATE them in place.
-    _write.write_graph_edges_for_file(
+    if not _write.write_graph_edges_for_file(
         conn, rel_path, language, symbols, imports, call_edges
-    )
+    ):
+        conn.rollback()
+        return {
+            "file": rel_path,
+            "status": "error",
+            "reason": "graph edge write failed",
+            "certification_errors": 1,
+        }
     cache._resolve_call_edges_for_file(conn, rel_path)  # noqa: SLF001
     conn.commit()
     return {
@@ -268,6 +411,7 @@ def walk_and_partition(
         "cached": 0,
         "errors": 0,
         "skipped": 0,
+        "incomplete_skips": 0,
         "processed": 0,
         "changed_during_run": 0,
         "changed_during_run_files": [],
@@ -276,7 +420,21 @@ def walk_and_partition(
         "truncated_by_max_files": False,
     }
     if force:
-        indexed_map: dict[str, tuple[int, int, int]] = {}
+        indexed_map: dict[str, tuple[Any, ...]] = {}
+    elif candidate_snapshot is not None:
+        rows = conn.execute(
+            "SELECT file_path, mtime_ns, file_size, extractor_version, content_hash "
+            "FROM ast_index"
+        ).fetchall()
+        indexed_map = {
+            r["file_path"]: (
+                r["mtime_ns"],
+                r["file_size"],
+                r["extractor_version"],
+                r["content_hash"],
+            )
+            for r in rows
+        }
     else:
         rows = conn.execute(
             "SELECT file_path, mtime_ns, file_size, extractor_version FROM ast_index"
@@ -300,6 +458,11 @@ def walk_and_partition(
             if entry.decision == "skipped":
                 if entry.language is None:
                     _warn_unwired_plugin_extension(entry.abs_path)
+                elif language_filter is not None:
+                    # A language-scoped run cannot certify the process-global
+                    # call-graph marker: skipped languages and their edges are
+                    # still part of the persisted global source inventory.
+                    stats["incomplete_skips"] += 1
                 stats["skipped"] += 1
                 continue
             if entry.decision == "error":
@@ -309,9 +472,12 @@ def walk_and_partition(
                 )
                 continue
 
-            change_reason = changed_since_snapshot(entry)
+            change_reason = (
+                None if entry.frozen_path is not None else changed_since_snapshot(entry)
+            )
             if change_reason is not None:
                 stats["skipped"] += 1
+                stats["incomplete_skips"] += 1
                 stats["changed_during_run"] += 1
                 stats["changed_during_run_files"].append(entry.rel_path)
                 stats["files"].append(
@@ -331,6 +497,7 @@ def walk_and_partition(
                 and row[0] == fingerprint.mtime_ns
                 and row[1] == fingerprint.file_size
                 and row[2] >= extractor_version
+                and (not fingerprint.content_hash or row[3] == fingerprint.content_hash)
             ):
                 already_cached.append(
                     {
@@ -353,7 +520,9 @@ def walk_and_partition(
             stats["truncated_by_max_files"] = True
             break
         count += 1
-        rel_path = os.path.relpath(abs_path, cache.project_root).replace("\\", "/")
+        rel_path = _normalize_relative_path(
+            os.path.relpath(abs_path, cache.project_root)
+        )
         # REQ-E-016: skip files matching corpus-exclusion patterns.
         if exclude_patterns:
             if any(fnmatch.fnmatch(rel_path, pat) for pat in exclude_patterns):
@@ -368,6 +537,7 @@ def walk_and_partition(
             continue
         if language_filter is not None and lang != language_filter:
             stats["skipped"] += 1
+            stats["incomplete_skips"] += 1
             continue
         try:
             stat = os.stat(abs_path)
@@ -395,13 +565,21 @@ def walk_and_partition(
 
 def _clear_full_rebuild_rows(cache: Any, conn: sqlite3.Connection) -> None:
     """Clear primary and derived index rows before a forced rebuild."""
+    from .write import _clear_symbol_resolver_context
+
+    _clear_symbol_resolver_context()
     conn.execute("DELETE FROM ast_index")
     if cache.fts5_available:
         conn.execute(
             "INSERT INTO ast_symbols_fts(ast_symbols_fts) VALUES('delete-all')"
         )
     _delete_all_rows_if_present(conn, "ast_symbol_rows")
-    for table in ("ast_imports", "ast_symbol_activation", "edges"):
+    for table in (
+        "ast_symbol_projection_state",
+        "ast_imports",
+        "ast_symbol_activation",
+        "edges",
+    ):
         _delete_all_rows_if_present(conn, table)
 
 
@@ -445,20 +623,23 @@ def insert_index_row(
     )
     from . import write as _write
 
-    inserted_symbol_rows: list[dict[str, Any]] = []
-    if cache.fts5_available:
-        inserted_symbol_rows = _write.write_fts5_symbols_from_tuples(
-            conn, rel_path, r["language"], r["symbol_rows"]
-        )
+    inserted_symbol_rows = _write.write_fts5_symbols_from_tuples(
+        conn,
+        rel_path,
+        r["language"],
+        r["symbol_rows"],
+        cache.fts5_available,
+    )
     call_edges = json.loads(r.get("call_edges_json", "[]"))
     imports_list = json.loads(r.get("imports_json", "[]"))
     cache._write_imports_for_file(conn, rel_path, r["language"], imports_list)  # noqa: SLF001
     symbols = json.loads(r.get("symbols_json", "{}"))
     # CALLS rows live in the unified ``edges`` table (B1.3 — no ast_call_edges).
     # Cross-file / synapse resolution UPDATEs these rows in the post-index pass.
-    _write.write_graph_edges_for_file(
+    if not _write.write_graph_edges_for_file(
         conn, rel_path, r["language"], symbols, imports_list, call_edges
-    )
+    ):
+        raise sqlite3.OperationalError("GRAPH_EDGE_WRITE_FAILED")
     if include_activation:
         cache._write_activation_for_file(conn, rel_path, inserted_symbol_rows)  # noqa: SLF001
     else:
@@ -466,7 +647,13 @@ def insert_index_row(
 
 
 def index_parallel(
-    cache: Any, candidates: list[tuple[str, str]], workers: int
+    cache: Any,
+    candidates: list[tuple[str, str]],
+    workers: int,
+    fingerprints: Mapping[str, IndexFileFingerprint] | None = None,
+    frozen_paths: Mapping[str, str] | None = None,
+    frozen_identities: Mapping[str, tuple[int, int, int]] | None = None,
+    frozen_deadline: float | None = None,
 ) -> list[dict[str, Any]]:
     """Dispatch parse+extract to a spawn process pool (safe on macOS/Linux)."""
     from multiprocessing import get_context
@@ -474,7 +661,18 @@ def index_parallel(
     from .extraction import _init_worker_parser, _worker_index_file
 
     ctx = get_context("spawn")
-    args_iter = [(p, cache.project_root, lang) for p, lang in candidates]
+    args_iter = [
+        (
+            path,
+            cache.project_root,
+            language,
+            fingerprints.get(path) if fingerprints is not None else None,
+            frozen_paths.get(path) if frozen_paths is not None else None,
+            frozen_identities.get(path) if frozen_identities is not None else None,
+            frozen_deadline,
+        )
+        for path, language in candidates
+    ]
     with ctx.Pool(processes=workers, initializer=_init_worker_parser) as pool:
         return list(pool.imap_unordered(_worker_index_file, args_iter, chunksize=8))
 
@@ -483,8 +681,10 @@ def _snapshot_result_change_reason(
     result: dict[str, Any],
     entries: dict[str, IndexSnapshotEntry],
 ) -> tuple[str, str | None]:
-    rel_path = str(result["rel_path"]).replace("\\", "/")
+    rel_path = _normalize_relative_path(str(result["rel_path"]))
     entry = entries[rel_path]
+    if result.get("status") == "source_changed":
+        return rel_path, "file changed after candidate snapshot"
     fingerprint = cast(IndexFileFingerprint, entry.fingerprint)
     worker_fingerprint = (
         int(result.get("mtime_ns", fingerprint.mtime_ns)),
@@ -494,6 +694,8 @@ def _snapshot_result_change_reason(
     return rel_path, (
         "file changed after candidate snapshot"
         if worker_fingerprint != expected_fingerprint
+        else None
+        if entry.frozen_path is not None
         else changed_since_snapshot(entry)
     )
 
@@ -503,6 +705,7 @@ def _record_snapshot_change(
 ) -> None:
     """Replace one processed result with a deterministic snapshot skip."""
     stats["skipped"] += 1
+    stats["incomplete_skips"] = stats.get("incomplete_skips", 0) + 1
     stats["processed"] = max(0, int(stats["processed"]) - 1)
     stats["changed_during_run"] += 1
     stats["changed_during_run_files"].append(rel_path)
@@ -515,17 +718,30 @@ def _discard_snapshot_generation(
     cache: Any,
     conn: sqlite3.Connection,
     rel_path: str,
+    *,
+    root_fd: int | None = None,
 ) -> None:
     """Remove canonical rows and invalidate their derived graph projection."""
     from . import write as _write
 
     _write.discard_file_rows(conn, rel_path, cache.fts5_available)
     try:
-        from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
-
-        LadybugKnowledgeGraphStore(cache.project_root).remove_if_exists()
+        _invalidate_ladybug(cache, root_fd)
     except Exception:
         logger.debug("could not invalidate Ladybug mirror", exc_info=True)
+
+
+def _discard_with_root_lease(
+    cache: Any,
+    conn: sqlite3.Connection,
+    rel_path: str,
+    root_fd: int | None,
+) -> None:
+    """Preserve the legacy call seam when no pinned lease is active."""
+    if root_fd is None:
+        _discard_snapshot_generation(cache, conn, rel_path)
+    else:
+        _discard_snapshot_generation(cache, conn, rel_path, root_fd=root_fd)
 
 
 def _snapshot_result_is_stable(
@@ -535,13 +751,14 @@ def _snapshot_result_is_stable(
     *,
     cache: Any,
     conn: sqlite3.Connection,
+    root_fd: int | None = None,
 ) -> bool:
     """Validate one worker result immediately before its database write."""
     rel_path, change_reason = _snapshot_result_change_reason(result, entries)
     if change_reason is None:
         return True
 
-    _discard_snapshot_generation(cache, conn, rel_path)
+    _discard_with_root_lease(cache, conn, rel_path, root_fd)
     _record_snapshot_change(stats, rel_path, change_reason)
     return False
 
@@ -553,13 +770,14 @@ def _revalidate_snapshot_batch(
     conn: sqlite3.Connection,
     entries: dict[str, IndexSnapshotEntry],
     stats: dict[str, Any],
+    root_fd: int | None = None,
 ) -> None:
     """Discard pending generations that changed before their batch commit."""
     for result in pending_results:
         rel_path, change_reason = _snapshot_result_change_reason(result, entries)
         if change_reason is None:
             continue
-        _discard_snapshot_generation(cache, conn, rel_path)
+        _discard_with_root_lease(cache, conn, rel_path, root_fd)
         if result["status"] in ("io_error", "parse_failed"):
             stats["errors"] -= 1
         else:
@@ -577,6 +795,7 @@ def _revalidate_committed_snapshot(
     conn: sqlite3.Connection,
     entries: dict[str, IndexSnapshotEntry],
     stats: dict[str, Any],
+    root_fd: int | None = None,
 ) -> None:
     """Invalidate any earlier committed generation changed before backfill."""
     known_changed = set(stats["changed_during_run_files"])
@@ -586,7 +805,7 @@ def _revalidate_committed_snapshot(
         )
         if change_reason is None:
             continue
-        _discard_snapshot_generation(cache, conn, rel_path)
+        _discard_with_root_lease(cache, conn, rel_path, root_fd)
         detail_files = [detail["file"] for detail in stats["files"]]
         detail_index = detail_files.index(rel_path)
         detail = stats["files"].pop(detail_index)
@@ -597,6 +816,100 @@ def _revalidate_committed_snapshot(
         }[detail["status"]]
         stats[counter] -= 1
         _record_snapshot_change(stats, rel_path, change_reason)
+
+
+def _record_frozen_replay_mismatches(
+    entries: dict[str, IndexSnapshotEntry], stats: dict[str, Any]
+) -> None:
+    """Report live divergence without deleting the complete frozen epoch."""
+    changed = [
+        (rel_path, reason)
+        for rel_path, entry in entries.items()
+        if (reason := changed_since_snapshot(entry)) is not None
+    ]
+    if not changed:
+        return
+    known = set(stats.get("changed_during_run_files", []))
+    known.update(rel_path for rel_path, _reason in changed)
+    stats["changed_during_run_files"] = sorted(known)
+    stats["changed_during_run"] = len(known)
+    stats["live_source_replay_mismatch"] = True
+    stats["manifest_warning"] = "INDEX_CANDIDATE_SNAPSHOT_CHANGED"
+    for rel_path, reason in changed:
+        stats["files"].append({"file": rel_path, "status": "warning", "reason": reason})
+
+
+def _unsafe_force_snapshot_result(
+    candidate_snapshot: IndexCandidateSnapshot | None,
+    activation_enabled: bool,
+    *,
+    changed: list[tuple[IndexSnapshotEntry, str]] | None = None,
+) -> dict[str, Any]:
+    """Return a terminal force result before any persistent state is touched."""
+    changed = changed or []
+    discovery_details = (
+        [
+            {
+                "file": entry.rel_path,
+                "status": "error",
+                "reason": entry.reason or "candidate discovery failed",
+            }
+            for entry in candidate_snapshot.entries
+            if entry.decision == "error"
+        ]
+        if candidate_snapshot is not None
+        else []
+    )
+    frozen_reason = (
+        candidate_snapshot.frozen_error
+        or (
+            "INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING"
+            if candidate_snapshot.frozen_root is None
+            else None
+        )
+        if candidate_snapshot is not None
+        else "INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING"
+    )
+    if frozen_reason and not changed:
+        discovery_details.append(
+            {"file": "", "status": "error", "reason": frozen_reason}
+        )
+    changed_details = [
+        {"file": entry.rel_path, "status": "error", "reason": reason}
+        for entry, reason in changed
+    ]
+    errors = max(
+        1,
+        (candidate_snapshot.errors if candidate_snapshot is not None else 0)
+        + len(changed_details),
+    )
+    return {
+        "mode_used": "full",
+        "verdict": "WARN",
+        "abort_remaining_phases": True,
+        "indexed": 0,
+        "cached": 0,
+        "errors": errors,
+        "skipped": candidate_snapshot.skipped if candidate_snapshot is not None else 0,
+        "incomplete_skips": (
+            candidate_snapshot.skipped if candidate_snapshot is not None else 0
+        )
+        + len(changed_details),
+        "processed": 0,
+        "changed_during_run": len(changed_details),
+        "changed_during_run_files": [detail["file"] for detail in changed_details],
+        "files": discovery_details + changed_details,
+        "activation_enabled": activation_enabled,
+        "truncated_by_max_files": bool(
+            candidate_snapshot and candidate_snapshot.truncated_by_max_files
+        ),
+        "snapshot_metrics": candidate_snapshot.metrics() if candidate_snapshot else {},
+        "manifest_warning": (
+            "INDEX_CANDIDATE_SNAPSHOT_CHANGED"
+            if changed_details
+            else "INDEX_CANDIDATE_SNAPSHOT_INCOMPLETE"
+        ),
+    }
 
 
 def run_index_project(
@@ -610,6 +923,8 @@ def run_index_project(
     language_filter: str | None = None,
     exclude_patterns: frozenset[str] | None = None,
     candidate_snapshot: IndexCandidateSnapshot | None = None,
+    source_scope: SourceScopeDescriptor | None = None,
+    certify_manifest: bool = True,
 ) -> dict[str, Any]:
     """Orchestrate a full ASTCache project index run.
 
@@ -629,17 +944,125 @@ def run_index_project(
             "cached": 0,
             "errors": 0,
             "skipped": 0,
+            "incomplete_skips": 0,
             "files": [],
             "synapse_backfill": synapse,
             "edge_store_refresh": edge_store_refresh,
             "unresolved_refs_backfill": unresolved,
             "activation_enabled": activation_enabled,
         }
+    effective_exclude = (
+        exclude_patterns if exclude_patterns is not None else _DEFAULT_EXCLUDE_PATTERNS
+    )
+    owns_candidate_snapshot = False
+    candidate_released = False
+    cleanup_result: dict[str, Any] | None = None
+    materialized = False
+    if force and candidate_snapshot is None:
+        candidate_snapshot = build_index_candidate_snapshot(
+            cache.project_root,
+            max_files=max_files,
+            exclude_patterns=effective_exclude,
+            walk_fn=lambda root: walk_index_candidate_entries(
+                root, excluded_dir_names=frozenset(_EXCLUDE_DIRS)
+            ),
+            language_fn=_language_from_ext,
+            language_filter=language_filter,
+            materialize=True,
+        )
+        owns_candidate_snapshot = True
     if candidate_snapshot is not None:
         validate_index_candidate_snapshot(
             cache.project_root, max_files, candidate_snapshot
         )
+    if source_scope is None:
+        source_scope = make_source_scope_descriptor(
+            no_default_excludes=exclude_patterns is not None,
+            exclude_patterns=tuple(sorted(effective_exclude))
+            if exclude_patterns is not None
+            else (),
+            certification_max_files=max_files,
+        )
+    else:
+        source_scope = parse_source_scope_descriptor(
+            canonical_source_scope_descriptor(source_scope)
+        )
+    validate_full_index_source_scope(source_scope, effective_exclude, max_files)
+    from ..indexing_candidate_materialization import (
+        index_candidate_snapshot_is_materialized,
+        secure_candidate_materialization_supported,
+    )
+
+    if force:
+        materialized = bool(
+            candidate_snapshot is not None
+            and index_candidate_snapshot_is_materialized(candidate_snapshot)
+        )
+        legacy_materialization = bool(
+            candidate_snapshot is not None
+            and candidate_snapshot.frozen_error == "SECURE_MATERIALIZATION_UNSUPPORTED"
+            and not secure_candidate_materialization_supported()
+        )
+        snapshot_is_unsafe = bool(
+            candidate_snapshot is None
+            or candidate_snapshot.errors > 0
+            or candidate_snapshot.discovery_error is not None
+            or candidate_snapshot.truncated_by_max_files
+            or not candidate_snapshot.discovery_reconciled
+            or (not materialized and not legacy_materialization)
+        )
+        if snapshot_is_unsafe:
+            # Destructive rebuilds consume only a fully materialized frozen epoch.
+            changed = (
+                [
+                    (entry, reason)
+                    for entry in candidate_snapshot.selected_entries
+                    if (reason := changed_since_snapshot(entry)) is not None
+                ]
+                if candidate_snapshot is not None and not materialized
+                else []
+            )
+            result = _unsafe_force_snapshot_result(
+                candidate_snapshot, activation_enabled, changed=changed
+            )
+            if owns_candidate_snapshot and candidate_snapshot is not None:
+                from ..indexing_candidate_materialization import (
+                    release_index_candidate_snapshot,
+                )
+
+                release_index_candidate_snapshot(candidate_snapshot, result)
+                candidate_released = True
+            return result
+
+    rebuild_signaled = False
+    root_lease_fd: int | None = None
     try:
+        if (
+            candidate_snapshot is not None
+            and secure_candidate_materialization_supported()
+            and getattr(cache, "_uses_project_mirror", True)
+        ):
+            from ..indexing_candidate_materialization import (
+                index_candidate_cache_hierarchy_is_current,
+                open_index_candidate_snapshot_root,
+            )
+
+            root_lease_fd = open_index_candidate_snapshot_root(candidate_snapshot)
+            if root_lease_fd is None or not index_candidate_cache_hierarchy_is_current(
+                candidate_snapshot, cache, root_fd=root_lease_fd
+            ):
+                cleanup_result = _unsafe_force_snapshot_result(
+                    candidate_snapshot, activation_enabled, changed=[]
+                )
+                cleanup_result["mode_used"] = "full" if force else "incremental"
+                cleanup_result["files"] = [
+                    {
+                        "file": "",
+                        "status": "error",
+                        "reason": "INDEX_CACHE_HIERARCHY_CHANGED",
+                    }
+                ]
+                return cleanup_result
         if force:
             # #578: a full rebuild empties ast_index up front (the DELETE
             # below commits), then re-populates in bounded batches over
@@ -650,16 +1073,17 @@ def run_index_project(
             # DELETE/commit itself raises (e.g. SQLITE_FULL) — otherwise a
             # failed rebuild would leave a stuck marker until TTL expiry.
             conn = cache._get_conn()
+            # The only destructive authorization is the immutable materialized
+            # epoch validated above; live path replay must never gate the clear.
             had_call_graph = cache.call_graph_built()
             _mark_build_in_progress(conn)
+            rebuild_signaled = True
             _clear_call_graph_built(conn)
             try:
                 _clear_full_rebuild_rows(cache, conn)
                 conn.commit()
                 try:
-                    from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
-
-                    LadybugKnowledgeGraphStore(cache.project_root).remove_if_exists()
+                    _invalidate_ladybug(cache, root_lease_fd)
                 except Exception:
                     logger.debug("could not invalidate Ladybug mirror", exc_info=True)
             except Exception:
@@ -668,16 +1092,23 @@ def run_index_project(
                     _mark_call_graph_built(conn)
                 raise
         conn = cache._get_conn()
-        effective_exclude = (
-            exclude_patterns
-            if exclude_patterns is not None
-            else _DEFAULT_EXCLUDE_PATTERNS
+        projection_repair = not symbol_projection_is_exact(
+            conn, require_fts=cache.fts5_available
         )
+        if projection_repair and not rebuild_signaled:
+            # Repair rewrites ordinary rows in committed batches just like a full
+            # rebuild. Publish incomplete evidence before the first batch so no
+            # concurrent reader can trust the old manifest/call-graph epoch.
+            _mark_build_in_progress(conn)
+            rebuild_signaled = True
+            _clear_call_graph_built_strict(conn)
+            _delete_all_rows_if_present(conn, "ast_index_snapshot_manifest")
+            conn.commit()
         stats, candidates, count = walk_and_partition(
             cache,
             conn,
             max_files,
-            force,
+            force or projection_repair,
             activation_enabled,
             _walk_source_files,
             _language_from_ext,
@@ -687,15 +1118,65 @@ def run_index_project(
             effective_exclude,
             candidate_snapshot,
         )
+        cleanup_result = stats
+        candidate_fingerprints = (
+            {
+                entry.abs_path: cast(IndexFileFingerprint, entry.fingerprint)
+                for entry in candidate_snapshot.selected_entries
+            }
+            if candidate_snapshot is not None
+            else {}
+        )
+        candidate_frozen_paths = (
+            {
+                entry.abs_path: entry.frozen_path
+                for entry in candidate_snapshot.selected_entries
+                if entry.frozen_path is not None
+            }
+            if candidate_snapshot is not None
+            else {}
+        )
+        candidate_frozen_identities = (
+            {
+                entry.abs_path: entry.frozen_identity
+                for entry in candidate_snapshot.selected_entries
+                if entry.frozen_identity is not None
+            }
+            if candidate_snapshot is not None
+            else {}
+        )
+        # The snapshot-wide absolute deadline protects only freeze/pre-clear
+        # validation.  Once the destructive clear is authorized, every immutable
+        # worker gets its own bounded read window so a long parse/build cannot
+        # expire later frozen inputs before their reads begin.
+        frozen_read_deadline = None
         workers = cache._resolve_worker_count(workers, candidates)
         if workers and workers >= 2 and len(candidates) >= 2:
-            results = index_parallel(cache, candidates, workers)
+            results = index_parallel(
+                cache,
+                candidates,
+                workers,
+                candidate_fingerprints,
+                candidate_frozen_paths,
+                candidate_frozen_identities,
+                frozen_read_deadline,
+            )
         else:
             from .extraction import _worker_index_file
 
             results = [
-                _worker_index_file((p, cache.project_root, lang))
-                for p, lang in candidates
+                _worker_index_file(
+                    (
+                        path,
+                        cache.project_root,
+                        language,
+                        candidate_fingerprints.get(path),
+                        candidate_frozen_paths.get(path),
+                        candidate_frozen_identities.get(path),
+                        frozen_read_deadline,
+                    )
+                )
+                for path, language in candidates
             ]
         indexed_at = datetime.now(timezone.utc).isoformat()
         from .. import ast_cache as _ast_cache_mod
@@ -712,6 +1193,7 @@ def run_index_project(
                 stats=stats,
                 cache=cache,
                 conn=conn,
+                root_fd=root_lease_fd,
             )
             if snapshot_entries is not None
             else None
@@ -723,6 +1205,7 @@ def run_index_project(
                 conn=conn,
                 entries=snapshot_entries,
                 stats=stats,
+                root_fd=root_lease_fd,
             )
             if snapshot_entries is not None
             else None
@@ -743,102 +1226,361 @@ def run_index_project(
             batch_guard=batch_guard,
         )
         if snapshot_entries is not None:
-            _revalidate_committed_snapshot(
-                cache=cache,
-                conn=conn,
-                entries=snapshot_entries,
-                stats=stats,
+            if all(
+                entry.frozen_path is not None for entry in snapshot_entries.values()
+            ):
+                _record_frozen_replay_mismatches(snapshot_entries, stats)
+                if stats.get("changed_during_run", 0) > 0:
+                    # The frozen epoch remains internally coherent, but it no
+                    # longer certifies the live workspace consumed by readers.
+                    _clear_call_graph_built_strict(conn)
+            else:
+                _revalidate_committed_snapshot(
+                    cache=cache,
+                    conn=conn,
+                    entries=snapshot_entries,
+                    stats=stats,
+                    root_fd=root_lease_fd,
+                )
+        if projection_repair and stats["errors"] == 0:
+            # A partial projection cannot use the unchanged-file fast path. Every
+            # canonical file has now been rewritten with ordinary/FTS/activation
+            # rows in its writer transaction; remove only orphan derived paths.
+            conn.execute(
+                "DELETE FROM ast_symbol_rows WHERE file_path NOT IN "
+                "(SELECT file_path FROM ast_index)"
             )
-        if stats["changed_during_run"] > 0:
+            if cache.fts5_available:
+                # Contentless FTS5 cannot reliably predicate-delete stale rows.
+                # Rebuild it from the now-exact ordinary projection instead.
+                conn.execute(
+                    "INSERT INTO ast_symbols_fts(ast_symbols_fts) VALUES('delete-all')"
+                )
+                conn.execute(
+                    "INSERT INTO ast_symbols_fts"
+                    "(rowid, name, kind, file_path, language) "
+                    "SELECT id, name, kind, file_path, language "
+                    "FROM ast_symbol_rows ORDER BY id"
+                )
+            for table in ("ast_symbol_projection_state", "ast_symbol_activation"):
+                conn.execute(
+                    f"DELETE FROM {table} WHERE file_path NOT IN "  # nosec B608
+                    "(SELECT file_path FROM ast_index)"
+                )
+            conn.commit()
+            # The operation-boundary validator detected the repair and forced
+            # every canonical file through the writer path.  The bounded migration
+            # certifier publishes the projection marker only after exact payload,
+            # state, and FTS validation; an oversized repair remains incomplete.
+            from ..index_snapshot_symbols import ensure_symbol_rows_backfilled
+
+            if not ensure_symbol_rows_backfilled(
+                conn,
+                require_fts=cache.fts5_available,
+                allow_incomplete=True,
+            ):
+                stats["backfill_errors"] = stats.get("backfill_errors", 0) + 1
+                _clear_call_graph_built_strict(conn)
+                conn.execute("DELETE FROM ast_index_snapshot_manifest")
+            conn.commit()
+        frozen_epoch = bool(
+            candidate_snapshot is not None
+            and all(
+                entry.frozen_path is not None
+                for entry in candidate_snapshot.selected_entries
+            )
+        )
+        if stats["changed_during_run"] > 0 and not frozen_epoch:
             _clear_call_graph_built(conn)
         stats["total_files"] = count
         stats["workers"] = workers
-        if stats["indexed"] > 0:
-            post_index_backfill(
-                cache,
-                stats,
-            )
-            if cache._completed_full_index_sweep(stats):
-                _mark_call_graph_built(cache._get_conn())
-        # #978: a fully-cached re-run (indexed == 0) over an already-complete
-        # index never reaches the branch above, so a project whose marker was
-        # cleared (e.g. predates #708) would stay permanently un-stamped and
-        # leave callers/lineage hinting "--full-index". Stamp it when the
-        # index actually covers the whole source set.
-        # _indexed_source_files_are_complete() returns False for an empty,
-        # truncated, errored, or otherwise incomplete index, so this keeps
-        # #970's false-positive guard intact.
-        elif (
+        if (
             candidate_snapshot is not None
-            and all(
-                changed_since_snapshot(entry) is None
-                for entry in candidate_snapshot.selected_entries
-            )
             and not candidate_snapshot.truncated_by_max_files
-            and candidate_snapshot.excluded == 0
-            and candidate_snapshot.skipped == 0
             and candidate_snapshot.errors == 0
-            and candidate_snapshot.selected > 0
-            and {
-                str(row["file_path"]).replace("\\", "/")
-                for row in cache._get_conn()
-                .execute("SELECT file_path FROM ast_index")
-                .fetchall()
-            }
-            == candidate_snapshot.present_paths
-        ) or (
-            candidate_snapshot is None and cache._indexed_source_files_are_complete()
+            and (
+                stats.get("changed_during_run", 0) == 0
+                or all(
+                    entry.frozen_path is not None
+                    for entry in candidate_snapshot.selected_entries
+                )
+            )
         ):
-            _mark_call_graph_built(cache._get_conn())
+            stats["pruned"] = _prune_to_selected_scope(
+                cache, conn, candidate_snapshot, root_fd=root_lease_fd
+            )
+        run_incomplete = bool(
+            stats.get("incomplete_skips", 0)
+            or stats.get("truncated_by_max_files", False)
+            or stats.get("errors", 0)
+            or (
+                candidate_snapshot is not None
+                and (
+                    candidate_snapshot.errors
+                    or candidate_snapshot.discovery_error is not None
+                    or candidate_snapshot.truncated_by_max_files
+                    or not candidate_snapshot.discovery_reconciled
+                )
+            )
+        )
+        if run_incomplete:
+            # Global certification is invalid regardless of whether this run
+            # happened to rewrite or prune a row.
+            _clear_call_graph_built_strict(conn)
+            conn.execute("DELETE FROM ast_index_snapshot_manifest")
+            conn.commit()
+            stats["verdict"] = "WARN"
+            stats["manifest_warning"] = "INDEX_RUN_INCOMPLETE"
+
+        # A missing marker is persisted evidence that a previous backfill did
+        # not converge. Fully cached retries must run the complete chain again.
+        needs_backfill = bool(
+            stats["indexed"] > 0
+            or stats.get("pruned", 0) > 0
+            or not _call_graph_marker_is_built(conn)
+        )
+        if needs_backfill:
+            _clear_call_graph_built(conn)
+            post_index_backfill(cache, stats, root_fd=root_lease_fd)
+            if stats.get("backfill_errors", 0) == 0 and _candidate_paths_are_exact(
+                cache,
+                conn,
+                candidate_snapshot,
+                stats,
+                max_files,
+                language_filter,
+                effective_exclude,
+            ):
+                try:
+                    _mark_call_graph_built_strict(conn)
+                except sqlite3.OperationalError:
+                    logger.warning(
+                        "call-graph marker certification failed", exc_info=True
+                    )
+                    stats["backfill_errors"] = stats.get("backfill_errors", 0) + 1
+                    stats["manifest_warning"] = "CALL_GRAPH_MARKER_CERTIFICATION_FAILED"
+                    _clear_call_graph_built_strict(conn)
+            else:
+                _clear_call_graph_built_strict(conn)
         if force:
             stats["db_maintenance"] = (
                 _ast_cache_mod._reclaim_storage_after_full_rebuild(conn, cache.db_path)
             )
+        if certify_manifest:
+            _update_authoritative_manifest(
+                cache, candidate_snapshot, stats, source_scope
+            )
         return stats
     finally:
-        if force:
-            _clear_build_in_progress(cache._get_conn())
+        try:
+            if root_lease_fd is not None:
+                try:
+                    os.close(root_lease_fd)
+                except OSError:
+                    logger.warning("could not close project-root lease", exc_info=True)
+        finally:
+            try:
+                if rebuild_signaled:
+                    _clear_build_in_progress(cache._get_conn())
+            finally:
+                if (
+                    owns_candidate_snapshot
+                    and candidate_snapshot is not None
+                    and not candidate_released
+                ):
+                    from ..indexing_candidate_materialization import (
+                        release_index_candidate_snapshot,
+                    )
+
+                    release_index_candidate_snapshot(candidate_snapshot, cleanup_result)
+                    candidate_released = True
+
+
+def _call_graph_marker_is_built(conn: sqlite3.Connection) -> bool:
+    """Require the shared exact current-pipeline marker predicate."""
+    from .callgraph_state import call_graph_marker_is_current
+
+    return call_graph_marker_is_current(conn)
+
+
+def _prune_to_selected_scope(
+    cache: Any,
+    conn: sqlite3.Connection,
+    candidate: IndexCandidateSnapshot,
+    *,
+    root_fd: int | None = None,
+) -> int:
+    """Transactionally remove primary and graph generations outside the scope."""
+    selected = {entry.rel_path for entry in candidate.selected_entries}
+    stale = {
+        _normalize_relative_path(str(row[0]))
+        for row in conn.execute("SELECT file_path FROM ast_index")
+        if _normalize_relative_path(str(row[0])) not in selected
+    }
+    if not stale:
+        return 0
+    try:
+        for rel_path in stale:
+            _discard_with_root_lease(cache, conn, rel_path, root_fd)
+        _clear_call_graph_built_strict(conn)
+    except Exception:
+        conn.rollback()
+        raise
+    return len(stale)
+
+
+def _candidate_paths_are_exact(
+    cache: Any,
+    conn: sqlite3.Connection,
+    candidate: IndexCandidateSnapshot | None,
+    stats: Mapping[str, Any],
+    max_files: int,
+    language_filter: str | None,
+    exclude_patterns: frozenset[str] | None,
+) -> bool:
+    paths = {
+        _normalize_relative_path(str(row[0]))
+        for row in conn.execute("SELECT file_path FROM ast_index")
+    }
+    run_is_complete = bool(
+        not stats.get("truncated_by_max_files", False)
+        and stats.get("errors", 0) == 0
+        and stats.get("backfill_errors", 0) == 0
+        and stats.get("incomplete_skips", 0) == 0
+        and stats.get("changed_during_run", 0) == 0
+    )
+    if candidate is None:
+        # A cached legacy run may still contain rows for sources deleted since
+        # its previous marker.  Reapply the same bounded max/exclude/language
+        # selection semantics and certify only exact persisted path equality.
+        discovered = _bounded_selected_supported_paths(
+            cache.project_root,
+            max_files,
+            language_filter,
+            exclude_patterns,
+        )
+        return bool(run_is_complete and discovered is not None and paths == discovered)
+    selected = {entry.rel_path for entry in candidate.selected_entries}
+    return bool(
+        run_is_complete
+        and not candidate.truncated_by_max_files
+        and candidate.errors == 0
+        and paths == selected
+    )
+
+
+def _update_authoritative_manifest(
+    cache: Any,
+    candidate_snapshot: IndexCandidateSnapshot | None,
+    stats: dict[str, Any],
+    source_scope: SourceScopeDescriptor,
+) -> None:
+    """Certify only an exact, successful full-index inventory."""
+    conn = cache._get_conn()
+    selected_paths = (
+        {entry.rel_path for entry in candidate_snapshot.selected_entries}
+        if candidate_snapshot is not None
+        else set()
+    )
+    source_certification_supported = os.name == "posix" and os.path.exists("/dev/fd")
+    exact_paths = bool(
+        source_certification_supported
+        and candidate_snapshot is not None
+        and candidate_snapshot.limited == 0
+        and candidate_snapshot.errors == 0
+        and stats.get("errors", 0) == 0
+        and stats.get("changed_during_run", 0) == 0
+        and stats.get("backfill_errors", 0) == 0
+        and {
+            _normalize_relative_path(str(row["file_path"]))
+            for row in conn.execute("SELECT file_path FROM ast_index")
+        }
+        == selected_paths
+    )
+    if exact_paths and _call_graph_marker_is_built(conn):
+        from ..index_snapshot_schema import stamp_full_index_manifest
+
+        try:
+            stamp_full_index_manifest(conn, cache.project_root, source_scope)
+            return
+        except Exception:
+            # The stamper rolls back its transaction, preserving the prior
+            # manifest. Revoke the prerequisite marker in a separate committed
+            # transaction so direct ASTCache readers cannot trust this run.
+            from .callgraph_state import clear_call_graph_built_strict
+
+            clear_call_graph_built_strict(conn)
+            conn.commit()
+            logger.warning(
+                "index snapshot manifest certification failed", exc_info=True
+            )
+            stats["manifest_warning"] = "INDEX_MANIFEST_CERTIFICATION_FAILED"
+            stats["manifest_certification_failed"] = True
+            stats["certification_errors"] = stats.get("certification_errors", 0) + 1
+            stats["scope_complete"] = False
+            stats["verdict"] = "WARN"
+            return
+    if not source_certification_supported:
+        stats["manifest_warning"] = "SOURCE_SCOPE_UNSUPPORTED"
+    elif exact_paths and not _call_graph_marker_is_built(conn):
+        stats["manifest_warning"] = "CALL_GRAPH_INCOMPLETE"
+    # Do not delete a manifest epoch this operation did not publish. Status
+    # compares source/index/marker fingerprints and classifies it as stale.
+
+
+def _record_backfill_result(stats: dict[str, Any], key: str, result: Any) -> None:
+    """Keep a helper diagnostic and fail closed unless it reports zero errors."""
+    stats[key] = result
+    if not isinstance(result, Mapping) or result.get("errors", 0) != 0:
+        stats["backfill_errors"] += 1
 
 
 def post_index_backfill(
     cache: Any,
     stats: dict[str, Any],
+    *,
+    root_fd: int | None = None,
 ) -> None:
-    """Run cross-file, Synapse, and unresolved-ref backfills after indexing."""
+    """Run backfills, recording suppressed failures for certification gates."""
+    stats.setdefault("backfill_errors", 0)
     try:
-        stats["cross_file_backfill"] = cache.backfill_cross_file_edges()
+        _record_backfill_result(
+            stats, "cross_file_backfill", cache.backfill_cross_file_edges()
+        )
     except Exception:
+        stats["backfill_errors"] += 1
         logger.debug("cross-file backfill failed", exc_info=True)
     try:
-        synapse = cache._run_synapse_backfill()
-        if synapse is not None:
-            stats["synapse_backfill"] = synapse
+        _record_backfill_result(
+            stats, "synapse_backfill", cache._run_synapse_backfill()
+        )
     except Exception:
+        stats["backfill_errors"] += 1
         logger.debug("synapse backfill failed", exc_info=True)
     # ``insert_index_row`` already writes every file's graph edges during
     # commit on every SQLite backend. Re-deriving them here is pure duplicate
     # work: ~85 s on django (47 % of total index time) for an identical edge
     # set (244,590 rows either way, verified).
     try:
-        unresolved = cache._run_unresolved_refs_backfill()
-        if unresolved is not None:
-            stats["unresolved_refs_backfill"] = unresolved
+        _record_backfill_result(
+            stats,
+            "unresolved_refs_backfill",
+            cache._run_unresolved_refs_backfill(),
+        )
     except Exception:
+        stats["backfill_errors"] += 1
         logger.debug("unresolved refs backfill failed", exc_info=True)
-    try:
-        from .unresolved import mark_resolution_converged
+    if stats["backfill_errors"] == 0:
+        try:
+            from .unresolved import mark_resolution_converged
 
-        mark_resolution_converged(cache._get_conn())
-    except Exception:
-        logger.debug("could not mark resolution converged", exc_info=True)
+            mark_resolution_converged(cache._get_conn())
+        except Exception:
+            logger.debug("could not mark resolution converged", exc_info=True)
     try:
-        from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
-
         # SQLite is the canonical graph index. LadybugDB is a derived projection
         # and must never survive an SQLite update as an implicitly fresh mirror.
-        ladybug_removed = LadybugKnowledgeGraphStore(
-            cache.project_root
-        ).remove_if_exists()
+        ladybug_removed = _invalidate_ladybug(cache, root_fd)
         if ladybug_removed:
             stats["knowledge_graph"] = {"ladybug_stale_removed": True}
     except Exception:

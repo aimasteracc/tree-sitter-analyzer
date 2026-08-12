@@ -19,6 +19,7 @@ These tests pin the marker contract RED-first.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -28,6 +29,8 @@ import pytest
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache import build_state as bs
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
+
+requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 
 
 def test_build_state_helpers_degrade_on_missing_table() -> None:
@@ -125,6 +128,83 @@ def test_build_in_progress_stale_when_rebuilder_pid_is_dead() -> None:
         assert bs.build_in_progress(conn) is False
     finally:
         conn.close()
+
+
+def test_build_in_progress_treats_malformed_scalars_as_active() -> None:
+    # PR #1253 thread 3756228880: no SQLite text/blob value is coerced in Python.
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_build_state(id, building, started_at, pid)")
+    conn.execute("INSERT INTO ast_build_state VALUES(1, '1', zeroblob(1048576), '42')")
+    result = bs.build_in_progress(conn)
+    conn.close()
+
+    assert result is True
+
+
+def test_build_in_progress_fails_closed_on_database_error() -> None:
+    # PR #1253 thread 3756228880: non-schema database failures are active.
+    class BrokenConnection:
+        def execute(self, _sql):
+            raise sqlite3.DatabaseError("corrupt")
+
+    assert bs.build_in_progress(BrokenConnection()) is True  # type: ignore[arg-type]
+
+
+def test_build_in_progress_fails_closed_on_multiple_rows() -> None:
+    # PR #1253 thread 3756228880: a non-singleton marker is untrusted.
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_build_state(id, building, started_at, pid)")
+    conn.executemany(
+        "INSERT INTO ast_build_state VALUES (?, 1, ?, ?)",
+        [(1, time.time(), os.getpid()), (1, time.time(), os.getpid())],
+    )
+    result = bs.build_in_progress(conn)
+    conn.close()
+
+    assert result is True
+
+
+def test_build_in_progress_fails_closed_on_untyped_cursor_row() -> None:
+    # PR #1253 thread 3756228880: Python-side types remain fail-closed.
+    class Cursor:
+        def __init__(self):
+            self.rows = iter([("1", 42, 1.0), None])
+
+        def fetchone(self):
+            return next(self.rows)
+
+    class UntypedConnection:
+        def execute(self, _sql):
+            return Cursor()
+
+    assert bs.build_in_progress(UntypedConnection()) is True  # type: ignore[arg-type]
+
+
+def test_build_in_progress_fails_closed_on_invalid_building_scalar() -> None:
+    # PR #1253 thread 3756228880: normalized scalars outside the domain are active.
+    class Cursor:
+        def __init__(self):
+            self.rows = iter([(2, 42, 1.0), None])
+
+        def fetchone(self):
+            return next(self.rows)
+
+    class InvalidConnection:
+        def execute(self, _sql):
+            return Cursor()
+
+    assert bs.build_in_progress(InvalidConnection()) is True  # type: ignore[arg-type]
+
+
+def test_build_in_progress_fails_closed_on_clock_error(monkeypatch) -> None:
+    # PR #1253 thread 3756228880: scalar arithmetic failures are active.
+    conn = sqlite3.connect(":memory:")
+    bs.mark_build_in_progress(conn)
+    monkeypatch.setattr(bs.time, "time", lambda: (_ for _ in ()).throw(ValueError()))
+    result = bs.build_in_progress(conn)
+    conn.close()
+
+    assert result is True
 
 
 def test_pid_alive_branches(monkeypatch) -> None:
@@ -246,6 +326,7 @@ def test_marker_cleared_when_delete_phase_raises(tmp_path: Path, monkeypatch) ->
     assert bs.build_in_progress(real_conn) is False
 
 
+@requires_posix_snapshot
 @pytest.mark.asyncio
 async def test_status_warns_when_rebuilding_with_partial_index(tmp_path: Path) -> None:
     """A nonempty-but-rebuilding cache → status WARN + index_rebuilding flag.
@@ -262,11 +343,12 @@ async def test_status_warns_when_rebuilding_with_partial_index(tmp_path: Path) -
     tool = CodeGraphStatusTool(str(tmp_path))
     result = await tool.execute({"output_format": "json", "include_lag": False})
 
-    assert result["index_rebuilding"] is True
+    assert result["completeness"] == "unknown"
+    assert result["oracle_reason"] == "CONCURRENT_WRITER"
     assert result["verdict"] == "WARN"
-    assert "rebuild" in result["agent_summary"]["next_step"].lower()
 
 
+@requires_posix_snapshot
 @pytest.mark.asyncio
 async def test_status_distinguishes_rebuild_from_missing_index(tmp_path: Path) -> None:
     """Mid-rebuild empty table must NOT read as 'index missing — run index'.
@@ -286,8 +368,6 @@ async def test_status_distinguishes_rebuild_from_missing_index(tmp_path: Path) -
     tool = CodeGraphStatusTool(str(tmp_path))
     result = await tool.execute({"output_format": "json", "include_lag": False})
 
-    assert result["index_rebuilding"] is True
+    assert result["completeness"] == "unknown"
+    assert result["oracle_reason"] == "CONCURRENT_WRITER"
     assert result["verdict"] == "WARN"
-    hint = result["agent_summary"]["next_step"].lower()
-    assert "rebuild in progress" in hint
-    assert "missing or empty" not in hint

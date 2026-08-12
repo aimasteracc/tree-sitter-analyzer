@@ -682,7 +682,8 @@ def test_orchestration_error_paths(
         monkeypatch.setattr(cache, "_run_unresolved_refs_backfill", lambda: None)
         stats = {"files": []}
         cache._post_index_backfill(stats)
-        assert "unresolved_refs_backfill" not in stats
+        assert stats["unresolved_refs_backfill"] is None
+        assert stats["backfill_errors"] == 2
     finally:
         cache.close()
 

@@ -82,6 +82,10 @@ CONDITIONAL_PARAM_NOTES: dict[tuple[str, str], str] = {
         "`capture_diff_snapshot` is an explicit boolean producer available only "
         "to same-process POSIX consumers"
     ),
+    ("index", "status"): (
+        "`access_mode` accepts only `read_existing` (default); it is rejected "
+        "for every mutating index action"
+    ),
 }
 
 BESPOKE_ROUTE_SPECS: dict[tuple[str, str], dict[str, Any]] = {

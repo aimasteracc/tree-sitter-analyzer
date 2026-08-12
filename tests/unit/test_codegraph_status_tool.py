@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock, patch
+import sqlite3
+from contextlib import nullcontext
 
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import (
     CodeGraphStatusTool,
 )
+
+requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 
 
 @pytest.fixture
@@ -82,204 +85,11 @@ class TestExecuteNoCache:
         assert result["indexed"] is False
         assert result["total_files"] == 0
         assert result["cache_path"] is None
+        assert result["agent_summary"]["summary_line"] == (
+            "codegraph_status: index missing or empty"
+        )
         assert "hint" in result, "WARN response must carry a 'hint' field"
         assert "warm" in result["hint"].lower() or "index" in result["hint"].lower()
-
-
-class TestExecuteWithIndex:
-    @pytest.mark.asyncio
-    async def test_indexed_returns_info_verdict(self, tool_with_root, tmp_path):
-        # Create the cache db file so the tool walks the success branch.
-        cache_dir = tmp_path / ".ast-cache"
-        cache_dir.mkdir()
-        (cache_dir / "index.db").write_bytes(b"sqlite3-fake")
-
-        mock_stats = {
-            "total_files": 42,
-            "total_symbols": 1337,
-            "fts5_available": True,
-            "schema_version": 3,
-        }
-        mock_cache = MagicMock()
-        mock_cache.get_stats.return_value = mock_stats
-
-        with patch(
-            "tree_sitter_analyzer.ast_cache.ASTCache",
-            return_value=mock_cache,
-        ):
-            result = await tool_with_root.execute(
-                {"output_format": "json", "include_lag": False}
-            )
-
-        assert result["verdict"] == "INFO"
-        assert result["indexed"] is True
-        assert result["total_files"] == 42
-        assert result["total_symbols"] == 1337
-        assert result["fts5_available"] is True
-        assert result["schema_version"] == 3
-        # include_lag=False → lag_seconds stays None
-        assert result["lag_seconds"] is None
-
-    @pytest.mark.asyncio
-    async def test_storage_counters_are_surfaced(self, tool_with_root, tmp_path):
-        cache_dir = tmp_path / ".ast-cache"
-        cache_dir.mkdir()
-        (cache_dir / "index.db").write_bytes(b"sqlite3-fake")
-
-        mock_cache = MagicMock()
-        mock_cache.get_stats.return_value = {
-            "total_files": 2,
-            "total_symbols": 3,
-            "total_edges": 4,
-            "fts5_available": True,
-            "db_size_bytes": 45056,
-            "db_page_size": 4096,
-            "db_page_count": 11,
-            "db_free_pages": 3,
-            "db_free_bytes": 12288,
-            "db_auto_vacuum_mode": 0,
-        }
-
-        with patch(
-            "tree_sitter_analyzer.ast_cache.ASTCache",
-            return_value=mock_cache,
-        ):
-            result = await tool_with_root.execute(
-                {"output_format": "json", "include_lag": False}
-            )
-
-        assert result["db_size_bytes"] == 45056
-        assert result["db_page_size"] == 4096
-        assert result["db_page_count"] == 11
-        assert result["db_free_pages"] == 3
-        assert result["db_free_bytes"] == 12288
-        assert result["db_auto_vacuum_mode"] == 0
-
-    @pytest.mark.asyncio
-    async def test_total_edges_reported_for_graph_density(
-        self, tool_with_root, tmp_path
-    ):
-        """total_edges must be present — README 'ahead' claim vs CodeGraph."""
-        cache_dir = tmp_path / ".ast-cache"
-        cache_dir.mkdir()
-        (cache_dir / "index.db").write_bytes(b"sqlite3-fake")
-
-        mock_cache = MagicMock()
-        # total_edges now sums ALL edge kinds and reconciles with edges_by_kind
-        # (Codex P2 #315): 250 = 200 calls + 40 imports + 10 contains.
-        mock_cache.get_stats.return_value = {
-            "total_files": 10,
-            "total_symbols": 100,
-            "total_edges": 250,
-            "edges_by_kind": {"calls": 200, "imports": 40, "contains": 10},
-            "fts5_available": True,
-            "schema_version": 3,
-        }
-
-        with patch(
-            "tree_sitter_analyzer.ast_cache.ASTCache",
-            return_value=mock_cache,
-        ):
-            result = await tool_with_root.execute(
-                {"output_format": "json", "include_lag": False}
-            )
-
-        assert result["verdict"] == "INFO"
-        assert "total_edges" in result, (
-            "total_edges must be present (README 'ahead' vs CodeGraph graph density signal)"
-        )
-        assert result["total_edges"] == 250
-        # total_edges must reconcile with the edges_by_kind breakdown.
-        assert result["total_edges"] == sum(
-            mock_cache.get_stats.return_value["edges_by_kind"].values()
-        )
-
-    @pytest.mark.asyncio
-    async def test_total_edges_zero_when_edges_absent(self, tool_with_root, tmp_path):
-        """total_edges defaults to 0 when get_stats omits it (no edges table)."""
-        cache_dir = tmp_path / ".ast-cache"
-        cache_dir.mkdir()
-        (cache_dir / "index.db").write_bytes(b"sqlite3-fake")
-
-        mock_cache = MagicMock()
-        # get_stats degrades to {} edges_by_kind / no total_edges on a no-edges
-        # build; the tool must surface total_edges: 0 without raising.
-        mock_cache.get_stats.return_value = {
-            "total_files": 5,
-            "total_symbols": 50,
-            "fts5_available": True,
-            "schema_version": 2,
-        }
-
-        with patch(
-            "tree_sitter_analyzer.ast_cache.ASTCache",
-            return_value=mock_cache,
-        ):
-            result = await tool_with_root.execute(
-                {"output_format": "json", "include_lag": False}
-            )
-
-        assert result["verdict"] == "INFO"
-        assert result["total_edges"] == 0
-
-    @pytest.mark.asyncio
-    async def test_indexed_with_lag_computes_seconds(self, tool_with_root, tmp_path):
-        cache_dir = tmp_path / ".ast-cache"
-        cache_dir.mkdir()
-        cache_file = cache_dir / "index.db"
-        cache_file.write_bytes(b"sqlite3-fake")
-        # Source file newer than the cache → positive lag expected.
-        src = tmp_path / "newer.py"
-        src.write_text("x = 1\n")
-        old_time = os.path.getmtime(cache_file) - 100.0
-        os.utime(cache_file, (old_time, old_time))
-
-        mock_stats = {
-            "total_files": 5,
-            "total_symbols": 10,
-            "fts5_available": False,
-            "schema_version": 2,
-        }
-        mock_cache = MagicMock()
-        mock_cache.get_stats.return_value = mock_stats
-
-        with patch(
-            "tree_sitter_analyzer.ast_cache.ASTCache",
-            return_value=mock_cache,
-        ):
-            result = await tool_with_root.execute(
-                {"output_format": "json", "include_lag": True}
-            )
-
-        assert result["verdict"] == "INFO"
-        assert result["indexed"] is True
-        assert isinstance(result["lag_seconds"], float)
-        assert result["lag_seconds"] >= 0.0
-
-    @pytest.mark.asyncio
-    async def test_cache_exists_but_empty_returns_warn(self, tool_with_root, tmp_path):
-        cache_dir = tmp_path / ".ast-cache"
-        cache_dir.mkdir()
-        (cache_dir / "index.db").write_bytes(b"sqlite3-fake")
-
-        mock_stats = {
-            "total_files": 0,
-            "total_symbols": 0,
-            "fts5_available": False,
-        }
-        mock_cache = MagicMock()
-        mock_cache.get_stats.return_value = mock_stats
-
-        with patch(
-            "tree_sitter_analyzer.ast_cache.ASTCache",
-            return_value=mock_cache,
-        ):
-            result = await tool_with_root.execute({"output_format": "json"})
-
-        assert result["verdict"] == "WARN"
-        assert result["indexed"] is False
-        # Cache file exists even though it's empty → path surfaces for debugging.
-        assert result["cache_path"] is not None
 
 
 class TestExecuteOutputFormat:
@@ -296,22 +106,220 @@ class TestExecuteOutputFormat:
         assert result["verdict"] == "NOT_FOUND"
 
 
-class TestEmptyIndexHint:
-    """D3 — empty-index hint must reference the facade phrasing, not v1.x names."""
+class TestLagCompatibility:
+    @pytest.mark.asyncio
+    async def test_include_lag_false_does_not_scan(self, tmp_path, monkeypatch):
+        import tree_sitter_analyzer.index_lag as lag
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        snapshot = owner.IndexSnapshot(
+            "idxsnap_test",
+            "source",
+            "index",
+            "generation",
+            "complete",
+            None,
+            str(tmp_path),
+            1,
+        )
+        monkeypatch.setattr(
+            owner, "lease_existing_snapshot", lambda _root: nullcontext(snapshot)
+        )
+        monkeypatch.setattr(
+            owner,
+            "read_snapshot_stats",
+            lambda *_args: {
+                "total_files": 1,
+                "total_symbols": 0,
+                "snapshot_id": "idxsnap_test",
+                "source_generation": "generation",
+                "source_fingerprint": "source",
+                "index_fingerprint": "index",
+            },
+        )
+        monkeypatch.setattr(
+            lag,
+            "compute_qualitative_lag",
+            lambda *_args: (_ for _ in ()).throw(AssertionError("unexpected scan")),
+        )
+
+        result = await CodeGraphStatusTool(str(tmp_path)).execute(
+            {"include_lag": False, "output_format": "json"}
+        )
+        assert result["lag_seconds"] is None
 
     @pytest.mark.asyncio
-    async def test_hint_uses_facade_phrasing(self, tool_with_root):
-        """Hint must say 'index' tool with action=auto (current facade)."""
-        result = await tool_with_root.execute({"output_format": "json"})
-        assert result["verdict"] == "WARN"
-        assert "hint" in result, "WARN response must carry a 'hint' field"
-        hint = result["hint"]
-        assert "action=auto" in hint
+    async def test_include_lag_true_reports_qualitative_signal(
+        self, tmp_path, monkeypatch
+    ):
+        import tree_sitter_analyzer.index_lag as lag
+        import tree_sitter_analyzer.index_snapshot as owner
 
-    @pytest.mark.asyncio
-    async def test_hint_has_no_codegraph_prefix(self, tool_with_root):
-        """Hint must NOT reference deprecated codegraph_autoindex name."""
-        result = await tool_with_root.execute({"output_format": "json"})
-        assert "hint" in result, "WARN response must carry a 'hint' field"
-        hint = result["hint"]
-        assert "codegraph_" not in hint
+        snapshot = owner.IndexSnapshot(
+            "idxsnap_test",
+            "source",
+            "index",
+            "generation",
+            "complete",
+            None,
+            str(tmp_path),
+            1,
+        )
+        monkeypatch.setattr(
+            owner, "lease_existing_snapshot", lambda _root: nullcontext(snapshot)
+        )
+        monkeypatch.setattr(
+            owner,
+            "read_snapshot_stats",
+            lambda *_args: {
+                "total_files": 1,
+                "total_symbols": 0,
+                "snapshot_id": "idxsnap_test",
+                "source_generation": "generation",
+                "source_fingerprint": "source",
+                "index_fingerprint": "index",
+            },
+        )
+        monkeypatch.setattr(lag, "compute_qualitative_lag", lambda *_args: 12.5)
+
+        result = await CodeGraphStatusTool(str(tmp_path)).execute(
+            {"include_lag": True, "output_format": "json"}
+        )
+        assert result["lag_seconds"] == 12.5
+        assert result["completeness"] == "complete"
+
+
+class TestSnapshotFallbackBounds:
+    @staticmethod
+    def _connection(symbols_json="{}"):
+        conn = sqlite3.connect(":memory:")
+        conn.execute(
+            "CREATE TABLE ast_index(file_path TEXT, symbols_json TEXT, language TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO ast_index VALUES ('sample.py', ?, 'python')",
+            (symbols_json,),
+        )
+        return conn
+
+    def test_symbol_fallback_rejects_non_list_payload(self):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        conn = self._connection('{"symbols": {}}')
+        with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+            owner._fallback_symbol_counts(conn)
+        conn.close()
+
+    def test_symbol_fallback_enforces_byte_budget(self, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot as owner
+        import tree_sitter_analyzer.index_snapshot_symbols as symbols_owner
+
+        conn = self._connection()
+        monkeypatch.setattr(symbols_owner, "_FALLBACK_BYTE_BUDGET", 0)
+        with pytest.raises(RuntimeError, match="INDEX_SYMBOL_FALLBACK_BUDGET"):
+            owner._fallback_symbol_counts(conn)
+        conn.close()
+
+    def test_symbol_fallback_enforces_row_budget(self, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot as owner
+        import tree_sitter_analyzer.index_snapshot_symbols as symbols_owner
+
+        conn = self._connection('{"symbols": [{"kind": "function"}]}')
+        monkeypatch.setattr(symbols_owner, "_FALLBACK_SYMBOL_BUDGET", 0)
+        with pytest.raises(RuntimeError, match="INDEX_SYMBOL_FALLBACK_BUDGET"):
+            owner._fallback_symbol_counts(conn)
+        conn.close()
+
+
+@requires_posix_fd
+@pytest.mark.asyncio
+async def test_no_fts_snapshot_uses_json_symbol_fallback(tmp_path):
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
+
+    source = tmp_path / "sample.py"
+    source.write_text("def answer():\n    return 42\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    conn = cache.get_conn()
+    conn.execute("DROP TABLE ast_symbols_fts")
+    conn.commit()
+    stamp_full_index_manifest(conn, str(tmp_path))
+    cache.close()
+
+    result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
+    assert result["fts5_available"] is False
+    assert result["total_symbols"] == 1
+    assert result["symbols_by_kind"] == {"function": 1}
+    assert result["symbols_by_language"] == {"python": 1}
+    assert result["db_auto_vacuum_mode"] == 0
+
+
+@requires_posix_fd
+@pytest.mark.asyncio
+async def test_legacy_v13_without_symbol_table_is_readable(tmp_path):
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
+
+    source = tmp_path / "sample.py"
+    source.write_text("def answer():\n    return 42\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    conn = cache.get_conn()
+    conn.execute("DROP TABLE ast_symbols_fts")
+    conn.execute("DROP TABLE ast_symbol_rows")
+    conn.commit()
+    stamp_full_index_manifest(conn, str(tmp_path))
+    cache.close()
+
+    result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
+    assert result["completeness"] == "partial"
+    assert result["oracle_reason"] == "SYMBOL_PROJECTION_INCOMPLETE"
+    assert result["fts5_available"] is False
+    assert result["total_symbols"] == 1
+
+
+def _certified_cache(root):
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
+
+    source = root / "sample.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(root))
+    cache.index_file(str(source))
+    stamp_full_index_manifest(cache.get_conn(), str(root))
+    cache.close()
+
+
+@requires_posix_fd
+@pytest.mark.asyncio
+async def test_persisted_build_marker_is_concurrent_writer(tmp_path):
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache.build_state import mark_build_in_progress
+
+    _certified_cache(tmp_path)
+    cache = ASTCache(str(tmp_path))
+    mark_build_in_progress(cache.get_conn())
+    cache.close()
+    result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
+    assert result["completeness"] == "unknown"
+    assert result["oracle_reason"] == "CONCURRENT_WRITER"
+
+
+@requires_posix_fd
+@pytest.mark.asyncio
+async def test_unknown_source_scope_never_returns_complete(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.index_source_snapshot import CurrentSourceSnapshot
+
+    _certified_cache(tmp_path)
+    monkeypatch.setattr(
+        owner,
+        "capture_current_source_snapshot",
+        lambda _root, _scope=None: CurrentSourceSnapshot(
+            (), None, None, "unknown", "SOURCE_SCAN_DEADLINE"
+        ),
+    )
+    result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
+    assert result["completeness"] == "unknown"
+    assert result["oracle_reason"] == "SOURCE_SCAN_DEADLINE"

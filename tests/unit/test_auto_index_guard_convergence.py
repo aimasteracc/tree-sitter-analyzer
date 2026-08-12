@@ -232,3 +232,248 @@ def test_ensure_indexed_does_not_mark_converged_on_resolve_failure(
         assert resolution_converged(result.get_conn()) is False
     finally:
         auto_index_guard.reset()
+
+
+def test_legacy_call_graph_marker_runs_full_cached_warmup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # PR #1253 review 3757950794: upgraded populated caches need all backfills.
+    class Cache:
+        calls: list[dict[str, Any]] = []
+
+        def get_stats(self) -> dict[str, int]:
+            return {"total_files": 2}
+
+        def index_project(self, **kwargs: Any) -> None:
+            self.calls.append(kwargs)
+
+    cache = Cache()
+    marker_results = iter((False, True))
+    monkeypatch.setattr(auto_index_guard, "_open_cache", lambda _root: cache)
+    monkeypatch.setattr(
+        auto_index_guard,
+        "_call_graph_marker_is_current",
+        lambda _cache: next(marker_results),
+    )
+    auto_index_guard.reset()
+
+    result = auto_index_guard.ensure_indexed("/legacy", max_files=17)
+
+    assert result is cache
+    assert cache.calls == [{"max_files": 17}]
+    assert auto_index_guard.is_indexed("/legacy") is True
+    auto_index_guard.reset()
+
+
+def test_failed_marker_repair_does_not_enable_fast_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # PR #1253 review 3757950794: a failed repair remains fallback-only.
+    class Cache:
+        def get_stats(self) -> dict[str, int]:
+            return {"total_files": 1}
+
+        def index_project(self, **_kwargs: Any) -> None:
+            raise RuntimeError("repair failed")
+
+    cache = Cache()
+    monkeypatch.setattr(auto_index_guard, "_open_cache", lambda _root: cache)
+    monkeypatch.setattr(
+        auto_index_guard, "_call_graph_marker_is_current", lambda _cache: False
+    )
+    auto_index_guard.reset()
+
+    result = auto_index_guard.ensure_indexed("/broken")
+
+    assert result is cache
+    assert auto_index_guard.is_indexed("/broken") is False
+    auto_index_guard.reset()
+
+
+def test_read_only_populated_cache_never_repairs_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # PR #1253 review 3757950794: auto_build=False must not mutate legacy state.
+    class Cache:
+        def get_stats(self) -> dict[str, int]:
+            return {"total_files": 1}
+
+        def index_project(self, **_kwargs: Any) -> None:
+            raise AssertionError("read-only lookup attempted a write")
+
+    cache = Cache()
+    monkeypatch.setattr(auto_index_guard, "_open_cache", lambda _root: cache)
+    auto_index_guard.reset()
+
+    result = auto_index_guard.ensure_indexed("/readonly", auto_build=False)
+
+    assert result is cache
+    assert auto_index_guard.is_indexed("/readonly") is False
+    auto_index_guard.reset()
+
+
+def test_process_fast_path_is_read_only_when_auto_build_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = object()
+    auto_index_guard.reset()
+    auto_index_guard._indexed_roots["/ready"] = True
+    monkeypatch.setattr(auto_index_guard, "_open_cache", lambda _root: cache)
+
+    result = auto_index_guard.ensure_indexed("/ready", auto_build=False)
+
+    assert result is cache
+    auto_index_guard.reset()
+
+
+def test_stale_process_fast_path_runs_warmup_repair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Cache:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+            self.close_calls = 0
+
+        def get_stats(self) -> dict[str, int]:
+            return {"total_files": 1}
+
+        def index_project(self, **kwargs: Any) -> None:
+            self.calls.append(kwargs)
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    cache = Cache()
+    markers = iter((False, False, True))
+    auto_index_guard.reset()
+    auto_index_guard._indexed_roots["/stale"] = True
+    monkeypatch.setattr(auto_index_guard, "_open_cache", lambda _root: cache)
+    monkeypatch.setattr(
+        auto_index_guard,
+        "_call_graph_marker_is_current",
+        lambda _cache: next(markers),
+    )
+
+    result = auto_index_guard.ensure_indexed("/stale", max_files=23)
+
+    assert (
+        result,
+        cache.calls,
+        cache.close_calls,
+        auto_index_guard.is_indexed("/stale"),
+    ) == (
+        cache,
+        [{"max_files": 23}],
+        1,
+        True,
+    )
+    auto_index_guard.reset()
+
+
+def test_lock_recheck_returns_cache_warmed_by_other_caller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = "/concurrent"
+    cache = object()
+
+    class WarmupLock:
+        def __enter__(self):
+            auto_index_guard._indexed_roots[root] = True
+
+        def __exit__(self, *_args):
+            return None
+
+    auto_index_guard.reset()
+    monkeypatch.setattr(auto_index_guard, "_lock", WarmupLock())
+    monkeypatch.setattr(auto_index_guard, "_open_cache", lambda _root: cache)
+
+    result = auto_index_guard.ensure_indexed(root, auto_build=False)
+
+    assert result is cache
+    auto_index_guard._indexed_roots.clear()
+
+
+def test_lock_recheck_discards_stale_marker_before_warmup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = "/concurrent-stale"
+
+    class Cache:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+            self.close_calls = 0
+
+        def get_stats(self) -> dict[str, int]:
+            return {"total_files": 1}
+
+        def index_project(self, **kwargs: Any) -> None:
+            self.calls.append(kwargs)
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    class StaleLock:
+        def __enter__(self):
+            auto_index_guard._indexed_roots[root] = True
+
+        def __exit__(self, *_args):
+            return None
+
+    cache = Cache()
+    markers = iter((False, False, True))
+    auto_index_guard.reset()
+    monkeypatch.setattr(auto_index_guard, "_lock", StaleLock())
+    monkeypatch.setattr(auto_index_guard, "_open_cache", lambda _root: cache)
+    monkeypatch.setattr(
+        auto_index_guard,
+        "_call_graph_marker_is_current",
+        lambda _cache: next(markers),
+    )
+
+    result = auto_index_guard.ensure_indexed(root, max_files=29)
+
+    assert (
+        result,
+        cache.calls,
+        cache.close_calls,
+        auto_index_guard.is_indexed(root),
+    ) == (
+        cache,
+        [{"max_files": 29}],
+        1,
+        True,
+    )
+    auto_index_guard._indexed_roots.clear()
+
+
+def test_successful_warmup_without_current_marker_remains_uncertified(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    class Cache:
+        def get_stats(self) -> dict[str, int]:
+            return {"total_files": 0}
+
+        def index_project(self, **_kwargs: Any) -> None:
+            return None
+
+    cache = Cache()
+    auto_index_guard.reset()
+    monkeypatch.setattr(auto_index_guard, "_open_cache", lambda _root: cache)
+    monkeypatch.setattr(
+        auto_index_guard, "_call_graph_marker_is_current", lambda _cache: False
+    )
+
+    result = auto_index_guard.ensure_indexed("/uncertified")
+
+    assert result is cache
+    assert auto_index_guard.is_indexed("/uncertified") is False
+    assert "pipeline marker remains non-current for /uncertified" in caplog.text
+    auto_index_guard.reset()
+
+
+def test_call_graph_marker_probe_failure_is_not_current() -> None:
+    class BrokenCache:
+        def get_conn(self) -> None:
+            raise RuntimeError("database unavailable")
+
+    assert auto_index_guard._call_graph_marker_is_current(BrokenCache()) is False

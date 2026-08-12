@@ -102,15 +102,13 @@ def _make_edges_table(conn: sqlite3.Connection, *, with_row: bool) -> None:
     conn.commit()
 
 
-def test_call_graph_built_recovers_from_missing_marker_table() -> None:
-    # #1005 root cause: a legacy/crashed cache can hold a fully populated edges
-    # table with NO ast_call_graph_state marker. call_graph_built() must treat a
-    # populated edges table as a safety net and return True.
+def test_call_graph_built_rejects_missing_marker_table() -> None:
+    # Current pipeline certification cannot be inferred from derived edges.
     conn = sqlite3.connect(":memory:")
     try:
         _make_edges_table(conn, with_row=True)
         # No marker table exists at all.
-        assert callgraph_state.call_graph_built(conn) is True
+        assert callgraph_state.call_graph_built(conn) is False
     finally:
         conn.close()
 
@@ -125,14 +123,14 @@ def test_call_graph_built_marker_set_takes_fast_path() -> None:
         conn.close()
 
 
-def test_call_graph_built_recovers_legacy_zero_marker_with_edges() -> None:
+def test_call_graph_built_rejects_legacy_zero_marker_with_edges() -> None:
     # Legacy marker table has built=0 but no explicit-incomplete sentinel.
     conn = sqlite3.connect(":memory:")
     try:
         callgraph_state.clear_call_graph_built(conn)  # built = 0
         conn.execute("DELETE FROM ast_call_graph_state WHERE id = 2")
         _make_edges_table(conn, with_row=True)
-        assert callgraph_state.call_graph_built(conn) is True
+        assert callgraph_state.call_graph_built(conn) is False
     finally:
         conn.close()
 
@@ -223,7 +221,7 @@ def _seed_call_edges_without_built_marker(root: Path) -> None:
         callgraph_state.clear_call_graph_built(cache.get_conn())
         cache.get_conn().execute("DELETE FROM ast_call_graph_state WHERE id = 2")
         cache.get_conn().commit()
-        assert cache.call_graph_built() is True
+        assert cache.call_graph_built() is False
     finally:
         cache.close()
 
@@ -437,9 +435,8 @@ def _seed_call_edges_with_marker_table_dropped(root: Path) -> None:
         conn = cache.get_conn()
         conn.execute("DROP TABLE IF EXISTS ast_call_graph_state")
         conn.commit()
-        # Root cause: missing marker table -> reported as not-built BEFORE the
-        # edges safety net; now recovered to True.
-        assert cache.call_graph_built() is True
+        # Derived edges do not certify the current pipeline version.
+        assert cache.call_graph_built() is False
     finally:
         cache.close()
 
@@ -633,6 +630,31 @@ def test_mixed_incremental_rerun_keeps_marker_true(
         cache.close()
 
 
+def test_default_corpus_exclusion_certifies_without_repeating_backfill(
+    tmp_path: Path,
+) -> None:
+    # PR #1253 review 3757662090: scope exclusions are not pipeline failures.
+    corpus = tmp_path / "tests" / "golden"
+    corpus.mkdir(parents=True)
+    (corpus / "corpus_sample.py").write_text("def excluded(): pass\n")
+    (tmp_path / "included.py").write_text("def included(): pass\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        first = cache.index_project(workers=0)
+        assert first["skipped"] == 1
+        assert first["incomplete_skips"] == 0
+        assert cache.call_graph_built() is True
+
+        with mock.patch.object(cache, "_run_synapse_backfill") as backfill:
+            second = cache.index_project(workers=0)
+
+        assert second["skipped"] == 1
+        assert cache.call_graph_built() is True
+        backfill.assert_not_called()
+    finally:
+        cache.close()
+
+
 def test_truncated_rerun_does_not_stamp_marker_when_incomplete(
     tmp_path: Path,
 ) -> None:
@@ -815,3 +837,160 @@ def test_single_file_indeterminate_backfill_keeps_marker_incomplete(tmp_path) ->
         cache.close()
 
     assert graph_built is False
+
+
+def test_call_graph_built_rejects_untyped_marker_values() -> None:
+    # PR #1253: hostile marker scalars cannot certify a call graph.
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE ast_call_graph_state(id, built)")
+        conn.execute("INSERT INTO ast_call_graph_state VALUES (1, 'yes')")
+        _make_edges_table(conn, with_row=True)
+        assert callgraph_state.call_graph_built(conn) is False
+    finally:
+        conn.close()
+
+
+def test_legacy_marker_writer_migration_stamps_version_zero_on_clear() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_call_graph_state("
+        "id INTEGER PRIMARY KEY, built INTEGER NOT NULL, built_at REAL NOT NULL)"
+    )
+    conn.execute("INSERT INTO ast_call_graph_state VALUES (1, 1, 1.0)")
+
+    callgraph_state.clear_call_graph_built_strict(conn)
+
+    columns = [
+        row[1] for row in conn.execute("PRAGMA table_info(ast_call_graph_state)")
+    ]
+    rows = conn.execute(
+        "SELECT id, built, pipeline_version FROM ast_call_graph_state ORDER BY id"
+    ).fetchall()
+    assert columns == ["id", "built", "built_at", "pipeline_version"]
+    assert rows == [(1, 0, 0), (2, 0, 0)]
+
+
+def test_language_filtered_run_cannot_stamp_global_call_graph_marker(
+    tmp_path: Path,
+) -> None:
+    # PR #1253 review 3757950787: the persisted marker has no language scope.
+    (tmp_path / "a.py").write_text("def a(): pass\n")
+    (tmp_path / "b.js").write_text("function b() {}\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_project(language_filter="python", workers=0)
+
+        assert result["incomplete_skips"] == 1
+        assert cache.call_graph_built() is False
+        manifest_count = (
+            cache.get_conn()
+            .execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest")
+            .fetchone()[0]
+        )
+        assert manifest_count == 0
+    finally:
+        cache.close()
+
+
+def test_deleted_stale_row_cannot_certify_candidate_less_cached_run(
+    tmp_path: Path,
+) -> None:
+    # PR #1253 thread 3760944092: persisted paths must equal bounded discovery.
+    first_source = tmp_path / "a.py"
+    deleted_source = tmp_path / "deleted.py"
+    first_source.write_text("def a():\n    return 1\n", encoding="utf-8")
+    deleted_source.write_text("def deleted():\n    return 2\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        initial = cache.index_project(workers=0)
+        assert initial["indexed"] == 2
+        deleted_source.unlink()
+        callgraph_state.clear_call_graph_built(cache.get_conn())
+
+        rerun = cache.index_project(workers=0)
+        persisted = {
+            str(row[0])
+            for row in cache.get_conn().execute("SELECT file_path FROM ast_index")
+        }
+
+        assert (rerun["cached"], persisted, cache.call_graph_built()) == (
+            1,
+            {"a.py", "deleted.py"},
+            False,
+        )
+    finally:
+        cache.close()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+@pytest.mark.parametrize("failure", ["open", "iteration"])
+def test_descendant_walk_error_cannot_certify_matching_candidate_less_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    # PR #1253 thread 3761288443: os.walk silently suppresses descendant errors.
+    source = tmp_path / "a.py"
+    descendant = tmp_path / "descendant"
+    descendant.mkdir()
+    source.write_text("def a():\n    return 1\n", encoding="utf-8")
+    (descendant / "ignored.txt").write_text("ignored\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        initial = cache.index_project(workers=0)
+        assert (initial["indexed"], cache.call_graph_built()) == (1, True)
+        callgraph_state.clear_call_graph_built(cache.get_conn())
+
+        real_scandir = os.scandir
+        fd_scans = 0
+
+        class FailingIteration:
+            def __init__(self, scanner: Any) -> None:
+                self.scanner = scanner
+
+            def __enter__(self) -> FailingIteration:
+                return self
+
+            def __exit__(self, *_args: Any) -> None:
+                self.close()
+
+            def __iter__(self) -> FailingIteration:
+                return self
+
+            def __next__(self) -> Any:
+                raise OSError("descendant iteration failed")
+
+            def close(self) -> None:
+                self.scanner.close()
+
+        def failing_scandir(path: Any) -> Any:
+            nonlocal fd_scans
+            is_descendant_path = not isinstance(path, int) and Path(path) == descendant
+            if isinstance(path, int):
+                fd_scans += 1
+            is_descendant_fd = isinstance(path, int) and fd_scans == 2
+            if not (is_descendant_path or is_descendant_fd):
+                return real_scandir(path)
+            if failure == "open":
+                raise OSError("descendant scandir failed")
+            return FailingIteration(real_scandir(path))
+
+        monkeypatch.setattr(os, "scandir", failing_scandir)
+        rerun = cache.index_project(workers=0)
+        persisted = {
+            str(row[0])
+            for row in cache.get_conn().execute("SELECT file_path FROM ast_index")
+        }
+        manifest_count = (
+            cache.get_conn()
+            .execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest")
+            .fetchone()[0]
+        )
+
+        assert (
+            rerun["cached"],
+            persisted,
+            cache.call_graph_built(),
+            manifest_count,
+        ) == (1, {"a.py"}, False, 0)
+    finally:
+        cache.close()

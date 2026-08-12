@@ -101,8 +101,8 @@ def _make_returned_parse_error() -> SyncResult:
 class TestMCPResponseEnvelopeOnPerFileError:
     """Issue #806: MCP _sync() response must surface per-file errors."""
 
-    async def test_response_success_true_when_partial_success(self, mcp_tool, project):
-        """success=True when some files indexed; one file errored (partial success)."""
+    async def test_response_success_false_when_partial_success(self, mcp_tool, project):
+        """Any per-file error makes the incomplete response unsuccessful."""
         controlled_result = _make_sync_result_with_one_error()
 
         with patch.object(IncrementalSync, "sync", return_value=controlled_result):
@@ -110,8 +110,8 @@ class TestMCPResponseEnvelopeOnPerFileError:
                 {"mode": "sync", "max_files": 100, "output_format": "json"}
             )
 
-        # Partial sync with at least some successes → success=True
-        assert result["success"] is True
+        # PR #1253 thread 3761514130: incomplete syncs fail closed.
+        assert result["success"] is False
 
     async def test_response_contains_error_count(self, mcp_tool, project):
         """errors field in response must equal exactly 1 (one file failed)."""
@@ -206,8 +206,7 @@ class TestMCPResponseEnvelopeOnPerFileError:
                 {"mode": "sync", "max_files": 100, "output_format": "json"}
             )
 
-        assert result["success"] is True
-        assert result["verdict"] == "WARN"
+        assert (result["success"], result["verdict"]) == (False, "WARN")
 
     async def test_external_path_in_error_message_is_redacted(self, mcp_tool, project):
         controlled_result = _make_sync_result_with_one_error()

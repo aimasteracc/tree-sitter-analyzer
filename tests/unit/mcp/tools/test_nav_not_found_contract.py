@@ -139,7 +139,7 @@ async def test_edges_without_built_marker_no_empty_index_hint(
         callgraph_state.clear_call_graph_built(cache.get_conn())
         cache.get_conn().execute("DELETE FROM ast_call_graph_state WHERE id = 2")
         cache.get_conn().commit()
-        assert cache.call_graph_built() is True
+        assert cache.call_graph_built() is False
     finally:
         cache.close()
 

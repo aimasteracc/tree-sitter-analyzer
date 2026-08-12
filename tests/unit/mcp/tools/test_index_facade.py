@@ -319,6 +319,29 @@ def test_annotations_set_correctly() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_access_mode_schema_is_read_existing_only() -> None:
+    facade = build_index_facade(project_root=None)
+    access_mode = facade.get_tool_definition()["inputSchema"]["properties"][
+        "access_mode"
+    ]
+    assert access_mode == {
+        "type": "string",
+        "enum": ["read_existing"],
+        "default": "read_existing",
+        "description": "Status-only read mode; never creates or migrates an index.",
+    }
+
+
+def test_mutating_action_rejects_status_access_mode() -> None:
+    facade = build_index_facade(project_root=None)
+    result = asyncio.run(
+        facade.execute({"action": "full", "access_mode": "read_existing"})
+    )
+    assert result["error"] == (
+        "parameter 'access_mode' applies only to action(s): status"
+    )
+
+
 def test_schema_includes_action_and_union_params() -> None:
     facade = build_index_facade(project_root=None)
     schema = facade.get_tool_schema()

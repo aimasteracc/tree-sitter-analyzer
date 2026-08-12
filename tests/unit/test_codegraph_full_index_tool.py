@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+import hashlib
+import os
+import sqlite3
+from types import SimpleNamespace
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -123,6 +127,17 @@ class TestValidation:
         assert tool.validate_arguments(arguments) is True
         assert arguments["max_files"] == 20_000
 
+    @pytest.mark.parametrize("value", [None, "src/*", [1]])
+    def test_invalid_exclude_patterns_are_rejected(self, tool, value):
+        # PR #1253: persisted source-scope patterns must be strings in an array.
+        with pytest.raises(ValueError, match="exclude_patterns must be an array"):
+            tool.validate_arguments({"exclude_patterns": value})
+
+    def test_non_boolean_no_default_excludes_is_rejected(self, tool):
+        # PR #1253: source-scope policy flags cannot rely on truthiness.
+        with pytest.raises(ValueError, match="no_default_excludes must be a boolean"):
+            tool.validate_arguments({"no_default_excludes": 1})
+
 
 class TestExcludeResolution:
     def test_no_default_excludes_can_resolve_to_empty_scope(self):
@@ -139,6 +154,22 @@ class TestExecute:
     async def test_no_project_root_returns_error(self, tool):
         result = await tool.execute({"mode": "incremental", "output_format": "json"})
         assert result["success"] is False
+
+    async def test_oversize_scope_is_rejected_before_index_discovery(
+        self, tool_with_root
+    ):
+        # PR #1253: invalid public scope input cannot mutate the index.
+        with patch.object(tool_with_root, "_build_candidate_snapshot") as discover:
+            with pytest.raises(ValueError, match="SOURCE_SCOPE_DESCRIPTOR_TOO_LARGE"):
+                await tool_with_root.execute(
+                    {
+                        "mode": "full",
+                        "exclude_patterns": ["x" * (64 * 1024)],
+                        "output_format": "json",
+                    }
+                )
+
+        discover.assert_not_called()
 
     async def test_incremental_on_empty_project(self, tool_with_root):
         result = await tool_with_root.execute(
@@ -190,17 +221,17 @@ class TestExecute:
                 {"mode": "incremental", "output_format": "json"}
             )
 
-        assert result["success"] is True
+        assert result["success"] is False
         assert result["verdict"] == "WARN"
         assert result["phases"]["incremental_sync"]["status"] == "error"
         assert result["phases"]["incremental_sync"]["errors"] == 1
 
-    async def test_verdict_is_warn_when_ast_cache_has_errors(self, tool_with_root):
+    async def test_backfill_errors_withhold_two_phase_manifest(self, tool_with_root):
         with (
             patch.object(
                 tool_with_root,
                 "_phase_ast_cache",
-                return_value={"status": "error", "errors": 1},
+                return_value={"status": "ok", "errors": 0, "backfill_errors": 1},
             ),
             patch.object(
                 tool_with_root,
@@ -217,7 +248,9 @@ class TestExecute:
                 "_phase_call_edge_stats",
                 return_value={"status": "ok"},
             ),
-            patch.object(tool_with_root, "_collect_final_stats", return_value={}),
+            patch.object(
+                tool_with_root, "_collect_final_stats", return_value={}
+            ) as collect_stats,
         ):
             result = await tool_with_root.execute(
                 {
@@ -227,8 +260,114 @@ class TestExecute:
                 }
             )
 
-        assert result["success"] is True
+        assert result["success"] is False
         assert result["verdict"] == "WARN"
+        assert collect_stats.call_args.kwargs["stamp_manifest"] is False
+
+    async def test_manifest_certification_warning_escalates_all_verdicts(
+        self, tool_with_root
+    ):
+        clean_phase = {"status": "ok", "processed": 1}
+        with (
+            patch.object(tool_with_root, "_phase_ast_cache", return_value=clean_phase),
+            patch.object(
+                tool_with_root, "_phase_incremental_sync", return_value=clean_phase
+            ),
+            patch.object(
+                tool_with_root, "_phase_fts5_stats", return_value={"status": "ok"}
+            ),
+            patch.object(
+                tool_with_root,
+                "_phase_call_edge_stats",
+                return_value={"status": "ok"},
+            ),
+            patch.object(
+                tool_with_root,
+                "_collect_final_stats",
+                return_value={
+                    "manifest_warning": "INDEX_MANIFEST_CERTIFICATION_FAILED"
+                },
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {
+                    "mode": "full",
+                    "resolve_synapse": False,
+                    "output_format": "json",
+                }
+            )
+
+        assert (
+            result["success"],
+            result["verdict"],
+            result["agent_summary"]["verdict"],
+            result["summary_line"],
+            result["agent_summary"]["summary_line"],
+        ) == (
+            False,
+            "WARN",
+            "WARN",
+            "codegraph_full_index: completed with warn",
+            "codegraph_full_index: completed with warn",
+        )
+
+    async def test_incremental_manifest_certification_failure_is_not_operational_success(
+        self, tool_with_root
+    ):
+        clean_phase = {"status": "ok", "processed": 1}
+        with (
+            patch.object(tool_with_root, "_phase_ast_cache", return_value=clean_phase),
+            patch.object(
+                tool_with_root, "_phase_incremental_sync", return_value=clean_phase
+            ),
+            patch.object(
+                tool_with_root, "_phase_fts5_stats", return_value={"status": "ok"}
+            ),
+            patch.object(
+                tool_with_root, "_phase_call_edge_stats", return_value={"status": "ok"}
+            ),
+            patch.object(
+                tool_with_root,
+                "_collect_final_stats",
+                return_value={
+                    "_manifest_certified": False,
+                    "manifest_certification_failed": True,
+                    "manifest_warning": "INDEX_MANIFEST_CERTIFICATION_FAILED",
+                },
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {
+                    "mode": "incremental",
+                    "resolve_synapse": False,
+                    "output_format": "json",
+                }
+            )
+
+        assert (result["success"], result["verdict"]) == (False, "WARN")
+
+    async def test_synapse_phase_inherits_ast_backfill_failure(self, tool_with_root):
+        result = tool_with_root._phase_synapse({"status": "ok", "backfill_errors": 1})
+
+        assert (result["status"], result["backfill_errors"]) == ("error", 1)
+
+    async def test_synapse_phase_counts_unresolved_backfill(self, tool_with_root):
+        result = tool_with_root._phase_synapse(
+            {"status": "ok", "unresolved_refs_backfill": {"resolved": 2}}
+        )
+
+        assert result["resolved_edges"] == 2
+
+    async def test_synapse_phase_ignores_non_mapping_backfills(self, tool_with_root):
+        result = tool_with_root._phase_synapse(
+            {
+                "status": "ok",
+                "synapse_backfill": "invalid",
+                "unresolved_refs_backfill": "invalid",
+            }
+        )
+
+        assert result["resolved_edges"] == 0
 
     async def test_default_toon_surfaces_truncation_metadata(self, tool_with_root):
         incremental_phase = {
@@ -360,6 +499,51 @@ class TestExecute:
         assert snapshot.max_files == 3
         assert snapshot.selected == 1
 
+    async def test_normalized_patterns_are_persisted_in_both_phase_scopes(
+        self, tool_with_root
+    ):
+        with (
+            patch.object(
+                tool_with_root,
+                "_phase_ast_cache",
+                return_value={"status": "ok", "processed": 0},
+            ) as ast_phase,
+            patch.object(
+                tool_with_root,
+                "_phase_incremental_sync",
+                return_value={"status": "ok", "processed": 0},
+            ) as sync_phase,
+            patch.object(
+                tool_with_root, "_phase_fts5_stats", return_value={"status": "ok"}
+            ),
+            patch.object(
+                tool_with_root,
+                "_phase_call_edge_stats",
+                return_value={"status": "ok"},
+            ),
+            patch.object(
+                tool_with_root,
+                "_collect_final_stats",
+                return_value={"_manifest_certified": True},
+            ),
+        ):
+            await tool_with_root.execute(
+                {
+                    "mode": "full",
+                    "exclude_patterns": [r"src\generated\*"],
+                    "no_default_excludes": True,
+                    "resolve_synapse": False,
+                    "output_format": "json",
+                }
+            )
+
+        ast_scope = ast_phase.call_args.kwargs["source_scope"]
+        sync_scope = sync_phase.call_args.kwargs["source_scope"]
+        assert (ast_scope.exclude_patterns, sync_scope.exclude_patterns) == (
+            ("src/generated/*",),
+            ("src/generated/*",),
+        )
+
     async def test_full_mode_max_files_bounds_both_phases(self, tmp_path):
         # Incident 2026-07-26: sync re-indexed files beyond the requested cap.
         (tmp_path / "a.py").write_text("a = 1\n")
@@ -375,26 +559,304 @@ class TestExecute:
             }
         )
 
-        assert _cache_total_files(tmp_path) == 1
+        assert _cache_total_files(tmp_path) == 0
+        assert result["success"] is False
+        assert result["verdict"] == "WARN"
         assert result["phases"]["ast_cache"]["truncated_by_max_files"] is True
-        assert result["phases"]["incremental_sync"]["truncated_by_max_files"] is True
+        assert result["phases"]["ast_cache"]["errors"] == 1
+        assert result["phases"]["ast_cache"]["abort_remaining_phases"] is True
+        assert result["phases"]["remaining_phases"]["status"] == "skipped"
+        assert "incremental_sync" not in result["phases"]
         assert result["candidate_snapshot"]["discovered"] == 2
         assert result["candidate_snapshot"]["selected"] == 1
         assert result["candidate_snapshot"]["limited_by_max_files"] == 1
         assert result["candidate_snapshot"]["discovery_reconciled"] is True
-        assert result["candidate_snapshot"]["phase_totals_reconciled"] is True
+
+    async def test_unsafe_force_abort_never_calls_incremental_or_final_writes(
+        self, tmp_path
+    ):
+        # PR #1253 review 3759391272: terminal force results stop the pipeline.
+        (tmp_path / "app.py").write_text("value = 1\n")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+
+        with (
+            patch.object(
+                full_tool,
+                "_phase_ast_cache",
+                return_value={
+                    "status": "error",
+                    "abort_remaining_phases": True,
+                    "changed_during_run": 1,
+                    "changed_during_run_files": ["app.py"],
+                },
+            ),
+            patch.object(full_tool, "_phase_incremental_sync") as incremental,
+            patch.object(full_tool, "_collect_final_stats") as final_stats,
+        ):
+            result = await full_tool.execute({"mode": "full", "output_format": "json"})
+
+        incremental.assert_not_called()
+        final_stats.assert_not_called()
+        assert result["success"] is False
+        assert result["phases"]["remaining_phases"]["status"] == "skipped"
+
+    async def test_full_mode_shared_cache_construction_failure_aborts_handoff(
+        self, tmp_path
+    ):
+        # PR #1253 P1: full mode never falls back to a second pathname owner.
+        (tmp_path / "app.py").write_text("value = 1\n")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+
+        with (
+            patch(
+                "tree_sitter_analyzer.ast_cache.ASTCache",
+                side_effect=OSError("injected cache construction failure"),
+            ),
+            patch.object(full_tool, "_phase_ast_cache") as ast_phase,
+            patch.object(full_tool, "_phase_incremental_sync") as incremental,
+        ):
+            result = await full_tool.execute({"mode": "full", "output_format": "json"})
+
+        ast_phase.assert_not_called()
+        incremental.assert_not_called()
+        assert result["success"] is False
+        assert result["phases"]["ast_cache"]["abort_remaining_phases"] is True
+        assert result["phases"]["ast_cache"]["error"] == (
+            "OSError: injected cache construction failure"
+        )
+
+    async def test_full_mode_legacy_platform_reaches_incremental_phase(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253: unsupported root leases preserve the Windows legacy data plane.
+        import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+        (tmp_path / "app.py").write_text("value = 1\n")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        monkeypatch.setattr(
+            materialization,
+            "secure_candidate_materialization_supported",
+            lambda: False,
+        )
+
+        result = await full_tool.execute(
+            {"mode": "full", "resolve_synapse": False, "output_format": "json"}
+        )
+
+        assert result["phases"]["ast_cache"]["abort_remaining_phases"] is False
+        assert result["phases"]["incremental_sync"]["status"] == "ok"
+
+    @pytest.mark.skipif(os.name != "posix", reason="GH-1253: frozen handoff")
+    async def test_full_handoff_validation_gets_fresh_bounded_deadline(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 thread 3763401188: AST duration must not expire handoff evidence.
+        import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+        (tmp_path / "app.py").write_text("value = 1\n")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        snapshot = full_tool._build_candidate_snapshot(
+            20_000, frozenset(), materialize=True
+        )
+        assert snapshot.frozen_read_deadline is not None
+        expired_at_handoff = snapshot.frozen_read_deadline + 1.0
+        observed_deadlines = []
+
+        def validate_handoff(candidate, *, deadline=None):
+            observed_deadlines.append(deadline)
+            return deadline is not None and deadline > expired_at_handoff
+
+        monkeypatch.setattr(
+            materialization,
+            "index_candidate_snapshot_is_materialized",
+            validate_handoff,
+        )
+        monkeypatch.setattr(
+            "tree_sitter_analyzer.mcp.tools.full_index_tool.time",
+            SimpleNamespace(monotonic=lambda: expired_at_handoff),
+        )
+        with (
+            patch.object(full_tool, "_build_candidate_snapshot", return_value=snapshot),
+            patch.object(
+                full_tool,
+                "_phase_ast_cache",
+                return_value={"status": "ok", "changed_during_run": 0},
+            ),
+            patch.object(
+                full_tool,
+                "_phase_incremental_sync",
+                return_value={"status": "ok", "processed": 1},
+            ) as incremental,
+            patch.object(full_tool, "_phase_fts5_stats", return_value={"status": "ok"}),
+            patch.object(
+                full_tool, "_phase_call_edge_stats", return_value={"status": "ok"}
+            ),
+            patch.object(
+                full_tool,
+                "_collect_final_stats",
+                return_value={"_manifest_certified": True},
+            ),
+        ):
+            result = await full_tool.execute(
+                {"mode": "full", "resolve_synapse": False, "output_format": "json"}
+            )
+
+        incremental.assert_called_once()
+        assert observed_deadlines == [expired_at_handoff + 35.0]
+        assert "snapshot_handoff_error" not in result["phases"]["ast_cache"]
+
+    @pytest.mark.skipif(
+        os.name != "posix", reason="GH-1253: requires POSIX root rename"
+    )
+    async def test_full_mode_root_swap_before_handoff_check_aborts(self, tmp_path):
+        (tmp_path / "app.py").write_text("value = 1\n")
+        displaced = tmp_path.with_name(f"{tmp_path.name}-displaced")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+
+        def swap_root(*_args, **_kwargs):
+            tmp_path.rename(displaced)
+            tmp_path.mkdir()
+            return {"status": "ok", "changed_during_run": 0}
+
+        with (
+            patch.object(full_tool, "_phase_ast_cache", side_effect=swap_root),
+            patch.object(full_tool, "_phase_incremental_sync") as incremental,
+        ):
+            result = await full_tool.execute({"mode": "full", "output_format": "json"})
+
+        incremental.assert_not_called()
+        assert result["phases"]["ast_cache"]["snapshot_handoff_error"] == (
+            "INDEX_CANDIDATE_FROZEN_EVIDENCE_INVALID"
+        )
+
+    @pytest.mark.skipif(
+        os.name != "posix", reason="GH-1253: requires POSIX root rename"
+    )
+    async def test_full_mode_root_swap_after_handoff_check_reuses_cache_owner(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1253 thread 3763821273: a replacement after frozen validation is
+        # rejected by the independent visible-hierarchy validation.
+        import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+        (tmp_path / "app.py").write_text("value = 1\n")
+        displaced = tmp_path.with_name(f"{tmp_path.name}-displaced")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        real_check = materialization.index_candidate_snapshot_is_materialized
+        phase_caches = []
+
+        def check_then_swap(snapshot, *, deadline=None):
+            assert real_check(snapshot, deadline=deadline) is True
+            tmp_path.rename(displaced)
+            tmp_path.mkdir()
+            (tmp_path / "sentinel").write_text("replacement\n")
+            return True
+
+        def ast_phase(*_args, _cache=None, **_kwargs):
+            phase_caches.append(_cache)
+            return {"status": "ok", "changed_during_run": 0}
+
+        def incremental_phase(*_args, _cache=None, **_kwargs):
+            phase_caches.append(_cache)
+            return {"status": "error", "processed": 0, "changed_during_run": 1}
+
+        monkeypatch.setattr(
+            materialization,
+            "index_candidate_snapshot_is_materialized",
+            check_then_swap,
+        )
+        with (
+            patch.object(full_tool, "_phase_ast_cache", side_effect=ast_phase),
+            patch.object(
+                full_tool,
+                "_phase_incremental_sync",
+                side_effect=incremental_phase,
+            ),
+        ):
+            result = await full_tool.execute({"mode": "full", "output_format": "json"})
+
+        assert len(phase_caches) == 1
+        assert phase_caches[0] is not None
+        assert result["phases"]["ast_cache"]["snapshot_handoff_error"] == (
+            "INDEX_CACHE_HIERARCHY_CHANGED"
+        )
+        assert result["phases"]["remaining_phases"]["status"] == "skipped"
+        assert sorted(path.name for path in tmp_path.iterdir()) == ["sentinel"]
+
+    @pytest.mark.skipif(
+        os.name != "posix", reason="GH-1253: requires POSIX cache hierarchy"
+    )
+    async def test_full_mode_cache_swap_after_ast_phase_aborts_later_writes(
+        self, tmp_path
+    ):
+        # PR #1253 thread 3763821273: later phases revalidate the pinned cache.
+        (tmp_path / "app.py").write_text("value = 1\n", encoding="utf-8")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        displaced_cache = tmp_path / ".ast-cache-displaced"
+
+        def ast_then_swap(*_args, _cache=None, **_kwargs):
+            assert _cache is not None
+            (tmp_path / ".ast-cache").rename(displaced_cache)
+            (tmp_path / ".ast-cache").mkdir()
+            (tmp_path / ".ast-cache" / "replacement").write_text(
+                "untouched\n", encoding="utf-8"
+            )
+            return {"status": "ok", "changed_during_run": 0}
+
+        with (
+            patch.object(full_tool, "_phase_ast_cache", side_effect=ast_then_swap),
+            patch.object(full_tool, "_phase_incremental_sync") as incremental,
+            patch.object(full_tool, "_collect_final_stats") as final_stats,
+        ):
+            result = await full_tool.execute({"mode": "full", "output_format": "json"})
+
+        incremental.assert_not_called()
+        final_stats.assert_not_called()
+        assert (
+            result["phases"]["ast_cache"]["abort_remaining_phases"],
+            result["phases"]["ast_cache"]["snapshot_handoff_error"],
+            (tmp_path / ".ast-cache" / "replacement").read_text(encoding="utf-8"),
+        ) == (True, "INDEX_CACHE_HIERARCHY_CHANGED", "untouched\n")
+
+    @pytest.mark.skipif(
+        os.name != "posix", reason="GH-1253: requires POSIX cache hierarchy"
+    )
+    async def test_full_mode_cache_swap_after_incremental_aborts_final_stats(
+        self, tmp_path
+    ):
+        (tmp_path / "app.py").write_text("value = 1\n", encoding="utf-8")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        displaced = tmp_path / ".ast-cache-displaced"
+
+        def incremental_then_swap(*_args, **_kwargs):
+            (tmp_path / ".ast-cache").rename(displaced)
+            (tmp_path / ".ast-cache").mkdir()
+            return {"status": "ok", "processed": 1, "changed_during_run": 0}
+
+        with (
+            patch.object(
+                full_tool, "_phase_incremental_sync", side_effect=incremental_then_swap
+            ),
+            patch.object(full_tool, "_collect_final_stats") as final_stats,
+        ):
+            result = await full_tool.execute({"mode": "full", "output_format": "json"})
+        final_stats.assert_not_called()
+        assert (result["success"], result["phases"]["remaining_phases"]["status"]) == (
+            False,
+            "skipped",
+        )
 
     async def test_full_index_walks_project_once_for_both_phases(self, tmp_path):
-        from tree_sitter_analyzer.cache import indexer
+        import tree_sitter_analyzer.mcp.tools.full_index_tool as full_index_module
 
         (tmp_path / "a.py").write_text("a = 1\n")
         (tmp_path / "b.py").write_text("b = 2\n")
         full_tool = CodeGraphFullIndexTool(str(tmp_path))
 
         with patch.object(
-            indexer,
-            "_walk_source_files",
-            wraps=indexer._walk_source_files,
+            full_index_module,
+            "walk_index_candidate_entries",
+            wraps=full_index_module.walk_index_candidate_entries,
         ) as walk:
             result = await full_tool.execute(
                 {
@@ -555,6 +1017,9 @@ class TestExecute:
         assert events == ["clock", "snapshot", "clock"]
         assert result["elapsed_seconds"] == 5.0
 
+    @pytest.mark.skipif(
+        os.name != "posix", reason="GH-1253: authoritative frozen epoch"
+    )
     async def test_mutation_between_phases_is_skipped_and_reported(self, tmp_path):
         path = tmp_path / "app.py"
         path.write_text("value = 1\n")
@@ -583,20 +1048,29 @@ class TestExecute:
         incremental = result["phases"]["incremental_sync"]
         assert result["verdict"] == "WARN"
         assert scope["selected"] == 1
-        assert scope["processed"] == 0
+        # PR #1253: the complete frozen epoch remains indexed despite live drift.
+        assert scope["processed"] == 1
         assert scope["changed_during_run"] == 1
         assert scope["changed_during_run_files"] == ["app.py"]
         assert scope["changed_during_run_details"] == [
             {
                 "file": "app.py",
-                "status": "skipped",
+                "status": "warning",
                 "reason": "file changed after candidate snapshot",
             }
         ]
         assert scope["selection_reconciled"] is True
         assert scope["phase_totals_reconciled"] is True
         assert incremental["changed_during_run"] == 1
-        assert incremental["processed"] == 0
+        assert incremental["processed"] == 1
+        cache = ASTCache(str(tmp_path))
+        row = (
+            cache.get_conn()
+            .execute("SELECT content_hash FROM ast_index WHERE file_path='app.py'")
+            .fetchone()
+        )
+        cache.close()
+        assert row["content_hash"] == hashlib.sha256(b"value = 1\n").hexdigest()
 
     async def test_default_exclude_is_not_reintroduced_by_sync(self, tmp_path):
         # Incident 2026-07-26: sync reintroduced a default-excluded corpus file.
@@ -796,6 +1270,18 @@ class TestErrorTransparency:
         assert phase["errors"] == 0
         assert phase["status"] == "error"
 
+    def test_orchestrated_ast_phase_defers_manifest_certification(self, tool_with_root):
+        # PR #1253 review 3755736551: only the final phase may certify.
+        ast_result = {"indexed": 0, "cached": 0, "errors": 0, "files": []}
+        with patch("tree_sitter_analyzer.ast_cache.ASTCache") as cache_cls:
+            cache_cls.return_value.index_project.return_value = ast_result
+            tool_with_root._phase_ast_cache(False, 10)
+
+        assert (
+            cache_cls.return_value.index_project.call_args.kwargs["certify_manifest"]
+            is False
+        )
+
     def test_ast_cache_closes_after_index_exception(self, tool_with_root):
         with patch("tree_sitter_analyzer.ast_cache.ASTCache") as cache_cls:
             cache_cls.return_value.index_project.side_effect = RuntimeError("boom")
@@ -829,6 +1315,108 @@ class TestErrorTransparency:
         assert phase["error_truncated"] is True
 
 
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+async def test_full_orchestration_stamps_manifest_exactly_once(tmp_path):
+    # PR #1253 review 3755736551: intermediate engines must not re-certify.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    (tmp_path / "sample.py").write_text("value = 1\n")
+    tool = CodeGraphFullIndexTool(str(tmp_path))
+    with patch.object(
+        schema,
+        "stamp_full_index_manifest",
+        wraps=schema.stamp_full_index_manifest,
+    ) as stamp:
+        result = await tool.execute({"mode": "full", "output_format": "json"})
+
+    assert (result["verdict"], stamp.call_count) == ("INFO", 1)
+
+
+def test_final_stats_stamp_failure_does_not_delete_later_manifest(tmp_path):
+    # PR #1253 review 3755736546: callers only downgrade stamper failures.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    cache = ASTCache(str(tmp_path))
+    conn = cache.get_conn()
+    conn.execute(
+        "INSERT INTO ast_index_snapshot_manifest "
+        "(singleton, canonical_root, source_fingerprint, index_fingerprint, "
+        "file_count, source_scope_descriptor, manifest_version) "
+        "VALUES (1, 'root', 'source', 'index', 0, 'scope', 2)"
+    )
+    conn.commit()
+    cache.close()
+
+    tool = CodeGraphFullIndexTool(str(tmp_path))
+    with patch.object(
+        schema,
+        "stamp_full_index_manifest",
+        side_effect=RuntimeError("busy"),
+    ):
+        result = tool._collect_final_stats(stamp_manifest=True)
+
+    cache = ASTCache(str(tmp_path))
+    manifest = (
+        cache.get_conn()
+        .execute("SELECT index_fingerprint FROM ast_index_snapshot_manifest")
+        .fetchone()
+    )
+    cache.close()
+    assert (
+        result["manifest_warning"],
+        result["manifest_certification_failed"],
+        result["certification_errors"],
+        result["scope_complete"],
+        manifest[0],
+    ) == ("INDEX_MANIFEST_CERTIFICATION_FAILED", True, 1, False, "index")
+
+
+def test_collect_final_stats_returns_empty_on_cache_failure(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.ast_cache as ast_cache
+
+    monkeypatch.setattr(
+        ast_cache, "ASTCache", Mock(side_effect=RuntimeError("cache unavailable"))
+    )
+    result = CodeGraphFullIndexTool(str(tmp_path))._collect_final_stats()
+    assert result == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+async def test_full_index_accepts_configured_symlink_root(tmp_path):
+    # PR #1253 review 3761093597: canonicalize once before no-follow traversal.
+    real_root = tmp_path / "real"
+    real_root.mkdir()
+    (real_root / "sample.py").write_text("value = 1\n")
+    link_root = tmp_path / "configured-root"
+    link_root.symlink_to(real_root, target_is_directory=True)
+
+    result = await CodeGraphFullIndexTool(str(link_root)).execute(
+        {"mode": "full", "output_format": "json"}
+    )
+
+    assert (
+        result["success"],
+        result["verdict"],
+        result["total_files"],
+        result["phases"]["incremental_sync"]["completeness"],
+    ) == (True, "INFO", 1, "complete")
+
+
+def test_incremental_phase_converts_cache_failure_to_phase_error(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.ast_cache as cache_module
+
+    monkeypatch.setattr(
+        cache_module,
+        "ASTCache",
+        lambda _root: (_ for _ in ()).throw(RuntimeError("open failed")),
+    )
+    result = CodeGraphFullIndexTool(str(tmp_path))._phase_incremental_sync()
+    assert (result["status"], result["error"]) == ("error", "RuntimeError: open failed")
+
+
 class TestIncrementalPhaseScope:
     def test_forwards_limit_above_old_hardcoded_cap_to_engine(self, tool_with_root):
         # Incident 2026-07-26: the phase hard-coded a 20,000-file ceiling.
@@ -844,4 +1432,126 @@ class TestIncrementalPhaseScope:
         sync_cls.return_value.sync.assert_called_once_with(
             max_files=25_001,
             exclude_patterns=exclude_patterns,
+            certify_manifest=False,
         )
+
+
+def test_fts_stats_converts_cache_failure_to_phase_error(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.ast_cache as cache_module
+
+    monkeypatch.setattr(
+        cache_module,
+        "ASTCache",
+        lambda _root: (_ for _ in ()).throw(RuntimeError("open failed")),
+    )
+    result = CodeGraphFullIndexTool(str(tmp_path))._phase_fts5_stats()
+    assert (result["status"], result["error"]) == ("error", "RuntimeError: open failed")
+
+
+def test_call_edge_stats_converts_cache_failure_to_phase_error(tmp_path, monkeypatch):
+    # PR #1253: final stats remain bounded when opening the cache fails.
+    import tree_sitter_analyzer.ast_cache as cache_module
+
+    monkeypatch.setattr(
+        cache_module,
+        "ASTCache",
+        lambda _root: (_ for _ in ()).throw(RuntimeError("open failed")),
+    )
+
+    result = CodeGraphFullIndexTool(str(tmp_path))._phase_call_edge_stats()
+
+    assert (result["status"], result["error"]) == ("error", "RuntimeError: open failed")
+
+
+@pytest.mark.asyncio
+async def test_incremental_scope_change_prunes_newly_excluded_rows(tmp_path):
+    # PR #1253: a newly excluded file cannot survive in primary or graph rows.
+    keep = tmp_path / "keep.py"
+    drop = tmp_path / "drop.py"
+    keep.write_text("def keep():\n    return 1\n")
+    drop.write_text("def drop():\n    return keep()\n")
+    tool = CodeGraphFullIndexTool(str(tmp_path))
+    first = await tool.execute(
+        {"mode": "full", "resolve_synapse": False, "output_format": "json"}
+    )
+    assert first["success"] is (os.name != "nt")
+
+    second = await tool.execute(
+        {
+            "mode": "incremental",
+            "exclude_patterns": ["drop.py"],
+            "resolve_synapse": False,
+            "output_format": "json",
+        }
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        paths = {
+            str(row[0])
+            for row in cache.get_conn().execute("SELECT file_path FROM ast_index")
+        }
+        graph_rows = (
+            cache.get_conn()
+            .execute("SELECT COUNT(*) FROM edges WHERE file_path = 'drop.py'")
+            .fetchone()[0]
+        )
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert (second["success"], paths, graph_rows, graph_built) == (
+        True,
+        {"keep.py"},
+        0,
+        True,
+    )
+
+
+async def test_execute_exception_releases_materialized_candidate(tool_with_root):
+    # PR #1253 thread 3760428941: exceptional exits share the release boundary.
+    with (
+        patch.object(
+            tool_with_root,
+            "_phase_ast_cache",
+            side_effect=RuntimeError("primary phase failed"),
+        ),
+        pytest.raises(RuntimeError, match="primary phase failed"),
+    ):
+        await tool_with_root.execute(
+            {"mode": "full", "max_files": 10, "output_format": "json"}
+        )
+
+
+@pytest.mark.asyncio
+async def test_candidate_discovery_exception_returns_structured_error(tmp_path):
+    # PR #1253 thread 3763044680: discovery failures cross the MCP boundary safely.
+    tool = CodeGraphFullIndexTool(str(tmp_path))
+    with patch.object(
+        tool, "_build_candidate_snapshot", side_effect=OSError("walk failed")
+    ):
+        result = await tool.execute({"mode": "incremental", "output_format": "json"})
+
+    assert (result["success"], result["verdict"], result["phase"]) == (
+        False,
+        "ERROR",
+        "candidate_discovery",
+    )
+    assert result["error"] == "Candidate discovery failed: OSError: walk failed"
+
+
+def test_collect_final_stats_source_scope_unsupported_is_operational(tmp_path):
+    # PR #1253 thread 3762955392: platform incapability is warning-only.
+    cache = MagicMock()
+    cache.get_stats.return_value = {}
+    tool = CodeGraphFullIndexTool(str(tmp_path))
+    with patch(
+        "tree_sitter_analyzer.index_snapshot_schema.stamp_full_index_manifest",
+        side_effect=sqlite3.OperationalError("SOURCE_SCOPE_UNSUPPORTED"),
+    ):
+        result = tool._collect_final_stats(stamp_manifest=True, _cache=cache)
+
+    assert (
+        result["manifest_warning"],
+        result["manifest_certification_failed"],
+        result["certification_errors"],
+    ) == ("SOURCE_SCOPE_UNSUPPORTED", False, 0)

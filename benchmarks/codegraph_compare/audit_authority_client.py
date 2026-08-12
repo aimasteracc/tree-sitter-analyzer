@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import socket
 import struct
@@ -108,7 +109,11 @@ def exchange(
         if peer_pid <= 0 or peer_uid != authority["peer_uid"]:
             raise ValueError("external audit authority peer UID mismatch")
         client.sendall(struct.pack("!I", len(wire)) + wire)
-        client.shutdown(socket.SHUT_WR)
+        try:
+            client.shutdown(socket.SHUT_WR)
+        except OSError as error:
+            if error.errno not in (errno.ENOTCONN, errno.EPIPE):
+                raise
         envelope = read_frame(
             client, MAX_MESSAGE, 10, "external audit authority response"
         )

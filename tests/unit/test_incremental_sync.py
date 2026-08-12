@@ -2,19 +2,24 @@
 
 import json
 import os
+import sqlite3
 import sys
 import time
+from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.incremental_sync import IncrementalSync
+from tree_sitter_analyzer.index_source_snapshot import make_source_scope_descriptor
 from tree_sitter_analyzer.indexing_snapshot import (
     IndexCandidateSnapshot,
     IndexSnapshotEntry,
     build_index_candidate_snapshot,
 )
+
+requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 
 
 @pytest.fixture
@@ -164,9 +169,13 @@ class TestSyncDeletedFile:
             "_run_synapse_backfill",
             return_value={"resolved": 0, "errors": 1},
         ):
-            sync.sync()
+            result = sync.sync()
 
-        assert cache.call_graph_built() is False
+        assert (
+            result.backfill_errors,
+            result.to_dict()["completeness"],
+            cache.call_graph_built(),
+        ) == (1, "incomplete", False)
 
     def test_deletion_sync_indeterminate_backfill_keeps_graph_incomplete(
         self, sync, cache, project
@@ -180,7 +189,28 @@ class TestSyncDeletedFile:
         assert cache.call_graph_built() is False
 
 
-def test_noop_sync_preserves_incomplete_backfill_state(tmp_path):
+def test_candidate_less_sync_is_operational_but_not_authoritative(tmp_path):
+    # PR #1253 review 3762603012: a live walk cannot certify complete scope.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = IncrementalSync(cache).sync()
+        indexed = cache.lookup(str(path)) is not None
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert (
+        result.new_files,
+        result.errors,
+        result.to_dict()["completeness"],
+        indexed,
+        graph_built,
+    ) == (1, 0, "incomplete", True, True)
+
+
+def test_noop_sync_repairs_incomplete_backfill_state(tmp_path):
     # PR #1172 review 2026-07-27: a no-op retry certified a failed backfill.
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
@@ -199,7 +229,42 @@ def test_noop_sync_preserves_incomplete_backfill_state(tmp_path):
     finally:
         cache.close()
 
-    assert graph_built is False
+    assert graph_built is True
+
+
+def test_fully_cached_legacy_marker_repairs_complete_pipeline(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    conn = cache.get_conn()
+    conn.execute(
+        "UPDATE ast_call_graph_state SET built = 1, pipeline_version = 1 WHERE id = 1"
+    )
+    conn.execute("DELETE FROM ast_call_graph_state WHERE id = 2")
+    conn.commit()
+
+    try:
+        with (
+            patch.object(
+                cache, "backfill_cross_file_edges", return_value={"errors": 0}
+            ) as cross,
+            patch.object(
+                cache, "_run_synapse_backfill", return_value={"errors": 0}
+            ) as synapse,
+            patch.object(
+                cache, "_run_unresolved_refs_backfill", return_value={"errors": 0}
+            ) as unresolved,
+        ):
+            IncrementalSync(cache).sync()
+        marker = conn.execute(
+            "SELECT id, built, pipeline_version FROM ast_call_graph_state"
+        ).fetchall()
+    finally:
+        cache.close()
+
+    assert (cross.call_count, synapse.call_count, unresolved.call_count) == (1, 1, 1)
+    assert [tuple(row) for row in marker] == [(1, 1, 2)]
 
 
 class TestSyncNewFile:
@@ -239,6 +304,105 @@ def test_snapshot_mutation_during_backfill_is_invalidated(tmp_path):
         cache.close()
 
     assert outcome == (["app.py"], 0, None, False)
+
+
+def test_deleted_target_cannot_be_reresolved_from_cached_context(tmp_path):
+    # PR #1253 thread 3761514123: resolver snapshots must not resurrect deletions.
+    from tree_sitter_analyzer.synapse_resolver import build_resolver_context
+
+    target = tmp_path / "target.py"
+    caller = tmp_path / "caller.py"
+    target.write_text("def target():\n    return 1\n")
+    caller.write_text(
+        "from target import target\n\ndef caller():\n    return target()\n"
+    )
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    conn = cache.get_conn()
+    before = conn.execute(
+        "SELECT callee_resolution, callee_resolved_file FROM edges "
+        "WHERE kind = 'calls' AND file_path = 'caller.py'"
+    ).fetchone()
+    build_resolver_context(cache)
+    target.unlink()
+
+    try:
+        result = IncrementalSync(cache).sync()
+        after = conn.execute(
+            "SELECT callee_resolution, callee_resolved_file, callee_symbol_id "
+            "FROM edges WHERE kind = 'calls' AND file_path = 'caller.py'"
+        ).fetchone()
+        marker_current = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert (
+        tuple(before),
+        result.deleted_files,
+        tuple(after),
+        marker_current,
+    ) == (("project", "target.py"), 1, ("external", "", None), True)
+
+
+def test_late_deletion_keeps_marker_incomplete_until_callee_retarget(tmp_path):
+    # PR #1253 review 3757240531: post-pipeline deletion cannot be certified.
+    from tree_sitter_analyzer.cache.callgraph_state import clear_call_graph_built_strict
+
+    primary = tmp_path / "a.py"
+    fallback = tmp_path / "b.py"
+    caller = tmp_path / "caller.py"
+    primary.write_text("def target():\n    return 1\n")
+    fallback.write_text("def target():\n    return 2\n")
+    caller.write_text("def caller():\n    return target()\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    clear_call_graph_built_strict(cache.get_conn())
+    snapshot = _snapshot(tmp_path, primary, fallback, caller)
+    real_unresolved = cache._run_unresolved_refs_backfill
+
+    def delete_after_pipeline() -> dict:
+        primary.unlink()
+        return real_unresolved()
+
+    try:
+        with patch.object(
+            cache,
+            "_run_unresolved_refs_backfill",
+            side_effect=delete_after_pipeline,
+        ):
+            raced = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+            )
+        raced_edge = (
+            cache.get_conn()
+            .execute(
+                "SELECT callee_resolution, callee_resolved_file FROM edges "
+                "WHERE file_path = 'caller.py' AND kind = 'calls'"
+            )
+            .fetchone()
+        )
+        raced_marker = cache.call_graph_built()
+        IncrementalSync(cache).sync()
+        repaired_edge = (
+            cache.get_conn()
+            .execute(
+                "SELECT callee_resolution, callee_resolved_file FROM edges "
+                "WHERE file_path = 'caller.py' AND kind = 'calls'"
+            )
+            .fetchone()
+        )
+        repaired_marker = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert (
+        raced.changed_during_run_files,
+        tuple(raced_edge),
+        raced_marker,
+        tuple(repaired_edge),
+        repaired_marker,
+    ) == (["a.py"], ("unknown", ""), False, ("project", "b.py"), True)
 
 
 def test_empty_incremental_scan_keeps_graph_incomplete(tmp_path):
@@ -656,7 +820,7 @@ class TestSavepointRollbackOnPartialWrite:
         ):
             result = sync.sync()
 
-        assert result.errors == 1
+        assert (result.errors, result.to_dict()["completeness"]) == (1, "incomplete")
 
         # #886: savepoint must have rolled back the partial ast_index row so
         # the file does NOT silently appear unchanged on the next sync.
@@ -695,6 +859,99 @@ class TestSavepointRollbackOnPartialWrite:
         assert any("fragile.py" in f for f in new_file_names), (
             f"fragile.py must be re-indexed as new on second sync; got {new_file_names}"
         )
+
+
+class TestFailedFileCleanup:
+    """Issue #886: both failed indexing paths remove partial FTS-backed rows."""
+
+    @staticmethod
+    def _cache_and_connection(fts5_available: bool):
+        from unittest.mock import MagicMock
+
+        conn = sqlite3.connect(":memory:")
+        for table in ("ast_index", "ast_symbol_rows", "ast_symbols_fts"):
+            conn.execute(f"CREATE TABLE {table}(file_path TEXT)")
+            conn.execute(f"INSERT INTO {table} VALUES ('src/flaky.py')")
+        cache = MagicMock(fts5_available=fts5_available)
+        cache.index_file.side_effect = RuntimeError("partial write")
+        return cache, conn
+
+    @pytest.mark.parametrize(
+        ("fts5_available", "expected_counts"),
+        [(True, (0, 0, 0)), (False, (0, 0, 1))],
+    )
+    def test_new_file_failure_cleans_partial_rows(
+        self, fts5_available, expected_counts
+    ):
+        cache, conn = self._cache_and_connection(fts5_available)
+        detail = IncrementalSync(cache)._index_new_file(
+            "src/flaky.py", "/repo/src/flaky.py", conn
+        )
+        counts = tuple(
+            conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in ("ast_index", "ast_symbol_rows", "ast_symbols_fts")
+        )
+        conn.close()
+        assert (detail["status"], counts) == ("error", expected_counts)
+
+    @pytest.mark.parametrize(
+        ("fts5_available", "expected_counts"),
+        [(True, (0, 0, 0)), (False, (0, 0, 1))],
+    )
+    def test_modified_file_failure_cleans_partial_rows(
+        self, fts5_available, expected_counts
+    ):
+        cache, conn = self._cache_and_connection(fts5_available)
+        detail = IncrementalSync(cache)._reindex_modified(
+            "src/flaky.py", "/repo/src/flaky.py", conn
+        )
+        counts = tuple(
+            conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in ("ast_index", "ast_symbol_rows", "ast_symbols_fts")
+        )
+        conn.close()
+        assert (detail["status"], counts) == ("error", expected_counts)
+
+    @pytest.mark.parametrize("method_name", ["_index_new_file", "_reindex_modified"])
+    def test_failure_removes_external_fts_terms_and_docsize(
+        self, tmp_path, method_name
+    ):
+        # PR #1253 thread 3760178975: FTS delete must precede external content.
+        from unittest.mock import patch
+
+        source = tmp_path / "flaky.py"
+        source.write_text("def residue():\n    return 1\n")
+        cache = ASTCache(str(tmp_path))
+        cache.index_file(str(source))
+        conn = cache.get_conn()
+        sync = IncrementalSync(cache)
+        with patch.object(cache, "index_file", side_effect=RuntimeError("partial")):
+            detail = getattr(sync, method_name)("flaky.py", str(source), conn)
+        residue = conn.execute(
+            "SELECT COUNT(*) FROM ast_symbols_fts WHERE ast_symbols_fts MATCH 'residue'"
+        ).fetchone()[0]
+        docsize = conn.execute(
+            "SELECT COUNT(*) FROM ast_symbols_fts_docsize"
+        ).fetchone()[0]
+        ordinary = conn.execute("SELECT COUNT(*) FROM ast_symbol_rows").fetchone()[0]
+        cache.close()
+
+        assert (detail["status"], residue, docsize, ordinary) == ("error", 0, 0, 0)
+
+
+def test_incremental_sync_accepts_explicit_source_scope(tmp_path):
+    first = tmp_path / "a.py"
+    first.write_text("a = 1\n")
+    scope = make_source_scope_descriptor(
+        no_default_excludes=True, certification_max_files=10
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = IncrementalSync(cache).sync(max_files=10, source_scope=scope)
+    finally:
+        cache.close()
+
+    assert result.new_files == 1
 
 
 def test_incremental_sync_preserves_snapshot_candidate_order(tmp_path):
@@ -935,30 +1192,44 @@ def test_incremental_sync_reports_preexisting_snapshot_change_to_callback(tmp_pa
 
     assert result.changed_during_run == 1
     assert result.processed == 0
+    assert result.deleted_files == 1
     assert callback_details == [
         {
             "file": "app.py",
-            "considered": "skipped",
-            "action": "skipped",
-            "status": "skipped",
-            "reason": "file disappeared after candidate snapshot",
+            "considered": "deleted",
+            "action": "deleted",
         }
     ]
 
 
-def test_preexisting_snapshot_modification_invalidates_cached_rows(tmp_path):
+def test_preexisting_snapshot_modification_is_only_reported_as_skipped(tmp_path):
+    # PR #1253 review 3754914626: selected mutations are not scope deletions.
     path = tmp_path / "app.py"
     path.write_text("import os\n\ndef before():\n    return os.getcwd()\n")
     cache = ASTCache(str(tmp_path))
     cache.index_file(str(path))
     snapshot = _snapshot(tmp_path, path)
     path.write_text("def after():\n    return 2\n")
+    callback_details: list[dict] = []
 
     try:
-        IncrementalSync(cache).sync(
-            max_files=10,
-            candidate_snapshot=snapshot,
-        )
+        with (
+            patch.object(
+                cache,
+                "_run_synapse_backfill",
+                return_value={"resolved": 0, "errors": 0},
+            ) as synapse_backfill,
+            patch.object(
+                cache,
+                "_run_unresolved_refs_backfill",
+                return_value={"resolved": 0, "errors": 0},
+            ) as refs_backfill,
+        ):
+            result = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+                callback=callback_details.append,
+            )
         conn = cache.get_conn()
         counts = {
             table: conn.execute(
@@ -977,6 +1248,20 @@ def test_preexisting_snapshot_modification_invalidates_cached_rows(tmp_path):
     finally:
         cache.close()
 
+    expected_detail = {
+        "file": "app.py",
+        "considered": "skipped",
+        "action": "skipped",
+        "status": "skipped",
+        "reason": "file changed after candidate snapshot",
+    }
+    assert (
+        result.deleted_files,
+        result.details,
+        callback_details,
+        synapse_backfill.call_count,
+        refs_backfill.call_count,
+    ) == (0, [expected_detail], [expected_detail], 1, 1)
     assert counts == {
         "ast_index": 0,
         "ast_symbol_rows": 0,
@@ -987,24 +1272,174 @@ def test_preexisting_snapshot_modification_invalidates_cached_rows(tmp_path):
     }
 
 
-def test_preexisting_snapshot_deletion_invalidates_cached_row(tmp_path):
+def test_candidate_snapshot_prunes_cached_row_outside_selected_scope(tmp_path):
+    # PR #1253 review 3754914626: genuine out-of-scope rows remain deletions.
+    selected = tmp_path / "selected.py"
+    outside = tmp_path / "outside.py"
+    selected.write_text("selected = True\n")
+    outside.write_text("outside = True\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(selected))
+    cache.index_file(str(outside))
+    snapshot = _snapshot(tmp_path, selected)
+
+    try:
+        result = IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+        )
+        remaining = cache.lookup(str(outside))
+    finally:
+        cache.close()
+
+    assert (result.deleted_files, remaining) == (1, None)
+
+
+def test_preexisting_snapshot_deletion_runs_backfills_and_restores_marker(tmp_path):
+    # PR #1253 review 3755143808: an unlinked selected path is a deletion.
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     cache = ASTCache(str(tmp_path))
     cache.index_file(str(path))
+    mirror = tmp_path / ".ast-cache" / "knowledge-graph.lbug"
+    mirror.write_text("stale mirror", encoding="utf-8")
     snapshot = _snapshot(tmp_path, path)
     path.unlink()
+    callback_details: list[dict] = []
 
     try:
-        IncrementalSync(cache).sync(
-            max_files=10,
-            candidate_snapshot=snapshot,
-        )
+        with (
+            patch.object(
+                cache,
+                "_run_synapse_backfill",
+                return_value={"resolved": 0, "errors": 0},
+            ) as synapse_backfill,
+            patch.object(
+                cache,
+                "_run_unresolved_refs_backfill",
+                return_value={"resolved": 0, "errors": 0},
+            ) as refs_backfill,
+        ):
+            result = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+                callback=callback_details.append,
+            )
         cached = cache.lookup(str(path))
+        graph_built = cache.call_graph_built()
+        mirror_exists = mirror.exists()
     finally:
         cache.close()
 
-    assert cached is None
+    expected_detail = {
+        "file": "app.py",
+        "considered": "deleted",
+        "action": "deleted",
+    }
+    assert (
+        result.deleted_files,
+        result.details,
+        callback_details,
+        synapse_backfill.call_count,
+        refs_backfill.call_count,
+        cached,
+        graph_built,
+        result.to_dict()["completeness"],
+        mirror_exists,
+    ) == (
+        1,
+        [expected_detail],
+        [expected_detail],
+        1,
+        1,
+        None,
+        False,
+        "incomplete",
+        False,
+    )
+
+
+def test_deletion_mirror_cleanup_failure_rejects_certification(tmp_path, monkeypatch):
+    # Codex review 3764611251: stale deleted nodes must fail the certified epoch.
+    import tree_sitter_analyzer.cache.indexer as indexer
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    path.unlink()
+    snapshot = _snapshot(tmp_path)
+    monkeypatch.setattr(
+        indexer,
+        "_invalidate_ladybug",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("cleanup denied")),
+    )
+    try:
+        result = IncrementalSync(cache).sync(max_files=10, candidate_snapshot=snapshot)
+        remaining = cache.lookup(str(path))
+        manifest_count = (
+            cache.get_conn()
+            .execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest")
+            .fetchone()[0]
+        )
+    finally:
+        cache.close()
+    assert (
+        result.deleted_files,
+        result.errors,
+        result.to_dict()["completeness"],
+        result.details,
+        remaining,
+        manifest_count,
+    ) == (
+        1,
+        1,
+        "incomplete",
+        [
+            {
+                "file": "",
+                "status": "error",
+                "reason": "LADYBUG_MIRROR_INVALIDATION_FAILED",
+                "error_type": "OSError",
+                "error_message": "cleanup denied",
+            },
+            {"file": "app.py", "considered": "deleted", "action": "deleted"},
+        ],
+        None,
+        0,
+    )
+
+
+def test_custom_db_deletion_does_not_mutate_project_mirror(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.cache.indexer as indexer
+
+    project = tmp_path / "project"
+    project.mkdir()
+    path = project / "app.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    cache = ASTCache(str(project), db_path=str(tmp_path / "external" / "index.db"))
+    cache.index_file(str(path))
+    mirror = project / ".ast-cache" / "knowledge-graph.lbug"
+    mirror.parent.mkdir()
+    mirror.write_text("other owner", encoding="utf-8")
+    path.unlink()
+    snapshot = _snapshot(project)
+    monkeypatch.setattr(
+        indexer,
+        "_invalidate_ladybug",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("must not run")),
+    )
+    try:
+        result = IncrementalSync(cache).sync(max_files=10, candidate_snapshot=snapshot)
+    finally:
+        cache.close()
+    expected_authority = (0, "complete") if os.name == "posix" else (1, "incomplete")
+    assert (
+        result.deleted_files,
+        result.errors,
+        result.to_dict()["completeness"],
+        mirror.read_text(encoding="utf-8"),
+    ) == (1, *expected_authority, "other owner")
 
 
 def test_preexisting_snapshot_mutation_removes_ladybug_mirror(tmp_path):
@@ -1169,14 +1604,13 @@ def test_late_disappearance_reclassifies_index_error_as_snapshot_change(tmp_path
 
     assert result.errors == 0
     assert result.new_files == 0
+    assert result.deleted_files == 1
     assert result.changed_during_run_files == ["app.py"]
     assert result.details == [
         {
             "file": "app.py",
-            "considered": "skipped",
-            "action": "skipped",
-            "status": "skipped",
-            "reason": "file disappeared after candidate snapshot",
+            "considered": "deleted",
+            "action": "deleted",
         }
     ]
 
@@ -1277,7 +1711,301 @@ def test_late_mutation_unresolves_edges_from_other_files(tmp_path):
         metadata["callee_resolution"],
         metadata["callee_resolved_file"],
         metadata["callee_symbol_id"],
-    ) == ("target.py", "unknown", "", None, "unknown", "", None)
+    ) == ("target.py", "external", "", None, "unknown", "", None)
+
+
+def test_new_file_cleanup_failure_preserves_original_index_error():
+    # Issue #886: failed best-effort cleanup cannot replace the parse failure.
+    class FailingCache:
+        fts5_available = False
+
+        @staticmethod
+        def index_file(_path):
+            raise RuntimeError("parse failed")
+
+    class FailingConnection:
+        @staticmethod
+        def execute(*_args):
+            raise sqlite3.OperationalError("cleanup failed")
+
+    result = IncrementalSync(FailingCache())._index_new_file(
+        "app.py",
+        "/workspace/app.py",
+        FailingConnection(),  # type: ignore[arg-type]
+    )
+
+    assert (result["status"], result["error_message"]) == ("error", "parse failed")
+
+
+def test_modified_file_cleanup_failure_preserves_original_index_error():
+    # Issue #886: modified-file cleanup has the same best-effort contract.
+    class FailingCache:
+        fts5_available = False
+
+        @staticmethod
+        def invalidate(_path):
+            return None
+
+        @staticmethod
+        def index_file(_path):
+            raise RuntimeError("parse failed")
+
+    class FailingConnection:
+        @staticmethod
+        def execute(*_args):
+            raise sqlite3.OperationalError("cleanup failed")
+
+    result = IncrementalSync(FailingCache())._reindex_modified(
+        "app.py",
+        "/workspace/app.py",
+        FailingConnection(),  # type: ignore[arg-type]
+    )
+
+    assert (result["status"], result["error_message"]) == ("error", "parse failed")
+
+
+@requires_posix_fd
+def test_incremental_stamp_failure_does_not_delete_manifest(tmp_path):
+    # PR #1253 review 3755736546: the stamper exclusively owns failed-epoch cleanup.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    snapshot = _snapshot(tmp_path, path)
+    schema.stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
+    before = (
+        cache.get_conn()
+        .execute("SELECT index_fingerprint FROM ast_index_snapshot_manifest")
+        .fetchone()[0]
+    )
+
+    try:
+        with patch.object(
+            schema,
+            "stamp_full_index_manifest",
+            side_effect=RuntimeError("busy"),
+        ) as stamp:
+            result = IncrementalSync(cache).sync(
+                max_files=10, candidate_snapshot=snapshot
+            )
+        after = (
+            cache.get_conn()
+            .execute("SELECT index_fingerprint FROM ast_index_snapshot_manifest")
+            .fetchone()[0]
+        )
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert (
+        stamp.call_count,
+        after,
+        result.errors,
+        result.manifest_certification_failed,
+        result.scope_complete,
+        result.details[-1]["reason"],
+        graph_built,
+    ) == (
+        1,
+        before,
+        1,
+        True,
+        False,
+        "INDEX_MANIFEST_CERTIFICATION_FAILED",
+        False,
+    )
+
+
+def test_marker_certification_failure_is_one_incomplete_backfill(tmp_path):
+    # PR #1253 review 3761093585: every marker failure must fail closed once.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        with patch(
+            "tree_sitter_analyzer.cache.callgraph_state.mark_call_graph_built_strict",
+            side_effect=RuntimeError("marker unavailable"),
+        ):
+            result = IncrementalSync(cache).sync()
+        manifest_count = (
+            cache.get_conn()
+            .execute("SELECT count(*) FROM ast_index_snapshot_manifest")
+            .fetchone()[0]
+        )
+    finally:
+        cache.close()
+
+    assert (
+        result.backfill_errors,
+        result.errors,
+        result.scope_complete,
+        result.details[-1]["reason"],
+        manifest_count,
+    ) == (1, 0, False, "CALL_GRAPH_MARKER_CERTIFICATION_FAILED", 0)
+
+
+@requires_posix_fd
+def test_incremental_scan_rejects_invalid_materialized_snapshot(tmp_path):
+    # PR #1253: a frozen path alone cannot authorize incremental replay.
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        release_index_candidate_snapshot,
+    )
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    tampered = replace(
+        snapshot,
+        entries=(
+            replace(
+                snapshot.selected_entries[0], frozen_path=str(tmp_path / "missing")
+            ),
+        ),
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        with pytest.raises(ValueError, match="INDEX_CANDIDATE_FROZEN_EVIDENCE_INVALID"):
+            IncrementalSync(cache)._scan_disk_files(
+                10, frozenset(), candidate_snapshot=tampered
+            )
+    finally:
+        cache.close()
+        release_index_candidate_snapshot(snapshot)
+
+
+@requires_posix_fd
+def test_incremental_scan_rejects_changed_materialized_cache_hierarchy(
+    tmp_path, monkeypatch
+):
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        release_index_candidate_snapshot,
+    )
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    cache = ASTCache(str(tmp_path))
+    monkeypatch.setattr(
+        materialization, "index_candidate_cache_hierarchy_is_current", lambda *_a: False
+    )
+    try:
+        with pytest.raises(ValueError, match="INDEX_CACHE_HIERARCHY_CHANGED"):
+            IncrementalSync(cache)._scan_disk_files(
+                10, frozenset(), candidate_snapshot=snapshot
+            )
+    finally:
+        cache.close()
+        release_index_candidate_snapshot(snapshot)
+
+
+@requires_posix_fd
+def test_frozen_incremental_read_gets_fresh_per_file_deadline(tmp_path, monkeypatch):
+    # PR #1253 thread 3763790625: capture age cannot expire a later repair read.
+    import tree_sitter_analyzer.incremental_sync as sync_module
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    observed = []
+    cache = ASTCache(str(tmp_path))
+    sync = IncrementalSync(cache)
+    info = {
+        "abs_path": str(path),
+        "source_path": snapshot.selected_entries[0].frozen_path,
+        "language": "python",
+        "fingerprint": snapshot.selected_entries[0].fingerprint,
+        "frozen_identity": snapshot.selected_entries[0].frozen_identity,
+    }
+    monkeypatch.setattr(sync_module.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(
+        cache,
+        "index_file",
+        lambda *_args, **kwargs: (
+            observed.append(kwargs["_frozen_deadline"]) or {"status": "indexed"}
+        ),
+    )
+    try:
+        result = sync._index_logical_file(info)
+    finally:
+        cache.close()
+        from tree_sitter_analyzer.indexing_candidate_materialization import (
+            release_index_candidate_snapshot,
+        )
+
+        release_index_candidate_snapshot(snapshot)
+
+    assert (observed, result) == ([135.0], {"status": "indexed"})
+
+
+@requires_posix_fd
+def test_frozen_incremental_uses_logical_key_and_language(tmp_path):
+    # PR #1253 review 3761093594: opaque extensionless evidence is not a cache key.
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        release_index_candidate_snapshot,
+    )
+
+    path = tmp_path / "app.py"
+    path.write_text("def frozen_symbol():\n    return 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+        materialize=True,
+    )
+    frozen_path = snapshot.selected_entries[0].frozen_path
+    assert frozen_path is not None
+    path.write_text("def later_live_symbol():\n    return 2\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+            certify_manifest=False,
+        )
+        row = (
+            cache.get_conn()
+            .execute("SELECT file_path, language FROM ast_index")
+            .fetchone()
+        )
+        names = [
+            symbol["name"] for symbol in cache.lookup(str(path))["symbols"]["symbols"]
+        ]
+    finally:
+        cache.close()
+        release_index_candidate_snapshot(snapshot)
+
+    assert (
+        os.path.splitext(frozen_path)[1],
+        tuple(row),
+        names,
+        result.new_files,
+    ) == ("", ("app.py", "python"), ["frozen_symbol"], 1)
 
 
 def test_modified_base_rebuilds_resolved_hierarchy_edge(tmp_path):
@@ -1306,3 +2034,219 @@ def test_modified_base_rebuilds_resolved_hierarchy_edge(tmp_path):
         cache.close()
 
     assert targets == ["base.py:Base:1", "class:Base"]
+
+
+@requires_posix_fd
+def test_candidate_hash_detects_equal_size_and_mtime_change(tmp_path):
+    # PR #1253 review 3763401195: candidate evidence outranks equal metadata.
+    path = tmp_path / "app.py"
+    path.write_text("def old():\n    return 1\n")
+    original_stat = path.stat()
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    path.write_text("def new():\n    return 2\n")
+    os.utime(path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    snapshot = _snapshot(tmp_path, path)
+
+    try:
+        result = IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+            certify_manifest=False,
+        )
+        cached_hash = (
+            cache.get_conn()
+            .execute("SELECT content_hash FROM ast_index WHERE file_path = 'app.py'")
+            .fetchone()[0]
+        )
+    finally:
+        cache.close()
+
+    expected_hash = snapshot.selected_entries[0].fingerprint.content_hash
+    assert (
+        result.updated_files,
+        result.unchanged_files,
+        cached_hash,
+    ) == (1, 0, expected_hash)
+
+
+def test_file_changed_fails_closed_when_rehash_becomes_unreadable(
+    tmp_path, monkeypatch
+):
+    # PR #1253: a metadata change plus read failure cannot be treated as cached.
+    import tree_sitter_analyzer.incremental_sync_support as sync_support
+    from tree_sitter_analyzer.incremental_sync import IncrementalSync
+
+    source = tmp_path / "sample.py"
+    source.write_text("x = 1\n")
+    monkeypatch.setattr(
+        sync_support,
+        "file_content_hash",
+        lambda _path: (_ for _ in ()).throw(PermissionError()),
+    )
+    changed = IncrementalSync(object())._file_changed(
+        {"file_size": 6, "mtime_ns": 2, "abs_path": str(source)},
+        {"file_size": 6, "mtime_ns": 1, "content_hash": "old"},
+        "sample.py",
+    )
+
+    assert changed is True
+
+
+def test_transactional_deleted_scope_failure_rolls_back(monkeypatch):
+    # PR #1253: a failed stale-row deletion cannot commit a partial prune.
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.cache.write as cache_write
+    from tree_sitter_analyzer.incremental_sync import IncrementalSync, SyncResult
+
+    conn = sqlite3.connect(":memory:")
+    cache = SimpleNamespace(
+        get_conn=lambda: conn,
+        fts5_available=False,
+    )
+    monkeypatch.setattr(
+        cache_write,
+        "discard_file_rows",
+        lambda *_args: (_ for _ in ()).throw(sqlite3.OperationalError("delete failed")),
+    )
+
+    with pytest.raises(sqlite3.OperationalError, match="delete failed"):
+        IncrementalSync(cache)._invalidate_deleted_files(
+            {"stale.py"}, SyncResult(), None
+        )
+    transaction_open = conn.in_transaction
+    conn.close()
+
+    assert transaction_open is False
+
+
+def test_windows_scan_normalizes_only_platform_separators(sync, project, monkeypatch):
+    # PR #1253 review thread 1266: sync inventory uses Windows slash canonicalization.
+    import tree_sitter_analyzer.incremental_sync as sync_module
+
+    source = project / "src" / "main.py"
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        sync_module,
+        "os",
+        SimpleNamespace(
+            name="nt",
+            path=SimpleNamespace(relpath=lambda *_args: "src\\main.py"),
+            stat=os.stat,
+        ),
+    )
+    monkeypatch.setattr(sync_module, "_walk_source_files", lambda _root: (str(source),))
+    disk_files, present, truncated, changed = sync._scan_disk_files(10, frozenset())
+
+    assert (set(disk_files), present, truncated, changed) == (
+        {"src/main.py"},
+        {"src/main.py"},
+        False,
+        [],
+    )
+
+
+def test_windows_change_scan_normalizes_only_platform_separators(
+    sync, project, monkeypatch
+):
+    # PR #1253 review thread 1266: change reporting matches sync path keys.
+    import tree_sitter_analyzer.incremental_sync as sync_module
+
+    source = project / "src" / "main.py"
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        sync_module,
+        "os",
+        SimpleNamespace(
+            name="nt",
+            path=SimpleNamespace(relpath=lambda *_args: "src\\main.py"),
+            stat=os.stat,
+        ),
+    )
+    monkeypatch.setattr(sync_module, "_walk_source_files", lambda _root: (str(source),))
+
+    assert sync.get_changes()["new"] == ["src/main.py"]
+
+
+def test_get_changes_normalizes_windows_relative_paths(monkeypatch, tmp_path):
+    # PR #1253: platform spelling is normalized before set classification.
+    import tree_sitter_analyzer.incremental_sync_support as support
+
+    source = tmp_path / "sample.py"
+    source.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        monkeypatch.setattr(support.os, "name", "nt")
+        changes = support.get_changes(
+            cache,
+            lambda *_args: False,
+            lambda _root: [str(source)],
+        )
+    finally:
+        cache.close()
+    assert changes == {
+        "new": ["sample.py"],
+        "modified": [],
+        "deleted": [],
+    }
+
+
+def test_get_changes_ignores_disappeared_walk_entry(tmp_path):
+    # PR #1253: a scan race is omitted rather than aborting reconciliation.
+    import tree_sitter_analyzer.incremental_sync_support as support
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        changes = support.get_changes(
+            cache,
+            lambda *_args: False,
+            lambda _root: [str(tmp_path / "disappeared.py")],
+        )
+    finally:
+        cache.close()
+    assert changes == {"new": [], "modified": [], "deleted": []}
+
+
+def test_truncated_unchanged_snapshot_clears_global_certification(tmp_path):
+    # PR #1253 thread 3759606798: a cached prefix cannot retain global evidence.
+    from tree_sitter_analyzer.cache.callgraph_state import mark_call_graph_built
+
+    first = tmp_path / "a.py"
+    second = tmp_path / "b.py"
+    first.write_text("a = 1\n")
+    second.write_text("b = 2\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=1,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(first), str(second)),
+        language_fn=_python_language,
+    )
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(first))
+    conn = cache.get_conn()
+    mark_call_graph_built(conn)
+    conn.execute(
+        "INSERT INTO ast_index_snapshot_manifest VALUES (1, ?, ?, ?, 1, '{}', 2)",
+        (os.path.realpath(tmp_path), "sha256:" + "1" * 64, "sha256:" + "2" * 64),
+    )
+    conn.commit()
+
+    result = IncrementalSync(cache).sync(max_files=1, candidate_snapshot=snapshot)
+    evidence = conn.execute(
+        "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
+    ).fetchone()[0]
+    graph_built = cache.call_graph_built()
+    cache.close()
+
+    assert (
+        result.unchanged_files,
+        result.new_files,
+        result.truncated_by_max_files,
+        result.to_dict()["completeness"],
+        evidence,
+        graph_built,
+    ) == (1, 0, True, "incomplete", 0, False)

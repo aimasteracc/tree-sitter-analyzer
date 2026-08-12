@@ -1,10 +1,4 @@
-"""Write helper functions for ASTCache indexing pipeline.
-
-Pure functions extracted from ASTCache._write_* methods to reduce
-ast_cache.py line count. Each takes explicit parameters instead of self.
-
-ASTCache keeps thin wrapper methods that delegate here.
-"""
+"""Pure ASTCache write helpers with explicit parameters."""
 
 from __future__ import annotations
 
@@ -13,6 +7,13 @@ import logging
 import os
 import sqlite3
 from typing import Any
+
+from ..index_symbol_projection import (
+    delete_fts_rows as _delete_fts_rows,
+)
+from ..index_symbol_projection import (
+    upsert_symbol_projection_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,12 +79,14 @@ def discard_file_rows(
     fts5_available: bool | None,
 ) -> bool:
     """Remove one file generation without committing the current transaction."""
+    # Resolver contexts retain symbol-row IDs and project targets independently
+    # of SQLite transactions.  Clear them before the first mutation so the
+    # ensuing pipeline cannot resurrect a deleted/replaced generation.
+    _clear_symbol_resolver_context()
     if fts5_available:
-        conn.execute(
-            "DELETE FROM ast_symbols_fts WHERE file_path = ?",
-            (rel_path,),
-        )
+        _delete_fts_rows(conn, rel_path)
     _delete_file_rows_if_table_present(conn, "ast_symbol_rows", rel_path)
+    _delete_file_rows_if_table_present(conn, "ast_symbol_projection_state", rel_path)
     for table in ("ast_imports", "ast_symbol_activation"):
         _delete_file_rows_if_table_present(conn, table, rel_path)
     if _table_exists(conn, "edges"):
@@ -119,17 +122,30 @@ def invalidate_file_rows(
     return removed
 
 
+def _clear_symbol_resolver_context() -> None:
+    """Invalidate resolver snapshots containing replaced symbol-row IDs."""
+    from ..synapse_resolver._context import clear_resolver_context_cache
+
+    clear_resolver_context_cache()
+
+
 def write_fts5_symbols(
     conn: sqlite3.Connection,
     rel_path: str,
     language: str,
     symbols: dict[str, Any],
+    fts5_available: bool = True,
 ) -> list[dict[str, Any]]:
-    """Replace FTS5 symbol rows for ``rel_path``. Returns inserted row list."""
+    """Replace ordinary symbol rows and, when available, their FTS projection."""
+    _clear_symbol_resolver_context()
+    if _table_exists(conn, "edges"):
+        _reset_incoming_edge_resolutions(conn, rel_path)
+    if fts5_available:
+        _delete_fts_rows(conn, rel_path)
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
-    conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
     sym_list = symbols.get("symbols", [])
     if not sym_list:
+        upsert_symbol_projection_state(conn, rel_path)
         return []
     sym_params = [
         (
@@ -155,11 +171,13 @@ def write_fts5_symbols(
     fts_params = [
         (base_id + i, p[0], p[1], rel_path, language) for i, p in enumerate(sym_params)
     ]
-    conn.executemany(
-        "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
-        "VALUES (?, ?, ?, ?, ?)",
-        fts_params,
-    )
+    if fts5_available:
+        conn.executemany(
+            "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
+            "VALUES (?, ?, ?, ?, ?)",
+            fts_params,
+        )
+    upsert_symbol_projection_state(conn, rel_path)
     return [
         {"id": base_id + i, "line": p[4], "end_line": p[5]}
         for i, p in enumerate(sym_params)
@@ -171,11 +189,17 @@ def write_fts5_symbols_from_tuples(
     rel_path: str,
     language: str,
     symbol_rows: list[tuple[str, str, int, int]],
+    fts5_available: bool = True,
 ) -> list[dict[str, Any]]:
-    """Insert FTS5 symbols from worker-serialised tuples (name, kind, line, end_line)."""
+    """Insert ordinary worker symbol rows and optional FTS projection."""
+    _clear_symbol_resolver_context()
+    if _table_exists(conn, "edges"):
+        _reset_incoming_edge_resolutions(conn, rel_path)
+    if fts5_available:
+        _delete_fts_rows(conn, rel_path)
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
-    conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
     if not symbol_rows:
+        upsert_symbol_projection_state(conn, rel_path)
         return []
     inserted: list[dict[str, Any]] = []
     sym_params = [(n, k, rel_path, language, ln, el) for n, k, ln, el in symbol_rows]
@@ -193,11 +217,13 @@ def write_fts5_symbols_from_tuples(
         (base_id + i, n, k, rel_path, language)
         for i, (n, k, _ln, _el) in enumerate(symbol_rows)
     ]
-    conn.executemany(
-        "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
-        "VALUES (?, ?, ?, ?, ?)",
-        fts_params,
-    )
+    if fts5_available:
+        conn.executemany(
+            "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
+            "VALUES (?, ?, ?, ?, ?)",
+            fts_params,
+        )
+    upsert_symbol_projection_state(conn, rel_path)
     for i, (_n, _k, ln, el) in enumerate(symbol_rows):
         inserted.append(
             {
@@ -347,7 +373,7 @@ def write_graph_edges_for_file(
     call_edges: list[dict[str, Any]],
     *,
     preserve_calls: bool = False,
-) -> None:
+) -> bool:
     """Refresh unified EdgeStore rows derived from one indexed file.
 
     ``preserve_calls=True`` rebuilds only the structural edges (EXTENDS /
@@ -368,7 +394,7 @@ def write_graph_edges_for_file(
         from ..synapse_resolver import parse_imports
     except Exception as exc:  # pragma: no cover
         logger.debug("edge store import failed for %s: %s", rel_path, exc)
-        return
+        return False
 
     symbol_items = symbols.get("symbols", [])
     class_nodes = {
@@ -467,3 +493,5 @@ def write_graph_edges_for_file(
         )
     except sqlite3.OperationalError as exc:
         logger.debug("edge store write failed for %s: %s", rel_path, exc)
+        return False
+    return True

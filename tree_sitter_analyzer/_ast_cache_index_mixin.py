@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import sqlite3
+from types import SimpleNamespace
 from typing import Any
 
 from ._ast_cache_database_mixin import ASTCacheSurface
@@ -14,10 +15,11 @@ from .cache.callgraph_state import (
     clear_call_graph_built as _clear_call_graph_built,
 )
 from .cache.callgraph_state import (
-    mark_call_graph_built as _mark_call_graph_built,
+    mark_call_graph_built_strict as _mark_call_graph_built_strict,
 )
 from .cache.extraction import _content_hash
 from .cache.schema import clear_activation_for_file as _clear_activation_for_file_fn
+from .index_source_snapshot import SourceScopeDescriptor
 from .indexing_snapshot import IndexCandidateSnapshot
 from .project_graph import _language_from_ext
 
@@ -51,7 +53,7 @@ def _refresh_cached_graph_row(conn: sqlite3.Connection, row: sqlite3.Row) -> boo
     try:
         symbols = json.loads(row["symbols_json"] or "{}")
         imports = json.loads(row["imports_json"] or "[]")
-        _write.write_graph_edges_for_file(
+        if not _write.write_graph_edges_for_file(
             conn,
             row["file_path"],
             row["language"],
@@ -59,7 +61,8 @@ def _refresh_cached_graph_row(conn: sqlite3.Connection, row: sqlite3.Row) -> boo
             imports,
             [],
             preserve_calls=True,
-        )
+        ):
+            return False
     except (json.JSONDecodeError, sqlite3.OperationalError):
         return False
     return True
@@ -68,7 +71,17 @@ def _refresh_cached_graph_row(conn: sqlite3.Connection, row: sqlite3.Row) -> boo
 class ASTCacheIndexMixin(ASTCacheSurface):
     """Stable indexing methods delegated to focused cache modules."""
 
-    def index_file(self, file_path: str, language: str | None = None) -> dict[str, Any]:
+    def index_file(
+        self,
+        file_path: str,
+        language: str | None = None,
+        *,
+        _source_path: str | None = None,
+        _source_fingerprint: Any | None = None,
+        _frozen_identity: tuple[int, int, int] | None = None,
+        _frozen_deadline: float | None = None,
+    ) -> dict[str, Any]:
+        """Index one logical path; private frozen inputs are engine-only evidence."""
         abs_path = os.path.abspath(file_path)
         rel_path = os.path.relpath(abs_path, self.project_root).replace("\\", "/")
         if language is None:
@@ -79,13 +92,40 @@ class ASTCacheIndexMixin(ASTCacheSurface):
                 "status": "skipped",
                 "reason": "unsupported language",
             }
-        try:
-            stat = os.stat(abs_path)
-        except OSError as exc:
-            return {"file": rel_path, "status": "error", "reason": str(exc)}
+        frozen_source: str | None = None
+        stat_value: Any
+        if _source_path is not None:
+            if _source_fingerprint is None or _frozen_identity is None:
+                return {
+                    "file": rel_path,
+                    "status": "error",
+                    "reason": "INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING",
+                }
+            from .indexing_candidate_materialization import read_frozen_candidate
+
+            try:
+                frozen_source = read_frozen_candidate(
+                    _source_path,
+                    expected=_source_fingerprint,
+                    frozen_identity=_frozen_identity,
+                    deadline=_frozen_deadline,
+                )
+            except OSError as exc:
+                return {"file": rel_path, "status": "error", "reason": str(exc)}
+            stat_value = SimpleNamespace(
+                st_mtime_ns=_source_fingerprint.mtime_ns,
+                st_size=_source_fingerprint.file_size,
+            )
+        else:
+            try:
+                stat_value = os.stat(abs_path)
+            except OSError as exc:
+                return {"file": rel_path, "status": "error", "reason": str(exc)}
         conn = self._get_conn()
         had_built_marker = self.call_graph_built()
-        cached_or_source = self._check_cache_or_read(conn, rel_path, abs_path, stat)
+        cached_or_source = self._check_cache_or_read(
+            conn, rel_path, abs_path, stat_value, source_code=frozen_source
+        )
         if isinstance(cached_or_source, dict):
             self._mark_single_file_index_complete_if_needed(
                 had_built_marker,
@@ -100,9 +140,10 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             abs_path,
             rel_path,
             language,
-            stat,
+            stat_value,
             source_code,
             content_hash,
+            source_is_frozen=_source_path is not None,
         )
         self._mark_single_file_index_complete_if_needed(had_built_marker, result)
         return result
@@ -119,22 +160,25 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             return
         if not had_built_marker and not self._indexed_source_files_are_complete():
             return
-        if result.get("status") == "indexed":
-            try:
-                backfill = self._run_synapse_backfill()
-            except Exception:
-                logger.debug("single-file Synapse backfill failed", exc_info=True)
+        if result.get("status") == "indexed" or not had_built_marker:
+            from .incremental_sync_callgraph import run_call_graph_pipeline
+
+            complete, _resolved = run_call_graph_pipeline(self)
+            if not complete:
                 return
-            if backfill is None or int(backfill.get("errors", 0)) > 0:
-                return
-        _mark_call_graph_built(self._get_conn())
+        try:
+            _mark_call_graph_built_strict(self._get_conn())
+        except sqlite3.OperationalError:
+            logger.debug("single-file call-graph certification failed", exc_info=True)
 
     def _check_cache_or_read(
         self,
         conn: sqlite3.Connection,
         rel_path: str,
         abs_path: str,
-        stat: os.stat_result,
+        stat: Any,
+        *,
+        source_code: str | None = None,
     ) -> dict[str, Any] | tuple[str, str]:
         """Return a cached response or source plus its content hash."""
         return _indexer.check_cache_or_read(
@@ -144,6 +188,7 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             stat,
             _content_hash,
             self._extractor_version,
+            source_code=source_code,
         )
 
     def _parse_and_write(
@@ -152,9 +197,11 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         abs_path: str,
         rel_path: str,
         language: str,
-        stat: os.stat_result,
+        stat: Any,
         source_code: str,
         content_hash: str,
+        *,
+        source_is_frozen: bool = False,
     ) -> dict[str, Any]:
         """Parse a file and write all cache rows."""
         return _indexer.parse_and_write(
@@ -167,6 +214,7 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             source_code,
             content_hash,
             self._extractor_version,
+            source_is_frozen=source_is_frozen,
         )
 
     def _write_activation_for_file(
@@ -232,19 +280,27 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         language_filter: str | None = None,
         exclude_patterns: frozenset[str] | None = None,
         candidate_snapshot: IndexCandidateSnapshot | None = None,
+        source_scope: SourceScopeDescriptor | None = None,
+        certify_manifest: bool = True,
     ) -> dict[str, Any]:
         """Index every source file below the project root."""
-        return _indexer.run_index_project(
-            self,
-            max_files,
-            force,
-            workers=workers,
-            resolve_only=resolve_only,
-            include_activation=include_activation,
-            language_filter=language_filter,
-            exclude_patterns=exclude_patterns,
-            candidate_snapshot=candidate_snapshot,
-        )
+        # One cache owner serializes validation, destructive clear, and writes.
+        # SQLite still arbitrates across processes; this lock closes the in-owner
+        # thread window between the final source authorization and the clear.
+        with self._index_lock:
+            return _indexer.run_index_project(
+                self,
+                max_files,
+                force,
+                workers=workers,
+                resolve_only=resolve_only,
+                include_activation=include_activation,
+                language_filter=language_filter,
+                exclude_patterns=exclude_patterns,
+                candidate_snapshot=candidate_snapshot,
+                source_scope=source_scope,
+                certify_manifest=certify_manifest,
+            )
 
     def _post_index_backfill(self, stats: dict[str, Any]) -> None:
         """Run graph backfills after project indexing."""

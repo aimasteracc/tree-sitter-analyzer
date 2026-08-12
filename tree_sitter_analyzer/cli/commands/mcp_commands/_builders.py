@@ -257,6 +257,7 @@ def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, A
 def _build_codegraph_status_tool_args(args: Any, output_format: str) -> dict[str, Any]:
     return {
         "include_lag": not bool(getattr(args, "codegraph_status_no_lag", False)),
+        "access_mode": "read_existing",
         "output_format": output_format,
     }
 

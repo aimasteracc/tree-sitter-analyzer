@@ -597,3 +597,12 @@ def test_search_facade_schema_declares_kind_with_enum() -> None:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+def test_action_scoped_parameter_rejected_for_other_action() -> None:
+    # PR #1253: scoped facade controls fail with a stable actionable envelope.
+    facade = _make_facade(action_scoped_params={"depth": frozenset({"func"})})
+
+    result = asyncio.run(facade.execute({"action": "symbol", "depth": 2}))
+
+    assert result["error"] == "parameter 'depth' applies only to action(s): func"

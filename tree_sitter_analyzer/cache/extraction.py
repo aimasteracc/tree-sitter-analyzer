@@ -14,10 +14,18 @@ import json
 import os
 import re
 import sqlite3
+import time
 from typing import Any
 
 from ..constants import EXCLUDE_DIRS
 from ..core.parser import Parser
+from ..indexing_candidate_materialization import read_frozen_candidate
+from ..indexing_snapshot import (
+    IndexFileFingerprint,
+    decode_index_source,
+    index_source_content_hash,
+)
+from ..source_oracle import SourceOracleError, safe_workspace_path
 from ._symbol_declarations import (
     _DOCSTRING_MAX_CHARS,
     _go_package_constants,
@@ -73,6 +81,7 @@ from ._symbol_walker import (
     _walk_for_symbols,
 )
 
+_MAX_FROZEN_FILE_BYTES = 64 * 1024 * 1024
 _EXCLUDE_DIRS = EXCLUDE_DIRS
 _worker_parser: Parser | None = None
 
@@ -99,25 +108,91 @@ def _init_worker_parser() -> None:
     _worker_parser = Parser()
 
 
-def _worker_index_file(args: tuple[str, str, str]) -> dict[str, Any]:
-    """Parse and serialize one file without returning unpicklable tree objects."""
+def _read_frozen_candidate(path: str) -> bytes:
+    """Compatibility wrapper for the certified frozen reader."""
+    return read_frozen_candidate(path, limit=_MAX_FROZEN_FILE_BYTES).encode(
+        "utf-8", errors="replace"
+    )
+
+
+def _worker_index_file(
+    args: tuple[str, str, str]
+    | tuple[str, str, str, IndexFileFingerprint | None]
+    | tuple[str, str, str, IndexFileFingerprint | None, str | None]
+    | tuple[
+        str,
+        str,
+        str,
+        IndexFileFingerprint | None,
+        str | None,
+        tuple[int, int, int] | None,
+        float | None,
+    ],
+) -> dict[str, Any]:
+    """Parse one immutable descriptor-backed source on POSIX."""
     global _worker_parser
-    abs_path, project_root, language = args
+    abs_path, project_root, language = args[:3]
+    expected = args[3] if len(args) >= 4 else None
+    frozen_path = args[4] if len(args) >= 5 else None
+    frozen_identity = args[5] if len(args) >= 6 else None
+    frozen_deadline = args[6] if len(args) >= 7 else None
     rel_path = os.path.relpath(abs_path, project_root).replace("\\", "/")
     try:
-        stat = os.stat(abs_path)
-        with open(abs_path, encoding="utf-8", errors="replace") as source_file:
-            source_code = source_file.read()
-    except OSError as exc:
+        if frozen_path is not None:
+            if expected is None:
+                raise SourceOracleError("INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING")
+            source_code = read_frozen_candidate(
+                frozen_path,
+                expected=expected,
+                frozen_identity=frozen_identity,
+                deadline=frozen_deadline,
+            )
+            opened = expected
+        elif os.name == "posix":
+            captured = safe_workspace_path(
+                os.path.realpath(project_root),
+                rel_path,
+                deadline=time.monotonic() + 5.0,
+                limit=64 * 1024 * 1024,
+                expected_chain=expected.descriptor_chain if expected else None,
+            )
+            if captured.kind != "file" or captured.data is None:
+                raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
+            source_code = decode_index_source(captured.data)
+            leaf = tuple(int(value) for value in captured.metadata[-1].split(b","))
+            opened = IndexFileFingerprint(
+                mtime_ns=leaf[4],
+                ctime_ns=leaf[5],
+                file_size=leaf[3],
+                device=leaf[0],
+                inode=leaf[1],
+                mode=leaf[2],
+                content_hash=index_source_content_hash(source_code),
+                descriptor_chain=expected.descriptor_chain if expected else (),
+            )
+            if expected is not None and (
+                opened != expected or opened.content_hash != expected.content_hash
+            ):
+                raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
+        else:
+            # Windows retains legacy indexing, but cannot produce a P0.1
+            # authoritative source certification.
+            stat_result = os.stat(abs_path)
+            with open(abs_path, encoding="utf-8", errors="replace") as source_file:
+                source_code = source_file.read()
+            opened = IndexFileFingerprint.from_stat(stat_result)
+    except (OSError, SourceOracleError) as exc:
         return {
-            "status": "io_error",
+            "status": "source_changed" if expected is not None else "io_error",
             "rel_path": rel_path,
             "abs_path": abs_path,
-            "reason": str(exc),
+            "reason": "file changed after candidate snapshot"
+            if expected is not None
+            else str(exc),
         }
     if _worker_parser is None:
         _worker_parser = Parser()
-    result = _worker_parser.parse_file(abs_path, language)
+    result = _worker_parser.parse_code(source_code, language, filename=abs_path)
     if not result.success:
         return {
             "status": "parse_failed",
@@ -133,7 +208,7 @@ def _worker_index_file(args: tuple[str, str, str]) -> dict[str, Any]:
         rel_path,
         abs_path,
         language,
-        stat,
+        opened,
         source_code,
         symbols,
         imports,
@@ -146,7 +221,7 @@ def _worker_payload(
     rel_path: str,
     abs_path: str,
     language: str,
-    stat: os.stat_result,
+    fingerprint: IndexFileFingerprint,
     source_code: str,
     symbols: dict[str, Any],
     imports: list[str],
@@ -160,8 +235,8 @@ def _worker_payload(
         "abs_path": abs_path,
         "language": language,
         "content_hash": _content_hash(source_code),
-        "mtime_ns": int(stat.st_mtime_ns),
-        "file_size": int(stat.st_size),
+        "mtime_ns": fingerprint.mtime_ns,
+        "file_size": fingerprint.file_size,
         "symbols_count": len(symbols.get("symbols", [])),
         "symbols_json": json.dumps(symbols, ensure_ascii=False),
         "imports_json": json.dumps(imports, ensure_ascii=False),

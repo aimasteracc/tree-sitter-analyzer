@@ -269,12 +269,12 @@ class TestFullIndexMaxFilesCoercion:
     """full_index_tool.py:118 — max_files passed to cache.index_project()."""
 
     @pytest.mark.asyncio
-    async def test_max_files_string_does_not_crash(self) -> None:
+    async def test_max_files_string_does_not_crash(self, tmp_path) -> None:
         from tree_sitter_analyzer.mcp.tools.full_index_tool import (
             CodeGraphFullIndexTool,
         )
 
-        tool = CodeGraphFullIndexTool(project_root="/fake/root")
+        tool = CodeGraphFullIndexTool(project_root=str(tmp_path))
 
         fake_ast_result = {
             "success": True,

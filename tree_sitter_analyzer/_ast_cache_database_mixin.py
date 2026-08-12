@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from typing import Any, cast
 
@@ -54,6 +55,7 @@ from .cache.schema import (
     init_db as _schema_init_db,
 )
 from .core.parser import Parser
+from .index_snapshot_schema import apply_snapshot_migration as _apply_migration_v13
 
 
 class SchemaIntegrityError(RuntimeError):
@@ -95,6 +97,9 @@ class ASTCacheSurface:
     _parser: Parser
     _fts5_available: bool | None
     _extractor_version: int
+    _index_lock: Any
+    _cache_dir_fd: int | None
+    _uses_project_mirror: bool
 
     def _get_conn(self) -> sqlite3.Connection:
         raise NotImplementedError
@@ -152,6 +157,7 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             (10, _apply_migration_v10),
             (11, _apply_migration_v11),
             (12, _apply_migration_v12),
+            (13, _apply_migration_v13),
         ]
         self._fts5_available = _schema_init_db(
             conn,
@@ -189,7 +195,15 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
         )
 
     def close(self) -> None:
-        conn = getattr(self._local, "conn", None)
-        if conn is not None:
-            conn.close()
-            self._local.conn = None
+        try:
+            conn = getattr(self._local, "conn", None)
+            if conn is not None:
+                conn.close()
+                self._local.conn = None
+        finally:
+            cache_dir_fd = getattr(self, "_cache_dir_fd", None)
+            if cache_dir_fd is not None:
+                try:
+                    os.close(cache_dir_fd)
+                finally:
+                    self._cache_dir_fd = None
