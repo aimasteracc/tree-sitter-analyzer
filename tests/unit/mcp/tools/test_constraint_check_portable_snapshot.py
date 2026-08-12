@@ -316,7 +316,7 @@ def test_live_config_snapshot_uses_portable_reader_when_required(
     import tree_sitter_analyzer.mcp.tools.constraint_check_live as live
 
     config = tmp_path / "architectural-constraints.yml"
-    config.write_text("version: 1\nconstraints: []\n")
+    config.write_bytes(b"version: 1\nconstraints: []\n")
     monkeypatch.setattr(live, "_portable_config_required", lambda: True)
     monkeypatch.setattr(
         live,
@@ -338,11 +338,11 @@ def test_portable_live_config_detects_changed_identity(
     import tree_sitter_analyzer.mcp.tools.constraint_check_live as live
 
     config = tmp_path / "architectural-constraints.yml"
-    config.write_text("version: 1\nconstraints: []\n")
+    config.write_bytes(b"version: 1\nconstraints: []\n")
     before = live._portable_probe(
         str(tmp_path), "architectural-constraints.yml", time.monotonic() + 1.0
     )
-    config.write_text("version: 1\nconstraints: [changed]\n")
+    config.write_bytes(b"version: 1\nconstraints: [changed]\n")
     after = live._portable_probe(
         str(tmp_path), "architectural-constraints.yml", time.monotonic() + 1.0
     )

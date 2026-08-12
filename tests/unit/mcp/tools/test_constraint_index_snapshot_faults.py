@@ -117,8 +117,8 @@ def test_certify_private_copy_reports_inexact_current_source(
     _certification_dependencies(monkeypatch, manifest=manifest)
     monkeypatch.setattr(
         owner,
-        "capture_current_source_snapshot",
-        lambda *_a, **_k: SimpleNamespace(state="partial", reason="SOURCE_CHANGED"),
+        "_capture_constraint_sources",
+        lambda *_a: SimpleNamespace(state="partial", reason="SOURCE_CHANGED"),
     )
     conn = sqlite3.connect(":memory:")
     try:

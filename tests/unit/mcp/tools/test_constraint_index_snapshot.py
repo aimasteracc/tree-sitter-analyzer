@@ -255,9 +255,7 @@ def _certification_dependencies(
     monkeypatch.setattr(
         source_module, "parse_source_scope_descriptor", lambda _raw: scope
     )
-    monkeypatch.setattr(
-        owner, "capture_current_source_snapshot", lambda *_a, **_k: current
-    )
+    monkeypatch.setattr(owner, "_capture_constraint_sources", lambda *_a: current)
     monkeypatch.setattr(owner, "recorded_source_rows", lambda *_a, **_k: current.rows)
     monkeypatch.setattr(owner, "index_fingerprint", lambda *_a, **_k: "index")
     monkeypatch.setattr(owner, "exact_call_graph_marker", lambda *_a, **_k: True)
