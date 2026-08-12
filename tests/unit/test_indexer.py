@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import os
 import sqlite3
 from pathlib import Path
@@ -612,8 +613,8 @@ def test_candidate_materialization_reports_cleanup_failure(
         snapshot, entries=(replace(snapshot.selected_entries[0], fingerprint=None),)
     )
     monkeypatch.setattr(
-        materialization.shutil,
-        "rmtree",
+        materialization.os,
+        "rmdir",
         lambda *_args: (_ for _ in ()).throw(OSError("cleanup denied")),
     )
 
@@ -677,8 +678,8 @@ def test_owned_cleanup_failure_preserves_success_and_attempts_every_leaf(
         patcher.setattr(materialization.tempfile, "mkdtemp", record_root)
         patcher.setattr(materialization.os, "unlink", record_unlink)
         patcher.setattr(
-            materialization.shutil,
-            "rmtree",
+            materialization.os,
+            "rmdir",
             lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("busy")),
         )
         result = cache.index_project(max_files=10, force=True, workers=0)
@@ -876,7 +877,16 @@ def test_candidate_cleanup_tolerates_leaf_already_unlinked(
         ),
     )
 
-    assert materialization.cleanup_index_candidate_snapshot(frozen) is None
+    warning = materialization.cleanup_index_candidate_snapshot(frozen)
+    assert warning == (
+        "INDEX_CANDIDATE_CLEANUP_FAILED: "
+        + str(
+            OSError(errno.ENOTEMPTY, os.strerror(errno.ENOTEMPTY), frozen.frozen_root)
+        )
+    )
+    import shutil
+
+    shutil.rmtree(frozen.frozen_root or "")
 
 
 @pytest.mark.skipif(os.name != "posix", reason="GH-1253")
@@ -938,7 +948,16 @@ def test_candidate_cleanup_tolerates_leaf_disappearing_during_retry(
 
     monkeypatch.setattr(materialization, "os", _OsProxy(unlink=fail_unlink))
 
-    assert materialization.cleanup_index_candidate_snapshot(frozen) is None
+    warning = materialization.cleanup_index_candidate_snapshot(frozen)
+    assert warning == (
+        "INDEX_CANDIDATE_CLEANUP_FAILED: "
+        + str(
+            OSError(errno.ENOTEMPTY, os.strerror(errno.ENOTEMPTY), frozen.frozen_root)
+        )
+    )
+    import shutil
+
+    shutil.rmtree(frozen.frozen_root or "")
 
 
 @pytest.mark.skipif(os.name != "posix", reason="GH-1253")
@@ -973,7 +992,15 @@ def test_candidate_cleanup_reports_failed_chmod_retry(
 
     warning = materialization.cleanup_index_candidate_snapshot(frozen)
 
-    assert warning == "INDEX_CANDIDATE_CLEANUP_FAILED: still denied"
+    assert warning == (
+        "INDEX_CANDIDATE_CLEANUP_FAILED: "
+        + str(
+            OSError(errno.ENOTEMPTY, os.strerror(errno.ENOTEMPTY), frozen.frozen_root)
+        )
+    )
+    import shutil
+
+    shutil.rmtree(frozen.frozen_root or "")
 
 
 @pytest.mark.skipif(os.name != "posix", reason="GH-1253")
@@ -1019,8 +1046,8 @@ def test_candidate_cleanup_tolerates_rmtree_missing_race(
     )
     root = snapshot.frozen_root or ""
     monkeypatch.setattr(
-        materialization.shutil,
-        "rmtree",
+        materialization.os,
+        "rmdir",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError()),
     )
     try:
@@ -1159,3 +1186,166 @@ def test_candidate_less_windows_scope_fails_closed_on_walk_error(
     )
 
     assert result is None
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_candidate_cleanup_rejects_path_identity_change_after_fd_cleanup(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    source = tmp_path / "app.py"
+    source.write_text("x = 1\n", encoding="utf-8")
+    frozen = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=lambda _path: "python",
+        materialize=True,
+    )
+    captured = Path(frozen.frozen_root or "")
+    real_stat = materialization.os.stat
+
+    def replaced_stat(path, *args, **kwargs):
+        observed = real_stat(path, *args, **kwargs)
+        if os.fspath(path) == os.fspath(captured):
+            from types import SimpleNamespace
+
+            return SimpleNamespace(st_dev=observed.st_dev, st_ino=observed.st_ino + 1)
+        return observed
+
+    monkeypatch.setattr(materialization.os, "stat", replaced_stat)
+    warning = materialization.cleanup_index_candidate_snapshot(frozen)
+    assert captured.exists() is True
+    assert warning == (
+        "INDEX_CANDIDATE_CLEANUP_FAILED: INDEX_CANDIDATE_CLEANUP_ROOT_REPLACED"
+    )
+    import shutil
+
+    shutil.rmtree(captured)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_candidate_materialization_fstat_failure_closes_fd_and_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    source = tmp_path / "app.py"
+    source.write_text("x = 1\n", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=lambda _path: "python",
+    )
+    opened: list[int] = []
+    roots: list[str] = []
+    real_open = materialization.os.open
+    real_mkdtemp = materialization.tempfile.mkdtemp
+
+    def record_root(*args, **kwargs):
+        root = real_mkdtemp(*args, **kwargs)
+        roots.append(root)
+        return root
+
+    def record_open(*args, **kwargs):
+        fd = real_open(*args, **kwargs)
+        opened.append(fd)
+        return fd
+
+    monkeypatch.setattr(materialization.tempfile, "mkdtemp", record_root)
+    monkeypatch.setattr(materialization.os, "open", record_open)
+    real_fstat = materialization.os.fstat
+    calls = 0
+
+    def fail_first_fstat(fd):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("denied")
+        return real_fstat(fd)
+
+    monkeypatch.setattr(materialization.os, "fstat", fail_first_fstat)
+    result = materialization.materialize_index_candidate_snapshot(snapshot)
+    assert result.frozen_error == "denied"
+    assert roots and not Path(roots[0]).exists()
+    with pytest.raises(OSError):
+        os.fstat(opened[0])
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_candidate_cleanup_never_recursively_removes_post_check_replacement(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import shutil
+
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+
+    source = tmp_path / "app.py"
+    source.write_text("x = 1\n", encoding="utf-8")
+    frozen = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=lambda _path: "python",
+        materialize=True,
+    )
+    captured = Path(frozen.frozen_root or "")
+    displaced = captured.with_name(captured.name + "-displaced")
+    real_rmdir = materialization.os.rmdir
+
+    def swap_then_rmdir(path):
+        captured.rename(displaced)
+        captured.mkdir()
+        (captured / "replacement").write_text("keep", encoding="utf-8")
+        return real_rmdir(path)
+
+    monkeypatch.setattr(materialization.os, "rmdir", swap_then_rmdir)
+    warning = materialization.cleanup_index_candidate_snapshot(frozen)
+    assert (captured / "replacement").read_text(encoding="utf-8") == "keep"
+    assert warning is not None
+    monkeypatch.setattr(materialization.os, "rmdir", real_rmdir)
+    shutil.rmtree(captured)
+    shutil.rmtree(displaced)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_candidate_cleanup_keeps_replacement_root(tmp_path: Path) -> None:
+    # PR #1253 thread 3763124090: cleanup authority belongs to captured identity.
+    source = tmp_path / "app.py"
+    source.write_text("x = 1\n", encoding="utf-8")
+    frozen = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=lambda _path: "python",
+        materialize=True,
+    )
+    captured = Path(frozen.frozen_root or "")
+    displaced = captured.with_name(captured.name + "-displaced")
+    captured.rename(displaced)
+    captured.mkdir()
+    sentinel = captured / "replacement"
+    sentinel.write_text("keep", encoding="utf-8")
+
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        cleanup_index_candidate_snapshot,
+    )
+
+    warning = cleanup_index_candidate_snapshot(frozen)
+    observed = (sentinel.read_text(encoding="utf-8"), displaced.exists())
+    import shutil
+
+    shutil.rmtree(captured)
+    shutil.rmtree(displaced)
+
+    assert observed == ("keep", True)
+    assert (
+        warning
+        == "INDEX_CANDIDATE_CLEANUP_FAILED: INDEX_CANDIDATE_CLEANUP_ROOT_REPLACED"
+    )

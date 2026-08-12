@@ -80,7 +80,7 @@ class TestAuthoritativeSnapshotOracle:
         assert (stats["manifest_warning"], count) == ("CALL_GRAPH_INCOMPLETE", 1)
 
     def test_indexer_stamp_failure_only_records_warning(self, tmp_path, monkeypatch):
-        # PR #1253 review 3755736546: failed certifiers retain later manifests.
+        # PR #1253 Codex thread 3763183155: retain manifest, revoke marker, commit.
         from types import SimpleNamespace
 
         import tree_sitter_analyzer.cache.indexer as indexer
@@ -120,11 +120,19 @@ class TestAuthoritativeSnapshotOracle:
         manifest = conn.execute(
             "SELECT index_fingerprint FROM ast_index_snapshot_manifest"
         ).fetchone()[0]
+        marker_rows = conn.execute(
+            "SELECT id, built, pipeline_version FROM ast_call_graph_state ORDER BY id"
+        ).fetchall()
         cache.close()
 
-        assert (stats["manifest_warning"], manifest) == (
+        assert (
+            stats["manifest_warning"],
+            manifest,
+            [tuple(row) for row in marker_rows],
+        ) == (
             "INDEX_MANIFEST_CERTIFICATION_FAILED",
             "later",
+            [(1, 0, 0), (2, 0, 0)],
         )
 
     def test_portable_full_index_succeeds_without_manifest(self, tmp_path, monkeypatch):

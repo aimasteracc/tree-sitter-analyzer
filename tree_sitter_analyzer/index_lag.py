@@ -105,7 +105,7 @@ def _newest_source_mtime(project_root: str) -> float | None:
                 return None
             info = entry.stat(follow_symlinks=False)
             if stat.S_ISDIR(info.st_mode):
-                if name in _LAG_SKIP_DIRS:
+                if name in _LAG_SKIP_DIRS or name.startswith("."):
                     continue
                 child_fd, child_entries = open_entries(name, directory_fd)
                 stack.append((child_fd, relative, child_entries))

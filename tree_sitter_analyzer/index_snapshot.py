@@ -135,9 +135,14 @@ def _read_bounded_manifest(
         "source_scope_descriptor",
         "manifest_version",
     )
+    valid_singleton = "typeof(singleton) = 'integer' AND singleton = 1"
     count_rows = _deadline_ordered_rows(
         connection,
-        "SELECT COUNT(*), MIN(singleton), MAX(singleton) "
+        "SELECT COUNT(*), "
+        f"CASE WHEN COUNT(CASE WHEN {valid_singleton} THEN 1 END) = COUNT(*) "
+        "THEN 1 ELSE 0 END, "
+        f"CASE WHEN COUNT(CASE WHEN {valid_singleton} THEN 1 END) = 1 "
+        "THEN 1 ELSE 0 END "
         "FROM ast_index_snapshot_manifest",
         deadline,
     )

@@ -1508,9 +1508,13 @@ def _update_authoritative_manifest(
             stamp_full_index_manifest(conn, cache.project_root, source_scope)
             return
         except Exception:
-            # The stamper rolls back its epoch and conditionally removes only
-            # the stale manifest it observed.  Do not race a later certifier
-            # with an unconditional delete here.
+            # The stamper rolls back its transaction, preserving the prior
+            # manifest. Revoke the prerequisite marker in a separate committed
+            # transaction so direct ASTCache readers cannot trust this run.
+            from .callgraph_state import clear_call_graph_built_strict
+
+            clear_call_graph_built_strict(conn)
+            conn.commit()
             logger.warning(
                 "index snapshot manifest certification failed", exc_info=True
             )

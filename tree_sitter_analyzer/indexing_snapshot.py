@@ -168,6 +168,9 @@ class IndexCandidateSnapshot:
         default=None, repr=False, compare=False
     )
     frozen_root: str | None = field(default=None, repr=False, compare=False)
+    frozen_root_identity: tuple[int, int] | None = field(
+        default=None, repr=False, compare=False
+    )
     frozen_error: str | None = field(default=None, repr=False, compare=False)
     frozen_read_deadline: float | None = field(default=None, repr=False, compare=False)
 
@@ -285,13 +288,17 @@ def build_index_candidate_snapshot(
             raw_path = next(walker)
         except StopIteration:
             break
-        except (_CandidateDiscoveryBudgetExceeded, _CandidateDiscoveryError) as exc:
+        except Exception as exc:
             discovered += 1
             errors += 1
             discovery_error = (
                 _CANDIDATE_DISCOVERY_BUDGET_ERROR
                 if isinstance(exc, _CandidateDiscoveryBudgetExceeded)
-                else str(exc) or "INDEX_CANDIDATE_DISCOVERY_ERROR"
+                else (
+                    str(exc) or "INDEX_CANDIDATE_DISCOVERY_ERROR"
+                    if isinstance(exc, _CandidateDiscoveryError)
+                    else f"INDEX_CANDIDATE_DISCOVERY_ERROR: {type(exc).__name__}"
+                )
             )
             close = getattr(walker, "close", None)
             if callable(close):

@@ -214,6 +214,19 @@ def test_schema_column_name_budget_rejects_first_column(monkeypatch):
     conn.close()
 
 
+def test_schema_total_column_name_budget_rejects_before_collection(monkeypatch):
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_schema_version(version)")
+    conn.execute("INSERT INTO ast_schema_version VALUES (13)")
+    conn.execute("CREATE TABLE ast_index(file_path)")
+    monkeypatch.setattr(schema, "_SCHEMA_TOTAL_BYTE_BUDGET", 0)
+    with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
+        schema.validate_snapshot_schema(conn)
+    conn.close()
+
+
 def test_schema_validation_normalizes_sqlite_interrupt(monkeypatch):
     # PR #1253: progress-handler interruption is a stable deadline failure.
     import tree_sitter_analyzer.index_snapshot_schema as schema
@@ -253,10 +266,40 @@ def test_schema_rejects_nontext_pragma_column_name():
                 return Cursor([(1,)])
             if query.startswith("SELECT 1"):
                 return Cursor([(1,)])
-            return Cursor([(0, b"not-text")])
+            return Cursor([("blob", 8, None)])
 
     with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
         validate_snapshot_schema(HostileConnection())  # type: ignore[arg-type]
+
+
+def test_schema_column_name_is_bounded_inside_sqlite_before_materialization():
+    # PR #1253 Codex thread 3763183163: hostile PRAGMA names stay in SQLite.
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    class Cursor:
+        def __init__(self, rows):
+            self.rows = iter(rows)
+
+        def fetchone(self):
+            return next(self.rows, None)
+
+    class OversizedNameConnection:
+        def set_progress_handler(self, _handler, _steps):
+            return None
+
+        def execute(self, query, _params=()):
+            if query.startswith("SELECT typeof(version)"):
+                return Cursor([("integer", 2, 1, 1)])
+            if query.startswith("SELECT count"):
+                return Cursor([(1,)])
+            if query.startswith("SELECT 1"):
+                return Cursor([(1,)])
+            assert "length(CAST(name AS BLOB))" in query
+            assert "CASE WHEN" in query
+            return Cursor([("text", schema._SCHEMA_CELL_BYTE_BUDGET + 1, None)])
+
+    with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
+        schema.validate_snapshot_schema(OversizedNameConnection())  # type: ignore[arg-type]
 
 
 def test_manifest_stamp_rejects_old_call_graph_pipeline_marker(tmp_path):

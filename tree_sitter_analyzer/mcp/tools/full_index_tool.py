@@ -19,6 +19,7 @@ CodeGraph parity: equivalent to CodeGraph's "index everything" single command.
 from __future__ import annotations
 
 import os
+import sqlite3
 import time
 from typing import Any
 
@@ -336,15 +337,33 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             certification_max_files=max_files,
         )
         t_start = time.monotonic()
-        candidate_snapshot = (
-            self._build_candidate_snapshot(
-                max_files,
-                exclude_patterns,
-                materialize=True,
+        try:
+            candidate_snapshot = (
+                self._build_candidate_snapshot(
+                    max_files,
+                    exclude_patterns,
+                    materialize=True,
+                )
+                if mode == "full"
+                else self._build_candidate_snapshot(max_files, exclude_patterns)
             )
-            if mode == "full"
-            else self._build_candidate_snapshot(max_files, exclude_patterns)
-        )
+        except Exception as exc:
+            error, truncated = bounded_safe_error_message(
+                exc,
+                str(self.project_root),
+                prefix="Candidate discovery failed: ",
+            )
+            return apply_toon_format_to_response(
+                {
+                    "success": False,
+                    "verdict": "ERROR",
+                    "error": error,
+                    "error_truncated": truncated,
+                    "mode": mode,
+                    "phase": "candidate_discovery",
+                },
+                output_format,
+            )
         candidate_released = False
         shared_cache: Any | None = None
         shared_cache_error: Exception | None = None
@@ -490,15 +509,22 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 source_scope=source_scope,
             )
             manifest_certified = bool(stats.pop("_manifest_certified", False))
-            if not manifest_certified or stats.get("manifest_warning") is not None:
+            manifest_warning = stats.get("manifest_warning")
+            if not manifest_certified or manifest_warning is not None:
                 top_verdict = "WARN"
+            operational_manifest_only = (
+                mode == "incremental"
+                and manifest_warning == "SOURCE_SCOPE_UNSUPPORTED"
+                and not stats.get("manifest_certification_failed", False)
+                and int(stats.get("certification_errors", 0)) == 0
+            )
             summary_line = f"codegraph_full_index: completed with {top_verdict.lower()}"
 
             result = {
-                "success": not (
-                    incremental_phase.get("completeness") == "incomplete"
-                    or (mode == "full" and not manifest_certified)
-                ),
+                "success": not any_phase_error
+                and not snapshot_warning
+                and incremental_phase.get("completeness") != "incomplete"
+                and (manifest_certified or operational_manifest_only),
                 "verdict": top_verdict,
                 "summary_line": summary_line,
                 "agent_summary": {
@@ -832,16 +858,28 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                     stamp_full_index_manifest(
                         cache.get_conn(), self.project_root or ".", source_scope
                     )
-                except Exception:
+                except Exception as exc:
                     logger.warning(
                         "index snapshot manifest certification failed", exc_info=True
                     )
-                    manifest_warning = "INDEX_MANIFEST_CERTIFICATION_FAILED"
+                    manifest_warning = (
+                        "SOURCE_SCOPE_UNSUPPORTED"
+                        if isinstance(exc, sqlite3.OperationalError)
+                        and str(exc) == "SOURCE_SCOPE_UNSUPPORTED"
+                        else "INDEX_MANIFEST_CERTIFICATION_FAILED"
+                    )
             stats = cache.get_stats()
+            operational_unsupported = manifest_warning == "SOURCE_SCOPE_UNSUPPORTED"
             result = {
                 "_manifest_certified": stamp_manifest and manifest_warning is None,
-                "manifest_certification_failed": manifest_warning is not None,
-                "certification_errors": 1 if manifest_warning is not None else 0,
+                "manifest_certification_failed": (
+                    manifest_warning is not None and not operational_unsupported
+                ),
+                "certification_errors": (
+                    1
+                    if manifest_warning is not None and not operational_unsupported
+                    else 0
+                ),
                 "scope_complete": stamp_manifest and manifest_warning is None,
                 "total_files": stats.get("total_files", 0),
                 "total_symbols": stats.get("total_symbols", 0),

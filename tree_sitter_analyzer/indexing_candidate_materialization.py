@@ -5,7 +5,6 @@ from __future__ import annotations
 import codecs
 import logging
 import os
-import shutil
 import stat
 import tempfile
 import time
@@ -241,37 +240,74 @@ def cleanup_index_candidate_snapshot(snapshot: IndexCandidateSnapshot) -> str | 
     except Exception as exc:
         errors.append(exc)
 
+    root_matches_capture = False
     if root_fd is not None:
-        for entry in snapshot.selected_entries:
-            path = entry.frozen_path
-            if path is None or os.path.dirname(path) != root:
-                continue
-            name = os.path.basename(path)
-            try:
-                os.unlink(name, dir_fd=root_fd)
-                continue
-            except FileNotFoundError:
-                continue
-            except Exception:
-                pass
-            try:
-                os.chmod(name, 0o600, dir_fd=root_fd, follow_symlinks=False)
-                os.unlink(name, dir_fd=root_fd)
-            except FileNotFoundError:
-                pass
-            except Exception as exc:
-                errors.append(exc)
         try:
-            os.close(root_fd)
-        except OSError as exc:
+            opened = os.fstat(root_fd)
+            expected_identity = getattr(snapshot, "frozen_root_identity", None)
+            root_matches_capture = (
+                expected_identity is None
+                or (int(opened.st_dev), int(opened.st_ino)) == expected_identity
+            )
+            if not root_matches_capture:
+                errors.append(
+                    CandidateMaterializationError(
+                        "INDEX_CANDIDATE_CLEANUP_ROOT_REPLACED"
+                    )
+                )
+            else:
+                for entry in snapshot.selected_entries:
+                    path = entry.frozen_path
+                    if path is None or os.path.dirname(path) != root:
+                        continue
+                    name = os.path.basename(path)
+                    try:
+                        os.unlink(name, dir_fd=root_fd)
+                        continue
+                    except FileNotFoundError:
+                        continue
+                    except Exception:
+                        pass
+                    try:
+                        os.chmod(name, 0o600, dir_fd=root_fd, follow_symlinks=False)
+                        os.unlink(name, dir_fd=root_fd)
+                    except FileNotFoundError:
+                        pass
+                    except Exception as exc:
+                        errors.append(exc)
+                for name in os.listdir(root_fd):
+                    try:
+                        os.unlink(name, dir_fd=root_fd)
+                    except FileNotFoundError:
+                        pass
+                    except Exception as exc:
+                        errors.append(exc)
+        except Exception as exc:
             errors.append(exc)
+        finally:
+            try:
+                os.close(root_fd)
+            except OSError as exc:
+                errors.append(exc)
 
-    try:
-        shutil.rmtree(root)
-    except FileNotFoundError:
-        pass
-    except Exception as exc:
-        errors.append(exc)
+    if root_matches_capture:
+        try:
+            current = os.stat(root, follow_symlinks=False)
+            expected_identity = getattr(snapshot, "frozen_root_identity", None)
+            if (
+                expected_identity is not None
+                and (int(current.st_dev), int(current.st_ino)) != expected_identity
+            ):
+                raise CandidateMaterializationError(
+                    "INDEX_CANDIDATE_CLEANUP_ROOT_REPLACED"
+                )
+            # Known frozen leaves were removed through the captured directory fd.
+            # A non-recursive removal cannot erase a pathname replacement's contents.
+            os.rmdir(root)
+        except FileNotFoundError:
+            pass
+        except Exception as exc:
+            errors.append(exc)
     if not errors:
         return None
     warning = _cleanup_warning(errors[-1])
@@ -302,15 +338,20 @@ def materialize_index_candidate_snapshot(
     if len(selected) > min(snapshot.max_files, _MAX_FILES):
         return replace(snapshot, frozen_error="INDEX_CANDIDATE_MATERIALIZATION_BUDGET")
 
-    root = tempfile.mkdtemp(prefix="tsa-index-candidate-")
-    os.chmod(root, 0o700)
-    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    root: str | None = None
+    root_fd: int | None = None
+    root_identity: tuple[int, int] | None = None
     started = time.monotonic()
     deadline = started + _MATERIALIZE_SECONDS
     read_deadline = started + _FROZEN_READ_SECONDS
     total = 0
     replacements: dict[str, Any] = {}
     try:
+        root = tempfile.mkdtemp(prefix="tsa-index-candidate-")
+        os.chmod(root, 0o700)
+        root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        root_info = os.fstat(root_fd)
+        root_identity = (int(root_info.st_dev), int(root_info.st_ino))
         for ordinal, entry in enumerate(selected):
             if time.monotonic() >= deadline:
                 raise CandidateMaterializationError(
@@ -360,6 +401,7 @@ def materialize_index_candidate_snapshot(
             snapshot,
             entries=entries,
             frozen_root=root,
+            frozen_root_identity=root_identity,
             frozen_error=None,
             frozen_read_deadline=read_deadline,
         )
@@ -367,11 +409,25 @@ def materialize_index_candidate_snapshot(
         partial_entries = tuple(
             replacements.get(entry.rel_path, entry) for entry in snapshot.entries
         )
-        failed = replace(snapshot, entries=partial_entries, frozen_root=root)
+        failed = replace(
+            snapshot,
+            entries=partial_entries,
+            frozen_root=root,
+            frozen_root_identity=root_identity,
+        )
+        if root_fd is not None:
+            os.close(root_fd)
+            root_fd = None
         cleanup_warning = cleanup_index_candidate_snapshot(failed)
         reason = str(exc) or type(exc).__name__
         if cleanup_warning is not None:
             logger.warning("freeze failure followed by %s", cleanup_warning)
         return replace(snapshot, frozen_error=reason)
     finally:
-        os.close(root_fd)
+        if root_fd is not None:
+            os.close(root_fd)
+        if root is not None and root_identity is None:
+            try:
+                os.rmdir(root)
+            except OSError:
+                pass

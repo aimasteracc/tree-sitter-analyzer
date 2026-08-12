@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import os
-from unittest.mock import Mock, patch
+import sqlite3
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -219,7 +220,7 @@ class TestExecute:
                 {"mode": "incremental", "output_format": "json"}
             )
 
-        assert result["success"] is True
+        assert result["success"] is False
         assert result["verdict"] == "WARN"
         assert result["phases"]["incremental_sync"]["status"] == "error"
         assert result["phases"]["incremental_sync"]["errors"] == 1
@@ -258,7 +259,7 @@ class TestExecute:
                 }
             )
 
-        assert result["success"] is True
+        assert result["success"] is False
         assert result["verdict"] == "WARN"
         assert collect_stats.call_args.kwargs["stamp_manifest"] is False
 
@@ -309,7 +310,7 @@ class TestExecute:
             "codegraph_full_index: completed with warn",
         )
 
-    async def test_incremental_manifest_certification_failure_is_operational_success(
+    async def test_incremental_manifest_certification_failure_is_not_operational_success(
         self, tool_with_root
     ):
         clean_phase = {"status": "ok", "processed": 1}
@@ -342,7 +343,7 @@ class TestExecute:
                 }
             )
 
-        assert (result["success"], result["verdict"]) == (True, "WARN")
+        assert (result["success"], result["verdict"]) == (False, "WARN")
 
     async def test_synapse_phase_inherits_ast_backfill_failure(self, tool_with_root):
         result = tool_with_root._phase_synapse({"status": "ok", "backfill_errors": 1})
@@ -1296,6 +1297,18 @@ class TestIncrementalPhaseScope:
         )
 
 
+def test_fts_stats_converts_cache_failure_to_phase_error(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.ast_cache as cache_module
+
+    monkeypatch.setattr(
+        cache_module,
+        "ASTCache",
+        lambda _root: (_ for _ in ()).throw(RuntimeError("open failed")),
+    )
+    result = CodeGraphFullIndexTool(str(tmp_path))._phase_fts5_stats()
+    assert (result["status"], result["error"]) == ("error", "RuntimeError: open failed")
+
+
 def test_call_edge_stats_converts_cache_failure_to_phase_error(tmp_path, monkeypatch):
     # PR #1253: final stats remain bounded when opening the cache fails.
     import tree_sitter_analyzer.ast_cache as cache_module
@@ -1368,3 +1381,38 @@ async def test_execute_exception_releases_materialized_candidate(tool_with_root)
         await tool_with_root.execute(
             {"mode": "full", "max_files": 10, "output_format": "json"}
         )
+
+
+@pytest.mark.asyncio
+async def test_candidate_discovery_exception_returns_structured_error(tmp_path):
+    # PR #1253 thread 3763044680: discovery failures cross the MCP boundary safely.
+    tool = CodeGraphFullIndexTool(str(tmp_path))
+    with patch.object(
+        tool, "_build_candidate_snapshot", side_effect=OSError("walk failed")
+    ):
+        result = await tool.execute({"mode": "incremental", "output_format": "json"})
+
+    assert (result["success"], result["verdict"], result["phase"]) == (
+        False,
+        "ERROR",
+        "candidate_discovery",
+    )
+    assert result["error"] == "Candidate discovery failed: OSError: walk failed"
+
+
+def test_collect_final_stats_source_scope_unsupported_is_operational(tmp_path):
+    # PR #1253 thread 3762955392: platform incapability is warning-only.
+    cache = MagicMock()
+    cache.get_stats.return_value = {}
+    tool = CodeGraphFullIndexTool(str(tmp_path))
+    with patch(
+        "tree_sitter_analyzer.index_snapshot_schema.stamp_full_index_manifest",
+        side_effect=sqlite3.OperationalError("SOURCE_SCOPE_UNSUPPORTED"),
+    ):
+        result = tool._collect_final_stats(stamp_manifest=True, _cache=cache)
+
+    assert (
+        result["manifest_warning"],
+        result["manifest_certification_failed"],
+        result["certification_errors"],
+    ) == ("SOURCE_SCOPE_UNSUPPORTED", False, 0)

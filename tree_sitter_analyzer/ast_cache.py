@@ -65,8 +65,9 @@ class ASTCache(
 
     def __init__(self, project_root: str, db_path: str | None = None) -> None:
         self.project_root = os.path.abspath(project_root)
+        default_db_path = os.path.join(self.project_root, ".ast-cache", "index.db")
         if db_path is None:
-            db_path = os.path.join(self.project_root, ".ast-cache", "index.db")
+            db_path = default_db_path
         self.db_path = db_path
         self._local = threading.local()
         self._parser = Parser()
@@ -74,19 +75,31 @@ class ASTCache(
         self._fts5_available: bool | None = None
         self._cache_dir_fd: int | None = None
         self._cache_dir_identity: tuple[int, int] | None = None
-        db_dir = os.path.dirname(db_path)
+        db_dir = os.path.dirname(db_path) or "."
         os.makedirs(db_dir, exist_ok=True)
         cache_dir = os.path.join(self.project_root, ".ast-cache")
-        os.makedirs(cache_dir, exist_ok=True)
-        if os.name == "posix":  # pragma: no branch - Windows uses no fd lease
+        uses_project_mirror = os.path.abspath(db_path) == os.path.abspath(
+            default_db_path
+        )
+        if uses_project_mirror:
+            os.makedirs(cache_dir, exist_ok=True)
+        if os.name == "posix" and uses_project_mirror:
+            # The default mirror is mutation-sensitive, so keep its directory
+            # identity pinned for the cache lifetime.  A custom database has no
+            # authority to create state inside a possibly read-only project.
             flags = (
                 os.O_RDONLY
                 | getattr(os, "O_DIRECTORY", 0)
                 | getattr(os, "O_NOFOLLOW", 0)
                 | getattr(os, "O_CLOEXEC", 0)
             )
-            self._cache_dir_fd = os.open(cache_dir, flags)
-            info = os.fstat(self._cache_dir_fd)
+            cache_dir_fd = os.open(cache_dir, flags)
+            try:
+                info = os.fstat(cache_dir_fd)
+            except BaseException:
+                os.close(cache_dir_fd)
+                raise
+            self._cache_dir_fd = cache_dir_fd
             self._cache_dir_identity = (info.st_dev, info.st_ino)
         try:
             self._init_db()

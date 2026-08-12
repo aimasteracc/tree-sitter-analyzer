@@ -33,6 +33,36 @@ def test_manifest_preflight_rejects_huge_control_cell_before_fetch():
     conn.close()
 
 
+def test_manifest_singleton_predicate_rejects_oversized_blob_without_materializing():
+    # PR #1253 Codex thread 3762955388: MIN/MAX must not return hostile payloads.
+    from tree_sitter_analyzer.index_snapshot import _read_bounded_manifest
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index_snapshot_manifest("
+        "singleton, canonical_root, source_fingerprint, index_fingerprint, "
+        "file_count, source_scope_descriptor, manifest_version)"
+    )
+    conn.execute(
+        "INSERT INTO ast_index_snapshot_manifest VALUES "
+        "(zeroblob(8388608), 'root', 'source', 'index', 0, '{}', 2)"
+    )
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+
+    with pytest.raises(ValueError, match="INDEX_MANIFEST_INVALID"):
+        _read_bounded_manifest(conn, float("inf"))
+
+    conn.close()
+    aggregate = next(sql for sql in statements if sql.startswith("SELECT COUNT(*)"))
+    assert ("MIN(" in aggregate, "MAX(" in aggregate, "CASE WHEN" in aggregate) == (
+        False,
+        False,
+        True,
+    )
+
+
 def test_manifest_preflight_rejects_duplicate_singleton_rows():
     # PR #1253 thread 3756001898: malformed control tables remain bounded.
     from tree_sitter_analyzer.index_snapshot import _read_bounded_manifest

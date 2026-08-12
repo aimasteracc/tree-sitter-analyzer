@@ -49,6 +49,17 @@ def test_lag_uses_indexer_extension_registry(tmp_path, extension):
 
 
 @requires_posix_fd
+def test_lag_excludes_arbitrary_hidden_directory(tmp_path):
+    # PR #1253 Codex thread 3763183167: lag matches authoritative hidden scope.
+    hidden = tmp_path / ".private-sources"
+    hidden.mkdir()
+    source = hidden / "new.py"
+    source.write_text("value = 1\n")
+
+    assert _newest_source_mtime(str(tmp_path)) is None
+
+
+@requires_posix_fd
 def test_source_scan_stops_at_cap(tmp_path, monkeypatch):
     import tree_sitter_analyzer.index_lag as lag
 

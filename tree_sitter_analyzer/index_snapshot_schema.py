@@ -243,7 +243,17 @@ def validate_snapshot_schema(
                 raise ValueError("INCOMPATIBLE_SCHEMA")
             columns: set[str] = set()
             column_rows = 0
-            cursor = conn.execute(f'PRAGMA table_info("{table}")')
+            cursor = conn.execute(
+                "SELECT typeof(name), length(CAST(name AS BLOB)), "
+                "CASE WHEN typeof(name) = 'text' "
+                "AND length(CAST(name AS BLOB)) <= ? THEN name END "
+                "FROM pragma_table_info(?) LIMIT ?",
+                (
+                    _SCHEMA_CELL_BYTE_BUDGET,
+                    table,
+                    _SCHEMA_VALIDATION_COLUMN_BUDGET + 1,
+                ),
+            )
             while True:
                 _check_deadline(deadline)
                 row = cursor.fetchone()
@@ -252,17 +262,19 @@ def validate_snapshot_schema(
                 column_rows += 1
                 if column_rows > _SCHEMA_VALIDATION_COLUMN_BUDGET:
                     raise ValueError("INCOMPATIBLE_SCHEMA")
-                name = row[1]
-                if not isinstance(name, str):
-                    raise ValueError("INCOMPATIBLE_SCHEMA")
-                name_bytes = len(name.encode("utf-8"))
-                schema_bytes += name_bytes
                 if (
-                    name_bytes > _SCHEMA_CELL_BYTE_BUDGET
-                    or schema_bytes > _SCHEMA_TOTAL_BYTE_BUDGET
+                    len(row) != 3
+                    or row[0] != "text"
+                    or type(row[1]) is not int
+                    or not 0 <= row[1] <= _SCHEMA_CELL_BYTE_BUDGET
+                    or not isinstance(row[2], str)
                 ):
                     raise ValueError("INCOMPATIBLE_SCHEMA")
-                columns.add(name)
+                name_bytes = row[1]
+                schema_bytes += name_bytes
+                if schema_bytes > _SCHEMA_TOTAL_BYTE_BUDGET:
+                    raise ValueError("INCOMPATIBLE_SCHEMA")
+                columns.add(row[2])
             if not required.issubset(columns):
                 raise ValueError("INCOMPATIBLE_SCHEMA")
     except sqlite3.OperationalError as exc:

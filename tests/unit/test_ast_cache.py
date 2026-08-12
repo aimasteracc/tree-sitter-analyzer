@@ -3669,3 +3669,57 @@ def test_force_rebuild_later_frozen_worker_gets_fresh_read_deadline(
         cleanup_index_candidate_snapshot(snapshot)
 
     assert (result["indexed"], result["errors"], observed_deadlines) == (2, 0, [None])
+
+
+@requires_posix_fd
+def test_custom_db_path_does_not_create_project_cache_directory(tmp_path):
+    # PR #1253 thread 3763044682: custom storage has no project-mirror authority.
+    project = tmp_path / "readonly-project"
+    project.mkdir()
+    external = tmp_path / "external" / "index.db"
+
+    cache = ASTCache(str(project), db_path=str(external))
+    try:
+        observed = ((project / ".ast-cache").exists(), external.exists())
+    finally:
+        cache.close()
+
+    assert observed == (False, True)
+
+
+@requires_posix_fd
+def test_cache_constructor_closes_directory_fd_when_fstat_fails(tmp_path, monkeypatch):
+    # PR #1253 thread 3763183168: an fd acquired before identity capture is owned.
+    import tree_sitter_analyzer.ast_cache as ast_cache_module
+
+    cache_dir = tmp_path / ".ast-cache"
+    cache_dir.mkdir()
+    real_open = os.open
+    real_close = os.close
+    opened: list[int] = []
+    closed: list[int] = []
+
+    def tracked_open(path, flags, *args, **kwargs):
+        fd = real_open(path, flags, *args, **kwargs)
+        if os.fspath(path) == str(cache_dir):
+            opened.append(fd)
+        return fd
+
+    def fail_tracked_fstat(fd):
+        if fd in opened:
+            raise OSError("identity unavailable")
+        return os.fstat(fd)
+
+    def tracked_close(fd):
+        if fd in opened:
+            closed.append(fd)
+        return real_close(fd)
+
+    monkeypatch.setattr(ast_cache_module.os, "open", tracked_open)
+    monkeypatch.setattr(ast_cache_module.os, "fstat", fail_tracked_fstat)
+    monkeypatch.setattr(ast_cache_module.os, "close", tracked_close)
+
+    with pytest.raises(OSError, match="identity unavailable"):
+        ASTCache(str(tmp_path))
+
+    assert closed == opened
