@@ -60,6 +60,10 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Contract tests resolve reviewed historical subjects and create
+          # non-shallow fresh clones; the default one-commit checkout cannot.
+          fetch-depth: 0
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -135,16 +139,20 @@ jobs:
 
       - name: Run E2E smoke tests
         run: |
-          echo "### E2E Test Results" >> $GITHUB_STEP_SUMMARY
           uv run pytest tests/e2e/ -m e2e \
             --override-ini="addopts=--strict-markers --verbose --tb=short" \
             --timeout=60 -v > e2e-output.txt 2>&1 || touch e2e_failed
           cat e2e-output.txt
-          echo '```text' >> $GITHUB_STEP_SUMMARY
-          tail -n 25 e2e-output.txt >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### E2E Test Results"
+            echo '```text'
+            tail -n 25 e2e-output.txt
+            echo '```'
+            if [ -f e2e_failed ]; then
+              echo "E2E tests failed — see above for server stderr output."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
           if [ -f e2e_failed ]; then
-            echo "E2E tests failed — see above for server stderr output." >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
         shell: bash
@@ -204,14 +212,14 @@ jobs:
     steps:
       - name: Check Overall Status
         run: |
-          echo "### 🏆 Final Quality Gate Status" >> $GITHUB_STEP_SUMMARY
+          echo "### 🏆 Final Quality Gate Status" >> "$GITHUB_STEP_SUMMARY"
           SUCCESS=true
 
           check_required() {
             local name="$1"
             local result="$2"
             if [[ "$result" != "success" ]]; then
-              echo "❌ ${name} failed: ${result}" >> $GITHUB_STEP_SUMMARY
+              echo "❌ ${name} failed: ${result}" >> "$GITHUB_STEP_SUMMARY"
               SUCCESS=false
             fi
           }
@@ -222,10 +230,10 @@ jobs:
             local name="$1"
             local result="$2"
             if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
-              echo "❌ ${name} failed: ${result}" >> $GITHUB_STEP_SUMMARY
+              echo "❌ ${name} failed: ${result}" >> "$GITHUB_STEP_SUMMARY"
               SUCCESS=false
             else
-              echo "✅ ${name}: ${result}" >> $GITHUB_STEP_SUMMARY
+              echo "✅ ${name}: ${result}" >> "$GITHUB_STEP_SUMMARY"
             fi
           }
 
@@ -253,13 +261,13 @@ jobs:
           # run where neither the test matrix nor the docs-check executed (guards
           # against a route misfire that skips everything).
           if [[ "$TEST" == "skipped" && "$DOCS" == "skipped" ]]; then
-            echo "❌ Neither Test Suite nor Docs Check ran — route misfire?" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Neither Test Suite nor Docs Check ran — route misfire?" >> "$GITHUB_STEP_SUMMARY"
             SUCCESS=false
           fi
 
           if [ "$SUCCESS" = true ]; then
-            echo "✅ All systems go! This version meets our authority standards." >> $GITHUB_STEP_SUMMARY
+            echo "✅ All systems go! This version meets our authority standards." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "⚠️ Quality Gate rejected this version." >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Quality Gate rejected this version." >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi

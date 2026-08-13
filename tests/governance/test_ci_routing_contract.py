@@ -94,9 +94,7 @@ def test_ci_full_language_suite_runs_once_per_reusable_test_matrix() -> None:
     workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
     text = workflow.read_text(encoding="utf-8")
 
-    assert (
-        '-m "not slow and not e2e and not network and not benchmark"' in text
-    )
+    assert '-m "not slow and not e2e and not network and not benchmark"' in text
     assert (
         '-m "not slow and not e2e and not network and not benchmark and not full_language"'
         in text
@@ -231,3 +229,19 @@ def test_bandit_security_scan_is_blocking_and_configured() -> None:
     assert "bandit -c pyproject.toml -r tree_sitter_analyzer/" in body
     assert "|| true" not in body
     assert 'exit "$BANDIT_STATUS"' in body
+
+
+def test_docs_check_fetches_history_for_contract_subjects() -> None:
+    """Regression for PR #1255: docs contracts require a non-shallow clone."""
+    ci_text = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+    _, marker, remainder = ci_text.partition("\n  docs-check:\n")
+    docs_job, next_marker, _ = remainder.partition("\n  quality-check:\n")
+
+    assert marker == "\n  docs-check:\n"
+    assert next_marker == "\n  quality-check:\n"
+    checkout_start = docs_job.index("      - uses: actions/checkout@v7\n")
+    checkout_end = docs_job.index("\n      - name:", checkout_start)
+    checkout_step = docs_job[checkout_start:checkout_end]
+    assert checkout_step.splitlines().count("          fetch-depth: 0") == 1
