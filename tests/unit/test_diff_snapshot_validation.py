@@ -422,37 +422,41 @@ def test_validate_publish_bounds_oracle_by_remaining_lifetime(
 def test_staged_submodule_probe_failure_remains_constraint_scoped(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # PR #1254 review 3771670605: ast_diff/classify snapshots stay available.
-    import tree_sitter_analyzer.diff_snapshot_constraints as constraints
+    # PR #1254 reviews 3771670605/3772454783: optional probes reserve publish time.
     from tree_sitter_analyzer.source_epoch import GitEpoch
 
+    now = [0.0]
     install_fake_snapshot_materializer(monkeypatch, tmp_path)
     epoch = GitEpoch(b"head", "sha1", (), (), (), ())
     identity = snapshots.RootIdentity(str(tmp_path.resolve()), 1, 2)
+    deadlines = []
 
     def oracle(root, mode="diff", *, deadline=None, manifest=None, epoch_out=None):
+        deadlines.append(deadline)
         if epoch_out is not None:
             epoch_out.append(epoch)
+        if now[0] >= deadline:
+            raise snapshots.SourceOracleError("DIFF_SNAPSHOT_TIMEOUT")
         return "sg_test", identity
 
-    def rejected(*_args, **_kwargs):
-        raise snapshots.SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    def rejected(_root, _epoch, deadline, _limit):
+        now[0] = deadline
+        return False
 
+    monkeypatch.setattr(snapshots.time, "monotonic", lambda: now[0])
     monkeypatch.setattr(snapshots, "oracle_generation", oracle)
-    monkeypatch.setattr(constraints, "frozen_index_output", rejected)
-    monkeypatch.setattr(
-        snapshots,
-        "staged_sources_match_worktree",
-        constraints.staged_sources_match_worktree,
-    )
+    monkeypatch.setattr(snapshots, "staged_sources_match_worktree", rejected)
     registry = snapshots.DiffSnapshotRegistry()
 
     created = registry.create(str(tmp_path), "staged", [])
+    create_deadlines = list(deadlines)
     consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(tmp_path))
 
     assert (created["success"], error, consumer is not None) == (True, None, True)
     assert consumer is not None
     assert consumer.snapshot.staged_source_matches_worktree is False
+    assert create_deadlines == [35.0, 35.0, 35.0]
+    assert now == [17.5]
     consumer.release()
 
 

@@ -97,12 +97,12 @@ class ConstraintCheckTool(BaseMCPTool):
         min_severity_rank = _SEVERITY_ORDER[severity_min]
 
         persist = arguments.get("persist", True)
-        config_deadline = time.monotonic() + 10.0
+        deadline = time.monotonic() + 10.0
         config_before = None
         try:
             if not persist:
                 config_before, constraints = load_live_constraints(
-                    self.project_root, config_deadline
+                    self.project_root, deadline
                 )
             else:
                 constraints = load_constraints(self.project_root)
@@ -127,7 +127,7 @@ class ConstraintCheckTool(BaseMCPTool):
             changed = _config_changed_response(
                 self.project_root,
                 config_before,
-                config_deadline,
+                deadline,
                 output_format,
                 self._snapshot_error,
                 _live_config_snapshot,
@@ -183,7 +183,7 @@ class ConstraintCheckTool(BaseMCPTool):
                     constraints,
                     path_filter=path_filter,
                     min_severity_rank=min_severity_rank,
-                    deadline=time.monotonic() + 10.0,
+                    deadline=deadline,
                 )
             except (
                 sqlite3.DatabaseError,
@@ -202,7 +202,7 @@ class ConstraintCheckTool(BaseMCPTool):
             changed = _config_changed_response(
                 self.project_root,
                 config_before,
-                config_deadline,
+                deadline,
                 output_format,
                 self._snapshot_error,
                 _live_config_snapshot,

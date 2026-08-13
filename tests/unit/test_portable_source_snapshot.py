@@ -273,7 +273,7 @@ def test_portable_inventory_detects_directory_identity_change(
         info = real_lstat(path)
         if Path(path) == tmp_path:
             reads += 1
-            return _changed_identity(info) if reads == 3 else info
+            return _changed_identity(info) if reads == 4 else info
         return info
 
     monkeypatch.setattr(portable.os, "lstat", changing_lstat)
@@ -411,3 +411,53 @@ def test_capture_portable_source_snapshot_rejects_changed_inventory(
     assert result.generation == "idxsrc-v3:" + result.fingerprint.removeprefix(
         "sha256:"
     )
+
+
+def test_portable_inventory_revalidates_queued_directory_before_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3772454780: never scan a replaced queued ancestor.
+    queued = tmp_path / "queued"
+    queued.mkdir()
+    real_lstat = os.lstat
+    real_scandir = os.scandir
+    queued_stats = 0
+    scanned: list[Path] = []
+
+    def lstat(path):
+        nonlocal queued_stats
+        info = real_lstat(path)
+        if Path(path) == queued:
+            queued_stats += 1
+            return info if queued_stats == 1 else _changed_identity(info)
+        return info
+
+    def scandir(path):
+        scanned.append(Path(path))
+        return real_scandir(path)
+
+    monkeypatch.setattr(portable.os, "lstat", lstat)
+    monkeypatch.setattr(portable.os, "scandir", scandir)
+
+    assert _inventory(tmp_path) == (frozenset(), True)
+    assert scanned == [tmp_path]
+
+
+def test_portable_identity_includes_windows_reparse_attributes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # PR #1254 review 3772454780: Windows junction identity is authoritative.
+    fields = {
+        "st_dev": 1,
+        "st_ino": 2,
+        "st_mode": stat.S_IFDIR,
+        "st_size": 0,
+        "st_mtime_ns": 3,
+        "st_ctime_ns": 4,
+    }
+    before = type("Info", (), {**fields, "st_file_attributes": 0})()
+    after = type("Info", (), {**fields, "st_file_attributes": 0x400})()
+    monkeypatch.setattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400, raising=False)
+
+    assert portable._identity(before) != portable._identity(after)
+    assert portable._is_reparse(after) is True

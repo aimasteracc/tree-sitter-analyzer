@@ -525,42 +525,53 @@ class TestMemoryOptimization:
     async def test_memory_usage_optimization(
         self, large_code_file, performance_monitor
     ):
-        """メモリ使用量最適化の確認"""
-        tool = TableFormatTool()
+        """Measure suppressed-output memory after one-time engine warm-up."""
+        import gc
 
-        # 初期メモリ使用量を記録
+        output_root = Path(large_code_file).parent.resolve()
+        warmup_file = output_root / "warmup.py"
+        warmup_file.write_text("value = 1\n")
+        tool = TableFormatTool(str(output_root))
+        arguments = {
+            "file_path": large_code_file,
+            "format_type": "full",
+            "suppress_output": True,
+            "output_file": "test_output.json",
+        }
+        warm_arguments = {**arguments, "file_path": str(warmup_file)}
+
+        # Plugin/parser initialization is a one-time process cost whose RSS is
+        # scheduling-dependent under xdist. Warm it on a different file so the
+        # measured call still parses and formats the full large fixture.
+        warm_result = await tool.execute(warm_arguments)
+        assert warm_result["success"] is True
+        output_file = Path(warm_result["output_file_path"])
+        assert output_file.parent == output_root
+        output_file.unlink()
+        gc.collect()
+
         initial_memory = psutil.Process().memory_info().rss
-
         performance_monitor.start_measurement()
+        try:
+            result = await tool.execute(arguments)
+            metrics = performance_monitor.end_measurement()
+            final_memory = psutil.Process().memory_info().rss
 
-        # suppress_output=True でメモリ最適化を有効化
-        result = await tool.execute(
-            {
-                "file_path": large_code_file,
-                "format_type": "full",
-                "suppress_output": True,
-                "output_file": "test_output.json",
-            }
-        )
+            assert result["success"] is True
+            output_file = Path(result["output_file_path"])
+            assert output_file.parent == output_root
+            assert output_file.exists() is True
 
-        metrics = performance_monitor.end_measurement()
-        final_memory = psutil.Process().memory_info().rss
+            memory_increase = (final_memory - initial_memory) / 1024 / 1024
+            assert memory_increase < 50, (
+                f"メモリ使用量増加が50MBを超過: {memory_increase:.2f}MB"
+            )
 
-        assert result["success"] is True
-
-        # メモリ使用量が適切に制御されていることを確認
-        memory_increase = (final_memory - initial_memory) / 1024 / 1024  # MB
-        assert memory_increase < 50, (
-            f"メモリ使用量増加が50MBを超過: {memory_increase:.2f}MB"
-        )
-
-        print(f"メモリ最適化実行時間: {metrics['execution_time']:.2f}秒")
-        print(f"メモリ使用量増加: {memory_increase:.2f}MB")
-
-        # 出力ファイルが作成されていることを確認
-        output_file = Path("test_output.json")
-        if output_file.exists():
-            output_file.unlink()  # クリーンアップ
+            print(f"メモリ最適化実行時間: {metrics['execution_time']:.2f}秒")
+            print(f"メモリ使用量増加: {memory_increase:.2f}MB")
+        finally:
+            if output_file.exists():
+                output_file.unlink()
 
 
 if __name__ == "__main__":

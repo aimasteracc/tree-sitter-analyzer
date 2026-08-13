@@ -20,7 +20,7 @@ _SOURCE_ENTRY_BUDGET = 1_000_000
 _SOURCE_PATH_BYTE_BUDGET = 128 * 1024 * 1024
 
 
-def _identity(info: os.stat_result) -> tuple[int, int, int, int, int, int]:
+def _identity(info: os.stat_result) -> tuple[int, int, int, int, int, int, int]:
     return (
         int(info.st_dev),
         int(info.st_ino),
@@ -28,6 +28,7 @@ def _identity(info: os.stat_result) -> tuple[int, int, int, int, int, int]:
         int(info.st_size),
         int(info.st_mtime_ns),
         int(info.st_ctime_ns),
+        int(getattr(info, "st_file_attributes", 0)),
     )
 
 
@@ -78,11 +79,17 @@ def _portable_inventory(
             return frozenset(), True
         if not stat.S_ISDIR(base_before.st_mode) or _is_reparse(base_before):
             return frozenset(), True
-        stack = [base]
+        stack = [(base, base_before)]
         while stack:
-            directory = stack.pop()
-            directory_before = os.lstat(directory)
+            directory, discovered = stack.pop()
             try:
+                directory_before = os.lstat(directory)
+                if (
+                    not stat.S_ISDIR(directory_before.st_mode)
+                    or _is_reparse(directory_before)
+                    or _identity(directory_before) != _identity(discovered)
+                ):
+                    return frozenset(), True
                 entries = os.scandir(directory)
                 with entries:
                     for entry in entries:
@@ -106,7 +113,7 @@ def _portable_inventory(
                                 continue
                             if _is_reparse(before):
                                 continue
-                            stack.append(path)
+                            stack.append((path, before))
                             continue
                         if _is_reparse(before):
                             if language is not None:

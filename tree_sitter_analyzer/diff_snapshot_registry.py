@@ -233,12 +233,17 @@ class DiffSnapshotRegistry:
                 or pre_manifest != post_manifest
             ):
                 raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
+            optional_started = time.monotonic()
+            optional_deadline = min(
+                deadline,
+                optional_started + max(0.0, deadline - optional_started) / 2,
+            )
             (
                 live_config_path,
                 live_config_data,
                 live_config_metadata,
                 live_config_error,
-            ) = live_constraint_config(root, deadline, safe_workspace_path)
+            ) = live_constraint_config(root, optional_deadline, safe_workspace_path)
             staged_source_matches_worktree = True
             staged_config_matches_worktree = True
             constraint_config_error = live_config_error
@@ -254,14 +259,14 @@ class DiffSnapshotRegistry:
                 ) = staged_constraint_config(
                     root,
                     staged_epoch,
-                    deadline,
+                    optional_deadline,
                     ceiling,
                     frozen_index_constraint_config,
                 )
                 staged_source_matches_worktree = staged_sources_match_worktree(
                     root,
                     staged_epoch,
-                    deadline,
+                    optional_deadline,
                     min(16 * 1024 * 1024, ceiling),
                 )
                 staged_config_matches_worktree = (
@@ -294,6 +299,11 @@ class DiffSnapshotRegistry:
                 raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
             paths = set(normalized_input)
             paths.update(item.record.path for item in files)
+            paths.update(
+                item.record.old_path
+                for item in files
+                if item.record.old_path is not None
+            )
             size = (
                 len(patch)
                 + sum(
@@ -364,13 +374,13 @@ class DiffSnapshotRegistry:
                 ],
             }
         except SourceOracleError as exc:
-            with self._lock:
-                self._reservations.pop(reservation, None)
             return snapshot_error(str(exc))
         except Exception:
+            return snapshot_error("DIFF_SNAPSHOT_CAPTURE_ERROR")
+        finally:
             with self._lock:
                 self._reservations.pop(reservation, None)
-            return snapshot_error("DIFF_SNAPSHOT_CAPTURE_ERROR")
+
     def acquire(
         self,
         snapshot_id: str,

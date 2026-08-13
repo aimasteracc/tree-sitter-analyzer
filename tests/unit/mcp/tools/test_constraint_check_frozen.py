@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ from tests.unit.mcp.tools._constraint_check_support import (
 from tests.unit.mcp.tools._constraint_check_support import (
     stage_minimal_constraints as _stage_minimal_constraints,
 )
+from tree_sitter_analyzer.constraints import Violation
 
 pytest.importorskip("yaml")
 
@@ -82,7 +84,6 @@ def test_frozen_scope_intersection_excludes_outside_project_debt(
     conn.commit()
     conn.close()
     registry, created = _create_frozen_scope(monkeypatch, tmp_path, ["src/scope.py"])
-    from tree_sitter_analyzer.constraints import Violation
 
     def violation(rule_id: str, caller: str, callee: str, severity: str, line: int):
         return Violation(rule_id, caller, "caller", line, "callee", callee, severity, 1)
@@ -265,8 +266,6 @@ def test_frozen_constraints_rejects_config_changed_during_index_read(
     conn.commit()
     conn.close()
     registry, created = _create_frozen_scope(monkeypatch, tmp_path, ["src/a.py"])
-    from dataclasses import replace
-
     import tree_sitter_analyzer.source_oracle as oracle
 
     real_safe = oracle.safe_workspace_path
@@ -343,57 +342,6 @@ def test_config_only_frozen_change_evaluates_full_source_scope(
     )
 
 
-def test_fallback_config_activation_evaluates_full_source_scope(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # PR #1254 review 3769281296: changing any precedence candidate changes rules.
-    _stage_minimal_constraints(tmp_path)
-    db_path = tmp_path / ".ast-cache" / "index.db"
-    _init_violations_db(db_path)
-    with sqlite3.connect(db_path) as conn:
-        conn.execute("CREATE TABLE edges(kind TEXT)")
-    registry, created = _create_frozen_scope(
-        monkeypatch, tmp_path, ["architectural-constraints.yml"]
-    )
-    state = registry._states[str(created["diff_snapshot_id"])]
-    from dataclasses import replace
-
-    state.snapshot = replace(
-        state.snapshot,
-        mode="staged",
-        constraint_config_path=".tree-sitter-analyzer/constraints.yml",
-    )
-    observed: list[object] = []
-
-    def evaluator(_constraints, _conn, **kwargs):
-        observed.append(kwargs.get("scope_predicate", "absent"))
-        return []
-
-    monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.evaluate", evaluator
-    )
-    result = _run(
-        _make_tool(tmp_path).execute(
-            {
-                "persist": False,
-                "diff_snapshot_id": created["diff_snapshot_id"],
-                "scope_paths": created["assessed_scope_paths"],
-                "output_format": "json",
-            }
-        )
-    )
-
-    assert (result["success"], result["verdict"], observed) == (
-        True,
-        "SAFE",
-        ["absent"],
-    )
-    assert (
-        registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
-        is True
-    )
-
-
 def test_frozen_constraint_consumer_fails_closed_on_unsafe_config_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -424,3 +372,72 @@ def test_frozen_constraint_consumer_fails_closed_on_unsafe_config_evidence(
 
     assert created["success"] is True
     assert result["error_code"] == "CONSTRAINT_CONFIG_UNSAFE"
+
+
+def test_renamed_primary_config_activates_fallback_over_full_graph(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3772454791: renamed-away config changes precedence.
+    _stage_minimal_constraints(tmp_path)
+    fallback = tmp_path / ".tree-sitter-analyzer/constraints.yml"
+    fallback.parent.mkdir()
+    (tmp_path / "architectural-constraints.yml").replace(fallback)
+    db_path = tmp_path / ".ast-cache/index.db"
+    _init_violations_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE edges(kind TEXT)")
+    registry, created = _create_frozen_scope(
+        monkeypatch, tmp_path, ["architectural-constraints.yml", "renamed.yml"]
+    )
+    state = registry._states[str(created["diff_snapshot_id"])]
+    state.snapshot = replace(state.snapshot, mode="staged")
+    observed = []
+
+    def evaluator(_constraints, _conn, **kwargs):
+        observed.append(kwargs.get("scope_predicate", "absent"))
+        return [
+            Violation(
+                "fallback-block",
+                "src/a/x.py",
+                "caller",
+                7,
+                "callee",
+                "src/b/y.py",
+                "error",
+                1,
+            )
+        ]
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.evaluate", evaluator
+    )
+    result = _run(
+        _make_tool(tmp_path).execute(
+            {
+                "persist": False,
+                "diff_snapshot_id": created["diff_snapshot_id"],
+                "scope_paths": created["assessed_scope_paths"],
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert (
+        state.snapshot.constraint_config_path == ".tree-sitter-analyzer/constraints.yml"
+    )
+    actual = (
+        result["verdict"],
+        [row["rule_id"] for row in result["violations"]],
+        observed,
+        result["assessed_scope_paths"],
+    )
+    assert actual == (
+        "UNSAFE",
+        ["fallback-block"],
+        ["absent"],
+        ["architectural-constraints.yml", "renamed.yml"],
+    )
+    assert (
+        registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
+        is True
+    )

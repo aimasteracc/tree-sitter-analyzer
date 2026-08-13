@@ -426,6 +426,28 @@ def test_runner_late_detached_grandchild_cleanup_stress(tmp_path: Path) -> None:
     _assert_late_spawn_cleanup(tmp_path, 10)
 
 
+def test_cleanup_fallback_certifies_two_quiet_scans(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import native_qualification_lib as owner
+
+    killed: list[bool] = []
+    process = type("Process", (), {"kill": lambda _self: killed.append(True)})()
+    scans = iter(([process], [], []))
+    forced: list[bool] = []
+    monkeypatch.setattr(owner, "_token_processes", lambda *_a, **_k: {})
+    monkeypatch.setattr(owner, "_live_processes", lambda _tracked: next(scans))
+    monkeypatch.setattr(
+        owner, "_signal_group", lambda _p, *, force: forced.append(force)
+    )
+    monkeypatch.setattr(owner.psutil, "wait_procs", lambda *_a, **_k: ([], []))
+    monkeypatch.setattr(owner.time, "sleep", lambda _seconds: None)
+
+    result = owner._cleanup_token_processes(object(), {}, "token", grace=0, force=0)
+
+    assert (result, forced, killed) == (True, [True], [True])
+
+
 def test_runner_reports_cleanup_nonquiescence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -463,31 +485,10 @@ def test_wheel_record_rejects_non_exact_or_injected_archive(
 
 @pytest.mark.parametrize(
     "mutation",
-    [
-        "valid",
-        "stage_false",
-        "extra_field",
-        "mcp_oracle",
-        "venv_provenance",
-        "direct_hash",
-        "direct_base64",
-        "snapshot_direct",
-        "transcript_error",
-        "transcript_missing",
-        "path_dotdot_posix",
-        "path_dotdot_windows",
-        "aggregate_extra",
-        "axis_digest",
-        "installed_member_hash",
-        "installed_member_size",
-        "installed_record_digest",
-        "installed_inventory",
-        "side_artifact",
-        "path_containment",
-        "zip_extra",
-        "zip_symlink",
-        "filename_metadata",
-    ],
+    "valid stage_false extra_field mcp_oracle venv_provenance direct_hash direct_base64 "
+    "snapshot_direct transcript_error transcript_missing path_dotdot_posix path_dotdot_windows "
+    "aggregate_extra axis_digest installed_member_hash installed_member_size installed_record_digest "
+    "installed_inventory side_artifact path_containment zip_extra zip_symlink filename_metadata".split(),
 )
 def test_trusted_inline_verifier_rejects_candidate_forgery(
     tmp_path: Path, mutation: str

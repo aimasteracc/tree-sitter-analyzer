@@ -60,6 +60,7 @@ def test_staged_snapshot_freezes_add_delete_rename_binary_and_multiple_files(
         "gone.py",
         "image.bin",
         "impact.py",
+        "old.py",
         "renamed.py",
     ]
 

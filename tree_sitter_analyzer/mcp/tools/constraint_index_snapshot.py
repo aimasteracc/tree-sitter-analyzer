@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ...cache.build_state import build_in_progress
+from ...frozen_git_index import safe_external_temp_parent
 from ...index_snapshot_capability import (
     exact_call_graph_marker,
     require_memory_temp_store,
@@ -29,6 +30,7 @@ from ...index_symbol_projection import (
     symbol_projection_is_exact,
 )
 from ...portable_source_snapshot import capture_portable_source_snapshot
+from ...source_oracle import SourceOracleError
 from .constraint_check_portable_snapshot import (
     portable_snapshot_required as _portable_snapshot_required,
 )
@@ -113,7 +115,13 @@ def _temporary_copy(
     deadline: float,
 ) -> Iterator[Path]:
     """Stream a pinned database into a private directory outside the project."""
-    with tempfile.TemporaryDirectory(prefix="tsa-constraint-index-") as tmp:
+    try:
+        temp_parent = safe_external_temp_parent(root)
+    except SourceOracleError as exc:
+        raise ValueError("INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED") from exc
+    with tempfile.TemporaryDirectory(
+        prefix="tsa-constraint-index-", dir=temp_parent
+    ) as tmp:
         tmp_real = os.path.realpath(tmp)
         try:
             inside_project = os.path.commonpath((root, tmp_real)) == root

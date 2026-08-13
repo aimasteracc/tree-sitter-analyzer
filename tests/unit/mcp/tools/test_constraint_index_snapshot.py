@@ -188,37 +188,55 @@ def test_sidecar_state_allows_shm_and_empty_transaction_sidecars(
     )
 
 
-def test_temporary_copy_rejects_project_local_temp(
+def test_temporary_copy_rejects_unsafe_parent_before_allocation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    class LocalTemporaryDirectory:
-        def __init__(self, **_kwargs):
-            pass
-
-        def __enter__(self):
-            self.path = tmp_path / "local-temp"
-            self.path.mkdir()
-            return str(self.path)
-
-        def __exit__(self, *_args):
-            return None
-
+    # PR #1254 review 3772454765: read-only staging never touches the project.
+    calls = []
+    monkeypatch.setattr(
+        owner,
+        "safe_external_temp_parent",
+        lambda _root: (_ for _ in ()).throw(
+            owner.SourceOracleError("DIFF_SNAPSHOT_UNSAFE_TEMP")
+        ),
+    )
+    monkeypatch.setattr(
+        owner.tempfile, "TemporaryDirectory", lambda **kwargs: calls.append(kwargs)
+    )
     source = tmp_path / "source"
     source.write_bytes(b"data")
     fd = os.open(source, os.O_RDONLY)
-    expected = owner._stat_identity(os.fstat(fd))
-    monkeypatch.setattr(owner.tempfile, "TemporaryDirectory", LocalTemporaryDirectory)
     try:
         with pytest.raises(ValueError, match="^INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED$"):
             with owner._temporary_copy(
                 fd,
-                expected,
+                owner._stat_identity(os.fstat(fd)),
                 str(tmp_path.resolve()),
                 deadline=time.monotonic() + 1,
             ):
                 pytest.fail("unsafe temporary copy published")
     finally:
         os.close(fd)
+    assert calls == []
+
+
+def test_temporary_copy_rejects_project_path_after_allocation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    @contextmanager
+    def allocate(**kwargs):
+        assert kwargs["dir"] == str(tmp_path.parent)
+        yield str(tmp_path / "allocated")
+
+    monkeypatch.setattr(
+        owner, "safe_external_temp_parent", lambda _root: str(tmp_path.parent)
+    )
+    monkeypatch.setattr(owner.tempfile, "TemporaryDirectory", allocate)
+    with pytest.raises(ValueError, match="^INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED$"):
+        with owner._temporary_copy(
+            -1, (0, 0, 0, 0, 0), str(tmp_path), deadline=float("inf")
+        ):
+            pytest.fail("project-local copy published")
 
 
 def _certification_dependencies(

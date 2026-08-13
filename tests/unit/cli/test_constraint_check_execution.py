@@ -425,29 +425,33 @@ constraints:
 
 
 def test_explicit_config_evidence_ignores_read_induced_atime(tmp_path, monkeypatch):
-    # PR #1254 review 3771670600: a read cannot invalidate its own evidence.
+    # PR #1254 review 3771670600: reads cannot invalidate their own evidence.
     import tree_sitter_analyzer.cli.commands.constraint_check_execution as owner
 
     config = tmp_path / "rules.yml"
     payload = b"version: 1\n"
     config.write_bytes(payload)
     stable = config.stat()
-    fields = {
-        name: getattr(stable, name)
-        for name in (
-            "st_dev",
-            "st_ino",
-            "st_mode",
-            "st_size",
-            "st_mtime_ns",
-            "st_ctime_ns",
-        )
-    }
-    fields["st_atime_ns"] = stable.st_atime_ns + 1
-    accessed = SimpleNamespace(**fields)
+    accessed = SimpleNamespace(
+        st_dev=stable.st_dev,
+        st_ino=stable.st_ino,
+        st_mode=stable.st_mode,
+        st_size=stable.st_size,
+        st_mtime_ns=stable.st_mtime_ns,
+        st_ctime_ns=stable.st_ctime_ns,
+        st_atime_ns=stable.st_atime_ns + 1,
+        st_file_attributes=getattr(stable, "st_file_attributes", 0),
+    )
+    real_path_stat = Path.stat
     path_stats = iter((stable, accessed))
-    monkeypatch.setattr(Path, "stat", lambda _self, **_kwargs: next(path_stats))
-    monkeypatch.setattr(owner.os, "fstat", lambda _fd: accessed)
+
+    def config_stat(path, **kwargs):
+        if path == config:
+            return next(path_stats)
+        return real_path_stat(path, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", config_stat)
+    monkeypatch.setattr(owner, "os", SimpleNamespace(fstat=lambda _fd: accessed))
 
     result = owner.explicit_config_evidence(config, float("inf"))
 
@@ -468,13 +472,21 @@ def test_explicit_identity_changes(tmp_path, monkeypatch, phase):
         st_size=stable.st_size,
         st_mtime_ns=stable.st_mtime_ns + 1,
         st_ctime_ns=stable.st_ctime_ns,
+        st_file_attributes=getattr(stable, "st_file_attributes", 0),
     )
     fstats = iter((changed,)) if phase == "open" else iter((stable, changed))
-    monkeypatch.setattr(owner.os, "fstat", lambda _fd: next(fstats))
+    monkeypatch.setattr(owner, "os", SimpleNamespace(fstat=lambda _fd: next(fstats)))
     if phase == "final_path":
+        real_path_stat = Path.stat
         path_stats = iter((stable, changed))
-        monkeypatch.setattr(owner.os, "fstat", lambda _fd: stable)
-        monkeypatch.setattr(Path, "stat", lambda _self, **_kwargs: next(path_stats))
+
+        def config_stat(path, **kwargs):
+            if path == config:
+                return next(path_stats)
+            return real_path_stat(path, **kwargs)
+
+        monkeypatch.setattr(owner, "os", SimpleNamespace(fstat=lambda _fd: stable))
+        monkeypatch.setattr(Path, "stat", config_stat)
     with pytest.raises(OSError, match="^constraint file changed during read$"):
         owner.explicit_config_evidence(config, float("inf"))
 

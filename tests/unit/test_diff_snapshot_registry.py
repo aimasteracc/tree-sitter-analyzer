@@ -43,6 +43,22 @@ def test_capacity_is_stable_error_and_close_releases_charge(
     assert registry.stats() == (0, 0)
 
 
+def test_create_releases_reservation_after_keyboard_interrupt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3772454774: interruptions cannot poison registry capacity.
+    registry = snapshots.DiffSnapshotRegistry()
+    monkeypatch.setattr(
+        snapshots,
+        "canonical_root",
+        lambda _value: (_ for _ in ()).throw(KeyboardInterrupt("interrupted")),
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="^interrupted$"):
+        registry.create(str(tmp_path), "diff", [])
+    assert registry._reservations == {}
+
+
 def test_expiry_retains_active_consumer_bytes_until_release(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

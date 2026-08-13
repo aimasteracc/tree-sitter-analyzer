@@ -467,15 +467,23 @@ def test_explicit_config_recheck_treats_read_failure_as_changed(
 def test_explicit_nonempty_rules_publish_when_config_remains_exact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # PR #1254 review 3772454771: explicit config and evaluation share one budget.
     config = tmp_path / "candidate.yml"
     config.write_text(
         "version: 1\nconstraints:\n"
         "  - {id: r, severity: warn, rule: forbid, from: 'a/**', "
         "to: 'b/**', reason: boundary}\n"
     )
+    observed = []
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.cli.commands.constraint_check_command._explicit_config_evidence",
+        lambda path, deadline: (
+            observed.append(deadline) or _explicit_config_evidence(path, deadline)
+        ),
+    )
     monkeypatch.setattr(
         "tree_sitter_analyzer.mcp.tools.constraint_check_tool.ConstraintCheckTool._run_read_only",
-        lambda *_args, **_kwargs: ([], 0),
+        lambda *_args, deadline, **_kwargs: (observed.append(deadline) or [], 0),
     )
     result = _evaluate_with_explicit_file(
         project_root=str(tmp_path),
@@ -485,8 +493,6 @@ def test_explicit_nonempty_rules_publish_when_config_remains_exact(
         output_format="json",
         persist=False,
     )
-    assert (result["success"], result["verdict"], result["rule_count"]) == (
-        True,
-        "SAFE",
-        1,
-    )
+    actual = result["success"], result["verdict"], result["rule_count"]
+    assert actual == (True, "SAFE", 1)
+    assert observed == [observed[0]] * 3

@@ -219,7 +219,7 @@ def _evaluate_with_explicit_file(
                 path_filter=path_filter,
                 min_severity_rank=min_severity_rank,
                 evaluator=evaluate,
-                deadline=time.monotonic() + 10.0,
+                deadline=config_deadline,
             )
     except (
         sqlite3.DatabaseError,

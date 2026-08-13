@@ -33,6 +33,7 @@ import asyncio
 import sqlite3
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -326,3 +327,35 @@ def test_persistent_unexpected_runtime_error_is_not_misclassified(
     )
     with pytest.raises(RuntimeError, match="^unexpected$"):
         _run(tool.execute({}))
+
+
+def test_read_only_reuses_one_absolute_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3772454771: config, graph, and publish share one budget.
+    import tree_sitter_analyzer.mcp.tools.constraint_check_tool as owner
+
+    observed: list[float] = []
+    snapshot = ("architectural-constraints.yml", b"rules", ())
+    monkeypatch.setattr(owner, "time", SimpleNamespace(monotonic=lambda: 1.0))
+    monkeypatch.setattr(
+        owner,
+        "load_live_constraints",
+        lambda _root, deadline: (observed.append(deadline) or snapshot, [object()]),
+    )
+    monkeypatch.setattr(
+        owner,
+        "_live_config_snapshot",
+        lambda _root, deadline: observed.append(deadline) or snapshot,
+    )
+    tool = _make_tool(tmp_path)
+    monkeypatch.setattr(
+        tool,
+        "_run_read_only",
+        lambda *_args, deadline, **_kwargs: (observed.append(deadline) or [], 0),
+    )
+
+    result = _run(tool.execute({"persist": False, "output_format": "json"}))
+
+    assert (result["success"], result["verdict"]) == (True, "SAFE")
+    assert observed == [11.0, 11.0, 11.0]

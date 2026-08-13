@@ -5,6 +5,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tree_sitter_analyzer.diff_snapshot_capture import ChangedFile, FrozenFile
 from tree_sitter_analyzer.mcp.tools.change_impact_frozen import (
     build_frozen_scope_result,
@@ -176,3 +178,16 @@ def test_frozen_rename_out_of_cache_reports_visible_new_side() -> None:
     assert records == frozen["changed_records"]
     assert changed == ["source.py"]
     assert result["changed_files"] == ["source.py"]
+
+
+@pytest.mark.parametrize("scope_mode", ["report", "strict"])
+def test_frozen_rename_assesses_both_visible_identities(scope_mode: str) -> None:
+    # PR #1254 review 3772454791: renamed-away config must expand graph scope.
+    frozen, consumer = _frozen_rename("architectural-constraints.yml", "renamed.yml")
+
+    _result, _records, changed, assessed = build_frozen_scope_result(
+        frozen, consumer, "staged", [], scope_mode
+    )
+
+    assert changed == ["renamed.yml"]
+    assert assessed == ["architectural-constraints.yml", "renamed.yml"]
