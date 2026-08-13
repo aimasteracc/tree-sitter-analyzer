@@ -207,14 +207,7 @@ _MAX_COMPOSED_TOOL_NAME = 38
 
 
 def test_facade_discovery_exposes_exactly_eight_facades() -> None:
-    """Discovery contract: the eager MCP surface is exactly the 8 facades.
-
-    Guards the whole point of the cutover — if a regression re-registers the
-    63 discrete tools (or drops a facade), the eager tool-definition token cost
-    explodes again and Cursor/Roo break. Also enforces the ≤38-char composed
-    name budget so ``tree-sitter-analyzer__<facade>`` never trips the Cursor
-    60-char limit.
-    """
+    """Keep the eight-facade discovery and composed-name budget exact."""
     from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
     from tree_sitter_analyzer.mcp.facade_map import FACADE_NAMES
 
@@ -484,14 +477,23 @@ def test_rfc0022_process_local_cli_parity_exception_is_exact() -> None:
     }
     _tools, lookup = _create_tool_registry(str(PROJECT_ROOT))
     actual: dict[tuple[str, str], set[str]] = {}
-    for facade in ("edit", "index"):
-        for param, actions in lookup[facade]._action_scoped_params.items():
+    for facade, tool in lookup.items():
+        for param, actions in tool._action_scoped_params.items():
             for action in actions:
                 actual.setdefault((facade, action), set()).add(param)
     assert actual == expected
-    edit = lookup["edit"]
-    declared = {("edit", action) for action in (*edit.action_map, *edit.bespoke_map)}
+    declared = {
+        (facade, action)
+        for facade, tool in lookup.items()
+        for action in (*tool.action_map, *tool.bespoke_map)
+    }
     cli_routes = set(LEGACY_TOOL_MAP.values()) | {
         (facade, action) for facade, action, _flag in NEW_ACTION_PARITY.values()
     }
-    assert declared - cli_routes == {("edit", "release_snapshot")}
+    facade_level_only = {
+        ("search", "select"),
+        ("search", "subscribe"),
+        ("search", "unsubscribe"),
+        ("structure", "signatures"),
+    }
+    assert declared - cli_routes == facade_level_only | {("edit", "release_snapshot")}

@@ -26,7 +26,8 @@ If it passes, MCP remains TOON-by-default and CLI JSON-by-default.
 ```text
 internal Python / experiment request
   -> validate boundary and routing budget
-  -> call existing facade action adapters, sequentially
+  -> call existing routed facade action adapters, sequentially
+  -> perform unconditional capability cleanup and record its fixed result
   -> freeze one TaskOutcome value
   -> serialize that value (JSON or TOON)
 ```
@@ -76,8 +77,13 @@ The P0.1 registry is process-local and bounded to 16 live snapshots and 512 MiB
 of charged snapshot bytes. An entry expires 35 seconds after its latest successful
 publish or identity-matched reuse. A snapshot is pinned while a consumer is
 active; capacity or size exhaustion fails closed rather than spilling to disk.
-Expiry prevents new pins, and the final consumer release closes the expired
-connection and releases its slot and byte charge.
+The registry owner schedules a monotonic expiry callback at every publish/reuse;
+the callback carries the entry generation so a superseded timer is a no-op. Under
+the registry lock it marks the matching entry expired, prevents new pins, and
+immediately closes the connection and releases the slot/byte charge when the
+active-consumer count is zero. If consumers remain, their final release performs
+that close. Registry shutdown also cancels callbacks and closes every entry, so an
+idle process cannot retain expired capacity.
 
 ### P0.2 Frozen workspace/staged diff snapshot
 
@@ -116,8 +122,9 @@ primitive atomically acquires its own active-consumer pin before reading. Hard
 expiry marks the entry expired and forbids new pins, but cannot erase its bytes
 or release its slot/byte charge while a consumer is active. The final consumer
 release erases an expired entry; otherwise the orchestration host closes the
-primitive-issued route lease in a `finally` block after outcome freeze/failure,
-and erasure occurs once both lease and consumer counts reach zero. Thus an
+primitive-issued route lease in an outer `finally` after routed computation or
+failure but before outcome freeze/return, and erasure occurs once both lease and
+consumer counts reach zero. Thus an
 overrunning call keeps valid bytes without ever allowing actual retained memory
 or live-slot accounting to exceed the 16-entry/64 MiB budgets. The long-lived
 MCP process exposes `edit(action="release_snapshot", diff_snapshot_id=id,
@@ -422,13 +429,19 @@ budget and then contributes partial. `routing_deadline_ms` is a routing deadline
 sequentially and checks the deadline before starting each call. A non-cancellable
 running primitive may finish after it; `consumed.routing_wall_ms` may therefore
 exceed the limit, with `deadline_overrun_ms` reported exactly. No new routed call
-starts after the deadline. Primitive-owned consumer-pin release and a host's
-validated `edit.release_snapshot` in `finally` are unconditional cleanup, not
-routed calls: they bypass routing call/deadline admission, run even after overrun,
-and are reported separately as `consumed.cleanup_calls` and
-`consumed.cleanup_wall_ms`. They do not change `consumed.primitive_calls`; a
-cleanup failure is retained as cleanup evidence while the lease remains bounded
-by hard expiry. Safe cancellation needs a separate primitive contract.
+starts after the deadline. Primitive-owned consumer-pin release remains inside
+the owning primitive call. The host's validated `edit.release_snapshot` runs in
+an outer `finally` as unconditional cleanup, not a routed call: it bypasses route
+call/deadline admission and runs even after overrun. The host first captures
+routed success/failure in a mutable draft, then performs cleanup, records the
+fixed fields `consumed.cleanup_calls` (zero or one),
+`consumed.cleanup_wall_ms`, `consumed.cleanup_status`
+(`not_required|succeeded|failed`), and `consumed.cleanup_error_code` (null or
+`DIFF_SNAPSHOT_CLEANUP_FAILED`), and only then freezes/returns the
+outcome. Cleanup does not change `consumed.primitive_calls`. Failure appends only
+the stable cleanup code to `errors`, forces `success=false`, `status=unknown`, and
+`verdict=ERROR`, while hard expiry still bounds the lease. Safe cancellation
+needs a separate primitive contract.
 
 ## Complete V1 route decision table
 
@@ -543,7 +556,8 @@ appear in the model, JSON, TOON, logs, or experiment artifacts.
 Request/internal failures stay inside `task-outcome/v1`, use `success=false` and
 required verdict `ERROR`, and follow TSA envelope conventions with stable codes
 `INVALID_REQUEST`, `OUTSIDE_PROJECT`, `BUDGET_INVALID`,
-`UNSUPPORTED_DIFF_SOURCE`, and `INTERNAL_ERROR`. `ERROR` is forbidden when
+`UNSUPPORTED_DIFF_SOURCE`, `DIFF_SNAPSHOT_CLEANUP_FAILED`, and `INTERNAL_ERROR`.
+`ERROR` is forbidden when
 `success=true`. Absolute host paths, bodies, secrets, environment values, stderr,
 and traces are not serialized.
 
