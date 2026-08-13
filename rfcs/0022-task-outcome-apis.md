@@ -133,14 +133,14 @@ Phase 0 parameter parity here applies to the existing inner adapters and their
 registered MCP facade routes. Contract tests exercise the exact same-process
 adapter sequence through a non-public CLI-handler bridge without publishing it.
 Existing standalone CLI actions retain their legacy one-shot semantics and public
-access paths. This RFC narrowly amends parameter-level MCP/CLI parity for the
-opaque process-local capability ID, generation, and release-token controls: no
-Phase 0 CLI consumer-ID parameter parity is claimed because such flags would be
-unusable after the producer process exits. The implementation must update the
-parity contract and documentation to encode exactly this exception; it cannot
-weaken action-level CLI discoverability or parity for any other parameter. The
-test bridge is verification infrastructure, not a public CLI path. This exception
-does not authorize a one-shot composition command. Cross-process persistence and
+access paths. This RFC narrowly amends MCP/CLI parity for the process-local
+`edit.release_snapshot` action and its opaque capability ID, generation, and
+release-token controls: no Phase 0 CLI release operation or consumer-ID parameter
+parity is claimed because it would be unusable after the producer process exits.
+The implementation must update the parity contracts to encode exactly this action
+and parameter exception; it cannot weaken discoverability or parity for any other
+action or parameter. The test bridge is verification infrastructure, not a public
+CLI path. This exception does not authorize a one-shot composition command. Cross-process persistence and
 a one-shot task/orchestration facade are Phase A work behind the public-surface
 gate.
 
@@ -255,10 +255,13 @@ handle until it has validated and atomically published the complete pair; every
 path that does not publish both IDs revokes the reservation/lease internally.
 The host closes in `finally` only after receiving both validated tokens, so a
 malformed wire result cannot retain capacity. `edit.ast_diff`, `edit.classify`,
-and `edit.constraints` consume that same-process ID only. `nav.context` and
-`edit.safe` require and acquire the P0.1 `snapshot_id` and `source_generation`; no
-live-cache, live-file, migration, or parser/index fallback is allowed when the
-capability is absent or disagrees.
+and `edit.constraints` consume that same-process ID only. `nav.context`,
+`edit.safe`, and graph-backed `edit.constraints` require the certified P0.1
+`snapshot_id` and `source_generation`. Constraints acquire that exact pair only
+after captured config proves graph rules are applicable; `NO_CONFIG` does not
+open or cite an index capability. No live-cache, live-file, migration, or
+parser/index fallback is allowed when a required capability is absent or
+disagrees.
 
 Every classified action-level result adds the exact P0.4 access-evidence fields
 `access_mode`, `access_state`, `access_reason`, and `source_snapshots` without
@@ -266,11 +269,11 @@ retyping action-specific fields such as the constraints result's existing
 `state="applicable"`. `access_state` is one of `available`, `missing`, `unknown`,
 or `not_applicable`; `access_reason` is null only for `available` and otherwise is
 a stable primitive-owned reason. `source_snapshots` is a stable list of exact
-records `{kind, snapshot_id, source_generation}`; `kind` is `index` for P0.1 or `diff` for
-P0.2, and records sort by `(kind, snapshot_id, source_generation)`. After a
+records `{kind, snapshot_id, source_generation}`; `kind` is `index` for P0.1 or
+`diff` for P0.2, and records sort by `(kind, snapshot_id, source_generation)`. After a
 capability is acquired, every access state cites every primitive identity
-actually read, including `not_applicable`/`NO_CONFIG` and a later `unknown`; the list is
-empty only when no capability was acquired. Thus applicable graph-backed
+actually read, including `not_applicable`/`NO_CONFIG` and a later `unknown`; the
+list is empty only when no capability was acquired. Thus applicable graph-backed
 constraints cite both their P0.2 diff and P0.1 index snapshots, while `NO_CONFIG`
 cites the acquired diff that owns the config probe. An old or incompatible schema
 is exactly `access_state="unknown", access_reason="INCOMPATIBLE_SCHEMA"`. Each
@@ -440,7 +443,8 @@ not sent; primitive output format is JSON internally.
 4. Never substitute a failed/unsupported action. Record `unknown`/`not_run`.
 5. Compare only primitive-issued tokens. Task routes pass the certified index
    `snapshot_id` and `source_generation` into every `nav.context`/`edit.safe`
-   call and compare both echoed tokens. Immediately after impact, compare its
+   call and every graph-applicable constraints call, then compare the matching
+   echoed tokens/source record. Immediately after impact, compare its
    `source_generation` with the index oracle before constraints or fan-out.
 6. Stop on an absent task-route token, generation/snapshot disagreement, expiry,
    or source change; retain earlier evidence as partial and make no further
@@ -453,7 +457,7 @@ not sent; primitive output format is JSON internally.
 | `plan_change(task)` | valid task and certified index tokens | same `nav.context` call | missing/mismatched echoed token or failure => unknown and stop |
 | `plan_change(task)` | each distinct existing path explicitly returned in generation-matched `code_blocks`, max 2/5 | `edit.safe(file_path=path, edit_type="refactor", snapshot_id=index.snapshot_id, source_generation=index.source_generation, access_mode="read_existing", output_format="json")` | missing path is not inferred; token mismatch stops route; other per-call failure is partial |
 | diff operation | valid diff | `edit.impact(mode="diff"|"staged", scope_paths=diff.scope_paths, include_tests=true, resource_profile="local_low_impact", access_mode="read_existing", output_format="json")` | `access_mode` mandates zero-write P0.2 capture and `capture_diff_snapshot` is forbidden; missing lease/ID/generation/records/assessed scope or generation mismatch => unknown and stop; an unpublished/malformed pair is owner-revoked, otherwise the orchestration host closes the validated pair in `finally` on every exit |
-| diff operation | successful, generation-matched impact; reserved before fan-out | `edit.constraints(diff_snapshot_id=id, scope_paths=impact.assessed_scope_paths, persist=false, access_mode="read_existing", output_format="json")` | only in-scope violations count; `access_state=not_applicable, access_reason=NO_CONFIG` satisfies row |
+| diff operation | successful, generation-matched impact; reserved before fan-out | `edit.constraints(diff_snapshot_id=id, snapshot_id=index.snapshot_id, source_generation=index.source_generation, scope_paths=impact.assessed_scope_paths, persist=false, access_mode="read_existing", output_format="json")` | `NO_CONFIG` returns diff-only provenance; applicable graph rules must echo matching diff+index records; missing/mismatched index record or token stops remaining fan-out; only in-scope violations count |
 | diff operation | each non-binary changed record with old/new material available | `edit.ast_diff(diff_snapshot_id=id, file_path=path, access_mode="read_existing", output_format="json")` | unsupported add/delete/rename is explicit `not_run`, never locally reconstructed |
 | diff operation | same eligible records | `edit.classify(diff_snapshot_id=id, file_path=path, access_mode="read_existing", output_format="json")` | per-file failure => partial |
 
