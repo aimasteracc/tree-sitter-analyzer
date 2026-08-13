@@ -127,7 +127,12 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
         # so facade/inner never drift. Never added to required[] (runtime-
         # resolved param convention, locked #397 family).
         action_scoped_params={
+            "capture_diff_snapshot": frozenset({"impact"}),
+            "diff_snapshot_id": frozenset(
+                {"constraints", "classify", "ast_diff", "release_snapshot"}
+            ),
             "persist": frozenset({"constraints"}),
+            "route_lease_id": frozenset({"release_snapshot"}),
             "scope_paths": frozenset({"impact", "constraints"}),
         },
         extra_public_params={

@@ -74,6 +74,9 @@ def acquire(
     except SourceOracleError as exc:
         consumer.release()
         return None, str(exc)
+    except BaseException:
+        consumer.release()
+        raise
     with registry._lock:
         registry._sweep()
         current = registry._states.get(snapshot_id)
@@ -189,6 +192,8 @@ def validate_publish(
                 state.lease_open = False
             return "DIFF_SNAPSHOT_EXPIRED"
         assert snapshot is not None
+        if threading.get_ident() != consumer._owner:
+            return "DIFF_SNAPSHOT_WRONG_THREAD"
         snapshot_deadline = (
             snapshot.created_monotonic + hard_lifetime_seconds
             if deadline is None
@@ -235,8 +240,6 @@ def validate_publish(
             or state.pins.get(consumer._pin) != consumer._owner
         ):
             return "DIFF_SNAPSHOT_EXPIRED"
-        if threading.get_ident() != consumer._owner:
-            return "DIFF_SNAPSHOT_WRONG_THREAD"
         if (
             state.expired
             or not state.lease_open

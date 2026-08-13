@@ -424,47 +424,34 @@ constraints:
     }
 
 
-def test_explicit_persist_capacity_failure_is_structured(
-    tmp_path: Path,
-) -> None:
-    # PR #1254 review 3768096795: explicit-file persistence must fail closed.
-    config = tmp_path / "candidate.yml"
-    config.write_text(
-        """version: 1
-constraints:
-  - id: no-cli-to-mcp
-    severity: error
-    rule: forbid
-    from: cli/**
-    to: mcp/**
-    reason: boundary
-"""
-    )
-    db_path = tmp_path / ".ast-cache" / "index.db"
-    db_path.parent.mkdir()
-    db_path.touch()
+def test_explicit_config_evidence_ignores_read_induced_atime(tmp_path, monkeypatch):
+    # PR #1254 review 3771670600: a read cannot invalidate its own evidence.
+    import tree_sitter_analyzer.cli.commands.constraint_check_execution as owner
 
-    with patch(
-        "tree_sitter_analyzer.cli.commands.constraint_check_command._run_and_persist",
-        side_effect=RuntimeError("CONSTRAINT_EVALUATION_CAPACITY"),
-    ):
-        result = _evaluate_with_explicit_file(
-            project_root=str(tmp_path),
-            constraint_file=str(config),
-            severity_min="warn",
-            path_filter="",
-            output_format="json",
-            persist=True,
+    config = tmp_path / "rules.yml"
+    payload = b"version: 1\n"
+    config.write_bytes(payload)
+    stable = config.stat()
+    fields = {
+        name: getattr(stable, name)
+        for name in (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
         )
-
-    assert result == {
-        "success": False,
-        "verdict": "ERROR",
-        "error_code": "CONSTRAINT_EVALUATION_CAPACITY",
-        "error": "CONSTRAINT_EVALUATION_CAPACITY",
-        "violations": [],
-        "rule_count": 1,
     }
+    fields["st_atime_ns"] = stable.st_atime_ns + 1
+    accessed = SimpleNamespace(**fields)
+    path_stats = iter((stable, accessed))
+    monkeypatch.setattr(Path, "stat", lambda _self, **_kwargs: next(path_stats))
+    monkeypatch.setattr(owner.os, "fstat", lambda _fd: accessed)
+
+    result = owner.explicit_config_evidence(config, float("inf"))
+
+    assert result == (payload, owner._identity(accessed))
 
 
 @pytest.mark.parametrize("phase", ["open", "final_fd", "final_path"])
@@ -474,7 +461,14 @@ def test_explicit_identity_changes(tmp_path, monkeypatch, phase):
     config = tmp_path / "rules.yml"
     config.write_bytes(b"version: 1\n")
     stable = config.stat()
-    changed = object()
+    changed = SimpleNamespace(
+        st_dev=stable.st_dev,
+        st_ino=stable.st_ino,
+        st_mode=stable.st_mode,
+        st_size=stable.st_size,
+        st_mtime_ns=stable.st_mtime_ns + 1,
+        st_ctime_ns=stable.st_ctime_ns,
+    )
     fstats = iter((changed,)) if phase == "open" else iter((stable, changed))
     monkeypatch.setattr(owner.os, "fstat", lambda _fd: next(fstats))
     if phase == "final_path":

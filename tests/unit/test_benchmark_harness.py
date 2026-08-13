@@ -14039,7 +14039,9 @@ def test_producer_gate_releases_only_exact_signal(tmp_path: Path, monkeypatch):
     received = []
     reader = threading.Thread(target=lambda: received.append(gate.read_bytes()))
     reader.start()
-    monkeypatch.setattr(runner, "_run", lambda *_args: b'[{"State":{"Running":true}}]')
+    monkeypatch.setattr(
+        runner, "_run", lambda *_args, **_kwargs: b'[{"State":{"Running":true}}]'
+    )
     runner._release_producer_gate(gate, "container", __import__("time").monotonic() + 2)
     reader.join(timeout=2)
 
@@ -14085,7 +14087,9 @@ def test_producer_gate_readiness_timeout_is_terminal(tmp_path: Path, monkeypatch
             OSError(errno.ENXIO, "no reader")
         ),
     )
-    monkeypatch.setattr(runner, "_run", lambda *_args: b'[{"State":{"Running":true}}]')
+    monkeypatch.setattr(
+        runner, "_run", lambda *_args, **_kwargs: b'[{"State":{"Running":true}}]'
+    )
     calls = iter((0.0,))
     monkeypatch.setattr(runner.time, "monotonic", lambda: next(calls, 11.0))
     with pytest.raises(TimeoutError, match="gate readiness expired"):
@@ -14136,8 +14140,10 @@ def test_service_launch_release_is_blocked_until_private_release_exists(tmp_path
     waiter.start()
     time.sleep(0.05)
     assert observed == []
-    release.write_bytes(b"RELEASE\n")
-    release.chmod(0o400)
+    staged_release = tmp_path / "RELEASE.pending"
+    staged_release.write_bytes(b"RELEASE\n")
+    staged_release.chmod(0o400)
+    os.replace(staged_release, release)
     waiter.join(timeout=2)
     assert observed == [b"{}"]
 

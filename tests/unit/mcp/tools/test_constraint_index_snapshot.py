@@ -276,7 +276,8 @@ def test_certify_private_copy_accepts_exact_full_manifest(
         result.reason,
         result.source_generation,
         result.source_fingerprint,
-    ) == ("complete", None, "generation", "source")
+        result.canonical_root,
+    ) == ("complete", None, "generation", "source", "/project")
     assert result.source_scope is not None
 
 
@@ -330,6 +331,7 @@ def test_evaluate_ordinary_snapshot_uses_portable_authority(
         source_scope=scope,
         source_generation=None,
         source_fingerprint="fingerprint",
+        canonical_root="/project",
     )
 
     @contextmanager
@@ -394,6 +396,7 @@ def test_evaluate_ordinary_snapshot_uses_registry_lease(
         reason=None,
         source_scope=scope,
         source_generation="gen",
+        canonical_root="/project",
     )
     events: list[tuple[object, ...]] = []
 

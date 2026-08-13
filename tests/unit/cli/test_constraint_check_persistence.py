@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tree_sitter_analyzer.cli.commands.constraint_check_command import (
+    _evaluate_with_explicit_file,
     _load_explicit,
     _run_and_persist,
     _run_tool,
@@ -406,3 +407,46 @@ def test_read_only_propagates_unexpected_evaluator_errors(tmp_path: Path) -> Non
             evaluator=_unexpected_evaluator,
             violations_ddl=_violations_ddl,
         )
+
+
+def test_explicit_persist_capacity_failure_is_structured(
+    tmp_path: Path,
+) -> None:
+    # PR #1254 review 3768096795: explicit-file persistence must fail closed.
+    config = tmp_path / "candidate.yml"
+    config.write_text(
+        """version: 1
+constraints:
+  - id: no-cli-to-mcp
+    severity: error
+    rule: forbid
+    from: cli/**
+    to: mcp/**
+    reason: boundary
+"""
+    )
+    db_path = tmp_path / ".ast-cache" / "index.db"
+    db_path.parent.mkdir()
+    db_path.touch()
+
+    with patch(
+        "tree_sitter_analyzer.cli.commands.constraint_check_command._run_and_persist",
+        side_effect=RuntimeError("CONSTRAINT_EVALUATION_CAPACITY"),
+    ):
+        result = _evaluate_with_explicit_file(
+            project_root=str(tmp_path),
+            constraint_file=str(config),
+            severity_min="warn",
+            path_filter="",
+            output_format="json",
+            persist=True,
+        )
+
+    assert result == {
+        "success": False,
+        "verdict": "ERROR",
+        "error_code": "CONSTRAINT_EVALUATION_CAPACITY",
+        "error": "CONSTRAINT_EVALUATION_CAPACITY",
+        "violations": [],
+        "rule_count": 1,
+    }

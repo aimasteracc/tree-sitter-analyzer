@@ -17,8 +17,8 @@ from typing import cast
 from .diff_snapshot_capture import _capture_payload
 from .diff_snapshot_constraints import (
     frozen_index_constraint_config,
-    frozen_index_sources_match_worktree,
     live_constraint_config,
+    staged_sources_match_worktree,
     staged_constraint_config,
 )
 from .diff_snapshot_expiry import SnapshotExpiryScheduler, schedule_expiry
@@ -258,7 +258,7 @@ class DiffSnapshotRegistry:
                     ceiling,
                     frozen_index_constraint_config,
                 )
-                staged_source_matches_worktree = frozen_index_sources_match_worktree(
+                staged_source_matches_worktree = staged_sources_match_worktree(
                     root,
                     staged_epoch,
                     deadline,

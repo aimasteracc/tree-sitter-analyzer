@@ -451,6 +451,7 @@ def test_ordinary_read_only_revalidates_sources_after_evaluation(
             source_generation="idxsrc-v3:before",
             source_fingerprint="sha256:before",
             source_scope=scope,
+            canonical_root=str(tmp_path.resolve()),
             reason=None,
         )
 

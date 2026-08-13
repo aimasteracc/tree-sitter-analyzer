@@ -338,3 +338,33 @@ async def test_edit_persist_is_rejected_outside_constraints_action() -> None:
         "ERROR",
         "parameter 'persist' applies only to action(s): constraints",
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("parameter", "value", "allowed"),
+    [
+        ("capture_diff_snapshot", True, "impact"),
+        (
+            "diff_snapshot_id",
+            "ds_contract",
+            "ast_diff, classify, constraints, release_snapshot",
+        ),
+        ("route_lease_id", "lease_contract", "release_snapshot"),
+    ],
+)
+async def test_edit_snapshot_controls_are_rejected_outside_supported_actions(
+    parameter, value, allowed
+) -> None:
+    # PR #1254 review 3771670610: explicit snapshot intent cannot be discarded.
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    result = await build_edit_facade(None).execute(
+        {"action": "safe", "file_path": "src/a.py", parameter: value}
+    )
+
+    assert (result["success"], result["verdict"], result["error"]) == (
+        False,
+        "ERROR",
+        f"parameter {parameter!r} applies only to action(s): {allowed}",
+    )

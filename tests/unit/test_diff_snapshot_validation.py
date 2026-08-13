@@ -417,3 +417,61 @@ def test_validate_publish_bounds_oracle_by_remaining_lifetime(
     assert result is None
     assert deadlines == [35.0, 35.0]
     consumer.release()
+
+
+def test_staged_submodule_probe_failure_remains_constraint_scoped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3771670605: ast_diff/classify snapshots stay available.
+    import tree_sitter_analyzer.diff_snapshot_constraints as constraints
+    from tree_sitter_analyzer.source_epoch import GitEpoch
+
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    epoch = GitEpoch(b"head", "sha1", (), (), (), ())
+    identity = snapshots.RootIdentity(str(tmp_path.resolve()), 1, 2)
+
+    def oracle(root, mode="diff", *, deadline=None, manifest=None, epoch_out=None):
+        if epoch_out is not None:
+            epoch_out.append(epoch)
+        return "sg_test", identity
+
+    def rejected(*_args, **_kwargs):
+        raise snapshots.SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+
+    monkeypatch.setattr(snapshots, "oracle_generation", oracle)
+    monkeypatch.setattr(constraints, "frozen_index_output", rejected)
+    monkeypatch.setattr(
+        snapshots,
+        "staged_sources_match_worktree",
+        constraints.staged_sources_match_worktree,
+    )
+    registry = snapshots.DiffSnapshotRegistry()
+
+    created = registry.create(str(tmp_path), "staged", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(tmp_path))
+
+    assert (created["success"], error, consumer is not None) == (True, None, True)
+    assert consumer is not None
+    assert consumer.snapshot.staged_source_matches_worktree is False
+    consumer.release()
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [RuntimeError("oracle failed"), KeyboardInterrupt("oracle cancelled")],
+)
+def test_acquire_releases_pin_after_unexpected_oracle_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: BaseException
+) -> None:
+    # PR #1254 final zero-gate: recoverable failures cannot exhaust snapshot slots.
+    root, registry, created = _created(tmp_path, monkeypatch)
+
+    def fail(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(snapshots, "oracle_generation", fail)
+
+    with pytest.raises(type(failure), match=f"^{failure}$"):
+        registry.acquire(str(created["diff_snapshot_id"]), str(root))
+
+    assert next(iter(registry._states.values())).pins == {}

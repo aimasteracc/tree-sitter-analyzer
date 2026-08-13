@@ -240,3 +240,16 @@ def test_ignored_submodule_inventory_rejects_orphan_record(
     for _case in range(2):
         with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
             constraints._ignored_submodule_sources(str(tmp_path), epoch, 1e20, 20)
+
+
+def test_staged_source_uncertainty_is_consumer_scoped() -> None:
+    # PR #1254 review 3771670605: generic snapshots survive constraint-only scans.
+    def rejected(*_args):
+        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+
+    assert (
+        constraints.staged_sources_match_worktree(
+            "/project", _epoch(), 10.0, 20, rejected
+        )
+        is False
+    )

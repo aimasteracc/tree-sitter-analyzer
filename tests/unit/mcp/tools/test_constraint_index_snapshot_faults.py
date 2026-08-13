@@ -354,6 +354,7 @@ def test_evaluate_ordinary_snapshot_revalidates_source_after_evaluation(
         source_scope=scope,
         source_generation=None,
         source_fingerprint=expected_fp,
+        canonical_root="/project",
     )
 
     @contextmanager
@@ -393,5 +394,100 @@ def test_evaluate_ordinary_snapshot_revalidates_source_after_evaluation(
         else:
             with pytest.raises(ValueError, match=f"^{error}$"):
                 call()
+    finally:
+        conn.close()
+
+
+def test_evaluate_ordinary_snapshot_revalidates_through_canonical_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # PR #1254 review 3771670613: a symlink spelling cannot poison final evidence.
+    conn = sqlite3.connect(":memory:")
+    scope = object()
+    authority = SimpleNamespace(
+        completeness="complete",
+        reason=None,
+        source_scope=scope,
+        source_generation="generation",
+        source_fingerprint="fingerprint",
+        canonical_root="/real/project",
+    )
+
+    @contextmanager
+    def portable(*_args, **_kwargs):
+        yield authority, conn
+
+    calls: list[tuple[object, ...]] = []
+
+    def capture(root, selected_scope, deadline):
+        calls.append((root, selected_scope, deadline))
+        return SimpleNamespace(
+            state="exact",
+            reason=None,
+            generation="generation",
+            fingerprint="fingerprint",
+        )
+
+    monkeypatch.setattr(owner, "portable_snapshot_required", lambda: True)
+    monkeypatch.setattr(owner, "portable_ordinary_snapshot", portable)
+    monkeypatch.setattr(owner, "ordinary_source_scope_is_full", lambda value: True)
+    monkeypatch.setattr(owner, "_capture_constraint_sources", capture)
+    tool = SimpleNamespace(
+        project_root="/link/project", _evaluate_connection=lambda *_a, **_k: ([], 0)
+    )
+
+    try:
+        result = owner.evaluate_ordinary_snapshot(
+            tool,
+            [],
+            path_filter="",
+            min_severity_rank=0,
+            scope_paths=None,
+            evaluator=None,
+            deadline=7.0,
+        )
+    finally:
+        conn.close()
+
+    assert result == ([], 0)
+    assert calls == [("/real/project", scope, 7.0)]
+
+
+def test_evaluate_ordinary_snapshot_requires_canonical_source_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Complete source evidence must stay bound to the certified root identity.
+    conn = sqlite3.connect(":memory:")
+    scope = object()
+    authority = SimpleNamespace(
+        completeness="complete",
+        reason=None,
+        source_scope=scope,
+        source_generation="generation",
+        canonical_root=None,
+    )
+
+    @contextmanager
+    def portable(*_args, **_kwargs):
+        yield authority, conn
+
+    monkeypatch.setattr(owner, "portable_snapshot_required", lambda: True)
+    monkeypatch.setattr(owner, "portable_ordinary_snapshot", portable)
+    monkeypatch.setattr(owner, "ordinary_source_scope_is_full", lambda _value: True)
+    tool = SimpleNamespace(
+        project_root="/project", _evaluate_connection=lambda *_a, **_k: ([], 0)
+    )
+
+    try:
+        with pytest.raises(ValueError, match="^CONSTRAINT_INDEX_UNKNOWN$"):
+            owner.evaluate_ordinary_snapshot(
+                tool,
+                [],
+                path_filter="",
+                min_severity_rank=0,
+                scope_paths=None,
+                evaluator=None,
+                deadline=7.0,
+            )
     finally:
         conn.close()

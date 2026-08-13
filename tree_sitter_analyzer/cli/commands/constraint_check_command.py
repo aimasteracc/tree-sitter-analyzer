@@ -29,6 +29,7 @@ from ...constraints.parser import (
 )
 from ...mcp.tools.constraint_check_tool import ConstraintCheckTool
 from .constraint_check_execution import (
+    ExplicitConfigEvidence,
     explicit_config_evidence,
 )
 from .constraint_check_persistence import run_and_persist
@@ -119,12 +120,12 @@ def _run_tool(
 
 def _explicit_config_evidence(
     config_path: Path, deadline: float
-) -> tuple[bytes, os.stat_result]:
+) -> ExplicitConfigEvidence:
     return explicit_config_evidence(config_path, deadline)
 
 
 def _explicit_config_changed(
-    config_path: Path, before: tuple[bytes, os.stat_result], deadline: float
+    config_path: Path, before: ExplicitConfigEvidence, deadline: float
 ) -> bool:
     try:
         return _explicit_config_evidence(config_path, deadline) != before
@@ -155,7 +156,7 @@ def _evaluate_with_explicit_file(
         )
 
     config_deadline = time.monotonic() + _EXPLICIT_CONFIG_READ_SECONDS
-    config_before: tuple[bytes, os.stat_result] | None = None
+    config_before: ExplicitConfigEvidence | None = None
     try:
         if not persist:
             config_before = _explicit_config_evidence(config_path, config_deadline)

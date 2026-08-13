@@ -214,3 +214,19 @@ def frozen_index_sources_match_worktree(
             # even though Git reports only the extensionless container path.
             return False
     return True
+
+
+def staged_sources_match_worktree(
+    root: str,
+    epoch: GitEpoch,
+    deadline: float,
+    limit: int,
+    reader: Callable[[str, GitEpoch, float, int], bool] = (
+        frozen_index_sources_match_worktree
+    ),
+) -> bool:
+    """Keep staged source uncertainty consumer-scoped for generic snapshots."""
+    try:
+        return reader(root, epoch, deadline, limit)
+    except SourceOracleError:
+        return False

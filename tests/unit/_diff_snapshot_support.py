@@ -89,7 +89,7 @@ def install_fake_snapshot_materializer(
         lambda *_a, **_k: (None, None, ()),
     )
     monkeypatch.setattr(
-        snapshots, "frozen_index_sources_match_worktree", lambda *_a, **_k: True
+        snapshots, "staged_sources_match_worktree", lambda *_a, **_k: True
     )
     monkeypatch.setattr(
         snapshots,

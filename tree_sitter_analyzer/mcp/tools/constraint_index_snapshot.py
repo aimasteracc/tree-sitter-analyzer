@@ -56,6 +56,7 @@ class OrdinaryConstraintSnapshot:
     source_scope: Any | None
     source_generation: str | None = None
     source_fingerprint: str | None = None
+    canonical_root: str | None = None
 
 
 def _stat_identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
@@ -229,11 +230,12 @@ def _certify_private_copy(
     ):
         raise ValueError("CONCURRENT_SOURCE")
     return OrdinaryConstraintSnapshot(
-        "complete",
-        None,
-        source_scope,
-        final_current.generation,
-        final_current.fingerprint,
+        completeness="complete",
+        reason=None,
+        source_scope=source_scope,
+        source_generation=final_current.generation,
+        source_fingerprint=final_current.fingerprint,
+        canonical_root=root,
     )
 
 
@@ -425,7 +427,10 @@ def evaluate_ordinary_snapshot(
             ),
         )
         if source_scope is not None:
-            current = _capture_constraint_sources(project_root, source_scope, deadline)
+            source_root = getattr(index, "canonical_root", None)
+            if not isinstance(source_root, str) or not source_root:
+                raise ValueError("CONSTRAINT_INDEX_UNKNOWN")
+            current = _capture_constraint_sources(source_root, source_scope, deadline)
             if current.state != "exact":
                 raise ValueError(current.reason or "SOURCE_SCOPE_UNKNOWN")
             expected_generation = getattr(index, "source_generation", None)
