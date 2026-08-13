@@ -226,7 +226,11 @@ def test_acquire_uses_remaining_lifetime_and_rechecks_expiry(tmp_path, monkeypat
     monkeypatch.setattr(snapshots.time, "monotonic", lambda: 100.0)
     monkeypatch.setattr(snapshots, "oracle_generation", oracle)
     consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(tmp_path))
-    assert (consumer, error, deadlines) == (None, "DIFF_SNAPSHOT_EXPIRED", [135.0])
+    assert (consumer, error, deadlines) == (
+        None,
+        "DIFF_SNAPSHOT_EXPIRED",
+        [35.0, 35.0],
+    )
 
 
 def test_strict_scope_binds_only_scoped_change_and_valid_scope(monkeypatch):

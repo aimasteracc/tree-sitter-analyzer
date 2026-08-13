@@ -11,9 +11,16 @@ import secrets
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
+from typing import cast
 
 from .diff_snapshot_capture import _capture_payload
+from .diff_snapshot_constraints import (
+    frozen_index_constraint_config,
+    live_constraint_config,
+    staged_sources_match_worktree,
+    staged_constraint_config,
+)
 from .diff_snapshot_expiry import SnapshotExpiryScheduler, schedule_expiry
 from .diff_snapshot_leases import (
     FrozenDiffSnapshot,
@@ -21,6 +28,12 @@ from .diff_snapshot_leases import (
     route_lease,
     snapshot_error,
 )
+from .diff_snapshot_validation import (
+    acquire as acquire_snapshot,
+    bind_assessed_scope as bind_snapshot_scope,
+    validate_publish as validate_snapshot_publish,
+)
+from .diff_snapshot_source import resolve_shared_source_generation
 from .diff_snapshot_paths import (
     epoch_inventory,
     normalize_bounded_paths,
@@ -35,6 +48,7 @@ from .source_oracle import (
     canonical_root,
     capture_inventory,
     oracle_generation,
+    safe_workspace_path,
 )
 from .source_oracle_git import GitEpoch
 
@@ -47,6 +61,15 @@ MAX_SCOPE_BYTES = 1024 * 1024
 _PROCESS_LEASE_KEY = secrets.token_bytes(32)
 _SNAPSHOT_ID_PATTERN = re.compile(r"ds_[A-Za-z0-9_-]{32}", re.ASCII)
 _ROUTE_LEASE_PATTERN = re.compile(r"dl_[A-Za-z0-9_-]{43}", re.ASCII)
+
+
+def shared_source_generation(project_root: str, deadline: float) -> str:
+    """Return the P0.1 source-oracle token, preserving registry patch seams."""
+    return resolve_shared_source_generation(
+        project_root,
+        deadline,
+        oracle_generation=oracle_generation,
+    )
 
 
 @dataclass
@@ -134,6 +157,7 @@ class DiffSnapshotRegistry:
             self._reservations[reservation] = ceiling
         try:
             root, identity = canonical_root(project_root)
+            shared_before = shared_source_generation(root, deadline)
             pre_manifest: dict[str, WorkspaceManifestEntry] = {}
             epochs: list[GitEpoch] = []
             oracle_call: Callable[..., tuple[str, RootIdentity]] = oracle_generation
@@ -201,14 +225,85 @@ class DiffSnapshotRegistry:
                 manifest=post_manifest,
                 **oracle_budget,
             )
+            shared_after = shared_source_generation(root, deadline)
             if (
-                before != after
+                shared_before != shared_after
+                or before != after
                 or identity != after_identity
                 or pre_manifest != post_manifest
             ):
                 raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
+            optional_started = time.monotonic()
+            optional_deadline = min(
+                deadline,
+                optional_started + max(0.0, deadline - optional_started) / 2,
+            )
+            (
+                live_config_path,
+                live_config_data,
+                live_config_metadata,
+                live_config_error,
+            ) = live_constraint_config(root, optional_deadline, safe_workspace_path)
+            staged_source_matches_worktree = True
+            staged_config_matches_worktree = True
+            constraint_config_error = live_config_error
+            if mode == "staged":
+                if epoch is None and "epoch_out" in oracle_params:
+                    raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+                staged_epoch = cast(GitEpoch, epoch)
+                (
+                    constraint_config_path,
+                    constraint_config_data,
+                    constraint_config_metadata,
+                    constraint_config_error,
+                ) = staged_constraint_config(
+                    root,
+                    staged_epoch,
+                    optional_deadline,
+                    ceiling,
+                    frozen_index_constraint_config,
+                )
+                staged_source_matches_worktree = staged_sources_match_worktree(
+                    root,
+                    staged_epoch,
+                    optional_deadline,
+                    min(16 * 1024 * 1024, ceiling),
+                )
+                staged_config_matches_worktree = (
+                    constraint_config_error is None
+                    and live_config_error is None
+                    and constraint_config_path == live_config_path
+                    and constraint_config_data == live_config_data
+                )
+                if staged_config_matches_worktree:
+                    # Preserve the worktree descriptor evidence used by the
+                    # final publish guard; stage-zero identity is held by epoch.
+                    constraint_config_metadata = live_config_metadata
+            else:
+                constraint_config_path = live_config_path
+                constraint_config_data = live_config_data
+                constraint_config_metadata = live_config_metadata
+            final_manifest: dict[str, WorkspaceManifestEntry] = {}
+            final_git, final_identity = oracle_call(
+                root,
+                mode,
+                deadline=deadline,
+                manifest=final_manifest,
+                **oracle_budget,
+            )
+            if (
+                final_git != before
+                or final_identity != identity
+                or final_manifest != pre_manifest
+            ):
+                raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
             paths = set(normalized_input)
             paths.update(item.record.path for item in files)
+            paths.update(
+                item.record.old_path
+                for item in files
+                if item.record.old_path is not None
+            )
             size = (
                 len(patch)
                 + sum(
@@ -218,24 +313,37 @@ class DiffSnapshotRegistry:
                 + path_collection_storage(paths)
                 + path_collection_storage(inventory_paths)
                 + record_storage(files)
+                + len(constraint_config_data or b"")
+                + sum(len(item) for item in constraint_config_metadata)
             )
             if size > ceiling:
                 raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
             sid = "ds_" + secrets.token_urlsafe(24)
             lease = route_lease(self._lease_key, sid)
             snapshot = FrozenDiffSnapshot(
-                sid,
-                before,
-                identity,
-                mode,
-                patch,
-                files,
-                inventory_paths,
-                tuple(sorted(paths, key=path_to_raw)),
-                started,
-                size,
-                tuple(sorted(path_to_raw(path) for path in inventory_paths)),
-                tuple(sorted(path_to_raw(path) for path in paths)),
+                snapshot_id=sid,
+                source_generation=shared_before,
+                git_generation=before,
+                root_identity=identity,
+                mode=mode,
+                normalized_patch=patch,
+                files=files,
+                inventory_paths=inventory_paths,
+                assessed_scope_paths=tuple(sorted(paths, key=path_to_raw)),
+                created_monotonic=started,
+                materialized_bytes=size,
+                constraint_config_path=constraint_config_path,
+                constraint_config_data=constraint_config_data,
+                constraint_config_metadata=constraint_config_metadata,
+                constraint_config_error=constraint_config_error,
+                staged_source_matches_worktree=staged_source_matches_worktree,
+                staged_config_matches_worktree=staged_config_matches_worktree,
+                _inventory_raw_paths=tuple(
+                    sorted(path_to_raw(path) for path in inventory_paths)
+                ),
+                _assessed_scope_raw_paths=tuple(
+                    sorted(path_to_raw(path) for path in paths)
+                ),
             )
             with self._lock:
                 self._reservations.pop(reservation, None)
@@ -259,193 +367,70 @@ class DiffSnapshotRegistry:
                 "success": True,
                 "diff_snapshot_id": sid,
                 "route_lease_id": lease,
-                "source_generation": before,
+                "source_generation": shared_before,
                 "changed_records": [x.record.to_dict() for x in files],
                 "assessed_scope_paths": [
                     path_to_wire(path) for path in snapshot.assessed_scope_paths
                 ],
             }
         except SourceOracleError as exc:
-            with self._lock:
-                self._reservations.pop(reservation, None)
             return snapshot_error(str(exc))
         except Exception:
+            return snapshot_error("DIFF_SNAPSHOT_CAPTURE_ERROR")
+        finally:
             with self._lock:
                 self._reservations.pop(reservation, None)
-            return snapshot_error("DIFF_SNAPSHOT_CAPTURE_ERROR")
+
     def acquire(
-        self, snapshot_id: str, project_root: str | None
+        self,
+        snapshot_id: str,
+        project_root: str | None,
+        *,
+        deadline: float | None = None,
     ) -> tuple[SnapshotConsumer | None, str | None]:
-        try:
-            _, identity = canonical_root(project_root)
-        except SourceOracleError as exc:
-            return None, str(exc)
-        with self._lock:
-            self._sweep()
-            state = self._states.get(snapshot_id)
-            if state is None or state.expired or not state.lease_open:
-                return None, "DIFF_SNAPSHOT_EXPIRED"
-            if state.snapshot.root_identity != identity:
-                return None, "DIFF_SNAPSHOT_ROOT_MISMATCH"
-            pin = secrets.token_urlsafe(16)
-            owner = threading.get_ident()
-            state.pins[pin] = owner
-            consumer = SnapshotConsumer(self, state.snapshot, pin)
-            remaining = (
-                state.snapshot.created_monotonic + HARD_LIFETIME_SECONDS - self._clock()
-            )
-            if remaining <= 0:
-                consumer.release()
-                return None, "DIFF_SNAPSHOT_EXPIRED"
-        try:
-            generation, current_identity = oracle_generation(
-                identity.realpath,
-                consumer.snapshot.mode,
-                deadline=time.monotonic() + remaining,
-            )
-        except SourceOracleError as exc:
-            consumer.release()
-            return None, str(exc)
-        with self._lock:
-            self._sweep()
-            current = self._states.get(snapshot_id)
-            remaining = (
-                state.snapshot.created_monotonic + HARD_LIFETIME_SECONDS - self._clock()
-            )
-            if (
-                current is not state
-                or state.expired
-                or not state.lease_open
-                or state.pins.get(pin) != owner
-                or remaining <= 0
-            ):
-                consumer.release()
-                return None, "DIFF_SNAPSHOT_EXPIRED"
-            if (
-                current_identity != identity
-                or generation != consumer.snapshot.source_generation
-            ):
-                consumer.release()
-                return None, "DIFF_SNAPSHOT_SOURCE_CHANGED"
-        return consumer, None
+        return acquire_snapshot(
+            self,
+            snapshot_id,
+            project_root,
+            oracle_generation=oracle_generation,
+            shared_source_generation=shared_source_generation,
+            hard_lifetime_seconds=HARD_LIFETIME_SECONDS,
+            canonicalize_root=canonical_root,
+            deadline=deadline,
+        )
+
     def bind_assessed_scope(
         self, consumer: SnapshotConsumer, paths: list[str]
     ) -> str | None:
-        try:
-            normalized = normalize_bounded_paths(
-                paths,
-                count_limit=MAX_SCOPE_PATHS,
-                path_limit=MAX_PATH_BYTES,
-                storage_limit=MAX_SCOPE_BYTES,
-            )
-        except SourceOracleError as exc:
-            return str(exc)
-        with self._lock:
-            self._sweep()
-            snapshot = consumer._snapshot
-            state = self._states.get(snapshot.snapshot_id) if snapshot else None
-            if (
-                state is None
-                or consumer._released
-                or state.pins.get(consumer._pin) != consumer._owner
-            ):
-                return "DIFF_SNAPSHOT_EXPIRED"
-            if threading.get_ident() != consumer._owner:
-                return "DIFF_SNAPSHOT_WRONG_THREAD"
-            if len(state.pins) != 1:
-                return "DIFF_SNAPSHOT_IN_USE"
-            if (
-                state.expired
-                or not state.lease_open
-                or self._clock() - state.snapshot.created_monotonic
-                >= HARD_LIFETIME_SECONDS
-            ):
-                state.expired = True
-                state.lease_open = False
-                return "DIFF_SNAPSHOT_EXPIRED"
-            old_paths_size = path_collection_storage(
-                state.snapshot.assessed_scope_paths
-            )
-            delta = path_collection_storage(normalized) - old_paths_size
-            if (
-                self._charged_bytes + sum(self._reservations.values()) + delta
-                > MAX_MATERIALIZED_BYTES
-            ):
-                return "DIFF_SNAPSHOT_CAPACITY"
-            updated = replace(
-                state.snapshot,
-                assessed_scope_paths=normalized,
-                _assessed_scope_raw_paths=tuple(
-                    path_to_raw(path) for path in normalized
-                ),
-                materialized_bytes=state.snapshot.materialized_bytes + delta,
-            )
-            state.snapshot = updated
-            consumer._snapshot = updated
-            self._charged_bytes += delta
-        return None
-    def validate_publish(self, consumer: SnapshotConsumer) -> str | None:
-        with self._lock:
-            self._sweep()
-            snapshot = consumer._snapshot
-            state = self._states.get(snapshot.snapshot_id) if snapshot else None
-            remaining = (
-                HARD_LIFETIME_SECONDS
-                - (self._clock() - state.snapshot.created_monotonic)
-                if state is not None
-                else 0.0
-            )
-            if state is None or state.expired or not state.lease_open or remaining <= 0:
-                if state is not None:
-                    state.expired = True
-                    state.lease_open = False
-                return "DIFF_SNAPSHOT_EXPIRED"
-            assert snapshot is not None
-        try:
-            oracle_params = inspect.signature(oracle_generation).parameters
-            if "deadline" in oracle_params:
-                generation, identity = oracle_generation(
-                    snapshot.root_identity.realpath,
-                    snapshot.mode,
-                    deadline=time.monotonic() + remaining,
-                )
-            else:  # compatibility for injected platform seams
-                generation, identity = oracle_generation(
-                    snapshot.root_identity.realpath, snapshot.mode
-                )
-        except SourceOracleError as exc:
-            return str(exc)
-        with self._lock:
-            state = self._states.get(snapshot.snapshot_id)
-            if (
-                state is None
-                or consumer._released
-                or state.pins.get(consumer._pin) != consumer._owner
-            ):
-                return "DIFF_SNAPSHOT_EXPIRED"
-            if threading.get_ident() != consumer._owner:
-                return "DIFF_SNAPSHOT_WRONG_THREAD"
-            if (
-                state.expired
-                or not state.lease_open
-                or self._clock() - state.snapshot.created_monotonic
-                >= HARD_LIFETIME_SECONDS
-            ):
-                state.expired = True
-                state.lease_open = False
-                return "DIFF_SNAPSHOT_EXPIRED"
-            if (
-                state.snapshot.root_identity != snapshot.root_identity
-                or identity != state.snapshot.root_identity
-            ):
-                return "DIFF_SNAPSHOT_ROOT_MISMATCH"
-            if (
-                state.snapshot.source_generation != snapshot.source_generation
-                or generation != state.snapshot.source_generation
-            ):
-                return "DIFF_SNAPSHOT_SOURCE_CHANGED"
-        return None
+        return bind_snapshot_scope(
+            self,
+            consumer,
+            paths,
+            scope_limits=(MAX_SCOPE_PATHS, MAX_PATH_BYTES, MAX_SCOPE_BYTES),
+            max_materialized_bytes=MAX_MATERIALIZED_BYTES,
+            hard_lifetime_seconds=HARD_LIFETIME_SECONDS,
+            normalize_paths=normalize_bounded_paths,
+        )
+
+    def validate_publish(
+        self,
+        consumer: SnapshotConsumer,
+        publish_guard: Callable[[], str | None] | None = None,
+        *,
+        deadline: float | None = None,
+    ) -> str | None:
+        return validate_snapshot_publish(
+            self,
+            consumer,
+            publish_guard,
+            oracle_generation=oracle_generation,
+            shared_source_generation=shared_source_generation,
+            hard_lifetime_seconds=HARD_LIFETIME_SECONDS,
+            deadline=deadline,
+        )
+
     verify = validate_publish
+
     def _release(self, sid: str, pin: str, owner: int) -> None:
         with self._lock:
             self._sweep()

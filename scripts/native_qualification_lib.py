@@ -314,7 +314,12 @@ def _cleanup_token_processes(
         tracked.update(_token_processes(token, final_deadline))
         alive = _live_processes(tracked)
         if not alive:
-            return False
+            quiet_scans += 1
+            if quiet_scans == 2:
+                return True
+            time.sleep(min(0.02, max(0.0, final_deadline - time.monotonic())))
+            continue
+        quiet_scans = 0
         _signal_group(proc, force=True)
         for process in alive:
             try:

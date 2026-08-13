@@ -178,3 +178,25 @@ def test_release_failure_still_clears_consumer_reference(tmp_path, monkeypatch) 
         consumer.release()
 
     assert consumer._snapshot is None
+
+
+def test_frozen_snapshot_legacy_constructor_keeps_original_signature() -> None:
+    from tree_sitter_analyzer.diff_snapshot_leases import FrozenDiffSnapshot
+    from tree_sitter_analyzer.source_oracle import RootIdentity
+
+    snapshot = FrozenDiffSnapshot(
+        "ds_legacy",
+        "idxsrc-v3:token",
+        RootIdentity("/repo", 1, 2),
+        "diff",
+        b"",
+        (),
+        (),
+        (),
+        1.0,
+        0,
+    )
+    assert (snapshot.source_generation, snapshot.git_generation) == (
+        "idxsrc-v3:token",
+        None,
+    )

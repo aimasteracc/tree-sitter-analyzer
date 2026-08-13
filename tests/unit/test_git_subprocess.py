@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 
 import tree_sitter_analyzer.diff_snapshot_epoch as epoch_module
-import tree_sitter_analyzer.diff_snapshot_registry as snapshots
 import tree_sitter_analyzer.frozen_git_index as frozen_index
 import tree_sitter_analyzer.git_subprocess as bounded
 import tree_sitter_analyzer.source_oracle_git as oracle
@@ -226,9 +225,14 @@ def test_snapshot_disables_external_fsmonitor_hook(tmp_path: Path) -> None:
     _git(root, "config", "core.fsmonitor", str(hook))
     (root / "old.py").write_text("value = 2\n")
 
-    result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+    status = oracle.git_output(
+        str(root),
+        ["status", "--porcelain"],
+        deadline=time.monotonic() + 5.0,
+        limit=4096,
+    )
 
-    assert result["success"] is True
+    assert status == b" M old.py\n?? hostile-fsmonitor\n"
     assert marker.exists() is False
 
 

@@ -42,6 +42,56 @@ def install_fake_snapshot_materializer(
 
     monkeypatch.setattr(snapshots, "oracle_generation", fake_oracle)
     monkeypatch.setattr(
+        snapshots, "shared_source_generation", lambda *_a, **_k: "sg_test"
+    )
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_source_snapshot as source_snapshot
+    from tree_sitter_analyzer.source_oracle import SafePath
+
+    monkeypatch.setattr(
+        source_snapshot,
+        "capture_current_source_snapshot",
+        lambda *_a, **_k: SimpleNamespace(
+            state="exact", generation="sg_test", reason=None
+        ),
+    )
+
+    original_safe_workspace_path = snapshots.safe_workspace_path
+
+    def fake_safe_workspace_path(_root, relative, **kwargs):
+        try:
+            return original_safe_workspace_path(_root, relative, **kwargs)
+        except Exception as exc:
+            if "WORKSPACE_UNSUPPORTED" not in str(exc):
+                raise
+        target = root / relative
+        if not target.exists():
+            return SafePath(data=None, metadata=(b"missing",), kind="missing")
+        if target.is_dir():
+            return SafePath(data=None, metadata=(b"directory",), kind="directory")
+        if not target.is_file():
+            return SafePath(data=None, metadata=(b"unsafe",), kind="unsafe")
+        data = target.read_bytes()
+        return SafePath(
+            data=data,
+            metadata=(b"test," + str(len(data)).encode("ascii"),),
+            kind="file",
+        )
+
+    monkeypatch.setattr(snapshots, "safe_workspace_path", fake_safe_workspace_path)
+    import tree_sitter_analyzer.source_oracle as source_oracle
+
+    monkeypatch.setattr(source_oracle, "safe_workspace_path", fake_safe_workspace_path)
+    monkeypatch.setattr(
+        snapshots,
+        "frozen_index_constraint_config",
+        lambda *_a, **_k: (None, None, ()),
+    )
+    monkeypatch.setattr(
+        snapshots, "staged_sources_match_worktree", lambda *_a, **_k: True
+    )
+    monkeypatch.setattr(
         snapshots,
         "capture_inventory",
         lambda *args, **kwargs: tuple(inventory_paths),

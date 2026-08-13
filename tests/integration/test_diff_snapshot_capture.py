@@ -60,6 +60,7 @@ def test_staged_snapshot_freezes_add_delete_rename_binary_and_multiple_files(
         "gone.py",
         "image.bin",
         "impact.py",
+        "old.py",
         "renamed.py",
     ]
 
@@ -245,19 +246,16 @@ def test_frozen_scope_inventory_does_not_admit_post_capture_mutation(
 
 
 @POSIX_SNAPSHOT_TEST
-def test_staged_symlink_records_unsupported_source_kind(tmp_path: Path) -> None:
-    # PR #1252 review thread 3746878582.
+def test_staged_symlink_cannot_claim_shared_authoritative_generation(
+    tmp_path: Path,
+) -> None:
     root = _repo(tmp_path)
     (root / "module.py").symlink_to("old.py")
     _git(root, "add", "module.py")
 
     result = snapshots.DiffSnapshotRegistry().create(str(root), "staged", [])
 
-    assert result["success"] is True
-    record = next(
-        item for item in result["changed_records"] if item["path"] == "module.py"
-    )
-    assert (record["new_kind"], record["new_mode"]) == ("symlink", "120000")
+    assert result == {"success": False, "error_code": "SOURCE_SCOPE_UNSAFE"}
 
 
 def test_entry_parts_rejects_malformed_git_header() -> None:

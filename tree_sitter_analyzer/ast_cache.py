@@ -117,6 +117,13 @@ class ASTCache(
             self.close()
             raise
 
+    def __del__(self) -> None:
+        """Release pinned cache resources when callers omit explicit cleanup."""
+        try:
+            self.close()
+        except Exception:
+            return
+
 
 def _walk_source_files(project_root: str) -> Iterator[str]:
     """Backward-compatible source walker re-export."""

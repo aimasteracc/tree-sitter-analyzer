@@ -24,53 +24,28 @@ from tree_sitter_analyzer.cli.argument_parser_builder import (
 
 
 class TestCLIEpilog:
-    def test_epilog_is_string(self):
-        assert isinstance(CLI_EPILOG, str)
-
-    def test_epilog_contains_examples(self):
-        assert "Examples:" in CLI_EPILOG
-
-    def test_epilog_mentions_table(self):
-        assert "--table=full" in CLI_EPILOG
-
-    def test_epilog_mentions_query_key(self):
-        assert "--query-key" in CLI_EPILOG
-
-    def test_epilog_mentions_advanced(self):
-        assert "--advanced" in CLI_EPILOG
-
-    def test_epilog_mentions_structure(self):
-        assert "--structure" in CLI_EPILOG
-
-    def test_epilog_mentions_summary(self):
-        assert "--summary" in CLI_EPILOG
-
-    def test_epilog_mentions_partial_read(self):
-        assert "--partial-read" in CLI_EPILOG
-
-    def test_epilog_mentions_file_health(self):
-        assert "--file-health" in CLI_EPILOG
-
-    def test_epilog_mentions_safe_to_edit(self):
-        assert "--safe-to-edit" in CLI_EPILOG
-
-    def test_epilog_mentions_refactor(self):
-        assert "--refactor" in CLI_EPILOG
-
-    def test_epilog_mentions_smart_context(self):
-        assert "--smart-context" in CLI_EPILOG
-
-    def test_epilog_mentions_change_impact(self):
-        assert "--change-impact" in CLI_EPILOG
-
-    def test_epilog_mentions_project_health(self):
-        assert "--project-health" in CLI_EPILOG
-
-    def test_epilog_mentions_overview(self):
-        assert "--overview" in CLI_EPILOG
-
-    def test_epilog_mentions_dependencies(self):
-        assert "--dependencies" in CLI_EPILOG
+    @pytest.mark.parametrize(
+        "fragment",
+        [
+            "Examples:",
+            "--table=full",
+            "--query-key",
+            "--advanced",
+            "--structure",
+            "--summary",
+            "--partial-read",
+            "--file-health",
+            "--safe-to-edit",
+            "--refactor",
+            "--smart-context",
+            "--change-impact",
+            "--project-health",
+            "--overview",
+            "--dependencies",
+        ],
+    )
+    def test_epilog_documents_expected_fragment(self, fragment: str) -> None:
+        assert fragment in CLI_EPILOG
 
 
 class TestCreateArgumentParser:
@@ -491,42 +466,30 @@ class TestAddAgentWorkflowOptions:
         assert args.agent_workflow is True
 
 
-class TestFullIndexMCPEquivalentOptions:
-    """Regression: CLI --full-index-mode choices must match MCP tool valid modes.
+def test_constraints_read_only_option_sets_exact_destination() -> None:
+    parser = argparse.ArgumentParser()
+    _add_mcp_equivalent_options(parser)
+    args = parser.parse_args(["--constraints-read-only"])
+    assert args.constraints_read_only is True
 
-    Dogfood-found bug: argparse exposed {rebuild,stats,clear} but CodeGraphFullIndexTool
-    only accepts {full,incremental}. Using TSA on TSA to discover and verify the fix.
-    """
 
-    def _make_parser(self):
-        p = argparse.ArgumentParser()
-        _add_mcp_equivalent_options(p)
-        return p
+@pytest.mark.parametrize(
+    ("arguments", "expected"),
+    [
+        (["--full-index"], "incremental"),
+        (["--full-index", "--full-index-mode", "full"], "full"),
+        (["--full-index", "--full-index-mode", "incremental"], "incremental"),
+    ],
+)
+def test_full_index_modes_match_mcp(arguments: list[str], expected: str) -> None:
+    parser = argparse.ArgumentParser()
+    _add_mcp_equivalent_options(parser)
+    assert parser.parse_args(arguments).full_index_mode == expected
 
-    def test_full_index_mode_default_is_incremental(self):
-        """Default mode must match MCP tool default ('incremental')."""
-        parser = self._make_parser()
-        args = parser.parse_args(["--full-index"])
-        assert args.full_index_mode == "incremental"
 
-    def test_full_index_mode_accepts_full(self):
-        parser = self._make_parser()
-        args = parser.parse_args(["--full-index", "--full-index-mode", "full"])
-        assert args.full_index_mode == "full"
-
-    def test_full_index_mode_accepts_incremental(self):
-        parser = self._make_parser()
-        args = parser.parse_args(["--full-index", "--full-index-mode", "incremental"])
-        assert args.full_index_mode == "incremental"
-
-    def test_full_index_mode_rejects_rebuild(self):
-        """'rebuild' was the old invalid choice — must now be rejected."""
-        parser = self._make_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["--full-index", "--full-index-mode", "rebuild"])
-
-    def test_full_index_mode_rejects_stats(self):
-        """'stats' was an old invalid choice — must now be rejected."""
-        parser = self._make_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["--full-index", "--full-index-mode", "stats"])
+@pytest.mark.parametrize("mode", ["rebuild", "stats"])
+def test_full_index_rejects_legacy_modes(mode: str) -> None:
+    parser = argparse.ArgumentParser()
+    _add_mcp_equivalent_options(parser)
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--full-index", "--full-index-mode", mode])

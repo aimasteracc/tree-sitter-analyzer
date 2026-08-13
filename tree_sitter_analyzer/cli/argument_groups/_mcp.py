@@ -277,6 +277,15 @@ def _add_mcp_constraints_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--constraints-read-only",
+        action="store_true",
+        default=False,
+        help=(
+            "Evaluate constraints without creating or updating the AST cache "
+            "or persisted violation rows"
+        ),
+    )
+    parser.add_argument(
         "--severity-min",
         choices=["error", "warn", "info"],
         default="warn",

@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field, replace
 
+from .diff_snapshot_constraints import _blob
 from .diff_snapshot_epoch import FrozenGitEnvironment
 from .frozen_git_index import invalidate_index_stat_cache
 from .git_path_codec import path_to_raw, path_to_wire, raw_to_path
@@ -271,12 +272,6 @@ def _binary_paths(git: FrozenGitEnvironment, base: bytes, limit: int) -> set[byt
         if fields[0] == fields[1] == b"-":
             binary.add(path)
     return binary
-def _blob(
-    git: FrozenGitEnvironment, oid: str | None, kind: str, limit: int
-) -> bytes | None:
-    if oid is None or kind == "gitlink":
-        return None
-    return git.run(["cat-file", "blob", oid], limit=limit)
 def _safe_mode(safe_kind: str, metadata: tuple[bytes, ...]) -> tuple[str | None, str]:
     if safe_kind == "missing":
         return None, "missing"

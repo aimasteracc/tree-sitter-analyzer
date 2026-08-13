@@ -1433,13 +1433,12 @@ def test_custom_db_deletion_does_not_mutate_project_mirror(tmp_path, monkeypatch
         result = IncrementalSync(cache).sync(max_files=10, candidate_snapshot=snapshot)
     finally:
         cache.close()
-    expected_authority = (0, "complete") if os.name == "posix" else (1, "incomplete")
     assert (
         result.deleted_files,
         result.errors,
         result.to_dict()["completeness"],
         mirror.read_text(encoding="utf-8"),
-    ) == (1, *expected_authority, "other owner")
+    ) == (1, 0, "complete", "other owner")
 
 
 def test_preexisting_snapshot_mutation_removes_ladybug_mirror(tmp_path):

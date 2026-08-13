@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import tree_sitter_analyzer.diff_snapshot_registry as snapshot_registry
 from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
 from tree_sitter_analyzer import frozen_git_settings as settings
 from tree_sitter_analyzer.diff_snapshot_registry import DiffSnapshotRegistry
@@ -117,7 +118,9 @@ def test_ignored_directory_attributes_are_frozen_for_binary_diff(
 
 
 @POSIX_SNAPSHOT_TEST
-def test_active_replace_ref_cannot_split_snapshot_head_evidence(tmp_path: Path) -> None:
+def test_active_replace_ref_cannot_split_snapshot_head_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # PR #1252 review thread PRRT_kwDOPVL-OM6X2mXp: use the original object graph.
     root = make_repo(tmp_path)
     run = lambda *args, input_=None: subprocess.run(  # noqa: E731
@@ -133,6 +136,21 @@ def test_active_replace_ref_cannot_split_snapshot_head_evidence(tmp_path: Path) 
     run("add", "old.py")
     live_patch = run("diff", "--cached")
     result = (registry := DiffSnapshotRegistry()).create(str(root), "staged", [])
+    state = registry._states[str(result["diff_snapshot_id"])]
+    frozen_snapshot = state.snapshot
+    monkeypatch.setattr(
+        snapshot_registry,
+        "oracle_generation",
+        lambda *_args, **_kwargs: (
+            frozen_snapshot.git_generation,
+            frozen_snapshot.root_identity,
+        ),
+    )
+    monkeypatch.setattr(
+        snapshot_registry,
+        "shared_source_generation",
+        lambda *_args, **_kwargs: frozen_snapshot.source_generation,
+    )
     consumer, error = registry.acquire(str(result["diff_snapshot_id"]), str(root))
     assert error is None
     assert consumer is not None

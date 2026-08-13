@@ -10142,7 +10142,9 @@ def test_index_tree_hash_rejects_concurrent_append(tmp_path: Path, monkeypatch):
     assert writer.is_alive() is False
 
 
-def test_index_tree_hash_handles_one_thousand_directory_levels(tmp_path: Path):
+def test_index_tree_hash_handles_one_thousand_directory_levels(
+    tmp_path: Path, request: pytest.FixtureRequest
+):
     # PR #1247: producer-controlled depth must not consume Python recursion.
     import hashlib
     import os
@@ -10152,6 +10154,23 @@ def test_index_tree_hash_handles_one_thousand_directory_levels(tmp_path: Path):
     index = tmp_path / "index"
     index.mkdir()
     root_fd = os.open(index, os.O_RDONLY | os.O_DIRECTORY)
+
+    def cleanup() -> None:
+        descriptors = [os.dup(root_fd)]
+        try:
+            for _ in range(1000):
+                descriptors.append(
+                    os.open("d", os.O_RDONLY | os.O_DIRECTORY, dir_fd=descriptors[-1])
+                )
+            os.unlink("leaf.bin", dir_fd=descriptors[-1])
+            for number in range(999, -1, -1):
+                os.rmdir("d", dir_fd=descriptors[number])
+        finally:
+            for descriptor in reversed(descriptors):
+                os.close(descriptor)
+            os.close(root_fd)
+
+    request.addfinalizer(cleanup)
     current = os.dup(root_fd)
     try:
         for _ in range(1000):
@@ -10175,22 +10194,7 @@ def test_index_tree_hash_handles_one_thousand_directory_levels(tmp_path: Path):
         directory = "/".join(("d",) * depth).encode()
         digest.update(b"D" + len(directory).to_bytes(8, "big") + directory)
     digest.update(b"C" + (1).to_bytes(8, "big") + (1000).to_bytes(8, "big"))
-    try:
-        assert _hash_tree(index) == digest.hexdigest()
-    finally:
-        descriptors = [os.dup(root_fd)]
-        try:
-            for _ in range(1000):
-                descriptors.append(
-                    os.open("d", os.O_RDONLY | os.O_DIRECTORY, dir_fd=descriptors[-1])
-                )
-            os.unlink("leaf.bin", dir_fd=descriptors[-1])
-            for number in range(999, -1, -1):
-                os.rmdir("d", dir_fd=descriptors[number])
-        finally:
-            for descriptor in reversed(descriptors):
-                os.close(descriptor)
-            os.close(root_fd)
+    assert _hash_tree(index) == digest.hexdigest()
 
 
 def test_index_tree_hash_rejects_same_size_concurrent_rewrite(
@@ -14039,7 +14043,9 @@ def test_producer_gate_releases_only_exact_signal(tmp_path: Path, monkeypatch):
     received = []
     reader = threading.Thread(target=lambda: received.append(gate.read_bytes()))
     reader.start()
-    monkeypatch.setattr(runner, "_run", lambda *_args: b'[{"State":{"Running":true}}]')
+    monkeypatch.setattr(
+        runner, "_run", lambda *_args, **_kwargs: b'[{"State":{"Running":true}}]'
+    )
     runner._release_producer_gate(gate, "container", __import__("time").monotonic() + 2)
     reader.join(timeout=2)
 
@@ -14085,7 +14091,9 @@ def test_producer_gate_readiness_timeout_is_terminal(tmp_path: Path, monkeypatch
             OSError(errno.ENXIO, "no reader")
         ),
     )
-    monkeypatch.setattr(runner, "_run", lambda *_args: b'[{"State":{"Running":true}}]')
+    monkeypatch.setattr(
+        runner, "_run", lambda *_args, **_kwargs: b'[{"State":{"Running":true}}]'
+    )
     calls = iter((0.0,))
     monkeypatch.setattr(runner.time, "monotonic", lambda: next(calls, 11.0))
     with pytest.raises(TimeoutError, match="gate readiness expired"):
@@ -14136,8 +14144,10 @@ def test_service_launch_release_is_blocked_until_private_release_exists(tmp_path
     waiter.start()
     time.sleep(0.05)
     assert observed == []
-    release.write_bytes(b"RELEASE\n")
-    release.chmod(0o400)
+    staged_release = tmp_path / "RELEASE.pending"
+    staged_release.write_bytes(b"RELEASE\n")
+    staged_release.chmod(0o400)
+    os.replace(staged_release, release)
     waiter.join(timeout=2)
     assert observed == [b"{}"]
 

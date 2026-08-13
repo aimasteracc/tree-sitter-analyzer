@@ -490,3 +490,9 @@ uv run tree-sitter-analyzer large_file.java --query-key methods --filter "public
 # 4. Extract only the lines you need
 uv run tree-sitter-analyzer large_file.java --partial-read --start-line 100 --end-line 150
 ```
+
+### Constraint evaluation
+
+`--check-constraints` evaluates the project architecture rules. Add
+`--constraints-read-only` to forward `persist=false`, opening an existing cache
+read-only and leaving its schema and violation rows unchanged.

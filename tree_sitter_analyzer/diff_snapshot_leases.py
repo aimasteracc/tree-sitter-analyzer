@@ -26,6 +26,13 @@ class FrozenDiffSnapshot:
     assessed_scope_paths: tuple[str, ...]
     created_monotonic: float
     materialized_bytes: int
+    git_generation: str | None = None
+    constraint_config_path: str | None = None
+    constraint_config_data: bytes | None = None
+    constraint_config_metadata: tuple[bytes, ...] = ()
+    constraint_config_error: str | None = None
+    staged_source_matches_worktree: bool = True
+    staged_config_matches_worktree: bool = True
     _inventory_raw_paths: tuple[bytes, ...] = ()
     _assessed_scope_raw_paths: tuple[bytes, ...] = ()
 

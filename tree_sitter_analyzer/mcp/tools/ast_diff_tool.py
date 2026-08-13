@@ -12,6 +12,8 @@ Unlike text diffs, understands code structure.
 from typing import Any
 
 from ...ast_diff import ASTDiffer
+from ...ast_diff_node_budget import apply_node_body_budget
+from ...ast_diff_snapshot_consumers import decode_snapshot_sources
 from ...git_path_codec import path_to_wire
 from ...utils import setup_logger
 from ..utils.format_helper import (
@@ -281,37 +283,8 @@ class ASTDiffTool(BaseMCPTool):
                         },
                         output_format,
                     )
-                if (
-                    not getattr(
-                        frozen.record, "old_available", frozen.old_bytes is not None
-                    )
-                    or not getattr(
-                        frozen.record, "new_available", frozen.new_bytes is not None
-                    )
-                    or getattr(frozen.record, "status", None) in ("R", "C")
-                    or getattr(frozen.record, "unsupported_kind", None) is not None
-                    or frozen.record.binary
-                    or any(
-                        kind not in ("file", "missing")
-                        for kind in (
-                            getattr(frozen.record, "old_kind", "file"),
-                            getattr(frozen.record, "new_kind", "file"),
-                        )
-                    )
-                ):
-                    return apply_toon_format_to_response(
-                        {
-                            "success": False,
-                            "verdict": "ERROR",
-                            "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
-                            "error": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
-                        },
-                        output_format,
-                    )
-                try:
-                    old_source = (frozen.old_bytes or b"").decode("utf-8", "strict")
-                    new_source = (frozen.new_bytes or b"").decode("utf-8", "strict")
-                except UnicodeDecodeError:
+                sources = decode_snapshot_sources(frozen)
+                if sources is None:
                     return apply_toon_format_to_response(
                         {
                             "success": False,
@@ -322,8 +295,8 @@ class ASTDiffTool(BaseMCPTool):
                         output_format,
                     )
                 result = differ.diff_strings(
-                    old_source=old_source,
-                    new_source=new_source,
+                    old_source=sources.old_source,
+                    new_source=sources.new_source,
                     language=language,
                     old_file=f"{snapshot_id}:old:{path_to_wire(frozen.record.path)}",
                     new_file=f"{snapshot_id}:new:{path_to_wire(frozen.record.path)}",
@@ -397,18 +370,7 @@ class ASTDiffTool(BaseMCPTool):
             # When the hunks serialise to more than NODE_BODIES_BUDGET bytes,
             # stop inlining children and set transparency flags.
             if include_node_bodies:
-                import json
-
-                hunks_bytes = len(json.dumps(response.get("hunks", [])))
-                if hunks_bytes > NODE_BODIES_BUDGET:
-                    # Rebuild without children and record how many bytes were saved
-                    compact_dict = result.to_dict(
-                        include_children=False, with_child_count=True
-                    )
-                    compact_hunks_bytes = len(json.dumps(compact_dict.get("hunks", [])))
-                    response["hunks"] = compact_dict["hunks"]
-                    response["children_truncated"] = True
-                    response["bytes_omitted"] = hunks_bytes - compact_hunks_bytes
+                apply_node_body_budget(response, result, NODE_BODIES_BUDGET)
 
             if consumer is not None:
                 response["diff_snapshot_id"] = getattr(

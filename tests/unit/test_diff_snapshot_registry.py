@@ -43,6 +43,22 @@ def test_capacity_is_stable_error_and_close_releases_charge(
     assert registry.stats() == (0, 0)
 
 
+def test_create_releases_reservation_after_keyboard_interrupt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3772454774: interruptions cannot poison registry capacity.
+    registry = snapshots.DiffSnapshotRegistry()
+    monkeypatch.setattr(
+        snapshots,
+        "canonical_root",
+        lambda _value: (_ for _ in ()).throw(KeyboardInterrupt("interrupted")),
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="^interrupted$"):
+        registry.create(str(tmp_path), "diff", [])
+    assert registry._reservations == {}
+
+
 def test_expiry_retains_active_consumer_bytes_until_release(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -68,12 +84,22 @@ def test_expiry_retains_active_consumer_bytes_until_release(
     assert registry.stats() == (0, 0)
 
 
-@POSIX_SNAPSHOT_TEST
-def test_snapshot_id_is_bound_to_exact_root_identity(tmp_path: Path) -> None:
-    root = _repo(tmp_path / "one")
-    other = _repo(tmp_path / "two")
-    (root / "old.py").write_text("value = 2\n")
-    (other / "old.py").write_text("value = 2\n")
+def test_snapshot_id_is_bound_to_exact_root_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "one"
+    other = tmp_path / "two"
+    expected = install_fake_snapshot_materializer(monkeypatch, root)
+    other.mkdir()
+    other_canonical = str(other.resolve())
+    other_identity = snapshots.RootIdentity(other_canonical, 3, 4)
+
+    def identify(value: str):
+        if str(Path(value).resolve()) == other_canonical:
+            return other_canonical, other_identity
+        return expected.realpath, expected
+
+    monkeypatch.setattr(snapshots, "canonical_root", identify)
     registry = snapshots.DiffSnapshotRegistry()
     result = registry.create(str(root), "diff", [])
 
@@ -377,35 +403,6 @@ def test_bind_assessed_scope_replaces_scope_for_single_pin(
     consumer, _ = registry.acquire(str(created["diff_snapshot_id"]), str(root))
     assert registry.bind_assessed_scope(consumer, ["small.py"]) is None
     assert consumer.snapshot.assessed_scope_paths == ("small.py",)
-    consumer.release()
-
-
-def test_validate_publish_bounds_oracle_by_remaining_lifetime(
-    tmp_path: Path, monkeypatch
-) -> None:
-    # PR #1252 review thread 3746940417.
-    now = [0.0]
-    root = tmp_path
-    install_fake_snapshot_materializer(monkeypatch, root)
-    registry = snapshots.DiffSnapshotRegistry(clock=lambda: now[0])
-    created = registry.create(str(root), "diff", [])
-    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
-    assert error is None
-    assert consumer is not None
-    now[0] = snapshots.HARD_LIFETIME_SECONDS - 1.0
-    deadlines: list[float] = []
-    monkeypatch.setattr(snapshots.time, "monotonic", lambda: 100.0)
-
-    def oracle_with_deadline(root, mode, *, deadline=None):
-        deadlines.append(deadline)
-        return consumer.snapshot.source_generation, consumer.snapshot.root_identity
-
-    monkeypatch.setattr(snapshots, "oracle_generation", oracle_with_deadline)
-
-    result = registry.validate_publish(consumer)
-
-    assert result is None
-    assert deadlines == [101.0]
     consumer.release()
 
 

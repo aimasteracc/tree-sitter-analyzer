@@ -363,3 +363,92 @@ def test_backup_expiring_during_copy_returns_deadline(tmp_path, monkeypatch):
         "unknown",
         "INDEX_SNAPSHOT_DEADLINE",
     )
+
+
+def test_manifest_empty_authority_returns_none() -> None:
+    import tree_sitter_analyzer.index_snapshot as snapshot
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index_snapshot_manifest("
+        "singleton, canonical_root, source_fingerprint, index_fingerprint, "
+        "file_count, source_scope_descriptor, manifest_version)"
+    )
+    try:
+        result = snapshot._read_bounded_manifest(conn, float("inf"))
+    finally:
+        conn.close()
+
+    assert result is None
+
+
+def test_manifest_boundary_delegates_connection_and_deadline(monkeypatch) -> None:
+    from tree_sitter_analyzer import index_snapshot, index_snapshot_manifest
+
+    connection = object()
+    expected = object()
+    observed = []
+
+    def read_bounded_manifest(received_connection, received_deadline):
+        observed.append((received_connection, received_deadline))
+        return expected
+
+    monkeypatch.setattr(index_snapshot, "_read_bounded_manifest", read_bounded_manifest)
+
+    result = index_snapshot_manifest._read_bounded_manifest(  # type: ignore[arg-type]
+        connection, 7.5
+    )
+
+    assert result is expected
+    assert observed == [(connection, 7.5)]
+
+
+def test_manifest_writer_uses_portable_source_certifier(tmp_path, monkeypatch) -> None:
+    # PR #1254 review 3769193895: Windows-built indexes must stamp authority.
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    class PortableOS:
+        name = "nt"
+        path = schema.os.path
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        schema.SCHEMA_V13_INDEX_SNAPSHOT
+        + "CREATE TABLE ast_index(file_path TEXT, content_hash TEXT, language TEXT);"
+    )
+    expected_rows = frozenset({("sample.py", "hash", "python")})
+    conn.execute("INSERT INTO ast_index VALUES ('sample.py', 'hash', 'python')")
+    monkeypatch.setattr(schema, "os", PortableOS())
+    monkeypatch.setattr(schema, "strict_call_graph_marker", lambda _conn: True)
+    monkeypatch.setattr(
+        schema, "index_fingerprint", lambda *_args: "sha256:" + "a" * 64
+    )
+    monkeypatch.setattr(
+        schema, "source_fingerprint", lambda *_args: "sha256:" + "b" * 64
+    )
+    monkeypatch.setattr(schema, "recorded_source_rows", lambda _conn: expected_rows)
+    observed: list[tuple[str, object]] = []
+    import tree_sitter_analyzer.portable_source_snapshot as portable
+
+    monkeypatch.setattr(
+        portable,
+        "capture_portable_source_snapshot",
+        lambda root, scope, *, deadline: (
+            observed.append((root, scope))
+            or SimpleNamespace(state="exact", rows=expected_rows)
+        ),
+    )
+
+    schema.stamp_full_index_manifest(conn, str(tmp_path))
+
+    row = conn.execute(
+        "SELECT canonical_root, file_count, manifest_version "
+        "FROM ast_index_snapshot_manifest"
+    ).fetchone()
+    assert tuple(row) == (schema.os.path.realpath(str(tmp_path)), 1, 2)
+    assert len(observed) == 1
+    conn.close()

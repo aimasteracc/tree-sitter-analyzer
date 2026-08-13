@@ -11,6 +11,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
+from .index_snapshot_registry_capabilities import acquire_io_lock, newest_reusable
+
 
 def ensure_capacity(
     entries: dict[str, Any],
@@ -53,6 +55,7 @@ def reuse_snapshot(
             and existing.reason == snapshot.reason
             and existing.file_count == snapshot.file_count
             and existing.symbol_projection_exact == snapshot.symbol_projection_exact
+            and existing.source_scope == snapshot.source_scope
         )
         if not same_logical_identity:
             continue
@@ -93,6 +96,7 @@ class IndexSnapshot:
     file_count: int
     physical_storage_identity: tuple[int, int, int, int, int, int] | None = None
     symbol_projection_exact: bool | None = None
+    source_scope: Any | None = None
 
 
 @dataclass(slots=True)
@@ -179,6 +183,7 @@ class IndexSnapshotRegistry:
                 snapshot.file_count,
                 snapshot.physical_storage_identity,
                 snapshot.symbol_projection_exact,
+                snapshot.source_scope,
             )
             self._entries[snapshot_id] = _Entry(
                 published,
@@ -199,12 +204,37 @@ class IndexSnapshotRegistry:
             self._purge(self._clock())
 
     @contextmanager
+    def pin_reusable(self, project_root: str) -> Iterator[IndexSnapshot | None]:
+        """Pin the newest live capability for ``project_root`` without recopying it."""
+        canonical_root = os.path.realpath(os.path.abspath(project_root))
+        with self._lock:
+            now = self._clock()
+            self._purge(now)
+            entry = newest_reusable(self._entries, canonical_root, now)
+            if entry is not None:
+                entry.readers += 1
+        try:
+            yield entry.snapshot if entry is not None else None
+        finally:
+            if entry is not None:
+                with self._lock:
+                    entry.readers -= 1
+                    self._purge(self._clock())
+
+    @contextmanager
     def acquire(
-        self, snapshot_id: str, project_root: str, source_generation: str | None = None
+        self,
+        snapshot_id: str,
+        project_root: str,
+        source_generation: str | None = None,
+        *,
+        deadline: float | None = None,
     ) -> Iterator[tuple[IndexSnapshot, sqlite3.Connection]]:
         canonical_root = os.path.realpath(os.path.abspath(project_root))
         with self._lock:
             now = self._clock()
+            if deadline is not None and now >= deadline:
+                raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
             self._purge(now)
             entry = self._entries.get(snapshot_id)
             if entry is None or entry.expires_at <= now:
@@ -217,11 +247,13 @@ class IndexSnapshotRegistry:
             ):
                 raise ValueError("SOURCE_GENERATION_MISMATCH")
             entry.readers += 1
-        entry.io_lock.acquire()
+        acquired = False
         try:
+            acquired = acquire_io_lock(entry.io_lock, deadline, self._clock)
             yield entry.snapshot, entry.connection
         finally:
-            entry.io_lock.release()
+            if acquired:
+                entry.io_lock.release()
             with self._lock:
                 entry.readers -= 1
                 self._purge(self._clock())

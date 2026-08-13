@@ -148,9 +148,14 @@ def build_frozen_scope_result(
         scope_mode=scope_mode,
     )
     result = apply_scope_validation(result, invalid_scope)
-    assessed = (
-        sorted(set(changed_files).union(set(public_scope).difference(invalid_scope)))
-        if scope_mode == "strict"
-        else sorted(set(workspace_changed).union(public_scope))
+    assessment_entries = scoped_entries if scope_mode == "strict" else visible_entries
+    assessment_paths = {
+        path_to_wire(raw_to_path(identity))
+        for _record, raw_path, raw_old_path in assessment_entries
+        for identity in (raw_path, raw_old_path)
+        if identity is not None and not _raw_path_is_excluded(identity)
+    }
+    assessed = sorted(
+        assessment_paths.union(set(public_scope).difference(invalid_scope))
     )
     return result, records, changed_files, assessed
