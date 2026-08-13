@@ -232,10 +232,10 @@ They may not relocate, allowlist, or write-then-delete that plumbing.
 This is a capability gate, not permission to weaken P0.2. Before Phase A, the
 primitive owner must demonstrate a concrete backend that reproduces the complete
 P0.2 patch, status, blob, config, attribute, ordering, and source-generation
-semantics from safely opened immutable inputs without any helper capable of a
-filesystem write. It must not invoke ordinary Git plumbing unless the exact
-invocation set is proved by the P0.4 monitor to need no pathname-backed index,
-object directory, shadow worktree, lock, config, attributes, or order file and to
+semantics from safely opened immutable inputs without invoking any operation that
+is write-capable for its supplied arguments and captured state. It must not invoke
+ordinary Git plumbing unless the exact invocation set is proved by the P0.4
+monitor to need no pathname-backed index, object directory, shadow worktree, lock, config, attributes, or order file and to
 make no write attempt. If no backend passes both the P0.2 golden corpus and P0.4
 monitor, read-existing diff capture is unsupported and Phase A remains blocked;
 legacy capture, live Git/worktree reads, weakened semantics, relocation, and
@@ -250,31 +250,39 @@ omission of `access_mode` preserves the legacy
 `capture_diff_snapshot=true|false` contract. A successful read-existing result
 must contain `diff_snapshot_id`, `route_lease_id`, `source_generation`, changed-
 file records, and `assessed_scope_paths`; absence of any field invalidates the
-result and stops the route. `edit.ast_diff`, `edit.classify`, and
-`edit.constraints` consume that same-process ID only. `nav.context` and
+result and stops the route. The primitive owner retains an internal cleanup
+handle until it has validated and atomically published the complete pair; every
+path that does not publish both IDs revokes the reservation/lease internally.
+The host closes in `finally` only after receiving both validated tokens, so a
+malformed wire result cannot retain capacity. `edit.ast_diff`, `edit.classify`,
+and `edit.constraints` consume that same-process ID only. `nav.context` and
 `edit.safe` require and acquire the P0.1 `snapshot_id` and `source_generation`; no
 live-cache, live-file, migration, or parser/index fallback is allowed when the
 capability is absent or disagrees.
 
 Every classified action-level result adds the exact P0.4 access-evidence fields
-`access_mode`, `state`, `reason`, `source_snapshot_kind`, `source_snapshot_id`,
-and `source_snapshot_generation`. `state` is one of `available`, `missing`,
-`unknown`, or `not_applicable`; a non-null `source_snapshot_kind` is exactly
-`index` for P0.1 or `diff` for P0.2. After a capability is acquired, every result
-state cites the exact acquired P0.1 index or P0.2 diff identity and generation,
-including `not_applicable`/`NO_CONFIG` and a later `unknown`; source fields are
-null only when no capability was acquired. The frozen diff owns the captured
-constraint-config bytes, so constraints cite that diff identity even when
-`state="not_applicable", reason="NO_CONFIG"`. An old or incompatible schema is
-exactly `state="unknown", reason="INCOMPATIBLE_SCHEMA"`. When an identity was
-acquired, existing action-specific `snapshot_id` or `diff_snapshot_id` and
-`source_generation` fields remain and must match the generic ID and generation
-echoes. Successful classification of an
-unavailable capability may retain `success=true`; Phase A branches on `state` and
-`reason`, not on `success` alone. Validation or internal execution failure
-remains `success=false`. The task creates or repairs none of these fields. P0.5
-owns version fields, fragment propagation, and evidence-identity participation;
-it does not retroactively synthesize P0.4 access evidence.
+`access_mode`, `access_state`, `access_reason`, and `source_snapshots` without
+retyping action-specific fields such as the constraints result's existing
+`state="applicable"`. `access_state` is one of `available`, `missing`, `unknown`,
+or `not_applicable`; `access_reason` is null only for `available` and otherwise is
+a stable primitive-owned reason. `source_snapshots` is a stable list of exact
+records `{kind, snapshot_id, source_generation}`; `kind` is `index` for P0.1 or `diff` for
+P0.2, and records sort by `(kind, snapshot_id, source_generation)`. After a
+capability is acquired, every access state cites every primitive identity
+actually read, including `not_applicable`/`NO_CONFIG` and a later `unknown`; the list is
+empty only when no capability was acquired. Thus applicable graph-backed
+constraints cite both their P0.2 diff and P0.1 index snapshots, while `NO_CONFIG`
+cites the acquired diff that owns the config probe. An old or incompatible schema
+is exactly `access_state="unknown", access_reason="INCOMPATIBLE_SCHEMA"`. Each
+acquired action-specific `snapshot_id` or `diff_snapshot_id` and
+`source_generation` must match a corresponding generic record; multiple distinct
+records are not required to share an ID. Successful classification of an
+unavailable capability may retain `success=true`; Phase A branches on
+`access_state` and `access_reason`, not on `success` or an action-specific `state`
+alone. Validation or internal execution failure remains `success=false`. The task
+creates or repairs none of these fields. P0.5 owns version fields, fragment
+propagation, and evidence-identity participation; it does not retroactively
+synthesize P0.4 access evidence.
 
 The P0.1 index-snapshot and bounded P0.2 diff-snapshot primitive-owned in-memory
 capability registries are the only reusable ephemeral capability state allowed in
@@ -444,8 +452,8 @@ not sent; primitive output format is JSON internally.
 | `understand(task)` | valid task and certified index tokens | `nav.context(task=task, snapshot_id=index.snapshot_id, source_generation=index.source_generation, max_nodes=12/30, max_code_blocks=3/5, include_graph=false, access_mode="read_existing", output_format="json")` | missing/mismatched echoed token or failure => unknown and stop; success ends route |
 | `plan_change(task)` | valid task and certified index tokens | same `nav.context` call | missing/mismatched echoed token or failure => unknown and stop |
 | `plan_change(task)` | each distinct existing path explicitly returned in generation-matched `code_blocks`, max 2/5 | `edit.safe(file_path=path, edit_type="refactor", snapshot_id=index.snapshot_id, source_generation=index.source_generation, access_mode="read_existing", output_format="json")` | missing path is not inferred; token mismatch stops route; other per-call failure is partial |
-| diff operation | valid diff | `edit.impact(mode="diff"|"staged", scope_paths=diff.scope_paths, include_tests=true, resource_profile="local_low_impact", access_mode="read_existing", output_format="json")` | `access_mode` mandates zero-write P0.2 capture and `capture_diff_snapshot` is forbidden; missing lease/ID/generation/records/assessed scope or generation mismatch => unknown and stop; the orchestration host closes the lease in `finally` on every exit |
-| diff operation | successful, generation-matched impact; reserved before fan-out | `edit.constraints(diff_snapshot_id=id, scope_paths=impact.assessed_scope_paths, persist=false, access_mode="read_existing", output_format="json")` | only in-scope violations count; `not_applicable:NO_CONFIG` satisfies row |
+| diff operation | valid diff | `edit.impact(mode="diff"|"staged", scope_paths=diff.scope_paths, include_tests=true, resource_profile="local_low_impact", access_mode="read_existing", output_format="json")` | `access_mode` mandates zero-write P0.2 capture and `capture_diff_snapshot` is forbidden; missing lease/ID/generation/records/assessed scope or generation mismatch => unknown and stop; an unpublished/malformed pair is owner-revoked, otherwise the orchestration host closes the validated pair in `finally` on every exit |
+| diff operation | successful, generation-matched impact; reserved before fan-out | `edit.constraints(diff_snapshot_id=id, scope_paths=impact.assessed_scope_paths, persist=false, access_mode="read_existing", output_format="json")` | only in-scope violations count; `access_state=not_applicable, access_reason=NO_CONFIG` satisfies row |
 | diff operation | each non-binary changed record with old/new material available | `edit.ast_diff(diff_snapshot_id=id, file_path=path, access_mode="read_existing", output_format="json")` | unsupported add/delete/rename is explicit `not_run`, never locally reconstructed |
 | diff operation | same eligible records | `edit.classify(diff_snapshot_id=id, file_path=path, access_mode="read_existing", output_format="json")` | per-file failure => partial |
 
@@ -537,9 +545,13 @@ unknown. Evidence IDs are:
 ```text
 evidence:sha256(canonical_json({
   primitive_facade, action, action_version,
-  normalized_result_sha256, source_snapshot_id, locator
+  normalized_result_sha256, source_snapshots, locator
 }))
 ```
+
+`source_snapshots` is the exact stable P0.4 list received for that fragment; a
+constraint contribution therefore binds both the diff/config and graph-index
+identities it read.
 
 The normalized result hash covers the canonical bytes of the exact primitive wire
 fragment supporting the claim. That wire already contains its primitive facade,
@@ -549,8 +561,8 @@ inserts owner fields and the primitive never supplies the digest. A registry may
 diagnose mismatch but cannot repair missing edge-evidence ownership. Missing or
 disagreement makes the contribution `unknown` and mints no evidence ID. Locator
 alone never identifies or deduplicates evidence. Provenance records the same
-owner/version fields, request hash, result hash, snapshot, success, verdict,
-truncation, and input evidence IDs. RFC-0023's specialized edge formulas and
+owner/version fields, request hash, result hash, source-snapshot list, success,
+verdict, truncation, and input evidence IDs. RFC-0023's specialized edge formulas and
 strict artifacts refine this generic identity without changing the owner flow.
 
 ### Freshness and snapshot truth

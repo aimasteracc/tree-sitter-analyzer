@@ -52,6 +52,7 @@ Memory records should capture reusable lessons, not logs: benchmark surprises, C
 - Every registered MCP tool must have a CLI access path.
 - Main CLI flags and standalone scripts are guarded by `tests/contracts/test_mcp_cli_parity_contract.py`.
 - MCP-equivalent CLI handler arguments, required file-path checks, and TOON output are guarded by `tests/unit/cli/test_mcp_commands.py`.
+- RFC-0022 Phase 0 has one narrow parameter-level exception: process-local snapshot, generation, and lease controls, plus a `read_existing` sequence that requires those controls, are exercised through the non-public same-process CLI-handler bridge and are not exposed as unusable cross-invocation flags. The existing action-level CLI path remains mandatory; the parity contracts must encode the exact exception, and it does not authorize another tool, a one-shot composition command, or any other parameter-parity waiver.
 - When adding or changing an MCP tool, update the CLI path in the same change and run a real CLI smoke test, for example `uv run python -m tree_sitter_analyzer <file> --smart-context --format json`.
 - This keeps MCP-only features from becoming invisible to users, CI, and future agents.
 
