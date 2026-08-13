@@ -108,13 +108,10 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "codegraph_complexity_heatmap": ("main", "--codegraph-complexity-heatmap"),
         "codegraph_visualize": ("main", "--codegraph-visualize"),
         "codegraph_uml": ("main", "--uml"),
-        # PL-C sprint: the cache-management trio now has real CLI flags
-        # (was ``mcp_only`` exemptions before).
         "codegraph_autoindex": ("main", "--autoindex"),
         "codegraph_full_index": ("main", "--full-index"),
         "codegraph_metrics": ("main", "--codegraph-metrics"),
         "codegraph_incremental_sync": ("main", "--incremental-sync"),
-        # consolidated-only tools ported during merge of feat/autonomous-dev
         "trace_impact": ("main", "--trace-impact"),
         "modification_guard": ("main", "--modification-guard"),
         "batch_search": ("main", "--batch-search"),
@@ -201,10 +198,6 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
     assert missing_main_flags == []
     assert missing_scripts == []
 
-
-# ---------------------------------------------------------------------------
-# Wave C2 facade-cutover contracts (PRD §5): discovery + delegation
-# ---------------------------------------------------------------------------
 
 # MCP server name used to compose the client-visible ``<server>__<tool>`` name.
 # Cursor caps the composed name at 60 chars; the success metric (PRD §8) is
@@ -476,3 +469,29 @@ def test_every_tool_declares_mcp_annotations() -> None:
         "Tools cannot be both readOnly AND destructive — pick one. "
         f"Offenders: {contradictions}"
     )
+
+
+def test_rfc0022_process_local_cli_parity_exception_is_exact() -> None:
+    from tree_sitter_analyzer.mcp.facade_map import LEGACY_TOOL_MAP, NEW_ACTION_PARITY
+
+    expected = {
+        ("index", "status"): {"access_mode"},
+        ("edit", "impact"): {"capture_diff_snapshot", "scope_paths"},
+        ("edit", "constraints"): {"diff_snapshot_id", "persist", "scope_paths"},
+        ("edit", "classify"): {"diff_snapshot_id"},
+        ("edit", "ast_diff"): {"diff_snapshot_id"},
+        ("edit", "release_snapshot"): {"diff_snapshot_id", "route_lease_id"},
+    }
+    _tools, lookup = _create_tool_registry(str(PROJECT_ROOT))
+    actual: dict[tuple[str, str], set[str]] = {}
+    for facade in ("edit", "index"):
+        for param, actions in lookup[facade]._action_scoped_params.items():
+            for action in actions:
+                actual.setdefault((facade, action), set()).add(param)
+    assert actual == expected
+    edit = lookup["edit"]
+    declared = {("edit", action) for action in (*edit.action_map, *edit.bespoke_map)}
+    cli_routes = set(LEGACY_TOOL_MAP.values()) | {
+        (facade, action) for facade, action, _flag in NEW_ACTION_PARITY.values()
+    }
+    assert declared - cli_routes == {("edit", "release_snapshot")}

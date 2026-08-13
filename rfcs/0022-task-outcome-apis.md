@@ -421,8 +421,14 @@ budget and then contributes partial. `routing_deadline_ms` is a routing deadline
 **not a wall-time SLA or resource cap**. V1 calls primitives
 sequentially and checks the deadline before starting each call. A non-cancellable
 running primitive may finish after it; `consumed.routing_wall_ms` may therefore
-exceed the limit, with `deadline_overrun_ms` reported exactly. No new call starts
-after the deadline. Safe cancellation needs a separate primitive contract.
+exceed the limit, with `deadline_overrun_ms` reported exactly. No new routed call
+starts after the deadline. Primitive-owned consumer-pin release and a host's
+validated `edit.release_snapshot` in `finally` are unconditional cleanup, not
+routed calls: they bypass routing call/deadline admission, run even after overrun,
+and are reported separately as `consumed.cleanup_calls` and
+`consumed.cleanup_wall_ms`. They do not change `consumed.primitive_calls`; a
+cleanup failure is retained as cleanup evidence while the lease remains bounded
+by hard expiry. Safe cancellation needs a separate primitive contract.
 
 ## Complete V1 route decision table
 
@@ -456,7 +462,7 @@ not sent; primitive output format is JSON internally.
 | `understand(task)` | valid task and certified index tokens | `nav.context(task=task, snapshot_id=index.snapshot_id, source_generation=index.source_generation, max_nodes=12/30, max_code_blocks=3/5, include_graph=false, access_mode="read_existing", output_format="json")` | missing/mismatched echoed token or failure => unknown and stop; success ends route |
 | `plan_change(task)` | valid task and certified index tokens | same `nav.context` call | missing/mismatched echoed token or failure => unknown and stop |
 | `plan_change(task)` | each distinct existing path explicitly returned in generation-matched `code_blocks`, max 2/5 | `edit.safe(file_path=path, edit_type="refactor", snapshot_id=index.snapshot_id, source_generation=index.source_generation, access_mode="read_existing", output_format="json")` | missing path is not inferred; token mismatch stops route; other per-call failure is partial |
-| diff operation | valid diff | `edit.impact(mode="diff"|"staged", scope_paths=diff.scope_paths, include_tests=true, resource_profile="local_low_impact", access_mode="read_existing", output_format="json")` | `access_mode` mandates zero-write P0.2 capture and `capture_diff_snapshot` is forbidden; missing lease/ID/generation/records/assessed scope or generation mismatch => unknown and stop; an unpublished/malformed pair is owner-revoked, otherwise the orchestration host closes the validated pair in `finally` on every exit |
+| diff operation | valid diff | `edit.impact(mode="diff"|"staged", scope_paths=diff.scope_paths, include_tests=true, resource_profile="local_low_impact", access_mode="read_existing", output_format="json")` | `access_mode` mandates zero-write P0.2 capture and `capture_diff_snapshot` is forbidden; missing lease/ID/generation/records/assessed scope or generation mismatch => unknown and stop; an unpublished/malformed pair is owner-revoked, otherwise the orchestration host closes the validated pair in `finally` on every exit as unconditional, separately-accounted cleanup |
 | diff operation | successful, generation-matched impact; reserved before fan-out | `edit.constraints(diff_snapshot_id=id, snapshot_id=index.snapshot_id, source_generation=index.source_generation, scope_paths=impact.assessed_scope_paths, persist=false, access_mode="read_existing", output_format="json")` | `NO_CONFIG` returns diff-only provenance; applicable graph rules must echo matching diff+index records; missing/mismatched index record or token stops remaining fan-out; only in-scope violations count |
 | diff operation | each non-binary changed record with old/new material available | `edit.ast_diff(diff_snapshot_id=id, file_path=path, access_mode="read_existing", output_format="json")` | unsupported add/delete/rename is explicit `not_run`, never locally reconstructed |
 | diff operation | same eligible records | `edit.classify(diff_snapshot_id=id, file_path=path, access_mode="read_existing", output_format="json")` | per-file failure => partial |
@@ -720,11 +726,14 @@ existing bounded/redacted primitive results. This RFC does not change
 `BaseMCPTool` root canonicalization, index storage, or primitive behavior except
 the separately tested Phase 0 capabilities.
 
-Apart from the Phase 0 adapter parameter extensions and narrow parity exception
-specified above, the existing eight facades, legacy shim, CLI flags, schemas, and
-defaults remain unchanged in Phase A. `task-outcome/v1` fields are not removed or
-retyped within
-V1. A future version requires explicit negotiation and overlap.
+The Phase 0 compatibility exception covers both the adapter parameter extensions
+and the P0.4 response-schema additions specified above. Those four generic access
+evidence fields are mandatory only when `access_mode="read_existing"` is present;
+legacy calls that omit it retain their exact response schemas. Apart from those
+additions and the narrow parity exception, the existing eight facades, legacy
+shim, CLI flags, schemas, and defaults remain unchanged in Phase A.
+`task-outcome/v1` fields are not removed or retyped within V1. A future version
+requires explicit negotiation and overlap.
 
 ## RED-first acceptance plan
 
