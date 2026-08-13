@@ -3,11 +3,11 @@
 - **Status**: draft; corrective design, no implementation
 - **Author(s)**: project maintainers
 - **Created**: 2026-08-08
-- **Last updated**: 2026-08-08
+- **Last updated**: 2026-08-13
 - **Tracking issue**: TBD
 - **Affected paths in later implementation only**: `tree_sitter_analyzer/task/`,
-  existing `index`/`edit` primitive adapters, their existing tests, and (only after
-  the menu gate) MCP/CLI registries and codemaps.
+  existing `index`/`nav`/`edit` primitive adapters, their existing tests, and
+  (only after the menu gate) MCP/CLI registries and codemaps.
 
 ## Summary
 
@@ -26,7 +26,8 @@ If it passes, MCP remains TOON-by-default and CLI JSON-by-default.
 ```text
 internal Python / experiment request
   -> validate boundary and routing budget
-  -> call existing facade action adapters, sequentially
+  -> call existing routed facade action adapters, sequentially
+  -> perform unconditional capability cleanup and record its fixed result
   -> freeze one TaskOutcome value
   -> serialize that value (JSON or TOON)
 ```
@@ -72,6 +73,18 @@ completeness is not `complete`, freshness is `unknown` (or primitive-reported
 task rows do not start without the two certified tokens. Time, mtimes, and a
 task-computed hash are never freshness evidence.
 
+The P0.1 registry is process-local and bounded to 16 live snapshots and 512 MiB
+of charged snapshot bytes. An entry expires 35 seconds after its latest successful
+publish or identity-matched reuse. A snapshot is pinned while a consumer is
+active; capacity or size exhaustion fails closed rather than spilling to disk.
+The registry owner schedules a monotonic expiry callback at every publish/reuse;
+the callback carries the entry generation so a superseded timer is a no-op. Under
+the registry lock it marks the matching entry expired, prevents new pins, and
+immediately closes the connection and releases the slot/byte charge when the
+active-consumer count is zero. If consumers remain, their final release performs
+that close. Registry shutdown also cancels callbacks and closes every entry, so an
+idle process cannot retain expired capacity.
+
 ### P0.2 Frozen workspace/staged diff snapshot
 
 V1 accepts only `workspace` and `staged`. They map respectively to
@@ -109,8 +122,9 @@ primitive atomically acquires its own active-consumer pin before reading. Hard
 expiry marks the entry expired and forbids new pins, but cannot erase its bytes
 or release its slot/byte charge while a consumer is active. The final consumer
 release erases an expired entry; otherwise the orchestration host closes the
-primitive-issued route lease in a `finally` block after outcome freeze/failure,
-and erasure occurs once both lease and consumer counts reach zero. Thus an
+primitive-issued route lease in an outer `finally` after routed computation or
+failure but before outcome freeze/return, and erasure occurs once both lease and
+consumer counts reach zero. Thus an
 overrunning call keeps valid bytes without ever allowing actual retained memory
 or live-slot accounting to exceed the 16-entry/64 MiB budgets. The long-lived
 MCP process exposes `edit(action="release_snapshot", diff_snapshot_id=id,
@@ -118,11 +132,24 @@ route_lease_id=lease)` so a successful route can close ownership early; repeatin
 the exact ID/token pair is idempotent, while a mismatched ownership token fails.
 Access after expiry or lease close returns `DIFF_SNAPSHOT_EXPIRED`.
 
-Phase 0 snapshot and lease IDs are deliberately process-local. A one-shot CLI
-process dies before another invocation can safely consume or release them, so
-there is intentionally no `--diff-snapshot-id` or snapshot-release CLI flag.
-Cross-process persistence and a one-shot task/orchestration facade are Phase A
-work behind the public-surface gate, not Phase 0 CLI parity requirements.
+Phase 0 index, diff-snapshot, and route-lease IDs are deliberately process-local.
+A one-shot CLI process dies before another invocation can safely consume or
+release them, so there is intentionally no public `--snapshot-id`,
+`--source-generation`, `--diff-snapshot-id`, or snapshot-release CLI flag.
+Phase 0 parameter parity here applies to the existing inner adapters and their
+registered MCP facade routes. Contract tests exercise the exact same-process
+adapter sequence through a non-public CLI-handler bridge without publishing it.
+Existing standalone CLI actions retain their legacy one-shot semantics and public
+access paths. This RFC narrowly amends MCP/CLI parity for the process-local
+`edit.release_snapshot` action and its opaque capability ID, generation, and
+release-token controls: no Phase 0 CLI release operation or consumer-ID parameter
+parity is claimed because it would be unusable after the producer process exits.
+The implementation must update the parity contracts to encode exactly this action
+and parameter exception; it cannot weaken discoverability or parity for any other
+action or parameter. The test bridge is verification infrastructure, not a public
+CLI path. This exception does not authorize a one-shot composition command. Cross-process persistence and
+a one-shot task/orchestration facade are Phase A work behind the public-surface
+gate.
 
 Before every snapshot-consuming call (`constraints`, `ast_diff`, or `classify`),
 its primitive owner acquires that pin, then reacquires and compares the shared-
@@ -202,24 +229,123 @@ Every routed adapter (`index.status`, `nav.context`, `edit.safe`, `edit.impact`,
 `edit.ast_diff`, `edit.classify`, and `edit.constraints`) must expose a tested
 `access_mode="read_existing"` used by Phase A. It may open a compatible existing
 index/cache read-only, but must not create a directory, DB, journal/WAL, schema,
-index, migration, lock file, snapshot file, or temp file. Each successful result
-echoes the primitive-owned source snapshot it actually read (index, diff, or
-config), or explicit `not_applicable`; the task creates none. A missing cache/index
-returns `missing`/`unknown`; an old or incompatible schema returns
-`unknown:INCOMPATIBLE_SCHEMA`. Neither case triggers initialization or migration.
+index, migration, lock file, snapshot file, or temp file. The prohibition is
+literal for both producers and consumers: the request-scoped pathname-backed Git
+index/object/shadow plumbing permitted by P0.2 remains valid for legacy explicit
+capture, but `edit.impact(access_mode="read_existing")` and every subsequent
+snapshot revalidation must use a separately tested zero-filesystem-write backend.
+They may not relocate, allowlist, or write-then-delete that plumbing.
+
+This is a capability gate, not permission to weaken P0.2. Before Phase A, the
+primitive owner must demonstrate a concrete backend that reproduces the complete
+P0.2 patch, status, blob, config, attribute, ordering, and source-generation
+semantics from safely opened immutable inputs without invoking any operation that
+is write-capable for its supplied arguments and captured state. It must not invoke
+ordinary Git plumbing unless the exact invocation set is proved by the P0.4
+monitor to need no pathname-backed index, object directory, shadow worktree, lock, config, attributes, or order file and to
+make no write attempt. If no backend passes both the P0.2 golden corpus and P0.4
+monitor, read-existing diff capture is unsupported and Phase A remains blocked;
+legacy capture, live Git/worktree reads, weakened semantics, relocation, and
+write-then-delete are forbidden fallbacks.
+
+In this mode `edit.impact` is unconditionally the P0.2 producer: accepting
+`access_mode="read_existing"` for `mode="diff"` or `mode="staged"` must atomically
+create the bounded in-memory diff snapshot and route lease or fail.
+`capture_diff_snapshot` is forbidden whenever `access_mode="read_existing"` is
+present, including when supplied as `false`, and must be rejected before capture;
+omission of `access_mode` preserves the legacy
+`capture_diff_snapshot=true|false` contract. A successful read-existing result
+must contain `diff_snapshot_id`, `route_lease_id`, `source_generation`, changed-
+file records, and `assessed_scope_paths`; absence of any field invalidates the
+result and stops the route. The primitive owner retains an internal cleanup
+handle until it has validated and atomically published the complete pair; every
+path that does not publish both IDs revokes the reservation/lease internally.
+The host closes in `finally` only after receiving both validated tokens, so a
+malformed wire result cannot retain capacity. `edit.ast_diff`, `edit.classify`,
+and `edit.constraints` consume that same-process ID only. `nav.context`,
+`edit.safe`, and graph-backed `edit.constraints` require the certified P0.1
+`snapshot_id` and `source_generation`. Constraints acquire that exact pair only
+after captured config proves graph rules are applicable; `NO_CONFIG` does not
+open or cite an index capability. No live-cache, live-file, migration, or
+parser/index fallback is allowed when a required capability is absent or
+disagrees.
+
+Every classified action-level result adds the exact P0.4 access-evidence fields
+`access_mode`, `access_state`, `access_reason`, and `source_snapshots` without
+retyping action-specific fields such as the constraints result's existing
+`state="applicable"`. `access_state` is one of `available`, `missing`, `unknown`,
+or `not_applicable`; `access_reason` is null only for `available` and otherwise is
+a stable primitive-owned reason. `source_snapshots` is a stable list of exact
+records `{kind, snapshot_id, source_generation}`; `kind` is `index` for P0.1 or
+`diff` for P0.2, and records sort by `(kind, snapshot_id, source_generation)`. After a
+capability is acquired, every access state cites every primitive identity
+actually read, including `not_applicable`/`NO_CONFIG` and a later `unknown`; the
+list is empty only when no capability was acquired. Thus applicable graph-backed
+constraints cite both their P0.2 diff and P0.1 index snapshots, while `NO_CONFIG`
+cites the acquired diff that owns the config probe. An old or incompatible schema
+is exactly `access_state="unknown", access_reason="INCOMPATIBLE_SCHEMA"`. Each
+acquired action-specific `snapshot_id` or `diff_snapshot_id` and
+`source_generation` must match a corresponding generic record; multiple distinct
+records are not required to share an ID. Successful classification of an
+unavailable capability may retain `success=true`; Phase A branches on
+`access_state` and `access_reason`, not on `success` or an action-specific `state`
+alone. Validation or internal execution failure remains `success=false`. The task
+creates or repairs none of these fields. P0.5 owns version fields, fragment
+propagation, and evidence-identity participation; it does not retroactively
+synthesize P0.4 access evidence.
+
+The P0.1 index-snapshot and bounded P0.2 diff-snapshot primitive-owned in-memory
+capability registries are the only reusable ephemeral capability state allowed in
+this mode; ordinary request-local values are not persistence. No pathname-backed
+private copy is an in-memory exception. Missing cache/index/snapshot returns
+`missing` or `unknown` without initialization, and incompatible state never
+triggers migration.
 
 Primitive acceptance fixtures cover (1) a clean repository with no cache, (2) a
 repository with an old schema, and (3) a read-only filesystem. Each adapter and
 composed route runs in a fresh subprocess with isolated empty `HOME`,
-`XDG_CACHE_HOME`, and `TMPDIR` directories. Immediately before the adapter
-call, a platform write monitor/sandbox begins observing the whole subprocess and
-fails on every filesystem write attempt, including write-then-delete attempts in
-those isolated roots or writes through an absolute path. Before/after tree and
-content-hash comparisons additionally require the project, cache, isolated
-home/cache/temp roots, and every pre-existing DB or sidecar to be exactly
-unchanged. This catches user-cache and system-temporary writes rather than merely
-relocating them. Interpreter bytecode caches are disabled. The in-memory P0.2
-registry is the only allowed ephemeral state.
+`XDG_CACHE_HOME`, and `TMPDIR` directories. The platform write monitor/sandbox is
+active from subprocess entry, before imports, facade/adapter construction, and
+the call, and fails on every filesystem write attempt by the process or its
+descendants, including write-then-delete attempts, native-library writes, or
+writes through an absolute path. Before/after tree, identity, and content-hash
+comparisons additionally require the project, cache, isolated home/cache/temp
+roots, and every pre-existing DB or sidecar to be exactly unchanged. This catches
+user-cache and system-temporary writes rather than merely relocating them.
+Interpreter bytecode caches are disabled.
+
+Every certified supported-platform acceptance axis must run a descendant-aware
+native authority that records every write attempt from target exec until every
+thread and descendant exits and makes any such event fail the gate. Read-only
+filesystems and before/after hashes are supplemental on every OS and cannot
+certify an axis alone; absence,
+attach/start failure, truncation or event loss, parser failure, an unknown relevant
+operation, or a surviving descendant fails closed rather than skipping. A deny
+sandbox that cannot report an ignored or swallowed denial is insufficient. An OS
+without this authority must return a stable unsupported result for read-existing
+mode and cannot be listed as certified support.
+
+The mandatory initial authority is a pinned Linux CI job on the supported runner
+or container with `strace` present at a pinned minimum version. It launches the
+adapter subprocess as trace root with `strace -ff`, closes non-stdio inherited
+file descriptors, and records every thread and descendant until all traced
+processes exit. A checked-in parser and exact allow/deny policy classify write
+intent by syscall, flags, mapping protections, file-descriptor provenance, and
+resolved target. It classifies as a gate violation every filesystem mutation,
+write-capable file open, mapping capable of writing through to a backing file (for example,
+`MAP_SHARED|PROT_WRITE`, not loader-required `MAP_PRIVATE` copy-on-write), write
+through an inherited descriptor, and asynchronous filesystem write such as
+`io_uring`, including failed attempts and write-then-delete. The policy
+distinguishes non-filesystem IPC descriptors; it has no writable-filesystem
+allowlist. Positive-control fixtures require the exact recorded events for native
+and descendant create/unlink, truncate/restore, rename/restore, mkdir/rmdir,
+SQLite-sidecar, absolute-path, failed-denial, and write-then-delete attempts. macOS
+and Windows must pass the identical semantic adapter/route corpus under their
+separately pinned native authority before being certified. Replacing or adding an
+authority requires an RFC amendment and exact contract tests; “equivalent” is
+not an inline escape hatch.
+In-process monkeypatches and final-tree hashing alone are never write-attempt
+authority.
 
 ### P0.5 Authoritative wire owner and versions
 
@@ -302,8 +428,20 @@ budget and then contributes partial. `routing_deadline_ms` is a routing deadline
 **not a wall-time SLA or resource cap**. V1 calls primitives
 sequentially and checks the deadline before starting each call. A non-cancellable
 running primitive may finish after it; `consumed.routing_wall_ms` may therefore
-exceed the limit, with `deadline_overrun_ms` reported exactly. No new call starts
-after the deadline. Safe cancellation needs a separate primitive contract.
+exceed the limit, with `deadline_overrun_ms` reported exactly. No new routed call
+starts after the deadline. Primitive-owned consumer-pin release remains inside
+the owning primitive call. The host's validated `edit.release_snapshot` runs in
+an outer `finally` as unconditional cleanup, not a routed call: it bypasses route
+call/deadline admission and runs even after overrun. The host first captures
+routed success/failure in a mutable draft, then performs cleanup, records the
+fixed fields `consumed.cleanup_calls` (zero or one),
+`consumed.cleanup_wall_ms`, `consumed.cleanup_status`
+(`not_required|succeeded|failed`), and `consumed.cleanup_error_code` (null or
+`DIFF_SNAPSHOT_CLEANUP_FAILED`), and only then freezes/returns the
+outcome. Cleanup does not change `consumed.primitive_calls`. Failure appends only
+the stable cleanup code to `errors`, forces `success=false`, `status=unknown`, and
+`verdict=ERROR`, while hard expiry still bounds the lease. Safe cancellation
+needs a separate primitive contract.
 
 ## Complete V1 route decision table
 
@@ -324,7 +462,8 @@ not sent; primitive output format is JSON internally.
 4. Never substitute a failed/unsupported action. Record `unknown`/`not_run`.
 5. Compare only primitive-issued tokens. Task routes pass the certified index
    `snapshot_id` and `source_generation` into every `nav.context`/`edit.safe`
-   call and compare both echoed tokens. Immediately after impact, compare its
+   call and every graph-applicable constraints call, then compare the matching
+   echoed tokens/source record. Immediately after impact, compare its
    `source_generation` with the index oracle before constraints or fan-out.
 6. Stop on an absent task-route token, generation/snapshot disagreement, expiry,
    or source change; retain earlier evidence as partial and make no further
@@ -336,8 +475,8 @@ not sent; primitive output format is JSON internally.
 | `understand(task)` | valid task and certified index tokens | `nav.context(task=task, snapshot_id=index.snapshot_id, source_generation=index.source_generation, max_nodes=12/30, max_code_blocks=3/5, include_graph=false, access_mode="read_existing", output_format="json")` | missing/mismatched echoed token or failure => unknown and stop; success ends route |
 | `plan_change(task)` | valid task and certified index tokens | same `nav.context` call | missing/mismatched echoed token or failure => unknown and stop |
 | `plan_change(task)` | each distinct existing path explicitly returned in generation-matched `code_blocks`, max 2/5 | `edit.safe(file_path=path, edit_type="refactor", snapshot_id=index.snapshot_id, source_generation=index.source_generation, access_mode="read_existing", output_format="json")` | missing path is not inferred; token mismatch stops route; other per-call failure is partial |
-| diff operation | valid diff | `edit.impact(mode="diff"|"staged", scope_paths=diff.scope_paths, include_tests=true, resource_profile="local_low_impact", access_mode="read_existing", output_format="json")` | missing ID/generation/scope or generation mismatch => unknown and stop |
-| diff operation | successful, generation-matched impact; reserved before fan-out | `edit.constraints(diff_snapshot_id=id, scope_paths=impact.assessed_scope_paths, persist=false, access_mode="read_existing", output_format="json")` | only in-scope violations count; `not_applicable:NO_CONFIG` satisfies row |
+| diff operation | valid diff | `edit.impact(mode="diff"|"staged", scope_paths=diff.scope_paths, include_tests=true, resource_profile="local_low_impact", access_mode="read_existing", output_format="json")` | `access_mode` mandates zero-write P0.2 capture and `capture_diff_snapshot` is forbidden; missing lease/ID/generation/records/assessed scope or generation mismatch => unknown and stop; an unpublished/malformed pair is owner-revoked, otherwise the orchestration host closes the validated pair in `finally` on every exit as unconditional, separately-accounted cleanup |
+| diff operation | successful, generation-matched impact; reserved before fan-out | `edit.constraints(diff_snapshot_id=id, snapshot_id=index.snapshot_id, source_generation=index.source_generation, scope_paths=impact.assessed_scope_paths, persist=false, access_mode="read_existing", output_format="json")` | `NO_CONFIG` returns diff-only provenance; applicable graph rules must echo matching diff+index records; missing/mismatched index record or token stops remaining fan-out; only in-scope violations count |
 | diff operation | each non-binary changed record with old/new material available | `edit.ast_diff(diff_snapshot_id=id, file_path=path, access_mode="read_existing", output_format="json")` | unsupported add/delete/rename is explicit `not_run`, never locally reconstructed |
 | diff operation | same eligible records | `edit.classify(diff_snapshot_id=id, file_path=path, access_mode="read_existing", output_format="json")` | per-file failure => partial |
 
@@ -417,7 +556,8 @@ appear in the model, JSON, TOON, logs, or experiment artifacts.
 Request/internal failures stay inside `task-outcome/v1`, use `success=false` and
 required verdict `ERROR`, and follow TSA envelope conventions with stable codes
 `INVALID_REQUEST`, `OUTSIDE_PROJECT`, `BUDGET_INVALID`,
-`UNSUPPORTED_DIFF_SOURCE`, and `INTERNAL_ERROR`. `ERROR` is forbidden when
+`UNSUPPORTED_DIFF_SOURCE`, `DIFF_SNAPSHOT_CLEANUP_FAILED`, and `INTERNAL_ERROR`.
+`ERROR` is forbidden when
 `success=true`. Absolute host paths, bodies, secrets, environment values, stderr,
 and traces are not serialized.
 
@@ -429,9 +569,13 @@ unknown. Evidence IDs are:
 ```text
 evidence:sha256(canonical_json({
   primitive_facade, action, action_version,
-  normalized_result_sha256, source_snapshot_id, locator
+  normalized_result_sha256, source_snapshots, locator
 }))
 ```
+
+`source_snapshots` is the exact stable P0.4 list received for that fragment; a
+constraint contribution therefore binds both the diff/config and graph-index
+identities it read.
 
 The normalized result hash covers the canonical bytes of the exact primitive wire
 fragment supporting the claim. That wire already contains its primitive facade,
@@ -441,8 +585,8 @@ inserts owner fields and the primitive never supplies the digest. A registry may
 diagnose mismatch but cannot repair missing edge-evidence ownership. Missing or
 disagreement makes the contribution `unknown` and mints no evidence ID. Locator
 alone never identifies or deduplicates evidence. Provenance records the same
-owner/version fields, request hash, result hash, snapshot, success, verdict,
-truncation, and input evidence IDs. RFC-0023's specialized edge formulas and
+owner/version fields, request hash, result hash, source-snapshot list, success,
+verdict, truncation, and input evidence IDs. RFC-0023's specialized edge formulas and
 strict artifacts refine this generic identity without changing the owner flow.
 
 ### Freshness and snapshot truth
@@ -596,9 +740,14 @@ existing bounded/redacted primitive results. This RFC does not change
 `BaseMCPTool` root canonicalization, index storage, or primitive behavior except
 the separately tested Phase 0 capabilities.
 
-Existing eight facades, legacy shim, CLI flags, schemas, and defaults remain
-unchanged in Phase A. `task-outcome/v1` fields are not removed or retyped within
-V1. A future version requires explicit negotiation and overlap.
+The Phase 0 compatibility exception covers both the adapter parameter extensions
+and the P0.4 response-schema additions specified above. Those four generic access
+evidence fields are mandatory only when `access_mode="read_existing"` is present;
+legacy calls that omit it retain their exact response schemas. Apart from those
+additions and the narrow parity exception, the existing eight facades, legacy
+shim, CLI flags, schemas, and defaults remain unchanged in Phase A.
+`task-outcome/v1` fields are not removed or retyped within V1. A future version
+requires explicit negotiation and overlap.
 
 ## RED-first acceptance plan
 
