@@ -1,6 +1,8 @@
 """Tests for codegraph_sitemap MCP tool and CLI parity."""
 
+import errno
 import json
+import os
 import sys
 from io import StringIO
 
@@ -126,6 +128,33 @@ class TestSitemapTool:
         defn = tool.get_tool_definition()
         assert defn["name"] == "codegraph_sitemap"
         assert "inputSchema" in defn
+
+    def test_tool_lifetime_releases_pinned_cache_directory(self, indexed_project):
+        # GH-1253: short-lived MCP tools must not exhaust the process FD limit.
+        tool = self._make_tool(indexed_project)
+        fd = tool._get_cache()._cache_dir_fd
+        assert isinstance(fd, int)
+
+        del tool
+
+        with pytest.raises(OSError) as exc_info:
+            os.fstat(fd)
+        assert exc_info.value.errno == errno.EBADF
+
+    def test_cache_finalizer_suppresses_cleanup_errors(
+        self, indexed_project, monkeypatch
+    ):
+        # GH-1253: finalizer failures must not escape interpreter cleanup.
+        tool = self._make_tool(indexed_project)
+        cache = tool._get_cache()
+
+        def fail_close(_cache):
+            raise OSError("close")
+
+        with monkeypatch.context() as patcher:
+            patcher.setattr(type(cache), "close", fail_close)
+            assert cache.__del__() is None
+        cache.close()
 
     def test_validate_arguments_bad_mode(self, indexed_project):
         tool = self._make_tool(indexed_project)

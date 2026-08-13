@@ -371,3 +371,38 @@ class TestRunTool:
                 "persist": False,
             }
         )
+
+
+def _unexpected_evaluator(*_args):
+    raise ValueError("bad evaluator")
+
+
+def test_persistence_swallows_unexpected_evaluator_errors(tmp_path: Path) -> None:
+    from tree_sitter_analyzer.cli.commands.constraint_check_persistence import (
+        run_and_persist,
+    )
+
+    db = TestRunAndPersist()._db_with_edges(tmp_path)
+    assert run_and_persist(
+        db,
+        [],
+        persist=True,
+        evaluator=_unexpected_evaluator,
+        violations_ddl=_violations_ddl,
+    ) == ([], 1)
+
+
+def test_read_only_propagates_unexpected_evaluator_errors(tmp_path: Path) -> None:
+    from tree_sitter_analyzer.cli.commands.constraint_check_persistence import (
+        run_and_persist,
+    )
+
+    db = TestRunAndPersist()._db_with_edges(tmp_path)
+    with pytest.raises(ValueError, match="^bad evaluator$"):
+        run_and_persist(
+            db,
+            [],
+            persist=False,
+            evaluator=_unexpected_evaluator,
+            violations_ddl=_violations_ddl,
+        )

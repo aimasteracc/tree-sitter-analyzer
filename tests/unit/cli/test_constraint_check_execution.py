@@ -7,41 +7,25 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from tree_sitter_analyzer.cli.commands.constraint_check_command import (
     _evaluate_with_explicit_file,
     _exit_code_for,
     run_check_constraints,
 )
 
-# Module-level patch targets
 _APPLY_TOON = (
     "tree_sitter_analyzer.mcp.utils.format_helper.apply_toon_format_to_response"
 )
-_RESOLVE_FMT = "tree_sitter_analyzer.cli.output_format.resolve_mcp_tool_format"
-_LOAD_CONSTRAINTS = (
-    "tree_sitter_analyzer.cli.commands.constraint_check_command.load_constraints"
-)
-_EVALUATE = "tree_sitter_analyzer.cli.commands.constraint_check_command.evaluate"
-_LOAD_EXPLICIT = (
-    "tree_sitter_analyzer.cli.commands.constraint_check_command._load_explicit"
-)
-_RUN_AND_PERSIST = (
-    "tree_sitter_analyzer.cli.commands.constraint_check_command._run_and_persist"
-)
-_EVAL_EXPLICIT = (
-    "tree_sitter_analyzer.cli.commands.constraint_check_command"
-    "._evaluate_with_explicit_file"
-)
-_ASYNCIO_RUN = "tree_sitter_analyzer.cli.commands.constraint_check_command.asyncio.run"
-_PRINT_RESULT = (
-    "tree_sitter_analyzer.cli.commands.constraint_check_command._print_result"
-)
-_RESOLVE_OFMT = (
-    "tree_sitter_analyzer.cli.commands.constraint_check_command._resolve_output_format"
-)
-_CCT_CLS = (
-    "tree_sitter_analyzer.cli.commands.constraint_check_command.ConstraintCheckTool"
-)
+_COMMAND = "tree_sitter_analyzer.cli.commands.constraint_check_command"
+_EVALUATE = _COMMAND + ".evaluate"
+_LOAD_EXPLICIT = _COMMAND + "._load_explicit"
+_RUN_AND_PERSIST = _COMMAND + "._run_and_persist"
+_EVAL_EXPLICIT = _COMMAND + "._evaluate_with_explicit_file"
+_ASYNCIO_RUN = _COMMAND + ".asyncio.run"
+_PRINT_RESULT = _COMMAND + "._print_result"
+_RESOLVE_OFMT = _COMMAND + "._resolve_output_format"
 
 
 def _v(
@@ -64,11 +48,6 @@ def _v(
         callee_file=callee_file,
         detected_at=detected_at,
     )
-
-
-# ---------------------------------------------------------------------------
-# Violation stub
-# ---------------------------------------------------------------------------
 
 
 class TestEvaluateWithExplicitFile:
@@ -244,11 +223,6 @@ constraints:
                 with patch(_APPLY_TOON, side_effect=lambda p, fmt: p):
                     result = self._call(tmp_path, str(yaml_file))
         assert result["verdict"] == "UNSAFE"
-
-
-# ---------------------------------------------------------------------------
-# run_check_constraints — main dispatcher
-# ---------------------------------------------------------------------------
 
 
 def _ns(**kwargs: object) -> SimpleNamespace:
@@ -491,3 +465,28 @@ constraints:
         "violations": [],
         "rule_count": 1,
     }
+
+
+@pytest.mark.parametrize("phase", ["open", "final_fd", "final_path"])
+def test_explicit_identity_changes(tmp_path, monkeypatch, phase):
+    import tree_sitter_analyzer.cli.commands.constraint_check_execution as owner
+
+    config = tmp_path / "rules.yml"
+    config.write_bytes(b"version: 1\n")
+    stable = config.stat()
+    changed = object()
+    fstats = iter((changed,)) if phase == "open" else iter((stable, changed))
+    monkeypatch.setattr(owner.os, "fstat", lambda _fd: next(fstats))
+    if phase == "final_path":
+        path_stats = iter((stable, changed))
+        monkeypatch.setattr(owner.os, "fstat", lambda _fd: stable)
+        monkeypatch.setattr(Path, "stat", lambda _self, **_kwargs: next(path_stats))
+    with pytest.raises(OSError, match="^constraint file changed during read$"):
+        owner.explicit_config_evidence(config, float("inf"))
+
+
+def test_explicit_config_evidence_rejects_directory(tmp_path):
+    import tree_sitter_analyzer.cli.commands.constraint_check_execution as owner
+
+    with pytest.raises(OSError, match="^constraint file is not a regular file$"):
+        owner.explicit_config_evidence(tmp_path, float("inf"))

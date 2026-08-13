@@ -123,10 +123,6 @@ def _explicit_config_evidence(
     return explicit_config_evidence(config_path, deadline)
 
 
-def _read_explicit_config(config_path: Path, deadline: float) -> bytes:
-    return _explicit_config_evidence(config_path, deadline)[0]
-
-
 def _explicit_config_changed(
     config_path: Path, before: tuple[bytes, os.stat_result], deadline: float
 ) -> bool:

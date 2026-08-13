@@ -38,12 +38,3 @@ def explicit_config_evidence(
     if config_path.stat(follow_symlinks=False) != opened:
         raise OSError("constraint file changed during read")
     return bytes(data), opened
-
-
-def explicit_config_changed(
-    config_path: Path, before: tuple[bytes, os.stat_result], deadline: float
-) -> bool:
-    try:
-        return explicit_config_evidence(config_path, deadline) != before
-    except (OSError, RuntimeError):
-        return True

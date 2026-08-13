@@ -183,115 +183,114 @@ def _populate_ast_imports(
     finally:
         conn.close()
 
-    def test_phantom_bare_name_resolution_skipped_when_no_import(
-        self, tmp_path: Path
-    ) -> None:
-        """Regression #780: bare-name callee resolved to forbidden module is
-        SKIPPED when the caller has no import from that module.
 
-        Scenario mirrors the real bug: ``_hash_one_file`` in a core file
-        calls ``sha256_hash.update()``.  The synapse resolver resolves
-        ``update`` to ``file_health_blocks.py`` (a forbidden mcp module)
-        because both define a method named ``update``.  The caller imports
-        only ``hashlib`` — no ``mcp`` import at all.  The evaluator must
-        NOT flag this as a constraint violation.
-        """
-        from tree_sitter_analyzer.constraints import evaluate, load_constraints
+def test_phantom_bare_name_resolution_skipped_when_no_import(
+    tmp_path: Path,
+) -> None:
+    """Regression #780: bare-name callee resolved to forbidden module is
+    SKIPPED when the caller has no import from that module.
 
-        project = _stage_constraints_file(tmp_path, "dogfood_minimal.yml")
-        db_path = project / ".ast-cache" / "index.db"
+    Scenario mirrors the real bug: ``_hash_one_file`` in a core file
+    calls ``sha256_hash.update()``.  The synapse resolver resolves
+    ``update`` to ``file_health_blocks.py`` (a forbidden mcp module)
+    because both define a method named ``update``.  The caller imports
+    only ``hashlib`` — no ``mcp`` import at all.  The evaluator must
+    NOT flag this as a constraint violation.
+    """
+    from tree_sitter_analyzer.constraints import evaluate, load_constraints
 
-        # Edge: core/_hash_one_file calls update(), resolver wrongly sets
-        # callee_resolved_file to an mcp module.
-        _build_call_edges_db(
-            db_path,
-            rows=[
-                (
-                    "_hash_one_file",  # caller_name
-                    "tree_sitter_analyzer/core/analysis_session.py",  # caller_file
-                    188,  # caller_line
-                    "update",  # callee_name
-                    "sha256_hash.update",  # callee_full
-                    "tree_sitter_analyzer/mcp/tools/utils/file_health_blocks.py",  # callee_file (WRONG resolution)
-                ),
-            ],
-        )
+    project = _stage_constraints_file(tmp_path, "dogfood_minimal.yml")
+    db_path = project / ".ast-cache" / "index.db"
 
-        # Populate ast_imports: analysis_session.py imports only hashlib,
-        # NOT file_health_blocks or any mcp module.
-        _populate_ast_imports(
-            db_path,
-            rows=[
-                ("tree_sitter_analyzer/core/analysis_session.py", "hashlib"),
-                ("tree_sitter_analyzer/core/analysis_session.py", "json"),
-                ("tree_sitter_analyzer/core/analysis_session.py", "pathlib"),
-            ],
-        )
+    # Edge: core/_hash_one_file calls update(), resolver wrongly sets
+    # callee_resolved_file to an mcp module.
+    _build_call_edges_db(
+        db_path,
+        rows=[
+            (
+                "_hash_one_file",  # caller_name
+                "tree_sitter_analyzer/core/analysis_session.py",  # caller_file
+                188,  # caller_line
+                "update",  # callee_name
+                "sha256_hash.update",  # callee_full
+                "tree_sitter_analyzer/mcp/tools/utils/file_health_blocks.py",  # callee_file (WRONG resolution)
+            ),
+        ],
+    )
 
-        constraints = load_constraints(str(project))
-        conn = sqlite3.connect(str(db_path))
-        try:
-            violations = evaluate(constraints, conn)
-        finally:
-            conn.close()
+    # Populate ast_imports: analysis_session.py imports only hashlib,
+    # NOT file_health_blocks or any mcp module.
+    _populate_ast_imports(
+        db_path,
+        rows=[
+            ("tree_sitter_analyzer/core/analysis_session.py", "hashlib"),
+            ("tree_sitter_analyzer/core/analysis_session.py", "json"),
+            ("tree_sitter_analyzer/core/analysis_session.py", "pathlib"),
+        ],
+    )
 
-        assert len(violations) == 0, (
-            f"Expected 0 violations (phantom bare-name resolution must be filtered), "
-            f"got {len(violations)}: {violations}"
-        )
+    constraints = load_constraints(str(project))
+    conn = sqlite3.connect(str(db_path))
+    try:
+        violations = evaluate(constraints, conn)
+    finally:
+        conn.close()
 
-    def test_real_violation_not_filtered_when_import_present(
-        self, tmp_path: Path
-    ) -> None:
-        """Regression #780: a genuine cross-boundary call IS flagged when the
-        caller actually imports from the forbidden module.
+    assert violations == []
 
-        Ensures the import-reachability guard does not over-filter real
-        violations — only phantom bare-name resolutions are suppressed.
-        """
-        from tree_sitter_analyzer.constraints import evaluate, load_constraints
 
-        project = _stage_constraints_file(tmp_path, "dogfood_minimal.yml")
-        db_path = project / ".ast-cache" / "index.db"
+def test_real_violation_not_filtered_when_import_present(
+    tmp_path: Path,
+) -> None:
+    """Regression #780: a genuine cross-boundary call IS flagged when the
+    caller actually imports from the forbidden module.
 
-        # Edge: mcp/x.py calls cli_helper() which is genuinely in cli/y.py.
-        _build_call_edges_db(
-            db_path,
-            rows=[
-                (
-                    "do_thing",  # caller_name
-                    "tree_sitter_analyzer/mcp/x.py",  # caller_file
-                    42,  # caller_line
-                    "cli_helper",  # callee_name
-                    "cli_helper",  # callee_full
-                    "tree_sitter_analyzer/cli/y.py",  # callee_file (REAL violation)
-                ),
-            ],
-        )
+    Ensures the import-reachability guard does not over-filter real
+    violations — only phantom bare-name resolutions are suppressed.
+    """
+    from tree_sitter_analyzer.constraints import evaluate, load_constraints
 
-        # mcp/x.py really does import from cli/y — this is the genuine case.
-        _populate_ast_imports(
-            db_path,
-            rows=[
-                ("tree_sitter_analyzer/mcp/x.py", "tree_sitter_analyzer.cli.y"),
-            ],
-        )
+    project = _stage_constraints_file(tmp_path, "dogfood_minimal.yml")
+    db_path = project / ".ast-cache" / "index.db"
 
-        constraints = load_constraints(str(project))
-        conn = sqlite3.connect(str(db_path))
-        try:
-            violations = evaluate(constraints, conn)
-        finally:
-            conn.close()
+    # Edge: mcp/x.py calls cli_helper() which is genuinely in cli/y.py.
+    _build_call_edges_db(
+        db_path,
+        rows=[
+            (
+                "do_thing",  # caller_name
+                "tree_sitter_analyzer/mcp/x.py",  # caller_file
+                42,  # caller_line
+                "cli_helper",  # callee_name
+                "cli_helper",  # callee_full
+                "tree_sitter_analyzer/cli/y.py",  # callee_file (REAL violation)
+            ),
+        ],
+    )
 
-        assert len(violations) == 1, (
-            f"Expected exactly 1 real violation (import IS present), "
-            f"got {len(violations)}: {violations}"
-        )
-        v = violations[0]
-        assert v.rule_id == "dogfood-mcp-no-cli"
-        assert v.caller_file == "tree_sitter_analyzer/mcp/x.py"
-        assert v.callee_file == "tree_sitter_analyzer/cli/y.py"
+    # mcp/x.py really does import from cli/y — this is the genuine case.
+    _populate_ast_imports(
+        db_path,
+        rows=[
+            ("tree_sitter_analyzer/mcp/x.py", "tree_sitter_analyzer.cli.y"),
+        ],
+    )
+
+    constraints = load_constraints(str(project))
+    conn = sqlite3.connect(str(db_path))
+    try:
+        violations = evaluate(constraints, conn)
+    finally:
+        conn.close()
+
+    assert len(violations) == 1, (
+        f"Expected exactly 1 real violation (import IS present), "
+        f"got {len(violations)}: {violations}"
+    )
+    v = violations[0]
+    assert v.rule_id == "dogfood-mcp-no-cli"
+    assert v.caller_file == "tree_sitter_analyzer/mcp/x.py"
+    assert v.callee_file == "tree_sitter_analyzer/cli/y.py"
 
 
 def test_constraint_bytes_reject_non_utf8():
@@ -358,3 +357,40 @@ def test_evaluator_bounds_python_import_materialization() -> None:
             )
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize("row", [("", "missing.file"), ("caller.py", "")])
+def test_import_index_skips_incomplete_rows(row) -> None:
+    from tree_sitter_analyzer.constraints.evaluator_import_resolution import (
+        _build_import_index,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_imports(file_path TEXT, module_path TEXT)")
+    conn.execute("INSERT INTO ast_imports VALUES (?, ?)", row)
+    try:
+        assert _build_import_index(conn) == {}
+    finally:
+        conn.close()
+
+
+def test_import_index_does_not_add_empty_terminal_identifier() -> None:
+    from tree_sitter_analyzer.constraints.evaluator_import_resolution import (
+        _build_import_index,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_imports(file_path TEXT, module_path TEXT)")
+    conn.execute("INSERT INTO ast_imports VALUES ('caller.py', '.')")
+    try:
+        assert _build_import_index(conn) == {"caller.py": {"."}}
+    finally:
+        conn.close()
+
+
+def test_import_guard_allows_callers_without_import_evidence() -> None:
+    from tree_sitter_analyzer.constraints.evaluator_import_resolution import (
+        _callee_is_imported,
+    )
+
+    assert _callee_is_imported("caller.py", "package/target.py", {}) is True

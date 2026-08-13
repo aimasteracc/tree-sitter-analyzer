@@ -14,12 +14,12 @@ from tree_sitter_analyzer.cli.commands.constraint_check_command import (
     _compute_verdict,
     _evaluate_with_explicit_file,
     _exit_code_for,
+    _explicit_config_evidence,
     _failure_envelope,
     _filter_violations,
     _format_response,
     _load_explicit,
     _print_result,
-    _read_explicit_config,
     _resolve_output_format,
     _violations_ddl,
     get_default_project_root,
@@ -352,22 +352,22 @@ class TestLoadExplicit:
         assert file_contents[0] == content
 
 
-def test_read_explicit_config_rejects_input_above_one_mib(tmp_path: Path) -> None:
+def test_explicit_config_evidence_rejects_input_above_one_mib(tmp_path: Path) -> None:
     # PR #1254 review 3769281328: explicit read-only input stays bounded.
     config = tmp_path / "candidate.yml"
     config.write_bytes(b"x" * (1024 * 1024 + 1))
 
     with pytest.raises(RuntimeError, match="^CONSTRAINT_CONFIG_CAPACITY$"):
-        _read_explicit_config(config, float("inf"))
+        _explicit_config_evidence(config, float("inf"))
 
 
-def test_read_explicit_config_honors_expired_deadline(tmp_path: Path) -> None:
+def test_explicit_config_evidence_honors_expired_deadline(tmp_path: Path) -> None:
     # PR #1254 review 3769281328: reads share the evaluation deadline contract.
     config = tmp_path / "candidate.yml"
     config.write_bytes(b"version: 1\nconstraints: []\n")
 
     with pytest.raises(RuntimeError, match="^CONSTRAINT_CONFIG_DEADLINE$"):
-        _read_explicit_config(config, 0.0)
+        _explicit_config_evidence(config, 0.0)
 
 
 def test_explicit_zero_rules_revalidates_bytes_before_safe(
