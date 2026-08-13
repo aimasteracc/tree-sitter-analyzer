@@ -28,10 +28,16 @@ from ...constraints.parser import (
     load_constraints_bytes,
 )
 from ...mcp.tools.constraint_check_tool import ConstraintCheckTool
+from .constraint_check_execution import (
+    explicit_config_evidence,
+)
+from .constraint_check_persistence import run_and_persist
 
 _SEVERITY_ORDER: dict[str, int] = {"info": 0, "warn": 1, "error": 2}
 _BLOCKING_SEVERITIES: frozenset[str] = frozenset({"error"})
 _WARNING_SEVERITIES: frozenset[str] = frozenset({"warn"})
+_EXPLICIT_CONFIG_BYTE_LIMIT = 1024 * 1024
+_EXPLICIT_CONFIG_READ_SECONDS = 10.0
 
 # Exit-code contract for CI/CD wrappers. UNSAFE blocks (exit 1) so a
 # `--check-constraints` step in a Makefile/Husky hook fails the pipeline
@@ -111,6 +117,25 @@ def _run_tool(
     return tool.execute(tool_arguments)
 
 
+def _explicit_config_evidence(
+    config_path: Path, deadline: float
+) -> tuple[bytes, os.stat_result]:
+    return explicit_config_evidence(config_path, deadline)
+
+
+def _read_explicit_config(config_path: Path, deadline: float) -> bytes:
+    return _explicit_config_evidence(config_path, deadline)[0]
+
+
+def _explicit_config_changed(
+    config_path: Path, before: tuple[bytes, os.stat_result], deadline: float
+) -> bool:
+    try:
+        return _explicit_config_evidence(config_path, deadline) != before
+    except (OSError, RuntimeError):
+        return True
+
+
 def _evaluate_with_explicit_file(
     *,
     project_root: str,
@@ -133,19 +158,21 @@ def _evaluate_with_explicit_file(
             f"constraint file not found: {constraint_file}", output_format
         )
 
-    # ``load_constraints`` discovers the file under project_root, so we
-    # temporarily point it at the YAML's parent — keeping the parse path
-    # identical to the default flow.
+    config_deadline = time.monotonic() + _EXPLICIT_CONFIG_READ_SECONDS
+    config_before: tuple[bytes, os.stat_result] | None = None
     try:
-        constraints = (
-            load_constraints_bytes(config_path.read_bytes(), config_path)
-            if not persist
-            else _load_explicit(config_path)
-        )
-    except (ConstraintParseError, OSError) as exc:
+        if not persist:
+            config_before = _explicit_config_evidence(config_path, config_deadline)
+            constraints = load_constraints_bytes(config_before[0], config_path)
+        else:
+            constraints = _load_explicit(config_path)
+    except (ConstraintParseError, OSError, RuntimeError) as exc:
         return _failure_envelope(f"constraint parse error: {exc}", output_format)
 
     if not constraints and not persist:
+        assert config_before is not None
+        if _explicit_config_changed(config_path, config_before, config_deadline):
+            return _config_changed_envelope(0, output_format)
         return _format_response(
             {
                 "success": True,
@@ -221,6 +248,10 @@ def _evaluate_with_explicit_file(
             },
             output_format,
         )
+    if not persist:
+        assert config_before is not None
+        if _explicit_config_changed(config_path, config_before, config_deadline):
+            return _config_changed_envelope(len(constraints), output_format)
     verdict = _compute_verdict(filtered)
     return _format_response(
         {
@@ -264,66 +295,13 @@ def _run_and_persist(
     *,
     persist: bool = True,
 ) -> tuple[list[Any], int]:
-    """Run evaluator and optionally persist violations."""
-    connection_target = (
-        str(db_path) if persist else f"{db_path.resolve().as_uri()}?mode=ro"
+    return run_and_persist(
+        db_path,
+        constraints,
+        persist=persist,
+        evaluator=evaluate,
+        violations_ddl=_violations_ddl,
     )
-    conn = sqlite3.connect(connection_target, uri=not persist)
-    try:
-        if persist:
-            conn.execute(_violations_ddl())
-        try:
-            edge_count = int(
-                conn.execute(
-                    "SELECT COUNT(*) FROM edges WHERE kind = 'calls'"
-                ).fetchone()[0]
-            )
-        except sqlite3.OperationalError:
-            if not persist:
-                raise
-            edge_count = 0
-        if edge_count == 0:
-            return [], 0
-        try:
-            violations = evaluate(constraints, conn)
-        except RuntimeError as exc:
-            if not persist or str(exc) == "CONSTRAINT_EVALUATION_CAPACITY":
-                raise
-            return [], edge_count
-        except Exception:  # noqa: BLE001 — legacy write path degrades
-            if not persist:
-                raise
-            return [], edge_count
-
-        if not persist:
-            return violations, edge_count
-        conn.execute("DELETE FROM ast_constraint_violations")
-        now = int(time.time())
-        conn.executemany(
-            """
-            INSERT OR IGNORE INTO ast_constraint_violations
-                (rule_id, caller_file, caller_name, caller_line,
-                 callee_name, callee_file, severity, detected_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    v.rule_id,
-                    v.caller_file,
-                    v.caller_name,
-                    v.caller_line,
-                    v.callee_name,
-                    v.callee_file,
-                    v.severity,
-                    v.detected_at or now,
-                )
-                for v in violations
-            ],
-        )
-        conn.commit()
-        return violations, edge_count
-    finally:
-        conn.close()
 
 
 def _filter_violations(
@@ -389,6 +367,18 @@ def _format_response(payload: dict[str, Any], output_format: str) -> dict[str, A
     from ...mcp.utils.format_helper import apply_toon_format_to_response
 
     return apply_toon_format_to_response(payload, output_format)
+
+
+def _config_changed_envelope(rule_count: int, output_format: str) -> dict[str, Any]:
+    payload = {
+        "success": False,
+        "verdict": "ERROR",
+        "violations": [],
+        "error_code": "CONSTRAINT_CONFIG_CHANGED",
+        "error": "CONSTRAINT_CONFIG_CHANGED",
+        "rule_count": rule_count,
+    }
+    return _format_response(payload, output_format)
 
 
 def _failure_envelope(message: str, output_format: str) -> dict[str, Any]:

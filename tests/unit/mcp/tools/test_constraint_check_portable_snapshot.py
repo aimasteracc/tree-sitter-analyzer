@@ -427,3 +427,66 @@ def test_private_copy_reports_final_source_unknown(monkeypatch):
         "partial",
         "SOURCE_SCOPE_UNREADABLE",
     )
+
+
+def test_ordinary_read_only_revalidates_sources_after_evaluation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3769193817: graph evaluation cannot outlive source evidence.
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_snapshot as index_snapshots
+    import tree_sitter_analyzer.mcp.tools.constraint_index_snapshot as owner
+
+    scope = SimpleNamespace(roots=(".",), exclude_patterns=())
+    deadlines: list[float | None] = []
+
+    @contextmanager
+    def lease(_root, *, deadline=None):
+        deadlines.append(deadline)
+        yield SimpleNamespace(
+            snapshot_id="is_source_guard",
+            completeness="complete",
+            source_generation="idxsrc-v3:before",
+            source_fingerprint="sha256:before",
+            source_scope=scope,
+            reason=None,
+        )
+
+    @contextmanager
+    def acquire(_snapshot_id, _root, _generation, *, deadline=None):
+        deadlines.append(deadline)
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE edges(kind TEXT)")
+        try:
+            yield SimpleNamespace(), conn
+        finally:
+            conn.close()
+
+    monkeypatch.setattr(owner, "portable_snapshot_required", lambda: False)
+    monkeypatch.setattr(index_snapshots, "lease_existing_snapshot", lease)
+    monkeypatch.setattr(index_snapshots, "acquire_index_snapshot", acquire)
+    monkeypatch.setattr(owner, "ordinary_source_scope_is_full", lambda _scope: True)
+    monkeypatch.setattr(
+        owner,
+        "_capture_constraint_sources",
+        lambda *_args: SimpleNamespace(
+            state="exact",
+            reason=None,
+            generation="idxsrc-v3:after",
+            fingerprint="sha256:after",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="^SOURCE_GENERATION_MISMATCH$"):
+        _make_tool(tmp_path)._run_read_only(
+            tmp_path / "ignored.db",
+            [object()],
+            path_filter="",
+            min_severity_rank=1,
+            evaluator=lambda _constraints, _conn: [],
+        )
+    assert len(deadlines) == 2
+    assert deadlines[0] == deadlines[1]
+    assert isinstance(deadlines[0], float)

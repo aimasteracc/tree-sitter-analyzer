@@ -8,14 +8,18 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from tree_sitter_analyzer.cli.commands.constraint_check_command import (
     _compute_verdict,
+    _evaluate_with_explicit_file,
     _exit_code_for,
     _failure_envelope,
     _filter_violations,
     _format_response,
     _load_explicit,
     _print_result,
+    _read_explicit_config,
     _resolve_output_format,
     _violations_ddl,
     get_default_project_root,
@@ -52,11 +56,6 @@ _CCT_CLS = (
 )
 
 
-# ---------------------------------------------------------------------------
-# Violation stub
-# ---------------------------------------------------------------------------
-
-
 def _v(
     severity: str = "error",
     rule_id: str = "R1",
@@ -77,11 +76,6 @@ def _v(
         callee_file=callee_file,
         detected_at=detected_at,
     )
-
-
-# ---------------------------------------------------------------------------
-# _exit_code_for
-# ---------------------------------------------------------------------------
 
 
 class TestExitCodeFor:
@@ -105,11 +99,6 @@ class TestExitCodeFor:
         assert _exit_code_for({"success": True}) == 0
 
 
-# ---------------------------------------------------------------------------
-# _compute_verdict
-# ---------------------------------------------------------------------------
-
-
 class TestComputeVerdict:
     def test_empty_rows_returns_safe(self):
         assert _compute_verdict([]) == "SAFE"
@@ -130,11 +119,6 @@ class TestComputeVerdict:
     def test_multiple_warns_no_error_returns_caution(self):
         rows = [{"severity": "warn"}, {"severity": "warn"}]
         assert _compute_verdict(rows) == "CAUTION"
-
-
-# ---------------------------------------------------------------------------
-# _filter_violations
-# ---------------------------------------------------------------------------
 
 
 class TestFilterViolations:
@@ -197,11 +181,6 @@ class TestFilterViolations:
         assert len(rows) == 3
 
 
-# ---------------------------------------------------------------------------
-# _violations_ddl
-# ---------------------------------------------------------------------------
-
-
 class TestViolationsDDL:
     def test_returns_string(self):
         assert isinstance(_violations_ddl(), str)
@@ -219,11 +198,6 @@ class TestViolationsDDL:
         conn.execute(_violations_ddl())
         conn.execute(_violations_ddl())  # second call must not raise
         conn.close()
-
-
-# ---------------------------------------------------------------------------
-# _format_response
-# ---------------------------------------------------------------------------
 
 
 class TestFormatResponse:
@@ -246,11 +220,6 @@ class TestFormatResponse:
             _format_response(payload, "json")
         assert captured[0][0] is payload
         assert captured[0][1] == "json"
-
-
-# ---------------------------------------------------------------------------
-# _failure_envelope
-# ---------------------------------------------------------------------------
 
 
 class TestFailureEnvelope:
@@ -280,11 +249,6 @@ class TestFailureEnvelope:
         assert result["rule_count"] == 0
 
 
-# ---------------------------------------------------------------------------
-# _resolve_output_format
-# ---------------------------------------------------------------------------
-
-
 class TestResolveOutputFormat:
     def test_delegates_to_resolve_mcp_tool_format(self):
         args = SimpleNamespace(format="json")
@@ -298,11 +262,6 @@ class TestResolveOutputFormat:
         with patch(_RESOLVE_FMT, return_value="toon"):
             result = _resolve_output_format(args)
         assert result == "toon"
-
-
-# ---------------------------------------------------------------------------
-# _print_result
-# ---------------------------------------------------------------------------
 
 
 class TestPrintResult:
@@ -327,11 +286,6 @@ class TestPrintResult:
         assert "\n" in out  # indent=2 produces newlines
 
 
-# ---------------------------------------------------------------------------
-# get_default_project_root
-# ---------------------------------------------------------------------------
-
-
 class TestGetDefaultProjectRoot:
     def test_returns_project_root_attr(self):
         args = SimpleNamespace(project_root="/srv/proj")
@@ -343,11 +297,6 @@ class TestGetDefaultProjectRoot:
 
     def test_falls_back_to_cwd_when_attr_missing(self):
         assert get_default_project_root(SimpleNamespace())  # truthy
-
-
-# ---------------------------------------------------------------------------
-# _load_explicit
-# ---------------------------------------------------------------------------
 
 
 class TestLoadExplicit:
@@ -401,3 +350,143 @@ class TestLoadExplicit:
             _load_explicit(yaml_file)
 
         assert file_contents[0] == content
+
+
+def test_read_explicit_config_rejects_input_above_one_mib(tmp_path: Path) -> None:
+    # PR #1254 review 3769281328: explicit read-only input stays bounded.
+    config = tmp_path / "candidate.yml"
+    config.write_bytes(b"x" * (1024 * 1024 + 1))
+
+    with pytest.raises(RuntimeError, match="^CONSTRAINT_CONFIG_CAPACITY$"):
+        _read_explicit_config(config, float("inf"))
+
+
+def test_read_explicit_config_honors_expired_deadline(tmp_path: Path) -> None:
+    # PR #1254 review 3769281328: reads share the evaluation deadline contract.
+    config = tmp_path / "candidate.yml"
+    config.write_bytes(b"version: 1\nconstraints: []\n")
+
+    with pytest.raises(RuntimeError, match="^CONSTRAINT_CONFIG_DEADLINE$"):
+        _read_explicit_config(config, 0.0)
+
+
+def test_explicit_zero_rules_revalidates_bytes_before_safe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3769193838: the zero-rule fast path retains rule authority.
+    config = tmp_path / "candidate.yml"
+    config.write_text("version: 1\nconstraints: []\n")
+    real_evidence = __import__(
+        "tree_sitter_analyzer.cli.commands.constraint_check_command",
+        fromlist=["_explicit_config_evidence"],
+    )._explicit_config_evidence
+    reads = 0
+
+    def tighten(path: Path, deadline: float):
+        nonlocal reads
+        evidence = real_evidence(path, deadline)
+        reads += 1
+        if reads == 1:
+            config.write_text("version: 1\nconstraints: [{id: changed}]\n")
+        return evidence
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.cli.commands.constraint_check_command._explicit_config_evidence",
+        tighten,
+    )
+    result = _evaluate_with_explicit_file(
+        project_root=str(tmp_path),
+        constraint_file=str(config),
+        severity_min="warn",
+        path_filter="",
+        output_format="json",
+        persist=False,
+    )
+
+    assert (result["success"], result["verdict"], result["error_code"], reads) == (
+        False,
+        "ERROR",
+        "CONSTRAINT_CONFIG_CHANGED",
+        2,
+    )
+
+
+def test_explicit_rules_revalidate_identity_after_evaluation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3769193838: same bytes under a replacement identity fail closed.
+    config = tmp_path / "candidate.yml"
+    config.write_text(
+        "version: 1\nconstraints:\n"
+        "  - {id: r, severity: error, rule: forbid, from: 'a/**', "
+        "to: 'b/**', reason: boundary}\n"
+    )
+
+    def replace_during_evaluation(*_args, **_kwargs):
+        replacement = tmp_path / "replacement.yml"
+        replacement.write_bytes(config.read_bytes())
+        replacement.replace(config)
+        return [], 0
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.ConstraintCheckTool._run_read_only",
+        replace_during_evaluation,
+    )
+    result = _evaluate_with_explicit_file(
+        project_root=str(tmp_path),
+        constraint_file=str(config),
+        severity_min="warn",
+        path_filter="",
+        output_format="json",
+        persist=False,
+    )
+
+    assert (result["success"], result["verdict"], result["error_code"]) == (
+        False,
+        "ERROR",
+        "CONSTRAINT_CONFIG_CHANGED",
+    )
+
+
+def test_explicit_config_recheck_treats_read_failure_as_changed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tree_sitter_analyzer.cli.commands.constraint_check_command as owner
+
+    config = tmp_path / "candidate.yml"
+    config.write_bytes(b"version: 1\nconstraints: []\n")
+    before = owner._explicit_config_evidence(config, float("inf"))
+    monkeypatch.setattr(
+        owner,
+        "_explicit_config_evidence",
+        lambda *_args: (_ for _ in ()).throw(OSError("unreadable")),
+    )
+    assert owner._explicit_config_changed(config, before, float("inf")) is True
+
+
+def test_explicit_nonempty_rules_publish_when_config_remains_exact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = tmp_path / "candidate.yml"
+    config.write_text(
+        "version: 1\nconstraints:\n"
+        "  - {id: r, severity: warn, rule: forbid, from: 'a/**', "
+        "to: 'b/**', reason: boundary}\n"
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.ConstraintCheckTool._run_read_only",
+        lambda *_args, **_kwargs: ([], 0),
+    )
+    result = _evaluate_with_explicit_file(
+        project_root=str(tmp_path),
+        constraint_file=str(config),
+        severity_min="warn",
+        path_filter="",
+        output_format="json",
+        persist=False,
+    )
+    assert (result["success"], result["verdict"], result["rule_count"]) == (
+        True,
+        "SAFE",
+        1,
+    )

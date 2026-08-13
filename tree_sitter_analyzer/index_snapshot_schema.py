@@ -135,8 +135,6 @@ def stamp_full_index_manifest(
     source_scope: SourceScopeDescriptor | None = None,
 ) -> None:
     """Certify one source/index epoch while excluding every SQLite writer."""
-    if os.name != "posix" or not os.path.exists("/dev/fd"):
-        raise sqlite3.OperationalError("SOURCE_SCOPE_UNSUPPORTED")
     # Finish all preceding indexing work before the certification transaction.
     conn.commit()
     transaction_started = False
@@ -151,7 +149,14 @@ def stamp_full_index_manifest(
         source = source_fingerprint(conn, root)
         index = index_fingerprint(conn, root)
         recorded = recorded_source_rows(conn)
-        current = capture_current_source_snapshot(root, scope)
+        if os.name == "posix" and os.path.exists("/dev/fd"):
+            current = capture_current_source_snapshot(root, scope)
+        else:
+            from .portable_source_snapshot import capture_portable_source_snapshot
+
+            current = capture_portable_source_snapshot(
+                root, scope, deadline=time.monotonic() + _FINGERPRINT_DEADLINE_SECONDS
+            )
         if current.state != "exact" or current.rows != recorded:
             raise sqlite3.OperationalError("SOURCE_CHANGED")
         conn.execute("DELETE FROM ast_index_snapshot_manifest")

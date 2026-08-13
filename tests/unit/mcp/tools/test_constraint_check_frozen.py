@@ -341,3 +341,86 @@ def test_config_only_frozen_change_evaluates_full_source_scope(
         registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
         is True
     )
+
+
+def test_fallback_config_activation_evaluates_full_source_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3769281296: changing any precedence candidate changes rules.
+    _stage_minimal_constraints(tmp_path)
+    db_path = tmp_path / ".ast-cache" / "index.db"
+    _init_violations_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE edges(kind TEXT)")
+    registry, created = _create_frozen_scope(
+        monkeypatch, tmp_path, ["architectural-constraints.yml"]
+    )
+    state = registry._states[str(created["diff_snapshot_id"])]
+    from dataclasses import replace
+
+    state.snapshot = replace(
+        state.snapshot,
+        mode="staged",
+        constraint_config_path=".tree-sitter-analyzer/constraints.yml",
+    )
+    observed: list[object] = []
+
+    def evaluator(_constraints, _conn, **kwargs):
+        observed.append(kwargs.get("scope_predicate", "absent"))
+        return []
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.evaluate", evaluator
+    )
+    result = _run(
+        _make_tool(tmp_path).execute(
+            {
+                "persist": False,
+                "diff_snapshot_id": created["diff_snapshot_id"],
+                "scope_paths": created["assessed_scope_paths"],
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert (result["success"], result["verdict"], observed) == (
+        True,
+        "SAFE",
+        ["absent"],
+    )
+    assert (
+        registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
+        is True
+    )
+
+
+def test_frozen_constraint_consumer_fails_closed_on_unsafe_config_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3769193867: config failure belongs to this consumer.
+    from tests.unit._diff_snapshot_support import install_fake_snapshot_materializer
+    from tree_sitter_analyzer.source_oracle import SafePath
+
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        snapshots,
+        "safe_workspace_path",
+        lambda *_args, **_kwargs: SafePath(None, (), "symlink"),
+    )
+    registry = snapshots.DiffSnapshotRegistry()
+    monkeypatch.setattr(snapshots, "REGISTRY", registry)
+    created = registry.create(str(tmp_path), "diff", [])
+
+    result = _run(
+        _make_tool(tmp_path).execute(
+            {
+                "persist": False,
+                "diff_snapshot_id": created["diff_snapshot_id"],
+                "scope_paths": created["assessed_scope_paths"],
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert created["success"] is True
+    assert result["error_code"] == "CONSTRAINT_CONFIG_UNSAFE"

@@ -457,32 +457,14 @@ def test_constraints_action_does_not_leak_action_to_inner(tmp_path: Any) -> None
     assert "success" in result
 
 
-# ---------------------------------------------------------------------------
-# 12. Annotations correctness — edit facade must NOT declare readOnlyHint=True
-# ---------------------------------------------------------------------------
+def test_scope_paths_is_rejected_outside_impact_and_constraints() -> None:
+    # PR #1254 review 3769281322: explicit facade scope must never be dropped.
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
+    facade = build_edit_facade(project_root=None)
+    result = asyncio.run(facade.execute({"action": "safe", "scope_paths": ["src"]}))
 
-# ---------------------------------------------------------------------------
-# 13. Facade description honesty — ast_diff description uses REAL mode params
-#     (Leg D of issue #529 triple-fix)
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# Schema sanity
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# Issue #451 — edit action=pr without pr_url must fail loudly via the facade
-# ---------------------------------------------------------------------------
-
-
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-q"]))
-
-
-# ---------------------------------------------------------------------------
-# Issue #641 — edit facade schema must expose modification_type with enum
-# for action=guard discoverability (extra_public_params, NOT required:[])
-# ---------------------------------------------------------------------------
+    assert result["success"] is False
+    assert result["error"] == (
+        "parameter 'scope_paths' applies only to action(s): constraints, impact"
+    )

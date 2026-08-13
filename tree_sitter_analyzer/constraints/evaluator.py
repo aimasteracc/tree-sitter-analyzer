@@ -36,13 +36,24 @@ import sqlite3
 import time
 from collections.abc import Callable, Iterator
 
+from .evaluator_bounds import MAX_MATERIALIZED_ITEMS, materialize_bounded
+from .evaluator_deduplication import claim_violation
+from .evaluator_import_resolution import (
+    _build_import_index,
+    _callee_is_imported,
+)
+from .evaluator_selection import (
+    _MAX_SQL_PREFIX_FILTERS as _MAX_SQL_PREFIX_FILTERS,
+)
+from .evaluator_selection import (
+    _build_select_query,
+)
 from .parser import _CompiledConstraint, compile_constraints
 from .schema import Constraint, Violation
 
 logger = logging.getLogger(__name__)
 
-_MAX_SQL_PREFIX_FILTERS = 256
-_MAX_MATERIALIZED_ITEMS = 10_000
+_MAX_MATERIALIZED_ITEMS = MAX_MATERIALIZED_ITEMS
 
 
 def evaluate(
@@ -74,24 +85,19 @@ def evaluate(
     compiled = compile_constraints(constraints)
     if not compiled:
         return []
-    if capacity < 0:
-        raise ValueError("capacity must be non-negative")
     detected_at = int(time.time())
-    violations: list[Violation] = []
-    for violation in _iter_violations(
-        compiled,
-        db_conn,
-        detected_at,
-        scope_predicate=scope_predicate,
-        check_callback=check_callback,
-        capacity=capacity,
-    ):
-        if check_callback is not None:
-            check_callback()
-        if len(violations) >= capacity:
-            raise RuntimeError("CONSTRAINT_EVALUATION_CAPACITY")
-        violations.append(violation)
-    return violations
+    return materialize_bounded(
+        _iter_violations(
+            compiled,
+            db_conn,
+            detected_at,
+            scope_predicate=scope_predicate,
+            check_callback=check_callback,
+            capacity=capacity,
+        ),
+        capacity,
+        check_callback,
+    )
 
 
 def _iter_violations(
@@ -165,15 +171,14 @@ def _iter_violations(
                 and not _callee_is_imported(caller_file, callee_file, import_index)
             ):
                 continue
-            pk = (
+            if not claim_violation(
+                seen,
                 cc.constraint.id,
                 caller_file,
                 int(caller_line or 0),
                 callee_name or "",
-            )
-            if pk in seen:
+            ):
                 continue
-            seen.add(pk)
             yield Violation(
                 rule_id=cc.constraint.id,
                 caller_file=caller_file,
@@ -196,140 +201,3 @@ def _is_excepted(caller_file: str, compiled: _CompiledConstraint) -> bool:
         if exc_re.fullmatch(caller_file) is not None:
             return True
     return False
-
-
-def _build_import_index(
-    db_conn: sqlite3.Connection,
-    *,
-    check_callback: Callable[[], None] | None = None,
-    capacity: int = _MAX_MATERIALIZED_ITEMS,
-) -> dict[str, set[str]] | None:
-    """Build a lookup of {file_path: set(module_path_suffixes)} from ast_imports.
-
-    Returns ``None`` when the ``ast_imports`` table is absent (e.g. in
-    test fixtures that only populate the ``edges`` table) so callers can
-    skip the import-reachability guard and fall back to pre-guard behaviour.
-
-    The set stored per file is the union of the raw module_path and its
-    terminal component (the basename after the last ``.`` or ``/``).
-    This handles both absolute imports (``tree_sitter_analyzer.mcp.x``)
-    and relative imports (``.x``) with a single membership test.
-    """
-    try:
-        cursor = db_conn.execute("SELECT file_path, module_path FROM ast_imports")
-    except sqlite3.OperationalError:
-        # Table absent (test fixture, fresh DB) — degrade gracefully.
-        return None
-
-    index: dict[str, set[str]] = {}
-    materialized = 0
-    for file_path, module_path in cursor:
-        if check_callback is not None:
-            check_callback()
-        if not file_path or not module_path:
-            continue
-        materialized += 1
-        if materialized > capacity:
-            raise RuntimeError("CONSTRAINT_EVALUATION_CAPACITY")
-        entry = index.setdefault(file_path, set())
-        # Store full module_path (handles absolute imports).
-        entry.add(module_path)
-        # Also store the terminal component so relative imports like
-        # '.file_health_blocks' and absolute ones both match via the
-        # basename 'file_health_blocks'.
-        terminal = module_path.lstrip(".").rsplit(".", 1)[-1]
-        if terminal:
-            entry.add(terminal)
-    return index
-
-
-def _callee_is_imported(
-    caller_file: str,
-    callee_file: str,
-    import_index: dict[str, set[str]],
-) -> bool:
-    """Return True when the caller's import set covers the callee's module.
-
-    Converts ``callee_file`` (a relative project path like
-    ``tree_sitter_analyzer/mcp/tools/utils/file_health_blocks.py``) to:
-
-    * A full dotted module path: ``tree_sitter_analyzer.mcp.tools.utils.file_health_blocks``
-    * A terminal component: ``file_health_blocks``
-
-    Then checks whether any entry in the caller's import set matches
-    either form — covering both absolute and relative imports.
-
-    Returns ``True`` (caller imports callee) when the import_index has no
-    entry for the caller, so that files not recorded in ast_imports (e.g.
-    languages not yet extracted) do not produce false negatives.
-    """
-    caller_imports = import_index.get(caller_file)
-    if caller_imports is None:
-        # No import data for caller → assume reachable to avoid false negatives.
-        return True
-
-    # Derive module identifiers from the callee's file path.
-    without_ext = callee_file.removesuffix(".py")
-    full_module = without_ext.replace("/", ".")
-    terminal = without_ext.rsplit("/", 1)[-1]
-
-    return full_module in caller_imports or terminal in caller_imports
-
-
-def _build_select_query(
-    db_conn: sqlite3.Connection,
-    compiled: list[_CompiledConstraint],
-) -> tuple[str, tuple[str, ...]]:
-    """Build the parameterized SELECT over the unified ``edges`` table.
-
-    CALLS edges now live in ``edges`` with every resolution scalar promoted to
-    a real column (B1.3). The callee file prefers ``callee_resolved_file`` and
-    falls back to the caller's ``file_path`` when the call was never cross-file
-    resolved — preserving the legacy ``CASE WHEN callee_resolved_file != ''``
-    behaviour.
-
-    Rules with literal caller or callee prefixes cannot match rows outside
-    those prefixes. Push both necessary conditions into SQLite so the Python
-    hot loop only sees plausible candidates. ``instr`` is case-sensitive and
-    treats glob-special characters literally, preserving the regex matcher's
-    path semantics.
-
-    If any rule has no literal prefix, the query must retain every CALLS row
-    because that rule may match anywhere. The ``db_conn`` argument is retained
-    for signature compatibility.
-    """
-    callee_expr = (
-        "CASE WHEN callee_resolved_file != '' "
-        "THEN callee_resolved_file "
-        "ELSE file_path END"
-    )
-    select_sql = (
-        "SELECT caller_name, file_path AS caller_file, "
-        "caller_line, callee_name, "
-        f"{callee_expr} AS callee_file "  # nosec B608 — callee_expr is constructed from internal constants only
-        "FROM edges WHERE kind = 'calls'"
-    )
-    from_prefixes = tuple(dict.fromkeys(cc.from_prefix for cc in compiled))
-    to_prefixes = tuple(dict.fromkeys(cc.to_prefix for cc in compiled))
-    filters: list[str] = []
-    params: list[str] = []
-    if (
-        from_prefixes
-        and "" not in from_prefixes
-        and len(from_prefixes) <= _MAX_SQL_PREFIX_FILTERS
-    ):
-        filters.append(" OR ".join("instr(file_path, ?) = 1" for _ in from_prefixes))
-        params.extend(from_prefixes)
-    if (
-        to_prefixes
-        and "" not in to_prefixes
-        and len(to_prefixes) <= _MAX_SQL_PREFIX_FILTERS
-    ):
-        filters.append(" OR ".join(f"instr({callee_expr}, ?) = 1" for _ in to_prefixes))
-        params.extend(to_prefixes)
-    if not filters:
-        return select_sql, ()
-    return (
-        f"{select_sql} AND " + " AND ".join(f"({item})" for item in filters),
-        tuple(params),
-    )

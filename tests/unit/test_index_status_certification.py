@@ -135,8 +135,10 @@ class TestAuthoritativeSnapshotOracle:
             [(1, 0, 0), (2, 0, 0)],
         )
 
-    def test_portable_full_index_succeeds_without_manifest(self, tmp_path, monkeypatch):
+    def test_portable_full_index_stamps_manifest(self, tmp_path, monkeypatch):
+        # PR #1254 review 3769193895: the normal producer publishes on Windows.
         import tree_sitter_analyzer.cache.indexer as indexer
+        import tree_sitter_analyzer.index_snapshot_schema as schema
         from tree_sitter_analyzer.ast_cache import ASTCache
 
         real_os = indexer.os
@@ -148,51 +150,48 @@ class TestAuthoritativeSnapshotOracle:
             def __getattr__(self, name):
                 return getattr(real_os, name)
 
+        portable_os = PortableOS()
+        monkeypatch.setattr(indexer, "os", portable_os)
+        monkeypatch.setattr(schema, "os", portable_os)
         source = tmp_path / "sample.py"
         source.write_text("value = 1\n")
-        monkeypatch.setattr(indexer, "os", PortableOS())
         cache = ASTCache(str(tmp_path))
         try:
-            result = cache.index_project(workers=0)
-            count = int(
+            result = cache.index_project(workers=0, force=True)
+            row = (
                 cache.get_conn()
-                .execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest")
-                .fetchone()[0]
+                .execute(
+                    "SELECT file_count, manifest_version "
+                    "FROM ast_index_snapshot_manifest"
+                )
+                .fetchone()
             )
         finally:
             cache.close()
 
-        assert result["errors"] == 0
-        assert result["manifest_warning"] == "SOURCE_SCOPE_UNSUPPORTED"
-        assert count == 0
+        assert (result["errors"], result.get("manifest_warning")) == (0, None)
+        assert tuple(row) == (1, 2)
 
-    def test_manifest_stamp_rejects_unsupported_source_scope(
+    def test_manifest_stamp_portable_path_reaches_call_graph_gate(
         self, tmp_path, monkeypatch
     ):
+        # PR #1254 review 3769193895: pathname platforms are producer-capable.
         import tree_sitter_analyzer.index_snapshot_schema as schema
         from tree_sitter_analyzer.ast_cache import ASTCache
 
+        class PortableOS:
+            name = "nt"
+            path = schema.os.path
+
+        monkeypatch.setattr(schema, "os", PortableOS())
         cache = ASTCache(str(tmp_path))
         try:
-
-            class UnsupportedOS:
-                name = "nt"
-                path = schema.os.path
-
-            monkeypatch.setattr(schema, "os", UnsupportedOS())
             with pytest.raises(
-                sqlite3.OperationalError, match="^SOURCE_SCOPE_UNSUPPORTED$"
+                sqlite3.OperationalError, match="^CALL_GRAPH_INCOMPLETE$"
             ):
                 schema.stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
-            count = int(
-                cache.get_conn()
-                .execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest")
-                .fetchone()[0]
-            )
         finally:
             cache.close()
-
-        assert count == 0
 
     def test_manifest_stamp_rejects_missing_call_graph_marker(self, tmp_path):
         import tree_sitter_analyzer.index_snapshot_schema as schema

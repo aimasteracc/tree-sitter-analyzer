@@ -402,3 +402,53 @@ def test_manifest_boundary_delegates_connection_and_deadline(monkeypatch) -> Non
 
     assert result is expected
     assert observed == [(connection, 7.5)]
+
+
+def test_manifest_writer_uses_portable_source_certifier(tmp_path, monkeypatch) -> None:
+    # PR #1254 review 3769193895: Windows-built indexes must stamp authority.
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+
+    class PortableOS:
+        name = "nt"
+        path = schema.os.path
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        schema.SCHEMA_V13_INDEX_SNAPSHOT
+        + "CREATE TABLE ast_index(file_path TEXT, content_hash TEXT, language TEXT);"
+    )
+    expected_rows = frozenset({("sample.py", "hash", "python")})
+    conn.execute("INSERT INTO ast_index VALUES ('sample.py', 'hash', 'python')")
+    monkeypatch.setattr(schema, "os", PortableOS())
+    monkeypatch.setattr(schema, "strict_call_graph_marker", lambda _conn: True)
+    monkeypatch.setattr(
+        schema, "index_fingerprint", lambda *_args: "sha256:" + "a" * 64
+    )
+    monkeypatch.setattr(
+        schema, "source_fingerprint", lambda *_args: "sha256:" + "b" * 64
+    )
+    monkeypatch.setattr(schema, "recorded_source_rows", lambda _conn: expected_rows)
+    observed: list[tuple[str, object]] = []
+    import tree_sitter_analyzer.portable_source_snapshot as portable
+
+    monkeypatch.setattr(
+        portable,
+        "capture_portable_source_snapshot",
+        lambda root, scope, *, deadline: (
+            observed.append((root, scope))
+            or SimpleNamespace(state="exact", rows=expected_rows)
+        ),
+    )
+
+    schema.stamp_full_index_manifest(conn, str(tmp_path))
+
+    row = conn.execute(
+        "SELECT canonical_root, file_count, manifest_version "
+        "FROM ast_index_snapshot_manifest"
+    ).fetchone()
+    assert tuple(row) == (schema.os.path.realpath(str(tmp_path)), 1, 2)
+    assert len(observed) == 1
+    conn.close()

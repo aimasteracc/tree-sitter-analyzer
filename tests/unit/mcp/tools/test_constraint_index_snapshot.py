@@ -114,23 +114,6 @@ def test_copy_pinned_database_writes_exact_advertised_bytes(tmp_path: Path) -> N
     assert output.read_bytes() == b"abcdef"
 
 
-def test_copy_pinned_database_rejects_backup_budget(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    path = tmp_path / "bytes"
-    path.write_bytes(b"xx")
-    fd = os.open(path, os.O_RDONLY)
-    expected = owner._stat_identity(os.fstat(fd))
-    monkeypatch.setattr(owner, "_MAX_BACKUP_BYTES", 1)
-    try:
-        with pytest.raises(RuntimeError, match="^INDEX_BACKUP_BUDGET$"):
-            owner._copy_pinned_database(
-                fd, expected, io.BytesIO(), deadline=time.monotonic() + 1
-            )
-    finally:
-        os.close(fd)
-
-
 def test_copy_pinned_database_rejects_truncation(tmp_path: Path) -> None:
     path = tmp_path / "bytes"
     path.write_bytes(b"x")
@@ -246,7 +229,11 @@ def _certification_dependencies(
 
     scope = object()
     current = SimpleNamespace(
-        state="exact", reason=None, rows=(("a.py", "hash"),), fingerprint="source"
+        state="exact",
+        reason=None,
+        rows=(("a.py", "hash"),),
+        fingerprint="source",
+        generation="generation",
     )
     monkeypatch.setattr(owner, "validate_snapshot_schema", lambda *_a, **_k: None)
     monkeypatch.setattr(owner, "build_in_progress", lambda _conn: False)
@@ -284,7 +271,12 @@ def test_certify_private_copy_accepts_exact_full_manifest(
     finally:
         conn.close()
 
-    assert (result.completeness, result.reason) == ("complete", None)
+    assert (
+        result.completeness,
+        result.reason,
+        result.source_generation,
+        result.source_fingerprint,
+    ) == ("complete", None, "generation", "source")
     assert result.source_scope is not None
 
 
@@ -331,7 +323,14 @@ def test_evaluate_ordinary_snapshot_uses_portable_authority(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = sqlite3.connect(":memory:")
-    authority = SimpleNamespace(completeness="complete", reason=None)
+    scope = object()
+    authority = SimpleNamespace(
+        completeness="complete",
+        reason=None,
+        source_scope=scope,
+        source_generation=None,
+        source_fingerprint="fingerprint",
+    )
 
     @contextmanager
     def portable(root: str, *, deadline: float):
@@ -340,6 +339,19 @@ def test_evaluate_ordinary_snapshot_uses_portable_authority(
 
     monkeypatch.setattr(owner, "portable_snapshot_required", lambda: True)
     monkeypatch.setattr(owner, "portable_ordinary_snapshot", portable)
+    monkeypatch.setattr(
+        owner, "ordinary_source_scope_is_full", lambda value: value is scope
+    )
+    monkeypatch.setattr(
+        owner,
+        "_capture_constraint_sources",
+        lambda *_args: SimpleNamespace(
+            state="exact",
+            reason=None,
+            generation="different-generation",
+            fingerprint="fingerprint",
+        ),
+    )
     calls: list[tuple[object, ...]] = []
     tool = SimpleNamespace(
         project_root="/project",
@@ -401,6 +413,10 @@ def test_evaluate_ordinary_snapshot_uses_registry_lease(
     monkeypatch.setattr(
         owner, "ordinary_source_scope_is_full", lambda candidate: candidate is scope
     )
+    current = SimpleNamespace(
+        state="exact", reason=None, generation="gen", fingerprint="fingerprint"
+    )
+    monkeypatch.setattr(owner, "_capture_constraint_sources", lambda *_args: current)
     tool = SimpleNamespace(
         project_root="/project", _evaluate_connection=lambda *_a, **_k: ([], 0)
     )
@@ -421,29 +437,6 @@ def test_evaluate_ordinary_snapshot_uses_registry_lease(
         ("acquire", "snap", "/project", "gen", 8.0),
     ]
     conn.close()
-
-
-def test_evaluate_ordinary_snapshot_rejects_partial_authority(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    @contextmanager
-    def portable(*_args, **_kwargs):
-        yield owner.OrdinaryConstraintSnapshot("partial", "STALE", None), object()
-
-    monkeypatch.setattr(owner, "portable_snapshot_required", lambda: True)
-    monkeypatch.setattr(owner, "portable_ordinary_snapshot", portable)
-    tool = SimpleNamespace(project_root="/project")
-
-    with pytest.raises(ValueError, match="^STALE$"):
-        owner.evaluate_ordinary_snapshot(
-            tool,
-            [],
-            path_filter="",
-            min_severity_rank=0,
-            scope_paths=None,
-            evaluator=None,
-            deadline=1.0,
-        )
 
 
 def test_evaluate_ordinary_snapshot_rejects_registry_scope_mismatch(
@@ -468,3 +461,12 @@ def test_evaluate_ordinary_snapshot_rejects_registry_scope_mismatch(
             evaluator=None,
             deadline=1.0,
         )
+
+
+def test_constraint_source_capture_selects_descriptor_oracle(monkeypatch) -> None:
+    expected = object()
+    monkeypatch.setattr(owner, "portable_snapshot_required", lambda: False)
+    monkeypatch.setattr(
+        owner, "capture_current_source_snapshot", lambda *_a, **_k: expected
+    )
+    assert owner._capture_constraint_sources("/project", object(), 1.0) is expected

@@ -11,6 +11,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
+from .index_snapshot_registry_capabilities import acquire_io_lock, newest_reusable
+
 
 def ensure_capacity(
     entries: dict[str, Any],
@@ -208,13 +210,7 @@ class IndexSnapshotRegistry:
         with self._lock:
             now = self._clock()
             self._purge(now)
-            candidates = [
-                entry
-                for entry in self._entries.values()
-                if entry.snapshot.canonical_root == canonical_root
-                and entry.expires_at > now
-            ]
-            entry = max(candidates, key=lambda item: item.expires_at, default=None)
+            entry = newest_reusable(self._entries, canonical_root, now)
             if entry is not None:
                 entry.readers += 1
         try:
@@ -253,17 +249,7 @@ class IndexSnapshotRegistry:
             entry.readers += 1
         acquired = False
         try:
-            if deadline is None:
-                entry.io_lock.acquire()
-                acquired = True
-            else:
-                acquired = entry.io_lock.acquire(
-                    timeout=max(0.0, deadline - self._clock())
-                )
-                if not acquired:
-                    raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
-                if self._clock() >= deadline:
-                    raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+            acquired = acquire_io_lock(entry.io_lock, deadline, self._clock)
             yield entry.snapshot, entry.connection
         finally:
             if acquired:

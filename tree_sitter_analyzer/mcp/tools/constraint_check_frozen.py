@@ -52,11 +52,14 @@ def _config_publish_guard(
                 continue
             rechecked_name = candidate
             break
+        selected = rechecked if rechecked_name is not None else None
+        rechecked_data = selected.data if selected is not None else None
+        rechecked_metadata = selected.metadata if selected is not None else ()
         if (
             rechecked is None
             or diff.constraint_config_path != rechecked_name
-            or diff.constraint_config_data != rechecked.data
-            or diff.constraint_config_metadata != rechecked.metadata
+            or diff.constraint_config_data != rechecked_data
+            or diff.constraint_config_metadata != rechecked_metadata
         ):
             return "CONSTRAINT_CONFIG_CHANGED"
         return None
@@ -135,16 +138,20 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
     try:
         diff = consumer.snapshot
         deadline = diff.created_monotonic + HARD_LIFETIME_SECONDS
-        frozen_scope = [path_to_wire(path) for path in diff.assessed_scope_paths]
+        raw_scope = list(diff.assessed_scope_paths)
+        frozen_scope = [path_to_wire(path) for path in raw_scope]
         if arguments["scope_paths"] != frozen_scope:
             return _snapshot_error(tool, "DIFF_SNAPSHOT_SCOPE_MISMATCH", output_format)
 
+        config_error = getattr(diff, "constraint_config_error", None)
+        if config_error is not None:
+            return _snapshot_error(tool, config_error, output_format)
         guard = _config_publish_guard(diff, project_root, deadline)
-        config_name = diff.constraint_config_path
-        config_changed = bool(
-            config_name is not None and config_name in diff.assessed_scope_paths
+        config_changed = any(
+            candidate in diff.assessed_scope_paths for candidate in _CONFIG_CANDIDATES
         )
         evaluation_scope = None if config_changed else frozenset(frozen_scope)
+        config_name = diff.constraint_config_path
         if config_name is None:
             response: dict[str, Any] = {
                 "success": True,
@@ -210,7 +217,7 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
                                 output_format,
                             )
                         if not _supported_scope_is_covered(
-                            frozen_scope, index.source_scope
+                            raw_scope, index.source_scope
                         ):
                             return _snapshot_error(
                                 tool, "CONSTRAINT_INDEX_SCOPE_MISMATCH", output_format

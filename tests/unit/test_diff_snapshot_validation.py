@@ -47,7 +47,7 @@ def test_create_rechecks_capacity_after_materialization(
 
     def reserve_capacity_while_capturing(*args, **kwargs):
         result = capture(*args, **kwargs)
-        registry._reservations["competing"] = snapshots.MAX_MATERIALIZED_BYTES
+        registry._reservations["competing"] = snapshots.MAX_MATERIALIZED_BYTES + 1
         return result
 
     monkeypatch.setattr(snapshots, "_capture_payload", reserve_capacity_while_capturing)
@@ -94,7 +94,8 @@ def test_validate_publish_rejects_consumer_released_by_publish_guard(
     assert result == "DIFF_SNAPSHOT_EXPIRED"
 
 
-def test_snapshot_rejects_unsafe_constraint_config(tmp_path, monkeypatch):
+def test_generic_snapshot_records_unsafe_constraint_config(tmp_path, monkeypatch):
+    # PR #1254 review 3769193867: generic consumers remain config-independent.
     install_fake_snapshot_materializer(monkeypatch, tmp_path)
     from tree_sitter_analyzer.source_oracle import SafePath
 
@@ -103,8 +104,32 @@ def test_snapshot_rejects_unsafe_constraint_config(tmp_path, monkeypatch):
         "safe_workspace_path",
         lambda *_a, **_k: SafePath(None, (), "symlink"),
     )
-    result = snapshots.DiffSnapshotRegistry().create(str(tmp_path), "diff", [])
-    assert result == {"success": False, "error_code": "CONSTRAINT_CONFIG_UNSAFE"}
+    registry = snapshots.DiffSnapshotRegistry()
+    result = registry.create(str(tmp_path), "diff", [])
+    consumer, error = registry.acquire(str(result["diff_snapshot_id"]), str(tmp_path))
+
+    assert (result["success"], error, consumer is not None) == (True, None, True)
+    assert consumer is not None
+    assert consumer.snapshot.constraint_config_error == "CONSTRAINT_CONFIG_UNSAFE"
+    consumer.release()
+
+
+def test_generic_snapshot_records_oversized_constraint_config(tmp_path, monkeypatch):
+    # PR #1254 review 3769193867: the generic capability survives config limits.
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+
+    def oversized(*_args, **_kwargs):
+        raise snapshots.SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+
+    monkeypatch.setattr(snapshots, "safe_workspace_path", oversized)
+    registry = snapshots.DiffSnapshotRegistry()
+    result = registry.create(str(tmp_path), "diff", [])
+    consumer, error = registry.acquire(str(result["diff_snapshot_id"]), str(tmp_path))
+
+    assert (result["success"], error, consumer is not None) == (True, None, True)
+    assert consumer is not None
+    assert consumer.snapshot.constraint_config_error == "CONSTRAINT_CONFIG_CAPACITY"
+    consumer.release()
 
 
 def test_staged_snapshot_requires_production_git_epoch(tmp_path, monkeypatch):

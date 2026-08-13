@@ -6,7 +6,6 @@ Evaluates cached call edges and optionally persists exact violations.
 
 from __future__ import annotations
 
-import inspect
 import logging
 import sqlite3
 import time
@@ -18,8 +17,7 @@ from ...constraints import (
     evaluate,
     load_constraints,
 )
-from ...constraints.parser import ConstraintParseError, _compile_glob
-from ...git_path_codec import path_to_wire
+from ...constraints.parser import ConstraintParseError
 from ...source_oracle import SourceOracleError
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
@@ -27,10 +25,11 @@ from .constraint_check_live import (
     config_changed_response as _config_changed_response,
 )
 from .constraint_check_live import live_config_snapshot as _live_config_snapshot
-from .constraint_check_live import load_live_constraints
-from .constraint_check_live import path_is_in_scope as _path_is_in_scope
+from .constraint_check_live import load_live_constraints, path_is_in_scope
 from .constraint_check_persistence import read_filtered_violations
 from .constraint_check_schema import TOOL_SCHEMA
+
+_path_is_in_scope = path_is_in_scope
 
 logger = logging.getLogger(__name__)
 # Exact verdict escalation: error > warn > info.
@@ -75,24 +74,9 @@ class ConstraintCheckTool(BaseMCPTool):
                 f"severity_min must be one of {sorted(_SEVERITY_ORDER)}; "
                 f"got {severity_min!r}"
             )
-        persist = arguments.get("persist", True)
-        if not isinstance(persist, bool):
-            raise ValueError("persist must be a boolean")
-        snapshot_id = arguments.get("diff_snapshot_id")
-        scope_paths = arguments.get("scope_paths")
-        if snapshot_id is not None:
-            if not isinstance(snapshot_id, str) or not snapshot_id:
-                raise ValueError("diff_snapshot_id must be a non-empty string")
-            if persist:
-                raise ValueError("diff_snapshot_id requires persist=false")
-            if not isinstance(scope_paths, list) or any(
-                not isinstance(path, str) for path in scope_paths
-            ):
-                raise ValueError("diff_snapshot_id requires scope_paths as strings")
-            if arguments.get("path_filter"):
-                raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
-        elif scope_paths is not None:
-            raise ValueError("scope_paths requires diff_snapshot_id")
+        from .constraint_check_snapshot import validate_snapshot_arguments
+
+        validate_snapshot_arguments(arguments)
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -274,21 +258,17 @@ class ConstraintCheckTool(BaseMCPTool):
         evaluator: Any = None,
         deadline: float | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
-        """Evaluate one certified private snapshot without project writes."""
-        from .constraint_index_snapshot import evaluate_ordinary_snapshot
+        from .constraint_check_read_only import run_read_only
 
-        del db_path  # Compatibility-only; authority selects its own stable source.
-        absolute_deadline = time.monotonic() + 10.0 if deadline is None else deadline
-        if time.monotonic() >= absolute_deadline:
-            raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
-        return evaluate_ordinary_snapshot(
+        return run_read_only(
             self,
+            db_path,
             constraints,
             path_filter=path_filter,
             min_severity_rank=min_severity_rank,
             scope_paths=scope_paths,
             evaluator=evaluator,
-            deadline=absolute_deadline,
+            deadline=deadline,
         )
 
     def _evaluate_connection(
@@ -302,88 +282,20 @@ class ConstraintCheckTool(BaseMCPTool):
         evaluator: Any = None,
         deadline: float | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
-        """Evaluate one caller-owned immutable index connection; fail closed."""
+        from .constraint_check_evaluation import evaluate_connection
+
         evaluator = evaluate if evaluator is None else evaluator
-        absolute_deadline = time.monotonic() + 10.0 if deadline is None else deadline
-
-        def interrupted() -> int:
-            return int(time.monotonic() >= absolute_deadline)
-
-        def check_deadline() -> None:
-            if interrupted():
-                raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
-
-        check_deadline()
-        owns_transaction = not conn.in_transaction
-        conn.set_progress_handler(interrupted, 1_000)
-        if owns_transaction:
-            conn.execute("BEGIN")
-        try:
-            edge_count = self._count_edges(conn, fail_closed=True)
-            evaluator_kwargs: dict[str, Any] = {}
-            evaluator_parameters = inspect.signature(evaluator).parameters
-            if "check_callback" in evaluator_parameters:
-                evaluator_kwargs["check_callback"] = check_deadline
-            if "capacity" in evaluator_parameters:
-                evaluator_kwargs["capacity"] = _MAX_MATERIALIZED_VIOLATIONS
-            if scope_paths is not None:
-
-                def in_scope(caller: str, callee: str) -> bool:
-                    return _path_is_in_scope(caller, scope_paths) or _path_is_in_scope(
-                        callee, scope_paths
-                    )
-
-                evaluator_kwargs["scope_predicate"] = in_scope
-            violations = evaluator(constraints, conn, **evaluator_kwargs)
-        finally:
-            if owns_transaction:
-                conn.rollback()
-            conn.set_progress_handler(None, 0)
-        check_deadline()
-        path_re = _compile_glob(path_filter) if path_filter else None
-        rows: list[dict[str, Any]] = []
-        for violation_number, violation in enumerate(violations, start=1):
-            check_deadline()
-            if violation_number > _MAX_MATERIALIZED_VIOLATIONS:
-                raise RuntimeError("CONSTRAINT_EVALUATION_CAPACITY")
-            # Keep raw endpoints until the defensive scope check. Wire values
-            # beginning with git-path-b64: are escaped by path_to_wire(), so feeding
-            # an already-wired endpoint back into _path_is_in_scope() double-encodes it.
-            caller_raw = violation.caller_file
-            callee_raw = violation.callee_file
-            if scope_paths is not None and not (
-                _path_is_in_scope(caller_raw, scope_paths)
-                or _path_is_in_scope(callee_raw, scope_paths)
-            ):
-                continue
-            caller = path_to_wire(caller_raw)
-            callee = path_to_wire(callee_raw)
-            if _SEVERITY_ORDER.get(violation.severity, 0) < min_severity_rank:
-                continue
-            if path_re is not None and path_re.fullmatch(caller) is None:
-                continue
-            rows.append(
-                {
-                    "rule_id": violation.rule_id,
-                    "caller_file": caller,
-                    "caller_name": violation.caller_name,
-                    "caller_line": violation.caller_line,
-                    "callee_name": violation.callee_name,
-                    "callee_file": callee,
-                    "severity": violation.severity,
-                    "detected_at": violation.detected_at,
-                }
-            )
-        rows.sort(
-            key=lambda row: (
-                -_SEVERITY_ORDER.get(str(row["severity"]), 0),
-                str(row["caller_file"]),
-                int(row["caller_line"]),
-                str(row["rule_id"]),
-            )
+        return evaluate_connection(
+            self,
+            conn,
+            constraints,
+            path_filter=path_filter,
+            min_severity_rank=min_severity_rank,
+            scope_paths=scope_paths,
+            evaluator=evaluator,
+            deadline=deadline,
+            capacity=_MAX_MATERIALIZED_VIOLATIONS,
         )
-        check_deadline()
-        return rows, edge_count
 
     def _run_and_persist(
         self,

@@ -29,6 +29,15 @@ from ...index_symbol_projection import (
     symbol_projection_is_exact,
 )
 from ...portable_source_snapshot import capture_portable_source_snapshot
+from .constraint_check_portable_snapshot import (
+    portable_snapshot_required as _portable_snapshot_required,
+)
+from .constraint_index_snapshot_budget import copy_pinned_database
+from .constraint_index_snapshot_faults import (
+    close_optional_fd,
+    path_identity,
+    stat_identity,
+)
 
 _MAX_BACKUP_BYTES = 510 * 1024 * 1024
 
@@ -45,26 +54,16 @@ class OrdinaryConstraintSnapshot:
     completeness: str
     reason: str | None
     source_scope: Any | None
+    source_generation: str | None = None
+    source_fingerprint: str | None = None
 
 
 def _stat_identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
-    return (
-        int(info.st_dev),
-        int(info.st_ino),
-        int(info.st_size),
-        int(info.st_mtime_ns),
-        int(info.st_ctime_ns),
-    )
+    return stat_identity(info)
 
 
 def _identity(path: Path, *, directory: bool) -> tuple[int, int, int, int, int]:
-    info = os.lstat(path)
-    if stat.S_ISLNK(info.st_mode):
-        raise ValueError("INDEX_PATH_SYMLINK")
-    expected_kind = stat.S_ISDIR if directory else stat.S_ISREG
-    if not expected_kind(info.st_mode):
-        raise ValueError("INDEX_PATH_UNSAFE")
-    return _stat_identity(info)
+    return path_identity(path, directory=directory)
 
 
 def _open_database_fd(db_path: Path, expected: tuple[int, int, int, int, int]) -> int:
@@ -93,32 +92,15 @@ def _copy_pinned_database(
     *,
     deadline: float,
 ) -> None:
-    """Stream one pinned database to ``stream`` under size and time bounds."""
-    size = expected[2]
-    if size > _MAX_BACKUP_BYTES:
-        raise RuntimeError("INDEX_BACKUP_BUDGET")
-    remaining = size
-    while remaining:
-        _deadline(deadline)
-        chunk = os.read(fd, min(64 * 1024, remaining))
-        if not chunk:
-            raise ValueError("CONCURRENT_WRITER")
-        view = memoryview(chunk)
-        while view:
-            _deadline(deadline)
-            written = stream.write(view)
-            if not isinstance(written, int) or written <= 0 or written > len(view):
-                raise OSError("INDEX_STAGE_WRITE_FAILED")
-            view = view[written:]
-            _deadline(deadline)
-        remaining -= len(chunk)
-    _deadline(deadline)
-    if os.read(fd, 1):
-        raise ValueError("CONCURRENT_WRITER")
-    _deadline(deadline)
-    if _stat_identity(os.fstat(fd)) != expected:
-        raise ValueError("CONCURRENT_WRITER")
-    _deadline(deadline)
+    copy_pinned_database(
+        fd,
+        expected,
+        stream,
+        deadline=deadline,
+        byte_limit=_MAX_BACKUP_BYTES,
+        check_deadline=_deadline,
+        stat_identity=_stat_identity,
+    )
 
 
 @contextmanager
@@ -161,8 +143,7 @@ def _sidecar_state(
 
 
 def _close_optional_fd(fd: int | None) -> None:
-    if fd is not None:
-        os.close(fd)
+    close_optional_fd(fd)
 
 
 def _deadline(deadline: float) -> None:
@@ -171,7 +152,6 @@ def _deadline(deadline: float) -> None:
 
 
 def _capture_constraint_sources(root: str, source_scope: Any, deadline: float) -> Any:
-    """Select the secure source certifier available on the current platform."""
     if portable_snapshot_required():
         return capture_portable_source_snapshot(root, source_scope, deadline=deadline)
     return capture_current_source_snapshot(root, source_scope, deadline=deadline)
@@ -248,7 +228,13 @@ def _certify_private_copy(
         or final_current.fingerprint != current.fingerprint
     ):
         raise ValueError("CONCURRENT_SOURCE")
-    return OrdinaryConstraintSnapshot("complete", None, source_scope)
+    return OrdinaryConstraintSnapshot(
+        "complete",
+        None,
+        source_scope,
+        final_current.generation,
+        final_current.fingerprint,
+    )
 
 
 @contextmanager
@@ -369,7 +355,7 @@ def ordinary_source_scope_is_full(source_scope: object) -> bool:
 
 
 def portable_snapshot_required() -> bool:
-    return os.name != "posix" or not os.path.exists("/dev/fd")
+    return _portable_snapshot_required()
 
 
 def evaluate_ordinary_snapshot(
@@ -426,7 +412,7 @@ def evaluate_ordinary_snapshot(
             source_scope
         ):
             raise ValueError("CONSTRAINT_INDEX_SCOPE_MISMATCH")
-        return cast(
+        result = cast(
             tuple[list[dict[str, Any]], int],
             tool._evaluate_connection(
                 conn,
@@ -438,3 +424,17 @@ def evaluate_ordinary_snapshot(
                 deadline=deadline,
             ),
         )
+        if source_scope is not None:
+            current = _capture_constraint_sources(project_root, source_scope, deadline)
+            if current.state != "exact":
+                raise ValueError(current.reason or "SOURCE_SCOPE_UNKNOWN")
+            expected_generation = getattr(index, "source_generation", None)
+            if expected_generation is None:
+                expected_fingerprint = getattr(index, "source_fingerprint", None)
+                if expected_fingerprint is None:
+                    raise ValueError("SOURCE_GENERATION_MISMATCH")
+                if current.fingerprint != expected_fingerprint:
+                    raise ValueError("SOURCE_GENERATION_MISMATCH")
+            elif current.generation != expected_generation:
+                raise ValueError("SOURCE_GENERATION_MISMATCH")
+        return result

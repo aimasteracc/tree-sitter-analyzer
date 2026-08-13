@@ -38,62 +38,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..utils.format_helper import apply_toon_format_to_response
+from .edit_facade_schema import _EDIT_ANNOTATIONS, _EDIT_DESCRIPTION
+from .edit_facade_snapshot_routes import release_snapshot
 from .facade_tool import FacadeTool
-
-# Annotation honesty — see module docstring above.
-# readOnlyHint=False because the facade includes mutating-intent actions
-# (refactor/guard). We cannot claim read-only across a mixed action set.
-_EDIT_ANNOTATIONS: dict[str, Any] = {
-    "readOnlyHint": False,
-    "destructiveHint": False,  # suggests / analyses; never writes files
-    "idempotentHint": False,  # analysis results can change as index updates
-    "openWorldHint": False,
-}
-
-_EDIT_DESCRIPTION = (
-    "Code-intelligence (codegraph-compatible) safety and change-management facade. "
-    "Covers codegraph_pr_review (PR analysis via codegraph), safe-to-edit gates, "
-    "blast-radius guards, change impact scanning, refactoring suggestions, "
-    "constraint checks, semantic classification, and AST diff in one tool. "
-    "Pick a capability via `action`:\n"
-    "- action=safe — pre-edit safety gate: is this file safe to edit right now? "
-    "Returns SAFE/UNSAFE verdict. Params: file_path, edit_type, output_format.\n"
-    "- action=guard — blast-radius guard BEFORE touching a symbol: how many callers, "
-    "what test coverage, what risk level. "
-    "Params: symbol* (required), modification_type* (required), file_path.\n"
-    "- action=impact — post-edit dependency blast-radius scan combining git diff + "
-    "dependency graph: affected files, must-run tests, risk verdict (SAFE/REVIEW/WARN). "
-    "Call after every non-trivial edit. Params: mode (diff|staged|branch|pr, "
-    "default: diff), scope_paths, output_format, capture_diff_snapshot (boolean; "
-    "explicit opt-in, same-process POSIX producer only).\n"
-    "- action=refactor — refactoring-opportunity analysis for a source file: extract "
-    "candidates, complexity hotspots, skeleton. Params: file_path, language, "
-    "max_suggestions, include_extractions, include_skeleton, output_format.\n"
-    "- action=constraints — scan the project for constraint/rule violations. "
-    "For RFC-0022 frozen read-only evaluation pass persist=false, "
-    "diff_snapshot_id, and the impact-produced scope_paths. "
-    "Params: severity_min, persist, diff_snapshot_id, scope_paths, output_format.\n"
-    "- action=pr — AI review of a PR diff via codegraph: structural issues, "
-    "blast-radius, test-coverage gaps (codegraph_pr_review equivalent). "
-    "Params: pr_url or diff (see inner schema).\n"
-    "- action=classify — semantic change classification: classify a file's diff "
-    "between git refs (file_path [+ old_ref/new_ref]) or two code strings "
-    "(old_source + new_source + language). With only file_path, defaults to the "
-    "file/git-ref mode. Params: file_path | old_source+new_source+language, "
-    "output_format.\n"
-    "- action=ast_diff — structural AST diff between two snapshots/versions of "
-    "a file: added/removed/changed nodes. Mode is inferred from args when omitted. "
-    "Modes: diff_files (old_file + new_file), "
-    "diff_strings (old_source + new_source + language), "
-    "diff_git (old_ref + new_ref + file_path). "
-    "Params: see inner schema.\n"
-    "- action=release_snapshot — idempotently release a process-local frozen diff. "
-    "Params: diff_snapshot_id + route_lease_id.\n"
-    "NOTE: ``safe``/``impact``/``classify``/``constraints``/``pr``/``ast_diff`` are "
-    "read-only in practice; ``refactor``/``guard`` suggest changes but do not write "
-    "files. readOnlyHint is False for the whole facade (mixed action set)."
-)
 
 
 def build_edit_facade(project_root: str | None = None) -> FacadeTool:
@@ -110,27 +57,6 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
     from .modification_guard_tool import MODIFICATION_TYPES
 
     impact_tool = ChangeImpactTool(project_root)
-
-    async def release_snapshot(arguments: dict[str, Any]) -> dict[str, Any]:
-        """Release one process-local RFC-0022 lease through the live MCP process."""
-        from ...diff_snapshot_registry import REGISTRY
-
-        snapshot_id = arguments.get("diff_snapshot_id")
-        lease_id = arguments.get("route_lease_id")
-        output_format = arguments.get("output_format", "toon")
-        if not isinstance(snapshot_id, str) or not isinstance(lease_id, str):
-            raise ValueError("diff_snapshot_id and route_lease_id are required")
-        error = REGISTRY.release_route_lease(snapshot_id, lease_id)
-        result: dict[str, Any] = {
-            "success": error is None,
-            "verdict": "INFO" if error is None else "ERROR",
-            "diff_snapshot_id": snapshot_id,
-            "released": error is None,
-            "output_format": output_format,
-        }
-        if error is not None:
-            result.update(error=error, error_code=error)
-        return apply_toon_format_to_response(result, output_format)
 
     class _PRReviewViaFacade(CodeGraphPRReviewTool):
         """Facade ``action=pr`` implies ``mode=pr``.
@@ -200,7 +126,10 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
         # agents. Surface it with the authoritative enum from the inner tool
         # so facade/inner never drift. Never added to required[] (runtime-
         # resolved param convention, locked #397 family).
-        action_scoped_params={"persist": frozenset({"constraints"})},
+        action_scoped_params={
+            "persist": frozenset({"constraints"}),
+            "scope_paths": frozenset({"impact", "constraints"}),
+        },
         extra_public_params={
             "capture_diff_snapshot": {
                 "type": "boolean",

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import os
 import time
 from pathlib import Path
 
@@ -212,3 +214,20 @@ def test_portable_snapshot_maps_disappearing_cache_to_missing_index(
             str(tmp_path), deadline=time.monotonic() + 1
         ):
             pytest.fail("missing index published")
+
+
+def test_copy_pinned_database_rejects_backup_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "bytes"
+    path.write_bytes(b"xx")
+    fd = os.open(path, os.O_RDONLY)
+    expected = owner._stat_identity(os.fstat(fd))
+    monkeypatch.setattr(owner, "_MAX_BACKUP_BYTES", 1)
+    try:
+        with pytest.raises(RuntimeError, match="^INDEX_BACKUP_BUDGET$"):
+            owner._copy_pinned_database(
+                fd, expected, io.BytesIO(), deadline=time.monotonic() + 1
+            )
+    finally:
+        os.close(fd)

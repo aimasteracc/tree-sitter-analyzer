@@ -68,12 +68,22 @@ def test_expiry_retains_active_consumer_bytes_until_release(
     assert registry.stats() == (0, 0)
 
 
-@POSIX_SNAPSHOT_TEST
-def test_snapshot_id_is_bound_to_exact_root_identity(tmp_path: Path) -> None:
-    root = _repo(tmp_path / "one")
-    other = _repo(tmp_path / "two")
-    (root / "old.py").write_text("value = 2\n")
-    (other / "old.py").write_text("value = 2\n")
+def test_snapshot_id_is_bound_to_exact_root_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "one"
+    other = tmp_path / "two"
+    expected = install_fake_snapshot_materializer(monkeypatch, root)
+    other.mkdir()
+    other_canonical = str(other.resolve())
+    other_identity = snapshots.RootIdentity(other_canonical, 3, 4)
+
+    def identify(value: str):
+        if str(Path(value).resolve()) == other_canonical:
+            return other_canonical, other_identity
+        return expected.realpath, expected
+
+    monkeypatch.setattr(snapshots, "canonical_root", identify)
     registry = snapshots.DiffSnapshotRegistry()
     result = registry.create(str(root), "diff", [])
 

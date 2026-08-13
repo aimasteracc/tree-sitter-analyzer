@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import sqlite3
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -308,3 +309,89 @@ def test_portable_snapshot_maps_certification_database_error(tmp_path, monkeypat
             str(tmp_path), deadline=time.monotonic() + 1
         ):
             pytest.fail("corrupt certification published")
+
+
+def test_evaluate_ordinary_snapshot_rejects_partial_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @contextmanager
+    def portable(*_args, **_kwargs):
+        yield owner.OrdinaryConstraintSnapshot("partial", "STALE", None), object()
+
+    monkeypatch.setattr(owner, "portable_snapshot_required", lambda: True)
+    monkeypatch.setattr(owner, "portable_ordinary_snapshot", portable)
+    tool = SimpleNamespace(project_root="/project")
+
+    with pytest.raises(ValueError, match="^STALE$"):
+        owner.evaluate_ordinary_snapshot(
+            tool,
+            [],
+            path_filter="",
+            min_severity_rank=0,
+            scope_paths=None,
+            evaluator=None,
+            deadline=1.0,
+        )
+
+
+@pytest.mark.parametrize(
+    ("state", "expected_fp", "current_fp", "error"),
+    [
+        ("partial", "fp", "fp", "SOURCE_CHANGED"),
+        ("exact", None, "fp", "SOURCE_GENERATION_MISMATCH"),
+        ("exact", "fp", "other", "SOURCE_GENERATION_MISMATCH"),
+        ("exact", "fp", "fp", None),
+    ],
+)
+def test_evaluate_ordinary_snapshot_revalidates_source_after_evaluation(
+    monkeypatch, state, expected_fp, current_fp, error
+) -> None:
+    conn = sqlite3.connect(":memory:")
+    scope = object()
+    authority = SimpleNamespace(
+        completeness="complete",
+        reason=None,
+        source_scope=scope,
+        source_generation=None,
+        source_fingerprint=expected_fp,
+    )
+
+    @contextmanager
+    def portable(*_args, **_kwargs):
+        yield authority, conn
+
+    current = SimpleNamespace(
+        state=state,
+        reason="SOURCE_CHANGED",
+        generation="generation",
+        fingerprint=current_fp,
+    )
+    monkeypatch.setattr(owner, "portable_snapshot_required", lambda: True)
+    monkeypatch.setattr(owner, "portable_ordinary_snapshot", portable)
+    monkeypatch.setattr(
+        owner, "ordinary_source_scope_is_full", lambda value: value is scope
+    )
+    monkeypatch.setattr(owner, "_capture_constraint_sources", lambda *_args: current)
+    tool = SimpleNamespace(
+        project_root="/project", _evaluate_connection=lambda *_a, **_k: ([], 0)
+    )
+
+    def call():
+        return owner.evaluate_ordinary_snapshot(
+            tool,
+            [],
+            path_filter="",
+            min_severity_rank=0,
+            scope_paths=None,
+            evaluator=None,
+            deadline=1.0,
+        )
+
+    try:
+        if error is None:
+            assert call() == ([], 0)
+        else:
+            with pytest.raises(ValueError, match=f"^{error}$"):
+                call()
+    finally:
+        conn.close()

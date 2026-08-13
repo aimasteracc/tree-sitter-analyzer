@@ -464,3 +464,18 @@ def test_read_only_nonempty_rules_rechecks_live_config_after_evaluation(
         False,
         "CONSTRAINT_CONFIG_CHANGED",
     )
+
+
+def test_frozen_scope_decodes_wire_path_before_index_coverage() -> None:
+    # PR #1254 review 3769281313: extension/exclusion checks use raw Git paths.
+    from tree_sitter_analyzer.git_path_codec import path_to_wire
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+    from tree_sitter_analyzer.mcp.tools.constraint_check_frozen import (
+        _supported_scope_is_covered,
+    )
+
+    raw_path = b"tests/golden/corpus_\xff.py".decode("utf-8", "surrogateescape")
+    assert path_to_wire(raw_path).startswith("git-path-b64:")
+    assert (
+        _supported_scope_is_covered([raw_path], make_source_scope_descriptor()) is False
+    )
