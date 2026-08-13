@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Tests for codegraph_full_index, codegraph_autoindex, and codegraph_incremental_sync MCP tools."""
 
-import os
-
 import pytest
 
 
@@ -82,8 +80,9 @@ class TestCodeGraphFullIndexTool:
             {"mode": "incremental", "max_files": 10, "output_format": "json"}
         )
         assert result["success"] is True
-        expected_verdict = "WARN" if os.name == "nt" else "INFO"
-        assert result["verdict"] == expected_verdict
+        # PR #1254: portable source certification makes ordinary indexing
+        # authoritative on Windows as well as POSIX.
+        assert result["verdict"] == "INFO"
         assert "phases" in result
 
     @pytest.mark.asyncio
@@ -96,7 +95,9 @@ class TestCodeGraphFullIndexTool:
         result = await tool.execute(
             {"mode": "full", "max_files": 10, "output_format": "json"}
         )
-        assert result["success"] is (os.name != "nt")
+        # PR #1254: the normal full-index producer now stamps a portable
+        # manifest on hosts without /dev/fd.
+        assert result["success"] is True
         assert "phases" in result
         assert "elapsed_seconds" in result
 
