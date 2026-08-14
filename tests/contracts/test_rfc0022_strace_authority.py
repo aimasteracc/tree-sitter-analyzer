@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -431,8 +432,11 @@ def test_snapshot_binds_identity_metadata_and_content(tmp_path: Path) -> None:
     path = tmp_path / "value.txt"
     path.write_bytes(b"same bytes")
     before = snapshot_root(tmp_path)
-    path.write_bytes(b"changed")
-    path.write_bytes(b"same bytes")
+    metadata = path.stat()
+    os.utime(
+        path,
+        ns=(metadata.st_atime_ns, metadata.st_mtime_ns + 2_000_000_000),
+    )
     after = snapshot_root(tmp_path)
     assert before["root"] == after["root"]
     assert before["records"][1]["sha256"] == after["records"][1]["sha256"]
