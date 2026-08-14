@@ -13,6 +13,10 @@
     "io_uring_setup"
   ],
   "authority_id": "rfc0022-linux-strace-v1",
+  "enotty_ioctl_commands": [
+    "TCGETS",
+    "TIOCGWINSZ"
+  ],
   "fd_sinks": {
     "copy_file_range": 2,
     "fallocate": 0,
@@ -168,6 +172,23 @@
     "clone3",
     "fork",
     "vfork"
+  ],
+  "safe_fcntl_commands": [
+    "F_DUPFD",
+    "F_DUPFD_CLOEXEC",
+    "F_GETFD",
+    "F_GETFL",
+    "F_GETLK",
+    "F_OFD_GETLK",
+    "F_OFD_SETLK",
+    "F_OFD_SETLKW",
+    "F_SETFD",
+    "F_SETFL",
+    "F_SETLK",
+    "F_SETLKW"
+  ],
+  "safe_ioctl_commands": [
+    "FIOCLEX"
   ],
   "safe_syscalls": [
     "accept",

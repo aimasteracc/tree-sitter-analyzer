@@ -30,11 +30,12 @@ from rfc0022_strace_runtime import (
     write_report,
 )
 
-POLICY_SHA256 = "4cc2f2cf2d13942fe41d6f5a83929edefa0ae022be4fe5054129077063f55144"  # pragma: allowlist secret
+POLICY_SHA256 = "49d907007172a9804261f8d8492295062964d37c03652b01124101b3b39707ab"  # pragma: allowlist secret
 POLICY_KEYS = {
     "always_violation_syscalls",
     "async_syscalls",
     "authority_id",
+    "enotty_ioctl_commands",
     "fd_sinks",
     "mapping_syscalls",
     "minimum_strace_version",
@@ -42,6 +43,8 @@ POLICY_KEYS = {
     "page_size",
     "path_mutators",
     "process_syscalls",
+    "safe_fcntl_commands",
+    "safe_ioctl_commands",
     "safe_syscalls",
     "schema_version",
     "trace_arguments",
@@ -89,9 +92,12 @@ def load_policy(path: Path) -> tuple[dict[str, Any], str]:
     for key in (
         "always_violation_syscalls",
         "async_syscalls",
+        "enotty_ioctl_commands",
         "mapping_syscalls",
         "nonfilesystem_fd_prefixes",
         "process_syscalls",
+        "safe_fcntl_commands",
+        "safe_ioctl_commands",
         "safe_syscalls",
         "trace_arguments",
         "unix_path_mutators",

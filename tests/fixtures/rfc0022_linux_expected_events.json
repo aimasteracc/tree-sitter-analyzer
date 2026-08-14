@@ -1,0 +1,267 @@
+{
+  "schema_version": 1,
+  "event_fields": ["role", "syscall", "operation", "target", "flags", "result_class"],
+  "trace_graph_fields": ["role", "parent_role"],
+  "controls": {
+    "absolute-write": {
+      "authority_status": "healthy",
+      "errors": [],
+      "events": [
+        ["root", "openat", "write_capable_open", "absolute-created.txt", "O_CREAT|O_WRONLY", "success"],
+        ["root", "write", "descriptor_write", "absolute-created.txt", null, "success"],
+        ["root", "unlink", "pathname_mutation", "absolute-created.txt", null, "success"],
+        ["authority", "snapshot", "supplemental_snapshot_mismatch", ".", null, "changed"]
+      ],
+      "outcome": "violation",
+      "returncode": 1,
+      "snapshots_equal": false,
+      "target_returncode": 0,
+      "trace_graph": [
+        ["root", null]
+      ]
+    },
+    "clean": {
+      "authority_status": "healthy",
+      "errors": [],
+      "events": [
+      ],
+      "outcome": "clean",
+      "returncode": 0,
+      "snapshots_equal": true,
+      "target_returncode": 0,
+      "trace_graph": [
+        ["root", null]
+      ]
+    },
+    "create-unlink": {
+      "authority_status": "healthy",
+      "errors": [],
+      "events": [
+        ["root", "openat", "write_capable_open", "native-created.txt", "O_CREAT|O_WRONLY", "success"],
+        ["root", "write", "descriptor_write", "native-created.txt", null, "success"],
+        ["root", "unlink", "pathname_mutation", "native-created.txt", null, "success"],
+        ["authority", "snapshot", "supplemental_snapshot_mismatch", ".", null, "changed"]
+      ],
+      "outcome": "violation",
+      "returncode": 1,
+      "snapshots_equal": false,
+      "target_returncode": 0,
+      "trace_graph": [
+        ["root", null]
+      ]
+    },
+    "descendant-create-unlink": {
+      "authority_status": "healthy",
+      "errors": [],
+      "events": [
+        ["descendant", "openat", "write_capable_open", "descendant-created.txt", "O_CREAT|O_WRONLY", "success"],
+        ["descendant", "write", "descriptor_write", "descendant-created.txt", null, "success"],
+        ["descendant", "unlink", "pathname_mutation", "descendant-created.txt", null, "success"],
+        ["authority", "snapshot", "supplemental_snapshot_mismatch", ".", null, "changed"]
+      ],
+      "outcome": "violation",
+      "returncode": 1,
+      "snapshots_equal": false,
+      "target_returncode": 0,
+      "trace_graph": [
+        ["descendant", "root"],
+        ["root", null]
+      ]
+    },
+    "inherited-fd": {
+      "authority_status": "healthy",
+      "errors": [],
+      "events": [
+        ["root", "openat", "write_capable_open", "fixture.txt", "O_APPEND|O_WRONLY", "success"],
+        ["descendant", "write", "descriptor_write", "fixture.txt", null, "success"],
+        ["authority", "snapshot", "supplemental_snapshot_mismatch", ".", null, "changed"]
+      ],
+      "outcome": "violation",
+      "returncode": 1,
+      "snapshots_equal": false,
+      "target_returncode": 0,
+      "trace_graph": [
+        ["descendant", "root"],
+        ["root", null]
+      ]
+    },
+    "mkdir-rmdir": {
+      "authority_status": "healthy",
+      "errors": [],
+      "events": [
+        ["root", "mkdir", "pathname_mutation", "made-directory", null, "success"],
+        ["root", "rmdir", "pathname_mutation", "made-directory", null, "success"],
+        ["authority", "snapshot", "supplemental_snapshot_mismatch", ".", null, "changed"]
+      ],
+      "outcome": "violation",
+      "returncode": 1,
+      "snapshots_equal": false,
+      "target_returncode": 0,
+      "trace_graph": [
+        ["root", null]
+      ]
+    },
+    "nonzero-exit": {
+      "authority_status": "error",
+      "errors": ["target return code mismatch: expected 0, got 1"],
+      "events": [
+      ],
+      "outcome": "indeterminate",
+      "returncode": 2,
+      "snapshots_equal": true,
+      "target_returncode": 1,
+      "trace_graph": [
+      ]
+    },
+    "permission-denied": {
+      "authority_status": "healthy",
+      "errors": [],
+      "events": [
+        ["root", "openat", "write_capable_open", "/sys/rfc0022-authority-denied", "O_CREAT|O_WRONLY", "-1 EACCES"]
+      ],
+      "outcome": "violation",
+      "returncode": 1,
+      "snapshots_equal": true,
+      "target_returncode": 0,
+      "trace_graph": [
+        ["root", null]
+      ]
+    },
+    "rename-restore": {
+      "authority_status": "healthy",
+      "errors": [],
+      "events": [
+        ["root", "rename", "pathname_mutation", "fixture.txt", null, "success"],
+        ["root", "rename", "pathname_mutation", "fixture.moved", null, "success"],
+        ["root", "rename", "pathname_mutation", "fixture.moved", null, "success"],
+        ["root", "rename", "pathname_mutation", "fixture.txt", null, "success"],
+        ["authority", "snapshot", "supplemental_snapshot_mismatch", ".", null, "changed"]
+      ],
+      "outcome": "violation",
+      "returncode": 1,
+      "snapshots_equal": false,
+      "target_returncode": 0,
+      "trace_graph": [
+        ["root", null]
+      ]
+    },
+    "shared-writable-mmap": {
+      "authority_status": "healthy",
+      "errors": [],
+      "events": [
+        ["root", "openat", "write_capable_open", "fixture.txt", "O_RDWR", "success"],
+        ["root", "mmap", "shared_writable_mapping", "fixture.txt", "PROT_READ|PROT_WRITE|MAP_SHARED", "success"],
+        ["root", "msync", "shared_mapping_write", "fixture.txt", null, "success"],
+        ["root", "msync", "shared_mapping_write", "fixture.txt", null, "success"],
+        ["authority", "snapshot", "supplemental_snapshot_mismatch", ".", null, "changed"]
+      ],
+      "outcome": "violation",
+      "returncode": 1,
+      "snapshots_equal": false,
+      "target_returncode": 0,
+      "trace_graph": [
+        ["root", null]
+      ]
+    },
+    "sqlite-sidecar": {
+      "authority_status": "healthy",
+      "errors": [],
+      "events": [
+        ["root", "openat", "write_capable_open", "authority.sqlite3", "O_CREAT|O_RDWR", "success"],
+        ["root", "openat", "write_capable_open", "authority.sqlite3-journal", "O_CREAT|O_RDWR", "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-journal", null, "success"],
+        ["root", "fdatasync", "descriptor_write", "authority.sqlite3-journal", null, "success"],
+        ["root", "fdatasync", "descriptor_write", ".", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-journal", null, "success"],
+        ["root", "fdatasync", "descriptor_write", "authority.sqlite3-journal", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3", null, "success"],
+        ["root", "fdatasync", "descriptor_write", "authority.sqlite3", null, "success"],
+        ["root", "unlink", "pathname_mutation", "authority.sqlite3-journal", null, "success"],
+        ["root", "openat", "write_capable_open", "authority.sqlite3-wal", "O_CREAT|O_RDWR", "success"],
+        ["root", "openat", "write_capable_open", "authority.sqlite3-shm", "O_CREAT|O_RDWR", "success"],
+        ["root", "ftruncate", "descriptor_write", "authority.sqlite3-shm", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-shm", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-shm", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-shm", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-shm", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-shm", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-shm", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-shm", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-shm", null, "success"],
+        ["root", "mmap", "shared_writable_mapping", "authority.sqlite3-shm", "PROT_READ|PROT_WRITE|MAP_SHARED", "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-wal", null, "success"],
+        ["root", "fdatasync", "descriptor_write", "authority.sqlite3-wal", null, "success"],
+        ["root", "fdatasync", "descriptor_write", ".", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-wal", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-wal", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-wal", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-wal", null, "success"],
+        ["root", "fdatasync", "descriptor_write", "authority.sqlite3-wal", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-wal", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3-wal", null, "success"],
+        ["root", "fdatasync", "descriptor_write", "authority.sqlite3-wal", null, "success"],
+        ["root", "fdatasync", "descriptor_write", "authority.sqlite3-wal", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3", null, "success"],
+        ["root", "pwrite64", "descriptor_write", "authority.sqlite3", null, "success"],
+        ["root", "ftruncate", "descriptor_write", "authority.sqlite3", null, "success"],
+        ["root", "fdatasync", "descriptor_write", "authority.sqlite3", null, "success"],
+        ["root", "unlink", "pathname_mutation", "authority.sqlite3-shm", null, "success"],
+        ["root", "unlink", "pathname_mutation", "authority.sqlite3-wal", null, "success"],
+        ["authority", "snapshot", "supplemental_snapshot_mismatch", ".", null, "changed"]
+      ],
+      "outcome": "violation",
+      "returncode": 1,
+      "snapshots_equal": false,
+      "target_returncode": 0,
+      "trace_graph": [
+        ["root", null]
+      ]
+    },
+    "timeout-detached-descendant": {
+      "authority_status": "error",
+      "errors": ["strace target timed out"],
+      "events": [
+      ],
+      "outcome": "indeterminate",
+      "returncode": 2,
+      "snapshots_equal": true,
+      "target_returncode": -9,
+      "trace_graph": [
+      ]
+    },
+    "truncate-restore": {
+      "authority_status": "healthy",
+      "errors": [],
+      "events": [
+        ["root", "truncate", "pathname_mutation", "fixture.txt", null, "success"],
+        ["root", "openat", "write_capable_open", "fixture.txt", "O_WRONLY", "success"],
+        ["root", "write", "descriptor_write", "fixture.txt", null, "success"],
+        ["authority", "snapshot", "supplemental_snapshot_mismatch", ".", null, "changed"]
+      ],
+      "outcome": "violation",
+      "returncode": 1,
+      "snapshots_equal": false,
+      "target_returncode": 0,
+      "trace_graph": [
+        ["root", null]
+      ]
+    },
+    "write-then-delete": {
+      "authority_status": "healthy",
+      "errors": [],
+      "events": [
+        ["root", "openat", "write_capable_open", "write-then-delete.txt", "O_CREAT|O_TRUNC|O_WRONLY", "success"],
+        ["root", "write", "descriptor_write", "write-then-delete.txt", null, "success"],
+        ["root", "unlink", "pathname_mutation", "write-then-delete.txt", null, "success"],
+        ["authority", "snapshot", "supplemental_snapshot_mismatch", ".", null, "changed"]
+      ],
+      "outcome": "violation",
+      "returncode": 1,
+      "snapshots_equal": false,
+      "target_returncode": 0,
+      "trace_graph": [
+        ["root", null]
+      ]
+    }
+  }
+}

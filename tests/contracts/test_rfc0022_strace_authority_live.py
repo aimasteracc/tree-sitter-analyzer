@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -17,6 +19,19 @@ POLICY_PATH = ROOT / "config/rfc0022-linux-strace-policy.json"
 AUTHORITY = SCRIPTS / "rfc0022_strace_authority.py"
 CONTROL = SCRIPTS / "rfc0022_strace_positive_control.py"
 WORKFLOW = ROOT / ".github/workflows/rfc0022-linux-write-authority.yml"
+EXPECTED_PATH = ROOT / "tests/fixtures/rfc0022_linux_expected_events.json"
+EXPECTED = json.loads(EXPECTED_PATH.read_text(encoding="utf-8"))
+EVENT_KEYS = {
+    "flags",
+    "line",
+    "operation",
+    "pid",
+    "result",
+    "syscall",
+    "target",
+    "timestamp",
+}
+TRACE_FILE_KEYS = {"parent_pid", "pid", "role", "sha256", "terminal"}
 
 
 def test_launcher_source_locks_native_boundary_controls() -> None:
@@ -115,6 +130,97 @@ LIVE_CONTROLS = [
 ]
 
 
+def test_expected_live_evidence_schema_is_exact() -> None:
+    assert set(EXPECTED) == {
+        "controls",
+        "event_fields",
+        "schema_version",
+        "trace_graph_fields",
+    }
+    assert EXPECTED["schema_version"] == 1
+    assert EXPECTED["event_fields"] == [
+        "role",
+        "syscall",
+        "operation",
+        "target",
+        "flags",
+        "result_class",
+    ]
+    assert EXPECTED["trace_graph_fields"] == ["role", "parent_role"]
+    assert sorted(EXPECTED["controls"]) == sorted(LIVE_CONTROLS)
+
+
+def _relative_target(target: str, case: Path) -> str:
+    path = Path(target.removesuffix(" (deleted)"))
+    try:
+        relative = path.relative_to(case)
+    except ValueError:
+        return str(path)
+    return "." if relative == Path(".") else relative.as_posix()
+
+
+def _result_class(result: str) -> str:
+    if result.startswith("-1 "):
+        return " ".join(result.split(maxsplit=2)[:2])
+    if result == "changed":
+        return "changed"
+    return "success"
+
+
+def _normalized_evidence(
+    report: dict[str, object], case: Path, trace_dir: Path
+) -> tuple[list[list[str | None]], list[list[str | None]]]:
+    trace_files = report["trace_files"]
+    assert isinstance(trace_files, list)
+    assert all(set(item) == TRACE_FILE_KEYS for item in trace_files)
+    role_by_pid = {item["pid"]: item["role"] for item in trace_files}
+    graph = sorted(
+        [
+            [
+                item["role"],
+                None if item["parent_pid"] is None else role_by_pid[item["parent_pid"]],
+            ]
+            for item in trace_files
+        ]
+    )
+    raw_by_pid: dict[int, list[str]] = {}
+    for item in trace_files:
+        assert item["terminal"] == "+++ exited with 0 +++"
+        trace_path = trace_dir / f"trace.{item['pid']}"
+        raw = trace_path.read_bytes()
+        assert hashlib.sha256(raw).hexdigest() == item["sha256"]
+        raw_by_pid[item["pid"]] = raw.decode("utf-8").splitlines()
+
+    violations = report["violations"]
+    assert isinstance(violations, list)
+    assert all(set(event) == EVENT_KEYS for event in violations)
+    native_timestamps: list[Decimal] = []
+    normalized: list[list[str | None]] = []
+    for event in violations:
+        pid = event["pid"]
+        if pid == 0:
+            assert [event["timestamp"], event["line"]] == ["supplemental", 0]
+            role = "authority"
+        else:
+            role = role_by_pid[pid]
+            line_number = event["line"]
+            raw_line = raw_by_pid[pid][line_number - 1]
+            assert raw_line.startswith(f"{event['timestamp']} {event['syscall']}(")
+            native_timestamps.append(Decimal(event["timestamp"]))
+        normalized.append(
+            [
+                role,
+                event["syscall"],
+                event["operation"],
+                _relative_target(event["target"], case),
+                event["flags"],
+                _result_class(event["result"]),
+            ]
+        )
+    assert native_timestamps == sorted(native_timestamps)
+    return normalized, graph
+
+
 @pytest.mark.parametrize("control", LIVE_CONTROLS)
 def test_live_pinned_linux_authority_controls(tmp_path: Path, control: str) -> None:
     if os.environ.get("RFC0022_RUN_LIVE_STRACE") != "1":
@@ -136,45 +242,20 @@ def test_live_pinned_linux_authority_controls(tmp_path: Path, control: str) -> N
         timeout=40,
     )
     report = json.loads((artifact / "report.json").read_text(encoding="utf-8"))
-    if control == "nonzero-exit":
-        assert result.returncode == 2
-        assert report["authority_status"] == "error"
-        assert report["outcome"] == "indeterminate"
-        assert report["cleanup_remaining_pids"] == []
-        assert report["errors"] == ["target return code mismatch: expected 0, got 1"]
-        return
-    if control == "timeout-detached-descendant":
-        assert result.returncode == 2
-        assert report["authority_status"] == "error"
-        assert report["outcome"] == "indeterminate"
-        assert report["cleanup_remaining_pids"] == []
-        assert report["errors"] == ["strace target timed out"]
-        return
-    assert report["errors"] == []
+    expected = EXPECTED["controls"][control]
+    normalized, graph = _normalized_evidence(report, case, artifact / "trace")
+
+    assert result.returncode == expected["returncode"]
+    assert report["authority_status"] == expected["authority_status"]
+    assert report["outcome"] == expected["outcome"]
+    assert report["errors"] == expected["errors"]
+    assert report["cleanup_survivor_pids"] == []
     assert report["cleanup_remaining_pids"] == []
-    assert report["authority_status"] == "healthy"
-    if control == "clean":
-        assert result.returncode == 0
-        assert report["outcome"] == "clean"
-        assert report["violations"] == []
-    else:
-        assert result.returncode == 1
-        assert report["outcome"] == "violation"
-        assert report["violations"] != []
-        assert all(
-            set(event)
-            == {
-                "flags",
-                "line",
-                "operation",
-                "pid",
-                "result",
-                "syscall",
-                "target",
-                "timestamp",
-            }
-            for event in report["violations"]
-        )
+    assert report["snapshots"]["equal"] is expected["snapshots_equal"]
+    assert report["target"]["expected_returncode"] == 0
+    assert report["target"]["returncode"] == expected["target_returncode"]
+    assert normalized == expected["events"]
+    assert graph == expected["trace_graph"]
 
 
 def test_live_artifact_manifest_is_complete() -> None:
@@ -190,7 +271,10 @@ def test_live_artifact_manifest_is_complete() -> None:
         artifact = artifact_root / control
         report = json.loads((artifact / "report.json").read_text(encoding="utf-8"))
         traces = sorted((artifact / "trace").glob("trace.*"))
-        assert traces[0].read_bytes()[-1:] == b"\n"
+        if control == "timeout-detached-descendant":
+            assert traces[0].is_file() is True
+        else:
+            assert traces[0].read_bytes()[-1:] == b"\n"
         if control not in {"nonzero-exit", "timeout-detached-descendant"}:
             assert {path.name for path in traces} == {
                 f"trace.{item['pid']}" for item in report["trace_files"]

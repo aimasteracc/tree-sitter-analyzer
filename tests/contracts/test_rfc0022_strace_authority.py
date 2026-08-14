@@ -103,6 +103,22 @@ def test_policy_is_exact_closed_and_digest_bound() -> None:
         "O_WRONLY",
     }
     assert POLICY["unix_path_mutators"] == ["bind"]
+    assert POLICY["safe_ioctl_commands"] == ["FIOCLEX"]
+    assert POLICY["enotty_ioctl_commands"] == ["TCGETS", "TIOCGWINSZ"]
+    assert set(POLICY["safe_fcntl_commands"]) == {
+        "F_DUPFD",
+        "F_DUPFD_CLOEXEC",
+        "F_GETFD",
+        "F_GETFL",
+        "F_GETLK",
+        "F_OFD_GETLK",
+        "F_OFD_SETLK",
+        "F_OFD_SETLKW",
+        "F_SETFD",
+        "F_SETFL",
+        "F_SETLK",
+        "F_SETLKW",
+    }
     assert "allowlist" not in json.dumps(POLICY).lower()
 
 

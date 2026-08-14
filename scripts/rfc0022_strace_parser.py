@@ -407,18 +407,18 @@ def classify_calls(
                 raise AuthorityError(f"{call.syscall} has unannotated fd")
             if not _is_nonfilesystem(annotation, policy):
                 command = args[1] if len(args) > 1 else ""
-                harmless = call.syscall == "fcntl" and command in {
-                    "F_DUPFD",
-                    "F_DUPFD_CLOEXEC",
-                    "F_GETFD",
-                    "F_GETFL",
-                    "F_GETLK",
-                    "F_SETLK",
-                    "F_SETLKW",
-                    "F_OFD_GETLK",
-                    "F_OFD_SETLK",
-                    "F_OFD_SETLKW",
-                }
+                harmless = (
+                    call.syscall == "ioctl"
+                    and (
+                        command in policy["safe_ioctl_commands"]
+                        or (
+                            command in policy["enotty_ioctl_commands"]
+                            and call.result.startswith("-1 ENOTTY")
+                        )
+                    )
+                ) or (
+                    call.syscall == "fcntl" and command in policy["safe_fcntl_commands"]
+                )
                 if not harmless:
                     raise AuthorityError(
                         f"unclassified {call.syscall} on filesystem fd"

@@ -169,3 +169,52 @@ def test_root_exec_must_match_expected_target(tmp_path: Path) -> None:
             Path("/project"),
             expected_executable="/bin/expected",
         )
+
+
+def test_safe_fd_metadata_commands_are_explicit_and_non_mutating(
+    tmp_path: Path,
+) -> None:
+    trace = tmp_path / "safe-fd-commands"
+    _write_trace(
+        trace,
+        100,
+        [
+            'openat(AT_FDCWD</project>, "input.py", O_RDONLY) = 3</project/input.py>',
+            "ioctl(3</project/input.py>, TCGETS, 0x1234) = -1 ENOTTY (Inappropriate ioctl for device)",
+            "ioctl(3</project/input.py>, TIOCGWINSZ, 0x1234) = -1 ENOTTY (Inappropriate ioctl for device)",
+            "ioctl(3</project/input.py>, FIOCLEX) = 0",
+            "fcntl(3</project/input.py>, F_GETFD) = 0",
+            "fcntl(3</project/input.py>, F_SETFD, FD_CLOEXEC) = 0",
+            "close(3</project/input.py>) = 0",
+            "+++ exited with 0 +++",
+        ],
+    )
+    assert _parse(trace) == []
+
+
+@pytest.mark.parametrize(
+    ("syscall", "command", "result"),
+    [
+        ("fcntl", "UNKNOWN_COMMAND", "0"),
+        ("ioctl", "UNKNOWN_COMMAND", "0"),
+        ("ioctl", "TCGETS", "0"),
+    ],
+)
+def test_unknown_fd_commands_fail_closed(
+    tmp_path: Path, syscall: str, command: str, result: str
+) -> None:
+    trace = tmp_path / f"{syscall}-{command}"
+    _write_trace(
+        trace,
+        100,
+        [
+            'openat(AT_FDCWD</project>, "input.py", O_RDONLY) = 3</project/input.py>',
+            f"{syscall}(3</project/input.py>, {command}, 0) = {result}",
+            "close(3</project/input.py>) = 0",
+            "+++ exited with 0 +++",
+        ],
+    )
+    with pytest.raises(
+        AuthorityError, match=f"unclassified {syscall} on filesystem fd"
+    ):
+        _parse(trace)
