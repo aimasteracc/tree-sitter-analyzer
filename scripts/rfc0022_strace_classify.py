@@ -3,11 +3,18 @@
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from rfc0022_strace_model import AuthorityError, TraceCall, Violation
 from rfc0022_strace_state import ProcessState, child_pid
+
+_MAGIC_FD_PATH = re.compile(
+    r"(?:/dev/fd/[0-9]+|/dev/std(?:in|out|err)|"
+    r"/proc/(?:self|thread-self|[1-9][0-9]*)/fd/[0-9]+)"
+)
+_DESTRUCTIVE_OPEN_FLAGS = frozenset({"O_CREAT", "O_TMPFILE", "O_TRUNC"})
 
 
 def _timestamp_interval(call: TraceCall) -> tuple[Decimal, Decimal]:
@@ -109,7 +116,8 @@ def reject_ambiguous_state_transition(
         "munmap",
     }
     cwd_transition = call.syscall in {"chdir", "fchdir"}
-    if not mapping_transition and not cwd_transition:
+    file_transition = call.syscall in {"execve", "execveat"}
+    if not mapping_transition and not cwd_transition and not file_transition:
         return
     start, end = _timestamp_interval(call)
     for other in calls:
@@ -131,6 +139,12 @@ def reject_ambiguous_state_transition(
             in {"bind", "chdir", "creat", "fchdir", "open", "openat", "openat2"}
             or other.syscall in process_syscalls
         )
+        file_dependent = other.syscall in {
+            "open",
+            "openat",
+            "openat2",
+            "open_by_handle_at",
+        }
         if (
             mapping_transition
             and mapping_dependent
@@ -139,11 +153,55 @@ def reject_ambiguous_state_transition(
             raise AuthorityError("ambiguous cross-process mapping transition")
         if cwd_transition and cwd_dependent and state.shares_cwd(call.pid, other.pid):
             raise AuthorityError("ambiguous cross-process cwd transition")
+        if (
+            file_transition
+            and file_dependent
+            and state.shares_files(call.pid, other.pid)
+        ):
+            raise AuthorityError("ambiguous cross-process file-table transition")
 
 
 def is_nonfilesystem(annotation: str, policy: dict[str, Any]) -> bool:
     return any(
         annotation.startswith(prefix) for prefix in policy["nonfilesystem_fd_prefixes"]
+    )
+
+
+def classify_write_open(
+    call: TraceCall,
+    matched: list[str],
+    requested_target: str,
+    result_annotation: str | None,
+    state: ProcessState,
+    policy: dict[str, Any],
+) -> Violation | None:
+    if not matched:
+        return None
+    result_is_nonfilesystem = result_annotation is not None and is_nonfilesystem(
+        result_annotation, policy
+    )
+    safe_magic_reopen = (
+        result_is_nonfilesystem
+        and _MAGIC_FD_PATH.fullmatch(requested_target) is not None
+        and not (_DESTRUCTIVE_OPEN_FLAGS & set(matched))
+        and not state.has_shared_files(call.pid)
+    )
+    if safe_magic_reopen:
+        return None
+    target = (
+        requested_target
+        if result_is_nonfilesystem
+        else result_annotation or requested_target
+    )
+    return Violation(
+        call.timestamp,
+        call.pid,
+        call.line,
+        call.syscall,
+        "write_capable_open",
+        target,
+        call.result,
+        "|".join(matched),
     )
 
 

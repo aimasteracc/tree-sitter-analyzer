@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Process, cwd, and mapping provenance for RFC-0022 strace classification."""
+"""Process, cwd, mapping, and file-table provenance for RFC-0022 classification."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ class ProcessState:
         self._cwd_spaces = {root_pid: initial_cwd}
         self._map_space_by_pid = {root_pid: root_pid}
         self._map_spaces: dict[int, list[Mapping]] = {root_pid: []}
+        self._file_space_by_pid = {root_pid: root_pid}
         self._next_space = -1
 
     def _fresh_space(self) -> int:
@@ -44,6 +45,19 @@ class ProcessState:
         except KeyError as exc:
             raise AuthorityError("mapping sharing state is incomplete") from exc
 
+    def shares_files(self, first: int, second: int) -> bool:
+        try:
+            return self._file_space_by_pid[first] == self._file_space_by_pid[second]
+        except KeyError as exc:
+            raise AuthorityError("file-table sharing state is incomplete") from exc
+
+    def has_shared_files(self, pid: int) -> bool:
+        try:
+            space = self._file_space_by_pid[pid]
+        except KeyError as exc:
+            raise AuthorityError("file-table sharing state is incomplete") from exc
+        return sum(value == space for value in self._file_space_by_pid.values()) > 1
+
     def chdir(self, pid: int, cwd: Path) -> None:
         try:
             self._cwd_spaces[self._cwd_space_by_pid[pid]] = cwd
@@ -53,11 +67,16 @@ class ProcessState:
     def spawn(
         self, parent: int, child: int, flags: str, *, shares_vm: bool = False
     ) -> None:
-        if child in self._cwd_space_by_pid or child in self._map_space_by_pid:
+        if (
+            child in self._cwd_space_by_pid
+            or child in self._map_space_by_pid
+            or child in self._file_space_by_pid
+        ):
             raise AuthorityError(f"duplicate process state for pid {child}")
         try:
             parent_cwd_space = self._cwd_space_by_pid[parent]
             parent_map_space = self._map_space_by_pid[parent]
+            parent_file_space = self._file_space_by_pid[parent]
         except KeyError as exc:
             raise AuthorityError(f"parent state missing for pid {parent}") from exc
         if "CLONE_FS" in flags:
@@ -66,6 +85,10 @@ class ProcessState:
             cwd_space = self._fresh_space()
             self._cwd_space_by_pid[child] = cwd_space
             self._cwd_spaces[cwd_space] = self._cwd_spaces[parent_cwd_space]
+        if "CLONE_FILES" in flags:
+            self._file_space_by_pid[child] = parent_file_space
+        else:
+            self._file_space_by_pid[child] = self._fresh_space()
         if "CLONE_VM" in flags or shares_vm:
             self._map_space_by_pid[child] = parent_map_space
         else:
@@ -74,6 +97,7 @@ class ProcessState:
             self._map_spaces[map_space] = list(self._map_spaces[parent_map_space])
 
     def exec(self, pid: int) -> None:
+        self._file_space_by_pid[pid] = self._fresh_space()
         map_space = self._fresh_space()
         self._map_space_by_pid[pid] = map_space
         self._map_spaces[map_space] = []

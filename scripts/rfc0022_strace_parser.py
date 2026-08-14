@@ -12,6 +12,7 @@ from typing import Any
 
 from rfc0022_strace_classify import (
     causal_order,
+    classify_write_open,
     global_write_violation,
     harmless_fd_command,
     is_nonfilesystem,
@@ -175,16 +176,13 @@ def _parse_trace(path: Path, pid: int) -> ParsedTrace:
     return calls, metadata, first_timestamp
 
 
-def _open_target(call: TraceCall, cwd: Path) -> str:
+def _open_targets(call: TraceCall, cwd: Path) -> tuple[str, str | None]:
     path_index = {"open": 0, "openat": 1, "openat2": 1}.get(call.syscall)
-    result_annotation = (
-        descriptor_path(call.result) if _result_succeeded(call.result) else None
+    result = descriptor_path(call.result) if _result_succeeded(call.result) else None
+    requested = (
+        "<file-handle>" if path_index is None else _resolve_path(call, path_index, cwd)
     )
-    if result_annotation is not None:
-        return result_annotation
-    if path_index is None:
-        return "<file-handle>"
-    return _resolve_path(call, path_index, cwd)
+    return requested, result
 
 
 def classify_calls(
@@ -266,22 +264,12 @@ def classify_calls(
                 for flag in policy["write_open_flags"]
                 if re.search(rf"(?<![A-Z0-9_]){re.escape(flag)}(?![A-Z0-9_])", flags)
             )
-            result = (
-                descriptor_path(call.result) if _result_succeeded(call.result) else None
+            requested, result = _open_targets(call, cwd)
+            violation = classify_write_open(
+                call, matched, requested, result, state, policy
             )
-            if matched and not (result and is_nonfilesystem(result, policy)):
-                violations.append(
-                    Violation(
-                        call.timestamp,
-                        call.pid,
-                        call.line,
-                        call.syscall,
-                        "write_capable_open",
-                        _open_target(call, cwd),
-                        call.result,
-                        "|".join(matched),
-                    )
-                )
+            if violation is not None:
+                violations.append(violation)
             continue
         if call.syscall in policy["unix_path_mutators"]:
             violation = classify_unix_bind(call, cwd, _decode_c_string)

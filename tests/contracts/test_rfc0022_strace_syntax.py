@@ -292,3 +292,84 @@ def test_write_capable_magic_fd_open_of_regular_file_remains_a_violation(
     assert [(item.operation, item.target) for item in violations] == [
         ("write_capable_open", "/project/out")
     ]
+
+
+# PR #1259 / discussion_r3786037054: racy return annotations cannot hide opens.
+@pytest.mark.parametrize(
+    ("path", "flags", "expected_flags"),
+    [
+        ("/project/victim", "O_WRONLY", "O_WRONLY"),
+        ("/project/victim", "O_WRONLY|O_TRUNC", "O_TRUNC|O_WRONLY"),
+        ("/proc/self/fd/1", "O_WRONLY|O_TRUNC", "O_TRUNC|O_WRONLY"),
+    ],
+)
+def test_nonfilesystem_result_cannot_hide_filesystem_open_intent(
+    tmp_path: Path, path: str, flags: str, expected_flags: str
+) -> None:
+    violations = _parse_line(
+        tmp_path,
+        f'openat(AT_FDCWD</project>, "{path}", {flags}) = 4<pipe:[42]>',
+    )
+    assert [
+        (item.operation, item.target, item.flags, item.result) for item in violations
+    ] == [("write_capable_open", path, expected_flags, "4<pipe:[42]>")]
+
+
+def test_shared_fd_table_makes_magic_fd_result_ambiguous(tmp_path: Path) -> None:
+    traces = tmp_path / "traces"
+    traces.mkdir()
+    (traces / "trace.100").write_text(
+        "1700000000.000001 clone(child_stack=NULL, flags=CLONE_FILES|SIGCHLD) = 200\n"
+        '1700000000.000003 openat(AT_FDCWD</project>, "/proc/self/fd/1", O_WRONLY) = 4<pipe:[42]>\n'
+        "1700000000.000004 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    (traces / "trace.200").write_text(
+        "1700000000.000002 futex(0x2000, FUTEX_WAIT_PRIVATE, 0, NULL <unfinished ...>\n"
+        "1700000000.000005 <... futex resumed>) = -1 EAGAIN (Resource temporarily unavailable)\n"
+        "1700000000.000006 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    violations, _, _ = parse_trace_directory(traces, POLICY, Path("/project"))
+    assert [(item.operation, item.target) for item in violations] == [
+        ("write_capable_open", "/proc/self/fd/1")
+    ]
+
+
+def test_exec_detaches_shared_fd_table_before_magic_reopen(tmp_path: Path) -> None:
+    traces = tmp_path / "traces"
+    traces.mkdir()
+    (traces / "trace.100").write_text(
+        "1700000000.000001 clone(child_stack=NULL, flags=CLONE_FILES|SIGCHLD) = 200\n"
+        '1700000000.000004 openat(AT_FDCWD</project>, "/proc/self/fd/1", O_WRONLY) = 4<pipe:[42]>\n'
+        "1700000000.000005 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    (traces / "trace.200").write_text(
+        '1700000000.000002 execve("/bin/next", ["next"], []) = 0\n'
+        "1700000000.000003 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    violations, _, _ = parse_trace_directory(traces, POLICY, Path("/project"))
+    assert violations == []
+
+
+def test_peer_exec_overlapping_magic_open_fails_closed(tmp_path: Path) -> None:
+    traces = tmp_path / "traces"
+    traces.mkdir()
+    (traces / "trace.100").write_text(
+        "1700000000.000001 clone(child_stack=NULL, flags=CLONE_FILES|SIGCHLD) = 200\n"
+        '1700000000.000002 openat(AT_FDCWD</project>, "/proc/self/fd/3", O_WRONLY <unfinished ...>\n'
+        "1700000000.000005 <... openat resumed>) = 4<pipe:[42]>\n"
+        "1700000000.000006 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    (traces / "trace.200").write_text(
+        '1700000000.000003 execve("/bin/next", ["next"], []) = 0\n'
+        "1700000000.000004 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        AuthorityError, match="ambiguous cross-process file-table transition"
+    ):
+        parse_trace_directory(traces, POLICY, Path("/project"))
