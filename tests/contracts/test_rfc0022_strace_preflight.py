@@ -26,9 +26,9 @@ POLICY_PATH = ROOT / "config/rfc0022-linux-strace-policy.json"
 
 def test_preflight_subprocesses_are_bounded_and_package_owned() -> None:
     source = (ROOT / "scripts/rfc0022_strace_preflight.py").read_text(encoding="utf-8")
-    assert "PREFLIGHT_TIMEOUT_SECONDS = 15" in source
+    assert "PREFLIGHT_TIMEOUT_SECONDS = 30" in source
     assert source.count("timeout=PREFLIGHT_TIMEOUT_SECONDS") == 3
-    assert '[os.fspath(dpkg_query), "-L", "strace"]' in source
+    assert '[os.fspath(dpkg_query), "-S", PINNED_STRACE_EXECUTABLE]' in source
 
 
 def test_preflight_fails_closed_when_strace_is_absent(

@@ -17,7 +17,7 @@ from rfc0022_strace_model import AuthorityError
 PINNED_STRACE_EXECUTABLE = "/usr/bin/strace"
 PINNED_DPKG_QUERY = "/usr/bin/dpkg-query"
 PINNED_AUTHORITY_PYTHON = "/usr/bin/python3"
-PREFLIGHT_TIMEOUT_SECONDS = 15
+PREFLIGHT_TIMEOUT_SECONDS = 30
 VERSION_RE = re.compile(r"strace -- version (\d+(?:\.\d+){1,2})")
 
 
@@ -106,8 +106,8 @@ def strace_preflight(minimum: str, executable: str = "strace") -> dict[str, str 
                 close_fds=True,
                 timeout=PREFLIGHT_TIMEOUT_SECONDS,
             )
-            files_result = subprocess.run(
-                [os.fspath(dpkg_query), "-L", "strace"],
+            owner_result = subprocess.run(
+                [os.fspath(dpkg_query), "-S", PINNED_STRACE_EXECUTABLE],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -117,12 +117,15 @@ def strace_preflight(minimum: str, executable: str = "strace") -> dict[str, str 
         except subprocess.TimeoutExpired as exc:
             raise AuthorityError("strace package provenance query timed out") from exc
         package = package_result.stdout.strip()
-        package_files = set(files_result.stdout.splitlines())
+        owner = owner_result.stdout.strip()
+        owner_pattern = (
+            rf"strace(?::[A-Za-z0-9_-]+)?: {re.escape(PINNED_STRACE_EXECUTABLE)}"
+        )
         if (
             package_result.returncode != 0
             or not package
-            or files_result.returncode != 0
-            or PINNED_STRACE_EXECUTABLE not in package_files
+            or owner_result.returncode != 0
+            or re.fullmatch(owner_pattern, owner) is None
         ):
             raise AuthorityError("strace package provenance query failed")
     return {
