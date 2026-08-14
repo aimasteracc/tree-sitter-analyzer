@@ -24,6 +24,10 @@ from rfc0022_strace_runtime import (  # noqa: E402
 )
 
 POLICY, _ = load_policy(ROOT / "config/rfc0022-linux-strace-policy.json")
+LINUX_MODE_ONLY = pytest.mark.skipif(
+    os.name == "nt",
+    reason="tracked: PR #1259 raw evidence requires POSIX ownership and modes",
+)
 
 
 def _write_trace(directory: Path, bodies: list[str]) -> Path:
@@ -326,10 +330,7 @@ def test_successful_exec_reconstructs_unfinished_resume() -> None:
     assert raw_exec_record(logical) == ("/usr/bin/tool", ["tool", "arg"])
 
 
-@pytest.mark.skipif(
-    os.name == "nt",
-    reason="tracked: RFC-0022 Linux authority needs POSIX ownership and modes",
-)
+@LINUX_MODE_ONLY
 def test_raw_trace_inventory_and_sealing_are_exact(tmp_path: Path) -> None:
     trace = tmp_path / "raw-inventory"
     trace.mkdir()
@@ -430,6 +431,7 @@ def test_noncanonical_trace_pid_alias_fails_closed(tmp_path: Path) -> None:
 
 
 # PR #1259 evidence regression: raw manifests use canonical positive PID names.
+@LINUX_MODE_ONLY
 def test_raw_inventory_rejects_noncanonical_trace_pid(tmp_path: Path) -> None:
     traces = tmp_path / "raw-pid-alias"
     traces.mkdir(mode=0o700)
