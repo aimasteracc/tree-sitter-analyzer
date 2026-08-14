@@ -25,7 +25,7 @@ from rfc0022_strace_classify import (
 from rfc0022_strace_model import AuthorityError, TraceCall, Violation
 from rfc0022_strace_paths import classify_unix_bind
 from rfc0022_strace_state import ProcessState, child_pid, process_graph
-from rfc0022_strace_syntax import descriptor_annotation, split_arguments
+from rfc0022_strace_syntax import descriptor_path, split_arguments
 
 TRACE_NAME = re.compile(r"^trace\.([1-9][0-9]*)$")
 TIMESTAMP_RE = re.compile(r"^(\d+\.\d+)\s+(.*)$")
@@ -65,10 +65,6 @@ def _decode_string_array(value: str) -> list[str]:
     return decoded
 
 
-def _fd_annotation(value: str) -> str | None:
-    return descriptor_annotation(value)
-
-
 def _result_succeeded(result: str) -> bool:
     normalized = result.lstrip()
     if normalized.startswith("-1"):
@@ -95,9 +91,9 @@ def _resolve_path(call: TraceCall, index: int, cwd: Path) -> str:
         dirfd_index = 1
     if dirfd_index is not None:
         dirfd = call.arguments[dirfd_index]
-        annotation = _fd_annotation(dirfd)
+        annotation = descriptor_path(dirfd)
         if annotation is not None:
-            base = annotation.removesuffix(" (deleted)")
+            base = annotation
         elif not dirfd.startswith("AT_FDCWD"):
             raise AuthorityError(f"{call.syscall} has unannotated dirfd")
     return posixpath.normpath(posixpath.join(base, raw))
@@ -182,10 +178,10 @@ def _parse_trace(path: Path, pid: int) -> ParsedTrace:
 def _open_target(call: TraceCall, cwd: Path) -> str:
     path_index = {"open": 0, "openat": 1, "openat2": 1}.get(call.syscall)
     result_annotation = (
-        _fd_annotation(call.result) if _result_succeeded(call.result) else None
+        descriptor_path(call.result) if _result_succeeded(call.result) else None
     )
     if result_annotation is not None:
-        return result_annotation.removesuffix(" (deleted)")
+        return result_annotation
     if path_index is None:
         return "<file-handle>"
     return _resolve_path(call, path_index, cwd)
@@ -234,10 +230,10 @@ def classify_calls(
         if call.syscall == "chdir" and _result_succeeded(call.result):
             state.chdir(call.pid, Path(_resolve_path(call, 0, cwd)))
         elif call.syscall == "fchdir" and _result_succeeded(call.result):
-            annotation = _fd_annotation(args[0])
-            if annotation is None or is_nonfilesystem(annotation, policy):
+            path = descriptor_path(args[0])
+            if not path or is_nonfilesystem(path, policy):
                 raise AuthorityError("fchdir descriptor provenance is unknown")
-            state.chdir(call.pid, Path(annotation))
+            state.chdir(call.pid, Path(path))
         global_violation = global_write_violation(call, policy)
         if global_violation is not None:
             violations.append(global_violation)
@@ -270,7 +266,10 @@ def classify_calls(
                 for flag in policy["write_open_flags"]
                 if re.search(rf"(?<![A-Z0-9_]){re.escape(flag)}(?![A-Z0-9_])", flags)
             )
-            if matched:
+            result = (
+                descriptor_path(call.result) if _result_succeeded(call.result) else None
+            )
+            if matched and not (result and is_nonfilesystem(result, policy)):
                 violations.append(
                     Violation(
                         call.timestamp,
@@ -308,7 +307,7 @@ def classify_calls(
             index = int(policy["fd_sinks"][call.syscall])
             if index >= len(args):
                 raise AuthorityError(f"{call.syscall} omitted destination fd")
-            annotation = _fd_annotation(args[index])
+            annotation = descriptor_path(args[index])
             if annotation is None:
                 raise AuthorityError(f"{call.syscall} has unannotated destination fd")
             if not is_nonfilesystem(annotation, policy):
@@ -319,7 +318,7 @@ def classify_calls(
                         call.line,
                         call.syscall,
                         "descriptor_write",
-                        annotation.removesuffix(" (deleted)"),
+                        annotation,
                         call.result,
                     )
                 )
@@ -331,7 +330,7 @@ def classify_calls(
                 length = page_length(int(args[1], 0), policy)
             except ValueError as exc:
                 raise AuthorityError("mmap length is not exact") from exc
-            annotation = _fd_annotation(args[4])
+            annotation = descriptor_path(args[4])
             anonymous = "MAP_ANONYMOUS" in args[3] or args[4].startswith("-1")
             if not anonymous and annotation is None:
                 raise AuthorityError("mmap filesystem fd provenance is unknown")
@@ -410,7 +409,7 @@ def classify_calls(
                     )
             continue
         if call.syscall in {"fcntl", "ioctl"}:
-            annotation = _fd_annotation(args[0]) if args else None
+            annotation = descriptor_path(args[0]) if args else None
             if annotation is None:
                 raise AuthorityError(f"{call.syscall} has unannotated fd")
             if not is_nonfilesystem(annotation, policy):

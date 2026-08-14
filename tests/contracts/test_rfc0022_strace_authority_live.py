@@ -96,6 +96,7 @@ def test_workflow_is_pinned_serial_blocking_and_artifact_preserving() -> None:
         "tests/contracts/test_rfc0022_strace_evidence_binding.py "
         "tests/contracts/test_rfc0022_strace_preflight.py "
         "tests/contracts/test_rfc0022_strace_privilege.py "
+        "tests/contracts/test_rfc0022_strace_runtime.py "
         "tests/contracts/test_rfc0022_strace_process_state.py "
         "tests/contracts/test_rfc0022_strace_snapshot.py tests/contracts/test_rfc0022_strace_syntax.py "
         "tests/contracts/test_rfc0022_strace_authority_live.py "
@@ -436,8 +437,9 @@ def test_live_pinned_linux_authority_controls(control: str) -> None:
         assert report["cleanup_survivor_pids"] == descendants
         assert len(descendants) == 1
         child_lines = raw_by_pid[descendants[0]]
+        timeout_code = "import time; time.sleep(300)"
         assert any(
-            json.dumps("import time; time.sleep(300)") in line and line.endswith(" = 0")
+            json.dumps(timeout_code) in line and line.endswith(" = 0")
             for line in child_lines
         )
         assert child_lines[-1].startswith(tuple("0123456789"))

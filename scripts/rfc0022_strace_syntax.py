@@ -213,6 +213,14 @@ def descriptor_annotation(value: str) -> str | None:
     return None
 
 
+def descriptor_path(value: str) -> str | None:
+    """Return a nameable descriptor annotation or reject deleted provenance."""
+    annotation = descriptor_annotation(value)
+    if value.endswith("(deleted)"):
+        raise AuthorityError("deleted descriptor pathname is unnameable")
+    return annotation
+
+
 def split_arguments(text: str) -> tuple[str, ...]:
     values: list[str] = []
     start = 0

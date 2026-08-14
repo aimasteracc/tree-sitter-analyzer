@@ -193,12 +193,13 @@ def _shared_writable_mmap(root: Path, _: Path | None) -> None:
 
 
 def _timeout_detached_descendant(root: Path, _: Path | None) -> None:
-    token = os.environ.get("RFC0022_AUTHORITY_TOKEN", "missing-token")
+    environment = dict(os.environ)
+    environment.pop("RFC0022_AUTHORITY_TOKEN", None)
     code = "import time; time.sleep(300)"
     subprocess.Popen(  # noqa: S603 - fixed interpreter and fixed code
         [sys.executable, "-c", code],
         cwd=root,
-        env={**os.environ, "RFC0022_AUTHORITY_TOKEN": token},
+        env=environment,
         start_new_session=True,
     )
     time.sleep(0.05)

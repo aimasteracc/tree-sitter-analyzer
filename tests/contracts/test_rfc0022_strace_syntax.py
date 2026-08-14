@@ -15,21 +15,29 @@ from rfc0022_strace_model import AuthorityError  # noqa: E402
 from rfc0022_strace_parser import parse_trace_directory  # noqa: E402
 from rfc0022_strace_syntax import (  # noqa: E402
     descriptor_annotation,
+    descriptor_path,
     split_arguments,
 )
 
 POLICY, _ = load_policy(ROOT / "config/rfc0022-linux-strace-policy.json")
 
 
-def _parse_line(tmp_path: Path, line: str) -> list[object]:
+def _parse_lines(tmp_path: Path, lines: list[str]) -> list[object]:
     traces = tmp_path / "traces"
     traces.mkdir()
+    body = "".join(
+        f"1700000000.{index:06d} {line}\n" for index, line in enumerate(lines, 1)
+    )
     (traces / "trace.100").write_text(
-        f"1700000000.000001 {line}\n1700000000.000002 +++ exited with 0 +++\n",
+        f"{body}1700000000.{len(lines) + 1:06d} +++ exited with 0 +++\n",
         encoding="utf-8",
     )
     violations, _, _ = parse_trace_directory(traces, POLICY, Path("/project"))
     return violations
+
+
+def _parse_line(tmp_path: Path, line: str) -> list[object]:
+    return _parse_lines(tmp_path, [line])
 
 
 def test_syntax_workflow_dependencies_are_complete() -> None:
@@ -179,3 +187,108 @@ def test_public_parser_ignores_exact_nonfilesystem_fd(
     tmp_path: Path, annotation: str
 ) -> None:
     assert _parse_line(tmp_path, f'write(3<{annotation}>, "x", 1) = 1') == []
+
+
+# PR #1259 / discussion_r3786037050: deleted cwd provenance is unnameable.
+def test_deleted_fchdir_descriptor_fails_closed(tmp_path: Path) -> None:
+    with pytest.raises(
+        AuthorityError, match="deleted descriptor pathname is unnameable"
+    ):
+        _parse_line(tmp_path, "fchdir(3</project/old>(deleted)) = 0")
+
+
+def test_literal_deleted_suffix_fchdir_updates_exact_cwd(tmp_path: Path) -> None:
+    assert descriptor_path("3</project/old (deleted)>") == "/project/old (deleted)"
+    violations = _parse_lines(
+        tmp_path,
+        ["fchdir(3</project/old (deleted)>) = 0", 'unlink("file") = 0'],
+    )
+    assert [(item.operation, item.target) for item in violations] == [
+        ("pathname_mutation", "/project/old (deleted)/file")
+    ]
+
+
+def test_failed_deleted_fchdir_preserves_original_cwd(tmp_path: Path) -> None:
+    violations = _parse_lines(
+        tmp_path,
+        ["fchdir(3</project/old>(deleted)) = -1 ENOENT", 'unlink("file") = 0'],
+    )
+    assert [(item.operation, item.target) for item in violations] == [
+        ("pathname_mutation", "/project/file")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("line", "operation"),
+    [
+        ('unlinkat(3</project/old (deleted)>, "file", 0) = 0', "pathname_mutation"),
+        ('open("alias", O_WRONLY) = 4</project/old (deleted)>', "write_capable_open"),
+        ('write(4</project/old (deleted)>, "x", 1) = 1', "descriptor_write"),
+    ],
+)
+def test_literal_deleted_suffix_remains_exact_path_provenance(
+    tmp_path: Path, line: str, operation: str
+) -> None:
+    violations = _parse_line(tmp_path, line)
+    assert [(item.operation, item.target) for item in violations] == [
+        (
+            operation,
+            "/project/old (deleted)/file"
+            if line.startswith("unlinkat")
+            else "/project/old (deleted)",
+        )
+    ]
+
+
+# PR #1259 / discussion_r3786037054: successful IPC opens are not filesystem writes.
+@pytest.mark.parametrize(
+    ("result", "flags"),
+    [("4<pipe:[42]>", "O_WRONLY"), ("5<socket:[43]>", "O_PATH|O_WRONLY")],
+)
+def test_write_capable_open_of_nonfilesystem_descriptor_is_clean(
+    tmp_path: Path, result: str, flags: str
+) -> None:
+    assert (
+        _parse_line(
+            tmp_path,
+            f'openat(AT_FDCWD</project>, "/proc/self/fd/1", {flags}) = {result}',
+        )
+        == []
+    )
+
+
+def test_failed_write_capable_open_remains_an_attempt(tmp_path: Path) -> None:
+    violations = _parse_line(
+        tmp_path, 'openat(AT_FDCWD</project>, "/dev/stdout", O_WRONLY) = -1 EACCES'
+    )
+    assert [(item.operation, item.target) for item in violations] == [
+        ("write_capable_open", "/dev/stdout")
+    ]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'openat(3</project/old>(deleted), "file", O_WRONLY) = -1 ENOENT',
+        'unlinkat(3</project/old>(deleted), "file", 0) = -1 ENOENT',
+    ],
+)
+def test_deleted_relative_dirfd_provenance_fails_closed(
+    tmp_path: Path, line: str
+) -> None:
+    with pytest.raises(
+        AuthorityError, match="deleted descriptor pathname is unnameable"
+    ):
+        _parse_line(tmp_path, line)
+
+
+def test_write_capable_magic_fd_open_of_regular_file_remains_a_violation(
+    tmp_path: Path,
+) -> None:
+    violations = _parse_line(
+        tmp_path,
+        'openat(AT_FDCWD</project>, "/proc/self/fd/3", O_WRONLY) = 4</project/out>',
+    )
+    assert [(item.operation, item.target) for item in violations] == [
+        ("write_capable_open", "/project/out")
+    ]

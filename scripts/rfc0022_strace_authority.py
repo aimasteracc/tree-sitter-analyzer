@@ -32,11 +32,14 @@ from rfc0022_strace_privilege import (  # noqa: E402
     prepare_target_identity,
 )
 from rfc0022_strace_runtime import (  # noqa: E402
+    ProcessIdentity,
+    capture_cleanup_identities,
     cleanup_candidates,
+    close_process_identities,
     raw_trace_metadata,
     record_error_trace_metadata,
+    require_pidfd_support,
     seal_trace_directory,
-    surviving_token_pids,
     write_failure_report,
     write_report,
 )
@@ -230,7 +233,9 @@ def run_authority(
     stdout = b""
     stderr = b""
     timed_out = False
+    cleanup_identities: list[ProcessIdentity] = []
     try:
+        require_pidfd_support()
         process = subprocess.Popen(
             invocation,
             cwd=target_cwd,
@@ -244,10 +249,17 @@ def run_authority(
             stdout, stderr = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             timed_out = True
-            report["cleanup_survivor_pids"] = [
-                pid for pid in surviving_token_pids(token) if pid != process.pid
-            ]
+            cleanup_identities = capture_cleanup_identities(
+                token,
+                trace_dir,
+                tracer_pid=process.pid,
+                exclude_pids=frozenset({process.pid}),
+            )
+            report["cleanup_survivor_pids"] = sorted(
+                identity.pid for identity in cleanup_identities
+            )
             try:
+                # The unreaped Popen leader pins this numeric process-group identity.
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
@@ -270,7 +282,7 @@ def run_authority(
                 "target return code mismatch: "
                 f"expected {expected_returncode}, got {process.returncode}"
             )
-        violations, trace_metadata, trace_pids = parse_trace_directory(
+        violations, trace_metadata, _trace_pids = parse_trace_directory(
             trace_dir,
             policy,
             target_cwd,
@@ -279,12 +291,12 @@ def run_authority(
             minimum_root_execs=2,
         )
         report["trace_files"] = trace_metadata
-        survivors = sorted(
-            set(surviving_token_pids(token))
-            | {pid for pid in trace_pids if Path(f"/proc/{pid}").exists()}
-        )
+        cleanup_identities = capture_cleanup_identities(token)
+        survivors = sorted(identity.pid for identity in cleanup_identities)
         if survivors:
-            cleaned, remaining = cleanup_candidates(token, trace_dir)
+            report["cleanup_survivor_pids"] = survivors
+            captured, cleanup_identities = cleanup_identities, []
+            cleaned, remaining = cleanup_candidates(token, captured)
             report["cleanup_survivor_pids"] = cleaned
             report["cleanup_remaining_pids"] = remaining
             raise AuthorityError(f"surviving traced descendants: {survivors}")
@@ -315,17 +327,49 @@ def run_authority(
         report["errors"].append(str(exc))
         if process is not None and process.poll() is None:
             try:
+                if not cleanup_identities:
+                    cleanup_identities = capture_cleanup_identities(
+                        token,
+                        trace_dir,
+                        tracer_pid=process.pid,
+                        exclude_pids=frozenset({process.pid}),
+                    )
+                report["cleanup_survivor_pids"] = sorted(
+                    {identity.pid for identity in cleanup_identities}
+                )
+            except (AuthorityError, OSError) as cleanup_exc:
+                report["errors"].append(f"descendant capture failed: {cleanup_exc}")
+            try:
+                # The unreaped Popen leader pins this numeric process-group identity.
                 os.killpg(process.pid, signal.SIGKILL)
                 process.communicate(timeout=2)
             except ProcessLookupError:
                 pass
             except subprocess.TimeoutExpired:
-                process.kill()
                 try:
+                    process.kill()
                     process.wait(timeout=1)
                 except subprocess.TimeoutExpired:
                     report["errors"].append("strace process survived cleanup")
-        cleanup_pids, remaining_pids = cleanup_candidates(token, trace_dir)
+                except OSError as process_cleanup_exc:
+                    report["errors"].append(
+                        f"strace process cleanup failed: {process_cleanup_exc}"
+                    )
+            except OSError as process_cleanup_exc:
+                report["errors"].append(
+                    f"strace process cleanup failed: {process_cleanup_exc}"
+                )
+        captured, cleanup_identities = cleanup_identities, []
+        cleanup_pids: list[int]
+        remaining_pids: list[int]
+        if process is None and not captured:
+            cleanup_pids, remaining_pids = [], []
+        else:
+            try:
+                cleanup_pids, remaining_pids = cleanup_candidates(token, captured)
+            except (AuthorityError, OSError) as cleanup_exc:
+                cleanup_pids, remaining_pids = [], []
+                report["errors"].append(f"descendant cleanup failed: {cleanup_exc}")
         if cleanup_pids:
             report["cleanup_survivor_pids"] = cleanup_pids
         if remaining_pids:
@@ -342,6 +386,7 @@ def run_authority(
         record_error_trace_metadata(report, trace_dir)
         return 2, report
     finally:
+        close_process_identities(cleanup_identities)
         report["target"] = {
             "expected_returncode": expected_returncode,
             "returncode": None if process is None else process.returncode,

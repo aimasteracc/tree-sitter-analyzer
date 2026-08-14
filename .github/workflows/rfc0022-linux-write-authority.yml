@@ -27,6 +27,7 @@ on:
       - "tests/contracts/test_rfc0022_strace_evidence_binding.py"
       - "tests/contracts/test_rfc0022_strace_preflight.py"
       - "tests/contracts/test_rfc0022_strace_privilege.py"
+      - "tests/contracts/test_rfc0022_strace_runtime.py"
       - "tests/contracts/test_rfc0022_strace_process_state.py"
       - "tests/contracts/test_rfc0022_strace_snapshot.py"
       - "tests/contracts/test_rfc0022_strace_syntax.py"
@@ -62,6 +63,7 @@ on:
       - "tests/contracts/test_rfc0022_strace_evidence_binding.py"
       - "tests/contracts/test_rfc0022_strace_preflight.py"
       - "tests/contracts/test_rfc0022_strace_privilege.py"
+      - "tests/contracts/test_rfc0022_strace_runtime.py"
       - "tests/contracts/test_rfc0022_strace_process_state.py"
       - "tests/contracts/test_rfc0022_strace_snapshot.py"
       - "tests/contracts/test_rfc0022_strace_syntax.py"
@@ -136,6 +138,7 @@ jobs:
           tests/contracts/test_rfc0022_strace_evidence_binding.py
           tests/contracts/test_rfc0022_strace_preflight.py
           tests/contracts/test_rfc0022_strace_privilege.py
+          tests/contracts/test_rfc0022_strace_runtime.py
           tests/contracts/test_rfc0022_strace_process_state.py
           tests/contracts/test_rfc0022_strace_snapshot.py
           tests/contracts/test_rfc0022_strace_syntax.py
