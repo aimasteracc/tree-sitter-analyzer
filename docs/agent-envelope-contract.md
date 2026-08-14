@@ -114,6 +114,9 @@ the MCP boundary
 | `error_type` | Machine-stable error category for programmatic handling. |
 | `output_format` | Echo of the requested format. |
 | `summary_line` | Highest-value one-line triage signal; re-populated at the boundary on every success anyway. |
+| `access_mode` | RFC-0022 capability-access mode selected by the caller. |
+| `access_state` | Primary RFC-0022 capability branch (`available`, `missing`, `unknown`, or `not_applicable`). |
+| `access_reason` | Stable primitive-owned reason whenever capability access is not available. |
 | `hint` | Recovery hint on error envelopes — the sharpest edge an agent must not have to dig out of the blob. |
 | `file_path` | Echo of the call's subject file. |
 | `pr_url` | Echo of the PR a review-tool call targeted. |

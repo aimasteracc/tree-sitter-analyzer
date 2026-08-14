@@ -18,6 +18,14 @@ from ...constraints import (
     load_constraints,
 )
 from ...constraints.parser import ConstraintParseError
+from ...read_existing_access import (
+    READ_EXISTING_AUTHORITY_UNCERTIFIED,
+    read_existing_unavailable,
+    validate_optional_index_capability_pair,
+    validate_read_existing_access,
+    validate_read_existing_paths,
+    validate_read_existing_schema_values,
+)
 from ...source_oracle import SourceOracleError
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
@@ -69,7 +77,7 @@ class ConstraintCheckTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         severity_min = arguments.get("severity_min", "warn")
-        if severity_min not in _SEVERITY_ORDER:
+        if not isinstance(severity_min, str) or severity_min not in _SEVERITY_ORDER:
             raise ValueError(
                 f"severity_min must be one of {sorted(_SEVERITY_ORDER)}; "
                 f"got {severity_min!r}"
@@ -77,6 +85,15 @@ class ConstraintCheckTool(BaseMCPTool):
         from .constraint_check_snapshot import validate_snapshot_arguments
 
         validate_snapshot_arguments(arguments)
+        read_existing = validate_read_existing_access(arguments)
+        validate_optional_index_capability_pair(arguments)
+        if read_existing and arguments.get("diff_snapshot_id") is None:
+            raise ValueError(
+                "diff_snapshot_id is required for access_mode=read_existing"
+            )
+        if read_existing:
+            validate_read_existing_paths(self, arguments.get("scope_paths", []))
+            validate_read_existing_schema_values(self, arguments)
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -87,6 +104,18 @@ class ConstraintCheckTool(BaseMCPTool):
                 "success": False,
                 "error": "Project root not set. Call set_project_path first.",
             }
+
+        access_arguments = arguments
+        if "access_mode" in arguments and "output_format" not in arguments:
+            access_arguments = {**arguments, "output_format": "json"}
+        unavailable = read_existing_unavailable(
+            access_arguments,
+            reason=READ_EXISTING_AUTHORITY_UNCERTIFIED,
+        )
+        if unavailable is not None:
+            return apply_toon_format_to_response(
+                unavailable, unavailable["output_format"]
+            )
 
         if arguments.get("diff_snapshot_id") is not None:
             return self._execute_frozen(arguments)

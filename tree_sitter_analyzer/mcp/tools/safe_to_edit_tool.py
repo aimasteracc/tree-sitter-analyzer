@@ -14,6 +14,11 @@ from typing import Any
 from ...constants import EDIT_KINDS
 from ...health_scorer import HealthScorer
 from ...project_graph import DependencyGraph
+from ...read_existing_access import (
+    format_read_existing_unavailable,
+    index_capability_schema_properties,
+    validate_required_index_access,
+)
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool, mirror_summary_line
 from .utils.parse_validity import is_file_parse_broken
@@ -57,6 +62,7 @@ TOOL_SCHEMA: dict[str, Any] = {
                 "encoded in the blob."
             ),
         },
+        **index_capability_schema_properties(),
     },
     "required": ["file_path"],
     "additionalProperties": False,
@@ -128,27 +134,39 @@ class SafeToEditTool(BaseMCPTool):
     def get_tool_schema(self) -> dict[str, Any]:
         return TOOL_SCHEMA
 
-    # validate_arguments: implementation
-    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        # Conditional check
+    @staticmethod
+    def _file_path_argument(arguments: dict[str, Any]) -> str:
         if "file_path" not in arguments:
             raise ValueError("file_path is required")
-        fp = arguments["file_path"]
-        # Conditional check
-        if not isinstance(fp, str) or not fp.strip():
+        file_path = arguments["file_path"]
+        if not isinstance(file_path, str) or not file_path.strip():
             raise ValueError("file_path must be a non-empty string")
+        return file_path
+
+    # validate_arguments: implementation
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        self._file_path_argument(arguments)
+        validate_required_index_access(self, arguments)
         return True
 
     # execute: implementation
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        file_path = self._file_path_argument(arguments)
+        # Security/project-boundary checks precede successful unavailable
+        # classification so malformed paths remain validation failures.
+        resolved = self.resolve_and_validate_file_path(file_path)
         self.validate_arguments(arguments)
+        unavailable = format_read_existing_unavailable(
+            arguments,
+            compact_only=bool(arguments.get("compact_only", False)),
+        )
+        if unavailable is not None:
+            return unavailable
 
-        file_path = arguments["file_path"]
         edit_type = arguments.get("edit_type", "refactor")
         output_format = arguments.get("output_format", "toon")
         compact_only = bool(arguments.get("compact_only", False))
 
-        resolved = self.resolve_and_validate_file_path(file_path)
         # Conditional check
         if not Path(resolved).exists():
             raise ValueError(f"File not found: {file_path}")

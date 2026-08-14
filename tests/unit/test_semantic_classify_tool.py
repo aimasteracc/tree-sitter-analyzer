@@ -75,6 +75,82 @@ class TestSemanticClassifyValidation:
         assert tool.validate_arguments({"mode": "classify_file", "file_path": "foo.py"})
 
 
+class TestSemanticClassifyReadExistingValidation:
+    @pytest.mark.parametrize(
+        "arguments",
+        [
+            pytest.param(
+                {"access_mode": "read_existing", "file_path": "x.py"},
+                id="missing",
+            ),
+            pytest.param(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": 7,
+                    "file_path": "x.py",
+                },
+                id="wrong-type",
+            ),
+            pytest.param(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "",
+                    "file_path": "x.py",
+                },
+                id="empty",
+            ),
+        ],
+    )
+    def test_requires_nonempty_snapshot_id(self, tool, arguments):
+        with pytest.raises(ValueError) as exc_info:
+            tool.validate_arguments(arguments)
+
+        assert str(exc_info.value) == "diff_snapshot_id must be a non-empty string"
+
+    @pytest.mark.parametrize(
+        "arguments",
+        [
+            pytest.param(
+                {"access_mode": "read_existing", "diff_snapshot_id": "ds"},
+                id="missing",
+            ),
+            pytest.param(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds",
+                    "file_path": 7,
+                },
+                id="wrong-type",
+            ),
+            pytest.param(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds",
+                    "file_path": "",
+                },
+                id="empty",
+            ),
+        ],
+    )
+    def test_requires_nonempty_string_file_path(self, tool, arguments):
+        with pytest.raises(ValueError) as exc_info:
+            tool.validate_arguments(arguments)
+
+        assert str(exc_info.value) == "DIFF_SNAPSHOT_FILE_REQUIRED"
+
+    def test_accepts_valid_snapshot_file(self, tool):
+        assert (
+            tool.validate_arguments(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds",
+                    "file_path": "x.py",
+                }
+            )
+            is True
+        )
+
+
 class TestSemanticClassifyExecution:
     def test_classify_string_function_added(self, tool: SemanticClassifyTool):
         result = _run(

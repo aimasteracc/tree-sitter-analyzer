@@ -34,6 +34,11 @@ TOON_CONTROL_SURFACE: frozenset[str] = frozenset(
         "error_type",
         "output_format",
         "summary_line",
+        # RFC-0022 P0.4 capability gate: these are primary branch signals,
+        # not bulk payload metadata, so compact callers must retain them.
+        "access_mode",
+        "access_state",
+        "access_reason",
         # Cheap branchable identifiers/affordances an agent should not have to
         # parse the TOON blob for (review nit): the recovery ``hint`` on error
         # envelopes is the sharpest edge; ``file_path`` / ``pr_url`` /

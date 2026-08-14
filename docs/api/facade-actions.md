@@ -36,7 +36,7 @@ Reading the tables:
 | `caller_tree` | `symbol`*, `file_path`, `max_depth`, `max_nodes`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--caller-tree` |
 | `callers` | `function_name`* (or `symbol` as alias), `scope` (point\|graph, default point), `file_path`, `limit` (scope=point), `depth` (scope=graph), `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--call-graph` |
 | `co_change` | `symbol` or `file_path` (one required), `max_commits` (default 500), `min_shared` (default 3), `max_results` (default 20), `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--co-change` |
-| `context` | `task`* (or `symbol`/`query` as alias), `max_nodes`, `max_code_blocks`, `include_graph`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-context` |
+| `context` | `task`* (or `symbol`/`query` as alias), `max_nodes`, `max_code_blocks`, `include_graph`, `access_mode`, `snapshot_id`, `source_generation`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-context` |
 | `impact` | `mode`*, `depth`, `file_path`, `function_name` (`symbol` aliases `function_name`), `function_names`, `include_tests`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-impact` |
 | `lineage` | `symbol`*, `file_paths`, `max_depth`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--symbol-lineage` |
 | `navigate` | `symbol`*, `depth`, `file_path`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-navigate` |
@@ -80,15 +80,15 @@ Reading the tables:
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
-| `ast_diff` | `diff_snapshot_id`, `file_path`, `include_node_bodies`, `language`, `mode`, `new_file`, `new_ref`, `new_source`, `old_file`, `old_ref`, `old_source`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-diff` |
-| `classify` | `diff_snapshot_id`, `file_path`, `hunk_cap`, `include_ast_nodes`, `language`, `mode`, `new_ref`, `new_source`, `old_ref`, `old_source`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--semantic-classify` |
-| `constraints` | `diff_snapshot_id`, `output_format`, `path_filter`, `persist`, `scope_paths`, `severity_min` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--check-constraints` |
+| `ast_diff` | `access_mode`, `diff_snapshot_id`, `file_path`, `include_node_bodies`, `language`, `mode`, `new_file`, `new_ref`, `new_source`, `old_file`, `old_ref`, `old_source`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-diff` |
+| `classify` | `access_mode`, `diff_snapshot_id`, `file_path`, `hunk_cap`, `include_ast_nodes`, `language`, `mode`, `new_ref`, `new_source`, `old_ref`, `old_source`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--semantic-classify` |
+| `constraints` | `access_mode`, `diff_snapshot_id`, `output_format`, `path_filter`, `persist`, `scope_paths`, `severity_min`, `snapshot_id`, `source_generation` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--check-constraints` |
 | `guard` | `modification_type`*, `symbol`*, `file_path` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--modification-guard` |
-| `impact` | `agent_summary_only`, `capture_diff_snapshot`, `compact_only`, `include_tests`, `mode`, `output_format`, `pr_url`, `resource_profile`, `scope_mode`, `scope_paths` — `capture_diff_snapshot` is an explicit boolean producer available only to same-process POSIX consumers | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--change-impact` |
+| `impact` | `access_mode`, `agent_summary_only`, `capture_diff_snapshot`, `compact_only`, `include_tests`, `mode`, `output_format`, `pr_url`, `resource_profile`, `scope_mode`, `scope_paths` — `capture_diff_snapshot` is an explicit legacy producer available only to same-process POSIX consumers and is forbidden whenever `access_mode` is present | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--change-impact` |
 | `pr` | `include_call_graph`, `mode`, `output_format`, `pr_url` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--pr-review` |
 | `refactor` | `file_path`*, `include_extractions`, `include_skeleton`, `language`, `max_suggestions`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--refactor` |
 | `release_snapshot` | `diff_snapshot_id`*, `route_lease_id`*, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
-| `safe` | `file_path`*, `compact_only`, `edit_type`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--safe-to-edit` |
+| `safe` | `file_path`*, `access_mode`, `compact_only`, `edit_type`, `output_format`, `snapshot_id`, `source_generation` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--safe-to-edit` |
 
 ## `project` — 10 actions
 

@@ -299,6 +299,48 @@ class TestConstraintCheckFiltering:
         )
 
 
+def test_explicit_access_rejects_unhashable_severity(tmp_path: Path) -> None:
+    tool = _make_tool(tmp_path)
+
+    with pytest.raises(ValueError, match=r"^severity_min must be one of"):
+        tool.validate_arguments({"access_mode": "read_existing", "severity_min": []})
+
+
+def test_explicit_access_requires_diff_snapshot(tmp_path: Path) -> None:
+    tool = _make_tool(tmp_path)
+
+    with pytest.raises(
+        ValueError,
+        match=r"^diff_snapshot_id is required for access_mode=read_existing$",
+    ):
+        tool.validate_arguments({"access_mode": "read_existing", "persist": False})
+
+
+def test_explicit_access_defaults_unavailable_output_to_json(tmp_path: Path) -> None:
+    tool = _make_tool(tmp_path)
+
+    result = _run(
+        tool.execute(
+            {
+                "access_mode": "read_existing",
+                "persist": False,
+                "diff_snapshot_id": "ds_test",
+                "scope_paths": [],
+            }
+        )
+    )
+
+    assert result == {
+        "success": True,
+        "verdict": "WARN",
+        "access_mode": "read_existing",
+        "access_state": "unknown",
+        "access_reason": "READ_EXISTING_AUTHORITY_UNCERTIFIED",
+        "source_snapshots": [],
+        "output_format": "json",
+    }
+
+
 def test_execute_without_project_root_returns_setup_instruction() -> None:
     from tree_sitter_analyzer.mcp.tools.constraint_check_tool import (
         ConstraintCheckTool,
