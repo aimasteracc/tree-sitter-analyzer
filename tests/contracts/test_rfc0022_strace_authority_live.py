@@ -371,7 +371,8 @@ def test_live_pinned_linux_authority_controls(control: str) -> None:
     fixture.write_bytes(b"fixture\n")
     fixture.chmod(0o666)
     command = _live_command(case, artifact, control)
-    expected_target = command[command.index("--") + 1 :]
+    requested_target = command[command.index("--") + 1 :]
+    expected_target = [os.path.realpath(requested_target[0]), *requested_target[1:]]
     result = subprocess.run(
         command,
         check=False,
