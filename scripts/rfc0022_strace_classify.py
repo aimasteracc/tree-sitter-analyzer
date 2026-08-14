@@ -3,9 +3,110 @@
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from rfc0022_strace_model import TraceCall, Violation
+from rfc0022_strace_model import AuthorityError, TraceCall, Violation
+from rfc0022_strace_state import ProcessState, child_pid
+
+
+def _timestamp_interval(call: TraceCall) -> tuple[Decimal, Decimal]:
+    try:
+        start = Decimal(call.started_timestamp or call.timestamp)
+        end = Decimal(call.timestamp)
+    except InvalidOperation as exc:
+        raise AuthorityError("syscall timestamp is not numeric") from exc
+    if start > end:
+        raise AuthorityError("syscall result predates its entry")
+    return start, end
+
+
+def causal_order(calls: list[TraceCall], process_syscalls: set[str]) -> list[TraceCall]:
+    buckets: dict[Decimal, list[TraceCall]] = {}
+    for call in calls:
+        start, end = _timestamp_interval(call)
+        order = start if call.syscall in process_syscalls else end
+        buckets.setdefault(order, []).append(call)
+    ordered: list[TraceCall] = []
+    for timestamp in sorted(buckets):
+        group = buckets[timestamp]
+        dependencies: dict[int, set[int]] = {
+            index: set() for index in range(len(group))
+        }
+        by_pid: dict[int, list[int]] = {}
+        for index, call in enumerate(group):
+            by_pid.setdefault(call.pid, []).append(index)
+        for indices in by_pid.values():
+            indices.sort(key=lambda index: group[index].line)
+            for before, after in zip(indices, indices[1:], strict=False):
+                dependencies[after].add(before)
+        for index, call in enumerate(group):
+            child = child_pid(call, process_syscalls)
+            if child is None:
+                continue
+            for child_index in by_pid.get(child, []):
+                dependencies[child_index].add(index)
+        emitted: set[int] = set()
+        while len(emitted) < len(group):
+            ready = [
+                index
+                for index, required in dependencies.items()
+                if index not in emitted and required <= emitted
+            ]
+            if len(ready) != 1:
+                raise AuthorityError(
+                    f"ambiguous cross-process syscall entry order at {timestamp}"
+                )
+            current = ready[0]
+            emitted.add(current)
+            ordered.append(group[current])
+    return ordered
+
+
+def validate_child_start_times(
+    calls: list[TraceCall], edges: dict[int, tuple[int, TraceCall]]
+) -> None:
+    creation_starts = {
+        child: _timestamp_interval(creation)[0]
+        for child, (_, creation) in edges.items()
+    }
+    for call in calls:
+        creation_start = creation_starts.get(call.pid)
+        if creation_start is not None and _timestamp_interval(call)[0] < creation_start:
+            raise AuthorityError("child syscall predates process creation entry")
+
+
+def reject_ambiguous_state_transition(
+    call: TraceCall,
+    calls: list[TraceCall],
+    state: ProcessState,
+    process_syscalls: set[str],
+) -> None:
+    mapping_transition = call.syscall in {
+        "execve",
+        "execveat",
+        "mmap",
+        "mmap2",
+        "munmap",
+    }
+    cwd_transition = call.syscall in {"chdir", "execve", "execveat", "fchdir"}
+    if not mapping_transition and not cwd_transition:
+        return
+    start, end = _timestamp_interval(call)
+    for other in calls:
+        if other.pid == call.pid:
+            continue
+        other_start, other_end = _timestamp_interval(other)
+        if start == end and other_start == other_end:
+            continue
+        if max(start, other_start) > min(end, other_end):
+            continue
+        if child_pid(other, process_syscalls) == call.pid:
+            continue
+        if mapping_transition and state.shares_mapping(call.pid, other.pid):
+            raise AuthorityError("ambiguous cross-process mapping transition")
+        if cwd_transition and state.shares_cwd(call.pid, other.pid):
+            raise AuthorityError("ambiguous cross-process cwd transition")
 
 
 def is_nonfilesystem(annotation: str, policy: dict[str, Any]) -> bool:

@@ -40,8 +40,9 @@ from rfc0022_strace_runtime import (  # noqa: E402
     write_failure_report,
     write_report,
 )
+from rfc0022_strace_snapshot import snapshot_root  # noqa: E402
 
-POLICY_SHA256 = "727f9128ebc152b639c62424a171a274ad236956ffbcc88e45c11aa0c1cd1697"  # pragma: allowlist secret
+POLICY_SHA256 = "440bbb6ae3a998eae7617a982e1c73b1c075c3c5600a1ff53674cb10c24fc46d"  # pragma: allowlist secret
 POLICY_KEYS = {
     "always_violation_syscalls",
     "async_syscalls",
@@ -64,14 +65,6 @@ POLICY_KEYS = {
     "unix_path_mutators",
     "write_open_flags",
 }
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def load_policy(path: Path) -> tuple[dict[str, Any], str]:
@@ -128,36 +121,6 @@ def load_policy(path: Path) -> tuple[dict[str, Any], str]:
         if not isinstance(policy[key], dict):
             raise AuthorityError(f"policy {key} must be an object")
     return policy, digest
-
-
-def snapshot_root(root: Path) -> dict[str, Any]:
-    records: list[dict[str, Any]] = []
-    for path in sorted([root, *root.rglob("*")], key=lambda item: os.fspath(item)):
-        stat = path.lstat()
-        relative = "." if path == root else path.relative_to(root).as_posix()
-        record: dict[str, Any] = {
-            "path": relative,
-            "mode": stat.st_mode,
-            "uid": stat.st_uid,
-            "gid": stat.st_gid,
-            "device": stat.st_dev,
-            "inode": stat.st_ino,
-            "size": stat.st_size,
-            "mtime_ns": stat.st_mtime_ns,
-            "ctime_ns": stat.st_ctime_ns,
-        }
-        if path.is_symlink():
-            record["kind"] = "symlink"
-            record["target"] = os.readlink(path)
-        elif path.is_file():
-            record["kind"] = "file"
-            record["sha256"] = _sha256(path)
-        elif path.is_dir():
-            record["kind"] = "directory"
-        else:
-            record["kind"] = "other"
-        records.append(record)
-    return {"root": os.fspath(root), "records": records}
 
 
 def _inside(path: Path, root: Path) -> bool:
@@ -221,7 +184,7 @@ def run_authority(
     for root in isolation_directories:
         if _inside(trace_dir, root) or _inside(report_path, root):
             raise AuthorityError("authority artifacts overlap an isolation root")
-    before = [snapshot_root(root) for root in roots]
+    before = [snapshot_root(root, require_noatime=True) for root in roots]
     environment = {
         "HOME": os.fspath(home),
         "LANG": "C",
@@ -325,7 +288,7 @@ def run_authority(
             report["cleanup_survivor_pids"] = cleaned
             report["cleanup_remaining_pids"] = remaining
             raise AuthorityError(f"surviving traced descendants: {survivors}")
-        after = [snapshot_root(root) for root in roots]
+        after = [snapshot_root(root, require_noatime=True) for root in roots]
         report["snapshots"]["after"] = after
         report["snapshots"]["equal"] = before == after
         if before != after:
@@ -370,9 +333,11 @@ def run_authority(
             report["errors"].append(f"descendants survived cleanup: {remaining_pids}")
         if "after" not in report["snapshots"]:
             try:
-                report["snapshots"]["after"] = [snapshot_root(root) for root in roots]
+                report["snapshots"]["after"] = [
+                    snapshot_root(root, require_noatime=True) for root in roots
+                ]
                 report["snapshots"]["equal"] = before == report["snapshots"]["after"]
-            except OSError as snapshot_exc:
+            except (AuthorityError, OSError) as snapshot_exc:
                 report["errors"].append(f"after snapshot failed: {snapshot_exc}")
         record_error_trace_metadata(report, trace_dir)
         return 2, report

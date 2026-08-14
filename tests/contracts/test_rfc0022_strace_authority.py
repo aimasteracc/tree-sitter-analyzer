@@ -412,7 +412,7 @@ def test_matched_resume_and_nested_openat2_structure_parse(tmp_path: Path) -> No
         [
             "read(3<pipe:[1]>,  <unfinished ...>",
             '<... read resumed>"x", 1) = 1',
-            'openat2(AT_FDCWD</project>, "nested\\"name", {flags=O_WRONLY|O_CLOEXEC, mode=0600}, 24) = 4</project/nested"name>',
+            'openat2(AT_FDCWD</project>, "nested\\"name", {flags=O_WRONLY|O_CLOEXEC, mode=0600}, 24) = 4</project/nested\\"name>',
             "+++ exited with 0 +++",
         ],
     )
@@ -422,7 +422,7 @@ def test_matched_resume_and_nested_openat2_structure_parse(tmp_path: Path) -> No
             syscall="openat2",
             operation="write_capable_open",
             target='/project/nested"name',
-            result='4</project/nested"name>',
+            result=r"4</project/nested\"name>",
             flags="O_WRONLY",
         )
     ]
@@ -441,3 +441,57 @@ def test_snapshot_binds_identity_metadata_and_content(tmp_path: Path) -> None:
     assert before["root"] == after["root"]
     assert before["records"][1]["sha256"] == after["records"][1]["sha256"]
     assert before != after
+
+
+# PR #1259 / discussion_r3785351138: punctuation inside -yy annotations is opaque.
+def test_fd_annotation_punctuation_stays_bound_to_write(tmp_path: Path) -> None:
+    trace = tmp_path / "trace"
+    target = "/project/a,b[}({"
+    _write_trace(
+        trace,
+        100,
+        [f'write(3<{target}>, "x", 1) = 1', "+++ exited with 0 +++"],
+    )
+    assert _parse(trace) == [
+        _event(
+            line=1,
+            syscall="write",
+            operation="descriptor_write",
+            target=target,
+            result="1",
+        )
+    ]
+
+
+def test_overlapping_resumes_report_result_time_order(tmp_path: Path) -> None:
+    trace = tmp_path / "trace"
+    _write_trace(
+        trace,
+        100,
+        [
+            "clone(child_stack=NULL, flags=SIGCHLD) = 101",
+            "clone(child_stack=NULL, flags=SIGCHLD) = 102",
+            "+++ exited with 0 +++",
+        ],
+    )
+    _write_trace(trace, 101, [])
+    (trace / "trace.101").write_text(
+        '1700000000.000003 write(3</project/a>, "a", 1 <unfinished ...>\n'
+        "1700000000.000005 <... write resumed>) = 1\n"
+        "1700000000.000006 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    _write_trace(
+        trace,
+        102,
+        ['write(3</project/b>, "b", 1) = 1', "+++ exited with 0 +++"],
+        start=4,
+    )
+    events = _parse(trace)
+    assert [
+        (item["timestamp"], item["pid"], item["line"], item["target"])
+        for item in events
+    ] == [
+        ("1700000000.000004", 102, 1, "/project/b"),
+        ("1700000000.000005", 101, 2, "/project/a"),
+    ]

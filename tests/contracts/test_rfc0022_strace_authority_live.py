@@ -17,8 +17,10 @@ from tests.contracts.test_rfc0022_strace_evidence_binding import (
     assert_event_raw_binding,
     assert_policy_evidence,
     load_started_preflight,
+    logical_raw_line,
     raw_exec_record,
     result_class,
+    successful_exec_lines,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -95,13 +97,13 @@ def test_workflow_is_pinned_serial_blocking_and_artifact_preserving() -> None:
         "tests/contracts/test_rfc0022_strace_preflight.py "
         "tests/contracts/test_rfc0022_strace_privilege.py "
         "tests/contracts/test_rfc0022_strace_process_state.py "
+        "tests/contracts/test_rfc0022_strace_snapshot.py tests/contracts/test_rfc0022_strace_syntax.py "
         "tests/contracts/test_rfc0022_strace_authority_live.py "
         "-q -n 0 --reruns=0 --timeout=120"
     ) in " ".join(text.split())
     assert text.count("if: always()") == 3
     assert "if-no-files-found: error" in text
-    assert "continue-on-error" not in text
-    assert "|| true" not in text
+    assert all(item not in text for item in ("continue-on-error", "|| true"))
     uses = [line.strip() for line in text.splitlines() if "uses:" in line]
     assert uses == [
         "- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
@@ -251,8 +253,8 @@ def _raw_trace_lines(
 def _raw_process_graph(raw_by_pid: dict[int, list[str]]) -> list[list[str | None]]:
     parents: dict[int, int] = {}
     for parent_pid, lines in raw_by_pid.items():
-        for line in lines:
-            match = PROCESS_EDGE.fullmatch(line)
+        for index, line in enumerate(lines):
+            match = PROCESS_EDGE.fullmatch(logical_raw_line(line, lines[:index]))
             if match is not None:
                 child_pid = int(match.group(1))
                 assert child_pid in raw_by_pid
@@ -276,8 +278,8 @@ def _assert_final_target_exec(
 ) -> int:
     graph_parents: set[int] = set()
     for lines in raw_by_pid.values():
-        for line in lines:
-            match = PROCESS_EDGE.fullmatch(line)
+        for index, line in enumerate(lines):
+            match = PROCESS_EDGE.fullmatch(logical_raw_line(line, lines[:index]))
             if match is not None:
                 child_pid = int(match.group(1))
                 assert child_pid in raw_by_pid
@@ -285,11 +287,7 @@ def _assert_final_target_exec(
     roots = set(raw_by_pid) - graph_parents
     assert len(roots) == 1
     root_pid = next(iter(roots))
-    successful_execs = [
-        line
-        for line in raw_by_pid[root_pid]
-        if re.match(r"^\d+\.\d+ execve(?:at)?\(", line) and line.endswith(" = 0")
-    ]
+    successful_execs = successful_exec_lines(raw_by_pid[root_pid])
     assert len(successful_execs) == 2
     assert raw_exec_record(successful_execs[-1]) == (
         expected_target[0],

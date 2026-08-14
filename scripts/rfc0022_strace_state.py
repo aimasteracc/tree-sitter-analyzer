@@ -32,6 +32,18 @@ class ProcessState:
         except KeyError as exc:
             raise AuthorityError(f"process state missing for pid {pid}") from exc
 
+    def shares_cwd(self, first: int, second: int) -> bool:
+        try:
+            return self._cwd_space_by_pid[first] == self._cwd_space_by_pid[second]
+        except KeyError as exc:
+            raise AuthorityError("cwd sharing state is incomplete") from exc
+
+    def shares_mapping(self, first: int, second: int) -> bool:
+        try:
+            return self._map_space_by_pid[first] == self._map_space_by_pid[second]
+        except KeyError as exc:
+            raise AuthorityError("mapping sharing state is incomplete") from exc
+
     def chdir(self, pid: int, cwd: Path) -> None:
         try:
             self._cwd_spaces[self._cwd_space_by_pid[pid]] = cwd

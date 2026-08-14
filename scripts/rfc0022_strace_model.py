@@ -18,6 +18,7 @@ class TraceCall:
     syscall: str
     arguments: tuple[str, ...]
     result: str
+    started_timestamp: str | None = None
 
 
 @dataclass(frozen=True)

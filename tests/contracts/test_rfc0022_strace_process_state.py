@@ -1,12 +1,8 @@
-"""Process and mapping provenance contracts for RFC-0022 strace."""
-
-from __future__ import annotations
-
-import hashlib
 import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -16,26 +12,18 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from rfc0022_strace_authority import load_policy  # noqa: E402
 from rfc0022_strace_model import AuthorityError  # noqa: E402
 from rfc0022_strace_parser import parse_trace_directory  # noqa: E402
-from rfc0022_strace_runtime import (  # noqa: E402
-    raw_trace_metadata,
-    seal_trace_directory,
-)
 
 POLICY, _ = load_policy(ROOT / "config/rfc0022-linux-strace-policy.json")
 
 
-def _write_trace(
-    directory: Path, pid: int, bodies: list[str], *, start: int = 1
-) -> Path:
+def _write_trace(directory: Path, pid: int, bodies: list[str], start: int = 1) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"trace.{pid}"
-    path.write_text(
-        "".join(
-            f"1700000000.{index:06d} {body}\n"
-            for index, body in enumerate(bodies, start=start)
-        ),
-        encoding="utf-8",
+    lines = (
+        f"1700000000.{index:06d} {body}\n"
+        for index, body in enumerate(bodies, start=start)
     )
+    path.write_text("".join(lines), encoding="utf-8")
     return path
 
 
@@ -44,27 +32,12 @@ def _parse(directory: Path) -> list[dict[str, object]]:
     return [asdict(item) for item in violations]
 
 
-def _event(
-    *,
-    line: int,
-    syscall: str,
-    operation: str,
-    target: str,
-    result: str,
-    pid: int = 100,
-    timestamp_index: int | None = None,
-    flags: str | None = None,
-) -> dict[str, object]:
-    return {
-        "timestamp": f"1700000000.{timestamp_index or line:06d}",
-        "pid": pid,
-        "line": line,
-        "syscall": syscall,
-        "operation": operation,
-        "target": target,
-        "result": result,
-        "flags": flags,
-    }
+def _event(**event: object) -> dict[str, object]:
+    line = cast(int, event["line"])
+    index = cast(int, event.pop("timestamp_index", line))
+    event.setdefault("pid", 100)
+    event.setdefault("flags", None)
+    return {"timestamp": f"1700000000.{index:06d}", **event}
 
 
 def test_exec_clears_stale_mapping_provenance(tmp_path: Path) -> None:
@@ -215,27 +188,6 @@ def test_relative_execveat_cannot_spoof_expected_target(tmp_path: Path) -> None:
             Path("/project"),
             expected_executable=os.path.realpath("expected"),
         )
-
-
-def test_safe_fd_metadata_commands_are_explicit_and_non_mutating(
-    tmp_path: Path,
-) -> None:
-    trace = tmp_path / "safe-fd-commands"
-    _write_trace(
-        trace,
-        100,
-        [
-            'openat(AT_FDCWD</project>, "input.py", O_RDONLY) = 3</project/input.py>',
-            "ioctl(3</project/input.py>, TCGETS, 0x1234) = -1 ENOTTY (Inappropriate ioctl for device)",
-            "ioctl(3</project/input.py>, TIOCGWINSZ, 0x1234) = -1 ENOTTY (Inappropriate ioctl for device)",
-            "ioctl(3</project/input.py>, FIOCLEX) = 0",
-            "fcntl(3</project/input.py>, F_GETFD) = 0",
-            "fcntl(3</project/input.py>, F_SETFD, FD_CLOEXEC) = 0",
-            "close(3</project/input.py>) = 0",
-            "+++ exited with 0 +++",
-        ],
-    )
-    assert _parse(trace) == []
 
 
 @pytest.mark.parametrize(
@@ -415,23 +367,129 @@ def test_process_creation_with_unknown_result_fails_closed(tmp_path: Path) -> No
         parse_trace_directory(trace, POLICY, Path("/project"))
 
 
-@pytest.mark.skipif(
-    os.name == "nt",
-    reason="tracked: RFC-0022 Linux authority needs POSIX ownership and modes",
+# PR #1259 / discussion_r3785351127: creation entry causally precedes its child.
+@pytest.mark.parametrize(
+    ("syscall", "entry"),
+    [
+        ("clone", "child_stack=NULL, flags=SIGCHLD"),
+        ("clone3", "{flags=SIGCHLD}, 88"),
+    ],
 )
-def test_raw_trace_inventory_and_sealing_are_exact(tmp_path: Path) -> None:
-    trace = tmp_path / "raw-inventory"
-    path = _write_trace(trace, 100, ["+++ exited with 0 +++"])
-    trace.chmod(0o700)
-    raw = path.read_bytes()
-    assert raw_trace_metadata(trace, expected_uid=trace.stat().st_uid) == [
-        {
-            "pid": 100,
-            "sha256": hashlib.sha256(raw).hexdigest(),
-            "size": len(raw),
-            "terminal": "+++ exited with 0 +++",
-        }
+def test_unfinished_creation_precedes_child_syscall(
+    tmp_path: Path, syscall: str, entry: str
+) -> None:
+    trace = tmp_path / "trace"
+    _write_trace(
+        trace,
+        101,
+        [
+            'openat(AT_FDCWD</project>, "child.txt", O_WRONLY|O_CREAT, 0600) = 3</project/child.txt>',
+            "+++ exited with 0 +++",
+        ],
+        start=2,
+    )
+    (trace / "trace.100").write_text(
+        f"1700000000.000001 {syscall}({entry} <unfinished ...>\n"
+        f"1700000000.000003 <... {syscall} resumed>) = 101\n"
+        "1700000000.000004 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    assert _parse(trace) == [
+        _event(
+            line=1,
+            pid=101,
+            timestamp_index=2,
+            syscall="openat",
+            operation="write_capable_open",
+            target="/project/child.txt",
+            result="3</project/child.txt>",
+            flags="O_CREAT|O_WRONLY",
+        )
     ]
-    seal_trace_directory(trace)
-    assert trace.stat().st_mode & 0o777 == 0o555
-    assert path.stat().st_mode & 0o777 == 0o444
+
+
+# PR #1259 / discussion_r3785351127: resumed calls cannot predate their creator.
+def test_child_entry_before_creation_fails_closed(tmp_path: Path) -> None:
+    trace = tmp_path / "trace"
+    _write_trace(
+        trace,
+        100,
+        ["clone(child_stack=NULL, flags=SIGCHLD) = 200", "+++ exited with 0 +++"],
+        start=2,
+    )
+    (trace / "trace.200").write_text(
+        '1700000000.000001 write(3</project/x>, "x", 1 <unfinished ...>\n'
+        "1700000000.000003 <... write resumed>) = 1\n"
+        "1700000000.000005 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(AuthorityError, match="child syscall predates process creation"):
+        _parse(trace)
+
+
+# PR #1259 / discussion_r3785351127: PID order cannot resolve equal-time peers.
+def test_equal_time_unrelated_children_fail_closed(tmp_path: Path) -> None:
+    trace = tmp_path / "trace"
+    _write_trace(
+        trace,
+        100,
+        [
+            "clone(child_stack=NULL, flags=SIGCHLD) = 101",
+            "clone(child_stack=NULL, flags=SIGCHLD) = 102",
+            "+++ exited with 0 +++",
+        ],
+    )
+    for pid, target in ((101, "a"), (102, "b")):
+        _write_trace(
+            trace,
+            pid,
+            [f'unlink("{target}") = 0', "+++ exited with 0 +++"],
+            start=3,
+        )
+    with pytest.raises(
+        AuthorityError, match="ambiguous cross-process syscall entry order"
+    ):
+        _parse(trace)
+
+
+# PR #1259 / discussion_r3785351127: never guess within an unfinished state change.
+def test_overlapping_shared_mapping_transition_fails_closed(tmp_path: Path) -> None:
+    traces = tmp_path / "traces"
+    _write_trace(
+        traces,
+        100,
+        [
+            "mmap(NULL, 4096, PROT_READ, MAP_SHARED, 3</project/db>, 0) = 0x1000",
+            "clone(child_stack=NULL, flags=CLONE_VM|SIGCHLD) = 200",
+            "mmap(0x1000, 4096, PROT_READ, MAP_PRIVATE|MAP_FIXED, 4</project/private>, 0 <unfinished ...>",
+            "--- SIGCHLD {si_signo=SIGCHLD} ---",
+            "<... mmap resumed>) = 0x1000",
+            "+++ exited with 0 +++",
+        ],
+    )
+    _write_trace(
+        traces,
+        200,
+        ["mprotect(0x1000, 4096, PROT_READ|PROT_WRITE) = 0", "+++ exited with 0 +++"],
+        start=4,
+    )
+    with pytest.raises(AuthorityError, match="ambiguous cross-process mapping"):
+        parse_trace_directory(traces, POLICY, Path("/project"))
+
+
+# PR #1259 / discussion_r3785351127: one PID cannot syscall before its resume.
+def test_syscall_interposed_before_pending_resume_fails_closed(tmp_path: Path) -> None:
+    trace = tmp_path / "trace"
+    _write_trace(
+        trace,
+        100,
+        [
+            "mmap(NULL, 4096, PROT_READ, MAP_SHARED, 3</project/db>, 0) = 0x1000",
+            "mprotect(0x1000, 4096, PROT_READ|PROT_WRITE <unfinished ...>",
+            "mmap(0x1000, 4096, PROT_READ, MAP_PRIVATE|MAP_FIXED, 4</project/private>, 0) = 0x1000",
+            "<... mprotect resumed>) = 0",
+            "+++ exited with 0 +++",
+        ],
+    )
+    with pytest.raises(AuthorityError, match="syscall before the pending resume"):
+        _parse(trace)

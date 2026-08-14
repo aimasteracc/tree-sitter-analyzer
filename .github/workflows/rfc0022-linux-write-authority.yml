@@ -13,6 +13,8 @@ on:
       - "scripts/rfc0022_strace_preflight.py"
       - "scripts/rfc0022_strace_privilege.py"
       - "scripts/rfc0022_strace_state.py"
+      - "scripts/rfc0022_strace_syntax.py"
+      - "scripts/rfc0022_strace_snapshot.py"
       - "scripts/rfc0022_strace_runtime.py"
       - "scripts/rfc0022_strace_positive_control.py"
       - "scripts/rfc0022_strace_target_launcher.py"
@@ -26,6 +28,8 @@ on:
       - "tests/contracts/test_rfc0022_strace_preflight.py"
       - "tests/contracts/test_rfc0022_strace_privilege.py"
       - "tests/contracts/test_rfc0022_strace_process_state.py"
+      - "tests/contracts/test_rfc0022_strace_snapshot.py"
+      - "tests/contracts/test_rfc0022_strace_syntax.py"
       - "tests/contracts/test_rfc0022_strace_authority_live.py"
       - "tests/fixtures/rfc0022_linux_expected_events.json"
       - "pyproject.toml"
@@ -44,6 +48,8 @@ on:
       - "scripts/rfc0022_strace_preflight.py"
       - "scripts/rfc0022_strace_privilege.py"
       - "scripts/rfc0022_strace_state.py"
+      - "scripts/rfc0022_strace_syntax.py"
+      - "scripts/rfc0022_strace_snapshot.py"
       - "scripts/rfc0022_strace_runtime.py"
       - "scripts/rfc0022_strace_positive_control.py"
       - "scripts/rfc0022_strace_target_launcher.py"
@@ -57,6 +63,8 @@ on:
       - "tests/contracts/test_rfc0022_strace_preflight.py"
       - "tests/contracts/test_rfc0022_strace_privilege.py"
       - "tests/contracts/test_rfc0022_strace_process_state.py"
+      - "tests/contracts/test_rfc0022_strace_snapshot.py"
+      - "tests/contracts/test_rfc0022_strace_syntax.py"
       - "tests/contracts/test_rfc0022_strace_authority_live.py"
       - "tests/fixtures/rfc0022_linux_expected_events.json"
       - "pyproject.toml"
@@ -129,6 +137,8 @@ jobs:
           tests/contracts/test_rfc0022_strace_preflight.py
           tests/contracts/test_rfc0022_strace_privilege.py
           tests/contracts/test_rfc0022_strace_process_state.py
+          tests/contracts/test_rfc0022_strace_snapshot.py
+          tests/contracts/test_rfc0022_strace_syntax.py
           tests/contracts/test_rfc0022_strace_authority_live.py
           -q -n 0 --reruns=0 --timeout=120
         shell: bash

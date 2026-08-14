@@ -8,20 +8,25 @@ import hashlib
 import os
 import posixpath
 import re
+from decimal import Decimal, InvalidOperation
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from rfc0022_strace_classify import (
+    causal_order,
     global_write_violation,
     harmless_fd_command,
     is_nonfilesystem,
     mapping_targets,
     page_length,
+    reject_ambiguous_state_transition,
+    validate_child_start_times,
     writeback_advice_violations,
 )
 from rfc0022_strace_model import AuthorityError, TraceCall, Violation
 from rfc0022_strace_paths import classify_unix_bind
 from rfc0022_strace_state import ProcessState, child_pid, process_graph
+from rfc0022_strace_syntax import descriptor_annotation, split_arguments
 
 TRACE_NAME = re.compile(r"^trace\.(\d+)$")
 TIMESTAMP_RE = re.compile(r"^(\d+\.\d+)\s+(.*)$")
@@ -29,47 +34,11 @@ SYSCALL_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\((.*)\)\s+=\s+(.+)$")
 UNFINISHED_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\((.*)<unfinished \.\.\.>$")
 RESUMED_RE = re.compile(r"^<\.\.\. ([A-Za-z_][A-Za-z0-9_]*) resumed>(.*)$")
 TERMINAL_RE = re.compile(r"^\+\+\+ (?:exited with \d+|killed by .+) \+\+\+$")
-FD_RE = re.compile(r"^(?:AT_FDCWD|-?\d+)(?:<([^>]*)>)?")
-RESULT_FD_RE = re.compile(r"^-?\d+(?:<([^>]*)>)?")
 
 DIRFD_AT_ZERO = frozenset(
     "fchmodat fchownat futimesat mkdirat mknodat openat openat2 unlinkat utimensat".split()
 )
 DIRFD_PAIRS = frozenset("linkat move_mount renameat renameat2".split())
-
-
-def _split_arguments(text: str) -> tuple[str, ...]:
-    values: list[str] = []
-    start = 0
-    stack: list[str] = []
-    quote = False
-    escaped = False
-    pairs = {"(": ")", "[": "]", "{": "}"}
-    for index, char in enumerate(text):
-        if quote:
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == '"':
-                quote = False
-            continue
-        if char == '"':
-            quote = True
-        elif char in pairs:
-            stack.append(pairs[char])
-        elif char in pairs.values():
-            if not stack or stack.pop() != char:
-                raise AuthorityError("unbalanced strace argument structure")
-        elif char == "," and not stack:
-            values.append(text[start:index].strip())
-            start = index + 1
-    if quote or stack:
-        raise AuthorityError("truncated strace argument structure")
-    tail = text[start:].strip()
-    if tail or text:
-        values.append(tail)
-    return tuple(values)
 
 
 def _decode_c_string(value: str) -> str:
@@ -97,10 +66,7 @@ def _decode_string_array(value: str) -> list[str]:
 
 
 def _fd_annotation(value: str) -> str | None:
-    match = FD_RE.match(value)
-    if match is None:
-        raise AuthorityError(f"expected decoded descriptor, got {value!r}")
-    return match.group(1)
+    return descriptor_annotation(value)
 
 
 def _result_succeeded(result: str) -> bool:
@@ -146,13 +112,23 @@ def _parse_trace(path: Path, pid: int) -> tuple[list[TraceCall], dict[str, Any]]
     except UnicodeDecodeError as exc:
         raise AuthorityError(f"trace.{pid} is not UTF-8") from exc
     calls: list[TraceCall] = []
-    pending: tuple[str, str, int] | None = None
+    pending: tuple[str, str, int, str] | None = None
     terminals: list[tuple[int, str]] = []
+    previous_timestamp: Decimal | None = None
     for lineno, raw_line in enumerate(lines, start=1):
         timestamp_match = TIMESTAMP_RE.match(raw_line)
         if timestamp_match is None:
             raise AuthorityError(f"trace.{pid}:{lineno} lacks a timestamp")
         timestamp, body = timestamp_match.groups()
+        try:
+            numeric_timestamp = Decimal(timestamp)
+        except InvalidOperation as exc:
+            raise AuthorityError(
+                f"trace.{pid}:{lineno} has an invalid timestamp"
+            ) from exc
+        if previous_timestamp is not None and numeric_timestamp < previous_timestamp:
+            raise AuthorityError(f"trace.{pid}:{lineno} timestamps moved backwards")
+        previous_timestamp = numeric_timestamp
         if TERMINAL_RE.match(body):
             terminals.append((lineno, body))
             continue
@@ -162,13 +138,19 @@ def _parse_trace(path: Path, pid: int) -> tuple[list[TraceCall], dict[str, Any]]
         if unfinished:
             if pending is not None:
                 raise AuthorityError(f"trace.{pid} has nested unfinished syscalls")
-            pending = (unfinished.group(1), unfinished.group(2), lineno)
+            pending = (unfinished.group(1), unfinished.group(2), lineno, timestamp)
             continue
         resumed = RESUMED_RE.match(body)
+        if pending is not None and resumed is None:
+            raise AuthorityError(
+                f"trace.{pid}:{lineno} has a syscall before the pending resume"
+            )
+        started_timestamp = timestamp
         if resumed:
             if pending is None or pending[0] != resumed.group(1):
                 raise AuthorityError(f"trace.{pid}:{lineno} has an unmatched resume")
             body = f"{pending[0]}({pending[1]}{resumed.group(2)}"
+            started_timestamp = pending[3]
             pending = None
         syscall_match = SYSCALL_RE.match(body)
         if syscall_match is None:
@@ -180,8 +162,9 @@ def _parse_trace(path: Path, pid: int) -> tuple[list[TraceCall], dict[str, Any]]
                 pid,
                 lineno,
                 name,
-                _split_arguments(arguments),
+                split_arguments(arguments),
                 result.strip(),
+                started_timestamp,
             )
         )
     if pending is not None:
@@ -198,9 +181,11 @@ def _parse_trace(path: Path, pid: int) -> tuple[list[TraceCall], dict[str, Any]]
 
 def _open_target(call: TraceCall, cwd: Path) -> str:
     path_index = {"open": 0, "openat": 1, "openat2": 1}.get(call.syscall)
-    result_match = RESULT_FD_RE.match(call.result)
-    if result_match and result_match.group(1):
-        return result_match.group(1).removesuffix(" (deleted)")
+    result_annotation = (
+        _fd_annotation(call.result) if _result_succeeded(call.result) else None
+    )
+    if result_annotation is not None:
+        return result_annotation.removesuffix(" (deleted)")
     if path_index is None:
         return "<file-handle>"
     return _resolve_path(call, path_index, cwd)
@@ -214,12 +199,24 @@ def classify_calls(
 ) -> tuple[list[Violation], int, dict[int, tuple[int, TraceCall]]]:
     process_syscalls = set(policy["process_syscalls"])
     root, edges = process_graph(calls, trace_pids, process_syscalls)
+    validate_child_start_times(calls, edges)
     state = ProcessState(root, initial_cwd)
     violations: list[Violation] = []
     open_names = {"open", "openat", "openat2", "open_by_handle_at"}
-    ordered = sorted(calls, key=lambda call: (call.timestamp, call.pid, call.line))
+    ordered = causal_order(calls, process_syscalls)
+    state_transitions = {
+        "chdir",
+        "execve",
+        "execveat",
+        "fchdir",
+        "mmap",
+        "mmap2",
+        "munmap",
+    }
     for call in ordered:
         args = call.arguments
+        if call.syscall in state_transitions and _result_succeeded(call.result):
+            reject_ambiguous_state_transition(call, calls, state, process_syscalls)
         child = child_pid(call, process_syscalls)
         if child is not None:
             state.spawn(
@@ -424,6 +421,7 @@ def classify_calls(
         if call.syscall in policy["safe_syscalls"] or call.syscall in process_syscalls:
             continue
         raise AuthorityError(f"unknown traced syscall: {call.syscall}")
+    violations.sort(key=lambda item: (Decimal(item.timestamp), item.pid, item.line))
     return violations, root, edges
 
 
