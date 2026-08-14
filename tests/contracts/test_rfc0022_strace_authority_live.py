@@ -72,6 +72,7 @@ def test_workflow_is_pinned_serial_blocking_and_artifact_preserving() -> None:
     assert "RFC0022_TARGET_USER: rfc0022-target" in text
     assert text.count('"tests/fixtures/rfc0022_linux_expected_events.json"') == 2
     assert "sudo useradd --system --user-group --no-create-home" in text
+    assert "sudo chmod o+x /home/runner /home/runner/work" in text
     assert 'run: sudo chmod -R a+rX "$RFC0022_AUTHORITY_ARTIFACT_DIR"' in text
     assert (
         "uv run pytest tests/contracts/test_rfc0022_strace_authority.py "

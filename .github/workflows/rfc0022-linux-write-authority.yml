@@ -89,6 +89,8 @@ jobs:
           sudo useradd --system --user-group --no-create-home \
             --shell /usr/sbin/nologin "$RFC0022_TARGET_USER"
           test "$(id -nG "$RFC0022_TARGET_USER")" = "$RFC0022_TARGET_USER"
+          sudo chmod o+x /home/runner /home/runner/work \
+            "$(dirname "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE"
           mkdir -p "$RFC0022_AUTHORITY_ARTIFACT_DIR" "$RFC0022_AUTHORITY_CASE_DIR"
           chmod 0777 "$RFC0022_AUTHORITY_CASE_DIR"
           printf '{"status":"started"}\n' > "$RFC0022_AUTHORITY_ARTIFACT_DIR/job-result.json"
