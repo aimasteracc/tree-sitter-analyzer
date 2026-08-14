@@ -15,6 +15,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.contracts.test_rfc0022_strace_evidence_binding import (
+    assert_event_raw_binding,
+)
+
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 POLICY_PATH = ROOT / "config/rfc0022-linux-strace-policy.json"
@@ -77,6 +81,7 @@ def test_workflow_is_pinned_serial_blocking_and_artifact_preserving() -> None:
     assert (
         "uv run pytest tests/contracts/test_rfc0022_strace_authority.py "
         "tests/contracts/test_rfc0022_strace_controls.py "
+        "tests/contracts/test_rfc0022_strace_evidence_binding.py "
         "tests/contracts/test_rfc0022_strace_process_state.py "
         "tests/contracts/test_rfc0022_strace_authority_live.py "
         "-q -n 0 --reruns=0 --timeout=120"
@@ -183,22 +188,6 @@ def test_expected_live_evidence_schema_is_exact() -> None:
     )
 
 
-def test_raw_event_binding_rejects_unrelated_trace_line() -> None:
-    event = {
-        "flags": "O_CREAT|O_WRONLY",
-        "result": "3</case/native-created.txt>",
-        "syscall": "openat",
-        "target": "/case/native-created.txt",
-        "timestamp": "1700000000.000001",
-    }
-    unrelated = (
-        '1700000000.000001 openat(AT_FDCWD</case>, "unrelated.txt", O_RDONLY) '
-        "= 3</case/unrelated.txt>"
-    )
-    with pytest.raises(AssertionError):
-        _assert_event_raw_binding(event, unrelated)
-
-
 def _relative_target(target: str, case: Path, trace_dir: Path) -> str:
     path = Path(target.removesuffix(" (deleted)"))
     try:
@@ -250,16 +239,6 @@ def _raw_trace_lines(
         assert item["terminal"] == terminal
         raw_by_pid[item["pid"]] = lines
     return raw_by_pid
-
-
-def _assert_event_raw_binding(event: dict[str, object], raw_line: str) -> None:
-    assert raw_line.startswith(f"{event['timestamp']} {event['syscall']}(")
-    assert raw_line.endswith(f" = {event['result']}")
-    target = str(event["target"]).removesuffix(" (deleted)")
-    assert json.dumps(target) in raw_line or f"<{target}>" in raw_line
-    flags = event["flags"]
-    if flags is not None:
-        assert all(token in raw_line for token in str(flags).split("|"))
 
 
 def _raw_process_graph(raw_by_pid: dict[int, list[str]]) -> list[list[str | None]]:
@@ -344,7 +323,9 @@ def _normalized_evidence(
         else:
             role = role_by_pid[pid]
             raw_line = raw_by_pid[pid][event["line"] - 1]
-            _assert_event_raw_binding(event, raw_line)
+            assert_event_raw_binding(
+                event, raw_line, raw_by_pid[pid][: event["line"] - 1]
+            )
             native_timestamps.append(Decimal(event["timestamp"]))
         normalized.append(
             [
