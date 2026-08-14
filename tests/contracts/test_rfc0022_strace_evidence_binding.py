@@ -192,9 +192,12 @@ def assert_policy_evidence(report: dict[str, object], policy_path: Path) -> None
 
 def load_started_preflight(artifact_root: Path) -> dict[str, object]:
     top_files = sorted(path.name for path in artifact_root.iterdir() if path.is_file())
-    assert top_files == ["job-result.json", "preflight.json"]
+    assert top_files == ["job-result.json", "preflight.json", "source.json"]
     assert json.loads((artifact_root / "job-result.json").read_text()) == {
         "status": "started"
+    }
+    assert json.loads((artifact_root / "source.json").read_text()) == {
+        "qualified_sha": os.environ["RFC0022_QUALIFIED_SHA"]
     }
     preflight = json.loads((artifact_root / "preflight.json").read_text())
     assert preflight["authority_id"] == "rfc0022-linux-strace-v1"

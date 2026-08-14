@@ -22,6 +22,19 @@ from rfc0022_strace_model import AuthorityError  # noqa: E402
 from rfc0022_strace_preflight import strace_preflight  # noqa: E402
 
 POLICY_PATH = ROOT / "config/rfc0022-linux-strace-policy.json"
+WORKFLOW = ROOT / ".github/workflows/rfc0022-linux-write-authority.yml"
+
+
+def test_workflow_binds_exact_qualification_revision() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    required = {
+        "RFC0022_QUALIFIED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
+        "ref: ${{ env.RFC0022_QUALIFIED_SHA }}",
+        'test "$qualified_sha" = "$RFC0022_QUALIFIED_SHA"',
+        '"qualified_sha":"%s"',
+        "name: rfc0022-linux-write-authority-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.RFC0022_QUALIFIED_SHA }}",
+    }
+    assert {item for item in required if item in source} == required
 
 
 def test_preflight_subprocesses_are_bounded_and_package_owned() -> None:
