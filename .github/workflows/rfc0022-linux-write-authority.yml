@@ -1,0 +1,100 @@
+name: RFC-0022 Linux Write Authority
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - "config/rfc0022-linux-strace-policy.json"
+      - "scripts/rfc0022_strace_authority.py"
+      - "scripts/rfc0022_strace_parser.py"
+      - "scripts/rfc0022_strace_model.py"
+      - "scripts/rfc0022_strace_paths.py"
+      - "scripts/rfc0022_strace_state.py"
+      - "scripts/rfc0022_strace_runtime.py"
+      - "scripts/rfc0022_strace_positive_control.py"
+      - "tests/contracts/test_rfc0022_strace_authority.py"
+      - "tests/contracts/test_rfc0022_strace_controls.py"
+      - "tests/contracts/test_rfc0022_strace_process_state.py"
+      - "tests/contracts/test_rfc0022_strace_authority_live.py"
+      - "rfcs/0022-task-outcome-apis.md"
+      - ".github/workflows/rfc0022-linux-write-authority.yml"
+  push:
+    branches: [develop]
+    paths:
+      - "config/rfc0022-linux-strace-policy.json"
+      - "scripts/rfc0022_strace_authority.py"
+      - "scripts/rfc0022_strace_parser.py"
+      - "scripts/rfc0022_strace_model.py"
+      - "scripts/rfc0022_strace_paths.py"
+      - "scripts/rfc0022_strace_state.py"
+      - "scripts/rfc0022_strace_runtime.py"
+      - "scripts/rfc0022_strace_positive_control.py"
+      - "tests/contracts/test_rfc0022_strace_authority.py"
+      - "tests/contracts/test_rfc0022_strace_controls.py"
+      - "tests/contracts/test_rfc0022_strace_process_state.py"
+      - "tests/contracts/test_rfc0022_strace_authority_live.py"
+      - "rfcs/0022-task-outcome-apis.md"
+      - ".github/workflows/rfc0022-linux-write-authority.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-monitor:
+    name: Qualify pinned strace monitor
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      RFC0022_RUN_LIVE_STRACE: "1"
+      RFC0022_AUTHORITY_ARTIFACT_DIR: ${{ github.workspace }}/authority-artifacts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.12.3"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.10"
+      - name: Install locked project environment
+        run: uv sync --frozen --all-extras
+        shell: bash
+      - name: Create evidence root
+        run: |
+          mkdir -p "$RFC0022_AUTHORITY_ARTIFACT_DIR"
+          printf '{"status":"started"}\n' > "$RFC0022_AUTHORITY_ARTIFACT_DIR/job-result.json"
+        shell: bash
+      - name: Enforce pinned authority preflight
+        run: |
+          uv run python scripts/rfc0022_strace_authority.py preflight \
+            --policy config/rfc0022-linux-strace-policy.json \
+            | tee "$RFC0022_AUTHORITY_ARTIFACT_DIR/preflight.json"
+        shell: bash
+      - name: Run portable and live authority contracts serially
+        run: >-
+          uv run pytest tests/contracts/test_rfc0022_strace_authority.py
+          tests/contracts/test_rfc0022_strace_controls.py
+          tests/contracts/test_rfc0022_strace_process_state.py
+          tests/contracts/test_rfc0022_strace_authority_live.py
+          -q -n 0 --reruns=0 --timeout=120
+        shell: bash
+      - name: Record job result
+        if: always()
+        run: |
+          mkdir -p "$RFC0022_AUTHORITY_ARTIFACT_DIR"
+          printf '{"job":"qualify-monitor","status":"%s"}\n' '${{ job.status }}' \
+            > "$RFC0022_AUTHORITY_ARTIFACT_DIR/job-result.json"
+        shell: bash
+      - name: Upload raw traces and normalized reports
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: rfc0022-linux-write-authority-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: authority-artifacts/
+          if-no-files-found: error
+          retention-days: 90
