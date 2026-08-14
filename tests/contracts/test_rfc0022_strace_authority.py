@@ -20,10 +20,6 @@ from rfc0022_strace_authority import (  # noqa: E402
     load_policy,
     run_authority,
     snapshot_root,
-    strace_preflight,
-)
-from rfc0022_strace_authority import (  # noqa: E402
-    main as authority_main,
 )
 from rfc0022_strace_model import AuthorityError  # noqa: E402
 from rfc0022_strace_parser import parse_trace_directory  # noqa: E402
@@ -148,73 +144,6 @@ def test_report_cannot_overlap_raw_trace_directory(tmp_path: Path) -> None:
             timeout=1,
         )
     assert report.exists() is False
-
-
-def test_preflight_fails_closed_when_strace_is_absent(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("PATH", "")
-    with pytest.raises(AuthorityError, match="strace is absent"):
-        strace_preflight("6.8")
-
-
-def test_run_setup_failure_writes_normalized_error_report(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("PATH", "")
-    report_path = tmp_path / "report.json"
-    code = authority_main(
-        [
-            "run",
-            "--policy",
-            str(POLICY_PATH),
-            "--trace-dir",
-            str(tmp_path / "trace"),
-            "--report",
-            str(report_path),
-            "--monitor-root",
-            str(tmp_path),
-            "--target-cwd",
-            str(tmp_path),
-            "--",
-            "/bin/true",
-        ]
-    )
-    assert code == 2
-    assert json.loads(report_path.read_text(encoding="utf-8")) == {
-        "schema_version": 1,
-        "authority_id": "rfc0022-linux-strace-v1",
-        "authority_status": "error",
-        "outcome": "indeterminate",
-        "errors": ["strace is absent"],
-        "policy": {"path": str(POLICY_PATH.resolve())},
-        "raw_trace_files": [],
-        "target_identity": None,
-        "trace_files": [],
-        "violations": [],
-        "target": {
-            "argv": ["/bin/true"],
-            "expected_returncode": 0,
-            "returncode": None,
-        },
-    }
-
-
-def test_preflight_records_exact_binary_identity(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    executable = tmp_path / "strace"
-    executable.write_text(
-        "#!/bin/sh\nprintf 'strace -- version 6.8\n'\n", encoding="utf-8"
-    )
-    executable.chmod(0o755)
-    monkeypatch.setenv("PATH", str(tmp_path))
-    assert strace_preflight("6.8", str(executable)) == {
-        "version": "6.8",
-        "executable": str(executable.resolve()),
-        "sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
-        "package": None,
-    }
 
 
 def test_failed_open_and_file_fd_write_are_exact_violations(tmp_path: Path) -> None:
@@ -399,6 +328,38 @@ def test_descendant_fd_write_and_trace_closure_are_exact(tmp_path: Path) -> None
         },
     ]
     assert pids == {100, 200}
+
+
+def test_userfaultfd_is_a_write_capability_violation(tmp_path: Path) -> None:
+    trace = tmp_path / "userfaultfd"
+    _write_trace(
+        trace,
+        100,
+        [
+            "userfaultfd(O_CLOEXEC|O_NONBLOCK) = 3<anon_inode:[userfaultfd]>",
+            "+++ exited with 0 +++",
+        ],
+    )
+    violations, _, _ = parse_trace_directory(trace, POLICY, Path("/project"))
+    assert [asdict(item) for item in violations] == [
+        {
+            "timestamp": "1700000000.000001",
+            "pid": 100,
+            "line": 1,
+            "syscall": "userfaultfd",
+            "operation": "asynchronous_write_capability",
+            "target": "<kernel-async>",
+            "result": "3<anon_inode:[userfaultfd]>",
+            "flags": None,
+        }
+    ]
+
+
+def test_state_bearing_syscall_with_unknown_result_fails_closed(tmp_path: Path) -> None:
+    trace = tmp_path / "unknown-state-result"
+    _write_trace(trace, 100, ['chdir("sub") = ?', "+++ exited with 0 +++"])
+    with pytest.raises(AuthorityError, match="result is not exact"):
+        parse_trace_directory(trace, POLICY, Path("/project"))
 
 
 @pytest.mark.parametrize(

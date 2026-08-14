@@ -13,7 +13,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import rfc0022_strace_privilege as privilege  # noqa: E402
 from rfc0022_strace_authority import load_policy  # noqa: E402
 from rfc0022_strace_model import AuthorityError  # noqa: E402
 from rfc0022_strace_parser import parse_trace_directory  # noqa: E402
@@ -179,6 +178,45 @@ def test_root_exec_must_match_expected_target(tmp_path: Path) -> None:
         )
 
 
+def test_root_exec_argv_must_match_expected_target(tmp_path: Path) -> None:
+    trace = tmp_path / "wrong-argv"
+    _write_trace(
+        trace,
+        100,
+        [
+            'execve("/bin/expected", ["/bin/other"], []) = 0',
+            "+++ exited with 0 +++",
+        ],
+    )
+    with pytest.raises(AuthorityError, match="exec argv does not match"):
+        parse_trace_directory(
+            trace,
+            POLICY,
+            Path("/project"),
+            expected_executable="/bin/expected",
+            expected_argv=["/bin/expected"],
+        )
+
+
+def test_relative_execveat_cannot_spoof_expected_target(tmp_path: Path) -> None:
+    trace = tmp_path / "relative-execveat"
+    _write_trace(
+        trace,
+        100,
+        [
+            'execveat(7</malicious>, "expected", ["expected"], [], 0) = 0',
+            "+++ exited with 0 +++",
+        ],
+    )
+    with pytest.raises(AuthorityError, match="final root exec path is not absolute"):
+        parse_trace_directory(
+            trace,
+            POLICY,
+            Path("/project"),
+            expected_executable=os.path.realpath("expected"),
+        )
+
+
 def test_safe_fd_metadata_commands_are_explicit_and_non_mutating(
     tmp_path: Path,
 ) -> None:
@@ -301,6 +339,39 @@ def test_mapping_writeback_advice_is_a_violation(tmp_path: Path, advice: str) ->
     ]
 
 
+@pytest.mark.parametrize(
+    ("advice", "target"),
+    [
+        ("MADV_PAGEOUT", "<memory-pageout>"),
+        ("MADV_REMOVE", "<memory-remove>"),
+    ],
+)
+def test_global_mapping_writeback_advice_cannot_hide_without_file_target(
+    tmp_path: Path, advice: str, target: str
+) -> None:
+    trace = tmp_path / advice
+    _write_trace(
+        trace,
+        100,
+        [
+            "mmap(NULL, 4096, PROT_READ|PROT_WRITE, "
+            "MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x1000",
+            f"madvise(0x1000, 4096, {advice}) = -1 EINVAL (Invalid argument)",
+            "+++ exited with 0 +++",
+        ],
+    )
+    assert _parse(trace) == [
+        _event(
+            line=2,
+            syscall="madvise",
+            operation="global_writeback",
+            target=target,
+            result="-1 EINVAL (Invalid argument)",
+            flags=advice,
+        )
+    ]
+
+
 def test_global_sync_is_never_clean(tmp_path: Path) -> None:
     trace = tmp_path / "sync"
     _write_trace(trace, 100, ["sync() = 0", "+++ exited with 0 +++"])
@@ -333,83 +404,21 @@ def test_unexpected_trace_directory_entry_fails_closed(tmp_path: Path) -> None:
         _parse(trace)
 
 
-def test_privilege_separation_identity_and_launcher_are_digest_bound(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    class Record:
-        pw_uid = 1234
-        pw_gid = 1235
-
-    directories = tuple(tmp_path / name for name in ("home", "cache"))
-    for directory in directories:
-        directory.mkdir()
-    chowns: list[tuple[Path, int, int]] = []
-    monkeypatch.setattr(privilege.os, "geteuid", lambda: 0)
-    monkeypatch.setattr(privilege.os, "getgrouplist", lambda _user, gid: [gid])
-    monkeypatch.setattr(
-        privilege.os, "chown", lambda path, uid, gid: chowns.append((path, uid, gid))
+def test_process_creation_with_unknown_result_fails_closed(tmp_path: Path) -> None:
+    trace = tmp_path / "unknown-clone"
+    _write_trace(
+        trace,
+        100,
+        ["clone(child_stack=NULL, flags=SIGCHLD) = ?", "+++ exited with 0 +++"],
     )
-
-    class FakePwd:
-        @staticmethod
-        def getpwnam(_user: str) -> Record:
-            return Record()
-
-    monkeypatch.setattr(privilege, "pwd", FakePwd)
-    launcher = ROOT / "scripts/rfc0022_strace_target_launcher.py"
-    identity = privilege.prepare_target_identity(
-        "rfc0022-target", directories, launcher
-    )
-    assert identity == {
-        "gid": 1235,
-        "groups": [1235],
-        "launcher": {
-            "path": str(launcher.resolve()),
-            "python": {
-                "path": os.path.realpath(sys.executable),
-                "sha256": hashlib.sha256(
-                    Path(os.path.realpath(sys.executable)).read_bytes()
-                ).hexdigest(),
-            },
-            "sha256": privilege.TARGET_LAUNCHER_SHA256,
-        },
-        "no_new_privs": True,
-        "uid": 1234,
-        "user": "rfc0022-target",
-    }
-    assert chowns == [(directory, 1234, 1235) for directory in directories]
-    assert [directory.stat().st_mode & 0o777 for directory in directories] == [
-        0o700,
-        0o700,
-    ]
+    with pytest.raises(AuthorityError, match="exact child pid"):
+        parse_trace_directory(trace, POLICY, Path("/project"))
 
 
-def test_privilege_separation_rejects_non_root_authority(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(privilege.os, "geteuid", lambda: 501)
-    with pytest.raises(AuthorityError, match="requires root privilege separation"):
-        privilege.prepare_target_identity(
-            "rfc0022-target",
-            (tmp_path,),
-            ROOT / "scripts/rfc0022_strace_target_launcher.py",
-        )
-
-
-def test_target_launcher_source_locks_no_new_privileges() -> None:
-    source = (ROOT / "scripts/rfc0022_strace_target_launcher.py").read_text(
-        encoding="utf-8"
-    )
-    required = {
-        "PR_SET_NO_NEW_PRIVS = 38",
-        'getattr(os, "getresuid", None)',
-        'getattr(os, "getresgid", None)',
-        "os.getgroups()",
-        "os.execv(",
-    }
-    assert {item for item in required if item in source} == required
-
-
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="tracked: RFC-0022 Linux authority needs POSIX ownership and modes",
+)
 def test_raw_trace_inventory_and_sealing_are_exact(tmp_path: Path) -> None:
     trace = tmp_path / "raw-inventory"
     path = _write_trace(trace, 100, ["+++ exited with 0 +++"])

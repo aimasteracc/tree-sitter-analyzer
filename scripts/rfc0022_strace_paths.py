@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
-import os
+import posixpath
 import re
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from rfc0022_strace_model import AuthorityError, TraceCall, Violation
 
@@ -25,8 +25,10 @@ def classify_unix_bind(
     if match is None:
         raise AuthorityError("UNIX bind path is not exact")
     raw_path = decode_c_string(match.group(1))
-    path = Path(raw_path)
-    target = os.path.normpath(raw_path if path.is_absolute() else os.fspath(cwd / path))
+    path = PurePosixPath(raw_path)
+    target = posixpath.normpath(
+        raw_path if path.is_absolute() else posixpath.join(cwd.as_posix(), raw_path)
+    )
     return Violation(
         call.timestamp,
         call.pid,

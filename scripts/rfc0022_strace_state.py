@@ -130,12 +130,15 @@ class ProcessState:
 
 
 def child_pid(call: TraceCall, process_syscalls: set[str]) -> int | None:
-    if call.syscall not in process_syscalls or not not call.result.lstrip().startswith(
-        "-1"
-    ):
+    if call.syscall not in process_syscalls:
         return None
-    match = re.match(r"(\d+)", call.result)
-    return int(match.group(1)) if match else None
+    result = call.result.lstrip()
+    if result.startswith("-1"):
+        return None
+    match = re.fullmatch(r"(\d+)", result)
+    if match is None:
+        raise AuthorityError("process creation result is not an exact child pid")
+    return int(match.group(1))
 
 
 def process_graph(

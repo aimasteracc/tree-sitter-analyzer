@@ -6,8 +6,9 @@ from __future__ import annotations
 import ast
 import hashlib
 import os
+import posixpath
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from rfc0022_strace_classify import (
@@ -16,6 +17,7 @@ from rfc0022_strace_classify import (
     is_nonfilesystem,
     mapping_targets,
     page_length,
+    writeback_advice_violations,
 )
 from rfc0022_strace_model import AuthorityError, TraceCall, Violation
 from rfc0022_strace_paths import classify_unix_bind
@@ -82,6 +84,18 @@ def _decode_c_string(value: str) -> str:
     return decoded
 
 
+def _decode_string_array(value: str) -> list[str]:
+    try:
+        decoded = ast.literal_eval(value)
+    except (SyntaxError, ValueError) as exc:
+        raise AuthorityError("exec argv is not an exact string array") from exc
+    if not isinstance(decoded, list) or not all(
+        isinstance(item, str) for item in decoded
+    ):
+        raise AuthorityError("exec argv is not an exact string array")
+    return decoded
+
+
 def _fd_annotation(value: str) -> str | None:
     match = FD_RE.match(value)
     if match is None:
@@ -90,17 +104,22 @@ def _fd_annotation(value: str) -> str | None:
 
 
 def _result_succeeded(result: str) -> bool:
-    return not result.lstrip().startswith("-1")
+    normalized = result.lstrip()
+    if normalized.startswith("-1"):
+        return False
+    if normalized.startswith("?"):
+        raise AuthorityError("state-bearing syscall result is not exact")
+    return True
 
 
 def _resolve_path(call: TraceCall, index: int, cwd: Path) -> str:
     if index >= len(call.arguments):
         raise AuthorityError(f"{call.syscall} omitted path argument {index}")
     raw = _decode_c_string(call.arguments[index])
-    path = Path(raw)
+    path = PurePosixPath(raw)
     if path.is_absolute():
-        return os.path.normpath(raw)
-    base = cwd
+        return posixpath.normpath(raw)
+    base = cwd.as_posix()
     dirfd_index = None
     if call.syscall in DIRFD_AT_ZERO and index == 1:
         dirfd_index = 0
@@ -112,10 +131,10 @@ def _resolve_path(call: TraceCall, index: int, cwd: Path) -> str:
         dirfd = call.arguments[dirfd_index]
         annotation = _fd_annotation(dirfd)
         if annotation is not None:
-            base = Path(annotation.removesuffix(" (deleted)"))
+            base = annotation.removesuffix(" (deleted)")
         elif not dirfd.startswith("AT_FDCWD"):
             raise AuthorityError(f"{call.syscall} has unannotated dirfd")
-    return os.path.normpath(os.fspath(base / path))
+    return posixpath.normpath(posixpath.join(base, raw))
 
 
 def _parse_trace(path: Path, pid: int) -> tuple[list[TraceCall], dict[str, Any]]:
@@ -351,21 +370,13 @@ def classify_calls(
                 length = page_length(int(args[1], 0), policy)
             except ValueError as exc:
                 raise AuthorityError("madvise range is not exact") from exc
-            for target in mapping_targets(
-                state.covering(call.pid, address, length), policy
-            ):
-                violations.append(
-                    Violation(
-                        call.timestamp,
-                        call.pid,
-                        call.line,
-                        call.syscall,
-                        "shared_mapping_writeback",
-                        target,
-                        call.result,
-                        args[2],
-                    )
-                )
+            try:
+                records = state.covering(call.pid, address, length)
+            except AuthorityError:
+                if args[2] == "MADV_DONTNEED":
+                    raise
+                records = []
+            violations.extend(writeback_advice_violations(call, records, policy))
             continue
         if call.syscall in {"mprotect", "msync", "munmap"}:
             required_arguments = 2 if call.syscall == "munmap" else 3
@@ -421,6 +432,7 @@ def parse_trace_directory(
     policy: dict[str, Any],
     initial_cwd: Path,
     expected_executable: str | None = None,
+    expected_argv: list[str] | None = None,
     minimum_root_execs: int = 1,
 ) -> tuple[list[Violation], list[dict[str, Any]], set[int]]:
     paths: list[tuple[int, Path]] = []
@@ -457,8 +469,19 @@ def parse_trace_directory(
             if path_index < len(final_exec.arguments)
             else ""
         )
+        if not PurePosixPath(actual).is_absolute():
+            raise AuthorityError("final root exec path is not absolute")
         if os.path.realpath(actual) != expected:
             raise AuthorityError("final root exec does not match the expected target")
+        if expected_argv is not None:
+            argv_index = 1 if final_exec.syscall == "execve" else 2
+            actual_argv = (
+                _decode_string_array(final_exec.arguments[argv_index])
+                if argv_index < len(final_exec.arguments)
+                else []
+            )
+            if actual_argv != expected_argv:
+                raise AuthorityError("final root exec argv does not match the target")
     metadata: list[dict[str, Any]] = []
     for pid in sorted(pids):
         parent = edges.get(pid)

@@ -1,5 +1,3 @@
-"""Pinned-Linux live and workflow contracts for the RFC-0022 authority."""
-
 from __future__ import annotations
 
 import hashlib
@@ -17,6 +15,10 @@ import pytest
 
 from tests.contracts.test_rfc0022_strace_evidence_binding import (
     assert_event_raw_binding,
+    assert_policy_evidence,
+    load_started_preflight,
+    raw_exec_record,
+    result_class,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -25,6 +27,7 @@ POLICY_PATH = ROOT / "config/rfc0022-linux-strace-policy.json"
 AUTHORITY = SCRIPTS / "rfc0022_strace_authority.py"
 CONTROL = SCRIPTS / "rfc0022_strace_positive_control.py"
 LAUNCHER = SCRIPTS / "rfc0022_strace_target_launcher.py"
+SYSTEM_PYTHON = "/usr/bin/python3"
 WORKFLOW = ROOT / ".github/workflows/rfc0022-linux-write-authority.yml"
 EXPECTED_PATH = ROOT / "tests/fixtures/rfc0022_linux_expected_events.json"
 EXPECTED = json.loads(EXPECTED_PATH.read_text(encoding="utf-8"))
@@ -75,6 +78,13 @@ def test_workflow_is_pinned_serial_blocking_and_artifact_preserving() -> None:
     assert 'RFC0022_RUN_LIVE_STRACE: "1"' in text
     assert "RFC0022_TARGET_USER: rfc0022-target" in text
     assert text.count('"tests/fixtures/rfc0022_linux_expected_events.json"') == 2
+    assert text.count('"scripts/rfc0022_strace_preflight.py"') == 2
+    for dependency in (
+        "pytest.ini",
+        "tests/__init__.py",
+        "tests/pytest_temp_hygiene.py",
+    ):
+        assert text.count(f'"{dependency}"') == 2
     assert "sudo useradd --system --user-group --no-create-home" in text
     assert "sudo chmod o+x /home/runner /home/runner/work" in text
     assert 'run: sudo chmod -R a+rX "$RFC0022_AUTHORITY_ARTIFACT_DIR"' in text
@@ -82,6 +92,8 @@ def test_workflow_is_pinned_serial_blocking_and_artifact_preserving() -> None:
         "uv run pytest tests/contracts/test_rfc0022_strace_authority.py "
         "tests/contracts/test_rfc0022_strace_controls.py "
         "tests/contracts/test_rfc0022_strace_evidence_binding.py "
+        "tests/contracts/test_rfc0022_strace_preflight.py "
+        "tests/contracts/test_rfc0022_strace_privilege.py "
         "tests/contracts/test_rfc0022_strace_process_state.py "
         "tests/contracts/test_rfc0022_strace_authority_live.py "
         "-q -n 0 --reruns=0 --timeout=120"
@@ -114,7 +126,10 @@ def _live_command(case: Path, artifact: Path, control: str) -> list[str]:
     return [
         "sudo",
         "-n",
-        sys.executable,
+        SYSTEM_PYTHON,
+        "-I",
+        "-S",
+        "-B",
         str(AUTHORITY),
         "run",
         "--policy",
@@ -206,14 +221,6 @@ def _relative_target(target: str, case: Path, trace_dir: Path) -> str:
     return "." if relative == Path(".") else relative.as_posix()
 
 
-def _result_class(result: str) -> str:
-    if result.startswith("-1 "):
-        return " ".join(result.split(maxsplit=2)[:2])
-    if result == "changed":
-        return "changed"
-    return "success"
-
-
 def _raw_trace_lines(
     report: dict[str, object], trace_dir: Path
 ) -> dict[int, list[str]]:
@@ -246,8 +253,9 @@ def _raw_process_graph(raw_by_pid: dict[int, list[str]]) -> list[list[str | None
     for parent_pid, lines in raw_by_pid.items():
         for line in lines:
             match = PROCESS_EDGE.fullmatch(line)
-            if match is not None and int(match.group(1)) in raw_by_pid:
+            if match is not None:
                 child_pid = int(match.group(1))
+                assert child_pid in raw_by_pid
                 assert child_pid not in parents
                 parents[child_pid] = parent_pid
     roots = set(raw_by_pid) - set(parents)
@@ -264,25 +272,29 @@ def _raw_process_graph(raw_by_pid: dict[int, list[str]]) -> list[list[str | None
 
 
 def _assert_final_target_exec(
-    report: dict[str, object], raw_by_pid: dict[int, list[str]]
+    expected_target: list[str], raw_by_pid: dict[int, list[str]]
 ) -> int:
     graph_parents: set[int] = set()
     for lines in raw_by_pid.values():
         for line in lines:
             match = PROCESS_EDGE.fullmatch(line)
-            if match is not None and int(match.group(1)) in raw_by_pid:
-                graph_parents.add(int(match.group(1)))
-    root_pid = next(iter(set(raw_by_pid) - graph_parents))
-    invocation = report["invocation"]
-    target_index = len(invocation) - 1 - invocation[::-1].index("--")
-    target = invocation[target_index + 1]
+            if match is not None:
+                child_pid = int(match.group(1))
+                assert child_pid in raw_by_pid
+                graph_parents.add(child_pid)
+    roots = set(raw_by_pid) - graph_parents
+    assert len(roots) == 1
+    root_pid = next(iter(roots))
     successful_execs = [
         line
         for line in raw_by_pid[root_pid]
         if re.match(r"^\d+\.\d+ execve(?:at)?\(", line) and line.endswith(" = 0")
     ]
     assert len(successful_execs) == 2
-    assert json.dumps(target) in successful_execs[-1]
+    assert raw_exec_record(successful_execs[-1]) == (
+        expected_target[0],
+        expected_target,
+    )
     return root_pid
 
 
@@ -334,7 +346,7 @@ def _normalized_evidence(
                 event["operation"],
                 _relative_target(event["target"], case, trace_dir),
                 event["flags"],
-                _result_class(event["result"]),
+                result_class(event["result"]),
             ]
         )
     assert native_timestamps == sorted(native_timestamps)
@@ -358,8 +370,10 @@ def test_live_pinned_linux_authority_controls(control: str) -> None:
     fixture = case / "fixture.txt"
     fixture.write_bytes(b"fixture\n")
     fixture.chmod(0o666)
+    command = _live_command(case, artifact, control)
+    expected_target = command[command.index("--") + 1 :]
     result = subprocess.run(
-        _live_command(case, artifact, control),
+        command,
         check=False,
         capture_output=True,
         text=True,
@@ -367,6 +381,7 @@ def test_live_pinned_linux_authority_controls(control: str) -> None:
     )
     report = json.loads((artifact / "report.json").read_text(encoding="utf-8"))
     expected = EXPECTED["controls"][control]
+    assert_policy_evidence(report, POLICY_PATH)
     assert result.returncode == expected["returncode"]
     assert report["authority_status"] == expected["authority_status"]
     assert report["outcome"] == expected["outcome"]
@@ -379,11 +394,11 @@ def test_live_pinned_linux_authority_controls(control: str) -> None:
     trace_dir = artifact / "trace"
     if report["trace_files"]:
         normalized, graph, raw_by_pid = _normalized_evidence(report, case, trace_dir)
-        root_pid = _assert_final_target_exec(report, raw_by_pid)
+        root_pid = _assert_final_target_exec(expected_target, raw_by_pid)
     else:
         raw_by_pid = _raw_trace_lines(report, trace_dir)
         graph = _raw_process_graph(raw_by_pid)
-        root_pid = _assert_final_target_exec(report, raw_by_pid)
+        root_pid = _assert_final_target_exec(expected_target, raw_by_pid)
         normalized = []
         assert report["violations"] == []
 
@@ -392,7 +407,7 @@ def test_live_pinned_linux_authority_controls(control: str) -> None:
     assert identity["user"] == os.environ["RFC0022_TARGET_USER"]
     assert 0 not in {identity["uid"], identity["gid"], *identity["groups"]}
     assert identity["no_new_privs"] is True
-    launcher_python = Path(os.path.realpath(sys.executable))
+    launcher_python = Path(os.path.realpath(SYSTEM_PYTHON))
     assert identity["launcher"] == {
         "path": str(LAUNCHER.resolve()),
         "python": {
@@ -402,6 +417,18 @@ def test_live_pinned_linux_authority_controls(control: str) -> None:
         "sha256": hashlib.sha256(LAUNCHER.read_bytes()).hexdigest(),
     }
     assert report["invocation"][1:3] == ["-u", identity["user"]]
+    launcher_index = report["invocation"].index("--")
+    assert report["invocation"][launcher_index + 1 : launcher_index + 6] == [
+        str(launcher_python),
+        "-I",
+        "-S",
+        "-B",
+        str(LAUNCHER),
+    ]
+    assert report["invocation"][-len(expected_target) - 1 :] == [
+        "--",
+        *expected_target,
+    ]
 
     expected_survivors = expected["cleanup_survivor_count"]
     assert len(report["cleanup_survivor_pids"]) == expected_survivors
@@ -446,6 +473,7 @@ def test_live_artifact_manifest_is_complete() -> None:
             "tracked: RFC-0022 P0.4 live artifact manifest runs in the pinned job"
         )
     artifact_root = Path(os.environ["RFC0022_AUTHORITY_ARTIFACT_DIR"])
+    preflight = load_started_preflight(artifact_root)
     assert sorted(
         path.name for path in artifact_root.iterdir() if path.is_dir()
     ) == sorted(LIVE_CONTROLS)
@@ -453,6 +481,7 @@ def test_live_artifact_manifest_is_complete() -> None:
         artifact = artifact_root / control
         report_path = artifact / "report.json"
         report = json.loads(report_path.read_text(encoding="utf-8"))
+        assert report["policy"]["strace"] == preflight["strace"]
         traces = sorted((artifact / "trace").iterdir())
         inventory = report["raw_trace_files"]
         assert {path.name for path in traces} == {

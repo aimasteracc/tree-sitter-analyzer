@@ -16,7 +16,7 @@ except ImportError:  # pragma: no cover - Linux-only authority runtime
 
 from rfc0022_strace_model import AuthorityError
 
-TARGET_LAUNCHER_SHA256 = "95ab811187cf9c0fb510a9b58440127497f0225725d4fc1c3f09e36b1d47912e"  # pragma: allowlist secret
+TARGET_LAUNCHER_SHA256 = "18d510239209c9a0976a985c9ab28bbe60e9e87394409b66cdaa18e2d7c35178"  # pragma: allowlist secret
 
 
 def normalize_target(target: list[str]) -> list[str]:
@@ -47,6 +47,9 @@ def build_invocation(
         os.fspath(trace_prefix),
         "--",
         os.path.realpath(sys.executable),
+        "-I",
+        "-S",
+        "-B",
         os.fspath(launcher),
         "--",
         *target,

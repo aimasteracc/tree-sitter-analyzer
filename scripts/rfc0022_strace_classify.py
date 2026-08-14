@@ -31,6 +31,57 @@ def mapping_targets(
     )
 
 
+def writeback_advice_violations(
+    call: TraceCall,
+    records: list[tuple[int, int, bool, str | None]],
+    policy: dict[str, Any],
+) -> list[Violation]:
+    advice = call.arguments[2]
+    shared_targets = mapping_targets(records, policy)
+    all_targets = sorted(
+        {
+            target
+            for _, _, _, target in records
+            if target is not None and not is_nonfilesystem(target, policy)
+        }
+    )
+    targets = all_targets if advice == "MADV_REMOVE" else shared_targets
+    violations = [
+        Violation(
+            call.timestamp,
+            call.pid,
+            call.line,
+            call.syscall,
+            "shared_mapping_writeback",
+            target,
+            call.result,
+            advice,
+        )
+        for target in targets
+    ]
+    needs_global = advice in {"MADV_PAGEOUT", "MADV_REMOVE"} and (
+        not records
+        or any(
+            not shared or target is None or is_nonfilesystem(target, policy)
+            for _, _, shared, target in records
+        )
+    )
+    if needs_global:
+        violations.append(
+            Violation(
+                call.timestamp,
+                call.pid,
+                call.line,
+                call.syscall,
+                "global_writeback",
+                f"<memory-{advice.removeprefix('MADV_').lower()}>",
+                call.result,
+                advice,
+            )
+        )
+    return violations
+
+
 def harmless_fd_command(call: TraceCall, command: str, policy: dict[str, Any]) -> bool:
     if call.syscall == "fcntl":
         return command in policy["safe_fcntl_commands"]

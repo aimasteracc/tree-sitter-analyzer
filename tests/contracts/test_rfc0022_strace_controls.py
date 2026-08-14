@@ -21,7 +21,13 @@ CONTROL = ROOT / "scripts/rfc0022_strace_positive_control.py"
         "clean",
         "create-unlink",
         "descendant-create-unlink",
-        "inherited-fd",
+        pytest.param(
+            "inherited-fd",
+            marks=pytest.mark.skipif(
+                os.name == "nt",
+                reason="tracked: RFC-0022 Linux authority pass_fds is POSIX-only",
+            ),
+        ),
         "mkdir-rmdir",
         "rename-restore",
         "shared-writable-mmap",

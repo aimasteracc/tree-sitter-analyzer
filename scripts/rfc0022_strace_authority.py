@@ -7,8 +7,6 @@ import argparse
 import hashlib
 import json
 import os
-import re
-import shutil
 import signal
 import subprocess
 import sys
@@ -17,14 +15,23 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from rfc0022_strace_model import AuthorityError, Violation
-from rfc0022_strace_parser import parse_trace_directory
-from rfc0022_strace_privilege import (
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIRECTORY))
+
+from rfc0022_strace_model import AuthorityError, Violation  # noqa: E402
+from rfc0022_strace_parser import parse_trace_directory  # noqa: E402
+from rfc0022_strace_preflight import (  # noqa: E402
+    PINNED_STRACE_EXECUTABLE,
+    require_isolated_root_runtime,
+    strace_preflight,
+)
+from rfc0022_strace_privilege import (  # noqa: E402
     build_invocation,
     normalize_target,
     prepare_target_identity,
 )
-from rfc0022_strace_runtime import (
+from rfc0022_strace_runtime import (  # noqa: E402
     cleanup_candidates,
     raw_trace_metadata,
     record_error_trace_metadata,
@@ -34,7 +41,7 @@ from rfc0022_strace_runtime import (
     write_report,
 )
 
-POLICY_SHA256 = "692bfcf43a9df0b4d3f867afb47a386d707ec234230c1048b193afa6f88b6818"  # pragma: allowlist secret
+POLICY_SHA256 = "727f9128ebc152b639c62424a171a274ad236956ffbcc88e45c11aa0c1cd1697"  # pragma: allowlist secret
 POLICY_KEYS = {
     "always_violation_syscalls",
     "async_syscalls",
@@ -57,7 +64,6 @@ POLICY_KEYS = {
     "unix_path_mutators",
     "write_open_flags",
 }
-VERSION_RE = re.compile(r"strace -- version (\d+(?:\.\d+){1,2})")
 
 
 def _sha256(path: Path) -> str:
@@ -124,55 +130,6 @@ def load_policy(path: Path) -> tuple[dict[str, Any], str]:
     return policy, digest
 
 
-def strace_preflight(minimum: str, executable: str = "strace") -> dict[str, str | None]:
-    resolved = shutil.which(executable)
-    if resolved is None:
-        raise AuthorityError("strace is absent")
-    resolved_path = Path(resolved).resolve()
-    try:
-        result = subprocess.run(
-            [os.fspath(resolved_path), "--version"],
-            check=False,
-            capture_output=True,
-            text=True,
-            close_fds=True,
-            timeout=5,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise AuthorityError("strace version preflight timed out") from exc
-    match = VERSION_RE.search(result.stdout)
-    if result.returncode != 0 or match is None:
-        raise AuthorityError("strace version preflight failed")
-    actual = match.group(1)
-    actual_tuple = tuple(int(part) for part in actual.split("."))
-    minimum_tuple = tuple(int(part) for part in minimum.split("."))
-    width = max(len(actual_tuple), len(minimum_tuple))
-    if actual_tuple + (0,) * (width - len(actual_tuple)) < minimum_tuple + (0,) * (
-        width - len(minimum_tuple)
-    ):
-        raise AuthorityError(f"strace {actual} is older than required {minimum}")
-    package: str | None = None
-    dpkg_query = shutil.which("dpkg-query")
-    if dpkg_query is not None:
-        package_result = subprocess.run(
-            [dpkg_query, "-W", "-f=${Package}=${Version}", "strace"],
-            check=False,
-            capture_output=True,
-            text=True,
-            close_fds=True,
-            timeout=5,
-        )
-        if package_result.returncode != 0 or not package_result.stdout.strip():
-            raise AuthorityError("strace package provenance query failed")
-        package = package_result.stdout.strip()
-    return {
-        "version": actual,
-        "executable": os.fspath(resolved_path),
-        "sha256": _sha256(resolved_path),
-        "package": package,
-    }
-
-
 def snapshot_root(root: Path) -> dict[str, Any]:
     records: list[dict[str, Any]] = []
     for path in sorted([root, *root.rglob("*")], key=lambda item: os.fspath(item)):
@@ -222,12 +179,15 @@ def run_authority(
     timeout: float,
     expected_returncode: int = 0,
 ) -> tuple[int, dict[str, Any]]:
+    require_isolated_root_runtime()
     policy, policy_digest = load_policy(policy_path)
     trace_dir = trace_dir.resolve()
     report_path = report_path.resolve()
     if _inside(report_path, trace_dir):
         raise AuthorityError("report path must be outside the raw trace directory")
-    strace_identity = strace_preflight(policy["minimum_strace_version"])
+    strace_identity = strace_preflight(
+        policy["minimum_strace_version"], PINNED_STRACE_EXECUTABLE
+    )
     strace_executable = strace_identity["executable"]
     if strace_executable is None:
         raise AuthorityError("strace executable provenance is absent")
@@ -352,6 +312,7 @@ def run_authority(
             policy,
             target_cwd,
             expected_executable=target[0],
+            expected_argv=target,
             minimum_root_execs=2,
         )
         report["trace_files"] = trace_metadata
@@ -447,7 +408,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         policy, _ = load_policy(args.policy)
         if args.command == "preflight":
-            identity = strace_preflight(policy["minimum_strace_version"])
+            identity = strace_preflight(
+                policy["minimum_strace_version"], PINNED_STRACE_EXECUTABLE
+            )
             print(
                 json.dumps(
                     {

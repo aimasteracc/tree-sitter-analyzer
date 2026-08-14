@@ -10,15 +10,21 @@ on:
       - "scripts/rfc0022_strace_model.py"
       - "scripts/rfc0022_strace_classify.py"
       - "scripts/rfc0022_strace_paths.py"
+      - "scripts/rfc0022_strace_preflight.py"
       - "scripts/rfc0022_strace_privilege.py"
       - "scripts/rfc0022_strace_state.py"
       - "scripts/rfc0022_strace_runtime.py"
       - "scripts/rfc0022_strace_positive_control.py"
       - "scripts/rfc0022_strace_target_launcher.py"
+      - "pytest.ini"
+      - "tests/__init__.py"
       - "tests/conftest.py"
+      - "tests/pytest_temp_hygiene.py"
       - "tests/contracts/test_rfc0022_strace_authority.py"
       - "tests/contracts/test_rfc0022_strace_controls.py"
       - "tests/contracts/test_rfc0022_strace_evidence_binding.py"
+      - "tests/contracts/test_rfc0022_strace_preflight.py"
+      - "tests/contracts/test_rfc0022_strace_privilege.py"
       - "tests/contracts/test_rfc0022_strace_process_state.py"
       - "tests/contracts/test_rfc0022_strace_authority_live.py"
       - "tests/fixtures/rfc0022_linux_expected_events.json"
@@ -35,15 +41,21 @@ on:
       - "scripts/rfc0022_strace_model.py"
       - "scripts/rfc0022_strace_classify.py"
       - "scripts/rfc0022_strace_paths.py"
+      - "scripts/rfc0022_strace_preflight.py"
       - "scripts/rfc0022_strace_privilege.py"
       - "scripts/rfc0022_strace_state.py"
       - "scripts/rfc0022_strace_runtime.py"
       - "scripts/rfc0022_strace_positive_control.py"
       - "scripts/rfc0022_strace_target_launcher.py"
+      - "pytest.ini"
+      - "tests/__init__.py"
       - "tests/conftest.py"
+      - "tests/pytest_temp_hygiene.py"
       - "tests/contracts/test_rfc0022_strace_authority.py"
       - "tests/contracts/test_rfc0022_strace_controls.py"
       - "tests/contracts/test_rfc0022_strace_evidence_binding.py"
+      - "tests/contracts/test_rfc0022_strace_preflight.py"
+      - "tests/contracts/test_rfc0022_strace_privilege.py"
       - "tests/contracts/test_rfc0022_strace_process_state.py"
       - "tests/contracts/test_rfc0022_strace_authority_live.py"
       - "tests/fixtures/rfc0022_linux_expected_events.json"
@@ -108,6 +120,8 @@ jobs:
           uv run pytest tests/contracts/test_rfc0022_strace_authority.py
           tests/contracts/test_rfc0022_strace_controls.py
           tests/contracts/test_rfc0022_strace_evidence_binding.py
+          tests/contracts/test_rfc0022_strace_preflight.py
+          tests/contracts/test_rfc0022_strace_privilege.py
           tests/contracts/test_rfc0022_strace_process_state.py
           tests/contracts/test_rfc0022_strace_authority_live.py
           -q -n 0 --reruns=0 --timeout=120

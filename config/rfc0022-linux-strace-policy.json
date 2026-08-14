@@ -1,6 +1,7 @@
 {
   "always_violation_syscalls": [
-    "process_vm_writev"
+    "process_vm_writev",
+    "userfaultfd"
   ],
   "async_syscalls": [
     "io_cancel",
@@ -340,7 +341,6 @@
     "timerfd_settime",
     "umask",
     "uname",
-    "userfaultfd",
     "wait4",
     "waitid"
   ],
