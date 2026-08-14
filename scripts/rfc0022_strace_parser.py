@@ -10,6 +10,13 @@ import re
 from pathlib import Path
 from typing import Any
 
+from rfc0022_strace_classify import (
+    global_write_violation,
+    harmless_fd_command,
+    is_nonfilesystem,
+    mapping_targets,
+    page_length,
+)
 from rfc0022_strace_model import AuthorityError, TraceCall, Violation
 from rfc0022_strace_paths import classify_unix_bind
 from rfc0022_strace_state import ProcessState, child_pid, process_graph
@@ -80,14 +87,6 @@ def _fd_annotation(value: str) -> str | None:
     if match is None:
         raise AuthorityError(f"expected decoded descriptor, got {value!r}")
     return match.group(1)
-
-
-def _is_nonfilesystem(annotation: str, policy: dict[str, Any]) -> bool:
-    value = annotation.removeprefix("/")
-    return any(
-        annotation.startswith(prefix) or value.startswith(prefix)
-        for prefix in policy["nonfilesystem_fd_prefixes"]
-    )
 
 
 def _result_succeeded(result: str) -> bool:
@@ -188,23 +187,6 @@ def _open_target(call: TraceCall, cwd: Path) -> str:
     return _resolve_path(call, path_index, cwd)
 
 
-def _mapping_targets(
-    records: list[tuple[int, int, bool, str | None]], policy: dict[str, Any]
-) -> list[str]:
-    return sorted(
-        {
-            target
-            for _, _, shared, target in records
-            if shared and target is not None and not _is_nonfilesystem(target, policy)
-        }
-    )
-
-
-def _page_length(length: int, policy: dict[str, Any]) -> int:
-    page_size = int(policy["page_size"])
-    return ((length + page_size - 1) // page_size) * page_size
-
-
 def classify_calls(
     calls: list[TraceCall],
     policy: dict[str, Any],
@@ -221,7 +203,12 @@ def classify_calls(
         args = call.arguments
         child = child_pid(call, process_syscalls)
         if child is not None:
-            state.spawn(call.pid, child, "|".join(args))
+            state.spawn(
+                call.pid,
+                child,
+                "|".join(args),
+                shares_vm=call.syscall == "vfork",
+            )
         cwd = state.cwd(call.pid)
         if call.syscall in {"execve", "execveat"} and _result_succeeded(call.result):
             state.exec(call.pid)
@@ -229,9 +216,13 @@ def classify_calls(
             state.chdir(call.pid, Path(_resolve_path(call, 0, cwd)))
         elif call.syscall == "fchdir" and _result_succeeded(call.result):
             annotation = _fd_annotation(args[0])
-            if annotation is None or _is_nonfilesystem(annotation, policy):
+            if annotation is None or is_nonfilesystem(annotation, policy):
                 raise AuthorityError("fchdir descriptor provenance is unknown")
             state.chdir(call.pid, Path(annotation))
+        global_violation = global_write_violation(call, policy)
+        if global_violation is not None:
+            violations.append(global_violation)
+            continue
         if (
             call.syscall in policy["async_syscalls"]
             or call.syscall in policy["always_violation_syscalls"]
@@ -301,7 +292,7 @@ def classify_calls(
             annotation = _fd_annotation(args[index])
             if annotation is None:
                 raise AuthorityError(f"{call.syscall} has unannotated destination fd")
-            if not _is_nonfilesystem(annotation, policy):
+            if not is_nonfilesystem(annotation, policy):
                 violations.append(
                     Violation(
                         call.timestamp,
@@ -315,14 +306,16 @@ def classify_calls(
                 )
             continue
         if call.syscall in {"mmap", "mmap2"}:
-            if len(args) < 5:
+            if len(args) < 6:
                 raise AuthorityError("mmap arguments are incomplete")
             try:
-                length = _page_length(int(args[1], 0), policy)
+                length = page_length(int(args[1], 0), policy)
             except ValueError as exc:
                 raise AuthorityError("mmap length is not exact") from exc
             annotation = _fd_annotation(args[4])
             anonymous = "MAP_ANONYMOUS" in args[3] or args[4].startswith("-1")
+            if not anonymous and annotation is None:
+                raise AuthorityError("mmap filesystem fd provenance is unknown")
             target = None if anonymous else annotation
             shared = "MAP_SHARED" in args[3]
             result_address = re.match(r"0x([0-9a-fA-F]+)$", call.result)
@@ -335,7 +328,7 @@ def classify_calls(
                     raise AuthorityError(
                         "shared writable mmap has unknown fd provenance"
                     )
-                if not _is_nonfilesystem(target, policy):
+                if not is_nonfilesystem(target, policy):
                     violations.append(
                         Violation(
                             call.timestamp,
@@ -349,13 +342,16 @@ def classify_calls(
                         )
                     )
             continue
-        if call.syscall == "madvise" and len(args) > 2 and "MADV_REMOVE" in args[2]:
+        writeback_advice = {"MADV_DONTNEED", "MADV_PAGEOUT", "MADV_REMOVE"}
+        if call.syscall == "madvise" and len(args) < 3:
+            raise AuthorityError("madvise arguments are incomplete")
+        if call.syscall == "madvise" and args[2] in writeback_advice:
             try:
                 address = int(args[0], 0)
-                length = _page_length(int(args[1], 0), policy)
+                length = page_length(int(args[1], 0), policy)
             except ValueError as exc:
                 raise AuthorityError("madvise range is not exact") from exc
-            for target in _mapping_targets(
+            for target in mapping_targets(
                 state.covering(call.pid, address, length), policy
             ):
                 violations.append(
@@ -364,7 +360,7 @@ def classify_calls(
                         call.pid,
                         call.line,
                         call.syscall,
-                        "shared_mapping_remove",
+                        "shared_mapping_writeback",
                         target,
                         call.result,
                         args[2],
@@ -372,11 +368,12 @@ def classify_calls(
                 )
             continue
         if call.syscall in {"mprotect", "msync", "munmap"}:
-            if len(args) < 2:
+            required_arguments = 2 if call.syscall == "munmap" else 3
+            if len(args) < required_arguments:
                 raise AuthorityError(f"{call.syscall} arguments are incomplete")
             try:
                 address = int(args[0], 0)
-                length = _page_length(int(args[1], 0), policy)
+                length = page_length(int(args[1], 0), policy)
             except ValueError as exc:
                 raise AuthorityError(f"{call.syscall} range is not exact") from exc
             if call.syscall == "munmap":
@@ -388,7 +385,7 @@ def classify_calls(
             )
             if needs_write:
                 records = state.covering(call.pid, address, length)
-                for target in _mapping_targets(records, policy):
+                for target in mapping_targets(records, policy):
                     violations.append(
                         Violation(
                             call.timestamp,
@@ -405,20 +402,9 @@ def classify_calls(
             annotation = _fd_annotation(args[0]) if args else None
             if annotation is None:
                 raise AuthorityError(f"{call.syscall} has unannotated fd")
-            if not _is_nonfilesystem(annotation, policy):
+            if not is_nonfilesystem(annotation, policy):
                 command = args[1] if len(args) > 1 else ""
-                harmless = (
-                    call.syscall == "ioctl"
-                    and (
-                        command in policy["safe_ioctl_commands"]
-                        or (
-                            command in policy["enotty_ioctl_commands"]
-                            and call.result.startswith("-1 ENOTTY")
-                        )
-                    )
-                ) or (
-                    call.syscall == "fcntl" and command in policy["safe_fcntl_commands"]
-                )
+                harmless = harmless_fd_command(call, command, policy)
                 if not harmless:
                     raise AuthorityError(
                         f"unclassified {call.syscall} on filesystem fd"
@@ -435,12 +421,14 @@ def parse_trace_directory(
     policy: dict[str, Any],
     initial_cwd: Path,
     expected_executable: str | None = None,
+    minimum_root_execs: int = 1,
 ) -> tuple[list[Violation], list[dict[str, Any]], set[int]]:
     paths: list[tuple[int, Path]] = []
     for path in trace_dir.iterdir():
-        match = TRACE_NAME.match(path.name)
-        if match and path.is_file():
-            paths.append((int(match.group(1)), path))
+        match = TRACE_NAME.fullmatch(path.name)
+        if match is None or not path.is_file() or path.is_symlink():
+            raise AuthorityError(f"unexpected trace directory entry: {path.name}")
+        paths.append((int(match.group(1)), path))
     if not paths:
         raise AuthorityError("strace produced no per-process trace files")
     all_calls: list[TraceCall] = []
@@ -460,14 +448,17 @@ def parse_trace_directory(
             and call.syscall in {"execve", "execveat"}
             and _result_succeeded(call.result)
         ]
-        matched = False
-        for call in successful_execs:
-            path_index = 0 if call.syscall == "execve" else 1
-            if path_index < len(call.arguments):
-                actual = _decode_c_string(call.arguments[path_index])
-                matched = matched or os.path.realpath(actual) == expected
-        if not matched:
-            raise AuthorityError("root trace lacks the expected successful target exec")
+        if len(successful_execs) < minimum_root_execs:
+            raise AuthorityError("root trace lacks mandatory exec transitions")
+        final_exec = successful_execs[-1]
+        path_index = 0 if final_exec.syscall == "execve" else 1
+        actual = (
+            _decode_c_string(final_exec.arguments[path_index])
+            if path_index < len(final_exec.arguments)
+            else ""
+        )
+        if os.path.realpath(actual) != expected:
+            raise AuthorityError("final root exec does not match the expected target")
     metadata: list[dict[str, Any]] = []
     for pid in sorted(pids):
         parent = edges.get(pid)

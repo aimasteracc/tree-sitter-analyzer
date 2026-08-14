@@ -5,6 +5,7 @@
   "controls": {
     "absolute-write": {
       "authority_status": "healthy",
+      "cleanup_survivor_count": 0,
       "errors": [],
       "events": [
         ["root", "openat", "write_capable_open", "absolute-created.txt", "O_CREAT|O_WRONLY", "success"],
@@ -22,6 +23,7 @@
     },
     "clean": {
       "authority_status": "healthy",
+      "cleanup_survivor_count": 0,
       "errors": [],
       "events": [
       ],
@@ -35,6 +37,7 @@
     },
     "create-unlink": {
       "authority_status": "healthy",
+      "cleanup_survivor_count": 0,
       "errors": [],
       "events": [
         ["root", "openat", "write_capable_open", "native-created.txt", "O_CREAT|O_WRONLY", "success"],
@@ -52,6 +55,7 @@
     },
     "descendant-create-unlink": {
       "authority_status": "healthy",
+      "cleanup_survivor_count": 0,
       "errors": [],
       "events": [
         ["descendant", "openat", "write_capable_open", "descendant-created.txt", "O_CREAT|O_WRONLY", "success"],
@@ -70,6 +74,7 @@
     },
     "inherited-fd": {
       "authority_status": "healthy",
+      "cleanup_survivor_count": 0,
       "errors": [],
       "events": [
         ["root", "openat", "write_capable_open", "fixture.txt", "O_APPEND|O_WRONLY", "success"],
@@ -87,6 +92,7 @@
     },
     "mkdir-rmdir": {
       "authority_status": "healthy",
+      "cleanup_survivor_count": 0,
       "errors": [],
       "events": [
         ["root", "mkdir", "pathname_mutation", "made-directory", null, "success"],
@@ -103,6 +109,7 @@
     },
     "nonzero-exit": {
       "authority_status": "error",
+      "cleanup_survivor_count": 0,
       "errors": ["target return code mismatch: expected 0, got 1"],
       "events": [
       ],
@@ -111,10 +118,12 @@
       "snapshots_equal": true,
       "target_returncode": 1,
       "trace_graph": [
+        ["root", null]
       ]
     },
     "permission-denied": {
       "authority_status": "healthy",
+      "cleanup_survivor_count": 0,
       "errors": [],
       "events": [
         ["root", "openat", "write_capable_open", "/sys/rfc0022-authority-denied", "O_CREAT|O_WRONLY", "-1 EACCES"]
@@ -129,6 +138,7 @@
     },
     "rename-restore": {
       "authority_status": "healthy",
+      "cleanup_survivor_count": 0,
       "errors": [],
       "events": [
         ["root", "rename", "pathname_mutation", "fixture.txt", null, "success"],
@@ -147,6 +157,7 @@
     },
     "shared-writable-mmap": {
       "authority_status": "healthy",
+      "cleanup_survivor_count": 0,
       "errors": [],
       "events": [
         ["root", "openat", "write_capable_open", "fixture.txt", "O_RDWR", "success"],
@@ -165,6 +176,7 @@
     },
     "sqlite-sidecar": {
       "authority_status": "healthy",
+      "cleanup_survivor_count": 0,
       "errors": [],
       "events": [
         ["root", "openat", "write_capable_open", "authority.sqlite3", "O_CREAT|O_RDWR", "success"],
@@ -219,6 +231,7 @@
     },
     "timeout-detached-descendant": {
       "authority_status": "error",
+      "cleanup_survivor_count": 1,
       "errors": ["strace target timed out"],
       "events": [
       ],
@@ -227,10 +240,29 @@
       "snapshots_equal": true,
       "target_returncode": -9,
       "trace_graph": [
+        ["descendant", "root"],
+        ["root", null]
+      ]
+    },
+    "trace-tamper-denied": {
+      "authority_status": "healthy",
+      "cleanup_survivor_count": 0,
+      "errors": [],
+      "events": [
+        ["root", "unlink", "pathname_mutation", "<trace-dir>/trace.<pid>", null, "-1 EACCES"],
+        ["root", "openat", "write_capable_open", "<trace-dir>/forged", "O_CREAT|O_WRONLY", "-1 EACCES"]
+      ],
+      "outcome": "violation",
+      "returncode": 1,
+      "snapshots_equal": true,
+      "target_returncode": 0,
+      "trace_graph": [
+        ["root", null]
       ]
     },
     "truncate-restore": {
       "authority_status": "healthy",
+      "cleanup_survivor_count": 0,
       "errors": [],
       "events": [
         ["root", "truncate", "pathname_mutation", "fixture.txt", null, "success"],
@@ -248,6 +280,7 @@
     },
     "write-then-delete": {
       "authority_status": "healthy",
+      "cleanup_survivor_count": 0,
       "errors": [],
       "events": [
         ["root", "openat", "write_capable_open", "write-then-delete.txt", "O_CREAT|O_TRUNC|O_WRONLY", "success"],

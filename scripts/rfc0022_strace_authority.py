@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed Linux strace authority instrument for RFC-0022 P0.4.
-
-This qualifies the monitor only.  It does not call an adapter and must not be
-used as evidence that any ``read_existing`` route is supported.
-"""
+"""Fail-closed RFC-0022 Linux monitor; this does not certify any adapter."""
 
 from __future__ import annotations
 
@@ -23,20 +19,29 @@ from typing import Any
 
 from rfc0022_strace_model import AuthorityError, Violation
 from rfc0022_strace_parser import parse_trace_directory
+from rfc0022_strace_privilege import (
+    build_invocation,
+    normalize_target,
+    prepare_target_identity,
+)
 from rfc0022_strace_runtime import (
     cleanup_candidates,
+    raw_trace_metadata,
+    record_error_trace_metadata,
+    seal_trace_directory,
     surviving_token_pids,
     write_failure_report,
     write_report,
 )
 
-POLICY_SHA256 = "49d907007172a9804261f8d8492295062964d37c03652b01124101b3b39707ab"  # pragma: allowlist secret
+POLICY_SHA256 = "692bfcf43a9df0b4d3f867afb47a386d707ec234230c1048b193afa6f88b6818"  # pragma: allowlist secret
 POLICY_KEYS = {
     "always_violation_syscalls",
     "async_syscalls",
     "authority_id",
     "enotty_ioctl_commands",
     "fd_sinks",
+    "global_write_syscalls",
     "mapping_syscalls",
     "minimum_strace_version",
     "nonfilesystem_fd_prefixes",
@@ -47,6 +52,7 @@ POLICY_KEYS = {
     "safe_ioctl_commands",
     "safe_syscalls",
     "schema_version",
+    "target_user",
     "trace_arguments",
     "unix_path_mutators",
     "write_open_flags",
@@ -79,6 +85,10 @@ def load_policy(path: Path) -> tuple[dict[str, Any], str]:
         raise AuthorityError("unsupported policy schema_version")
     if policy["authority_id"] != "rfc0022-linux-strace-v1":
         raise AuthorityError("unsupported authority_id")
+    if policy["target_user"] != "rfc0022-target":
+        raise AuthorityError("unsupported target_user")
+    if "trace=all" not in policy["trace_arguments"]:
+        raise AuthorityError("policy must trace every syscall")
     required_args = {"-ff", "-yy", "-q", "-ttt", "-v", "--kill-on-exit"}
     if not required_args.issubset(set(policy["trace_arguments"])):
         raise AuthorityError("policy omits a mandatory strace qualifier")
@@ -93,6 +103,7 @@ def load_policy(path: Path) -> tuple[dict[str, Any], str]:
         "always_violation_syscalls",
         "async_syscalls",
         "enotty_ioctl_commands",
+        "global_write_syscalls",
         "mapping_syscalls",
         "nonfilesystem_fd_prefixes",
         "process_syscalls",
@@ -222,11 +233,14 @@ def run_authority(
         raise AuthorityError("strace executable provenance is absent")
     roots = [root.resolve(strict=True) for root in monitor_roots]
     target_cwd = target_cwd.resolve(strict=True)
-    if not target or not target[0]:
-        raise AuthorityError("target argv is empty")
+    target = normalize_target(target)
+    for root in roots:
+        if _inside(trace_dir, root) or _inside(report_path, root):
+            raise AuthorityError("authority artifacts overlap a monitored root")
     if trace_dir.exists() and any(trace_dir.iterdir()):
         raise AuthorityError("trace directory must be absent or empty")
-    trace_dir.mkdir(parents=True, exist_ok=True)
+    trace_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+    trace_dir.chmod(0o700)
     token = uuid.uuid4().hex
     isolation = trace_dir.parent / f"isolation-{token}"
     if isolation.exists():
@@ -236,12 +250,17 @@ def run_authority(
     temp = isolation / "tmp"
     config = isolation / "config"
     data = isolation / "data"
-    for directory in (home, cache, temp, config, data):
+    isolation_directories = (home, cache, temp, config, data)
+    for directory in isolation_directories:
         directory.mkdir(parents=True)
-    roots.extend((home, cache, temp, config, data))
-    for root in roots:
+    launcher = Path(__file__).with_name("rfc0022_strace_target_launcher.py")
+    target_identity = prepare_target_identity(
+        policy["target_user"], isolation_directories, launcher
+    )
+    roots.extend(isolation_directories)
+    for root in isolation_directories:
         if _inside(trace_dir, root) or _inside(report_path, root):
-            raise AuthorityError("authority artifacts overlap a monitored root")
+            raise AuthorityError("authority artifacts overlap an isolation root")
     before = [snapshot_root(root) for root in roots]
     environment = {
         "HOME": os.fspath(home),
@@ -259,14 +278,9 @@ def run_authority(
         "XDG_DATA_HOME": os.fspath(data),
     }
     trace_prefix = trace_dir / "trace"
-    invocation = [
-        strace_executable,
-        *policy["trace_arguments"],
-        "-o",
-        os.fspath(trace_prefix),
-        "--",
-        *target,
-    ]
+    invocation = build_invocation(
+        strace_executable, policy, trace_prefix, launcher, target
+    )
     report: dict[str, Any] = {
         "schema_version": 1,
         "authority_id": policy["authority_id"],
@@ -276,6 +290,7 @@ def run_authority(
         "cleanup_survivor_pids": [],
         "cleanup_remaining_pids": [],
         "invocation": invocation,
+        "raw_trace_files": [],
         "policy": {
             "path": os.fspath(policy_path.resolve()),
             "sha256": policy_digest,
@@ -284,6 +299,7 @@ def run_authority(
         },
         "monitor_roots": [os.fspath(root) for root in roots],
         "snapshots": {"before": before},
+        "target_identity": target_identity,
         "trace_files": [],
         "violations": [],
     }
@@ -305,6 +321,9 @@ def run_authority(
             stdout, stderr = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             timed_out = True
+            report["cleanup_survivor_pids"] = [
+                pid for pid in surviving_token_pids(token) if pid != process.pid
+            ]
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
@@ -333,6 +352,7 @@ def run_authority(
             policy,
             target_cwd,
             expected_executable=target[0],
+            minimum_root_execs=2,
         )
         report["trace_files"] = trace_metadata
         survivors = sorted(
@@ -362,6 +382,8 @@ def run_authority(
                         )
                     )
         report["violations"] = [asdict(item) for item in violations]
+        report["raw_trace_files"] = raw_trace_metadata(trace_dir)
+        seal_trace_directory(trace_dir)
         report["authority_status"] = "healthy"
         report["outcome"] = "violation" if violations else "clean"
         return (1 if violations else 0), report
@@ -391,6 +413,7 @@ def run_authority(
                 report["snapshots"]["equal"] = before == report["snapshots"]["after"]
             except OSError as snapshot_exc:
                 report["errors"].append(f"after snapshot failed: {snapshot_exc}")
+        record_error_trace_metadata(report, trace_dir)
         return 2, report
     finally:
         report["target"] = {

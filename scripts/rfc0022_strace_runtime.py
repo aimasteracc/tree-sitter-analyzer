@@ -3,13 +3,74 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
 import signal
+import stat
 import time
 import uuid
 from pathlib import Path
 from typing import Any
+
+TRACE_NAME = re.compile(r"trace\.(\d+)")
+TERMINAL = re.compile(r"\+\+\+ (?:exited with \d+|killed by .+) \+\+\+")
+
+
+def raw_trace_metadata(
+    trace_dir: Path, *, expected_uid: int = 0
+) -> list[dict[str, Any]]:
+    metadata: list[dict[str, Any]] = []
+    if not trace_dir.is_dir():
+        return metadata
+    directory_stat = trace_dir.stat()
+    if (
+        directory_stat.st_uid != expected_uid
+        or stat.S_IMODE(directory_stat.st_mode) != 0o700
+    ):
+        raise OSError("raw trace directory lost root-only ownership")
+    for path in sorted(trace_dir.iterdir()):
+        match = TRACE_NAME.fullmatch(path.name)
+        if match is None or not path.is_file() or path.is_symlink():
+            raise OSError(f"unexpected raw trace entry: {path.name}")
+        path_stat = path.stat()
+        if path_stat.st_uid != expected_uid or stat.S_IMODE(path_stat.st_mode) & 0o022:
+            raise OSError(f"raw trace is not root-owned and protected: {path.name}")
+        raw = path.read_bytes()
+        try:
+            lines = raw.decode("utf-8", "strict").splitlines()
+        except UnicodeDecodeError as exc:
+            raise OSError(f"raw trace is not UTF-8: {path.name}") from exc
+        terminal = None
+        if lines:
+            body = lines[-1].partition(" ")[2]
+            terminal = body if TERMINAL.fullmatch(body) else None
+        metadata.append(
+            {
+                "pid": int(match.group(1)),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "size": len(raw),
+                "terminal": terminal,
+            }
+        )
+    return metadata
+
+
+def seal_trace_directory(trace_dir: Path) -> None:
+    for path in trace_dir.iterdir():
+        if not path.is_file() or path.is_symlink():
+            raise OSError(f"cannot seal unexpected trace entry: {path.name}")
+        path.chmod(0o444)
+    trace_dir.chmod(0o555)
+
+
+def record_error_trace_metadata(report: dict[str, Any], trace_dir: Path) -> None:
+    try:
+        report["raw_trace_files"] = raw_trace_metadata(trace_dir)
+        seal_trace_directory(trace_dir)
+    except OSError as exc:
+        report["errors"].append(f"raw trace finalization failed: {exc}")
 
 
 def write_report(path: Path, report: dict[str, Any]) -> None:
@@ -41,6 +102,8 @@ def write_failure_report(
             "outcome": "indeterminate",
             "errors": [error],
             "policy": {"path": os.fspath(policy_path.resolve())},
+            "raw_trace_files": [],
+            "target_identity": None,
             "trace_files": [],
             "violations": [],
             "target": {

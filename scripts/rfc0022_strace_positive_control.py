@@ -135,6 +135,26 @@ def _permission_denied(root: Path, absolute_target: Path | None) -> None:
         raise RuntimeError("permission-denied control unexpectedly opened its target")
 
 
+def _trace_tamper_denied(root: Path, absolute_target: Path | None) -> None:
+    del root
+    if absolute_target is None or not absolute_target.is_absolute():
+        raise ValueError("trace-tamper-denied requires an absolute --absolute-target")
+    own_trace = absolute_target.parent / f"trace.{os.getpid()}"
+    for operation in (
+        lambda: os.unlink(own_trace),
+        lambda: os.open(absolute_target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600),
+    ):
+        try:
+            result = operation()
+        except OSError as exc:
+            if exc.errno in {errno.EACCES, errno.EPERM}:
+                continue
+            raise
+        if isinstance(result, int):
+            os.close(result)
+        raise RuntimeError("target modified authority-owned raw trace storage")
+
+
 def _write_then_delete(root: Path, _: Path | None) -> None:
     path = _inside(root, "write-then-delete.txt")
     path.write_bytes(b"temporary bytes\n")
@@ -196,6 +216,7 @@ CONTROLS: dict[str, Callable[[Path, Path | None], None]] = {
     "shared-writable-mmap": _shared_writable_mmap,
     "sqlite-sidecar": _sqlite_sidecar,
     "timeout-detached-descendant": _timeout_detached_descendant,
+    "trace-tamper-denied": _trace_tamper_denied,
     "truncate-restore": _truncate_restore,
     "write-then-delete": _write_then_delete,
 }

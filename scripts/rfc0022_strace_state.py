@@ -38,7 +38,9 @@ class ProcessState:
         except KeyError as exc:
             raise AuthorityError(f"cwd state missing for pid {pid}") from exc
 
-    def spawn(self, parent: int, child: int, flags: str) -> None:
+    def spawn(
+        self, parent: int, child: int, flags: str, *, shares_vm: bool = False
+    ) -> None:
         if child in self._cwd_space_by_pid or child in self._map_space_by_pid:
             raise AuthorityError(f"duplicate process state for pid {child}")
         try:
@@ -52,7 +54,7 @@ class ProcessState:
             cwd_space = self._fresh_space()
             self._cwd_space_by_pid[child] = cwd_space
             self._cwd_spaces[cwd_space] = self._cwd_spaces[parent_cwd_space]
-        if "CLONE_VM" in flags:
+        if "CLONE_VM" in flags or shares_vm:
             self._map_space_by_pid[child] = parent_map_space
         else:
             map_space = self._fresh_space()

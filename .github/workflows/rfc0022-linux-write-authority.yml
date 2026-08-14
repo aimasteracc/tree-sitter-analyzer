@@ -8,14 +8,21 @@ on:
       - "scripts/rfc0022_strace_authority.py"
       - "scripts/rfc0022_strace_parser.py"
       - "scripts/rfc0022_strace_model.py"
+      - "scripts/rfc0022_strace_classify.py"
       - "scripts/rfc0022_strace_paths.py"
+      - "scripts/rfc0022_strace_privilege.py"
       - "scripts/rfc0022_strace_state.py"
       - "scripts/rfc0022_strace_runtime.py"
       - "scripts/rfc0022_strace_positive_control.py"
+      - "scripts/rfc0022_strace_target_launcher.py"
+      - "tests/conftest.py"
       - "tests/contracts/test_rfc0022_strace_authority.py"
       - "tests/contracts/test_rfc0022_strace_controls.py"
       - "tests/contracts/test_rfc0022_strace_process_state.py"
       - "tests/contracts/test_rfc0022_strace_authority_live.py"
+      - "tests/fixtures/rfc0022_linux_expected_events.json"
+      - "pyproject.toml"
+      - "uv.lock"
       - "rfcs/0022-task-outcome-apis.md"
       - ".github/workflows/rfc0022-linux-write-authority.yml"
   push:
@@ -25,14 +32,21 @@ on:
       - "scripts/rfc0022_strace_authority.py"
       - "scripts/rfc0022_strace_parser.py"
       - "scripts/rfc0022_strace_model.py"
+      - "scripts/rfc0022_strace_classify.py"
       - "scripts/rfc0022_strace_paths.py"
+      - "scripts/rfc0022_strace_privilege.py"
       - "scripts/rfc0022_strace_state.py"
       - "scripts/rfc0022_strace_runtime.py"
       - "scripts/rfc0022_strace_positive_control.py"
+      - "scripts/rfc0022_strace_target_launcher.py"
+      - "tests/conftest.py"
       - "tests/contracts/test_rfc0022_strace_authority.py"
       - "tests/contracts/test_rfc0022_strace_controls.py"
       - "tests/contracts/test_rfc0022_strace_process_state.py"
       - "tests/contracts/test_rfc0022_strace_authority_live.py"
+      - "tests/fixtures/rfc0022_linux_expected_events.json"
+      - "pyproject.toml"
+      - "uv.lock"
       - "rfcs/0022-task-outcome-apis.md"
       - ".github/workflows/rfc0022-linux-write-authority.yml"
   workflow_dispatch:
@@ -51,6 +65,8 @@ jobs:
       PYTHONDONTWRITEBYTECODE: "1"
       RFC0022_RUN_LIVE_STRACE: "1"
       RFC0022_AUTHORITY_ARTIFACT_DIR: ${{ github.workspace }}/authority-artifacts
+      RFC0022_AUTHORITY_CASE_DIR: ${{ github.workspace }}/authority-cases
+      RFC0022_TARGET_USER: rfc0022-target
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -64,9 +80,17 @@ jobs:
       - name: Install locked project environment
         run: uv sync --frozen --all-extras
         shell: bash
-      - name: Create evidence root
+      - name: Create isolated target principal and evidence roots
         run: |
-          mkdir -p "$RFC0022_AUTHORITY_ARTIFACT_DIR"
+          if id "$RFC0022_TARGET_USER" >/dev/null 2>&1; then
+            echo "Pinned target user already exists" >&2
+            exit 1
+          fi
+          sudo useradd --system --user-group --no-create-home \
+            --shell /usr/sbin/nologin "$RFC0022_TARGET_USER"
+          test "$(id -nG "$RFC0022_TARGET_USER")" = "$RFC0022_TARGET_USER"
+          mkdir -p "$RFC0022_AUTHORITY_ARTIFACT_DIR" "$RFC0022_AUTHORITY_CASE_DIR"
+          chmod 0777 "$RFC0022_AUTHORITY_CASE_DIR"
           printf '{"status":"started"}\n' > "$RFC0022_AUTHORITY_ARTIFACT_DIR/job-result.json"
         shell: bash
       - name: Enforce pinned authority preflight
@@ -89,6 +113,10 @@ jobs:
           mkdir -p "$RFC0022_AUTHORITY_ARTIFACT_DIR"
           printf '{"job":"qualify-monitor","status":"%s"}\n' '${{ job.status }}' \
             > "$RFC0022_AUTHORITY_ARTIFACT_DIR/job-result.json"
+        shell: bash
+      - name: Make completed evidence readable for upload
+        if: always()
+        run: sudo chmod -R a+rX "$RFC0022_AUTHORITY_ARTIFACT_DIR"
         shell: bash
       - name: Upload raw traces and normalized reports
         if: always()

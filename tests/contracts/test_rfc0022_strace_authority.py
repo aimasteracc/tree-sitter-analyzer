@@ -90,10 +90,11 @@ def test_policy_is_exact_closed_and_digest_bound() -> None:
         "-v",
         "--kill-on-exit",
         "-e",
-        "trace=%file,%desc,%memory,%network,clone,clone3,fork,vfork,execve,execveat,"
-        "exit,exit_group,io_uring_setup,io_uring_enter,io_uring_register,"
-        "io_setup,io_submit,io_cancel,io_destroy,io_getevents,process_vm_writev",
+        "trace=all",
     ]
+    assert POLICY["target_user"] == "rfc0022-target"
+    assert POLICY["global_write_syscalls"] == ["sync"]
+    assert POLICY["fd_sinks"]["syncfs"] == 0
     assert set(POLICY["write_open_flags"]) == {
         "O_APPEND",
         "O_CREAT",
@@ -187,6 +188,8 @@ def test_run_setup_failure_writes_normalized_error_report(
         "outcome": "indeterminate",
         "errors": ["strace is absent"],
         "policy": {"path": str(POLICY_PATH.resolve())},
+        "raw_trace_files": [],
+        "target_identity": None,
         "trace_files": [],
         "violations": [],
         "target": {
@@ -339,7 +342,7 @@ def test_shared_mapping_transition_and_async_are_exact(tmp_path: Path) -> None:
         _event(
             line=6,
             syscall="madvise",
-            operation="shared_mapping_remove",
+            operation="shared_mapping_writeback",
             target="/project/remove",
             result="-1 EACCES (Permission denied)",
             flags="MADV_REMOVE",
@@ -402,7 +405,7 @@ def test_descendant_fd_write_and_trace_closure_are_exact(tmp_path: Path) -> None
     ("bodies", "message"),
     [
         (
-            ["getrandom(NULL, 0, 0) = 0", "+++ exited with 0 +++"],
+            ['mq_unlink("/queue") = 0', "+++ exited with 0 +++"],
             "unknown traced syscall",
         ),
         (
