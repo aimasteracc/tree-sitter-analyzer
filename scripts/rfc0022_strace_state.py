@@ -74,11 +74,7 @@ class ProcessState:
             self._map_spaces[map_space] = list(self._map_spaces[parent_map_space])
 
     def exec(self, pid: int) -> None:
-        cwd = self.cwd(pid)
-        cwd_space = self._fresh_space()
         map_space = self._fresh_space()
-        self._cwd_space_by_pid[pid] = cwd_space
-        self._cwd_spaces[cwd_space] = cwd
         self._map_space_by_pid[pid] = map_space
         self._map_spaces[map_space] = []
 

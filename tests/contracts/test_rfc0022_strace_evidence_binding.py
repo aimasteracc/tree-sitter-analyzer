@@ -438,3 +438,59 @@ def test_raw_inventory_rejects_noncanonical_trace_pid(tmp_path: Path) -> None:
     )
     with pytest.raises(OSError, match="unexpected raw trace entry: trace.0200"):
         raw_trace_metadata(traces, expected_uid=traces.stat().st_uid)
+
+
+# PR #1259 / discussion_r3785903822: exec preserves a CLONE_FS cwd space.
+def test_clone_fs_cwd_sharing_survives_exec(tmp_path: Path) -> None:
+    traces = tmp_path / "clone-fs-exec"
+    traces.mkdir()
+    (traces / "trace.100").write_text(
+        "1700000000.000001 clone(child_stack=NULL, flags=CLONE_FS|SIGCHLD) = 200\n"
+        '1700000000.000005 unlink("marker") = -1 ENOENT (No such file or directory)\n'
+        "1700000000.000006 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    (traces / "trace.200").write_text(
+        '1700000000.000002 execve("/bin/tool", ["tool"], []) = 0\n'
+        '1700000000.000003 chdir("/shared-after-exec") = 0\n'
+        "1700000000.000004 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    violations, _, _ = parse_trace_directory(traces, POLICY, Path("/project"))
+    assert len(violations) == 1
+    assert violations[0].target == "/shared-after-exec/marker"
+
+
+# PR #1259 / discussion_r3785903832: blocked safe calls do not consume map provenance.
+@pytest.mark.parametrize(
+    ("entry", "resume"),
+    [
+        (
+            "futex(0x2000, FUTEX_WAIT_PRIVATE, 0, NULL",
+            "futex resumed>) = -1 EAGAIN (Resource temporarily unavailable)",
+        ),
+        ('read(3<pipe:[42]>, "x", 1', "read resumed>) = 1"),
+        ("wait4(300, 0x2000, 0, NULL", "wait4 resumed>) = 300"),
+        ("waitid(P_PID, 300, 0x2000, WEXITED, NULL", "waitid resumed>) = 0"),
+    ],
+)
+def test_state_independent_overlap_does_not_make_mapping_ambiguous(
+    tmp_path: Path, entry: str, resume: str
+) -> None:
+    traces = tmp_path / "independent-overlap"
+    traces.mkdir()
+    (traces / "trace.100").write_text(
+        "1700000000.000001 clone(child_stack=NULL, flags=CLONE_VM|SIGCHLD) = 200\n"
+        "1700000000.000002 mmap(NULL, 4096, PROT_READ, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0 <unfinished ...>\n"
+        "1700000000.000004 <... mmap resumed>) = 0x1000\n"
+        "1700000000.000006 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    (traces / "trace.200").write_text(
+        f"1700000000.000003 {entry} <unfinished ...>\n"
+        f"1700000000.000005 <... {resume}\n"
+        "1700000000.000006 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    violations, _, _ = parse_trace_directory(traces, POLICY, Path("/project"))
+    assert violations == []

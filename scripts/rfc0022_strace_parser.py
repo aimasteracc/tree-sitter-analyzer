@@ -219,7 +219,7 @@ def classify_calls(
     for call in ordered:
         args = call.arguments
         if call.syscall in state_transitions and _result_succeeded(call.result):
-            reject_ambiguous_state_transition(call, calls, state, process_syscalls)
+            reject_ambiguous_state_transition(call, calls, state, policy)
         child = child_pid(call, process_syscalls)
         if child is not None:
             state.spawn(

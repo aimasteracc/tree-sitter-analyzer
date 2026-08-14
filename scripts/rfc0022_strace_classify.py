@@ -88,8 +88,19 @@ def reject_ambiguous_state_transition(
     call: TraceCall,
     calls: list[TraceCall],
     state: ProcessState,
-    process_syscalls: set[str],
+    policy: dict[str, Any],
 ) -> None:
+    process_syscalls = set(policy["process_syscalls"])
+    mapping_calls = {
+        "execve",
+        "execveat",
+        "madvise",
+        "mmap",
+        "mmap2",
+        "mprotect",
+        "msync",
+        "munmap",
+    }
     mapping_transition = call.syscall in {
         "execve",
         "execveat",
@@ -97,7 +108,7 @@ def reject_ambiguous_state_transition(
         "mmap2",
         "munmap",
     }
-    cwd_transition = call.syscall in {"chdir", "execve", "execveat", "fchdir"}
+    cwd_transition = call.syscall in {"chdir", "fchdir"}
     if not mapping_transition and not cwd_transition:
         return
     start, end = _timestamp_interval(call)
@@ -111,9 +122,22 @@ def reject_ambiguous_state_transition(
             continue
         if child_pid(other, process_syscalls) == call.pid:
             continue
-        if mapping_transition and state.shares_mapping(call.pid, other.pid):
+        mapping_dependent = (
+            other.syscall in mapping_calls or other.syscall in process_syscalls
+        )
+        cwd_dependent = (
+            other.syscall in policy["path_mutators"]
+            or other.syscall
+            in {"bind", "chdir", "creat", "fchdir", "open", "openat", "openat2"}
+            or other.syscall in process_syscalls
+        )
+        if (
+            mapping_transition
+            and mapping_dependent
+            and state.shares_mapping(call.pid, other.pid)
+        ):
             raise AuthorityError("ambiguous cross-process mapping transition")
-        if cwd_transition and state.shares_cwd(call.pid, other.pid):
+        if cwd_transition and cwd_dependent and state.shares_cwd(call.pid, other.pid):
             raise AuthorityError("ambiguous cross-process cwd transition")
 
 
