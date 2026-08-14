@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Strict trace parser and closed classifier for RFC-0022 Linux authority."""
 
-from __future__ import annotations
-
 import ast
 import hashlib
 import os
@@ -21,6 +19,7 @@ from rfc0022_strace_classify import (
     page_length,
     reject_ambiguous_state_transition,
     validate_child_start_times,
+    validate_trace_start_times,
     writeback_advice_violations,
 )
 from rfc0022_strace_model import AuthorityError, TraceCall, Violation
@@ -28,7 +27,7 @@ from rfc0022_strace_paths import classify_unix_bind
 from rfc0022_strace_state import ProcessState, child_pid, process_graph
 from rfc0022_strace_syntax import descriptor_annotation, split_arguments
 
-TRACE_NAME = re.compile(r"^trace\.(\d+)$")
+TRACE_NAME = re.compile(r"^trace\.([1-9][0-9]*)$")
 TIMESTAMP_RE = re.compile(r"^(\d+\.\d+)\s+(.*)$")
 SYSCALL_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\((.*)\)\s+=\s+(.+)$")
 UNFINISHED_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\((.*)<unfinished \.\.\.>$")
@@ -39,6 +38,7 @@ DIRFD_AT_ZERO = frozenset(
     "fchmodat fchownat futimesat mkdirat mknodat openat openat2 unlinkat utimensat".split()
 )
 DIRFD_PAIRS = frozenset("linkat move_mount renameat renameat2".split())
+ParsedTrace = tuple[list[TraceCall], dict[str, Any], Decimal]
 
 
 def _decode_c_string(value: str) -> str:
@@ -103,7 +103,7 @@ def _resolve_path(call: TraceCall, index: int, cwd: Path) -> str:
     return posixpath.normpath(posixpath.join(base, raw))
 
 
-def _parse_trace(path: Path, pid: int) -> tuple[list[TraceCall], dict[str, Any]]:
+def _parse_trace(path: Path, pid: int) -> ParsedTrace:
     raw = path.read_bytes()
     if not raw or not raw.endswith(b"\n"):
         raise AuthorityError(f"trace.{pid} is empty or truncated")
@@ -115,6 +115,7 @@ def _parse_trace(path: Path, pid: int) -> tuple[list[TraceCall], dict[str, Any]]
     pending: tuple[str, str, int, str] | None = None
     terminals: list[tuple[int, str]] = []
     previous_timestamp: Decimal | None = None
+    first_timestamp = Decimal(0)
     for lineno, raw_line in enumerate(lines, start=1):
         timestamp_match = TIMESTAMP_RE.match(raw_line)
         if timestamp_match is None:
@@ -128,6 +129,8 @@ def _parse_trace(path: Path, pid: int) -> tuple[list[TraceCall], dict[str, Any]]
             ) from exc
         if previous_timestamp is not None and numeric_timestamp < previous_timestamp:
             raise AuthorityError(f"trace.{pid}:{lineno} timestamps moved backwards")
+        if lineno == 1:
+            first_timestamp = numeric_timestamp
         previous_timestamp = numeric_timestamp
         if TERMINAL_RE.match(body):
             terminals.append((lineno, body))
@@ -171,12 +174,9 @@ def _parse_trace(path: Path, pid: int) -> tuple[list[TraceCall], dict[str, Any]]
         raise AuthorityError(f"trace.{pid}:{pending[2]} has no resumed syscall")
     if len(terminals) != 1 or terminals[0][0] != len(lines):
         raise AuthorityError(f"trace.{pid} lacks one final terminal marker")
-    metadata = {
-        "pid": pid,
-        "sha256": hashlib.sha256(raw).hexdigest(),
-        "terminal": terminals[0][1],
-    }
-    return calls, metadata
+    digest = hashlib.sha256(raw).hexdigest()
+    metadata = {"pid": pid, "sha256": digest, "terminal": terminals[0][1]}
+    return calls, metadata, first_timestamp
 
 
 def _open_target(call: TraceCall, cwd: Path) -> str:
@@ -196,10 +196,13 @@ def classify_calls(
     policy: dict[str, Any],
     initial_cwd: Path,
     trace_pids: set[int],
+    trace_starts: dict[int, Decimal] | None = None,
 ) -> tuple[list[Violation], int, dict[int, tuple[int, TraceCall]]]:
     process_syscalls = set(policy["process_syscalls"])
     root, edges = process_graph(calls, trace_pids, process_syscalls)
     validate_child_start_times(calls, edges)
+    if trace_starts is not None:
+        validate_trace_start_times(trace_starts, edges)
     state = ProcessState(root, initial_cwd)
     violations: list[Violation] = []
     open_names = {"open", "openat", "openat2", "open_by_handle_at"}
@@ -433,22 +436,25 @@ def parse_trace_directory(
     expected_argv: list[str] | None = None,
     minimum_root_execs: int = 1,
 ) -> tuple[list[Violation], list[dict[str, Any]], set[int]]:
-    paths: list[tuple[int, Path]] = []
+    paths: dict[int, Path] = {}
     for path in trace_dir.iterdir():
         match = TRACE_NAME.fullmatch(path.name)
         if match is None or not path.is_file() or path.is_symlink():
             raise AuthorityError(f"unexpected trace directory entry: {path.name}")
-        paths.append((int(match.group(1)), path))
+        pid = int(match.group(1))
+        paths[pid] = path
     if not paths:
         raise AuthorityError("strace produced no per-process trace files")
     all_calls: list[TraceCall] = []
     metadata_by_pid: dict[int, dict[str, Any]] = {}
-    for pid, path in sorted(paths):
-        calls, trace_metadata = _parse_trace(path, pid)
+    seen: dict[int, Decimal] = {}
+    for pid, path in sorted(paths.items()):
+        calls, trace_metadata, first_timestamp = _parse_trace(path, pid)
         all_calls.extend(calls)
         metadata_by_pid[pid] = trace_metadata
-    pids = {pid for pid, _ in paths}
-    violations, root, edges = classify_calls(all_calls, policy, initial_cwd, pids)
+        seen[pid] = first_timestamp
+    pids = set(paths)
+    violations, root, edges = classify_calls(all_calls, policy, initial_cwd, pids, seen)
     if expected_executable is not None:
         expected = os.path.realpath(expected_executable)
         successful_execs = [

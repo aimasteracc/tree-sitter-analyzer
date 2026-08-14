@@ -76,6 +76,14 @@ def validate_child_start_times(
             raise AuthorityError("child syscall predates process creation entry")
 
 
+def validate_trace_start_times(
+    starts: dict[int, Decimal], edges: dict[int, tuple[int, TraceCall]]
+) -> None:
+    for child, (_, creation) in edges.items():
+        if starts[child] < _timestamp_interval(creation)[0]:
+            raise AuthorityError("child trace predates process creation entry")
+
+
 def reject_ambiguous_state_transition(
     call: TraceCall,
     calls: list[TraceCall],

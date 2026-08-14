@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from rfc0022_strace_authority import load_policy  # noqa: E402
+from rfc0022_strace_model import AuthorityError  # noqa: E402
 from rfc0022_strace_parser import parse_trace_directory  # noqa: E402
 from rfc0022_strace_runtime import (  # noqa: E402
     raw_trace_metadata,
@@ -369,3 +370,71 @@ def test_safe_fd_metadata_commands_are_explicit_and_non_mutating(
     )
     violations, _, _ = parse_trace_directory(trace, POLICY, Path("/project"))
     assert violations == []
+
+
+# PR #1259 causal-evidence regression: empty child evidence cannot predate creation.
+def test_terminal_only_child_before_creation_fails_closed(tmp_path: Path) -> None:
+    traces = tmp_path / "terminal-before-creation"
+    traces.mkdir()
+    (traces / "trace.100").write_text(
+        "1700000000.000005 clone(child_stack=NULL, flags=SIGCHLD) = 200\n"
+        "1700000000.000006 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    (traces / "trace.200").write_text(
+        "1700000000.000001 +++ exited with 0 +++\n", encoding="utf-8"
+    )
+    with pytest.raises(AuthorityError, match="child trace predates process creation"):
+        parse_trace_directory(traces, POLICY, Path("/project"))
+
+
+# PR #1259 causal-evidence regression: equal-time child creation is a valid boundary.
+def test_terminal_only_child_at_creation_boundary_is_accepted(tmp_path: Path) -> None:
+    traces = tmp_path / "terminal-at-creation"
+    traces.mkdir()
+    (traces / "trace.100").write_text(
+        "1700000000.000001 clone(child_stack=NULL, flags=SIGCHLD) = 200\n"
+        "1700000000.000002 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    (traces / "trace.200").write_text(
+        "1700000000.000001 +++ exited with 0 +++\n", encoding="utf-8"
+    )
+    violations, metadata, pids = parse_trace_directory(traces, POLICY, Path("/project"))
+    assert violations == []
+    assert [(item["pid"], item["role"], item["parent_pid"]) for item in metadata] == [
+        (100, "root", None),
+        (200, "descendant", 100),
+    ]
+    assert pids == {100, 200}
+
+
+# PR #1259 causal-evidence regression: PID aliases cannot overwrite early evidence.
+def test_noncanonical_trace_pid_alias_fails_closed(tmp_path: Path) -> None:
+    traces = tmp_path / "pid-alias"
+    traces.mkdir()
+    bodies = {
+        "trace.100": (
+            "1700000000.000005 clone(child_stack=NULL, flags=SIGCHLD) = 200\n"
+            "1700000000.000009 +++ exited with 0 +++\n"
+        ),
+        "trace.0200": "1700000000.000001 +++ exited with 0 +++\n",
+        "trace.200": "1700000000.000006 +++ exited with 0 +++\n",
+    }
+    for name, body in bodies.items():
+        (traces / name).write_text(body, encoding="utf-8")
+    with pytest.raises(
+        AuthorityError, match="unexpected trace directory entry: trace.0200"
+    ):
+        parse_trace_directory(traces, POLICY, Path("/project"))
+
+
+# PR #1259 evidence regression: raw manifests use canonical positive PID names.
+def test_raw_inventory_rejects_noncanonical_trace_pid(tmp_path: Path) -> None:
+    traces = tmp_path / "raw-pid-alias"
+    traces.mkdir(mode=0o700)
+    (traces / "trace.0200").write_text(
+        "1700000000.000001 +++ exited with 0 +++\n", encoding="utf-8"
+    )
+    with pytest.raises(OSError, match="unexpected raw trace entry: trace.0200"):
+        raw_trace_metadata(traces, expected_uid=traces.stat().st_uid)

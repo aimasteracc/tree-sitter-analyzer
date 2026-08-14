@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-TRACE_NAME = re.compile(r"trace\.(\d+)")
+TRACE_NAME = re.compile(r"trace\.([1-9][0-9]*)")
 TERMINAL = re.compile(r"\+\+\+ (?:exited with \d+|killed by .+) \+\+\+")
 
 
