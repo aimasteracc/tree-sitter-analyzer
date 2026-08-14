@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -364,6 +365,12 @@ def test_privilege_separation_identity_and_launcher_are_digest_bound(
         "groups": [1235],
         "launcher": {
             "path": str(launcher.resolve()),
+            "python": {
+                "path": os.path.realpath(sys.executable),
+                "sha256": hashlib.sha256(
+                    Path(os.path.realpath(sys.executable)).read_bytes()
+                ).hexdigest(),
+            },
             "sha256": privilege.TARGET_LAUNCHER_SHA256,
         },
         "no_new_privs": True,

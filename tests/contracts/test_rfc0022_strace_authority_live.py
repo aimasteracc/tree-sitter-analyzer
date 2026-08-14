@@ -385,6 +385,15 @@ def test_live_pinned_linux_authority_controls(control: str) -> None:
     )
     report = json.loads((artifact / "report.json").read_text(encoding="utf-8"))
     expected = EXPECTED["controls"][control]
+    assert result.returncode == expected["returncode"]
+    assert report["authority_status"] == expected["authority_status"]
+    assert report["outcome"] == expected["outcome"]
+    assert report["errors"] == expected["errors"]
+    assert report["cleanup_remaining_pids"] == []
+    assert report["snapshots"]["equal"] is expected["snapshots_equal"]
+    assert report["target"]["expected_returncode"] == 0
+    assert report["target"]["returncode"] == expected["target_returncode"]
+
     trace_dir = artifact / "trace"
     if report["trace_files"]:
         normalized, graph, raw_by_pid = _normalized_evidence(report, case, trace_dir)
@@ -401,8 +410,13 @@ def test_live_pinned_linux_authority_controls(control: str) -> None:
     assert identity["user"] == os.environ["RFC0022_TARGET_USER"]
     assert 0 not in {identity["uid"], identity["gid"], *identity["groups"]}
     assert identity["no_new_privs"] is True
+    launcher_python = Path(os.path.realpath(sys.executable))
     assert identity["launcher"] == {
         "path": str(LAUNCHER.resolve()),
+        "python": {
+            "path": str(launcher_python),
+            "sha256": hashlib.sha256(launcher_python.read_bytes()).hexdigest(),
+        },
         "sha256": hashlib.sha256(LAUNCHER.read_bytes()).hexdigest(),
     }
     assert report["invocation"][1:3] == ["-u", identity["user"]]
@@ -440,14 +454,6 @@ def test_live_pinned_linux_authority_controls(control: str) -> None:
     else:
         assert report["cleanup_survivor_pids"] == []
 
-    assert result.returncode == expected["returncode"]
-    assert report["authority_status"] == expected["authority_status"]
-    assert report["outcome"] == expected["outcome"]
-    assert report["errors"] == expected["errors"]
-    assert report["cleanup_remaining_pids"] == []
-    assert report["snapshots"]["equal"] is expected["snapshots_equal"]
-    assert report["target"]["expected_returncode"] == 0
-    assert report["target"]["returncode"] == expected["target_returncode"]
     assert normalized == expected["events"]
     assert graph == expected["trace_graph"]
 

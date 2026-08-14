@@ -46,7 +46,7 @@ def build_invocation(
         "-o",
         os.fspath(trace_prefix),
         "--",
-        sys.executable,
+        os.path.realpath(sys.executable),
         os.fspath(launcher),
         "--",
         *target,
@@ -78,6 +78,12 @@ def prepare_target_identity(
         "groups": groups,
         "launcher": {
             "path": os.fspath(launcher.resolve()),
+            "python": {
+                "path": os.path.realpath(sys.executable),
+                "sha256": hashlib.sha256(
+                    Path(os.path.realpath(sys.executable)).read_bytes()
+                ).hexdigest(),
+            },
             "sha256": actual_digest,
         },
         "no_new_privs": True,
