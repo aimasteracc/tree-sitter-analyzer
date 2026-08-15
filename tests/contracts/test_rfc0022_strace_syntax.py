@@ -425,3 +425,10 @@ def test_octal_escaped_argv_entries_decode_as_filesystem_bytes(
         traces, POLICY, Path("/project"), expected_argv=["target", "café"]
     )
     assert violations == []
+
+
+def test_nul_byte_in_path_fails_closed(tmp_path: Path) -> None:
+    # Follow-up (#1259): a NUL byte can never be part of a pathname; the
+    # decoded literal must be rejected rather than carried into evidence.
+    with pytest.raises(AuthorityError, match="contains a NUL byte"):
+        _parse_line(tmp_path, r'unlink("bad\000name") = 0')
