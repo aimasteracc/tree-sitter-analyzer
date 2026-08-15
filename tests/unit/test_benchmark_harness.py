@@ -16385,4 +16385,119 @@ def test_authority_cleanup_unknown_state_is_process_fatal(monkeypatch):
         authority._cleanup_producer("producer", Path("/missing/cgroup"))
 
 
+# ---------------------------------------------------------------------------
+# NO1-008A pinned seven-repository inventory (Slice A)
+# ---------------------------------------------------------------------------
+
+
+def test_seven_repo_inventory_lists_exactly_the_canonical_repositories() -> None:
+    from benchmarks.codegraph_compare.setup_qualification_inventory import (
+        load_seven_repo_inventory,
+    )
+    from benchmarks.codegraph_compare.setup_qualification_plan import REPOSITORIES
+
+    payload = load_seven_repo_inventory()
+    assert [entry["repo_id"] for entry in payload["repositories"]] == list(REPOSITORIES)
+
+
+def test_seven_repo_inventory_commit_pins_match_repos_yaml() -> None:
+    import yaml
+
+    from benchmarks.codegraph_compare.run import REPOS_YAML
+    from benchmarks.codegraph_compare.setup_qualification_inventory import (
+        load_seven_repo_inventory,
+    )
+
+    payload = load_seven_repo_inventory()
+    registry = yaml.safe_load(REPOS_YAML.read_text(encoding="utf-8"))
+    pinned = {entry["repo_id"]: entry["commit"] for entry in payload["repositories"]}
+    for repo in registry["repos"]:
+        assert pinned[repo["id"]] == repo["commit"], repo["id"]
+
+
+def test_seven_repo_inventory_extensions_match_default_source_rules() -> None:
+    from benchmarks.codegraph_compare.setup_qualification_inventory import (
+        load_seven_repo_inventory,
+    )
+    from benchmarks.codegraph_compare.setup_qualification_plan import (
+        DEFAULT_SOURCE_RULES,
+    )
+
+    payload = load_seven_repo_inventory()
+    for entry in payload["repositories"]:
+        assert entry["source_extensions"] == list(
+            DEFAULT_SOURCE_RULES.extensions(entry["repo_id"])
+        ), entry["repo_id"]
+
+
+def test_seven_repo_inventory_rejects_bad_commit_pin() -> None:
+    from benchmarks.codegraph_compare.setup_qualification_inventory import (
+        SEVEN_REPO_INVENTORY_PATH,
+        _validate_inventory_entry,
+    )
+
+    payload = json.loads(SEVEN_REPO_INVENTORY_PATH.read_text("utf-8"))
+    entry = dict(payload["repositories"][0])
+    entry["commit"] = entry["commit"][:-1]  # 39 hex: bad pin
+    with pytest.raises(ValueError, match="bad commit pin"):
+        _validate_inventory_entry(entry, 0)
+
+
+def test_seven_repo_inventory_rejects_unsorted_extensions() -> None:
+    from benchmarks.codegraph_compare.setup_qualification_inventory import (
+        SEVEN_REPO_INVENTORY_PATH,
+        _validate_inventory_entry,
+    )
+
+    payload = json.loads(SEVEN_REPO_INVENTORY_PATH.read_text("utf-8"))
+    entry = dict(payload["repositories"][0])
+    entry["source_extensions"] = [".tsx", ".ts"]
+    with pytest.raises(ValueError, match="not sorted unique"):
+        _validate_inventory_entry(entry, 0)
+
+
+def test_seven_repo_inventory_rejects_duplicate_repo_id(tmp_path: Path) -> None:
+    from unittest.mock import patch
+
+    from benchmarks.codegraph_compare.setup_qualification_inventory import (
+        SEVEN_REPO_INVENTORY_PATH,
+        load_seven_repo_inventory,
+    )
+
+    payload = json.loads(SEVEN_REPO_INVENTORY_PATH.read_text("utf-8"))
+    payload["repositories"][6] = dict(payload["repositories"][0])
+    broken = tmp_path / "broken-inventory.json"
+    broken.write_text(json.dumps(payload), encoding="utf-8")
+    with patch(
+        "benchmarks.codegraph_compare.setup_qualification_inventory"
+        ".SEVEN_REPO_INVENTORY_PATH",
+        broken,
+    ):
+        with pytest.raises(ValueError, match="duplicates repo_id"):
+            load_seven_repo_inventory()
+
+
+def test_seven_repo_inventory_schema_rejects_wrong_repository_count(
+    tmp_path: Path,
+) -> None:
+    from unittest.mock import patch
+
+    from benchmarks.codegraph_compare.setup_qualification_inventory import (
+        SEVEN_REPO_INVENTORY_PATH,
+        load_seven_repo_inventory,
+    )
+
+    payload = json.loads(SEVEN_REPO_INVENTORY_PATH.read_text("utf-8"))
+    del payload["repositories"][-1]
+    broken = tmp_path / "broken-inventory.json"
+    broken.write_text(json.dumps(payload), encoding="utf-8")
+    with patch(
+        "benchmarks.codegraph_compare.setup_qualification_inventory"
+        ".SEVEN_REPO_INVENTORY_PATH",
+        broken,
+    ):
+        with pytest.raises(ValueError, match="violates its schema"):
+            load_seven_repo_inventory()
+
+
 _mark_posix_qualification_section_tests()

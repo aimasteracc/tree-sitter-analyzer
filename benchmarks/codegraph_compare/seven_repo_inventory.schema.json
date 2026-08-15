@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "seven-repo-inventory-v1",
+  "title": "NO1-008A pinned seven-repository inventory",
+  "description": "Pinned repository fingerprints for NO1-008A setup qualification. Every commit is a trusted SHA-256 pin; source_extensions must stay in lockstep with DEFAULT_SOURCE_RULES and repos.yaml.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "repositories"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "repositories": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repo_id",
+          "name",
+          "language",
+          "url",
+          "commit",
+          "approx_files",
+          "source_extensions"
+        ],
+        "properties": {
+          "repo_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "language": {
+            "type": "string",
+            "minLength": 1
+          },
+          "url": {
+            "type": "string",
+            "pattern": "^https://github\\.com/"
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "approx_files": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "source_extensions": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^\\.[A-Za-z0-9]+$"
+            }
+          }
+        }
+      }
+    }
+  }
+}
