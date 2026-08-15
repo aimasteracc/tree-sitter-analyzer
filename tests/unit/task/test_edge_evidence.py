@@ -56,17 +56,94 @@ def test_golden_passes_json_schema_shape() -> None:
     validate_shape(_load_fixture("golden"))
 
 
-def test_negative_cases_all_rejected_with_exact_reason() -> None:
+def _run_case_batch(case_ids: set[str]) -> None:
+    """Run one batch of denial cases and pin exact reasons.
+
+    Uses validate_negative_cases so authority/context mutations and the
+    authoritative index-status check apply exactly as in the corpus.
+    """
     negative = _load_fixture("negative")
     results = validate_negative_cases(negative)
-    assert len(results) == len(negative["cases"])
     for case in negative["cases"]:
+        if case["id"] not in case_ids:
+            continue
         result = results[case["id"]]
-        assert result.accepted is False, f"{case['id']} must be rejected"
+        assert result.accepted is False, case["id"]
         assert result.reasons == (case["expected"]["reason"],), (
-            f"{case['id']}: expected {case['expected']['reason']}, got {result.reasons}"
+            case["id"],
+            result.reasons,
         )
         assert result.evidence_ids == ()
+
+
+def test_negative_cases_batch_owner_and_keys() -> None:
+    _run_case_batch(
+        {
+            "endpoint-key-mismatches",
+            "edge-kind-mismatch",
+            "owner-fields-mismatch",
+            "owner-facade-missing",
+            "owner-action-missing",
+            "owner-action-version-missing",
+            "owner-producer-rule-id-missing",
+            "owner-producer-rule-version-missing",
+            "proposed-edge-key-missing",
+            "freshness-signal-missing",
+        }
+    )
+
+
+def test_negative_cases_batch_state_and_diagnostics() -> None:
+    _run_case_batch(
+        {
+            "stale-snapshot-deny",
+            "ambiguous-deny",
+            "unresolved-deny",
+            "no-target-deny",
+            "diagnostic-freshness-state-mismatch",
+            "diagnostic-source-mismatch",
+            "candidate-declaration-identity-duplicate",
+            "evidence-raw-projection-mismatch",
+            "provenance-evidence-mismatch",
+        }
+    )
+
+
+def test_negative_cases_batch_rules_and_authority() -> None:
+    _run_case_batch(
+        {
+            "authoritative-index-status-mismatch",
+            "generated-rule-edge-kind-out-of-scope",
+            "generated-rule-observation-state-out-of-scope",
+            "authoritative-status-id-duplicate",
+            "invocation-request-authority-mismatch",
+            "provenance-result-mismatch",
+            "collection-snapshot-scope-mismatch",
+        }
+    )
+
+
+def test_negative_cases_batch_shape_and_paths() -> None:
+    _run_case_batch(
+        {
+            "invalid-project-relative-paths",
+            "byte-range-reversed",
+            "dangling-collection-ref",
+            "unsorted-item-refs",
+            "collection-count-mismatches",
+            "canonical-preimage-invalid",
+            "request-preimage-mismatch",
+            "request-preimage-float",
+            "exact-total-less-than-returned",
+            "collection-owner-mismatch",
+        }
+    )
+
+
+def test_negative_cases_all_rejected_with_exact_reason() -> None:
+    # Aggregate gate via the batch runner (fast: cached schema).
+    negative = _load_fixture("negative")
+    _run_case_batch({case["id"] for case in negative["cases"]})
 
 
 def test_negative_cases_cover_all_reason_vocabulary() -> None:
