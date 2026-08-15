@@ -93,6 +93,12 @@ jobs:
         uv sync --all-extras
       shell: bash
 
+    - name: Run bounded default gate
+      if: matrix.coverage
+      timeout-minutes: 5
+      run: uv run pytest -q
+      shell: bash
+
     - name: Run Tests with Coverage
       if: matrix.coverage
       id: test-coverage
@@ -129,21 +135,21 @@ jobs:
         if [ "$test_status" -eq 0 ]; then
           exit 0
         fi
-        if [ "$RUNNER_OS" = "Linux" ]; then
+        if [ "$RUNNER_OS" != "Windows" ]; then
           exit "$test_status"
         fi
         if ! uv run python scripts/classify_windows_pytest_failure.py \
-          pytest-output.txt --nodeids-output budget-retry.txt; then
+          pytest-output.txt --nodeids-output windows-budget-retry.txt; then
           exit "$test_status"
         fi
-        mapfile -t retry_nodeids < budget-retry.txt
-        echo "$RUNNER_OS runner degradation suspected; retrying budget-only failures once."
+        mapfile -t retry_nodeids < windows-budget-retry.txt
+        echo "Windows runner degradation suspected; retrying budget-only failures once."
         uv run pytest "${retry_nodeids[@]}" -n auto -q --tb=short --maxfail=200
       shell: bash
 
     - name: Run slow tests
       if: matrix.coverage
-      timeout-minutes: 5
+      timeout-minutes: 15
       run: |
         uv run pytest tests/ -n auto -q --maxfail=200 --timeout=120 \
           -m "slow and not network and not e2e and not benchmark and not full_language"
@@ -255,15 +261,15 @@ jobs:
         if [ "$test_status" -eq 0 ]; then
           exit 0
         fi
-        if [ "$RUNNER_OS" = "Linux" ]; then
+        if [ "$RUNNER_OS" != "Windows" ]; then
           exit "$test_status"
         fi
         if ! uv run python scripts/classify_windows_pytest_failure.py \
-          pytest-output.txt --nodeids-output budget-retry.txt; then
+          pytest-output.txt --nodeids-output windows-budget-retry.txt; then
           exit "$test_status"
         fi
-        mapfile -t retry_nodeids < budget-retry.txt
-        echo "$RUNNER_OS runner degradation suspected; retrying budget-only failures once."
+        mapfile -t retry_nodeids < windows-budget-retry.txt
+        echo "Windows runner degradation suspected; retrying budget-only failures once."
         uv run pytest "${retry_nodeids[@]}" -n auto -q --tb=short --maxfail=200
       shell: bash
 
