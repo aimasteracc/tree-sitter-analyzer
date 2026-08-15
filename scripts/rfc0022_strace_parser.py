@@ -147,6 +147,7 @@ def _parse_trace(path: Path, pid: int) -> ParsedTrace:
     calls: list[TraceCall] = []
     pending: tuple[str, str, int, str] | None = None
     terminals: list[tuple[int, str]] = []
+    exit_timestamp = Decimal(0)
     previous_timestamp: Decimal | None = None
     first_timestamp = Decimal(0)
     for lineno, raw_line in enumerate(lines, start=1):
@@ -167,6 +168,7 @@ def _parse_trace(path: Path, pid: int) -> ParsedTrace:
         previous_timestamp = numeric_timestamp
         if TERMINAL_RE.match(body):
             terminals.append((lineno, body))
+            exit_timestamp = numeric_timestamp
             continue
         if body.startswith("--- ") and body.endswith(" ---"):
             continue
@@ -208,7 +210,12 @@ def _parse_trace(path: Path, pid: int) -> ParsedTrace:
     if len(terminals) != 1 or terminals[0][0] != len(lines):
         raise AuthorityError(f"trace.{pid} lacks one final terminal marker")
     digest = hashlib.sha256(raw).hexdigest()
-    metadata = {"pid": pid, "sha256": digest, "terminal": terminals[0][1]}
+    metadata = {
+        "pid": pid,
+        "sha256": digest,
+        "terminal": terminals[0][1],
+        "exit_timestamp": str(exit_timestamp),
+    }
     return calls, metadata, first_timestamp
 
 
@@ -227,6 +234,7 @@ def classify_calls(
     initial_cwd: Path,
     trace_pids: set[int],
     trace_starts: dict[int, Decimal] | None = None,
+    exit_timestamps: dict[int, Decimal] | None = None,
 ) -> tuple[list[Violation], int, dict[int, tuple[int, TraceCall]]]:
     process_syscalls = set(policy["process_syscalls"])
     root, edges = process_graph(calls, trace_pids, process_syscalls)
@@ -246,7 +254,16 @@ def classify_calls(
         "mmap2",
         "munmap",
     }
+    exited: set[int] = set()
     for call in ordered:
+        # Codex P2 (#1259): a CLONE_FILES peer that already exited has
+        # released its reference; replay the exit before classifying the
+        # call so shared file-table accounting reflects the kernel.
+        if exit_timestamps is not None:
+            for pid, exit_at in exit_timestamps.items():
+                if pid not in exited and Decimal(call.timestamp) >= exit_at:
+                    state.exit_process(pid)
+                    exited.add(pid)
         args = call.arguments
         if call.syscall in state_transitions and _result_succeeded(call.result):
             reject_ambiguous_state_transition(call, calls, state, policy)
@@ -494,7 +511,18 @@ def parse_trace_directory(
         metadata_by_pid[pid] = trace_metadata
         seen[pid] = first_timestamp
     pids = set(paths)
-    violations, root, edges = classify_calls(all_calls, policy, initial_cwd, pids, seen)
+    exit_timestamps: dict[int, Decimal] = {}
+    for pid, metadata in metadata_by_pid.items():
+        raw_exit = metadata.get("exit_timestamp")
+        if raw_exit is None:
+            raise AuthorityError(f"trace.{pid} lacks an exit timestamp")
+        try:
+            exit_timestamps[pid] = Decimal(raw_exit)
+        except InvalidOperation as exc:
+            raise AuthorityError(f"trace.{pid} has an invalid exit timestamp") from exc
+    violations, root, edges = classify_calls(
+        all_calls, policy, initial_cwd, pids, seen, exit_timestamps
+    )
     if expected_executable is not None:
         expected = os.path.realpath(expected_executable)
         successful_execs = [

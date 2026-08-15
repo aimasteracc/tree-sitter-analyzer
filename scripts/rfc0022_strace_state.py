@@ -58,6 +58,19 @@ class ProcessState:
             raise AuthorityError("file-table sharing state is incomplete") from exc
         return sum(value == space for value in self._file_space_by_pid.values()) > 1
 
+    def exit_process(self, pid: int) -> None:
+        """Release an exited process from the shared file-table model.
+
+        Codex P2 (#1259): a CLONE_FILES peer that has exited no longer
+        holds a file-table reference; the kernel has released it, so the
+        remaining processes are no longer concurrently sharing. Replaying
+        the exit before later classification keeps has_shared_files exact.
+        Cwd/mapping space membership is retained: cross-process overlap
+        checks still consult those spaces, and retaining them only ever
+        makes classification more conservative.
+        """
+        self._file_space_by_pid.pop(pid, None)
+
     def chdir(self, pid: int, cwd: Path) -> None:
         try:
             self._cwd_spaces[self._cwd_space_by_pid[pid]] = cwd

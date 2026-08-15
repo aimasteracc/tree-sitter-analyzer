@@ -580,3 +580,57 @@ def test_rename_rebases_cwd_of_fork_child_without_shared_fs(
     targets = [event["target"] for event in _parse(trace)]
     assert "/project/b/x" in targets
     assert "/project/a/x" not in targets
+
+
+def test_exited_clone_files_peer_releases_shared_table(
+    tmp_path: Path,
+) -> None:
+    # Codex P2 (#1259): a CLONE_FILES child that exits before the parent's
+    # magic-FD reopen has released its reference — the kernel no longer
+    # treats the table as shared, so the pipe reopen is clean, not a
+    # filesystem violation.
+    trace = tmp_path / "trace"
+    _write_trace(
+        trace,
+        100,
+        [
+            "clone(child_stack=NULL, flags=CLONE_FILES|SIGCHLD) = 200",
+            'openat(AT_FDCWD</project>, "/dev/stdout", O_WRONLY) = 4<pipe:[42]>',
+            "+++ exited with 0 +++",
+        ],
+    )
+    _write_trace(
+        trace,
+        200,
+        ["+++ exited with 0 +++"],
+        start=2,
+    )
+    assert _parse(trace) == []
+
+
+def test_live_clone_files_peer_keeps_shared_table_ambiguous(
+    tmp_path: Path,
+) -> None:
+    # Codex P2 (#1259) negative control: while the CLONE_FILES peer is
+    # still alive the reopen stays ambiguous and fails closed.
+    trace = tmp_path / "trace"
+    _write_trace(
+        trace,
+        100,
+        [
+            "clone(child_stack=NULL, flags=CLONE_FILES|SIGCHLD) = 200",
+            'openat(AT_FDCWD</project>, "/dev/stdout", O_WRONLY) = 4<pipe:[42]>',
+            "+++ exited with 0 +++",
+        ],
+    )
+    _write_trace(
+        trace,
+        200,
+        [
+            "pause() = ? ERESTART_RESTARTBLOCK (To be restarted)",
+            "+++ exited with 0 +++",
+        ],
+        start=2,
+    )
+    with pytest.raises(AuthorityError, match="ambiguous"):
+        _parse(trace)
