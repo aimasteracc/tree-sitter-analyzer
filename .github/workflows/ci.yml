@@ -198,7 +198,7 @@ jobs:
           uv run python scripts/audit_test_quality.py --strict --output reports/test-audit.json
       - name: Upload audit report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: test-audit-report
           path: reports/test-audit.json
