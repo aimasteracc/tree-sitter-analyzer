@@ -21,7 +21,7 @@ jobs:
         shell: pwsh
         run: New-Item -ItemType Directory -Force outdated-artifacts,fixtures | Out-Null; '{"status":"started"}' | Set-Content -Encoding ascii outdated-artifacts/job-result.json
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6.0.0
         with: {python-version: "3.10"}
       - name: Install qualification driver dependencies
         run: python -m pip install --disable-pip-version-check "psutil>=5,<8" "packaging>=23,<27"
@@ -30,11 +30,11 @@ jobs:
       - name: Fetch exact allowlisted official supported archive
         if: matrix.axis != 'windows'
         run: python scripts/qualify_outdated_uv.py fetch --axis ${{ matrix.axis }} --version 0.11.0 --output fixtures/supported.archive
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: {name: "native-build-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}", path: package/build}
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: {name: "native-aggregate-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}", path: package/aggregate}
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: {name: "native-${{ matrix.axis }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}", path: "package/${{ matrix.axis }}"}
       - name: Prove content-bound manual remediation and exact-wheel MCP causality
         shell: pwsh
@@ -52,7 +52,7 @@ jobs:
         run: New-Item -ItemType Directory -Force outdated-artifacts | Out-Null; $value=@{job='outdated-axis';axis='${{ matrix.axis }}';status='${{ job.status }}'}|ConvertTo-Json -Compress; $value|Set-Content -Encoding ascii outdated-artifacts/job-result.json
       - name: Upload exact evidence closure
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: outdated-uv-${{ matrix.axis }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: outdated-artifacts/
@@ -68,12 +68,12 @@ jobs:
     steps:
       - run: mkdir -p outdated-aggregate && printf '{"status":"started"}\n' > outdated-aggregate/job-result.json
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6.0.0
         with: {python-version: "3.10"}
       - name: Install aggregate driver dependencies
         run: python -m pip install --disable-pip-version-check "jsonschema>=4,<5" "psutil>=5,<8"
       - name: Download all exact axes
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: {pattern: "outdated-uv-*-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}", path: downloaded}
       - name: Aggregate evidence
         run: >-
@@ -86,7 +86,7 @@ jobs:
       - if: always()
         run: mkdir -p outdated-aggregate && printf '{"job":"outdated-aggregate","status":"%s"}\n' '${{ job.status }}' > outdated-aggregate/job-result.json
       - if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: outdated-uv-aggregate-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: outdated-aggregate/
