@@ -102,17 +102,17 @@ jobs:
     - name: Run Tests with Coverage
       if: matrix.coverage
       id: test-coverage
+      timeout-minutes: 15
       run: |
         exec 3>> "$GITHUB_STEP_SUMMARY"
         echo "### 📊 Test Coverage Report" >&3
-        uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
+        uv run pytest tests/ -n auto -q --tb=short --maxfail=200 \
           --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing \
           --ignore=tests/e2e \
           -m "not slow and not e2e and not network and not benchmark" > pytest-output.txt 2>&1 || touch test_failed
 
-        cat pytest-output.txt
         echo '```text' >&3
-        tail -n 20 pytest-output.txt >&3
+        tail -n 30 pytest-output.txt >&3
         echo '```' >&3
 
         if [ -f test_failed ]; then
@@ -123,9 +123,10 @@ jobs:
 
     - name: Run Tests (no coverage)
       if: ${{ !matrix.coverage }}
+      timeout-minutes: 10
       run: |
         set +e
-        uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
+        uv run pytest tests/ -n auto -q --tb=short --maxfail=200 \
           --ignore=tests/e2e \
           -m "not slow and not e2e and not network and not benchmark and not full_language" \
           2>&1 | tee pytest-output.txt
@@ -143,11 +144,12 @@ jobs:
         fi
         mapfile -t retry_nodeids < windows-budget-retry.txt
         echo "Windows runner degradation suspected; retrying budget-only failures once."
-        uv run pytest "${retry_nodeids[@]}" -n auto -v --tb=short --maxfail=200
+        uv run pytest "${retry_nodeids[@]}" -n auto -q --tb=short --maxfail=200
       shell: bash
 
     - name: Run slow tests
       if: matrix.coverage
+      timeout-minutes: 15
       run: |
         uv run pytest tests/ -n auto -q --maxfail=200 --timeout=120 \
           -m "slow and not network and not e2e and not benchmark and not full_language"
@@ -268,7 +270,7 @@ jobs:
         fi
         mapfile -t retry_nodeids < windows-budget-retry.txt
         echo "Windows runner degradation suspected; retrying budget-only failures once."
-        uv run pytest "${retry_nodeids[@]}" -n auto -v --tb=short --maxfail=200
+        uv run pytest "${retry_nodeids[@]}" -n auto -q --tb=short --maxfail=200
       shell: bash
 
     - name: Run slow tests
