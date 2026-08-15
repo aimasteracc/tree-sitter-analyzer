@@ -44,6 +44,7 @@ def test_read_only_zero_rules_needs_no_index(tmp_path: Path) -> None:
     assert result == {
         "success": True,
         "verdict": "SAFE",
+        "action_version": "edit.constraints/v1",
         "violations": [],
         "rule_count": 0,
         "evaluated_edge_count": 0,
@@ -59,6 +60,7 @@ def test_persist_missing_index_returns_legacy_safe_response(tmp_path: Path) -> N
     assert result == {
         "success": True,
         "verdict": "SAFE",
+        "action_version": "edit.constraints/v1",
         "violations": [],
         "rule_count": 1,
         "evaluated_edge_count": 0,

@@ -110,8 +110,10 @@ class TestASTDiffNodeBudget:
         # Cost invariant (CLAUDE.md rule 11) pinned exactly: 746 < 1877 — the
         # default is dramatically smaller than the full-body opt-in.
         # Re-pinned after Codex P2 made agent_summary a dict (next_step+verdict).
-        assert default_bytes == 746
-        assert bodies_bytes == 1877
+        # RFC-0022 P0.5: +38 bytes for the action_version echo.
+        assert default_bytes == 784
+        # RFC-0022 P0.5: +38 bytes for the action_version echo.
+        assert bodies_bytes == 1915
 
     @pytest.mark.asyncio
     async def test_include_node_bodies_true_has_children(self, tool):
