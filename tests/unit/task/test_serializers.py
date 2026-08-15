@@ -411,3 +411,11 @@ def test_toon_nested_list_in_evidence_roundtrip() -> None:
     )
     decoded = decode_toon(serialize_toon(outcome))
     assert decoded.evidence == ({"matrix": [[1, 2], [3, 4]]},)
+
+
+def test_toon_trailing_bare_dash_item() -> None:
+    # Covers the pending_item tail: a bare "-" at end of input appends {}.
+    from tree_sitter_analyzer.task.serializers import _parse_toon
+
+    parsed = _parse_toon("evidence:\n  -\n")
+    assert parsed == {"evidence": [{}]}
