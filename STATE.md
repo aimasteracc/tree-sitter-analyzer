@@ -1,6 +1,31 @@
 # Loop State — tree-sitter-analyzer
 
-Last run: 2026-08-08 (trusted Agent change intelligence No.1 program)
+Last run: 2026-08-15 (No.1 takeover — RFC-0023 validator review closure)
+
+## Takeover record (2026-08-15)
+
+- Branch `feature/no1-agent-program` was stale (73 behind origin/develop; its 6
+  local commits were superseded by merged PRs) and was reset to origin/develop.
+- PR #1269 (RFC-0023 edge-evidence validator, Phase A) merged with 17 Codex P2
+  review findings outstanding. A merged PR does not exempt its review: all 17
+  were triaged against merged code; 2 were already fixed in the merge (reason
+  priority, request floats), 15 were fixed in follow-up PR #1271 (review gates:
+  ID recompute, complete snapshot tuple, invocation owners, diagnostic
+  projection, stale zero-ID diagnostics, projection closure, truncation object,
+  truncated positives, zero-ID classification, provenance linkage, proposed
+  source, collection per-item, duplicate identities, locator equality,
+  type-safe classifier).
+- Codex re-reviewed #1271 and posted 8 more findings (5 P1, 3 P2); all fixed in
+  a second commit (bb83a172): diagnostic observation locator, duplicate
+  pointers, per-record contradiction IDs, raw-freshness-derived stale state,
+  zero-ID truncation, one-to-one invocation bindings, unreferenced provenance,
+  missing/partial snapshot precedence.
+- PR #1271 is green (34 checks, 0 failures) and ready for human merge.
+- PR #1270 (CI fast suite) is the previous session's in-flight work; its Codex
+  P1 finding (bounded PR gate must be retained to satisfy the locked
+  `test_default_gate_has_a_real_five_minute_ci_deadline` contract) is real and
+  the branch still fails that contract. PR #1251 (dependabot actions bump) is
+  green and ready.
 
 ## Mission
 
