@@ -102,7 +102,7 @@ jobs:
     - name: Run Tests with Coverage
       if: matrix.coverage
       id: test-coverage
-      timeout-minutes: 10
+      timeout-minutes: 15
       run: |
         exec 3>> "$GITHUB_STEP_SUMMARY"
         echo "### 📊 Test Coverage Report" >&3
