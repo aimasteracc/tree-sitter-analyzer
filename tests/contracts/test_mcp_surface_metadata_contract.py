@@ -258,3 +258,30 @@ def test_rfc0022_process_local_cli_parity_exception_is_exact() -> None:
             f"bridge row ({facade}, {action}) forwards controls not scoped to "
             f"the action: {sorted(controls - actual[(facade, action)])}"
         )
+
+
+def test_tsa_explore_prototype_is_retired_with_zero_references() -> None:
+    """RFC-0022 disposition: the tsa_explore prototype is retired.
+
+    The umbrella-tool experiment remains hypothetical (see
+    benchmarks/codegraph_compare/tool_menu_experiment.py, which documents
+    tsa_explore as "does not exist"); no code or tests may reference the
+    retired module.
+    """
+    import re
+
+    retired_path = PROJECT_ROOT / "tree_sitter_analyzer" / "mcp" / "tsa_explore.py"
+    assert not retired_path.exists(), "tsa_explore.py must stay deleted"
+
+    pattern = re.compile(r"\btsa_explore\b")
+    self_path = Path(__file__).resolve()
+    offenders: list[str] = []
+    for base in ("tree_sitter_analyzer", "tests"):
+        for path in (PROJECT_ROOT / base).rglob("*.py"):
+            if "__pycache__" in path.parts:
+                continue
+            if path.resolve() == self_path:
+                continue  # this contract test itself names the retired tool
+            if pattern.search(path.read_text(encoding="utf-8")):
+                offenders.append(str(path.relative_to(PROJECT_ROOT)))
+    assert offenders == [], f"retired tsa_explore still referenced: {offenders}"

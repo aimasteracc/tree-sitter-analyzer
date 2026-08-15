@@ -20,12 +20,11 @@ Architecture
   so that Claude can still verify citations; they count as their own metric
   category in ``parse_tool_metrics``.
 
-* The ``tsa_explore`` prototype lives at:
-  ``tree_sitter_analyzer/mcp/tsa_explore.py``
-  It is NOT wired into the production MCP server.  A live pilot run requires
-  either (a) wiring via an ``TSA_EXPOSE_ONLY`` env-var switch in server.py
-  (Phase 2 Case B engineering) or (b) a standalone MCP server that registers
-  only ``tsa_explore``.
+* The ``tsa_explore`` prototype was retired (RFC-0022 disposition) —
+  ``tree_sitter_analyzer/mcp/tsa_explore.py`` no longer exists.  Condition B
+  remains a hypothetical surface estimate; a live pilot would require
+  implementing the umbrella tool as a real registered facade (Phase 2
+  Case B engineering).
 
 See: benchmarks/codegraph_compare/TOOL-MENU-EXPERIMENT-FINDINGS.md
 """
@@ -159,16 +158,22 @@ class TSA1ToolAdapter(BenchmarkAdapter):
         index_db = repo_path / _CACHE_INDEX
 
         if not index_db.exists():
-            logger.info("TSA1ToolAdapter: index.db not found at %s; building.", index_db)
+            logger.info(
+                "TSA1ToolAdapter: index.db not found at %s; building.", index_db
+            )
             return _build_cache(repo_path, cache_dir)
 
         indexed_files = _indexed_file_count(index_db)
         if indexed_files is None:
-            logger.info("TSA1ToolAdapter: index.db at %s is unreadable; rebuilding.", index_db)
+            logger.info(
+                "TSA1ToolAdapter: index.db at %s is unreadable; rebuilding.", index_db
+            )
             _delete_cache(cache_dir)
             return _build_cache(repo_path, cache_dir)
         if indexed_files <= 0:
-            logger.info("TSA1ToolAdapter: index.db at %s is empty; rebuilding.", index_db)
+            logger.info(
+                "TSA1ToolAdapter: index.db at %s is empty; rebuilding.", index_db
+            )
             return _build_cache(repo_path, cache_dir)
 
         logger.info(
