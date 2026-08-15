@@ -15,7 +15,13 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class RouteRow:
-    """One pinned route row: condition -> primitive call + stop/degrade rule."""
+    """One pinned route row: condition -> primitive call + stop/degrade rule.
+
+    ``parameters`` pins the static parameter set; ``dynamic_parameters``
+    names the runtime-supplied parameters (file_path, mode, scope_paths,
+    snapshot/generation tokens) that the executor must attach per RFC-0022
+    §Complete V1 route decision table.
+    """
 
     operation: str
     condition: str
@@ -23,6 +29,7 @@ class RouteRow:
     action: str
     parameters: tuple[tuple[str, str], ...]
     stop_rule: str
+    dynamic_parameters: tuple[str, ...] = ()
 
 
 #: Row order is significant: calls run in displayed order, fan-out lists are
@@ -42,7 +49,7 @@ ROUTE_TABLE: tuple[RouteRow, ...] = (
     ),
     RouteRow(
         operation="understand(task)",
-        condition="valid task",
+        condition="valid task and certified index tokens",
         facade="nav",
         action="context",
         parameters=(
@@ -56,7 +63,7 @@ ROUTE_TABLE: tuple[RouteRow, ...] = (
     ),
     RouteRow(
         operation="plan_change(task)",
-        condition="valid task",
+        condition="valid task and certified index tokens",
         facade="nav",
         action="context",
         parameters=(
@@ -70,8 +77,8 @@ ROUTE_TABLE: tuple[RouteRow, ...] = (
     ),
     RouteRow(
         operation="plan_change(task)",
-        condition="each distinct existing path explicitly returned in "
-        "code_blocks, max 2/5",
+        condition="each distinct generation-matched existing path explicitly "
+        "returned in code_blocks, max 2/5",
         facade="edit",
         action="safe",
         parameters=(
@@ -79,7 +86,9 @@ ROUTE_TABLE: tuple[RouteRow, ...] = (
             ("access_mode", "read_existing"),
             ("output_format", "json"),
         ),
-        stop_rule="missing path is not inferred; per-call failure is partial",
+        dynamic_parameters=("file_path", "snapshot_id", "source_generation"),
+        stop_rule="missing path is not inferred; token mismatch stops route; "
+        "other per-call failure is partial",
     ),
     RouteRow(
         operation="diff operation",
@@ -92,17 +101,24 @@ ROUTE_TABLE: tuple[RouteRow, ...] = (
             ("access_mode", "read_existing"),
             ("output_format", "json"),
         ),
+        dynamic_parameters=("mode", "scope_paths"),
         stop_rule="missing/failing diff_snapshot_id => unknown and stop",
     ),
     RouteRow(
         operation="diff operation",
-        condition="successful impact; reserved before fan-out",
+        condition="successful generation-matched impact; reserved before fan-out",
         facade="edit",
         action="constraints",
         parameters=(
             ("persist", "false"),
             ("access_mode", "read_existing"),
             ("output_format", "json"),
+        ),
+        dynamic_parameters=(
+            "diff_snapshot_id",
+            "snapshot_id",
+            "source_generation",
+            "scope_paths",
         ),
         stop_rule="not_applicable:NO_CONFIG satisfies the row; invocation "
         "failure degrades per the truth table",
@@ -116,6 +132,7 @@ ROUTE_TABLE: tuple[RouteRow, ...] = (
             ("access_mode", "read_existing"),
             ("output_format", "json"),
         ),
+        dynamic_parameters=("diff_snapshot_id", "file_path"),
         stop_rule="unsupported add/delete/rename is explicit not_run, never "
         "locally reconstructed",
     ),
@@ -128,6 +145,7 @@ ROUTE_TABLE: tuple[RouteRow, ...] = (
             ("access_mode", "read_existing"),
             ("output_format", "json"),
         ),
+        dynamic_parameters=("diff_snapshot_id", "file_path"),
         stop_rule="per-file failure => partial",
     ),
 )

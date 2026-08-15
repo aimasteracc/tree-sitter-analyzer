@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from .evidence import (
     EvidenceInput,
+    SourceSnapshotRecord,
     evidence_identity,
     normalized_result_hash,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "RouteRow",
     "SAFE_FANOUT_CAPS",
     "SnapshotTruth",
+    "SourceSnapshotRecord",
     "evidence_identity",
     "normalized_result_hash",
     "Budget",

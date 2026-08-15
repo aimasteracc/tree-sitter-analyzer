@@ -17,9 +17,25 @@ from tree_sitter_analyzer.task import (
     SAFE_FANOUT_CAPS,
     EvidenceInput,
     SnapshotTruth,
+    SourceSnapshotRecord,
     evidence_identity,
     normalized_result_hash,
 )
+
+
+def _base_snapshots() -> tuple[SourceSnapshotRecord, ...]:
+    return (
+        SourceSnapshotRecord(
+            kind="diff",
+            snapshot_id="diffsnap_01",
+            source_generation="gen_01",
+        ),
+        SourceSnapshotRecord(
+            kind="index",
+            snapshot_id="idxsnap_01",
+            source_generation="gen_01",
+        ),
+    )
 
 
 def _base_evidence() -> EvidenceInput:
@@ -28,7 +44,7 @@ def _base_evidence() -> EvidenceInput:
         action="safe",
         action_version="edit.safe/v1",
         normalized_result_sha256=hashlib.sha256(b"{}").hexdigest(),
-        source_snapshot_id="idxsnap_01",
+        source_snapshots=_base_snapshots(),
         locator="src/app.py",
     )
 
@@ -54,7 +70,7 @@ def test_evidence_identity_changes_with_each_owner_field() -> None:
             action=base.action,
             action_version=base.action_version,
             normalized_result_sha256=base.normalized_result_sha256,
-            source_snapshot_id=base.source_snapshot_id,
+            source_snapshots=base.source_snapshots,
             locator=base.locator,
         ),
         "action": EvidenceInput(
@@ -62,7 +78,7 @@ def test_evidence_identity_changes_with_each_owner_field() -> None:
             action="classify",
             action_version=base.action_version,
             normalized_result_sha256=base.normalized_result_sha256,
-            source_snapshot_id=base.source_snapshot_id,
+            source_snapshots=base.source_snapshots,
             locator=base.locator,
         ),
         "version": EvidenceInput(
@@ -70,7 +86,7 @@ def test_evidence_identity_changes_with_each_owner_field() -> None:
             action=base.action,
             action_version="edit.safe/v2",
             normalized_result_sha256=base.normalized_result_sha256,
-            source_snapshot_id=base.source_snapshot_id,
+            source_snapshots=base.source_snapshots,
             locator=base.locator,
         ),
         "result": EvidenceInput(
@@ -78,7 +94,7 @@ def test_evidence_identity_changes_with_each_owner_field() -> None:
             action=base.action,
             action_version=base.action_version,
             normalized_result_sha256=hashlib.sha256(b"other").hexdigest(),
-            source_snapshot_id=base.source_snapshot_id,
+            source_snapshots=base.source_snapshots,
             locator=base.locator,
         ),
         "snapshot": EvidenceInput(
@@ -86,7 +102,18 @@ def test_evidence_identity_changes_with_each_owner_field() -> None:
             action=base.action,
             action_version=base.action_version,
             normalized_result_sha256=base.normalized_result_sha256,
-            source_snapshot_id="other-snap",
+            source_snapshots=(
+                SourceSnapshotRecord(
+                    kind="diff",
+                    snapshot_id="other-snap",
+                    source_generation="gen_01",
+                ),
+                SourceSnapshotRecord(
+                    kind="index",
+                    snapshot_id="idxsnap_01",
+                    source_generation="gen_01",
+                ),
+            ),
             locator=base.locator,
         ),
         "locator": EvidenceInput(
@@ -94,7 +121,7 @@ def test_evidence_identity_changes_with_each_owner_field() -> None:
             action=base.action,
             action_version=base.action_version,
             normalized_result_sha256=base.normalized_result_sha256,
-            source_snapshot_id=base.source_snapshot_id,
+            source_snapshots=base.source_snapshots,
             locator="src/other.py",
         ),
     }
@@ -110,7 +137,7 @@ def test_evidence_identity_same_locator_different_results_are_distinct() -> None
         action="safe",
         action_version="edit.safe/v1",
         normalized_result_sha256=hashlib.sha256(b'{"x":1}').hexdigest(),
-        source_snapshot_id="idxsnap_01",
+        source_snapshots=_base_snapshots(),
         locator="src/app.py",
     )
     assert evidence_identity(different_result) != first
@@ -123,7 +150,7 @@ def test_evidence_input_rejects_bad_digest() -> None:
             action="safe",
             action_version="edit.safe/v1",
             normalized_result_sha256="short",
-            source_snapshot_id=None,
+            source_snapshots=(),
             locator="x",
         )
 
@@ -253,3 +280,145 @@ def test_route_table_has_no_llm_or_keyword_router() -> None:
             "ast_diff",
             "classify",
         }
+
+
+def test_evidence_identity_binds_both_snapshot_kinds() -> None:
+    # RFC-0022: a constraint contribution binds both the diff and graph-index
+    # identities — dropping one record changes the evidence ID.
+    both = _base_evidence()
+    diff_only = EvidenceInput(
+        primitive_facade=both.primitive_facade,
+        action=both.action,
+        action_version=both.action_version,
+        normalized_result_sha256=both.normalized_result_sha256,
+        source_snapshots=_base_snapshots()[:1],
+        locator=both.locator,
+    )
+    assert evidence_identity(both) != evidence_identity(diff_only)
+
+
+def test_snapshot_record_rejects_unknown_kind() -> None:
+    with pytest.raises(ValueError, match="unknown snapshot kind"):
+        SourceSnapshotRecord(kind="worktree", snapshot_id="s", source_generation="g")  # type: ignore[arg-type]
+
+
+def test_route_table_all_rows_parameters_are_pinned() -> None:
+    params = {
+        (row.operation, row.facade, row.action): row.parameters for row in ROUTE_TABLE
+    }
+    assert params[("all", "index", "status")] == (
+        ("access_mode", "read_existing"),
+        ("output_format", "json"),
+    )
+    assert params[("understand(task)", "nav", "context")] == (
+        ("max_nodes", "12/30"),
+        ("max_code_blocks", "3/5"),
+        ("include_graph", "false"),
+        ("access_mode", "read_existing"),
+        ("output_format", "json"),
+    )
+    assert params[("plan_change(task)", "nav", "context")] == (
+        ("max_nodes", "12/30"),
+        ("max_code_blocks", "3/5"),
+        ("include_graph", "false"),
+        ("access_mode", "read_existing"),
+        ("output_format", "json"),
+    )
+    assert params[("plan_change(task)", "edit", "safe")] == (
+        ("edit_type", "refactor"),
+        ("access_mode", "read_existing"),
+        ("output_format", "json"),
+    )
+    assert params[("diff operation", "edit", "impact")] == (
+        ("include_tests", "true"),
+        ("resource_profile", "local_low_impact"),
+        ("access_mode", "read_existing"),
+        ("output_format", "json"),
+    )
+    assert params[("diff operation", "edit", "constraints")] == (
+        ("persist", "false"),
+        ("access_mode", "read_existing"),
+        ("output_format", "json"),
+    )
+    assert params[("diff operation", "edit", "ast_diff")] == (
+        ("access_mode", "read_existing"),
+        ("output_format", "json"),
+    )
+    assert params[("diff operation", "edit", "classify")] == (
+        ("access_mode", "read_existing"),
+        ("output_format", "json"),
+    )
+
+
+def test_route_table_dynamic_parameters_are_pinned() -> None:
+    dynamic = {
+        (row.operation, row.facade, row.action): row.dynamic_parameters
+        for row in ROUTE_TABLE
+    }
+    assert dynamic[("all", "index", "status")] == ()
+    assert dynamic[("plan_change(task)", "edit", "safe")] == (
+        "file_path",
+        "snapshot_id",
+        "source_generation",
+    )
+    assert dynamic[("diff operation", "edit", "impact")] == (
+        "mode",
+        "scope_paths",
+    )
+    assert dynamic[("diff operation", "edit", "constraints")] == (
+        "diff_snapshot_id",
+        "snapshot_id",
+        "source_generation",
+        "scope_paths",
+    )
+    assert dynamic[("diff operation", "edit", "ast_diff")] == (
+        "diff_snapshot_id",
+        "file_path",
+    )
+    assert dynamic[("diff operation", "edit", "classify")] == (
+        "diff_snapshot_id",
+        "file_path",
+    )
+
+
+def test_snapshot_record_boundaries() -> None:
+    with pytest.raises(ValueError, match="snapshot_id must be a non-empty"):
+        SourceSnapshotRecord(kind="diff", snapshot_id="", source_generation="g")
+    with pytest.raises(ValueError, match="source_generation must be a non-empty"):
+        SourceSnapshotRecord(kind="diff", snapshot_id="s", source_generation="")
+    with pytest.raises(ValueError, match="tuple of SourceSnapshotRecord"):
+        EvidenceInput(
+            primitive_facade="edit",
+            action="safe",
+            action_version="edit.safe/v1",
+            normalized_result_sha256=hashlib.sha256(b"{}").hexdigest(),
+            source_snapshots=(("diff", "s", "g"),),  # type: ignore[arg-type]
+            locator="x",
+        )
+    with pytest.raises(ValueError, match="non-empty string"):
+        EvidenceInput(
+            primitive_facade="",
+            action="safe",
+            action_version="edit.safe/v1",
+            normalized_result_sha256=hashlib.sha256(b"{}").hexdigest(),
+            source_snapshots=(),
+            locator="x",
+        )
+    with pytest.raises(ValueError, match="locator must be a string"):
+        EvidenceInput(
+            primitive_facade="edit",
+            action="safe",
+            action_version="edit.safe/v1",
+            normalized_result_sha256=hashlib.sha256(b"{}").hexdigest(),
+            source_snapshots=(),
+            locator=123,  # type: ignore[arg-type]
+        )
+
+
+def test_snapshot_truth_boundaries() -> None:
+    with pytest.raises(ValueError, match="oracle_complete must be a bool"):
+        SnapshotTruth(oracle_complete=1)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="snapshot_id must be a non-empty"):
+        SnapshotTruth(oracle_complete=True, snapshot_id="", graph_tokens=("s",))
+    with pytest.raises(ValueError, match="graph_tokens must be strings"):
+        SnapshotTruth(oracle_complete=True, snapshot_id="s", graph_tokens=(1,))  # type: ignore[arg-type]
