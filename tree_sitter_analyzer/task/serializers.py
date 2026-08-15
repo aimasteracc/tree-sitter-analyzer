@@ -141,7 +141,9 @@ def _toon_lines(value: Any, *, depth: int) -> str:
                 lines.append(_toon_lines(item, depth=depth + 1))
             else:
                 lines.append(f"{prefix}{key}: {_toon_scalar(item)}")
-    elif isinstance(value, list):
+    elif isinstance(
+        value, list
+    ):  # pragma: no cover - scalar values never reach _toon_lines
         if not value:
             return "[]" + "\n"  # pragma: no cover - empty lists are scalarized upstream
         for item in value:

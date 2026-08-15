@@ -419,3 +419,17 @@ def test_toon_trailing_bare_dash_item() -> None:
 
     parsed = _parse_toon("evidence:\n  -\n")
     assert parsed == {"evidence": [{}]}
+
+
+def test_toon_list_empty_container_items_roundtrip() -> None:
+    outcome = TaskOutcome(
+        task="understand",
+        request=UnderstandRequest(task="x"),
+        verdict="INFO",
+        evidence=(
+            {},
+            [],
+        ),
+    )
+    decoded = decode_toon(serialize_toon(outcome))
+    assert decoded.evidence == ({}, [])
