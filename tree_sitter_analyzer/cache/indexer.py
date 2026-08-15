@@ -124,7 +124,7 @@ _PLUGIN_EXTS: frozenset[str] = frozenset(
 _warned_extensions: set[str] = set()
 
 # Extractor version constant — kept in sync with ast_cache.py.
-_AST_CACHE_EXTRACTOR_VERSION = 14
+_AST_CACHE_EXTRACTOR_VERSION = 15
 
 
 def _walk_source_files(project_root: str) -> Iterator[str]:

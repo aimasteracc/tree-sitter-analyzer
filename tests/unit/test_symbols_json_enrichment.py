@@ -143,8 +143,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 14
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 14
+        # v15: #1275 (dogfood F5) — imports_json entries carry a line field.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 15
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 15
 
 
 class TestBashVariableAssignmentScope:
