@@ -20,12 +20,22 @@ Last run: 2026-08-15 (No.1 takeover — RFC-0023 validator review closure)
   pointers, per-record contradiction IDs, raw-freshness-derived stale state,
   zero-ID truncation, one-to-one invocation bindings, unreferenced provenance,
   missing/partial snapshot precedence.
-- PR #1271 is green (34 checks, 0 failures) and ready for human merge.
-- PR #1270 (CI fast suite) is the previous session's in-flight work; its Codex
-  P1 finding (bounded PR gate must be retained to satisfy the locked
-  `test_default_gate_has_a_real_five_minute_ci_deadline` contract) is real and
-  the branch still fails that contract. PR #1251 (dependabot actions bump) is
-  green and ready.
+- **All four follow-up PRs merged to develop on 2026-08-15:** #1271 (review
+  gates), #1272 (takeover record), #1270 (CI fast suite — `-q` logging cut the
+  coverage axis 608s→511s, per-step timeouts, locked-contract restorations),
+  #1273 (removed a T-1 duplicate test file; quick gate unchanged at 1992).
+- Dogfood finding: the 8-9 min CI coverage axis is dominated by 25k tests on
+  4-vCPU runners (local 10-core equivalent: ~35s), not by test code. 93
+  T-1-banned-name test files (`*_coverage*`/`_comprehensive*`/`_edge_cases*`/
+  `_extended*`/`_optimized*`, 2015 tests) are real duplication debt from the
+  coverage-chasing era but are NOT the time bottleneck (~10s); bulk removal
+  was deliberately rejected as high-risk/low-ROI. #1273 is the one-file proof
+  of the merge path.
+- Known pre-existing CI issue (NOT caused by this work): develop CI has failed
+  repeatedly on Windows 3.12/3.13 with the same constraint/snapshot tests
+  (test_constraint_check_*, portable_snapshot, index_sync) before and after
+  these merges. Ubuntu/macOS/Windows-3.11 axes are green. Separate fix
+  required.
 
 ## Mission
 
