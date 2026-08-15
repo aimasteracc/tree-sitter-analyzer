@@ -1,0 +1,393 @@
+{
+  "always_violation_syscalls": [
+    "process_vm_writev",
+    "userfaultfd"
+  ],
+  "async_syscalls": [
+    "io_cancel",
+    "io_destroy",
+    "io_getevents",
+    "io_setup",
+    "io_submit",
+    "io_uring_enter",
+    "io_uring_register",
+    "io_uring_setup"
+  ],
+  "authority_id": "rfc0022-linux-strace-v1",
+  "enotty_ioctl_commands": [
+    "TCGETS",
+    "TIOCGWINSZ"
+  ],
+  "fd_sinks": {
+    "copy_file_range": 2,
+    "fallocate": 0,
+    "fchmod": 0,
+    "fchown": 0,
+    "fdatasync": 0,
+    "fremovexattr": 0,
+    "fsetxattr": 0,
+    "fsync": 0,
+    "ftruncate": 0,
+    "pwrite64": 0,
+    "pwritev": 0,
+    "pwritev2": 0,
+    "sendfile": 0,
+    "splice": 2,
+    "sync_file_range": 0,
+    "syncfs": 0,
+    "write": 0,
+    "writev": 0
+  },
+  "global_write_syscalls": [
+    "sync"
+  ],
+  "mapping_syscalls": [
+    "mmap",
+    "mmap2",
+    "mprotect",
+    "msync",
+    "munmap"
+  ],
+  "minimum_strace_version": "6.8",
+  "nonfilesystem_fd_prefixes": [
+    "anon_inode:",
+    "eventfd:",
+    "inotify:",
+    "netlink:",
+    "pipe:",
+    "socket:",
+    "UNIX-STREAM:",
+    "UNIX-DGRAM:",
+    "memfd:",
+    "/memfd:",
+    "UNIX:",
+    "NETLINK:",
+    "TCP:",
+    "TCPv6:",
+    "UDP:",
+    "UDPv6:",
+    "UDPLITE:",
+    "UDPLITEv6:",
+    "DCCP:",
+    "DCCPv6:",
+    "SCTP:",
+    "SCTPv6:",
+    "L2TP/IP:",
+    "L2TP/IPv6:",
+    "PING:",
+    "PINGv6:",
+    "RAW:",
+    "RAWv6:",
+    "signalfd:",
+    "pid:",
+    "pidfd:"
+  ],
+  "page_size": 4096,
+  "path_mutators": {
+    "chmod": [
+      0
+    ],
+    "chown": [
+      0
+    ],
+    "creat": [
+      0
+    ],
+    "fchmodat": [
+      1
+    ],
+    "fchownat": [
+      1
+    ],
+    "fremovexattr": [],
+    "fsetxattr": [],
+    "futimesat": [
+      1
+    ],
+    "lchown": [
+      0
+    ],
+    "link": [
+      0,
+      1
+    ],
+    "linkat": [
+      1,
+      3
+    ],
+    "lremovexattr": [
+      0
+    ],
+    "lsetxattr": [
+      0
+    ],
+    "mkdir": [
+      0
+    ],
+    "mkdirat": [
+      1
+    ],
+    "mknod": [
+      0
+    ],
+    "mknodat": [
+      1
+    ],
+    "mount": [
+      1
+    ],
+    "move_mount": [
+      1,
+      3
+    ],
+    "pivot_root": [
+      0,
+      1
+    ],
+    "removexattr": [
+      0
+    ],
+    "rename": [
+      0,
+      1
+    ],
+    "renameat": [
+      1,
+      3
+    ],
+    "renameat2": [
+      1,
+      3
+    ],
+    "rmdir": [
+      0
+    ],
+    "setxattr": [
+      0
+    ],
+    "symlink": [
+      1
+    ],
+    "symlinkat": [
+      2
+    ],
+    "truncate": [
+      0
+    ],
+    "umount2": [
+      0
+    ],
+    "unlink": [
+      0
+    ],
+    "unlinkat": [
+      1
+    ],
+    "utime": [
+      0
+    ],
+    "utimensat": [
+      1
+    ],
+    "utimes": [
+      0
+    ]
+  },
+  "process_syscalls": [
+    "clone",
+    "clone3",
+    "fork",
+    "vfork"
+  ],
+  "safe_fcntl_commands": [
+    "F_DUPFD",
+    "F_DUPFD_CLOEXEC",
+    "F_GETFD",
+    "F_GETFL",
+    "F_GETLK",
+    "F_OFD_GETLK",
+    "F_OFD_SETLK",
+    "F_OFD_SETLKW",
+    "F_SETFD",
+    "F_SETFL",
+    "F_SETLK",
+    "F_SETLKW"
+  ],
+  "safe_ioctl_commands": [
+    "FIOCLEX"
+  ],
+  "safe_syscalls": [
+    "accept",
+    "accept4",
+    "access",
+    "arch_prctl",
+    "brk",
+    "chdir",
+    "clock_getres",
+    "clock_gettime",
+    "clock_nanosleep",
+    "close",
+    "close_range",
+    "connect",
+    "dup",
+    "dup2",
+    "dup3",
+    "epoll_create",
+    "epoll_create1",
+    "epoll_ctl",
+    "epoll_pwait",
+    "epoll_pwait2",
+    "epoll_wait",
+    "eventfd",
+    "eventfd2",
+    "execve",
+    "execveat",
+    "exit",
+    "exit_group",
+    "faccessat",
+    "faccessat2",
+    "fanotify_init",
+    "fanotify_mark",
+    "fchdir",
+    "fcntl",
+    "fgetxattr",
+    "flistxattr",
+    "flock",
+    "fstat",
+    "fstatfs",
+    "futex",
+    "futex_waitv",
+    "getcpu",
+    "getcwd",
+    "getdents",
+    "getdents64",
+    "getegid",
+    "geteuid",
+    "getgid",
+    "getgroups",
+    "getpeername",
+    "getpid",
+    "getppid",
+    "getrandom",
+    "getresgid",
+    "getresuid",
+    "getrlimit",
+    "getsockname",
+    "getsockopt",
+    "gettid",
+    "getuid",
+    "getxattr",
+    "inotify_add_watch",
+    "inotify_init",
+    "inotify_init1",
+    "inotify_rm_watch",
+    "ioctl",
+    "kill",
+    "lgetxattr",
+    "listen",
+    "listxattr",
+    "llistxattr",
+    "lseek",
+    "lstat",
+    "madvise",
+    "mbind",
+    "membarrier",
+    "memfd_create",
+    "migrate_pages",
+    "mincore",
+    "mlock",
+    "mlock2",
+    "mlockall",
+    "move_pages",
+    "munlock",
+    "munlockall",
+    "name_to_handle_at",
+    "nanosleep",
+    "newfstatat",
+    "open_by_handle_at",
+    "open_tree",
+    "pause",
+    "perf_event_open",
+    "pipe",
+    "pipe2",
+    "poll",
+    "ppoll",
+    "prctl",
+    "pread64",
+    "preadv",
+    "preadv2",
+    "prlimit64",
+    "process_vm_readv",
+    "pselect6",
+    "read",
+    "readahead",
+    "readlink",
+    "readlinkat",
+    "readv",
+    "recvfrom",
+    "recvmmsg",
+    "recvmsg",
+    "restart_syscall",
+    "rseq",
+    "rt_sigaction",
+    "rt_sigpending",
+    "rt_sigprocmask",
+    "rt_sigreturn",
+    "rt_sigsuspend",
+    "rt_sigtimedwait",
+    "sched_getaffinity",
+    "sched_yield",
+    "select",
+    "sendmmsg",
+    "sendmsg",
+    "sendto",
+    "set_mempolicy",
+    "set_mempolicy_home_node",
+    "set_robust_list",
+    "set_tid_address",
+    "setsockopt",
+    "shutdown",
+    "sigaltstack",
+    "signalfd",
+    "signalfd4",
+    "socket",
+    "socketpair",
+    "stat",
+    "statfs",
+    "statx",
+    "sysinfo",
+    "time",
+    "timerfd_create",
+    "timerfd_gettime",
+    "timerfd_settime",
+    "umask",
+    "uname",
+    "wait4",
+    "waitid"
+  ],
+  "schema_version": 1,
+  "target_user": "rfc0022-target",
+  "trace_arguments": [
+    "-ff",
+    "-yy",
+    "-q",
+    "-ttt",
+    "-s",
+    "65535",
+    "-v",
+    "--kill-on-exit",
+    "-e",
+    "trace=all"
+  ],
+  "unix_path_mutators": [
+    "bind"
+  ],
+  "write_open_flags": [
+    "O_WRONLY",
+    "O_RDWR",
+    "O_CREAT",
+    "O_TRUNC",
+    "O_APPEND",
+    "O_TMPFILE"
+  ]
+}

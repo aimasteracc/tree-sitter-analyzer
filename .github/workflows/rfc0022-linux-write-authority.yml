@@ -1,0 +1,166 @@
+name: RFC-0022 Linux Write Authority
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - "config/rfc0022-linux-strace-policy.json"
+      - "scripts/rfc0022_strace_authority.py"
+      - "scripts/rfc0022_strace_parser.py"
+      - "scripts/rfc0022_strace_model.py"
+      - "scripts/rfc0022_strace_classify.py"
+      - "scripts/rfc0022_strace_paths.py"
+      - "scripts/rfc0022_strace_preflight.py"
+      - "scripts/rfc0022_strace_privilege.py"
+      - "scripts/rfc0022_strace_state.py"
+      - "scripts/rfc0022_strace_syntax.py"
+      - "scripts/rfc0022_strace_snapshot.py"
+      - "scripts/rfc0022_strace_runtime.py"
+      - "scripts/rfc0022_strace_positive_control.py"
+      - "scripts/rfc0022_strace_target_launcher.py"
+      - "pytest.ini"
+      - "tests/__init__.py"
+      - "tests/conftest.py"
+      - "tests/pytest_temp_hygiene.py"
+      - "tests/contracts/test_rfc0022_strace_authority.py"
+      - "tests/contracts/test_rfc0022_strace_controls.py"
+      - "tests/contracts/test_rfc0022_strace_evidence_binding.py"
+      - "tests/contracts/test_rfc0022_strace_preflight.py"
+      - "tests/contracts/test_rfc0022_strace_privilege.py"
+      - "tests/contracts/test_rfc0022_strace_runtime.py"
+      - "tests/contracts/test_rfc0022_strace_process_state.py"
+      - "tests/contracts/test_rfc0022_strace_snapshot.py"
+      - "tests/contracts/test_rfc0022_strace_syntax.py"
+      - "tests/contracts/test_rfc0022_strace_authority_live.py"
+      - "tests/fixtures/rfc0022_linux_expected_events.json"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "rfcs/0022-task-outcome-apis.md"
+      - ".github/workflows/rfc0022-linux-write-authority.yml"
+  push:
+    branches: [develop]
+    paths:
+      - "config/rfc0022-linux-strace-policy.json"
+      - "scripts/rfc0022_strace_authority.py"
+      - "scripts/rfc0022_strace_parser.py"
+      - "scripts/rfc0022_strace_model.py"
+      - "scripts/rfc0022_strace_classify.py"
+      - "scripts/rfc0022_strace_paths.py"
+      - "scripts/rfc0022_strace_preflight.py"
+      - "scripts/rfc0022_strace_privilege.py"
+      - "scripts/rfc0022_strace_state.py"
+      - "scripts/rfc0022_strace_syntax.py"
+      - "scripts/rfc0022_strace_snapshot.py"
+      - "scripts/rfc0022_strace_runtime.py"
+      - "scripts/rfc0022_strace_positive_control.py"
+      - "scripts/rfc0022_strace_target_launcher.py"
+      - "pytest.ini"
+      - "tests/__init__.py"
+      - "tests/conftest.py"
+      - "tests/pytest_temp_hygiene.py"
+      - "tests/contracts/test_rfc0022_strace_authority.py"
+      - "tests/contracts/test_rfc0022_strace_controls.py"
+      - "tests/contracts/test_rfc0022_strace_evidence_binding.py"
+      - "tests/contracts/test_rfc0022_strace_preflight.py"
+      - "tests/contracts/test_rfc0022_strace_privilege.py"
+      - "tests/contracts/test_rfc0022_strace_runtime.py"
+      - "tests/contracts/test_rfc0022_strace_process_state.py"
+      - "tests/contracts/test_rfc0022_strace_snapshot.py"
+      - "tests/contracts/test_rfc0022_strace_syntax.py"
+      - "tests/contracts/test_rfc0022_strace_authority_live.py"
+      - "tests/fixtures/rfc0022_linux_expected_events.json"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "rfcs/0022-task-outcome-apis.md"
+      - ".github/workflows/rfc0022-linux-write-authority.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-monitor:
+    name: Qualify pinned strace monitor
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      RFC0022_RUN_LIVE_STRACE: "1"
+      RFC0022_AUTHORITY_ARTIFACT_DIR: ${{ github.workspace }}/authority-artifacts
+      RFC0022_AUTHORITY_CASE_DIR: ${{ github.workspace }}/authority-cases
+      RFC0022_TARGET_USER: rfc0022-target
+      RFC0022_QUALIFIED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RFC0022_QUALIFIED_SHA }}
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.12.3"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.10"
+      - name: Install locked project environment
+        run: uv sync --frozen --all-extras
+        shell: bash
+      - name: Create isolated target principal and evidence roots
+        run: |
+          if id "$RFC0022_TARGET_USER" >/dev/null 2>&1; then
+            echo "Pinned target user already exists" >&2
+            exit 1
+          fi
+          sudo useradd --system --user-group --no-create-home \
+            --shell /usr/sbin/nologin "$RFC0022_TARGET_USER"
+          test "$(id -nG "$RFC0022_TARGET_USER")" = "$RFC0022_TARGET_USER"
+          sudo chmod o+x /home/runner /home/runner/work \
+            "$(dirname "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE"
+          mkdir -p "$RFC0022_AUTHORITY_ARTIFACT_DIR" "$RFC0022_AUTHORITY_CASE_DIR"
+          chmod 0777 "$RFC0022_AUTHORITY_CASE_DIR"
+          printf '{"status":"started"}\n' > "$RFC0022_AUTHORITY_ARTIFACT_DIR/job-result.json"
+          qualified_sha="$(git rev-parse HEAD)"
+          test "$qualified_sha" = "$RFC0022_QUALIFIED_SHA"
+          printf '{"qualified_sha":"%s"}\n' "$qualified_sha" \
+            > "$RFC0022_AUTHORITY_ARTIFACT_DIR/source.json"
+        shell: bash
+      - name: Enforce pinned authority preflight
+        run: |
+          uv run python scripts/rfc0022_strace_authority.py preflight \
+            --policy config/rfc0022-linux-strace-policy.json \
+            | tee "$RFC0022_AUTHORITY_ARTIFACT_DIR/preflight.json"
+        shell: bash
+      - name: Run portable and live authority contracts serially
+        run: >-
+          uv run pytest tests/contracts/test_rfc0022_strace_authority.py
+          tests/contracts/test_rfc0022_strace_controls.py
+          tests/contracts/test_rfc0022_strace_evidence_binding.py
+          tests/contracts/test_rfc0022_strace_preflight.py
+          tests/contracts/test_rfc0022_strace_privilege.py
+          tests/contracts/test_rfc0022_strace_runtime.py
+          tests/contracts/test_rfc0022_strace_process_state.py
+          tests/contracts/test_rfc0022_strace_snapshot.py
+          tests/contracts/test_rfc0022_strace_syntax.py
+          tests/contracts/test_rfc0022_strace_authority_live.py
+          -q -n 0 --reruns=0 --timeout=120
+        shell: bash
+      - name: Record job result
+        if: always()
+        run: |
+          mkdir -p "$RFC0022_AUTHORITY_ARTIFACT_DIR"
+          printf '{"job":"qualify-monitor","status":"%s"}\n' '${{ job.status }}' \
+            > "$RFC0022_AUTHORITY_ARTIFACT_DIR/job-result.json"
+        shell: bash
+      - name: Make completed evidence readable for upload
+        if: always()
+        run: sudo chmod -R a+rX "$RFC0022_AUTHORITY_ARTIFACT_DIR"
+        shell: bash
+      - name: Upload raw traces and normalized reports
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: rfc0022-linux-write-authority-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.RFC0022_QUALIFIED_SHA }}
+          path: authority-artifacts/
+          if-no-files-found: error
+          retention-days: 90
