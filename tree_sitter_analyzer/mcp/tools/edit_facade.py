@@ -93,6 +93,7 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
             if action in ("classify", "ast_diff") and arguments.get("diff_snapshot_id"):
                 allowed = {
                     "action",
+                    "access_mode",
                     "diff_snapshot_id",
                     "file_path",
                     "language",
@@ -127,6 +128,9 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
         # so facade/inner never drift. Never added to required[] (runtime-
         # resolved param convention, locked #397 family).
         action_scoped_params={
+            "access_mode": frozenset(
+                {"safe", "impact", "constraints", "classify", "ast_diff"}
+            ),
             "capture_diff_snapshot": frozenset({"impact"}),
             "diff_snapshot_id": frozenset(
                 {"constraints", "classify", "ast_diff", "release_snapshot"}
@@ -134,8 +138,17 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
             "persist": frozenset({"constraints"}),
             "route_lease_id": frozenset({"release_snapshot"}),
             "scope_paths": frozenset({"impact", "constraints"}),
+            "snapshot_id": frozenset({"safe", "constraints"}),
+            "source_generation": frozenset({"safe", "constraints"}),
         },
         extra_public_params={
+            "access_mode": {
+                "type": "string",
+                "enum": ["read_existing"],
+                "description": (
+                    "Explicit P0.4 zero-write access mode for routed read adapters."
+                ),
+            },
             "capture_diff_snapshot": {
                 "type": "boolean",
                 "description": (
@@ -149,6 +162,14 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
                     "RFC-0022 frozen diff ID for constraints/classify/ast_diff/"
                     "release_snapshot."
                 ),
+            },
+            "snapshot_id": {
+                "type": "string",
+                "description": "Certified P0.1 index snapshot capability ID.",
+            },
+            "source_generation": {
+                "type": "string",
+                "description": "Certified P0.1/P0.2 source generation.",
             },
             "persist": {
                 "type": "boolean",

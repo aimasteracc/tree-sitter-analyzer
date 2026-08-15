@@ -16,6 +16,7 @@ from ._builders import (
     _build_safe_to_edit_tool_args,
     _dependency_mode_requires_file,
 )
+from ._read_existing_bridge import _forward_read_existing_controls
 
 _CORE_SPECS: tuple[McpCommandSpec, ...] = (
     McpCommandSpec(
@@ -234,19 +235,23 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
         flag_name="ast_diff",
         tool_attr="ASTDiffTool",
         label="Structural AST diff (difftastic-level)",
-        build_tool_args=lambda args, output_format: {
-            "mode": getattr(args, "ast_diff_mode", "diff_files") or "diff_files",
-            "old_file": getattr(args, "ast_diff_old_file", None),
-            "new_file": getattr(args, "ast_diff_new_file", None),
-            "old_source": getattr(args, "ast_diff_old_source", None),
-            "new_source": getattr(args, "ast_diff_new_source", None),
-            "file_path": getattr(args, "ast_diff_file", None),
-            "old_ref": getattr(args, "ast_diff_old_ref", "HEAD~1"),
-            "new_ref": getattr(args, "ast_diff_new_ref", "HEAD"),
-            "language": getattr(args, "ast_diff_language", None),
-            "include_node_bodies": getattr(args, "ast_diff_include_bodies", False),
-            "output_format": output_format,
-        },
+        build_tool_args=lambda args, output_format: _forward_read_existing_controls(
+            args,
+            {
+                "mode": getattr(args, "ast_diff_mode", "diff_files") or "diff_files",
+                "old_file": getattr(args, "ast_diff_old_file", None),
+                "new_file": getattr(args, "ast_diff_new_file", None),
+                "old_source": getattr(args, "ast_diff_old_source", None),
+                "new_source": getattr(args, "ast_diff_new_source", None),
+                "file_path": getattr(args, "ast_diff_file", None),
+                "old_ref": getattr(args, "ast_diff_old_ref", "HEAD~1"),
+                "new_ref": getattr(args, "ast_diff_new_ref", "HEAD"),
+                "language": getattr(args, "ast_diff_language", None),
+                "include_node_bodies": getattr(args, "ast_diff_include_bodies", False),
+                "output_format": output_format,
+            },
+            controls=frozenset({"access_mode", "diff_snapshot_id"}),
+        ),
     ),
     McpCommandSpec(
         flag_name="symbol_search",

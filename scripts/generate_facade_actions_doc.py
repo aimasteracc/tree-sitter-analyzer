@@ -79,8 +79,9 @@ CONDITIONAL_PARAM_NOTES: dict[tuple[str, str], str] = {
         "exactly one of `query_key`/`query_string`"
     ),
     ("edit", "impact"): (
-        "`capture_diff_snapshot` is an explicit boolean producer available only "
-        "to same-process POSIX consumers"
+        "`capture_diff_snapshot` is an explicit legacy producer available only "
+        "to same-process POSIX consumers and is forbidden whenever `access_mode` "
+        "is present"
     ),
     ("index", "status"): (
         "`access_mode` accepts only `read_existing` (default); it is rejected "
@@ -96,7 +97,8 @@ BESPOKE_ROUTE_SPECS: dict[tuple[str, str], dict[str, Any]] = {
     ("nav", "context"): {
         "params": (
             "`task`* (or `symbol`/`query` as alias), `max_nodes`, "
-            "`max_code_blocks`, `include_graph`, `output_format`"
+            "`max_code_blocks`, `include_graph`, `access_mode`, `snapshot_id`, "
+            "`source_generation`, `output_format`"
         ),
         "source": "nav_facade.py::_context_route",
     },

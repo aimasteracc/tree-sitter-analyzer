@@ -168,3 +168,93 @@ def test_registered_mcp_tools_have_skill_parity() -> None:
         "collapsing to fewer skills defeats the progressive-disclosure "
         "token savings."
     )
+
+
+def test_rfc0022_process_local_cli_parity_exception_is_exact() -> None:
+    """Keep process-local facade controls narrow and explicitly accounted for."""
+    from tree_sitter_analyzer.cli.commands.mcp_commands._read_existing_bridge import (
+        READ_EXISTING_BRIDGE_BY_ACTION,
+        READ_EXISTING_BRIDGED_CONTROLS,
+    )
+    from tree_sitter_analyzer.mcp.facade_map import LEGACY_TOOL_MAP, NEW_ACTION_PARITY
+
+    expected = {
+        ("index", "status"): {"access_mode"},
+        ("nav", "context"): {"access_mode", "snapshot_id", "source_generation"},
+        ("edit", "safe"): {"access_mode", "snapshot_id", "source_generation"},
+        ("edit", "impact"): {
+            "access_mode",
+            "capture_diff_snapshot",
+            "scope_paths",
+        },
+        ("edit", "constraints"): {
+            "access_mode",
+            "diff_snapshot_id",
+            "persist",
+            "scope_paths",
+            "snapshot_id",
+            "source_generation",
+        },
+        ("edit", "classify"): {"access_mode", "diff_snapshot_id"},
+        ("edit", "ast_diff"): {"access_mode", "diff_snapshot_id"},
+        ("edit", "release_snapshot"): {"diff_snapshot_id", "route_lease_id"},
+    }
+    _tools, lookup = _create_tool_registry(str(PROJECT_ROOT))
+    actual: dict[tuple[str, str], set[str]] = {}
+    for facade, tool in lookup.items():
+        for param, actions in tool._action_scoped_params.items():
+            for action in actions:
+                actual.setdefault((facade, action), set()).add(param)
+    assert actual == expected
+
+    declared = {
+        (facade, action)
+        for facade, tool in lookup.items()
+        for action in (*tool.action_map, *tool.bespoke_map)
+    }
+    cli_routes = set(LEGACY_TOOL_MAP.values()) | {
+        (facade, action) for facade, action, _flag in NEW_ACTION_PARITY.values()
+    }
+    facade_level_only = {
+        ("search", "select"),
+        ("search", "subscribe"),
+        ("search", "unsubscribe"),
+        ("structure", "signatures"),
+    }
+    assert declared - cli_routes == facade_level_only | {("edit", "release_snapshot")}
+
+    # Codex P1 (#1257): process-local controls are NOT MCP-only. Every
+    # control scoped to a CLI-routed facade action must be forwardable
+    # through the in-process CLI-handler bridge
+    # (``mcp_commands._read_existing_bridge``). The residual is the only
+    # documented exception: producer-only tokens (``capture_diff_snapshot``,
+    # forbidden with ``access_mode`` by RFC-0022) and controls with their own
+    # dedicated CLI affordance (``scope_paths`` via ``--change-impact-scope``,
+    # ``persist`` via ``--constraints-read-only``).
+    residual: dict[tuple[str, str], frozenset[str]] = {
+        ("edit", "impact"): frozenset({"capture_diff_snapshot", "scope_paths"}),
+        ("edit", "constraints"): frozenset({"persist", "scope_paths"}),
+    }
+    unbridged: dict[tuple[str, str], frozenset[str]] = {}
+    for (facade, action), controls in actual.items():
+        if (facade, action) not in cli_routes:
+            continue
+        bridged = READ_EXISTING_BRIDGE_BY_ACTION.get((facade, action), frozenset())
+        remaining = frozenset(controls - bridged)
+        if remaining:
+            unbridged[(facade, action)] = remaining
+    assert unbridged == residual
+
+    bridged_params = frozenset(READ_EXISTING_BRIDGED_CONTROLS)
+    for (facade, action), controls in READ_EXISTING_BRIDGE_BY_ACTION.items():
+        assert (facade, action) in actual, (
+            f"bridge row ({facade}, {action}) has no action-scoped params"
+        )
+        assert controls <= bridged_params, (
+            f"bridge row ({facade}, {action}) references unknown controls: "
+            f"{sorted(controls - bridged_params)}"
+        )
+        assert controls <= actual[(facade, action)], (
+            f"bridge row ({facade}, {action}) forwards controls not scoped to "
+            f"the action: {sorted(controls - actual[(facade, action)])}"
+        )

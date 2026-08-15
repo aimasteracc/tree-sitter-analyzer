@@ -11,6 +11,8 @@ Supports GitHub PR URL analysis: pass pr_url to fetch diff via gh CLI.
 from pathlib import Path
 from typing import Any
 
+from ...git_path_codec import path_from_wire
+from ...read_existing_access import validate_read_existing_paths
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import _canonicalize_verdict, mirror_summary_line
 from .utils.change_impact_response import (
@@ -152,9 +154,40 @@ def _scope_paths_invalid(project_root: str | None, scope_paths: list[str]) -> li
     ]
 
 
+def validate_read_existing_scope(arguments: dict[str, Any]) -> None:
+    """Validate a zero-write impact scope without touching the filesystem."""
+    scope_paths = arguments.get("scope_paths", [])
+    if not isinstance(scope_paths, list) or any(
+        not isinstance(path, str) for path in scope_paths
+    ):
+        raise ValueError("scope_paths must be a list of strings")
+    if any(path.startswith(":") for path in scope_paths):
+        raise ValueError("DIFF_SNAPSHOT_UNSUPPORTED_SCOPE")
+    for path in scope_paths:
+        path_from_wire(path)
+
+
+def validate_read_existing_impact(tool: Any, arguments: dict[str, Any]) -> None:
+    """Validate the P0.4 producer boundary without starting Git or graph work."""
+    mode = "pr" if arguments.get("pr_url") else arguments.get("mode", "diff")
+    if mode not in ("diff", "staged"):
+        raise ValueError("DIFF_SNAPSHOT_UNSUPPORTED_MODE")
+    validate_read_existing_scope(arguments)
+    validate_read_existing_paths(tool, arguments.get("scope_paths", []))
+
+
 TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
+        "access_mode": {
+            "type": "string",
+            "enum": ["read_existing"],
+            "description": (
+                "Explicit P0.4 zero-write access mode. For diff/staged this is "
+                "the in-memory snapshot producer and fails closed while its "
+                "read-only backend is unavailable."
+            ),
+        },
         "mode": {
             "type": "string",
             "enum": ["diff", "staged", "branch", "pr"],

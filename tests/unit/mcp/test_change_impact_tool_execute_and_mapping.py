@@ -3,6 +3,8 @@
 import asyncio
 import os
 
+import pytest
+
 from tests.unit._diff_snapshot_support import install_fake_snapshot_materializer
 from tree_sitter_analyzer.diff_snapshot_capture import ChangedFile
 from tree_sitter_analyzer.mcp.tools import change_impact_tool as tool_module
@@ -1391,6 +1393,83 @@ def test_validate_arguments_rejects_invalid_mode():
         raised = True
         assert "mode must be diff|staged|branch" in str(exc)
     assert raised, "Expected ValueError for invalid mode"
+
+
+@pytest.mark.parametrize("name", ["mode", "scope_mode"])
+def test_explicit_access_rejects_unhashable_mode_values(name):
+    tool = tool_module.ChangeImpactTool(project_root="/repo")
+
+    with pytest.raises(ValueError):
+        tool.validate_arguments({"access_mode": "read_existing", name: []})
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        ({"scope_paths": "src/a.py"}, "scope_paths must be a list of strings"),
+        ({"scope_paths": [1]}, "scope_paths must be a list of strings"),
+        ({"scope_paths": [":exclude"]}, "DIFF_SNAPSHOT_UNSUPPORTED_SCOPE"),
+    ],
+)
+def test_read_existing_scope_rejects_unsupported_shapes(arguments, message):
+    from tree_sitter_analyzer.mcp.tools.change_impact_support import (
+        validate_read_existing_scope,
+    )
+
+    with pytest.raises(ValueError, match=f"^{message}$"):
+        validate_read_existing_scope(arguments)
+
+
+def test_read_existing_scope_accepts_wire_paths():
+    from tree_sitter_analyzer.mcp.tools.change_impact_support import (
+        validate_read_existing_scope,
+    )
+
+    assert validate_read_existing_scope({"scope_paths": ["src/a.py"]}) is None
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        (
+            {"access_mode": "read_existing", "mode": "branch"},
+            "DIFF_SNAPSHOT_UNSUPPORTED_MODE",
+        ),
+        (
+            {"access_mode": "read_existing", "capture_diff_snapshot": False},
+            "DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS",
+        ),
+    ],
+)
+def test_read_existing_impact_rejects_unsupported_requests(arguments, message):
+    tool = tool_module.ChangeImpactTool(project_root="/repo")
+
+    with pytest.raises(ValueError, match=f"^{message}$"):
+        tool.validate_arguments(arguments)
+
+
+def test_execute_read_existing_fails_closed_without_project_root():
+    # Codex P1 (#1257): with project_root unbound the SecurityValidator
+    # receives base_path=None and skips its project-boundary layer, so an
+    # arbitrary relative scope path validates. The route must fail closed
+    # with the stable MISSING_PROJECT_ROOT error instead of classifying.
+    tool = tool_module.ChangeImpactTool(project_root=None)
+
+    with pytest.raises(ValueError) as exc_info:
+        asyncio.run(
+            tool.execute(
+                {
+                    "access_mode": "read_existing",
+                    "scope_paths": ["src/a.py"],
+                    "output_format": "json",
+                }
+            )
+        )
+
+    assert str(exc_info.value) == (
+        "MISSING_PROJECT_ROOT: project_root must be bound before "
+        "read_existing path validation"
+    )
 
 
 def test_validate_arguments_accepts_valid_modes():

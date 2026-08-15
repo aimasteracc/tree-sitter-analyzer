@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ._read_existing_bridge import _forward_read_existing_controls
+
 _DEPENDENCY_FILE_SCOPED_MODES = {"blast_radius", "file_deps"}
 _DEPENDENCY_MODE_ALIASES = {"full": "summary"}
 
@@ -96,12 +98,16 @@ def _build_safe_to_edit_tool_args(args: Any, output_format: str) -> dict[str, An
         raise ValueError(
             f"--safe-to-edit expects a file, but '{file_path}' is a directory"
         )
-    return {
-        "file_path": file_path,
-        "edit_type": getattr(args, "edit_type", "refactor") or "refactor",
-        "output_format": output_format,
-        "compact_only": bool(getattr(args, "compact_toon", False)),
-    }
+    return _forward_read_existing_controls(
+        args,
+        {
+            "file_path": file_path,
+            "edit_type": getattr(args, "edit_type", "refactor") or "refactor",
+            "output_format": output_format,
+            "compact_only": bool(getattr(args, "compact_toon", False)),
+        },
+        controls=frozenset({"access_mode", "snapshot_id", "source_generation"}),
+    )
 
 
 def _build_batch_search_tool_args(args: Any, output_format: str) -> dict[str, Any]:
@@ -251,7 +257,9 @@ def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, A
     tool_args["resource_profile"] = (
         getattr(args, "change_impact_resource_profile", "default") or "default"
     )
-    return tool_args
+    return _forward_read_existing_controls(
+        args, tool_args, controls=frozenset({"access_mode"})
+    )
 
 
 def _build_codegraph_status_tool_args(args: Any, output_format: str) -> dict[str, Any]:

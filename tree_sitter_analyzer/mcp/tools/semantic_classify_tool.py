@@ -12,6 +12,7 @@ Can operate in two modes:
 
 from typing import Any
 
+from ... import read_existing_access as read_access
 from ...ast_diff import ASTDiffer
 from ...git_path_codec import path_to_wire
 from ...project_graph import _language_from_ext
@@ -104,6 +105,11 @@ class SemanticClassifyTool(BaseMCPTool):
         return {
             "type": "object",
             "properties": {
+                "access_mode": {
+                    "type": "string",
+                    "enum": ["read_existing"],
+                    "description": "Explicit P0.4 zero-write snapshot access mode.",
+                },
                 "diff_snapshot_id": {
                     "type": "string",
                     "description": "RFC-0022 frozen snapshot ID; with file_path this strict path never rereads the workspace.",
@@ -200,8 +206,10 @@ class SemanticClassifyTool(BaseMCPTool):
         return "classify_string"
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        if arguments.get("diff_snapshot_id"):
+        read_existing = read_access.validate_read_existing_access(arguments)
+        if read_existing or arguments.get("diff_snapshot_id"):
             allowed = {
+                "access_mode",
                 "diff_snapshot_id",
                 "file_path",
                 "include_ast_nodes",
@@ -210,8 +218,15 @@ class SemanticClassifyTool(BaseMCPTool):
             }
             if set(arguments) - allowed:
                 raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
-            if not arguments.get("file_path"):
+            snapshot_id = arguments.get("diff_snapshot_id")
+            if not isinstance(snapshot_id, str) or not snapshot_id:
+                raise ValueError("diff_snapshot_id must be a non-empty string")
+            file_path = arguments.get("file_path")
+            if not isinstance(file_path, str) or not file_path:
                 raise ValueError("DIFF_SNAPSHOT_FILE_REQUIRED")
+            if read_existing:
+                read_access.validate_read_existing_paths(self, [file_path])
+                read_access.validate_read_existing_schema_values(self, arguments)
             return True
         mode = self._resolve_mode(arguments)
         if mode == "classify_string":
@@ -231,6 +246,12 @@ class SemanticClassifyTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
+
+        unavailable = read_access.format_read_existing_unavailable(
+            arguments, reason=read_access.READ_EXISTING_AUTHORITY_UNCERTIFIED
+        )
+        if unavailable is not None:
+            return unavailable
 
         mode = self._resolve_mode(arguments)
         output_format = arguments.get("output_format", "toon")
@@ -380,9 +401,11 @@ class SemanticClassifyTool(BaseMCPTool):
             # list. Tests pin this name (pain pass 2).
             response: dict[str, Any] = {
                 "success": True,
-                "file_path": path_to_wire(file_path)
-                if consumer is not None and file_path is not None
-                else file_path,
+                "file_path": (
+                    path_to_wire(file_path)
+                    if consumer is not None and file_path is not None
+                    else file_path
+                ),
                 "diff_hunks": len(diff_result.hunks),
                 "change_count": len(all_classifications),
                 "verdict": verdict,

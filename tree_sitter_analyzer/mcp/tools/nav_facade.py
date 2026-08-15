@@ -45,6 +45,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ... import read_existing_access as read_access
 from .facade_tool import FacadeTool
 
 # RFC-0014 Phase B: cap for test_map test_functions list (matches _MAX_LISTED).
@@ -245,7 +246,8 @@ _NAV_DESCRIPTION = (
     "search + definition + callers + callees in a single capped response "
     "(codegraph_context equivalent). "
     "Params: task (required — natural-language description or symbol name), "
-    "max_nodes, max_code_blocks, output_format.\n"
+    "max_nodes, max_code_blocks, access_mode, snapshot_id, "
+    "source_generation, output_format.\n"
     "- action=callers — who calls a function (codegraph_callers equivalent).\n"
     "  scope=point (default) → direct 1-hop callers (fast). "
     "Params: function_name/symbol (required), file_path, output_format.\n"
@@ -300,18 +302,14 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     from .symbol_resolve_tool import CodeGraphSymbolResolveTool
     from .trace_impact_tool import TraceImpactTool
 
-    # ------------------------------------------------------------------
     # R4 bespoke inners — scope-discriminated callers/callees
-    #
     # ``scope`` is a facade control key that the framework strips BEFORE
     # projecting args to an inner schema.  Because we need to READ scope
     # to choose the inner, we use bespoke closures that receive the full
     # cleaned-args dict (control keys minus ``action`` stripped, R3 copy
     # applied) and inspect ``scope`` themselves.
-    #
     # All four instances are registered via ``register_bespoke_inner``
     # (called after facade construction below) so G3 rebind reaches them.
-    # ------------------------------------------------------------------
 
     callers_point = CodeGraphCallersTool(project_root)
     callers_graph = CodeGraphCallTool(project_root)
@@ -341,6 +339,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             "max_code_blocks",
             "output_format",
             "include_graph",
+            *("access_mode", "snapshot_id", "source_generation"),
         )
         context_args: dict[str, Any] = {
             k: v for k, v in args.items() if k in inner_keys
@@ -622,6 +621,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         description=_NAV_DESCRIPTION,
         annotations=_NAV_ANNOTATIONS,
         project_root=project_root,
+        **read_access.index_capability_facade_configuration("context"),
     )
 
     # G3: register all bespoke inners so set_project_path reaches them.

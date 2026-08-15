@@ -11,6 +11,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...read_existing_access import (
+    classify_index_access,
+    validate_read_existing_access,
+    validate_read_existing_schema_values,
+)
 from .base_tool import BaseMCPTool
 
 
@@ -75,9 +80,8 @@ class CodeGraphStatusTool(BaseMCPTool):
         include_lag = arguments.get("include_lag", True)
         if not isinstance(include_lag, bool):
             raise ValueError("include_lag must be a boolean")
-        access_mode = arguments.get("access_mode")
-        if access_mode not in (None, "read_existing"):
-            raise ValueError("access_mode must be read_existing")
+        validate_read_existing_access(arguments)
+        validate_read_existing_schema_values(self, arguments)
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -85,16 +89,49 @@ class CodeGraphStatusTool(BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
         # Status is unconditionally read-only.  JSON Schema defaults are not
         # injected by every direct caller, so omission must be handled here.
-        return self._execute_read_existing(
-            output_format, include_lag=arguments.get("include_lag", True)
+        include_access_evidence = "access_mode" in arguments
+        result = self._execute_read_existing(
+            output_format,
+            include_lag=arguments.get("include_lag", True),
+            include_access_evidence=include_access_evidence,
         )
+        if not include_access_evidence or "access_state" in result:
+            return result
+        # Preserve lightweight monkeypatch/test seams that return the older P0.1
+        # payload even when the new keyword is accepted.
+        return self._with_access_evidence(result, output_format)
+
+    @staticmethod
+    def _with_access_evidence(
+        result: dict[str, Any], output_format: str
+    ) -> dict[str, Any]:
+        """Classify the P0.1 oracle without changing its action-specific fields."""
+        # Production adds evidence inside the focused status boundary before
+        # formatting. This fallback keeps older monkeypatch/test seams additive.
+        evidence = classify_index_access(
+            snapshot_id=result.get("snapshot_id"),
+            source_generation=result.get("source_generation"),
+            completeness=result.get("completeness"),
+            reason=result.get("oracle_reason"),
+        )
+        enriched = {**result, **evidence}
+        from ..utils.format_helper import apply_toon_format_to_response
+
+        return apply_toon_format_to_response(enriched, output_format)
 
     def _execute_read_existing(
-        self, output_format: str, *, include_lag: bool
+        self,
+        output_format: str,
+        *,
+        include_lag: bool,
+        include_access_evidence: bool = False,
     ) -> dict[str, Any]:
         """Delegate response construction to the focused status boundary."""
         from ...index_status_response import build_index_status_response
 
         return build_index_status_response(
-            self.project_root, output_format, include_lag=include_lag
+            self.project_root,
+            output_format,
+            include_lag=include_lag,
+            include_access_evidence=include_access_evidence,
         )

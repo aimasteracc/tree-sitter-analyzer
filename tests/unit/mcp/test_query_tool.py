@@ -102,7 +102,9 @@ class TestGetAvailableQueries(_query_mixins.TestGetAvailableQueriesTestMixin):
     pass
 
 
-class TestExecuteAdditionalCoverage(_query_mixins.TestExecuteAdditionalCoverageTestMixin):
+class TestExecuteAdditionalCoverage(
+    _query_mixins.TestExecuteAdditionalCoverageTestMixin
+):
     """Additional coverage for execute."""
 
     pass
@@ -142,9 +144,7 @@ class TestFormatSummaryCoverageBoost(
     pass
 
 
-class TestExtractNameCoverageBoost(
-    _query_mixins.TestExtractNameCoverageBoostTestMixin
-):
+class TestExtractNameCoverageBoost(_query_mixins.TestExtractNameCoverageBoostTestMixin):
     """Coverage for _extract_name_from_content branches."""
 
     pass

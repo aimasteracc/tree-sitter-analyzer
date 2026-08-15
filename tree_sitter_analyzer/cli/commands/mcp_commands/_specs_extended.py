@@ -17,6 +17,7 @@ from ._builders import (
     _build_trace_impact_tool_args,
     _build_uml_tool_args,
 )
+from ._read_existing_bridge import _forward_read_existing_controls
 
 _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
     McpCommandSpec(
@@ -89,16 +90,22 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
         flag_name="codegraph_context",
         tool_attr="CodeGraphContextTool",
         label="One-call architecture context: entry points + graph + source",
-        build_tool_args=lambda args, output_format: {
-            "task": getattr(args, "codegraph_context", "") or "",
-            "max_nodes": getattr(args, "codegraph_context_max_nodes", 30),
-            "max_code_blocks": getattr(args, "codegraph_context_max_code_blocks", 5),
-            "output_format": output_format,
-            # RFC-0006: expose include_graph flag for CLI parity with MCP default.
-            "include_graph": bool(
-                getattr(args, "codegraph_context_include_graph", False)
-            ),
-        },
+        build_tool_args=lambda args, output_format: _forward_read_existing_controls(
+            args,
+            {
+                "task": getattr(args, "codegraph_context", "") or "",
+                "max_nodes": getattr(args, "codegraph_context_max_nodes", 30),
+                "max_code_blocks": getattr(
+                    args, "codegraph_context_max_code_blocks", 5
+                ),
+                "output_format": output_format,
+                # RFC-0006: expose include_graph flag for CLI parity with MCP default.
+                "include_graph": bool(
+                    getattr(args, "codegraph_context_include_graph", False)
+                ),
+            },
+            controls=frozenset({"access_mode", "snapshot_id", "source_generation"}),
+        ),
     ),
     # CodeGraph parity gap-closure (2026-05-24): codegraph_explore replaces
     # ~8 chained codegraph_node / analyze_code_structure calls with one
@@ -132,18 +139,22 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
         flag_name="semantic_classify",
         tool_attr="SemanticClassifyTool",
         label="Semantic change classification",
-        build_tool_args=lambda args, output_format: {
-            "mode": getattr(args, "semantic_classify_mode", "classify_file")
-            or "classify_file",
-            "file_path": getattr(args, "file_path", None),
-            "old_ref": getattr(args, "semantic_classify_old_ref", "HEAD~1"),
-            "new_ref": getattr(args, "semantic_classify_new_ref", "HEAD"),
-            "language": getattr(args, "semantic_classify_language", None),
-            # #528 byte-budget knobs — CLI parity with the MCP schema
-            "include_ast_nodes": getattr(args, "classify_include_ast_nodes", False),
-            "hunk_cap": getattr(args, "classify_hunk_cap", 50),
-            "output_format": output_format,
-        },
+        build_tool_args=lambda args, output_format: _forward_read_existing_controls(
+            args,
+            {
+                "mode": getattr(args, "semantic_classify_mode", "classify_file")
+                or "classify_file",
+                "file_path": getattr(args, "file_path", None),
+                "old_ref": getattr(args, "semantic_classify_old_ref", "HEAD~1"),
+                "new_ref": getattr(args, "semantic_classify_new_ref", "HEAD"),
+                "language": getattr(args, "semantic_classify_language", None),
+                # #528 byte-budget knobs — CLI parity with the MCP schema
+                "include_ast_nodes": getattr(args, "classify_include_ast_nodes", False),
+                "hunk_cap": getattr(args, "classify_hunk_cap", 50),
+                "output_format": output_format,
+            },
+            controls=frozenset({"access_mode", "diff_snapshot_id"}),
+        ),
     ),
     McpCommandSpec(
         flag_name="pr_review",

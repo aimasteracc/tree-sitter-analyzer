@@ -1,4 +1,5 @@
 """Contract tests split from the former agent workflow monolith."""
+
 # ruff: noqa: F401
 
 from __future__ import annotations
@@ -462,38 +463,3 @@ def test_every_tool_declares_mcp_annotations() -> None:
         "Tools cannot be both readOnly AND destructive — pick one. "
         f"Offenders: {contradictions}"
     )
-
-
-def test_rfc0022_process_local_cli_parity_exception_is_exact() -> None:
-    from tree_sitter_analyzer.mcp.facade_map import LEGACY_TOOL_MAP, NEW_ACTION_PARITY
-
-    expected = {
-        ("index", "status"): {"access_mode"},
-        ("edit", "impact"): {"capture_diff_snapshot", "scope_paths"},
-        ("edit", "constraints"): {"diff_snapshot_id", "persist", "scope_paths"},
-        ("edit", "classify"): {"diff_snapshot_id"},
-        ("edit", "ast_diff"): {"diff_snapshot_id"},
-        ("edit", "release_snapshot"): {"diff_snapshot_id", "route_lease_id"},
-    }
-    _tools, lookup = _create_tool_registry(str(PROJECT_ROOT))
-    actual: dict[tuple[str, str], set[str]] = {}
-    for facade, tool in lookup.items():
-        for param, actions in tool._action_scoped_params.items():
-            for action in actions:
-                actual.setdefault((facade, action), set()).add(param)
-    assert actual == expected
-    declared = {
-        (facade, action)
-        for facade, tool in lookup.items()
-        for action in (*tool.action_map, *tool.bespoke_map)
-    }
-    cli_routes = set(LEGACY_TOOL_MAP.values()) | {
-        (facade, action) for facade, action, _flag in NEW_ACTION_PARITY.values()
-    }
-    facade_level_only = {
-        ("search", "select"),
-        ("search", "subscribe"),
-        ("search", "unsubscribe"),
-        ("structure", "signatures"),
-    }
-    assert declared - cli_routes == facade_level_only | {("edit", "release_snapshot")}

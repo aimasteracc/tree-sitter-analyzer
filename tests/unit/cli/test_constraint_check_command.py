@@ -496,3 +496,53 @@ def test_explicit_nonempty_rules_publish_when_config_remains_exact(
     actual = result["success"], result["verdict"], result["rule_count"]
     assert actual == (True, "SAFE", 1)
     assert observed == [observed[0]] * 3
+
+
+def test_run_check_constraints_forwards_read_existing_controls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Codex P1 (#1257): the --check-constraints route must forward the
+    # RFC-0022 read-existing controls through the in-process bridge so the
+    # CLI path can consume certified snapshots like the MCP facade route.
+    import tree_sitter_analyzer.cli.commands.constraint_check_command as owner
+
+    seen: dict[str, object] = {}
+
+    class FakeConstraintCheckTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, object]) -> dict[str, object]:
+            seen["arguments"] = dict(arguments)
+            return {"success": True, "verdict": "SAFE", "violations": []}
+
+    monkeypatch.setattr(owner, "ConstraintCheckTool", FakeConstraintCheckTool)
+    monkeypatch.setattr(owner, "_print_result", lambda result, output_format: None)
+
+    args = SimpleNamespace(
+        severity_min="warn",
+        constraint_path_filter="",
+        constraint_file=None,
+        constraints_read_only=False,
+        output_format="json",
+        access_mode="read_existing",
+        diff_snapshot_id="ds_test",
+        snapshot_id="idxsnap_01",
+        source_generation="gen_01",
+    )
+
+    exit_code = owner.run_check_constraints(args, "/repo")
+
+    assert exit_code == 0
+    assert seen == {
+        "project_root": "/repo",
+        "arguments": {
+            "path_filter": "",
+            "severity_min": "warn",
+            "output_format": "json",
+            "access_mode": "read_existing",
+            "diff_snapshot_id": "ds_test",
+            "snapshot_id": "idxsnap_01",
+            "source_generation": "gen_01",
+        },
+    }

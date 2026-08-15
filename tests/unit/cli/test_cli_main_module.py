@@ -608,7 +608,9 @@ class TestErrorHandling:
                 mock_exit.assert_called_once_with(1)
 
 
-class TestHandleSpecialCommands(_special_command_mixins.TestHandleSpecialCommandsTestMixin):
+class TestHandleSpecialCommands(
+    _special_command_mixins.TestHandleSpecialCommandsTestMixin
+):
     """Tests for handle_special_commands() covering all branches."""
 
     __test__ = True

@@ -828,5 +828,144 @@ def test_callees_limit_forwarded_to_point_inner() -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# RFC-0022 P0.4: explicit read-existing context access
+# ---------------------------------------------------------------------------
+
+_CONTEXT_READ_EXISTING_ARGS: dict[str, Any] = {
+    "action": "context",
+    "task": "explain dispatch",
+    "access_mode": "read_existing",
+    "snapshot_id": "idxsnap_01",
+    "source_generation": "generation_01",
+}
+_ACCESS_EVIDENCE: dict[str, Any] = {
+    "success": True,
+    "verdict": "WARN",
+    "access_mode": "read_existing",
+    "access_state": "unknown",
+    "access_reason": "READ_EXISTING_AUTHORITY_UNCERTIFIED",
+    "source_snapshots": [],
+}
+_ACCESS_EVIDENCE_TOON = (
+    "success: true\n"
+    "verdict: WARN\n"
+    "access_mode: read_existing\n"
+    "access_state: unknown\n"
+    "access_reason: READ_EXISTING_AUTHORITY_UNCERTIFIED\n"
+    "source_snapshots: []\n"
+    "output_format: toon"
+)
+
+
+def test_context_forwards_explicit_read_existing_capability() -> None:
+    facade = build_nav_facade(project_root=None)
+    context_inner = facade._bespoke_inners[0]
+    sentinel = {"forwarded": True}
+
+    with patch.object(
+        context_inner, "execute", new=AsyncMock(return_value=sentinel)
+    ) as mock_execute:
+        result = asyncio.run(facade.execute(_CONTEXT_READ_EXISTING_ARGS))
+
+    mock_execute.assert_awaited_once_with(
+        {
+            key: value
+            for key, value in _CONTEXT_READ_EXISTING_ARGS.items()
+            if key != "action"
+        }
+    )
+    assert result == sentinel
+
+
+@pytest.mark.parametrize(
+    ("output_format", "format_fields"),
+    [
+        pytest.param("json", {}, id="json"),
+        pytest.param(
+            "toon",
+            {"format": "toon", "toon_content": _ACCESS_EVIDENCE_TOON},
+            id="toon",
+        ),
+    ],
+)
+def test_context_read_existing_returns_exact_access_evidence_without_backend(
+    tmp_path: Any, output_format: str, format_fields: dict[str, Any]
+) -> None:
+    facade = build_nav_facade(project_root=str(tmp_path))
+    context_inner = facade._bespoke_inners[0]
+
+    with patch.object(
+        context_inner,
+        "_get_cache",
+        side_effect=AssertionError("context backend must not run"),
+    ) as get_cache:
+        result = asyncio.run(
+            facade.execute(
+                {**_CONTEXT_READ_EXISTING_ARGS, "output_format": output_format}
+            )
+        )
+
+    get_cache.assert_not_called()
+    assert result == {
+        **format_fields,
+        **_ACCESS_EVIDENCE,
+        "output_format": output_format,
+    }
+
+
+def test_context_rejects_malformed_task_before_unavailable_classification(
+    tmp_path: Any,
+) -> None:
+    facade = build_nav_facade(project_root=str(tmp_path))
+
+    with patch(
+        "tree_sitter_analyzer.read_existing_access.format_read_existing_unavailable",
+        side_effect=AssertionError("classification must follow validation"),
+    ) as classify_unavailable:
+        with pytest.raises(ValueError, match=r"^task must have JSON type string$"):
+            asyncio.run(
+                facade.execute(
+                    {
+                        **_CONTEXT_READ_EXISTING_ARGS,
+                        "task": 7,
+                        "output_format": "json",
+                    }
+                )
+            )
+
+    classify_unavailable.assert_not_called()
+
+
+def test_navigate_rejects_context_only_access_mode() -> None:
+    facade = build_nav_facade(project_root=None)
+    navigate_inner = facade.action_map["navigate"]
+    poison = AsyncMock(side_effect=AssertionError("navigate inner must not run"))
+
+    with patch.object(navigate_inner, "execute", new=poison):
+        result = asyncio.run(
+            facade.execute(
+                {
+                    "action": "navigate",
+                    "symbol": "dispatch",
+                    "access_mode": "read_existing",
+                }
+            )
+        )
+
+    poison.assert_not_awaited()
+    assert (
+        result["success"],
+        result["verdict"],
+        result["error_type"],
+        result["error"],
+    ) == (
+        False,
+        "ERROR",
+        "validation",
+        "parameter 'access_mode' applies only to action(s): context",
+    )
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

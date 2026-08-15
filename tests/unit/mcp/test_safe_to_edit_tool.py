@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import (
     SafeToEditTool,
     _compute_risk,
@@ -384,3 +385,83 @@ class TestChecklistSequentialNumbering:
         )
         numbers = [item.split(".")[0] for item in items]
         assert numbers == ["1", "2", "3", "4", "5", "6"]
+
+
+@pytest.mark.asyncio
+async def test_edit_safe_explicit_read_existing_honors_compact_only(
+    tmp_path,
+) -> None:
+    file_path = tmp_path / "inside.py"
+    file_path.write_text("value = 1\n")
+    result = await build_edit_facade(str(tmp_path)).execute(
+        {
+            "action": "safe",
+            "file_path": "inside.py",
+            "access_mode": "read_existing",
+            "snapshot_id": "idxsnap_test",
+            "source_generation": "idxsrc-v3:test",
+            "output_format": "toon",
+            "compact_only": True,
+        }
+    )
+
+    assert result == {
+        "format": "toon",
+        "toon_content": (
+            "success: true\n"
+            "verdict: WARN\n"
+            "access_mode: read_existing\n"
+            "access_state: unknown\n"
+            "access_reason: READ_EXISTING_AUTHORITY_UNCERTIFIED\n"
+            "source_snapshots: []\n"
+            "output_format: toon"
+        ),
+        "success": True,
+        "verdict": "WARN",
+        "access_mode": "read_existing",
+        "access_state": "unknown",
+        "access_reason": "READ_EXISTING_AUTHORITY_UNCERTIFIED",
+        "output_format": "toon",
+    }
+
+
+@pytest.mark.asyncio
+async def test_read_existing_rejects_traversal_before_unavailable(tmp_path):
+    tool = SafeToEditTool(str(tmp_path))
+
+    with pytest.raises(
+        ValueError,
+        match=r"^Invalid file path: Security validation failed:",
+    ):
+        await tool.execute(
+            {
+                "file_path": "../outside.py",
+                "access_mode": "read_existing",
+                "snapshot_id": "idxsnap_test",
+                "source_generation": "idxsrc-v3:test",
+                "output_format": "json",
+            }
+        )
+
+
+def test_execute_read_existing_fails_closed_without_project_root() -> None:
+    # Codex P1 (#1257): with project_root unbound, resolve_and_validate_
+    # file_path would pass base_path=None into SecurityValidator and skip
+    # the project-boundary layer; the read_existing route must fail closed
+    # with the stable MISSING_PROJECT_ROOT error instead.
+    tool = SafeToEditTool()  # no project root bound
+    with pytest.raises(ValueError) as exc_info:
+        _run(
+            tool.execute(
+                {
+                    "file_path": "src/app.py",
+                    "access_mode": "read_existing",
+                    "snapshot_id": "snap-1",
+                    "source_generation": 1,
+                }
+            )
+        )
+    assert str(exc_info.value) == (
+        "MISSING_PROJECT_ROOT: project_root must be bound before "
+        "read_existing path validation"
+    )
