@@ -133,14 +133,15 @@ def _toon_lines(value: Any, *, depth: int) -> str:
         for key in sorted(value):
             prefix = "  " * depth
             item = value[key]
+            encoded_key = _toon_key(key)
             if isinstance(item, dict) and item:
-                lines.append(f"{prefix}{key}:")
+                lines.append(f"{prefix}{encoded_key}:")
                 lines.append(_toon_lines(item, depth=depth + 1))
             elif isinstance(item, list) and item:
-                lines.append(f"{prefix}{key}:")
+                lines.append(f"{prefix}{encoded_key}:")
                 lines.append(_toon_lines(item, depth=depth + 1))
             else:
-                lines.append(f"{prefix}{key}: {_toon_scalar(item)}")
+                lines.append(f"{prefix}{encoded_key}: {_toon_scalar(item)}")
     elif isinstance(
         value, list
     ):  # pragma: no cover - scalar values never reach _toon_lines
@@ -218,15 +219,11 @@ def _parse_toon(text: str) -> dict[str, Any]:
         if not is_item and isinstance(parent, list):
             # A continuation line after a list item belongs to that item.
             if not parent or not isinstance(parent[-1], dict):
-                raise ValueError(  # pragma: no cover - pytest.raises verifies
-                    "TOON continuation outside a list item"
-                )
+                raise ValueError("TOON continuation outside a list item")
             parent = parent[-1]
         if is_item:
             if not isinstance(parent, list):
-                raise ValueError(  # pragma: no cover - pytest.raises verifies
-                    "TOON item outside a list"
-                )
+                raise ValueError("TOON item outside a list")
             if not line:
                 # A bare ``-`` opens an item whose kind is decided by the
                 # next line (dict for keys, list for nested ``-`` items).
@@ -236,14 +233,14 @@ def _parse_toon(text: str) -> dict[str, Any]:
                 # Quoted string item first: a colon inside it is data.
                 parent.append(_parse_toon_scalar(line))
             elif ":" in line:
-                key, _, value = line.partition(":")
+                key, value = _split_key_value(line)
                 value = value.strip()
                 item: dict[str, Any] = {}
                 parent.append(item)
                 if value:
-                    item[key.strip()] = _parse_toon_scalar(value)
+                    item[_decode_toon_key(key.strip())] = _parse_toon_scalar(value)
                 else:
-                    pending_child = (item, key.strip())
+                    pending_child = (item, _decode_toon_key(key.strip()))
                 stack.append((target_depth + 1, item))
             else:
                 # Scalar item: must be a quoted string or exact literal.
@@ -251,8 +248,8 @@ def _parse_toon(text: str) -> dict[str, Any]:
             continue
         if ":" not in line:
             raise ValueError(f"TOON line lacks a key: {raw_line!r}")
-        key, _, value = line.partition(":")
-        key = key.strip()
+        key, value = _split_key_value(line)
+        key = _decode_toon_key(key.strip())
         value = value.strip()
         if isinstance(parent, list):
             raise ValueError(
@@ -268,6 +265,55 @@ def _parse_toon(text: str) -> dict[str, Any]:
     if pending_item is not None:
         pending_item.append({})
     return root
+
+
+def _split_key_value(line: str) -> tuple[str, str]:
+    """Split ``key: value`` at the colon outside a quoted key.
+
+    A quoted key may itself contain colons (``"a:b": 2``); the split must
+    respect the closing quote.
+    """
+    if line.startswith('"'):
+        index = 1
+        while index < len(line):
+            if line[index] == "\\":
+                index += 2
+                continue
+            if line[index] == '"':
+                break
+            index += 1
+        colon = index + 1
+        if index < len(line) and colon < len(line) and line[colon] == ":":
+            return line[:colon], line[colon + 1 :]
+    key, _, value = line.partition(":")
+    return key, value
+
+
+def _toon_key(key: str) -> str:
+    """Symmetric quoted encoding for TOON dict keys.
+
+    Keys may legally contain newlines, colons, whitespace, or leading
+    dashes; quoting keeps the line format lossless (RFC-0022 evidence dicts
+    have no key constraints).
+    """
+    return json.dumps(key, ensure_ascii=False)
+
+
+def _decode_toon_key(key: str) -> str:
+    if key.startswith('"'):
+        try:
+            decoded = json.loads(key)
+        except json.JSONDecodeError as exc:
+            raise ValueError(  # pragma: no cover - pytest.raises verifies
+                f"invalid quoted TOON key: {key!r}"
+            ) from exc
+        if type(decoded) is not str:
+            raise ValueError(  # pragma: no cover - quoted JSON strings are always str
+                f"quoted TOON key is not a string: {key!r}"
+            )
+        return decoded
+    # Bare keys are kept for compatibility with hand-written TOON.
+    return key
 
 
 def _parse_toon_scalar(value: str) -> Any:

@@ -154,11 +154,11 @@ def test_exact_json_bytes_pin_frozen_fixture() -> None:
 def test_toon_shape_is_line_oriented() -> None:
     toon = serialize_toon(_frozen_understand())
     lines = toon.splitlines()
-    assert any(line.startswith('schema: "task-outcome/v1"') for line in lines)
-    assert any(line.startswith('task: "understand"') for line in lines)
-    assert any(line.startswith('verdict: "SAFE"') for line in lines)
+    assert any(line.startswith('"schema": "task-outcome/v1"') for line in lines)
+    assert any(line.startswith('"task": "understand"') for line in lines)
+    assert any(line.startswith('"verdict": "SAFE"') for line in lines)
     assert any(line.strip() == "-" for line in lines)
-    assert any('evidence: "evidence:abc123"' in line for line in lines)
+    assert any('"evidence": "evidence:abc123"' in line for line in lines)
 
 
 def test_serializers_reject_unknown_request_kind() -> None:
@@ -222,7 +222,7 @@ def test_exact_absolute_bytes_pin_frozen_fixture() -> None:
     outcome = _frozen_understand()
     json_bytes, toon_bytes = json_vs_toon_bytes(outcome)
     assert json_bytes == 732
-    assert toon_bytes == 575
+    assert toon_bytes == 627
 
 
 def test_decode_rejects_unknown_fields() -> None:
@@ -433,3 +433,106 @@ def test_toon_list_empty_container_items_roundtrip() -> None:
     )
     decoded = decode_toon(serialize_toon(outcome))
     assert decoded.evidence == ({}, [])
+
+
+def test_toon_special_character_keys_roundtrip() -> None:
+    # BLOCKER (review round 3, #1268): evidence dict keys with newlines,
+    # colons, whitespace, or leading dashes survive the codec.
+    outcome = TaskOutcome(
+        task="understand",
+        request=UnderstandRequest(task="x"),
+        verdict="INFO",
+        evidence=(
+            {
+                "a\nb": 1,
+                "a:b": 2,
+                "  x  ": 3,
+                "-dash": 4,
+                'quote"key': 5,
+            },
+        ),
+    )
+    decoded = decode_toon(serialize_toon(outcome))
+    assert decoded.evidence == outcome.evidence
+    parity_roundtrip(outcome)
+
+
+def test_toon_fuzz_parity_fixed_seed() -> None:
+    # BLOCKER (review round 3, #1268): 300 random evidence structures must
+    # roundtrip identically through both serializers (fixed seed).
+    import random
+
+    rng = random.Random(20260815)
+    weird = ["", "a", "a:b", "a\nb", "  x  ", "-dash", "x:y\nz", "0", "true"]
+
+    def rand_scalar() -> object:
+        choice = rng.randrange(5)
+        if choice == 0:
+            return rng.choice(weird)
+        if choice == 1:
+            return rng.choice([None, True, False])
+        if choice == 2:
+            return rng.randint(0, 1000)
+        if choice == 3:
+            return rng.randrange(0, 100) / 4
+        return [rng.choice(weird) for _ in range(rng.randrange(3))]
+
+    for _ in range(300):
+        evidence = tuple(
+            {rng.choice(weird): rand_scalar() for _ in range(rng.randrange(1, 4))}
+            for _ in range(rng.randrange(1, 3))
+        )
+        outcome = TaskOutcome(
+            task="understand",
+            request=UnderstandRequest(task="x"),
+            verdict="INFO",
+            evidence=evidence,
+        )
+        parity_roundtrip(outcome)
+
+
+def test_toon_item_line_inside_dict_rejected() -> None:
+    from tree_sitter_analyzer.task.serializers import _parse_toon
+
+    with pytest.raises(ValueError, match="TOON item outside a list"):
+        _parse_toon('request:\n  kind: "understand"\n  - "x"\n')
+
+
+def test_toon_invalid_quoted_key_rejected() -> None:
+    from tree_sitter_analyzer.task.serializers import _decode_toon_key
+
+    with pytest.raises(ValueError, match="invalid quoted TOON key"):
+        _decode_toon_key('"unclosed')
+    assert _decode_toon_key('"a:b"') == "a:b"
+
+
+def test_split_key_value_unquoted_fallback() -> None:
+    from tree_sitter_analyzer.task.serializers import _split_key_value
+
+    assert _split_key_value("plain: value") == ("plain", " value")
+    assert _split_key_value("no-colon") == ("no-colon", "")
+
+
+def test_split_key_value_escaped_quote_in_key() -> None:
+    from tree_sitter_analyzer.task.serializers import _split_key_value
+
+    key, value = _split_key_value('"a\\"b": 2')
+    assert key == '"a\\"b"'
+    assert value == " 2"
+
+
+def test_escaped_quote_key_roundtrip() -> None:
+    outcome = TaskOutcome(
+        task="understand",
+        request=UnderstandRequest(task="x"),
+        verdict="INFO",
+        evidence=({'a"b': 1},),
+    )
+    parity_roundtrip(outcome)
+
+
+def test_split_key_value_unclosed_quote_falls_back() -> None:
+    from tree_sitter_analyzer.task.serializers import _split_key_value
+
+    # An unterminated quote falls back to plain partition.
+    assert _split_key_value('"unclosed: x') == ('"unclosed', " x")
