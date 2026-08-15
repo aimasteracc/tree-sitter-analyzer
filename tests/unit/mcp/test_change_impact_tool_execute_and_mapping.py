@@ -1365,7 +1365,6 @@ def test_find_test_files_maps_find_and_grep_execution_to_family_tests():
     mapping = change_impact_tool._find_test_files(
         ["tree_sitter_analyzer/mcp/tools/find_and_grep_execution.py"],
         {
-            "tests/unit/cli/test_find_and_grep_cli_comprehensive.py",
             "tests/unit/core/test_find_and_grep_tool_file_output.py",
             "tests/unit/mcp/test_find_and_grep_tool.py",
             "tests/unit/mcp/test_mcp_find_and_grep_p1.py",
@@ -1375,7 +1374,6 @@ def test_find_test_files_maps_find_and_grep_execution_to_family_tests():
     )
 
     assert mapping["tree_sitter_analyzer/mcp/tools/find_and_grep_execution.py"] == [
-        "tests/unit/cli/test_find_and_grep_cli_comprehensive.py",
         "tests/unit/core/test_find_and_grep_tool_file_output.py",
         "tests/unit/mcp/test_find_and_grep_tool.py",
         "tests/unit/mcp/test_mcp_find_and_grep_p1.py",
