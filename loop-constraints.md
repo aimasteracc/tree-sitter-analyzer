@@ -24,7 +24,7 @@
 - Every new language resolver needs a matching test in `tests/unit/` before merging
 - Never change the entry-point group name (`tree_sitter_analyzer.plugins`) in pyproject.toml
 - Complexity changes (RFC-0019 scope): design review required before any code change
-- Never wire `mcp/tsa_explore.py` into `server.py` until Phase 1b benchmark results confirm benefit
+- The retired `tsa_explore` umbrella tool (RFC-0022 disposition) must not be re-introduced without a registered-facade design
 
 ## Dogfood Protocol
 - Always call `mcp__tree-sitter-analyzer__health action=overview` at the start of every run

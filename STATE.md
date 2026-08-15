@@ -93,9 +93,9 @@ isolated GitFlow worktrees; model spend and independent-judge gates remain human
   - `complexity_heatmap._COMPLEXITY_NODES` drives `decision_points` breakdown (cosmetic only)
   - Next: replace with canonical `decision_node_types(language)` from `languages/shared/`
 
-- [ ] **tsa_explore promotion to production MCP**
-  - Prototype in `mcp/tsa_explore.py`, not wired into `server.py`
-  - Block: 21-question benchmark not yet run
+- [x] **tsa_explore retired** (2026-08-15, RFC-0022 disposition)
+  - Prototype deleted from `mcp/`; the umbrella-tool menu experiment
+    remains hypothetical (Condition B) per `tool_menu_experiment.py`
 
 - [ ] **CSS/HTML/SQL/YAML/JSON full-index gap** — plugins exist, indexer path not exercised
 
