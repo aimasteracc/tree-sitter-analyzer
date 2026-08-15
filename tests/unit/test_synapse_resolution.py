@@ -546,6 +546,60 @@ class TestStarImportBookkeeping:
         finally:
             cache.close()
 
+    def test_commented_parenthesized_import_records_all_aliases(
+        self, tmp_path: Path
+    ) -> None:
+        # #1275 (dogfood F2): an inline comment after the opening paren of a
+        # parenthesized from-import truncated the names clause, dropping every
+        # alias of that statement from ast_imports.
+        proj = tmp_path / "synapse_pkg"
+        proj.mkdir(parents=True, exist_ok=True)
+        (proj / "__init__.py").write_text("# pkg\n")
+        (proj / "b.py").write_text("X = 1\nY = 2\n")
+        (proj / "commented.py").write_text(
+            "from .b import (  # noqa: F401\n    X,\n    Y,\n)\n"
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project()
+            with _open_db(cache) as conn:
+                rows = conn.execute(
+                    "SELECT local_name FROM ast_imports "
+                    "WHERE file_path LIKE 'synapse_pkg/commented.py' "
+                    "ORDER BY local_name"
+                ).fetchall()
+                assert [r["local_name"] for r in rows] == ["X", "Y"], (
+                    "expected both aliases X and Y to be recorded, got "
+                    f"{[r['local_name'] for r in rows]}"
+                )
+        finally:
+            cache.close()
+
+    def test_future_import_recorded_as_import_row(self, tmp_path: Path) -> None:
+        # #1275 (dogfood F1): a future import parses as future_import_statement
+        # and was dropped from the index entirely.
+        proj = tmp_path / "synapse_pkg"
+        proj.mkdir(parents=True, exist_ok=True)
+        (proj / "__init__.py").write_text("# pkg\n")
+        (proj / "future_import.py").write_text(
+            "from __future__ import annotations\nX = 1\n"
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project()
+            with _open_db(cache) as conn:
+                row = conn.execute(
+                    "SELECT module_path, local_name FROM ast_imports "
+                    "WHERE file_path LIKE 'synapse_pkg/future_import.py'"
+                ).fetchone()
+                assert row is not None, (
+                    "expected the future import recorded in ast_imports"
+                )
+                assert row["module_path"] == "__future__"
+                assert row["local_name"] == "annotations"
+        finally:
+            cache.close()
+
 
 # ---------------------------------------------------------------------------
 # RFC-0002 — builtin classifier + shadowing contract

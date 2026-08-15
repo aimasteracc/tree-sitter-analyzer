@@ -14,6 +14,15 @@ _PY_FROM_IMPORT_RE = re.compile(
     r"^from\s+(\.*)([\w.]*)\s+import\s+(.+)$", re.MULTILINE | re.DOTALL
 )
 _PY_IMPORT_RE = re.compile(r"^import\s+([\w.,\s]+)$", re.MULTILINE | re.DOTALL)
+# Inline comments inside parenthesized multi-line imports must be removed
+# per line; a plain split on the hash sign truncates the whole clause at a
+# comment that appears before the first alias (e.g. after the opening paren).
+_STRIP_LINE_COMMENTS_RE = re.compile(r"#[^\n]*")
+
+
+def _strip_line_comments(clause: str) -> str:
+    """Remove hash-comment tails from an import names clause."""
+    return _STRIP_LINE_COMMENTS_RE.sub("", clause)
 
 
 @dataclass(frozen=True)
@@ -88,7 +97,7 @@ def _parse_python_imports(
     if m_from:
         dots = m_from.group(1) or ""
         module_tail = m_from.group(2) or ""
-        names_clause = (m_from.group(3) or "").split("#", 1)[0]
+        names_clause = _strip_line_comments(m_from.group(3) or "")
         module_path = dots + module_tail
         is_relative = bool(dots)
         entries: list[ImportEntry] = []
@@ -123,7 +132,7 @@ def _parse_python_imports(
 
     m_imp = _PY_IMPORT_RE.match(text)
     if m_imp:
-        body = m_imp.group(1).split("#", 1)[0]
+        body = _strip_line_comments(m_imp.group(1))
         entries = []
         for item, alias_of in _split_names_clause(body):
             if alias_of:
