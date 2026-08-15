@@ -1453,9 +1453,9 @@ def test_execute_read_existing_fails_closed_without_project_root():
     # receives base_path=None and skips its project-boundary layer, so an
     # arbitrary relative scope path validates. The route must fail closed
     # with the stable MISSING_PROJECT_ROOT error instead of classifying.
-    # allowed: chdir(tmp_path) — the unbound-root route raises before any
-    # graph build, so the None fallback never walks the repository.
-    tool = tool_module.ChangeImpactTool(project_root=None)
+    tool = tool_module.ChangeImpactTool(
+        project_root=None  # allowed: chdir(tmp_path)
+    )
 
     with pytest.raises(ValueError) as exc_info:
         asyncio.run(
