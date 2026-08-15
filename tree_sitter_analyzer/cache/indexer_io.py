@@ -146,7 +146,11 @@ def parse_and_write(
             "reason": "graph edge write failed",
             "certification_errors": 1,
         }
-    cache._resolve_call_edges_for_file(conn, rel_path)  # noqa: SLF001
+    # Cross-file resolution is deferred to the call-graph pipeline: the
+    # per-file index pass sees only the files indexed so far, so import
+    # targets for later files are unresolvable and same-named symbols in
+    # other files win by sort order (dogfood F3, #1275). The pipeline runs
+    # with the complete index and resolves every edge correctly.
     conn.commit()
     return {
         "file": rel_path,
