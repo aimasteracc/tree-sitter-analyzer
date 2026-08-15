@@ -138,6 +138,7 @@ def resolve_unresolved_refs(conn: sqlite3.Connection) -> dict[str, int] | None:
                     # EXTENDS/IMPLEMENTS: upsert a real edge pointing at the
                     # resolved base class so class_hierarchy can traverse it.
                     edge = _resolved_edge(conn, ref, chosen, len(candidates))
+                    _drop_placeholder_extends(conn, ref)
                     store.upsert_edges([edge])
                 resolved += 1
             except (sqlite3.OperationalError, TypeError, ValueError) as exc:
@@ -232,6 +233,30 @@ def mark_resolution_converged(conn: sqlite3.Connection) -> None:
         conn.commit()
     except sqlite3.OperationalError:
         logger.debug("could not persist resolution fingerprint", exc_info=True)
+
+
+def _drop_placeholder_extends(conn: sqlite3.Connection, ref: dict[str, Any]) -> None:
+    """Remove the index-time generic class-placeholder EXTENDS edge.
+
+    The indexer writes one generic edge per base before resolution (dogfood
+    F4, #1275: extends counts were doubled for every cross-file base). Once
+    the second pass resolves the base to a real symbol node, the placeholder
+    is no longer reachable and would otherwise duplicate the edge.
+    """
+    if ref["reference_kind"] not in {
+        EdgeKind.EXTENDS.value,
+        EdgeKind.IMPLEMENTS.value,
+    }:
+        return
+    conn.execute(
+        "DELETE FROM edges WHERE source_node_id = ? AND kind = ? "
+        "AND target_node_id = ?",
+        (
+            ref["from_node_id"],
+            ref["reference_kind"],
+            "class:" + str(ref["reference_name"]),
+        ),
+    )
 
 
 def _ref(
