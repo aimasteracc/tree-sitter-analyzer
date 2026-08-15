@@ -57,6 +57,10 @@ def _bytes_from_code_points(decoded: str) -> str:
         raw_bytes = decoded.encode("latin-1")
     except UnicodeEncodeError:
         raise AuthorityError(f"strace literal is not byte-exact: {decoded!r}") from None
+    if b"\x00" in raw_bytes:
+        # Follow-up (#1259): a NUL byte can never be part of a pathname or
+        # argv entry; the descriptor decoder rejects it and so must we.
+        raise AuthorityError(f"strace literal contains a NUL byte: {decoded!r}")
     return os.fsdecode(raw_bytes)
 
 
@@ -342,6 +346,17 @@ def classify_calls(
                 # whole shared fs context. Update the modeled cwd before
                 # reporting the mutation targets so subsequent calls resolve
                 # against the new pathname.
+                if call.syscall == "renameat2":
+                    flags = args[4] if len(args) > 4 else ""
+                    if "RENAME_EXCHANGE" in flags:
+                        # Follow-up (#1259): RENAME_EXCHANGE atomically
+                        # swaps both pathnames; a live cwd on either side is
+                        # moved to the opposite side, which the one-way
+                        # rebase cannot model. Fail closed rather than
+                        # report stale targets.
+                        raise AuthorityError(
+                            "renameat2 RENAME_EXCHANGE with live cwd is unsupported"
+                        )
                 old_index, new_index = (0, 1) if call.syscall == "rename" else (1, 3)
                 state.rename_cwd(
                     call.pid,

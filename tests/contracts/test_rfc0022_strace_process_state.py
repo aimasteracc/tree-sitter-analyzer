@@ -634,3 +634,43 @@ def test_live_clone_files_peer_keeps_shared_table_ambiguous(
     )
     with pytest.raises(AuthorityError, match="ambiguous"):
         _parse(trace)
+
+
+def test_renameat2_exchange_with_live_cwd_fails_closed(
+    tmp_path: Path,
+) -> None:
+    # Follow-up (#1259): RENAME_EXCHANGE atomically swaps both pathnames;
+    # the one-way cwd rebase cannot model a cwd moved to the opposite side,
+    # so the authority must fail closed instead of reporting stale targets.
+    trace = tmp_path / "trace"
+    _write_trace(
+        trace,
+        100,
+        [
+            'chdir("/project/a") = 0',
+            'renameat2(AT_FDCWD</project>, "/project/a", AT_FDCWD</project>, '
+            '"/project/b", RENAME_EXCHANGE) = 0',
+            "+++ exited with 0 +++",
+        ],
+    )
+    with pytest.raises(AuthorityError, match="RENAME_EXCHANGE"):
+        _parse(trace)
+
+
+def test_renameat2_without_exchange_still_rebases(tmp_path: Path) -> None:
+    # Follow-up (#1259) negative control: plain renameat2 keeps the
+    # one-way rebase working.
+    trace = tmp_path / "trace"
+    _write_trace(
+        trace,
+        100,
+        [
+            'chdir("/project/a") = 0',
+            'renameat2(AT_FDCWD</project>, "/project/a", AT_FDCWD</project>, '
+            '"/project/b", RENAME_NOREPLACE) = 0',
+            'unlink("x") = 0',
+            "+++ exited with 0 +++",
+        ],
+    )
+    targets = [event["target"] for event in _parse(trace)]
+    assert "/project/b/x" in targets
