@@ -2032,7 +2032,9 @@ def test_modified_base_rebuilds_resolved_hierarchy_edge(tmp_path):
     finally:
         cache.close()
 
-    assert targets == ["base.py:Base:1", "class:Base"]
+    # #1275 (dogfood F4): the resolved edge replaces the generic placeholder,
+    # so exactly one EXTENDS edge survives the re-resolution.
+    assert targets == ["base.py:Base:1"]
 
 
 @requires_posix_fd
