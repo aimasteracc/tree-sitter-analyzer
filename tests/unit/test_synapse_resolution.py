@@ -272,6 +272,37 @@ class TestResolveCrossFile:
         finally:
             cache.close()
 
+    def test_import_pins_same_named_callee_file(self, tmp_path: Path) -> None:
+        # #1275 (dogfood F3): a same-named helper in several files must resolve
+        # to the file the caller actually imports, not the first by sort order.
+        # The imported module is indexed AFTER the caller (zz > caller > aa),
+        # which used to break import resolution and fall back to the global
+        # name table (aa_helpers.py winning by file-path order).
+        proj = tmp_path / "synapse_pkg"
+        proj.mkdir(parents=True, exist_ok=True)
+        (proj / "__init__.py").write_text("# pkg\n")
+        (proj / "aa_helpers.py").write_text("def helper():\n    return 'aa'\n")
+        (proj / "caller.py").write_text(
+            "from .zz_helpers import helper\n\ndef run():\n    return helper()\n"
+        )
+        (proj / "zz_helpers.py").write_text("def helper():\n    return 'zz'\n")
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project()
+            with _open_db(cache) as conn:
+                row = conn.execute(
+                    "SELECT callee_resolved_file FROM edges "
+                    "WHERE kind='calls' AND file_path LIKE 'synapse_pkg/caller.py' "
+                    "AND callee_name='helper'"
+                ).fetchone()
+                assert row is not None, "expected caller -> helper edge"
+                assert row["callee_resolved_file"].endswith("zz_helpers.py"), (
+                    "imported zz_helpers.helper must win over aa_helpers.helper, "
+                    f"got {row['callee_resolved_file']}"
+                )
+        finally:
+            cache.close()
+
     def test_qualified_call_module_alias(self, tmp_path: Path) -> None:
         """`bb.baz()` after `from . import b as bb` resolves to b.py."""
         proj = _make_pkg(tmp_path, ["module_alias.py", "b.py"])
