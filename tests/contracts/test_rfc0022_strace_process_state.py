@@ -493,3 +493,58 @@ def test_syscall_interposed_before_pending_resume_fails_closed(tmp_path: Path) -
     )
     with pytest.raises(AuthorityError, match="syscall before the pending resume"):
         _parse(trace)
+
+
+def test_rename_of_cwd_directory_rebases_later_targets(tmp_path: Path) -> None:
+    # Codex P2 (#1259): chdir("/project/a") then rename("/project/a",
+    # "/project/b") then unlink("x") — the kernel resolves the relative
+    # mutation against /project/b, and the modeled cwd must follow.
+    trace = tmp_path / "trace"
+    _write_trace(
+        trace,
+        100,
+        [
+            'chdir("/project/a") = 0',
+            'rename("/project/a", "/project/b") = 0',
+            'unlink("x") = 0',
+            "+++ exited with 0 +++",
+        ],
+    )
+    targets = [event["target"] for event in _parse(trace)]
+    assert "/project/b/x" in targets
+    assert "/project/a/x" not in targets
+
+
+def test_rename_of_ancestor_rebases_descendant_cwd(tmp_path: Path) -> None:
+    # Codex P2 (#1259): cwd /project/a/sub, rename of the ancestor
+    # /project/a -> /project/b rebases the cwd to /project/b/sub.
+    trace = tmp_path / "trace"
+    _write_trace(
+        trace,
+        100,
+        [
+            'chdir("/project/a/sub") = 0',
+            'rename("/project/a", "/project/b") = 0',
+            'unlink("x") = 0',
+            "+++ exited with 0 +++",
+        ],
+    )
+    targets = [event["target"] for event in _parse(trace)]
+    assert "/project/b/sub/x" in targets
+
+
+def test_failed_rename_keeps_cwd_provenance(tmp_path: Path) -> None:
+    # Codex P2 (#1259): a failed rename must not rebase the modeled cwd.
+    trace = tmp_path / "trace"
+    _write_trace(
+        trace,
+        100,
+        [
+            'chdir("/project/a") = 0',
+            'rename("/project/a", "/project/b") = -1 ENOENT (No such file or directory)',
+            'unlink("x") = 0',
+            "+++ exited with 0 +++",
+        ],
+    )
+    targets = [event["target"] for event in _parse(trace)]
+    assert "/project/a/x" in targets

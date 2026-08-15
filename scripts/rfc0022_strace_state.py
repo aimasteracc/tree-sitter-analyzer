@@ -64,6 +64,28 @@ class ProcessState:
         except KeyError as exc:
             raise AuthorityError(f"cwd state missing for pid {pid}") from exc
 
+    def rename_cwd(self, pid: int, old_path: Path, new_path: Path) -> None:
+        """Rebase a live cwd after a successful rename of its directory.
+
+        Codex P2 (#1259): when the traced process renames the directory it
+        stands in (or an ancestor of it), later relative pathname syscalls
+        resolve against the new pathname. The kernel updates the shared
+        cwd for every process sharing the fs context (CLONE_FS), so the
+        whole cwd space is rebased, not just this pid.
+        """
+        try:
+            space = self._cwd_space_by_pid[pid]
+        except KeyError as exc:
+            raise AuthorityError(f"cwd state missing for pid {pid}") from exc
+        current = self._cwd_spaces[space]
+        old_text = old_path.as_posix()
+        new_text = new_path.as_posix()
+        if current.as_posix() == old_text:
+            self._cwd_spaces[space] = new_path
+        elif current.as_posix().startswith(old_text + "/"):
+            suffix = current.as_posix()[len(old_text) :]
+            self._cwd_spaces[space] = Path(new_text + suffix)
+
     def spawn(
         self, parent: int, child: int, flags: str, *, shares_vm: bool = False
     ) -> None:

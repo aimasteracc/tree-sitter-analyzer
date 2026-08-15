@@ -45,13 +45,30 @@ ParsedTrace = tuple[list[TraceCall], dict[str, Any], Decimal]
 def _decode_c_string(value: str) -> str:
     if not value.startswith('"'):
         raise AuthorityError(f"expected unabbreviated path string, got {value!r}")
+    # Codex P2 (#1259): strace's abbreviation marker is structural — an
+    # unclosed quote at the end of the literal ("abc..." without the closing
+    # quote). A literal "..." inside a closed quoted pathname (e.g.
+    # unlink("report...")) is a valid filesystem name and must be accepted.
+    if not value.endswith('"'):
+        raise AuthorityError("truncated strace path string")
     try:
         decoded = ast.literal_eval(value)
     except (SyntaxError, ValueError) as exc:
         raise AuthorityError(f"invalid strace C string: {value!r}") from exc
-    if not isinstance(decoded, str) or "..." in value[-5:]:
-        raise AuthorityError("truncated or non-string strace path")
-    return decoded
+    if not isinstance(decoded, str):
+        raise AuthorityError("strace path is not a string")
+    # Codex P2 (#1259): under LC_ALL=C strace renders non-ASCII pathname
+    # bytes as octal escapes; ast.literal_eval turns each escape into a
+    # Unicode code point instead of reconstructing the byte sequence.
+    # Re-encode the code points through latin-1 (identity for the escape
+    # range) and fsdecode to recover the original filesystem bytes.
+    try:
+        raw_bytes = decoded.encode("latin-1")
+    except UnicodeEncodeError:
+        # The literal already contained real non-latin-1 characters: the
+        # trace is not a plain LC_ALL=C rendering — fail closed.
+        raise AuthorityError(f"strace path is not byte-exact: {value!r}") from None
+    return os.fsdecode(raw_bytes)
 
 
 def _decode_string_array(value: str) -> list[str]:
@@ -278,6 +295,23 @@ def classify_calls(
             continue
         target_indices = policy["path_mutators"].get(call.syscall)
         if target_indices:
+            if call.syscall in {
+                "rename",
+                "renameat",
+                "renameat2",
+            } and _result_succeeded(call.result):
+                # Codex P2 (#1259): a successful rename of the directory the
+                # process stands in (or of an ancestor) rebases every later
+                # relative pathname resolution; the kernel does this for the
+                # whole shared fs context. Update the modeled cwd before
+                # reporting the mutation targets so subsequent calls resolve
+                # against the new pathname.
+                old_index, new_index = (0, 1) if call.syscall == "rename" else (1, 3)
+                state.rename_cwd(
+                    call.pid,
+                    Path(_resolve_path(call, old_index, cwd)),
+                    Path(_resolve_path(call, new_index, cwd)),
+                )
             for index in target_indices:
                 violations.append(
                     Violation(

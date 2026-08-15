@@ -373,3 +373,27 @@ def test_peer_exec_overlapping_magic_open_fails_closed(tmp_path: Path) -> None:
         AuthorityError, match="ambiguous cross-process file-table transition"
     ):
         parse_trace_directory(traces, POLICY, Path("/project"))
+
+
+def test_octal_path_escapes_decode_as_filesystem_bytes(tmp_path: Path) -> None:
+    # Codex P2 (#1259): under LC_ALL=C strace renders "café" as caf\303\251;
+    # decoding must reconstruct the byte sequence (café), never the Unicode
+    # code points U+00C3/U+00A9 ("cafÃ©").
+    violations = _parse_line(tmp_path, r'unlink("caf\303\251") = 0')
+    assert [v.target for v in violations] == ["/project/café"]
+
+
+def test_literal_ellipsis_suffix_is_a_valid_pathname(tmp_path: Path) -> None:
+    # Codex P2 (#1259): a literal "..." inside the closed quoted literal is a
+    # valid filesystem name; only the structural unclosed-quote form is the
+    # strace abbreviation marker.
+    violations = _parse_line(tmp_path, 'unlink("report...") = 0')
+    assert [v.target for v in violations] == ["/project/report..."]
+
+
+def test_unclosed_quote_is_still_rejected_as_truncated(tmp_path: Path) -> None:
+    # Codex P2 (#1259): the structural abbreviation marker (unclosed quote +
+    # trailing "...") must still be rejected fail-closed, even though a
+    # literal "..." inside a closed literal is a valid pathname.
+    with pytest.raises(AuthorityError):
+        _parse_line(tmp_path, 'unlink("/project/very-long-nam' + "...")
