@@ -224,7 +224,7 @@ def _worker_payload(
     fingerprint: IndexFileFingerprint,
     source_code: str,
     symbols: dict[str, Any],
-    imports: list[str],
+    imports: list[dict[str, Any]] | list[str],
     structure: dict[str, Any],
     call_edges: list[dict[str, Any]],
 ) -> dict[str, Any]:
