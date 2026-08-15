@@ -392,8 +392,36 @@ def test_literal_ellipsis_suffix_is_a_valid_pathname(tmp_path: Path) -> None:
 
 
 def test_unclosed_quote_is_still_rejected_as_truncated(tmp_path: Path) -> None:
-    # Codex P2 (#1259): the structural abbreviation marker (unclosed quote +
-    # trailing "...") must still be rejected fail-closed, even though a
-    # literal "..." inside a closed literal is a valid pathname.
-    with pytest.raises(AuthorityError):
-        _parse_line(tmp_path, 'unlink("/project/very-long-nam' + "...")
+    # Codex P2 (#1259) review WARN-5: the structural abbreviation marker is
+    # rejected at the argument-splitting layer (real strace truncation keeps
+    # the closing paren and result), while a literal "..." inside a closed
+    # literal is a valid pathname.
+    with pytest.raises(AuthorityError, match="truncated strace argument structure"):
+        _parse_line(tmp_path, 'unlink("/project/very-long-nam...) = 0')
+
+
+def test_literal_non_ascii_fails_closed_not_misdecoded(tmp_path: Path) -> None:
+    # Codex P2 (#1259) review WARN-1: a literal (non-escaped) non-ASCII
+    # character can only come from a non-LC_ALL=C trace; fail closed rather
+    # than silently decoding it to a wrong surrogate target.
+    with pytest.raises(AuthorityError, match="not an LC_ALL=C rendering"):
+        _parse_line(tmp_path, 'unlink("/project/café") = 0')
+
+
+def test_octal_escaped_argv_entries_decode_as_filesystem_bytes(
+    tmp_path: Path,
+) -> None:
+    # Codex P2 (#1259) review WARN-2: argv entries carry the same octal
+    # escapes as paths under LC_ALL=C; the exec argv binding must decode
+    # them byte-exact so a target with a non-ASCII argv entry binds.
+    traces = tmp_path / "traces"
+    traces.mkdir()
+    (traces / "trace.100").write_text(
+        '1700000000.000001 execve("/bin/target", ["target", "caf\\303\\251"], []) = 0\n'
+        "1700000000.000002 +++ exited with 0 +++\n",
+        encoding="utf-8",
+    )
+    violations, _, _ = parse_trace_directory(
+        traces, POLICY, Path("/project"), expected_argv=["target", "café"]
+    )
+    assert violations == []

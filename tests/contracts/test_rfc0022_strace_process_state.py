@@ -548,3 +548,35 @@ def test_failed_rename_keeps_cwd_provenance(tmp_path: Path) -> None:
     )
     targets = [event["target"] for event in _parse(trace)]
     assert "/project/a/x" in targets
+
+
+def test_rename_rebases_cwd_of_fork_child_without_shared_fs(
+    tmp_path: Path,
+) -> None:
+    # Codex P2 (#1259) review WARN-3: a rename is a dentry move — a plain
+    # fork child (independent fs_struct, cwd copied) also follows the new
+    # name. The parent renames its own cwd directory; the child's later
+    # relative mutation must resolve beneath the new pathname.
+    trace = tmp_path / "trace"
+    _write_trace(
+        trace,
+        100,
+        [
+            'chdir("/project/a") = 0',
+            "clone(child_stack=NULL, flags=SIGCHLD) = 200",
+            'rename("/project/a", "/project/b") = 0',
+            "+++ exited with 0 +++",
+        ],
+    )
+    _write_trace(
+        trace,
+        200,
+        [
+            'unlink("x") = 0',
+            "+++ exited with 0 +++",
+        ],
+        start=4,
+    )
+    targets = [event["target"] for event in _parse(trace)]
+    assert "/project/b/x" in targets
+    assert "/project/a/x" not in targets

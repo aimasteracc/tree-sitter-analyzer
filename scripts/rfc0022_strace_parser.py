@@ -42,6 +42,37 @@ DIRFD_PAIRS = frozenset("linkat move_mount renameat renameat2".split())
 ParsedTrace = tuple[list[TraceCall], dict[str, Any], Decimal]
 
 
+def _bytes_from_code_points(decoded: str) -> str:
+    """Reconstruct filesystem bytes from a decoded strace literal.
+
+    Codex P2 (#1259): under LC_ALL=C strace renders non-ASCII bytes as
+    octal escapes; ast.literal_eval turns each escape into a Unicode code
+    point instead of reconstructing the byte sequence. Re-encode the code
+    points through latin-1 (identity for the escape range) and fsdecode to
+    recover the original filesystem bytes. A literal non-latin-1 character
+    (possible only from a non-LC_ALL=C trace) fails closed rather than
+    being silently mis-decoded.
+    """
+    try:
+        raw_bytes = decoded.encode("latin-1")
+    except UnicodeEncodeError:
+        raise AuthorityError(f"strace literal is not byte-exact: {decoded!r}") from None
+    return os.fsdecode(raw_bytes)
+
+
+def _byte_decode_c_string(value: str) -> str:
+    """Decode one quoted strace C string into exact filesystem bytes."""
+    if any(ord(char) > 0x7F for char in value):
+        raise AuthorityError(f"strace literal is not an LC_ALL=C rendering: {value!r}")
+    try:
+        decoded = ast.literal_eval(value)
+    except (SyntaxError, ValueError) as exc:
+        raise AuthorityError(f"invalid strace C string: {value!r}") from exc
+    if not isinstance(decoded, str):
+        raise AuthorityError("strace path is not a string")
+    return _bytes_from_code_points(decoded)
+
+
 def _decode_c_string(value: str) -> str:
     if not value.startswith('"'):
         raise AuthorityError(f"expected unabbreviated path string, got {value!r}")
@@ -49,26 +80,11 @@ def _decode_c_string(value: str) -> str:
     # unclosed quote at the end of the literal ("abc..." without the closing
     # quote). A literal "..." inside a closed quoted pathname (e.g.
     # unlink("report...")) is a valid filesystem name and must be accepted.
+    # Note: split_arguments already rejects unbalanced quotes, so this check
+    # is defensive depth-in-depth; it must stay if the guard moves.
     if not value.endswith('"'):
         raise AuthorityError("truncated strace path string")
-    try:
-        decoded = ast.literal_eval(value)
-    except (SyntaxError, ValueError) as exc:
-        raise AuthorityError(f"invalid strace C string: {value!r}") from exc
-    if not isinstance(decoded, str):
-        raise AuthorityError("strace path is not a string")
-    # Codex P2 (#1259): under LC_ALL=C strace renders non-ASCII pathname
-    # bytes as octal escapes; ast.literal_eval turns each escape into a
-    # Unicode code point instead of reconstructing the byte sequence.
-    # Re-encode the code points through latin-1 (identity for the escape
-    # range) and fsdecode to recover the original filesystem bytes.
-    try:
-        raw_bytes = decoded.encode("latin-1")
-    except UnicodeEncodeError:
-        # The literal already contained real non-latin-1 characters: the
-        # trace is not a plain LC_ALL=C rendering — fail closed.
-        raise AuthorityError(f"strace path is not byte-exact: {value!r}") from None
-    return os.fsdecode(raw_bytes)
+    return _byte_decode_c_string(value)
 
 
 def _decode_string_array(value: str) -> list[str]:
@@ -80,7 +96,10 @@ def _decode_string_array(value: str) -> list[str]:
         isinstance(item, str) for item in decoded
     ):
         raise AuthorityError("exec argv is not an exact string array")
-    return decoded
+    # Codex P2 (#1259) review WARN-2: argv entries carry the same octal
+    # escapes as paths under LC_ALL=C; decode each entry byte-exact so
+    # expected argv with non-ASCII entries binds.
+    return [_bytes_from_code_points(item) for item in decoded]
 
 
 def _result_succeeded(result: str) -> bool:
