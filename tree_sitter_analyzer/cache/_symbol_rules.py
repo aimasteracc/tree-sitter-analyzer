@@ -65,6 +65,7 @@ _IMPORT_LIKE = frozenset(
     {
         "import_statement",
         "import_from_statement",
+        "future_import_statement",
         "import_declaration",
         "require_statement",
         "use_declaration",
