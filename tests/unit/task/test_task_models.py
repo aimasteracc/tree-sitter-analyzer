@@ -81,13 +81,14 @@ def test_diff_input_rejects_empty_scope_paths() -> None:
         DiffInput(source="workspace", scope_paths=("",))
 
 
-def test_understand_requires_exactly_one_task_or_diff() -> None:
+def test_understand_accepts_task_text_only() -> None:
     assert UnderstandRequest(task="explain dispatch").task == "explain dispatch"
-    assert UnderstandRequest(diff=DiffInput("staged")).diff is not None
-    with pytest.raises(ValueError, match="exactly one of task or diff"):
+    with pytest.raises(ValueError, match="task must not be empty"):
         UnderstandRequest()
-    with pytest.raises(ValueError, match="exactly one of task or diff"):
-        UnderstandRequest(task="x", diff=DiffInput("workspace"))
+    # RFC-0022: understand(diff) is invalid — the model has no diff field.
+    import dataclasses
+
+    assert "diff" not in dataclasses.fields(UnderstandRequest)
 
 
 def test_plan_change_diff_requires_three_calls_floor() -> None:
@@ -113,32 +114,122 @@ def test_consumed_budget_rejects_negative_counters() -> None:
         ConsumedBudget(primitive_calls=-1, evidence_items=0, routing_wall_ms=0)
 
 
-def test_task_outcome_requires_canonical_verdict_without_error() -> None:
+def test_task_outcome_uses_rfc_verdict_vocabulary() -> None:
+    from tree_sitter_analyzer.task.models import CANONICAL_VERDICTS
+
+    assert CANONICAL_VERDICTS == {
+        "SAFE",
+        "CAUTION",
+        "REVIEW",
+        "UNSAFE",
+        "INFO",
+        "WARN",
+        "NOT_FOUND",
+        "ERROR",
+    }
     outcome = TaskOutcome(
-        task="understand",
-        request=UnderstandRequest(task="x"),
-        verdict="OK",
+        task="understand", request=UnderstandRequest(task="x"), verdict="SAFE"
     )
-    assert outcome.verdict == "OK"
-    with pytest.raises(ValueError, match="canonical verdict"):
+    assert outcome.verdict == "SAFE"
+    with pytest.raises(ValueError, match="not in canonical set"):
         TaskOutcome(
             task="understand",
             request=UnderstandRequest(task="x"),
-            verdict="FANCY",
-        )
-    # error outcomes may carry any verdict
+            verdict="OK",
+        )  # RFC verdicts only — OK/PARTIAL are statuses, not verdicts
+
+
+def test_task_outcome_error_forces_verdict_error() -> None:
     TaskOutcome(
         task="understand",
         request=UnderstandRequest(task="x"),
         verdict="ERROR",
         error="boom",
     )
+    with pytest.raises(ValueError, match="must be verdict=ERROR"):
+        TaskOutcome(
+            task="understand",
+            request=UnderstandRequest(task="x"),
+            verdict="WARN",
+            error="boom",
+        )
+    with pytest.raises(ValueError, match="forbidden without an error"):
+        TaskOutcome(
+            task="understand",
+            request=UnderstandRequest(task="x"),
+            verdict="ERROR",
+        )
+
+
+def test_task_outcome_status_vocabulary() -> None:
+    assert (
+        TaskOutcome(
+            task="understand",
+            request=UnderstandRequest(task="x"),
+            verdict="SAFE",
+            status="complete",
+        ).status
+        == "complete"
+    )
+    with pytest.raises(ValueError, match="not in canonical set"):
+        TaskOutcome(
+            task="understand",
+            request=UnderstandRequest(task="x"),
+            verdict="SAFE",
+            status="done",
+        )
+
+
+def test_task_text_boundaries() -> None:
+    with pytest.raises(ValueError, match="task must be a string"):
+        UnderstandRequest(task=123)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="must not contain NUL"):
+        UnderstandRequest(task="bad\x00name")
+
+
+def test_scope_paths_boundaries() -> None:
+    from tree_sitter_analyzer.task.models import MAX_SCOPE_PATHS
+
+    too_many = tuple(f"p{i}" for i in range(MAX_SCOPE_PATHS + 1))
+    with pytest.raises(ValueError, match="exceeds"):
+        DiffInput(source="workspace", scope_paths=too_many)
+    with pytest.raises(ValueError, match="exceeds.*UTF-8 bytes"):
+        DiffInput(source="workspace", scope_paths=("x" * 1025,))
+
+
+def test_consumed_budget_cleanup_contract() -> None:
+    with pytest.raises(ValueError, match="zero or one"):
+        ConsumedBudget(
+            primitive_calls=1, evidence_items=1, routing_wall_ms=1, cleanup_calls=2
+        )
+    with pytest.raises(ValueError, match="requires the stable error code"):
+        ConsumedBudget(
+            primitive_calls=1,
+            evidence_items=1,
+            routing_wall_ms=1,
+            cleanup_status="failed",
+        )
+    ConsumedBudget(
+        primitive_calls=1,
+        evidence_items=1,
+        routing_wall_ms=1,
+        cleanup_status="failed",
+        cleanup_error_code="DIFF_SNAPSHOT_CLEANUP_FAILED",
+    )
 
 
 def test_models_are_frozen_and_hashable() -> None:
     import dataclasses
 
-    for cls in (Budget, DiffInput, UnderstandRequest, PlanChangeRequest, TaskOutcome):
+    for cls in (
+        Budget,
+        DiffInput,
+        UnderstandRequest,
+        PlanChangeRequest,
+        AssessChangeRequest,
+        ConsumedBudget,
+        TaskOutcome,
+    ):
         assert dataclasses.is_dataclass(cls)
         assert cls.__dataclass_params__.frozen is True  # type: ignore[attr-defined]
     budget = Budget(profile="compact")

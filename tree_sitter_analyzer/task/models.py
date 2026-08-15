@@ -12,12 +12,30 @@ from typing import Any, Literal
 
 Profile = Literal["compact", "standard"]
 TaskName = Literal["understand", "plan_change", "assess_change"]
+Verdict = Literal[
+    "SAFE", "CAUTION", "REVIEW", "UNSAFE", "INFO", "WARN", "NOT_FOUND", "ERROR"
+]
+Status = Literal["complete", "partial", "unknown"]
 
 BUDGET_PROFILES: dict[Profile, tuple[int, int, int]] = {
     # profile -> (max_primitive_calls, max_evidence_items, routing_deadline_ms)
     "compact": (4, 15, 5_000),
     "standard": (12, 50, 30_000),
 }
+
+#: RFC-0022 fixed wire verdict vocabulary (strict clients reject unknown values).
+CANONICAL_VERDICTS: frozenset[str] = frozenset(
+    {"SAFE", "CAUTION", "REVIEW", "UNSAFE", "INFO", "WARN", "NOT_FOUND", "ERROR"}
+)
+
+#: RFC-0022 fixed wire status vocabulary.
+CANONICAL_STATUSES: frozenset[str] = frozenset({"complete", "partial", "unknown"})
+
+#: RFC-0022 boundary limits (§Fixed task-outcome/v1 semantics).
+MAX_SCOPE_PATHS = 128
+MAX_SCOPE_PATH_BYTES = 1024
+MAX_SCOPE_TOTAL_BYTES = 32_768
+MAX_TASK_BYTES = 16_384
 
 _BUDGET_FIELD_NAMES = (
     "max_primitive_calls",
@@ -81,7 +99,7 @@ class Budget:
 
 @dataclass(frozen=True)
 class DiffInput:
-    """A diff-based task input (exactly one of task/diff per request)."""
+    """A diff-based task input (diff is the only subject for two operations)."""
 
     source: Literal["workspace", "staged"]
     #: Passed unchanged only to ``edit.impact`` (RFC-0022 §Internal contract).
@@ -90,8 +108,20 @@ class DiffInput:
     def __post_init__(self) -> None:
         if self.source not in {"workspace", "staged"}:
             raise ValueError(f"unknown diff source {self.source!r}")
-        if any(type(path) is not str or not path for path in self.scope_paths):
-            raise ValueError("scope_paths must be non-empty strings")
+        if len(self.scope_paths) > MAX_SCOPE_PATHS:
+            raise ValueError(f"scope_paths exceeds {MAX_SCOPE_PATHS} entries")
+        total_bytes = 0
+        for path in self.scope_paths:
+            if type(path) is not str or not path:
+                raise ValueError("scope_paths must be non-empty strings")
+            raw = path.encode("utf-8")
+            if len(raw) > MAX_SCOPE_PATH_BYTES:
+                raise ValueError(
+                    f"scope path exceeds {MAX_SCOPE_PATH_BYTES} UTF-8 bytes"
+                )
+            total_bytes += len(raw)
+        if total_bytes > MAX_SCOPE_TOTAL_BYTES:
+            raise ValueError(f"scope_paths exceed {MAX_SCOPE_TOTAL_BYTES} total bytes")
 
 
 @dataclass(frozen=True)
@@ -101,19 +131,31 @@ class TaskRequest:
     budget: Budget = field(default_factory=Budget)
 
     def __post_init__(self) -> None:
-        # Force the frozen contract: subclasses re-validate their own fields.
         if type(self.budget) is not Budget:
             raise ValueError("budget must be a frozen Budget")
 
 
+def _validate_task_text(task: str) -> None:
+    """Bound untrusted task text (RFC-0022: 1..16384 UTF-8 bytes, no NUL)."""
+    if type(task) is not str:
+        raise ValueError("task must be a string")
+    if not task.strip():
+        raise ValueError("task must not be empty")
+    raw = task.encode("utf-8")
+    if len(raw) > MAX_TASK_BYTES:
+        raise ValueError(f"task exceeds {MAX_TASK_BYTES} UTF-8 bytes")
+    if "\x00" in task:
+        raise ValueError("task must not contain NUL")
+
+
 @dataclass(frozen=True)
 class UnderstandRequest(TaskRequest):
+    #: RFC-0022: understand(diff) is invalid — task text only.
     task: str = ""
-    diff: DiffInput | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        _validate_task_or_diff(self.task, self.diff)
+        _validate_task_text(self.task)
 
 
 @dataclass(frozen=True)
@@ -141,27 +183,60 @@ class AssessChangeRequest(TaskRequest):
 
 @dataclass(frozen=True)
 class ConsumedBudget:
-    """Reported primitive accounting (RFC-0022 §Budget and truncation)."""
+    """Reported primitive accounting (RFC-0022 §Budget and truncation).
+
+    ``routing_deadline_ms`` is a routing deadline, not a wall-time SLA:
+    ``routing_wall_ms`` may exceed it, with ``deadline_overrun_ms`` reported
+    exactly. Cleanup accounting is fixed per RFC: the host records the four
+    cleanup fields after the unconditional release runs in an outer finally.
+    """
 
     primitive_calls: int
     evidence_items: int
     routing_wall_ms: int
     deadline_overrun_ms: int = 0
+    cleanup_calls: int = 0
+    cleanup_wall_ms: int = 0
+    cleanup_status: Literal["not_required", "succeeded", "failed"] = "not_required"
+    cleanup_error_code: str | None = None
 
     def __post_init__(self) -> None:
         if self.primitive_calls < 0 or self.evidence_items < 0:
             raise ValueError("consumed counters must be non-negative")
         if self.routing_wall_ms < 0 or self.deadline_overrun_ms < 0:
             raise ValueError("consumed durations must be non-negative")
+        if self.cleanup_calls not in {0, 1}:
+            raise ValueError("cleanup_calls must be zero or one")
+        if self.cleanup_wall_ms < 0:
+            raise ValueError("cleanup_wall_ms must be non-negative")
+        if self.cleanup_status not in {"not_required", "succeeded", "failed"}:
+            raise ValueError(f"unknown cleanup_status {self.cleanup_status!r}")
+        if self.cleanup_error_code not in {
+            None,
+            "DIFF_SNAPSHOT_CLEANUP_FAILED",
+        }:
+            raise ValueError(
+                f"cleanup_error_code must be null or DIFF_SNAPSHOT_CLEANUP_FAILED, "
+                f"got {self.cleanup_error_code!r}"
+            )
+        if self.cleanup_status == "failed" and self.cleanup_error_code is None:
+            raise ValueError("failed cleanup requires the stable error code")
 
 
 @dataclass(frozen=True)
 class TaskOutcome:
-    """One task-outcome/v1 result (frozen; serializer must be deterministic)."""
+    """One task-outcome/v1 result (frozen; serializer must be deterministic).
+
+    RFC-0022 fixed wire: ``status`` (complete|partial|unknown) is separate
+    from ``verdict`` (SAFE|CAUTION|REVIEW|UNSAFE|INFO|WARN|NOT_FOUND|ERROR).
+    A failed outcome is always ``verdict=ERROR``; ERROR is forbidden on
+    success.
+    """
 
     task: TaskName
     request: TaskRequest
-    verdict: str
+    verdict: Verdict
+    status: Status = "unknown"
     evidence: tuple[dict[str, Any], ...] = ()
     consumed: ConsumedBudget | None = None
     error: str | None = None
@@ -169,17 +244,30 @@ class TaskOutcome:
     def __post_init__(self) -> None:
         if self.task not in {"understand", "plan_change", "assess_change"}:
             raise ValueError(f"unknown task name {self.task!r}")
-        if self.error is None and self.verdict not in {"OK", "PARTIAL", "NOT_FOUND"}:
+        if self.verdict not in CANONICAL_VERDICTS:
             raise ValueError(
-                f"non-error outcome requires canonical verdict, got {self.verdict!r}"
+                f"verdict {self.verdict!r} not in canonical set "
+                f"{sorted(CANONICAL_VERDICTS)}"
             )
+        if self.status not in CANONICAL_STATUSES:
+            raise ValueError(
+                f"status {self.status!r} not in canonical set "
+                f"{sorted(CANONICAL_STATUSES)}"
+            )
+        if self.error is not None:
+            if self.verdict != "ERROR":
+                raise ValueError("failed outcome must be verdict=ERROR")
+        elif self.verdict == "ERROR":
+            raise ValueError("verdict=ERROR is forbidden without an error")
+        if type(self.consumed) not in {ConsumedBudget, type(None)}:
+            raise ValueError("consumed must be a frozen ConsumedBudget")
 
 
 def _validate_task_or_diff(task: str, diff: DiffInput | None) -> None:
     """Exactly one of task/diff must be supplied (RFC-0022 §Internal contract)."""
-    has_task = bool(task.strip())
+    has_task = bool(task.strip()) if type(task) is str else True
     has_diff = diff is not None
     if has_task == has_diff:
         raise ValueError("task request must have exactly one of task or diff")
-    if has_task and not isinstance(task, str):
-        raise ValueError("task must be a string")
+    if has_task:
+        _validate_task_text(task)
