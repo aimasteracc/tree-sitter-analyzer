@@ -1448,6 +1448,30 @@ def test_read_existing_impact_rejects_unsupported_requests(arguments, message):
         tool.validate_arguments(arguments)
 
 
+def test_execute_read_existing_fails_closed_without_project_root():
+    # Codex P1 (#1257): with project_root unbound the SecurityValidator
+    # receives base_path=None and skips its project-boundary layer, so an
+    # arbitrary relative scope path validates. The route must fail closed
+    # with the stable MISSING_PROJECT_ROOT error instead of classifying.
+    tool = tool_module.ChangeImpactTool(project_root=None)
+
+    with pytest.raises(ValueError) as exc_info:
+        asyncio.run(
+            tool.execute(
+                {
+                    "access_mode": "read_existing",
+                    "scope_paths": ["src/a.py"],
+                    "output_format": "json",
+                }
+            )
+        )
+
+    assert str(exc_info.value) == (
+        "MISSING_PROJECT_ROOT: project_root must be bound before "
+        "read_existing path validation"
+    )
+
+
 def test_validate_arguments_accepts_valid_modes():
     """validate_arguments must accept diff, staged, and branch."""
     tool = tool_module.ChangeImpactTool(project_root="/repo")

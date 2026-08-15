@@ -354,6 +354,34 @@ def test_execute_without_project_root_returns_setup_instruction() -> None:
     }
 
 
+def test_execute_read_existing_fails_closed_without_project_root() -> None:
+    # Codex P1 (#1257): with project_root unbound the SecurityValidator
+    # receives base_path=None and skips its project-boundary layer, so an
+    # arbitrary relative scope path validates. The route must fail closed
+    # with the stable MISSING_PROJECT_ROOT error instead of classifying.
+    from tree_sitter_analyzer.mcp.tools.constraint_check_tool import (
+        ConstraintCheckTool,
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        _run(
+            ConstraintCheckTool(None).execute(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds_test",
+                    "scope_paths": ["src/a.py"],
+                    "persist": False,
+                    "output_format": "json",
+                }
+            )
+        )
+
+    assert str(exc_info.value) == (
+        "MISSING_PROJECT_ROOT: project_root must be bound before "
+        "read_existing path validation"
+    )
+
+
 def test_persistent_unexpected_runtime_error_is_not_misclassified(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

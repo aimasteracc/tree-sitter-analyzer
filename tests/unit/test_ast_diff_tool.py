@@ -187,6 +187,28 @@ class TestASTDiffReadExistingValidation:
             is True
         )
 
+    @pytest.mark.asyncio
+    async def test_execute_fails_closed_without_bound_project_root(self):
+        # Codex P1 (#1257): with project_root unbound the SecurityValidator
+        # receives base_path=None and skips its project-boundary layer, so an
+        # arbitrary relative path validates. The route must fail closed with
+        # the stable MISSING_PROJECT_ROOT error instead of classifying.
+        unbound = ASTDiffTool()
+        with pytest.raises(ValueError) as exc_info:
+            await unbound.execute(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds",
+                    "file_path": "x.py",
+                    "output_format": "json",
+                }
+            )
+
+        assert str(exc_info.value) == (
+            "MISSING_PROJECT_ROOT: project_root must be bound before "
+            "read_existing path validation"
+        )
+
 
 class TestASTDiffToolExecution:
     @pytest.mark.asyncio

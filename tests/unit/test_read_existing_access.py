@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -253,6 +254,35 @@ def test_path_helper_preserves_project_boundary_failure() -> None:
         match=r"^Invalid file path: Security validation failed: outside project$",
     ):
         validate_read_existing_paths(_PathTool(), ["src/app.py"])
+
+
+class _RecordingValidator:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str | None]] = []
+
+    def validate_file_path(
+        self, file_path: str, *, base_path: str | None
+    ) -> tuple[bool, str]:
+        self.calls.append((file_path, base_path))
+        return True, ""
+
+
+def test_path_helper_fails_closed_without_bound_project_root() -> None:
+    # Codex P1 (#1257): with project_root unbound, SecurityValidator gets
+    # base_path=None and its project-boundary layer is skipped, so an
+    # arbitrary relative path validates. The helper must fail closed with
+    # the stable MISSING_PROJECT_ROOT error and never reach the validator.
+    validator = _RecordingValidator()
+    tool = SimpleNamespace(project_root=None, security_validator=validator)
+
+    with pytest.raises(ValueError) as exc_info:
+        validate_read_existing_paths(tool, ["src/app.py"])
+
+    assert str(exc_info.value) == (
+        "MISSING_PROJECT_ROOT: project_root must be bound before "
+        "read_existing path validation"
+    )
+    assert validator.calls == []
 
 
 class _GateTool:

@@ -138,9 +138,13 @@ class TestSemanticClassifyReadExistingValidation:
 
         assert str(exc_info.value) == "DIFF_SNAPSHOT_FILE_REQUIRED"
 
-    def test_accepts_valid_snapshot_file(self, tool):
+    def test_accepts_valid_snapshot_file(self, tool: SemanticClassifyTool, tmp_path):
+        # Codex P1 (#1257): the read_existing path boundary fails closed on an
+        # unbound project root — a valid snapshot file is accepted only once a
+        # project root is bound.
+        bound = SemanticClassifyTool(project_root=str(tmp_path))
         assert (
-            tool.validate_arguments(
+            bound.validate_arguments(
                 {
                     "access_mode": "read_existing",
                     "diff_snapshot_id": "ds",
@@ -148,6 +152,28 @@ class TestSemanticClassifyReadExistingValidation:
                 }
             )
             is True
+        )
+
+    def test_execute_fails_closed_without_bound_project_root(self):
+        # Codex P1 (#1257): with project_root unbound the SecurityValidator
+        # receives base_path=None and skips its project-boundary layer, so an
+        # arbitrary relative path validates. The route must fail closed with
+        # the stable MISSING_PROJECT_ROOT error instead of classifying.
+        unbound = SemanticClassifyTool(project_root=None)
+        with pytest.raises(ValueError) as exc_info:
+            _run(
+                unbound,
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds",
+                    "file_path": "x.py",
+                    "output_format": "json",
+                },
+            )
+
+        assert str(exc_info.value) == (
+            "MISSING_PROJECT_ROOT: project_root must be bound before "
+            "read_existing path validation"
         )
 
 

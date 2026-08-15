@@ -140,7 +140,22 @@ def validate_required_index_access(tool: Any, arguments: dict[str, Any]) -> None
 
 
 def validate_read_existing_paths(tool: Any, paths: list[str]) -> None:
-    """Apply the existing project security boundary to decoded P0.2 wire paths."""
+    """Apply the existing project security boundary to decoded P0.2 wire paths.
+
+    Codex P1 (#1257): fail closed when the project root was never bound
+    (MCP server created without ``project_root``, caller routes before
+    ``set_project_path``). Passing ``base_path=None`` into
+    ``SecurityValidator.validate_file_path`` skips the project-boundary
+    layer, so an arbitrary relative path would validate and the route
+    could classify successfully with no boundary established. Raise the
+    stable ``MISSING_PROJECT_ROOT`` error instead — path validation never
+    counts as success on an unbound project.
+    """
+    if not tool.project_root:
+        raise ValueError(
+            "MISSING_PROJECT_ROOT: project_root must be bound before "
+            "read_existing path validation"
+        )
     for wire_path in paths:
         file_path = path_from_wire(wire_path)
         valid, error = tool.security_validator.validate_file_path(
