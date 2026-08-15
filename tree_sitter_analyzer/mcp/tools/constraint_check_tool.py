@@ -156,10 +156,15 @@ class ConstraintCheckTool(BaseMCPTool):
 
         if not constraints and not persist:
             assert config_before is not None
+            # The recheck probes the live file again; it must not reuse the
+            # original deadline, which may already be exhausted by graph
+            # execution on slower runners (Windows CI: CONSTRAINT_CONFIG_DEADLINE
+            # surfaced as CONSTRAINT_CONFIG_UNKNOWN).
+            recheck_deadline = time.monotonic() + 10.0
             changed = _config_changed_response(
                 self.project_root,
                 config_before,
-                deadline,
+                recheck_deadline,
                 output_format,
                 self._snapshot_error,
                 _live_config_snapshot,
@@ -233,10 +238,11 @@ class ConstraintCheckTool(BaseMCPTool):
 
         if not persist:
             assert config_before is not None
+            recheck_deadline = time.monotonic() + 10.0
             changed = _config_changed_response(
                 self.project_root,
                 config_before,
-                deadline,
+                recheck_deadline,
                 output_format,
                 self._snapshot_error,
                 _live_config_snapshot,

@@ -20,13 +20,18 @@ _CONFIG_CANDIDATES = (
 
 
 def _identity(info: os.stat_result) -> bytes:
+    # st_ctime_ns is deliberately excluded: on Windows it is the file creation
+    # time (not a modification signal) and is known to differ between os.fstat
+    # (handle) and os.lstat (path) for the same file, which made the open-before/
+    # after probe misreport CONSTRAINT_CONFIG_CHANGED on Windows CI. size +
+    # mtime_ns + mode + inode detect every real mutation the probe guards
+    # against (content append, rewrite, truncation, rename, reparse flip).
     values = (
         info.st_dev,
         info.st_ino,
         info.st_mode,
         info.st_size,
         info.st_mtime_ns,
-        info.st_ctime_ns,
         getattr(info, "st_file_attributes", 0),
     )
     return b",".join(str(value).encode("ascii") for value in values)
