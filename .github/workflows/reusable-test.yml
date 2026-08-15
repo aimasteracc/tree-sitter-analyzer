@@ -93,15 +93,10 @@ jobs:
         uv sync --all-extras
       shell: bash
 
-    - name: Run bounded default gate
-      if: matrix.coverage
-      timeout-minutes: 5
-      run: uv run pytest -q
-      shell: bash
-
     - name: Run Tests with Coverage
       if: matrix.coverage
       id: test-coverage
+      timeout-minutes: 10
       run: |
         exec 3>> "$GITHUB_STEP_SUMMARY"
         echo "### 📊 Test Coverage Report" >&3
@@ -123,6 +118,7 @@ jobs:
 
     - name: Run Tests (no coverage)
       if: ${{ !matrix.coverage }}
+      timeout-minutes: 10
       run: |
         set +e
         uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
@@ -148,6 +144,7 @@ jobs:
 
     - name: Run slow tests
       if: matrix.coverage
+      timeout-minutes: 5
       run: |
         uv run pytest tests/ -n auto -q --maxfail=200 --timeout=120 \
           -m "slow and not network and not e2e and not benchmark and not full_language"
