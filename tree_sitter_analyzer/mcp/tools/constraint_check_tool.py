@@ -27,6 +27,7 @@ from ...read_existing_access import (
     validate_read_existing_schema_values,
 )
 from ...source_oracle import SourceOracleError
+from ...wire_owner import EDIT_CONSTRAINTS_ACTION_VERSION
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 from .constraint_check_live import (
@@ -103,6 +104,7 @@ class ConstraintCheckTool(BaseMCPTool):
             return {
                 "success": False,
                 "error": "Project root not set. Call set_project_path first.",
+                "action_version": EDIT_CONSTRAINTS_ACTION_VERSION,
             }
 
         access_arguments = arguments
@@ -111,6 +113,7 @@ class ConstraintCheckTool(BaseMCPTool):
         unavailable = read_existing_unavailable(
             access_arguments,
             reason=READ_EXISTING_AUTHORITY_UNCERTIFIED,
+            action_version=EDIT_CONSTRAINTS_ACTION_VERSION,
         )
         if unavailable is not None:
             return apply_toon_format_to_response(
@@ -167,6 +170,7 @@ class ConstraintCheckTool(BaseMCPTool):
                 {
                     "success": True,
                     "verdict": "SAFE",
+                    "action_version": EDIT_CONSTRAINTS_ACTION_VERSION,
                     "violations": [],
                     "rule_count": 0,
                     "evaluated_edge_count": 0,
@@ -180,6 +184,7 @@ class ConstraintCheckTool(BaseMCPTool):
                 {
                     "success": True,
                     "verdict": "SAFE",
+                    "action_version": EDIT_CONSTRAINTS_ACTION_VERSION,
                     "violations": [],
                     "rule_count": len(constraints),
                     "evaluated_edge_count": 0,
@@ -244,6 +249,7 @@ class ConstraintCheckTool(BaseMCPTool):
             {
                 "success": True,
                 "verdict": verdict,
+                "action_version": EDIT_CONSTRAINTS_ACTION_VERSION,
                 "violations": filtered_rows,
                 "rule_count": len(constraints),
                 "evaluated_edge_count": evaluated_edges,

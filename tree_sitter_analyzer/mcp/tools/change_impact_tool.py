@@ -11,6 +11,7 @@ from ...pr_url import (
     fetch_pr_diff_stat,
     parse_pr_url,
 )
+from ...wire_owner import EDIT_IMPACT_ACTION_VERSION
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool, mirror_summary_line
 from .change_impact_frozen import build_frozen_scope_result, scope_matches_raw
@@ -159,6 +160,7 @@ class ChangeImpactTool(BaseMCPTool):
             arguments,
             reason=read_access.DIFF_SNAPSHOT_READ_EXISTING_UNSUPPORTED,
             compact_only=bool(arguments.get("compact_only", False)),
+            action_version=EDIT_IMPACT_ACTION_VERSION,
         )
         if unavailable is not None:
             return unavailable
@@ -277,6 +279,8 @@ class ChangeImpactTool(BaseMCPTool):
             if agent_summary_only:
                 result = build_agent_summary_only_response(result)
             result["output_format"] = output_format
+            # RFC-0022 P0.5: echo the adapter-owned wire owner version.
+            result["action_version"] = EDIT_IMPACT_ACTION_VERSION
             # F1 (round-37f7): defensive verdict canonicalization in
             # the no-changes path. ``apply_scope_validation`` already
             # stamps ``CHANGE_IMPACT_VERDICT_CLEAN`` (now ``"SAFE"``)
@@ -324,6 +328,8 @@ class ChangeImpactTool(BaseMCPTool):
         if agent_summary_only:
             result = build_agent_summary_only_response(result)
         result["output_format"] = output_format
+        # RFC-0022 P0.5: echo the adapter-owned wire owner version.
+        result["action_version"] = EDIT_IMPACT_ACTION_VERSION
         # F1 (round-37f7): same defensive canonicalization as the
         # no-changes path — guarantees the cross-tool envelope sees
         # only canonical verdict tokens regardless of which builder
@@ -392,6 +398,10 @@ class ChangeImpactTool(BaseMCPTool):
             }
             result = build_agent_summary_only_response(result)
             result.update(snapshot_surface)
+        # RFC-0022 P0.5: the frozen route is a success fragment — echo the
+        # wire owner version after any agent-summary rebuild so the
+        # agent_summary_only variant keeps it too.
+        result["action_version"] = EDIT_IMPACT_ACTION_VERSION
         result["output_format"] = output_format
         _canonicalize_change_impact_verdict(result)
         result = mirror_summary_line(result)

@@ -213,11 +213,12 @@ def read_existing_unavailable(
     *,
     reason: str = READ_EXISTING_AUTHORITY_UNCERTIFIED,
     default_output_format: str = "toon",
+    action_version: str | None = None,
 ) -> dict[str, Any] | None:
     """Return the raw classified-unavailable envelope for an explicit request."""
     if "access_mode" not in arguments:
         return None
-    return {
+    envelope: dict[str, Any] = {
         "success": True,
         "verdict": "WARN",
         "access_mode": "read_existing",
@@ -226,6 +227,11 @@ def read_existing_unavailable(
         "source_snapshots": [],
         "output_format": arguments.get("output_format", default_output_format),
     }
+    # RFC-0022 P0.5: every route fragment echoes its adapter-owned wire
+    # owner version, including classified-unavailable results.
+    if action_version is not None:
+        envelope["action_version"] = action_version
+    return envelope
 
 
 def format_read_existing_unavailable(
@@ -234,12 +240,14 @@ def format_read_existing_unavailable(
     reason: str = READ_EXISTING_AUTHORITY_UNCERTIFIED,
     default_output_format: str = "toon",
     compact_only: bool = False,
+    action_version: str | None = None,
 ) -> dict[str, Any] | None:
     """Format one unavailable classification through the normal tool boundary."""
     result = read_existing_unavailable(
         arguments,
         reason=reason,
         default_output_format=default_output_format,
+        action_version=action_version,
     )
     if result is None:
         return None
@@ -258,6 +266,7 @@ def read_existing_gate(
     *,
     reason: str,
     compact_only: bool = False,
+    action_version: str | None = None,
 ) -> dict[str, Any] | None:
     """Validate and classify an explicit route before any adapter backend work."""
     if "access_mode" not in arguments:
@@ -267,4 +276,5 @@ def read_existing_gate(
         arguments,
         reason=reason,
         compact_only=compact_only,
+        action_version=action_version,
     )

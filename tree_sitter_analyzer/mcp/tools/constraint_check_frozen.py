@@ -16,6 +16,7 @@ from ...git_path_codec import path_to_wire
 from ...index_source_scope import SourceScopeDescriptor
 from ...languages.lang_extension_map import EXT_TO_LANG
 from ...source_oracle import SourceOracleError
+from ...wire_owner import EDIT_CONSTRAINTS_ACTION_VERSION
 from ..utils.format_helper import apply_toon_format_to_response
 
 _CONFIG_CANDIDATES = (
@@ -158,6 +159,7 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
                 "state": "not_applicable",
                 "reason": "NO_CONFIG",
                 "verdict": "INFO",
+                "action_version": EDIT_CONSTRAINTS_ACTION_VERSION,
                 "violations": [],
                 "rule_count": 0,
                 "evaluated_edge_count": 0,
@@ -176,6 +178,7 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
                     "success": True,
                     "state": "applicable",
                     "verdict": "SAFE",
+                    "action_version": EDIT_CONSTRAINTS_ACTION_VERSION,
                     "violations": [],
                     "rule_count": 0,
                     "evaluated_edge_count": 0,
@@ -246,6 +249,7 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
                             "success": True,
                             "state": "applicable",
                             "verdict": tool._compute_verdict(rows),
+                            "action_version": EDIT_CONSTRAINTS_ACTION_VERSION,
                             "violations": rows,
                             "rule_count": len(constraints),
                             "evaluated_edge_count": edge_count,

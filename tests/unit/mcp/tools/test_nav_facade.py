@@ -854,7 +854,9 @@ _ACCESS_EVIDENCE_TOON = (
     "access_state: unknown\n"
     "access_reason: READ_EXISTING_AUTHORITY_UNCERTIFIED\n"
     "source_snapshots: []\n"
-    "output_format: toon"
+    "output_format: toon\n"
+    # RFC-0022 P0.5: wire owner echo in the TOON control surface.
+    "action_version: nav.context/v1"
 )
 
 
@@ -910,6 +912,8 @@ def test_context_read_existing_returns_exact_access_evidence_without_backend(
     assert result == {
         **format_fields,
         **_ACCESS_EVIDENCE,
+        # RFC-0022 P0.5: wire-owner echo on the unavailable envelope.
+        "action_version": "nav.context/v1",
         "output_format": output_format,
     }
 

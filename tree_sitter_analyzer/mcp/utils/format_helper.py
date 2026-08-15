@@ -39,6 +39,9 @@ TOON_CONTROL_SURFACE: frozenset[str] = frozenset(
         "access_mode",
         "access_state",
         "access_reason",
+        # RFC-0022 P0.5 wire owner: compact callers must still see which
+        # adapter contract produced the fragment.
+        "action_version",
         # Cheap branchable identifiers/affordances an agent should not have to
         # parse the TOON blob for (review nit): the recovery ``hint`` on error
         # envelopes is the sharpest edge; ``file_path`` / ``pr_url`` /

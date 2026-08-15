@@ -17,6 +17,7 @@ from ... import read_existing_access as read_access
 from ...test_gap_analyzer import _NON_PROD_DIRS as _SHARED_NON_PROD_DIRS
 from ...utils.test_detection import is_test_file as _shared_is_test_file
 from ...utils.test_detection import query_wants_tests as _task_wants_tests
+from ...wire_owner import NAV_CONTEXT_ACTION_VERSION
 from ._codegraph_explore_helpers import extract_snippet_from_lines, read_file_lines
 from .base_tool import BaseMCPTool
 
@@ -238,7 +239,10 @@ class CodeGraphContextTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
-        if unavailable := read_access.format_read_existing_unavailable(arguments):
+        if unavailable := read_access.format_read_existing_unavailable(
+            arguments,
+            action_version=NAV_CONTEXT_ACTION_VERSION,
+        ):
             return unavailable
         started = time.perf_counter()
 
@@ -305,6 +309,7 @@ class CodeGraphContextTool(BaseMCPTool):
             result: dict[str, Any] = {
                 "success": True,
                 "verdict": verdict,
+                "action_version": NAV_CONTEXT_ACTION_VERSION,
                 "task": task,
                 "candidates": candidates,
                 "entry_points": entry_points,
@@ -341,6 +346,7 @@ class CodeGraphContextTool(BaseMCPTool):
             result = {
                 "success": True,
                 "verdict": verdict,
+                "action_version": NAV_CONTEXT_ACTION_VERSION,
                 "task": task,
                 "candidates": candidates,
                 "entry_points": entry_points,

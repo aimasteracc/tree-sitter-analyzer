@@ -20,6 +20,7 @@ from ...read_existing_access import (
     validate_required_index_access,
 )
 from ...utils import setup_logger
+from ...wire_owner import EDIT_SAFE_ACTION_VERSION
 from .base_tool import BaseMCPTool, mirror_summary_line
 from .utils.parse_validity import is_file_parse_broken
 from .utils.safe_to_edit_helpers import (
@@ -170,6 +171,7 @@ class SafeToEditTool(BaseMCPTool):
         unavailable = format_read_existing_unavailable(
             arguments,
             compact_only=bool(arguments.get("compact_only", False)),
+            action_version=EDIT_SAFE_ACTION_VERSION,
         )
         if unavailable is not None:
             return unavailable
@@ -215,6 +217,9 @@ class SafeToEditTool(BaseMCPTool):
         # Echo the requested output_format so agents can audit envelope
         # parity without re-reading their own call site.
         result["output_format"] = output_format
+        # RFC-0022 P0.5: echo the adapter-owned wire owner version on the
+        # success path.
+        result["action_version"] = EDIT_SAFE_ACTION_VERSION
 
         # M14 (round-26): also echo ``language`` on the success path.
         # The syntax-error short-circuit above already echoes it; the
@@ -275,6 +280,7 @@ def _syntax_error_response(
     summary_line = f"{file_path} signal=syntax_error verdict=ERROR"
     return {
         "success": True,
+        "action_version": EDIT_SAFE_ACTION_VERSION,
         "file_path": file_path,
         "edit_type": edit_type,
         "language": language,
