@@ -414,7 +414,9 @@ async def test_edit_safe_explicit_read_existing_honors_compact_only(
             "access_state: unknown\n"
             "access_reason: READ_EXISTING_AUTHORITY_UNCERTIFIED\n"
             "source_snapshots: []\n"
-            "output_format: toon"
+            "output_format: toon\n"
+            # RFC-0022 P0.5: wire owner echo in the TOON control surface.
+            "action_version: edit.safe/v1"
         ),
         "success": True,
         "verdict": "WARN",
@@ -422,6 +424,8 @@ async def test_edit_safe_explicit_read_existing_honors_compact_only(
         "access_state": "unknown",
         "access_reason": "READ_EXISTING_AUTHORITY_UNCERTIFIED",
         "output_format": "toon",
+        # RFC-0022 P0.5: wire owner echo on the envelope.
+        "action_version": "edit.safe/v1",
     }
 
 

@@ -384,6 +384,9 @@ class ChangeImpactTool(BaseMCPTool):
         response_frozen = dict(frozen)
         response_frozen["changed_records"] = records
         result = self._attach_diff_snapshot(result, mode, True, frozen=response_frozen)
+        # RFC-0022 P0.5: the frozen route is a success fragment — echo the
+        # wire owner version.
+        result["action_version"] = EDIT_IMPACT_ACTION_VERSION
         if agent_summary_only:
             snapshot_surface: dict[str, Any] = {
                 key: result[key]

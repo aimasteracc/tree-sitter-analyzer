@@ -280,6 +280,7 @@ def _syntax_error_response(
     summary_line = f"{file_path} signal=syntax_error verdict=ERROR"
     return {
         "success": True,
+        "action_version": EDIT_SAFE_ACTION_VERSION,
         "file_path": file_path,
         "edit_type": edit_type,
         "language": language,

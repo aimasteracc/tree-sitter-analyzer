@@ -592,7 +592,8 @@ class TestClassifyByteBudget:
             },
         )
         assert result["success"] is True
-        assert len(json.dumps(result)) == 4544
+        # RFC-0022 P0.5: +38 bytes for the action_version echo.
+        assert len(json.dumps(result)) == 4582
 
     def test_default_response_leq_raw_diff_bytes_git_mode(
         self, tool: SemanticClassifyTool, git_repo_with_two_commits

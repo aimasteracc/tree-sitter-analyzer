@@ -342,6 +342,8 @@ def _finalize_pr_result(
     if agent_summary_only:
         result = build_agent_summary_only_response(result)
     result["output_format"] = output_format
+    # RFC-0022 P0.5: PR route success fragment echoes the wire owner.
+    result["action_version"] = "edit.impact/v1"
     _canonicalize_change_impact_verdict(result)
     result = mirror_summary_line(result)
     return apply_toon_format_to_response(

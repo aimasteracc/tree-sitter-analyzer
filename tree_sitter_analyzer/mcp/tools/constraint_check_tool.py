@@ -170,6 +170,7 @@ class ConstraintCheckTool(BaseMCPTool):
                 {
                     "success": True,
                     "verdict": "SAFE",
+                    "action_version": EDIT_CONSTRAINTS_ACTION_VERSION,
                     "violations": [],
                     "rule_count": 0,
                     "evaluated_edge_count": 0,
@@ -183,6 +184,7 @@ class ConstraintCheckTool(BaseMCPTool):
                 {
                     "success": True,
                     "verdict": "SAFE",
+                    "action_version": EDIT_CONSTRAINTS_ACTION_VERSION,
                     "violations": [],
                     "rule_count": len(constraints),
                     "evaluated_edge_count": 0,
