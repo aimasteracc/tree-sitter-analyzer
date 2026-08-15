@@ -442,3 +442,26 @@ async def test_read_existing_rejects_traversal_before_unavailable(tmp_path):
                 "output_format": "json",
             }
         )
+
+
+def test_execute_read_existing_fails_closed_without_project_root() -> None:
+    # Codex P1 (#1257): with project_root unbound, resolve_and_validate_
+    # file_path would pass base_path=None into SecurityValidator and skip
+    # the project-boundary layer; the read_existing route must fail closed
+    # with the stable MISSING_PROJECT_ROOT error instead.
+    tool = SafeToEditTool()  # no project root bound
+    with pytest.raises(ValueError) as exc_info:
+        _run(
+            tool.execute(
+                {
+                    "file_path": "src/app.py",
+                    "access_mode": "read_existing",
+                    "snapshot_id": "snap-1",
+                    "source_generation": 1,
+                }
+            )
+        )
+    assert str(exc_info.value) == (
+        "MISSING_PROJECT_ROOT: project_root must be bound before "
+        "read_existing path validation"
+    )

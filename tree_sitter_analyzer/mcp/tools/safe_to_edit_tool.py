@@ -152,6 +152,17 @@ class SafeToEditTool(BaseMCPTool):
     # execute: implementation
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         file_path = self._file_path_argument(arguments)
+        # Codex P1 (#1257): fail closed when the project root was never
+        # bound. resolve_and_validate_file_path would pass base_path=None
+        # into SecurityValidator and skip the project-boundary layer, so an
+        # arbitrary relative path would validate with no boundary
+        # established. Mirror validate_read_existing_paths: unbound root +
+        # read_existing route raises the stable MISSING_PROJECT_ROOT error.
+        if arguments.get("access_mode") == "read_existing" and not self.project_root:
+            raise ValueError(
+                "MISSING_PROJECT_ROOT: project_root must be bound before "
+                "read_existing path validation"
+            )
         # Security/project-boundary checks precede successful unavailable
         # classification so malformed paths remain validation failures.
         resolved = self.resolve_and_validate_file_path(file_path)
