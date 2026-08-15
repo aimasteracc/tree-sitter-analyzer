@@ -175,6 +175,44 @@ def test_candidate_cache_collapses_duplicate_selects(tmp_path: Path) -> None:
         cache.close()
 
 
+def test_resolved_extends_replaces_generic_placeholder(tmp_path: Path) -> None:
+    """Dogfood F4 (#1275): resolved EXTENDS edges replace the index-time
+    generic class-placeholder edge instead of duplicating it.
+
+    The indexer writes one generic edge per base before resolution; the
+    second pass must delete it when a real symbol node resolves, otherwise
+    class_hierarchy sees every cross-file base twice (536 vs 328 edges on
+    this repo's own index).
+    """
+    _write_repeated_name_project(tmp_path)
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project(workers=0)
+        conn = cache.get_conn()
+        _reset_resolution(conn)
+        stats = unresolved.resolve_unresolved_refs(conn)
+        assert stats is not None
+        assert stats["errors"] == 0, stats
+        assert stats["resolved"] == 24, stats
+
+        placeholder = conn.execute(
+            "SELECT COUNT(*) FROM edges WHERE kind = 'extends' "
+            "AND target_node_id LIKE 'class:%'"
+        ).fetchone()[0]
+        assert placeholder == 0, (
+            f"expected no generic class placeholder after resolution, got {placeholder}"
+        )
+        resolved = conn.execute(
+            "SELECT COUNT(*) FROM edges WHERE kind = 'extends' "
+            "AND target_node_id LIKE '%/base.py:%'"
+        ).fetchone()[0]
+        assert resolved == 12, (
+            f"expected all 12 widgets resolved to base.py symbols, got {resolved}"
+        )
+    finally:
+        cache.close()
+
+
 def test_candidate_cache_returns_empty_on_broken_connection() -> None:
     """A failing candidate SELECT still yields [] and is cached as the abort."""
     no_schema = sqlite3.connect(":memory:")
