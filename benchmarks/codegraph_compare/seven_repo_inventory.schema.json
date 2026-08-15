@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "seven-repo-inventory-v1",
   "title": "NO1-008A pinned seven-repository inventory",
-  "description": "Pinned repository fingerprints for NO1-008A setup qualification. Every commit is a trusted SHA-256 pin; source_extensions must stay in lockstep with DEFAULT_SOURCE_RULES and repos.yaml.",
+  "description": "Pinned repository fingerprints for NO1-008A setup qualification. Every commit is a trusted 40-hex Git SHA-1 object ID pin; source_extensions must stay in lockstep with DEFAULT_SOURCE_RULES and repos.yaml.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "repositories"],

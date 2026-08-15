@@ -16410,9 +16410,31 @@ def test_seven_repo_inventory_commit_pins_match_repos_yaml() -> None:
 
     payload = load_seven_repo_inventory()
     registry = yaml.safe_load(REPOS_YAML.read_text(encoding="utf-8"))
-    pinned = {entry["repo_id"]: entry["commit"] for entry in payload["repositories"]}
-    for repo in registry["repos"]:
-        assert pinned[repo["id"]] == repo["commit"], repo["id"]
+    # Codex P2 (#1260): compare every shared field across the exact
+    # seven-entry mapping, so name/language/url/approx_files drift (or a
+    # removed repository) turns the parity test red, not just commit pins.
+    pinned = {
+        entry["repo_id"]: {
+            "commit": entry["commit"],
+            "name": entry["name"],
+            "language": entry["language"],
+            "url": entry["url"],
+            "approx_files": entry["approx_files"],
+        }
+        for entry in payload["repositories"]
+    }
+    assert len(pinned) == 7
+    yaml_repos = registry["repos"]
+    assert len(yaml_repos) == 7
+    for repo in yaml_repos:
+        expected = {
+            "commit": repo["commit"],
+            "name": repo["name"],
+            "language": repo["language"],
+            "url": repo["url"],
+            "approx_files": repo["approx_files"],
+        }
+        assert pinned[repo["id"]] == expected, repo["id"]
 
 
 def test_seven_repo_inventory_extensions_match_default_source_rules() -> None:
@@ -16497,6 +16519,48 @@ def test_seven_repo_inventory_schema_rejects_wrong_repository_count(
         broken,
     ):
         with pytest.raises(ValueError, match="violates its schema"):
+            load_seven_repo_inventory()
+
+
+def test_seven_repo_inventory_rejects_duplicate_json_members(
+    tmp_path: Path,
+) -> None:
+    # Codex P2 (#1260): a duplicated member (e.g. two "commit" keys) must
+    # be rejected up front — json.loads would silently keep the last value
+    # and the schema would validate only the collapsed object.
+    from unittest.mock import patch
+
+    from benchmarks.codegraph_compare.setup_qualification_inventory import (
+        SEVEN_REPO_INVENTORY_PATH,
+        load_seven_repo_inventory,
+    )
+
+    payload = json.loads(SEVEN_REPO_INVENTORY_PATH.read_text("utf-8"))
+    first = payload["repositories"][0]
+    duplicated = (
+        "{"
+        + '"repo_id": "gin", "commit": "'
+        + first["commit"]
+        + '", "commit": "'
+        + first["commit"]
+        + '", "name": "Gin", "language": "Go", "url": "https://github.com/gin-gonic/gin", "approx_files": 200, "source_extensions": [".go"]'
+        + "}"
+    )
+    broken = tmp_path / "broken-duplicate.json"
+    broken.write_text(
+        '{"schema_version": 1, "repositories": ['
+        + duplicated
+        + ","
+        + json.dumps(payload["repositories"][1:])[1:]
+        + "}",
+        encoding="utf-8",
+    )
+    with patch(
+        "benchmarks.codegraph_compare.setup_qualification_inventory"
+        ".SEVEN_REPO_INVENTORY_PATH",
+        broken,
+    ):
+        with pytest.raises(ValueError, match="not strict JSON"):
             load_seven_repo_inventory()
 
 

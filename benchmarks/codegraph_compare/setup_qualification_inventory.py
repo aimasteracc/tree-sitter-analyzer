@@ -462,11 +462,19 @@ def load_seven_repo_inventory() -> dict[str, object]:
 
     from jsonschema import ValidationError, validate
 
+    from benchmarks.codegraph_compare.setup_qualification_schema import (
+        strict_json_loads,
+    )
+
     raw = SEVEN_REPO_INVENTORY_PATH.read_bytes()
+    # Codex P2 (#1260): json.loads silently keeps the last of duplicate
+    # object members; a duplicated commit pin would pass schema validation
+    # on the collapsed object while another parser reads the other value.
+    # strict_json_loads rejects duplicate members up front.
     try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError("seven-repo inventory is not valid JSON") from exc
+        payload = strict_json_loads(raw)
+    except ValueError as exc:
+        raise ValueError("seven-repo inventory is not strict JSON") from exc
     schema = json.loads(SEVEN_REPO_INVENTORY_SCHEMA_PATH.read_text("utf-8"))
     try:
         validate(instance=payload, schema=schema)
