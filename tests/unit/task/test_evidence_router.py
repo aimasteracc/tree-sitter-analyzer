@@ -356,6 +356,16 @@ def test_route_table_dynamic_parameters_are_pinned() -> None:
         for row in ROUTE_TABLE
     }
     assert dynamic[("all", "index", "status")] == ()
+    assert dynamic[("understand(task)", "nav", "context")] == (
+        "task",
+        "snapshot_id",
+        "source_generation",
+    )
+    assert dynamic[("plan_change(task)", "nav", "context")] == (
+        "task",
+        "snapshot_id",
+        "source_generation",
+    )
     assert dynamic[("plan_change(task)", "edit", "safe")] == (
         "file_path",
         "snapshot_id",

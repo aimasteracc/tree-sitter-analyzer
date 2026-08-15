@@ -59,6 +59,7 @@ ROUTE_TABLE: tuple[RouteRow, ...] = (
             ("access_mode", "read_existing"),
             ("output_format", "json"),
         ),
+        dynamic_parameters=("task", "snapshot_id", "source_generation"),
         stop_rule="failure => unknown; success ends route",
     ),
     RouteRow(
@@ -73,6 +74,7 @@ ROUTE_TABLE: tuple[RouteRow, ...] = (
             ("access_mode", "read_existing"),
             ("output_format", "json"),
         ),
+        dynamic_parameters=("task", "snapshot_id", "source_generation"),
         stop_rule="failure => unknown and stop",
     ),
     RouteRow(
