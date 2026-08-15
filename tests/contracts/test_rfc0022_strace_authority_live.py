@@ -43,7 +43,14 @@ EVENT_KEYS = {
     "target",
     "timestamp",
 }
-TRACE_FILE_KEYS = {"parent_pid", "pid", "role", "sha256", "terminal"}
+TRACE_FILE_KEYS = {
+    "exit_timestamp",
+    "parent_pid",
+    "pid",
+    "role",
+    "sha256",
+    "terminal",
+}
 RAW_TRACE_KEYS = {"pid", "sha256", "size", "terminal"}
 PROCESS_EDGE = re.compile(r"^\d+\.\d+ (?:clone|clone3|fork|vfork)\(.*\)\s+= (\d+)$")
 TERMINAL = re.compile(r"\+\+\+ (?:exited with \d+|killed by .+) \+\+\+")
