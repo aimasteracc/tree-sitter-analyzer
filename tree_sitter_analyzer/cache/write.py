@@ -260,8 +260,8 @@ def _insert_import_entry(
         conn.execute(
             """INSERT INTO ast_imports
                (file_path, language, module_path, local_name,
-                is_relative, is_star, alias_of)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                is_relative, is_star, alias_of, line)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 rel_path,
                 language,
@@ -270,6 +270,7 @@ def _insert_import_entry(
                 1 if entry.is_relative else 0,
                 1 if entry.is_star else 0,
                 entry.alias_of,
+                entry.line,
             ),
         )
         return True

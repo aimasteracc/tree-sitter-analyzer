@@ -47,7 +47,9 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v12: #779 — walker depth cap raised from 20 to 100.
 # v13: #949 — bash command-prefix environment variables are not declarations.
 # v14: #1094 / RFC-0019 — symbols carry canonical extractor complexity.
-_AST_CACHE_EXTRACTOR_VERSION = 14
+# v15: #1275 (dogfood F5) — ast_index.imports_json entries carry a line
+# field (dict entries instead of bare statement strings).
+_AST_CACHE_EXTRACTOR_VERSION = 15
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__

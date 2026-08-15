@@ -768,7 +768,8 @@ class CachedCallGraph(CallGraph):
         file_import_map: dict[str, dict[str, str]] = {}
         for file_path, import_texts in imports_raw.items():
             name_map: dict[str, str] = {}
-            for imp_text in import_texts:
+            for imp in import_texts:
+                imp_text = imp["text"] if isinstance(imp, dict) else imp
                 parts = imp_text.split()
                 if len(parts) >= 4 and parts[0] == "from":
                     mod_name = parts[1]

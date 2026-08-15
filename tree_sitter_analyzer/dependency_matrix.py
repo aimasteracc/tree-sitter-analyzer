@@ -151,7 +151,8 @@ class DependencyMatrix:
         for source_file, imports in imports_by_file.items():
             if not isinstance(imports, list):
                 continue
-            for imp_text in imports:
+            for imp in imports:
+                imp_text = imp["text"] if isinstance(imp, dict) else imp
                 if not isinstance(imp_text, str):
                     continue
                 resolved = self._resolve_import(imp_text, source_file, project_files)
