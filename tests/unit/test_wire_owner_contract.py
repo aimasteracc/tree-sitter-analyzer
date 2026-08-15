@@ -180,3 +180,53 @@ def test_read_existing_unavailable_omits_version_without_argument() -> None:
 
     result = read_existing_unavailable({"access_mode": "read_existing"})
     assert "action_version" not in result
+
+
+def test_change_impact_frozen_agent_summary_keeps_wire_owner(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # REQ-1 (review round 2, #1264): edit.impact frozen success with
+    # agent_summary_only=true rebuilds the envelope through an allowlist
+    # builder — the wire owner echo must be written after that rebuild so
+    # the summary-only variant keeps it.
+    from unittest.mock import MagicMock
+
+    import tree_sitter_analyzer.mcp.tools.change_impact_tool as tool_module
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+    from tree_sitter_analyzer.wire_owner import EDIT_IMPACT_ACTION_VERSION
+
+    tool = tool_module.ChangeImpactTool(str(tmp_path))
+    consumer = MagicMock()
+    consumer.snapshot.assessed_scope_paths = []
+    monkeypatch.setattr(registry.REGISTRY, "bind_assessed_scope", lambda *a: None)
+    monkeypatch.setattr(registry.REGISTRY, "validate_publish", lambda *a: None)
+    monkeypatch.setattr(
+        tool_module,
+        "build_frozen_scope_result",
+        lambda *a: (
+            {
+                "success": True,
+                "verdict": "SAFE",
+                "mode": "diff",
+                "agent_summary": {"summary_line": "s"},
+            },
+            [],
+            [],
+            [],
+        ),
+    )
+    result = tool._execute_frozen_snapshot(
+        frozen={
+            "diff_snapshot_id": "ds",
+            "source_generation": "g",
+            "success": True,
+        },
+        consumer=consumer,
+        mode="diff",
+        scope_paths=[],
+        scope_mode="report",
+        output_format="json",
+        agent_summary_only=True,
+        compact_only=False,
+    )
+    assert result["action_version"] == EDIT_IMPACT_ACTION_VERSION

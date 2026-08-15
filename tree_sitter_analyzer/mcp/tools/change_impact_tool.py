@@ -384,9 +384,6 @@ class ChangeImpactTool(BaseMCPTool):
         response_frozen = dict(frozen)
         response_frozen["changed_records"] = records
         result = self._attach_diff_snapshot(result, mode, True, frozen=response_frozen)
-        # RFC-0022 P0.5: the frozen route is a success fragment — echo the
-        # wire owner version.
-        result["action_version"] = EDIT_IMPACT_ACTION_VERSION
         if agent_summary_only:
             snapshot_surface: dict[str, Any] = {
                 key: result[key]
@@ -401,6 +398,10 @@ class ChangeImpactTool(BaseMCPTool):
             }
             result = build_agent_summary_only_response(result)
             result.update(snapshot_surface)
+        # RFC-0022 P0.5: the frozen route is a success fragment — echo the
+        # wire owner version after any agent-summary rebuild so the
+        # agent_summary_only variant keeps it too.
+        result["action_version"] = EDIT_IMPACT_ACTION_VERSION
         result["output_format"] = output_format
         _canonicalize_change_impact_verdict(result)
         result = mirror_summary_line(result)
