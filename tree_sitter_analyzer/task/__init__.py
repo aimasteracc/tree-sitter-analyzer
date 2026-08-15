@@ -6,6 +6,12 @@ Not registered as an MCP facade, CLI command, or codemap surface
 
 from __future__ import annotations
 
+from .evidence import (
+    EvidenceInput,
+    evidence_identity,
+    normalized_result_hash,
+)
+from .freshness import FRESHNESS_STATES, SnapshotTruth
 from .models import (
     BUDGET_PROFILES,
     AssessChangeRequest,
@@ -17,9 +23,18 @@ from .models import (
     TaskRequest,
     UnderstandRequest,
 )
+from .route_table import ROUTE_TABLE, SAFE_FANOUT_CAPS, RouteRow
 
 __all__ = [
     "AssessChangeRequest",
+    "EvidenceInput",
+    "FRESHNESS_STATES",
+    "ROUTE_TABLE",
+    "RouteRow",
+    "SAFE_FANOUT_CAPS",
+    "SnapshotTruth",
+    "evidence_identity",
+    "normalized_result_hash",
     "Budget",
     "BUDGET_PROFILES",
     "ConsumedBudget",
