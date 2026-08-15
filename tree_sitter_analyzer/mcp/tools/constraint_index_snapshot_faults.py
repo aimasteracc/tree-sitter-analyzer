@@ -16,18 +16,14 @@ def stat_identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
             int(info.st_mtime_ns),
             int(info.st_ctime_ns),
         )
-    # Windows: os.fstat (handle-based) and os.lstat (path-based) disagree on
-    # st_ino since CPython 3.12 fills the path side with the real file ID
-    # while the handle side keeps its legacy value — and ctime/mtime precision
-    # is not guaranteed to match across the two sources either — so a
-    # handle-opened descriptor's identity never matched a path-pinned
-    # expectation and every portable snapshot reported CONCURRENT_WRITER on
-    # Windows 3.12/3.13 CI (dogfood round 2026-08-15). st_size + st_mtime_ns
-    # still detect every mutation the guard covers (rewrites, truncations,
-    # content swaps).
+    # Windows: st_ctime_ns is deliberately excluded — it is the creation
+    # time, and the handle/path stat sources disagree on it since CPython
+    # 3.12 (the CONCURRENT_WRITER misreport on Windows 3.12/3.13 CI, dogfood
+    # round 2026-08-15). st_ino is kept: both sources report the same file
+    # ID, so same-size pathname swaps are still detected.
     return (
-        0,
-        0,
+        int(info.st_dev),
+        int(info.st_ino),
         int(info.st_size),
         int(info.st_mtime_ns),
         0,
