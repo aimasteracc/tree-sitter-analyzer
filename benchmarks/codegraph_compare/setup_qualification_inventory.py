@@ -407,3 +407,92 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
         repo_fingerprint,
         root_tree_id=root_tree_id,
     )
+
+
+SEVEN_REPO_INVENTORY_PATH = Path(__file__).with_name("seven_repo_inventory.json")
+SEVEN_REPO_INVENTORY_SCHEMA_PATH = Path(__file__).with_name(
+    "seven_repo_inventory.schema.json"
+)
+_COMMIT_HEX = frozenset("0123456789abcdef")
+
+
+def _validate_inventory_entry(entry: object, index: int) -> dict[str, object]:
+    """Enforce exact pinned-inventory entry semantics beyond JSON shape."""
+    if type(entry) is not dict:
+        raise ValueError(f"seven-repo inventory entry {index} is not an object")
+    repo_id = entry.get("repo_id")
+    commit = entry.get("commit")
+    extensions = entry.get("source_extensions")
+    approx_files = entry.get("approx_files")
+    if type(repo_id) is not str or not repo_id:
+        raise ValueError(f"seven-repo inventory entry {index} has no repo_id")
+    if (
+        type(commit) is not str
+        or len(commit) != 40
+        or any(char not in _COMMIT_HEX for char in commit)
+    ):
+        raise ValueError(f"seven-repo inventory entry {index} has a bad commit pin")
+    if (
+        type(extensions) is not list
+        or not extensions
+        or any(type(item) is not str or not item.startswith(".") for item in extensions)
+    ):
+        raise ValueError(
+            f"seven-repo inventory entry {index} has bad source_extensions"
+        )
+    if tuple(extensions) != tuple(sorted(set(extensions))):
+        raise ValueError(
+            f"seven-repo inventory entry {index} extensions are not sorted unique"
+        )
+    if type(approx_files) is not int or approx_files < 1:
+        raise ValueError(
+            f"seven-repo inventory entry {index} has a bad approx_files count"
+        )
+    return entry
+
+
+def load_seven_repo_inventory() -> dict[str, object]:
+    """Load and validate the pinned NO1-008A repository inventory.
+
+    The pinned inventory is the offline source of truth for the seven
+    repository fingerprints; live clones and oracles must agree with it
+    before any cell may be qualified (NO1-008A exact-partition gate).
+    """
+    import json
+
+    from jsonschema import ValidationError, validate
+
+    raw = SEVEN_REPO_INVENTORY_PATH.read_bytes()
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("seven-repo inventory is not valid JSON") from exc
+    schema = json.loads(SEVEN_REPO_INVENTORY_SCHEMA_PATH.read_text("utf-8"))
+    try:
+        validate(instance=payload, schema=schema)
+    except ValidationError as exc:
+        raise ValueError(
+            f"seven-repo inventory violates its schema: {exc.message}"
+        ) from None
+    if type(payload) is not dict or payload.get("schema_version") != 1:
+        raise ValueError("seven-repo inventory must carry schema_version=1")
+    repositories = payload.get("repositories")
+    if type(repositories) is not list or len(repositories) != 7:
+        raise ValueError("seven-repo inventory must list exactly seven repositories")
+    from benchmarks.codegraph_compare.setup_qualification_plan import REPOSITORIES
+
+    seen: list[str] = []
+    for index, entry in enumerate(repositories):
+        validated = _validate_inventory_entry(entry, index)
+        repo_id = validated["repo_id"]
+        if type(repo_id) is not str:
+            raise ValueError(f"seven-repo inventory entry {index} has no repo_id")
+        if repo_id in seen:
+            raise ValueError(f"seven-repo inventory duplicates repo_id {repo_id}")
+        seen.append(repo_id)
+    if tuple(seen) != REPOSITORIES:
+        raise ValueError(
+            "seven-repo inventory repo order must match the canonical "
+            f"seven repositories: {REPOSITORIES}"
+        )
+    return payload
