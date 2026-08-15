@@ -129,16 +129,16 @@ jobs:
         if [ "$test_status" -eq 0 ]; then
           exit 0
         fi
-        if [ "$RUNNER_OS" != "Windows" ]; then
+        if [ "$RUNNER_OS" = "Linux" ]; then
           exit "$test_status"
         fi
         if ! uv run python scripts/classify_windows_pytest_failure.py \
-          pytest-output.txt --nodeids-output windows-budget-retry.txt; then
+          pytest-output.txt --nodeids-output budget-retry.txt; then
           exit "$test_status"
         fi
-        mapfile -t retry_nodeids < windows-budget-retry.txt
-        echo "Windows runner degradation suspected; retrying budget-only failures once."
-        uv run pytest "${retry_nodeids[@]}" -n auto -v --tb=short --maxfail=200
+        mapfile -t retry_nodeids < budget-retry.txt
+        echo "$RUNNER_OS runner degradation suspected; retrying budget-only failures once."
+        uv run pytest "${retry_nodeids[@]}" -n auto -q --tb=short --maxfail=200
       shell: bash
 
     - name: Run slow tests
@@ -255,16 +255,16 @@ jobs:
         if [ "$test_status" -eq 0 ]; then
           exit 0
         fi
-        if [ "$RUNNER_OS" != "Windows" ]; then
+        if [ "$RUNNER_OS" = "Linux" ]; then
           exit "$test_status"
         fi
         if ! uv run python scripts/classify_windows_pytest_failure.py \
-          pytest-output.txt --nodeids-output windows-budget-retry.txt; then
+          pytest-output.txt --nodeids-output budget-retry.txt; then
           exit "$test_status"
         fi
-        mapfile -t retry_nodeids < windows-budget-retry.txt
-        echo "Windows runner degradation suspected; retrying budget-only failures once."
-        uv run pytest "${retry_nodeids[@]}" -n auto -v --tb=short --maxfail=200
+        mapfile -t retry_nodeids < budget-retry.txt
+        echo "$RUNNER_OS runner degradation suspected; retrying budget-only failures once."
+        uv run pytest "${retry_nodeids[@]}" -n auto -q --tb=short --maxfail=200
       shell: bash
 
     - name: Run slow tests
