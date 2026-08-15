@@ -1013,7 +1013,9 @@ def test_stale_zero_id_diagnostic_requires_stale_reason() -> None:
     )
     result = semantic_validate(mutated)
     assert result.accepted is False
-    assert result.reasons == ("MALFORMED_RESULT",)
+    # F4 (review #1271): the raw stale signal surfaces STALE_SNAPSHOT directly
+    # instead of the generic malformed reason.
+    assert result.reasons == ("STALE_SNAPSHOT",)
 
 
 def test_positive_observation_without_evidence_is_rejected() -> None:
@@ -1387,8 +1389,8 @@ def test_invocation_rule_entry_mismatch_is_rejected() -> None:
         _check_invocation_authority(bundle, bad_context)
 
 
-def test_invocation_without_adapter_tuple_is_skipped() -> None:
-    """Review #1269: invocations without an invoked adapter do not bind."""
+def test_invocation_without_adapter_tuple_is_rejected() -> None:
+    """Review #1271: an invocation without an invoked adapter is rejected."""
     from tree_sitter_analyzer.task.edge_evidence import (
         _apply_mutations,
         _check_invocation_authority,
@@ -1406,7 +1408,10 @@ def test_invocation_without_adapter_tuple_is_skipped() -> None:
             }
         ],
     )
-    _check_invocation_authority(bundle, bare_context)
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="invocation authority incomplete"):
+        _check_invocation_authority(bundle, bare_context)
 
 
 def test_invocation_pointer_to_non_object_is_rejected() -> None:
@@ -1486,3 +1491,387 @@ def test_proposed_target_must_match_target_endpoint() -> None:
 
     with _pytest.raises(ValueError, match="TARGET_DECLARATION_MISMATCH"):
         _check_evidence_projection(bad)
+
+
+def test_diagnostic_observation_locator_must_match() -> None:
+    """Review #1271: the diagnostic observation locator must project exactly."""
+    from tree_sitter_analyzer.task.edge_evidence import (
+        _apply_mutations,
+        _check_diagnostics,
+    )
+
+    bundle = _load_fixture("golden")
+    bad = _apply_mutations(
+        bundle,
+        [
+            {
+                "op": "replace",
+                "path": "/records/2/locators/observation/occurrence/path",
+                "value": "src/other.py",
+            }
+        ],
+    )
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="diagnostic locator mismatch"):
+        _check_diagnostics(bad)
+
+
+def test_duplicate_observation_pointers_are_rejected() -> None:
+    """Review #1271: two positive observations cannot share a result pointer."""
+    from tree_sitter_analyzer.task.edge_evidence import (
+        _apply_mutations,
+        _check_projection_closure,
+    )
+
+    bundle = _load_fixture("golden")
+    bad = _apply_mutations(
+        bundle,
+        [
+            {
+                "op": "replace",
+                "path": "/raw_observations/1/observation/result_pointer",
+                "value": "/edges/0",
+            }
+        ],
+    )
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="duplicate observation pointer"):
+        _check_projection_closure(bad)
+
+
+def test_middle_contradiction_record_drift_is_detected() -> None:
+    """Review #1271: shared contradiction IDs are recomputed per record."""
+    from tree_sitter_analyzer.task.edge_evidence import (
+        _apply_mutations,
+        _recompute_record_ids,
+    )
+
+    bundle = _load_fixture("golden")
+    evidence_indexes = [
+        index
+        for index, record in enumerate(bundle["records"])
+        if record["schema"] == "edge-evidence/v1"
+    ]
+    bad = _apply_mutations(
+        bundle,
+        [
+            {
+                "op": "replace",
+                "path": f"/records/{evidence_indexes[1]}/edge_key/target_node_id",
+                "value": "py:drifted",
+            }
+        ],
+    )
+    recomputed = _recompute_record_ids(bad)
+    evidence_kinds = [kind for kind, _declared, _value in recomputed]
+    assert evidence_kinds.count("edge-evidence/v1") == 2
+    contradiction_values = {
+        value for kind, _declared, value in recomputed if kind == "edge-evidence/v1"
+    }
+    assert len(contradiction_values) == 2
+
+
+def test_stale_signal_without_reason_is_denied() -> None:
+    """Review #1271: stale raw signal must surface STALE_SNAPSHOT."""
+    from tree_sitter_analyzer.task.edge_evidence import (
+        _apply_mutations,
+        _digest,
+        semantic_validate,
+    )
+
+    bundle = _load_fixture("golden")
+    mutated = _apply_mutations(
+        bundle,
+        [
+            {
+                "op": "replace",
+                "path": "/raw_observations/2/freshness_signal/state",
+                "value": "stale",
+            }
+        ],
+    )
+    result_hash = _digest(mutated["raw_observations"][2])
+    mutated = _apply_mutations(
+        mutated,
+        [
+            {
+                "op": "replace",
+                "path": "/records/2/primitive/normalized_result_sha256",
+                "value": result_hash,
+            }
+        ],
+    )
+    result = semantic_validate(mutated)
+    assert result.accepted is False
+    assert result.reasons == ("STALE_SNAPSHOT",)
+
+
+def test_truncated_zero_id_observation_requires_reason() -> None:
+    """Review #1271: truncated zero-ID observations must list TRUNCATED."""
+    from tree_sitter_analyzer.task.edge_evidence import (
+        _apply_mutations,
+        _digest,
+        semantic_validate,
+    )
+
+    bundle = _load_fixture("golden")
+    mutated = _apply_mutations(
+        bundle,
+        [
+            {
+                "op": "replace",
+                "path": "/raw_observations/2/truncation/state",
+                "value": "truncated",
+            },
+            {
+                "op": "replace",
+                "path": "/raw_observations/2/truncation/reason",
+                "value": "PRIMITIVE_CAP",
+            },
+        ],
+    )
+    result_hash = _digest(mutated["raw_observations"][2])
+    mutated = _apply_mutations(
+        mutated,
+        [
+            {
+                "op": "replace",
+                "path": "/records/2/primitive/normalized_result_sha256",
+                "value": result_hash,
+            }
+        ],
+    )
+    result = semantic_validate(mutated)
+    assert result.accepted is False
+    assert result.reasons == ("TRUNCATED",)
+
+
+def test_invocation_pointer_duplicate_is_rejected() -> None:
+    """Review #1271: two invocations cannot bind the same observation."""
+    from tree_sitter_analyzer.task.edge_evidence import (
+        _apply_mutations,
+        _check_invocation_authority,
+    )
+
+    bundle = _load_fixture("golden")
+    context = _load_fixture("negative")["base_contexts"]["golden-bundle"]
+    bad_context = _apply_mutations(
+        context,
+        [
+            {
+                "op": "replace",
+                "path": "/invocations/1/raw_observation_pointer",
+                "value": "/raw_observations/0",
+            }
+        ],
+    )
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="invocation pointer duplicate"):
+        _check_invocation_authority(bundle, bad_context)
+
+
+def test_invocation_pointer_coverage_must_be_complete() -> None:
+    """Review #1271: every raw observation must be bound exactly once."""
+    from tree_sitter_analyzer.task.edge_evidence import (
+        _apply_mutations,
+        _check_invocation_authority,
+    )
+
+    bundle = _load_fixture("golden")
+    context = _load_fixture("negative")["base_contexts"]["golden-bundle"]
+    bad_context = _apply_mutations(
+        context,
+        [
+            {
+                "op": "replace",
+                "path": "/invocations/2/raw_observation_pointer",
+                "value": "/raw_observations/0",
+            }
+        ],
+    )
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="invocation pointer duplicate"):
+        _check_invocation_authority(bundle, bad_context)
+
+
+def test_unreferenced_provenance_record_is_rejected() -> None:
+    """Review #1271: provenance not selected by any evidence is rejected."""
+    from tree_sitter_analyzer.task.edge_evidence import (
+        _apply_mutations,
+        _check_provenance_linkage,
+    )
+
+    bundle = _load_fixture("golden")
+    provenance_ids = [
+        record["provenance_id"]
+        for record in bundle["records"]
+        if record["schema"] == "edge-provenance/v1"
+    ]
+    provenance_by_id = {
+        record["provenance_id"]: record
+        for record in bundle["records"]
+        if record["schema"] == "edge-provenance/v1"
+    }
+    other_provenance = provenance_ids[1]
+    # Point evidence 0 at the second provenance, keeping its hash, primitive,
+    # and snapshot consistent so the forward linkage passes and only the
+    # reverse reference check can trip.
+    bad = _apply_mutations(
+        bundle,
+        [
+            {
+                "op": "replace",
+                "path": "/records/0/provenance_id",
+                "value": other_provenance,
+            },
+            {
+                "op": "replace",
+                "path": "/records/0/normalized_result_sha256",
+                "value": provenance_by_id[other_provenance]["normalized_result_sha256"],
+            },
+            {
+                "op": "replace",
+                "path": "/records/0/primitive",
+                "value": provenance_by_id[other_provenance]["primitive"],
+            },
+            {
+                "op": "replace",
+                "path": "/records/0/snapshot",
+                "value": provenance_by_id[other_provenance]["snapshot"],
+            },
+        ],
+    )
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="unreferenced provenance record"):
+        _check_provenance_linkage(bad)
+
+
+def test_partial_snapshot_reports_partial_snapshot_reason() -> None:
+    """Review #1271: partial completeness precedes SNAPSHOT_MISMATCH."""
+    from tree_sitter_analyzer.task.edge_evidence import (
+        _apply_mutations,
+        _check_authority,
+        _load_authority,
+    )
+
+    bundle = _load_fixture("golden")
+    context = _load_fixture("negative")["base_contexts"]["golden-bundle"]
+    bad = _apply_mutations(
+        bundle,
+        [
+            {
+                "op": "replace",
+                "path": "/raw_observations/0/snapshot/completeness",
+                "value": "partial",
+            }
+        ],
+    )
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="PARTIAL_SNAPSHOT"):
+        _check_authority(
+            bad, _load_authority(context), context["authoritative_status_id"]
+        )
+
+
+def test_provenance_without_raw_observation_is_rejected() -> None:
+    """Review #1269: provenance must project from an existing raw observation."""
+    from tree_sitter_analyzer.task.edge_evidence import (
+        _apply_mutations,
+        _check_provenance_projection,
+    )
+
+    bundle = _load_fixture("golden")
+    # Drop every raw observation so no digest can resolve; the evidence hash
+    # set is computed from records and stays non-empty, so the observation
+    # lookup is the only failing step.
+    bad = _apply_mutations(
+        bundle,
+        [
+            {"op": "remove", "path": "/raw_observations/0"},
+            {"op": "remove", "path": "/raw_observations/0"},
+            {"op": "remove", "path": "/raw_observations/0"},
+        ],
+    )
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="provenance has no raw observation"):
+        _check_provenance_projection(bad)
+
+
+def test_invocation_authority_missing_is_rejected() -> None:
+    """Review #1271: an empty invocation authority is rejected."""
+    from tree_sitter_analyzer.task.edge_evidence import (
+        _apply_mutations,
+        _check_invocation_authority,
+    )
+
+    bundle = _load_fixture("golden")
+    context = _load_fixture("negative")["base_contexts"]["golden-bundle"]
+    empty_context = _apply_mutations(
+        context, [{"op": "remove", "path": "/invocations/0"}]
+    )
+    empty_context = _apply_mutations(
+        empty_context, [{"op": "remove", "path": "/invocations/0"}]
+    )
+    empty_context = _apply_mutations(
+        empty_context, [{"op": "remove", "path": "/invocations/0"}]
+    )
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="invocation authority missing"):
+        _check_invocation_authority(bundle, empty_context)
+
+
+def test_invocation_without_pointer_is_rejected() -> None:
+    """Review #1271: an invocation without a pointer is rejected."""
+    from tree_sitter_analyzer.task.edge_evidence import (
+        _apply_mutations,
+        _check_invocation_authority,
+    )
+
+    bundle = _load_fixture("golden")
+    context = _load_fixture("negative")["base_contexts"]["golden-bundle"]
+    bad_context = _apply_mutations(
+        context,
+        [
+            {
+                "op": "remove",
+                "path": "/invocations/0/raw_observation_pointer",
+            }
+        ],
+    )
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="invocation authority incomplete"):
+        _check_invocation_authority(bundle, bad_context)
+
+
+def test_invocation_pointer_coverage_mismatch_is_rejected() -> None:
+    """Review #1271: a resolvable pointer outside raw_observations fails."""
+    from tree_sitter_analyzer.task.edge_evidence import (
+        _apply_mutations,
+        _check_invocation_authority,
+    )
+
+    bundle = _load_fixture("golden")
+    context = _load_fixture("negative")["base_contexts"]["golden-bundle"]
+    bad_context = _apply_mutations(
+        context,
+        [
+            {
+                "op": "replace",
+                "path": "/invocations/2/raw_observation_pointer",
+                "value": "/records/0",
+            }
+        ],
+    )
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="invocation pointer coverage"):
+        _check_invocation_authority(bundle, bad_context)

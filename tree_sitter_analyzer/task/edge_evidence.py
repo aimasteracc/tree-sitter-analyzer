@@ -182,37 +182,59 @@ def _recompute_evidence_ids(bundle: dict[str, Any]) -> dict[str, str]:
     return ids
 
 
-def _recompute_record_ids(bundle: dict[str, Any]) -> dict[str, str]:
+def _recompute_record_ids(bundle: dict[str, Any]) -> list[tuple[str, str, str]]:
     """Recompute every record ID from its own content (review #1269).
 
     Evidence IDs are already recomputed; this extends the same guarantee to
     collection, provenance, and contradiction IDs so a producer cannot change
-    record content while keeping a stale ID and old preimage.
+    record content while keeping a stale ID and old preimage. Contradiction
+    IDs are intentionally shared, so the per-record (kind, declared, recomputed)
+    tuples are preserved instead of collapsing the dict by declared ID; a
+    middle record whose edge key drifted cannot be hidden by matching first and
+    last records (review #1271).
     """
-    recomputed: dict[str, str] = {}
+    recomputed: list[tuple[str, str, str]] = []
     for record in bundle["records"]:
         schema = record["schema"]
         if schema == "edge-collection/v1":
-            recomputed[record["collection_id"]] = collection_id(
-                record["scope"], record["snapshot"], record["primitive"]
+            recomputed.append(
+                (
+                    "edge-collection/v1",
+                    record["collection_id"],
+                    collection_id(
+                        record["scope"], record["snapshot"], record["primitive"]
+                    ),
+                )
             )
         elif schema == "edge-provenance/v1":
-            recomputed[record["provenance_id"]] = provenance_id(
-                record["primitive"],
-                record["request_sha256"],
-                record["normalized_result_sha256"],
-                record["snapshot"],
-                record["success"],
-                record["verdict"],
-                record["truncation"],
-                record["input_evidence_ids"],
+            recomputed.append(
+                (
+                    "edge-provenance/v1",
+                    record["provenance_id"],
+                    provenance_id(
+                        record["primitive"],
+                        record["request_sha256"],
+                        record["normalized_result_sha256"],
+                        record["snapshot"],
+                        record["success"],
+                        record["verdict"],
+                        record["truncation"],
+                        record["input_evidence_ids"],
+                    ),
+                )
             )
         elif schema == "edge-evidence/v1":
             if (
                 record.get("contradiction_group_id") is not None
             ):  # pragma: no cover - structural defense; the schema requires contradiction_group_id on every evidence record
-                recomputed[record["contradiction_group_id"]] = contradiction_group_id(
-                    record["edge_key"], record["snapshot"]["snapshot_id"]
+                recomputed.append(
+                    (
+                        "edge-evidence/v1",
+                        record["contradiction_group_id"],
+                        contradiction_group_id(
+                            record["edge_key"], record["snapshot"]["snapshot_id"]
+                        ),
+                    )
                 )
     return recomputed
 
@@ -245,7 +267,9 @@ def _check_preimages(bundle: dict[str, Any], ids: dict[str, str]) -> None:
         if record_id not in {entry["id"] for entry in canonical}:
             raise ValueError("MALFORMED_RESULT: record preimage missing")
     expected = (
-        set(ids.values()) | set(_recompute_record_ids(bundle).values()) | record_ids
+        set(ids.values())
+        | {value for _kind, _declared, value in _recompute_record_ids(bundle)}
+        | record_ids
     )
     for target in sorted(expected):
         if target not in by_target or len(by_target[target]) != 1:
@@ -651,6 +675,19 @@ def _check_projection_closure(bundle: dict[str, Any]) -> None:
     step 1: bind each output to exactly one raw digest; review #1269).
     """
     observations = bundle.get("raw_observations", [])
+    # A result pointer identifies exactly one raw observation; duplicate
+    # pointers would let a single evidence record cover two observations
+    # (review #1271).
+    positive_pointers: dict[str, int] = {}
+    for observation in observations:
+        if observation.get("state") not in {"resolved_unique", "negative_rule"}:
+            continue
+        pointer = observation.get("observation", {}).get("result_pointer")
+        if pointer is not None:
+            positive_pointers[pointer] = positive_pointers.get(pointer, 0) + 1
+    for _pointer, count in positive_pointers.items():
+        if count > 1:
+            raise ValueError("MALFORMED_RESULT: duplicate observation pointer")
     evidence_count: dict[str, int] = {}
     for record in bundle["records"]:
         if record["schema"] != "edge-evidence/v1":
@@ -832,7 +869,7 @@ def _check_diagnostics(bundle: dict[str, Any]) -> None:
             if record.get("edge_key") != observation.get("proposed_edge_key"):
                 raise ValueError("MALFORMED_RESULT: diagnostic edge key mismatch")
             diagnostic_locators = record.get("locators", {})
-            for locator_field in ("source_endpoint", "target_endpoint"):
+            for locator_field in ("source_endpoint", "target_endpoint", "observation"):
                 if diagnostic_locators.get(locator_field) != observation.get(
                     locator_field
                 ):
@@ -861,6 +898,24 @@ def _check_diagnostics(bundle: dict[str, Any]) -> None:
             state in {"ambiguous", "unresolved", "no_target"}
         ):  # pragma: no cover - structural defense; corpus and mutation suites verify the rejection family
             reasons = record.get("reasons", [])
+            # The raw freshness signal is authoritative: stale/superseded
+            # observations must surface STALE_SNAPSHOT, independent of what the
+            # producer chose to list (review #1271).
+            if observation is not None:
+                raw_freshness = observation.get("freshness_signal", {}).get("state")
+                if raw_freshness in {"stale", "superseded"} and (
+                    "STALE_SNAPSHOT" not in reasons
+                    and "SNAPSHOT_MISMATCH" not in reasons
+                ):
+                    raise ValueError("STALE_SNAPSHOT")
+                # A truncated zero-ID observation must surface TRUNCATED
+                # (RFC-0023 §3: every non-not_truncated result adds TRUNCATED;
+                # review #1271).
+                if (
+                    observation.get("truncation", {}).get("state") != "not_truncated"
+                    and "TRUNCATED" not in reasons
+                ):
+                    raise ValueError("TRUNCATED")
             expected_freshness = "unknown"
             if any(item in reasons for item in ("STALE_SNAPSHOT", "SNAPSHOT_MISMATCH")):
                 expected_freshness = "stale"
@@ -1093,6 +1148,23 @@ def _check_provenance_linkage(bundle: dict[str, Any]) -> None:
             raise ValueError(
                 "MALFORMED_RESULT: evidence provenance snapshot mismatch"
             )  # pragma: no cover - structural defense; corpus and mutation suites verify the rejection family
+    # Reverse direction: every provenance record must be selected by at least
+    # one evidence record, so a producer cannot attach an unreferenced
+    # provenance with a different verdict to an existing raw digest
+    # (review #1271).
+    referenced: set[str] = {
+        record.get("provenance_id")
+        for record in bundle["records"]
+        if record["schema"] == "edge-evidence/v1"
+        and record.get("provenance_id") is not None
+    }
+    for record in bundle["records"]:
+        if record["schema"] != "edge-provenance/v1":
+            continue
+        if record.get("provenance_id") not in referenced:
+            raise ValueError(
+                "MALFORMED_RESULT: unreferenced provenance record"
+            )  # pragma: no cover - structural defense; corpus and mutation suites verify the rejection family
 
 
 def _check_collection_consistency(bundle: dict[str, Any]) -> None:
@@ -1244,25 +1316,21 @@ def semantic_validate(bundle: dict[str, Any]) -> ValidationResult:
                 if record.get("evidence_id") != ids[record.get("evidence_id", "")]:
                     raise ValueError("MALFORMED_RESULT: evidence ID mismatch")
         recomputed = _recompute_record_ids(bundle)
-        for record in bundle["records"]:
-            if record["schema"] == "edge-collection/v1":
+        for kind, declared, value in recomputed:
+            if kind == "edge-collection/v1":
                 if (
-                    record["collection_id"] != recomputed[record["collection_id"]]
+                    declared != value
                 ):  # pragma: no cover - structural defense; evidence projection binds items to observations, so consistent drift cannot reach this branch
                     raise ValueError(
                         "MALFORMED_RESULT: collection ID mismatch"
                     )  # pragma: no cover - structural defense; evidence projection binds items to observations, so consistent drift cannot reach this branch
-            if record["schema"] == "edge-provenance/v1":
-                if record["provenance_id"] != recomputed[record["provenance_id"]]:
+            elif kind == "edge-provenance/v1":
+                if declared != value:
                     raise ValueError("MALFORMED_RESULT: provenance ID mismatch")
-            if record.get("contradiction_group_id") is not None:
-                if (
-                    record["contradiction_group_id"]
-                    != recomputed[record["contradiction_group_id"]]
-                ):
-                    raise ValueError(
-                        "MALFORMED_RESULT: contradiction ID mismatch"
-                    )  # pragma: no cover - structural defense; corpus and mutation suites verify the rejection family
+            elif declared != value:
+                raise ValueError(
+                    "MALFORMED_RESULT: contradiction ID mismatch"
+                )  # pragma: no cover - structural defense; corpus and mutation suites verify the rejection family
         _check_preimages(bundle, ids)
         # Step 5: request preimages.
         _check_request_preimages(bundle)
@@ -1433,6 +1501,9 @@ def _check_invocation_authority(
     (facade/action/action_version) plus the generated-rule entry, so a producer
     cannot claim a different adapter was invoked (review #1269).
     """
+    invocations = context.get("invocations", [])
+    if not invocations:
+        raise ValueError("MALFORMED_RESULT: invocation authority missing")
     expected = {
         json.dumps(
             invocation.get("expected_normalized_request"),
@@ -1440,7 +1511,7 @@ def _check_invocation_authority(
             separators=(",", ":"),
             ensure_ascii=True,
         )
-        for invocation in context.get("invocations", [])
+        for invocation in invocations
     }
     actual = {
         entry.get("canonical_json")
@@ -1450,10 +1521,14 @@ def _check_invocation_authority(
         expected != actual
     ):  # pragma: no cover - structural defense; corpus and mutation suites verify the rejection family
         raise ValueError("MALFORMED_RESULT: invocation request mismatch")
-    for invocation in context.get("invocations", []):
+    # Every raw observation must be bound by exactly one invocation so no
+    # observation can escape adapter authority and none can be double-bound
+    # (review #1271).
+    bound_pointers: set[str] = set()
+    for invocation in invocations:
         pointer = invocation.get("raw_observation_pointer")
         if pointer is None or invocation.get("invoked_adapter") is None:
-            continue  # pragma: no cover - structural defense; corpus and mutation suites verify the rejection family
+            raise ValueError("MALFORMED_RESULT: invocation authority incomplete")
         parts = [part for part in pointer.split("/") if part]
         observation: Any = bundle
         try:
@@ -1468,6 +1543,9 @@ def _check_invocation_authority(
             ) from None
         if not isinstance(observation, dict):
             raise ValueError("MALFORMED_RESULT: invocation observation missing")
+        if pointer in bound_pointers:
+            raise ValueError("MALFORMED_RESULT: invocation pointer duplicate")
+        bound_pointers.add(pointer)
         invoked = invocation["invoked_adapter"]
         owner = observation.get("primitive", {})
         for field in ("facade", "action", "action_version"):
@@ -1480,6 +1558,12 @@ def _check_invocation_authority(
             )
             if rule_entry != rule_pair:
                 raise ValueError("MALFORMED_RESULT: invocation rule mismatch")
+    expected_pointers = {
+        f"/raw_observations/{index}"
+        for index in range(len(bundle.get("raw_observations", [])))
+    }
+    if bound_pointers != expected_pointers:
+        raise ValueError("MALFORMED_RESULT: invocation pointer coverage")
 
 
 def _load_authority(bundle_context: dict[str, Any]) -> dict[str, Any]:
@@ -1519,6 +1603,18 @@ def _check_authority(
         )  # pragma: no cover - structural defense; corpus and mutation suites verify the rejection family
     for observation in bundle.get("raw_observations", []):
         snapshot = observation.get("snapshot", {})
+        # Missing/partial snapshot state keeps its higher-priority reason
+        # before any remaining authoritative tuple disagreement is reported
+        # as SNAPSHOT_MISMATCH (RFC-0023 §3 reason priority; review #1271).
+        if snapshot.get("completeness") == "partial":
+            raise ValueError("PARTIAL_SNAPSHOT")
+        for field in ("snapshot_id", "source_fingerprint", "index_fingerprint"):
+            if snapshot.get(field) is None:
+                raise ValueError(
+                    "SNAPSHOT_MISSING"
+                    if field == "snapshot_id"
+                    else "FINGERPRINT_MISSING"
+                )
         # Compare the complete authoritative snapshot tuple, not only the index
         # fingerprint, so a consistently rewritten bundle cannot mint evidence
         # whose snapshot_id / source_fingerprint / completeness disagrees with
