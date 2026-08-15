@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from tree_sitter_analyzer.task import (
+    AssessChangeRequest,
     Budget,
     ConsumedBudget,
     DiffInput,
@@ -153,11 +154,11 @@ def test_exact_json_bytes_pin_frozen_fixture() -> None:
 def test_toon_shape_is_line_oriented() -> None:
     toon = serialize_toon(_frozen_understand())
     lines = toon.splitlines()
-    assert any(line.startswith("schema: task-outcome/v1") for line in lines)
-    assert any(line.startswith("task: understand") for line in lines)
-    assert any(line.startswith("verdict: SAFE") for line in lines)
+    assert any(line.startswith('schema: "task-outcome/v1"') for line in lines)
+    assert any(line.startswith('task: "understand"') for line in lines)
+    assert any(line.startswith('verdict: "SAFE"') for line in lines)
     assert any(line.strip() == "-" for line in lines)
-    assert any("evidence: evidence:abc123" in line for line in lines)
+    assert any('evidence: "evidence:abc123"' in line for line in lines)
 
 
 def test_serializers_reject_unknown_request_kind() -> None:
@@ -169,3 +170,219 @@ def test_serializers_reject_unknown_request_kind() -> None:
     payload["request"]["kind"] = "unknown"
     with pytest.raises(ValueError, match="unknown request kind"):
         _dict_to_outcome(payload)
+
+
+def test_toon_roundtrip_multiline_and_colon_strings() -> None:
+    # B1/B2 (review #1268): newlines and colons inside strings must survive
+    # the TOON codec losslessly.
+    outcome = TaskOutcome(
+        task="understand",
+        request=UnderstandRequest(task="line1\nline2: part"),
+        verdict="INFO",
+    )
+    decoded = decode_toon(serialize_toon(outcome))
+    assert decoded.request.task == "line1\nline2: part"  # type: ignore[union-attr]
+
+
+def test_toon_roundtrip_literal_looking_strings() -> None:
+    # B3 (review #1268): quoted strings never decode to other types.
+    outcome = TaskOutcome(
+        task="understand",
+        request=UnderstandRequest(task="123"),
+        verdict="INFO",
+    )
+    decoded = decode_toon(serialize_toon(outcome))
+    assert decoded.request.task == "123"  # type: ignore[union-attr]
+    assert isinstance(decoded.request.task, str)  # type: ignore[union-attr]
+    with pytest.raises(ValueError, match="unquoted TOON value"):
+        decode_toon("task: understand\nrequest:\n  kind: understand\n  task: 123\n")
+
+
+def test_toon_roundtrip_surrounding_whitespace_strings() -> None:
+    # B5 (review #1268): surrounding whitespace is preserved.
+    outcome = TaskOutcome(
+        task="understand",
+        request=UnderstandRequest(task="  padded  "),
+        verdict="INFO",
+    )
+    decoded = decode_toon(serialize_toon(outcome))
+    assert decoded.request.task == "  padded  "  # type: ignore[union-attr]
+
+
+def test_toon_rejects_unquoted_non_literal_values() -> None:
+    # B3/B5 (review #1268): bare unquoted text is a hard error, never a guess.
+    with pytest.raises(ValueError, match="unquoted TOON value"):
+        decode_toon(
+            "task: understand\nrequest:\n  kind: understand\n  task: bare text\n"
+        )
+
+
+def test_exact_absolute_bytes_pin_frozen_fixture() -> None:
+    # W1 (review #1268): real absolute pins, not x == x tautologies.
+    outcome = _frozen_understand()
+    json_bytes, toon_bytes = json_vs_toon_bytes(outcome)
+    assert json_bytes == 732
+    assert toon_bytes == 575
+
+
+def test_decode_rejects_unknown_fields() -> None:
+    # W2 (review #1268): strict clients reject unknown values.
+    import json
+
+    payload = json.loads(serialize_json(_frozen_understand()))
+    payload["sneaky"] = True
+    with pytest.raises(ValueError, match="unknown fields"):
+        decode_json(json.dumps(payload))
+    payload = json.loads(serialize_json(_frozen_understand()))
+    payload["request"]["budget"]["sneaky"] = True
+    with pytest.raises(ValueError, match="unknown fields"):
+        decode_json(json.dumps(payload))
+
+
+def test_plan_change_task_request_roundtrip() -> None:
+    # Covers the PlanChangeRequest task-branch and assess_change dict paths.
+    outcome = TaskOutcome(
+        task="plan_change",
+        request=PlanChangeRequest(task="refactor dispatch"),
+        verdict="SAFE",
+    )
+    assert decode_toon(serialize_toon(outcome)) == outcome
+    assert decode_json(serialize_json(outcome)) == outcome
+
+
+def test_toon_empty_nested_containers_roundtrip() -> None:
+    # Covers empty-container markers inside nested structures.
+    outcome = TaskOutcome(
+        task="understand",
+        request=UnderstandRequest(task="x"),
+        verdict="INFO",
+        evidence=({"empty_list": [], "empty_dict": {}},),
+    )
+    decoded = decode_toon(serialize_toon(outcome))
+    assert decoded.evidence == ({"empty_list": [], "empty_dict": {}},)
+
+
+def test_toon_quoted_string_rejects_bad_escape() -> None:
+    # An unterminated quoted string is a hard parse error, never a guess.
+    with pytest.raises(ValueError, match="invalid quoted TOON string"):
+        decode_toon(
+            'task: "understand"\nrequest:\n  kind: "understand"\n  task: "unclosed\n'
+        )
+
+
+def test_assess_change_request_roundtrip() -> None:
+    # Covers the AssessChangeRequest serializer branch.
+    outcome = TaskOutcome(
+        task="assess_change",
+        request=AssessChangeRequest(diff=DiffInput(source="workspace")),
+        verdict="WARN",
+        status="partial",
+    )
+    assert decode_toon(serialize_toon(outcome)) == outcome
+    assert decode_json(serialize_json(outcome)) == outcome
+
+
+def test_toon_empty_containers_at_top_level() -> None:
+    # Direct empty-container scalar markers.
+    outcome = TaskOutcome(
+        task="understand",
+        request=UnderstandRequest(task="x"),
+        verdict="INFO",
+        evidence=({"a": []},),
+    )
+    text = serialize_toon(outcome)
+    assert "[]" in text
+    decoded = decode_toon(text)
+    assert decoded.evidence == ({"a": []},)
+
+
+def test_toon_both_empty_container_markers() -> None:
+    outcome = TaskOutcome(
+        task="understand",
+        request=UnderstandRequest(task="x"),
+        verdict="INFO",
+        evidence=({"a": [], "b": {}},),
+    )
+    text = serialize_toon(outcome)
+    assert "[]" in text
+    assert "{}" in text
+    decoded = decode_toon(text)
+    assert decoded.evidence == ({"a": [], "b": {}},)
+
+
+def test_toon_unicode_string_roundtrip() -> None:
+    outcome = TaskOutcome(
+        task="understand",
+        request=UnderstandRequest(task="café 日本語 🚀"),
+        verdict="INFO",
+    )
+    assert decode_toon(serialize_toon(outcome)) == outcome
+
+
+def test_toon_continuation_outside_list_item_rejected() -> None:
+    # A key line following a scalar list item is a structural error.
+    from tree_sitter_analyzer.task.serializers import _parse_toon
+
+    with pytest.raises(ValueError, match="continuation outside a list item"):
+        _parse_toon('evidence:\n  - "plain"\n    orphan: "nope"\n')
+
+
+def test_toon_list_key_value_items_parse() -> None:
+    # Covers the is_item + "key: value" branch of the parser.
+    from tree_sitter_analyzer.task.serializers import _parse_toon
+
+    parsed = _parse_toon(
+        'evidence:\n  - locator: "src/a.py"\n  - locator: "src/b.py"\n'
+    )
+    assert parsed == {"evidence": [{"locator": "src/a.py"}, {"locator": "src/b.py"}]}
+
+
+def test_toon_bool_and_trailing_bare_key() -> None:
+    # Covers bool scalars and the pending-child tail (bare key at EOF).
+    from tree_sitter_analyzer.task.serializers import _parse_toon
+
+    parsed = _parse_toon("flag: true\nother: false\nbare:\n")
+    assert parsed == {"flag": True, "other": False, "bare": {}}
+
+
+def test_toon_key_line_inside_list_rejected() -> None:
+    from tree_sitter_analyzer.task.serializers import _parse_toon
+
+    # A key line after a scalar item is rejected by the continuation guard.
+    with pytest.raises(ValueError, match="continuation outside a list item"):
+        _parse_toon('evidence:\n  - "plain"\n  key: "x"\n')
+
+
+def test_toon_missing_key_line_rejected() -> None:
+    from tree_sitter_analyzer.task.serializers import _parse_toon
+
+    with pytest.raises(ValueError, match="lacks a key"):
+        _parse_toon("just-a-value\n")
+
+
+def test_toon_bool_scalar_roundtrip() -> None:
+    outcome = TaskOutcome(
+        task="understand",
+        request=UnderstandRequest(task="x"),
+        verdict="INFO",
+        evidence=({"safe": True, "warned": False},),
+    )
+    decoded = decode_toon(serialize_toon(outcome))
+    assert decoded.evidence == ({"safe": True, "warned": False},)
+
+
+def test_toon_list_item_continuation_at_same_indent() -> None:
+    # Covers the continuation branch: a key line at the list depth extends
+    # the last dict item.
+    from tree_sitter_analyzer.task.serializers import _parse_toon
+
+    parsed = _parse_toon('evidence:\n  - locator: "src/a.py"\n  summary: "entry"\n')
+    assert parsed == {"evidence": [{"locator": "src/a.py", "summary": "entry"}]}
+
+
+def test_toon_item_nested_bare_key() -> None:
+    # Covers the item-level pending_child path ("- key:" opens a child).
+    from tree_sitter_analyzer.task.serializers import _parse_toon
+
+    parsed = _parse_toon('evidence:\n  - locator:\n      path: "src/a.py"\n')
+    assert parsed == {"evidence": [{"locator": {"path": "src/a.py"}}]}

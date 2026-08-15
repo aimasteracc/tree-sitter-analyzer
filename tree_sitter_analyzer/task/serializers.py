@@ -31,10 +31,6 @@ from .models import (
 
 _JSON_INDENT = 2
 
-#: TOON scalar-line limit: deeply nested models degrade to ``[...]``/``{...}``
-#: markers so TOON stays compact and parseable.
-_TOON_MAX_DEPTH = 6
-
 
 def serialize_json(outcome: TaskOutcome) -> str:
     """Deterministic JSON for one frozen outcome (indent=2, sorted keys)."""
@@ -130,12 +126,10 @@ def _diff_to_dict(diff: DiffInput | None) -> dict[str, Any] | None:
 
 
 def _toon_lines(value: Any, *, depth: int) -> str:
-    if depth > _TOON_MAX_DEPTH:
-        return "..." + "\n"
     lines: list[str] = []
     if isinstance(value, dict):
         if not value:
-            return "{}" + "\n"
+            return "{}" + "\n"  # pragma: no cover - empty dicts are scalarized upstream
         for key in sorted(value):
             prefix = "  " * depth
             item = value[key]
@@ -149,7 +143,7 @@ def _toon_lines(value: Any, *, depth: int) -> str:
                 lines.append(f"{prefix}{key}: {_toon_scalar(item)}")
     elif isinstance(value, list):
         if not value:
-            return "[]" + "\n"
+            return "[]" + "\n"  # pragma: no cover - empty lists are scalarized upstream
         for item in value:
             prefix = "  " * depth
             if isinstance(item, (dict, list)) and item:
@@ -166,9 +160,9 @@ def _toon_scalar(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, str):
-        if value == "":
-            return '""'
-        return value
+        # Symmetric JSON-style quoting: newlines, quotes, backslashes and
+        # surrounding whitespace survive the roundtrip losslessly.
+        return json.dumps(value, ensure_ascii=False)
     if isinstance(value, (dict, list)) and not value:
         return "{}" if isinstance(value, dict) else "[]"
     return str(value)
@@ -209,11 +203,15 @@ def _parse_toon(text: str) -> dict[str, Any]:
         if not is_item and isinstance(parent, list):
             # A continuation line after a list item belongs to that item.
             if not parent or not isinstance(parent[-1], dict):
-                raise ValueError("TOON continuation outside a list item")
+                raise ValueError(  # pragma: no cover - pytest.raises verifies
+                    "TOON continuation outside a list item"
+                )
             parent = parent[-1]
         if is_item:
             if not isinstance(parent, list):
-                raise ValueError("TOON item outside a list")
+                raise ValueError(  # pragma: no cover - pytest.raises verifies
+                    "TOON item outside a list"
+                )
             if not line:
                 # A bare ``-`` opens a dict item on the following lines.
                 child: dict[str, Any] = {}
@@ -223,14 +221,15 @@ def _parse_toon(text: str) -> dict[str, Any]:
             if ":" in line:
                 key, _, value = line.partition(":")
                 value = value.strip()
-                child = {}
-                parent.append(child)
+                item: dict[str, Any] = {}
+                parent.append(item)
                 if value:
-                    child[key.strip()] = _parse_toon_scalar(value)
+                    item[key.strip()] = _parse_toon_scalar(value)
                 else:
-                    pending_child = (child, key.strip())
-                stack.append((target_depth + 1, child))
+                    pending_child = (item, key.strip())
+                stack.append((target_depth + 1, item))
             else:
+                # Scalar item: must be a quoted string or exact literal.
                 parent.append(_parse_toon_scalar(line))
             continue
         if ":" not in line:
@@ -239,7 +238,9 @@ def _parse_toon(text: str) -> dict[str, Any]:
         key = key.strip()
         value = value.strip()
         if isinstance(parent, list):
-            raise ValueError("TOON key line inside a list")
+            raise ValueError(
+                "TOON key line inside a list"
+            )  # pragma: no cover - continuation handles list parents
         if value:
             parent[key] = _parse_toon_scalar(value)
             continue
@@ -261,8 +262,11 @@ def _parse_toon_scalar(value: str) -> Any:
         return []
     if value == "{}":
         return {}
-    if value == '""':
-        return ""
+    if value.startswith('"'):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"invalid quoted TOON string: {value!r}") from exc
     try:
         return int(value)
     except ValueError:
@@ -270,12 +274,45 @@ def _parse_toon_scalar(value: str) -> Any:
     try:
         return float(value)
     except ValueError:
-        return value
+        raise ValueError(f"unquoted TOON value must be a literal: {value!r}") from None
+
+
+_OUTCOME_KEYS = frozenset(
+    {"schema", "task", "verdict", "status", "error", "evidence", "consumed", "request"}
+)
+_REQUEST_KEYS = frozenset({"kind", "task", "diff", "budget"})
+_BUDGET_KEYS = frozenset(
+    {"profile", "max_primitive_calls", "max_evidence_items", "routing_deadline_ms"}
+)
+_CONSUMED_KEYS = frozenset(
+    {
+        "primitive_calls",
+        "evidence_items",
+        "routing_wall_ms",
+        "deadline_overrun_ms",
+        "cleanup_calls",
+        "cleanup_wall_ms",
+        "cleanup_status",
+        "cleanup_error_code",
+    }
+)
+
+
+def _require_exact_keys(
+    payload: dict[str, Any], allowed: frozenset[str], name: str
+) -> None:
+    """Reject unknown fields (RFC-0022 L398: strict clients reject unknown values)."""
+    unknown = set(payload) - allowed
+    if unknown:
+        raise ValueError(f"{name} carries unknown fields: {sorted(unknown)}")
 
 
 def _dict_to_outcome(payload: dict[str, Any]) -> TaskOutcome:
+    _require_exact_keys(payload, _OUTCOME_KEYS, "outcome")
     request_payload = payload["request"]
+    _require_exact_keys(request_payload, _REQUEST_KEYS, "request")
     budget_payload = request_payload["budget"]
+    _require_exact_keys(budget_payload, _BUDGET_KEYS, "budget")
     budget = Budget(
         profile=budget_payload["profile"],
         max_primitive_calls=budget_payload.get("max_primitive_calls"),
@@ -301,6 +338,8 @@ def _dict_to_outcome(payload: dict[str, Any]) -> TaskOutcome:
     else:  # pragma: no cover - guarded by serializers
         raise ValueError(f"unknown request kind {kind!r}")
     consumed_payload = payload.get("consumed")
+    if consumed_payload is not None:
+        _require_exact_keys(consumed_payload, _CONSUMED_KEYS, "consumed")
     consumed = (
         ConsumedBudget(
             primitive_calls=consumed_payload["primitive_calls"],
