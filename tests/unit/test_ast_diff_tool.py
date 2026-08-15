@@ -112,6 +112,104 @@ class TestASTDiffToolValidation:
         )
 
 
+class TestASTDiffReadExistingValidation:
+    @pytest.mark.parametrize(
+        "arguments",
+        [
+            pytest.param(
+                {"access_mode": "read_existing", "file_path": "x.py"},
+                id="missing",
+            ),
+            pytest.param(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": 7,
+                    "file_path": "x.py",
+                },
+                id="wrong-type",
+            ),
+            pytest.param(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "",
+                    "file_path": "x.py",
+                },
+                id="empty",
+            ),
+        ],
+    )
+    def test_requires_nonempty_snapshot_id(self, tool, arguments):
+        with pytest.raises(ValueError) as exc_info:
+            tool.validate_arguments(arguments)
+
+        assert str(exc_info.value) == "diff_snapshot_id must be a non-empty string"
+
+    @pytest.mark.parametrize(
+        "arguments",
+        [
+            pytest.param(
+                {"access_mode": "read_existing", "diff_snapshot_id": "ds"},
+                id="missing",
+            ),
+            pytest.param(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds",
+                    "file_path": 7,
+                },
+                id="wrong-type",
+            ),
+            pytest.param(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds",
+                    "file_path": "",
+                },
+                id="empty",
+            ),
+        ],
+    )
+    def test_requires_nonempty_string_file_path(self, tool, arguments):
+        with pytest.raises(ValueError) as exc_info:
+            tool.validate_arguments(arguments)
+
+        assert str(exc_info.value) == "DIFF_SNAPSHOT_FILE_REQUIRED"
+
+    def test_accepts_valid_snapshot_file(self, tool):
+        assert (
+            tool.validate_arguments(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds",
+                    "file_path": "x.py",
+                }
+            )
+            is True
+        )
+
+    @pytest.mark.asyncio
+    async def test_execute_fails_closed_without_bound_project_root(self):
+        # Codex P1 (#1257): with project_root unbound the SecurityValidator
+        # receives base_path=None and skips its project-boundary layer, so an
+        # arbitrary relative path validates. The route must fail closed with
+        # the stable MISSING_PROJECT_ROOT error instead of classifying.
+        unbound = ASTDiffTool()
+        with pytest.raises(ValueError) as exc_info:
+            await unbound.execute(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds",
+                    "file_path": "x.py",
+                    "output_format": "json",
+                }
+            )
+
+        assert str(exc_info.value) == (
+            "MISSING_PROJECT_ROOT: project_root must be bound before "
+            "read_existing path validation"
+        )
+
+
 class TestASTDiffToolExecution:
     @pytest.mark.asyncio
     async def test_execute_file_not_found(self, tool):

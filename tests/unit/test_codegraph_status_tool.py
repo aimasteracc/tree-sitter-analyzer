@@ -77,7 +77,38 @@ class TestExecuteNoProjectRoot:
         assert "project_root" in result["hint"]
 
 
+@pytest.mark.asyncio
+async def test_omitted_access_mode_preserves_legacy_status_schema(tool):
+    result = await tool.execute({"output_format": "json"})
+
+    assert (
+        set(result).intersection({"access_state", "access_reason", "source_snapshots"})
+        == set()
+    )
+
+
 class TestExecuteNoCache:
+    @pytest.mark.asyncio
+    async def test_explicit_mode_classifies_missing_index(self, tool_with_root):
+        result = await tool_with_root.execute(
+            {"access_mode": "read_existing", "output_format": "json"}
+        )
+
+        assert {
+            key: result[key]
+            for key in (
+                "access_mode",
+                "access_state",
+                "access_reason",
+                "source_snapshots",
+            )
+        } == {
+            "access_mode": "read_existing",
+            "access_state": "missing",
+            "access_reason": "MISSING_INDEX",
+            "source_snapshots": [],
+        }
+
     @pytest.mark.asyncio
     async def test_project_set_but_no_cache_returns_warn(self, tool_with_root):
         result = await tool_with_root.execute({"output_format": "json"})
@@ -323,3 +354,46 @@ async def test_unknown_source_scope_never_returns_complete(tmp_path, monkeypatch
     result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
     assert result["completeness"] == "unknown"
     assert result["oracle_reason"] == "SOURCE_SCAN_DEADLINE"
+
+
+@pytest.mark.asyncio
+async def test_explicit_mode_enriches_older_status_payload(monkeypatch) -> None:
+    tool = CodeGraphStatusTool("/project")
+    old_payload = {
+        "success": True,
+        "verdict": "WARN",
+        "snapshot_id": "idxsnap_old",
+        "source_generation": "generation_old",
+        "completeness": "partial",
+        "oracle_reason": "CALL_GRAPH_INCOMPLETE",
+        "output_format": "json",
+    }
+
+    def old_status_boundary(
+        output_format, *, include_lag, include_access_evidence=False
+    ):
+        assert (output_format, include_lag, include_access_evidence) == (
+            "json",
+            True,
+            True,
+        )
+        return old_payload
+
+    monkeypatch.setattr(tool, "_execute_read_existing", old_status_boundary)
+    result = await tool.execute(
+        {"access_mode": "read_existing", "output_format": "json"}
+    )
+
+    assert result == {
+        **old_payload,
+        "access_mode": "read_existing",
+        "access_state": "available",
+        "access_reason": None,
+        "source_snapshots": [
+            {
+                "kind": "index",
+                "snapshot_id": "idxsnap_old",
+                "source_generation": "generation_old",
+            }
+        ],
+    }

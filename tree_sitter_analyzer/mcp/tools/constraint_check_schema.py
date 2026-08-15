@@ -7,6 +7,21 @@ from typing import Any
 TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
+        "access_mode": {
+            "type": "string",
+            "enum": ["read_existing"],
+            "description": "Explicit P0.4 zero-write capability access mode.",
+        },
+        "snapshot_id": {
+            "type": "string",
+            "description": "Certified P0.1 index snapshot capability ID.",
+        },
+        "source_generation": {
+            "type": "string",
+            "description": (
+                "Certified source generation shared by the diff and index capabilities."
+            ),
+        },
         "path_filter": {
             "type": "string",
             "default": "",

@@ -299,6 +299,48 @@ class TestConstraintCheckFiltering:
         )
 
 
+def test_explicit_access_rejects_unhashable_severity(tmp_path: Path) -> None:
+    tool = _make_tool(tmp_path)
+
+    with pytest.raises(ValueError, match=r"^severity_min must be one of"):
+        tool.validate_arguments({"access_mode": "read_existing", "severity_min": []})
+
+
+def test_explicit_access_requires_diff_snapshot(tmp_path: Path) -> None:
+    tool = _make_tool(tmp_path)
+
+    with pytest.raises(
+        ValueError,
+        match=r"^diff_snapshot_id is required for access_mode=read_existing$",
+    ):
+        tool.validate_arguments({"access_mode": "read_existing", "persist": False})
+
+
+def test_explicit_access_defaults_unavailable_output_to_json(tmp_path: Path) -> None:
+    tool = _make_tool(tmp_path)
+
+    result = _run(
+        tool.execute(
+            {
+                "access_mode": "read_existing",
+                "persist": False,
+                "diff_snapshot_id": "ds_test",
+                "scope_paths": [],
+            }
+        )
+    )
+
+    assert result == {
+        "success": True,
+        "verdict": "WARN",
+        "access_mode": "read_existing",
+        "access_state": "unknown",
+        "access_reason": "READ_EXISTING_AUTHORITY_UNCERTIFIED",
+        "source_snapshots": [],
+        "output_format": "json",
+    }
+
+
 def test_execute_without_project_root_returns_setup_instruction() -> None:
     from tree_sitter_analyzer.mcp.tools.constraint_check_tool import (
         ConstraintCheckTool,
@@ -310,6 +352,34 @@ def test_execute_without_project_root_returns_setup_instruction() -> None:
         "success": False,
         "error": "Project root not set. Call set_project_path first.",
     }
+
+
+def test_execute_read_existing_fails_closed_without_project_root() -> None:
+    # Codex P1 (#1257): with project_root unbound the SecurityValidator
+    # receives base_path=None and skips its project-boundary layer, so an
+    # arbitrary relative scope path validates. The route must fail closed
+    # with the stable MISSING_PROJECT_ROOT error instead of classifying.
+    from tree_sitter_analyzer.mcp.tools.constraint_check_tool import (
+        ConstraintCheckTool,
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        _run(
+            ConstraintCheckTool(None).execute(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds_test",
+                    "scope_paths": ["src/a.py"],
+                    "persist": False,
+                    "output_format": "json",
+                }
+            )
+        )
+
+    assert str(exc_info.value) == (
+        "MISSING_PROJECT_ROOT: project_root must be bound before "
+        "read_existing path validation"
+    )
 
 
 def test_persistent_unexpected_runtime_error_is_not_misclassified(

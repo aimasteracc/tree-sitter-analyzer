@@ -70,6 +70,19 @@ def run_check_constraints(args: Any, project_root: str) -> int:
     constraint_file = getattr(args, "constraint_file", None)
     read_only = bool(getattr(args, "constraints_read_only", False))
 
+    # Codex P1 (#1257): the RFC-0022 read-existing consumer route forwards
+    # its process-local controls through the same in-process bridge the
+    # other CLI handler routes use.
+    from .mcp_commands._read_existing_bridge import _forward_read_existing_controls
+
+    read_existing_controls = _forward_read_existing_controls(
+        args,
+        {},
+        controls=frozenset(
+            {"access_mode", "diff_snapshot_id", "snapshot_id", "source_generation"}
+        ),
+    )
+
     if constraint_file:
         # CLI-only path: explicit constraint file, evaluate directly so
         # we don't have to hide a load_constraints override behind the
@@ -92,6 +105,7 @@ def run_check_constraints(args: Any, project_root: str) -> int:
                 path_filter=path_filter,
                 output_format=output_format,
                 persist=not read_only,
+                read_existing_controls=read_existing_controls,
             )
         )
 
@@ -105,6 +119,7 @@ def _run_tool(
     path_filter: str,
     output_format: str,
     persist: bool = True,
+    read_existing_controls: dict[str, Any] | None = None,
 ) -> Any:
     """Await the MCP ConstraintCheckTool with CLI-supplied arguments."""
     tool = ConstraintCheckTool(project_root=project_root)
@@ -115,6 +130,8 @@ def _run_tool(
     }
     if not persist:
         tool_arguments["persist"] = False
+    if read_existing_controls:
+        tool_arguments.update(read_existing_controls)
     return tool.execute(tool_arguments)
 
 

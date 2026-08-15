@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """One-call code graph context tool.
-
-This tool is the graph-first answer for broad questions such as
-"how does request routing work" or focused traces such as
-"trace handle_request to get_user". It deliberately stays self-contained:
-symbol search, call graph expansion, and source snippets are gathered in one
-MCP call so agents do not burn turns chaining search, callers, callees, and
-raw file reads.
+Graph-first answer for broad questions such as "how does request routing work" or
+focused traces such as "trace handle_request to get_user". It deliberately stays
+self-contained: one MCP call gathers symbol search, call graph expansion, and source
+snippets, so agents avoid chaining search, callers, callees, and raw file reads.
 """
 
 from __future__ import annotations
@@ -16,6 +13,7 @@ import re
 import time
 from typing import Any
 
+from ... import read_existing_access as read_access
 from ...test_gap_analyzer import _NON_PROD_DIRS as _SHARED_NON_PROD_DIRS
 from ...utils.test_detection import is_test_file as _shared_is_test_file
 from ...utils.test_detection import query_wants_tests as _task_wants_tests
@@ -226,6 +224,7 @@ class CodeGraphContextTool(BaseMCPTool):
                     ),
                     "default": False,
                 },
+                **read_access.index_capability_schema_properties(),
             },
             "required": ["task"],
             "additionalProperties": False,
@@ -234,10 +233,13 @@ class CodeGraphContextTool(BaseMCPTool):
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         if not str(arguments.get("task", "")).strip():
             raise ValueError("task is required")
+        read_access.validate_required_index_access(self, arguments)
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
+        if unavailable := read_access.format_read_existing_unavailable(arguments):
+            return unavailable
         started = time.perf_counter()
 
         task = str(arguments["task"]).strip()
@@ -611,11 +613,9 @@ _FALSEY_STRINGS = frozenset({"false", "0", "no", "off", "none", "null", ""})
 
 def _coerce_bool(value: Any, default: bool = False) -> bool:
     """Coerce an MCP/CLI argument to bool, honouring JS-style string booleans.
-
-    Agents (and the chain DSL) may pass ``include_graph`` as the string
-    ``"false"`` / ``"0"`` — ``bool("false")`` is ``True``, which would wrongly
-    take the full-graph path. Recognised falsey tokens map to ``False``; any
-    other non-empty string is truthy. Real bools pass through unchanged.
+    Agents and the chain DSL may pass ``include_graph`` as ``"false"`` / ``"0"``;
+    unlike ``bool("false")``, recognised falsey tokens map to ``False``. Other
+    non-empty strings are truthy, while real bools pass through unchanged.
     """
     if isinstance(value, bool):
         return value

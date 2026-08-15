@@ -3,6 +3,7 @@
 
 from typing import Any
 
+from ... import read_existing_access as read_access
 from ...git_path_codec import path_from_wire, path_to_raw, path_to_wire
 from ...pr_url import (
     check_gh_available,
@@ -24,6 +25,7 @@ from .change_impact_support import (
     _pr_gh_unavailable_envelope,
     _pr_invalid_url_envelope,
     _scope_paths_invalid,
+    validate_read_existing_impact,
 )
 from .utils.change_impact_analysis import (
     ChangeImpactRequest,
@@ -41,6 +43,8 @@ from .utils.change_impact_response import (
 )
 
 _scope_matches_raw = scope_matches_raw
+_VALID_MODES = ("diff", "staged", "branch", "pr")
+_VALID_SCOPE_MODES = ("report", "strict")
 
 
 def _scope_matches(scope: str, path: str) -> bool:
@@ -101,16 +105,14 @@ class ChangeImpactTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate mode + scope_mode arguments."""
-        if "mode" in arguments and arguments["mode"] not in (
-            "diff",
-            "staged",
-            "branch",
-            "pr",
-        ):
+        read_existing = read_access.validate_read_existing_access(arguments)
+        if read_existing and "capture_diff_snapshot" in arguments:
+            raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
+        if "mode" in arguments and arguments["mode"] not in _VALID_MODES:
             raise ValueError("mode must be diff|staged|branch|pr")
-        if "scope_mode" in arguments and arguments["scope_mode"] not in (
-            "report",
-            "strict",
+        if (
+            "scope_mode" in arguments
+            and arguments["scope_mode"] not in _VALID_SCOPE_MODES
         ):
             raise ValueError("scope_mode must be report|strict")
         if "resource_profile" in arguments and arguments["resource_profile"] not in (
@@ -118,6 +120,9 @@ class ChangeImpactTool(BaseMCPTool):
             "local_low_impact",
         ):
             raise ValueError("resource_profile must be default|local_low_impact")
+        if read_existing:
+            validate_read_existing_impact(self, arguments)
+            read_access.validate_read_existing_schema_values(self, arguments)
         return True
 
     def _attach_diff_snapshot(
@@ -149,6 +154,14 @@ class ChangeImpactTool(BaseMCPTool):
         """Analyze git diff + dependency graph for change impact."""
         pr_url = arguments.get("pr_url", "") or ""
         mode = "pr" if pr_url else arguments.get("mode", "diff")
+        unavailable = read_access.read_existing_gate(
+            self,
+            arguments,
+            reason=read_access.DIFF_SNAPSHOT_READ_EXISTING_UNSUPPORTED,
+            compact_only=bool(arguments.get("compact_only", False)),
+        )
+        if unavailable is not None:
+            return unavailable
         include_tests = arguments.get("include_tests", True)
         output_format = arguments.get("output_format", "toon")
         scope_paths = arguments.get("scope_paths") or []

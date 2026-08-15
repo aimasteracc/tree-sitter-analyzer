@@ -90,6 +90,59 @@ class TestApplyToonCompactOnly:
         # the headline win: compact is smaller than the duplicating legacy shape
         assert len(json.dumps(compact)) < len(json.dumps(legacy))
 
+    def test_compact_only_keeps_p04_access_fields_on_control_surface(self) -> None:
+        compact = apply_toon_format_to_response(
+            {
+                "success": True,
+                "verdict": "WARN",
+                "access_mode": "read_existing",
+                "access_state": "unknown",
+                "access_reason": "READ_EXISTING_AUTHORITY_UNCERTIFIED",
+            },
+            "toon",
+            compact_only=True,
+        )
+
+        assert compact == {
+            "format": "toon",
+            "toon_content": (
+                "success: true\n"
+                "verdict: WARN\n"
+                "access_mode: read_existing\n"
+                "access_state: unknown\n"
+                "access_reason: READ_EXISTING_AUTHORITY_UNCERTIFIED"
+            ),
+            "success": True,
+            "verdict": "WARN",
+            "access_mode": "read_existing",
+            "access_state": "unknown",
+            "access_reason": "READ_EXISTING_AUTHORITY_UNCERTIFIED",
+        }
+
+    def test_compact_only_keeps_source_snapshots_in_toon_content(self) -> None:
+        compact = apply_toon_format_to_response(
+            {
+                "source_snapshots": [
+                    {
+                        "kind": "index",
+                        "snapshot_id": "idxsnap_test",
+                        "source_generation": "idxsrc-v3:test",
+                    }
+                ]
+            },
+            "toon",
+            compact_only=True,
+        )
+
+        assert compact == {
+            "format": "toon",
+            "toon_content": (
+                "source_snapshots:\n"
+                "  [1]{kind,snapshot_id,source_generation}:\n"
+                '    index,idxsnap_test,"idxsrc-v3:test"'
+            ),
+        }
+
     def test_compact_only_is_noop_for_json(self) -> None:
         out = apply_toon_format_to_response(
             dict(_METADATA_HEAVY), "json", compact_only=True

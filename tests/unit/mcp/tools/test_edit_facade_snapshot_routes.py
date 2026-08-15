@@ -247,38 +247,164 @@ def test_change_impact_annotation_is_non_idempotent_for_optional_capture() -> No
     assert definition["annotations"]["idempotentHint"] is False
 
 
+_READ_EXISTING_ROUTE_ARGS: dict[str, dict[str, object]] = {
+    "safe": {
+        "file_path": "inside.py",
+        "edit_type": "fix_bug",
+        "access_mode": "read_existing",
+        "snapshot_id": "idxsnap_test",
+        "source_generation": "idxsrc-v3:test",
+    },
+    "impact": {
+        "mode": "diff",
+        "include_tests": False,
+        "scope_paths": ["inside.py"],
+        "access_mode": "read_existing",
+    },
+    "ast_diff": {
+        "diff_snapshot_id": "ds_test",
+        "file_path": "inside.py",
+        "include_node_bodies": False,
+        "access_mode": "read_existing",
+    },
+    "classify": {
+        "diff_snapshot_id": "ds_test",
+        "file_path": "inside.py",
+        "include_ast_nodes": False,
+        "hunk_cap": 2,
+        "access_mode": "read_existing",
+    },
+    "constraints": {
+        "persist": False,
+        "diff_snapshot_id": "ds_test",
+        "scope_paths": ["inside.py"],
+        "access_mode": "read_existing",
+        "snapshot_id": "idxsnap_test",
+        "source_generation": "idxsrc-v3:test",
+    },
+}
+
+
 @pytest.mark.asyncio
-async def test_edit_constraints_projects_exact_frozen_scope_arguments(
-    monkeypatch,
+@pytest.mark.parametrize("action", _READ_EXISTING_ROUTE_ARGS)
+async def test_edit_read_existing_arguments_survive_exact_projection(
+    action: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from tree_sitter_analyzer.mcp.tools.constraint_check_tool import ConstraintCheckTool
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
+    facade = build_edit_facade(None)
     seen: list[dict[str, object]] = []
 
-    async def fake_execute(self, arguments):
+    async def record(arguments):
         seen.append(dict(arguments))
         return {"success": True}
 
-    monkeypatch.setattr(ConstraintCheckTool, "execute", fake_execute)
-    await build_edit_facade(None).execute(
+    monkeypatch.setattr(facade.action_map[action], "execute", record)
+    arguments = {**_READ_EXISTING_ROUTE_ARGS[action], "output_format": "json"}
+    result = await facade.execute({"action": action, **arguments})
+
+    assert (seen, result) == ([arguments], {"success": True})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("action", "reason"),
+    [
+        ("safe", "READ_EXISTING_AUTHORITY_UNCERTIFIED"),
+        ("impact", "DIFF_SNAPSHOT_READ_EXISTING_UNSUPPORTED"),
+        ("ast_diff", "READ_EXISTING_AUTHORITY_UNCERTIFIED"),
+        ("classify", "READ_EXISTING_AUTHORITY_UNCERTIFIED"),
+        ("constraints", "READ_EXISTING_AUTHORITY_UNCERTIFIED"),
+    ],
+)
+@pytest.mark.parametrize("output_format", ["json", "toon"])
+async def test_edit_read_existing_returns_exact_access_evidence(
+    tmp_path: Path, action: str, reason: str, output_format: str
+) -> None:
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    (tmp_path / "inside.py").write_text("value = 1\n")
+    result = await build_edit_facade(str(tmp_path)).execute(
         {
-            "action": "constraints",
-            "persist": False,
-            "diff_snapshot_id": "ds_contract",
-            "scope_paths": ["src/a.py", "src/b.py"],
-            "output_format": "json",
+            "action": action,
+            **_READ_EXISTING_ROUTE_ARGS[action],
+            "output_format": output_format,
         }
     )
 
-    assert seen == [
-        {
-            "persist": False,
-            "diff_snapshot_id": "ds_contract",
-            "scope_paths": ["src/a.py", "src/b.py"],
-            "output_format": "json",
-        }
-    ]
+    assert {
+        key: result[key]
+        for key in (
+            "success",
+            "access_mode",
+            "access_state",
+            "access_reason",
+            "source_snapshots",
+            "output_format",
+        )
+    } == {
+        "success": True,
+        "access_mode": "read_existing",
+        "access_state": "unknown",
+        "access_reason": reason,
+        "source_snapshots": [],
+        "output_format": output_format,
+    }
+    assert (result.get("format"), "toon_content" in result) == (
+        ("toon", True) if output_format == "toon" else (None, False)
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("action", "parameter", "value", "message"),
+    [
+        (
+            "safe",
+            "edit_type",
+            "bogus",
+            "edit_type must be one of ['add_feature', 'behavior_change', "
+            "'delete', 'fix_bug', 'refactor', 'rename', 'signature_change']",
+        ),
+        (
+            "impact",
+            "include_tests",
+            "yes",
+            "include_tests must have JSON type boolean",
+        ),
+        (
+            "ast_diff",
+            "include_node_bodies",
+            "yes",
+            "include_node_bodies must have JSON type boolean",
+        ),
+        ("classify", "hunk_cap", "2", "hunk_cap must have JSON type integer"),
+        (
+            "constraints",
+            "output_format",
+            "yaml",
+            "output_format must be one of ['json', 'toon']",
+        ),
+    ],
+)
+async def test_edit_read_existing_rejects_malformed_action_schema_before_success(
+    tmp_path: Path, action: str, parameter: str, value: object, message: str
+) -> None:
+    # RFC-0022 P0.4 review 2026-07-02: an unavailable adapter must still
+    # validate its complete action schema before returning classified success.
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    (tmp_path / "inside.py").write_text("value = 1\n")
+    arguments = {
+        **_READ_EXISTING_ROUTE_ARGS[action],
+        "output_format": "json",
+        parameter: value,
+    }
+
+    with pytest.raises(ValueError) as error:
+        await build_edit_facade(str(tmp_path)).execute({"action": action, **arguments})
+
+    assert str(error.value) == message
 
 
 def test_edit_constraints_snapshot_parameters_are_schema_discoverable() -> None:
@@ -321,22 +447,21 @@ async def test_edit_constraints_rejects_snapshot_without_persist_false() -> None
 
 
 @pytest.mark.asyncio
-async def test_edit_persist_is_rejected_outside_constraints_action() -> None:
-    # PR #1254 review 3768545538: an explicit action option cannot be dropped.
+async def test_edit_rejects_sibling_access_mode_before_backend(monkeypatch) -> None:
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
-    result = await build_edit_facade(None).execute(
-        {"action": "safe", "file_path": "src/a.py", "persist": False}
-    )
+    facade = build_edit_facade(None)
 
-    assert (
-        result["success"],
-        result["verdict"],
-        result["error"],
-    ) == (
+    async def poison(_arguments):
+        pytest.fail("guard backend must not run")
+
+    monkeypatch.setattr(facade.action_map["guard"], "execute", poison)
+    result = await facade.execute({"action": "guard", "access_mode": "read_existing"})
+
+    assert (result["success"], result["verdict"], result["error"]) == (
         False,
         "ERROR",
-        "parameter 'persist' applies only to action(s): constraints",
+        "parameter 'access_mode' applies only to action(s): ast_diff, classify, constraints, impact, safe",
     )
 
 
@@ -345,6 +470,7 @@ async def test_edit_persist_is_rejected_outside_constraints_action() -> None:
     ("parameter", "value", "allowed"),
     [
         ("capture_diff_snapshot", True, "impact"),
+        ("persist", False, "constraints"),
         (
             "diff_snapshot_id",
             "ds_contract",
@@ -353,10 +479,10 @@ async def test_edit_persist_is_rejected_outside_constraints_action() -> None:
         ("route_lease_id", "lease_contract", "release_snapshot"),
     ],
 )
-async def test_edit_snapshot_controls_are_rejected_outside_supported_actions(
+async def test_edit_action_controls_are_rejected_outside_supported_actions(
     parameter, value, allowed
 ) -> None:
-    # PR #1254 review 3771670610: explicit snapshot intent cannot be discarded.
+    # PR #1254 review 3771670610: explicit action intent cannot be discarded.
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     result = await build_edit_facade(None).execute(

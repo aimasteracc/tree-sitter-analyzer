@@ -985,3 +985,198 @@ def test_compact_toon_cli_flag_forwards_compact_only(monkeypatch) -> None:
 
     assert result == 0
     assert seen["arguments"]["compact_only"] is True
+
+
+@pytest.mark.parametrize(
+    ("flag_overrides", "tool_attr", "expected_tool_args"),
+    [
+        (
+            {
+                "safe_to_edit": True,
+                "access_mode": "read_existing",
+                "snapshot_id": "idxsnap_01",
+                "source_generation": "gen_01",
+            },
+            "SafeToEditTool",
+            {
+                "file_path": "target.py",
+                "edit_type": "refactor",
+                "output_format": "json",
+                "compact_only": False,
+                "access_mode": "read_existing",
+                "snapshot_id": "idxsnap_01",
+                "source_generation": "gen_01",
+            },
+        ),
+        (
+            {
+                "change_impact": True,
+                "access_mode": "read_existing",
+            },
+            "ChangeImpactTool",
+            {
+                "mode": "diff",
+                "pr_url": "",
+                "include_tests": True,
+                "output_format": "json",
+                "scope_paths": [],
+                "agent_summary_only": True,
+                "scope_mode": "report",
+                "compact_only": False,
+                "resource_profile": "default",
+                "access_mode": "read_existing",
+            },
+        ),
+        (
+            {
+                "codegraph_context": "trace target",
+                "access_mode": "read_existing",
+                "snapshot_id": "idxsnap_01",
+                "source_generation": "gen_01",
+            },
+            "CodeGraphContextTool",
+            {
+                "task": "trace target",
+                "max_nodes": 30,
+                "max_code_blocks": 8,
+                "output_format": "json",
+                "include_graph": False,
+                "access_mode": "read_existing",
+                "snapshot_id": "idxsnap_01",
+                "source_generation": "gen_01",
+            },
+        ),
+        (
+            {
+                "ast_diff": True,
+                "access_mode": "read_existing",
+                "diff_snapshot_id": "diffsnap_01",
+            },
+            "ASTDiffTool",
+            {
+                "mode": "diff_files",
+                "old_file": None,
+                "new_file": None,
+                "old_source": None,
+                "new_source": None,
+                "file_path": None,
+                "old_ref": "HEAD~1",
+                "new_ref": "HEAD",
+                "language": None,
+                "include_node_bodies": False,
+                "output_format": "json",
+                "access_mode": "read_existing",
+                "diff_snapshot_id": "diffsnap_01",
+            },
+        ),
+        (
+            {
+                "semantic_classify": True,
+                "access_mode": "read_existing",
+                "diff_snapshot_id": "diffsnap_01",
+            },
+            "SemanticClassifyTool",
+            {
+                "mode": "classify_file",
+                "file_path": "target.py",
+                "old_ref": "HEAD~1",
+                "new_ref": "HEAD",
+                "language": None,
+                "include_ast_nodes": False,
+                "hunk_cap": 50,
+                "output_format": "json",
+                "access_mode": "read_existing",
+                "diff_snapshot_id": "diffsnap_01",
+            },
+        ),
+    ],
+)
+def test_read_existing_controls_forwarded_to_tool(
+    monkeypatch,
+    flag_overrides: dict[str, Any],
+    tool_attr: str,
+    expected_tool_args: dict[str, Any],
+) -> None:
+    """RFC-0022 process-local controls reach the MCP tool on the CLI-handler path.
+
+    Codex P1 (#1257): these controls were MCP-only because the CLI bridge
+    dropped them; the in-process bridge must forward access_mode / snapshot
+    IDs verbatim so RFC-0022 routing can compose index.status, nav.context
+    and edit snapshot consumers in one process.
+    """
+    seen: dict[str, Any] = {}
+
+    class FakeTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True, "tool": tool_attr, "toon_content": "compact"}
+
+    monkeypatch.setattr(mcp_commands, tool_attr, FakeTool)
+
+    output: list[dict[str, Any]] = []
+    errors: list[str] = []
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(**flag_overrides),
+        output.append,
+        errors.append,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert errors == []
+    assert output == [{"success": True, "tool": tool_attr, "toon_content": "compact"}]
+    assert seen == {
+        "project_root": "/repo",
+        "arguments": expected_tool_args,
+    }
+
+
+@pytest.mark.parametrize(
+    ("flag_overrides", "tool_attr"),
+    [
+        ({"safe_to_edit": True}, "SafeToEditTool"),
+        ({"change_impact": True}, "ChangeImpactTool"),
+        ({"codegraph_context": "trace target"}, "CodeGraphContextTool"),
+        ({"ast_diff": True}, "ASTDiffTool"),
+        ({"semantic_classify": True}, "SemanticClassifyTool"),
+    ],
+)
+def test_read_existing_controls_absent_are_not_forwarded(
+    monkeypatch, flag_overrides: dict[str, Any], tool_attr: str
+) -> None:
+    """Ordinary CLI namespaces (the parser never populates the controls) forward none.
+
+    Keeps the bridge strictly opt-in for in-process RFC-0022 routers.
+    """
+    seen: dict[str, Any] = {}
+
+    class FakeTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True, "toon_content": "compact"}
+
+    monkeypatch.setattr(mcp_commands, tool_attr, FakeTool)
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(**flag_overrides),
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 0
+    for control in (
+        "access_mode",
+        "snapshot_id",
+        "source_generation",
+        "diff_snapshot_id",
+        "route_lease_id",
+    ):
+        assert control not in seen["arguments"]

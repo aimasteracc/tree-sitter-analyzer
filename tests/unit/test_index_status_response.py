@@ -362,3 +362,82 @@ def test_status_lag_scans_snapshot_canonical_root(monkeypatch):
         )
     ]
     assert result["lag_seconds"] == 3.0
+
+
+def test_p04_status_retains_acquired_identity_after_stats_failure(monkeypatch):
+    from contextlib import contextmanager
+
+    from tree_sitter_analyzer import index_status_response as response
+    from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
+
+    snapshot = IndexSnapshot(
+        "idxsnap_test",
+        "sha256:source",
+        "sha256:index",
+        "idxsrc-v3:source",
+        "complete",
+        None,
+        "/canonical/project",
+        1,
+    )
+
+    @contextmanager
+    def lease(_project_root):
+        yield snapshot
+
+    monkeypatch.setattr(response.index_snapshot, "lease_existing_snapshot", lease)
+    monkeypatch.setattr(
+        response.index_snapshot,
+        "read_snapshot_stats",
+        lambda *_args: (_ for _ in ()).throw(ValueError("token mismatch")),
+    )
+
+    result = response.build_index_status_response(
+        "/logical/project",
+        "json",
+        include_lag=False,
+        include_access_evidence=True,
+    )
+
+    assert {
+        key: result[key]
+        for key in (
+            "access_mode",
+            "access_state",
+            "access_reason",
+            "source_snapshots",
+        )
+    } == {
+        "access_mode": "read_existing",
+        "access_state": "unknown",
+        "access_reason": "SNAPSHOT_READ_FAILED",
+        "source_snapshots": [
+            {
+                "kind": "index",
+                "snapshot_id": "idxsnap_test",
+                "source_generation": "idxsrc-v3:source",
+            }
+        ],
+    }
+
+
+def test_p04_missing_project_root_adds_evidence_only_when_requested() -> None:
+    from tree_sitter_analyzer import index_status_response as response
+
+    legacy = response.build_index_status_response(None, "json", include_lag=False)
+    explicit = response.build_index_status_response(
+        None,
+        "json",
+        include_lag=False,
+        include_access_evidence=True,
+    )
+
+    assert "access_state" not in legacy
+    assert {
+        key: explicit[key]
+        for key in ("access_state", "access_reason", "source_snapshots")
+    } == {
+        "access_state": "missing",
+        "access_reason": "MISSING_PROJECT_ROOT",
+        "source_snapshots": [],
+    }

@@ -15,6 +15,13 @@ from ...ast_diff import ASTDiffer
 from ...ast_diff_node_budget import apply_node_body_budget
 from ...ast_diff_snapshot_consumers import decode_snapshot_sources
 from ...git_path_codec import path_to_wire
+from ...read_existing_access import (
+    READ_EXISTING_AUTHORITY_UNCERTIFIED,
+    read_existing_unavailable,
+    validate_read_existing_access,
+    validate_read_existing_paths,
+    validate_read_existing_schema_values,
+)
 from ...utils import setup_logger
 from ..utils.format_helper import (
     apply_toon_format_to_response,
@@ -77,6 +84,11 @@ class ASTDiffTool(BaseMCPTool):
         return {
             "type": "object",
             "properties": {
+                "access_mode": {
+                    "type": "string",
+                    "enum": ["read_existing"],
+                    "description": "Explicit P0.4 zero-write snapshot access mode.",
+                },
                 "diff_snapshot_id": {
                     "type": "string",
                     "description": "RFC-0022 frozen snapshot ID; with file_path this strict path never rereads the workspace.",
@@ -191,8 +203,10 @@ class ASTDiffTool(BaseMCPTool):
         return ""
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        if arguments.get("diff_snapshot_id"):
+        read_existing = validate_read_existing_access(arguments)
+        if read_existing or arguments.get("diff_snapshot_id"):
             allowed = {
+                "access_mode",
                 "diff_snapshot_id",
                 "file_path",
                 "include_node_bodies",
@@ -200,8 +214,15 @@ class ASTDiffTool(BaseMCPTool):
             }
             if set(arguments) - allowed:
                 raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
-            if not arguments.get("file_path"):
+            snapshot_id = arguments.get("diff_snapshot_id")
+            if not isinstance(snapshot_id, str) or not snapshot_id:
+                raise ValueError("diff_snapshot_id must be a non-empty string")
+            file_path = arguments.get("file_path")
+            if not isinstance(file_path, str) or not file_path:
                 raise ValueError("DIFF_SNAPSHOT_FILE_REQUIRED")
+            if read_existing:
+                validate_read_existing_paths(self, [file_path])
+                validate_read_existing_schema_values(self, arguments)
             return True
         mode = self._resolve_mode(arguments)
         if mode == "diff_files":
@@ -235,6 +256,15 @@ class ASTDiffTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
+
+        unavailable = read_existing_unavailable(
+            arguments,
+            reason=READ_EXISTING_AUTHORITY_UNCERTIFIED,
+        )
+        if unavailable is not None:
+            return apply_toon_format_to_response(
+                unavailable, arguments.get("output_format", "toon")
+            )
 
         mode = self._resolve_mode(arguments)
         output_format = arguments.get("output_format", "toon")

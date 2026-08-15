@@ -10,6 +10,7 @@ from . import index_lag, index_snapshot
 from .index_snapshot import ACTION_VERSION
 from .mcp.tools._response_builder import build_response
 from .mcp.utils.format_helper import apply_toon_format_to_response
+from .read_existing_access import classify_index_access
 
 _DB_STORAGE_KEYS = (
     "db_size_bytes",
@@ -22,7 +23,11 @@ _DB_STORAGE_KEYS = (
 
 
 def build_index_status_response(
-    project_root: str | None, output_format: str, *, include_lag: bool
+    project_root: str | None,
+    output_format: str,
+    *,
+    include_lag: bool,
+    include_access_evidence: bool = False,
 ) -> dict[str, Any]:
     """Serve status solely from one owner-issued SQLite read transaction."""
     if not project_root:
@@ -45,9 +50,20 @@ def build_index_status_response(
             access_mode="read_existing",
             hint="project_root not set. Call set_project_path first.",
         )
+        if include_access_evidence:
+            result.update(
+                classify_index_access(
+                    snapshot_id=None,
+                    source_generation=None,
+                    completeness="unknown",
+                    reason="MISSING_PROJECT_ROOT",
+                )
+            )
         return apply_toon_format_to_response(result, output_format)
 
     with index_snapshot.lease_existing_snapshot(project_root) as snapshot:
+        access_snapshot_id = snapshot.snapshot_id
+        access_source_generation = snapshot.source_generation
         stats: dict[str, Any] = {}
         if snapshot.snapshot_id is not None:
             try:
@@ -147,6 +163,15 @@ def build_index_status_response(
     result.update(_storage_fields(stats))
     if stats.get("schema_version") is not None:
         result["schema_version"] = stats["schema_version"]
+    if include_access_evidence:
+        result.update(
+            classify_index_access(
+                snapshot_id=access_snapshot_id,
+                source_generation=access_source_generation,
+                completeness=snapshot.completeness,
+                reason=snapshot.reason,
+            )
+        )
     return apply_toon_format_to_response(result, output_format)
 
 

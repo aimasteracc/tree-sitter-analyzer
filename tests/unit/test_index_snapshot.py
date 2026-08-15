@@ -128,6 +128,30 @@ class TestAuthoritativeSnapshotOracle:
         assert db_path.read_bytes() == before
 
     @pytest.mark.asyncio
+    async def test_old_schema_explicit_access_evidence_is_unknown(self, tmp_path):
+        import sqlite3
+
+        cache_dir = tmp_path / ".ast-cache"
+        cache_dir.mkdir()
+        conn = sqlite3.connect(cache_dir / "index.db")
+        conn.execute("CREATE TABLE ast_schema_version(version INTEGER)")
+        conn.commit()
+        conn.close()
+
+        result = await CodeGraphStatusTool(str(tmp_path)).execute(
+            {"access_mode": "read_existing", "output_format": "json"}
+        )
+
+        assert {
+            key: result[key]
+            for key in ("access_state", "access_reason", "source_snapshots")
+        } == {
+            "access_state": "unknown",
+            "access_reason": "INCOMPATIBLE_SCHEMA",
+            "source_snapshots": [],
+        }
+
+    @pytest.mark.asyncio
     async def test_corrupt_index_returns_stable_unknown(self, tmp_path):
         cache_dir = tmp_path / ".ast-cache"
         cache_dir.mkdir()
@@ -153,6 +177,15 @@ class TestAuthoritativeSnapshotOracle:
         assert result["source_fingerprint"].startswith("sha256:")
         assert result["index_fingerprint"].startswith("sha256:")
         assert result["action_version"] == "index.status/v1"
+        assert result["access_state"] == "available"
+        assert result["access_reason"] is None
+        assert result["source_snapshots"] == [
+            {
+                "kind": "index",
+                "snapshot_id": result["snapshot_id"],
+                "source_generation": result["source_generation"],
+            }
+        ]
         assert "Use nav/search normally" in result["hint"]
 
     @pytest.mark.asyncio
