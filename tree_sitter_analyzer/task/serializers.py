@@ -177,6 +177,7 @@ def _parse_toon(text: str) -> dict[str, Any]:
     root: dict[str, Any] = {}
     stack: list[tuple[int, dict[str, Any] | list[Any]]] = [(0, root)]
     pending_child: tuple[dict[str, Any], str] | None = None
+    pending_item: list[Any] | None = None
     for raw_line in text.splitlines():
         if not raw_line.strip():
             continue
@@ -189,6 +190,18 @@ def _parse_toon(text: str) -> dict[str, Any]:
         while len(stack) > 1 and target_depth < stack[-1][0]:
             stack.pop()
         _parent_depth, parent = stack[-1]
+        if pending_item is not None:
+            # A bare ``-`` opened an item whose kind (dict or list) is
+            # decided by this first content line.
+            list_parent = pending_item
+            pending_item = None
+            if is_item:
+                nested_item: dict[str, Any] | list[Any] = []
+            else:
+                nested_item = {}
+            list_parent.append(nested_item)
+            stack.append((target_depth, nested_item))
+            parent = nested_item
         if pending_child is not None:
             # The previous bare key decides its kind now.
             container_parent, container_key = pending_child
@@ -213,12 +226,14 @@ def _parse_toon(text: str) -> dict[str, Any]:
                     "TOON item outside a list"
                 )
             if not line:
-                # A bare ``-`` opens a dict item on the following lines.
-                child: dict[str, Any] = {}
-                parent.append(child)
-                stack.append((target_depth + 1, child))
+                # A bare ``-`` opens an item whose kind is decided by the
+                # next line (dict for keys, list for nested ``-`` items).
+                pending_item = parent
                 continue
-            if ":" in line:
+            if line.startswith('"'):
+                # Quoted string item first: a colon inside it is data.
+                parent.append(_parse_toon_scalar(line))
+            elif ":" in line:
                 key, _, value = line.partition(":")
                 value = value.strip()
                 item: dict[str, Any] = {}
@@ -248,6 +263,8 @@ def _parse_toon(text: str) -> dict[str, Any]:
     if pending_child is not None:
         parent, key = pending_child
         parent[key] = {}
+    if pending_item is not None:
+        pending_item.append({})
     return root
 
 

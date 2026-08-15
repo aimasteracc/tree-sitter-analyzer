@@ -386,3 +386,28 @@ def test_toon_item_nested_bare_key() -> None:
 
     parsed = _parse_toon('evidence:\n  - locator:\n      path: "src/a.py"\n')
     assert parsed == {"evidence": [{"locator": {"path": "src/a.py"}}]}
+
+
+def test_toon_scope_paths_with_colon_roundtrip() -> None:
+    # B2 (review round 2, #1268): Windows-style "src:lib" paths survive.
+    outcome = TaskOutcome(
+        task="plan_change",
+        request=PlanChangeRequest(
+            diff=DiffInput(source="staged", scope_paths=("src:lib", "tests")),
+        ),
+        verdict="CAUTION",
+    )
+    decoded = decode_toon(serialize_toon(outcome))
+    assert decoded.request.diff.scope_paths == ("src:lib", "tests")  # type: ignore[union-attr]
+
+
+def test_toon_nested_list_in_evidence_roundtrip() -> None:
+    # B4 (review round 2, #1268): list-in-list evidence decodes.
+    outcome = TaskOutcome(
+        task="understand",
+        request=UnderstandRequest(task="x"),
+        verdict="INFO",
+        evidence=({"matrix": [[1, 2], [3, 4]]},),
+    )
+    decoded = decode_toon(serialize_toon(outcome))
+    assert decoded.evidence == ({"matrix": [[1, 2], [3, 4]]},)
