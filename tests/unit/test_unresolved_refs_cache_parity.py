@@ -213,6 +213,30 @@ def test_resolved_extends_replaces_generic_placeholder(tmp_path: Path) -> None:
         cache.close()
 
 
+def test_drop_placeholder_extends_ignores_non_hierarchy_kinds() -> None:
+    """CALLS refs must never touch EXTENDS placeholder rows (#1275 F4)."""
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute(
+            "CREATE TABLE edges (source_node_id TEXT, target_node_id TEXT, kind TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO edges VALUES ('caller.py:run:1', 'class:Base', 'extends')"
+        )
+        unresolved._drop_placeholder_extends(
+            conn,
+            {
+                "from_node_id": "caller.py:run:1",
+                "reference_kind": "calls",
+                "reference_name": "Base",
+            },
+        )
+        remaining = conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+        assert remaining == 1, "non-hierarchy refs must not delete extends edges"
+    finally:
+        conn.close()
+
+
 def test_candidate_cache_returns_empty_on_broken_connection() -> None:
     """A failing candidate SELECT still yields [] and is cached as the abort."""
     no_schema = sqlite3.connect(":memory:")
