@@ -662,3 +662,38 @@ def test_exhaustive_diagnostic_reason_defenses() -> None:
     )
     with pytest.raises(ValueError, match="freshness reason mismatch"):
         m._check_diagnostic_reasons(bad)
+
+
+def test_negative_cases_slice_owner_and_projection() -> None:
+    from tree_sitter_analyzer.task.edge_evidence import (
+        _apply_mutations,
+        semantic_validate,
+    )
+
+    negative = _load_fixture("negative")
+    selected = {
+        "endpoint-key-mismatches",
+        "edge-kind-mismatch",
+        "owner-fields-mismatch",
+        "owner-facade-missing",
+        "owner-action-missing",
+        "owner-action-version-missing",
+        "owner-producer-rule-id-missing",
+        "owner-producer-rule-version-missing",
+        "proposed-edge-key-missing",
+    }
+    for case in negative["cases"]:
+        if case["id"] not in selected:
+            continue
+        document = json.loads(
+            (
+                FIXTURES_DIR / negative["base_contexts"][case["base"]]["fixture"]
+            ).read_text(encoding="utf-8")
+        )
+        mutated = _apply_mutations(document, case["mutations"])
+        result = semantic_validate(mutated)
+        assert result.accepted is False, case["id"]
+        assert result.reasons == (case["expected"]["reason"],), (
+            case["id"],
+            result.reasons,
+        )
