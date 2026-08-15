@@ -234,3 +234,83 @@ def test_models_are_frozen_and_hashable() -> None:
         assert cls.__dataclass_params__.frozen is True  # type: ignore[attr-defined]
     budget = Budget(profile="compact")
     assert hash(budget) == hash(Budget(profile="compact"))
+
+
+def test_scope_paths_total_bytes_boundary() -> None:
+    # RFC-0022: 128 entries x 256 bytes each stays under the 32768 total.
+    many = tuple(f"p{i}" + "x" * 250 for i in range(128))
+    assert len(DiffInput(source="workspace", scope_paths=many).scope_paths) == 128
+    with pytest.raises(ValueError, match="exceed .* total bytes"):
+        DiffInput(source="workspace", scope_paths=("x" * 1024,) * 33)
+
+
+def test_request_rejects_non_budget_budget() -> None:
+    with pytest.raises(ValueError, match="budget must be a frozen Budget"):
+        UnderstandRequest(task="x", budget="standard")  # type: ignore[arg-type]
+
+
+def test_task_text_exceeding_max_bytes_rejected() -> None:
+    with pytest.raises(ValueError, match="exceeds .* UTF-8 bytes"):
+        UnderstandRequest(task="x" * 16_385)
+
+
+def test_assess_change_diff_runs_budget_floor() -> None:
+    # L181 coverage: the diff floor runs on the assess route too.
+    AssessChangeRequest(diff=DiffInput("workspace"))
+    with pytest.raises(ValueError, match="BUDGET_INVALID"):
+        AssessChangeRequest(
+            diff=DiffInput("workspace"),
+            budget=Budget(profile="standard", max_primitive_calls=2),
+        )
+
+
+def test_consumed_budget_negative_durations_rejected() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        ConsumedBudget(primitive_calls=1, evidence_items=1, routing_wall_ms=-1)
+    with pytest.raises(ValueError, match="cleanup_wall_ms must be non-negative"):
+        ConsumedBudget(
+            primitive_calls=1, evidence_items=1, routing_wall_ms=1, cleanup_wall_ms=-1
+        )
+
+
+def test_consumed_budget_unknown_cleanup_status_rejected() -> None:
+    with pytest.raises(ValueError, match="unknown cleanup_status"):
+        ConsumedBudget(
+            primitive_calls=1,
+            evidence_items=1,
+            routing_wall_ms=1,
+            cleanup_status="pending",  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="must be null or"):
+        ConsumedBudget(
+            primitive_calls=1,
+            evidence_items=1,
+            routing_wall_ms=1,
+            cleanup_error_code="OTHER",
+        )
+
+
+def test_task_outcome_unknown_task_name_rejected() -> None:
+    with pytest.raises(ValueError, match="unknown task name"):
+        TaskOutcome(  # type: ignore[arg-type]
+            task="explain",
+            request=UnderstandRequest(task="x"),
+            verdict="SAFE",
+        )
+
+
+def test_task_outcome_rejects_non_consumed_budget() -> None:
+    with pytest.raises(ValueError, match="consumed must be a frozen ConsumedBudget"):
+        TaskOutcome(
+            task="understand",
+            request=UnderstandRequest(task="x"),
+            verdict="SAFE",
+            consumed={"primitive_calls": 1},  # type: ignore[arg-type]
+        )
+
+
+def test_plan_change_task_text_path_runs_validator() -> None:
+    # L271/273 coverage: the task-text branch of the one-of validator.
+    assert PlanChangeRequest(task="refactor dispatch").task == "refactor dispatch"
+    with pytest.raises(ValueError, match="exactly one of task or diff"):
+        PlanChangeRequest()
