@@ -337,6 +337,8 @@ def test_explicit_access_defaults_unavailable_output_to_json(tmp_path: Path) -> 
         "access_state": "unknown",
         "access_reason": "READ_EXISTING_AUTHORITY_UNCERTIFIED",
         "source_snapshots": [],
+        # RFC-0022 P0.5: wire owner echo on the unavailable envelope.
+        "action_version": "edit.constraints/v1",
         "output_format": "json",
     }
 
@@ -351,6 +353,8 @@ def test_execute_without_project_root_returns_setup_instruction() -> None:
     assert result == {
         "success": False,
         "error": "Project root not set. Call set_project_path first.",
+        # RFC-0022 P0.5: wire owner echo on the missing-root envelope.
+        "action_version": "edit.constraints/v1",
     }
 
 

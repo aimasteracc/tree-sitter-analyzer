@@ -23,6 +23,7 @@ from ...read_existing_access import (
     validate_read_existing_schema_values,
 )
 from ...utils import setup_logger
+from ...wire_owner import EDIT_AST_DIFF_ACTION_VERSION
 from ..utils.format_helper import (
     apply_toon_format_to_response,
     preformat_diff_snapshot_publish_errors,
@@ -260,6 +261,7 @@ class ASTDiffTool(BaseMCPTool):
         unavailable = read_existing_unavailable(
             arguments,
             reason=READ_EXISTING_AUTHORITY_UNCERTIFIED,
+            action_version=EDIT_AST_DIFF_ACTION_VERSION,
         )
         if unavailable is not None:
             return apply_toon_format_to_response(
@@ -381,6 +383,7 @@ class ASTDiffTool(BaseMCPTool):
             response: dict[str, Any] = {
                 "success": True,
                 "verdict": verdict,
+                "action_version": EDIT_AST_DIFF_ACTION_VERSION,
                 "summary_line": agent_summary_line,
                 # Codex P2: agent_summary must be a dict so direct execute() callers
                 # (CLI, tests) can read agent_summary["verdict"] without the MCP

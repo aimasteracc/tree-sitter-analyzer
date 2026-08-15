@@ -18,6 +18,7 @@ from ...git_path_codec import path_to_wire
 from ...project_graph import _language_from_ext
 from ...semantic_change_classifier import SemanticChangeClassifier
 from ...utils import setup_logger
+from ...wire_owner import EDIT_CLASSIFY_ACTION_VERSION
 from ..utils.format_helper import (
     apply_toon_format_to_response,
     preformat_diff_snapshot_publish_errors,
@@ -248,7 +249,9 @@ class SemanticClassifyTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         unavailable = read_access.format_read_existing_unavailable(
-            arguments, reason=read_access.READ_EXISTING_AUTHORITY_UNCERTIFIED
+            arguments,
+            reason=read_access.READ_EXISTING_AUTHORITY_UNCERTIFIED,
+            action_version=EDIT_CLASSIFY_ACTION_VERSION,
         )
         if unavailable is not None:
             return unavailable
@@ -401,6 +404,7 @@ class SemanticClassifyTool(BaseMCPTool):
             # list. Tests pin this name (pain pass 2).
             response: dict[str, Any] = {
                 "success": True,
+                "action_version": EDIT_CLASSIFY_ACTION_VERSION,
                 "file_path": (
                     path_to_wire(file_path)
                     if consumer is not None and file_path is not None
