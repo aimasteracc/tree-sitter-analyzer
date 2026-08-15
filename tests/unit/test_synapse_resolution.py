@@ -600,6 +600,37 @@ class TestStarImportBookkeeping:
         finally:
             cache.close()
 
+    def test_import_rows_carry_statement_line(self, tmp_path: Path) -> None:
+        # #1275 (dogfood F5): ast_imports.line was always 0 because the write
+        # path stored bare statement strings; entries now carry their line.
+        proj = tmp_path / "synapse_pkg"
+        proj.mkdir(parents=True, exist_ok=True)
+        (proj / "__init__.py").write_text("# pkg\n")
+        (proj / "imports.py").write_text(
+            "import os\n"
+            "from typing import Any\n"
+            "\n"
+            "def f() -> Any:\n"
+            "    return os.getcwd()\n"
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project()
+            with _open_db(cache) as conn:
+                rows = conn.execute(
+                    "SELECT module_path, line FROM ast_imports "
+                    "WHERE file_path LIKE 'synapse_pkg/imports.py' "
+                    "ORDER BY line"
+                ).fetchall()
+                assert [(r["module_path"], r["line"]) for r in rows] == [
+                    ("os", 1),
+                    ("typing", 2),
+                ], (
+                    f"expected exact lines, got {[(r['module_path'], r['line']) for r in rows]}"
+                )
+        finally:
+            cache.close()
+
 
 # ---------------------------------------------------------------------------
 # RFC-0002 — builtin classifier + shadowing contract

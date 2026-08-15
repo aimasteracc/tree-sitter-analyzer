@@ -296,9 +296,10 @@ class CrossFileResolver:
         for row in rows:
             fp = row["file_path"]
             lang = row["language"]
-            imports_raw: list[str] = json.loads(row["imports_json"])
+            imports_raw: list[Any] = json.loads(row["imports_json"])
             entries: list[ImportEntry] = []
-            for imp_text in imports_raw:
+            for imp in imports_raw:
+                imp_text = imp["text"] if isinstance(imp, dict) else imp
                 parsed = self._parse_import(imp_text, fp, lang)
                 if parsed:
                     entries.append(parsed)

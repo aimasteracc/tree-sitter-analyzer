@@ -251,9 +251,18 @@ def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, An
     }
 
 
-def _extract_imports(symbols: dict[str, Any]) -> list[str]:
+def _extract_imports(symbols: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return per-statement import entries carrying the source line.
+
+    Entries are dicts with text and line keys so the ast_imports table can
+    record the statement line instead of a constant zero; string consumers
+    are still served by the text key (dogfood F5, #1275).
+    """
     return [
-        symbol["text"]
+        {
+            "text": symbol["text"],
+            "line": symbol.get("line", 0),
+        }
         for symbol in symbols.get("symbols", [])
         if symbol.get("kind") == "import"
     ]
