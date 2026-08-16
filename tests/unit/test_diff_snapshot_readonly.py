@@ -353,6 +353,7 @@ def test_worktree_path_capacity_fails_closed(git_repo: str, monkeypatch) -> None
 
 
 @POSIX_SNAPSHOT_TEST
+@pytest.mark.slow_ok  # two git captures + generation oracle: real subprocess work
 def test_empty_repo_generations_match(tmp_path) -> None:
     root = str(tmp_path / "empty")
     os.mkdir(root)

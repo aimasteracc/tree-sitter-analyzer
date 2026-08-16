@@ -676,6 +676,7 @@ def test_skip_worktree_entry_matches(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@pytest.mark.slow_ok  # full readonly capture + publish: real git subprocess work
 def test_readonly_revalidation_uses_readonly_oracle(git_repo: str) -> None:
     """acquire/validate_publish revalidate readonly snapshots zero-write."""
     import tree_sitter_analyzer.diff_snapshot_registry as snapshots
