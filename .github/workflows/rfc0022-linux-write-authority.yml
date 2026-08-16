@@ -5,6 +5,7 @@ on:
     branches: [develop]
     paths:
       - "config/rfc0022-linux-strace-policy.json"
+      - "scripts/rfc0022_strace_adapter_route.py"
       - "scripts/rfc0022_strace_authority.py"
       - "scripts/rfc0022_strace_parser.py"
       - "scripts/rfc0022_strace_model.py"
@@ -41,6 +42,7 @@ on:
     branches: [develop]
     paths:
       - "config/rfc0022-linux-strace-policy.json"
+      - "scripts/rfc0022_strace_adapter_route.py"
       - "scripts/rfc0022_strace_authority.py"
       - "scripts/rfc0022_strace_parser.py"
       - "scripts/rfc0022_strace_model.py"

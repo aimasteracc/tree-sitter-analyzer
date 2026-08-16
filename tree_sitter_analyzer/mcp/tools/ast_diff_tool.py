@@ -11,6 +11,7 @@ Unlike text diffs, understands code structure.
 
 from typing import Any
 
+from ... import read_existing_access as read_access
 from ...ast_diff import ASTDiffer
 from ...ast_diff_node_budget import apply_node_body_budget
 from ...ast_diff_snapshot_consumers import decode_snapshot_sources
@@ -257,17 +258,36 @@ class ASTDiffTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
-
-        unavailable = read_existing_unavailable(
-            arguments,
-            reason=READ_EXISTING_AUTHORITY_UNCERTIFIED,
-            action_version=EDIT_AST_DIFF_ACTION_VERSION,
-        )
-        if unavailable is not None:
-            return apply_toon_format_to_response(
-                unavailable, arguments.get("output_format", "toon")
+        read_existing = read_access.validate_read_existing_access(arguments)
+        if read_existing and not read_access.read_existing_platform_supported():
+            # RFC-0022 P0.4: the certified axis alone runs the consumer
+            # backends; other OSes keep the stable classified result.
+            unavailable = read_existing_unavailable(
+                arguments,
+                reason=READ_EXISTING_AUTHORITY_UNCERTIFIED,
+                action_version=EDIT_AST_DIFF_ACTION_VERSION,
             )
+            if unavailable is not None:
+                return apply_toon_format_to_response(
+                    unavailable, arguments.get("output_format", "toon")
+                )
+        result = await self._execute_impl(arguments)
+        if read_existing:
+            acquired: list[dict[str, str]] = []
+            snapshot_id = result.get("diff_snapshot_id")
+            generation = result.get("source_generation")
+            if isinstance(snapshot_id, str) and isinstance(generation, str):
+                acquired.append(
+                    {
+                        "kind": "diff",
+                        "snapshot_id": snapshot_id,
+                        "source_generation": generation,
+                    }
+                )
+            read_access.attach_read_existing_evidence(result, records=acquired)
+        return result
 
+    async def _execute_impl(self, arguments: dict[str, Any]) -> dict[str, Any]:
         mode = self._resolve_mode(arguments)
         output_format = arguments.get("output_format", "toon")
         include_node_bodies = bool(arguments.get("include_node_bodies", False))
@@ -291,41 +311,31 @@ class ASTDiffTool(BaseMCPTool):
                         output_format,
                     )
                 assert consumer is not None
-                frozen = consumer.snapshot.file(arguments["file_path"])
-                if frozen is None:
-                    error = "DIFF_SNAPSHOT_FILE_NOT_FOUND"
+
+                def snapshot_error(code: str, verdict: str = "ERROR") -> dict[str, Any]:
                     return apply_toon_format_to_response(
                         {
                             "success": False,
-                            "verdict": "NOT_FOUND",
-                            "error_code": error,
-                            "error": error,
+                            "verdict": verdict,
+                            "error_code": code,
+                            "error": code,
+                            "diff_snapshot_id": consumer.snapshot.snapshot_id,
+                            "source_generation": consumer.snapshot.source_generation,
                         },
                         output_format,
+                    )
+
+                frozen = consumer.snapshot.file(arguments["file_path"])
+                if frozen is None:
+                    return snapshot_error(
+                        "DIFF_SNAPSHOT_FILE_NOT_FOUND", verdict="NOT_FOUND"
                     )
                 language = _language_from_ext(frozen.record.path)
                 if not language:
-                    error = "DIFF_SNAPSHOT_UNSUPPORTED_LANGUAGE"
-                    return apply_toon_format_to_response(
-                        {
-                            "success": False,
-                            "verdict": "ERROR",
-                            "error_code": error,
-                            "error": error,
-                        },
-                        output_format,
-                    )
+                    return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_LANGUAGE")
                 sources = decode_snapshot_sources(frozen)
                 if sources is None:
-                    return apply_toon_format_to_response(
-                        {
-                            "success": False,
-                            "verdict": "ERROR",
-                            "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
-                            "error": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
-                        },
-                        output_format,
-                    )
+                    return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_CONTENT")
                 result = differ.diff_strings(
                     old_source=sources.old_source,
                     new_source=sources.new_source,

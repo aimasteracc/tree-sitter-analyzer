@@ -28,6 +28,7 @@ SCRIPTS = ROOT / "scripts"
 POLICY_PATH = ROOT / "config/rfc0022-linux-strace-policy.json"
 AUTHORITY = SCRIPTS / "rfc0022_strace_authority.py"
 CONTROL = SCRIPTS / "rfc0022_strace_positive_control.py"
+ADAPTER_ROUTE = SCRIPTS / "rfc0022_strace_adapter_route.py"
 LAUNCHER = SCRIPTS / "rfc0022_strace_target_launcher.py"
 SYSTEM_PYTHON = "/usr/bin/python3"
 WORKFLOW = ROOT / ".github/workflows/rfc0022-linux-write-authority.yml"
@@ -176,6 +177,126 @@ LIVE_CONTROLS = [
     "truncate-restore",
     "write-then-delete",
 ]
+
+
+def _adapter_route_command(case: Path, artifact: Path) -> list[str]:
+    """Authority invocation for the real read-existing producer route."""
+    target = [sys.executable, "-B", str(ADAPTER_ROUTE), "--root", str(case)]
+    return [
+        "sudo",
+        "-n",
+        SYSTEM_PYTHON,
+        "-I",
+        "-S",
+        "-B",
+        str(AUTHORITY),
+        "run",
+        "--policy",
+        str(POLICY_PATH),
+        "--trace-dir",
+        str(artifact / "trace"),
+        "--report",
+        str(artifact / "report.json"),
+        "--monitor-root",
+        str(case),
+        "--target-cwd",
+        str(case),
+        "--timeout",
+        "60",
+        "--",
+        *target,
+    ]
+
+
+def _prepare_adapter_route_fixture(case: Path) -> None:
+    """Build the git fixture as the target user (owned, readable, untraced).
+
+    The repository must be prepared before the authority's before-snapshot
+    and must be owned by the traced user so git's dubious-ownership guard
+    never fires inside the trace.
+    """
+    target_user = os.environ["RFC0022_TARGET_USER"]
+    git = ["sudo", "-n", "-u", target_user, "git", "-C", str(case)]
+    subprocess.run([*git, "init", "-q", "-b", "main"], check=True, capture_output=True)
+    for cfg in (
+        ["user.email", "rfc0022@target"],
+        ["user.name", "RFC0022 Target"],
+        ["maintenance.auto", "false"],
+        ["gc.auto", "0"],
+    ):
+        subprocess.run([*git, "config", *cfg], check=True, capture_output=True)
+    (case / "base.py").write_text("value = 1\n", encoding="utf-8")
+    subprocess.run([*git, "add", "base.py"], check=True, capture_output=True)
+    subprocess.run([*git, "commit", "-qm", "init"], check=True, capture_output=True)
+    (case / "base.py").write_text("value = 2\n", encoding="utf-8")
+    (case / "new.py").write_text("x = 1\n", encoding="utf-8")
+
+
+def test_live_read_existing_route_is_zero_write() -> None:
+    """RFC-0022 P0.4: the real read-existing route writes nothing.
+
+    The full producer invocation set (read-only capture, acquire,
+    publish revalidation) runs as the strace trace root with every git
+    descendant traced; zero violations certify the route on the pinned
+    Linux axis.
+    """
+    if os.environ.get("RFC0022_RUN_LIVE_STRACE") != "1":
+        pytest.skip(
+            "tracked: RFC-0022 P0.4 live adapter route runs in its pinned Linux job"
+        )
+    artifact_root = Path(os.environ["RFC0022_AUTHORITY_ARTIFACT_DIR"])
+    case_root = Path(os.environ["RFC0022_AUTHORITY_CASE_DIR"])
+    name = "adapter-route"
+    artifact = artifact_root.parent / f"{name}-artifacts"
+    shutil.rmtree(artifact, ignore_errors=True)
+    artifact.mkdir(parents=True)
+    case = case_root / name
+    shutil.rmtree(case, ignore_errors=True)
+    case.mkdir(mode=0o777)
+    case.chmod(0o777)
+    _prepare_adapter_route_fixture(case)
+    command = _adapter_route_command(case, artifact)
+    requested_target = command[command.index("--") + 1 :]
+    expected_target = [os.path.realpath(requested_target[0]), *requested_target[1:]]
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    report = json.loads((artifact / "report.json").read_text(encoding="utf-8"))
+    assert_policy_evidence(report, POLICY_PATH)
+    assert result.returncode == 0
+    assert report["authority_status"] == "healthy"
+    assert report["outcome"] == "clean"
+    assert report["violations"] == []
+    assert report["errors"] == []
+    assert report["snapshots"]["equal"] is True
+    assert report["target"]["expected_returncode"] == 0
+    assert report["target"]["returncode"] == 0
+    trace_dir = artifact / "trace"
+    raw_by_pid = _raw_trace_lines(report, trace_dir)
+    graph = _raw_process_graph(raw_by_pid)
+    assert graph  # the python root was traced
+    _assert_final_target_exec(expected_target, raw_by_pid)
+    # The route really produced a payload (records + patch) and git
+    # descendants were traced alongside the python root.
+    assert any("descendant" in role for role in graph)
+    # The payload summary is deterministic for the fixture; pin its hash.
+    assert (
+        report["target"]["stdout_sha256"]
+        == hashlib.sha256(
+            b'{"source_generation": "idxsrc-v3:51533d44ba261b9ce9317d0e9db1edbf08e1fa3225a2e24c9336a40912c0e3d4", '
+            b'"records": 2, "patch_size": 376, "scope": ["base.py", "new.py"], '
+            b'"consumers": {"constraints": {"success": true, "access_state": "available"}, '
+            b'"ast_diff": {"success": true, "access_state": "available"}, '
+            b'"classify": {"success": true, "access_state": "available"}}}\n'
+        ).hexdigest()
+    )
+    identity = report["target_identity"]
+    assert identity["user"] == os.environ["RFC0022_TARGET_USER"]
+    assert identity["no_new_privs"] is True
 
 
 def test_expected_live_evidence_schema_is_exact() -> None:

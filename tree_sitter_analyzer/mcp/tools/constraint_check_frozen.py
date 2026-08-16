@@ -136,17 +136,28 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
     if error:
         return _snapshot_error(tool, error, output_format)
     assert consumer is not None
+
+    def fail(
+        code: str, output_format: str = output_format, detail: str | None = None
+    ) -> dict[str, Any]:
+        envelope = _snapshot_error(tool, code, output_format, detail)
+        envelope.update(
+            diff_snapshot_id=consumer.snapshot.snapshot_id,
+            source_generation=consumer.snapshot.source_generation,
+        )
+        return envelope
+
     try:
         diff = consumer.snapshot
         deadline = diff.created_monotonic + HARD_LIFETIME_SECONDS
         raw_scope = list(diff.assessed_scope_paths)
         frozen_scope = [path_to_wire(path) for path in raw_scope]
         if arguments["scope_paths"] != frozen_scope:
-            return _snapshot_error(tool, "DIFF_SNAPSHOT_SCOPE_MISMATCH", output_format)
+            return fail("DIFF_SNAPSHOT_SCOPE_MISMATCH")
 
         config_error = getattr(diff, "constraint_config_error", None)
         if config_error is not None:
-            return _snapshot_error(tool, config_error, output_format)
+            return fail(config_error)
         guard = _config_publish_guard(diff, project_root, deadline)
         config_changed = any(
             candidate in diff.assessed_scope_paths for candidate in _CONFIG_CANDIDATES
@@ -163,6 +174,8 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
                 "violations": [],
                 "rule_count": 0,
                 "evaluated_edge_count": 0,
+                "diff_snapshot_id": diff.snapshot_id,
+                "source_generation": diff.source_generation,
             }
         else:
             try:
@@ -170,9 +183,7 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
                     diff.constraint_config_data or b"", config_name
                 )
             except ConstraintParseError as exc:
-                return _snapshot_error(
-                    tool, "CONSTRAINT_CONFIG_INVALID", output_format, str(exc)
-                )
+                return fail("CONSTRAINT_CONFIG_INVALID", detail=str(exc))
             if not constraints:
                 response = {
                     "success": True,
@@ -189,9 +200,7 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
             ):
                 # Available index capabilities certify only the live source plane.
                 # A divergent stage-zero plane must never borrow that live graph.
-                return _snapshot_error(
-                    tool, "CONSTRAINT_STAGED_INDEX_UNKNOWN", output_format
-                )
+                return fail("CONSTRAINT_STAGED_INDEX_UNKNOWN")
             else:
                 try:
                     from ...index_snapshot import (
@@ -214,17 +223,11 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
                             or index.completeness != "complete"
                             or index.source_generation != diff.source_generation
                         ):
-                            return _snapshot_error(
-                                tool,
-                                index.reason or "SOURCE_GENERATION_MISMATCH",
-                                output_format,
-                            )
+                            return fail(index.reason or "SOURCE_GENERATION_MISMATCH")
                         if not _supported_scope_is_covered(
                             raw_scope, index.source_scope
                         ):
-                            return _snapshot_error(
-                                tool, "CONSTRAINT_INDEX_SCOPE_MISMATCH", output_format
-                            )
+                            return fail("CONSTRAINT_INDEX_SCOPE_MISMATCH")
                         with acquire_index_snapshot(
                             index.snapshot_id,
                             project_root,
@@ -284,7 +287,7 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
             ),
         )
         if error:
-            return _snapshot_error(tool, error, output_format)
+            return fail(error)
         response.update(
             diff_snapshot_id=diff.snapshot_id,
             source_generation=diff.source_generation,
@@ -292,8 +295,6 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
         )
         return apply_toon_format_to_response(response, output_format)
     except (OSError, RuntimeError, SourceOracleError, sqlite3.DatabaseError) as exc:
-        return _snapshot_error(
-            tool, "CONSTRAINT_CAPTURE_UNKNOWN", output_format, str(exc)
-        )
+        return fail("CONSTRAINT_CAPTURE_UNKNOWN", detail=str(exc))
     finally:
         consumer.release()
