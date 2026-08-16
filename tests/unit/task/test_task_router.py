@@ -770,8 +770,12 @@ def test_serialized_wire_roundtrips_router_outcome() -> None:
     assert wire["success"] is True
     assert wire["subject"]["diff"]["source"] == "workspace"
     assert wire["artifacts"]["edge_collections"] == []
-    assert wire["next_step"] is None
-    assert wire["agent_summary"] == {}
+    # Actionable outputs (NO1-010A follow-up): clean assess -> done hint.
+    assert wire["next_step"] == "No static issues found in the assessed change."
+    assert wire["agent_summary"]["summary_line"].startswith(
+        "task assess_change complete verdict="
+    )
+    assert wire["agent_summary"]["next_step"] == wire["next_step"]
 
 
 # --- Fail-closed branch coverage (codecov patch gate, NO1-010A) -----------

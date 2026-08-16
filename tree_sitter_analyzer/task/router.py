@@ -44,6 +44,7 @@ from .models import (
     AssessChangeRequest,
     ConsumedBudget,
     PlanChangeRequest,
+    Status,
     TaskOutcome,
     TaskRequest,
     UnderstandRequest,
@@ -1930,6 +1931,25 @@ async def _run_route(
                     "locator": contribution.locator,
                 }
             )
+    next_step = build_next_step(
+        operation=operation,
+        status=status,
+        verdict=verdict,
+        unknowns=unknowns,
+        freshness=freshness_records,
+        plan_steps=plan_steps,
+        truncated=bool(truncated_rows),
+    )
+    agent_summary = build_agent_summary(
+        operation=operation,
+        status=status,
+        verdict=verdict,
+        next_step=next_step,
+        primitive_calls=consumed_calls,
+        evidence_items=len(evidence),
+        cleanup_status=cleanup_status,
+        plan_steps_count=len(plan_steps),
+    )
     return TaskOutcome(
         task=operation,  # type: ignore[arg-type]
         request=_project_request(request),
@@ -1944,6 +1964,8 @@ async def _run_route(
         unknowns=tuple(unknowns),
         errors=tuple(errors),
         budget=build_budget_record(budget),
+        next_step=next_step,
+        agent_summary=agent_summary,
         truncation={
             "truncated": bool(truncated_rows),
             "reason": truncated_reason,
@@ -1961,3 +1983,98 @@ async def _run_route(
         ),
         error="ERROR" if verdict == "ERROR" else None,
     )
+
+
+def build_next_step(
+    *,
+    operation: str,
+    status: Status,
+    verdict: Verdict,
+    unknowns: list[dict[str, Any]],
+    freshness: list[dict[str, Any]],
+    plan_steps: list[dict[str, Any]],
+    truncated: bool,
+) -> str | None:
+    """Deterministic, table-driven next-step hint (never evidence).
+
+    RFC-0022: a primitive-provided suggestion is inert suggested text; this
+    is the task's own projection of the frozen outcome into one actionable
+    sentence. Priority: unlock path (access authority) > oracle freshness >
+    budget/deadline > review steps > done state > None.
+    """
+    for unknown in unknowns:
+        reason = str(unknown.get("reason", ""))
+        if reason.startswith("ACCESS_UNAVAILABLE:"):
+            authority = reason.split(":", 1)[1]
+            return (
+                f"Read-existing authority unavailable ({authority}): the "
+                "zero-write backend is not certified on this platform. "
+                "Certify the P0.4 authority or run on a certified OS, then "
+                "retry this route."
+            )
+    for record in freshness:
+        reason = str(record.get("reason") or "")
+        if record.get("freshness") in {"missing", "unknown"} and (
+            reason == "AUTHORITATIVE_SNAPSHOT_UNAVAILABLE"
+            or reason.startswith("INCOMPLETE_ORACLE:")
+        ):
+            return (
+                "The index oracle is unavailable or incomplete: run a full "
+                "re-index (--full-index), then retry this route."
+            )
+    if truncated:
+        return (
+            "Budget or deadline limited the route: raise the profile or "
+            "narrow the scope, then retry."
+        )
+    if operation == "plan_change" and plan_steps:
+        paths = sorted({step["path"] for step in plan_steps if step["path"]})
+        listed = ", ".join(paths[:5])
+        if len(paths) > 5:
+            listed += f", \u2026 (+{len(paths) - 5} more)"
+        return f"Review the planned change across {len(paths)} file(s): {listed}."
+    if (
+        operation == "assess_change"
+        and status == "complete"
+        and verdict
+        in {
+            "SAFE",
+            "INFO",
+            "NOT_FOUND",
+        }
+    ):
+        return "No static issues found in the assessed change."
+    if status == "unknown":
+        return (
+            "The route could not establish evidence: check the unknowns "
+            "list for the blocking reason."
+        )
+    return None
+
+
+def build_agent_summary(
+    *,
+    operation: str,
+    status: Status,
+    verdict: Verdict,
+    next_step: str | None,
+    primitive_calls: int,
+    evidence_items: int,
+    cleanup_status: str,
+    plan_steps_count: int,
+) -> dict[str, Any]:
+    """Deterministic compact summary for agent branching (never evidence)."""
+    return {
+        "summary_line": (
+            f"task {operation} {status} verdict={verdict} "
+            f"calls={primitive_calls} evidence={evidence_items}"
+        ),
+        "operation": operation,
+        "status": status,
+        "verdict": verdict,
+        "primitive_calls": primitive_calls,
+        "evidence_items": evidence_items,
+        "cleanup_status": cleanup_status,
+        "plan_steps": plan_steps_count,
+        "next_step": next_step,
+    }
