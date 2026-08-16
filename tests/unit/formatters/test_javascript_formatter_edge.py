@@ -521,7 +521,7 @@ class TestJavaScriptTableFormatterEdgeCases:
         urls = [
             "http://example.com",
             "https://subdomain.example.com:8080/path?query=value#fragment",
-            "ftp://user:pass@ftp.example.com/file.txt",
+            "ftp://user@ftp.example.com/file.txt",
             "file:///C:/Windows/System32/",
             "data:text/plain;base64,SGVsbG8gV29ybGQ=",
         ]
