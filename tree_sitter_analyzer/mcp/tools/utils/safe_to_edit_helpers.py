@@ -174,24 +174,27 @@ def _format_safe_to_edit_result(
     if context.snapshot_conn is not None:
         # Codex P1 (#1299): the certified read_existing route derives
         # constraint facts from the immutable snapshot connection and runs
-        # fixture detection read-only — never the live .ast-cache DB or a
-        # fixture-index rebuild write.
+        # the certified fixture probe — never the live .ast-cache DB and
+        # never the live allowlist/cache (both are outside the source
+        # generation and could drift after snapshot publication).
         violations = violations_for_files_from_conn(
             context.snapshot_conn, [_relative_for_constraints(context)]
         )
-        fixture_rebuild = False
+        fixture_certified = True
     else:
         violations = violations_for_files(
             context.project_root, [_relative_for_constraints(context)]
         )
-        fixture_rebuild = True
+        fixture_certified = False
     constraint_verdict = verdict_from_violations(violations)
     # P3: also check whether the file is a registered test fixture; that
     # promotes the verdict on top of any constraint-derived escalation.
     # The chokepoint design (see PRD §P3) is "every override flows
     # through _max_verdict" — so chaining is the only safe composition.
     fixture_fact = is_fixture(
-        context.resolved_path, context.project_root, rebuild_cache=fixture_rebuild
+        context.resolved_path,
+        context.project_root,
+        certified=fixture_certified,
     )
     fixture_verdict = fixture_to_verdict(fixture_fact)
     verdict = _max_verdict(
@@ -658,6 +661,30 @@ def _import_needles_for_target(rel_path: str) -> set[str]:
     return {needle for needle in needles if needle}
 
 
+def _require_edges_callee_name(conn: Any) -> None:
+    """Raise ``CORRUPT_INDEX`` when ``edges`` exists but lacks ``callee_name``.
+
+    The snapshot reader's pass 1 selects ``edges.callee_name``; a partially
+    migrated or damaged index would otherwise make that query fail inside the
+    broad degrade handler, returning an empty dependency view and
+    undercounting risk instead of classifying the snapshot as incompatible.
+    """
+
+    try:
+        table_row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='edges' LIMIT 1"
+        ).fetchone()
+        if table_row is None:
+            return  # legacy schema without the table: degrade to empty
+        columns = {
+            str(row[1]) for row in conn.execute("PRAGMA table_info(edges)").fetchall()
+        }
+    except Exception:  # nosec B110 — unreadable conn degrades to legacy
+        return
+    if "callee_name" not in columns:
+        raise ValueError("CORRUPT_INDEX")
+
+
 def _snapshot_file_indexed(conn: Any, rel_path: str) -> bool:
     """Return whether the snapshot connection has indexed one relative file."""
     try:
@@ -720,10 +747,14 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
        import-statement text instead (no live bytes are consulted).
 
     A missing/legacy schema degrades to an empty view so the route can still
-    classify honestly.
+    classify honestly. A current-version but damaged ``edges`` table (present
+    yet missing the ``callee_name`` column this reader requires) raises
+    ``CORRUPT_INDEX`` instead of degrading silently — an empty view would
+    undercount risk (Codex P2 #1299).
     """
     import json
 
+    _require_edges_callee_name(conn)
     dependencies: set[str] = set()
     dependents: set[str] = set()
     try:

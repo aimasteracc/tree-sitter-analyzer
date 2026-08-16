@@ -389,6 +389,7 @@ _INDEX_CONSUMER_STABLE_CODES = frozenset(
         "CONSTRAINED_INDEX_SCOPE",
         "INDEX_SNAPSHOT_INCOMPLETE",
         "FILE_NOT_FOUND",
+        "FILE_NOT_INDEXED",
     }
 )
 
@@ -490,6 +491,11 @@ def read_existing_index_consumer(
                 result, output_format, compact_only=compact_only
             )
     except (ValueError, RuntimeError) as exc:
+        # Codex P2 (#1299): pre-yield failures (completeness/scope gate or
+        # pre-read recapture) attach the acquired identity to the exception;
+        # post-yield failures record it in ``acquired``. Either way the
+        # failure envelope cites the exact capability that was acquired.
+        identity = getattr(exc, "_read_existing_identity", None) or acquired
         return format_read_existing_failure(
             _stable_consumer_code(exc),
             output_format=output_format,
@@ -499,11 +505,11 @@ def read_existing_index_consumer(
                 [
                     {
                         "kind": "index",
-                        "snapshot_id": acquired[0],
-                        "source_generation": acquired[1],
+                        "snapshot_id": identity[0],
+                        "source_generation": identity[1],
                     }
                 ]
-                if acquired is not None
+                if identity is not None
                 else None
             ),
         )

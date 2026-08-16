@@ -396,6 +396,72 @@ def test_read_existing_consumer_post_read_mismatch_preserves_record(
     assert result["action_version"] == NAV_CONTEXT_ACTION_VERSION
 
 
+def test_read_existing_consumer_pre_read_mismatch_preserves_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pre-yield recapture failure still cites the acquired snapshot."""
+    import sqlite3
+
+    import tree_sitter_analyzer.index_snapshot as snapshot_owner
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.index_snapshot import REGISTRY, IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+    from tree_sitter_analyzer.index_source_snapshot import CurrentSourceSnapshot
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+    from tree_sitter_analyzer.wire_owner import NAV_CONTEXT_ACTION_VERSION
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    monkeypatch.setattr(
+        snapshot_owner,
+        "_capture_sources_with_deadline",
+        lambda root, source_scope, deadline=None: CurrentSourceSnapshot(
+            frozenset(), "fp", "gen-2", "exact", None
+        ),
+    )
+    conn = sqlite3.connect(":memory:")
+    snapshot = IndexSnapshot(
+        None,
+        "fp",
+        "ifp",
+        "gen-1",
+        "complete",
+        None,
+        str(tmp_path.resolve()),
+        0,
+        None,
+        None,
+        make_source_scope_descriptor(),
+    )
+    published = REGISTRY.publish(snapshot, conn, 0)
+
+    def ok_reader(snapshot, conn):
+        return {"success": True, "verdict": "INFO"}
+
+    result = read_access.read_existing_index_consumer(
+        CodeGraphContextTool(str(tmp_path)),
+        {
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+            "output_format": "json",
+        },
+        reader=ok_reader,
+        action_version=NAV_CONTEXT_ACTION_VERSION,
+    )
+    assert result["success"] is False
+    assert result["error_code"] == "SOURCE_GENERATION_MISMATCH"
+    assert result["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+        }
+    ]
+    assert result["action_version"] == NAV_CONTEXT_ACTION_VERSION
+
+
 @pytest.mark.parametrize(
     ("tool_type", "module_name"),
     [

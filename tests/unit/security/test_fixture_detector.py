@@ -222,10 +222,10 @@ class TestCache:
         is_fixture("tree_sitter_analyzer/foo.py", root)
         assert (root / ".ast-cache" / "fixture_index.json").is_file()
 
-    def test_readonly_scan_never_writes_cache(self, tmp_path: Path) -> None:
+    def test_certified_scan_never_writes_cache(self, tmp_path: Path) -> None:
         # Codex P1 (#1299): the certified read_existing route must stay
-        # zero-write — an absent cache is re-scanned in memory but never
-        # persisted (fixture_index.json must not appear).
+        # zero-write — the generation-certified scan never persists
+        # fixture_index.json.
         root = _make_project(
             tmp_path,
             {
@@ -237,12 +237,29 @@ class TestCache:
                 "tree_sitter_analyzer/foo.py": "",
             },
         )
-        fact = is_fixture("tree_sitter_analyzer/foo.py", root, rebuild_cache=False)
+        fact = is_fixture("tree_sitter_analyzer/foo.py", root, certified=True)
         assert fact.is_fixture is True
         assert not (root / ".ast-cache" / "fixture_index.json").exists()
         # The default path still persists (unchanged behaviour).
         is_fixture("tree_sitter_analyzer/foo.py", root)
         assert (root / ".ast-cache" / "fixture_index.json").is_file()
+
+    def test_certified_scan_skips_live_allowlist(self, tmp_path: Path) -> None:
+        # Codex P1 (#1299): the CLAUDE.md allowlist is outside the source
+        # generation, so a certified probe must not consult it — only
+        # test-file references count.
+        root = _make_project(
+            tmp_path,
+            {
+                "CLAUDE.md": _frontmatter([{"path": "tree_sitter_analyzer/foo.py"}]),
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        certified = is_fixture("tree_sitter_analyzer/foo.py", root, certified=True)
+        assert certified.is_fixture is False
+        live = is_fixture("tree_sitter_analyzer/foo.py", root)
+        assert live.is_fixture is True
+        assert live.source == "allowlist"
 
     def test_cache_corrupt_falls_through_to_scan(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture

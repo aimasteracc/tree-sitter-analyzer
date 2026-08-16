@@ -634,6 +634,36 @@ async def test_edit_safe_read_existing_consumes_published_snapshot(
     assert result["health_grade"]
 
 
+def test_live_violations_query_degrades_on_corrupt_db_file(
+    tmp_path: Path,
+) -> None:
+    """A non-SQLite index.db degrades to an empty violation list."""
+    from tree_sitter_analyzer.mcp.tools.utils.constraint_violation_query import (
+        violations_for_files,
+    )
+
+    (tmp_path / ".ast-cache").mkdir()
+    (tmp_path / ".ast-cache" / "index.db").write_text(
+        "not-a-sqlite-database", encoding="utf-8"
+    )
+    assert violations_for_files(str(tmp_path), ["app.py"]) == []
+
+
+def test_snapshot_dependency_view_degrades_on_closed_conn() -> None:
+    """An unreadable connection degrades to an empty view, never raises."""
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.close()
+    view = build_snapshot_file_dependency_view(conn, "app.py")
+    assert view.dependents_of("app.py") == []
+    assert view.dependencies_of("app.py") == []
+
+
 def test_read_existing_payload_language_detection_degrades(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -663,6 +693,9 @@ def test_read_existing_payload_language_detection_degrades(
     )
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
+    # The FILE_NOT_INDEXED gate needs the target present in ast_index.
+    conn.execute("CREATE TABLE ast_index (file_path TEXT)")
+    conn.execute("INSERT INTO ast_index VALUES ('app.py')")
     tool = tool_module.SafeToEditTool(str(tmp_path))
     result = tool._read_existing_payload(
         {"file_path": "app.py", "edit_type": "refactor"},
@@ -847,6 +880,52 @@ async def test_edit_safe_read_existing_uses_snapshot_constraints_read_only(
     reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
 )
 @pytest.mark.asyncio
+async def test_edit_safe_read_existing_unindexed_target_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A target outside the snapshot inventory is never served uncertified.
+
+    Codex P1 (#1299): hidden/excluded files are not covered by the source
+    recaptures, so the certified route rejects them with FILE_NOT_INDEXED
+    instead of reading and scoring their live bytes.
+    """
+    import tree_sitter_analyzer.read_existing_access as read_access
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    (project / ".hidden.py").write_text("x = 1\n", encoding="utf-8")
+    published = _publish_index_snapshot(project)
+
+    tool = SafeToEditTool(str(project))
+    result = await tool.execute(
+        {
+            "file_path": ".hidden.py",
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+            "output_format": "json",
+        }
+    )
+
+    assert result["success"] is False
+    assert result["error_code"] == "FILE_NOT_INDEXED"
+    assert result["access_reason"] == "FILE_NOT_INDEXED"
+    assert result["action_version"] == "edit.safe/v1"
+    assert result["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+        }
+    ]
+
+
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
+)
+@pytest.mark.asyncio
 async def test_edit_safe_read_existing_generation_mismatch_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -897,6 +976,21 @@ def test_snapshot_dependency_view_degrades_on_schema_drift() -> None:
     conn.execute("INSERT INTO edges VALUES ('routes.py', 'app', 'imports')")
     partial = build_snapshot_file_dependency_view(conn, "app.py")
     assert partial.dependents_of("app.py") == []
+
+    # Codex P2 (#1299): a current-version but damaged edges table (present,
+    # missing the callee_name column this reader selects) fails the route
+    # instead of silently degrading to an empty view (which would undercount
+    # risk).
+    import pytest
+
+    damaged = sqlite3.connect(":memory:")
+    damaged.row_factory = sqlite3.Row
+    damaged.execute(
+        "CREATE TABLE edges (source_node_id TEXT, target_node_id TEXT, "
+        "kind TEXT, file_path TEXT)"
+    )
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        build_snapshot_file_dependency_view(damaged, "app.py")
 
 
 # RFC-0022 P0.4: the snapshot dependency view resolves exact IMPORTS edges

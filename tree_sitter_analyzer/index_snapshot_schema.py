@@ -58,7 +58,18 @@ _REQUIRED_COLUMNS = {
     "ast_symbol_projection_state": frozenset(
         {"file_path", "content_hash", "symbol_count", "projection_digest"}
     ),
-    "edges": frozenset({"source_node_id", "target_node_id", "kind", "file_path"}),
+    "edges": frozenset(
+        {
+            "source_node_id",
+            "target_node_id",
+            "kind",
+            "file_path",
+            # Codex P2 (#1299): the snapshot dependency reader selects
+            # callee_name; a current-version index missing it would degrade
+            # to an empty dependency view and undercount risk.
+            "callee_name",
+        }
+    ),
     "ast_index_snapshot_manifest": frozenset(
         {
             "canonical_root",

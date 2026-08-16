@@ -59,7 +59,10 @@ before and after reading, echoes both tokens actually used, and either serves al
 graph and source bytes from that immutable snapshot or returns
 `SOURCE_GENERATION_MISMATCH` without a result. A consumer rejects a capability
 whose `completeness` is not `complete` with `INDEX_SNAPSHOT_INCOMPLETE` before
-serving any graph data (mirroring the constraint route's completeness gate). In particular, `nav.context` may
+serving any graph data (mirroring the constraint route's completeness gate).
+A target file outside the snapshot's source inventory is rejected with
+`FILE_NOT_INDEXED` before any of its bytes are read or scored (the source
+recaptures only certify inventory-covered files). In particular, `nav.context` may
 not combine entry points from a cached graph with newer filesystem lines.
 Absence, disagreement, or a changed token stops the task route; no later
 `nav.context` or `edit.safe` call starts.

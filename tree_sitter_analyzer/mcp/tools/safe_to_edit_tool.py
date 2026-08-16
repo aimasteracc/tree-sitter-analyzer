@@ -8,6 +8,7 @@ Combines dependency analysis, health scoring, and test proximity to produce
 a risk assessment with specific warnings and a concrete pre-edit checklist.
 """
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,7 @@ from .base_tool import BaseMCPTool, mirror_summary_line
 from .utils.parse_validity import is_file_parse_broken
 from .utils.safe_to_edit_helpers import (
     SafeToEditContext,
+    _snapshot_file_indexed,
     build_file_dependency_view,
     build_snapshot_file_dependency_view,
     is_init_file,
@@ -297,7 +299,20 @@ class SafeToEditTool(BaseMCPTool):
             if snapshot is not None and snapshot.canonical_root
             else self.project_root or "."
         )
-        rel_path = _to_relative(resolved, reader_root).replace("\\", "/")
+        # Canonicalize the resolved path before relativising: on macOS the
+        # security validator's abspath (/var/folders/...) and the snapshot's
+        # canonical_root (/private/var/folders/...) differ by symlink, which
+        # would make to_relative fall back to the absolute path and miss every
+        # ast_index/edges row (CLAUDE.md §2 resolution contract).
+        rel_path = _to_relative(os.path.realpath(resolved), reader_root).replace(
+            "\\", "/"
+        )
+        if snapshot is not None and not _snapshot_file_indexed(conn, rel_path):
+            # Codex P1 (#1299): a target outside the snapshot source
+            # inventory (markdown/yaml, hidden, or excluded files) is not
+            # covered by the before/after source recaptures — serving its
+            # live bytes would be uncertified. Fail closed instead.
+            raise ValueError("FILE_NOT_INDEXED")
         result = _build_safe_to_edit_result(
             SafeToEditContext(
                 file_path=file_path,

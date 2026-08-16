@@ -684,11 +684,17 @@ class TestReadExistingConsumerRevalidation:
         )
         published = owner.REGISTRY.publish(snapshot, conn, 0)
 
-        with pytest.raises(ValueError, match="SOURCE_GENERATION_MISMATCH"):
+        with pytest.raises(ValueError, match="SOURCE_GENERATION_MISMATCH") as exc_info:
             with owner.read_existing_index_scope(
                 published.snapshot_id, str(tmp_path), "gen-1"
             ):
                 pass
+        # Codex P2 (#1299): pre-yield failures still cite the acquired
+        # capability identity.
+        assert getattr(exc_info.value, "_read_existing_identity", None) == (
+            published.snapshot_id,
+            "gen-1",
+        )
 
     def test_read_existing_index_scope_mismatch_on_exit_fails_closed(
         self, tmp_path, monkeypatch
@@ -761,11 +767,15 @@ class TestReadExistingConsumerRevalidation:
         )
         published = owner.REGISTRY.publish(snapshot, conn, 0)
 
-        with pytest.raises(ValueError, match="INDEX_SNAPSHOT_INCOMPLETE"):
+        with pytest.raises(ValueError, match="INDEX_SNAPSHOT_INCOMPLETE") as exc_info:
             with owner.read_existing_index_scope(
                 published.snapshot_id, str(tmp_path), "gen-1"
             ):
                 pass
+        assert getattr(exc_info.value, "_read_existing_identity", None) == (
+            published.snapshot_id,
+            "gen-1",
+        )
 
     def test_read_existing_index_scope_honors_expired_deadline(
         self, tmp_path, monkeypatch
@@ -810,6 +820,56 @@ class TestReadExistingConsumerRevalidation:
                 deadline=time.monotonic() - 1,
             ):
                 pass
+
+    def test_read_existing_index_scope_reader_deadline_enforced(
+        self, tmp_path, monkeypatch
+    ):
+        """Reader SQL work past the absolute deadline fails closed.
+
+        Codex P2 (#1299): the progress handler bounds SQLite work, and the
+        post-yield re-check is the hard guarantee even when a reader swallows
+        the abort — both share the scope's absolute deadline.
+        """
+        import sqlite3
+        import time
+
+        import tree_sitter_analyzer.index_snapshot as owner
+        from tree_sitter_analyzer.index_source_scope import (
+            make_source_scope_descriptor,
+        )
+
+        clock = {"now": time.monotonic()}
+        monkeypatch.setattr(owner, "_clock", lambda: clock["now"])
+        monkeypatch.setattr(
+            owner,
+            "_capture_sources_with_deadline",
+            lambda root, source_scope, deadline=None: self._fake_capture(
+                "exact", "gen-1"
+            ),
+        )
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE t (x INTEGER)")
+        conn.execute("INSERT INTO t VALUES (1)")
+        snapshot = owner.IndexSnapshot(
+            None,
+            "fp",
+            "ifp",
+            "gen-1",
+            "complete",
+            None,
+            str(tmp_path.resolve()),
+            0,
+            source_scope=make_source_scope_descriptor(),
+        )
+        published = owner.REGISTRY.publish(snapshot, conn, 0)
+
+        with pytest.raises(RuntimeError, match="INDEX_SNAPSHOT_DEADLINE"):
+            with owner.read_existing_index_scope(
+                published.snapshot_id, str(tmp_path), "gen-1"
+            ) as (index, scope_conn):
+                # The reader's SQL runs after the deadline has passed.
+                clock["now"] += 100.0
+                scope_conn.execute("SELECT count(*) FROM t")
 
     @pytest.mark.parametrize("bad_root", ["", b"not-a-str"])
     def test_verify_unusable_root_raises_index_snapshot_unknown(
