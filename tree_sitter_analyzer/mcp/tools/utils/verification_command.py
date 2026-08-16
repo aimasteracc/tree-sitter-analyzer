@@ -60,9 +60,10 @@ def certified_default_test_command(
     from the TARGET's extension — a fact bound to the snapshot inventory.
     Only ecosystems with an unambiguous canonical runner map; ambiguous
     ones (Java's Maven-vs-Gradle, Kotlin, C#, PHP, C/C++, Ruby's
-    rspec-vs-minitest) return ``None`` so the route OMITS the command
-    rather than advertising an unverifiable choice. Python keeps the
-    pytest default.
+    rspec-vs-minitest, and JavaScript/TypeScript's npm-vs-pnpm-vs-Yarn-
+    vs-Bun, which only non-inventoried lockfiles can distinguish) return
+    ``None`` so the route OMITS the command rather than advertising an
+    unverifiable choice. Python keeps the pytest default.
     """
 
     ext = Path(file_path).suffix.lower()
@@ -70,8 +71,6 @@ def certified_default_test_command(
         return DefaultTestCommand("go", "go test ./...")
     if ext == ".rs":
         return DefaultTestCommand("cargo", "cargo test")
-    if ext in {".js", ".jsx", ".ts", ".tsx"}:
-        return DefaultTestCommand("node", "npm test")
     if ext == ".py":
         return PYTEST_COMMAND
     return None

@@ -138,6 +138,7 @@ def test_snapshot_consumer_uses_frozen_utf8_bytes(
 @pytest.mark.parametrize("tool_type", [ASTDiffTool, SemanticClassifyTool])
 @pytest.mark.parametrize("output_format", ["json", "toon"])
 @POSIX_SNAPSHOT_TEST
+@pytest.mark.slow_ok  # real git diff capture x2; brushes the 5s budget under --cov
 def test_snapshot_consumer_echoes_exact_frozen_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

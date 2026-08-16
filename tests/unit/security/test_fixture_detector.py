@@ -133,6 +133,19 @@ class TestTier2Scan:
         assert fact.source in {"path_literal", "constant_assignment"}
         assert any("test_x.py" in line for line in fact.evidence)
 
+    def test_bare_basename_literal_falls_through(self, tmp_path: Path) -> None:
+        # A bare '.py' basename with no package prefix matches none of the
+        # signal tiers and records nothing (falls through the elif chain).
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": "name = 'foo.py'\n",
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        fact = is_fixture("tree_sitter_analyzer/foo.py", root)
+        assert fact.is_fixture is False
+
     def test_bare_repo_relative_literal_is_caution(self, tmp_path: Path) -> None:
         # A bare string ``"tree_sitter_analyzer/foo.py"`` outside any
         # SAMPLE_ assignment hits the lowest-confidence tier (0.7).
@@ -141,8 +154,12 @@ class TestTier2Scan:
         root = _make_project(
             tmp_path,
             {
-                "tests/test_x.py": "name = 'tree_sitter_analyzer/foo.py'\n",
+                "tests/test_x.py": (
+                    "name = ('tree_sitter_analyzer/foo.py', "
+                    "'tree_sitter_analyzer/bar.py')\n"
+                ),
                 "tree_sitter_analyzer/foo.py": "def f(): pass\n",
+                "tree_sitter_analyzer/bar.py": "def b(): pass\n",
             },
         )
         fact = is_fixture("tree_sitter_analyzer/foo.py", root)
@@ -331,6 +348,37 @@ class TestCache:
         # test_x.py only mentions the basename (no PROJECT_ROOT pattern) and
         # other_y.py is outside the inventory -> no escalation.
         assert fact.is_fixture is False
+
+    def test_constant_assignment_signal_with_plain_string(self, tmp_path: Path) -> None:
+        # The has_fixture_name branch: a plain-string assignment carrying a
+        # fixture basename records the constant-assignment signal.
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": (
+                    "SAMPLE_FOO = ('tree_sitter_analyzer/foo.py', "
+                    "'tree_sitter_analyzer/bar.py')\n"
+                ),
+                "tree_sitter_analyzer/foo.py": "",
+                "tree_sitter_analyzer/bar.py": "",
+            },
+        )
+        fact = is_fixture("tree_sitter_analyzer/foo.py", root)
+        assert fact.is_fixture is True
+        assert fact.source == "constant_assignment"
+
+    def test_basename_with_separator_returns_normally(self, tmp_path: Path) -> None:
+        root = _make_project(tmp_path, {"tree_sitter_analyzer/foo.py": "x"})
+        resolved = fixture_detector._basename_to_repo_relative(
+            "tree_sitter_analyzer/foo.py", root
+        )
+        assert resolved == "tree_sitter_analyzer/foo.py"
+        # A path outside the root falls back to its string form.
+        import os
+
+        outside = os.path.realpath("/etc/passwd")
+        fallback = fixture_detector._safe_relative(Path(outside), root)
+        assert fallback == outside.replace("\\", "/")
 
     def test_basename_resolution_honors_inventory(self, tmp_path: Path) -> None:
         # Codex P1 (#1299 round-8, C37): an oracle-excluded duplicate must

@@ -1071,6 +1071,12 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
                 imports = json.loads(row["imports_json"])
             except (TypeError, ValueError):
                 continue
+            if not isinstance(imports, list):
+                # Codex P2 (#1299 round-9, C40): a non-array cell would
+                # otherwise raise TypeError and abandon the WHOLE needle
+                # pass, dropping later member-import dependents; skip the
+                # malformed row only.
+                continue
             for imp in imports:
                 imp_text = imp["text"] if isinstance(imp, dict) else imp
                 if not isinstance(imp_text, str):

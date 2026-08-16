@@ -549,7 +549,14 @@ def _scan_tests(
             # broken test files just get skipped.
             continue
         relative_test = _safe_relative(path, project_root)
-        _walk_module(tree, source, relative_test, project_root, aggregator)
+        _walk_module(
+            tree,
+            source,
+            relative_test,
+            project_root,
+            aggregator,
+            inventory=inventory,
+        )
 
     result: dict[str, FixtureFact] = {}
     for rel_path, agg in aggregator.items():
@@ -616,7 +623,9 @@ def _walk_module(
         if isinstance(descendant, (ast.List, ast.Tuple)):
             basenames = _plugin_manifest_basenames(descendant)
             for basename in basenames:
-                rel = _basename_to_repo_relative(basename, project_root)
+                rel = _basename_to_repo_relative(
+                    basename, project_root, inventory=inventory
+                )
                 if rel:
                     agg = aggregator.setdefault(rel, _Aggregator())
                     agg.suppressed = True
@@ -699,7 +708,7 @@ def _process_assign(
         basename = os.path.basename(literal.replace("\\", "/"))
         if not basename.endswith(".py"):
             continue
-        rel = _basename_to_repo_relative(basename, project_root)
+        rel = _basename_to_repo_relative(basename, project_root, inventory=inventory)
         if not rel:
             continue
         agg = aggregator.setdefault(rel, _Aggregator())
@@ -733,7 +742,7 @@ def _process_repo_relative_literals(
         if not _REPO_RELATIVE_PATTERN.match(value):
             continue
         basename = os.path.basename(value)
-        rel = _basename_to_repo_relative(basename, project_root)
+        rel = _basename_to_repo_relative(basename, project_root, inventory=inventory)
         if not rel:
             continue
         agg = aggregator.setdefault(rel, _Aggregator())

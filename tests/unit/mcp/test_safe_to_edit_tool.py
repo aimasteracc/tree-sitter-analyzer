@@ -698,7 +698,8 @@ def test_certified_commands_use_extension_runner(tmp_path: Path) -> None:
             certified=True,
         )
     )
-    assert "npm test" in str(js_workflow.get("after_edit_commands", []))
+    # C39: JS/TS npm-vs-pnpm-vs-Yarn cannot be distinguished snapshot-bound.
+    assert "npm test" not in str(js_workflow.get("after_edit_commands", []))
 
     py_workflow = build_agent_workflow(
         AgentWorkflowContext(
@@ -765,6 +766,50 @@ def test_certified_commands_ignore_live_config_files(tmp_path: Path) -> None:
         certified=True,
     )
     assert all("npm test" not in item for item in certified_checklist)
+
+    # C35: ambiguous ecosystem + no tests -> the checklist omits the
+    # command items entirely instead of advertising an unverifiable runner.
+    no_command = build_checklist(
+        "safe",
+        0,
+        False,
+        [],
+        "refactor",
+        file_path="Calc.java",
+        project_root=str(tmp_path),
+        certified=True,
+    )
+    assert all("command" not in item.lower() for item in no_command)
+
+    # C35: ambiguous ecosystem + tests -> the test items still appear,
+    # but without an advertised command.
+    java_tests = build_checklist(
+        "safe",
+        0,
+        True,
+        ["CalcTest.java"],
+        "refactor",
+        file_path="Calc.java",
+        project_root=str(tmp_path),
+        certified=True,
+    )
+    assert any("Run existing tests FIRST" in item for item in java_tests)
+    assert all(
+        "java" not in item.lower() and "mvn" not in item.lower() for item in java_tests
+    )
+
+    # Certified python + tests -> the pytest command items are present.
+    py_tests = build_checklist(
+        "safe",
+        0,
+        True,
+        ["tests/test_app.py"],
+        "refactor",
+        file_path="app.py",
+        project_root=str(tmp_path),
+        certified=True,
+    )
+    assert any("uv run pytest" in item for item in py_tests)
 
 
 def test_live_violations_query_degrades_on_corrupt_db_file(
@@ -1207,10 +1252,18 @@ def test_snapshot_dependency_view_recalls_member_imports() -> None:
         (json.dumps([{"text": "import os", "line": 1}]),),
     )
     conn.execute("INSERT INTO ast_index VALUES ('broken.py', 'not-json')")
+    # C40: a valid-JSON non-array cell (42) must be skipped per row, NOT
+    # abort the whole needle pass — the later matching row still counts.
+    conn.execute("INSERT INTO ast_index VALUES ('scalar.py', '42')")
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('later.py', ?)",
+        (json.dumps([{"text": "from app import Member", "line": 1}]),),
+    )
     view = build_snapshot_file_dependency_view(conn, "app.py")
     # 'routes.py' matches the needle pass; 'unrelated.py' exercises the
-    # non-match branch (no dependent added).
-    assert view.dependents_of("app.py") == ["routes.py"]
+    # non-match branch (no dependent added); 'later.py' proves the pass
+    # survived the malformed 'scalar.py' row.
+    assert view.dependents_of("app.py") == ["later.py", "routes.py"]
 
 
 @pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
