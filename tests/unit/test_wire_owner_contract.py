@@ -86,11 +86,16 @@ def test_safe_to_edit_unavailable_echoes_action_version() -> None:
     assert result["action_version"] == "edit.safe/v1"
 
 
-def test_change_impact_unavailable_echoes_action_version() -> None:
+def test_change_impact_unavailable_echoes_action_version(tmp_path: Path) -> None:
+    # RFC-0022 P0.4: on the Linux axis the read-existing producer is live,
+    # so the unavailable fixture must be a non-repository directory — the
+    # working-tree root would trigger a real full-repo capture and blow the
+    # unit perf budget. The classified failure still echoes the owner
+    # version; non-Linux axes keep the stable unsupported envelope.
     from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
     from tree_sitter_analyzer.wire_owner import EDIT_IMPACT_ACTION_VERSION
 
-    tool = ChangeImpactTool(str(Path.cwd()))
+    tool = ChangeImpactTool(str(tmp_path))
     result = _run(
         tool.execute(
             {
