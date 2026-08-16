@@ -769,23 +769,19 @@ async def test_edit_impact_read_existing_acquire_failure_classifies(
     assert len(closed) == 1
 
 
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="tracked: RFC-0022 P0.4 consumer route is Linux-certified only",
+)
 @pytest.mark.asyncio
 async def test_edit_snapshot_consumers_read_existing_consume_snapshot(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
-    """The diff-snapshot consumers serve a published snapshot read-only.
-
-    The in-memory registry consume route is portable: the platform gate is
-    bypassed so the same frozen backend runs on every OS (the certified
-    Linux axis runs it under the real strace authority).
-    """
+    """The diff-snapshot consumers serve a published snapshot read-only."""
     import subprocess
 
-    from tree_sitter_analyzer import read_existing_access as read_access
     from tree_sitter_analyzer.diff_snapshot_registry import REGISTRY, reset_registry
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
-
-    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
 
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     for cfg in (
@@ -860,3 +856,88 @@ async def test_edit_snapshot_consumers_read_existing_consume_snapshot(
     # silently lost the captured diff.
     assert results["ast_diff"]["verdict"] == "INFO"
     assert results["classify"]["verdict"] == "INFO"
+
+
+@pytest.mark.skipif(
+    sys.platform.startswith("win"),
+    reason="tracked: RFC-0022 P0.4 secure-fd consume backend is POSIX-only",
+)
+@pytest.mark.asyncio
+async def test_edit_snapshot_consumers_read_existing_consume_portable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Force the frozen consume backend on POSIX developer loops.
+
+    Linux runs the identical route under the pinned strace authority; this
+    portable variant (platform gate opened) gives macOS local coverage of
+    the same frozen backend so the patch-coverage gate is exact.
+    """
+    import subprocess
+
+    from tree_sitter_analyzer import read_existing_access as read_access
+    from tree_sitter_analyzer.diff_snapshot_registry import REGISTRY, reset_registry
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    for cfg in (
+        ["user.email", "t@t"],
+        ["user.name", "t"],
+        ["maintenance.auto", "false"],
+        ["gc.auto", "0"],
+    ):
+        subprocess.run(["git", "-C", str(tmp_path), "config", *cfg], check=True)
+    (tmp_path / "base.py").write_text("value = 1\n")
+    (tmp_path / "keep.py").write_text("keep = True\n")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "commit", "-qm", "init"], check=True)
+    (tmp_path / "base.py").write_text("value = 2\n")
+    (tmp_path / "new.py").write_text("x = 1\n")
+
+    reset_registry()
+    created = REGISTRY.create(str(tmp_path), "diff", [], readonly=True)
+    assert created.get("success"), created
+    snapshot_id = str(created["diff_snapshot_id"])
+    scope = [str(path) for path in created["assessed_scope_paths"]]
+    facade = build_edit_facade(str(tmp_path))
+    for action, arguments in (
+        (
+            "constraints",
+            {
+                "diff_snapshot_id": snapshot_id,
+                "scope_paths": scope,
+                "persist": False,
+                "access_mode": "read_existing",
+                "output_format": "json",
+            },
+        ),
+        (
+            "ast_diff",
+            {
+                "diff_snapshot_id": snapshot_id,
+                "file_path": "base.py",
+                "access_mode": "read_existing",
+                "output_format": "json",
+            },
+        ),
+        (
+            "classify",
+            {
+                "diff_snapshot_id": snapshot_id,
+                "file_path": "base.py",
+                "access_mode": "read_existing",
+                "output_format": "json",
+            },
+        ),
+    ):
+        result = await facade.execute({"action": action, **arguments})
+        assert result["success"] is True
+        assert result["access_state"] == "available"
+        assert result["source_snapshots"] == [
+            {
+                "kind": "diff",
+                "snapshot_id": snapshot_id,
+                "source_generation": created["source_generation"],
+            }
+        ]
