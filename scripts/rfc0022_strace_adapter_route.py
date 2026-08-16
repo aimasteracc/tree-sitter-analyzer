@@ -45,6 +45,24 @@ def _produce(root: str) -> tuple[dict[str, object], str]:
 
     _git_readonly.run_git_readonly = _spy
     _readonly.run_git_readonly = _spy
+    # The frozen runner may still be reached by index-snapshot helpers.
+    import tree_sitter_analyzer.frozen_git_index as _frozen_index
+    import tree_sitter_analyzer.git_subprocess as _subprocess
+
+    _original_bounded = _subprocess.run_git_bounded
+
+    def _bounded_spy(root: str, args: list[str], **kwargs: object):
+        try:
+            return _original_bounded(root, args, **kwargs)
+        except Exception as exc:  # noqa: BLE001 - diagnostic only
+            print(
+                json.dumps({"failing_frozen_git": args, "error": str(exc)}),
+                file=sys.stderr,
+            )
+            raise
+
+    _subprocess.run_git_bounded = _bounded_spy
+    _frozen_index.run_git_bounded = _bounded_spy
     from tree_sitter_analyzer.diff_snapshot_registry import REGISTRY, reset_registry
 
     reset_registry()
