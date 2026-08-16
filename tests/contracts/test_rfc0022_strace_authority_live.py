@@ -247,7 +247,10 @@ def test_live_read_existing_route_is_zero_write() -> None:
         )
     artifact_root = Path(os.environ["RFC0022_AUTHORITY_ARTIFACT_DIR"])
     name = "adapter-route"
-    artifact = artifact_root.parent / f"{name}-artifacts"
+    # Codex P2 (#1297): the adapter evidence must live beneath the uploaded
+    # artifact root so the 90-day workflow artifact preserves the
+    # certification report and raw traces.
+    artifact = artifact_root / name
     shutil.rmtree(artifact, ignore_errors=True)
     artifact.mkdir(parents=True)
     # The case must live on a chain the isolated target user can *read*
@@ -662,9 +665,12 @@ def test_live_artifact_manifest_is_complete() -> None:
         )
     artifact_root = Path(os.environ["RFC0022_AUTHORITY_ARTIFACT_DIR"])
     preflight = load_started_preflight(artifact_root)
+    # The adapter-route certification case also lives under the uploaded
+    # artifact root (its report and traces are part of the preserved
+    # evidence), alongside the exact positive-control directories.
     assert sorted(
         path.name for path in artifact_root.iterdir() if path.is_dir()
-    ) == sorted(LIVE_CONTROLS)
+    ) == sorted([*LIVE_CONTROLS, "adapter-route"])
     for control in LIVE_CONTROLS:
         artifact = artifact_root / control
         report_path = artifact / "report.json"

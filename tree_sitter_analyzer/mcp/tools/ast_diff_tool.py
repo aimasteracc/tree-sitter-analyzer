@@ -271,7 +271,14 @@ class ASTDiffTool(BaseMCPTool):
                 return apply_toon_format_to_response(
                     unavailable, arguments.get("output_format", "toon")
                 )
-        result = await self._execute_impl(arguments)
+        # Codex P2 (#1297): attach the read-existing evidence to the raw JSON
+        # response BEFORE the requested format is applied, so TOON output
+        # carries access_mode/access_state/access_reason/source_snapshots
+        # inside toon_content exactly like JSON does.
+        if read_existing and "output_format" not in arguments:
+            result = await self._execute_impl({**arguments, "output_format": "json"})
+        else:
+            result = await self._execute_impl(arguments)
         if read_existing:
             acquired: list[dict[str, str]] = []
             snapshot_id = result.get("diff_snapshot_id")
@@ -285,6 +292,8 @@ class ASTDiffTool(BaseMCPTool):
                     }
                 )
             read_access.attach_read_existing_evidence(result, records=acquired)
+        if read_existing and "output_format" not in arguments:
+            return apply_toon_format_to_response(result, "toon")
         return result
 
     async def _execute_impl(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -319,8 +328,12 @@ class ASTDiffTool(BaseMCPTool):
                             "verdict": verdict,
                             "error_code": code,
                             "error": code,
-                            "diff_snapshot_id": consumer.snapshot.snapshot_id,
-                            "source_generation": consumer.snapshot.source_generation,
+                            "diff_snapshot_id": getattr(
+                                consumer.snapshot, "snapshot_id", str(snapshot_id)
+                            ),
+                            "source_generation": getattr(
+                                consumer.snapshot, "source_generation", ""
+                            ),
                         },
                         output_format,
                     )

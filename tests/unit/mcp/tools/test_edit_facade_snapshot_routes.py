@@ -851,5 +851,8 @@ async def test_edit_snapshot_consumers_read_existing_consume_snapshot(
 
     assert results["constraints"]["state"] == "not_applicable"
     assert results["constraints"]["reason"] == "NO_CONFIG"
-    assert results["ast_diff"]["verdict"] in ("INFO", "NOT_FOUND")
-    assert results["classify"]["verdict"] in ("INFO", "NOT_FOUND")
+    # Codex P2 (#1297): base.py changed value = 1 -> value = 2, so both
+    # consumers must report the change; NOT_FOUND would hide a backend that
+    # silently lost the captured diff.
+    assert results["ast_diff"]["verdict"] == "INFO"
+    assert results["classify"]["verdict"] == "INFO"

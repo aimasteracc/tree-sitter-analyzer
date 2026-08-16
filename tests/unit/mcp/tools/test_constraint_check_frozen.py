@@ -441,3 +441,118 @@ def test_renamed_primary_config_activates_fallback_over_full_graph(
         registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
         is True
     )
+
+
+# Codex P1 (#1297): in explicit read_existing mode the graph-backed frozen
+# route must require and acquire the caller-reserved index capability; a
+# fresh lease would answer the rules against the wrong snapshot.  The
+# platform gate keeps these portable (the module-level route is what the
+# certified Linux axis exercises).
+def _frozen_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, paths):
+    import tree_sitter_analyzer.mcp.tools.constraint_check_frozen as frozen
+
+    _stage_minimal_constraints(tmp_path)
+    db_path = tmp_path / ".ast-cache" / "index.db"
+    _init_violations_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE edges(kind TEXT)")
+    registry, created = _create_frozen_scope(monkeypatch, tmp_path, paths)
+    return frozen, registry, created
+
+
+def test_read_existing_frozen_constraints_require_reserved_index_capability(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    frozen, _, created = _frozen_tool(
+        tmp_path, monkeypatch, ["architectural-constraints.yml"]
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.read_access.read_existing_platform_supported",
+        lambda: True,
+    )
+    tool = _make_tool(tmp_path)
+    result = _run(
+        tool.execute(
+            {
+                "persist": False,
+                "diff_snapshot_id": created["diff_snapshot_id"],
+                "scope_paths": created["assessed_scope_paths"],
+                "access_mode": "read_existing",
+                "output_format": "json",
+            }
+        )
+    )
+    assert result["success"] is False
+    assert result["error_code"] == "CONSTRAINT_INDEX_CAPABILITY_REQUIRED"
+    assert result["diff_snapshot_id"] == created["diff_snapshot_id"]
+
+
+# Codex P1 (#1297): when the reserved index pair is supplied, the frozen
+# route acquires exactly that capability rather than minting a fresh lease.
+def test_read_existing_frozen_constraints_acquire_reserved_index_capability(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    frozen, registry, created = _frozen_tool(
+        tmp_path, monkeypatch, ["architectural-constraints.yml"]
+    )
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    reserved_scope = make_source_scope_descriptor()
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.read_access.read_existing_platform_supported",
+        lambda: True,
+    )
+    acquired: list[tuple[str, object]] = []
+
+    class _Index:
+        completeness = "complete"
+        reason = None
+        source_generation = created["source_generation"]
+        source_scope = reserved_scope
+        snapshot_id = "reserved-index"
+        index_fingerprint = "sha256:" + "2" * 64
+
+    class _Context:
+        def __init__(self, index, conn):
+            self._index = index
+            self._conn = conn
+
+        def __enter__(self):
+            return self._index, self._conn
+
+        def __exit__(self, *exc):
+            self._conn.close()
+            return False
+
+    def acquire(snapshot_id, project_root, source_generation=None, **kwargs):
+        acquired.append((snapshot_id, source_generation))
+        conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+        return _Context(_Index(), conn)
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.index_snapshot.acquire_index_snapshot", acquire
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.evaluate",
+        lambda *a, **k: [],
+    )
+    result = _run(
+        _make_tool(tmp_path).execute(
+            {
+                "persist": False,
+                "diff_snapshot_id": created["diff_snapshot_id"],
+                "snapshot_id": "reserved-index",
+                "source_generation": created["source_generation"],
+                "scope_paths": created["assessed_scope_paths"],
+                "access_mode": "read_existing",
+                "output_format": "json",
+            }
+        )
+    )
+    assert acquired == [("reserved-index", created["source_generation"])]
+    assert result["success"] is True
+    assert result["snapshot_id"] == "reserved-index"
+    assert (
+        registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
+        is True
+    )

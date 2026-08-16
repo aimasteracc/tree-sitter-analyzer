@@ -208,37 +208,43 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
                         lease_existing_snapshot,
                     )
 
-                    lease = lease_existing_snapshot(
-                        project_root,
-                        **(
-                            {"deadline": deadline}
-                            if "deadline"
-                            in inspect.signature(lease_existing_snapshot).parameters
-                            else {}
-                        ),
-                    )
-                    with lease as index:
-                        if (
-                            index.snapshot_id is None
-                            or index.completeness != "complete"
-                            or index.source_generation != diff.source_generation
-                        ):
-                            return fail(index.reason or "SOURCE_GENERATION_MISMATCH")
-                        if not _supported_scope_is_covered(
-                            raw_scope, index.source_scope
-                        ):
-                            return fail("CONSTRAINT_INDEX_SCOPE_MISMATCH")
+                    # RFC-0022 P0.4: in explicit read_existing mode the
+                    # caller reserved a specific index capability; acquiring
+                    # any other snapshot would answer the graph rules against
+                    # the wrong capability.  The reserved pair is mandatory
+                    # here, and only that registry-owned snapshot is used.
+                    reserved_id = arguments.get("snapshot_id")
+                    reserved_generation = arguments.get("source_generation")
+                    if arguments.get("access_mode") == "read_existing" and (
+                        not isinstance(reserved_id, str)
+                        or not isinstance(reserved_generation, str)
+                    ):
+                        return fail("CONSTRAINT_INDEX_CAPABILITY_REQUIRED")
+                    if isinstance(reserved_id, str) and isinstance(
+                        reserved_generation, str
+                    ):
                         with acquire_index_snapshot(
-                            index.snapshot_id,
+                            reserved_id,
                             project_root,
-                            diff.source_generation,
+                            reserved_generation,
                             **(
                                 {"deadline": deadline}
                                 if "deadline"
                                 in inspect.signature(acquire_index_snapshot).parameters
                                 else {}
                             ),
-                        ) as (_, conn):
+                        ) as (index, conn):
+                            if (
+                                index.completeness != "complete"
+                                or index.source_generation != diff.source_generation
+                            ):
+                                return fail(
+                                    index.reason or "SOURCE_GENERATION_MISMATCH"
+                                )
+                            if not _supported_scope_is_covered(
+                                raw_scope, index.source_scope
+                            ):
+                                return fail("CONSTRAINT_INDEX_SCOPE_MISMATCH")
                             rows, edge_count = tool._evaluate_connection(
                                 conn,
                                 constraints,
@@ -248,17 +254,64 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
                                 scope_paths=evaluation_scope,
                                 deadline=deadline,
                             )
-                        response = {
-                            "success": True,
-                            "state": "applicable",
-                            "verdict": tool._compute_verdict(rows),
-                            "action_version": EDIT_CONSTRAINTS_ACTION_VERSION,
-                            "violations": rows,
-                            "rule_count": len(constraints),
-                            "evaluated_edge_count": edge_count,
-                            "snapshot_id": index.snapshot_id,
-                            "index_fingerprint": index.index_fingerprint,
-                        }
+                    else:
+                        # Legacy same-process route (no explicit read_existing
+                        # contract): pin the current published capability.
+                        lease = lease_existing_snapshot(
+                            project_root,
+                            **(
+                                {"deadline": deadline}
+                                if "deadline"
+                                in inspect.signature(lease_existing_snapshot).parameters
+                                else {}
+                            ),
+                        )
+                        with lease as index:
+                            if (
+                                index.snapshot_id is None
+                                or index.completeness != "complete"
+                                or index.source_generation != diff.source_generation
+                            ):
+                                return fail(
+                                    index.reason or "SOURCE_GENERATION_MISMATCH"
+                                )
+                            if not _supported_scope_is_covered(
+                                raw_scope, index.source_scope
+                            ):
+                                return fail("CONSTRAINT_INDEX_SCOPE_MISMATCH")
+                            with acquire_index_snapshot(
+                                index.snapshot_id,
+                                project_root,
+                                diff.source_generation,
+                                **(
+                                    {"deadline": deadline}
+                                    if "deadline"
+                                    in inspect.signature(
+                                        acquire_index_snapshot
+                                    ).parameters
+                                    else {}
+                                ),
+                            ) as (_, conn):
+                                rows, edge_count = tool._evaluate_connection(
+                                    conn,
+                                    constraints,
+                                    min_severity_rank=tool.severity_rank(
+                                        arguments.get("severity_min", "warn")
+                                    ),
+                                    scope_paths=evaluation_scope,
+                                    deadline=deadline,
+                                )
+                    response = {
+                        "success": True,
+                        "state": "applicable",
+                        "verdict": tool._compute_verdict(rows),
+                        "action_version": EDIT_CONSTRAINTS_ACTION_VERSION,
+                        "violations": rows,
+                        "rule_count": len(constraints),
+                        "evaluated_edge_count": edge_count,
+                        "snapshot_id": index.snapshot_id,
+                        "index_fingerprint": index.index_fingerprint,
+                    }
                 except (
                     sqlite3.DatabaseError,
                     ValueError,

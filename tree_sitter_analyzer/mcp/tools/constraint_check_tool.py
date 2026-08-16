@@ -126,7 +126,15 @@ class ConstraintCheckTool(BaseMCPTool):
                 )
 
         if arguments.get("diff_snapshot_id") is not None:
-            result = self._execute_frozen(arguments)
+            # Codex P2 (#1297): attach the read-existing evidence to the raw
+            # JSON response BEFORE the requested format is applied, so TOON
+            # output carries access_mode/access_state/access_reason/
+            # source_snapshots inside toon_content exactly like JSON does.
+            if read_existing and "output_format" not in arguments:
+                frozen_arguments = {**arguments, "output_format": "json"}
+            else:
+                frozen_arguments = arguments
+            result = self._execute_frozen(frozen_arguments)
             if read_existing:
                 records: list[dict[str, str]] = []
                 if isinstance(result.get("diff_snapshot_id"), str) and isinstance(
@@ -150,6 +158,8 @@ class ConstraintCheckTool(BaseMCPTool):
                         }
                     )
                 read_access.attach_read_existing_evidence(result, records=records)
+            if read_existing and "output_format" not in arguments:
+                return apply_toon_format_to_response(result, "toon")
             return result
 
         path_filter = arguments.get("path_filter", "") or ""

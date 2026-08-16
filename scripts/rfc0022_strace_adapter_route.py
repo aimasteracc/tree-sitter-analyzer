@@ -43,22 +43,22 @@ def _bootstrap_sys_path() -> None:
             sys.path.insert(0, candidate)
 
 
-def _produce(root: str) -> tuple[dict[str, object], str]:
-    """Run the P0.4 producer route; return (deterministic identity, id)."""
+def _produce(root: str) -> tuple[dict[str, object], str, str]:
+    """Run the P0.4 producer route; return (deterministic identity, id, lease)."""
     _bootstrap_sys_path()
     from tree_sitter_analyzer.diff_snapshot_registry import REGISTRY, reset_registry
 
     reset_registry()
     created = REGISTRY.create(root, "diff", [], readonly=True)
     if not created.get("success"):
-        return {"error": created.get("error_code", "CAPTURE_ERROR")}, ""
+        return {"error": created.get("error_code", "CAPTURE_ERROR")}, "", ""
     consumer, error = REGISTRY.acquire(str(created["diff_snapshot_id"]), root)
     if error is not None or consumer is None:
-        return {"error": error or "ACQUIRE_ERROR"}, ""
+        return {"error": error or "ACQUIRE_ERROR"}, "", ""
     try:
         publish_error = REGISTRY.validate_publish(consumer)
         if publish_error is not None:
-            return ({"error": publish_error},)
+            return {"error": publish_error}, "", ""
         # The snapshot id is a per-run secret token; only deterministic
         # fields may appear in the pinned summary.
         identity = {
@@ -71,7 +71,11 @@ def _produce(root: str) -> tuple[dict[str, object], str]:
                 if path in ("base.py", "new.py")
             ],
         }
-        return identity, consumer.snapshot.snapshot_id
+        return (
+            identity,
+            consumer.snapshot.snapshot_id,
+            str(created.get("route_lease_id", "")),
+        )
     finally:
         consumer.release()
 
@@ -126,17 +130,31 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", required=True)
     args = parser.parse_args(argv)
-    identity, snapshot_id = _produce(args.root)
-    if "error" in identity:
-        print(json.dumps(identity))
-        return 1
-    consumers = asyncio.run(_consume(args.root, snapshot_id))
-    payload = {**identity, "consumers": consumers}
-    if any(not item.get("success") for item in consumers.values()):
+    identity, snapshot_id, route_lease_id = _produce(args.root)
+    try:
+        if "error" in identity:
+            print(json.dumps(identity))
+            return 1
+        consumers = asyncio.run(_consume(args.root, snapshot_id))
+        payload = {**identity, "consumers": consumers}
+        if any(not item.get("success") for item in consumers.values()):
+            print(json.dumps(payload))
+            return 1
         print(json.dumps(payload))
-        return 1
-    print(json.dumps(payload))
-    return 0
+        return 0
+    finally:
+        # The real task router releases the route lease unconditionally in
+        # its outer finally; the certified sequence must exercise the same
+        # cleanup so a write in release is never masked by process exit.
+        if snapshot_id and route_lease_id:
+            try:
+                from tree_sitter_analyzer.diff_snapshot_registry import (
+                    close_route_lease,
+                )
+
+                close_route_lease(snapshot_id, route_lease_id)
+            except Exception:  # noqa: BLE001 - cleanup must stay best effort
+                pass
 
 
 if __name__ == "__main__":

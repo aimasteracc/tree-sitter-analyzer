@@ -258,7 +258,14 @@ class SemanticClassifyTool(BaseMCPTool):
             )
             if unavailable is not None:
                 return unavailable
-        result = await self._execute_impl(arguments)
+        # Codex P2 (#1297): attach the read-existing evidence to the raw JSON
+        # response BEFORE the requested format is applied, so TOON output
+        # carries access_mode/access_state/access_reason/source_snapshots
+        # inside toon_content exactly like JSON does.
+        if read_existing and "output_format" not in arguments:
+            result = await self._execute_impl({**arguments, "output_format": "json"})
+        else:
+            result = await self._execute_impl(arguments)
         if read_existing:
             acquired: list[dict[str, str]] = []
             snapshot_id = result.get("diff_snapshot_id")
@@ -272,6 +279,8 @@ class SemanticClassifyTool(BaseMCPTool):
                     }
                 )
             read_access.attach_read_existing_evidence(result, records=acquired)
+        if read_existing and "output_format" not in arguments:
+            return apply_toon_format_to_response(result, "toon")
         return result
 
     async def _execute_impl(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -305,8 +314,12 @@ class SemanticClassifyTool(BaseMCPTool):
                             "verdict": verdict,
                             "error_code": code,
                             "error": code,
-                            "diff_snapshot_id": consumer.snapshot.snapshot_id,
-                            "source_generation": consumer.snapshot.source_generation,
+                            "diff_snapshot_id": getattr(
+                                consumer.snapshot, "snapshot_id", str(snapshot_id)
+                            ),
+                            "source_generation": getattr(
+                                consumer.snapshot, "source_generation", ""
+                            ),
                         },
                         output_format,
                     )
@@ -338,28 +351,12 @@ class SemanticClassifyTool(BaseMCPTool):
                         )
                     )
                 ):
-                    return apply_toon_format_to_response(
-                        {
-                            "success": False,
-                            "verdict": "ERROR",
-                            "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
-                            "error": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
-                        },
-                        output_format,
-                    )
+                    return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_CONTENT")
                 try:
                     old_source = (frozen.old_bytes or b"").decode("utf-8", "strict")
                     new_source = (frozen.new_bytes or b"").decode("utf-8", "strict")
                 except UnicodeDecodeError:
-                    return apply_toon_format_to_response(
-                        {
-                            "success": False,
-                            "verdict": "ERROR",
-                            "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
-                            "error": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
-                        },
-                        output_format,
-                    )
+                    return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_CONTENT")
                 diff_result = differ.diff_strings(
                     old_source=old_source,
                     new_source=new_source,
@@ -463,7 +460,16 @@ class SemanticClassifyTool(BaseMCPTool):
                 )
                 error = REGISTRY.validate_publish(consumer)
                 if error:
-                    return publish_errors.get(error, publish_fallback)
+                    # Publish failures occur after acquisition, so the
+                    # returned envelope must still cite the diff capability.
+                    envelope = dict(publish_errors.get(error, publish_fallback))
+                    envelope["diff_snapshot_id"] = getattr(
+                        consumer.snapshot, "snapshot_id", str(snapshot_id)
+                    )
+                    envelope["source_generation"] = getattr(
+                        consumer.snapshot, "source_generation", ""
+                    )
+                    return envelope
             return formatted
         finally:
             if consumer is not None:
