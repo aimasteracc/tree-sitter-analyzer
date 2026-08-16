@@ -283,8 +283,6 @@ class SafeToEditTool(BaseMCPTool):
         """
         file_path = arguments["file_path"]
         edit_type = arguments.get("edit_type", "refactor")
-        if not Path(resolved).exists():
-            raise ValueError("FILE_NOT_FOUND")
 
         # Codex-review P3 (#1297-followup): the snapshot's canonical_root is
         # the authoritative root for every relative/live-file computation —
@@ -307,10 +305,13 @@ class SafeToEditTool(BaseMCPTool):
         # (markdown/yaml, hidden, or excluded files) is not covered by the
         # before/after source recaptures. The gate runs BEFORE any
         # existence/language/syntax probe so uncertified bytes can never
-        # short-circuit into an available envelope (round-3: a hidden broken
-        # .py used to return a syntax-error success payload first).
+        # short-circuit into an available envelope — a missing target is
+        # necessarily outside the inventory too, so its answer also comes
+        # from the snapshot, never from live filesystem state (round-3/4).
         if snapshot is not None and not _snapshot_file_indexed(conn, rel_path):
             raise ValueError("FILE_NOT_INDEXED")
+        if not Path(resolved).exists():
+            raise ValueError("FILE_NOT_FOUND")
 
         syntax_response = _syntax_error_response(resolved, file_path, edit_type)
         if syntax_response is not None:

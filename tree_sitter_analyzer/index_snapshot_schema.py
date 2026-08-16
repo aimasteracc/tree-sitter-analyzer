@@ -68,9 +68,15 @@ _REQUIRED_COLUMNS = {
             # callee_name; a current-version index missing it would degrade
             # to an empty dependency view and undercount risk. caller_name is
             # selected by nav.context's _callees_by_name, whose OperationalError
-            # would escape the classified failure envelope (round-3).
+            # would escape the classified failure envelope (round-3). Every
+            # column EdgeStore._edge_from_row indexes directly (line,
+            # provenance, metadata) must also be present, or nav.context
+            # would hit an IndexError outside the classified set (round-4).
             "callee_name",
             "caller_name",
+            "line",
+            "provenance",
+            "metadata",
         }
     ),
     "ast_index_snapshot_manifest": frozenset(

@@ -16,7 +16,6 @@ from .constraint_violation_query import (
     constraint_risk_factor,
     verdict_from_violations,
     violations_for_files,
-    violations_for_files_from_conn,
 )
 from .safe_to_edit_risk import build_checklist, compute_risk
 from .test_discovery import find_test_files
@@ -113,15 +112,22 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
     rel_path = to_relative(context.resolved_path, context.project_root)
     dependents = safe_dependents(context.graph, rel_path)
     dependencies = safe_dependencies(context.graph, rel_path)
-    health = context.scorer.score_file(context.resolved_path, fast_dependencies=True)
-    test_files = find_test_files(context.resolved_path, context.project_root)
     if context.snapshot_conn is not None:
-        # Codex P1 (#1299 round-3): test facts must come from inventory-
-        # covered paths only — a test under an oracle-excluded directory
-        # (e.g. tests/vendor/) is outside the source generation and must
-        # not change has_tests/verdict for the same snapshot identity.
+        # Codex P1 (#1299 round-3/4): test facts must come from inventory-
+        # covered paths only — discovery runs over the snapshot's ast_index
+        # set, so oracle-excluded files (tests/vendor/) can neither fill the
+        # discovery cap nor change has_tests/verdict for the same identity.
         inventory = snapshot_inventory(context.snapshot_conn)
-        test_files = [tf for tf in test_files if tf in inventory]
+        test_files = _certified_test_files(inventory, context.resolved_path)
+        certified_health = True
+    else:
+        test_files = find_test_files(context.resolved_path, context.project_root)
+        certified_health = False
+    health = context.scorer.score_file(
+        context.resolved_path,
+        fast_dependencies=True,
+        certified=certified_health,
+    )
     has_tests = bool(test_files)
     risk, risk_factors = compute_risk(
         forward_count=len(dependents),
@@ -179,17 +185,18 @@ def _format_safe_to_edit_result(
     # violation referencing this file forces UNSAFE; warn-only forces
     # CAUTION. The base_verdict (derived from risk_level) is the floor.
     if context.snapshot_conn is not None:
-        # Codex P1 (#1299): the certified read_existing route derives
-        # constraint facts from the immutable snapshot connection and runs
-        # the certified fixture probe — never the live .ast-cache DB and
-        # never the live allowlist/cache (both are outside the source
-        # generation and could drift after snapshot publication). The
-        # inventory restriction keeps the fixture scan on generation-
-        # certified test files only (round-3: oracle-pruned paths such as
-        # tests/vendor/ must not influence escalation).
-        violations = violations_for_files_from_conn(
-            context.snapshot_conn, [_relative_for_constraints(context)]
-        )
+        # Codex P1 (#1299): the certified read_existing route runs the
+        # certified fixture probe — never the live .ast-cache DB and never
+        # the live allowlist/cache (both are outside the source generation
+        # and could drift after snapshot publication). The inventory
+        # restriction keeps the fixture scan on generation-certified test
+        # files only (round-3: oracle-pruned paths such as tests/vendor/
+        # must not influence escalation). Constraint rows are OMITTED on
+        # the certified route: reindexing stamps the manifest without
+        # recomputing ast_constraint_violations, so the rows cannot prove
+        # they match the published generation (round-4; an evaluation epoch
+        # bound to the index generation is the tracked follow-up).
+        violations: list[dict[str, Any]] = []
         fixture_inventory = snapshot_inventory(context.snapshot_conn)
         fixture_certified = True
     else:
@@ -696,6 +703,44 @@ def _require_edges_callee_name(conn: Any) -> None:
         return
     if "callee_name" not in columns:
         raise ValueError("CORRUPT_INDEX")
+
+
+def _certified_test_files(inventory: frozenset[str], file_path: str) -> list[str]:
+    """Find inventory-covered test files for one target.
+
+    Codex P1 (#1299 round-3/4): snapshot-certified test discovery walks the
+    snapshot's ``ast_index`` file set instead of the live filesystem, so
+    oracle-excluded paths (e.g. ``tests/vendor/``) can never influence
+    ``has_tests`` and the discovery cap cannot be filled by un-certified
+    candidates. Pattern and colocated conventions mirror the live axis.
+    """
+
+    from .test_discovery import (
+        _TEST_DIRS,
+        _TEST_PATTERNS,
+        _format_pattern,
+        detect_language_from_ext,
+    )
+
+    p = Path(file_path)
+    stem = p.stem
+    language = detect_language_from_ext(p.suffix.lower()) or "python"
+    patterns = _TEST_PATTERNS.get(language, ["test_{stem}.py"])
+    test_dirs = _TEST_DIRS.get(language, ["tests"])
+    filenames = {_format_pattern(pattern, stem) for pattern in patterns}
+
+    results: list[str] = []
+    for rel in sorted(inventory):
+        if Path(rel).name not in filenames:
+            continue
+        if any(rel.startswith(f"{test_dir}/") for test_dir in test_dirs):
+            results.append(rel)
+    parent = p.parent.as_posix()
+    for filename in filenames:
+        colocated = f"{parent}/{filename}"
+        if colocated in inventory and colocated not in results:
+            results.append(colocated)
+    return results[:10]
 
 
 def snapshot_inventory(conn: Any) -> frozenset[str]:

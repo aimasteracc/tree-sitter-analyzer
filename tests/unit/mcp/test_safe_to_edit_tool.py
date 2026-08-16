@@ -664,6 +664,33 @@ def test_snapshot_dependency_view_degrades_on_closed_conn() -> None:
     assert view.dependencies_of("app.py") == []
 
 
+def test_read_existing_payload_missing_indexed_file_returns_not_found(
+    tmp_path: Path,
+) -> None:
+    """An indexed target missing at read time still answers FILE_NOT_FOUND.
+
+    Codex P1 round-4 (C19): the inventory gate passes (the file IS in
+    ast_index), then the existence probe answers from the filesystem.
+    """
+    import sqlite3
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE ast_index (file_path TEXT)")
+    conn.execute("INSERT INTO ast_index VALUES ('app.py')")
+    tool = SafeToEditTool(str(tmp_path))
+    with pytest.raises(ValueError, match="FILE_NOT_FOUND"):
+        tool._read_existing_payload(
+            {"file_path": "app.py", "edit_type": "refactor"},
+            str(tmp_path / "app.py"),
+            conn,
+            snapshot=SimpleNamespace(canonical_root=str(tmp_path.resolve())),
+        )
+
+
 def test_read_existing_payload_language_detection_degrades(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -749,7 +776,7 @@ def test_snapshot_constraint_query_reads_from_given_conn() -> None:
 def test_format_result_reads_constraints_from_snapshot_conn(
     tmp_path: Path,
 ) -> None:
-    """Snapshot-mode formatting escalates verdict from the snapshot rows."""
+    """Snapshot-mode formatting ignores rows that cannot prove freshness."""
     import sqlite3
     from types import SimpleNamespace
 
@@ -792,8 +819,10 @@ def test_format_result_reads_constraints_from_snapshot_conn(
         snapshot_conn=conn,
     )
     result = _format_safe_to_edit_result(context, facts)
-    assert result["verdict"] == "UNSAFE"
-    assert any(
+    # C21: the seeded error row is unbound to the snapshot generation and
+    # must not escalate the verdict.
+    assert result["verdict"] == "SAFE"
+    assert not any(
         factor.get("factor") == "constraint_violation"
         for factor in result["risk_factors"]
     )
@@ -805,13 +834,15 @@ def test_format_result_reads_constraints_from_snapshot_conn(
     reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
 )
 @pytest.mark.asyncio
-async def test_edit_safe_read_existing_uses_snapshot_constraints_read_only(
+async def test_edit_safe_read_existing_ignores_unbound_constraint_rows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Snapshot-mode facts come from the snapshot conn; fixture index never written.
+    """Unbound constraint rows never escalate; the certified read stays zero-write.
 
-    Codex P1 (#1299): the certified route must derive constraint violations
-    from the immutable snapshot connection and must not create
+    Codex P1 (#1299 round-4, C21): reindexing stamps the manifest without
+    recomputing ast_constraint_violations, so the rows cannot prove they
+    match the published generation — the certified route must NOT promote
+    UNSAFE from them. The route also never creates
     ``.ast-cache/fixture_index.json`` (zero-write read).
     """
     import sqlite3
@@ -864,9 +895,10 @@ async def test_edit_safe_read_existing_uses_snapshot_constraints_read_only(
 
     assert result["success"] is True
     assert result["access_state"] == "available"
-    # The error-severity snapshot row escalates the verdict above the base.
-    assert result["verdict"] == "UNSAFE"
-    assert any(
+    # The seeded error-severity row must NOT escalate: it cannot prove it
+    # belongs to the published generation (C21).
+    assert result["verdict"] == "SAFE"
+    assert not any(
         factor.get("factor") == "constraint_violation"
         for factor in result["risk_factors"]
     )
@@ -1093,7 +1125,14 @@ async def test_edit_safe_read_existing_syntax_error_short_circuits(
 async def test_edit_safe_read_existing_missing_file_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A missing target file fails closed on the snapshot route."""
+    """A missing target fails closed on the snapshot route.
+
+    Codex P1 round-4 (C19): the inventory gate precedes every live-filesystem
+    probe — a file the snapshot never indexed (missing or not) is answered
+    from the snapshot with FILE_NOT_INDEXED, never from uncertified disk
+    state. (An indexed-but-deleted file surfaces as SOURCE_GENERATION_MISMATCH
+    in the pre-read recapture instead.)
+    """
     import tree_sitter_analyzer.read_existing_access as read_access
 
     monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
@@ -1111,7 +1150,7 @@ async def test_edit_safe_read_existing_missing_file_fails_closed(
         }
     )
     assert result["success"] is False
-    assert result["error_code"] == "FILE_NOT_FOUND"
-    assert result["access_reason"] == "FILE_NOT_FOUND"
+    assert result["error_code"] == "FILE_NOT_INDEXED"
+    assert result["access_reason"] == "FILE_NOT_INDEXED"
     assert result["access_state"] == "unknown"
     assert result["action_version"] == "edit.safe/v1"

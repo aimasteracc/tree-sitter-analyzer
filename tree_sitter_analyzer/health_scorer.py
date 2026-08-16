@@ -173,13 +173,22 @@ class HealthScorer:
         self._windows_coverage_cache: dict[str, float] | None = None
 
     def score_file(
-        self, file_path: str, *, fast_dependencies: bool = False
+        self,
+        file_path: str,
+        *,
+        fast_dependencies: bool = False,
+        certified: bool = False,
     ) -> HealthScore:
         """
         Score a single file.
 
         Args:
             file_path: Path to the source file
+            certified: True on RFC-0022 read_existing routes — the
+                ``coverage`` (coverage.json) and ``git_hotspot`` (git
+                history) dimensions are NOT part of the snapshot source
+                generation and are omitted (Codex P1 #1299 round-4); the
+                remaining dimensions renormalize.
 
         Returns:
             HealthScore with total and per-dimension scores
@@ -191,7 +200,11 @@ class HealthScorer:
 
         language = _EXT_TO_LANG.get(path.suffix.lower())
         dims = self._score_dimensions(
-            file_path, source, language, fast_dependencies=fast_dependencies
+            file_path,
+            source,
+            language,
+            fast_dependencies=fast_dependencies,
+            certified=certified,
         )
         total = calculate_weighted_total(dims, self.weights)
 
@@ -208,6 +221,7 @@ class HealthScorer:
         language: str | None,
         *,
         fast_dependencies: bool = False,
+        certified: bool = False,
     ) -> dict[str, float | None]:
         """Score each health dimension for a source file."""
         dependency_score = (
@@ -215,7 +229,7 @@ class HealthScorer:
             if fast_dependencies
             else score_dependencies(file_path)
         )
-        return {
+        dimensions: dict[str, float | None] = {
             "size": score_size(len(source.splitlines())),
             "complexity": score_complexity(file_path, source, language),
             "dependencies": dependency_score,
@@ -224,6 +238,13 @@ class HealthScorer:
             "structure": score_structure(file_path, source, language),
             "git_hotspot": score_git_hotspot(file_path),
         }
+        if certified:
+            # Codex P1 (#1299 round-4): coverage.json and git history are
+            # outside the snapshot source generation — a certified read must
+            # not report dimensions that can drift for the same identity.
+            dimensions.pop("coverage")
+            dimensions.pop("git_hotspot")
+        return dimensions
 
     # Q4 (round-33 dogfood): ``golden_masters`` is a snapshot of expected
     # MCP output stored under tests/ — it is not source code and must be

@@ -62,7 +62,11 @@ whose `completeness` is not `complete` with `INDEX_SNAPSHOT_INCOMPLETE` before
 serving any graph data (mirroring the constraint route's completeness gate).
 A target file outside the snapshot's source inventory is rejected with
 `FILE_NOT_INDEXED` before any of its bytes are read or scored (the source
-recaptures only certify inventory-covered files). In particular, `nav.context` may
+recaptures only certify inventory-covered files). Constraint rows are not used
+as certified safety facts until an evaluation epoch bound to the published
+source/index generation exists (reindexing does not recompute
+`ast_constraint_violations`); the certified route omits them rather than
+serving facts it cannot prove current. In particular, `nav.context` may
 not combine entry points from a cached graph with newer filesystem lines.
 Absence, disagreement, or a changed token stops the task route; no later
 `nav.context` or `edit.safe` call starts.

@@ -303,6 +303,35 @@ class TestCache:
         )
         assert included.is_fixture is True
 
+    def test_certified_scan_falls_through_to_inventory_filtered_scan(
+        self, tmp_path: Path
+    ) -> None:
+        # Codex P1 (#1299 round-3): when the targeted scan misses, the full
+        # in-memory scan runs over the inventory — files outside the
+        # inventory (e.g. tests/other_y.py) are skipped.
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": ("def test_x():\n    assert 'foo.py' in __file__\n"),
+                "tests/other_y.py": (
+                    "from pathlib import Path\n"
+                    "PROJECT_ROOT = Path('.')\n"
+                    "name = PROJECT_ROOT / 'tree_sitter_analyzer' / 'foo.py'\n"
+                ),
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        inventory = frozenset({"tests/test_x.py"})
+        fact = is_fixture(
+            "tree_sitter_analyzer/foo.py",
+            root,
+            certified=True,
+            inventory=inventory,
+        )
+        # test_x.py only mentions the basename (no PROJECT_ROOT pattern) and
+        # other_y.py is outside the inventory -> no escalation.
+        assert fact.is_fixture is False
+
     def test_certified_scan_skips_live_allowlist(self, tmp_path: Path) -> None:
         # Codex P1 (#1299): the CLAUDE.md allowlist is outside the source
         # generation, so a certified probe must not consult it — only

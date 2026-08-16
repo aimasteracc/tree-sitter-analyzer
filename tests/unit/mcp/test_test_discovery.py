@@ -688,3 +688,29 @@ class TestFindTestFilesJavascript:
 
             results = find_test_files(str(source), tmp)
             assert any("utils.test.js" in r for r in results)
+
+
+def test_certified_test_files_walk_inventory_only() -> None:
+    """Codex P1 (#1299 round-3/4): certified discovery walks the inventory."""
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_test_files,
+    )
+
+    inventory = frozenset(
+        {
+            "src/app.py",
+            "tests/test_app.py",
+            "tests/test_other.py",
+            "tests/unit/test_app.py",  # nested indexed test counts
+            "src/test_app.py",  # colocated with the target
+        }
+    )
+    found = _certified_test_files(inventory, "src/app.py")
+    assert found == [
+        "tests/test_app.py",
+        "tests/unit/test_app.py",
+        "src/test_app.py",
+    ]
+
+    # No inventory-covered test for the target -> empty.
+    assert _certified_test_files(frozenset({"src/app.py"}), "src/app.py") == []

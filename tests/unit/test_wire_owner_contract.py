@@ -550,6 +550,27 @@ def test_read_existing_consumer_classifies_reader_sql_failures(
     assert interrupted["error_code"] == "INDEX_SNAPSHOT_DEADLINE"
     assert interrupted["action_version"] == NAV_CONTEXT_ACTION_VERSION
 
+    # Codex P2 round-4 (C20): a damaged edges row surfaces as IndexError
+    # from EdgeStore._edge_from_row — classified, never escaping the wire
+    # contract.
+    def index_error_reader(snapshot, conn):
+        raise IndexError("tuple index out of range")
+
+    index_error = read_access.read_existing_index_consumer(
+        CodeGraphContextTool(str(tmp_path)),
+        {
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+            "output_format": "json",
+        },
+        reader=index_error_reader,
+        action_version=NAV_CONTEXT_ACTION_VERSION,
+    )
+    assert index_error["success"] is False
+    assert index_error["error_code"] == "CORRUPT_INDEX"
+    assert index_error["action_version"] == NAV_CONTEXT_ACTION_VERSION
+
 
 @pytest.mark.parametrize(
     ("tool_type", "module_name"),
