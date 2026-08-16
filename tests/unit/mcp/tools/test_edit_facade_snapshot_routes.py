@@ -622,3 +622,39 @@ async def test_edit_action_controls_are_rejected_outside_supported_actions(
         "ERROR",
         f"parameter {parameter!r} applies only to action(s): {allowed}",
     )
+
+
+@pytest.mark.asyncio
+async def test_edit_impact_read_existing_platform_gate_branch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Forcing the non-certified axis returns the stable unsupported result."""
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: False)
+    (tmp_path / "inside.py").write_text("value = 1\n")
+    result = await build_edit_facade(str(tmp_path)).execute(
+        {
+            "action": "impact",
+            **_READ_EXISTING_ROUTE_ARGS["impact"],
+            "output_format": "json",
+        }
+    )
+    assert {
+        key: result[key]
+        for key in (
+            "success",
+            "access_mode",
+            "access_state",
+            "access_reason",
+            "source_snapshots",
+        )
+    } == {
+        "success": True,
+        "access_mode": "read_existing",
+        "access_state": "unknown",
+        "access_reason": "DIFF_SNAPSHOT_READ_EXISTING_UNSUPPORTED",
+        "source_snapshots": [],
+    }
+    assert result["action_version"]

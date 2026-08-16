@@ -713,3 +713,184 @@ def test_readonly_revalidation_uses_readonly_oracle(git_repo: str) -> None:
         monkeypatch.undo()
     assert frozen_calls == []
     assert readonly_calls
+
+
+@POSIX_SNAPSHOT_TEST
+def test_git_unquote_round_trips_escapes() -> None:
+    from tree_sitter_analyzer.diff_snapshot_readonly_capture import _git_unquote
+
+    assert _git_unquote(b'"a\\tb"') == b"a\tb"
+    assert _git_unquote(b'"a\\nb"') == b"a\nb"
+    assert _git_unquote(b'"a\\\\b"') == b"a\\b"
+    assert _git_unquote(b'"a\\"b"') == b'a"b'
+    assert _git_unquote(b'"\\303\\251"') == "é".encode()
+    assert _git_unquote(b"plain") == b"plain"
+
+
+@POSIX_SNAPSHOT_TEST
+def test_git_unquote_rejects_malformed_escapes() -> None:
+    from tree_sitter_analyzer.diff_snapshot_readonly_capture import _git_unquote
+
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        _git_unquote(b'"trailing\\"')
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        _git_unquote(b'"\\x"')
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        _git_unquote(b'"\\12"')
+    # Unquoted input is returned verbatim, never decoded.
+    assert _git_unquote(b'"unterminated') == b'"unterminated'
+
+
+@POSIX_SNAPSHOT_TEST
+def test_patch_section_paths_rejects_malformed_headers() -> None:
+    from tree_sitter_analyzer.diff_snapshot_readonly_capture import (
+        _patch_section_paths,
+    )
+
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        _patch_section_paths(b"diff --git a/only-one-token\n")
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        _patch_section_paths(b'diff --git "a/x" b/y\n')
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        _patch_section_paths(b"diff --git x/y b/z\n")
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        _patch_section_paths(b'diff --git "a/x" "c/y"\n')
+
+
+@POSIX_SNAPSHOT_TEST
+def test_rewrite_new_file_mode_aligns_and_keeps_others() -> None:
+    from tree_sitter_analyzer.diff_snapshot_readonly_capture import (
+        _rewrite_new_file_mode,
+    )
+
+    section = b"diff --git a/x b/x\nnew file mode 100755\nindex 0000..1111\n"
+    rewritten = _rewrite_new_file_mode(section, b"100644")
+    assert rewritten == b"diff --git a/x b/x\nnew file mode 100644\nindex 0000..1111\n"
+    # No mode line and identical modes pass through untouched.
+    assert _rewrite_new_file_mode(b"no mode here\n", b"100644") == b"no mode here\n"
+    assert _rewrite_new_file_mode(section, b"100755") == section
+
+
+@POSIX_SNAPSHOT_TEST
+def test_workspace_mode_unsafe_metadata_fails_closed() -> None:
+    from tree_sitter_analyzer.diff_snapshot_readonly_capture import _workspace_mode
+    from tree_sitter_analyzer.source_oracle import SafePath
+
+    epoch = GitEpoch(
+        b"head", "sha1", (), (), (), (), core_filemode=True, core_symlinks=True
+    )
+    unsafe = SafePath(data=b"x", metadata=(b"no-mode-field",), kind="file")
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_UNSAFE_PATH"):
+        _workspace_mode(epoch, unsafe, b"100644")
+
+
+@POSIX_SNAPSHOT_TEST
+def test_readonly_rows_rejects_malformed_output(git_repo: str) -> None:
+    import tree_sitter_analyzer.diff_snapshot_readonly_capture as module
+
+    original = module._live_index_output
+    module._live_index_output = lambda *a, **k: b"R\0only-one-token"
+    try:
+        with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+            module._readonly_rows(
+                git_repo, "diff", b"head", time.monotonic() + 60.0, 1024
+            )
+    finally:
+        module._live_index_output = original
+
+
+@POSIX_SNAPSHOT_TEST
+def test_readonly_binaries_rejects_malformed_output(git_repo: str) -> None:
+    import tree_sitter_analyzer.diff_snapshot_readonly_capture as module
+
+    original = module._live_index_output
+    module._live_index_output = lambda *a, **k: b"not-numstat"
+    try:
+        with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+            module._readonly_binaries(
+                git_repo, "diff", b"head", time.monotonic() + 60.0, 1024
+            )
+    finally:
+        module._live_index_output = original
+
+
+@POSIX_SNAPSHOT_TEST
+def test_gitlink_probe_safe_classifies_boundaries(
+    git_repo: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Probes never enter symlink-replaced or outside-pointing gitlinks."""
+    import tree_sitter_analyzer.diff_snapshot_readonly as module
+
+    sub_repo = Path(git_repo, "vendor")
+    sub_repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(sub_repo)], check=True)
+    for cfg in (["user.email", "t@t"], ["user.name", "t"]):
+        subprocess.run(["git", "-C", str(sub_repo), "config", *cfg], check=True)
+    (sub_repo / "lib.py").write_text("x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(sub_repo), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(sub_repo), "commit", "-qm", "sub"], check=True)
+    subprocess.run(
+        ["git", "-C", git_repo, "submodule", "add", "-q", str(sub_repo), "vendor"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", git_repo, "commit", "-qm", "add-sub"], check=True)
+    git_dir = os.path.join(git_repo, ".git")
+    deadline = time.monotonic() + 60.0
+    assert module._gitlink_probe_safe(git_repo, git_dir, b"vendor", deadline) is True
+    # A symlink-replaced gitlink is never probed.
+    os.rename(os.path.join(git_repo, "vendor"), os.path.join(git_repo, "vendor.old"))
+    os.symlink("vendor.old", os.path.join(git_repo, "vendor"))
+    assert module._gitlink_probe_safe(git_repo, git_dir, b"vendor", deadline) is False
+    # A missing directory is not probed.
+    assert module._gitlink_probe_safe(git_repo, git_dir, b"absent", deadline) is False
+    # A .git file pointing outside the parent git dir is not probed.
+    outside = Path(git_repo, "outside")
+    outside.mkdir()
+    (outside / ".git").write_text("gitdir: /etc\n", encoding="utf-8")
+    assert module._gitlink_probe_safe(git_repo, git_dir, b"outside", deadline) is False
+    # A malformed .git file is not probed.
+    (outside / ".git").write_text("no gitdir line\n", encoding="utf-8")
+    assert module._gitlink_probe_safe(git_repo, git_dir, b"outside", deadline) is False
+
+
+@POSIX_SNAPSHOT_TEST
+def test_gitlink_probe_failure_frames_dirty_without_entering(
+    git_repo: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An uncertifiable gitlink is dirty and never entered."""
+    import tree_sitter_analyzer.diff_snapshot_readonly as module
+
+    sub_repo = Path(git_repo, "vendor")
+    sub_repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(sub_repo)], check=True)
+    for cfg in (
+        ["user.email", "t@t"],
+        ["user.name", "t"],
+        ["maintenance.auto", "false"],
+        ["gc.auto", "0"],
+    ):
+        subprocess.run(["git", "-C", str(sub_repo), "config", *cfg], check=True)
+    (sub_repo / "lib.py").write_text("x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(sub_repo), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(sub_repo), "commit", "-qm", "sub"], check=True)
+    subprocess.run(
+        ["git", "-C", git_repo, "submodule", "add", "-q", str(sub_repo), "vendor"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", git_repo, "commit", "-qm", "add-sub"], check=True)
+    nested_calls: list[list[str]] = []
+    original_output = module._git_output_readonly
+
+    def spy_output(root, args, *, deadline, limit):
+        nested_calls.append(args)
+        return original_output(root, args, deadline=deadline, limit=limit)
+
+    monkeypatch.setattr(module, "_git_output_readonly", spy_output)
+    monkeypatch.setattr(module, "_gitlink_probe_safe", lambda *a, **k: False)
+    epochs: list[GitEpoch] = []
+    oracle_generation_readonly(git_repo, "diff", epoch_out=epochs)
+    assert epochs[0].workspace_gitlinks == (
+        (b"vendor", dict(epochs[0].index_entries)[b"vendor"]),
+    )
+    # The nested submodule probes were never invoked for the unsafe gitlink.
+    assert all(b"-C" not in args for args in nested_calls)
