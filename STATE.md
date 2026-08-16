@@ -1,6 +1,6 @@
 # Loop State — tree-sitter-analyzer
 
-Last run: 2026-08-16 (NO1-010A P0.4 zero-write producer merged)
+Last run: 2026-08-16 (P0.4 strace adapter-route certification merged, #1297)
 
 ## NO1-010A completion record (2026-08-16)
 
@@ -85,6 +85,50 @@ Last run: 2026-08-16 (NO1-010A P0.4 zero-write producer merged)
     the Linux CI axis once `feature/rfc0022-linux-write-authority` lands.
   - Follow-ups: NO1-010B (agent change-outcome benchmark RFC) is the next
     ledger task after NO1-010A merges.
+
+## P0.4 strace certification record (2026-08-16, PR #1297)
+
+- **Objective:** certify the P0.4 read-existing adapter route on the pinned
+  Linux strace authority so the task layer runs end-to-end.
+- **Five root causes fixed in #1297:**
+  1. `split_arguments` treated strace's resumption placeholder
+     (`restart_syscall(<... resuming interrupted futex ...>)`) as a
+     descriptor and died on the embedded angles → opaque `<...`/`>...` skip.
+  2. Git subprocesses call `setsid` (via `start_new_session`) → added to the
+     policy `safe_syscalls`.
+  3. The git runner opens `/dev/null` O_RDWR (`subprocess.DEVNULL`) and the
+     classifier flagged all 698 as `write_capable_open`; a char device is
+     not a filesystem file → policy `nonfilesystem_device_markers ["<char "]`,
+     block devices stay fail-closed; policy digest re-pinned.
+  4. `classify_calls` was O(transitions × calls) (~4 min on the 119k-call
+     git trace): `reject_ambiguous_state_transition` now scans a start-sorted
+     bisect index plus every resumed (interrupted) call — provably equivalent
+     to the full scan (locked by a double-scan contract test) — ~12.5s.
+  5. Live test debug raw-trace dump removed so the artifact manifest stays
+     exact.
+- **Verified:** local replay 119,047 calls / 0 violations / 12.5s; strace
+  workflow green on every push; pinned stdout hash unchanged (`78474981…`);
+  quick gate 1997 passed.
+- **Codex review (9 comments) triaged, all fixed:** P1 — the frozen
+  constraint route in `read_existing` mode now requires and acquires the
+  caller-reserved index capability (`CONSTRAINT_INDEX_CAPABILITY_REQUIRED`
+  when absent) instead of minting a fresh lease. P2 — acquired diff
+  provenance preserved on every post-acquisition failure; workflow path
+  filters include the certified backends; adapter route emits a stable
+  3-tuple and releases the route lease in `finally`; read-existing evidence
+  attached to raw JSON before TOON formatting so all formats carry
+  `access_mode`/`access_state`/`access_reason`/`source_snapshots`; adapter
+  evidence stored under the uploaded artifact root; snapshot-route test pins
+  exact INFO verdicts.
+- **Post-review CI fixes:** wire-owner `action_version` on frozen
+  acquire/publish error envelopes (Linux path); `fail()` no longer re-raises
+  when the consumer snapshot read itself fails; pre-certification consumer
+  test platform-gated; real-git budget tests marked `slow_ok` (pass 2-3s
+  locally but brush past the 5s unit budget under 4-way xdist contention).
+- **Follow-ups:** harness corpus runs the diff route for real on Linux CI;
+  nav.context / edit.safe (P0.1) `read_existing` backends still UNCERTIFIED;
+  object-directory-free HEAD traversal is the next slice after the
+  consumers; macOS write authority is a separate RFC-tracked item.
 
 ## Takeover record (2026-08-15)
 
