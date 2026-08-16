@@ -21,62 +21,10 @@ import argparse
 import asyncio
 import json
 import os
-import sys
 
 
 def _produce(root: str) -> tuple[dict[str, object], str]:
     """Run the P0.4 producer route; return (deterministic identity, id)."""
-    # Debug aid: identify the exact failing git invocation on the CI axis.
-    # Every module imported the runner by name, so each binding must spy.
-    import tree_sitter_analyzer.diff_snapshot_readonly as _readonly
-    import tree_sitter_analyzer.git_readonly as _git_readonly
-
-    _original_runner = _git_readonly.run_git_readonly
-
-    def _spy(root: str, args: list[str], **kwargs: object):
-        try:
-            return _original_runner(root, args, **kwargs)
-        except Exception as exc:  # noqa: BLE001 - diagnostic only
-            print(
-                json.dumps({"failing_git": args, "error": str(exc)}),
-                file=sys.stderr,
-            )
-            raise
-
-    _git_readonly.run_git_readonly = _spy
-    _readonly.run_git_readonly = _spy
-    # The frozen runner may still be reached by index-snapshot helpers.
-    import tree_sitter_analyzer.frozen_git_index as _frozen_index
-    import tree_sitter_analyzer.git_subprocess as _subprocess
-
-    _original_bounded = _subprocess.run_git_bounded
-
-    def _bounded_spy(root: str, args: list[str], **kwargs: object):
-        try:
-            return _original_bounded(root, args, **kwargs)
-        except Exception as exc:  # noqa: BLE001 - diagnostic only
-            print(
-                json.dumps({"failing_frozen_git": args, "error": str(exc)}),
-                file=sys.stderr,
-            )
-            raise
-
-    _subprocess.run_git_bounded = _bounded_spy
-    _frozen_index.run_git_bounded = _bounded_spy
-    # The registry swallows capture failures into error codes; surface the
-    # raise-site traceback for the diagnostic self-check.
-    import traceback
-
-    import tree_sitter_analyzer.diff_snapshot_registry as _registry
-
-    _original_snapshot_error = _registry.snapshot_error
-
-    def _snapshot_error_spy(code: str):
-        if code == "DIFF_SNAPSHOT_GIT_ERROR":
-            traceback.print_exc(file=sys.stderr)
-        return _original_snapshot_error(code)
-
-    _registry.snapshot_error = _snapshot_error_spy
     from tree_sitter_analyzer.diff_snapshot_registry import REGISTRY, reset_registry
 
     reset_registry()

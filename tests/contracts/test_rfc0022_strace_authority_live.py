@@ -8,6 +8,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 from decimal import Decimal
 from pathlib import Path
 
@@ -245,14 +246,14 @@ def test_live_read_existing_route_is_zero_write() -> None:
             "tracked: RFC-0022 P0.4 live adapter route runs in its pinned Linux job"
         )
     artifact_root = Path(os.environ["RFC0022_AUTHORITY_ARTIFACT_DIR"])
-    case_root = Path(os.environ["RFC0022_AUTHORITY_CASE_DIR"])
     name = "adapter-route"
     artifact = artifact_root.parent / f"{name}-artifacts"
     shutil.rmtree(artifact, ignore_errors=True)
     artifact.mkdir(parents=True)
-    case = case_root / name
-    shutil.rmtree(case, ignore_errors=True)
-    case.mkdir(mode=0o777)
+    # The case must live on a chain the isolated target user can *read*
+    # (the oracle's descriptor-chain walk opens every directory O_RDONLY;
+    # the workspace chain under /home/runner is traverse-only for it).
+    case = Path(tempfile.mkdtemp(prefix="rfc0022-adapter-route-", dir="/tmp"))
     case.chmod(0o777)
     _prepare_adapter_route_fixture(case)
     target_user = os.environ["RFC0022_TARGET_USER"]
