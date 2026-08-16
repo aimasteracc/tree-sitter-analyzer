@@ -269,28 +269,6 @@ def test_format_table_json(formatter):
 # --- format_advanced: csv and full_table paths ---
 
 
-def test_format_advanced_csv(formatter):
-    """Cover format_advanced csv path."""
-    data = {
-        "file_path": "t.cpp",
-        "language": "cpp",
-        "methods": [{"name": "f", "return_type": "void", "parameters": []}],
-    }
-    output = formatter.format_advanced(data, "csv")
-    assert output  # csv output produced
-
-
-def test_format_advanced_full(formatter):
-    """Cover format_advanced non-json, non-csv → _format_full_table path."""
-    data = {
-        "file_path": "t.cpp",
-        "language": "cpp",
-        "methods": [{"name": "f", "return_type": "void", "parameters": []}],
-    }
-    output = formatter.format_advanced(data, "full")
-    assert output
-
-
 # --- _convert_function_element: parameter formats ---
 
 

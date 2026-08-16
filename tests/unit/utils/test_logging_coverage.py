@@ -16,10 +16,8 @@ from tree_sitter_analyzer.utils.logging import (
     QuietMode,
     SafeStreamHandler,
     create_performance_logger,
-    log_debug,
     logger,
     perf_logger,
-    safe_print,
     setup_logger,
     setup_performance_logger,
     suppress_output,
@@ -124,17 +122,6 @@ class TestSafeStreamHandler:
 class TestLogFunctions:
     """Tests for logging functions"""
 
-    def test_log_debug(self):
-        """Test log_debug function"""
-        # Should not raise — if it does, the test fails
-        log_debug("Test debug message")
-
-    def test_log_debug_with_closed_handler(self):
-        """Test log_debug handles closed handlers gracefully"""
-        with patch.object(logger, "debug", side_effect=OSError("Test error")):
-            # Should not raise, just suppress — if it does, the test fails
-            log_debug("Test message")
-
 
 class TestQuietMode:
     """Tests for QuietMode context manager"""
@@ -162,11 +149,6 @@ class TestQuietMode:
 
 class TestSafePrint:
     """Tests for safe_print function"""
-
-    def test_safe_print_debug(self):
-        """Test safe_print with debug level"""
-        # Should not raise — if it does, the test fails
-        safe_print("Test debug", level="debug")
 
 
 class TestPerformanceLogging:

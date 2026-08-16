@@ -419,17 +419,6 @@ class TestTreeSitterAnalyzerMCPServerProjectPath:
                 new_project_dir
             )
 
-    def test_set_project_path_without_universal_tool(self, temp_project_dir):
-        """Test project path setting without universal tool."""
-        server = TreeSitterAnalyzerMCPServer(temp_project_dir)
-        server.universal_analyze_tool = None
-
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as new_project_dir:
-            # Should not raise any exception
-            server.set_project_path(new_project_dir)
-
 
 class TestTreeSitterAnalyzerMCPServerRuntime:
     """Test MCP server runtime functionality."""

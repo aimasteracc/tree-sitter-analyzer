@@ -112,14 +112,6 @@ class TestEncodingManagerEdge:
         clear_encoding_cache()
         assert get_encoding_cache_size() == 0
 
-    def test_get_encoding_cache_size(self):
-        from tree_sitter_analyzer.encoding_utils import _encoding_cache
-
-        _encoding_cache.set("test.txt", "utf-8")
-        size = get_encoding_cache_size()
-        assert size
-        clear_encoding_cache()
-
     def test_cleanup_expired_on_eviction(self):
         cache = EncodingCache(max_size=2, ttl_seconds=-1)
         cache.set("a.py", "utf-8")

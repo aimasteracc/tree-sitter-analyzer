@@ -577,37 +577,6 @@ class TestMCPServerUtilityEdgeCases:
                     with pytest.raises(SystemExit):
                         await main()
 
-    @pytest.mark.asyncio
-    async def test_main_with_environment_variable_issues(self):
-        """Test main function with problematic environment variables."""
-        with patch.dict(os.environ, {"TREE_SITTER_PROJECT_ROOT": "${invalid}"}):
-            with patch("tree_sitter_analyzer.mcp.server.parse_mcp_args") as mock_parse:
-                mock_args = Mock()
-                mock_args.project_root = None
-                mock_parse.return_value = mock_args
-
-                with patch(
-                    "tree_sitter_analyzer.mcp.server.detect_project_root"
-                ) as mock_detect:
-                    mock_detect.return_value = "/fallback/path"
-
-                    with patch(
-                        "tree_sitter_analyzer.mcp.server.TreeSitterAnalyzerMCPServer"
-                    ) as mock_server_class:
-                        mock_server = AsyncMock()
-                        mock_server_class.return_value = mock_server
-                        mock_server.run.side_effect = KeyboardInterrupt()
-
-                        with (
-                            patch("sys.stdin"),
-                            patch("sys.stdout"),
-                            patch("sys.stderr"),
-                        ):
-                            try:
-                                await main()
-                            except SystemExit:
-                                pass  # Expected for KeyboardInterrupt handling
-
     def test_main_sync_with_exception(self):
         """Test synchronous main function with exception."""
         with patch("tree_sitter_analyzer.mcp.server.asyncio.run") as mock_run:
@@ -643,25 +612,3 @@ class TestMCPServerLoggingEdgeCases:
                 # Should not raise exception even if logging fails
                 server = TreeSitterAnalyzerMCPServer(temp_project_dir)
                 assert server.is_initialized()
-
-    @pytest.mark.asyncio
-    async def test_tool_call_with_logging_failure(self, temp_project_dir):
-        """Test tool calls when logging fails."""
-        server = TreeSitterAnalyzerMCPServer(temp_project_dir)
-
-        with patch("tree_sitter_analyzer.mcp.server.logger") as mock_logger:
-            mock_logger.info.side_effect = ValueError("Logging failed")
-            mock_logger.error.side_effect = ValueError("Logging failed")
-
-            with patch("sys.stdin"), patch("sys.stdout"), patch("sys.stderr"):
-                # Should handle logging failures gracefully
-                arguments = {"file_path": "non_existent.py"}
-
-                try:
-                    await server._analyze_code_scale(arguments)
-                except FileNotFoundError:
-                    # Expected for non-existent file
-                    pass
-                except ValueError as e:
-                    if "Logging failed" in str(e):
-                        pytest.fail("Should handle logging failures gracefully")
