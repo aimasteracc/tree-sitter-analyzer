@@ -17,7 +17,6 @@ from typing import cast
 from .diff_snapshot_capture import _capture_payload
 from .diff_snapshot_constraints import (
     frozen_index_constraint_config,
-    frozen_index_sources_match_worktree,
     live_constraint_config,
     staged_sources_match_worktree,
     staged_constraint_config,
@@ -286,11 +285,6 @@ class DiffSnapshotRegistry:
                     if readonly
                     else frozen_index_constraint_config
                 )
-                staged_match_reader = (
-                    frozen_index_sources_match_worktree_readonly
-                    if readonly
-                    else frozen_index_sources_match_worktree
-                )
                 (
                     constraint_config_path,
                     constraint_config_data,
@@ -303,13 +297,25 @@ class DiffSnapshotRegistry:
                     ceiling,
                     staged_config_reader,
                 )
-                staged_source_matches_worktree = staged_sources_match_worktree(
-                    root,
-                    staged_epoch,
-                    optional_deadline,
-                    min(16 * 1024 * 1024, ceiling),
-                    staged_match_reader,
-                )
+                if readonly:
+                    # Explicit reader: the zero-write probe replaces the
+                    # frozen default (which materializes a temp index).
+                    staged_source_matches_worktree = staged_sources_match_worktree(
+                        root,
+                        staged_epoch,
+                        optional_deadline,
+                        min(16 * 1024 * 1024, ceiling),
+                        frozen_index_sources_match_worktree_readonly,
+                    )
+                else:
+                    # Legacy 4-argument call shape keeps the frozen default
+                    # reader and the existing test seam contract.
+                    staged_source_matches_worktree = staged_sources_match_worktree(
+                        root,
+                        staged_epoch,
+                        optional_deadline,
+                        min(16 * 1024 * 1024, ceiling),
+                    )
                 staged_config_matches_worktree = (
                     constraint_config_error is None
                     and live_config_error is None
