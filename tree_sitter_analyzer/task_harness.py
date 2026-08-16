@@ -42,6 +42,35 @@ from .task.serializers import serialize_json, serialize_toon
 
 Operation = Literal["understand", "plan_change", "assess_change"]
 
+#: Corpus/request input bound (Codex #1292 P2): never buffer unbounded input.
+MAX_CORPUS_BYTES = 8 * 1024 * 1024
+
+
+def _strict_json_loads(text: str) -> Any:
+    """JSON decode that rejects duplicate keys and NaN/Infinity constants.
+
+    The default decoder silently keeps the last duplicate key and accepts
+    non-standard constants; an exact corpus manifest must reject both
+    (Codex #1292 P1).
+    """
+
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate key {key!r}")
+            result[key] = value
+        return result
+
+    def reject_constant(value: str) -> Any:
+        raise ValueError(f"non-standard JSON constant {value!r}")
+
+    return json.loads(
+        text,
+        object_pairs_hook=reject_duplicates,
+        parse_constant=reject_constant,
+    )
+
 
 class McpPrimitiveExecutor:
     """PrimitiveExecutor over the real same-process MCP adapters.
@@ -120,7 +149,14 @@ def request_from_dict(operation: Operation, payload: dict[str, Any]) -> Any:
 def _budget_from_dict(payload: dict[str, Any]) -> Budget:
     budget_payload = payload.get("budget")
     if budget_payload is None:
-        return Budget(profile=payload.get("profile", "standard"))
+        # Top-level ceilings are accepted fields and must be honored
+        # (Codex #1292 P1).
+        return Budget(
+            profile=payload.get("profile", "standard"),
+            max_primitive_calls=payload.get("max_primitive_calls"),
+            max_evidence_items=payload.get("max_evidence_items"),
+            routing_deadline_ms=payload.get("routing_deadline_ms"),
+        )
     if type(budget_payload) is not dict:
         raise ValueError("budget must be a dict")
     known = {
@@ -177,6 +213,25 @@ async def run_operation(
     return serialize_json(outcome)
 
 
+def _validate_input_path(path: str, project_root: str | None) -> None:
+    """Reject corpus/request inputs outside the selected project.
+
+    File inputs must resolve within the project boundary (including symlink
+    resolution); '-' means stdin. This mirrors the CLI security contract
+    that file inputs stay inside ``TREE_SITTER_PROJECT_ROOT`` (Codex
+    #1292 P1).
+    """
+    if path == "-":
+        return
+    if not project_root:
+        raise ValueError("project-root is required for file inputs")
+    from .security.boundary_manager import ProjectBoundaryManager
+
+    manager = ProjectBoundaryManager(project_root)
+    if manager.validate_and_resolve_path(path) is None:
+        raise ValueError(f"input path is outside the project: {path!r}")
+
+
 def load_corpus(path: str) -> list[tuple[Operation, dict[str, Any]]]:
     """Load a JSONL experiment corpus (one request mapping per line).
 
@@ -189,16 +244,22 @@ def load_corpus(path: str) -> list[tuple[Operation, dict[str, Any]]]:
     if path == "-":
         import io
 
-        lines = io.StringIO(sys.stdin.read()).readlines()
+        raw = sys.stdin.read(MAX_CORPUS_BYTES + 1)
+        if len(raw) > MAX_CORPUS_BYTES:
+            raise ValueError("corpus exceeds the 8 MiB input bound")
+        lines = io.StringIO(raw).readlines()
     else:
         with open(path, encoding="utf-8") as handle:
-            lines = handle.readlines()
+            raw = handle.read(MAX_CORPUS_BYTES + 1)
+        if len(raw) > MAX_CORPUS_BYTES:
+            raise ValueError("corpus exceeds the 8 MiB input bound")
+        lines = raw.splitlines(keepends=True)
     for index, line in enumerate(lines, start=1):
         if not line.strip():
             continue
         try:
-            payload = json.loads(line)
-        except json.JSONDecodeError as exc:
+            payload = _strict_json_loads(line)
+        except (json.JSONDecodeError, ValueError) as exc:
             raise ValueError(f"corpus line {index}: invalid JSON: {exc}") from exc
         if type(payload) is not dict:
             raise ValueError(f"corpus line {index}: not an object")
@@ -259,11 +320,13 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=("understand", "plan_change", "assess_change"),
         default=None,
     )
-    parser.add_argument("--task", default="", help="Task text (task routes).")
+    parser.add_argument(
+        "--task", default=argparse.SUPPRESS, help="Task text (task routes)."
+    )
     parser.add_argument(
         "--diff",
         choices=("workspace", "staged"),
-        default=None,
+        default=argparse.SUPPRESS,
         help="Diff source (diff routes; requires a frozen index + workspace diff).",
     )
     parser.add_argument(
@@ -321,19 +384,23 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     request: Any
+    task = getattr(args, "task", None)
+    diff = getattr(args, "diff", None)
     if args.operation is None and args.corpus is None:
         print("--operation is required (or use --corpus)", file=sys.stderr)
         return 2
-    if args.task and args.diff:
+    if task is not None and diff is not None:
         print("task and diff are mutually exclusive", file=sys.stderr)
         return 2
-    if args.corpus is not None and (args.task or args.diff or args.request_json):
+    if args.corpus is not None and (
+        task is not None or diff is not None or args.request_json
+    ):
         print(
             "--corpus is exclusive with --task/--diff/--request-json",
             file=sys.stderr,
         )
         return 2
-    if args.request_json is not None and (args.task or args.diff):
+    if args.request_json is not None and (task is not None or diff is not None):
         print(
             "--request-json is exclusive with --task/--diff",
             file=sys.stderr,
@@ -341,6 +408,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.corpus is not None:
         try:
+            _validate_input_path(args.corpus, args.project_root)
             report = run_corpus(args.corpus, project_root=args.project_root)
         except ValueError as exc:
             print(f"invalid corpus: {exc}", file=sys.stderr)
@@ -352,14 +420,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.request_json is not None:
         try:
+            _validate_input_path(args.request_json, args.project_root)
             if args.request_json == "-":
                 import io
 
-                payload = json.loads(io.StringIO(sys.stdin.read()).read())
+                raw = sys.stdin.read(MAX_CORPUS_BYTES + 1)
+                if len(raw) > MAX_CORPUS_BYTES:
+                    raise ValueError("request exceeds the 8 MiB input bound")
+                payload = _strict_json_loads(io.StringIO(raw).read())
             else:
                 with open(args.request_json, encoding="utf-8") as handle:
-                    payload = json.load(handle)
-        except (json.JSONDecodeError, OSError) as exc:
+                    raw = handle.read(MAX_CORPUS_BYTES + 1)
+                if len(raw) > MAX_CORPUS_BYTES:
+                    raise ValueError("request exceeds the 8 MiB input bound")
+                payload = _strict_json_loads(raw)
+        except (json.JSONDecodeError, ValueError, OSError) as exc:
             print(f"invalid request JSON: {exc}", file=sys.stderr)
             return 2
         if type(payload) is not dict:
@@ -391,27 +466,23 @@ def main(argv: list[str] | None = None) -> int:
         routing_deadline_ms=args.routing_deadline_ms,
     )
     try:
-        if args.diff:
+        if diff is not None:
             request = (
                 PlanChangeRequest(
-                    diff=DiffInput(
-                        source=args.diff, scope_paths=tuple(args.scope_path)
-                    ),
+                    diff=DiffInput(source=diff, scope_paths=tuple(args.scope_path)),
                     budget=budget,
                 )
                 if args.operation == "plan_change"
                 else AssessChangeRequest(
-                    diff=DiffInput(
-                        source=args.diff, scope_paths=tuple(args.scope_path)
-                    ),
+                    diff=DiffInput(source=diff, scope_paths=tuple(args.scope_path)),
                     budget=budget,
                 )
             )
         else:
             if args.operation == "understand":
-                request = UnderstandRequest(task=args.task, budget=budget)
+                request = UnderstandRequest(task=task or "", budget=budget)
             else:
-                request = PlanChangeRequest(task=args.task, budget=budget)
+                request = PlanChangeRequest(task=task or "", budget=budget)
     except ValueError as exc:
         print(f"invalid request: {exc}", file=sys.stderr)
         return 2
