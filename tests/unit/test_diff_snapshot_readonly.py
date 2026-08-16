@@ -48,6 +48,7 @@ def _epochs(root: str, mode: str) -> tuple[GitEpoch, GitEpoch]:
 
 
 @POSIX_SNAPSHOT_TEST
+@POSIX_SNAPSHOT_TEST
 def test_clean_repo_generations_match(git_repo: str) -> None:
     for mode in ("diff", "staged"):
         frozen_epoch, readonly_epoch = _epochs(git_repo, mode)
@@ -56,6 +57,7 @@ def test_clean_repo_generations_match(git_repo: str) -> None:
         assert frozen_epoch.untracked_paths == readonly_epoch.untracked_paths
 
 
+@POSIX_SNAPSHOT_TEST
 @POSIX_SNAPSHOT_TEST
 def test_dirty_and_untracked_generations_match(git_repo: str) -> None:
     import pathlib
@@ -82,6 +84,7 @@ def test_dirty_and_untracked_generations_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@POSIX_SNAPSHOT_TEST
 def test_generation_changes_when_source_changes(git_repo: str) -> None:
     import pathlib
 
@@ -93,6 +96,7 @@ def test_generation_changes_when_source_changes(git_repo: str) -> None:
     assert after == oracle_generation_readonly(git_repo, "diff")[0]
 
 
+@POSIX_SNAPSHOT_TEST
 @POSIX_SNAPSHOT_TEST
 def test_readonly_never_materializes_temporary_index(git_repo: str) -> None:
     import tempfile
@@ -109,6 +113,7 @@ def test_readonly_never_materializes_temporary_index(git_repo: str) -> None:
     assert mkstemp_calls == []
 
 
+@POSIX_SNAPSHOT_TEST
 @POSIX_SNAPSHOT_TEST
 def test_live_index_output_is_readonly_invocation(git_repo: str) -> None:
     """GIT_OPTIONAL_LOCKS=0 is set and no GIT_INDEX_FILE is injected."""
@@ -138,6 +143,7 @@ def test_live_index_output_is_readonly_invocation(git_repo: str) -> None:
     assert "GIT_INDEX_FILE" not in seen_env
 
 
+@POSIX_SNAPSHOT_TEST
 def test_workspace_unsupported_fails_closed(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly as module
 
@@ -146,6 +152,7 @@ def test_workspace_unsupported_fails_closed(git_repo: str, monkeypatch) -> None:
         oracle_generation_readonly(git_repo, "diff")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_root_mismatch_fails_closed(git_repo: str) -> None:
     import os
 
@@ -155,6 +162,7 @@ def test_root_mismatch_fails_closed(git_repo: str) -> None:
         oracle_generation_readonly(subdir, "diff")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_gitlink_generations_match(git_repo: str) -> None:
     import pathlib
 
@@ -183,17 +191,20 @@ def test_gitlink_generations_match(git_repo: str) -> None:
     assert b"vendor" in frozen_epoch.tracked_paths
 
 
+@POSIX_SNAPSHOT_TEST
 def test_split_index_fails_closed(git_repo: str) -> None:
     subprocess.run(["git", "-C", git_repo, "update-index", "--split-index"], check=True)
     with pytest.raises(Exception, match="DIFF_SNAPSHOT_UNSUPPORTED_INDEX"):
         oracle_generation_readonly(git_repo, "diff")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_capacity_fails_closed(git_repo: str) -> None:
     with pytest.raises(Exception, match="DIFF_SNAPSHOT_CAPACITY"):
         oracle_generation_readonly(git_repo, "diff", byte_ceiling=1)
 
 
+@POSIX_SNAPSHOT_TEST
 def test_runner_popen_failure_is_stable_error(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly as module
 
@@ -211,6 +222,7 @@ def test_runner_popen_failure_is_stable_error(git_repo: str, monkeypatch) -> Non
         )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_runner_negative_limit_fails_closed(git_repo: str) -> None:
     with pytest.raises(Exception, match="DIFF_SNAPSHOT_CAPACITY"):
         _live_index_output(
@@ -248,6 +260,7 @@ class _UnboundedStream:
         return b"x" * 65536
 
 
+@POSIX_SNAPSHOT_TEST
 def test_runner_stream_failure_is_stable_error(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly as module
 
@@ -273,6 +286,7 @@ def test_runner_stream_failure_is_stable_error(git_repo: str, monkeypatch) -> No
             )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_dirty_gitlink_frames_opaque_evidence(git_repo: str, monkeypatch) -> None:
     # Mirrors the frozen oracle's own dirty-gitlink test (monkeypatched
     # inventory): a gitlink reported in the dirty set frames opaque
@@ -309,6 +323,7 @@ def test_dirty_gitlink_frames_opaque_evidence(git_repo: str, monkeypatch) -> Non
     assert epochs[0].workspace_gitlinks == ((b"vendor", entry),)
 
 
+@POSIX_SNAPSHOT_TEST
 def test_inventory_consistency_check_fails_closed(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly as module
 
@@ -324,6 +339,7 @@ def test_inventory_consistency_check_fails_closed(git_repo: str, monkeypatch) ->
         oracle_generation_readonly(git_repo, "diff")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_worktree_path_capacity_fails_closed(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly as module
 
@@ -340,6 +356,7 @@ def test_worktree_path_capacity_fails_closed(git_repo: str, monkeypatch) -> None
         oracle_generation_readonly(git_repo, "diff")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_empty_repo_generations_match(tmp_path) -> None:
     root = str(tmp_path / "empty")
     os.mkdir(root)
@@ -354,6 +371,7 @@ def test_empty_repo_generations_match(tmp_path) -> None:
         assert frozen_gen == readonly_gen
 
 
+@POSIX_SNAPSHOT_TEST
 def test_root_resolution_failure_fails_closed(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly as module
 
@@ -385,6 +403,7 @@ class _BrokenStdin:
         pass
 
 
+@POSIX_SNAPSHOT_TEST
 def test_runner_feed_broken_pipe_is_ignored(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly as module
 
@@ -415,6 +434,7 @@ def test_runner_feed_broken_pipe_is_ignored(git_repo: str, monkeypatch) -> None:
         assert out == b""
 
 
+@POSIX_SNAPSHOT_TEST
 def test_runner_blocking_stream_times_out(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly as module
 
@@ -430,6 +450,7 @@ def test_runner_blocking_stream_times_out(git_repo: str, monkeypatch) -> None:
         )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_runner_kill_cleanup_swallows_wait_errors(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly as module
 
@@ -457,6 +478,7 @@ def test_runner_kill_cleanup_swallows_wait_errors(git_repo: str, monkeypatch) ->
         )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_runner_nonzero_exit_is_stable_error(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly as module
 
