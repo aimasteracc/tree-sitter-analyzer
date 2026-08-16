@@ -217,11 +217,14 @@ def run_corpus(
     corpus_path: str,
     project_root: str | None = None,
 ) -> str:
-    """Run a JSONL corpus and emit one deterministic JSON report.
+    """Run a JSONL corpus and emit one JSON report.
 
     Every outcome is serialized into ``{"results": [...]}`` so experiments
-    can be diffed byte-for-byte across runs; a failed request mapping is a
-    hard corpus error (exact manifest discipline), never a skipped case.
+    can be diffed across runs; all fields except the per-execution timing
+    measurements (``consumed.routing_wall_ms``/``cleanup_wall_ms``/
+    ``deadline_overrun_ms``) are deterministic for the same source state.
+    A failed request mapping is a hard corpus error (exact manifest
+    discipline), never a skipped case.
     """
     entries = load_corpus(corpus_path)
     serialized: list[str] = []
