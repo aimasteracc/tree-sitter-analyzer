@@ -372,3 +372,74 @@ def test_cli_main_corpus_mode(monkeypatch, capsys) -> None:
     assert harness.main(["--corpus", "-"]) == 0
     assert capsys.readouterr().out == '{"results": []}\n'
     assert harness.main(["--corpus", "-", "--task", "x"]) == 2
+
+
+def test_load_corpus_rejects_non_object_line(tmp_path) -> None:
+    from tree_sitter_analyzer.task_harness import load_corpus
+
+    corpus = tmp_path / "arr.jsonl"
+    corpus.write_text("[1, 2]\n")
+    with pytest.raises(ValueError, match="not an object"):
+        load_corpus(str(corpus))
+
+
+def test_cli_main_requires_operation_without_corpus(monkeypatch, capsys) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    assert harness.main(["--task", "x"]) == 2
+    assert "operation is required" in capsys.readouterr().err
+
+
+def test_cli_main_corpus_invalid_json(monkeypatch, capsys) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    async def fake_run(*args, **kwargs):
+        raise ValueError("boom")
+
+    monkeypatch.setattr(harness, "run_operation", fake_run)
+    corpus = "-"
+    monkeypatch.setattr(sys, "stdin", io.StringIO("not-json\n"))
+    assert harness.main(["--corpus", corpus]) == 2
+    assert "invalid corpus" in capsys.readouterr().err
+
+
+def test_cli_main_request_json_invalid_payloads(monkeypatch, capsys) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO("not-json"))
+    assert harness.main(["--operation", "understand", "--request-json", "-"]) == 2
+    assert "invalid request JSON" in capsys.readouterr().err
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO("[1,2]"))
+    assert harness.main(["--operation", "understand", "--request-json", "-"]) == 2
+    assert "not an object" in capsys.readouterr().err
+
+    monkeypatch.setattr(
+        sys, "stdin", io.StringIO('{"task": "x", "diff": {"source": "workspace"}}')
+    )
+    assert harness.main(["--operation", "understand", "--request-json", "-"]) == 2
+    assert "invalid request" in capsys.readouterr().err
+
+
+def test_cli_main_request_json_from_file(monkeypatch, capsys, tmp_path) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    async def fake_run(*args, **kwargs):
+        return "{}"
+
+    monkeypatch.setattr(harness, "run_operation", fake_run)
+    request_file = tmp_path / "request.json"
+    request_file.write_text(json.dumps({"task": "x"}))
+    assert (
+        harness.main(["--operation", "understand", "--request-json", str(request_file)])
+        == 0
+    )
+    assert capsys.readouterr().out == "{}\n"
+    # A missing file is a hard CLI error, not a crash.
+    assert (
+        harness.main(
+            ["--operation", "understand", "--request-json", str(tmp_path / "nope.json")]
+        )
+        == 2
+    )
+    assert "invalid request JSON" in capsys.readouterr().err
