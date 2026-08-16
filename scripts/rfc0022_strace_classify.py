@@ -96,6 +96,10 @@ def reject_ambiguous_state_transition(
     calls: list[TraceCall],
     state: ProcessState,
     policy: dict[str, Any],
+    *,
+    sorted_calls: list[TraceCall] | None = None,
+    start_times: list[Decimal] | None = None,
+    spanning_calls: list[TraceCall] | None = None,
 ) -> None:
     process_syscalls = set(policy["process_syscalls"])
     mapping_calls = {
@@ -120,7 +124,24 @@ def reject_ambiguous_state_transition(
     if not mapping_transition and not cwd_transition and not file_transition:
         return
     start, end = _timestamp_interval(call)
-    for other in calls:
+    # Real routes (e.g. a git-spawning read-only capture) produce tens of
+    # thousands of mapping transitions; scanning the whole call list per
+    # transition is quadratic.  With the prebuilt start-sorted index the
+    # scan is bounded to calls whose start falls inside the interval, plus
+    # every resumed (interrupted) call: only those can overlap the
+    # transition while starting before it, because a point-interval call
+    # overlaps [start, end] iff its own timestamp is inside the window.
+    if sorted_calls is not None and start_times is not None:
+        import bisect
+
+        lo = bisect.bisect_left(start_times, start)
+        hi = bisect.bisect_right(start_times, end)
+        candidates = sorted_calls[lo:hi]
+        if spanning_calls:
+            candidates = [*candidates, *spanning_calls]
+    else:
+        candidates = calls
+    for other in candidates:
         if other.pid == call.pid:
             continue
         other_start, other_end = _timestamp_interval(other)
@@ -164,7 +185,7 @@ def reject_ambiguous_state_transition(
 def is_nonfilesystem(annotation: str, policy: dict[str, Any]) -> bool:
     return any(
         annotation.startswith(prefix) for prefix in policy["nonfilesystem_fd_prefixes"]
-    )
+    ) or any(marker in annotation for marker in policy["nonfilesystem_device_markers"])
 
 
 def classify_write_open(
@@ -186,7 +207,22 @@ def classify_write_open(
         and not (_DESTRUCTIVE_OPEN_FLAGS & set(matched))
         and not state.has_shared_files(call.pid)
     )
-    if safe_magic_reopen:
+    # A write-capable open of a character device (e.g. subprocess.DEVNULL's
+    # /dev/null) cannot grant filesystem write capability: the kernel
+    # attached a device node, not a file.  The exemption requires the
+    # requested target itself to be the device (the resolved annotation
+    # starts with the requested path), so a CLONE_FILES peer re-pointing
+    # the fd cannot launder a filesystem open into an exemption: the
+    # re-pointed annotation would carry the peer's path, not the request.
+    safe_device_open = (
+        result_annotation is not None
+        and any(
+            marker in result_annotation
+            for marker in policy["nonfilesystem_device_markers"]
+        )
+        and result_annotation.startswith(f"{requested_target}<")
+    )
+    if safe_magic_reopen or safe_device_open:
         return None
     target = (
         requested_target

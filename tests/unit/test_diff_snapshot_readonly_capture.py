@@ -100,6 +100,7 @@ def _assert_equal_payloads(root: str, mode: str, expected_records: int) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@pytest.mark.slow_ok  # full readonly capture + publish: real git subprocess work
 def test_clean_repo_payloads_match(git_repo: str) -> None:
     _assert_equal_payloads(git_repo, "diff", 0)
     _assert_equal_payloads(git_repo, "staged", 0)
@@ -676,6 +677,7 @@ def test_skip_worktree_entry_matches(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@pytest.mark.slow_ok  # full readonly capture + publish: real git subprocess work
 def test_readonly_revalidation_uses_readonly_oracle(git_repo: str) -> None:
     """acquire/validate_publish revalidate readonly snapshots zero-write."""
     import tree_sitter_analyzer.diff_snapshot_registry as snapshots

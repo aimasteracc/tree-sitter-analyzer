@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from ... import read_existing_access as read_access
 from ...constraints import (
     Violation,
     evaluate,
@@ -107,21 +108,62 @@ class ConstraintCheckTool(BaseMCPTool):
                 "action_version": EDIT_CONSTRAINTS_ACTION_VERSION,
             }
 
-        access_arguments = arguments
-        if "access_mode" in arguments and "output_format" not in arguments:
-            access_arguments = {**arguments, "output_format": "json"}
-        unavailable = read_existing_unavailable(
-            access_arguments,
-            reason=READ_EXISTING_AUTHORITY_UNCERTIFIED,
-            action_version=EDIT_CONSTRAINTS_ACTION_VERSION,
-        )
-        if unavailable is not None:
-            return apply_toon_format_to_response(
-                unavailable, unavailable["output_format"]
+        read_existing = validate_read_existing_access(arguments)
+        if read_existing and not read_access.read_existing_platform_supported():
+            # RFC-0022 P0.4: the certified axis alone runs the consumer
+            # backends; other OSes keep the stable classified result.
+            access_arguments = arguments
+            if "access_mode" in arguments and "output_format" not in arguments:
+                access_arguments = {**arguments, "output_format": "json"}
+            unavailable = read_existing_unavailable(
+                access_arguments,
+                reason=READ_EXISTING_AUTHORITY_UNCERTIFIED,
+                action_version=EDIT_CONSTRAINTS_ACTION_VERSION,
             )
+            if unavailable is not None:
+                return apply_toon_format_to_response(
+                    unavailable, unavailable["output_format"]
+                )
 
         if arguments.get("diff_snapshot_id") is not None:
-            return self._execute_frozen(arguments)
+            # Codex P2 (#1297): attach the read-existing evidence to the raw
+            # JSON response BEFORE the requested format is applied, so TOON
+            # output carries access_mode/access_state/access_reason/
+            # source_snapshots inside toon_content exactly like JSON does.
+            # The frozen route always runs on JSON; the requested format is
+            # applied once, after evidence attachment.
+            if read_existing:
+                frozen_arguments = {**arguments, "output_format": "json"}
+            else:
+                frozen_arguments = arguments
+            result = self._execute_frozen(frozen_arguments)
+            if read_existing:
+                records: list[dict[str, str]] = []
+                if isinstance(result.get("diff_snapshot_id"), str) and isinstance(
+                    result.get("source_generation"), str
+                ):
+                    records.append(
+                        {
+                            "kind": "diff",
+                            "snapshot_id": str(result["diff_snapshot_id"]),
+                            "source_generation": str(result["source_generation"]),
+                        }
+                    )
+                if isinstance(result.get("snapshot_id"), str) and isinstance(
+                    result.get("source_generation"), str
+                ):
+                    records.append(
+                        {
+                            "kind": "index",
+                            "snapshot_id": str(result["snapshot_id"]),
+                            "source_generation": str(result["source_generation"]),
+                        }
+                    )
+                read_access.attach_read_existing_evidence(result, records=records)
+            if read_existing:
+                requested = arguments.get("output_format", "json")
+                return apply_toon_format_to_response(result, requested)
+            return result
 
         path_filter = arguments.get("path_filter", "") or ""
         severity_min = arguments.get("severity_min", "warn")

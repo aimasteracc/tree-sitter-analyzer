@@ -292,3 +292,39 @@ def read_existing_gate(
         compact_only=compact_only,
         action_version=action_version,
     )
+
+
+def attach_read_existing_evidence(
+    result: dict[str, Any],
+    *,
+    records: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    """Attach the exact P0.4 access-evidence fields to one classified result.
+
+    ``records`` are the exact ``source_snapshots`` entries citing every
+    primitive identity actually acquired during the route (``kind`` is
+    ``diff`` for P0.2 or ``index`` for P0.1); an empty list means no
+    capability was acquired. ``access_state`` is ``available`` on success
+    and otherwise ``missing``/``unknown`` with the stable failure code as
+    ``access_reason`` (RFC-0022 P0.4).
+    """
+    if result.get("success") is True:
+        state: str | None = "available"
+        reason: str | None = None
+    else:
+        code = str(
+            result.get("error_code")
+            or result.get("error")
+            or DIFF_SNAPSHOT_READ_EXISTING_UNSUPPORTED
+        )
+        state = (
+            "missing"
+            if code in {"MISSING_INDEX", "MISSING_PROJECT_ROOT"}
+            else "unknown"
+        )
+        reason = code
+    result["access_mode"] = "read_existing"
+    result["access_state"] = state
+    result["access_reason"] = reason
+    result["source_snapshots"] = list(records or [])
+    return result

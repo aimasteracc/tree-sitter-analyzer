@@ -657,6 +657,76 @@ def test_renameat2_exchange_with_live_cwd_fails_closed(
         _parse(trace)
 
 
+def test_indexed_state_transition_scan_matches_full_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1297: the classify loop scans transitions against a start-sorted
+    # index plus every resumed call instead of the full call list.  The
+    # optimization must be exactly equivalent: a resumed (interrupted)
+    # syscall can overlap a transition while starting before its window,
+    # which is why spanning calls are scanned explicitly.
+    traces = tmp_path / "traces"
+    _write_trace(
+        traces,
+        100,
+        [
+            "mmap(NULL, 4096, PROT_READ, MAP_SHARED, 3</project/db>, 0) = 0x1000",
+            "clone(child_stack=NULL, flags=CLONE_VM|SIGCHLD) = 200",
+            "mmap(0x1000, 4096, PROT_READ, MAP_PRIVATE|MAP_FIXED, 4</project/private>, 0 <unfinished ...>",
+            "--- SIGCHLD {si_signo=SIGCHLD} ---",
+            "<... mmap resumed>) = 0x1000",
+            "+++ exited with 0 +++",
+        ],
+    )
+    _write_trace(
+        traces,
+        200,
+        ["mprotect(0x1000, 4096, PROT_READ|PROT_WRITE) = 0", "+++ exited with 0 +++"],
+        start=4,
+    )
+
+    import rfc0022_strace_parser as parser
+
+    original = parser.reject_ambiguous_state_transition
+    outcomes: list[str] = []
+
+    def double_check(
+        call,
+        calls,
+        state,
+        policy,
+        *,
+        sorted_calls=None,
+        start_times=None,
+        spanning_calls=None,
+    ):
+        buckets: list[str] = []
+        for kwargs in (
+            {
+                "sorted_calls": sorted_calls,
+                "start_times": start_times,
+                "spanning_calls": spanning_calls,
+            },
+            {"sorted_calls": None, "start_times": None, "spanning_calls": None},
+        ):
+            try:
+                original(call, calls, state, policy, **kwargs)
+                buckets.append("pass")
+            except AuthorityError as exc:
+                buckets.append(str(exc))
+        assert len(buckets) == 2 and buckets[0] == buckets[1], (
+            f"windowed scan diverged from full scan: {buckets}"
+        )
+        outcomes.append(buckets[0])
+        if buckets[0] != "pass":
+            raise AuthorityError(buckets[0])
+
+    monkeypatch.setattr(parser, "reject_ambiguous_state_transition", double_check)
+    with pytest.raises(AuthorityError, match="ambiguous cross-process mapping"):
+        parse_trace_directory(traces, POLICY, Path("/project"))
+    assert outcomes, "state transition scan never ran"
+
+
 def test_renameat2_without_exchange_still_rebases(tmp_path: Path) -> None:
     # Follow-up (#1259) negative control: plain renameat2 keeps the
     # one-way rebase working.

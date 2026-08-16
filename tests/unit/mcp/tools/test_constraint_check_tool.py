@@ -317,6 +317,8 @@ def test_explicit_access_requires_diff_snapshot(tmp_path: Path) -> None:
 
 
 def test_explicit_access_defaults_unavailable_output_to_json(tmp_path: Path) -> None:
+    import sys
+
     tool = _make_tool(tmp_path)
 
     result = _run(
@@ -330,17 +332,28 @@ def test_explicit_access_defaults_unavailable_output_to_json(tmp_path: Path) -> 
         )
     )
 
-    assert result == {
-        "success": True,
-        "verdict": "WARN",
-        "access_mode": "read_existing",
-        "access_state": "unknown",
-        "access_reason": "READ_EXISTING_AUTHORITY_UNCERTIFIED",
-        "source_snapshots": [],
-        # RFC-0022 P0.5: wire owner echo on the unavailable envelope.
-        "action_version": "edit.constraints/v1",
-        "output_format": "json",
-    }
+    if sys.platform.startswith("linux"):
+        # RFC-0022 P0.4: on the certified axis the consumer runs its frozen
+        # route, so a missing snapshot is an unknown acquisition failure.
+        assert result["success"] is False
+        assert result["access_mode"] == "read_existing"
+        assert result["access_state"] == "unknown"
+        assert result["access_reason"] == "DIFF_SNAPSHOT_EXPIRED"
+        assert result["error_code"] == "DIFF_SNAPSHOT_EXPIRED"
+        assert result["source_snapshots"] == []
+        assert result["action_version"] == "edit.constraints/v1"
+    else:
+        assert result == {
+            "success": True,
+            "verdict": "WARN",
+            "access_mode": "read_existing",
+            "access_state": "unknown",
+            "access_reason": "READ_EXISTING_AUTHORITY_UNCERTIFIED",
+            "source_snapshots": [],
+            # RFC-0022 P0.5: wire owner echo on the unavailable envelope.
+            "action_version": "edit.constraints/v1",
+            "output_format": "json",
+        }
 
 
 def test_execute_without_project_root_returns_setup_instruction() -> None:

@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from rfc0022_strace_classify import (
+    _timestamp_interval,
     causal_order,
     classify_write_open,
     global_write_violation,
@@ -249,6 +250,16 @@ def classify_calls(
     violations: list[Violation] = []
     open_names = {"open", "openat", "openat2", "open_by_handle_at"}
     ordered = causal_order(calls, process_syscalls)
+    indexed_calls = sorted(calls, key=lambda call: _timestamp_interval(call)[0])
+    index_starts = [_timestamp_interval(call)[0] for call in indexed_calls]
+    # Resumed (interrupted) syscalls carry a started_timestamp that predates
+    # their completion, so their interval can overlap a transition whose
+    # window starts before them; the reject scan must include them explicitly.
+    spanning_calls = [
+        call
+        for call in calls
+        if _timestamp_interval(call)[0] != _timestamp_interval(call)[1]
+    ]
     state_transitions = {
         "chdir",
         "execve",
@@ -270,7 +281,15 @@ def classify_calls(
                     exited.add(pid)
         args = call.arguments
         if call.syscall in state_transitions and _result_succeeded(call.result):
-            reject_ambiguous_state_transition(call, calls, state, policy)
+            reject_ambiguous_state_transition(
+                call,
+                calls,
+                state,
+                policy,
+                sorted_calls=indexed_calls,
+                start_times=index_starts,
+                spanning_calls=spanning_calls,
+            )
         child = child_pid(call, process_syscalls)
         if child is not None:
             state.spawn(

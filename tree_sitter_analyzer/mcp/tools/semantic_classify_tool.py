@@ -247,15 +247,44 @@ class SemanticClassifyTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
+        read_existing = read_access.validate_read_existing_access(arguments)
+        if read_existing and not read_access.read_existing_platform_supported():
+            # RFC-0022 P0.4: the certified axis alone runs the consumer
+            # backends; other OSes keep the stable classified result.
+            unavailable = read_access.format_read_existing_unavailable(
+                arguments,
+                reason=read_access.READ_EXISTING_AUTHORITY_UNCERTIFIED,
+                action_version=EDIT_CLASSIFY_ACTION_VERSION,
+            )
+            if unavailable is not None:
+                return unavailable
+        # Codex P2 (#1297): attach the read-existing evidence to the raw JSON
+        # response BEFORE the requested format is applied, so TOON output
+        # carries access_mode/access_state/access_reason/source_snapshots
+        # inside toon_content exactly like JSON does.  The impl always runs
+        # on JSON; the requested format is applied once afterwards.
+        if read_existing:
+            result = await self._execute_impl({**arguments, "output_format": "json"})
+        else:
+            result = await self._execute_impl(arguments)
+        if read_existing:
+            acquired: list[dict[str, str]] = []
+            snapshot_id = result.get("diff_snapshot_id")
+            generation = result.get("source_generation")
+            if isinstance(snapshot_id, str) and isinstance(generation, str):
+                acquired.append(
+                    {
+                        "kind": "diff",
+                        "snapshot_id": snapshot_id,
+                        "source_generation": generation,
+                    }
+                )
+            read_access.attach_read_existing_evidence(result, records=acquired)
+            requested = arguments.get("output_format", "toon")
+            return apply_toon_format_to_response(result, requested)
+        return result
 
-        unavailable = read_access.format_read_existing_unavailable(
-            arguments,
-            reason=read_access.READ_EXISTING_AUTHORITY_UNCERTIFIED,
-            action_version=EDIT_CLASSIFY_ACTION_VERSION,
-        )
-        if unavailable is not None:
-            return unavailable
-
+    async def _execute_impl(self, arguments: dict[str, Any]) -> dict[str, Any]:
         mode = self._resolve_mode(arguments)
         output_format = arguments.get("output_format", "toon")
         differ = self._get_differ()
@@ -274,35 +303,39 @@ class SemanticClassifyTool(BaseMCPTool):
                             "verdict": "ERROR",
                             "error_code": error,
                             "error": error,
+                            "action_version": EDIT_CLASSIFY_ACTION_VERSION,
                         },
                         output_format,
                     )
                 assert consumer is not None
-                frozen = consumer.snapshot.file(arguments["file_path"])
-                if frozen is None:
-                    error = "DIFF_SNAPSHOT_FILE_NOT_FOUND"
+
+                def snapshot_error(code: str, verdict: str = "ERROR") -> dict[str, Any]:
                     return apply_toon_format_to_response(
                         {
                             "success": False,
-                            "verdict": "NOT_FOUND",
-                            "error_code": error,
-                            "error": error,
+                            "verdict": verdict,
+                            "error_code": code,
+                            "error": code,
+                            "action_version": EDIT_CLASSIFY_ACTION_VERSION,
+                            "diff_snapshot_id": getattr(
+                                consumer.snapshot, "snapshot_id", str(snapshot_id)
+                            ),
+                            "source_generation": getattr(
+                                consumer.snapshot, "source_generation", ""
+                            ),
                         },
                         output_format,
+                    )
+
+                frozen = consumer.snapshot.file(arguments["file_path"])
+                if frozen is None:
+                    return snapshot_error(
+                        "DIFF_SNAPSHOT_FILE_NOT_FOUND", verdict="NOT_FOUND"
                     )
                 file_path = frozen.record.path
                 language = _language_from_ext(file_path)
                 if not language:
-                    error = "DIFF_SNAPSHOT_UNSUPPORTED_LANGUAGE"
-                    return apply_toon_format_to_response(
-                        {
-                            "success": False,
-                            "verdict": "ERROR",
-                            "error_code": error,
-                            "error": error,
-                        },
-                        output_format,
-                    )
+                    return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_LANGUAGE")
                 if (
                     not getattr(
                         frozen.record, "old_available", frozen.old_bytes is not None
@@ -321,28 +354,12 @@ class SemanticClassifyTool(BaseMCPTool):
                         )
                     )
                 ):
-                    return apply_toon_format_to_response(
-                        {
-                            "success": False,
-                            "verdict": "ERROR",
-                            "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
-                            "error": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
-                        },
-                        output_format,
-                    )
+                    return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_CONTENT")
                 try:
                     old_source = (frozen.old_bytes or b"").decode("utf-8", "strict")
                     new_source = (frozen.new_bytes or b"").decode("utf-8", "strict")
                 except UnicodeDecodeError:
-                    return apply_toon_format_to_response(
-                        {
-                            "success": False,
-                            "verdict": "ERROR",
-                            "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
-                            "error": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
-                        },
-                        output_format,
-                    )
+                    return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_CONTENT")
                 diff_result = differ.diff_strings(
                     old_source=old_source,
                     new_source=new_source,
@@ -446,7 +463,18 @@ class SemanticClassifyTool(BaseMCPTool):
                 )
                 error = REGISTRY.validate_publish(consumer)
                 if error:
-                    return publish_errors.get(error, publish_fallback)
+                    # Publish failures occur after acquisition, so the
+                    # returned envelope must still cite the diff capability
+                    # and echo its wire owner.
+                    envelope = dict(publish_errors.get(error, publish_fallback))
+                    envelope.setdefault("action_version", EDIT_CLASSIFY_ACTION_VERSION)
+                    envelope["diff_snapshot_id"] = getattr(
+                        consumer.snapshot, "snapshot_id", str(snapshot_id)
+                    )
+                    envelope["source_generation"] = getattr(
+                        consumer.snapshot, "source_generation", ""
+                    )
+                    return envelope
             return formatted
         finally:
             if consumer is not None:

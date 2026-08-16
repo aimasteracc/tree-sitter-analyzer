@@ -266,6 +266,48 @@ def test_failed_write_capable_open_remains_an_attempt(tmp_path: Path) -> None:
     ]
 
 
+# P0.4 route certification: the git runner opens /dev/null O_RDWR via
+# subprocess.DEVNULL. A character device is not a filesystem file, so the
+# zero-write authority must treat the open as clean.
+def test_write_capable_open_of_character_device_is_clean(tmp_path: Path) -> None:
+    assert (
+        _parse_line(
+            tmp_path,
+            'openat(AT_FDCWD</project>, "/dev/null", O_RDWR|O_CLOEXEC)'
+            " = 3</dev/null<char 1:3>>",
+        )
+        == []
+    )
+
+
+# A write-capable open that resolves to a character device cannot hide a
+# filesystem open intent: the requested path itself must be the device.
+def test_character_device_result_cannot_hide_filesystem_open_intent(
+    tmp_path: Path,
+) -> None:
+    violations = _parse_line(
+        tmp_path,
+        'openat(AT_FDCWD</project>, "/project/victim", O_WRONLY)'
+        " = 3</dev/null<char 1:3>>",
+    )
+    assert [(item.operation, item.target) for item in violations] == [
+        ("write_capable_open", "/project/victim")
+    ]
+
+
+# A block device (raw storage that can back a filesystem) stays fail-closed.
+def test_write_capable_open_of_block_device_remains_a_violation(
+    tmp_path: Path,
+) -> None:
+    violations = _parse_line(
+        tmp_path,
+        'openat(AT_FDCWD</project>, "/dev/sda", O_WRONLY) = 3</dev/sda<block 8:0>>',
+    )
+    assert [(item.operation, item.target) for item in violations] == [
+        ("write_capable_open", "/dev/sda<block 8:0>")
+    ]
+
+
 @pytest.mark.parametrize(
     "line",
     [
@@ -432,3 +474,13 @@ def test_nul_byte_in_path_fails_closed(tmp_path: Path) -> None:
     # decoded literal must be rejected rather than carried into evidence.
     with pytest.raises(AuthorityError, match="contains a NUL byte"):
         _parse_line(tmp_path, r'unlink("bad\000name") = 0')
+
+
+def test_resumption_placeholder_is_opaque() -> None:
+    # A git descendant's futex was interrupted: strace renders the restart
+    # with an angle-bracket placeholder inside the argument list; it must
+    # parse as an opaque atomic value, never a stray angle.
+    placeholder = "<... resuming interrupted futex ...>"
+    assert split_arguments(placeholder) == (placeholder,)
+    assert split_arguments(f"{placeholder}, 1, 2") == (placeholder, "1", "2")
+    assert split_arguments("") == ()
