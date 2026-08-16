@@ -893,7 +893,10 @@ async def test_edit_safe_read_existing_unindexed_target_fails_closed(
 
     monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
     project = _indexed_project(tmp_path)
-    (project / ".hidden.py").write_text("x = 1\n", encoding="utf-8")
+    # Broken syntax on purpose (Codex P1 round-3): the inventory gate must
+    # run BEFORE the syntax probe, so a broken out-of-inventory file can
+    # never short-circuit into a syntax-error success envelope.
+    (project / ".hidden.py").write_text("def broken(:\n", encoding="utf-8")
     published = _publish_index_snapshot(project)
 
     tool = SafeToEditTool(str(project))
@@ -963,12 +966,15 @@ def test_snapshot_dependency_view_degrades_on_schema_drift() -> None:
 
     from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
         build_snapshot_file_dependency_view,
+        snapshot_inventory,
     )
 
     conn = sqlite3.connect(":memory:")
     view = build_snapshot_file_dependency_view(conn, "app.py")
     assert view.dependents_of("app.py") == []
     assert view.dependencies_of("app.py") == []
+    # An unreadable inventory degrades to the empty set (fail-closed).
+    assert snapshot_inventory(conn) == frozenset()
 
     # edges present but ast_index absent: exact resolution probes the missing
     # table and degrades to not-indexed.

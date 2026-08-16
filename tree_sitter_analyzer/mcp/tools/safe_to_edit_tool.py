@@ -286,10 +286,6 @@ class SafeToEditTool(BaseMCPTool):
         if not Path(resolved).exists():
             raise ValueError("FILE_NOT_FOUND")
 
-        syntax_response = _syntax_error_response(resolved, file_path, edit_type)
-        if syntax_response is not None:
-            return syntax_response
-
         # Codex-review P3 (#1297-followup): the snapshot's canonical_root is
         # the authoritative root for every relative/live-file computation —
         # never the shared tool root (a concurrent set_project_path could
@@ -307,12 +303,19 @@ class SafeToEditTool(BaseMCPTool):
         rel_path = _to_relative(os.path.realpath(resolved), reader_root).replace(
             "\\", "/"
         )
+        # Codex P1 (#1299): a target outside the snapshot source inventory
+        # (markdown/yaml, hidden, or excluded files) is not covered by the
+        # before/after source recaptures. The gate runs BEFORE any
+        # existence/language/syntax probe so uncertified bytes can never
+        # short-circuit into an available envelope (round-3: a hidden broken
+        # .py used to return a syntax-error success payload first).
         if snapshot is not None and not _snapshot_file_indexed(conn, rel_path):
-            # Codex P1 (#1299): a target outside the snapshot source
-            # inventory (markdown/yaml, hidden, or excluded files) is not
-            # covered by the before/after source recaptures — serving its
-            # live bytes would be uncertified. Fail closed instead.
             raise ValueError("FILE_NOT_INDEXED")
+
+        syntax_response = _syntax_error_response(resolved, file_path, edit_type)
+        if syntax_response is not None:
+            return syntax_response
+
         result = _build_safe_to_edit_result(
             SafeToEditContext(
                 file_path=file_path,

@@ -145,7 +145,11 @@ _DISABLED = FixtureFact(
 
 
 def is_fixture(
-    file_path: str, project_root: str | Path, *, certified: bool = False
+    file_path: str,
+    project_root: str | Path,
+    *,
+    certified: bool = False,
+    inventory: frozenset[str] | None = None,
 ) -> FixtureFact:
     """Return whether ``file_path`` is a registered or detected fixture.
 
@@ -159,7 +163,11 @@ def is_fixture(
     ``fixture_index.json`` cache are outside the source generation, so a
     certified route must not consult them (they could drift after
     snapshot publication). Only generation-certified ``tests/`` bytes are
-    scanned, and nothing is ever persisted.
+    scanned, and nothing is ever persisted. ``inventory`` (the snapshot's
+    ``ast_index`` relative file set) further restricts the scan to files
+    the source oracle actually captured — files the oracle prunes (e.g.
+    ``tests/vendor/``) are outside the generation and must not influence
+    fixture escalation (Codex P1 #1299 round-3).
 
     Failure modes (corrupt cache, unreadable test file, malformed YAML)
     all return ``_NEGATIVE`` and emit one WARNING — never raise.
@@ -174,7 +182,7 @@ def is_fixture(
         return _NEGATIVE
 
     if certified:
-        return _scan_only_fixture(root, relative)
+        return _scan_only_fixture(root, relative, inventory=inventory)
 
     # Tier 1 — allowlist first; cheap and authoritative.
     allowlist_hit = _check_allowlist(root, relative)
@@ -318,6 +326,8 @@ def _iter_test_files(tests_dir: Path) -> list[Path]:
 def _targeted_fixture_scan(
     project_root: Path,
     relative: str,
+    *,
+    inventory: frozenset[str] | None = None,
 ) -> FixtureFact | None:
     """Fast exact-path scan for the common single-file ``is_fixture`` query."""
     tests_dir = project_root / "tests"
@@ -329,6 +339,11 @@ def _targeted_fixture_scan(
         return None
     best: FixtureFact | None = None
     for path in _iter_test_files(tests_dir):
+        if (
+            inventory is not None
+            and _safe_relative(path, project_root) not in inventory
+        ):
+            continue
         try:
             source = path.read_text(encoding="utf-8")
         except OSError:
@@ -355,12 +370,19 @@ def _targeted_fixture_scan(
     return best
 
 
-def _basename_seen_in_tests(project_root: Path, basename: str) -> bool:
+def _basename_seen_in_tests(
+    project_root: Path, basename: str, *, inventory: frozenset[str] | None = None
+) -> bool:
     """Return whether the filename appears anywhere in tests/ source."""
     tests_dir = project_root / "tests"
     if not tests_dir.is_dir() or not basename:
         return False
     for path in _iter_test_files(tests_dir):
+        if (
+            inventory is not None
+            and _safe_relative(path, project_root) not in inventory
+        ):
+            continue
         try:
             if basename in path.read_text(encoding="utf-8"):
                 return True
@@ -388,11 +410,14 @@ def _load_or_build_index(project_root: Path) -> dict[str, FixtureFact]:
     return index
 
 
-def _scan_only_fixture(root: Path, relative: str) -> FixtureFact:
+def _scan_only_fixture(
+    root: Path, relative: str, *, inventory: frozenset[str] | None = None
+) -> FixtureFact:
     """Scan-only fixture probe for certified reads (no allowlist/cache).
 
     Consults only ``tests/`` bytes, which ARE part of the snapshot source
     generation: the targeted scan first, then the full in-memory scan.
+    ``inventory`` restricts both scans to files the source oracle captured.
     Never reads ``CLAUDE.md`` or ``fixture_index.json`` and never writes.
     """
 
@@ -400,12 +425,12 @@ def _scan_only_fixture(root: Path, relative: str) -> FixtureFact:
     if not tests_dir.is_dir():
         return _NEGATIVE
 
-    targeted = _targeted_fixture_scan(root, relative)
+    targeted = _targeted_fixture_scan(root, relative, inventory=inventory)
     if targeted is not None:
         return targeted
-    if not _basename_seen_in_tests(root, Path(relative).name):
+    if not _basename_seen_in_tests(root, Path(relative).name, inventory=inventory):
         return _NEGATIVE
-    index = _scan_tests(tests_dir, root)
+    index = _scan_tests(tests_dir, root, inventory=inventory)
     return index.get(relative, _NEGATIVE)
 
 
@@ -498,11 +523,21 @@ def _write_cache(
         )
 
 
-def _scan_tests(tests_dir: Path, project_root: Path) -> dict[str, FixtureFact]:
+def _scan_tests(
+    tests_dir: Path,
+    project_root: Path,
+    *,
+    inventory: frozenset[str] | None = None,
+) -> dict[str, FixtureFact]:
     """Walk ``tests_dir`` and merge signals from every ``*.py`` file."""
 
     aggregator: dict[str, _Aggregator] = {}
     for path in _iter_test_files(tests_dir):
+        if (
+            inventory is not None
+            and _safe_relative(path, project_root) not in inventory
+        ):
+            continue
         try:
             source = path.read_text(encoding="utf-8")
         except OSError:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import sys
 from typing import Any
 
@@ -399,11 +400,19 @@ def _stable_consumer_code(exc: Exception) -> str:
 
     ``acquire_index_snapshot`` raises ``ValueError``/``RuntimeError`` whose
     message IS the stable code; the after-read recapture does the same; the
-    unbound-root guard raises ``MISSING_PROJECT_ROOT: <detail>``. The RFC
-    requires those codes as result data, never serialized exception text, so
-    any message outside the stable set degrades to the generic fallback.
+    unbound-root guard raises ``MISSING_PROJECT_ROOT: <detail>``. A reader's
+    ``sqlite3.OperationalError`` is classified: an interrupt (the deadline
+    progress handler's abort) is ``INDEX_SNAPSHOT_DEADLINE``, anything else
+    (missing column/table in a damaged index) is ``CORRUPT_INDEX`` (Codex P2
+    #1299 round-3). The RFC requires those codes as result data, never
+    serialized exception text, so any message outside the stable set degrades
+    to the generic fallback.
     """
     message = str(exc)
+    if isinstance(exc, sqlite3.OperationalError):
+        if "interrupt" in message.lower():
+            return "INDEX_SNAPSHOT_DEADLINE"
+        return "CORRUPT_INDEX"
     token = message.split(":", 1)[0].strip()
     return token if token in _INDEX_CONSUMER_STABLE_CODES else "INDEX_SNAPSHOT_FAILED"
 
@@ -490,7 +499,7 @@ def read_existing_index_consumer(
             return apply_toon_format_to_response(
                 result, output_format, compact_only=compact_only
             )
-    except (ValueError, RuntimeError) as exc:
+    except (ValueError, RuntimeError, sqlite3.OperationalError) as exc:
         # Codex P2 (#1299): pre-yield failures (completeness/scope gate or
         # pre-read recapture) attach the acquired identity to the exception;
         # post-yield failures record it in ``acquired``. Either way the

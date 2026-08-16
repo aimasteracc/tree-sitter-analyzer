@@ -244,6 +244,65 @@ class TestCache:
         is_fixture("tree_sitter_analyzer/foo.py", root)
         assert (root / ".ast-cache" / "fixture_index.json").is_file()
 
+    def test_valid_cache_hit_returns_without_rescan(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Tier-2 cache hit: the second call serves from cache and never
+        # rescans tests/ (basename seen but no PROJECT_ROOT pattern, so the
+        # targeted scan returns None and tier 2 is reached).
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": ("def test_x():\n    assert 'foo.py' in __file__\n"),
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        first = is_fixture("tree_sitter_analyzer/foo.py", root)
+        assert first.is_fixture is False
+        assert (root / ".ast-cache" / "fixture_index.json").is_file()
+
+        scans = {"n": 0}
+
+        def counting_scan(tests_dir, project_root):
+            scans["n"] += 1
+            return {}
+
+        monkeypatch.setattr(fixture_detector, "_scan_tests", counting_scan)
+        second = is_fixture("tree_sitter_analyzer/foo.py", root)
+        assert second.is_fixture is False
+        assert scans["n"] == 0  # served from the valid cache
+
+    def test_certified_scan_respects_snapshot_inventory(self, tmp_path: Path) -> None:
+        # Codex P1 (#1299 round-3): the certified probe must only consult
+        # generation-certified test files — a reference inside an
+        # oracle-pruned path (tests/vendor/) must not escalate.
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/vendor/helper.py": (
+                    "from pathlib import Path\n"
+                    "PROJECT_ROOT = Path('.')\n"
+                    "name = PROJECT_ROOT / 'tree_sitter_analyzer' / 'foo.py'\n"
+                ),
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        inventory = frozenset({"tree_sitter_analyzer/foo.py"})
+        excluded = is_fixture(
+            "tree_sitter_analyzer/foo.py",
+            root,
+            certified=True,
+            inventory=inventory,
+        )
+        assert excluded.is_fixture is False
+        included = is_fixture(
+            "tree_sitter_analyzer/foo.py",
+            root,
+            certified=True,
+            inventory=inventory | frozenset({"tests/vendor/helper.py"}),
+        )
+        assert included.is_fixture is True
+
     def test_certified_scan_skips_live_allowlist(self, tmp_path: Path) -> None:
         # Codex P1 (#1299): the CLAUDE.md allowlist is outside the source
         # generation, so a certified probe must not consult it — only

@@ -821,15 +821,7 @@ class TestReadExistingConsumerRevalidation:
             ):
                 pass
 
-    def test_read_existing_index_scope_reader_deadline_enforced(
-        self, tmp_path, monkeypatch
-    ):
-        """Reader SQL work past the absolute deadline fails closed.
-
-        Codex P2 (#1299): the progress handler bounds SQLite work, and the
-        post-yield re-check is the hard guarantee even when a reader swallows
-        the abort — both share the scope's absolute deadline.
-        """
+    def _deadline_scope_fixture(self, tmp_path, monkeypatch):
         import sqlite3
         import time
 
@@ -849,7 +841,9 @@ class TestReadExistingConsumerRevalidation:
         )
         conn = sqlite3.connect(":memory:")
         conn.execute("CREATE TABLE t (x INTEGER)")
-        conn.execute("INSERT INTO t VALUES (1)")
+        # Enough rows that the reader's query exceeds the progress-handler
+        # step (1000 VM opcodes) and the handler itself fires.
+        conn.executemany("INSERT INTO t VALUES (?)", [(i,) for i in range(50_000)])
         snapshot = owner.IndexSnapshot(
             None,
             "fp",
@@ -862,14 +856,52 @@ class TestReadExistingConsumerRevalidation:
             source_scope=make_source_scope_descriptor(),
         )
         published = owner.REGISTRY.publish(snapshot, conn, 0)
+        return owner, published, clock
 
-        with pytest.raises(RuntimeError, match="INDEX_SNAPSHOT_DEADLINE"):
+    def test_read_existing_index_scope_reader_sql_aborts_on_deadline(
+        self, tmp_path, monkeypatch
+    ):
+        """The progress handler aborts reader SQL past the deadline.
+
+        Codex P2 (#1299): the LIKE scan guarantees the handler fires
+        (count(*) is too optimized to reach the 1000-opcode step); the
+        abort surfaces as ``sqlite3.OperationalError: interrupted``, which
+        the consumer seam classifies as INDEX_SNAPSHOT_DEADLINE.
+        """
+        import sqlite3
+
+        owner, published, clock = self._deadline_scope_fixture(tmp_path, monkeypatch)
+
+        with pytest.raises(sqlite3.OperationalError, match="interrupted"):
             with owner.read_existing_index_scope(
                 published.snapshot_id, str(tmp_path), "gen-1"
             ) as (index, scope_conn):
                 # The reader's SQL runs after the deadline has passed.
                 clock["now"] += 100.0
-                scope_conn.execute("SELECT count(*) FROM t")
+                scope_conn.execute("SELECT x FROM t WHERE x LIKE '%7%'").fetchall()
+
+    def test_read_existing_index_scope_post_read_deadline_check(
+        self, tmp_path, monkeypatch
+    ):
+        """The post-yield re-check fires even when a reader swallows aborts.
+
+        Codex P2 (#1299): a reader that absorbs the interrupt and returns a
+        payload still cannot outlive the absolute deadline — the scope's own
+        re-check raises INDEX_SNAPSHOT_DEADLINE after the yield.
+        """
+        import sqlite3
+
+        owner, published, clock = self._deadline_scope_fixture(tmp_path, monkeypatch)
+
+        with pytest.raises(RuntimeError, match="INDEX_SNAPSHOT_DEADLINE"):
+            with owner.read_existing_index_scope(
+                published.snapshot_id, str(tmp_path), "gen-1"
+            ) as (index, scope_conn):
+                clock["now"] += 100.0
+                try:
+                    scope_conn.execute("SELECT x FROM t WHERE x LIKE '%7%'").fetchall()
+                except sqlite3.OperationalError:
+                    pass  # reader swallows the abort
 
     @pytest.mark.parametrize("bad_root", ["", b"not-a-str"])
     def test_verify_unusable_root_raises_index_snapshot_unknown(

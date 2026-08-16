@@ -462,6 +462,95 @@ def test_read_existing_consumer_pre_read_mismatch_preserves_record(
     assert result["action_version"] == NAV_CONTEXT_ACTION_VERSION
 
 
+def test_read_existing_consumer_classifies_reader_sql_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """sqlite3.OperationalError from a reader maps to stable wire codes.
+
+    Codex P2 (#1299 round-3): a damaged index column (e.g. edges lacking
+    caller_name) must classify as CORRUPT_INDEX and the deadline progress
+    handler's interrupt as INDEX_SNAPSHOT_DEADLINE — never escape the wire
+    contract.
+    """
+    import sqlite3
+
+    import tree_sitter_analyzer.index_snapshot as snapshot_owner
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.index_snapshot import REGISTRY, IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+    from tree_sitter_analyzer.index_source_snapshot import CurrentSourceSnapshot
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+    from tree_sitter_analyzer.wire_owner import NAV_CONTEXT_ACTION_VERSION
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    monkeypatch.setattr(
+        snapshot_owner,
+        "_capture_sources_with_deadline",
+        lambda root, source_scope, deadline=None: CurrentSourceSnapshot(
+            frozenset(), "fp", "gen-1", "exact", None
+        ),
+    )
+    conn = sqlite3.connect(":memory:")
+    snapshot = IndexSnapshot(
+        None,
+        "fp",
+        "ifp",
+        "gen-1",
+        "complete",
+        None,
+        str(tmp_path.resolve()),
+        0,
+        None,
+        None,
+        make_source_scope_descriptor(),
+    )
+    published = REGISTRY.publish(snapshot, conn, 0)
+
+    def reader_raising(message: str):
+        def bad_reader(snapshot, conn):
+            raise sqlite3.OperationalError(message)
+
+        return bad_reader
+
+    corrupt = read_access.read_existing_index_consumer(
+        CodeGraphContextTool(str(tmp_path)),
+        {
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+            "output_format": "json",
+        },
+        reader=reader_raising("no such column: caller_name"),
+        action_version=NAV_CONTEXT_ACTION_VERSION,
+    )
+    assert corrupt["success"] is False
+    assert corrupt["error_code"] == "CORRUPT_INDEX"
+    assert corrupt["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+        }
+    ]
+
+    interrupted = read_access.read_existing_index_consumer(
+        CodeGraphContextTool(str(tmp_path)),
+        {
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+            "output_format": "json",
+        },
+        reader=reader_raising("interrupted"),
+        action_version=NAV_CONTEXT_ACTION_VERSION,
+    )
+    assert interrupted["success"] is False
+    assert interrupted["error_code"] == "INDEX_SNAPSHOT_DEADLINE"
+    assert interrupted["action_version"] == NAV_CONTEXT_ACTION_VERSION
+
+
 @pytest.mark.parametrize(
     ("tool_type", "module_name"),
     [

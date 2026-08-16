@@ -115,6 +115,13 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
     dependencies = safe_dependencies(context.graph, rel_path)
     health = context.scorer.score_file(context.resolved_path, fast_dependencies=True)
     test_files = find_test_files(context.resolved_path, context.project_root)
+    if context.snapshot_conn is not None:
+        # Codex P1 (#1299 round-3): test facts must come from inventory-
+        # covered paths only — a test under an oracle-excluded directory
+        # (e.g. tests/vendor/) is outside the source generation and must
+        # not change has_tests/verdict for the same snapshot identity.
+        inventory = snapshot_inventory(context.snapshot_conn)
+        test_files = [tf for tf in test_files if tf in inventory]
     has_tests = bool(test_files)
     risk, risk_factors = compute_risk(
         forward_count=len(dependents),
@@ -176,15 +183,20 @@ def _format_safe_to_edit_result(
         # constraint facts from the immutable snapshot connection and runs
         # the certified fixture probe — never the live .ast-cache DB and
         # never the live allowlist/cache (both are outside the source
-        # generation and could drift after snapshot publication).
+        # generation and could drift after snapshot publication). The
+        # inventory restriction keeps the fixture scan on generation-
+        # certified test files only (round-3: oracle-pruned paths such as
+        # tests/vendor/ must not influence escalation).
         violations = violations_for_files_from_conn(
             context.snapshot_conn, [_relative_for_constraints(context)]
         )
+        fixture_inventory = snapshot_inventory(context.snapshot_conn)
         fixture_certified = True
     else:
         violations = violations_for_files(
             context.project_root, [_relative_for_constraints(context)]
         )
+        fixture_inventory = None
         fixture_certified = False
     constraint_verdict = verdict_from_violations(violations)
     # P3: also check whether the file is a registered test fixture; that
@@ -195,6 +207,7 @@ def _format_safe_to_edit_result(
         context.resolved_path,
         context.project_root,
         certified=fixture_certified,
+        inventory=fixture_inventory,
     )
     fixture_verdict = fixture_to_verdict(fixture_fact)
     verdict = _max_verdict(
@@ -683,6 +696,22 @@ def _require_edges_callee_name(conn: Any) -> None:
         return
     if "callee_name" not in columns:
         raise ValueError("CORRUPT_INDEX")
+
+
+def snapshot_inventory(conn: Any) -> frozenset[str]:
+    """Return the snapshot's ``ast_index`` relative file set.
+
+    Codex P1 (#1299 round-3): certified reads must derive facts only from
+    inventory-covered paths (the source oracle prunes e.g. ``tests/vendor``
+    from the generation). An unreadable inventory degrades to the empty
+    set — the conservative, fail-closed direction for certified facts.
+    """
+
+    try:
+        rows = conn.execute("SELECT file_path FROM ast_index").fetchall()
+    except Exception:  # nosec B110 — legacy/partial schema
+        return frozenset()
+    return frozenset(str(row["file_path"]) for row in rows)
 
 
 def _snapshot_file_indexed(conn: Any, rel_path: str) -> bool:
