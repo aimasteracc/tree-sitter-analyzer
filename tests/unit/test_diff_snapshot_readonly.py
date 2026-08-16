@@ -11,6 +11,7 @@ assert the read-only invocation set never materializes a temporary index.
 from __future__ import annotations
 
 import os
+import pathlib
 import subprocess
 import time
 from pathlib import Path
@@ -125,8 +126,8 @@ def test_live_index_output_is_readonly_invocation(git_repo: str) -> None:
         seen_env.update(dict(env or {}))
         return b""
 
-    original = module._run_git_readonly_bounded
-    module._run_git_readonly_bounded = spy
+    original = module.run_git_readonly
+    module.run_git_readonly = spy
     try:
         import time as _time
 
@@ -138,7 +139,7 @@ def test_live_index_output_is_readonly_invocation(git_repo: str) -> None:
             limit=1024,
         )
     finally:
-        module._run_git_readonly_bounded = original
+        module.run_git_readonly = original
     assert seen_env.get("GIT_OPTIONAL_LOCKS") == "0"
     assert "GIT_INDEX_FILE" not in seen_env
 
@@ -206,7 +207,7 @@ def test_capacity_fails_closed(git_repo: str) -> None:
 
 @POSIX_SNAPSHOT_TEST
 def test_runner_popen_failure_is_stable_error(git_repo: str, monkeypatch) -> None:
-    import tree_sitter_analyzer.diff_snapshot_readonly as module
+    import tree_sitter_analyzer.git_readonly as module
 
     def boom(*args, **kwargs):
         raise OSError("no git here")
@@ -262,7 +263,7 @@ class _UnboundedStream:
 
 @POSIX_SNAPSHOT_TEST
 def test_runner_stream_failure_is_stable_error(git_repo: str, monkeypatch) -> None:
-    import tree_sitter_analyzer.diff_snapshot_readonly as module
+    import tree_sitter_analyzer.git_readonly as module
 
     for proc in (
         _FakeProc(stdout=None, stderr=None),  # missing streams
@@ -375,14 +376,14 @@ def test_empty_repo_generations_match(tmp_path) -> None:
 def test_root_resolution_failure_fails_closed(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly as module
 
-    original = module.git_output
+    original = module._git_output_readonly
 
     def fake_git_output(root, args, *, deadline, limit):
         if args and args[0] == "rev-parse" and "--show-toplevel" in args:
             return b"no-such-dir-xyz\n"  # canonical_root stat fails
         return original(root, args, deadline=deadline, limit=limit)
 
-    monkeypatch.setattr(module, "git_output", fake_git_output)
+    monkeypatch.setattr(module, "_git_output_readonly", fake_git_output)
     with pytest.raises(Exception, match="DIFF_SNAPSHOT_ROOT_MISMATCH"):
         oracle_generation_readonly(git_repo, "diff")
 
@@ -405,7 +406,7 @@ class _BrokenStdin:
 
 @POSIX_SNAPSHOT_TEST
 def test_runner_feed_broken_pipe_is_ignored(git_repo: str, monkeypatch) -> None:
-    import tree_sitter_analyzer.diff_snapshot_readonly as module
+    import tree_sitter_analyzer.git_readonly as module
 
     class _EmptyStream:
         def read(self, size):
@@ -436,7 +437,7 @@ def test_runner_feed_broken_pipe_is_ignored(git_repo: str, monkeypatch) -> None:
 
 @POSIX_SNAPSHOT_TEST
 def test_runner_blocking_stream_times_out(git_repo: str, monkeypatch) -> None:
-    import tree_sitter_analyzer.diff_snapshot_readonly as module
+    import tree_sitter_analyzer.git_readonly as module
 
     proc = _FakeProc(stdout=_BlockingStream(), stderr=_BlockingStream())
     monkeypatch.setattr(module.subprocess, "Popen", lambda *a, **k: proc)
@@ -452,7 +453,7 @@ def test_runner_blocking_stream_times_out(git_repo: str, monkeypatch) -> None:
 
 @POSIX_SNAPSHOT_TEST
 def test_runner_kill_cleanup_swallows_wait_errors(git_repo: str, monkeypatch) -> None:
-    import tree_sitter_analyzer.diff_snapshot_readonly as module
+    import tree_sitter_analyzer.git_readonly as module
 
     class _SlowKillProc(_FakeProc):
         def wait(self, timeout=0):
@@ -480,7 +481,7 @@ def test_runner_kill_cleanup_swallows_wait_errors(git_repo: str, monkeypatch) ->
 
 @POSIX_SNAPSHOT_TEST
 def test_runner_nonzero_exit_is_stable_error(git_repo: str, monkeypatch) -> None:
-    import tree_sitter_analyzer.diff_snapshot_readonly as module
+    import tree_sitter_analyzer.git_readonly as module
 
     class _EmptyStream:
         def read(self, size):
@@ -496,3 +497,148 @@ def test_runner_nonzero_exit_is_stable_error(git_repo: str, monkeypatch) -> None
             deadline=time.monotonic() + 35.0,
             limit=1024,
         )
+
+
+def test_assume_unchanged_hint_preserves_generation_equality(
+    git_repo: str,
+) -> None:
+    # Codex #1293 P1: assume-unchanged paths are never dirty and never
+    # content-framed by the frozen oracle; the P0.4 oracle must replicate.
+    subprocess.run(
+        ["git", "-C", git_repo, "update-index", "--assume-unchanged", "keep.py"],
+        check=True,
+    )
+    frozen_epoch, readonly_epoch = _epochs(git_repo, "diff")
+    assert b"keep.py" not in frozen_epoch.dirty_paths
+    assert readonly_epoch.dirty_paths == frozen_epoch.dirty_paths
+
+
+def test_configured_orderfile_fails_closed(git_repo: str) -> None:
+    subprocess.run(
+        ["git", "-C", git_repo, "config", "diff.orderFile", "order.txt"],
+        check=True,
+    )
+    with pytest.raises(Exception, match="DIFF_SNAPSHOT_UNSUPPORTED_ORDERFILE"):
+        oracle_generation_readonly(git_repo, "staged")
+
+
+def test_index_entries_parser_matches_ls_files(git_repo: str) -> None:
+    from tree_sitter_analyzer.diff_snapshot_readonly import (
+        _index_entries_from_bytes,
+    )
+    from tree_sitter_analyzer.source_oracle_git import _index_entries
+
+    index_bytes = pathlib.Path(git_repo, ".git", "index").read_bytes()
+    mine = _index_entries_from_bytes(index_bytes, "sha1", 200_000)
+    frozen = _index_entries(
+        git_repo, deadline=time.monotonic() + 35.0, index_bytes=None
+    )
+    assert mine == frozen
+
+
+def test_hinted_paths_detection(git_repo: str) -> None:
+    from tree_sitter_analyzer.diff_snapshot_readonly import _hinted_paths
+
+    subprocess.run(
+        ["git", "-C", git_repo, "update-index", "--assume-unchanged", "keep.py"],
+        check=True,
+    )
+    index_bytes = pathlib.Path(git_repo, ".git", "index").read_bytes()
+    assert _hinted_paths(index_bytes, "sha1", 200_000) == {b"keep.py"}
+
+
+def test_object_format_readonly_rejects_unknown(git_repo: str, monkeypatch) -> None:
+    import tree_sitter_analyzer.diff_snapshot_readonly as module
+
+    monkeypatch.setattr(
+        module,
+        "_git_output_readonly",
+        lambda root, args, *, deadline, limit: b"md5\n",
+    )
+    with pytest.raises(Exception, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        module._object_format_readonly(git_repo, deadline=time.monotonic() + 35.0)
+
+
+def test_head_identity_symbolic_ref_failure(git_repo: str, monkeypatch) -> None:
+    import tree_sitter_analyzer.diff_snapshot_readonly as module
+
+    def fake(root, args, *, deadline, limit):
+        if "--verify" in args:
+            raise module.SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        raise module.SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+
+    monkeypatch.setattr(module, "_git_output_readonly", fake)
+    with pytest.raises(Exception, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        module._head_identity_readonly(git_repo, deadline=time.monotonic() + 35.0)
+
+
+def test_index_parser_rejects_unknown_version() -> None:
+    from tree_sitter_analyzer.diff_snapshot_readonly import (
+        _hinted_paths,
+        _index_entries_from_bytes,
+    )
+
+    bogus = b"DIRC" + (4).to_bytes(4, "big") + (0).to_bytes(4, "big")
+    for parser in (_hinted_paths, _index_entries_from_bytes):
+        with pytest.raises(Exception, match="DIFF_SNAPSHOT_UNSUPPORTED_INDEX"):
+            parser(bogus, "sha1", 100)
+
+
+def test_index_parser_rejects_malformed_entry() -> None:
+    from tree_sitter_analyzer.diff_snapshot_readonly import _hinted_paths
+
+    # v2 header claiming one entry but no entry bytes.
+    truncated = b"DIRC" + (2).to_bytes(4, "big") + (1).to_bytes(4, "big")
+    truncated += b"\0" * 20  # far too short for an entry
+    with pytest.raises(Exception, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        _hinted_paths(truncated, "sha1", 100)
+    # Entry with a valid fixed part but an unterminated path.
+    entry = b"\0" * 62 + b"no-nul-path"
+    truncated2 = b"DIRC" + (2).to_bytes(4, "big") + (1).to_bytes(4, "big")
+    truncated2 += entry + b"\0" * 20
+    with pytest.raises(Exception, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        _hinted_paths(truncated2, "sha1", 100)
+
+
+def test_entries_parser_rejects_malformed_and_skips_staged() -> None:
+    from tree_sitter_analyzer.diff_snapshot_readonly import _index_entries_from_bytes
+
+    # Truncated entry (fixed part beyond the content end).
+    short = b"DIRC" + (2).to_bytes(4, "big") + (1).to_bytes(4, "big")
+    short += b"\0" * 30 + b"\0" * 20
+    with pytest.raises(Exception, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        _index_entries_from_bytes(short, "sha1", 100)
+    # Unterminated path.
+    bad = b"DIRC" + (2).to_bytes(4, "big") + (1).to_bytes(4, "big")
+    bad += b"\0" * 62 + b"no-nul-path" + b"\0" * 20
+    with pytest.raises(Exception, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        _index_entries_from_bytes(bad, "sha1", 100)
+    # A stage-1 entry (conflict) is skipped; stage-0 is kept. Each entry is
+    # padded to a multiple of 8 bytes total.
+    flags_stage1 = (1 << 12).to_bytes(2, "big")
+    fixed = b"\0" * 40 + b"\x01" * 20 + flags_stage1
+    entry1 = fixed + b"conflict.py\x00" + b"\x00" * 6  # 62+12 -> 80
+    flags_stage0 = (0).to_bytes(2, "big")
+    fixed0 = b"\0" * 24 + (0o100644).to_bytes(4, "big") + b"\0" * 12
+    fixed0 += b"\x02" * 20 + flags_stage0
+    entry0 = fixed0 + b"ok.py\x00" + b"\x00" * 4  # 62+6 -> 72
+    payload = b"DIRC" + (2).to_bytes(4, "big") + (2).to_bytes(4, "big")
+    payload += entry1 + entry0 + b"\0" * 20
+    parsed = _index_entries_from_bytes(payload, "sha1", 100)
+    assert set(parsed) == {b"ok.py"}
+    assert parsed[b"ok.py"] == (
+        b"100644 " + (b"\x02" * 20).hex().encode("ascii") + b" 0"
+    )
+
+
+def test_entries_parser_capacity_bound() -> None:
+    from tree_sitter_analyzer.diff_snapshot_readonly import _index_entries_from_bytes
+
+    flags_stage0 = (0).to_bytes(2, "big")
+    fixed0 = b"\0" * 24 + (0o100644).to_bytes(4, "big") + b"\0" * 12
+    fixed0 += b"\x02" * 20 + flags_stage0
+    entry0 = fixed0 + b"ok.py\x00" + b"\x00" * 4  # 62+6 -> 72
+    payload = b"DIRC" + (2).to_bytes(4, "big") + (1).to_bytes(4, "big")
+    payload += entry0 + b"\0" * 20
+    with pytest.raises(Exception, match="DIFF_SNAPSHOT_CAPACITY"):
+        _index_entries_from_bytes(payload, "sha1", max_paths=0)

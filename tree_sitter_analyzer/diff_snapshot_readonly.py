@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import subprocess  # nosec B404
 import time
 from typing import Any
 
@@ -40,11 +39,11 @@ from .frozen_git_settings import (
     frozen_settings_storage,
     reject_active_filters,
 )
+from .git_readonly import run_git_readonly
 from .source_epoch import capture_source_epoch, core_bool
 from .source_oracle import (
     SourceOracleError,
     WorkspaceManifestEntry,
-    _remaining,
     canonical_root,
     stable_descriptor_chain,
 )
@@ -56,13 +55,8 @@ from .source_oracle_git import (
     _MAX_WORKTREE_CONTENT_BYTES,
     _MAX_WORKTREE_PATHS,
     GitEpoch,
-    _core_filemode,
     _frame,
     _frame_workspace_path,
-    _head_entries,
-    _head_identity,
-    _index_entries,
-    _object_format,
     _safe_absolute_regular,
     _strip_one_record_terminator,
     _supports_nofollow,
@@ -74,132 +68,6 @@ from .source_oracle_git import (
 )
 
 _MAX_RETENTION_BYTES = 64 * 1024 * 1024
-
-
-def _run_git_readonly_bounded(
-    root: str,
-    args: list[str],
-    *,
-    deadline: float,
-    limit: int,
-    env: dict[str, str] | None = None,
-    input_: bytes | None = None,
-) -> bytes:
-    """Run Git with bounded pipes and ZERO filesystem writes.
-
-    The P0.4 invocation set must need no pathname-backed index, object
-    directory, shadow worktree, lock, config, attributes, or order file and
-    must make no write attempt (RFC-0022 P0.4). Unlike the frozen runner it
-    therefore never materializes a diff.orderFile override: git's default
-    deterministic ordering applies, and a repository-level ``diff.orderFile``
-    config fails the route closed before any diff command runs.
-    """
-    from .git_subprocess import _group_options
-
-    if limit < 0:
-        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
-    child_env = (
-        {
-            key: value
-            for key, value in os.environ.items()
-            if not key.upper().startswith("GIT_")
-        }
-        if env is None
-        else dict(env)
-    )
-    child_env["GIT_OPTIONAL_LOCKS"] = "0"
-    child_env["GIT_ATTR_NOSYSTEM"] = "1"
-    child_env["GIT_NO_REPLACE_OBJECTS"] = "1"
-    child_env["GIT_NO_LAZY_FETCH"] = "1"
-    process_options = _group_options()
-    command = ["git", "-c", "core.fsmonitor=false", *args]
-    try:
-        proc = subprocess.Popen(  # type: ignore[call-overload]
-            command,
-            cwd=root,
-            stdin=subprocess.PIPE if input_ is not None else subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=child_env,
-            **process_options,
-        )
-    except OSError as exc:
-        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR") from exc
-
-    output = bytearray()
-    errors = bytearray()
-    failures: list[str] = []
-
-    def drain(stream: Any, target: bytearray, cap: int, code: str) -> None:
-        try:
-            if stream is None:
-                failures.append("DIFF_SNAPSHOT_GIT_ERROR")
-                return
-            while chunk := stream.read(64 * 1024):
-                if len(target) + len(chunk) > cap:
-                    failures.append(code)
-                    proc.kill()
-                    return
-                target.extend(chunk)
-        except OSError:
-            failures.append("DIFF_SNAPSHOT_GIT_ERROR")
-            proc.kill()
-
-    def feed() -> None:
-        if proc.stdin is None or input_ is None:
-            return
-        try:
-            proc.stdin.write(input_)
-            proc.stdin.close()
-        except (BrokenPipeError, OSError):
-            pass
-
-    import threading
-
-    threads = [
-        threading.Thread(
-            target=drain,
-            args=(proc.stdout, output, limit, "DIFF_SNAPSHOT_CAPACITY"),
-            daemon=True,
-        ),
-        threading.Thread(
-            target=drain,
-            args=(proc.stderr, errors, 64 * 1024, "DIFF_SNAPSHOT_GIT_ERROR"),
-            daemon=True,
-        ),
-    ]
-    if input_ is not None:
-        threads.append(threading.Thread(target=feed, daemon=True))
-    succeeded = False
-    try:
-        for thread in threads:
-            thread.start()
-        try:
-            proc.wait(timeout=_remaining(deadline))
-            for thread in threads:
-                thread.join(timeout=_remaining(deadline))
-            if any(
-                thread.is_alive() for thread in threads
-            ):  # pragma: no cover - defensive liveness net; join expiry raises first
-                raise subprocess.TimeoutExpired("git", 0)
-        except subprocess.TimeoutExpired as exc:  # pragma: no cover - defensive net
-            raise SourceOracleError("DIFF_SNAPSHOT_TIMEOUT") from exc
-        if failures:
-            raise SourceOracleError(failures[0])
-        if proc.returncode != 0:
-            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        succeeded = True
-        return bytes(output)
-    finally:
-        if not succeeded:
-            try:
-                proc.kill()
-            except OSError:  # pragma: no cover - fake/failed procs may refuse
-                pass
-            try:
-                proc.wait(timeout=5)
-            except (OSError, subprocess.TimeoutExpired):
-                pass
 
 
 def _live_index_output(
@@ -237,7 +105,7 @@ def _live_index_output(
     env["GIT_OPTIONAL_LOCKS"] = "0"
     if extra_env:
         env.update(extra_env)
-    return _run_git_readonly_bounded(
+    return run_git_readonly(
         root,
         args,
         deadline=deadline,
@@ -245,6 +113,162 @@ def _live_index_output(
         env=env,
         input_=input_,
     )
+
+
+def _git_output_readonly(
+    root: str, args: list[str], *, deadline: float, limit: int
+) -> bytes:
+    """Zero-write git_output: every oracle git call runs read-only."""
+    return run_git_readonly(root, args, deadline=deadline, limit=limit)
+
+
+def _object_format_readonly(root: str, *, deadline: float) -> str:
+    value = _git_output_readonly(
+        root, ["rev-parse", "--show-object-format"], deadline=deadline, limit=64
+    ).strip()
+    if value not in (b"sha1", b"sha256"):
+        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    return value.decode("ascii")
+
+
+def _core_filemode_readonly(root: str, *, deadline: float) -> bool:
+    return core_bool(root, "core.filemode", deadline, _git_output_readonly)
+
+
+def _head_identity_readonly(
+    root: str, *, deadline: float, object_format: str | None = None
+) -> bytes:
+    from .source_oracle_git import _EMPTY_TREE_SHA1, _EMPTY_TREE_SHA256
+
+    try:
+        return _git_output_readonly(
+            root, ["rev-parse", "--verify", "HEAD"], deadline=deadline, limit=4096
+        ).strip()
+    except SourceOracleError as head_error:
+        try:
+            _git_output_readonly(
+                root,
+                ["symbolic-ref", "-q", "HEAD"],
+                deadline=deadline,
+                limit=4096,
+            )
+        except SourceOracleError as symbolic_error:
+            raise head_error from symbolic_error
+        fmt = object_format or _object_format_readonly(root, deadline=deadline)
+        return _EMPTY_TREE_SHA256 if fmt == "sha256" else _EMPTY_TREE_SHA1
+
+
+def _head_entries_readonly(
+    root: str,
+    *,
+    deadline: float,
+    head: bytes = b"HEAD",
+    byte_ceiling: int = _MAX_INVENTORY_BYTES,
+) -> dict[bytes, bytes]:
+    from .source_oracle_git import _EMPTY_TREE_SHA1, _EMPTY_TREE_SHA256
+
+    if head in (_EMPTY_TREE_SHA1, _EMPTY_TREE_SHA256):
+        return {}
+    raw = _git_output_readonly(
+        root,
+        ["ls-tree", "-rz", "--full-tree", os.fsdecode(head)],
+        deadline=deadline,
+        limit=byte_ceiling,
+    )
+    from .source_oracle_git import parse_head_entries
+
+    return parse_head_entries(
+        raw,
+        deadline=deadline,
+        byte_ceiling=byte_ceiling,
+        max_paths=_MAX_WORKTREE_PATHS,
+        remaining_fn=lambda value: max(0, value),
+    )
+
+
+def _index_entries_from_bytes(
+    index_bytes: bytes, object_format: str, max_paths: int
+) -> dict[bytes, bytes]:
+    """Parse stage-zero index entries from the captured bytes (P0.4).
+
+    Reads the index binary directly so the entry inventory is bound to the
+    exact bytes whose digest is framed — no live index re-open, no
+    temporary index file (Codex #1293 P1). Supports index v2/v3; v4 fails
+    closed. Returns ``{path: b"<mode> <oid> <stage>"}`` matching git
+    ``ls-files --stage`` rows.
+    """
+    if not index_bytes:
+        return {}
+    hash_size = 32 if object_format == "sha256" else 20
+    version = int.from_bytes(index_bytes[4:8], "big")
+    count = int.from_bytes(index_bytes[8:12], "big")
+    if version not in (2, 3):
+        raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_INDEX")
+    content_end = len(index_bytes) - hash_size
+    entries: dict[bytes, bytes] = {}
+    offset = 12
+    for _ in range(count):
+        if offset + 62 > content_end:
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        mode = int.from_bytes(index_bytes[offset + 24 : offset + 28], "big")
+        oid = index_bytes[offset + 40 : offset + 40 + hash_size]
+        flags = int.from_bytes(
+            index_bytes[offset + 40 + hash_size : offset + 42 + hash_size], "big"
+        )
+        extended_offset = offset + 42 + hash_size
+        path_start = extended_offset + (2 if flags & 0x4000 else 0)
+        path_end = index_bytes.find(b"\0", path_start)
+        if path_end < 0 or path_end >= content_end:
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        path = index_bytes[path_start:path_end]
+        if mode and flags & 0x3000 == 0:  # stage zero only
+            entries[path] = f"{mode:o} {oid.hex()} 0".encode("ascii")
+        # Each entry is padded to a multiple of 8 bytes total: the fixed
+        # part is 62 bytes (40 stat + oid + 2 flags, +2 extended when set),
+        # followed by the NUL-terminated path.
+        fixed = 62 + (2 if flags & 0x4000 else 0)
+        offset = offset + ((fixed + (path_end - path_start) + 1 + 7) & ~7)
+    if len(entries) > max_paths:
+        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+    return entries
+
+
+def _hinted_paths(index_bytes: bytes, object_format: str, max_paths: int) -> set[bytes]:
+    """Paths with assume-unchanged or skip-worktree hint bits.
+
+    The frozen oracle's stat-cache invalidation preserves these bits, so
+    hinted entries are never dirty and their content is never framed; the
+    P0.4 oracle must replicate that from the captured index bytes
+    (Codex #1293 P1). Supports index v2/v3; v4 fails closed.
+    """
+    del max_paths
+    if not index_bytes:
+        return set()
+    hash_size = 32 if object_format == "sha256" else 20
+    version = int.from_bytes(index_bytes[4:8], "big")
+    count = int.from_bytes(index_bytes[8:12], "big")
+    if version not in (2, 3):
+        raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_INDEX")
+    content_end = len(index_bytes) - hash_size
+    hinted: set[bytes] = set()
+    offset = 12
+    flags_offset = 40 + hash_size
+    for _ in range(count):
+        if offset + flags_offset + 2 > content_end:
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        flags = int.from_bytes(
+            index_bytes[offset + flags_offset : offset + flags_offset + 2], "big"
+        )
+        extended_offset = offset + flags_offset + 2
+        path_start = extended_offset + (2 if flags & 0x4000 else 0)
+        path_end = index_bytes.find(b"\0", path_start)
+        if path_end < 0 or path_end >= content_end:
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        if flags & (0x8000 | 0x4000):
+            hinted.add(index_bytes[path_start:path_end])
+        fixed = 62 + (2 if flags & 0x4000 else 0)
+        offset = offset + ((fixed + (path_end - path_start) + 1 + 7) & ~7)
+    return hinted
 
 
 def _reject_frozen_filters_readonly(
@@ -260,7 +284,7 @@ def _reject_frozen_filters_readonly(
         b"",
         ["check-attr", "-z", "filter", "--stdin"],
         deadline=deadline,
-        limit=max(64 * 1024, len(path_input) * 4),
+        limit=16 * 1024 * 1024,
         object_format=object_format,
         input_=path_input,
         extra_env={"GIT_ATTR_NOSYSTEM": "1"},
@@ -293,7 +317,7 @@ def oracle_generation_readonly(
     _frame(digest, b"domain", _FRAME_DOMAIN)
     _frame(digest, b"root", os.fsencode(identity.realpath))
     _frame(digest, b"root-stat", f"{identity.device},{identity.inode}".encode())
-    top_level = git_output(
+    top_level = _git_output_readonly(
         root, ["rev-parse", "--show-toplevel"], deadline=end, limit=64 * 1024
     )
     top_level = _strip_one_record_terminator(top_level)
@@ -303,15 +327,15 @@ def oracle_generation_readonly(
         raise SourceOracleError("DIFF_SNAPSHOT_ROOT_MISMATCH") from exc
     if top_root != root or top_identity != identity:
         raise SourceOracleError("DIFF_SNAPSHOT_ROOT_MISMATCH")
-    object_format = _object_format(root, deadline=end)
-    core_filemode = _core_filemode(root, deadline=end)
-    core_symlinks = core_bool(root, "core.symlinks", end, git_output)
-    head = _head_identity(root, deadline=end, object_format=object_format)
+    object_format = _object_format_readonly(root, deadline=end)
+    core_filemode = _core_filemode_readonly(root, deadline=end)
+    core_symlinks = core_bool(root, "core.symlinks", end, _git_output_readonly)
+    head = _head_identity_readonly(root, deadline=end, object_format=object_format)
     _frame(digest, b"object-format", object_format.encode("ascii"))
     _frame(digest, b"core-filemode", b"true" if core_filemode else b"false")
     _frame(digest, b"core-symlinks", b"true" if core_symlinks else b"false")
     _frame(digest, b"HEAD", head)
-    git_dir = git_output(
+    git_dir = _git_output_readonly(
         root, ["rev-parse", "--git-dir"], deadline=end, limit=64 * 1024
     )
     git_dir = _strip_one_record_terminator(git_dir)
@@ -338,16 +362,13 @@ def oracle_generation_readonly(
     _frame(digest, b"index-content", hashlib.sha256(index_bytes).digest())
     if index_bytes and has_split_index(index_bytes, object_format=object_format):
         raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_INDEX")
-    index_entries = _index_entries(
-        root,
-        deadline=end,
-        index_bytes=None,  # P0.4: live index, read-only
-        byte_ceiling=ledger.remaining,
+    index_entries = _index_entries_from_bytes(
+        index_bytes, object_format=object_format, max_paths=_MAX_WORKTREE_PATHS
     )
     ledger.charge(entry_map_storage(index_entries))
     tracked = list(index_entries)
     ledger.charge(container_storage(tracked))
-    head_entries = _head_entries(
+    head_entries = _head_entries_readonly(
         root,
         deadline=end,
         head=head,
@@ -435,6 +456,9 @@ def oracle_generation_readonly(
     _frame(digest, b"attributes", settings_epoch.attribute_fingerprint)
     _frame(digest, b"config", settings_epoch.config_hash)
     _frame(digest, b"git-settings", frozen_settings.fingerprint)
+    hinted = _hinted_paths(
+        index_bytes, object_format=object_format, max_paths=_MAX_WORKTREE_PATHS
+    )
     workspace_gitlinks: dict[bytes, bytes] = {}
     for raw in sorted(dirty) if mode == "diff" else ():
         entry = index_entries[raw]
@@ -456,6 +480,7 @@ def oracle_generation_readonly(
                             raw
                             for raw in tracked
                             if not index_entries[raw].startswith(b"160000 ")
+                            and raw not in hinted
                         )
                     )
                     if mode == "diff"
@@ -482,9 +507,11 @@ def oracle_generation_readonly(
             content_budget=remaining_content,
             # Replicate the frozen oracle's framing exactly: its stat-cache
             # invalidation makes git report every tracked path dirty, so the
-            # generation frames workspace content for all of them. The P0.4
-            # token must be byte-identical (differential tests prove it).
-            content_required=mode == "diff",
+            # generation frames workspace content for all of them — except
+            # assume-unchanged/skip-worktree hinted paths, which the frozen
+            # invalidation preserves and git never reports dirty (Codex
+            # #1293 P1). The P0.4 token must be byte-identical.
+            content_required=mode == "diff" and raw not in hinted,
             index_entry=index_entries[raw],
             head_entry=head_entries.get(raw),
             core_symlinks=core_symlinks,
@@ -508,6 +535,19 @@ def oracle_generation_readonly(
         )
         remaining_content -= charge
     ledger.charge(initial_content - remaining_content)
+    config_list = _git_output_readonly(
+        root,
+        ["config", "--null", "--list", "--includes"],
+        deadline=end,
+        limit=16 * 1024 * 1024,
+    )
+    order_file_active = any(
+        record.split(b"\n", 1)[0].lower() == b"diff.orderfile"
+        for record in config_list.split(b"\0")
+        if record
+    )
+    if order_file_active:
+        raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_ORDERFILE")
     diff_args = ["diff", "--cached"] if mode == "staged" else ["diff-files"]
     diff_args += [
         "--binary",
