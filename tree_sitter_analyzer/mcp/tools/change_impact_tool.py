@@ -11,6 +11,7 @@ from ...pr_url import (
     fetch_pr_diff_stat,
     parse_pr_url,
 )
+from ...source_oracle import SourceOracleError
 from ...wire_owner import EDIT_IMPACT_ACTION_VERSION
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool, mirror_summary_line
@@ -155,24 +156,45 @@ class ChangeImpactTool(BaseMCPTool):
         """Analyze git diff + dependency graph for change impact."""
         pr_url = arguments.get("pr_url", "") or ""
         mode = "pr" if pr_url else arguments.get("mode", "diff")
+        output_format = arguments.get("output_format", "toon")
+        compact_only = bool(arguments.get("compact_only", False))
+        if read_access.validate_read_existing_access(arguments):
+            # RFC-0022 P0.4: an unavailable adapter must still validate its
+            # complete action schema before returning classified success.
+            self.validate_arguments(arguments)
+            if not read_access.read_existing_platform_supported():
+                # An OS without the pinned native authority returns the
+                # stable unsupported result for read-existing mode.
+                unavailable = read_access.format_read_existing_unavailable(
+                    arguments,
+                    reason=read_access.DIFF_SNAPSHOT_READ_EXISTING_UNSUPPORTED,
+                    compact_only=compact_only,
+                    action_version=EDIT_IMPACT_ACTION_VERSION,
+                )
+                if unavailable is not None:
+                    return unavailable
+            return await self._execute_read_existing(
+                arguments,
+                mode=mode,
+                output_format=output_format,
+                compact_only=compact_only,
+            )
         unavailable = read_access.read_existing_gate(
             self,
             arguments,
             reason=read_access.DIFF_SNAPSHOT_READ_EXISTING_UNSUPPORTED,
-            compact_only=bool(arguments.get("compact_only", False)),
+            compact_only=compact_only,
             action_version=EDIT_IMPACT_ACTION_VERSION,
         )
         if unavailable is not None:
             return unavailable
         include_tests = arguments.get("include_tests", True)
-        output_format = arguments.get("output_format", "toon")
         scope_paths = arguments.get("scope_paths") or []
         scope_mode = arguments.get("scope_mode", "report")
         # MCP callers are always AI agents; default to low-impact so verification
         # commands don't stall the local machine. CLI uses its own default (#731).
         resource_profile = arguments.get("resource_profile", "local_low_impact")
         agent_summary_only = bool(arguments.get("agent_summary_only", False))
-        compact_only = bool(arguments.get("compact_only", False))
         capture_diff_snapshot = arguments.get("capture_diff_snapshot") is True
         frozen: dict[str, object] | None = None
         frozen_consumer: Any = None
@@ -343,6 +365,101 @@ class ChangeImpactTool(BaseMCPTool):
             result, output_format, compact_only=compact_only
         )
 
+    async def _execute_read_existing(
+        self,
+        arguments: dict[str, Any],
+        *,
+        mode: str,
+        output_format: str,
+        compact_only: bool,
+    ) -> dict[str, Any]:
+        """P0.4 producer route: atomically capture and publish in memory.
+
+        ``access_mode="read_existing"`` makes ``edit.impact`` the
+        unconditional in-memory diff-snapshot producer: the zero-write
+        registry backend captures the payload with no filesystem writes,
+        then the ordinary frozen-scope analysis runs against the published
+        snapshot. Every result carries the P0.4 access-evidence fields.
+        """
+        self.validate_arguments(arguments)
+        scope_paths: list[str] = []
+        try:
+            scope_paths = [
+                path_from_wire(str(path))
+                for path in (arguments.get("scope_paths") or [])
+            ]
+        except (SourceOracleError, ValueError) as exc:
+            return self._read_existing_error(str(exc), output_format, compact_only)
+        from ...diff_snapshot_registry import REGISTRY
+
+        frozen = REGISTRY.create(self.project_root, mode, scope_paths, readonly=True)
+        if not frozen.get("success"):
+            return self._read_existing_error(
+                str(frozen.get("error_code", "DIFF_SNAPSHOT_CAPTURE_ERROR")),
+                output_format,
+                compact_only,
+            )
+        frozen_consumer, error = REGISTRY.acquire(
+            str(frozen["diff_snapshot_id"]), self.project_root
+        )
+        if error:
+            REGISTRY.close_lease(
+                str(frozen["diff_snapshot_id"]), str(frozen["route_lease_id"])
+            )
+            return self._read_existing_error(error, output_format, compact_only)
+        assert frozen_consumer is not None
+        try:
+            result = self._execute_frozen_snapshot(
+                frozen=frozen,
+                consumer=frozen_consumer,
+                mode=mode,
+                scope_paths=scope_paths,
+                scope_mode=arguments.get("scope_mode", "report"),
+                output_format=output_format,
+                agent_summary_only=bool(arguments.get("agent_summary_only", False)),
+                compact_only=compact_only,
+                read_existing=True,
+            )
+            if not result.get("success"):
+                REGISTRY.close_lease(
+                    str(frozen["diff_snapshot_id"]),
+                    str(frozen["route_lease_id"]),
+                )
+            return result
+        except BaseException:
+            REGISTRY.close_lease(
+                str(frozen["diff_snapshot_id"]), str(frozen["route_lease_id"])
+            )
+            raise
+        finally:
+            frozen_consumer.release()
+
+    def _read_existing_error(
+        self, code: str, output_format: str, compact_only: bool
+    ) -> dict[str, Any]:
+        """Classify one read-existing producer failure with access evidence."""
+        state = (
+            "missing"
+            if code in {"MISSING_INDEX", "MISSING_PROJECT_ROOT"}
+            else "unknown"
+        )
+        return apply_toon_format_to_response(
+            {
+                "success": False,
+                "verdict": "ERROR",
+                "error_code": code,
+                "error": code,
+                "access_mode": "read_existing",
+                "access_state": state,
+                "access_reason": code,
+                "source_snapshots": [],
+                "output_format": output_format,
+                "action_version": EDIT_IMPACT_ACTION_VERSION,
+            },
+            output_format,
+            compact_only=compact_only,
+        )
+
     def _execute_frozen_snapshot(
         self,
         *,
@@ -354,11 +471,14 @@ class ChangeImpactTool(BaseMCPTool):
         output_format: str,
         agent_summary_only: bool,
         compact_only: bool,
+        read_existing: bool = False,
     ) -> dict[str, Any]:
         """Build strict impact solely from the captured snapshot records.
 
         Frozen capture intentionally cannot claim dependency or test impact: those
         require live graph/cache inputs which are outside the bound source epoch.
+        ``read_existing=True`` adds the exact P0.4 access-evidence fields to
+        every classified result (RFC-0022 P0.4).
         """
         from ...diff_snapshot_registry import REGISTRY
 
@@ -383,6 +503,17 @@ class ChangeImpactTool(BaseMCPTool):
             )
         response_frozen = dict(frozen)
         response_frozen["changed_records"] = records
+        if read_existing:
+            response_frozen["access_mode"] = "read_existing"
+            response_frozen["access_state"] = "available"
+            response_frozen["access_reason"] = None
+            response_frozen["source_snapshots"] = [
+                {
+                    "kind": "diff",
+                    "snapshot_id": response_frozen["diff_snapshot_id"],
+                    "source_generation": response_frozen["source_generation"],
+                }
+            ]
         result = self._attach_diff_snapshot(result, mode, True, frozen=response_frozen)
         if agent_summary_only:
             snapshot_surface: dict[str, Any] = {
@@ -393,6 +524,16 @@ class ChangeImpactTool(BaseMCPTool):
                     "source_generation",
                     "changed_records",
                     "assessed_scope_paths",
+                    *(
+                        (
+                            "access_mode",
+                            "access_state",
+                            "access_reason",
+                            "source_snapshots",
+                        )
+                        if read_existing
+                        else ()
+                    ),
                 )
                 if key in result
             }

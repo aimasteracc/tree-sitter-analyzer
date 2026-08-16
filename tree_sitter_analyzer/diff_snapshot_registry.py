@@ -21,6 +21,10 @@ from .diff_snapshot_constraints import (
     staged_sources_match_worktree,
     staged_constraint_config,
 )
+from .diff_snapshot_constraints_readonly import (
+    frozen_index_constraint_config_readonly,
+    frozen_index_sources_match_worktree_readonly,
+)
 from .diff_snapshot_expiry import SnapshotExpiryScheduler, schedule_expiry
 from .diff_snapshot_leases import (
     FrozenDiffSnapshot,
@@ -28,6 +32,8 @@ from .diff_snapshot_leases import (
     route_lease,
     snapshot_error,
 )
+from .diff_snapshot_readonly import oracle_generation_readonly
+from .diff_snapshot_readonly_capture import capture_payload_readonly
 from .diff_snapshot_validation import (
     acquire as acquire_snapshot,
     bind_assessed_scope as bind_snapshot_scope,
@@ -69,6 +75,15 @@ def shared_source_generation(project_root: str, deadline: float) -> str:
         project_root,
         deadline,
         oracle_generation=oracle_generation,
+    )
+
+
+def shared_source_generation_readonly(project_root: str, deadline: float) -> str:
+    """P0.4 variant: resolve the shared token through the zero-write oracle."""
+    return resolve_shared_source_generation(
+        project_root,
+        deadline,
+        oracle_generation=oracle_generation_readonly,
     )
 
 
@@ -125,8 +140,20 @@ class DiffSnapshotRegistry:
     def _route_lease(self, snapshot_id: str) -> str:
         return route_lease(self._lease_key, snapshot_id)
     def create(
-        self, project_root: str | None, mode: str, assessed_scope_paths: list[str]
+        self,
+        project_root: str | None,
+        mode: str,
+        assessed_scope_paths: list[str],
+        *,
+        readonly: bool = False,
     ) -> dict[str, object]:
+        """Publish one bounded in-memory diff snapshot.
+
+        ``readonly=True`` selects the RFC-0022 P0.4 zero-write backend
+        (``oracle_generation_readonly`` + ``capture_payload_readonly`` +
+        read-only staged probes); the published snapshot shape is
+        identical to the frozen backend's.
+        """
         if mode not in ("diff", "staged"):
             return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_MODE")
         try:
@@ -160,7 +187,9 @@ class DiffSnapshotRegistry:
             shared_before = shared_source_generation(root, deadline)
             pre_manifest: dict[str, WorkspaceManifestEntry] = {}
             epochs: list[GitEpoch] = []
-            oracle_call: Callable[..., tuple[str, RootIdentity]] = oracle_generation
+            oracle_call: Callable[..., tuple[str, RootIdentity]] = (
+                oracle_generation_readonly if readonly else oracle_generation
+            )
             oracle_params = inspect.signature(oracle_call).parameters
             oracle_budget = (
                 {"byte_ceiling": ceiling} if "byte_ceiling" in oracle_params else {}
@@ -196,7 +225,16 @@ class DiffSnapshotRegistry:
             )
             inventory_size = path_collection_storage(inventory_paths)
             capture_params = inspect.signature(_capture_payload).parameters
-            if "epoch" in capture_params and epoch is not None:
+            if readonly:
+                patch, files = capture_payload_readonly(
+                    root,
+                    mode,
+                    deadline,
+                    ceiling - inventory_size,
+                    expected_manifest=pre_manifest,
+                    epoch=epoch,
+                )
+            elif "epoch" in capture_params and epoch is not None:
                 patch, files = _capture_payload(
                     root,
                     mode,
@@ -251,6 +289,11 @@ class DiffSnapshotRegistry:
                 if epoch is None and "epoch_out" in oracle_params:
                     raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
                 staged_epoch = cast(GitEpoch, epoch)
+                staged_config_reader = (
+                    frozen_index_constraint_config_readonly
+                    if readonly
+                    else frozen_index_constraint_config
+                )
                 (
                     constraint_config_path,
                     constraint_config_data,
@@ -261,14 +304,27 @@ class DiffSnapshotRegistry:
                     staged_epoch,
                     optional_deadline,
                     ceiling,
-                    frozen_index_constraint_config,
+                    staged_config_reader,
                 )
-                staged_source_matches_worktree = staged_sources_match_worktree(
-                    root,
-                    staged_epoch,
-                    optional_deadline,
-                    min(16 * 1024 * 1024, ceiling),
-                )
+                if readonly:
+                    # Explicit reader: the zero-write probe replaces the
+                    # frozen default (which materializes a temp index).
+                    staged_source_matches_worktree = staged_sources_match_worktree(
+                        root,
+                        staged_epoch,
+                        optional_deadline,
+                        min(16 * 1024 * 1024, ceiling),
+                        frozen_index_sources_match_worktree_readonly,
+                    )
+                else:
+                    # Legacy 4-argument call shape keeps the frozen default
+                    # reader and the existing test seam contract.
+                    staged_source_matches_worktree = staged_sources_match_worktree(
+                        root,
+                        staged_epoch,
+                        optional_deadline,
+                        min(16 * 1024 * 1024, ceiling),
+                    )
                 staged_config_matches_worktree = (
                     constraint_config_error is None
                     and live_config_error is None
@@ -338,6 +394,7 @@ class DiffSnapshotRegistry:
                 constraint_config_error=constraint_config_error,
                 staged_source_matches_worktree=staged_source_matches_worktree,
                 staged_config_matches_worktree=staged_config_matches_worktree,
+                readonly=readonly,
                 _inventory_raw_paths=tuple(
                     sorted(path_to_raw(path) for path in inventory_paths)
                 ),
@@ -388,12 +445,21 @@ class DiffSnapshotRegistry:
         *,
         deadline: float | None = None,
     ) -> tuple[SnapshotConsumer | None, str | None]:
+        with self._lock:
+            state = self._states.get(snapshot_id)
+            readonly = bool(state is not None and state.snapshot.readonly)
+        oracle = oracle_generation_readonly if readonly else oracle_generation
+        shared = (
+            shared_source_generation_readonly
+            if readonly
+            else shared_source_generation
+        )
         return acquire_snapshot(
             self,
             snapshot_id,
             project_root,
-            oracle_generation=oracle_generation,
-            shared_source_generation=shared_source_generation,
+            oracle_generation=oracle,
+            shared_source_generation=shared,
             hard_lifetime_seconds=HARD_LIFETIME_SECONDS,
             canonicalize_root=canonical_root,
             deadline=deadline,
@@ -419,12 +485,22 @@ class DiffSnapshotRegistry:
         *,
         deadline: float | None = None,
     ) -> str | None:
+        # ``_snapshot`` (not the raising property) so a released consumer
+        # still classifies through the registry state checks below.
+        snapshot = consumer._snapshot
+        readonly = bool(snapshot is not None and snapshot.readonly)
+        oracle = oracle_generation_readonly if readonly else oracle_generation
+        shared = (
+            shared_source_generation_readonly
+            if readonly
+            else shared_source_generation
+        )
         return validate_snapshot_publish(
             self,
             consumer,
             publish_guard,
-            oracle_generation=oracle_generation,
-            shared_source_generation=shared_source_generation,
+            oracle_generation=oracle,
+            shared_source_generation=shared,
             hard_lifetime_seconds=HARD_LIFETIME_SECONDS,
             deadline=deadline,
         )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from pathlib import Path
 
 import pytest
@@ -311,7 +312,6 @@ async def test_edit_read_existing_arguments_survive_exact_projection(
     ("action", "reason"),
     [
         ("safe", "READ_EXISTING_AUTHORITY_UNCERTIFIED"),
-        ("impact", "DIFF_SNAPSHOT_READ_EXISTING_UNSUPPORTED"),
         ("ast_diff", "READ_EXISTING_AUTHORITY_UNCERTIFIED"),
         ("classify", "READ_EXISTING_AUTHORITY_UNCERTIFIED"),
         ("constraints", "READ_EXISTING_AUTHORITY_UNCERTIFIED"),
@@ -353,6 +353,134 @@ async def test_edit_read_existing_returns_exact_access_evidence(
     assert (result.get("format"), "toon_content" in result) == (
         ("toon", True) if output_format == "toon" else (None, False)
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("output_format", ["json", "toon"])
+async def test_edit_impact_read_existing_gate_is_platform_aware(
+    tmp_path: Path, output_format: str
+) -> None:
+    """RFC-0022 P0.4: impact's producer route depends on the certified axis.
+
+    On non-Linux axes (no pinned native authority) the route returns the
+    stable unsupported classification; on Linux it attempts the zero-write
+    backend and classifies failures with the exact capture code.
+    """
+    import sys
+
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    (tmp_path / "inside.py").write_text("value = 1\n")
+    arguments = {
+        **_READ_EXISTING_ROUTE_ARGS["impact"],
+        "output_format": output_format,
+    }
+    result = await build_edit_facade(str(tmp_path)).execute(
+        {"action": "impact", **arguments}
+    )
+
+    if sys.platform.startswith("linux"):
+        # The fixture is not a git repository: the producer fails closed
+        # with the oracle's stable code and the exact access evidence.
+        assert {
+            key: result[key]
+            for key in (
+                "success",
+                "access_mode",
+                "access_state",
+                "access_reason",
+                "source_snapshots",
+                "output_format",
+            )
+        } == {
+            "success": False,
+            "access_mode": "read_existing",
+            "access_state": "unknown",
+            "access_reason": "DIFF_SNAPSHOT_GIT_ERROR",
+            "source_snapshots": [],
+            "output_format": output_format,
+        }
+        assert result["error_code"] == "DIFF_SNAPSHOT_GIT_ERROR"
+    else:
+        assert {
+            key: result[key]
+            for key in (
+                "success",
+                "access_mode",
+                "access_state",
+                "access_reason",
+                "source_snapshots",
+                "output_format",
+            )
+        } == {
+            "success": True,
+            "access_mode": "read_existing",
+            "access_state": "unknown",
+            "access_reason": "DIFF_SNAPSHOT_READ_EXISTING_UNSUPPORTED",
+            "source_snapshots": [],
+            "output_format": output_format,
+        }
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="tracked: RFC-0022 P0.4 producer route is Linux-certified only",
+)
+@pytest.mark.asyncio
+async def test_edit_impact_read_existing_producer_publishes_snapshot(
+    tmp_path: Path,
+) -> None:
+    """The zero-write producer publishes both IDs with full access evidence."""
+    import subprocess
+
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    for cfg in (
+        ["user.email", "t@t"],
+        ["user.name", "t"],
+        ["maintenance.auto", "false"],
+        ["gc.auto", "0"],
+    ):
+        subprocess.run(["git", "-C", str(tmp_path), "config", *cfg], check=True)
+    (tmp_path / "inside.py").write_text("value = 1\n")
+    (tmp_path / "keep.py").write_text("keep = True\n")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "commit", "-qm", "init"], check=True)
+    (tmp_path / "inside.py").write_text("value = 2\n")
+    (tmp_path / "new.py").write_text("x = 1\n")
+
+    arguments = dict(_READ_EXISTING_ROUTE_ARGS["impact"])
+    arguments["scope_paths"] = []
+    result = await build_edit_facade(str(tmp_path)).execute(
+        {
+            "action": "impact",
+            **arguments,
+            "output_format": "json",
+        }
+    )
+
+    assert result["success"] is True
+    assert result["access_mode"] == "read_existing"
+    assert result["access_state"] == "available"
+    assert result["access_reason"] is None
+    assert result["source_snapshots"] == [
+        {
+            "kind": "diff",
+            "snapshot_id": result["diff_snapshot_id"],
+            "source_generation": result["source_generation"],
+        }
+    ]
+    assert result["diff_snapshot_id"].startswith("ds_")
+    assert result["route_lease_id"].startswith("dl_")
+    assert [
+        (record["path"], record["status"]) for record in result["changed_records"]
+    ] == [
+        ("inside.py", "M"),
+        ("new.py", "A"),
+    ]
+    assert "assessed_scope_paths" in result
+    assert result["action_version"]
 
 
 @pytest.mark.asyncio
@@ -494,3 +622,97 @@ async def test_edit_action_controls_are_rejected_outside_supported_actions(
         "ERROR",
         f"parameter {parameter!r} applies only to action(s): {allowed}",
     )
+
+
+@pytest.mark.asyncio
+async def test_edit_impact_read_existing_platform_gate_branch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Forcing the non-certified axis returns the stable unsupported result."""
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: False)
+    (tmp_path / "inside.py").write_text("value = 1\n")
+    result = await build_edit_facade(str(tmp_path)).execute(
+        {
+            "action": "impact",
+            **_READ_EXISTING_ROUTE_ARGS["impact"],
+            "output_format": "json",
+        }
+    )
+    assert {
+        key: result[key]
+        for key in (
+            "success",
+            "access_mode",
+            "access_state",
+            "access_reason",
+            "source_snapshots",
+        )
+    } == {
+        "success": True,
+        "access_mode": "read_existing",
+        "access_state": "unknown",
+        "access_reason": "DIFF_SNAPSHOT_READ_EXISTING_UNSUPPORTED",
+        "source_snapshots": [],
+    }
+    assert result["action_version"]
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="tracked: RFC-0022 P0.4 producer route is Linux-certified only",
+)
+@pytest.mark.asyncio
+async def test_edit_impact_read_existing_acquire_failure_classifies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An acquire failure after capture closes the lease and classifies."""
+    import subprocess
+
+    import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    for cfg in (
+        ["user.email", "t@t"],
+        ["user.name", "t"],
+        ["maintenance.auto", "false"],
+        ["gc.auto", "0"],
+    ):
+        subprocess.run(["git", "-C", str(tmp_path), "config", *cfg], check=True)
+    (tmp_path / "inside.py").write_text("value = 1\n")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "commit", "-qm", "init"], check=True)
+    (tmp_path / "inside.py").write_text("value = 2\n")
+
+    closed: list[str] = []
+    original_close = snapshots.REGISTRY.close_lease
+
+    def fake_acquire(snapshot_id, project_root, **kwargs):
+        return None, "DIFF_SNAPSHOT_EXPIRED"
+
+    def spy_close(snapshot_id, lease):
+        closed.append(snapshot_id)
+        return original_close(snapshot_id, lease)
+
+    monkeypatch.setattr(snapshots.REGISTRY, "acquire", fake_acquire)
+    monkeypatch.setattr(snapshots.REGISTRY, "close_lease", spy_close)
+    try:
+        tool = ChangeImpactTool(str(tmp_path))
+        result = await tool.execute(
+            {
+                "mode": "diff",
+                "access_mode": "read_existing",
+                "scope_paths": [],
+                "output_format": "json",
+            }
+        )
+    finally:
+        monkeypatch.undo()
+    assert result["success"] is False
+    assert result["access_state"] == "unknown"
+    assert result["access_reason"] == "DIFF_SNAPSHOT_EXPIRED"
+    assert result["error_code"] == "DIFF_SNAPSHOT_EXPIRED"
+    assert len(closed) == 1

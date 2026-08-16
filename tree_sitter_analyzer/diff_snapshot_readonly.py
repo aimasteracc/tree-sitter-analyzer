@@ -17,17 +17,18 @@ dirty files exactly when the cached stat is accurate; the differential
 tests below prove equality on typical fixture states. The strace authority
 (``scripts/rfc0022_strace_*.py``) certifies that no write is attempted.
 
-The module is the first slice of the P0.4 read-existing backend: the
-generation half. Wiring it into ``edit.impact(access_mode="read_existing")``
-plus the in-memory blob/patch materialization and the P0.2 golden-corpus
-equivalence suite is the remaining work (tracked with the RFC-0022 P0.4
-gate).
+The module is the generation half of the P0.4 read-existing backend; the
+in-memory blob/patch materialization half lives in
+``diff_snapshot_readonly_capture`` and is wired into
+``edit.impact(access_mode="read_existing")`` through the registry's
+read-only capture path (tracked with the RFC-0022 P0.4 gate).
 """
 
 from __future__ import annotations
 
 import hashlib
 import os
+import stat
 import time
 from typing import Any
 
@@ -39,11 +40,13 @@ from .frozen_git_settings import (
     frozen_settings_storage,
     reject_active_filters,
 )
+from .git_path_codec import raw_to_path
 from .git_readonly import run_git_readonly
 from .source_epoch import capture_source_epoch, core_bool
 from .source_oracle import (
     SourceOracleError,
     WorkspaceManifestEntry,
+    _remaining,
     canonical_root,
     stable_descriptor_chain,
 )
@@ -62,7 +65,6 @@ from .source_oracle_git import (
     _supports_nofollow,
     container_storage,
     entry_map_storage,
-    git_output,
     has_split_index,
     path_set_storage,
 )
@@ -82,6 +84,7 @@ def _live_index_output(
     object_format: str = "sha1",
     input_: bytes | None = None,
     extra_env: dict[str, str] | None = None,
+    ok_returncodes: frozenset[int] = frozenset({0}),
 ) -> bytes:
     """Run Git read-only against the live index (P0.4: zero writes).
 
@@ -94,7 +97,8 @@ def _live_index_output(
     certifies that no write attempt occurs. ``refresh``/``clear_hints`` are
     accepted for compatibility and are no-ops (no stat-cache rewriting in
     memory either) — the differential tests validate the live stat cache
-    against the frozen oracle.
+    against the frozen oracle. ``ok_returncodes`` extends the accepted exit
+    set for ``git diff --no-index`` (exit 1 = differences found).
     """
     del index_bytes, refresh, clear_hints, object_format
     env = {
@@ -112,6 +116,7 @@ def _live_index_output(
         limit=limit,
         env=env,
         input_=input_,
+        ok_returncodes=ok_returncodes,
     )
 
 
@@ -233,13 +238,119 @@ def _index_entries_from_bytes(
     return entries
 
 
+def _gitlink_probe_safe(root: str, git_dir: str, raw: bytes, deadline: float) -> bool:
+    """Return whether probing one gitlink stays inside the project boundary.
+
+    The frozen oracle treats live gitlink leaves as opaque; the zero-write
+    probe must not follow a symlink-replaced gitlink directory or a
+    ``.git`` file that points outside the parent repository. A standalone
+    nested repository (real ``.git`` directory) reads only inside the
+    project tree; a ``.git`` file must resolve back inside the parent's
+    git directory. Any uncertifiable gitlink fails closed as dirty
+    without being entered.
+    """
+    path = raw_to_path(raw)
+    full = os.path.join(root, path)
+    try:
+        info = os.lstat(full)
+    except OSError:
+        return False
+    if not stat.S_ISDIR(info.st_mode):
+        return False
+    git_file = os.path.join(full, ".git")
+    try:
+        git_info = os.lstat(git_file)
+    except OSError:
+        return False
+    if stat.S_ISDIR(git_info.st_mode):
+        return True
+    if not stat.S_ISREG(git_info.st_mode):
+        return False
+    try:
+        with open(git_file, "rb") as handle:
+            data = handle.read(64 * 1024)
+    except OSError:
+        return False
+    _remaining(deadline)
+    for line in data.split(b"\n"):
+        if not line.startswith(b"gitdir:"):
+            continue
+        value = line[len(b"gitdir:") :].strip()
+        if not value:
+            return False
+        decoded = os.fsdecode(value)
+        resolved = decoded if os.path.isabs(decoded) else os.path.join(full, decoded)
+        real_resolved = os.path.realpath(resolved)
+        real_git = os.path.realpath(git_dir)
+        try:
+            return os.path.commonpath((real_git, real_resolved)) == real_git
+        except ValueError:
+            return False
+    return False
+
+
+def _dirty_gitlink_probes_readonly(
+    root: str, index_entries: dict[bytes, bytes], deadline: float
+) -> set[bytes]:
+    """Return gitlink paths git's refresh would report dirty (P0.4).
+
+    Git reports a submodule dirty when its HEAD moved away from the index
+    oid or its worktree has changes. The frozen oracle re-checks this via
+    stat-cache invalidation; the zero-write oracle reproduces it with
+    bounded read-only nested git calls. A submodule that cannot certify
+    its HEAD (uninitialized/broken) fails closed as dirty; a gitlink that
+    cannot be probed inside the project boundary is conservatively dirty
+    and is never entered.
+    """
+    git_dir = _git_output_readonly(
+        root, ["rev-parse", "--git-dir"], deadline=deadline, limit=64 * 1024
+    )
+    git_dir = _strip_one_record_terminator(git_dir)
+    decoded_git_dir = os.fsdecode(git_dir)
+    if not os.path.isabs(decoded_git_dir):
+        decoded_git_dir = os.path.join(root, decoded_git_dir)
+    dirty: set[bytes] = set()
+    for raw in sorted(index_entries):
+        entry = index_entries[raw]
+        if not entry.startswith(b"160000 "):
+            continue
+        if not _gitlink_probe_safe(root, decoded_git_dir, raw, deadline):
+            dirty.add(raw)
+            continue
+        path = raw_to_path(raw)
+        index_oid = entry.split(b" ")[1]
+        try:
+            head = _git_output_readonly(
+                root,
+                ["-C", path, "rev-parse", "--verify", "HEAD"],
+                deadline=deadline,
+                limit=4096,
+            ).strip()
+            status = _git_output_readonly(
+                root,
+                ["-C", path, "status", "--porcelain"],
+                deadline=deadline,
+                limit=16 * 1024 * 1024,
+            )
+        except SourceOracleError:
+            dirty.add(raw)
+            continue
+        if head != index_oid or status:
+            dirty.add(raw)
+    return dirty
+
+
 def _hinted_paths(index_bytes: bytes, object_format: str, max_paths: int) -> set[bytes]:
     """Paths with assume-unchanged or skip-worktree hint bits.
 
     The frozen oracle's stat-cache invalidation preserves these bits, so
     hinted entries are never dirty and their content is never framed; the
     P0.4 oracle must replicate that from the captured index bytes
-    (Codex #1293 P1). Supports index v2/v3; v4 fails closed.
+    (Codex #1293 P1). Assume-unchanged lives in the base flags; the
+    skip-worktree bit lives in the *extended* flags word, so entries with
+    the extended marker (including intent-to-add, whose extended
+    CE_INTENT_TO_ADD bit must NOT count as a hint) are read correctly.
+    Supports index v2/v3; v4 fails closed.
     """
     del max_paths
     if not index_bytes:
@@ -260,11 +371,18 @@ def _hinted_paths(index_bytes: bytes, object_format: str, max_paths: int) -> set
             index_bytes[offset + flags_offset : offset + flags_offset + 2], "big"
         )
         extended_offset = offset + flags_offset + 2
+        extended = 0
+        if flags & 0x4000:
+            if extended_offset + 2 > content_end:
+                raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+            extended = int.from_bytes(
+                index_bytes[extended_offset : extended_offset + 2], "big"
+            )
         path_start = extended_offset + (2 if flags & 0x4000 else 0)
         path_end = index_bytes.find(b"\0", path_start)
         if path_end < 0 or path_end >= content_end:
             raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        if flags & (0x8000 | 0x4000):
+        if flags & 0x8000 or extended & 0x4000:
             hinted.add(index_bytes[path_start:path_end])
         fixed = 62 + (2 if flags & 0x4000 else 0)
         offset = offset + ((fixed + (path_end - path_start) + 1 + 7) & ~7)
@@ -417,6 +535,23 @@ def oracle_generation_readonly(
         )
     dirty = {path for path in dirty_raw.split(b"\0") if path}
     untracked = {path for path in untracked_raw.split(b"\0") if path}
+    probed_gitlinks: set[bytes] = set()
+    if mode == "diff":
+        # The frozen oracle's stat-cache invalidation makes git report
+        # every regular tracked path dirty and re-check every gitlink
+        # (submodule HEAD + worktree state); the live stat cache can do
+        # neither. The all-tracked framing below reproduces the first half
+        # and the read-only nested probes reproduce the second; the probe
+        # is authoritative for gitlinks (it also clears stat-racy false
+        # positives the frozen refresh would have re-checked away).
+        probed_gitlinks = _dirty_gitlink_probes_readonly(root, index_entries, end)
+        gitlink_paths = {
+            raw for raw, entry in index_entries.items() if entry.startswith(b"160000 ")
+        }
+        dirty = (dirty - gitlink_paths) | probed_gitlinks
+        if probed_gitlinks:
+            ledger.require_available(path_set_storage(probed_gitlinks))
+            ledger.charge(path_set_storage(probed_gitlinks))
     retained_paths = path_set_storage(dirty) + path_set_storage(untracked)
     ledger.require_available(len(dirty_raw) + len(untracked_raw) + retained_paths)
     ledger.charge(retained_paths)
@@ -437,7 +572,10 @@ def oracle_generation_readonly(
         root,
         settings_inventory,
         end,
-        git_output,
+        # The frozen runner materializes a temporary order file per call;
+        # the zero-write oracle must route every settings probe through the
+        # read-only runner (Codex #1293 finding tracked with RFC-0022 P0.4).
+        _git_output_readonly,
         byte_ceiling=ledger.remaining,
     )
     ledger.charge(frozen_settings_storage(frozen_settings))
@@ -477,10 +615,13 @@ def oracle_generation_readonly(
                 dirty_paths=(
                     tuple(
                         sorted(
-                            raw
-                            for raw in tracked
-                            if not index_entries[raw].startswith(b"160000 ")
-                            and raw not in hinted
+                            {
+                                raw
+                                for raw in tracked
+                                if raw not in hinted
+                                and not index_entries[raw].startswith(b"160000 ")
+                            }
+                            | set(probed_gitlinks)
                         )
                     )
                     if mode == "diff"

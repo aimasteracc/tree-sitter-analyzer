@@ -33,6 +33,9 @@ class FrozenDiffSnapshot:
     constraint_config_error: str | None = None
     staged_source_matches_worktree: bool = True
     staged_config_matches_worktree: bool = True
+    # RFC-0022 P0.4: snapshots created by the zero-write backend revalidate
+    # through the read-only oracle (acquire/validate_publish).
+    readonly: bool = False
     _inventory_raw_paths: tuple[bytes, ...] = ()
     _assessed_scope_raw_paths: tuple[bytes, ...] = ()
 
