@@ -255,9 +255,31 @@ def test_live_read_existing_route_is_zero_write() -> None:
     case.mkdir(mode=0o777)
     case.chmod(0o777)
     _prepare_adapter_route_fixture(case)
+    target_user = os.environ["RFC0022_TARGET_USER"]
+    # Probe git as the isolated user before the route self-check.
+    probe = subprocess.run(
+        [
+            "sudo",
+            "-n",
+            "-u",
+            target_user,
+            "git",
+            "-C",
+            str(case),
+            "rev-parse",
+            "--show-toplevel",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert probe.returncode == 0, (
+        f"git probe failed as {target_user}: rc={probe.returncode} "
+        f"stdout={probe.stdout!r} stderr={probe.stderr!r}"
+    )
     # Direct self-check: run the target as the isolated user without
     # strace so a target-side failure surfaces its real stderr here.
-    target_user = os.environ["RFC0022_TARGET_USER"]
     direct = subprocess.run(
         [
             "sudo",
