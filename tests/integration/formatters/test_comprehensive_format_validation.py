@@ -354,37 +354,6 @@ class TestComprehensiveFormatValidation:
         assert retrieved_data is not None
         assert retrieved_data.metadata.id == test_id
 
-    @pytest.mark.asyncio
-    async def test_integration_with_real_components(self, temp_results_dir):
-        """Test integration with real tree-sitter-analyzer components if available"""
-        try:
-            # Try to import real analyzer components
-            from tree_sitter_analyzer.core.analysis_engine import (  # noqa: F401
-                AnalysisEngine,
-            )
-            from tree_sitter_analyzer.formatters.formatter_registry import (  # noqa: F401
-                FormatterRegistry,
-            )
-
-            # If available, test with real components
-            config = FormatTestSuiteConfig(
-                results_directory=temp_results_dir,
-                generate_test_data=False,
-                enable_performance_tests=False,
-                enable_integration_tests=False,
-                enable_end_to_end_tests=False,
-                enable_cross_component_tests=False,
-            )
-
-            ComprehensiveFormatTestSuite(config)
-
-            # Simple test with real components would go here
-            # This is a placeholder for when real integration is needed
-
-        except ImportError:
-            # If real components not available, skip this test
-            pytest.skip("Real tree-sitter-analyzer components not available")
-
     def test_results_serialization(self, temp_results_dir):
         """Test that results can be properly serialized and saved"""
         from .comprehensive_test_suite import TestSuiteResults

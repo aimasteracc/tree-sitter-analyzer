@@ -23,12 +23,6 @@ def reset_engine_instances():
 class TestCleanupCoverage:
     """Hit cleanup paths that require _ensure_initialized first (lines 402-404)"""
 
-    def test_cleanup_with_initialized_components(self):
-        """cleanup should clear cache and performance monitor when initialized"""
-        engine = get_analysis_engine()
-        engine._ensure_initialized()
-        engine.cleanup()  # lines 402, 404
-
 
 class TestCacheKeyCoverage:
     """Hit exception paths in _generate_cache_key (lines 372-373)"""

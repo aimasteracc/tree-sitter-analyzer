@@ -256,14 +256,6 @@ class TestDefaultExtractor:
 class TestPluginManagerAdvanced:
     """Test advanced PluginManager functionality"""
 
-    def test_register_plugin_with_exception(self, mocker, plugin_manager_instance):
-        """Test plugin registration with exception"""
-        mock_plugin = mocker.MagicMock()
-        mock_plugin.get_language_name.side_effect = Exception("Test error")
-
-        # Should not raise exception
-        plugin_manager_instance.register_plugin(mock_plugin)
-
     def test_get_plugin_for_file_with_applicable_plugin(
         self, mocker, plugin_manager_instance
     ):

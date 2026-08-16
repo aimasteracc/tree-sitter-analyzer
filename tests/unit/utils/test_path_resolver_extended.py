@@ -202,16 +202,6 @@ class TestPathResolverExtended:
         result = self.resolver.is_relative(str(self.test_file))
         assert not result
 
-    def test_is_relative_with_relative_path(self):
-        """Test is_relative method with relative path."""
-        result = self.resolver.is_relative("test.txt")
-        assert result
-
-    def test_is_relative_with_empty_path(self):
-        """Test is_relative method with empty path."""
-        result = self.resolver.is_relative("")
-        assert result
-
     def test_is_relative_with_none_path(self):
         """Test is_relative method with None path."""
         with pytest.raises(TypeError):

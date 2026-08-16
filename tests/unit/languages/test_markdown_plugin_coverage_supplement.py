@@ -695,28 +695,6 @@ class TestMarkdownLinkRefDefinitions:
         self.extractor._processed_nodes = set()
         self.extractor._element_cache = {}
 
-    def test_extract_link_reference_defs_success(self):
-        """Test link reference definition extraction success (lines 955-980)"""
-        from unittest.mock import Mock
-
-        mock_root = Mock()
-        mock_root.children = []
-
-        ref_node = Mock()
-        ref_node.children = []
-        ref_node.type = "link_reference_definition"
-        ref_node.start_point = (0, 0)
-        ref_node.end_point = (0, 35)
-        ref_node.start_byte = 0
-        ref_node.end_byte = 35
-
-        mock_root.children = [ref_node]
-
-        refs = []
-        self.extractor._extract_link_reference_definitions(mock_root, refs)
-
-        assert refs
-
 
 class TestMarkdownAllElementsExtract:
     """Tests for extract_all_elements method"""

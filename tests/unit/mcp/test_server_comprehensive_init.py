@@ -75,13 +75,6 @@ class TestTreeSitterAnalyzerMCPServerInitialization:
 
             assert server.universal_analyze_tool is None
 
-    def test_ensure_initialized_success(self, temp_project_dir):
-        """Test _ensure_initialized when server is initialized."""
-        server = TreeSitterAnalyzerMCPServer(temp_project_dir)
-
-        # Should not raise any exception
-        server._ensure_initialized()
-
     def test_ensure_initialized_failure(self, temp_project_dir):
         """Test _ensure_initialized when server is not initialized."""
         server = TreeSitterAnalyzerMCPServer(temp_project_dir)

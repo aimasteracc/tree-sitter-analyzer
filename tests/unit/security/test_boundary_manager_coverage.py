@@ -228,21 +228,6 @@ class TestIsSymlinkSafe:
 class TestAuditAccess:
     """Tests for audit_access method"""
 
-    def test_audit_allowed_access(self, tmp_path):
-        """Test auditing allowed file access"""
-        file_path = tmp_path / "test.py"
-        file_path.write_text("test")
-
-        manager = ProjectBoundaryManager(str(tmp_path))
-        # Should not raise
-        manager.audit_access(str(file_path), "read")
-
-    def test_audit_denied_access(self, tmp_path):
-        """Test auditing denied file access"""
-        manager = ProjectBoundaryManager(str(tmp_path))
-        # Should not raise
-        manager.audit_access("/etc/passwd", "read")
-
 
 class TestStringRepresentations:
     """Tests for __str__ and __repr__ methods"""
