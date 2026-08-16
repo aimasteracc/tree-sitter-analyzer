@@ -4,9 +4,18 @@ Last run: 2026-08-16 (NO1-010A three-task prototype — RFC-0022 Phase A router)
 
 ## NO1-010A completion record (2026-08-16)
 
-- **NO1-010A (three-task prototype) implemented** on `feature/no1-010a-task-router`
-  (PR pending): `understand` / `plan_change` / `assess_change` now execute the
-  pinned RFC-0022 route table end-to-end.
+- **NO1-010A (three-task prototype) implemented and MERGED** (#1290 → develop,
+  2026-08-16): `understand` / `plan_change` / `assess_change` execute the
+  pinned RFC-0022 route table end-to-end. All 14 first-round Codex review
+  findings fixed in-branch (evidence budget, echo validation, real wire
+  vocabularies, NO_CONFIG diff-only provenance, truncation propagation,
+  ownership degradation, cleanup wall-time exclusion, strict decoder,
+  harness one-of, etc.) with regression tests; CI + codecov/patch green.
+- **NO1-010A follow-up (task UX, in progress)**: actionable outputs
+  (`next_step` unlock/re-index/budget/review hints + compact deterministic
+  `agent_summary`) and adapter-boundary wire contract fixtures pinning the
+  real primitive shapes (`file`/`name` code blocks, `caller_file`/`caller_name`
+  violations, Git-status changed records).
   - `task/router.py` — fixed route-table executor: sequential primitive calls
     through an injected `PrimitiveExecutor`, budget/deadline admission with
     exact `deadline_overrun_ms` reporting, constraints-slot reservation before
