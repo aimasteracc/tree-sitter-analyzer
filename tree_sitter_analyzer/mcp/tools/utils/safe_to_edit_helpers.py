@@ -726,26 +726,25 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
     except Exception:  # nosec B110 — snapshot schema drift degrades to empty
         pass
     try:
+        # _import_needles_for_target always yields at least one needle for a
+        # non-empty rel_path, so no guard is needed around the scan.
         needles = _import_needles_for_target(rel_path)
-        if needles:
-            rows = conn.execute(
-                "SELECT file_path, imports_json FROM ast_index"
-            ).fetchall()
-            for row in rows:
-                file_path = row["file_path"]
-                if not file_path or file_path == rel_path:
+        rows = conn.execute("SELECT file_path, imports_json FROM ast_index").fetchall()
+        for row in rows:
+            file_path = row["file_path"]
+            if not file_path or file_path == rel_path:
+                continue
+            try:
+                imports = json.loads(row["imports_json"])
+            except (TypeError, ValueError):
+                continue
+            for imp in imports:
+                imp_text = imp["text"] if isinstance(imp, dict) else imp
+                if not isinstance(imp_text, str):
                     continue
-                try:
-                    imports = json.loads(row["imports_json"])
-                except (TypeError, ValueError):
-                    continue
-                for imp in imports:
-                    imp_text = imp["text"] if isinstance(imp, dict) else imp
-                    if not isinstance(imp_text, str):
-                        continue
-                    if any(needle in imp_text for needle in needles):
-                        dependents.add(file_path)
-                        break
+                if any(needle in imp_text for needle in needles):
+                    dependents.add(file_path)
+                    break
     except Exception:  # nosec B110 — snapshot schema drift degrades to empty
         pass
     return FileDependencyView(

@@ -274,6 +274,36 @@ def format_read_existing_unavailable(
     )
 
 
+def format_read_existing_failure(
+    code: str,
+    *,
+    output_format: str = "toon",
+    compact_only: bool = False,
+    action_version: str | None = None,
+) -> dict[str, Any]:
+    """Format one classified failure envelope with P0.4 evidence.
+
+    Used by consumers that must fail closed BEFORE reaching the shared seam
+    (e.g. edit.safe's unbound-root guard, which must precede path
+    validation): produces the same envelope shape the seam's except block
+    emits, so the wire contract (evidence + action_version) is never lost.
+    """
+    from .mcp.utils.format_helper import apply_toon_format_to_response
+
+    failure: dict[str, Any] = {
+        "success": False,
+        "verdict": "ERROR",
+        "error_code": code,
+        "error": code,
+        "action_version": action_version,
+        "output_format": output_format,
+    }
+    attach_read_existing_evidence(failure)
+    return apply_toon_format_to_response(
+        failure, output_format, compact_only=compact_only
+    )
+
+
 def read_existing_gate(
     tool: Any,
     arguments: dict[str, Any],
@@ -353,6 +383,7 @@ _INDEX_CONSUMER_STABLE_CODES = frozenset(
         "SOURCE_SCOPE_UNBOUNDED",
         "SOURCE_INDEX_MISMATCH",
         "CONSTRAINED_INDEX_SCOPE",
+        "FILE_NOT_FOUND",
     }
 )
 
@@ -403,15 +434,18 @@ def read_existing_index_consumer(
             default_output_format=default_output_format,
             action_version=action_version,
         )
-    if not tool.project_root:
-        raise ValueError(
-            "MISSING_PROJECT_ROOT: project_root must be bound before "
-            "read_existing access"
-        )
     from .index_snapshot import read_existing_index_scope
     from .mcp.utils.format_helper import apply_toon_format_to_response
 
     try:
+        # Codex-review P2 (#1299): an unbound root must be CLASSIFIED (failure
+        # envelope with evidence + action_version), never a bare raise that
+        # escapes the wire contract — so the check lives inside the try.
+        if not tool.project_root:
+            raise ValueError(
+                "MISSING_PROJECT_ROOT: project_root must be bound before "
+                "read_existing access"
+            )
         # validate_required_index_access has already bound both tokens as
         # non-empty strings; index them directly so the acquire types cleanly.
         with read_existing_index_scope(
@@ -446,16 +480,9 @@ def read_existing_index_consumer(
                 result, output_format, compact_only=compact_only
             )
     except (ValueError, RuntimeError) as exc:
-        code = _stable_consumer_code(exc)
-        failure: dict[str, Any] = {
-            "success": False,
-            "verdict": "ERROR",
-            "error_code": code,
-            "error": code,
-            "action_version": action_version,
-            "output_format": output_format,
-        }
-        attach_read_existing_evidence(failure)
-        return apply_toon_format_to_response(
-            failure, output_format, compact_only=compact_only
+        return format_read_existing_failure(
+            _stable_consumer_code(exc),
+            output_format=output_format,
+            compact_only=compact_only,
+            action_version=action_version,
         )

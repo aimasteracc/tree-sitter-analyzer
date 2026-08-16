@@ -421,3 +421,96 @@ def test_nav_and_safe_certified_failure_echoes_action_version(
     assert safe["action_version"] == EDIT_SAFE_ACTION_VERSION
     assert safe["success"] is False
     assert safe["access_reason"] == "INDEX_SNAPSHOT_UNKNOWN"
+
+
+# The P0.1 consumer seam classifies an unbound project root as a
+# MISSING_PROJECT_ROOT failure envelope with evidence + action_version
+# (Codex review P2, #1299): the raise is inside read_existing_index_consumer,
+# not a bare escape that loses the wire contract.
+def test_read_existing_consumer_unbound_root_is_classified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+    from tree_sitter_analyzer.wire_owner import NAV_CONTEXT_ACTION_VERSION
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+
+    class UnboundTool(CodeGraphContextTool):
+        def __init__(self) -> None:
+            super().__init__(None)
+
+    result = _run(
+        UnboundTool().execute(
+            {
+                "task": "x",
+                "access_mode": "read_existing",
+                "snapshot_id": "s1",
+                "source_generation": "1",
+                "output_format": "json",
+            }
+        )
+    )
+    assert result["success"] is False
+    assert result["error_code"] == "MISSING_PROJECT_ROOT"
+    assert result["access_reason"] == "MISSING_PROJECT_ROOT"
+    assert result["access_state"] == "missing"
+    assert result["action_version"] == NAV_CONTEXT_ACTION_VERSION
+    assert result["source_snapshots"] == []
+
+
+# A reader that returns a non-dict payload is classified as
+# INDEX_SNAPSHOT_FAILED by the consumer seam (never served to the caller).
+def test_read_existing_consumer_rejects_non_dict_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlite3
+
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.index_snapshot import REGISTRY, IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+    from tree_sitter_analyzer.wire_owner import NAV_CONTEXT_ACTION_VERSION
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    scope = make_source_scope_descriptor()
+    conn = sqlite3.connect(":memory:")
+    snapshot = IndexSnapshot(
+        None,
+        "fp",
+        "ifp",
+        "gen-1",
+        "complete",
+        None,
+        str(tmp_path.resolve()),
+        0,
+        None,
+        None,
+        scope,
+    )
+    published = REGISTRY.publish(snapshot, conn, 0)
+
+    import tree_sitter_analyzer.read_existing_access as seam
+
+    def bad_reader(snapshot, conn):
+        return "not-a-dict"
+
+    result = seam.read_existing_index_consumer(
+        CodeGraphContextTool(str(tmp_path)),
+        {
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+            "output_format": "json",
+        },
+        reader=bad_reader,
+        action_version=NAV_CONTEXT_ACTION_VERSION,
+    )
+    assert result["success"] is False
+    assert result["error_code"] == "INDEX_SNAPSHOT_FAILED"
+    assert result["access_reason"] == "INDEX_SNAPSHOT_FAILED"
+    assert result["action_version"] == NAV_CONTEXT_ACTION_VERSION

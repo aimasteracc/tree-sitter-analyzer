@@ -484,23 +484,26 @@ def test_execute_read_existing_fails_closed_without_project_root() -> None:
     # Codex P1 (#1257): with project_root unbound, resolve_and_validate_
     # file_path would pass base_path=None into SecurityValidator and skip
     # the project-boundary layer; the read_existing route must fail closed
-    # with the stable MISSING_PROJECT_ROOT error instead.
+    # with the stable MISSING_PROJECT_ROOT error. Review P2 (#1299): the
+    # failure is a classified envelope (evidence + action_version), not a
+    # bare raise.
     tool = SafeToEditTool()  # no project root bound
-    with pytest.raises(ValueError) as exc_info:
-        _run(
-            tool.execute(
-                {
-                    "file_path": "src/app.py",
-                    "access_mode": "read_existing",
-                    "snapshot_id": "snap-1",
-                    "source_generation": 1,
-                }
-            )
+    result = _run(
+        tool.execute(
+            {
+                "file_path": "src/app.py",
+                "access_mode": "read_existing",
+                "snapshot_id": "snap-1",
+                "source_generation": "1",
+            }
         )
-    assert str(exc_info.value) == (
-        "MISSING_PROJECT_ROOT: project_root must be bound before "
-        "read_existing path validation"
     )
+    assert result["success"] is False
+    assert result["error_code"] == "MISSING_PROJECT_ROOT"
+    assert result["access_reason"] == "MISSING_PROJECT_ROOT"
+    assert result["access_state"] == "missing"
+    assert result["action_version"] == "edit.safe/v1"
+    assert result["source_snapshots"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -663,4 +666,145 @@ async def test_edit_safe_read_existing_generation_mismatch_fails_closed(
     assert result["access_reason"] == "SOURCE_GENERATION_MISMATCH"
     assert result["error_code"] == "SOURCE_GENERATION_MISMATCH"
     assert result["source_snapshots"] == []
+    assert result["action_version"] == "edit.safe/v1"
+
+
+# RFC-0022 P0.4: the snapshot dependency view degrades to an empty view on
+# schema drift (legacy connection without the edges/ast_index tables) so the
+# route still classifies honestly instead of crashing.
+def test_snapshot_dependency_view_degrades_on_schema_drift() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    view = build_snapshot_file_dependency_view(conn, "app.py")
+    assert view.dependents_of("app.py") == []
+    assert view.dependencies_of("app.py") == []
+
+    # edges present but ast_index absent: exact resolution probes the missing
+    # table and degrades to not-indexed.
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("INSERT INTO edges VALUES ('routes.py', 'app', 'imports')")
+    partial = build_snapshot_file_dependency_view(conn, "app.py")
+    assert partial.dependents_of("app.py") == []
+
+
+# RFC-0022 P0.4: the snapshot dependency view resolves exact IMPORTS edges
+# AND recalls member imports via the imports_json needle pass, matching the
+# legacy live axis ('from pkg import app' / 'from . import app').
+def test_snapshot_dependency_view_recalls_member_imports() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.execute("INSERT INTO edges VALUES ('routes.py', 'app', 'imports')")
+    conn.execute("INSERT INTO edges VALUES ('app.py', 'app', 'imports')")
+    # 'app.py' importing a module that does not index -> resolved is None.
+    conn.execute("INSERT INTO edges VALUES ('app.py', 'missing.mod', 'imports')")
+    # Relative import spec ('.sibling') exercises the relative branch.
+    conn.execute("INSERT INTO edges VALUES ('pkg/app.py', '.sibling', 'imports')")
+    # Parent-relative spec ('..') is rejected outright.
+    conn.execute("INSERT INTO edges VALUES ('pkg/app.py', '..up', 'imports')")
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('routes.py', ?)",
+        (json.dumps([{"text": "from app import UserService", "line": 1}]),),
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('unrelated.py', ?)",
+        (json.dumps([{"text": "import os", "line": 1}]),),
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('odd.py', ?)",
+        (json.dumps([{"text": 123, "line": 1}]),),
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('app.py', ?)",
+        (json.dumps([{"text": "import os", "line": 1}]),),
+    )
+    conn.execute("INSERT INTO ast_index VALUES ('broken.py', 'not-json')")
+    view = build_snapshot_file_dependency_view(conn, "app.py")
+    # 'routes.py' matches the needle pass; 'unrelated.py' exercises the
+    # non-match branch (no dependent added).
+    assert view.dependents_of("app.py") == ["routes.py"]
+
+
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
+)
+@pytest.mark.asyncio
+async def test_edit_safe_read_existing_syntax_error_short_circuits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A broken file short-circuits the snapshot route like the legacy axis."""
+    import tree_sitter_analyzer.read_existing_access as read_access
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    (project / "app.py").write_text("def broken(:\n", encoding="utf-8")
+    published = _publish_index_snapshot(project)
+
+    tool = SafeToEditTool(str(project))
+    result = await tool.execute(
+        {
+            "file_path": "app.py",
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+            "output_format": "json",
+        }
+    )
+    assert result["success"] is True
+    assert result["verdict"] == "ERROR"
+    assert result["access_state"] == "available"
+    assert result["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+        }
+    ]
+
+
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
+)
+@pytest.mark.asyncio
+async def test_edit_safe_read_existing_missing_file_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A missing target file fails closed on the snapshot route."""
+    import tree_sitter_analyzer.read_existing_access as read_access
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    published = _publish_index_snapshot(project)
+
+    tool = SafeToEditTool(str(project))
+    result = await tool.execute(
+        {
+            "file_path": "does_not_exist.py",
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+            "output_format": "json",
+        }
+    )
+    assert result["success"] is False
+    assert result["error_code"] == "FILE_NOT_FOUND"
+    assert result["access_reason"] == "FILE_NOT_FOUND"
+    assert result["access_state"] == "unknown"
     assert result["action_version"] == "edit.safe/v1"

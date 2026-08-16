@@ -15,6 +15,7 @@ from ...constants import EDIT_KINDS
 from ...health_scorer import HealthScorer
 from ...project_graph import DependencyGraph
 from ...read_existing_access import (
+    format_read_existing_failure,
     index_capability_schema_properties,
     read_existing_index_consumer,
     validate_required_index_access,
@@ -162,10 +163,17 @@ class SafeToEditTool(BaseMCPTool):
         # established. Mirror validate_read_existing_paths: unbound root +
         # read_existing route raises the stable MISSING_PROJECT_ROOT error.
         if arguments.get("access_mode") == "read_existing" and not self.project_root:
-            raise ValueError(
-                "MISSING_PROJECT_ROOT: project_root must be bound before "
-                "read_existing path validation"
+            # Codex P1 (#1257) + review P2 (#1299): fail closed BEFORE path
+            # validation (an arbitrary path must not validate with no
+            # boundary), and emit the CLASSIFIED failure envelope (evidence +
+            # action_version) instead of a bare raise that escapes the wire
+            # contract.
+            failure = format_read_existing_failure(
+                "MISSING_PROJECT_ROOT",
+                output_format=arguments.get("output_format", "toon"),
+                action_version=EDIT_SAFE_ACTION_VERSION,
             )
+            return failure
         # Security/project-boundary checks precede successful unavailable
         # classification so malformed paths remain validation failures.
         resolved = self.resolve_and_validate_file_path(file_path)
@@ -274,7 +282,7 @@ class SafeToEditTool(BaseMCPTool):
         file_path = arguments["file_path"]
         edit_type = arguments.get("edit_type", "refactor")
         if not Path(resolved).exists():
-            raise ValueError(f"File not found: {file_path}")
+            raise ValueError("FILE_NOT_FOUND")
 
         syntax_response = _syntax_error_response(resolved, file_path, edit_type)
         if syntax_response is not None:
@@ -302,18 +310,17 @@ class SafeToEditTool(BaseMCPTool):
         )
         # RFC-0022 P0.5: echo the adapter-owned wire owner version on the
         # success path (the consumer seam adds output_format + evidence).
+        # The builder never sets ``language``, so detect it here (the legacy
+        # axis keeps its own equivalent guard at the execute level).
         result["action_version"] = EDIT_SAFE_ACTION_VERSION
-        if "language" not in result:
-            from ...language_detector import detect_language_from_file
+        from ...language_detector import detect_language_from_file
 
-            try:
-                detected = detect_language_from_file(
-                    resolved, project_root=self.project_root
-                )
-            except Exception:  # nosec B110 — language detection best-effort
-                detected = "unknown"
-            if detected and detected != "unknown":
-                result["language"] = detected
+        try:
+            detected = detect_language_from_file(resolved, project_root=reader_root)
+        except Exception:  # nosec B110 — language detection best-effort
+            detected = "unknown"
+        if detected and detected != "unknown":
+            result["language"] = detected
         return mirror_summary_line(result)
 
 

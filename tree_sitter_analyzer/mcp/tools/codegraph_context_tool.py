@@ -316,12 +316,14 @@ class CodeGraphContextTool(BaseMCPTool):
         snapshot generation.
         """
         if not read_access.read_existing_platform_supported():
+            # access_mode is present here (this route only runs for explicit
+            # read_existing calls), so the envelope is never None.
             unavailable = read_access.format_read_existing_unavailable(
                 arguments,
                 action_version=NAV_CONTEXT_ACTION_VERSION,
             )
-            if unavailable is not None:
-                return unavailable
+            assert unavailable is not None  # access_mode is present -> our route
+            return unavailable
         # Unbound root on the certified axis is classified by the consumer
         # seam (MISSING_PROJECT_ROOT envelope with evidence + action_version);
         # on non-certified axes the UNCERTIFIED stub above already returned.

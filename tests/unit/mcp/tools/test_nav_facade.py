@@ -1106,8 +1106,14 @@ def test_context_read_existing_fails_closed_without_project_root() -> None:
     arguments["output_format"] = "json"
 
     if sys.platform.startswith("linux"):
-        with pytest.raises(ValueError, match="MISSING_PROJECT_ROOT"):
-            asyncio.run(context_inner.execute(arguments))
+        # The consumer seam classifies the unbound root (evidence + wire
+        # owner), it does not escape as a bare raise.
+        result = asyncio.run(context_inner.execute(arguments))
+        assert result["success"] is False
+        assert result["error_code"] == "MISSING_PROJECT_ROOT"
+        assert result["access_reason"] == "MISSING_PROJECT_ROOT"
+        assert result["access_state"] == "missing"
+        assert result["action_version"] == "nav.context/v1"
         return
     result = asyncio.run(context_inner.execute(arguments))
     assert result["success"] is True
@@ -1160,10 +1166,71 @@ def test_context_read_existing_consumes_published_snapshot(
     # source_snapshots record (RFC-0022 route-table common rule 5).
     assert result["snapshot_id"] == published.snapshot_id
     assert result["source_generation"] == published.source_generation
+    assert result["snapshot_id"] == published.snapshot_id
+    assert result["source_generation"] == published.source_generation
     assert result["action_version"] == "nav.context/v1"
     assert [entry.get("name") for entry in result["entry_points"]] == ["dispatch"]
     assert result["related_symbols"]
     assert result["code_blocks"]
+
+
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
+)
+def test_context_read_existing_no_match_returns_not_found(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A task with no symbol hits yields a certified NOT_FOUND envelope.
+
+    The empty-nodes path must still carry the full read_existing evidence
+    (echo tokens + action_version), not a bare success stub.
+    """
+    import tree_sitter_analyzer.read_existing_access as read_access
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    published = _publish_index_snapshot(project)
+
+    facade = build_nav_facade(project_root=str(project))
+    result = asyncio.run(
+        facade.execute(
+            {
+                "action": "context",
+                "task": "zzz_nonexistent_symbol_xyz",
+                "access_mode": "read_existing",
+                "snapshot_id": published.snapshot_id,
+                "source_generation": published.source_generation,
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert result["success"] is True
+    assert result["verdict"] == "NOT_FOUND"
+    assert result["access_mode"] == "read_existing"
+    assert result["access_state"] == "available"
+    assert result["access_reason"] is None
+    assert result["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+        }
+    ]
+    assert result["snapshot_id"] == published.snapshot_id
+    assert result["source_generation"] == published.source_generation
+    assert result["action_version"] == "nav.context/v1"
+    assert result["entry_points"] == []
+    assert result["code_blocks"] == []
+    assert result["stats"] == {
+        "entry_points": 0,
+        "entry_points_total": 0,
+        "nodes_total": 0,
+        "edges_total": 0,
+        "code_blocks": 0,
+    }
 
 
 @pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
@@ -1205,3 +1272,53 @@ def test_context_read_existing_generation_mismatch_fails_closed(
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+def test_snapshot_search_surface_degrades_without_fts5(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without FTS5 the snapshot search surface returns no raw hits."""
+    import sqlite3
+
+    import tree_sitter_analyzer.mcp.tools.codegraph_context_tool as cgt
+
+    monkeypatch.setattr(cgt, "sqlite_compile_supports_fts5", lambda conn: False)
+    conn = sqlite3.connect(":memory:")
+    surface = cgt._snapshot_search_surface(conn)
+    assert surface.fts_search("anything") == []
+    assert surface.fts_search_ranked("anything") == []
+
+
+def test_snapshot_search_surface_queries_real_fts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With FTS5 the snapshot search surface queries the connection."""
+    import sqlite3
+
+    import tree_sitter_analyzer.mcp.tools.codegraph_context_tool as cgt
+
+    monkeypatch.setattr(cgt, "sqlite_compile_supports_fts5", lambda conn: True)
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_symbol_rows (id INTEGER PRIMARY KEY, name TEXT, "
+        "kind TEXT, file_path TEXT, language TEXT, line INTEGER, end_line INTEGER)"
+    )
+    conn.execute("CREATE VIRTUAL TABLE ast_symbols_fts USING fts5(name, content='')")
+    conn.execute(
+        "INSERT INTO ast_symbol_rows VALUES "
+        "(1, 'hello_world', 'function', 'a.py', 'python', 1, 3)"
+    )
+    conn.execute("INSERT INTO ast_symbols_fts (rowid, name) VALUES (1, 'hello_world')")
+    surface = cgt._snapshot_search_surface(conn)
+    hits = surface.fts_search("hello")
+    assert hits == [
+        {
+            "name": "hello_world",
+            "kind": "function",
+            "file": "a.py",
+            "language": "python",
+            "line": 1,
+            "end_line": 3,
+        }
+    ]
