@@ -143,9 +143,17 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
         code: str, output_format: str = output_format, detail: str | None = None
     ) -> dict[str, Any]:
         envelope = _snapshot_error(tool, code, output_format, detail)
+        # The consumer's snapshot may itself be the failing read (e.g. a
+        # broken registry), so provenance must be best-effort.
+        try:
+            snapshot_id = consumer.snapshot.snapshot_id
+            generation = consumer.snapshot.source_generation
+        except Exception:  # noqa: BLE001 - error envelopes must not re-raise
+            snapshot_id = None
+            generation = None
         envelope.update(
-            diff_snapshot_id=consumer.snapshot.snapshot_id,
-            source_generation=consumer.snapshot.source_generation,
+            diff_snapshot_id=snapshot_id,
+            source_generation=generation,
         )
         return envelope
 

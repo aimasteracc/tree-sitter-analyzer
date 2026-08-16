@@ -261,8 +261,9 @@ class SemanticClassifyTool(BaseMCPTool):
         # Codex P2 (#1297): attach the read-existing evidence to the raw JSON
         # response BEFORE the requested format is applied, so TOON output
         # carries access_mode/access_state/access_reason/source_snapshots
-        # inside toon_content exactly like JSON does.
-        if read_existing and "output_format" not in arguments:
+        # inside toon_content exactly like JSON does.  The impl always runs
+        # on JSON; the requested format is applied once afterwards.
+        if read_existing:
             result = await self._execute_impl({**arguments, "output_format": "json"})
         else:
             result = await self._execute_impl(arguments)
@@ -279,8 +280,8 @@ class SemanticClassifyTool(BaseMCPTool):
                     }
                 )
             read_access.attach_read_existing_evidence(result, records=acquired)
-        if read_existing and "output_format" not in arguments:
-            return apply_toon_format_to_response(result, "toon")
+            requested = arguments.get("output_format", "toon")
+            return apply_toon_format_to_response(result, requested)
         return result
 
     async def _execute_impl(self, arguments: dict[str, Any]) -> dict[str, Any]:

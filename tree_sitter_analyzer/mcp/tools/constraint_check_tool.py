@@ -130,7 +130,9 @@ class ConstraintCheckTool(BaseMCPTool):
             # JSON response BEFORE the requested format is applied, so TOON
             # output carries access_mode/access_state/access_reason/
             # source_snapshots inside toon_content exactly like JSON does.
-            if read_existing and "output_format" not in arguments:
+            # The frozen route always runs on JSON; the requested format is
+            # applied once, after evidence attachment.
+            if read_existing:
                 frozen_arguments = {**arguments, "output_format": "json"}
             else:
                 frozen_arguments = arguments
@@ -158,8 +160,9 @@ class ConstraintCheckTool(BaseMCPTool):
                         }
                     )
                 read_access.attach_read_existing_evidence(result, records=records)
-            if read_existing and "output_format" not in arguments:
-                return apply_toon_format_to_response(result, "toon")
+            if read_existing:
+                requested = arguments.get("output_format", "json")
+                return apply_toon_format_to_response(result, requested)
             return result
 
         path_filter = arguments.get("path_filter", "") or ""
