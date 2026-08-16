@@ -49,6 +49,9 @@
     "munmap"
   ],
   "minimum_strace_version": "6.8",
+  "nonfilesystem_device_markers": [
+    "<char "
+  ],
   "nonfilesystem_fd_prefixes": [
     "anon_inode:",
     "eventfd:",
@@ -345,6 +348,7 @@
     "set_mempolicy_home_node",
     "set_robust_list",
     "set_tid_address",
+    "setsid",
     "setsockopt",
     "shutdown",
     "sigaltstack",

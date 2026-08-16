@@ -320,16 +320,6 @@ def test_live_read_existing_route_is_zero_write() -> None:
         )
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert_policy_evidence(report, POLICY_PATH)
-    if result.returncode != 0:
-        # Dump the raw trace into the uploaded artifact root (as a file, so
-        # the live artifact manifest stays exact) for offline inspection.
-        dumped: list[str] = []
-        for raw in sorted((artifact / "trace").glob("trace.*")):
-            dumped.append(f"===== {raw.name} =====\n")
-            dumped.append(raw.read_text(encoding="utf-8", errors="replace"))
-        (artifact_root / "adapter-route-raw-trace.txt").write_text(
-            "".join(dumped), encoding="utf-8"
-        )
     assert result.returncode == 0, (
         f"authority failed: rc={result.returncode} "
         f"stdout={result.stdout!r} stderr={result.stderr!r} "

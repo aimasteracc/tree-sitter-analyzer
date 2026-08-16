@@ -255,6 +255,20 @@ def split_arguments(text: str) -> tuple[str, ...]:
         if text.startswith("<<", index) or text.startswith(">>", index):
             index += 2
             continue
+        if text.startswith("<...", index):
+            # strace's resumption placeholder: ``restart_syscall(<... resuming
+            # interrupted futex ...>)`` — an opaque token, not a descriptor.
+            end = text.find("...>", index + 4)
+            if end < 0:
+                raise AuthorityError("truncated strace argument placeholder")
+            index = end + 4
+            continue
+        if text.startswith(">...", index):
+            end = text.find("...<", index + 4)
+            if end < 0:
+                raise AuthorityError("truncated strace argument placeholder")
+            index = end + 4
+            continue
         if char == "<" or (char == ">" and (index == 0 or text[index - 1] != "=")):
             raise AuthorityError("unexpected angle in strace argument structure")
         if char in pairs:

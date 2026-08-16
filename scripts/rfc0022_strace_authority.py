@@ -45,7 +45,7 @@ from rfc0022_strace_runtime import (  # noqa: E402
 )
 from rfc0022_strace_snapshot import snapshot_root  # noqa: E402
 
-POLICY_SHA256 = "440bbb6ae3a998eae7617a982e1c73b1c075c3c5600a1ff53674cb10c24fc46d"  # pragma: allowlist secret
+POLICY_SHA256 = "8c272dab34801b0a977a7d1d0b22368ef066a0c3dad0c31a69a1b395ef3a220a"  # pragma: allowlist secret
 POLICY_KEYS = {
     "always_violation_syscalls",
     "async_syscalls",
@@ -55,6 +55,7 @@ POLICY_KEYS = {
     "global_write_syscalls",
     "mapping_syscalls",
     "minimum_strace_version",
+    "nonfilesystem_device_markers",
     "nonfilesystem_fd_prefixes",
     "page_size",
     "path_mutators",
@@ -107,6 +108,7 @@ def load_policy(path: Path) -> tuple[dict[str, Any], str]:
         "enotty_ioctl_commands",
         "global_write_syscalls",
         "mapping_syscalls",
+        "nonfilesystem_device_markers",
         "nonfilesystem_fd_prefixes",
         "process_syscalls",
         "safe_fcntl_commands",
