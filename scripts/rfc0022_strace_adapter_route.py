@@ -21,10 +21,27 @@ import argparse
 import asyncio
 import json
 import os
+import sys
 
 
 def _produce(root: str) -> tuple[dict[str, object], str]:
     """Run the P0.4 producer route; return (deterministic identity, id)."""
+    # Debug aid: identify the exact failing git invocation on the CI axis.
+    import tree_sitter_analyzer.git_readonly as _git_readonly
+
+    _original_runner = _git_readonly.run_git_readonly
+
+    def _spy(root: str, args: list[str], **kwargs: object):
+        try:
+            return _original_runner(root, args, **kwargs)
+        except Exception as exc:  # noqa: BLE001 - diagnostic only
+            print(
+                json.dumps({"failing_git": args, "error": str(exc)}),
+                file=sys.stderr,
+            )
+            raise
+
+    _git_readonly.run_git_readonly = _spy
     from tree_sitter_analyzer.diff_snapshot_registry import REGISTRY, reset_registry
 
     reset_registry()
