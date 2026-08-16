@@ -12,7 +12,7 @@ import pytest
 
 from tests.unit.mcp import _test_query_tool_test_mixin as _query_mixins
 from tests.unit.mcp import (
-    _test_query_tool_test_mixin_coverage as _query_coverage_mixins,
+    _test_query_tool_test_mixin_extra as _query_coverage_mixins,
 )
 from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 
