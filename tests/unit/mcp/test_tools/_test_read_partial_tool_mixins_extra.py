@@ -1,6 +1,6 @@
 """Private mixins for read_partial_tool tests.
 
-These modules keep the collected pytest node IDs anchored in test_read_partial_tool.py.
+These modules keep the collected pytest node IDs anchored in test_read_partial_tool_extra3.py.
 """
 
 import tempfile

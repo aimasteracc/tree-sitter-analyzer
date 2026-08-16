@@ -25,16 +25,16 @@ from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 
-from ._test_phase7_comprehensive_security_helpers import (
-    assert_comprehensive_security_checks,
-    collect_comprehensive_security_checks,
-)
 from ._test_phase7_information_leakage_helpers import (
     collect_information_leakage_results,
     create_information_leakage_test_cases,
 )
 from ._test_phase7_malicious_query_helpers import collect_malicious_query_results
 from ._test_phase7_path_traversal_helpers import collect_path_traversal_results
+from ._test_phase7_security_helpers_extra import (
+    assert_comprehensive_security_checks,
+    collect_comprehensive_security_checks,
+)
 from ._test_phase7_security_integration_helpers import (
     create_secure_project_structure,
     create_security_test_files,

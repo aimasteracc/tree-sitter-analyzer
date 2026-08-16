@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ._comprehensive_suite_models import (
+from ._suite_models_extra import (
     FormatTestSuiteConfig,
     TestSuiteResults,
     suite_results_to_dict,

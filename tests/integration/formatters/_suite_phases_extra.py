@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from ._comprehensive_suite_phase_helpers import (
+from ._suite_phase_helpers_extra import (
     FORMAT_TYPES,
     PhaseCase,
     add_error,
