@@ -658,3 +658,61 @@ async def test_edit_impact_read_existing_platform_gate_branch(
         "source_snapshots": [],
     }
     assert result["action_version"]
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="tracked: RFC-0022 P0.4 producer route is Linux-certified only",
+)
+@pytest.mark.asyncio
+async def test_edit_impact_read_existing_acquire_failure_classifies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An acquire failure after capture closes the lease and classifies."""
+    import subprocess
+
+    import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    for cfg in (
+        ["user.email", "t@t"],
+        ["user.name", "t"],
+        ["maintenance.auto", "false"],
+        ["gc.auto", "0"],
+    ):
+        subprocess.run(["git", "-C", str(tmp_path), "config", *cfg], check=True)
+    (tmp_path / "inside.py").write_text("value = 1\n")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "commit", "-qm", "init"], check=True)
+    (tmp_path / "inside.py").write_text("value = 2\n")
+
+    closed: list[str] = []
+    original_close = snapshots.REGISTRY.close_lease
+
+    def fake_acquire(snapshot_id, project_root, **kwargs):
+        return None, "DIFF_SNAPSHOT_EXPIRED"
+
+    def spy_close(snapshot_id, lease):
+        closed.append(snapshot_id)
+        return original_close(snapshot_id, lease)
+
+    monkeypatch.setattr(snapshots.REGISTRY, "acquire", fake_acquire)
+    monkeypatch.setattr(snapshots.REGISTRY, "close_lease", spy_close)
+    try:
+        tool = ChangeImpactTool(str(tmp_path))
+        result = await tool.execute(
+            {
+                "mode": "diff",
+                "access_mode": "read_existing",
+                "scope_paths": [],
+                "output_format": "json",
+            }
+        )
+    finally:
+        monkeypatch.undo()
+    assert result["success"] is False
+    assert result["access_state"] == "unknown"
+    assert result["access_reason"] == "DIFF_SNAPSHOT_EXPIRED"
+    assert result["error_code"] == "DIFF_SNAPSHOT_EXPIRED"
+    assert len(closed) == 1

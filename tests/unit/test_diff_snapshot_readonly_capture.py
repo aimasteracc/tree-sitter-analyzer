@@ -894,3 +894,109 @@ def test_gitlink_probe_failure_frames_dirty_without_entering(
     )
     # The nested submodule probes were never invoked for the unsafe gitlink.
     assert all(b"-C" not in args for args in nested_calls)
+
+
+@POSIX_SNAPSHOT_TEST
+def test_capture_requires_epoch(git_repo: str) -> None:
+    from tree_sitter_analyzer.diff_snapshot_readonly_capture import (
+        capture_payload_readonly,
+    )
+
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        capture_payload_readonly(
+            git_repo, "diff", time.monotonic() + 60.0, _BUDGET, epoch=None
+        )
+
+
+@POSIX_SNAPSHOT_TEST
+def test_capture_missing_manifest_entry_fails_closed(git_repo: str) -> None:
+    """A dirty path absent from the manifest is a source-change failure."""
+    Path(git_repo, "base.py").write_text("value = 2\n", encoding="utf-8")
+    _readonly_epochs: list[GitEpoch] = []
+    oracle_generation_readonly(git_repo, "diff", epoch_out=_readonly_epochs)
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_SOURCE_CHANGED"):
+        capture_payload_readonly(
+            git_repo,
+            "diff",
+            time.monotonic() + 60.0,
+            _BUDGET,
+            expected_manifest={},
+            epoch=_readonly_epochs[0],
+        )
+
+
+@POSIX_SNAPSHOT_TEST
+def test_capture_special_file_fails_closed(
+    git_repo: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An uncertifiable worktree leaf cannot be materialized."""
+    import tree_sitter_analyzer.diff_snapshot_readonly_capture as module
+    from tree_sitter_analyzer.source_oracle import SafePath
+
+    Path(git_repo, "base.py").write_text("value = 2\n", encoding="utf-8")
+    _readonly_epochs: list[GitEpoch] = []
+    manifest: dict = {}
+    oracle_generation_readonly(
+        git_repo, "diff", manifest=manifest, epoch_out=_readonly_epochs
+    )
+
+    original_reader = module.safe_workspace_path
+
+    def unsafe_reader(_root, relative, **kwargs):
+        if relative == "base.py":
+            return SafePath(data=None, metadata=(b"unsafe",), kind="unsafe")
+        return original_reader(_root, relative, **kwargs)
+
+    monkeypatch.setattr(module, "safe_workspace_path", unsafe_reader)
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_SPECIAL_FILE"):
+        capture_payload_readonly(
+            git_repo,
+            "diff",
+            time.monotonic() + 60.0,
+            _BUDGET,
+            expected_manifest=manifest,
+            epoch=_readonly_epochs[0],
+        )
+
+
+@POSIX_SNAPSHOT_TEST
+def test_capture_binary_attr_malformed_fails_closed(git_repo: str) -> None:
+    """Malformed check-attr output for untracked paths fails closed."""
+    import tree_sitter_analyzer.diff_snapshot_readonly_capture as module
+
+    Path(git_repo, "blob.dat").write_text("x\n", encoding="utf-8")
+    _readonly_epochs: list[GitEpoch] = []
+    manifest: dict = {}
+    oracle_generation_readonly(
+        git_repo, "diff", manifest=manifest, epoch_out=_readonly_epochs
+    )
+    original = module._live_index_output
+    calls: list[list[str]] = []
+
+    def spy(root, index_bytes, args, *, deadline, limit, input_=None, **kwargs):
+        calls.append(args)
+        if args[:2] == ["check-attr", "-z"] and args[2:4] == ["diff", "--stdin"]:
+            return b"broken"
+        return original(
+            root,
+            index_bytes,
+            args,
+            deadline=deadline,
+            limit=limit,
+            input_=input_,
+            **kwargs,
+        )
+
+    module._live_index_output = spy
+    try:
+        with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+            capture_payload_readonly(
+                git_repo,
+                "diff",
+                time.monotonic() + 60.0,
+                _BUDGET,
+                expected_manifest=manifest,
+                epoch=_readonly_epochs[0],
+            )
+    finally:
+        module._live_index_output = original
