@@ -260,6 +260,15 @@ def test_request_from_dict_rejects_forbidden_fields() -> None:
 # --- Corpus / request-json modes (NO1-010A follow-up) ------------------------
 
 
+def _strip_timing(report: dict) -> dict:
+    """Drop per-execution timing measurements (not deterministic)."""
+    for result in report.get("results", []):
+        consumed = result.get("consumed") or {}
+        for key in ("routing_wall_ms", "cleanup_wall_ms", "deadline_overrun_ms"):
+            consumed.pop(key, None)
+    return report
+
+
 def test_load_corpus_strict_parsing(tmp_path) -> None:
     from tree_sitter_analyzer.task_harness import load_corpus
 
@@ -323,7 +332,9 @@ def test_run_corpus_emits_deterministic_report(monkeypatch) -> None:
             '{"operation": "assess_change", "diff": {"source": "workspace"}}\n'
         ),
     )
-    assert harness.run_corpus(corpus, project_root=".") == report
+    # Byte-identical except per-execution timing fields (wall clocks vary).
+    second = harness.run_corpus(corpus, project_root=".")
+    assert _strip_timing(json.loads(second)) == _strip_timing(json.loads(report))
 
 
 def test_cli_main_request_json_mode(monkeypatch, capsys) -> None:
