@@ -1,6 +1,47 @@
 # Loop State — tree-sitter-analyzer
 
-Last run: 2026-08-15 (No.1 takeover — RFC-0023 validator review closure)
+Last run: 2026-08-16 (NO1-010A three-task prototype — RFC-0022 Phase A router)
+
+## NO1-010A completion record (2026-08-16)
+
+- **NO1-010A (three-task prototype) implemented** on `feature/no1-010a-task-router`
+  (PR pending): `understand` / `plan_change` / `assess_change` now execute the
+  pinned RFC-0022 route table end-to-end.
+  - `task/router.py` — fixed route-table executor: sequential primitive calls
+    through an injected `PrimitiveExecutor`, budget/deadline admission with
+    exact `deadline_overrun_ms` reporting, constraints-slot reservation before
+    fan-out, primitive-token echo comparison (`SOURCE_GENERATION_MISMATCH`
+    stop), P0.4 access-evidence branching (`access_state`/`access_reason`,
+    never `success` alone — verified live on macOS where the read-existing
+    authority honestly returns `READ_EXISTING_AUTHORITY_UNCERTIFIED`),
+    table-driven plan-steps projection, evidence minting,
+    provenance/freshness/unknowns records, `edit.release_snapshot` cleanup in
+    an outer `finally` with fixed accounting, stable error codes.
+  - `task/truth_table.py` — the full static verification truth table (ordered
+    first-match-wins; truncation overrides fresh success; malformed overrides
+    freshness; `degrade()`; severity aggregation; zero-contribution WARN;
+    partial+SAFE→WARN).
+  - `task/projection.py` — table-driven plan_steps (group order, within-group
+    `(path, symbol, locator)` sort with nulls first, 1-based ordinals,
+    `evidence_ids` contain only that fragment's ID; `assess_change` keeps
+    `plan_steps=[]`).
+  - `task/models.py` + `task/serializers.py` — full `task-outcome/v1` fixed
+    wire (`success/operation/subject/claims/artifacts/provenance/freshness/
+    unknowns/errors/budget/truncation/next_step/agent_summary`); serialized
+    byte pins re-pinned (JSON 961 / TOON 820). Task text is never frozen
+    (`TASK_TEXT_OMITTED` projection + request hashes; secret-canary tests).
+  - `task_harness.py` — internal experiment bridge over the real same-process
+    MCP adapters + `python -m tree_sitter_analyzer.task_harness` CLI smoke
+    entry. Explicitly internal-only: no MCP facade, CLI flag, or codemap
+    surface (guarded by `tests/contracts/test_task_internal_only_contract.py`).
+  - Verified: quick gate 1992 passed; ruff + mypy clean; patch-coverage gate
+    no added executable misses; real CLI smoke on an indexed fixture repo —
+    fresh oracle + complete rows on `--full-index`, honest fail-closed
+    `ACCESS_UNAVAILABLE` where the P0.4 zero-write authority is not certified
+    (macOS). The full impact→constraints→ast_diff→classify happy path runs on
+    the Linux CI axis once `feature/rfc0022-linux-write-authority` lands.
+  - Follow-ups: NO1-010B (agent change-outcome benchmark RFC) is the next
+    ledger task after NO1-010A merges.
 
 ## Takeover record (2026-08-15)
 
@@ -67,6 +108,7 @@ Active roadmap: [`rfcs/ROADMAP-no1-agent-trust.md`](rfcs/ROADMAP-no1-agent-trust
 - [x] **NO1-005A:** generated 10-dimension language pipeline inventory; cross-file E2E remains `verified=0`, with 13 `unknown`
 - [x] **NO1-007A:** draft RFC for understand / plan_change / assess_change completed; Phase A internal implementation is gated by read-only snapshot Phase 0, while only public ninth-facade registration is gated by the menu experiment
 - [x] **NO1-007B:** RFC-0023 edge evidence/confidence/freshness draft with strict schema, closed golden fixtures, and an E0 denial corpus for a future semantic validator
+- [x] **NO1-010A:** three-task prototype (`understand`/`plan_change`/`assess_change`) implemented as the RFC-0022 Phase A internal-only router + harness; explicit internal-only status, exact contract tests, real CLI smoke (see completion record above)
 - [ ] **NO1-009A:** qualify a second indexed competitor at install/conformance only after NO1-003A; keep an unavailable arm `NOT_EVALUATED`, and require a separately frozen RFC-0021 v2 experiment before comparative inclusion
 
 Execution policy: at most two L2 agents concurrently; implementation agents use
