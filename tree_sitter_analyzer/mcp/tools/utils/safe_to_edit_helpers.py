@@ -16,6 +16,7 @@ from .constraint_violation_query import (
     constraint_risk_factor,
     verdict_from_violations,
     violations_for_files,
+    violations_for_files_from_conn,
 )
 from .safe_to_edit_risk import build_checklist, compute_risk
 from .test_discovery import find_test_files
@@ -24,7 +25,13 @@ from .verification_command import build_test_command, detect_default_test_comman
 
 @dataclass(frozen=True)
 class SafeToEditContext:
-    """Inputs needed to build a safe-to-edit response."""
+    """Inputs needed to build a safe-to-edit response.
+
+    ``snapshot_conn`` is the certified index-snapshot connection on the
+    read_existing route; when set, constraint violations are read from the
+    snapshot and fixture detection runs read-only (Codex P1 #1299: the
+    certified route must never open or write the live ``.ast-cache``).
+    """
 
     file_path: str
     edit_type: str
@@ -32,6 +39,7 @@ class SafeToEditContext:
     project_root: str
     graph: Any
     scorer: HealthScorer
+    snapshot_conn: Any | None = None
 
 
 class FileDependencyView:
@@ -163,15 +171,28 @@ def _format_safe_to_edit_result(
     # Constraint violations promote the verdict: an error-severity
     # violation referencing this file forces UNSAFE; warn-only forces
     # CAUTION. The base_verdict (derived from risk_level) is the floor.
-    violations = violations_for_files(
-        context.project_root, [_relative_for_constraints(context)]
-    )
+    if context.snapshot_conn is not None:
+        # Codex P1 (#1299): the certified read_existing route derives
+        # constraint facts from the immutable snapshot connection and runs
+        # fixture detection read-only — never the live .ast-cache DB or a
+        # fixture-index rebuild write.
+        violations = violations_for_files_from_conn(
+            context.snapshot_conn, [_relative_for_constraints(context)]
+        )
+        fixture_rebuild = False
+    else:
+        violations = violations_for_files(
+            context.project_root, [_relative_for_constraints(context)]
+        )
+        fixture_rebuild = True
     constraint_verdict = verdict_from_violations(violations)
     # P3: also check whether the file is a registered test fixture; that
     # promotes the verdict on top of any constraint-derived escalation.
     # The chokepoint design (see PRD §P3) is "every override flows
     # through _max_verdict" — so chaining is the only safe composition.
-    fixture_fact = is_fixture(context.resolved_path, context.project_root)
+    fixture_fact = is_fixture(
+        context.resolved_path, context.project_root, rebuild_cache=fixture_rebuild
+    )
     fixture_verdict = fixture_to_verdict(fixture_fact)
     verdict = _max_verdict(
         _max_verdict(base_verdict, constraint_verdict), fixture_verdict

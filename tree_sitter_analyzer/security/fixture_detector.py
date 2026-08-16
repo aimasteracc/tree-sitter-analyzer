@@ -144,12 +144,20 @@ _DISABLED = FixtureFact(
 # ---------------------------------------------------------------------------
 
 
-def is_fixture(file_path: str, project_root: str | Path) -> FixtureFact:
+def is_fixture(
+    file_path: str, project_root: str | Path, *, rebuild_cache: bool = True
+) -> FixtureFact:
     """Return whether ``file_path`` is a registered or detected fixture.
 
     ``file_path`` is interpreted relative to ``project_root`` unless it
     is already absolute. The query is O(1) on cache hit and at most
     O(tests/) on miss.
+
+    ``rebuild_cache=False`` (Codex P1 #1299, RFC-0022 P0.4 zero-write
+    certified reads) keeps the query strictly read-only: an absent or
+    stale cache is re-scanned in memory but never persisted to
+    ``fixture_index.json``, so the certified snapshot route cannot mutate
+    the workspace while deriving safety facts.
 
     Failure modes (corrupt cache, unreadable test file, malformed YAML)
     all return ``_NEGATIVE`` and emit one WARNING — never raise.
@@ -177,7 +185,7 @@ def is_fixture(file_path: str, project_root: str | Path) -> FixtureFact:
         return _NEGATIVE
 
     # Tier 2 — load (or rebuild) the test-fixture index and look up.
-    index = _load_or_build_index(root)
+    index = _load_or_build_index(root, write_cache=rebuild_cache)
     return index.get(relative, _NEGATIVE)
 
 
@@ -356,8 +364,14 @@ def _basename_seen_in_tests(project_root: Path, basename: str) -> bool:
     return False
 
 
-def _load_or_build_index(project_root: Path) -> dict[str, FixtureFact]:
-    """Return the Tier-2 index, building (and caching) on signature change."""
+def _load_or_build_index(
+    project_root: Path, *, write_cache: bool = True
+) -> dict[str, FixtureFact]:
+    """Return the Tier-2 index, building (and caching) on signature change.
+
+    ``write_cache=False`` keeps the read-only certified path: the in-memory
+    scan result is returned but never persisted.
+    """
 
     tests_dir = project_root / "tests"
     if not tests_dir.is_dir():
@@ -371,7 +385,8 @@ def _load_or_build_index(project_root: Path) -> dict[str, FixtureFact]:
         return cached
 
     index = _scan_tests(tests_dir, project_root)
-    _write_cache(cache_path, signature, index)
+    if write_cache:
+        _write_cache(cache_path, signature, index)
     return index
 
 

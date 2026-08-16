@@ -29,6 +29,69 @@ _BLOCKING_SEVERITIES: frozenset[str] = frozenset({"error"})
 _WARNING_SEVERITIES: frozenset[str] = frozenset({"warn"})
 
 
+def violations_for_files_from_conn(
+    conn: sqlite3.Connection,
+    file_paths: Iterable[str],
+) -> list[dict[str, Any]]:
+    """Return violation rows touching any of the given files from ONE conn.
+
+    Snapshot-native variant (Codex P1 #1299): queries the caller-provided
+    connection (e.g. a certified index-snapshot private copy) instead of
+    opening the live ``.ast-cache/index.db``, so certified read_existing
+    routes derive constraint facts from the immutable snapshot only.
+    Returns an empty list (never raises) when the table is absent.
+    """
+
+    files = list(dict.fromkeys(file_paths))  # dedupe, preserve order
+    if not files:
+        return []
+
+    placeholders = ",".join(["?"] * len(files))
+    sql = (
+        "SELECT rule_id, caller_file, caller_name, caller_line, "  # nosec B608 - placeholders are generated from file count only.
+        "       callee_name, callee_file, severity, detected_at "
+        "FROM ast_constraint_violations "
+        f"WHERE caller_file IN ({placeholders}) "
+        f"   OR callee_file IN ({placeholders}) "
+        "ORDER BY severity DESC, caller_file, caller_line"
+    )
+    try:
+        cursor = conn.execute(sql, files + files)
+    except sqlite3.OperationalError:
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for row in cursor:
+        (
+            rule_id,
+            caller_file,
+            caller_name,
+            caller_line,
+            callee_name,
+            callee_file,
+            severity,
+            detected_at,
+        ) = row
+        rows.append(
+            {
+                "rule_id": rule_id,
+                "caller_file": caller_file,
+                "caller_name": caller_name,
+                "caller_line": caller_line,
+                "callee_name": callee_name,
+                "callee_file": callee_file,
+                "severity": severity,
+                "detected_at": detected_at,
+                # risk_factors shape (per Coder-T3 spec gap #3):
+                # safe_to_edit's existing risk_factors entries use
+                # the ``factor`` key. We splice rows in directly,
+                # so embed it here.
+                "factor": "constraint_violation",
+            }
+        )
+    return rows
+
+
 def violations_for_files(
     project_root: str | None,
     file_paths: Iterable[str],
@@ -50,57 +113,12 @@ def violations_for_files(
     if not db_path.is_file():
         return []
 
-    files = list(dict.fromkeys(file_paths))  # dedupe, preserve order
-    if not files:
-        return []
-
-    placeholders = ",".join(["?"] * len(files))
-    sql = (
-        "SELECT rule_id, caller_file, caller_name, caller_line, "  # nosec B608 - placeholders are generated from file count only.
-        "       callee_name, callee_file, severity, detected_at "
-        "FROM ast_constraint_violations "
-        f"WHERE caller_file IN ({placeholders}) "
-        f"   OR callee_file IN ({placeholders}) "
-        "ORDER BY severity DESC, caller_file, caller_line"
-    )
-
     conn: sqlite3.Connection | None = None
     try:
         conn = sqlite3.connect(str(db_path))
-        cursor = conn.execute(sql, files + files)
-        rows: list[dict[str, Any]] = []
-        for row in cursor:
-            (
-                rule_id,
-                caller_file,
-                caller_name,
-                caller_line,
-                callee_name,
-                callee_file,
-                severity,
-                detected_at,
-            ) = row
-            rows.append(
-                {
-                    "rule_id": rule_id,
-                    "caller_file": caller_file,
-                    "caller_name": caller_name,
-                    "caller_line": caller_line,
-                    "callee_name": callee_name,
-                    "callee_file": callee_file,
-                    "severity": severity,
-                    "detected_at": detected_at,
-                    # risk_factors shape (per Coder-T3 spec gap #3):
-                    # safe_to_edit's existing risk_factors entries use
-                    # the ``factor`` key. We splice rows in directly,
-                    # so embed it here.
-                    "factor": "constraint_violation",
-                }
-            )
-        return rows
-    except sqlite3.OperationalError as exc:
-        # Table missing / cache schema mismatch. Log + degrade.
-        logger.debug("constraint violation query failed: %s", exc)
+        return violations_for_files_from_conn(conn, file_paths)
+    except sqlite3.Error:
+        logger.debug("violations_for_files: query failed", exc_info=True)
         return []
     finally:
         if conn is not None:

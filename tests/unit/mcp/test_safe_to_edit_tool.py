@@ -634,6 +634,213 @@ async def test_edit_safe_read_existing_consumes_published_snapshot(
     assert result["health_grade"]
 
 
+def test_read_existing_payload_language_detection_degrades(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A detector failure on the snapshot route degrades to no language key.
+
+    Codex-review P3 (#1299): language detection is best-effort — an
+    exception must yield a language-less result, never a crash.
+    """
+    import sqlite3
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.mcp.tools.safe_to_edit_tool as tool_module
+
+    target = tmp_path / "app.py"
+    target.write_text("x = 1\n", encoding="utf-8")
+    monkeypatch.setattr(
+        tool_module,
+        "_syntax_error_response",
+        lambda resolved, file_path, edit_type: None,
+    )
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("detector down")
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.language_detector.detect_language_from_file", boom
+    )
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    tool = tool_module.SafeToEditTool(str(tmp_path))
+    result = tool._read_existing_payload(
+        {"file_path": "app.py", "edit_type": "refactor"},
+        str(target),
+        conn,
+        snapshot=SimpleNamespace(canonical_root=str(tmp_path)),
+    )
+    assert result["success"] is True
+    assert "language" not in result
+
+
+def test_snapshot_constraint_query_reads_from_given_conn() -> None:
+    """The conn variant returns rows and degrades to [] on a missing table."""
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.constraint_violation_query import (
+        violations_for_files_from_conn,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_constraint_violations ("
+        "rule_id TEXT NOT NULL, caller_file TEXT NOT NULL, "
+        "caller_name TEXT NOT NULL, caller_line INTEGER NOT NULL, "
+        "callee_name TEXT NOT NULL, callee_file TEXT NOT NULL DEFAULT '', "
+        "severity TEXT NOT NULL, detected_at INTEGER NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO ast_constraint_violations VALUES "
+        "('R1', 'app.py', 'app', 1, 'secret', '', 'error', 1)"
+    )
+    rows = violations_for_files_from_conn(conn, ["app.py"])
+    assert rows == [
+        {
+            "rule_id": "R1",
+            "caller_file": "app.py",
+            "caller_name": "app",
+            "caller_line": 1,
+            "callee_name": "secret",
+            "callee_file": "",
+            "severity": "error",
+            "detected_at": 1,
+            "factor": "constraint_violation",
+        }
+    ]
+    assert violations_for_files_from_conn(conn, []) == []
+    bare = sqlite3.connect(":memory:")
+    assert violations_for_files_from_conn(bare, ["app.py"]) == []
+
+
+def test_format_result_reads_constraints_from_snapshot_conn(
+    tmp_path: Path,
+) -> None:
+    """Snapshot-mode formatting escalates verdict from the snapshot rows."""
+    import sqlite3
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        SafeToEditContext,
+        SafeToEditFacts,
+        _format_safe_to_edit_result,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_constraint_violations ("
+        "rule_id TEXT NOT NULL, caller_file TEXT NOT NULL, "
+        "caller_name TEXT NOT NULL, caller_line INTEGER NOT NULL, "
+        "callee_name TEXT NOT NULL, callee_file TEXT NOT NULL DEFAULT '', "
+        "severity TEXT NOT NULL, detected_at INTEGER NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO ast_constraint_violations VALUES "
+        "('R1', 'app.py', 'app', 1, 'secret', '', 'error', 1)"
+    )
+    health = SimpleNamespace(grade="A", total=95, dimensions={})
+    facts = SafeToEditFacts(
+        dependents=[],
+        dependencies=[],
+        health=health,
+        test_files=[],
+        has_tests=False,
+        risk="safe",
+        risk_factors=[],
+        pre_edit_checklist=[],
+    )
+    context = SafeToEditContext(
+        file_path="app.py",
+        edit_type="refactor",
+        resolved_path=str(tmp_path / "app.py"),
+        project_root=str(tmp_path),
+        graph=None,
+        scorer=None,
+        snapshot_conn=conn,
+    )
+    result = _format_safe_to_edit_result(context, facts)
+    assert result["verdict"] == "UNSAFE"
+    assert any(
+        factor.get("factor") == "constraint_violation"
+        for factor in result["risk_factors"]
+    )
+
+
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
+)
+@pytest.mark.asyncio
+async def test_edit_safe_read_existing_uses_snapshot_constraints_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Snapshot-mode facts come from the snapshot conn; fixture index never written.
+
+    Codex P1 (#1299): the certified route must derive constraint violations
+    from the immutable snapshot connection and must not create
+    ``.ast-cache/fixture_index.json`` (zero-write read).
+    """
+    import sqlite3
+
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.index_snapshot import (
+        REGISTRY,
+        IndexSnapshot,
+        _capture_sources_with_deadline,
+    )
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    scope = make_source_scope_descriptor()
+    current = _capture_sources_with_deadline(str(project), scope, deadline=10**18)
+    assert current.state == "exact", current.reason
+    conn = sqlite3.connect(str(project / ".ast-cache" / "index.db"))
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "INSERT INTO ast_constraint_violations VALUES "
+        "('R1', 'app.py', 'app', 1, 'secret', '', 'error', 1)"
+    )
+    conn.commit()
+    snapshot = IndexSnapshot(
+        None,
+        current.fingerprint,
+        "index-fp",
+        current.generation,
+        "complete",
+        None,
+        str(project.resolve()),
+        2,
+        None,
+        None,
+        scope,
+    )
+    published = REGISTRY.publish(snapshot, conn, 0)
+
+    tool = SafeToEditTool(str(project))
+    result = await tool.execute(
+        {
+            "file_path": "app.py",
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+            "output_format": "json",
+        }
+    )
+
+    assert result["success"] is True
+    assert result["access_state"] == "available"
+    # The error-severity snapshot row escalates the verdict above the base.
+    assert result["verdict"] == "UNSAFE"
+    assert any(
+        factor.get("factor") == "constraint_violation"
+        for factor in result["risk_factors"]
+    )
+    # Zero-write: the certified read never persisted a fixture index.
+    assert not (project / ".ast-cache" / "fixture_index.json").exists()
+
+
 @pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
 @pytest.mark.skipif(
     sys.platform.startswith("win") or not os.path.exists("/dev/fd"),

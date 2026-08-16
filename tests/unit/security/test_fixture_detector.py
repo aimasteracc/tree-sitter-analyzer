@@ -222,6 +222,28 @@ class TestCache:
         is_fixture("tree_sitter_analyzer/foo.py", root)
         assert (root / ".ast-cache" / "fixture_index.json").is_file()
 
+    def test_readonly_scan_never_writes_cache(self, tmp_path: Path) -> None:
+        # Codex P1 (#1299): the certified read_existing route must stay
+        # zero-write — an absent cache is re-scanned in memory but never
+        # persisted (fixture_index.json must not appear).
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": (
+                    "from pathlib import Path\n"
+                    "PROJECT_ROOT = Path('.')\n"
+                    "name = PROJECT_ROOT / 'tree_sitter_analyzer' / 'foo.py'\n"
+                ),
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        fact = is_fixture("tree_sitter_analyzer/foo.py", root, rebuild_cache=False)
+        assert fact.is_fixture is True
+        assert not (root / ".ast-cache" / "fixture_index.json").exists()
+        # The default path still persists (unchanged behaviour).
+        is_fixture("tree_sitter_analyzer/foo.py", root)
+        assert (root / ".ast-cache" / "fixture_index.json").is_file()
+
     def test_cache_corrupt_falls_through_to_scan(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:

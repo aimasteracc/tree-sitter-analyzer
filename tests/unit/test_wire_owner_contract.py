@@ -326,6 +326,76 @@ def test_diff_snapshot_consumers_frozen_error_echoes_action_version(
 # ``read_existing_unavailable`` as potentially None; that defensive branch
 # cannot be reached from a read_existing call (the mode implies the access
 # token), so force it with a stub to keep the guard exact.
+def test_read_existing_consumer_post_read_mismatch_preserves_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An after-read recapture failure still cites the acquired snapshot."""
+    import sqlite3
+
+    import tree_sitter_analyzer.index_snapshot as snapshot_owner
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.index_snapshot import REGISTRY, IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+    from tree_sitter_analyzer.index_source_snapshot import CurrentSourceSnapshot
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+    from tree_sitter_analyzer.wire_owner import NAV_CONTEXT_ACTION_VERSION
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    calls = {"n": 0}
+
+    def sequence_capture(root, source_scope, deadline=None):
+        calls["n"] += 1
+        generation = "gen-1" if calls["n"] == 1 else "gen-2"
+        return CurrentSourceSnapshot(frozenset(), "fp", generation, "exact", None)
+
+    monkeypatch.setattr(
+        snapshot_owner, "_capture_sources_with_deadline", sequence_capture
+    )
+    conn = sqlite3.connect(":memory:")
+    snapshot = IndexSnapshot(
+        None,
+        "fp",
+        "ifp",
+        "gen-1",
+        "complete",
+        None,
+        str(tmp_path.resolve()),
+        0,
+        None,
+        None,
+        make_source_scope_descriptor(),
+    )
+    published = REGISTRY.publish(snapshot, conn, 0)
+
+    def ok_reader(snapshot, conn):
+        return {"success": True, "verdict": "INFO"}
+
+    result = read_access.read_existing_index_consumer(
+        CodeGraphContextTool(str(tmp_path)),
+        {
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+            "output_format": "json",
+        },
+        reader=ok_reader,
+        action_version=NAV_CONTEXT_ACTION_VERSION,
+    )
+    assert result["success"] is False
+    assert result["error_code"] == "SOURCE_GENERATION_MISMATCH"
+    assert result["access_reason"] == "SOURCE_GENERATION_MISMATCH"
+    assert result["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+        }
+    ]
+    assert result["action_version"] == NAV_CONTEXT_ACTION_VERSION
+
+
 @pytest.mark.parametrize(
     ("tool_type", "module_name"),
     [
@@ -477,6 +547,18 @@ def test_read_existing_consumer_rejects_non_dict_payload(
     from tree_sitter_analyzer.wire_owner import NAV_CONTEXT_ACTION_VERSION
 
     monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    # The pre-read recapture (Codex P1 #1299) must see the same generation
+    # the capability was published with, exactly like a real publish would.
+    import tree_sitter_analyzer.index_snapshot as snapshot_owner
+    from tree_sitter_analyzer.index_source_snapshot import CurrentSourceSnapshot
+
+    monkeypatch.setattr(
+        snapshot_owner,
+        "_capture_sources_with_deadline",
+        lambda root, source_scope, deadline=None: CurrentSourceSnapshot(
+            frozenset(), "fp", "gen-1", "exact", None
+        ),
+    )
     scope = make_source_scope_descriptor()
     conn = sqlite3.connect(":memory:")
     snapshot = IndexSnapshot(
@@ -514,3 +596,12 @@ def test_read_existing_consumer_rejects_non_dict_payload(
     assert result["error_code"] == "INDEX_SNAPSHOT_FAILED"
     assert result["access_reason"] == "INDEX_SNAPSHOT_FAILED"
     assert result["action_version"] == NAV_CONTEXT_ACTION_VERSION
+    # Codex P2 (#1299): a failure AFTER acquisition still cites the exact
+    # capability identity that was read.
+    assert result["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+        }
+    ]

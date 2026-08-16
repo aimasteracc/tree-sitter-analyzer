@@ -649,9 +649,11 @@ class TestReadExistingConsumerRevalidation:
             assert index.snapshot_id == published.snapshot_id
             assert yielded_conn is conn
 
-        assert captured == [scope]  # recapture ran after the read
+        # Codex P1 (#1299): recapture runs BEFORE the read (at __enter__)
+        # AND after it (on normal exit).
+        assert captured == [scope, scope]
 
-    def test_read_existing_index_scope_mismatch_on_exit_fails_closed(
+    def test_read_existing_index_scope_mismatch_before_yield_fails_closed(
         self, tmp_path, monkeypatch
     ):
         import sqlite3
@@ -685,6 +687,127 @@ class TestReadExistingConsumerRevalidation:
         with pytest.raises(ValueError, match="SOURCE_GENERATION_MISMATCH"):
             with owner.read_existing_index_scope(
                 published.snapshot_id, str(tmp_path), "gen-1"
+            ):
+                pass
+
+    def test_read_existing_index_scope_mismatch_on_exit_fails_closed(
+        self, tmp_path, monkeypatch
+    ):
+        """The after-read recapture (normal exit) still gates the result."""
+        import sqlite3
+
+        import tree_sitter_analyzer.index_snapshot as owner
+        from tree_sitter_analyzer.index_source_scope import (
+            make_source_scope_descriptor,
+        )
+
+        calls = {"n": 0}
+
+        def sequence_capture(root, source_scope, deadline=None):
+            # Pre-read recapture matches; the after-read recapture does not.
+            calls["n"] += 1
+            return self._fake_capture("exact", "gen-1" if calls["n"] == 1 else "gen-2")
+
+        monkeypatch.setattr(owner, "_capture_sources_with_deadline", sequence_capture)
+        conn = sqlite3.connect(":memory:")
+        snapshot = owner.IndexSnapshot(
+            None,
+            "fp",
+            "ifp",
+            "gen-1",
+            "complete",
+            None,
+            str(tmp_path.resolve()),
+            0,
+            source_scope=make_source_scope_descriptor(),
+        )
+        published = owner.REGISTRY.publish(snapshot, conn, 0)
+
+        with pytest.raises(ValueError, match="SOURCE_GENERATION_MISMATCH"):
+            with owner.read_existing_index_scope(
+                published.snapshot_id, str(tmp_path), "gen-1"
+            ):
+                pass
+
+    def test_read_existing_index_scope_rejects_incomplete_snapshot(
+        self, tmp_path, monkeypatch
+    ):
+        """A partial capability (CALL_GRAPH_INCOMPLETE) never serves reads."""
+        import sqlite3
+
+        import tree_sitter_analyzer.index_snapshot as owner
+        from tree_sitter_analyzer.index_source_scope import (
+            make_source_scope_descriptor,
+        )
+
+        monkeypatch.setattr(
+            owner,
+            "_capture_sources_with_deadline",
+            lambda root, source_scope, deadline=None: self._fake_capture(
+                "exact", "gen-1"
+            ),
+        )
+        conn = sqlite3.connect(":memory:")
+        snapshot = owner.IndexSnapshot(
+            None,
+            "fp",
+            "ifp",
+            "gen-1",
+            "partial",
+            "CALL_GRAPH_INCOMPLETE",
+            str(tmp_path.resolve()),
+            0,
+            source_scope=make_source_scope_descriptor(),
+        )
+        published = owner.REGISTRY.publish(snapshot, conn, 0)
+
+        with pytest.raises(ValueError, match="INDEX_SNAPSHOT_INCOMPLETE"):
+            with owner.read_existing_index_scope(
+                published.snapshot_id, str(tmp_path), "gen-1"
+            ):
+                pass
+
+    def test_read_existing_index_scope_honors_expired_deadline(
+        self, tmp_path, monkeypatch
+    ):
+        """An absolute deadline in the past fails closed at acquisition."""
+        import sqlite3
+        import time
+
+        import tree_sitter_analyzer.index_snapshot as owner
+        from tree_sitter_analyzer.index_source_scope import (
+            make_source_scope_descriptor,
+        )
+
+        monkeypatch.setattr(
+            owner,
+            "_capture_sources_with_deadline",
+            lambda root, source_scope, deadline=None: self._fake_capture(
+                "exact", "gen-1"
+            ),
+        )
+        conn = sqlite3.connect(":memory:")
+        snapshot = owner.IndexSnapshot(
+            None,
+            "fp",
+            "ifp",
+            "gen-1",
+            "complete",
+            None,
+            str(tmp_path.resolve()),
+            0,
+            source_scope=make_source_scope_descriptor(),
+        )
+        published = owner.REGISTRY.publish(snapshot, conn, 0)
+
+        # REGISTRY.acquire raises RuntimeError for an expired deadline; the
+        # consumer seam classifies both ValueError and RuntimeError.
+        with pytest.raises(RuntimeError, match="INDEX_SNAPSHOT_DEADLINE"):
+            with owner.read_existing_index_scope(
+                published.snapshot_id,
+                str(tmp_path),
+                "gen-1",
+                deadline=time.monotonic() - 1,
             ):
                 pass
 

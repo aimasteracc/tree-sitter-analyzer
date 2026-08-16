@@ -280,6 +280,7 @@ def format_read_existing_failure(
     output_format: str = "toon",
     compact_only: bool = False,
     action_version: str | None = None,
+    source_snapshots: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Format one classified failure envelope with P0.4 evidence.
 
@@ -287,6 +288,9 @@ def format_read_existing_failure(
     (e.g. edit.safe's unbound-root guard, which must precede path
     validation): produces the same envelope shape the seam's except block
     emits, so the wire contract (evidence + action_version) is never lost.
+    ``source_snapshots`` cites the exact capability identity actually read
+    when the failure happened AFTER acquisition (Codex P2 #1299); failures
+    before acquisition keep the empty list.
     """
     from .mcp.utils.format_helper import apply_toon_format_to_response
 
@@ -298,7 +302,7 @@ def format_read_existing_failure(
         "action_version": action_version,
         "output_format": output_format,
     }
-    attach_read_existing_evidence(failure)
+    attach_read_existing_evidence(failure, records=source_snapshots)
     return apply_toon_format_to_response(
         failure, output_format, compact_only=compact_only
     )
@@ -383,6 +387,7 @@ _INDEX_CONSUMER_STABLE_CODES = frozenset(
         "SOURCE_SCOPE_UNBOUNDED",
         "SOURCE_INDEX_MISMATCH",
         "CONSTRAINED_INDEX_SCOPE",
+        "INDEX_SNAPSHOT_INCOMPLETE",
         "FILE_NOT_FOUND",
     }
 )
@@ -437,6 +442,10 @@ def read_existing_index_consumer(
     from .index_snapshot import read_existing_index_scope
     from .mcp.utils.format_helper import apply_toon_format_to_response
 
+    # Codex P2 (#1299): keep the acquired capability identity so failures
+    # that happen AFTER acquisition still cite the snapshot that was read
+    # (auditability); pre-acquisition failures keep the empty list.
+    acquired: tuple[str, str] | None = None
     try:
         # Codex-review P2 (#1299): an unbound root must be CLASSIFIED (failure
         # envelope with evidence + action_version), never a bare raise that
@@ -453,13 +462,14 @@ def read_existing_index_consumer(
             tool.project_root,
             arguments["source_generation"],
         ) as (snapshot, conn):
+            assert snapshot.snapshot_id is not None
+            assert snapshot.source_generation is not None
+            acquired = (snapshot.snapshot_id, snapshot.source_generation)
             payload = reader(snapshot, conn)
             if not isinstance(payload, dict):
                 raise ValueError("INDEX_SNAPSHOT_FAILED")
             # The acquired capability is identity-matched to the request pair
             # (the registry raises otherwise), so both tokens are bound here.
-            assert snapshot.snapshot_id is not None
-            assert snapshot.source_generation is not None
             result = dict(payload)
             result["snapshot_id"] = snapshot.snapshot_id
             result["source_generation"] = snapshot.source_generation
@@ -485,4 +495,15 @@ def read_existing_index_consumer(
             output_format=output_format,
             compact_only=compact_only,
             action_version=action_version,
+            source_snapshots=(
+                [
+                    {
+                        "kind": "index",
+                        "snapshot_id": acquired[0],
+                        "source_generation": acquired[1],
+                    }
+                ]
+                if acquired is not None
+                else None
+            ),
         )

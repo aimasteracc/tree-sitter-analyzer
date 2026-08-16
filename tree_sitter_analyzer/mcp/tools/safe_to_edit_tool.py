@@ -306,6 +306,10 @@ class SafeToEditTool(BaseMCPTool):
                 project_root=reader_root,
                 graph=build_snapshot_file_dependency_view(conn, rel_path),
                 scorer=self._get_scorer(),
+                # Codex P1 (#1299): the certified route derives constraint
+                # facts from the snapshot connection and never touches the
+                # live .ast-cache (zero-write read).
+                snapshot_conn=conn if snapshot is not None else None,
             )
         )
         # RFC-0022 P0.5: echo the adapter-owned wire owner version on the

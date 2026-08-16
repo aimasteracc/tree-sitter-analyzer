@@ -57,7 +57,9 @@ task never scans or hashes the repository.
 `source_generation` returned by `index.status`. Each revalidates both tokens
 before and after reading, echoes both tokens actually used, and either serves all
 graph and source bytes from that immutable snapshot or returns
-`SOURCE_GENERATION_MISMATCH` without a result. In particular, `nav.context` may
+`SOURCE_GENERATION_MISMATCH` without a result. A consumer rejects a capability
+whose `completeness` is not `complete` with `INDEX_SNAPSHOT_INCOMPLETE` before
+serving any graph data (mirroring the constraint route's completeness gate). In particular, `nav.context` may
 not combine entry points from a cached graph with newer filesystem lines.
 Absence, disagreement, or a changed token stops the task route; no later
 `nav.context` or `edit.safe` call starts.

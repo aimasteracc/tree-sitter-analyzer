@@ -533,18 +533,29 @@ def read_existing_index_scope(
     *,
     deadline: float | None = None,
 ) -> Iterator[tuple[IndexSnapshot, sqlite3.Connection]]:
-    """Acquire one certified index capability and revalidate it after the read.
+    """Acquire one certified index capability and revalidate it around the read.
 
     Consumer seam for the P0.1 read_existing route: acquires the registry copy
-    (before-read token revalidation), yields the immutable snapshot + private
-    connection, then re-captures the current source and compares generations
-    (after-read revalidation). Any mismatch raises the stable code and the
-    route emits no result. Reader pins and the I/O lock are released by
-    ``acquire_index_snapshot``'s own cleanup on exit.
+    (before-read token revalidation) under one absolute deadline, gates the
+    capability (completeness + full source scope), re-captures the current
+    source BEFORE the read and AGAIN after it, and compares generations both
+    times. Any mismatch raises the stable code and the route emits no result.
+    Reader pins and the I/O lock are released by ``acquire_index_snapshot``'s
+    own cleanup on exit.
     """
+    scope_deadline = (
+        deadline if deadline is not None else _clock() + _CAPTURE_DEADLINE_SECONDS
+    )
     with acquire_index_snapshot(
-        snapshot_id, project_root, source_generation, deadline=deadline
+        snapshot_id, project_root, source_generation, deadline=scope_deadline
     ) as (snapshot, conn):
+        # Codex P1 (#1299): a partial capability (CALL_GRAPH_INCOMPLETE /
+        # SYMBOL_PROJECTION_INCOMPLETE) cannot certify project-wide graph
+        # claims. RFC-0022 P0.1 oracle: graph-consuming rows do not start
+        # without completeness "complete"; mirror the constraint route's
+        # completeness gate.
+        if snapshot.completeness != "complete":
+            raise ValueError("INDEX_SNAPSHOT_INCOMPLETE")
         # A partial source scope (exclusions / non-root roots) cannot certify
         # project-wide graph claims: the after-read recapture only re-checks
         # the snapshot's OWN scope, so out-of-scope files could be served
@@ -557,8 +568,16 @@ def read_existing_index_scope(
             and not snapshot.source_scope.exclude_patterns
         ):
             raise ValueError("CONSTRAINED_INDEX_SCOPE")
+        # Codex P1 (#1299): recapture BEFORE the read too. Acquisition only
+        # compares the caller's token against registry metadata — a source
+        # already modified when the read starts (and restored mid-read) would
+        # otherwise pass the single after-read check while the reader consumed
+        # the modified bytes. The pre-read check runs at __enter__ (normal
+        # generator start), the post-read check only on normal exit — the
+        # reader's own exception always wins over the after-read check.
+        verify_snapshot_source_current(snapshot, deadline=scope_deadline)
         yield snapshot, conn
-        verify_snapshot_source_current(snapshot, deadline=deadline)
+        verify_snapshot_source_current(snapshot, deadline=scope_deadline)
 
 
 def _unknown(reason: str) -> IndexSnapshot:

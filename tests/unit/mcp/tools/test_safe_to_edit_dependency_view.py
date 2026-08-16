@@ -6,6 +6,7 @@ from tree_sitter_analyzer.mcp.tools.utils import safe_to_edit_helpers
 from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
     FileDependencyView,
     _extract_import_specs,
+    _import_needles_for_target,
     _iter_dependency_source_files,
     _resolve_import_spec,
     _target_dependencies,
@@ -53,6 +54,23 @@ def test_safe_graph_lookup_does_not_match_partial_basename_suffix() -> None:
 
     assert safe_dependencies(view, "main.py") == ["pkg/dep.py"]
     assert safe_dependencies(view, "ain.py") == []
+
+
+def test_resolve_import_spec_with_no_matching_file_returns_none(
+    tmp_path: Path,
+) -> None:
+    """A spec whose candidates do not exist on disk resolves to None."""
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "main.py").write_text("x = 1\n", encoding="utf-8")
+
+    resolved = _resolve_import_spec("missing.module", "pkg/main.py", tmp_path)
+    assert resolved is None
+
+
+def test_import_needles_for_init_package_add_package_names() -> None:
+    """An __init__.py target yields package-level needles, not the basename."""
+    needles = _import_needles_for_target("pkg/__init__.py")
+    assert needles == {"pkg/__init__", "pkg.__init__", "pkg"}
 
 
 def test_build_file_dependency_view_finds_python_imports_and_importers(
