@@ -1115,6 +1115,7 @@ def test_context_read_existing_fails_closed_without_project_root() -> None:
     assert result["action_version"] == "nav.context/v1"
 
 
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
 @pytest.mark.skipif(
     sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
     reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
@@ -1165,6 +1166,7 @@ def test_context_read_existing_consumes_published_snapshot(
     assert result["code_blocks"]
 
 
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
 @pytest.mark.skipif(
     sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
     reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",

@@ -584,6 +584,7 @@ def _publish_index_snapshot(project: Path, *, source_generation: str | None = No
     return REGISTRY.publish(snapshot, conn, 0)
 
 
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
 @pytest.mark.skipif(
     sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
     reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
@@ -630,6 +631,7 @@ async def test_edit_safe_read_existing_consumes_published_snapshot(
     assert result["health_grade"]
 
 
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
 @pytest.mark.skipif(
     sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
     reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
