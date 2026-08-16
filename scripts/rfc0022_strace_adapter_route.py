@@ -63,6 +63,20 @@ def _produce(root: str) -> tuple[dict[str, object], str]:
 
     _subprocess.run_git_bounded = _bounded_spy
     _frozen_index.run_git_bounded = _bounded_spy
+    # The registry swallows capture failures into error codes; surface the
+    # raise-site traceback for the diagnostic self-check.
+    import traceback
+
+    import tree_sitter_analyzer.diff_snapshot_registry as _registry
+
+    _original_snapshot_error = _registry.snapshot_error
+
+    def _snapshot_error_spy(code: str):
+        if code == "DIFF_SNAPSHOT_GIT_ERROR":
+            traceback.print_exc(file=sys.stderr)
+        return _original_snapshot_error(code)
+
+    _registry.snapshot_error = _snapshot_error_spy
     from tree_sitter_analyzer.diff_snapshot_registry import REGISTRY, reset_registry
 
     reset_registry()
