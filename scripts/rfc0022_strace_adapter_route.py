@@ -24,21 +24,28 @@ import os
 import sys
 
 
+def _bootstrap_sys_path() -> None:
+    """Locate the project and its venv without ambient PYTHONPATH.
+
+    The authority runs the target with a closed environment (no
+    PYTHONPATH), so the target must find the checkout and its
+    site-packages itself.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    for candidate in sorted(
+        os.path.join(root, ".venv", "lib", item, "site-packages")
+        for item in os.listdir(os.path.join(root, ".venv", "lib"))
+        if item.startswith("python")
+    ):
+        if candidate not in sys.path:
+            sys.path.insert(0, candidate)
+
+
 def _produce(root: str) -> tuple[dict[str, object], str]:
     """Run the P0.4 producer route; return (deterministic identity, id)."""
-    # Diagnostic: surface the raise-site traceback of capture failures.
-    import traceback
-
-    import tree_sitter_analyzer.diff_snapshot_registry as _registry
-
-    _original_snapshot_error = _registry.snapshot_error
-
-    def _snapshot_error_spy(code: str):
-        if code == "DIFF_SNAPSHOT_GIT_ERROR":
-            traceback.print_exc(file=sys.stderr)
-        return _original_snapshot_error(code)
-
-    _registry.snapshot_error = _snapshot_error_spy
+    _bootstrap_sys_path()
     from tree_sitter_analyzer.diff_snapshot_registry import REGISTRY, reset_registry
 
     reset_registry()
