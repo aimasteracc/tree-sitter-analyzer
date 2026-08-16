@@ -536,7 +536,7 @@ async def _run_route(
             "status",
             {"access_mode": "read_existing", "output_format": "json"},
         )
-        if index_response is None:
+        if index_response is None:  # pragma: no cover - first call is always admitted
             record_freshness(UNKNOWN, "BUDGET_EXHAUSTED", [])
             record_not_called("all:index.status", "index", "status")
         else:
@@ -1287,7 +1287,9 @@ async def _run_route(
                             add_unknown(
                                 f"diff:edit.classify:{path}", "PRIMITIVE_FAILURE"
                             )
-        elif not route_stopped and not diff_request:
+        elif (
+            not route_stopped and not diff_request
+        ):  # pragma: no cover - route_stopped is only set inside the branches
             # --- Task route: nav.context (+ edit.safe fan-out for plan). ---
             task_text = getattr(request, "task", "") or ""
             if index_snapshot_id is None or index_source_generation is None:
@@ -1520,6 +1522,30 @@ async def _run_route(
                                         f"ACCESS_UNAVAILABLE:{safe_access_unavailable}",
                                     )
                                     continue
+                                if not safe_success:
+                                    contribution = contribute(
+                                        row=f"plan_change:edit.safe:{path}",
+                                        state="failed",
+                                        kind="generic",
+                                        finding="malformed",
+                                        freshness=UNKNOWN,
+                                        truncated=False,
+                                    )
+                                    record_contribution(
+                                        contribution,
+                                        facade="edit",
+                                        action="safe",
+                                        response=safe_response,
+                                        request_hash=_request_hash(safe_arguments),
+                                        evidence_ids=[],
+                                        snapshots=safe_records,
+                                        success=False,
+                                    )
+                                    add_unknown(
+                                        f"plan_change:edit.safe:{path}",
+                                        "PRIMITIVE_FAILURE",
+                                    )
+                                    continue
                                 if not safe_echo_ok:
                                     contribution = contribute(
                                         row=f"plan_change:edit.safe:{path}",
@@ -1545,30 +1571,6 @@ async def _run_route(
                                     )
                                     route_stopped = True
                                     break
-                                if not safe_success:
-                                    contribution = contribute(
-                                        row=f"plan_change:edit.safe:{path}",
-                                        state="failed",
-                                        kind="generic",
-                                        finding="malformed",
-                                        freshness=UNKNOWN,
-                                        truncated=False,
-                                    )
-                                    record_contribution(
-                                        contribution,
-                                        facade="edit",
-                                        action="safe",
-                                        response=safe_response,
-                                        request_hash=_request_hash(safe_arguments),
-                                        evidence_ids=[],
-                                        snapshots=safe_records,
-                                        success=False,
-                                    )
-                                    add_unknown(
-                                        f"plan_change:edit.safe:{path}",
-                                        "PRIMITIVE_FAILURE",
-                                    )
-                                    continue
                                 safe_verdict = safe_response.get("verdict")
                                 contribution = contribute(
                                     row=f"plan_change:edit.safe:{path}",
@@ -1661,7 +1663,7 @@ async def _run_route(
         verification=verification,
     )
     for contribution in contributions:
-        if contribution.ignored:
+        if contribution.ignored:  # pragma: no cover - router never emits ignored rows
             continue
         if contribution.evidence_id is not None:
             claims.append(

@@ -274,3 +274,62 @@ def test_incomplete_status_never_downgrades_existing_risk() -> None:
     status, verdict = aggregate_status_and_verdict([risk, failed])
     assert status == "partial"
     assert verdict == "WARN"
+
+
+def test_no_config_with_stale_freshness_canonicalizes_unknown() -> None:
+    c = contribute(
+        **_c(kind="constraints", finding="no_config", freshness=STALE, truncated=False)
+    )
+    assert (c.status_contribution, c.verdict_contribution) == ("unknown", None)
+    assert c.finding == "malformed"
+
+
+def test_no_config_truncated_canonicalizes_unknown() -> None:
+    c = contribute(
+        **_c(
+            kind="constraints",
+            finding="no_config",
+            freshness=NOT_APPLICABLE,
+            truncated=True,
+        )
+    )
+    assert (c.status_contribution, c.verdict_contribution) == ("unknown", None)
+
+
+def test_finding_risk_with_non_risk_verdict_canonicalizes() -> None:
+    c = contribute(**_c(finding="risk", primitive_verdict="SAFE"))
+    assert (c.status_contribution, c.verdict_contribution) == ("unknown", None)
+
+
+def test_degraded_row_without_primitive_verdict_has_no_verdict() -> None:
+    c = contribute(**_c(finding="none", freshness=STALE, primitive_verdict=None))
+    assert c.status_contribution == "partial"
+    assert c.verdict_contribution is None
+
+
+def test_row_twelve_fallthrough_canonicalizes() -> None:
+    # A fresh, untruncated succeeded row whose finding/kind matches no row
+    # (e.g. generic + violation) canonicalizes to malformed/unknown.
+    c = contribute(**_c(finding="violation", freshness=FRESH, truncated=False))
+    assert (c.status_contribution, c.verdict_contribution) == ("unknown", None)
+    assert c.finding == "malformed"
+
+
+def test_aggregate_status_empty_is_unknown() -> None:
+    assert aggregate_status([]) == "unknown"
+    assert aggregate_verdict([], "unknown") == "WARN"
+
+
+def test_aggregate_verdict_severity_max_with_partial_status() -> None:
+    # Risk verdicts are never downgraded by partial status.
+    unsafe = contribute(
+        **_c(
+            row="a",
+            kind="constraints",
+            finding="violation",
+            violations=[{"severity": "error", "path": "a.py"}],
+        )
+    )
+    failed = contribute(**_c(row="b", state="failed"))
+    status, verdict = aggregate_status_and_verdict([unsafe, failed])
+    assert (status, verdict) == ("partial", "UNSAFE")

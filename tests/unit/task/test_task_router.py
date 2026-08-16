@@ -13,6 +13,8 @@ import asyncio
 import json
 from typing import Any
 
+import pytest
+
 from tree_sitter_analyzer.task import (
     AssessChangeRequest,
     Budget,
@@ -762,3 +764,478 @@ def test_serialized_wire_roundtrips_router_outcome() -> None:
     assert wire["artifacts"]["edge_collections"] == []
     assert wire["next_step"] is None
     assert wire["agent_summary"] == {}
+
+
+# --- Fail-closed branch coverage (codecov patch gate, NO1-010A) -----------
+
+
+def test_impact_missing_snapshot_fields_is_unknown_and_stops() -> None:
+    impact = dict(IMPACT_OK)
+    del impact["diff_snapshot_id"]
+    executor = FakeExecutor(responses={("edit", "impact"): impact})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    assert ("edit", "constraints") not in [(f, a) for f, a, _ in executor.calls]
+    assert any(
+        u["row"] == "diff:edit.impact" and u["reason"] == "MISSING_SNAPSHOT_FIELDS"
+        for u in outcome.unknowns
+    )
+    assert outcome.consumed.cleanup_calls == 0
+
+
+def test_deadline_stop_before_impact_records_not_called() -> None:
+    executor = FakeExecutor()
+    executor.block_after = 1  # index.status blocks past the deadline
+    outcome = _run(
+        assess_change(
+            AssessChangeRequest(diff=DiffInput("workspace")),
+            executor,
+            clock=_clock(executor),
+        )
+    )
+    actions = [(f, a) for f, a, _ in executor.calls]
+    assert actions == [("index", "status")]
+    # Not-called rows are recorded as contributions and truncation rows.
+    assert "diff:edit.impact" in outcome.truncation["omitted_rows"]
+    impact_row = next(
+        v for v in outcome.artifacts["verification"] if v["row"] == "diff:edit.impact"
+    )
+    assert impact_row["status_contribution"] == "unknown"
+    assert "TRUNCATED" in outcome.errors
+
+
+def test_budget_floor_rejects_below_three_for_diff() -> None:
+    # The diff route requires >= 3 calls at the boundary (RFC-0022); the
+    # request model rejects lower explicit budgets before any primitive work.
+    with pytest.raises(ValueError, match="BUDGET_INVALID"):
+        AssessChangeRequest(
+            diff=DiffInput("workspace"),
+            budget=Budget(profile="standard", max_primitive_calls=2),
+        )
+
+
+def test_constraints_access_unavailable_stops_fanout() -> None:
+    constraints = dict(CONSTRAINTS_NO_CONFIG)
+    constraints["access_state"] = "unknown"
+    constraints["access_reason"] = "READ_EXISTING_AUTHORITY_UNCERTIFIED"
+    executor = FakeExecutor(responses={("edit", "constraints"): constraints})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    assert ("edit", "ast_diff") not in [(f, a) for f, a, _ in executor.calls]
+    assert any(
+        u["row"] == "diff:edit.constraints"
+        and u["reason"] == "ACCESS_UNAVAILABLE:READ_EXISTING_AUTHORITY_UNCERTIFIED"
+        for u in outcome.unknowns
+    )
+
+
+def test_ast_diff_failure_is_partial_and_classify_still_runs() -> None:
+    executor = FakeExecutor(
+        responses={("edit", "ast_diff"): {"success": False, "verdict": "ERROR"}}
+    )
+    outcome = _run(
+        plan_change(PlanChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    actions = [(f, a) for f, a, _ in executor.calls]
+    assert ("edit", "classify") in actions  # per-file failure, route continues
+    assert any(
+        u["row"] == "diff:edit.ast_diff:src/a.py" and u["reason"] == "PRIMITIVE_FAILURE"
+        for u in outcome.unknowns
+    )
+    assert outcome.status == "partial"
+
+
+def test_ast_diff_access_unavailable_is_per_file_failure() -> None:
+    ast_diff = {
+        "success": True,
+        "verdict": "INFO",
+        "access_state": "unknown",
+        "access_reason": "UNCERTIFIED_X",
+    }
+    executor = FakeExecutor(responses={("edit", "ast_diff"): ast_diff})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    assert any(
+        u["reason"] == "ACCESS_UNAVAILABLE:UNCERTIFIED_X" for u in outcome.unknowns
+    )
+
+
+def test_classify_failure_is_partial() -> None:
+    executor = FakeExecutor(
+        responses={("edit", "classify"): {"success": False, "verdict": "ERROR"}}
+    )
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    assert outcome.status == "partial"
+    assert any(
+        u["row"] == "diff:edit.classify:src/a.py" and u["reason"] == "PRIMITIVE_FAILURE"
+        for u in outcome.unknowns
+    )
+
+
+def test_safe_access_unavailable_is_per_call_failure() -> None:
+    safe = dict(SAFE_OK)
+    safe["access_state"] = "unknown"
+    safe["access_reason"] = "READ_EXISTING_AUTHORITY_UNCERTIFIED"
+    executor = FakeExecutor(responses={("edit", "safe"): safe})
+    outcome = _run(plan_change(PlanChangeRequest(task="refactor dispatch"), executor))
+    assert outcome.status == "partial"
+    assert any(
+        u["row"].startswith("plan_change:edit.safe:")
+        and u["reason"] == "ACCESS_UNAVAILABLE:READ_EXISTING_AUTHORITY_UNCERTIFIED"
+        for u in outcome.unknowns
+    )
+
+
+def test_error_verdict_on_success_is_malformed_unknown() -> None:
+    impact = dict(IMPACT_OK)
+    impact["verdict"] = "ERROR"
+    executor = FakeExecutor(responses={("edit", "impact"): impact})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    impact_row = next(
+        v for v in outcome.artifacts["verification"] if v["row"] == "diff:edit.impact"
+    )
+    assert impact_row["finding"] == "malformed"
+    assert impact_row["status_contribution"] == "unknown"
+
+
+def test_success_without_verdict_is_malformed_unknown() -> None:
+    impact = dict(IMPACT_OK)
+    del impact["verdict"]
+    executor = FakeExecutor(responses={("edit", "impact"): impact})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    impact_row = next(
+        v for v in outcome.artifacts["verification"] if v["row"] == "diff:edit.impact"
+    )
+    assert impact_row["finding"] == "malformed"
+
+
+def test_echo_records_skips_malformed_entries_then_falls_back() -> None:
+    nav = dict(NAV_OK)
+    nav["source_snapshots"] = [
+        {"kind": "index"},  # missing ids -> skipped
+        "junk",  # not a dict -> skipped
+    ]
+    nav["snapshot_id"] = "idx_snap_1"
+    nav["source_generation"] = "gen_1"
+    executor = FakeExecutor(responses={("nav", "context"): nav})
+    outcome = _run(understand(UnderstandRequest(task="x"), executor))
+    # All entries malformed -> empty list -> top-level echo fallback matches.
+    assert outcome.status == "complete"
+    assert outcome.verdict == "INFO"
+
+
+def test_nonmatching_source_snapshots_never_fallback_to_top_level() -> None:
+    nav = dict(NAV_OK)
+    nav["source_snapshots"] = [
+        {"kind": "diff", "snapshot_id": "ds_1", "source_generation": "g1"}
+    ]
+    nav["snapshot_id"] = "idx_snap_1"
+    nav["source_generation"] = "gen_1"
+    executor = FakeExecutor(responses={("nav", "context"): nav})
+    outcome = _run(understand(UnderstandRequest(task="x"), executor))
+    # A valid but non-matching record list is a real echo mismatch (fail
+    # closed), never silently replaced by the top-level echo.
+    assert any(
+        u["row"] == "understand:nav.context"
+        and u["reason"] == "SOURCE_GENERATION_MISMATCH"
+        for u in outcome.unknowns
+    )
+
+
+def test_violation_without_path_mints_no_evidence() -> None:
+    constraints = {
+        "success": True,
+        "verdict": "CAUTION",
+        "state": "applicable",
+        "violations": [
+            {"severity": "warning"},  # no path -> no step/evidence
+        ],
+        "action_version": "edit.constraints/v1",
+        "source_snapshots": [
+            {
+                "kind": "index",
+                "snapshot_id": "idx_snap_1",
+                "source_generation": "gen_1",
+            },
+            {"kind": "diff", "snapshot_id": "ds_1", "source_generation": "gen_1"},
+        ],
+    }
+    executor = FakeExecutor(responses={("edit", "constraints"): constraints})
+    outcome = _run(
+        plan_change(PlanChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    assert not any(
+        s["kind"] == "check_constraint" for s in outcome.artifacts["plan_steps"]
+    )
+
+
+def test_internal_error_guard_freezes_internal_error_outcome(monkeypatch) -> None:
+    import tree_sitter_analyzer.task.router as router_module
+
+    def boom(fragments):
+        raise RuntimeError("router bug")
+
+    monkeypatch.setattr(router_module, "project_plan_steps", boom)
+    executor = FakeExecutor()
+    outcome = _run(
+        plan_change(PlanChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    assert outcome.success is False
+    assert outcome.verdict == "ERROR"
+    assert "INTERNAL_ERROR" in outcome.errors
+
+
+# --- Remaining branch coverage (codecov patch gate round 2) ---------------
+
+
+def test_impact_failure_is_unknown_and_stops() -> None:
+    executor = FakeExecutor(
+        responses={("edit", "impact"): {"success": False, "verdict": "ERROR"}}
+    )
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    assert ("edit", "constraints") not in [(f, a) for f, a, _ in executor.calls]
+    assert any(
+        u["row"] == "diff:edit.impact" and u["reason"] == "PRIMITIVE_FAILURE"
+        for u in outcome.unknowns
+    )
+    assert outcome.consumed.cleanup_calls == 0  # no ids -> no cleanup
+
+
+def test_impact_missing_lease_id_is_unknown() -> None:
+    impact = dict(IMPACT_OK)
+    del impact["route_lease_id"]
+    executor = FakeExecutor(responses={("edit", "impact"): impact})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    assert any(
+        u["row"] == "diff:edit.impact" and u["reason"] == "MISSING_SNAPSHOT_FIELDS"
+        for u in outcome.unknowns
+    )
+    assert outcome.consumed.cleanup_calls == 0
+
+
+def test_changed_records_junk_entries_are_skipped() -> None:
+    impact = dict(IMPACT_OK)
+    impact["changed_records"] = [
+        "junk",  # not a dict
+        {"status": "modified"},  # no path
+        {"path": 42, "status": "modified"},  # non-str path
+        {"path": "src/bin.dat", "status": "modified", "binary": True},
+        {"path": "src/ok.py", "status": "modified"},
+    ]
+    executor = FakeExecutor(responses={("edit", "impact"): impact})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    # Only the valid record is fanned out; junk entries never crash or step.
+    ast_diff_paths = [
+        args["file_path"]
+        for f, a, args in executor.calls
+        if (f, a) == ("edit", "ast_diff")
+    ]
+    assert ast_diff_paths == ["src/ok.py"]
+    # Binary records are still changed paths in the subject; only the
+    # structural/classification fan-out skips them.
+    assert outcome.subject["diff"]["changed_paths"] == ["src/bin.dat", "src/ok.py"]
+
+
+def test_constraints_deadline_not_called_records_unknown() -> None:
+    executor = FakeExecutor()
+    executor.block_after = 2  # impact blocks past the deadline
+    outcome = _run(
+        assess_change(
+            AssessChangeRequest(diff=DiffInput("workspace")),
+            executor,
+            clock=_clock(executor),
+        )
+    )
+    # The deadline is checked before each call: constraints is never started.
+    assert "diff:edit.constraints" in outcome.truncation["omitted_rows"]
+    assert "TRUNCATED" in outcome.errors
+    assert ("edit", "constraints") not in [(f, a) for f, a, _ in executor.calls]
+
+
+def test_constraints_violations_without_action_version_mint_no_evidence() -> None:
+    constraints = {
+        "success": True,
+        "verdict": "CAUTION",
+        "state": "applicable",
+        "violations": [{"severity": "warning", "path": "src/a.py"}],
+        "source_snapshots": [
+            {
+                "kind": "index",
+                "snapshot_id": "idx_snap_1",
+                "source_generation": "gen_1",
+            },
+            {"kind": "diff", "snapshot_id": "ds_1", "source_generation": "gen_1"},
+        ],
+        # no action_version -> evidence ownership missing
+    }
+    executor = FakeExecutor(responses={("edit", "constraints"): constraints})
+    outcome = _run(
+        plan_change(PlanChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    assert any(
+        u["row"] == "diff:edit.constraints" and u["reason"] == "ACTION_VERSION_MISSING"
+        for u in outcome.unknowns
+    )
+    assert not any(
+        s["kind"] == "check_constraint" for s in outcome.artifacts["plan_steps"]
+    )
+
+
+def test_classify_access_unavailable_is_per_file_failure() -> None:
+    classify = {
+        "success": True,
+        "verdict": "INFO",
+        "access_state": "unknown",
+        "access_reason": "UNCERTIFIED_Y",
+    }
+    executor = FakeExecutor(responses={("edit", "classify"): classify})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    assert any(
+        u["reason"] == "ACCESS_UNAVAILABLE:UNCERTIFIED_Y" for u in outcome.unknowns
+    )
+
+
+def test_nav_deadline_not_called_records_unknown() -> None:
+    executor = FakeExecutor()
+    executor.block_after = 1  # index.status blocks past the deadline
+    outcome = _run(
+        plan_change(
+            PlanChangeRequest(task="refactor dispatch"),
+            executor,
+            clock=_clock(executor),
+        )
+    )
+    # nav.context is never started after the deadline passes.
+    assert "plan_change:nav.context" in outcome.truncation["omitted_rows"]
+    assert ("nav", "context") not in [(f, a) for f, a, _ in executor.calls]
+    assert ("edit", "safe") not in [(f, a) for f, a, _ in executor.calls]
+
+
+def test_code_blocks_junk_entries_are_skipped() -> None:
+    nav = dict(NAV_OK)
+    nav["code_blocks"] = [
+        "junk",
+        {"path": 42, "symbol": "x"},
+        {"path": "src/empty.py", "symbol": ""},
+        {"path": "src/real.py", "symbol": "real"},
+    ]
+    executor = FakeExecutor(responses={("nav", "context"): nav})
+    outcome = _run(plan_change(PlanChangeRequest(task="refactor dispatch"), executor))
+    safe_calls = [args for f, a, args in executor.calls if (f, a) == ("edit", "safe")]
+    # The empty-symbol block has a valid path, so it participates in the
+    # fan-out; its symbol is only optional metadata.
+    assert [args["file_path"] for args in safe_calls] == ["src/empty.py", "src/real.py"]
+    assert outcome.artifacts["relevant_paths"] == ["src/empty.py", "src/real.py"]
+
+
+def test_safe_echo_mismatch_stops_route() -> None:
+    safe = dict(SAFE_OK)
+    safe["source_generation"] = "gen_OTHER"
+    executor = FakeExecutor(responses={("edit", "safe"): safe})
+    outcome = _run(plan_change(PlanChangeRequest(task="refactor dispatch"), executor))
+    safe_calls = [args for f, a, args in executor.calls if (f, a) == ("edit", "safe")]
+    assert len(safe_calls) == 1  # first mismatch stops the fan-out
+    assert any(
+        u["row"] == "plan_change:edit.safe:src/a.py"
+        and u["reason"] == "SOURCE_GENERATION_MISMATCH"
+        for u in outcome.unknowns
+    )
+
+
+def test_safe_failure_is_partial_and_fanout_continues() -> None:
+    executor = FakeExecutor(
+        responses={("edit", "safe"): {"success": False, "verdict": "ERROR"}}
+    )
+    outcome = _run(plan_change(PlanChangeRequest(task="refactor dispatch"), executor))
+    safe_calls = [args for f, a, args in executor.calls if (f, a) == ("edit", "safe")]
+    # All three fan-out paths still run; per-call failure is partial, not a stop.
+    assert [args["file_path"] for args in safe_calls] == [
+        "src/a.py",
+        "src/m.py",
+        "src/z.py",
+    ]
+    assert outcome.status == "partial"
+    assert any(
+        u["row"].startswith("plan_change:edit.safe:")
+        and u["reason"] == "PRIMITIVE_FAILURE"
+        for u in outcome.unknowns
+    )
+
+
+def test_release_snapshot_raising_degrades_cleanup_to_failed() -> None:
+    class RaisingReleaseExecutor(FakeExecutor):
+        async def call(self, facade, action, arguments):
+            if action == "release_snapshot":
+                raise RuntimeError("cleanup boom")
+            return await super().call(facade, action, arguments)
+
+    executor = RaisingReleaseExecutor()
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    assert outcome.success is False
+    assert outcome.verdict == "ERROR"
+    assert outcome.consumed.cleanup_status == "failed"
+    assert outcome.consumed.cleanup_error_code == "DIFF_SNAPSHOT_CLEANUP_FAILED"
+    for text in (serialize_json(outcome), serialize_toon(outcome)):
+        assert "cleanup boom" not in text
+
+
+def test_safe_without_action_version_mints_no_evidence() -> None:
+    safe = dict(SAFE_OK)
+    del safe["action_version"]
+    executor = FakeExecutor(responses={("edit", "safe"): safe})
+    outcome = _run(plan_change(PlanChangeRequest(task="refactor dispatch"), executor))
+    assert any(
+        u["row"].startswith("plan_change:edit.safe:")
+        and u["reason"] == "ACTION_VERSION_MISSING"
+        for u in outcome.unknowns
+    )
+    safe_steps = [
+        s for s in outcome.artifacts["plan_steps"] if s["kind"] == "check_file_safety"
+    ]
+    assert safe_steps == []  # no evidence -> no step
+
+
+def test_access_state_without_reason_uses_stable_fallback() -> None:
+    nav = dict(NAV_OK)
+    nav["access_state"] = "unknown"
+    nav.pop("source_snapshots", None)
+    executor = FakeExecutor(responses={("nav", "context"): nav})
+    outcome = _run(understand(UnderstandRequest(task="x"), executor))
+    assert any(
+        u["reason"] == "ACCESS_UNAVAILABLE:READ_EXISTING_UNAVAILABLE"
+        for u in outcome.unknowns
+    )
+
+
+def test_risk_verdict_on_success_is_complete_risk_finding() -> None:
+    safe = dict(SAFE_OK)
+    safe["verdict"] = "WARN"
+    executor = FakeExecutor(responses={("edit", "safe"): safe})
+    outcome = _run(plan_change(PlanChangeRequest(task="refactor dispatch"), executor))
+    safe_row = next(
+        v
+        for v in outcome.artifacts["verification"]
+        if v["row"] == "plan_change:edit.safe:src/a.py"
+    )
+    assert safe_row["finding"] == "risk"
+    assert safe_row["status_contribution"] == "complete"
+    assert safe_row["verdict_contribution"] == "WARN"

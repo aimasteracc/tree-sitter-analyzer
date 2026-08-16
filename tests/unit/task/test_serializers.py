@@ -537,3 +537,34 @@ def test_split_key_value_unclosed_quote_falls_back() -> None:
 
     # An unterminated quote falls back to plain partition.
     assert _split_key_value('"unclosed: x') == ('"unclosed', " x")
+
+
+def test_decode_wire_with_plan_steps_validates_step_shape() -> None:
+    import json
+
+    outcome = TaskOutcome(
+        task="plan_change",
+        request=PlanChangeRequest(task="refactor x"),
+        verdict="WARN",
+        status="partial",
+        artifacts={
+            "relevant_symbols": ["sym"],
+            "relevant_paths": ["src/a.py"],
+            "plan_steps": [
+                {
+                    "ordinal": 1,
+                    "kind": "check_file_safety",
+                    "path": "src/a.py",
+                    "symbol": None,
+                    "evidence_ids": ["evidence:e1"],
+                }
+            ],
+            "verification": [],
+            "edge_collections": [],
+        },
+    )
+    wire = json.loads(serialize_json(outcome))
+    assert decode_json(json.dumps(wire)) == outcome
+    wire["artifacts"]["plan_steps"][0]["sneaky"] = True
+    with pytest.raises(ValueError, match="unknown fields"):
+        decode_json(json.dumps(wire))
