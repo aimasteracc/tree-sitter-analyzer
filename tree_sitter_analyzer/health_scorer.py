@@ -229,7 +229,20 @@ class HealthScorer:
             if fast_dependencies
             else score_dependencies(file_path)
         )
-        dimensions: dict[str, float | None] = {
+        if certified:
+            # Codex P1 (#1299 round-4/5): coverage.json and git history are
+            # outside the snapshot source generation — a certified read must
+            # not even TOUCH them (a corrupt coverage.json must not flip a
+            # certified request to INDEX_SNAPSHOT_FAILED), so they are
+            # branched away from, never evaluated-and-discarded.
+            return {
+                "size": score_size(len(source.splitlines())),
+                "complexity": score_complexity(file_path, source, language),
+                "dependencies": dependency_score,
+                "duplication": score_duplication(source, language),
+                "structure": score_structure(file_path, source, language),
+            }
+        return {
             "size": score_size(len(source.splitlines())),
             "complexity": score_complexity(file_path, source, language),
             "dependencies": dependency_score,
@@ -238,13 +251,6 @@ class HealthScorer:
             "structure": score_structure(file_path, source, language),
             "git_hotspot": score_git_hotspot(file_path),
         }
-        if certified:
-            # Codex P1 (#1299 round-4): coverage.json and git history are
-            # outside the snapshot source generation — a certified read must
-            # not report dimensions that can drift for the same identity.
-            dimensions.pop("coverage")
-            dimensions.pop("git_hotspot")
-        return dimensions
 
     # Q4 (round-33 dogfood): ``golden_masters`` is a snapshot of expected
     # MCP output stored under tests/ — it is not source code and must be

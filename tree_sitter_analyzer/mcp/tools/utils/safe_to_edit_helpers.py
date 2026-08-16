@@ -126,7 +126,7 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
         # set, so oracle-excluded files (tests/vendor/) can neither fill the
         # discovery cap nor change has_tests/verdict for the same identity.
         inventory = snapshot_inventory(context.snapshot_conn)
-        test_files = _certified_test_files(inventory, context.resolved_path)
+        test_files = _certified_test_files(inventory, rel_path)
         certified_health = True
     else:
         test_files = find_test_files(context.resolved_path, context.project_root)
@@ -713,15 +713,20 @@ def _require_edges_callee_name(conn: Any) -> None:
         raise ValueError("CORRUPT_INDEX")
 
 
-def _certified_test_files(inventory: frozenset[str], file_path: str) -> list[str]:
-    """Find inventory-covered test files for one target.
+def _certified_test_files(inventory: frozenset[str], rel_path: str) -> list[str]:
+    """Find inventory-covered test files for one target (RELATIVE posix path).
 
     Codex P1 (#1299 round-3/4): snapshot-certified test discovery walks the
     snapshot's ``ast_index`` file set instead of the live filesystem, so
     oracle-excluded paths (e.g. ``tests/vendor/``) can never influence
     ``has_tests`` and the discovery cap cannot be filled by un-certified
-    candidates. Pattern and colocated conventions mirror the live axis.
+    candidates. Pattern and colocated conventions mirror the live axis:
+    basenames are matched with the patterns' GLOB semantics (round-5, e.g.
+    ``test_app_*.py``) and ``test_dirs`` of ``"."`` (Go's co-located
+    convention) accept any inventory path (round-5).
     """
+
+    import fnmatch
 
     from .test_discovery import (
         _TEST_DIRS,
@@ -730,21 +735,27 @@ def _certified_test_files(inventory: frozenset[str], file_path: str) -> list[str
         detect_language_from_ext,
     )
 
-    p = Path(file_path)
+    p = Path(rel_path)
     stem = p.stem
     language = detect_language_from_ext(p.suffix.lower()) or "python"
     patterns = _TEST_PATTERNS.get(language, ["test_{stem}.py"])
     test_dirs = _TEST_DIRS.get(language, ["tests"])
-    filenames = {_format_pattern(pattern, stem) for pattern in patterns}
+    filenames = [_format_pattern(pattern, stem) for pattern in patterns]
 
     results: list[str] = []
     for rel in sorted(inventory):
-        if Path(rel).name not in filenames:
+        if not any(
+            fnmatch.fnmatchcase(Path(rel).name, pattern) for pattern in filenames
+        ):
             continue
-        if any(rel.startswith(f"{test_dir}/") for test_dir in test_dirs):
+        if any(
+            test_dir == "." or rel.startswith(f"{test_dir}/") for test_dir in test_dirs
+        ):
             results.append(rel)
     parent = p.parent.as_posix()
     for filename in filenames:
+        if "*" in filename:
+            continue
         colocated = f"{parent}/{filename}"
         if colocated in inventory and colocated not in results:
             results.append(colocated)

@@ -714,3 +714,15 @@ def test_certified_test_files_walk_inventory_only() -> None:
 
     # No inventory-covered test for the target -> empty.
     assert _certified_test_files(frozenset({"src/app.py"}), "src/app.py") == []
+
+    # Glob patterns (test_{stem}_*.py) match conventional suffixed tests.
+    globbed = _certified_test_files(
+        frozenset({"tests/test_app_behavior.py", "src/app.py"}), "src/app.py"
+    )
+    assert globbed == ["tests/test_app_behavior.py"]
+
+    # Go's co-located convention (test_dirs=["."]) accepts inventory paths.
+    go_tests = _certified_test_files(
+        frozenset({"handler.go", "handler_test.go"}), "handler.go"
+    )
+    assert go_tests == ["handler_test.go"]
