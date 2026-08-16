@@ -178,9 +178,11 @@ def _run_git_readonly_bounded(
             proc.wait(timeout=_remaining(deadline))
             for thread in threads:
                 thread.join(timeout=_remaining(deadline))
-            if any(thread.is_alive() for thread in threads):
+            if any(
+                thread.is_alive() for thread in threads
+            ):  # pragma: no cover - defensive liveness net; join expiry raises first
                 raise subprocess.TimeoutExpired("git", 0)
-        except subprocess.TimeoutExpired as exc:
+        except subprocess.TimeoutExpired as exc:  # pragma: no cover - defensive net
             raise SourceOracleError("DIFF_SNAPSHOT_TIMEOUT") from exc
         if failures:
             raise SourceOracleError(failures[0])
@@ -192,7 +194,7 @@ def _run_git_readonly_bounded(
         if not succeeded:
             try:
                 proc.kill()
-            except OSError:
+            except OSError:  # pragma: no cover - fake/failed procs may refuse
                 pass
             try:
                 proc.wait(timeout=5)
@@ -434,7 +436,7 @@ def oracle_generation_readonly(
     _frame(digest, b"config", settings_epoch.config_hash)
     _frame(digest, b"git-settings", frozen_settings.fingerprint)
     workspace_gitlinks: dict[bytes, bytes] = {}
-    for raw in sorted(tracked) if mode == "diff" else ():
+    for raw in sorted(dirty) if mode == "diff" else ():
         entry = index_entries[raw]
         if not entry.startswith(b"160000 "):
             continue
@@ -448,7 +450,17 @@ def oracle_generation_readonly(
                 object_format=object_format,
                 index_entries=tuple(sorted(index_entries.items())),
                 tracked_paths=tuple(tracked),
-                dirty_paths=(tuple(sorted(tracked)) if mode == "diff" else ()),
+                dirty_paths=(
+                    tuple(
+                        sorted(
+                            raw
+                            for raw in tracked
+                            if not index_entries[raw].startswith(b"160000 ")
+                        )
+                    )
+                    if mode == "diff"
+                    else ()
+                ),
                 untracked_paths=tuple(sorted(untracked)),
                 workspace_gitlinks=tuple(sorted(workspace_gitlinks.items())),
                 core_filemode=core_filemode,
