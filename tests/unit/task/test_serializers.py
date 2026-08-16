@@ -155,8 +155,9 @@ def test_toon_shape_is_line_oriented() -> None:
     toon = serialize_toon(_frozen_understand())
     lines = toon.splitlines()
     assert any(line.startswith('"schema": "task-outcome/v1"') for line in lines)
-    assert any(line.startswith('"task": "understand"') for line in lines)
+    assert any(line.startswith('"operation": "understand"') for line in lines)
     assert any(line.startswith('"verdict": "SAFE"') for line in lines)
+    assert any(line.startswith('"success": true') for line in lines)
     assert any(line.strip() == "-" for line in lines)
     assert any('"evidence": "evidence:abc123"' in line for line in lines)
 
@@ -219,10 +220,13 @@ def test_toon_rejects_unquoted_non_literal_values() -> None:
 
 def test_exact_absolute_bytes_pin_frozen_fixture() -> None:
     # W1 (review #1268): real absolute pins, not x == x tautologies.
+    # Re-pinned on 2026-08-16 for the full RFC-0022 fixed wire (NO1-010A):
+    # the wire gained success/operation/subject/claims/artifacts/provenance/
+    # freshness/unknowns/errors/budget/truncation/next_step/agent_summary.
     outcome = _frozen_understand()
     json_bytes, toon_bytes = json_vs_toon_bytes(outcome)
-    assert json_bytes == 732
-    assert toon_bytes == 627
+    assert json_bytes == 961
+    assert toon_bytes == 820
 
 
 def test_decode_rejects_unknown_fields() -> None:
@@ -426,13 +430,10 @@ def test_toon_list_empty_container_items_roundtrip() -> None:
         task="understand",
         request=UnderstandRequest(task="x"),
         verdict="INFO",
-        evidence=(
-            {},
-            [],
-        ),
+        evidence=({"x": []}, {"y": {}}),
     )
     decoded = decode_toon(serialize_toon(outcome))
-    assert decoded.evidence == ({}, [])
+    assert decoded.evidence == ({"x": []}, {"y": {}})
 
 
 def test_toon_special_character_keys_roundtrip() -> None:
@@ -536,3 +537,64 @@ def test_split_key_value_unclosed_quote_falls_back() -> None:
 
     # An unterminated quote falls back to plain partition.
     assert _split_key_value('"unclosed: x') == ('"unclosed', " x")
+
+
+def test_decode_wire_with_plan_steps_validates_step_shape() -> None:
+    import json
+
+    outcome = TaskOutcome(
+        task="plan_change",
+        request=PlanChangeRequest(task="refactor x"),
+        verdict="WARN",
+        status="partial",
+        artifacts={
+            "relevant_symbols": ["sym"],
+            "relevant_paths": ["src/a.py"],
+            "plan_steps": [
+                {
+                    "ordinal": 1,
+                    "kind": "check_file_safety",
+                    "path": "src/a.py",
+                    "symbol": None,
+                    "evidence_ids": ["evidence:e1"],
+                }
+            ],
+            "verification": [],
+            "edge_collections": [],
+        },
+    )
+    wire = json.loads(serialize_json(outcome))
+    assert decode_json(json.dumps(wire)) == outcome
+    wire["artifacts"]["plan_steps"][0]["sneaky"] = True
+    with pytest.raises(ValueError, match="unknown fields"):
+        decode_json(json.dumps(wire))
+
+
+def test_decoder_rejects_missing_required_wire_fields() -> None:
+    import json
+
+    outcome = TaskOutcome(
+        task="understand",
+        request=UnderstandRequest(task="x"),
+        verdict="INFO",
+    )
+    wire = json.loads(serialize_json(outcome))
+    for field in (
+        "subject",
+        "artifacts",
+        "budget",
+        "truncation",
+        "claims",
+        "provenance",
+        "freshness",
+        "unknowns",
+        "errors",
+        "success",
+        "operation",
+        "next_step",
+        "agent_summary",
+    ):
+        trimmed = dict(wire)
+        del trimmed[field]
+        with pytest.raises(ValueError, match="missing required fields"):
+            decode_json(json.dumps(trimmed))

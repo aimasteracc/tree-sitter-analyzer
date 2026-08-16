@@ -314,3 +314,82 @@ def test_plan_change_task_text_path_runs_validator() -> None:
     assert PlanChangeRequest(task="refactor dispatch").task == "refactor dispatch"
     with pytest.raises(ValueError, match="exactly one of task or diff"):
         PlanChangeRequest()
+
+
+def test_task_outcome_rejects_non_dict_wire_fields() -> None:
+    base = {
+        "task": "understand",
+        "request": UnderstandRequest(task="x"),
+        "verdict": "INFO",
+    }
+    with pytest.raises(ValueError, match="subject must be a dict"):
+        TaskOutcome(**base, subject=["task"])  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="artifacts must be a dict"):
+        TaskOutcome(**base, artifacts=())  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="budget and truncation must be dicts"):
+        TaskOutcome(**base, budget=[])  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="agent_summary must be a dict"):
+        TaskOutcome(**base, agent_summary=[])  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="next_step must be a string or null"):
+        TaskOutcome(**base, next_step=3)  # type: ignore[arg-type]
+
+
+def test_task_outcome_rejects_malformed_collections() -> None:
+    base = {
+        "task": "understand",
+        "request": UnderstandRequest(task="x"),
+        "verdict": "INFO",
+    }
+    with pytest.raises(ValueError, match="claims must be a tuple of dicts"):
+        TaskOutcome(**base, claims=({"id": 1}, "junk"))  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="evidence must be a tuple of dicts"):
+        TaskOutcome(**base, evidence=("junk",))  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="errors must be a tuple of strings"):
+        TaskOutcome(**base, errors=("OK", 1))  # type: ignore[arg-type]
+
+
+def test_task_outcome_success_must_match_verdict() -> None:
+    with pytest.raises(ValueError, match="contradicts verdict"):
+        TaskOutcome(
+            task="understand",
+            request=UnderstandRequest(task="x"),
+            verdict="SAFE",
+            success=False,
+        )
+    with pytest.raises(ValueError, match="contradicts verdict"):
+        TaskOutcome(
+            task="understand",
+            request=UnderstandRequest(task="x"),
+            verdict="ERROR",
+            error="boom",
+            success=True,
+        )
+
+
+def test_builders_produce_fixed_wire_shapes() -> None:
+    from tree_sitter_analyzer.task import (
+        build_artifacts,
+        build_budget_record,
+        build_subject_diff,
+        build_subject_task,
+    )
+
+    assert build_subject_task() == {"task": None}
+    assert build_subject_diff("workspace", "ds_1", ["a.py"]) == {
+        "diff": {
+            "source": "workspace",
+            "snapshot_id": "ds_1",
+            "changed_paths": ["a.py"],
+        }
+    }
+    budget = Budget(profile="compact")
+    assert build_budget_record(budget)["effective_calls"] == 4
+    artifacts = build_artifacts(
+        relevant_symbols=["s"],
+        relevant_paths=["p"],
+        plan_steps=[],
+        verification=[],
+        edge_collections=None,
+    )
+    assert artifacts["edge_collections"] == []
+    assert artifacts["relevant_paths"] == ["p"]
