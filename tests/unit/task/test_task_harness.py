@@ -9,6 +9,9 @@ smoke entry.
 from __future__ import annotations
 
 import asyncio
+import io
+import json
+import sys
 
 import pytest
 
@@ -252,3 +255,285 @@ def test_request_from_dict_rejects_forbidden_fields() -> None:
         request_from_dict(
             "assess_change", {"diff": {"source": "workspace"}, "task": "x"}
         )
+
+
+# --- Corpus / request-json modes (NO1-010A follow-up) ------------------------
+
+
+def _strip_timing(report: dict) -> dict:
+    """Drop per-execution timing measurements (not deterministic)."""
+    for result in report.get("results", []):
+        consumed = result.get("consumed") or {}
+        for key in ("routing_wall_ms", "cleanup_wall_ms", "deadline_overrun_ms"):
+            consumed.pop(key, None)
+    return report
+
+
+def test_load_corpus_strict_parsing(tmp_path) -> None:
+    from tree_sitter_analyzer.task_harness import load_corpus
+
+    corpus = tmp_path / "corpus.jsonl"
+    corpus.write_text(
+        '{"operation": "understand", "task": "how does dispatch work"}\n'
+        '{"operation": "assess_change", "diff": {"source": "workspace"}}\n'
+        "\n"
+    )
+    entries = load_corpus(str(corpus))
+    assert [(op, p.get("task"), p.get("diff")) for op, p in entries] == [
+        ("understand", "how does dispatch work", None),
+        ("assess_change", None, {"source": "workspace"}),
+    ]
+
+
+def test_load_corpus_rejects_malformed_lines(tmp_path) -> None:
+    from tree_sitter_analyzer.task_harness import load_corpus
+
+    corpus = tmp_path / "bad.jsonl"
+    corpus.write_text('{"operation": "understand", "task": "x"}\nnot-json\n')
+    with pytest.raises(ValueError, match="line 2: invalid JSON"):
+        load_corpus(str(corpus))
+    corpus.write_text('{"operation": "mystery", "task": "x"}\n')
+    with pytest.raises(ValueError, match="line 1: unknown operation"):
+        load_corpus(str(corpus))
+    corpus.write_text("\n")
+    with pytest.raises(ValueError, match="corpus is empty"):
+        load_corpus(str(corpus))
+
+
+def test_run_corpus_emits_deterministic_report(monkeypatch) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    class FakeExecutor:
+        async def call(self, facade, action, arguments):
+            return {"success": True}
+
+    monkeypatch.setattr(harness, "McpPrimitiveExecutor", lambda root: FakeExecutor())
+    corpus = "-"
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(
+            '{"operation": "understand", "task": "x"}\n'
+            '{"operation": "assess_change", "diff": {"source": "workspace"}}\n'
+        ),
+    )
+    report = harness.run_corpus(corpus, project_root=".")
+    parsed = json.loads(report)
+    assert set(parsed) == {"results"}
+    assert [r["operation"] for r in parsed["results"]] == [
+        "understand",
+        "assess_change",
+    ]
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(
+            '{"operation": "understand", "task": "x"}\n'
+            '{"operation": "assess_change", "diff": {"source": "workspace"}}\n'
+        ),
+    )
+    # Byte-identical except per-execution timing fields (wall clocks vary).
+    second = harness.run_corpus(corpus, project_root=".")
+    assert _strip_timing(json.loads(second)) == _strip_timing(json.loads(report))
+
+
+def test_cli_main_request_json_mode(monkeypatch, capsys) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    async def fake_run(*args, **kwargs):
+        return "{}"
+
+    monkeypatch.setattr(harness, "run_operation", fake_run)
+    monkeypatch.setattr(
+        sys, "stdin", io.StringIO(json.dumps({"task": "explain dispatch"}))
+    )
+    assert harness.main(["--operation", "understand", "--request-json", "-"]) == 0
+    assert capsys.readouterr().out == "{}\n"
+
+
+def test_cli_main_corpus_mode(monkeypatch, capsys) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    def fake_corpus(*args, **kwargs):
+        return '{"results": []}'
+
+    monkeypatch.setattr(harness, "run_corpus", fake_corpus)
+    assert harness.main(["--corpus", "-"]) == 0
+    assert capsys.readouterr().out == '{"results": []}\n'
+    assert harness.main(["--corpus", "-", "--task", "x"]) == 2
+
+
+def test_load_corpus_rejects_non_object_line(tmp_path) -> None:
+    from tree_sitter_analyzer.task_harness import load_corpus
+
+    corpus = tmp_path / "arr.jsonl"
+    corpus.write_text("[1, 2]\n")
+    with pytest.raises(ValueError, match="not an object"):
+        load_corpus(str(corpus))
+
+
+def test_cli_main_requires_operation_without_corpus(monkeypatch, capsys) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    assert harness.main(["--task", "x"]) == 2
+    assert "operation is required" in capsys.readouterr().err
+
+
+def test_cli_main_corpus_invalid_json(monkeypatch, capsys) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    async def fake_run(*args, **kwargs):
+        raise ValueError("boom")
+
+    monkeypatch.setattr(harness, "run_operation", fake_run)
+    corpus = "-"
+    monkeypatch.setattr(sys, "stdin", io.StringIO("not-json\n"))
+    assert harness.main(["--corpus", corpus]) == 2
+    assert "invalid corpus" in capsys.readouterr().err
+
+
+def test_cli_main_request_json_invalid_payloads(monkeypatch, capsys) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO("not-json"))
+    assert harness.main(["--operation", "understand", "--request-json", "-"]) == 2
+    assert "invalid request JSON" in capsys.readouterr().err
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO("[1,2]"))
+    assert harness.main(["--operation", "understand", "--request-json", "-"]) == 2
+    assert "not an object" in capsys.readouterr().err
+
+    monkeypatch.setattr(
+        sys, "stdin", io.StringIO('{"task": "x", "diff": {"source": "workspace"}}')
+    )
+    assert harness.main(["--operation", "understand", "--request-json", "-"]) == 2
+    assert "invalid request" in capsys.readouterr().err
+
+
+def test_cli_main_request_json_from_file(monkeypatch, capsys, tmp_path) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    async def fake_run(*args, **kwargs):
+        return "{}"
+
+    monkeypatch.setattr(harness, "run_operation", fake_run)
+    request_file = tmp_path / "request.json"
+    request_file.write_text(json.dumps({"task": "x"}))
+    assert (
+        harness.main(
+            [
+                "--operation",
+                "understand",
+                "--request-json",
+                str(request_file),
+                "--project-root",
+                str(tmp_path),
+            ]
+        )
+        == 0
+    )
+    assert capsys.readouterr().out == "{}\n"
+    # A missing file is a hard CLI error, not a crash.
+    assert (
+        harness.main(
+            [
+                "--operation",
+                "understand",
+                "--request-json",
+                str(tmp_path / "nope.json"),
+                "--project-root",
+                str(tmp_path),
+            ]
+        )
+        == 2
+    )
+    assert "invalid request JSON" in capsys.readouterr().err
+
+
+# --- Codex #1292 review fixes ------------------------------------------------
+
+
+def test_request_from_dict_normalizes_malformed_types() -> None:
+    with pytest.raises(ValueError, match="task must be a string"):
+        request_from_dict("understand", {"task": 1})
+    with pytest.raises(ValueError, match="task must be a string"):
+        request_from_dict("plan_change", {"task": 1})
+    with pytest.raises(ValueError, match="diff must be a dict"):
+        request_from_dict("assess_change", {"diff": "workspace"})
+
+
+def test_top_level_budget_ceilings_are_honored() -> None:
+    from tree_sitter_analyzer.task_harness import _budget_from_dict
+
+    budget = _budget_from_dict({"max_primitive_calls": 1})
+    assert budget.max_primitive_calls == 1
+    budget = _budget_from_dict({"max_evidence_items": 2})
+    assert budget.max_evidence_items == 2
+    budget = _budget_from_dict({"routing_deadline_ms": 100})
+    assert budget.routing_deadline_ms == 100
+
+
+def test_strict_json_rejects_duplicate_keys_and_constants(tmp_path) -> None:
+    from tree_sitter_analyzer.task_harness import load_corpus
+
+    corpus = tmp_path / "dup.jsonl"
+    corpus.write_text('{"operation": "understand", "task": "a", "task": "b"}\n')
+    with pytest.raises(ValueError, match="duplicate key"):
+        load_corpus(str(corpus))
+    corpus.write_text(
+        '{"operation": "understand", "task": "x", "routing_deadline_ms": NaN}\n'
+    )
+    with pytest.raises(ValueError, match="invalid JSON"):
+        load_corpus(str(corpus))
+
+
+def test_corpus_input_bound_is_enforced(tmp_path) -> None:
+    from tree_sitter_analyzer.task_harness import MAX_CORPUS_BYTES, load_corpus
+
+    corpus = tmp_path / "huge.jsonl"
+    corpus.write_text("x" * (MAX_CORPUS_BYTES + 1))
+    with pytest.raises(ValueError, match="8 MiB input bound"):
+        load_corpus(str(corpus))
+
+
+def test_cli_input_paths_are_project_boundary_checked(
+    monkeypatch, capsys, tmp_path
+) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text('{"operation": "understand", "task": "x"}\n')
+    project = tmp_path / "project"
+    project.mkdir()
+    assert harness.main(["--corpus", str(outside), "--project-root", str(project)]) == 2
+    assert "outside the project" in capsys.readouterr().err
+    assert (
+        harness.main(
+            [
+                "--operation",
+                "understand",
+                "--request-json",
+                str(outside),
+                "--project-root",
+                str(project),
+            ]
+        )
+        == 2
+    )
+    assert "outside the project" in capsys.readouterr().err
+
+
+def test_cli_option_presence_exclusivity(monkeypatch, capsys) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    async def fake_run(*args, **kwargs):
+        return "{}"
+
+    monkeypatch.setattr(harness, "run_operation", fake_run)
+    # An explicitly supplied empty task still conflicts with --request-json.
+    monkeypatch.setattr(sys, "stdin", io.StringIO('{"task": "x"}'))
+    assert (
+        harness.main(["--operation", "understand", "--request-json", "-", "--task", ""])
+        == 2
+    )
+    assert "exclusive" in capsys.readouterr().err
