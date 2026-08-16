@@ -223,21 +223,76 @@ class ConsumedBudget:
             raise ValueError("failed cleanup requires the stable error code")
 
 
+#: Fixed scalar replacing raw task text in every frozen model, hash, and
+#: provenance record (RFC-0022 §Fixed task-outcome/v1 semantics: the frozen
+#: model contains no raw or normalized task field).
+TASK_TEXT_OMITTED = "TASK_TEXT_OMITTED"
+
+#: Fixed wire fragment vocabularies (RFC-0022 route decision table).
+PLAN_STEP_KINDS = frozenset(
+    {
+        "inspect_context",
+        "check_file_safety",
+        "review_changed_file",
+        "check_constraint",
+        "review_structure",
+        "review_classification",
+    }
+)
+CLAIM_ASSERTIONS = frozenset({"supported", "contradicted", "unknown"})
+
+#: Canonical verdict severity order (RFC-0022 §Static verification truth
+#: table): UNSAFE > WARN > REVIEW > CAUTION > SAFE > INFO > NOT_FOUND.
+VERDICT_SEVERITY: dict[str, int] = {
+    "UNSAFE": 7,
+    "WARN": 6,
+    "REVIEW": 5,
+    "CAUTION": 4,
+    "SAFE": 3,
+    "INFO": 2,
+    "NOT_FOUND": 1,
+    "ERROR": 0,
+}
+
+
+def _require_tuple_of_dicts(value: object, name: str) -> None:
+    if type(value) is not tuple or any(type(item) is not dict for item in value):
+        raise ValueError(f"{name} must be a tuple of dicts")
+
+
+def _require_tuple_of_strings(value: object, name: str) -> None:
+    if type(value) is not tuple or any(type(item) is not str for item in value):
+        raise ValueError(f"{name} must be a tuple of strings")
+
+
 @dataclass(frozen=True)
 class TaskOutcome:
     """One task-outcome/v1 result (frozen; serializer must be deterministic).
 
     RFC-0022 fixed wire: ``status`` (complete|partial|unknown) is separate
     from ``verdict`` (SAFE|CAUTION|REVIEW|UNSAFE|INFO|WARN|NOT_FOUND|ERROR).
-    A failed outcome is always ``verdict=ERROR``; ERROR is forbidden on
-    success.
+    A failed outcome is always ``success=false`` and ``verdict=ERROR``;
+    ``ERROR`` is forbidden when ``success=true``. Arrays stay present when
+    empty; ``subject.task`` is always null (task text never frozen).
     """
 
     task: TaskName
     request: TaskRequest
     verdict: Verdict
     status: Status = "unknown"
+    success: bool | None = None
+    subject: dict[str, Any] = field(default_factory=dict)
+    claims: tuple[dict[str, Any], ...] = ()
+    artifacts: dict[str, Any] = field(default_factory=dict)
     evidence: tuple[dict[str, Any], ...] = ()
+    provenance: tuple[dict[str, Any], ...] = ()
+    freshness: tuple[dict[str, Any], ...] = ()
+    unknowns: tuple[dict[str, Any], ...] = ()
+    errors: tuple[str, ...] = ()
+    budget: dict[str, Any] = field(default_factory=dict)
+    truncation: dict[str, Any] = field(default_factory=dict)
+    next_step: str | None = None
+    agent_summary: dict[str, Any] = field(default_factory=dict)
     consumed: ConsumedBudget | None = None
     error: str | None = None
 
@@ -259,8 +314,79 @@ class TaskOutcome:
                 raise ValueError("failed outcome must be verdict=ERROR")
         elif self.verdict == "ERROR":
             raise ValueError("verdict=ERROR is forbidden without an error")
+        if self.success is None:
+            object.__setattr__(self, "success", self.verdict != "ERROR")
+        if self.success != (self.verdict != "ERROR"):
+            raise ValueError(
+                f"success={self.success} contradicts verdict={self.verdict}"
+            )
         if type(self.consumed) not in {ConsumedBudget, type(None)}:
             raise ValueError("consumed must be a frozen ConsumedBudget")
+        if type(self.subject) is not dict:
+            raise ValueError("subject must be a dict")
+        if type(self.artifacts) is not dict:
+            raise ValueError("artifacts must be a dict")
+        if type(self.budget) is not dict or type(self.truncation) is not dict:
+            raise ValueError("budget and truncation must be dicts")
+        if type(self.agent_summary) is not dict:
+            raise ValueError("agent_summary must be a dict")
+        if self.next_step is not None and type(self.next_step) is not str:
+            raise ValueError("next_step must be a string or null")
+        _require_tuple_of_dicts(self.claims, "claims")
+        _require_tuple_of_dicts(self.evidence, "evidence")
+        _require_tuple_of_dicts(self.provenance, "provenance")
+        _require_tuple_of_dicts(self.freshness, "freshness")
+        _require_tuple_of_dicts(self.unknowns, "unknowns")
+        _require_tuple_of_strings(self.errors, "errors")
+
+
+def build_subject_task() -> dict[str, Any]:
+    """Task-mode subject: ``subject.task`` is always null (text never frozen)."""
+    return {"task": None}
+
+
+def build_subject_diff(
+    source: str, snapshot_id: str, changed_paths: list[str]
+) -> dict[str, Any]:
+    """Fixed diff subject record (RFC-0022 §Fixed model)."""
+    return {
+        "diff": {
+            "source": source,
+            "snapshot_id": snapshot_id,
+            "changed_paths": list(changed_paths),
+        }
+    }
+
+
+def build_budget_record(budget: Budget) -> dict[str, Any]:
+    """Fixed budget wire record (profile + explicit + effective values)."""
+    return {
+        "profile": budget.profile,
+        "max_primitive_calls": budget.max_primitive_calls,
+        "max_evidence_items": budget.max_evidence_items,
+        "routing_deadline_ms": budget.routing_deadline_ms,
+        "effective_calls": budget.effective_calls,
+        "effective_evidence": budget.effective_evidence,
+        "effective_deadline_ms": budget.effective_deadline_ms,
+    }
+
+
+def build_artifacts(
+    *,
+    relevant_symbols: list[str],
+    relevant_paths: list[str],
+    plan_steps: list[dict[str, Any]],
+    verification: list[dict[str, Any]],
+    edge_collections: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Fixed artifacts wire record (arrays stay present when empty)."""
+    return {
+        "relevant_symbols": list(relevant_symbols),
+        "relevant_paths": list(relevant_paths),
+        "plan_steps": list(plan_steps),
+        "verification": list(verification),
+        "edge_collections": list(edge_collections or []),
+    }
 
 
 def _validate_task_or_diff(task: str, diff: DiffInput | None) -> None:

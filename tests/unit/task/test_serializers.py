@@ -155,8 +155,9 @@ def test_toon_shape_is_line_oriented() -> None:
     toon = serialize_toon(_frozen_understand())
     lines = toon.splitlines()
     assert any(line.startswith('"schema": "task-outcome/v1"') for line in lines)
-    assert any(line.startswith('"task": "understand"') for line in lines)
+    assert any(line.startswith('"operation": "understand"') for line in lines)
     assert any(line.startswith('"verdict": "SAFE"') for line in lines)
+    assert any(line.startswith('"success": true') for line in lines)
     assert any(line.strip() == "-" for line in lines)
     assert any('"evidence": "evidence:abc123"' in line for line in lines)
 
@@ -219,10 +220,13 @@ def test_toon_rejects_unquoted_non_literal_values() -> None:
 
 def test_exact_absolute_bytes_pin_frozen_fixture() -> None:
     # W1 (review #1268): real absolute pins, not x == x tautologies.
+    # Re-pinned on 2026-08-16 for the full RFC-0022 fixed wire (NO1-010A):
+    # the wire gained success/operation/subject/claims/artifacts/provenance/
+    # freshness/unknowns/errors/budget/truncation/next_step/agent_summary.
     outcome = _frozen_understand()
     json_bytes, toon_bytes = json_vs_toon_bytes(outcome)
-    assert json_bytes == 732
-    assert toon_bytes == 627
+    assert json_bytes == 961
+    assert toon_bytes == 820
 
 
 def test_decode_rejects_unknown_fields() -> None:
@@ -426,13 +430,10 @@ def test_toon_list_empty_container_items_roundtrip() -> None:
         task="understand",
         request=UnderstandRequest(task="x"),
         verdict="INFO",
-        evidence=(
-            {},
-            [],
-        ),
+        evidence=({"x": []}, {"y": {}}),
     )
     decoded = decode_toon(serialize_toon(outcome))
-    assert decoded.evidence == ({}, [])
+    assert decoded.evidence == ({"x": []}, {"y": {}})
 
 
 def test_toon_special_character_keys_roundtrip() -> None:
