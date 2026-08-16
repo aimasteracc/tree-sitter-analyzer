@@ -1,6 +1,6 @@
 # Loop State — tree-sitter-analyzer
 
-Last run: 2026-08-16 (NO1-010A three-task prototype — RFC-0022 Phase A router)
+Last run: 2026-08-16 (NO1-010A P0.4 zero-write producer merged)
 
 ## NO1-010A completion record (2026-08-16)
 
@@ -24,11 +24,32 @@ Last run: 2026-08-16 (NO1-010A three-task prototype — RFC-0022 Phase A router)
   semantics, diff.orderFile fail-closed, module split). All Codex review
   findings on all three PRs triaged and fixed with regression tests; CI +
   codecov/patch green.
-- **P0.4 remaining work**: in-memory blob/patch materialization + wiring
-  `edit.impact(access_mode="read_existing")` to the backend, then the
-  Linux strace axis certifies zero writes; object-directory-free HEAD
-  traversal (loose/pack object reading) is the documented next slice;
-  macOS authority remains a separate RFC-tracked item.
+- **P0.4 materialization half MERGED (#1295 → develop, 2026-08-16)**:
+  `capture_payload_readonly` reproduces the frozen P0.2 payload (records,
+  old/new bytes, normalized patch) entirely in memory — tracked rows from
+  the live index via the zero-write runner, untracked new-file sections via
+  the byte-identical `git diff --no-index` format, content-identical
+  worktree moves as R100 renames (modified moves stay D+A, documented),
+  conversion-active repos (autocrlf/eol/working-tree-encoding/ident) fail
+  closed with `DIFF_SNAPSHOT_UNSUPPORTED_CONVERSION`. `edit.impact(
+  access_mode="read_existing")` is now the in-memory producer on Linux with
+  the exact P0.4 access-evidence fields; other OSes keep the stable
+  unsupported result. All 12 Codex findings (5 P1, 7 P2) fixed with
+  regression tests — including acquire/validate_publish revalidation via
+  the read-only oracle (the frozen runner wrote temp order files on every
+  revalidation), extended-flag index parsing (intent-to-add no longer
+  misclassified as hinted), C-unquoted patch-section keys, deadline-bounded
+  unique exact-rename pairing, gitlink probe boundary validation, and the
+  per-test budget fixture fix. Differential golden corpus proves
+  byte-equality with the frozen backend across 20+ state classes incl.
+  gitlinks; CI + codecov/patch green on all axes.
+- **P0.4 remaining work**: the Linux strace axis adapter-route case (the
+  monitor infra exists; a case that runs the real read-existing capture is
+  the next slice), then the consumers' read_existing backends
+  (`ast_diff`/`classify`/`constraints` still return
+  `READ_EXISTING_AUTHORITY_UNCERTIFIED`); object-directory-free HEAD
+  traversal (loose/pack object reading) is the documented next slice after
+  that; macOS authority remains a separate RFC-tracked item.
   - `task/router.py` — fixed route-table executor: sequential primitive calls
     through an injected `PrimitiveExecutor`, budget/deadline admission with
     exact `deadline_overrun_ms` reporting, constraints-slot reservation before
