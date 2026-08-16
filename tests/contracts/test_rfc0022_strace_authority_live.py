@@ -255,6 +255,30 @@ def test_live_read_existing_route_is_zero_write() -> None:
     case.mkdir(mode=0o777)
     case.chmod(0o777)
     _prepare_adapter_route_fixture(case)
+    # Direct self-check: run the target as the isolated user without
+    # strace so a target-side failure surfaces its real stderr here.
+    target_user = os.environ["RFC0022_TARGET_USER"]
+    direct = subprocess.run(
+        [
+            "sudo",
+            "-n",
+            "-u",
+            target_user,
+            sys.executable,
+            "-B",
+            str(ADAPTER_ROUTE),
+            "--root",
+            str(case),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert direct.returncode == 0, (
+        f"target self-check failed: rc={direct.returncode} "
+        f"stdout={direct.stdout!r} stderr={direct.stderr!r}"
+    )
     command = _adapter_route_command(case, artifact)
     requested_target = command[command.index("--") + 1 :]
     expected_target = [os.path.realpath(requested_target[0]), *requested_target[1:]]
