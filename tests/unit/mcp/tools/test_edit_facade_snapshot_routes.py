@@ -308,17 +308,19 @@ async def test_edit_read_existing_arguments_survive_exact_projection(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("action", "reason"),
-    [
-        # nav-backed consumers still lack a certified read_existing backend.
-        ("safe", "READ_EXISTING_AUTHORITY_UNCERTIFIED"),
-    ],
-)
+@pytest.mark.parametrize("action", ["safe"])
 @pytest.mark.parametrize("output_format", ["json", "toon"])
 async def test_edit_read_existing_returns_exact_access_evidence(
-    tmp_path: Path, action: str, reason: str, output_format: str
+    tmp_path: Path, action: str, output_format: str
 ) -> None:
+    """RFC-0022 P0.4: the safe consumer is platform-aware.
+
+    On non-Linux axes it returns the stable uncertified classification; on
+    Linux it runs the certified index consumer and classifies the missing
+    snapshot (the fake ``idxsnap_test`` id) as an unknown acquisition failure.
+    """
+    import sys
+
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     (tmp_path / "inside.py").write_text("value = 1\n")
@@ -330,24 +332,34 @@ async def test_edit_read_existing_returns_exact_access_evidence(
         }
     )
 
-    assert {
-        key: result[key]
-        for key in (
-            "success",
-            "access_mode",
-            "access_state",
-            "access_reason",
-            "source_snapshots",
-            "output_format",
-        )
-    } == {
-        "success": True,
-        "access_mode": "read_existing",
-        "access_state": "unknown",
-        "access_reason": reason,
-        "source_snapshots": [],
-        "output_format": output_format,
-    }
+    if sys.platform.startswith("linux"):
+        assert result["success"] is False
+        assert result["access_mode"] == "read_existing"
+        assert result["access_state"] == "unknown"
+        assert result["access_reason"] == "INDEX_SNAPSHOT_UNKNOWN"
+        assert result["error_code"] == "INDEX_SNAPSHOT_UNKNOWN"
+        assert result["source_snapshots"] == []
+        assert result["output_format"] == output_format
+        assert result["action_version"] == "edit.safe/v1"
+    else:
+        assert {
+            key: result[key]
+            for key in (
+                "success",
+                "access_mode",
+                "access_state",
+                "access_reason",
+                "source_snapshots",
+                "output_format",
+            )
+        } == {
+            "success": True,
+            "access_mode": "read_existing",
+            "access_state": "unknown",
+            "access_reason": "READ_EXISTING_AUTHORITY_UNCERTIFIED",
+            "source_snapshots": [],
+            "output_format": output_format,
+        }
     assert (result.get("format"), "toon_content" in result) == (
         ("toon", True) if output_format == "toon" else (None, False)
     )

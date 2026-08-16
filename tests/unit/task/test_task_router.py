@@ -731,6 +731,36 @@ def test_nav_access_unavailable_is_fail_closed_not_token_mismatch() -> None:
     )
 
 
+def test_understand_nav_certified_failure_is_access_unavailable_not_token_mismatch() -> (
+    None
+):
+    # P0.4 (RFC-0022): the certified-axis classification code is
+    # ACCESS_UNAVAILABLE, never SOURCE_GENERATION_MISMATCH — a missing
+    # snapshot is an availability problem, not a freshness disagreement.
+    executor = FakeExecutor(
+        responses={
+            ("nav", "context"): {
+                "success": False,
+                "verdict": "ERROR",
+                "action_version": "nav.context/v1",
+                "access_state": "unknown",
+                "access_reason": "INDEX_SNAPSHOT_UNKNOWN",
+                "error_code": "INDEX_SNAPSHOT_UNKNOWN",
+                "code_blocks": [],
+            }
+        }
+    )
+    outcome = _run(understand(UnderstandRequest(task="x"), executor))
+    assert outcome.status == "partial"
+    assert any(
+        u["reason"] == "ACCESS_UNAVAILABLE:INDEX_SNAPSHOT_UNKNOWN"
+        for u in outcome.unknowns
+    )
+    assert not any(
+        u["reason"] == "SOURCE_GENERATION_MISMATCH" for u in outcome.unknowns
+    )
+
+
 def test_diff_impact_access_unavailable_stops_route() -> None:
     impact = dict(IMPACT_OK)
     impact["access_state"] = "unknown"
@@ -901,6 +931,25 @@ def test_safe_access_unavailable_is_per_call_failure() -> None:
         and u["reason"] == "ACCESS_UNAVAILABLE:READ_EXISTING_AUTHORITY_UNCERTIFIED"
         for u in outcome.unknowns
     )
+
+
+def test_plan_change_safe_certified_failure_is_per_call_failure() -> None:
+    # P0.4 (RFC-0022): the certified-axis safe classification (missing index
+    # snapshot) is a per-call ACCESS_UNAVAILABLE unknown while the fan-out
+    # continues, exactly like the UNCERTIFIED twin.
+    safe = dict(SAFE_OK)
+    safe["success"] = False
+    safe["access_state"] = "unknown"
+    safe["access_reason"] = "INDEX_SNAPSHOT_UNKNOWN"
+    executor = FakeExecutor(responses={("edit", "safe"): safe})
+    outcome = _run(plan_change(PlanChangeRequest(task="refactor dispatch"), executor))
+    assert outcome.status == "partial"
+    assert any(
+        u["row"].startswith("plan_change:edit.safe:")
+        and u["reason"] == "ACCESS_UNAVAILABLE:INDEX_SNAPSHOT_UNKNOWN"
+        for u in outcome.unknowns
+    )
+    assert ("edit", "safe") in [(f, a) for f, a, _ in executor.calls]
 
 
 def test_error_verdict_on_success_is_malformed_unknown() -> None:

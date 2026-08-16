@@ -637,6 +637,124 @@ def _import_needles_for_target(rel_path: str) -> set[str]:
     return {needle for needle in needles if needle}
 
 
+def _snapshot_file_indexed(conn: Any, rel_path: str) -> bool:
+    """Return whether the snapshot connection has indexed one relative file."""
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM ast_index WHERE file_path = ? LIMIT 1", (rel_path,)
+        ).fetchone()
+    except Exception:  # nosec B110 — legacy/partial schema degrades to missing
+        return False
+    return row is not None
+
+
+def _resolve_import_spec_in_snapshot(
+    conn: Any, spec: str, importer_rel_path: str
+) -> str | None:
+    """Mirror :func:`_resolve_import_spec` against the snapshot's ``ast_index``.
+
+    The live variant probes ``(root / candidate).is_file()``; the snapshot
+    variant asks the immutable connection instead, so no live filesystem byte
+    is consulted to build the dependency view.
+    """
+    if not spec or spec.startswith(".."):
+        return None
+    if spec.startswith("."):
+        base = Path(importer_rel_path).parent
+        candidate_base = (base / spec.lstrip("./")).as_posix()
+    else:
+        candidate_base = spec.replace(".", "/")
+
+    candidates = [
+        candidate_base,
+        f"{candidate_base}.py",
+        f"{candidate_base}.js",
+        f"{candidate_base}.ts",
+        f"{candidate_base}.tsx",
+        f"{candidate_base}.java",
+        f"{candidate_base}/__init__.py",
+        f"{candidate_base}/index.js",
+        f"{candidate_base}/index.ts",
+    ]
+    for candidate in candidates:
+        if _snapshot_file_indexed(conn, candidate):
+            return candidate
+    return None
+
+
+def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDependencyView:
+    """Build the one-file import view from the snapshot connection.
+
+    RFC-0022 P0.4 read_existing: the live ``build_file_dependency_view``
+    re-parses the filesystem; this variant reads only the immutable snapshot
+    connection. Two passes mirror the legacy axis:
+
+    1. ``edges`` IMPORTS rows: exact module-path resolution (``callee_name``
+       resolved against the indexed files).
+    2. ``ast_index.imports_json`` needle pass: ``from pkg import app`` and
+       ``from . import app`` store the module path (``pkg`` / ``.``), which
+       exact resolution cannot map to the member file ``pkg/app.py``; the
+       legacy axis scans source text for import needles, so the snapshot
+       variant matches the same needles against each importer's recorded
+       import-statement text instead (no live bytes are consulted).
+
+    A missing/legacy schema degrades to an empty view so the route can still
+    classify honestly.
+    """
+    import json
+
+    dependencies: set[str] = set()
+    dependents: set[str] = set()
+    try:
+        import_rows = conn.execute(
+            "SELECT callee_name FROM edges WHERE kind = 'imports' AND file_path = ?",
+            (rel_path,),
+        ).fetchall()
+        for (module,) in import_rows:
+            resolved = _resolve_import_spec_in_snapshot(conn, module, rel_path)
+            if resolved:
+                dependencies.add(resolved)
+        all_rows = conn.execute(
+            "SELECT file_path, callee_name FROM edges WHERE kind = 'imports'",
+        ).fetchall()
+        for file_path, module in all_rows:
+            if not file_path or file_path == rel_path:
+                continue
+            resolved = _resolve_import_spec_in_snapshot(conn, module, file_path)
+            if resolved == rel_path:
+                dependents.add(file_path)
+    except Exception:  # nosec B110 — snapshot schema drift degrades to empty
+        pass
+    try:
+        needles = _import_needles_for_target(rel_path)
+        if needles:
+            rows = conn.execute(
+                "SELECT file_path, imports_json FROM ast_index"
+            ).fetchall()
+            for row in rows:
+                file_path = row["file_path"]
+                if not file_path or file_path == rel_path:
+                    continue
+                try:
+                    imports = json.loads(row["imports_json"])
+                except (TypeError, ValueError):
+                    continue
+                for imp in imports:
+                    imp_text = imp["text"] if isinstance(imp, dict) else imp
+                    if not isinstance(imp_text, str):
+                        continue
+                    if any(needle in imp_text for needle in needles):
+                        dependents.add(file_path)
+                        break
+    except Exception:  # nosec B110 — snapshot schema drift degrades to empty
+        pass
+    return FileDependencyView(
+        rel_path=rel_path,
+        dependencies=dependencies,
+        dependents=dependents,
+    )
+
+
 def safe_dependents(graph: Any, rel_path: str) -> list[str]:
     """Return files that depend on rel_path, tolerating stale graph data."""
     return _safe_graph_lookup(graph, rel_path, graph.dependents_of)

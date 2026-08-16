@@ -328,3 +328,134 @@ def attach_read_existing_evidence(
     result["access_reason"] = reason
     result["source_snapshots"] = list(records or [])
     return result
+
+
+# Stable acquire/after-read failure codes a P0.1 index consumer can raise;
+# anything outside this set degrades to the generic fallback code.
+_INDEX_CONSUMER_STABLE_CODES = frozenset(
+    {
+        "INDEX_SNAPSHOT_UNKNOWN",
+        "INDEX_SNAPSHOT_ROOT_MISMATCH",
+        "SOURCE_GENERATION_MISMATCH",
+        "INDEX_SNAPSHOT_DEADLINE",
+        "INDEX_SNAPSHOT_CAPACITY",
+        "INDEX_SNAPSHOT_FAILED",
+        "SOURCE_SCOPE_UNKNOWN",
+        "CONCURRENT_SOURCE",
+        "MISSING_PROJECT_ROOT",
+        "MISSING_INDEX",
+        "CORRUPT_INDEX",
+        "CONCURRENT_WRITER",
+        "SOURCE_SCOPE_UNSAFE",
+        "SOURCE_SCOPE_UNREADABLE",
+        "SOURCE_SCOPE_UNSUPPORTED",
+        "SOURCE_SCAN_DEADLINE",
+        "SOURCE_SCOPE_UNBOUNDED",
+        "SOURCE_INDEX_MISMATCH",
+        "CONSTRAINED_INDEX_SCOPE",
+    }
+)
+
+
+def _stable_consumer_code(exc: Exception) -> str:
+    """Map a consumer exception to its stable wire code.
+
+    ``acquire_index_snapshot`` raises ``ValueError``/``RuntimeError`` whose
+    message IS the stable code; the after-read recapture does the same; the
+    unbound-root guard raises ``MISSING_PROJECT_ROOT: <detail>``. The RFC
+    requires those codes as result data, never serialized exception text, so
+    any message outside the stable set degrades to the generic fallback.
+    """
+    message = str(exc)
+    token = message.split(":", 1)[0].strip()
+    return token if token in _INDEX_CONSUMER_STABLE_CODES else "INDEX_SNAPSHOT_FAILED"
+
+
+def read_existing_index_consumer(
+    tool: Any,
+    arguments: dict[str, Any],
+    *,
+    reader: Any,
+    action_version: str,
+    compact_only: bool = False,
+    default_output_format: str = "toon",
+) -> dict[str, Any] | None:
+    """Run one explicit read_existing route against the certified index snapshot.
+
+    Returns the formatted response envelope, or ``None`` when the request is
+    not an explicit read_existing call. Non-certified axes (no Linux strace
+    authority) keep the stable UNCERTIFIED envelope. On the certified axis the
+    snapshot is acquired (before-read token revalidation), read through
+    ``reader(snapshot, conn)``, re-captured after the read, and the ACTUALLY
+    used tokens are echoed from the acquired snapshot with the P0.4 evidence.
+    ``reader`` must return the full success payload (the route adds the token
+    echoes, ``output_format``, and access evidence); any stable
+    ``ValueError``/``RuntimeError`` is classified as a failure envelope with
+    ``error_code``/``access_reason`` equal to the stable code and no result.
+    """
+    if "access_mode" not in arguments:
+        return None
+    output_format = arguments.get("output_format", default_output_format)
+    if not read_existing_platform_supported():
+        return format_read_existing_unavailable(
+            arguments,
+            compact_only=compact_only,
+            default_output_format=default_output_format,
+            action_version=action_version,
+        )
+    if not tool.project_root:
+        raise ValueError(
+            "MISSING_PROJECT_ROOT: project_root must be bound before "
+            "read_existing access"
+        )
+    from .index_snapshot import read_existing_index_scope
+    from .mcp.utils.format_helper import apply_toon_format_to_response
+
+    try:
+        # validate_required_index_access has already bound both tokens as
+        # non-empty strings; index them directly so the acquire types cleanly.
+        with read_existing_index_scope(
+            arguments["snapshot_id"],
+            tool.project_root,
+            arguments["source_generation"],
+        ) as (snapshot, conn):
+            payload = reader(snapshot, conn)
+            if not isinstance(payload, dict):
+                raise ValueError("INDEX_SNAPSHOT_FAILED")
+            # The acquired capability is identity-matched to the request pair
+            # (the registry raises otherwise), so both tokens are bound here.
+            assert snapshot.snapshot_id is not None
+            assert snapshot.source_generation is not None
+            result = dict(payload)
+            result["snapshot_id"] = snapshot.snapshot_id
+            result["source_generation"] = snapshot.source_generation
+            result["source_fingerprint"] = snapshot.source_fingerprint
+            result["index_fingerprint"] = snapshot.index_fingerprint
+            result["output_format"] = output_format
+            attach_read_existing_evidence(
+                result,
+                records=[
+                    {
+                        "kind": "index",
+                        "snapshot_id": snapshot.snapshot_id,
+                        "source_generation": snapshot.source_generation,
+                    }
+                ],
+            )
+            return apply_toon_format_to_response(
+                result, output_format, compact_only=compact_only
+            )
+    except (ValueError, RuntimeError) as exc:
+        code = _stable_consumer_code(exc)
+        failure: dict[str, Any] = {
+            "success": False,
+            "verdict": "ERROR",
+            "error_code": code,
+            "error": code,
+            "action_version": action_version,
+            "output_format": output_format,
+        }
+        attach_read_existing_evidence(failure)
+        return apply_toon_format_to_response(
+            failure, output_format, compact_only=compact_only
+        )

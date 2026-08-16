@@ -468,3 +468,222 @@ def test_hierarchy_cache_open_error_releases_temporary_root_fd(tmp_path, monkeyp
             os.close(fd)
 
     assert (matches, released) == (False, temporary)
+
+
+class TestReadExistingConsumerRevalidation:
+    """RFC-0022 P0.4 after-read revalidation seam for P0.1 consumers."""
+
+    @pytest.fixture(autouse=True)
+    def _close_registry(self):
+        yield
+        from tree_sitter_analyzer.index_snapshot import REGISTRY
+
+        REGISTRY.close_all()
+
+    @staticmethod
+    def _fake_capture(state, generation, fingerprint="fp", reason=None):
+        from tree_sitter_analyzer.index_source_snapshot import (
+            CurrentSourceSnapshot,
+        )
+
+        return CurrentSourceSnapshot(
+            frozenset(), fingerprint, generation, state, reason
+        )
+
+    def test_verify_skips_capture_without_source_scope(self, tmp_path, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        captured: list[object] = []
+
+        def fake_capture(root, scope, deadline=None):
+            captured.append(scope)
+            return self._fake_capture("exact", "gen-1")
+
+        monkeypatch.setattr(owner, "_capture_sources_with_deadline", fake_capture)
+        snapshot = owner.IndexSnapshot(
+            "s", "fp", "ifp", "gen-1", "complete", None, str(tmp_path.resolve()), 0
+        )
+
+        owner.verify_snapshot_source_current(snapshot)
+
+        assert captured == []  # no scope descriptor -> nothing to revalidate
+
+    def test_verify_generation_match_passes(self, tmp_path, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        scope = object()
+        monkeypatch.setattr(
+            owner,
+            "_capture_sources_with_deadline",
+            lambda root, source_scope, deadline=None: self._fake_capture(
+                "exact", "gen-1"
+            ),
+        )
+        snapshot = owner.IndexSnapshot(
+            "s",
+            "fp",
+            "ifp",
+            "gen-1",
+            "complete",
+            None,
+            str(tmp_path.resolve()),
+            0,
+            source_scope=scope,
+        )
+
+        owner.verify_snapshot_source_current(snapshot)  # no raise
+
+    def test_verify_generation_mismatch_raises(self, tmp_path, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        monkeypatch.setattr(
+            owner,
+            "_capture_sources_with_deadline",
+            lambda root, source_scope, deadline=None: self._fake_capture(
+                "exact", "gen-2"
+            ),
+        )
+        snapshot = owner.IndexSnapshot(
+            "s",
+            "fp",
+            "ifp",
+            "gen-1",
+            "complete",
+            None,
+            str(tmp_path.resolve()),
+            0,
+            source_scope=object(),
+        )
+
+        with pytest.raises(ValueError, match="SOURCE_GENERATION_MISMATCH"):
+            owner.verify_snapshot_source_current(snapshot)
+
+    def test_verify_fingerprint_fallback_when_generation_absent(
+        self, tmp_path, monkeypatch
+    ):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        monkeypatch.setattr(
+            owner,
+            "_capture_sources_with_deadline",
+            lambda root, source_scope, deadline=None: self._fake_capture(
+                "exact", None, fingerprint="fp-new"
+            ),
+        )
+        snapshot = owner.IndexSnapshot(
+            "s",
+            "fp-old",
+            "ifp",
+            None,
+            "complete",
+            None,
+            str(tmp_path.resolve()),
+            0,
+            source_scope=object(),
+        )
+
+        with pytest.raises(ValueError, match="SOURCE_GENERATION_MISMATCH"):
+            owner.verify_snapshot_source_current(snapshot)
+
+    def test_verify_non_exact_state_raises(self, tmp_path, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        monkeypatch.setattr(
+            owner,
+            "_capture_sources_with_deadline",
+            lambda root, source_scope, deadline=None: self._fake_capture(
+                "unsafe", "gen-1", reason="SOURCE_SCOPE_UNSAFE"
+            ),
+        )
+        snapshot = owner.IndexSnapshot(
+            "s",
+            "fp",
+            "ifp",
+            "gen-1",
+            "complete",
+            None,
+            str(tmp_path.resolve()),
+            0,
+            source_scope=object(),
+        )
+
+        with pytest.raises(ValueError, match="SOURCE_SCOPE_UNSAFE"):
+            owner.verify_snapshot_source_current(snapshot)
+
+    def test_read_existing_index_scope_recaptures_after_read(
+        self, tmp_path, monkeypatch
+    ):
+        import sqlite3
+
+        import tree_sitter_analyzer.index_snapshot as owner
+        from tree_sitter_analyzer.index_source_scope import (
+            make_source_scope_descriptor,
+        )
+
+        scope = make_source_scope_descriptor()
+        captured: list[object] = []
+        monkeypatch.setattr(
+            owner,
+            "_capture_sources_with_deadline",
+            lambda root, source_scope, deadline=None: (
+                captured.append(source_scope) or self._fake_capture("exact", "gen-1")
+            ),
+        )
+        conn = sqlite3.connect(":memory:")
+        snapshot = owner.IndexSnapshot(
+            None,
+            "fp",
+            "ifp",
+            "gen-1",
+            "complete",
+            None,
+            str(tmp_path.resolve()),
+            0,
+            source_scope=scope,
+        )
+        published = owner.REGISTRY.publish(snapshot, conn, 0)
+
+        with owner.read_existing_index_scope(
+            published.snapshot_id, str(tmp_path), "gen-1"
+        ) as (index, yielded_conn):
+            assert index.snapshot_id == published.snapshot_id
+            assert yielded_conn is conn
+
+        assert captured == [scope]  # recapture ran after the read
+
+    def test_read_existing_index_scope_mismatch_on_exit_fails_closed(
+        self, tmp_path, monkeypatch
+    ):
+        import sqlite3
+
+        import tree_sitter_analyzer.index_snapshot as owner
+        from tree_sitter_analyzer.index_source_scope import (
+            make_source_scope_descriptor,
+        )
+
+        monkeypatch.setattr(
+            owner,
+            "_capture_sources_with_deadline",
+            lambda root, source_scope, deadline=None: self._fake_capture(
+                "exact", "gen-2"
+            ),
+        )
+        conn = sqlite3.connect(":memory:")
+        snapshot = owner.IndexSnapshot(
+            None,
+            "fp",
+            "ifp",
+            "gen-1",
+            "complete",
+            None,
+            str(tmp_path.resolve()),
+            0,
+            source_scope=make_source_scope_descriptor(),
+        )
+        published = owner.REGISTRY.publish(snapshot, conn, 0)
+
+        with pytest.raises(ValueError, match="SOURCE_GENERATION_MISMATCH"):
+            with owner.read_existing_index_scope(
+                published.snapshot_id, str(tmp_path), "gen-1"
+            ):
+                pass

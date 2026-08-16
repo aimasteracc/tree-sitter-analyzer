@@ -49,13 +49,15 @@ def test_nav_context_success_echoes_action_version(tmp_path: Path) -> None:
     assert result["action_version"] == "nav.context/v1"
 
 
-def test_nav_context_unavailable_echoes_action_version() -> None:
+def test_nav_context_unavailable_echoes_action_version(tmp_path: Path) -> None:
+    import sys
+
     from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
         CodeGraphContextTool,
     )
     from tree_sitter_analyzer.wire_owner import NAV_CONTEXT_ACTION_VERSION
 
-    tool = CodeGraphContextTool()
+    tool = CodeGraphContextTool(str(tmp_path))
     result = _run(
         tool.execute(
             {
@@ -67,9 +69,20 @@ def test_nav_context_unavailable_echoes_action_version() -> None:
         )
     )
     assert result["action_version"] == NAV_CONTEXT_ACTION_VERSION
+    if sys.platform.startswith("linux"):
+        # RFC-0022 P0.4: the certified backend runs and classifies the
+        # never-published pair; the classified failure still echoes the
+        # owner version.
+        assert result["success"] is False
+        assert result["access_state"] == "unknown"
+        assert result["access_reason"] == "INDEX_SNAPSHOT_UNKNOWN"
+        assert result["error_code"] == "INDEX_SNAPSHOT_UNKNOWN"
+        assert result["source_snapshots"] == []
 
 
 def test_safe_to_edit_unavailable_echoes_action_version() -> None:
+    import sys
+
     from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
     from tree_sitter_analyzer.wire_owner import EDIT_SAFE_ACTION_VERSION
 
@@ -86,6 +99,15 @@ def test_safe_to_edit_unavailable_echoes_action_version() -> None:
     )
     assert result["action_version"] == EDIT_SAFE_ACTION_VERSION
     assert result["action_version"] == "edit.safe/v1"
+    if sys.platform.startswith("linux"):
+        # RFC-0022 P0.4: the certified backend runs and classifies the
+        # never-published pair; the classified failure still echoes the
+        # owner version.
+        assert result["success"] is False
+        assert result["access_state"] == "unknown"
+        assert result["access_reason"] == "INDEX_SNAPSHOT_UNKNOWN"
+        assert result["error_code"] == "INDEX_SNAPSHOT_UNKNOWN"
+        assert result["source_snapshots"] == []
 
 
 def test_change_impact_unavailable_echoes_action_version(tmp_path: Path) -> None:
@@ -352,3 +374,50 @@ def test_diff_consumer_platform_gate_handles_none_unavailable(
         "DIFF_SNAPSHOT_UNKNOWN",
         "MISSING_PROJECT_ROOT",
     }
+
+
+# RFC-0022 P0.4 (Codex P1 #1297, extended to the P0.1 consumers): with the
+# platform authority forced open, the acquire-failure envelopes of nav.context
+# and edit.safe must still echo their wire-owner action_version.
+def test_nav_and_safe_certified_failure_echoes_action_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+    from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+    from tree_sitter_analyzer.wire_owner import (
+        EDIT_SAFE_ACTION_VERSION,
+        NAV_CONTEXT_ACTION_VERSION,
+    )
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    nav = _run(
+        CodeGraphContextTool(str(tmp_path)).execute(
+            {
+                "task": "x",
+                "access_mode": "read_existing",
+                "snapshot_id": "s1",
+                "source_generation": "1",
+                "output_format": "json",
+            }
+        )
+    )
+    assert nav["action_version"] == NAV_CONTEXT_ACTION_VERSION
+    assert nav["success"] is False
+    assert nav["access_reason"] == "INDEX_SNAPSHOT_UNKNOWN"
+    safe = _run(
+        SafeToEditTool(str(tmp_path)).execute(
+            {
+                "file_path": "x.py",
+                "access_mode": "read_existing",
+                "snapshot_id": "s1",
+                "source_generation": "1",
+                "output_format": "json",
+            }
+        )
+    )
+    assert safe["action_version"] == EDIT_SAFE_ACTION_VERSION
+    assert safe["success"] is False
+    assert safe["access_reason"] == "INDEX_SNAPSHOT_UNKNOWN"

@@ -492,5 +492,74 @@ def acquire_index_snapshot(
     )
 
 
+def verify_snapshot_source_current(
+    snapshot: IndexSnapshot, *, deadline: float | None = None
+) -> None:
+    """Revalidate one acquired snapshot's source state after a read.
+
+    RFC-0022 P0.4 after-read revalidation: recapture the current source over
+    the snapshot's ``source_scope`` and compare the generation (or fingerprint)
+    with the acquired capability. A mismatch raises ``SOURCE_GENERATION_MISMATCH``
+    and the caller must emit no result. Snapshots without a scope descriptor
+    (no manifest to capture against) skip the check, mirroring
+    ``constraint_index_snapshot.evaluate_ordinary_snapshot``.
+    """
+    source_scope = snapshot.source_scope
+    if source_scope is None:
+        return
+    source_root = snapshot.canonical_root
+    if not isinstance(source_root, str) or not source_root:
+        raise ValueError("INDEX_SNAPSHOT_UNKNOWN")
+    deadline = _clock() + _CAPTURE_DEADLINE_SECONDS if deadline is None else deadline
+    current = _capture_sources_with_deadline(source_root, source_scope, deadline)
+    if current.state != "exact":
+        raise ValueError(current.reason or "SOURCE_SCOPE_UNKNOWN")
+    expected_generation = snapshot.source_generation
+    if expected_generation is None:
+        expected_fingerprint = snapshot.source_fingerprint
+        if expected_fingerprint is None:
+            raise ValueError("SOURCE_GENERATION_MISMATCH")
+        if current.fingerprint != expected_fingerprint:
+            raise ValueError("SOURCE_GENERATION_MISMATCH")
+    elif current.generation != expected_generation:
+        raise ValueError("SOURCE_GENERATION_MISMATCH")
+
+
+@contextmanager
+def read_existing_index_scope(
+    snapshot_id: str,
+    project_root: str,
+    source_generation: str | None = None,
+    *,
+    deadline: float | None = None,
+) -> Iterator[tuple[IndexSnapshot, sqlite3.Connection]]:
+    """Acquire one certified index capability and revalidate it after the read.
+
+    Consumer seam for the P0.1 read_existing route: acquires the registry copy
+    (before-read token revalidation), yields the immutable snapshot + private
+    connection, then re-captures the current source and compares generations
+    (after-read revalidation). Any mismatch raises the stable code and the
+    route emits no result. Reader pins and the I/O lock are released by
+    ``acquire_index_snapshot``'s own cleanup on exit.
+    """
+    with acquire_index_snapshot(
+        snapshot_id, project_root, source_generation, deadline=deadline
+    ) as (snapshot, conn):
+        # A partial source scope (exclusions / non-root roots) cannot certify
+        # project-wide graph claims: the after-read recapture only re-checks
+        # the snapshot's OWN scope, so out-of-scope files could be served
+        # uncertified. Mirror the constraint route's full-scope gate.
+        from .index_source_scope import SourceScopeDescriptor
+
+        if not (
+            isinstance(snapshot.source_scope, SourceScopeDescriptor)
+            and snapshot.source_scope.roots == (".",)
+            and not snapshot.source_scope.exclude_patterns
+        ):
+            raise ValueError("CONSTRAINED_INDEX_SCOPE")
+        yield snapshot, conn
+        verify_snapshot_source_current(snapshot, deadline=deadline)
+
+
 def _unknown(reason: str) -> IndexSnapshot:
     return IndexSnapshot(None, None, None, None, "unknown", reason, None, 0)

@@ -391,6 +391,8 @@ class TestChecklistSequentialNumbering:
 async def test_edit_safe_explicit_read_existing_honors_compact_only(
     tmp_path,
 ) -> None:
+    import sys
+
     file_path = tmp_path / "inside.py"
     file_path.write_text("value = 1\n")
     result = await build_edit_facade(str(tmp_path)).execute(
@@ -404,6 +406,34 @@ async def test_edit_safe_explicit_read_existing_honors_compact_only(
             "compact_only": True,
         }
     )
+
+    if sys.platform.startswith("linux"):
+        # RFC-0022 P0.4: the certified backend runs and classifies the
+        # missing snapshot; the classified failure keeps the same TOON
+        # control surface and the wire-owner echo.
+        assert result["format"] == "toon"
+        assert "INDEX_SNAPSHOT_UNKNOWN" in result["toon_content"]
+        assert {
+            key: result[key]
+            for key in (
+                "success",
+                "verdict",
+                "access_mode",
+                "access_state",
+                "access_reason",
+                "output_format",
+                "action_version",
+            )
+        } == {
+            "success": False,
+            "verdict": "ERROR",
+            "access_mode": "read_existing",
+            "access_state": "unknown",
+            "access_reason": "INDEX_SNAPSHOT_UNKNOWN",
+            "output_format": "toon",
+            "action_version": "edit.safe/v1",
+        }
+        return
 
     assert result == {
         "format": "toon",
@@ -469,3 +499,156 @@ def test_execute_read_existing_fails_closed_without_project_root() -> None:
         "MISSING_PROJECT_ROOT: project_root must be bound before "
         "read_existing path validation"
     )
+
+
+# ---------------------------------------------------------------------------
+# RFC-0022 P0.4: certified-axis index-snapshot consumers (portable gate open)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _close_index_snapshot_registry():
+    yield
+    from tree_sitter_analyzer.index_snapshot import REGISTRY
+
+    REGISTRY.close_all()
+
+
+def _indexed_project(tmp_path: Path) -> Path:
+    """Index one small project and return its resolved root."""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "app.py").write_text(
+        "def helper():\n"
+        "    return 1\n"
+        "\n"
+        "class UserService:\n"
+        "    def get_user(self, user_id):\n"
+        "        return self._find_user(user_id)\n"
+        "\n"
+        "    def _find_user(self, user_id):\n"
+        "        return {'id': user_id}\n",
+        encoding="utf-8",
+    )
+    (project / "routes.py").write_text(
+        "from app import UserService\n"
+        "\n"
+        "def dispatch(request):\n"
+        "    return UserService().get_user(1)\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(project))
+    cache.index_project(max_files=20)
+    cache.close()
+    return project.resolve()
+
+
+def _publish_index_snapshot(project: Path, *, source_generation: str | None = None):
+    """Publish one real index.db connection under the process-global registry.
+
+    The published capability carries the REAL captured source generation and
+    a full source scope so the consumer's after-read recapture passes: a
+    hand-faked generation would raise SOURCE_GENERATION_MISMATCH on exit.
+    """
+    import sqlite3
+
+    from tree_sitter_analyzer.index_snapshot import (
+        REGISTRY,
+        IndexSnapshot,
+        _capture_sources_with_deadline,
+    )
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    scope = make_source_scope_descriptor()
+    current = _capture_sources_with_deadline(str(project), scope, deadline=10**18)
+    assert current.state == "exact", current.reason
+    conn = sqlite3.connect(str(project / ".ast-cache" / "index.db"))
+    conn.row_factory = sqlite3.Row
+    snapshot = IndexSnapshot(
+        None,
+        current.fingerprint,
+        "index-fp",
+        source_generation or current.generation,
+        "complete",
+        None,
+        str(project.resolve()),
+        2,
+        None,
+        None,
+        scope,
+    )
+    return REGISTRY.publish(snapshot, conn, 0)
+
+
+@pytest.mark.asyncio
+async def test_edit_safe_read_existing_consumes_published_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The certified backend serves the risk envelope from the snapshot."""
+    import tree_sitter_analyzer.read_existing_access as read_access
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    published = _publish_index_snapshot(project)
+
+    tool = SafeToEditTool(str(project))
+    result = await tool.execute(
+        {
+            "file_path": "app.py",
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+            "output_format": "json",
+        }
+    )
+
+    assert result["success"] is True
+    assert result["access_mode"] == "read_existing"
+    assert result["access_state"] == "available"
+    assert result["access_reason"] is None
+    assert result["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+        }
+    ]
+    # The echo must come from the ACQUIRED snapshot, byte-matching the
+    # source_snapshots record (RFC-0022 route-table common rule 5).
+    assert result["snapshot_id"] == published.snapshot_id
+    assert result["source_generation"] == published.source_generation
+    assert result["action_version"] == "edit.safe/v1"
+    assert result["risk_level"] in {"safe", "caution", "dangerous"}
+    assert result["health_grade"]
+
+
+@pytest.mark.asyncio
+async def test_edit_safe_read_existing_generation_mismatch_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A wrong source_generation token classifies, never a successful read."""
+    import tree_sitter_analyzer.read_existing_access as read_access
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    published = _publish_index_snapshot(project)
+
+    tool = SafeToEditTool(str(project))
+    result = await tool.execute(
+        {
+            "file_path": "app.py",
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "WRONG-GENERATION",
+            "output_format": "json",
+        }
+    )
+
+    assert result["success"] is False
+    assert result["access_state"] == "unknown"
+    assert result["access_reason"] == "SOURCE_GENERATION_MISMATCH"
+    assert result["error_code"] == "SOURCE_GENERATION_MISMATCH"
+    assert result["source_snapshots"] == []
+    assert result["action_version"] == "edit.safe/v1"
