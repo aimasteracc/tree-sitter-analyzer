@@ -332,6 +332,25 @@ class TestCache:
         # other_y.py is outside the inventory -> no escalation.
         assert fact.is_fixture is False
 
+    def test_basename_resolution_honors_inventory(self, tmp_path: Path) -> None:
+        # Codex P1 (#1299 round-8, C37): an oracle-excluded duplicate must
+        # not make the basename lookup ambiguous on a certified read.
+        root = _make_project(
+            tmp_path,
+            {
+                "tree_sitter_analyzer/foo.py": "x = 1\n",
+                "tree_sitter_analyzer/vendor/foo.py": "y = 2\n",
+            },
+        )
+        ambiguous = fixture_detector._basename_to_repo_relative("foo.py", root)
+        assert ambiguous is None  # two live matches, cannot disambiguate
+        certified = fixture_detector._basename_to_repo_relative(
+            "foo.py",
+            root,
+            inventory=frozenset({"tree_sitter_analyzer/foo.py"}),
+        )
+        assert certified == "tree_sitter_analyzer/foo.py"
+
     def test_certified_scan_skips_live_allowlist(self, tmp_path: Path) -> None:
         # Codex P1 (#1299): the CLAUDE.md allowlist is outside the source
         # generation, so a certified probe must not consult it — only

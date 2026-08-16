@@ -832,6 +832,82 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
         )
         == []
     )
+    # C33: symbols match import IDENTIFIERS with word boundaries, never
+    # serialized substrings or JSON keys ('text' must not match every
+    # record's "text" key; 'get' must not match 'widget').
+    false_pos = sqlite3.connect(":memory:")
+    false_pos.row_factory = sqlite3.Row
+    false_pos.execute(
+        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
+    )
+    false_pos.execute(
+        "INSERT INTO ast_index VALUES ('text.py', ?, '[]')",
+        (json.dumps({"symbols": [{"name": "text"}, {"name": "get"}]}),),
+    )
+    false_pos.execute(
+        "INSERT INTO ast_index VALUES ('tests/test_any.py', '{}', ?)",
+        (json.dumps([{"text": "import widget", "line": 1}]),),
+    )
+    false_pos_inventory = frozenset({"text.py", "tests/test_any.py"})
+    assert (
+        _certified_symbol_reference_tests(
+            false_pos, false_pos_inventory, "text.py", "python"
+        )
+        == []
+    )
+    # C33: malformed/non-list/non-str import records are skipped.
+    messy = sqlite3.connect(":memory:")
+    messy.row_factory = sqlite3.Row
+    messy.execute(
+        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
+    )
+    messy.execute(
+        "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
+        (json.dumps({"symbols": [{"name": "public_fn"}]}),),
+    )
+    messy.execute(
+        "INSERT INTO ast_index VALUES ('tests/test_messy.py', '{}', 'not-json')"
+    )
+    messy.execute(
+        "INSERT INTO ast_index VALUES ('tests/test_list.py', '{}', ?)",
+        (json.dumps(["just-a-string"]),),
+    )
+    messy.execute(
+        "INSERT INTO ast_index VALUES ('tests/test_num.py', '{}', ?)",
+        (json.dumps([{"text": 42}]),),
+    )
+    messy.execute(
+        "INSERT INTO ast_index VALUES ('tests/test_obj.py', '{}', ?)",
+        (json.dumps({"not": "a list"}),),
+    )
+    messy_inventory = frozenset(
+        {
+            "pkg/impl.py",
+            "tests/test_messy.py",
+            "tests/test_list.py",
+            "tests/test_num.py",
+            "tests/test_obj.py",
+        }
+    )
+    assert (
+        _certified_symbol_reference_tests(
+            messy, messy_inventory, "pkg/impl.py", "python"
+        )
+        == []
+    )
+    # C34: a non-object symbols_json payload degrades, never crashes.
+    array_payload = sqlite3.connect(":memory:")
+    array_payload.row_factory = sqlite3.Row
+    array_payload.execute(
+        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
+    )
+    array_payload.execute("INSERT INTO ast_index VALUES ('pkg/impl.py', '[]', '[]')")
+    assert (
+        _certified_symbol_reference_tests(
+            array_payload, frozenset({"pkg/impl.py"}), "pkg/impl.py", "python"
+        )
+        == []
+    )
     # A test-named inventory file absent from ast_index is skipped.
     missing = sqlite3.connect(":memory:")
     missing.row_factory = sqlite3.Row
@@ -909,6 +985,22 @@ def test_certified_test_files_walk_inventory_only() -> None:
         frozenset({"handler.go", "handler_test.go"}), "handler.go"
     )
     assert go_tests == ["handler_test.go"]
+
+    # Round-8 (C36): package-family tests (test_<plugin>.py) match.
+    package_tests = _certified_test_files(
+        frozenset(
+            {
+                "languages/python_plugin/extract.py",
+                "tests/test_python_plugin.py",
+                "tests/test_python_plugin_behavior.py",
+            }
+        ),
+        "languages/python_plugin/extract.py",
+    )
+    assert package_tests == [
+        "tests/test_python_plugin.py",
+        "tests/test_python_plugin_behavior.py",
+    ]
 
     # Round-6 (C27): a target that is itself a test file counts, and
     # inventory-covered dependents matching the test patterns count

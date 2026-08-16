@@ -1936,6 +1936,12 @@ def test_snapshot_certified_node_file_rejects_unsafe_files(
     assert _snapshot_certified_node_file("external_link", root, conn) is False
     # Existing but not in the inventory: not generation-certified.
     assert _snapshot_certified_node_file("excluded.py", root, conn) is False
+    # Legacy schema (no ast_index) degrades to reject.
+    import sqlite3 as _sqlite3
+
+    bare = _sqlite3.connect(":memory:")
+    bare.row_factory = _sqlite3.Row
+    assert _snapshot_certified_node_file("src/app.py", root, bare) is False
 
 
 def test_next_step_lean_production_anchor() -> None:

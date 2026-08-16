@@ -656,6 +656,50 @@ def test_certified_commands_use_extension_runner(tmp_path: Path) -> None:
     )
     assert "go test" in str(go_workflow.get("after_edit_commands", []))
 
+    java_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="Calc.java",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["CalcTest.java"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        )
+    )
+    # C35: ambiguous ecosystems omit the command rather than guess.
+    assert "mvn test" not in str(java_workflow.get("after_edit_commands", []))
+    assert "go test" not in str(java_workflow.get("after_edit_commands", []))
+
+    rust_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="lib.rs",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["tests/lib_test.rs"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        )
+    )
+    assert "cargo test" in str(rust_workflow.get("after_edit_commands", []))
+
+    js_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="app.js",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["__tests__/app.test.js"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        )
+    )
+    assert "npm test" in str(js_workflow.get("after_edit_commands", []))
+
     py_workflow = build_agent_workflow(
         AgentWorkflowContext(
             file_path="app.py",

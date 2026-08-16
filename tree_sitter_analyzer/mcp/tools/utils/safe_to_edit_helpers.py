@@ -443,9 +443,10 @@ def build_agent_summary(
 def build_agent_workflow(context: AgentWorkflowContext) -> dict[str, Any]:
     """Build a machine-friendly edit workflow for autonomous agents."""
     if context.certified:
-        # Codex P2 (#1299 round-6/7): snapshot-bound default — live config
+        # Codex P2 (#1299 round-6/7/8): snapshot-bound default — live config
         # detection would read non-inventoried files, so the runner is
-        # inferred from the target's extension instead.
+        # inferred from the target's extension; ambiguous ecosystems omit
+        # the command entirely (None) rather than guessing.
         from .verification_command import certified_default_test_command
 
         default_command = certified_default_test_command(context.file_path)
@@ -453,10 +454,10 @@ def build_agent_workflow(context: AgentWorkflowContext) -> dict[str, Any]:
         default_command = detect_default_test_command(context.project_root)
     focused_command = (
         build_test_command(default_command, context.test_files)
-        if context.has_tests
+        if context.has_tests and default_command is not None
         else ""
     )
-    boundary_command = default_command.command
+    boundary_command = default_command.command if default_command is not None else ""
     quoted_path = shlex.quote(context.file_path)
     pre_edit_commands = [focused_command] if focused_command else []
     post_edit_commands = [
@@ -810,12 +811,17 @@ def _certified_symbol_reference_tests(
     symbols: set[str] = set()
     try:
         payload = _json.loads(str(target_row["symbols_json"]))
-        for entry in payload.get("symbols", []):
-            name = entry.get("name") if isinstance(entry, dict) else None
-            if isinstance(name, str) and not name.startswith("_"):
-                symbols.add(name)
     except (TypeError, ValueError):
         return []
+    if not isinstance(payload, dict):
+        # Codex P2 (#1299 round-8, C34): valid JSON of the wrong top-level
+        # shape must degrade, never crash with AttributeError outside the
+        # classified exception set.
+        return []
+    for entry in payload.get("symbols", []):
+        name = entry.get("name") if isinstance(entry, dict) else None
+        if isinstance(name, str) and not name.startswith("_"):
+            symbols.add(name)
     if not symbols:
         return []
 
@@ -834,9 +840,23 @@ def _certified_symbol_reference_tests(
             continue
         if row is None:
             continue
-        text = str(row["imports_json"])
-        if any(symbol in text for symbol in symbols):
-            results.append(rel)
+        # Codex P2 (#1299 round-8, C33): match symbols against the PARSED
+        # import identifiers, never the serialized cell — substrings and
+        # JSON keys (e.g. a symbol 'text' matching every record's "text"
+        # key) would otherwise produce false has_tests=True.
+        try:
+            records = _json.loads(str(row["imports_json"]))
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(records, list):
+            continue
+        for record in records:
+            text = record.get("text") if isinstance(record, dict) else None
+            if not isinstance(text, str):
+                continue
+            if any(re.search(rf"\b{re.escape(symbol)}\b", text) for symbol in symbols):
+                results.append(rel)
+                break
     return results
 
 
@@ -900,6 +920,28 @@ def _certified_test_files(
         colocated = f"{parent}/{filename}"
         if colocated in inventory and colocated not in results:
             results.append(colocated)
+    if language == "python":
+        # Codex P2 (#1299 round-8, C36): preserve the live route's
+        # package-family convention (test_<plugin>.py) over the inventory.
+        from .test_discovery_stems import python_package_test_stems
+
+        for package_stem in python_package_test_stems(rel_path):
+            for pattern in (
+                f"test_{package_stem}.py",
+                f"test_{package_stem}_*.py",
+            ):
+                for rel in sorted(inventory):
+                    if rel == rel_path:
+                        continue
+                    if (
+                        fnmatch.fnmatchcase(Path(rel).name, pattern)
+                        and any(
+                            test_dir == "." or rel.startswith(f"{test_dir}/")
+                            for test_dir in test_dirs
+                        )
+                        and rel not in results
+                    ):
+                        results.append(rel)
     for dep in dependents:
         # Symbol-reference mode over certified inputs: inventory-covered
         # dependents that import the target and look like tests count.

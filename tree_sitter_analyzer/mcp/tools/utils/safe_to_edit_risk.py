@@ -290,6 +290,15 @@ def _test_instructions(
         default_command = certified_default_test_command(file_path or "app.py")
     else:
         default_command = detect_default_test_command(project_root)
+    if default_command is None:
+        # Codex P2 (#1299 round-8, C35): ambiguous ecosystem — omit the
+        # command items rather than advertise an unverifiable runner.
+        if has_tests:
+            return [
+                "2. Run existing tests FIRST",
+                "3. Run same verification AFTER editing",
+            ]
+        return ["2. No tests found nearby - write tests BEFORE editing (TDD)"]
     if has_tests:
         test_command = build_test_command(default_command, test_files)
         return [

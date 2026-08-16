@@ -50,13 +50,19 @@ def detect_default_test_command(project_root: str | Path | None) -> DefaultTestC
     return PYTEST_COMMAND
 
 
-def certified_default_test_command(file_path: str) -> DefaultTestCommand:
+def certified_default_test_command(
+    file_path: str,
+) -> DefaultTestCommand | None:
     """Extension-derived default test command, snapshot-bound.
 
-    Codex P2 (#1299 round-7, C32): the certified route cannot read live
-    config files (package.json/go.mod/...), so the runner is inferred from
-    the TARGET's extension — a fact bound to the snapshot inventory. Files
-    whose language has no conventional runner keep the pytest default.
+    Codex P2 (#1299 round-7/8, C32/C35): the certified route cannot read
+    live config files (package.json/go.mod/...), so the runner is inferred
+    from the TARGET's extension — a fact bound to the snapshot inventory.
+    Only ecosystems with an unambiguous canonical runner map; ambiguous
+    ones (Java's Maven-vs-Gradle, Kotlin, C#, PHP, C/C++, Ruby's
+    rspec-vs-minitest) return ``None`` so the route OMITS the command
+    rather than advertising an unverifiable choice. Python keeps the
+    pytest default.
     """
 
     ext = Path(file_path).suffix.lower()
@@ -66,19 +72,9 @@ def certified_default_test_command(file_path: str) -> DefaultTestCommand:
         return DefaultTestCommand("cargo", "cargo test")
     if ext in {".js", ".jsx", ".ts", ".tsx"}:
         return DefaultTestCommand("node", "npm test")
-    if ext == ".java":
-        return DefaultTestCommand("maven", "mvn test")
-    if ext == ".rb":
-        return DefaultTestCommand("ruby", "bundle exec rspec")
-    if ext == ".kt":
-        return DefaultTestCommand("gradle", "gradle test")
-    if ext == ".cs":
-        return DefaultTestCommand("dotnet", "dotnet test")
-    if ext == ".php":
-        return DefaultTestCommand("composer", "composer test")
-    if ext in {".c", ".h", ".cpp", ".hpp", ".cc"}:
-        return DefaultTestCommand("make", "make test")
-    return PYTEST_COMMAND
+    if ext == ".py":
+        return PYTEST_COMMAND
+    return None
 
 
 def build_test_command(

@@ -596,6 +596,8 @@ def _walk_module(
     relative_test: str,
     project_root: Path,
     aggregator: dict[str, _Aggregator],
+    *,
+    inventory: frozenset[str] | None = None,
 ) -> None:
     """Inspect the top-level nodes of ``tree`` and update ``aggregator``."""
 
@@ -623,11 +625,22 @@ def _walk_module(
     for node in tree.body:
         if isinstance(node, ast.Assign):
             _process_assign(
-                node, source, path_names, relative_test, project_root, aggregator
+                node,
+                source,
+                path_names,
+                relative_test,
+                project_root,
+                aggregator,
+                inventory=inventory,
             )
         else:
             _process_repo_relative_literals(
-                node, source, relative_test, project_root, aggregator
+                node,
+                source,
+                relative_test,
+                project_root,
+                aggregator,
+                inventory=inventory,
             )
 
 
@@ -670,6 +683,8 @@ def _process_assign(
     relative_test: str,
     project_root: Path,
     aggregator: dict[str, _Aggregator],
+    *,
+    inventory: frozenset[str] | None = None,
 ) -> None:
     """Extract signals from a top-level ``name = ...`` statement."""
 
@@ -704,6 +719,8 @@ def _process_repo_relative_literals(
     relative_test: str,
     project_root: Path,
     aggregator: dict[str, _Aggregator],
+    *,
+    inventory: frozenset[str] | None = None,
 ) -> None:
     """Catch repo-relative string literals outside of fixture-style assigns."""
 
@@ -810,12 +827,20 @@ def _safe_relative(path: Path, project_root: Path) -> str:
         return str(path).replace("\\", "/")
 
 
-def _basename_to_repo_relative(basename: str, project_root: Path) -> str | None:
+def _basename_to_repo_relative(
+    basename: str,
+    project_root: Path,
+    *,
+    inventory: frozenset[str] | None = None,
+) -> str | None:
     """Find the project-relative path for ``basename`` if exactly one exists.
 
     Tier-2 hits the basename layer; we need to map it back to the
     canonical project-relative path. Multiple matches resolve to
-    ``None`` because we cannot disambiguate without more context.
+    ``None`` because we cannot disambiguate without more context. On a
+    certified read, ``inventory`` restricts the lookup to snapshot-covered
+    files — an oracle-excluded duplicate (e.g. ``vendor/foo.py``) added
+    after publication must not flip the result (Codex P1 #1299 round-8).
     """
 
     if not basename or "/" in basename or "\\" in basename:
@@ -828,6 +853,10 @@ def _basename_to_repo_relative(basename: str, project_root: Path) -> str | None:
     if not src_dir.is_dir():
         return None
     matches = [path for path in src_dir.rglob(basename) if path.is_file()]
+    if inventory is not None:
+        matches = [
+            path for path in matches if _safe_relative(path, project_root) in inventory
+        ]
     if len(matches) != 1:
         return None
     return _safe_relative(matches[0], project_root)
