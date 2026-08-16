@@ -1169,6 +1169,8 @@ def test_context_read_existing_consumes_published_snapshot(
     assert result["snapshot_id"] == published.snapshot_id
     assert result["source_generation"] == published.source_generation
     assert result["action_version"] == "nav.context/v1"
+    # C46: the certified adapter never echoes raw task text.
+    assert "task" not in result
     assert [entry.get("name") for entry in result["entry_points"]] == ["dispatch"]
     assert result["related_symbols"]
     assert result["code_blocks"]

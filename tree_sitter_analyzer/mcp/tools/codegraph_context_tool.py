@@ -357,7 +357,13 @@ class CodeGraphContextTool(BaseMCPTool):
             edges: list[dict[str, Any]] = []
 
             if nodes:
-                nodes = self._expand_nodes(nodes, task, max_nodes, graph=edge_store)
+                nodes = self._expand_nodes(
+                    nodes,
+                    task,
+                    max_nodes,
+                    graph=edge_store,
+                    certified=True,
+                )
                 # Codex P1 (#1299 round-6/7): graph expansion can surface node
                 # paths that are absolute or contain '..' (encoded in edge
                 # metadata), or that resolve through an in-project symlink to
@@ -381,7 +387,7 @@ class CodeGraphContextTool(BaseMCPTool):
             related_files = _unique_files(nodes)
             related_symbols = _build_related_symbols(nodes)
             verdict = "INFO" if entry_points else "NOT_FOUND"
-            return _compose_context_result(
+            payload = _compose_context_result(
                 verdict=verdict,
                 task=task,
                 candidates=candidates,
@@ -395,6 +401,13 @@ class CodeGraphContextTool(BaseMCPTool):
                 max_nodes=max_nodes,
                 elapsed_ms=int((time.perf_counter() - started) * 1000),
             )
+            # Codex P2 (#1299 round-10, C46): RFC-0022's input-only contract
+            # forbids echoing raw task text from routed adapters (tasks may
+            # carry credentials / absolute host paths); the task layer's
+            # projection drops it later, but the primitive wire response
+            # must not carry the sensitive bytes either.
+            payload.pop("task", None)
+            return payload
 
         result = read_access.read_existing_index_consumer(
             self,
@@ -516,6 +529,7 @@ class CodeGraphContextTool(BaseMCPTool):
         max_nodes: int,
         *,
         graph: Any = None,
+        certified: bool = False,
     ) -> list[dict[str, Any]]:
         if graph is None:
             try:
@@ -546,6 +560,12 @@ class CodeGraphContextTool(BaseMCPTool):
             try:
                 return graph.query_callees(name, file_path, max_depth=depth) or []
             except Exception:
+                # Codex P2 (#1299 round-10, C45): on the certified route a
+                # malformed edge row means a corrupt snapshot — propagate so
+                # the consumer classifies CORRUPT_INDEX instead of serving
+                # an incomplete graph. The live path keeps its tolerance.
+                if certified:
+                    raise
                 return []
 
         def _edge_store_callers(
@@ -554,6 +574,8 @@ class CodeGraphContextTool(BaseMCPTool):
             try:
                 return graph.query_callers(name, file_path) or []
             except Exception:
+                if certified:
+                    raise
                 return []
 
         for node in list(seed_nodes):

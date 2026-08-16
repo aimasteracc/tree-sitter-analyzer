@@ -671,6 +671,10 @@ def test_certified_commands_use_extension_runner(tmp_path: Path) -> None:
     # C35: ambiguous ecosystems omit the command rather than guess.
     assert "mvn test" not in str(java_workflow.get("after_edit_commands", []))
     assert "go test" not in str(java_workflow.get("after_edit_commands", []))
+    # C41: the queue-boundary list stays empty, never [""].
+    assert java_workflow.get("queue_boundary_commands") == []
+    # C41: the queue-boundary list stays empty, never [""].
+    assert java_workflow.get("queue_boundary_commands") == []
 
     rust_workflow = build_agent_workflow(
         AgentWorkflowContext(
@@ -1228,6 +1232,12 @@ def test_snapshot_dependency_view_recalls_member_imports() -> None:
     conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
     conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
     conn.execute("INSERT INTO edges VALUES ('routes.py', 'app', 'imports')")
+    # C44: a BLOB callee_name row must not abort the whole edges pass.
+    conn.execute(
+        "INSERT INTO edges VALUES ('blobbed.py', ?, 'imports')", (b"blob-module",)
+    )
+    # The target's OWN import row can also carry a BLOB (pass-1 skip).
+    conn.execute("INSERT INTO edges VALUES ('app.py', ?, 'imports')", (b"blob-own",))
     conn.execute("INSERT INTO edges VALUES ('app.py', 'app', 'imports')")
     # 'app.py' importing a module that does not index -> resolved is None.
     conn.execute("INSERT INTO edges VALUES ('app.py', 'missing.mod', 'imports')")

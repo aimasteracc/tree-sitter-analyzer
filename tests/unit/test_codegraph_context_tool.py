@@ -1944,6 +1944,53 @@ def test_snapshot_certified_node_file_rejects_unsafe_files(
     assert _snapshot_certified_node_file("src/app.py", root, bare) is False
 
 
+def test_resolve_entry_points_tolerates_cascade_failures() -> None:
+    """The substring-cascade failure path degrades to no hits."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    class BoomCache:
+        def fts_search_ranked(self, candidate, limit=None):
+            return []
+
+        def search_symbols_cascade(self, candidate, limit=None):
+            raise RuntimeError("cascade down")
+
+    tool = CodeGraphContextTool("/nonexistent")
+    entry_points = tool._resolve_entry_points(
+        ["apply", "index", "zzz"], 5, cache=BoomCache()
+    )
+    assert entry_points == []
+
+
+def test_certified_expansion_propagates_edge_errors() -> None:
+    """Codex P2 round-10 (C45): certified expansion re-raises edge errors."""
+    import pytest
+
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    tool = CodeGraphContextTool("/nonexistent")
+
+    class BrokenStore:
+        def query_callees(self, name, file_path=None, max_depth=1):
+            raise RuntimeError("broken edge row")
+
+        def query_callers(self, name, file_path=None):
+            raise RuntimeError("broken edge row")
+
+    seed = [{"name": "run", "file": "app.py"}]
+    with pytest.raises(RuntimeError, match="broken edge row"):
+        tool._expand_nodes(seed, "explain run", 10, graph=BrokenStore(), certified=True)
+    # The live path keeps its stale-graph tolerance.
+    tolerated = tool._expand_nodes(
+        seed, "explain run", 10, graph=BrokenStore(), certified=False
+    )
+    assert tolerated == seed
+
+
 def test_next_step_lean_production_anchor() -> None:
     from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
         _next_step_lean,

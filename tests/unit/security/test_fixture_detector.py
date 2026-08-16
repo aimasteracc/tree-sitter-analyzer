@@ -133,6 +133,36 @@ class TestTier2Scan:
         assert fact.source in {"path_literal", "constant_assignment"}
         assert any("test_x.py" in line for line in fact.evidence)
 
+    def test_repo_relative_literal_statement_signal(self, tmp_path: Path) -> None:
+        # A bare repo-relative string EXPRESSION (non-assign) goes through
+        # _process_repo_relative_literals.
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": ("print('tree_sitter_analyzer/foo.py')\n"),
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        fact = is_fixture("tree_sitter_analyzer/foo.py", root)
+        assert fact.is_fixture is True
+        assert fact.source == "repo_relative_literal"
+
+    def test_certified_scan_tolerates_non_utf8_tests(self, tmp_path: Path) -> None:
+        # Codex P2 (#1299 round-10, C43): a non-UTF-8 indexed test must
+        # degrade, never raise UnicodeDecodeError out of the certified route.
+        root = _make_project(tmp_path, {"tree_sitter_analyzer/foo.py": ""})
+        bad = root / "tests" / "bad_utf8.py"
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_bytes(b"x = b'\xff\xfe'\n")
+        inventory = frozenset({"tree_sitter_analyzer/foo.py"})
+        fact = is_fixture(
+            "tree_sitter_analyzer/foo.py",
+            root,
+            certified=True,
+            inventory=inventory,
+        )
+        assert fact.is_fixture is False
+
     def test_bare_basename_literal_falls_through(self, tmp_path: Path) -> None:
         # A bare '.py' basename with no package prefix matches none of the
         # signal tiers and records nothing (falls through the elif chain).

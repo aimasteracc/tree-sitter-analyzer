@@ -346,7 +346,7 @@ def _targeted_fixture_scan(
             continue
         try:
             source = path.read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             continue
         evidence = (_safe_relative(path, project_root),)
         confidence = 0.0
@@ -386,7 +386,7 @@ def _basename_seen_in_tests(
         try:
             if basename in path.read_text(encoding="utf-8"):
                 return True
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             continue
     return False
 
@@ -441,7 +441,7 @@ def _tests_signature(tests_dir: Path) -> str:
     for path in sorted(_iter_test_files(tests_dir)):
         try:
             st = path.stat()
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             continue
         hasher.update(f"{path}|{st.st_mtime_ns}|{st.st_size}\n".encode())
     return hasher.hexdigest()
@@ -540,7 +540,7 @@ def _scan_tests(
             continue
         try:
             source = path.read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             continue
         try:
             tree = ast.parse(source)

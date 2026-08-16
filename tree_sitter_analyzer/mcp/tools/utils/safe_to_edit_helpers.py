@@ -477,7 +477,7 @@ def build_agent_workflow(context: AgentWorkflowContext) -> dict[str, Any]:
         "edit_strategy": _edit_strategy(context.risk, context.edit_type),
         "before_edit_commands": pre_edit_commands,
         "after_edit_commands": post_edit_commands,
-        "queue_boundary_commands": [boundary_command],
+        "queue_boundary_commands": [boundary_command] if boundary_command else [],
         "guardrails": _agent_guardrails(
             context.risk,
             context.edit_type,
@@ -857,6 +857,29 @@ def _certified_symbol_reference_tests(
             if any(re.search(rf"\b{re.escape(symbol)}\b", text) for symbol in symbols):
                 results.append(rel)
                 break
+    # Codex P2 (#1299 round-10, C42): snapshot CALL references too — a test
+    # doing 'import pkg; pkg.public_fn()' references the symbol through a
+    # call edge even though imports_json carries only 'import pkg'.
+    # symbols is guaranteed non-empty here (the early return above).
+    placeholders = ",".join("?" for _ in symbols)  # nosec B608
+    try:
+        call_rows = conn.execute(
+            f"SELECT DISTINCT file_path FROM edges "
+            f"WHERE kind = 'calls' AND callee_name IN ({placeholders})",
+            tuple(symbols),
+        ).fetchall()
+    except Exception:  # nosec B110 — legacy schema degrades per call
+        call_rows = []
+    for row in call_rows:
+        rel = str(row["file_path"])
+        if (
+            rel
+            and rel != rel_path
+            and rel in inventory
+            and _looks_like_test_name(Path(rel).name, language)
+            and rel not in results
+        ):
+            results.append(rel)
     return results
 
 
@@ -1044,6 +1067,10 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
             (rel_path,),
         ).fetchall()
         for (module,) in import_rows:
+            if not isinstance(module, str):
+                # Codex P2 (#1299 round-10, C44): a BLOB callee_name would
+                # raise TypeError at startswith and abandon the whole pass.
+                continue
             resolved = _resolve_import_spec_in_snapshot(conn, module, rel_path)
             if resolved:
                 dependencies.add(resolved)
@@ -1052,6 +1079,8 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
         ).fetchall()
         for file_path, module in all_rows:
             if not file_path or file_path == rel_path:
+                continue
+            if not isinstance(module, str):
                 continue
             resolved = _resolve_import_spec_in_snapshot(conn, module, file_path)
             if resolved == rel_path:

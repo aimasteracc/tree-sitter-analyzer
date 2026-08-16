@@ -895,6 +895,26 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
         )
         == []
     )
+    # C42: snapshot CALL references find tests using pkg.public_fn().
+    calls = sqlite3.connect(":memory:")
+    calls.row_factory = sqlite3.Row
+    calls.execute(
+        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
+    )
+    calls.execute(
+        "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
+        (json.dumps({"symbols": [{"name": "public_fn"}]}),),
+    )
+    calls.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    calls.execute(
+        "INSERT INTO edges VALUES ('tests/test_calls.py', 'public_fn', 'calls')"
+    )
+    calls_inventory = frozenset({"pkg/impl.py", "tests/test_calls.py"})
+    found_calls = _certified_symbol_reference_tests(
+        calls, calls_inventory, "pkg/impl.py", "python"
+    )
+    assert found_calls == ["tests/test_calls.py"]
+
     # C34: a non-object symbols_json payload degrades, never crashes.
     array_payload = sqlite3.connect(":memory:")
     array_payload.row_factory = sqlite3.Row
