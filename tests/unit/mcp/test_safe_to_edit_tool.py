@@ -1,6 +1,7 @@
 """Unit tests for SafeToEditTool."""
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -584,8 +585,8 @@ def _publish_index_snapshot(project: Path, *, source_generation: str | None = No
 
 
 @pytest.mark.skipif(
-    sys.platform.startswith("win"),
-    reason="tracked: RFC-0022 P0.4 source recapture is POSIX-only (no /dev/fd)",
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
 )
 @pytest.mark.asyncio
 async def test_edit_safe_read_existing_consumes_published_snapshot(
@@ -630,8 +631,8 @@ async def test_edit_safe_read_existing_consumes_published_snapshot(
 
 
 @pytest.mark.skipif(
-    sys.platform.startswith("win"),
-    reason="tracked: RFC-0022 P0.4 source recapture is POSIX-only (no /dev/fd)",
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
 )
 @pytest.mark.asyncio
 async def test_edit_safe_read_existing_generation_mismatch_fails_closed(
