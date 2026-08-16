@@ -556,3 +556,125 @@ def test_read_existing_frozen_constraints_acquire_reserved_index_capability(
         registry.close_lease(created["diff_snapshot_id"], created["route_lease_id"])
         is True
     )
+
+
+# Codex P1 (#1297): the reserved index capability is fail-closed when its
+# generation does not match the diff snapshot.
+def test_read_existing_frozen_constraints_reject_reserved_generation_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlite3
+
+    frozen, _, created = _frozen_tool(
+        tmp_path, monkeypatch, ["architectural-constraints.yml"]
+    )
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    scope = make_source_scope_descriptor()
+
+    class _Index:
+        completeness = "complete"
+        reason = None
+        source_generation = "different-generation"
+        source_scope = scope
+        snapshot_id = "reserved-index"
+
+    class _Context:
+        def __init__(self, index, conn):
+            self._index = index
+            self._conn = conn
+
+        def __enter__(self):
+            return self._index, self._conn
+
+        def __exit__(self, *exc):
+            self._conn.close()
+            return False
+
+    def acquire(snapshot_id, project_root, source_generation=None, **kwargs):
+        conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+        return _Context(_Index(), conn)
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.index_snapshot.acquire_index_snapshot", acquire
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.read_access.read_existing_platform_supported",
+        lambda: True,
+    )
+    result = _run(
+        _make_tool(tmp_path).execute(
+            {
+                "persist": False,
+                "diff_snapshot_id": created["diff_snapshot_id"],
+                "snapshot_id": "reserved-index",
+                "source_generation": "different-generation",
+                "scope_paths": created["assessed_scope_paths"],
+                "access_mode": "read_existing",
+                "output_format": "json",
+            }
+        )
+    )
+    assert result["success"] is False
+    assert result["error_code"] == "SOURCE_GENERATION_MISMATCH"
+
+
+# Codex P1 (#1297): the reserved index capability must cover the graph
+# scope; a partial scope fails closed with CONSTRAINT_INDEX_SCOPE_MISMATCH.
+def test_read_existing_frozen_constraints_reject_reserved_scope_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlite3
+
+    frozen, _, created = _frozen_tool(
+        tmp_path, monkeypatch, ["architectural-constraints.yml"]
+    )
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    partial = make_source_scope_descriptor(roots=("src",))
+
+    class _Index:
+        completeness = "complete"
+        reason = None
+        source_generation = created["source_generation"]
+        source_scope = partial
+        snapshot_id = "reserved-index"
+
+    class _Context:
+        def __init__(self, index, conn):
+            self._index = index
+            self._conn = conn
+
+        def __enter__(self):
+            return self._index, self._conn
+
+        def __exit__(self, *exc):
+            self._conn.close()
+            return False
+
+    def acquire(snapshot_id, project_root, source_generation=None, **kwargs):
+        conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+        return _Context(_Index(), conn)
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.index_snapshot.acquire_index_snapshot", acquire
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.constraint_check_tool.read_access.read_existing_platform_supported",
+        lambda: True,
+    )
+    result = _run(
+        _make_tool(tmp_path).execute(
+            {
+                "persist": False,
+                "diff_snapshot_id": created["diff_snapshot_id"],
+                "snapshot_id": "reserved-index",
+                "source_generation": created["source_generation"],
+                "scope_paths": created["assessed_scope_paths"],
+                "access_mode": "read_existing",
+                "output_format": "json",
+            }
+        )
+    )
+    assert result["success"] is False
+    assert result["error_code"] == "CONSTRAINT_INDEX_SCOPE_MISMATCH"

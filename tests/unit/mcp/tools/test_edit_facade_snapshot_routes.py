@@ -769,19 +769,23 @@ async def test_edit_impact_read_existing_acquire_failure_classifies(
     assert len(closed) == 1
 
 
-@pytest.mark.skipif(
-    not sys.platform.startswith("linux"),
-    reason="tracked: RFC-0022 P0.4 consumer route is Linux-certified only",
-)
 @pytest.mark.asyncio
 async def test_edit_snapshot_consumers_read_existing_consume_snapshot(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The diff-snapshot consumers serve a published snapshot read-only."""
+    """The diff-snapshot consumers serve a published snapshot read-only.
+
+    The in-memory registry consume route is portable: the platform gate is
+    bypassed so the same frozen backend runs on every OS (the certified
+    Linux axis runs it under the real strace authority).
+    """
     import subprocess
 
+    from tree_sitter_analyzer import read_existing_access as read_access
     from tree_sitter_analyzer.diff_snapshot_registry import REGISTRY, reset_registry
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
 
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     for cfg in (

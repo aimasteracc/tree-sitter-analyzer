@@ -298,3 +298,57 @@ def test_diff_snapshot_consumers_frozen_error_echoes_action_version(
         result = _run(tool_type(str(tmp_path)).execute(arguments))
         assert result["action_version"] == version
         assert result["success"] is False
+
+
+# The platform gates on the diff-snapshot consumers treat
+# ``read_existing_unavailable`` as potentially None; that defensive branch
+# cannot be reached from a read_existing call (the mode implies the access
+# token), so force it with a stub to keep the guard exact.
+@pytest.mark.parametrize(
+    ("tool_type", "module_name"),
+    [
+        ("constraints", "tree_sitter_analyzer.mcp.tools.constraint_check_tool"),
+        ("ast_diff", "tree_sitter_analyzer.mcp.tools.ast_diff_tool"),
+        ("classify", "tree_sitter_analyzer.mcp.tools.semantic_classify_tool"),
+    ],
+)
+def test_diff_consumer_platform_gate_handles_none_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tool_type: str, module_name: str
+) -> None:
+    import importlib
+
+    module = importlib.import_module(module_name)
+    monkeypatch.setattr(
+        module.read_access, "read_existing_platform_supported", lambda: False
+    )
+    if module_name == "tree_sitter_analyzer.mcp.tools.semantic_classify_tool":
+        monkeypatch.setattr(
+            module.read_access,
+            "format_read_existing_unavailable",
+            lambda *a, **k: None,
+        )
+    else:
+        monkeypatch.setattr(module, "read_existing_unavailable", lambda *a, **k: None)
+    tool_cls = getattr(
+        module,
+        {
+            "constraints": "ConstraintCheckTool",
+            "ast_diff": "ASTDiffTool",
+            "classify": "SemanticClassifyTool",
+        }[tool_type],
+    )
+    arguments = {"access_mode": "read_existing", "diff_snapshot_id": "s1"}
+    if tool_type == "constraints":
+        arguments["persist"] = False
+        arguments["scope_paths"] = ["src"]
+    else:
+        arguments["file_path"] = "a.py"
+    result = _run(tool_cls(str(tmp_path)).execute(arguments))
+    # The guard passed through to the real backend; the frozen route then
+    # reports the missing snapshot as an unknown acquisition failure.
+    assert result["success"] is False
+    assert result["error_code"] in {
+        "DIFF_SNAPSHOT_EXPIRED",
+        "DIFF_SNAPSHOT_UNKNOWN",
+        "MISSING_PROJECT_ROOT",
+    }
