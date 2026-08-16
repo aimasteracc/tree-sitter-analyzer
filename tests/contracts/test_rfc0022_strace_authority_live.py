@@ -180,6 +180,26 @@ LIVE_CONTROLS = [
 ]
 
 
+def _trace_stderr_payloads(trace_dir: Path) -> str:
+    """Reconstruct the target's stderr writes from the raw strace payloads."""
+    chunks: list[str] = []
+    for raw in sorted(trace_dir.glob("trace.*")):
+        text = raw.read_text(encoding="utf-8", errors="replace")
+        for line in text.splitlines():
+            match = re.search(r'write\(2, "((?:\\.|[^"\\])*)"', line)
+            if match:
+                payload = match.group(1)
+                for escaped, decoded in (
+                    ("\\n", "\n"),
+                    ("\\t", "\t"),
+                    ('\\"', '"'),
+                    ("\\\\", "\\"),
+                ):
+                    payload = payload.replace(escaped, decoded)
+                chunks.append(payload)
+    return "".join(chunks)
+
+
 def _adapter_route_command(case: Path, artifact: Path) -> list[str]:
     """Authority invocation for the real read-existing producer route."""
     target = [sys.executable, "-B", str(ADAPTER_ROUTE), "--root", str(case)]
@@ -325,7 +345,8 @@ def test_live_read_existing_route_is_zero_write() -> None:
         f"stdout={result.stdout!r} stderr={result.stderr!r} "
         f"report_errors={report.get('errors')!r} "
         f"authority_status={report.get('authority_status')!r} "
-        f"target={report.get('target')!r}"
+        f"target={report.get('target')!r} "
+        f"target_stderr_trace={_trace_stderr_payloads(artifact / 'trace')!r}"
     )
     assert report["authority_status"] == "healthy"
     assert report["outcome"] == "clean"
