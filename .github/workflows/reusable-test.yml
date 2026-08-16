@@ -117,6 +117,7 @@ jobs:
 
         if [ -f test_failed ]; then
           echo "❌ Tests failed!" >&3
+          tail -n 40 pytest-output.txt || true
           exit 1
         fi
       shell: bash
@@ -244,6 +245,7 @@ jobs:
 
         if [ -f test_failed ]; then
           echo "❌ Tests failed!" >&3
+          tail -n 40 pytest-output.txt || true
           exit 1
         fi
       shell: bash
