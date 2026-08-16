@@ -27,6 +27,8 @@ import sys
 def _produce(root: str) -> tuple[dict[str, object], str]:
     """Run the P0.4 producer route; return (deterministic identity, id)."""
     # Debug aid: identify the exact failing git invocation on the CI axis.
+    # Every module imported the runner by name, so each binding must spy.
+    import tree_sitter_analyzer.diff_snapshot_readonly as _readonly
     import tree_sitter_analyzer.git_readonly as _git_readonly
 
     _original_runner = _git_readonly.run_git_readonly
@@ -42,6 +44,7 @@ def _produce(root: str) -> tuple[dict[str, object], str]:
             raise
 
     _git_readonly.run_git_readonly = _spy
+    _readonly.run_git_readonly = _spy
     from tree_sitter_analyzer.diff_snapshot_registry import REGISTRY, reset_registry
 
     reset_registry()
