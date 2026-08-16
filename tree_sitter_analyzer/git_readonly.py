@@ -32,6 +32,7 @@ def run_git_readonly(
     limit: int,
     env: dict[str, str] | None = None,
     input_: bytes | None = None,
+    ok_returncodes: frozenset[int] = frozenset({0}),
 ) -> bytes:
     """Run Git with bounded pipes and ZERO filesystem writes.
 
@@ -40,6 +41,11 @@ def run_git_readonly(
     caller before any diff command runs). Every snapshot invariant is kept:
     ``GIT_OPTIONAL_LOCKS=0``, ``GIT_ATTR_NOSYSTEM=1``,
     ``GIT_NO_REPLACE_OBJECTS=1``, ``GIT_NO_LAZY_FETCH=1``, fsmonitor off.
+
+    ``ok_returncodes`` extends the accepted exit set. The read-existing
+    backend uses it only for ``git diff --no-index`` (RFC-0022 P0.4), which
+    returns 1 whenever the compared paths differ; the exit code is the
+    result, not a failure.
     """
     if limit < 0:
         raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
@@ -129,7 +135,7 @@ def run_git_readonly(
             raise SourceOracleError("DIFF_SNAPSHOT_TIMEOUT") from exc
         if failures:
             raise SourceOracleError(failures[0])
-        if proc.returncode != 0:
+        if proc.returncode not in ok_returncodes:
             raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
         succeeded = True
         return bytes(output)

@@ -2,12 +2,26 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 from .git_path_codec import path_from_wire
 
 READ_EXISTING_AUTHORITY_UNCERTIFIED = "READ_EXISTING_AUTHORITY_UNCERTIFIED"
 DIFF_SNAPSHOT_READ_EXISTING_UNSUPPORTED = "DIFF_SNAPSHOT_READ_EXISTING_UNSUPPORTED"
+
+
+def read_existing_platform_supported() -> bool:
+    """Return whether this axis may run the read-existing backends.
+
+    RFC-0022 P0.4 certifies zero-write behavior through a pinned native
+    authority (the Linux strace monitor); an OS without that authority
+    must return a stable unsupported result and cannot be listed as
+    certified support. The read-only backends themselves are POSIX-only,
+    and their strace certification is Linux-only, so the runtime enables
+    them on Linux and fails closed everywhere else.
+    """
+    return sys.platform.startswith("linux")
 
 
 def validate_read_existing_access(arguments: dict[str, Any]) -> bool:

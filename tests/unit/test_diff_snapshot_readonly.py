@@ -49,8 +49,6 @@ def _epochs(root: str, mode: str) -> tuple[GitEpoch, GitEpoch]:
 
 
 @POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
 def test_clean_repo_generations_match(git_repo: str) -> None:
     for mode in ("diff", "staged"):
         frozen_epoch, readonly_epoch = _epochs(git_repo, mode)
@@ -59,8 +57,6 @@ def test_clean_repo_generations_match(git_repo: str) -> None:
         assert frozen_epoch.untracked_paths == readonly_epoch.untracked_paths
 
 
-@POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
 @POSIX_SNAPSHOT_TEST
 def test_dirty_and_untracked_generations_match(git_repo: str) -> None:
     import pathlib
@@ -87,8 +83,6 @@ def test_dirty_and_untracked_generations_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
 def test_generation_changes_when_source_changes(git_repo: str) -> None:
     import pathlib
 
@@ -101,9 +95,9 @@ def test_generation_changes_when_source_changes(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
-def test_readonly_never_materializes_temporary_index(git_repo: str) -> None:
+def test_readonly_never_materializes_temporary_index(
+    git_repo: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import tempfile
 
     mkstemp_calls: list[str] = []
@@ -112,6 +106,7 @@ def test_readonly_never_materializes_temporary_index(git_repo: str) -> None:
         mkstemp_calls.append("mkstemp")
         return tempfile.mkstemp(*args, **kwargs)
 
+    monkeypatch.setattr(tempfile, "mkstemp", spy_mkstemp)
     # The read-only oracle must never invoke the temp-index machinery.
     frozen_epochs: list[GitEpoch] = []
     oracle_generation_readonly(git_repo, "diff", epoch_out=frozen_epochs)
@@ -119,15 +114,13 @@ def test_readonly_never_materializes_temporary_index(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
 def test_live_index_output_is_readonly_invocation(git_repo: str) -> None:
     """GIT_OPTIONAL_LOCKS=0 is set and no GIT_INDEX_FILE is injected."""
     import tree_sitter_analyzer.diff_snapshot_readonly as module
 
     seen_env: dict[str, str] = {}
 
-    def spy(root, args, *, deadline, limit, env=None, input_=None):
+    def spy(root, args, *, deadline, limit, env=None, input_=None, ok_returncodes=None):
         seen_env.update(dict(env or {}))
         return b""
 
@@ -150,7 +143,6 @@ def test_live_index_output_is_readonly_invocation(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
 def test_workspace_unsupported_fails_closed(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly as module
 
@@ -159,7 +151,6 @@ def test_workspace_unsupported_fails_closed(git_repo: str, monkeypatch) -> None:
         oracle_generation_readonly(git_repo, "diff")
 
 
-@POSIX_SNAPSHOT_TEST
 @POSIX_SNAPSHOT_TEST
 def test_root_mismatch_fails_closed(git_repo: str) -> None:
     import os
@@ -170,7 +161,6 @@ def test_root_mismatch_fails_closed(git_repo: str) -> None:
         oracle_generation_readonly(subdir, "diff")
 
 
-@POSIX_SNAPSHOT_TEST
 @POSIX_SNAPSHOT_TEST
 def test_gitlink_generations_match(git_repo: str) -> None:
     import pathlib
@@ -201,7 +191,6 @@ def test_gitlink_generations_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
 def test_split_index_fails_closed(git_repo: str) -> None:
     subprocess.run(["git", "-C", git_repo, "update-index", "--split-index"], check=True)
     with pytest.raises(Exception, match="DIFF_SNAPSHOT_UNSUPPORTED_INDEX"):
@@ -209,13 +198,11 @@ def test_split_index_fails_closed(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
 def test_capacity_fails_closed(git_repo: str) -> None:
     with pytest.raises(Exception, match="DIFF_SNAPSHOT_CAPACITY"):
         oracle_generation_readonly(git_repo, "diff", byte_ceiling=1)
 
 
-@POSIX_SNAPSHOT_TEST
 @POSIX_SNAPSHOT_TEST
 def test_runner_popen_failure_is_stable_error(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.git_readonly as module
@@ -234,7 +221,6 @@ def test_runner_popen_failure_is_stable_error(git_repo: str, monkeypatch) -> Non
         )
 
 
-@POSIX_SNAPSHOT_TEST
 @POSIX_SNAPSHOT_TEST
 def test_runner_negative_limit_fails_closed(git_repo: str) -> None:
     with pytest.raises(Exception, match="DIFF_SNAPSHOT_CAPACITY"):
@@ -274,7 +260,6 @@ class _UnboundedStream:
 
 
 @POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
 def test_runner_stream_failure_is_stable_error(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.git_readonly as module
 
@@ -301,11 +286,10 @@ def test_runner_stream_failure_is_stable_error(git_repo: str, monkeypatch) -> No
 
 
 @POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
 def test_dirty_gitlink_frames_opaque_evidence(git_repo: str, monkeypatch) -> None:
     # Mirrors the frozen oracle's own dirty-gitlink test (monkeypatched
-    # inventory): a gitlink reported in the dirty set frames opaque
-    # evidence and is retained as workspace_gitlinks.
+    # inventory): a gitlink the read-only probe reports dirty frames
+    # opaque evidence and is retained as workspace_gitlinks.
     import tree_sitter_analyzer.diff_snapshot_readonly as module
 
     sub_repo = os.path.join(git_repo, "vendor")
@@ -323,22 +307,18 @@ def test_dirty_gitlink_frames_opaque_evidence(git_repo: str, monkeypatch) -> Non
     subprocess.run(
         ["git", "-C", git_repo, "commit", "-qm", "add submodule"], check=True
     )
-    original = module._live_index_output
 
-    def fake_live_output(root, index_bytes, args, **kwargs):
-        if args and args[0] == "diff-files":
-            return b"vendor\0"
-        return original(root, index_bytes, args, **kwargs)
-
-    monkeypatch.setattr(module, "_live_index_output", fake_live_output)
+    monkeypatch.setattr(
+        module, "_dirty_gitlink_probes_readonly", lambda *a, **k: {b"vendor"}
+    )
     epochs: list = []
     oracle_generation_readonly(git_repo, "diff", epoch_out=epochs)
     entry = dict(epochs[0].index_entries)[b"vendor"]
     assert entry.startswith(b"160000 ")
     assert epochs[0].workspace_gitlinks == ((b"vendor", entry),)
+    assert b"vendor" in epochs[0].dirty_paths
 
 
-@POSIX_SNAPSHOT_TEST
 @POSIX_SNAPSHOT_TEST
 def test_inventory_consistency_check_fails_closed(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly as module
@@ -355,7 +335,6 @@ def test_inventory_consistency_check_fails_closed(git_repo: str, monkeypatch) ->
         oracle_generation_readonly(git_repo, "diff")
 
 
-@POSIX_SNAPSHOT_TEST
 @POSIX_SNAPSHOT_TEST
 def test_worktree_path_capacity_fails_closed(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly as module
@@ -374,7 +353,6 @@ def test_worktree_path_capacity_fails_closed(git_repo: str, monkeypatch) -> None
 
 
 @POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
 def test_empty_repo_generations_match(tmp_path) -> None:
     root = str(tmp_path / "empty")
     os.mkdir(root)
@@ -389,7 +367,6 @@ def test_empty_repo_generations_match(tmp_path) -> None:
         assert frozen_gen == readonly_gen
 
 
-@POSIX_SNAPSHOT_TEST
 @POSIX_SNAPSHOT_TEST
 def test_root_resolution_failure_fails_closed(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly as module
@@ -423,7 +400,6 @@ class _BrokenStdin:
 
 
 @POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
 def test_runner_feed_broken_pipe_is_ignored(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.git_readonly as module
 
@@ -455,7 +431,6 @@ def test_runner_feed_broken_pipe_is_ignored(git_repo: str, monkeypatch) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
-@POSIX_SNAPSHOT_TEST
 def test_runner_blocking_stream_times_out(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.git_readonly as module
 
@@ -471,7 +446,6 @@ def test_runner_blocking_stream_times_out(git_repo: str, monkeypatch) -> None:
         )
 
 
-@POSIX_SNAPSHOT_TEST
 @POSIX_SNAPSHOT_TEST
 def test_runner_kill_cleanup_swallows_wait_errors(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.git_readonly as module
@@ -500,7 +474,6 @@ def test_runner_kill_cleanup_swallows_wait_errors(git_repo: str, monkeypatch) ->
         )
 
 
-@POSIX_SNAPSHOT_TEST
 @POSIX_SNAPSHOT_TEST
 def test_runner_nonzero_exit_is_stable_error(git_repo: str, monkeypatch) -> None:
     import tree_sitter_analyzer.git_readonly as module
@@ -674,3 +647,47 @@ def test_entries_parser_capacity_bound() -> None:
     payload += entry0 + b"\0" * 20
     with pytest.raises(Exception, match="DIFF_SNAPSHOT_CAPACITY"):
         _index_entries_from_bytes(payload, "sha1", max_paths=0)
+
+
+class _ByteStream:
+    """Minimal readable stream for fake-proc runner tests."""
+
+    def __init__(self, data: bytes):
+        self.data = data
+
+    def read(self, size: int) -> bytes:
+        chunk, self.data = self.data[:size], self.data[size:]
+        return chunk
+
+
+@POSIX_SNAPSHOT_TEST
+def test_runner_ok_returncodes_accepts_exit_one(git_repo: str, monkeypatch) -> None:
+    """``git diff --no-index`` exits 1 on differences (RFC-0022 P0.4)."""
+    import tree_sitter_analyzer.git_readonly as module
+
+    class _ExitOneProc(_FakeProc):
+        def __init__(self):
+            super().__init__(
+                stdout=_ByteStream(b"diff --git a/x b/x\n"),
+                stderr=_ByteStream(b""),
+                returncode=1,
+            )
+
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *a, **k: _ExitOneProc())
+    out = module.run_git_readonly(
+        git_repo,
+        ["diff", "--no-index", "/dev/null", "x"],
+        deadline=time.monotonic() + 35.0,
+        limit=1024,
+        ok_returncodes=frozenset({0, 1}),
+    )
+    assert out == b"diff --git a/x b/x\n"
+    # The default invocation set still rejects exit 1.
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *a, **k: _ExitOneProc())
+    with pytest.raises(Exception, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        module.run_git_readonly(
+            git_repo,
+            ["diff", "--no-index", "/dev/null", "x"],
+            deadline=time.monotonic() + 35.0,
+            limit=1024,
+        )

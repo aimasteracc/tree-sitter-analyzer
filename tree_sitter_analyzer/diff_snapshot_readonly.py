@@ -17,11 +17,11 @@ dirty files exactly when the cached stat is accurate; the differential
 tests below prove equality on typical fixture states. The strace authority
 (``scripts/rfc0022_strace_*.py``) certifies that no write is attempted.
 
-The module is the first slice of the P0.4 read-existing backend: the
-generation half. Wiring it into ``edit.impact(access_mode="read_existing")``
-plus the in-memory blob/patch materialization and the P0.2 golden-corpus
-equivalence suite is the remaining work (tracked with the RFC-0022 P0.4
-gate).
+The module is the generation half of the P0.4 read-existing backend; the
+in-memory blob/patch materialization half lives in
+``diff_snapshot_readonly_capture`` and is wired into
+``edit.impact(access_mode="read_existing")`` through the registry's
+read-only capture path (tracked with the RFC-0022 P0.4 gate).
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ from .frozen_git_settings import (
     frozen_settings_storage,
     reject_active_filters,
 )
+from .git_path_codec import raw_to_path
 from .git_readonly import run_git_readonly
 from .source_epoch import capture_source_epoch, core_bool
 from .source_oracle import (
@@ -62,7 +63,6 @@ from .source_oracle_git import (
     _supports_nofollow,
     container_storage,
     entry_map_storage,
-    git_output,
     has_split_index,
     path_set_storage,
 )
@@ -82,6 +82,7 @@ def _live_index_output(
     object_format: str = "sha1",
     input_: bytes | None = None,
     extra_env: dict[str, str] | None = None,
+    ok_returncodes: frozenset[int] = frozenset({0}),
 ) -> bytes:
     """Run Git read-only against the live index (P0.4: zero writes).
 
@@ -94,7 +95,8 @@ def _live_index_output(
     certifies that no write attempt occurs. ``refresh``/``clear_hints`` are
     accepted for compatibility and are no-ops (no stat-cache rewriting in
     memory either) — the differential tests validate the live stat cache
-    against the frozen oracle.
+    against the frozen oracle. ``ok_returncodes`` extends the accepted exit
+    set for ``git diff --no-index`` (exit 1 = differences found).
     """
     del index_bytes, refresh, clear_hints, object_format
     env = {
@@ -112,6 +114,7 @@ def _live_index_output(
         limit=limit,
         env=env,
         input_=input_,
+        ok_returncodes=ok_returncodes,
     )
 
 
@@ -231,6 +234,45 @@ def _index_entries_from_bytes(
     if len(entries) > max_paths:
         raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     return entries
+
+
+def _dirty_gitlink_probes_readonly(
+    root: str, index_entries: dict[bytes, bytes], deadline: float
+) -> set[bytes]:
+    """Return gitlink paths git's refresh would report dirty (P0.4).
+
+    Git reports a submodule dirty when its HEAD moved away from the index
+    oid or its worktree has changes. The frozen oracle re-checks this via
+    stat-cache invalidation; the zero-write oracle reproduces it with
+    bounded read-only nested git calls. A submodule that cannot certify
+    its HEAD (uninitialized/broken) fails closed as dirty.
+    """
+    dirty: set[bytes] = set()
+    for raw in sorted(index_entries):
+        entry = index_entries[raw]
+        if not entry.startswith(b"160000 "):
+            continue
+        path = raw_to_path(raw)
+        index_oid = entry.split(b" ")[1]
+        try:
+            head = _git_output_readonly(
+                root,
+                ["-C", path, "rev-parse", "--verify", "HEAD"],
+                deadline=deadline,
+                limit=4096,
+            ).strip()
+            status = _git_output_readonly(
+                root,
+                ["-C", path, "status", "--porcelain"],
+                deadline=deadline,
+                limit=16 * 1024 * 1024,
+            )
+        except SourceOracleError:
+            dirty.add(raw)
+            continue
+        if head != index_oid or status:
+            dirty.add(raw)
+    return dirty
 
 
 def _hinted_paths(index_bytes: bytes, object_format: str, max_paths: int) -> set[bytes]:
@@ -417,6 +459,23 @@ def oracle_generation_readonly(
         )
     dirty = {path for path in dirty_raw.split(b"\0") if path}
     untracked = {path for path in untracked_raw.split(b"\0") if path}
+    probed_gitlinks: set[bytes] = set()
+    if mode == "diff":
+        # The frozen oracle's stat-cache invalidation makes git report
+        # every regular tracked path dirty and re-check every gitlink
+        # (submodule HEAD + worktree state); the live stat cache can do
+        # neither. The all-tracked framing below reproduces the first half
+        # and the read-only nested probes reproduce the second; the probe
+        # is authoritative for gitlinks (it also clears stat-racy false
+        # positives the frozen refresh would have re-checked away).
+        probed_gitlinks = _dirty_gitlink_probes_readonly(root, index_entries, end)
+        gitlink_paths = {
+            raw for raw, entry in index_entries.items() if entry.startswith(b"160000 ")
+        }
+        dirty = (dirty - gitlink_paths) | probed_gitlinks
+        if probed_gitlinks:
+            ledger.require_available(path_set_storage(probed_gitlinks))
+            ledger.charge(path_set_storage(probed_gitlinks))
     retained_paths = path_set_storage(dirty) + path_set_storage(untracked)
     ledger.require_available(len(dirty_raw) + len(untracked_raw) + retained_paths)
     ledger.charge(retained_paths)
@@ -437,7 +496,10 @@ def oracle_generation_readonly(
         root,
         settings_inventory,
         end,
-        git_output,
+        # The frozen runner materializes a temporary order file per call;
+        # the zero-write oracle must route every settings probe through the
+        # read-only runner (Codex #1293 finding tracked with RFC-0022 P0.4).
+        _git_output_readonly,
         byte_ceiling=ledger.remaining,
     )
     ledger.charge(frozen_settings_storage(frozen_settings))
@@ -477,10 +539,13 @@ def oracle_generation_readonly(
                 dirty_paths=(
                     tuple(
                         sorted(
-                            raw
-                            for raw in tracked
-                            if not index_entries[raw].startswith(b"160000 ")
-                            and raw not in hinted
+                            {
+                                raw
+                                for raw in tracked
+                                if raw not in hinted
+                                and not index_entries[raw].startswith(b"160000 ")
+                            }
+                            | set(probed_gitlinks)
                         )
                     )
                     if mode == "diff"

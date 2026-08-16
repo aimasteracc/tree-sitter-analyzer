@@ -17,9 +17,14 @@ from typing import cast
 from .diff_snapshot_capture import _capture_payload
 from .diff_snapshot_constraints import (
     frozen_index_constraint_config,
+    frozen_index_sources_match_worktree,
     live_constraint_config,
     staged_sources_match_worktree,
     staged_constraint_config,
+)
+from .diff_snapshot_constraints_readonly import (
+    frozen_index_constraint_config_readonly,
+    frozen_index_sources_match_worktree_readonly,
 )
 from .diff_snapshot_expiry import SnapshotExpiryScheduler, schedule_expiry
 from .diff_snapshot_leases import (
@@ -28,6 +33,8 @@ from .diff_snapshot_leases import (
     route_lease,
     snapshot_error,
 )
+from .diff_snapshot_readonly import oracle_generation_readonly
+from .diff_snapshot_readonly_capture import capture_payload_readonly
 from .diff_snapshot_validation import (
     acquire as acquire_snapshot,
     bind_assessed_scope as bind_snapshot_scope,
@@ -125,8 +132,20 @@ class DiffSnapshotRegistry:
     def _route_lease(self, snapshot_id: str) -> str:
         return route_lease(self._lease_key, snapshot_id)
     def create(
-        self, project_root: str | None, mode: str, assessed_scope_paths: list[str]
+        self,
+        project_root: str | None,
+        mode: str,
+        assessed_scope_paths: list[str],
+        *,
+        readonly: bool = False,
     ) -> dict[str, object]:
+        """Publish one bounded in-memory diff snapshot.
+
+        ``readonly=True`` selects the RFC-0022 P0.4 zero-write backend
+        (``oracle_generation_readonly`` + ``capture_payload_readonly`` +
+        read-only staged probes); the published snapshot shape is
+        identical to the frozen backend's.
+        """
         if mode not in ("diff", "staged"):
             return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_MODE")
         try:
@@ -160,7 +179,9 @@ class DiffSnapshotRegistry:
             shared_before = shared_source_generation(root, deadline)
             pre_manifest: dict[str, WorkspaceManifestEntry] = {}
             epochs: list[GitEpoch] = []
-            oracle_call: Callable[..., tuple[str, RootIdentity]] = oracle_generation
+            oracle_call: Callable[..., tuple[str, RootIdentity]] = (
+                oracle_generation_readonly if readonly else oracle_generation
+            )
             oracle_params = inspect.signature(oracle_call).parameters
             oracle_budget = (
                 {"byte_ceiling": ceiling} if "byte_ceiling" in oracle_params else {}
@@ -196,7 +217,16 @@ class DiffSnapshotRegistry:
             )
             inventory_size = path_collection_storage(inventory_paths)
             capture_params = inspect.signature(_capture_payload).parameters
-            if "epoch" in capture_params and epoch is not None:
+            if readonly:
+                patch, files = capture_payload_readonly(
+                    root,
+                    mode,
+                    deadline,
+                    ceiling - inventory_size,
+                    expected_manifest=pre_manifest,
+                    epoch=epoch,
+                )
+            elif "epoch" in capture_params and epoch is not None:
                 patch, files = _capture_payload(
                     root,
                     mode,
@@ -251,6 +281,16 @@ class DiffSnapshotRegistry:
                 if epoch is None and "epoch_out" in oracle_params:
                     raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
                 staged_epoch = cast(GitEpoch, epoch)
+                staged_config_reader = (
+                    frozen_index_constraint_config_readonly
+                    if readonly
+                    else frozen_index_constraint_config
+                )
+                staged_match_reader = (
+                    frozen_index_sources_match_worktree_readonly
+                    if readonly
+                    else frozen_index_sources_match_worktree
+                )
                 (
                     constraint_config_path,
                     constraint_config_data,
@@ -261,13 +301,14 @@ class DiffSnapshotRegistry:
                     staged_epoch,
                     optional_deadline,
                     ceiling,
-                    frozen_index_constraint_config,
+                    staged_config_reader,
                 )
                 staged_source_matches_worktree = staged_sources_match_worktree(
                     root,
                     staged_epoch,
                     optional_deadline,
                     min(16 * 1024 * 1024, ceiling),
+                    staged_match_reader,
                 )
                 staged_config_matches_worktree = (
                     constraint_config_error is None
