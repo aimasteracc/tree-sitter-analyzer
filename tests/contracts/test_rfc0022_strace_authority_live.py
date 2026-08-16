@@ -265,9 +265,21 @@ def test_live_read_existing_route_is_zero_write() -> None:
         text=True,
         timeout=120,
     )
-    report = json.loads((artifact / "report.json").read_text(encoding="utf-8"))
+    report_path = artifact / "report.json"
+    if not report_path.is_file():
+        pytest.fail(
+            "authority produced no report: "
+            f"rc={result.returncode} stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
     assert_policy_evidence(report, POLICY_PATH)
-    assert result.returncode == 0
+    assert result.returncode == 0, (
+        f"authority failed: rc={result.returncode} "
+        f"stdout={result.stdout!r} stderr={result.stderr!r} "
+        f"report_errors={report.get('errors')!r} "
+        f"authority_status={report.get('authority_status')!r} "
+        f"target={report.get('target')!r}"
+    )
     assert report["authority_status"] == "healthy"
     assert report["outcome"] == "clean"
     assert report["violations"] == []
