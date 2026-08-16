@@ -391,6 +391,7 @@ def test_pair_exact_renames_keeps_modified_moves_unpaired(git_repo: str) -> None
 
 
 @POSIX_SNAPSHOT_TEST
+@pytest.mark.slow_ok  # two full captures + publish: real git subprocess work
 def test_dirty_gitlink_payloads_match(git_repo: str) -> None:
     """A dirty submodule yields one opaque dirty_gitlink record, no patch."""
     sub_repo = Path(git_repo, "vendor")
@@ -434,6 +435,7 @@ def test_dirty_gitlink_payloads_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@pytest.mark.slow_ok  # two full captures + publish: real git subprocess work
 def test_clean_gitlink_payloads_match(git_repo: str) -> None:
     """A clean submodule produces no record in either backend."""
     sub_repo = Path(git_repo, "vendor")
@@ -493,6 +495,7 @@ def _assert_equal_registry_snapshots(root: str, mode: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@pytest.mark.slow_ok  # two full captures + publish: real git subprocess work
 def test_registry_diff_mode_snapshots_match(git_repo: str) -> None:
     Path(git_repo, "base.py").write_text("value = 2\n", encoding="utf-8")
     Path(git_repo, "new.py").write_text("x = 1\n", encoding="utf-8")
@@ -500,6 +503,7 @@ def test_registry_diff_mode_snapshots_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@pytest.mark.slow_ok  # two full captures + publish: real git subprocess work
 def test_registry_staged_mode_snapshots_match(git_repo: str) -> None:
     Path(git_repo, "architectural-constraints.yml").write_text(
         "rules:\n  - id: r2\n", encoding="utf-8"
