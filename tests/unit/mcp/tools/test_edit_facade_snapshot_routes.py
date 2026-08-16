@@ -858,6 +858,7 @@ async def test_edit_snapshot_consumers_read_existing_consume_snapshot(
     assert results["classify"]["verdict"] == "INFO"
 
 
+@pytest.mark.slow_ok  # full readonly diff capture + three consumers: real git work
 @pytest.mark.skipif(
     sys.platform.startswith("win"),
     reason="tracked: RFC-0022 P0.4 secure-fd consume backend is POSIX-only",

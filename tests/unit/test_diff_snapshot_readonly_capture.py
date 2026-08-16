@@ -100,6 +100,7 @@ def _assert_equal_payloads(root: str, mode: str, expected_records: int) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@pytest.mark.slow_ok  # full readonly capture + publish: real git subprocess work
 def test_clean_repo_payloads_match(git_repo: str) -> None:
     _assert_equal_payloads(git_repo, "diff", 0)
     _assert_equal_payloads(git_repo, "staged", 0)
