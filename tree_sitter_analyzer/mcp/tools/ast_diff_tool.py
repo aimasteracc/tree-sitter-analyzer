@@ -316,6 +316,7 @@ class ASTDiffTool(BaseMCPTool):
                             "verdict": "ERROR",
                             "error_code": error,
                             "error": error,
+                            "action_version": EDIT_AST_DIFF_ACTION_VERSION,
                         },
                         output_format,
                     )
@@ -328,6 +329,7 @@ class ASTDiffTool(BaseMCPTool):
                             "verdict": verdict,
                             "error_code": code,
                             "error": code,
+                            "action_version": EDIT_AST_DIFF_ACTION_VERSION,
                             "diff_snapshot_id": getattr(
                                 consumer.snapshot, "snapshot_id", str(snapshot_id)
                             ),
@@ -444,7 +446,18 @@ class ASTDiffTool(BaseMCPTool):
                 )
                 error = REGISTRY.validate_publish(consumer)
                 if error:
-                    return publish_errors.get(error, publish_fallback)
+                    # Publish failures occur after acquisition, so the
+                    # returned envelope must still cite the diff capability
+                    # and echo its wire owner.
+                    envelope = dict(publish_errors.get(error, publish_fallback))
+                    envelope.setdefault("action_version", EDIT_AST_DIFF_ACTION_VERSION)
+                    envelope["diff_snapshot_id"] = getattr(
+                        consumer.snapshot, "snapshot_id", str(snapshot_id)
+                    )
+                    envelope["source_generation"] = getattr(
+                        consumer.snapshot, "source_generation", ""
+                    )
+                    return envelope
             return formatted
         finally:
             if consumer is not None:

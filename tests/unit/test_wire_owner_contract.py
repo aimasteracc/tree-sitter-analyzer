@@ -11,6 +11,8 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+import pytest
+
 from tree_sitter_analyzer.wire_owner import ACTION_VERSIONS
 
 
@@ -235,3 +237,64 @@ def test_change_impact_frozen_agent_summary_keeps_wire_owner(
         compact_only=False,
     )
     assert result["action_version"] == EDIT_IMPACT_ACTION_VERSION
+
+
+# Codex-adjacent P0.5 gap found by PR CI (#1297): on the Linux frozen path
+# (platform authority present) the acquire-error envelopes of the three
+# diff-snapshot consumers must still echo their action_version.
+def test_diff_snapshot_consumers_frozen_error_echoes_action_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tree_sitter_analyzer.mcp.tools.ast_diff_tool as ast_diff
+    import tree_sitter_analyzer.mcp.tools.constraint_check_tool as constraints
+    import tree_sitter_analyzer.mcp.tools.semantic_classify_tool as classify
+    from tree_sitter_analyzer.mcp.tools.ast_diff_tool import ASTDiffTool
+    from tree_sitter_analyzer.mcp.tools.constraint_check_tool import (
+        ConstraintCheckTool,
+    )
+    from tree_sitter_analyzer.mcp.tools.semantic_classify_tool import (
+        SemanticClassifyTool,
+    )
+    from tree_sitter_analyzer.wire_owner import (
+        EDIT_AST_DIFF_ACTION_VERSION,
+        EDIT_CLASSIFY_ACTION_VERSION,
+        EDIT_CONSTRAINTS_ACTION_VERSION,
+    )
+
+    for module in (ast_diff, constraints, classify):
+        monkeypatch.setattr(
+            module.read_access,
+            "read_existing_platform_supported",
+            lambda: True,
+        )
+    expected = {
+        ConstraintCheckTool: (
+            EDIT_CONSTRAINTS_ACTION_VERSION,
+            {
+                "access_mode": "read_existing",
+                "diff_snapshot_id": "s1",
+                "persist": False,
+                "scope_paths": ["src"],
+            },
+        ),
+        ASTDiffTool: (
+            EDIT_AST_DIFF_ACTION_VERSION,
+            {
+                "access_mode": "read_existing",
+                "diff_snapshot_id": "s1",
+                "file_path": "a.py",
+            },
+        ),
+        SemanticClassifyTool: (
+            EDIT_CLASSIFY_ACTION_VERSION,
+            {
+                "access_mode": "read_existing",
+                "diff_snapshot_id": "s1",
+                "file_path": "a.py",
+            },
+        ),
+    }
+    for tool_type, (version, arguments) in expected.items():
+        result = _run(tool_type(str(tmp_path)).execute(arguments))
+        assert result["action_version"] == version
+        assert result["success"] is False

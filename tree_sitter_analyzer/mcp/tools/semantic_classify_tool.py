@@ -302,6 +302,7 @@ class SemanticClassifyTool(BaseMCPTool):
                             "verdict": "ERROR",
                             "error_code": error,
                             "error": error,
+                            "action_version": EDIT_CLASSIFY_ACTION_VERSION,
                         },
                         output_format,
                     )
@@ -314,6 +315,7 @@ class SemanticClassifyTool(BaseMCPTool):
                             "verdict": verdict,
                             "error_code": code,
                             "error": code,
+                            "action_version": EDIT_CLASSIFY_ACTION_VERSION,
                             "diff_snapshot_id": getattr(
                                 consumer.snapshot, "snapshot_id", str(snapshot_id)
                             ),
@@ -461,8 +463,10 @@ class SemanticClassifyTool(BaseMCPTool):
                 error = REGISTRY.validate_publish(consumer)
                 if error:
                     # Publish failures occur after acquisition, so the
-                    # returned envelope must still cite the diff capability.
+                    # returned envelope must still cite the diff capability
+                    # and echo its wire owner.
                     envelope = dict(publish_errors.get(error, publish_fallback))
+                    envelope.setdefault("action_version", EDIT_CLASSIFY_ACTION_VERSION)
                     envelope["diff_snapshot_id"] = getattr(
                         consumer.snapshot, "snapshot_id", str(snapshot_id)
                     )

@@ -113,7 +113,9 @@ def _supported_scope_is_covered(paths: list[str], source_scope: object) -> bool:
 def _snapshot_error(
     tool: Any, code: str, output_format: str, detail: str | None = None
 ) -> dict[str, Any]:
-    return cast(dict[str, Any], tool._snapshot_error(code, output_format, detail))
+    envelope = cast(dict[str, Any], tool._snapshot_error(code, output_format, detail))
+    envelope.setdefault("action_version", EDIT_CONSTRAINTS_ACTION_VERSION)
+    return envelope
 
 
 def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
