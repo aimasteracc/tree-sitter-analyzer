@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from .verification_command import (
-    PYTEST_COMMAND,
     build_test_command,
     detect_default_test_command,
 )
@@ -56,7 +55,13 @@ def build_checklist(
     """
     raw: list[str] = [_risk_instruction(risk)]
     raw.extend(
-        _test_instructions(has_tests, test_files, project_root, certified=certified)
+        _test_instructions(
+            has_tests,
+            test_files,
+            project_root,
+            certified=certified,
+            file_path=file_path,
+        )
     )
 
     if downstream_count > 0:
@@ -270,16 +275,19 @@ def _test_instructions(
     project_root: str | Path | None,
     *,
     certified: bool = False,
+    file_path: str = "",
 ) -> list[str]:
     """Return checklist items for test coverage.
 
-    ``certified`` (Codex P2 #1299 round-6): the default test command must be
+    ``certified`` (Codex P2 #1299 round-6/7): the default test command must be
     snapshot-bound — live config detection (package.json/go.mod/Cargo.toml)
     reads non-inventoried files that can drift for the same identity, so the
-    certified route uses the analyzer's own pytest default instead.
+    certified route infers the runner from the target's extension.
     """
     if certified:
-        default_command = PYTEST_COMMAND
+        from .verification_command import certified_default_test_command
+
+        default_command = certified_default_test_command(file_path or "app.py")
     else:
         default_command = detect_default_test_command(project_root)
     if has_tests:

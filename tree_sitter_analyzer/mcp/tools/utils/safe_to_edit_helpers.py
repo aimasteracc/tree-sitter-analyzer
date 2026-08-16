@@ -134,6 +134,12 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
         # discovery cap nor change has_tests/verdict for the same identity.
         inventory = snapshot_inventory(context.snapshot_conn)
         test_files = _certified_test_files(inventory, rel_path, dependents)
+        test_files.extend(
+            _certified_symbol_reference_tests(
+                context.snapshot_conn, inventory, rel_path, _target_language(rel_path)
+            )
+        )
+        test_files = list(dict.fromkeys(test_files))[:10]
         certified_health = True
     else:
         test_files = find_test_files(context.resolved_path, context.project_root)
@@ -437,11 +443,12 @@ def build_agent_summary(
 def build_agent_workflow(context: AgentWorkflowContext) -> dict[str, Any]:
     """Build a machine-friendly edit workflow for autonomous agents."""
     if context.certified:
-        # Codex P2 (#1299 round-6): snapshot-bound default — live config
-        # detection would read non-inventoried files.
-        from .verification_command import PYTEST_COMMAND as _PYTEST_COMMAND
+        # Codex P2 (#1299 round-6/7): snapshot-bound default — live config
+        # detection would read non-inventoried files, so the runner is
+        # inferred from the target's extension instead.
+        from .verification_command import certified_default_test_command
 
-        default_command = _PYTEST_COMMAND
+        default_command = certified_default_test_command(context.file_path)
     else:
         default_command = detect_default_test_command(context.project_root)
     focused_command = (
@@ -729,6 +736,14 @@ def _require_edges_callee_name(conn: Any) -> None:
         raise ValueError("CORRUPT_INDEX")
 
 
+def _target_language(rel_path: str) -> str:
+    """Return the test-discovery language name for one relative path."""
+
+    from .test_discovery import detect_language_from_ext
+
+    return detect_language_from_ext(Path(rel_path).suffix.lower()) or "python"
+
+
 def _looks_like_test_name(name: str, language: str) -> bool:
     """Mirror is_existing_test_file's NAME conventions over certified inputs.
 
@@ -765,6 +780,64 @@ def _looks_like_test_name(name: str, language: str) -> bool:
     if language == "php":
         return name.endswith(("Test.php", "test.php"))
     return False
+
+
+def _certified_symbol_reference_tests(
+    conn: Any, inventory: frozenset[str], rel_path: str, language: str
+) -> list[str]:
+    """Symbol-reference test discovery over snapshot-owned data.
+
+    The legacy ``_find_symbol_reference_tests`` scans live test bytes for
+    the target's public symbols; the certified variant (Codex P2 #1299
+    round-7, C31) scans the snapshot's recorded import statements
+    (``imports_json``) of inventory-covered, test-named files for the
+    target's INDEXED public symbol names — tests that use ``from pkg
+    import public_fn`` are found even when they import a package, not the
+    defining file.
+    """
+
+    import json as _json
+
+    try:
+        target_row = conn.execute(
+            "SELECT symbols_json FROM ast_index WHERE file_path = ?",
+            (rel_path,),
+        ).fetchone()
+    except Exception:  # nosec B110 — legacy schema degrades to no matches
+        return []
+    if target_row is None:
+        return []
+    symbols: set[str] = set()
+    try:
+        payload = _json.loads(str(target_row["symbols_json"]))
+        for entry in payload.get("symbols", []):
+            name = entry.get("name") if isinstance(entry, dict) else None
+            if isinstance(name, str) and not name.startswith("_"):
+                symbols.add(name)
+    except (TypeError, ValueError):
+        return []
+    if not symbols:
+        return []
+
+    results: list[str] = []
+    for rel in sorted(inventory):
+        if rel == rel_path:
+            continue
+        if not _looks_like_test_name(Path(rel).name, language):
+            continue
+        try:
+            row = conn.execute(
+                "SELECT imports_json FROM ast_index WHERE file_path = ?",
+                (rel,),
+            ).fetchone()
+        except Exception:  # nosec B110 — legacy schema degrades per row
+            continue
+        if row is None:
+            continue
+        text = str(row["imports_json"])
+        if any(symbol in text for symbol in symbols):
+            results.append(rel)
+    return results
 
 
 def _certified_test_files(

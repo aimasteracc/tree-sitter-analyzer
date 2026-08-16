@@ -50,6 +50,37 @@ def detect_default_test_command(project_root: str | Path | None) -> DefaultTestC
     return PYTEST_COMMAND
 
 
+def certified_default_test_command(file_path: str) -> DefaultTestCommand:
+    """Extension-derived default test command, snapshot-bound.
+
+    Codex P2 (#1299 round-7, C32): the certified route cannot read live
+    config files (package.json/go.mod/...), so the runner is inferred from
+    the TARGET's extension — a fact bound to the snapshot inventory. Files
+    whose language has no conventional runner keep the pytest default.
+    """
+
+    ext = Path(file_path).suffix.lower()
+    if ext == ".go":
+        return DefaultTestCommand("go", "go test ./...")
+    if ext == ".rs":
+        return DefaultTestCommand("cargo", "cargo test")
+    if ext in {".js", ".jsx", ".ts", ".tsx"}:
+        return DefaultTestCommand("node", "npm test")
+    if ext == ".java":
+        return DefaultTestCommand("maven", "mvn test")
+    if ext == ".rb":
+        return DefaultTestCommand("ruby", "bundle exec rspec")
+    if ext == ".kt":
+        return DefaultTestCommand("gradle", "gradle test")
+    if ext == ".cs":
+        return DefaultTestCommand("dotnet", "dotnet test")
+    if ext == ".php":
+        return DefaultTestCommand("composer", "composer test")
+    if ext in {".c", ".h", ".cpp", ".hpp", ".cc"}:
+        return DefaultTestCommand("make", "make test")
+    return PYTEST_COMMAND
+
+
 def build_test_command(
     default_command: DefaultTestCommand,
     tests_to_run: list[str],

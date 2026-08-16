@@ -1900,20 +1900,42 @@ def test_next_step_lean_entry_points_without_code() -> None:
     assert "include_graph=true" in msg
 
 
-def test_snapshot_certified_node_path_rejects_unsafe_files() -> None:
-    """Codex P1 round-6 (C29): only relative in-root paths are certified."""
+def test_snapshot_certified_node_file_rejects_unsafe_files(
+    tmp_path: Path,
+) -> None:
+    """Codex P1 round-6/7 (C29/C30): only relative, in-root, INVENTORY
+    paths are certified — symlinked escapes and excluded files are not."""
+    import os
+    import sqlite3
+
     from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
-        _snapshot_certified_node_path,
+        _snapshot_certified_node_file,
     )
 
-    assert _snapshot_certified_node_path({"file": "src/app.py"}) is True
-    assert _snapshot_certified_node_path({"file": "app.py"}) is True
-    assert _snapshot_certified_node_path({"file": "/etc/passwd"}) is False
-    assert _snapshot_certified_node_path({"file": "../secret.py"}) is False
-    assert _snapshot_certified_node_path({"file": "src/../secret.py"}) is False
-    assert _snapshot_certified_node_path({"file": ""}) is False
-    assert _snapshot_certified_node_path({}) is False
-    assert _snapshot_certified_node_path({"file": 42}) is False
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "excluded.py").write_text("y = 2\n", encoding="utf-8")
+    outside = tmp_path.parent / "outside_secret.py"
+    outside.write_text("z = 3\n", encoding="utf-8")
+    os.symlink(outside, tmp_path / "external_link")
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT)")
+    conn.execute("INSERT INTO ast_index VALUES ('src/app.py')")
+    conn.row_factory = sqlite3.Row
+    root = str(tmp_path.resolve())
+
+    assert _snapshot_certified_node_file("src/app.py", root, conn) is True
+    assert _snapshot_certified_node_file("/etc/passwd", root, conn) is False
+    assert _snapshot_certified_node_file("../secret.py", root, conn) is False
+    assert _snapshot_certified_node_file("src/../secret.py", root, conn) is False
+    assert _snapshot_certified_node_file("", root, conn) is False
+    assert _snapshot_certified_node_file(None, root, conn) is False
+    assert _snapshot_certified_node_file(42, root, conn) is False
+    # Symlink escape: lexical path is relative, realpath leaves the root.
+    assert _snapshot_certified_node_file("external_link", root, conn) is False
+    # Existing but not in the inventory: not generation-certified.
+    assert _snapshot_certified_node_file("excluded.py", root, conn) is False
 
 
 def test_next_step_lean_production_anchor() -> None:

@@ -720,6 +720,139 @@ def test_certified_test_files_cross_language_conventions(
     assert found == expected
 
 
+def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
+    """Codex P2 round-7 (C31): tests using the target's public symbols are
+    found through snapshot-owned import records, not only path dependents."""
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_symbol_reference_tests,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
+        (
+            json.dumps(
+                {
+                    "symbols": [{"kind": "function", "name": "public_fn", "line": 1}],
+                    "node_count": 1,
+                }
+            ),
+        ),
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('tests/test_behavior.py', '{}', ?)",
+        (json.dumps([{"text": "from pkg import public_fn", "line": 1}]),),
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('tests/test_unrelated.py', '{}', ?)",
+        (json.dumps([{"text": "import os", "line": 1}]),),
+    )
+    inventory = frozenset(
+        {"pkg/impl.py", "tests/test_behavior.py", "tests/test_unrelated.py"}
+    )
+    found = _certified_symbol_reference_tests(conn, inventory, "pkg/impl.py", "python")
+    assert found == ["tests/test_behavior.py"]
+
+    # Legacy schema (no ast_index) degrades to no matches.
+    bare = sqlite3.connect(":memory:")
+    bare.row_factory = sqlite3.Row
+    assert (
+        _certified_symbol_reference_tests(bare, frozenset(), "pkg/impl.py", "python")
+        == []
+    )
+    # Malformed symbols_json degrades to no matches.
+    broken = sqlite3.connect(":memory:")
+    broken.row_factory = sqlite3.Row
+    broken.execute(
+        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
+    )
+    broken.execute("INSERT INTO ast_index VALUES ('pkg/impl.py', 'not-json', '[]')")
+    assert (
+        _certified_symbol_reference_tests(
+            broken, frozenset({"pkg/impl.py"}), "pkg/impl.py", "python"
+        )
+        == []
+    )
+    # No public symbols -> no matches.
+    private = sqlite3.connect(":memory:")
+    private.row_factory = sqlite3.Row
+    private.execute(
+        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
+    )
+    private.execute(
+        "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
+        (json.dumps({"symbols": [{"name": "_hidden"}]}),),
+    )
+    assert (
+        _certified_symbol_reference_tests(
+            private, frozenset({"pkg/impl.py"}), "pkg/impl.py", "python"
+        )
+        == []
+    )
+    # Target row absent from ast_index -> no matches.
+    no_target = sqlite3.connect(":memory:")
+    no_target.row_factory = sqlite3.Row
+    no_target.execute(
+        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
+    )
+    no_target.execute("INSERT INTO ast_index VALUES ('other.py', '{}', '[]')")
+    assert (
+        _certified_symbol_reference_tests(
+            no_target, frozenset({"tests/test_x.py"}), "pkg/impl.py", "python"
+        )
+        == []
+    )
+
+    # A mid-loop query failure (schema drift) degrades per row.
+    class _FlakyConn:
+        def __init__(self, real):
+            self._real = real
+            self._calls = 0
+
+        def execute(self, sql, params=()):
+            self._calls += 1
+            if self._calls == 2:
+                raise sqlite3.OperationalError("no such table: ast_index")
+            return self._real.execute(sql, params)
+
+    flaky_conn = _FlakyConn(conn)
+    flaky_inventory = frozenset(
+        {"pkg/impl.py", "tests/test_behavior.py", "tests/test_unrelated.py"}
+    )
+    assert (
+        _certified_symbol_reference_tests(
+            flaky_conn, flaky_inventory, "pkg/impl.py", "python"
+        )
+        == []
+    )
+    # A test-named inventory file absent from ast_index is skipped.
+    missing = sqlite3.connect(":memory:")
+    missing.row_factory = sqlite3.Row
+    missing.execute(
+        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
+    )
+    missing.execute(
+        "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
+        (json.dumps({"symbols": [{"name": "public_fn"}]}),),
+    )
+    assert (
+        _certified_symbol_reference_tests(
+            missing,
+            frozenset({"pkg/impl.py", "tests/test_ghost.py"}),
+            "pkg/impl.py",
+            "python",
+        )
+        == []
+    )
+
+
 def test_looks_like_test_name_unknown_language_is_false() -> None:
     """An unknown language is never treated as a test-name convention."""
     from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (

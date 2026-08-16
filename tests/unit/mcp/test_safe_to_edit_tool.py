@@ -634,6 +634,43 @@ async def test_edit_safe_read_existing_consumes_published_snapshot(
     assert result["health_grade"]
 
 
+def test_certified_commands_use_extension_runner(tmp_path: Path) -> None:
+    """Codex P2 round-7 (C32): the certified runner is inferred from the
+    target extension, never forced to pytest."""
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        AgentWorkflowContext,
+        build_agent_workflow,
+    )
+
+    go_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="handler.go",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["handler_test.go"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        )
+    )
+    assert "go test" in str(go_workflow.get("after_edit_commands", []))
+
+    py_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="app.py",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["tests/test_app.py"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        )
+    )
+    assert "uv run pytest" in str(py_workflow.get("after_edit_commands", []))
+
+
 def test_certified_commands_ignore_live_config_files(tmp_path: Path) -> None:
     """Codex P2 round-6 (C28): certified checklists/workflows use the
     analyzer's pytest default, never live non-inventoried config files."""
