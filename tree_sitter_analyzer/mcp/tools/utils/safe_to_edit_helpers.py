@@ -109,7 +109,15 @@ def build_safe_to_edit_result(context: SafeToEditContext) -> dict[str, Any]:
 
 def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
     """Collect graph, health, test, and risk facts for a file."""
-    rel_path = to_relative(context.resolved_path, context.project_root)
+    # Canonicalize before relativising: on macOS the security validator's
+    # abspath (/var/folders/...) and a canonical project_root
+    # (/private/var/folders/...) differ by symlink, which would make
+    # to_relative fall back to the absolute path and miss every graph node
+    # (CLAUDE.md §2 resolution contract) — downstream facts would silently
+    # undercount on macOS while Linux CI saw them.
+    rel_path = to_relative(
+        os.path.realpath(context.resolved_path), context.project_root
+    )
     dependents = safe_dependents(context.graph, rel_path)
     dependencies = safe_dependencies(context.graph, rel_path)
     if context.snapshot_conn is not None:

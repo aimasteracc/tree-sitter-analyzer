@@ -896,8 +896,11 @@ async def test_edit_safe_read_existing_ignores_unbound_constraint_rows(
     assert result["success"] is True
     assert result["access_state"] == "available"
     # The seeded error-severity row must NOT escalate: it cannot prove it
-    # belongs to the published generation (C21).
-    assert result["verdict"] == "SAFE"
+    # belongs to the published generation (C21). The CAUTION verdict comes
+    # from the snapshot dependency view (routes.py imports app.py), never
+    # from constraint rows.
+    assert result["verdict"] == "CAUTION"
+    assert result["downstream_count"] == 1
     assert not any(
         factor.get("factor") == "constraint_violation"
         for factor in result["risk_factors"]
