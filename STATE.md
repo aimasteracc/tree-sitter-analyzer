@@ -11,11 +11,24 @@ Last run: 2026-08-16 (NO1-010A three-task prototype — RFC-0022 Phase A router)
   vocabularies, NO_CONFIG diff-only provenance, truncation propagation,
   ownership degradation, cleanup wall-time exclusion, strict decoder,
   harness one-of, etc.) with regression tests; CI + codecov/patch green.
-- **NO1-010A follow-up (task UX, in progress)**: actionable outputs
-  (`next_step` unlock/re-index/budget/review hints + compact deterministic
-  `agent_summary`) and adapter-boundary wire contract fixtures pinning the
-  real primitive shapes (`file`/`name` code blocks, `caller_file`/`caller_name`
-  violations, Git-status changed records).
+- **NO1-010A follow-up merged (2026-08-16, three PRs)**: #1291 actionable
+  outputs (`next_step` unlock/re-index/budget/review hints + compact
+  deterministic `agent_summary`) + adapter-boundary wire contract fixtures
+  pinning the real primitive shapes; #1292 harness corpus/request-json
+  modes (strict JSON decoding, project-boundary input validation, budget
+  ceilings honored, option-presence exclusivity); #1293 **P0.4 zero-write
+  source-generation oracle first slice** — `oracle_generation_readonly`
+  reproduces the frozen oracle's framing byte-for-byte with zero filesystem
+  writes (own bounded zero-write git runner in `git_readonly.py`,
+  in-memory index binary parser, assume-unchanged/skip-worktree hint
+  semantics, diff.orderFile fail-closed, module split). All Codex review
+  findings on all three PRs triaged and fixed with regression tests; CI +
+  codecov/patch green.
+- **P0.4 remaining work**: in-memory blob/patch materialization + wiring
+  `edit.impact(access_mode="read_existing")` to the backend, then the
+  Linux strace axis certifies zero writes; object-directory-free HEAD
+  traversal (loose/pack object reading) is the documented next slice;
+  macOS authority remains a separate RFC-tracked item.
   - `task/router.py` — fixed route-table executor: sequential primitive calls
     through an injected `PrimitiveExecutor`, budget/deadline admission with
     exact `deadline_overrun_ms` reporting, constraints-slot reservation before
