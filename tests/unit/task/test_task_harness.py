@@ -238,3 +238,17 @@ def test_run_operation_toon_branch(monkeypatch) -> None:
 def test_request_from_dict_unknown_operation_rejected() -> None:
     with pytest.raises(ValueError, match="unknown operation"):
         request_from_dict("mystery", {"task": "x"})  # type: ignore[arg-type]
+
+
+def test_request_from_dict_rejects_forbidden_fields() -> None:
+    with pytest.raises(ValueError, match="understand rejects diff"):
+        request_from_dict("understand", {"task": "x", "diff": {"source": "workspace"}})
+    with pytest.raises(ValueError, match="exactly one of task or diff"):
+        request_from_dict(
+            "plan_change",
+            {"task": "x", "diff": {"source": "workspace"}},
+        )
+    with pytest.raises(ValueError, match="assess_change rejects task"):
+        request_from_dict(
+            "assess_change", {"diff": {"source": "workspace"}, "task": "x"}
+        )

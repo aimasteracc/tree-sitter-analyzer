@@ -78,7 +78,9 @@ SOURCE_GENERATION_MISMATCH = "SOURCE_GENERATION_MISMATCH"
 _RISK_VERDICTS = frozenset({"UNSAFE", "WARN", "REVIEW", "CAUTION"})
 _NON_RISK_VERDICTS = frozenset({"SAFE", "INFO", "NOT_FOUND"})
 _STRUCTURAL_INVALID_VERDICTS = frozenset({"REVIEW", "UNSAFE"})
-_UNSUPPORTED_RECORD_STATUSES = frozenset({"added", "deleted", "renamed"})
+_UNSUPPORTED_RECORD_STATUSES = frozenset(
+    {"added", "deleted", "renamed", "A", "D", "R", "C"}
+)
 
 Clock = Callable[[], int]
 
@@ -335,6 +337,7 @@ async def _run_route(
     cleanup_wall_ms = 0
     cleanup_status: str = "not_required"
     cleanup_error_code: str | None = None
+    routed_end_ms = start_ms
 
     def record_freshness(freshness: str, reason: str | None, tokens: list[str]) -> None:
         freshness_records.append(
@@ -378,17 +381,25 @@ async def _run_route(
         response: dict[str, Any],
         locator: str | None,
         fragment: dict[str, Any] | None = None,
-    ) -> str | None:
+        snapshots: list[SourceSnapshotRecord] | None = None,
+    ) -> tuple[str | None, str]:
         """Mint one evidence ID from the exact wire fragment (RFC-0022).
 
-        Missing/disagreeing ownership mints nothing (``unknown``). The
-        fragment defaults to the full response; per-fragment minting (e.g.
-        one violation or code block) passes the exact fragment bytes.
+        Returns ``(evidence_id, code)`` where ``code`` is ``minted``,
+        ``action_version_missing`` (ownership absent -> the contribution must
+        become unknown, RFC-0022 P0.5), or ``budget_exhausted`` (the
+        evidence-item ceiling stopped minting -> the row is truncated).
+        The fragment defaults to the full response; per-fragment minting
+        (one violation or code block) passes the exact fragment bytes.
         """
+        if len(evidence) >= budget.effective_evidence:
+            truncated_rows.append(row)
+            return None, "budget_exhausted"
         action_version = response.get("action_version")
         if not isinstance(action_version, str) or not action_version:
             add_unknown(row, "ACTION_VERSION_MISSING")
-            return None
+            return None, "action_version_missing"
+        bound_snapshots = snapshots if snapshots is not None else current_snapshots()
         canonical_fragment = dict(sorted((fragment or response).items()))
         result_hash = normalized_result_hash(canonical_fragment)
         identity = evidence_identity(
@@ -397,7 +408,7 @@ async def _run_route(
                 action=action,
                 action_version=action_version,
                 normalized_result_sha256=result_hash,
-                source_snapshots=tuple(current_snapshots()),
+                source_snapshots=tuple(bound_snapshots),
                 locator=locator or "",
             )
         )
@@ -408,11 +419,11 @@ async def _run_route(
                 "action": action,
                 "action_version": action_version,
                 "normalized_result_sha256": result_hash,
-                "source_snapshots": _snapshot_wire(current_snapshots()),
+                "source_snapshots": _snapshot_wire(bound_snapshots),
                 "locator": locator,
             }
         )
-        return identity
+        return identity, "minted"
 
     def record_contribution(
         contribution: Contribution,
@@ -508,6 +519,22 @@ async def _run_route(
             return await executor.call(facade, action, arguments)
         except Exception:
             return {"success": False, "verdict": "ERROR"}
+
+    def degraded_unknown(contribution: Contribution) -> Contribution:
+        """RFC-0022 P0.5: missing/disagreeing ownership makes it unknown."""
+        return Contribution(
+            row=contribution.row,
+            kind=contribution.kind,
+            state="succeeded",
+            finding="malformed",
+            freshness=UNKNOWN,
+            truncated=None,
+            status_contribution="unknown",
+            verdict_contribution=None,
+            locator=contribution.locator,
+            evidence_id=None,
+            primitive_verdict=contribution.primitive_verdict,
+        )
 
     def with_evidence(
         contribution: Contribution,
@@ -657,8 +684,8 @@ async def _run_route(
                 diff_snapshot_id = impact_response.get("diff_snapshot_id")
                 route_lease_id = impact_response.get("route_lease_id")
                 impact_source_generation = impact_response.get("source_generation")
-                changed_records = impact_response.get("changed_records") or []
-                assessed_scope_paths = impact_response.get("assessed_scope_paths") or []
+                changed_records = impact_response.get("changed_records")
+                raw_assessed_scope_paths = impact_response.get("assessed_scope_paths")
                 if not isinstance(diff_snapshot_id, str) or not diff_snapshot_id:
                     diff_snapshot_id = None
                 if not isinstance(route_lease_id, str) or not route_lease_id:
@@ -668,7 +695,17 @@ async def _run_route(
                     or not impact_source_generation
                 ):
                     impact_source_generation = None
-                for record in changed_records:
+                if not isinstance(changed_records, list):
+                    changed_records = None
+                assessed_valid = isinstance(raw_assessed_scope_paths, list)
+                if assessed_valid:
+                    assert raw_assessed_scope_paths is not None
+                    assessed_scope_paths = [
+                        str(path)
+                        for path in raw_assessed_scope_paths
+                        if isinstance(path, str)
+                    ]
+                for record in changed_records or []:
                     if isinstance(record, dict) and isinstance(record.get("path"), str):
                         changed_paths.append(record["path"])
                 snapshots = current_snapshots()
@@ -676,6 +713,8 @@ async def _run_route(
                     diff_snapshot_id is None
                     or route_lease_id is None
                     or impact_source_generation is None
+                    or changed_records is None
+                    or not assessed_valid
                 )
                 access_unavailable = _access_unavailable(impact_response)
                 if access_unavailable is not None:
@@ -770,23 +809,27 @@ async def _run_route(
                 else:
                     freshness = FRESH if oracle_fresh else UNKNOWN
                     impact_verdict = impact_response.get("verdict")
+                    impact_truncated = impact_response.get("truncated") is True
                     contribution = contribute(
                         row="diff:edit.impact",
                         state="succeeded",
                         kind="generic",
                         finding=_finding_from_verdict(impact_verdict),
                         freshness=freshness,
-                        truncated=False,
+                        truncated=impact_truncated,
                         primitive_verdict=_primitive_verdict(impact_verdict),
                     )
-                    impact_evidence_id = mint_evidence(
+                    impact_evidence_id, impact_evidence_code = mint_evidence(
                         "diff:edit.impact",
                         "edit",
                         "impact",
                         impact_response,
                         None,
                     )
-                    contribution = with_evidence(contribution, impact_evidence_id)
+                    if impact_evidence_code == "action_version_missing":
+                        contribution = degraded_unknown(contribution)
+                    else:
+                        contribution = with_evidence(contribution, impact_evidence_id)
                     record_contribution(
                         contribution,
                         facade="edit",
@@ -799,7 +842,7 @@ async def _run_route(
                         snapshots=snapshots,
                         success=True,
                     )
-                    for record in changed_records:
+                    for record in changed_records or []:
                         if isinstance(record, dict) and isinstance(
                             record.get("path"), str
                         ):
@@ -915,7 +958,85 @@ async def _run_route(
                                 for item in constraints_response.get("violations") or []
                                 if isinstance(item, dict)
                             ]
-                            if not diff_echo_ok or not index_echo_ok:
+                            constraints_success = (
+                                constraints_response.get("success") is True
+                            )
+                            if not constraints_success:
+                                contribution = contribute(
+                                    row="diff:edit.constraints",
+                                    state="failed",
+                                    kind="constraints",
+                                    finding="malformed",
+                                    freshness=UNKNOWN,
+                                    truncated=False,
+                                )
+                                record_contribution(
+                                    contribution,
+                                    facade="edit",
+                                    action="constraints",
+                                    response=constraints_response,
+                                    request_hash=_request_hash(constraints_arguments),
+                                    evidence_ids=[],
+                                    snapshots=records,
+                                    success=False,
+                                )
+                                add_unknown(
+                                    "diff:edit.constraints", "PRIMITIVE_FAILURE"
+                                )
+                                route_stopped = True
+                            elif state == "not_applicable" and reason == "NO_CONFIG":
+                                # NO_CONFIG cites only the acquired diff
+                                # snapshot (the config probe never opens the
+                                # index capability): diff-only provenance is
+                                # enough for a completed row (Codex #1290).
+                                if not diff_echo_ok:
+                                    contribution = contribute(
+                                        row="diff:edit.constraints",
+                                        state="failed",
+                                        kind="constraints",
+                                        finding="malformed",
+                                        freshness=UNKNOWN,
+                                        truncated=False,
+                                    )
+                                    record_contribution(
+                                        contribution,
+                                        facade="edit",
+                                        action="constraints",
+                                        response=constraints_response,
+                                        request_hash=_request_hash(
+                                            constraints_arguments
+                                        ),
+                                        evidence_ids=[],
+                                        snapshots=records,
+                                        success=True,
+                                    )
+                                    add_unknown(
+                                        "diff:edit.constraints",
+                                        SOURCE_GENERATION_MISMATCH,
+                                    )
+                                    route_stopped = True
+                                else:
+                                    contribution = contribute(
+                                        row="diff:edit.constraints",
+                                        state="succeeded",
+                                        kind="constraints",
+                                        finding="no_config",
+                                        freshness=NOT_APPLICABLE,
+                                        truncated=False,
+                                    )
+                                    record_contribution(
+                                        contribution,
+                                        facade="edit",
+                                        action="constraints",
+                                        response=constraints_response,
+                                        request_hash=_request_hash(
+                                            constraints_arguments
+                                        ),
+                                        evidence_ids=[],
+                                        snapshots=records,
+                                        success=True,
+                                    )
+                            elif not diff_echo_ok or not index_echo_ok:
                                 contribution = contribute(
                                     row="diff:edit.constraints",
                                     state="failed",
@@ -939,25 +1060,6 @@ async def _run_route(
                                     SOURCE_GENERATION_MISMATCH,
                                 )
                                 route_stopped = True
-                            elif state == "not_applicable" and reason == "NO_CONFIG":
-                                contribution = contribute(
-                                    row="diff:edit.constraints",
-                                    state="succeeded",
-                                    kind="constraints",
-                                    finding="no_config",
-                                    freshness=NOT_APPLICABLE,
-                                    truncated=False,
-                                )
-                                record_contribution(
-                                    contribution,
-                                    facade="edit",
-                                    action="constraints",
-                                    response=constraints_response,
-                                    request_hash=_request_hash(constraints_arguments),
-                                    evidence_ids=[],
-                                    snapshots=records,
-                                    success=True,
-                                )
                             else:
                                 constraints_verdict = constraints_response.get(
                                     "verdict"
@@ -981,16 +1083,31 @@ async def _run_route(
                                 )
                                 violation_evidence_ids: list[str] = []
                                 for item in violations:
-                                    if not isinstance(item.get("path"), str):
+                                    # The real ConstraintCheckTool wire uses
+                                    # caller_file/caller_name; accept both
+                                    # vocabularies (Codex review #1290).
+                                    violation_path = item.get("path")
+                                    if not isinstance(violation_path, str):
+                                        violation_path = item.get("caller_file")
+                                    if not isinstance(violation_path, str):
                                         continue
-                                    violation_evidence_id = mint_evidence(
-                                        "diff:edit.constraints",
-                                        "edit",
-                                        "constraints",
-                                        constraints_response,
-                                        item["path"],
-                                        fragment=item,
+                                    violation_symbol = item.get("symbol")
+                                    if not isinstance(violation_symbol, str):
+                                        violation_symbol = item.get("caller_name")
+                                    violation_locator = violation_path
+                                    violation_evidence_id, violation_evidence_code = (
+                                        mint_evidence(
+                                            "diff:edit.constraints",
+                                            "edit",
+                                            "constraints",
+                                            constraints_response,
+                                            violation_locator,
+                                            fragment=item,
+                                            snapshots=records,
+                                        )
                                     )
+                                    if violation_evidence_code == "budget_exhausted":
+                                        continue
                                     if violation_evidence_id is not None:
                                         violation_evidence_ids.append(
                                             violation_evidence_id
@@ -998,9 +1115,9 @@ async def _run_route(
                                     step_fragments.append(
                                         StepFragment(
                                             route="edit.constraints",
-                                            path=item["path"],
-                                            symbol=None,
-                                            locator=item["path"],
+                                            path=violation_path,
+                                            symbol=violation_symbol,
+                                            locator=violation_locator,
                                             evidence_id=violation_evidence_id,
                                         )
                                     )
@@ -1024,15 +1141,26 @@ async def _run_route(
                 # Fan-out ast_diff + classify over eligible records.
                 if diff_snapshot_id and not route_stopped:
                     eligible: list[str] = []
-                    for record in changed_records:
+                    for record in changed_records or []:
                         if not isinstance(record, dict):
                             continue
                         path = record.get("path")
                         if not isinstance(path, str):
                             continue
-                        if record.get("binary") is True:
-                            continue
-                        if record.get("status") in _UNSUPPORTED_RECORD_STATUSES:
+                        # Frozen ChangedFile records use Git status codes
+                        # (A/D/R/C) plus old/new availability and
+                        # unsupported_kind (Codex review #1290); the fan-out
+                        # requires both materialized sides.
+                        unsupported = (
+                            record.get("binary") is True
+                            or record.get("status") in _UNSUPPORTED_RECORD_STATUSES
+                            or record.get("unsupported_kind") is not None
+                            or record.get("old_available") is False
+                            or record.get("new_available") is False
+                            or record.get("old_kind") not in (None, "file", "missing")
+                            or record.get("new_kind") not in (None, "file", "missing")
+                        )
+                        if unsupported:
                             add_unknown(
                                 f"diff:edit.ast_diff:{path}",
                                 "not_run:UNSUPPORTED_DIFF_RECORD",
@@ -1044,7 +1172,7 @@ async def _run_route(
                             continue
                         eligible.append(path)
                     sorted_eligible = sorted(set(eligible))
-                    for path_index, path in enumerate(sorted_eligible):
+                    for path_index, path in enumerate(sorted_eligible):  # noqa: C901
                         ast_diff_arguments = {
                             "diff_snapshot_id": diff_snapshot_id,
                             "file_path": path,
@@ -1101,10 +1229,45 @@ async def _run_route(
                                 f"ACCESS_UNAVAILABLE:{ast_diff_access_unavailable}",
                             )
                         elif ast_diff_success:
+                            ast_diff_records = _echo_records(ast_diff_response)
+                            ast_diff_echo_ok = any(
+                                record.kind == "diff"
+                                and record.snapshot_id == diff_snapshot_id
+                                and record.source_generation == impact_source_generation
+                                for record in ast_diff_records
+                            )
+                            if not ast_diff_echo_ok:
+                                contribution = contribute(
+                                    row=f"diff:edit.ast_diff:{path}",
+                                    state="failed",
+                                    kind="structural",
+                                    finding="malformed",
+                                    freshness=UNKNOWN,
+                                    truncated=False,
+                                )
+                                record_contribution(
+                                    contribution,
+                                    facade="edit",
+                                    action="ast_diff",
+                                    response=ast_diff_response,
+                                    request_hash=_request_hash(ast_diff_arguments),
+                                    evidence_ids=[],
+                                    snapshots=ast_diff_records,
+                                    success=True,
+                                )
+                                add_unknown(
+                                    f"diff:edit.ast_diff:{path}",
+                                    SOURCE_GENERATION_MISMATCH,
+                                )
+                                route_stopped = True
+                                break
                             finding = (
                                 "invalid"
                                 if ast_diff_verdict in _STRUCTURAL_INVALID_VERDICTS
                                 else _finding_from_verdict(ast_diff_verdict)
+                            )
+                            ast_diff_truncated = (
+                                ast_diff_response.get("truncated") is True
                             )
                             contribution = contribute(
                                 row=f"diff:edit.ast_diff:{path}",
@@ -1112,19 +1275,23 @@ async def _run_route(
                                 kind="structural",
                                 finding=finding,
                                 freshness=FRESH,
-                                truncated=False,
+                                truncated=ast_diff_truncated,
                                 primitive_verdict=_primitive_verdict(ast_diff_verdict),
                             )
-                            evidence_id = mint_evidence(
+                            evidence_id, evidence_code = mint_evidence(
                                 f"diff:edit.ast_diff:{path}",
                                 "edit",
                                 "ast_diff",
                                 ast_diff_response,
                                 path,
+                                snapshots=ast_diff_records,
                             )
-                            contribution = with_evidence(
-                                contribution, evidence_id, locator=path
-                            )
+                            if evidence_code == "action_version_missing":
+                                contribution = degraded_unknown(contribution)
+                            else:
+                                contribution = with_evidence(
+                                    contribution, evidence_id, locator=path
+                                )
                             record_contribution(
                                 contribution,
                                 facade="edit",
@@ -1227,25 +1394,64 @@ async def _run_route(
                                 f"ACCESS_UNAVAILABLE:{classify_access_unavailable}",
                             )
                         elif classify_success:
+                            classify_records = _echo_records(classify_response)
+                            classify_echo_ok = any(
+                                record.kind == "diff"
+                                and record.snapshot_id == diff_snapshot_id
+                                and record.source_generation == impact_source_generation
+                                for record in classify_records
+                            )
+                            if not classify_echo_ok:
+                                contribution = contribute(
+                                    row=f"diff:edit.classify:{path}",
+                                    state="failed",
+                                    kind="generic",
+                                    finding="malformed",
+                                    freshness=UNKNOWN,
+                                    truncated=False,
+                                )
+                                record_contribution(
+                                    contribution,
+                                    facade="edit",
+                                    action="classify",
+                                    response=classify_response,
+                                    request_hash=_request_hash(classify_arguments),
+                                    evidence_ids=[],
+                                    snapshots=classify_records,
+                                    success=True,
+                                )
+                                add_unknown(
+                                    f"diff:edit.classify:{path}",
+                                    SOURCE_GENERATION_MISMATCH,
+                                )
+                                route_stopped = True
+                                break
+                            classify_truncated = (
+                                classify_response.get("truncated") is True
+                            )
                             contribution = contribute(
                                 row=f"diff:edit.classify:{path}",
                                 state="succeeded",
                                 kind="generic",
                                 finding=_finding_from_verdict(classify_verdict),
                                 freshness=FRESH,
-                                truncated=False,
+                                truncated=classify_truncated,
                                 primitive_verdict=_primitive_verdict(classify_verdict),
                             )
-                            evidence_id = mint_evidence(
+                            evidence_id, evidence_code = mint_evidence(
                                 f"diff:edit.classify:{path}",
                                 "edit",
                                 "classify",
                                 classify_response,
                                 path,
+                                snapshots=classify_records,
                             )
-                            contribution = with_evidence(
-                                contribution, evidence_id, locator=path
-                            )
+                            if evidence_code == "action_version_missing":
+                                contribution = degraded_unknown(contribution)
+                            else:
+                                contribution = with_evidence(
+                                    contribution, evidence_id, locator=path
+                                )
                             record_contribution(
                                 contribution,
                                 facade="edit",
@@ -1412,13 +1618,14 @@ async def _run_route(
                         route_stopped = True
                     else:
                         nav_verdict = nav_response.get("verdict")
+                        nav_truncated = nav_response.get("truncated") is True
                         contribution = contribute(
                             row=f"{operation}:nav.context",
                             state="succeeded",
                             kind="generic",
                             finding=_finding_from_verdict(nav_verdict),
                             freshness=FRESH if oracle_fresh else UNKNOWN,
-                            truncated=False,
+                            truncated=nav_truncated,
                             primitive_verdict=_primitive_verdict(nav_verdict),
                         )
                         record_contribution(
@@ -1436,19 +1643,50 @@ async def _run_route(
                         for block in code_blocks:
                             if not isinstance(block, dict):
                                 continue
+                            # The real CodeGraphContextTool wire uses
+                            # file/name; accept both vocabularies.
                             path = block.get("path")
+                            if not isinstance(path, str):
+                                path = block.get("file")
                             symbol = block.get("symbol")
+                            if not isinstance(symbol, str):
+                                symbol = block.get("name")
                             if isinstance(path, str):
                                 block_paths.append(path)
                                 if isinstance(symbol, str) and symbol:
                                     relevant_symbols.append(symbol)
-                            evidence_id = mint_evidence(
+                            block_fragment = {
+                                "file": path,
+                                "name": symbol,
+                                "start_line": block.get("start_line"),
+                                "end_line": block.get("end_line"),
+                            }
+                            evidence_id, evidence_code = mint_evidence(
                                 f"{operation}:nav.context",
                                 "nav",
                                 "context",
                                 nav_response,
                                 path if isinstance(path, str) else None,
+                                fragment=block_fragment,
+                                snapshots=records,
                             )
+                            if evidence_code == "action_version_missing":
+                                contribution = degraded_unknown(contribution)
+                            if evidence_code == "budget_exhausted":
+                                step_fragments.append(
+                                    StepFragment(
+                                        route="nav.context",
+                                        path=path if isinstance(path, str) else None,
+                                        symbol=(
+                                            symbol if isinstance(symbol, str) else None
+                                        ),
+                                        locator=(
+                                            path if isinstance(path, str) else None
+                                        ),
+                                        evidence_id=None,
+                                    )
+                                )
+                                continue
                             step_fragments.append(
                                 StepFragment(
                                     route="nav.context",
@@ -1572,25 +1810,30 @@ async def _run_route(
                                     route_stopped = True
                                     break
                                 safe_verdict = safe_response.get("verdict")
+                                safe_truncated = safe_response.get("truncated") is True
                                 contribution = contribute(
                                     row=f"plan_change:edit.safe:{path}",
                                     state="succeeded",
                                     kind="generic",
                                     finding=_finding_from_verdict(safe_verdict),
                                     freshness=FRESH if oracle_fresh else UNKNOWN,
-                                    truncated=False,
+                                    truncated=safe_truncated,
                                     primitive_verdict=_primitive_verdict(safe_verdict),
                                 )
-                                evidence_id = mint_evidence(
+                                evidence_id, evidence_code = mint_evidence(
                                     f"plan_change:edit.safe:{path}",
                                     "edit",
                                     "safe",
                                     safe_response,
                                     path,
+                                    snapshots=safe_records,
                                 )
-                                contribution = with_evidence(
-                                    contribution, evidence_id, locator=path
-                                )
+                                if evidence_code == "action_version_missing":
+                                    contribution = degraded_unknown(contribution)
+                                else:
+                                    contribution = with_evidence(
+                                        contribution, evidence_id, locator=path
+                                    )
                                 record_contribution(
                                     contribution,
                                     facade="edit",
@@ -1611,6 +1854,7 @@ async def _run_route(
                                         evidence_id=evidence_id,
                                     )
                                 )
+        routed_end_ms = clock_fn()
     finally:
         if diff_snapshot_id and route_lease_id:
             cleanup_calls = 1
@@ -1640,7 +1884,12 @@ async def _run_route(
         )
         errors.append(truncated_reason)
     status, verdict = aggregate_status_and_verdict(contributions)
-    routing_wall_ms = int(clock_fn() - start_ms)
+    # routing wall time excludes the separately-accounted cleanup interval
+    # (Codex #1290 P2: cleanup bypasses route admission).
+    routing_wall_ms = int(routed_end_ms - start_ms)
+    if truncated_rows and status == "complete":
+        # Omitted decision-relevant evidence forces partial (RFC-0022).
+        status = "partial"
     if cleanup_status == "failed":
         errors.append(DIFF_SNAPSHOT_CLEANUP_FAILED)
         status = "unknown"

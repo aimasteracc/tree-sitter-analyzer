@@ -95,15 +95,23 @@ def request_from_dict(operation: Operation, payload: dict[str, Any]) -> Any:
     budget = _budget_from_dict(payload)
     task = payload.get("task")
     diff_payload = payload.get("diff")
+    # Exact one-of contract per operation: forbidden fields are rejected,
+    # never silently ignored (Codex review #1290 P2).
     if operation == "understand":
+        if diff_payload is not None:
+            raise ValueError("understand rejects diff")
         return UnderstandRequest(task=task or "", budget=budget)
     if operation == "plan_change":
+        if diff_payload is not None and (task or "").strip():
+            raise ValueError("plan_change accepts exactly one of task or diff")
         if diff_payload is not None:
             return PlanChangeRequest(diff=_diff_from_dict(diff_payload), budget=budget)
         return PlanChangeRequest(task=task or "", budget=budget)
     if operation == "assess_change":
         if diff_payload is None:
             raise ValueError("assess_change requires exactly one diff")
+        if (task or "").strip():
+            raise ValueError("assess_change rejects task")
         return AssessChangeRequest(diff=_diff_from_dict(diff_payload), budget=budget)
     raise ValueError(f"unknown operation {operation!r}")
 

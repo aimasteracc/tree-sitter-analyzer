@@ -568,3 +568,33 @@ def test_decode_wire_with_plan_steps_validates_step_shape() -> None:
     wire["artifacts"]["plan_steps"][0]["sneaky"] = True
     with pytest.raises(ValueError, match="unknown fields"):
         decode_json(json.dumps(wire))
+
+
+def test_decoder_rejects_missing_required_wire_fields() -> None:
+    import json
+
+    outcome = TaskOutcome(
+        task="understand",
+        request=UnderstandRequest(task="x"),
+        verdict="INFO",
+    )
+    wire = json.loads(serialize_json(outcome))
+    for field in (
+        "subject",
+        "artifacts",
+        "budget",
+        "truncation",
+        "claims",
+        "provenance",
+        "freshness",
+        "unknowns",
+        "errors",
+        "success",
+        "operation",
+        "next_step",
+        "agent_summary",
+    ):
+        trimmed = dict(wire)
+        del trimmed[field]
+        with pytest.raises(ValueError, match="missing required fields"):
+            decode_json(json.dumps(trimmed))

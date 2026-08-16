@@ -96,11 +96,17 @@ AST_DIFF_OK = {
     "success": True,
     "verdict": "INFO",
     "action_version": "edit.ast_diff/v1",
+    "source_snapshots": [
+        {"kind": "diff", "snapshot_id": "ds_1", "source_generation": "gen_1"}
+    ],
 }
 CLASSIFY_OK = {
     "success": True,
     "verdict": "INFO",
     "action_version": "edit.classify/v1",
+    "source_snapshots": [
+        {"kind": "diff", "snapshot_id": "ds_1", "source_generation": "gen_1"}
+    ],
 }
 RELEASE_OK = {"success": True, "action_version": "edit.release_snapshot/v1"}
 
@@ -438,6 +444,8 @@ def test_diff_missing_oracle_stops_before_constraints_and_fanout() -> None:
 
 def test_constraints_echo_mismatch_stops_fanout() -> None:
     constraints = dict(CONSTRAINTS_NO_CONFIG)
+    constraints["state"] = "applicable"
+    constraints["violations"] = []
     constraints["source_snapshots"] = [
         {
             "kind": "index",
@@ -1239,3 +1247,401 @@ def test_risk_verdict_on_success_is_complete_risk_finding() -> None:
     assert safe_row["finding"] == "risk"
     assert safe_row["status_contribution"] == "complete"
     assert safe_row["verdict_contribution"] == "WARN"
+
+
+# --- Codex review #1290 fixes ----------------------------------------------
+
+
+def test_evidence_budget_ceiling_stops_minting_and_forces_partial() -> None:
+    executor = FakeExecutor()
+    outcome = _run(
+        understand(
+            UnderstandRequest(
+                task="how does dispatch work",
+                budget=Budget(profile="standard", max_evidence_items=1),
+            ),
+            executor,
+        )
+    )
+    assert outcome.consumed.evidence_items == 1
+    assert outcome.status == "partial"
+    assert outcome.truncation["truncated"] is True
+    # Budget-omitted fragments emit no step (RFC: omitted fragments emit no
+    # step and are represented by unknowns/status).
+    assert len(outcome.artifacts["plan_steps"]) == 1
+
+
+def test_impact_missing_scope_data_is_unknown_and_stops() -> None:
+    for field in ("changed_records", "assessed_scope_paths"):
+        impact = dict(IMPACT_OK)
+        del impact[field]
+        executor = FakeExecutor(responses={("edit", "impact"): impact})
+        outcome = _run(
+            assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+        )
+        assert ("edit", "constraints") not in [(f, a) for f, a, _ in executor.calls]
+        assert any(
+            u["row"] == "diff:edit.impact" and u["reason"] == "MISSING_SNAPSHOT_FIELDS"
+            for u in outcome.unknowns
+        )
+
+
+def test_ast_diff_missing_diff_echo_stops_fanout() -> None:
+    ast_diff = dict(AST_DIFF_OK)
+    ast_diff["source_snapshots"] = [
+        {"kind": "diff", "snapshot_id": "ds_OTHER", "source_generation": "gen_1"}
+    ]
+    executor = FakeExecutor(responses={("edit", "ast_diff"): ast_diff})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    assert ("edit", "classify") not in [(f, a) for f, a, _ in executor.calls]
+    assert any(
+        u["row"] == "diff:edit.ast_diff:src/a.py"
+        and u["reason"] == "SOURCE_GENERATION_MISMATCH"
+        for u in outcome.unknowns
+    )
+
+
+def test_classify_truncated_flag_degrades_contribution() -> None:
+    classify = dict(CLASSIFY_OK)
+    classify["truncated"] = True
+    executor = FakeExecutor(responses={("edit", "classify"): classify})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    classify_row = next(
+        v
+        for v in outcome.artifacts["verification"]
+        if v["row"] == "diff:edit.classify:src/a.py"
+    )
+    assert classify_row["truncated"] is True
+    assert classify_row["status_contribution"] == "partial"
+    assert classify_row["verdict_contribution"] == "WARN"
+
+
+def test_real_nav_wire_file_name_fields_are_projected() -> None:
+    nav = dict(NAV_OK)
+    nav["code_blocks"] = [
+        {"file": "src/real.py", "name": "dispatch", "start_line": 1, "end_line": 9},
+    ]
+    executor = FakeExecutor(responses={("nav", "context"): nav})
+    outcome = _run(plan_change(PlanChangeRequest(task="refactor dispatch"), executor))
+    assert outcome.artifacts["relevant_paths"] == ["src/real.py"]
+    assert outcome.artifacts["relevant_symbols"] == ["dispatch"]
+    step = outcome.artifacts["plan_steps"][0]
+    assert step["kind"] == "inspect_context"
+    assert step["path"] == "src/real.py"
+    assert step["symbol"] == "dispatch"
+    safe_calls = [args for f, a, args in executor.calls if (f, a) == ("edit", "safe")]
+    assert [args["file_path"] for args in safe_calls] == ["src/real.py"]
+
+
+def test_real_constraint_violation_caller_fields_are_projected() -> None:
+    constraints = {
+        "success": True,
+        "verdict": "UNSAFE",
+        "state": "applicable",
+        "violations": [
+            {
+                "rule_id": "no_direct_dep",
+                "caller_name": "dispatch",
+                "caller_file": "src/app.py",
+                "caller_line": 5,
+                "callee_name": "handle_ping",
+                "callee_file": "src/app.py",
+                "severity": "error",
+            }
+        ],
+        "action_version": "edit.constraints/v1",
+        "source_snapshots": [
+            {
+                "kind": "index",
+                "snapshot_id": "idx_snap_1",
+                "source_generation": "gen_1",
+            },
+            {"kind": "diff", "snapshot_id": "ds_1", "source_generation": "gen_1"},
+        ],
+    }
+    executor = FakeExecutor(responses={("edit", "constraints"): constraints})
+    outcome = _run(
+        plan_change(PlanChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    constraint_steps = [
+        s for s in outcome.artifacts["plan_steps"] if s["kind"] == "check_constraint"
+    ]
+    assert len(constraint_steps) == 1
+    assert constraint_steps[0]["path"] == "src/app.py"
+    assert constraint_steps[0]["symbol"] == "dispatch"
+    assert len(constraint_steps[0]["evidence_ids"]) == 1
+    assert outcome.verdict == "UNSAFE"
+
+
+def test_no_config_diff_only_provenance_completes() -> None:
+    constraints = {
+        "success": True,
+        "verdict": "SAFE",
+        "state": "not_applicable",
+        "reason": "NO_CONFIG",
+        "violations": [],
+        "action_version": "edit.constraints/v1",
+        "source_snapshots": [
+            {"kind": "diff", "snapshot_id": "ds_1", "source_generation": "gen_1"}
+        ],
+    }
+    executor = FakeExecutor(responses={("edit", "constraints"): constraints})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    constraints_row = next(
+        v
+        for v in outcome.artifacts["verification"]
+        if v["row"] == "diff:edit.constraints"
+    )
+    assert constraints_row["status_contribution"] == "complete"
+    assert constraints_row["finding"] == "no_config"
+    assert not any(
+        u["reason"] == "SOURCE_GENERATION_MISMATCH" for u in outcome.unknowns
+    )
+    assert ("edit", "ast_diff") in [(f, a) for f, a, _ in executor.calls]
+
+
+def test_git_status_codes_are_explicit_not_run() -> None:
+    impact = dict(IMPACT_OK)
+    impact["changed_records"] = [
+        {"path": "src/add.py", "status": "A"},
+        {"path": "src/del.py", "status": "D"},
+        {
+            "path": "src/ren.py",
+            "status": "R",
+            "old_available": True,
+            "new_available": True,
+        },
+        {"path": "src/unsup.py", "status": "M", "unsupported_kind": "symlink"},
+        {"path": "src/mod.py", "status": "M"},
+    ]
+    executor = FakeExecutor(responses={("edit", "impact"): impact})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    ast_diff_paths = [
+        args["file_path"]
+        for f, a, args in executor.calls
+        if (f, a) == ("edit", "ast_diff")
+    ]
+    assert ast_diff_paths == ["src/mod.py"]
+    not_run_rows = {
+        u["row"]
+        for u in outcome.unknowns
+        if u["reason"] == "not_run:UNSUPPORTED_DIFF_RECORD"
+    }
+    assert "diff:edit.ast_diff:src/add.py" in not_run_rows
+    assert "diff:edit.ast_diff:src/del.py" in not_run_rows
+    assert "diff:edit.ast_diff:src/ren.py" in not_run_rows
+    assert "diff:edit.ast_diff:src/unsup.py" in not_run_rows
+
+
+def test_routing_wall_excludes_cleanup_time() -> None:
+    class SlowReleaseExecutor(FakeExecutor):
+        async def call(self, facade, action, arguments):
+            if action == "release_snapshot":
+                self.clock.append(self.clock[-1] + 10_000)
+            return await super().call(facade, action, arguments)
+
+    executor = SlowReleaseExecutor()
+    outcome = _run(
+        assess_change(
+            AssessChangeRequest(diff=DiffInput("workspace")),
+            executor,
+            clock=_clock(executor),
+        )
+    )
+    assert outcome.consumed.cleanup_wall_ms == 10_000
+    # Routing wall stays small: cleanup must not trigger a deadline overrun.
+    assert outcome.consumed.deadline_overrun_ms == 0
+    assert outcome.consumed.routing_wall_ms < 10_000
+
+
+def test_constraints_primitive_failure_is_preserved() -> None:
+    constraints = {
+        "success": False,
+        "verdict": "ERROR",
+        "state": "applicable",
+        "violations": [],
+        "action_version": "edit.constraints/v1",
+        "source_snapshots": [
+            {"kind": "diff", "snapshot_id": "ds_1", "source_generation": "gen_1"}
+        ],
+    }
+    executor = FakeExecutor(responses={("edit", "constraints"): constraints})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    constraints_prov = next(
+        p for p in outcome.provenance if p["row"] == "diff:edit.constraints"
+    )
+    assert constraints_prov["success"] is False
+    assert any(
+        u["row"] == "diff:edit.constraints" and u["reason"] == "PRIMITIVE_FAILURE"
+        for u in outcome.unknowns
+    )
+
+
+def test_classify_without_action_version_degrades_contribution() -> None:
+    classify = dict(CLASSIFY_OK)
+    del classify["action_version"]
+    executor = FakeExecutor(responses={("edit", "classify"): classify})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    classify_row = next(
+        v
+        for v in outcome.artifacts["verification"]
+        if v["row"] == "diff:edit.classify:src/a.py"
+    )
+    assert classify_row["status_contribution"] == "unknown"
+    assert any(
+        u["row"] == "diff:edit.classify:src/a.py"
+        and u["reason"] == "ACTION_VERSION_MISSING"
+        for u in outcome.unknowns
+    )
+
+
+def test_impact_without_action_version_degrades_contribution() -> None:
+    impact = dict(IMPACT_OK)
+    del impact["action_version"]
+    executor = FakeExecutor(responses={("edit", "impact"): impact})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    impact_row = next(
+        v for v in outcome.artifacts["verification"] if v["row"] == "diff:edit.impact"
+    )
+    assert impact_row["status_contribution"] == "unknown"
+    assert any(
+        u["row"] == "diff:edit.impact" and u["reason"] == "ACTION_VERSION_MISSING"
+        for u in outcome.unknowns
+    )
+
+
+def test_no_config_with_missing_diff_echo_is_mismatch() -> None:
+    constraints = {
+        "success": True,
+        "verdict": "SAFE",
+        "state": "not_applicable",
+        "reason": "NO_CONFIG",
+        "violations": [],
+        "action_version": "edit.constraints/v1",
+        "source_snapshots": [],
+    }
+    executor = FakeExecutor(responses={("edit", "constraints"): constraints})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    assert any(
+        u["row"] == "diff:edit.constraints"
+        and u["reason"] == "SOURCE_GENERATION_MISMATCH"
+        for u in outcome.unknowns
+    )
+    assert ("edit", "ast_diff") not in [(f, a) for f, a, _ in executor.calls]
+
+
+def test_violation_with_symbol_field_uses_it() -> None:
+    constraints = {
+        "success": True,
+        "verdict": "CAUTION",
+        "state": "applicable",
+        "violations": [
+            {"severity": "warning", "path": "src/a.py", "symbol": "direct_symbol"},
+        ],
+        "action_version": "edit.constraints/v1",
+        "source_snapshots": [
+            {
+                "kind": "index",
+                "snapshot_id": "idx_snap_1",
+                "source_generation": "gen_1",
+            },
+            {"kind": "diff", "snapshot_id": "ds_1", "source_generation": "gen_1"},
+        ],
+    }
+    executor = FakeExecutor(responses={("edit", "constraints"): constraints})
+    outcome = _run(
+        plan_change(PlanChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    step = next(
+        s for s in outcome.artifacts["plan_steps"] if s["kind"] == "check_constraint"
+    )
+    assert step["symbol"] == "direct_symbol"
+
+
+def test_violation_evidence_budget_ceiling_stops_minting() -> None:
+    constraints = {
+        "success": True,
+        "verdict": "UNSAFE",
+        "state": "applicable",
+        "violations": [{"severity": "error", "path": f"src/v{i}.py"} for i in range(3)],
+        "action_version": "edit.constraints/v1",
+        "source_snapshots": [
+            {
+                "kind": "index",
+                "snapshot_id": "idx_snap_1",
+                "source_generation": "gen_1",
+            },
+            {"kind": "diff", "snapshot_id": "ds_1", "source_generation": "gen_1"},
+        ],
+    }
+    executor = FakeExecutor(responses={("edit", "constraints"): constraints})
+    outcome = _run(
+        plan_change(
+            PlanChangeRequest(
+                diff=DiffInput("workspace"),
+                budget=Budget(profile="standard", max_evidence_items=2),
+            ),
+            executor,
+        )
+    )
+    assert outcome.consumed.evidence_items == 2
+    assert outcome.truncation["truncated"] is True
+    # Impact consumes one evidence slot; the first violation takes the
+    # second, and the remaining violations are budget-omitted.
+    constraint_steps = [
+        s for s in outcome.artifacts["plan_steps"] if s["kind"] == "check_constraint"
+    ]
+    assert len([s for s in constraint_steps if s["evidence_ids"]]) == 1
+
+
+def test_ast_diff_without_action_version_degrades_contribution() -> None:
+    ast_diff = dict(AST_DIFF_OK)
+    del ast_diff["action_version"]
+    executor = FakeExecutor(responses={("edit", "ast_diff"): ast_diff})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    ast_diff_row = next(
+        v
+        for v in outcome.artifacts["verification"]
+        if v["row"] == "diff:edit.ast_diff:src/a.py"
+    )
+    assert ast_diff_row["status_contribution"] == "unknown"
+
+
+def test_classify_missing_diff_echo_stops_fanout() -> None:
+    classify = dict(CLASSIFY_OK)
+    classify["source_snapshots"] = [
+        {"kind": "diff", "snapshot_id": "ds_OTHER", "source_generation": "gen_1"}
+    ]
+    executor = FakeExecutor(responses={("edit", "classify"): classify})
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+    assert any(
+        u["row"] == "diff:edit.classify:src/a.py"
+        and u["reason"] == "SOURCE_GENERATION_MISMATCH"
+        for u in outcome.unknowns
+    )
+    # The route stops: src/b.py never enters the fan-out.
+    assert not any(
+        args.get("file_path") == "src/b.py"
+        for f, a, args in executor.calls
+        if (f, a) == ("edit", "classify")
+    )
