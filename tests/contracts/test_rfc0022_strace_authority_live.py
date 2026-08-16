@@ -186,7 +186,7 @@ def _trace_stderr_payloads(trace_dir: Path) -> str:
     for raw in sorted(trace_dir.glob("trace.*")):
         text = raw.read_text(encoding="utf-8", errors="replace")
         for line in text.splitlines():
-            match = re.search(r'write\(2, "((?:\\.|[^"\\])*)"', line)
+            match = re.search(r'write\(2<[^,>]*, "((?:\\.|[^"\\])*)"', line)
             if match:
                 payload = match.group(1)
                 for escaped, decoded in (
