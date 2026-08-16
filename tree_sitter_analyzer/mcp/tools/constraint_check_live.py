@@ -26,15 +26,31 @@ def _identity(info: os.stat_result) -> bytes:
     # after probe misreport CONSTRAINT_CONFIG_CHANGED on Windows CI. size +
     # mtime_ns + mode + inode detect every real mutation the probe guards
     # against (content append, rewrite, truncation, rename, reparse flip).
-    values = (
-        info.st_dev,
-        info.st_ino,
-        info.st_mode,
-        info.st_size,
-        info.st_mtime_ns,
-        getattr(info, "st_file_attributes", 0),
+    if os.name == "posix":
+        return b",".join(
+            str(value).encode("ascii")
+            for value in (
+                info.st_dev,
+                info.st_ino,
+                info.st_mode,
+                info.st_size,
+                info.st_mtime_ns,
+                getattr(info, "st_file_attributes", 0),
+            )
+        )
+    # Windows: same st_ino problem as stat_identity — os.fstat (handle) and
+    # os.lstat (path) disagree since CPython 3.12, so drop dev/ino from the
+    # probe identity; mode + size + mtime + attributes still detect every
+    # mutation the probe guards against.
+    return b",".join(
+        str(value).encode("ascii")
+        for value in (
+            info.st_mode,
+            info.st_size,
+            info.st_mtime_ns,
+            getattr(info, "st_file_attributes", 0),
+        )
     )
-    return b",".join(str(value).encode("ascii") for value in values)
 
 
 def _is_reparse(info: os.stat_result) -> bool:

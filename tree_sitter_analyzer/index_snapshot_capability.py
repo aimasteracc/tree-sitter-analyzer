@@ -92,10 +92,15 @@ def _open_pinned_path(
     valid_kind = (
         stat.S_ISDIR(opened.st_mode) if directory else stat.S_ISREG(opened.st_mode)
     )
-    if not valid_kind or (opened.st_dev, opened.st_ino) != (
+    if not valid_kind:
+        os.close(fd)
+        raise ValueError("INDEX_PATH_UNSAFE")
+    if os.name == "posix" and (opened.st_dev, opened.st_ino) != (
         expected.st_dev,
         expected.st_ino,
     ):
+        # Windows (3.12+): os.fstat and os.lstat disagree on st_ino for the
+        # same file, so the handle can never match the path expectation.
         os.close(fd)
         raise ValueError("INDEX_PATH_UNSAFE")
     return fd
@@ -146,10 +151,18 @@ def path_matches_pinned_database(cache_fd: int, db_fd: int) -> bool:
         pinned_info = os.fstat(db_fd)
     except OSError:
         return False
-    return (path_info.st_dev, path_info.st_ino) == (
-        pinned_info.st_dev,
-        pinned_info.st_ino,
-    )
+    if os.name == "posix":
+        return (path_info.st_dev, path_info.st_ino) == (
+            pinned_info.st_dev,
+            pinned_info.st_ino,
+        )
+    # Windows: os.stat(dir_fd=) and os.fstat disagree on st_ino since
+    # CPython 3.12 (path side carries the real file ID, handle side does
+    # not), and mtime precision is not guaranteed to match either — which
+    # made this check always fail and every portable snapshot report
+    # CONCURRENT_WRITER on Windows 3.12/3.13 CI. size still detects a
+    # replaced database (the failure mode this guard exists for).
+    return path_info.st_size == pinned_info.st_size
 
 
 def hierarchy_matches_pinned_database(
