@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import stat
 import time
 from typing import Any
 
@@ -45,6 +46,7 @@ from .source_epoch import capture_source_epoch, core_bool
 from .source_oracle import (
     SourceOracleError,
     WorkspaceManifestEntry,
+    _remaining,
     canonical_root,
     stable_descriptor_chain,
 )
@@ -236,6 +238,57 @@ def _index_entries_from_bytes(
     return entries
 
 
+def _gitlink_probe_safe(root: str, git_dir: str, raw: bytes, deadline: float) -> bool:
+    """Return whether probing one gitlink stays inside the project boundary.
+
+    The frozen oracle treats live gitlink leaves as opaque; the zero-write
+    probe must not follow a symlink-replaced gitlink directory or a
+    ``.git`` file that points outside the parent repository. A standalone
+    nested repository (real ``.git`` directory) reads only inside the
+    project tree; a ``.git`` file must resolve back inside the parent's
+    git directory. Any uncertifiable gitlink fails closed as dirty
+    without being entered.
+    """
+    path = raw_to_path(raw)
+    full = os.path.join(root, path)
+    try:
+        info = os.lstat(full)
+    except OSError:
+        return False
+    if not stat.S_ISDIR(info.st_mode):
+        return False
+    git_file = os.path.join(full, ".git")
+    try:
+        git_info = os.lstat(git_file)
+    except OSError:
+        return False
+    if stat.S_ISDIR(git_info.st_mode):
+        return True
+    if not stat.S_ISREG(git_info.st_mode):
+        return False
+    try:
+        with open(git_file, "rb") as handle:
+            data = handle.read(64 * 1024)
+    except OSError:
+        return False
+    _remaining(deadline)
+    for line in data.split(b"\n"):
+        if not line.startswith(b"gitdir:"):
+            continue
+        value = line[len(b"gitdir:") :].strip()
+        if not value:
+            return False
+        decoded = os.fsdecode(value)
+        resolved = decoded if os.path.isabs(decoded) else os.path.join(full, decoded)
+        real_resolved = os.path.realpath(resolved)
+        real_git = os.path.realpath(git_dir)
+        try:
+            return os.path.commonpath((real_git, real_resolved)) == real_git
+        except ValueError:
+            return False
+    return False
+
+
 def _dirty_gitlink_probes_readonly(
     root: str, index_entries: dict[bytes, bytes], deadline: float
 ) -> set[bytes]:
@@ -245,12 +298,24 @@ def _dirty_gitlink_probes_readonly(
     oid or its worktree has changes. The frozen oracle re-checks this via
     stat-cache invalidation; the zero-write oracle reproduces it with
     bounded read-only nested git calls. A submodule that cannot certify
-    its HEAD (uninitialized/broken) fails closed as dirty.
+    its HEAD (uninitialized/broken) fails closed as dirty; a gitlink that
+    cannot be probed inside the project boundary is conservatively dirty
+    and is never entered.
     """
+    git_dir = _git_output_readonly(
+        root, ["rev-parse", "--git-dir"], deadline=deadline, limit=64 * 1024
+    )
+    git_dir = _strip_one_record_terminator(git_dir)
+    decoded_git_dir = os.fsdecode(git_dir)
+    if not os.path.isabs(decoded_git_dir):
+        decoded_git_dir = os.path.join(root, decoded_git_dir)
     dirty: set[bytes] = set()
     for raw in sorted(index_entries):
         entry = index_entries[raw]
         if not entry.startswith(b"160000 "):
+            continue
+        if not _gitlink_probe_safe(root, decoded_git_dir, raw, deadline):
+            dirty.add(raw)
             continue
         path = raw_to_path(raw)
         index_oid = entry.split(b" ")[1]
@@ -281,7 +346,11 @@ def _hinted_paths(index_bytes: bytes, object_format: str, max_paths: int) -> set
     The frozen oracle's stat-cache invalidation preserves these bits, so
     hinted entries are never dirty and their content is never framed; the
     P0.4 oracle must replicate that from the captured index bytes
-    (Codex #1293 P1). Supports index v2/v3; v4 fails closed.
+    (Codex #1293 P1). Assume-unchanged lives in the base flags; the
+    skip-worktree bit lives in the *extended* flags word, so entries with
+    the extended marker (including intent-to-add, whose extended
+    CE_INTENT_TO_ADD bit must NOT count as a hint) are read correctly.
+    Supports index v2/v3; v4 fails closed.
     """
     del max_paths
     if not index_bytes:
@@ -302,11 +371,18 @@ def _hinted_paths(index_bytes: bytes, object_format: str, max_paths: int) -> set
             index_bytes[offset + flags_offset : offset + flags_offset + 2], "big"
         )
         extended_offset = offset + flags_offset + 2
+        extended = 0
+        if flags & 0x4000:
+            if extended_offset + 2 > content_end:
+                raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+            extended = int.from_bytes(
+                index_bytes[extended_offset : extended_offset + 2], "big"
+            )
         path_start = extended_offset + (2 if flags & 0x4000 else 0)
         path_end = index_bytes.find(b"\0", path_start)
         if path_end < 0 or path_end >= content_end:
             raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        if flags & (0x8000 | 0x4000):
+        if flags & 0x8000 or extended & 0x4000:
             hinted.add(index_bytes[path_start:path_end])
         fixed = 62 + (2 if flags & 0x4000 else 0)
         offset = offset + ((fixed + (path_end - path_start) + 1 + 7) & ~7)

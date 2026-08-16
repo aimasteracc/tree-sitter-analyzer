@@ -32,6 +32,7 @@ Equivalence contract (proved by the differential golden suite in
 
 from __future__ import annotations
 
+import hashlib
 import os
 
 from .diff_snapshot_capture import (
@@ -51,6 +52,7 @@ from .source_oracle import (
     SafePath,
     SourceOracleError,
     WorkspaceManifestEntry,
+    _remaining,
     safe_workspace_path,
 )
 from .source_oracle_git import GitEpoch
@@ -154,32 +156,93 @@ def _readonly_binaries(
     return result
 
 
+_QUOTE_SHORTHAND = {
+    0x07: b"\\a",
+    0x08: b"\\b",
+    0x0C: b"\\f",
+    0x0A: b"\\n",
+    0x0D: b"\\r",
+    0x09: b"\\t",
+    0x0B: b"\\v",
+    0x5C: b"\\\\",
+    0x22: b'\\"',
+}
+_UNQUOTE_SHORTHAND = {
+    b"a": 0x07,
+    b"b": 0x08,
+    b"f": 0x0C,
+    b"n": 0x0A,
+    b"r": 0x0D,
+    b"t": 0x09,
+    b"v": 0x0B,
+    b"\\": 0x5C,
+    b'"': 0x22,
+}
+
+
 def _git_quote_path(raw: bytes) -> bytes:
-    """Quote one path for a synthetic diff header (git ``quote_c_style``)."""
+    """Quote one path for a synthetic diff header (git ``quote_c_style``).
+
+    Git quotes the whole ``a/<path>`` token (prefix included) when any
+    byte needs quoting; spaces are never quoted, so callers pass the
+    prefixed path when emitting ``diff --git`` headers.
+    """
     needs = any(value < 0x20 or value > 0x7E or value in (0x22, 0x5C) for value in raw)
     if not needs:
         return raw
     out = bytearray(b'"')
-    shorthand = {
-        0x07: b"\\a",
-        0x08: b"\\b",
-        0x0C: b"\\f",
-        0x0A: b"\\n",
-        0x0D: b"\\r",
-        0x09: b"\\t",
-        0x0B: b"\\v",
-        0x5C: b"\\\\",
-        0x22: b'\\"',
-    }
     for value in raw:
-        if value in shorthand:
-            out.extend(shorthand[value])
+        if value in _QUOTE_SHORTHAND:
+            out.extend(_QUOTE_SHORTHAND[value])
         elif value < 0x20 or value > 0x7E:
             out.extend(f"\\{value:03o}".encode("ascii"))
         else:
             out.append(value)
     out.append(0x22)
     return bytes(out)
+
+
+def _git_unquote(raw: bytes) -> bytes:
+    """Decode one git C-quoted token (the inverse of ``quote_c_style``)."""
+    if not raw.startswith(b'"') or not raw.endswith(b'"'):
+        return raw
+    body = raw[1:-1]
+    out = bytearray()
+    index = 0
+    while index < len(body):
+        value = body[index]
+        if value != 0x5C:
+            out.append(value)
+            index += 1
+            continue
+        index += 1
+        if index >= len(body):
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        escape = body[index : index + 1]
+        if escape in _UNQUOTE_SHORTHAND:
+            out.append(_UNQUOTE_SHORTHAND[escape])
+            index += 1
+            continue
+        octal = body[index : index + 3]
+        if len(octal) == 3 and all(0x30 <= value <= 0x37 for value in octal):
+            out.append(int(octal, 8))
+            index += 3
+            continue
+        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    return bytes(out)
+
+
+def _quoted_token_end(raw: bytes, start: int) -> int:
+    """Return the index just past an unescaped closing quote from ``start``."""
+    index = start
+    while index < len(raw):
+        if raw[index] == 0x5C:
+            index += 2
+            continue
+        if raw[index] == 0x22:
+            return index + 1
+        index += 1
+    raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
 
 
 def _no_index_new_file_patch(
@@ -227,21 +290,50 @@ def _reject_worktree_conversion(
     ``hash-object --path``, so its published ``new_bytes`` are the
     *cleaned* bytes (autocrlf/eol/encoding conversions applied). The
     zero-write backend publishes raw worktree bytes; those are equal only
-    when no checkin conversion applies. Conversions can only alter a
-    non-binary file that already contains CRLF, so the guard is: any such
-    file plus an active conversion configuration (``core.autocrlf``,
-    ``eol`` attribute, or ``working-tree-encoding`` attribute) fails the
-    route closed with a stable code.
+    when no checkin conversion applies. ``working-tree-encoding`` and
+    ``ident`` can alter any content (UTF-16 files, expanded ``$Id$``
+    markers), so they are probed for every materialized path;
+    ``core.autocrlf``/``eol`` only alter non-binary files that already
+    contain CRLF, so the CRLF guard scopes those probes.
     """
-    candidates = sorted(
+    materialized = sorted(
         (raw, safe)
         for raw, safe in safe_paths.items()
-        if safe.kind in ("file", "symlink")
-        and safe.data is not None
-        and not _is_binary(safe.data)
-        and b"\r\n" in safe.data
+        if safe.kind in ("file", "symlink") and safe.data is not None
     )
-    if not candidates:
+    if not materialized:
+        return
+    attr_input = b"".join(raw + b"\0" for raw, _safe in materialized)
+    attributes = _live_index_output(
+        root,
+        b"",
+        ["check-attr", "-z", "working-tree-encoding", "ident", "eol", "--stdin"],
+        deadline=deadline,
+        limit=16 * 1024 * 1024,
+        input_=attr_input,
+    )
+    tokens = [token for token in attributes.split(b"\0") if token]
+    if len(tokens) % 3 != 0:
+        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    per_path: dict[bytes, dict[bytes, bytes]] = {}
+    for index in range(0, len(tokens), 3):
+        path, attr, value = tokens[index : index + 3]
+        per_path.setdefault(path, {})[attr] = value
+    for raw, _safe in materialized:
+        attrs = per_path.get(raw, {})
+        if attrs.get(b"working-tree-encoding", b"unspecified") not in (
+            b"unspecified",
+            b"unset",
+        ):
+            raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_CONVERSION")
+        if attrs.get(b"ident") == b"set":
+            raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_CONVERSION")
+    crlf_candidates: list[tuple[bytes, SafePath]] = []
+    for raw, safe in materialized:
+        data = safe.data
+        if data is not None and not _is_binary(data) and b"\r\n" in data:
+            crlf_candidates.append((raw, safe))
+    if not crlf_candidates:
         return
     config_list = _git_output_readonly(
         root,
@@ -257,26 +349,8 @@ def _reject_worktree_conversion(
         settings[key.lower()] = value.strip()
     if settings.get(b"core.autocrlf", b"false").lower() in (b"true", b"input"):
         raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_CONVERSION")
-    attr_input = b"".join(raw + b"\0" for raw, _safe in candidates)
-    attributes = _live_index_output(
-        root,
-        b"",
-        ["check-attr", "-z", "eol", "working-tree-encoding", "--stdin"],
-        deadline=deadline,
-        limit=16 * 1024 * 1024,
-        input_=attr_input,
-    )
-    tokens = [token for token in attributes.split(b"\0") if token]
-    if len(tokens) % 3 != 0:
-        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-    for index in range(0, len(tokens), 3):
-        _path, attr, value = tokens[index : index + 3]
-        if attr == b"eol" and value in (b"crlf", b"lf"):
-            raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_CONVERSION")
-        if attr == b"working-tree-encoding" and value not in (
-            b"unspecified",
-            b"unset",
-        ):
+    for raw, _safe in crlf_candidates:
+        if per_path.get(raw, {}).get(b"eol") in (b"crlf", b"lf"):
             raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_CONVERSION")
 
 
@@ -312,9 +386,13 @@ def _pair_exact_renames(
     The live ``git diff`` queue never contains untracked paths, so git
     cannot detect worktree renames for it; the frozen backend's temporary
     index does contain them and reports content-identical moves as
-    ``R100``. This replicates the exact-rename half with a deterministic
-    greedy pairing; content-modified moves stay delete+add pairs (a
-    documented divergence from the frozen inexact ``R``).
+    ``R100``. This replicates the exact-rename half with content hashing:
+    a pair is formed only when exactly one deleted file and one added file
+    share the content hash (Git's own tie-breaking for ambiguous identical
+    candidates is not reproduced, so ambiguous matches stay delete+add
+    pairs rather than guessing a wrong lineage). Content-modified moves
+    stay delete+add pairs (a documented divergence from the frozen
+    inexact ``R``). Matching is O(n) and deadline-bounded.
     """
     deleted = [
         row for row in rows if row[0] == "D" and (row[1] or row[2]) in index_entries
@@ -323,22 +401,38 @@ def _pair_exact_renames(
     if not deleted or not added:
         return rows
     added_paths = {row[2] for row in added}
-    pairs: dict[bytes, bytes] = {}
-    used: set[bytes] = set()
+    hasher = hashlib.sha256
+    added_hashes: dict[bytes, bytes] = {}
+    for _status, _old_raw, raw in added:
+        safe = safe_paths[raw]
+        if safe.kind in ("file", "symlink") and safe.data is not None:
+            added_hashes[raw] = hasher(safe.data).digest()
+        _remaining(deadline)
+    deleted_hashes: dict[bytes, bytes] = {}
     for _status, old_raw, raw in deleted:
         lookup = old_raw or raw
         mode, oid, kind = _entry_parts(index_entries[lookup])
-        old = _blob_readonly(root, oid, kind, deadline, limit)
-        if old is None:
+        blob = _blob_readonly(root, oid, kind, deadline, limit)
+        if blob is not None:
+            deleted_hashes[lookup] = hasher(blob).digest()
+        _remaining(deadline)
+    members_by_hash: dict[bytes, list[bytes]] = {}
+    for path, digest in added_hashes.items():
+        members_by_hash.setdefault(digest, []).append(path)
+    for path, digest in deleted_hashes.items():
+        members_by_hash.setdefault(digest, []).append(path)
+    pairs: dict[bytes, bytes] = {}
+    used: set[bytes] = set()
+    for _digest, members in members_by_hash.items():
+        if len(members) != 2:
             continue
-        for _new_status, _new_old, new_raw in added:
-            if new_raw in used:
-                continue
-            safe = safe_paths[new_raw]
-            if safe.data == old:
-                pairs[lookup] = new_raw
-                used.add(new_raw)
-                break
+        deleted_members = [path for path in members if path in deleted_hashes]
+        added_members = [path for path in members if path in added_hashes]
+        if len(deleted_members) == 1 and len(added_members) == 1:
+            if added_members[0] not in used:
+                pairs[deleted_members[0]] = added_members[0]
+                used.add(added_members[0])
+        _remaining(deadline)
     if not pairs:
         return rows
     result: list[tuple[str, bytes | None, bytes]] = []
@@ -367,6 +461,9 @@ def _patch_section_paths(patch: bytes) -> dict[bytes, bytes]:
     Returns ``{destination_raw: section_without_trailing_newline}`` so the
     zero-write backend can drop delete sections consumed by renames and
     merge synthetic untracked sections in git's destination-path order.
+    Git never quotes spaces, so unquoted headers are split on the literal
+    `` b/`` separator (git's own parsing convention); quoted tokens are
+    C-unquoted with their ``a/`` prefix inside the quotes.
     """
     sections: dict[bytes, bytes] = {}
     for token in patch.split(b"\ndiff --git "):
@@ -378,34 +475,75 @@ def _patch_section_paths(patch: bytes) -> dict[bytes, bytes]:
             if first_line.startswith(b"diff --git ")
             else b"diff --git " + first_line
         )
-        body = body[len(b"diff --git ") :]
-        if body.startswith(b'"'):
-            end = body.find(b'"', 1)
-            if end < 0:
+        rest = body[len(b"diff --git ") :]
+        if rest.startswith(b'"'):
+            end = _quoted_token_end(rest, 1)
+            first = rest[1 : end - 1]
+            second_start = end
+            if second_start >= len(rest) or rest[second_start] != 0x20:
                 raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-            first = body[1:end]
+            second = rest[second_start + 1 :]
+            if not second.startswith(b'"'):
+                raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+            second = second[1 : _quoted_token_end(second, 1) - 1]
+            if not second.startswith(b"b/"):
+                raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+            first = _git_unquote(first)
         else:
-            first = body.split(b" ", 1)[0]
+            marker = rest.find(b" b/")
+            if marker < 0:
+                raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+            first = rest[:marker]
         if not first.startswith(b"a/"):
             raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        destination = first[2:]
+        destination = _git_unquote(first[2:])
         sections.setdefault(destination, _strip_one_newline(token))
     return sections
 
 
-def _synthesize_rename_section(old_raw: bytes, new_raw: bytes) -> bytes:
-    """Byte-identical 100%-rename section header body."""
-    return (
-        b"diff --git a/"
-        + _git_quote_path(old_raw)
-        + b" b/"
-        + _git_quote_path(new_raw)
-        + b"\nsimilarity index 100%\nrename from "
+def _rewrite_new_file_mode(section: bytes, mode: bytes) -> bytes:
+    """Align a synthetic new-file section's mode line with the record mode."""
+    marker = b"new file mode "
+    index = section.find(marker)
+    if index < 0:
+        return section
+    end = section.find(b"\n", index)
+    if end < 0:
+        return section
+    replacement = marker + mode
+    if section[index:end] == replacement:
+        return section
+    return section[:index] + replacement + section[end:]
+
+
+def _synthesize_rename_section(
+    old_raw: bytes,
+    new_raw: bytes,
+    old_mode: bytes | None = None,
+    new_mode: bytes | None = None,
+) -> bytes:
+    """Byte-identical 100%-rename section header body.
+
+    Git emits the mode-change lines before the similarity/rename lines,
+    and quotes each ``a/``/``b/``-prefixed header token as one unit.
+    """
+    header = (
+        b"diff --git "
+        + _git_quote_path(b"a/" + old_raw)
+        + b" "
+        + _git_quote_path(b"b/" + new_raw)
+    )
+    body = bytearray(header)
+    if old_mode is not None and new_mode is not None and old_mode != new_mode:
+        body.extend(b"\nold mode " + old_mode + b"\nnew mode " + new_mode)
+    body.extend(
+        b"\nsimilarity index 100%\nrename from "
         + _git_quote_path(old_raw)
         + b"\nrename to "
         + _git_quote_path(new_raw)
         + b"\n"
     )
+    return bytes(body)
 
 
 def capture_payload_readonly(
@@ -527,6 +665,31 @@ def capture_payload_readonly(
             for raw in safe_paths
             if (data := safe_paths[raw].data) is not None and _is_binary(data)
         )
+        # Untracked binary classification honors the effective ``diff``
+        # attribute (``binary``/``-diff`` mark a path binary even without a
+        # NUL byte), matching numstat's semantics for tracked rows.
+        untracked_attr_paths = sorted(
+            raw
+            for raw in safe_paths
+            if raw not in index_entries and safe_paths[raw].kind in ("file", "symlink")
+        )
+        if untracked_attr_paths:
+            attr_input = b"".join(raw + b"\0" for raw in untracked_attr_paths)
+            diff_attrs = _live_index_output(
+                root,
+                b"",
+                ["check-attr", "-z", "diff", "--stdin"],
+                deadline=deadline,
+                limit=16 * 1024 * 1024,
+                input_=attr_input,
+            )
+            diff_tokens = [t for t in diff_attrs.split(b"\0") if t]
+            if len(diff_tokens) % 3 != 0:
+                raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+            for index in range(0, len(diff_tokens), 3):
+                token_path, attr, value = diff_tokens[index : index + 3]
+                if attr == b"diff" and value == b"unset":
+                    binaries.add(token_path)
         tracked_patch = _live_index_output(
             root,
             b"",
@@ -559,12 +722,29 @@ def capture_payload_readonly(
         synthetic: dict[bytes, bytes] = {}
         for status, old_raw, raw in rows:
             if status == "R":
-                synthetic[raw] = _synthesize_rename_section(old_raw or raw, raw)
+                lookup = old_raw or raw
+                old_mode = _entry_parts(index_entries.get(lookup))[0]
+                new_mode = _entry_parts(workspace_entries.get(raw))[0]
+                synthetic[raw] = _synthesize_rename_section(
+                    lookup,
+                    raw,
+                    old_mode.encode("ascii") if old_mode is not None else None,
+                    new_mode.encode("ascii") if new_mode is not None else None,
+                )
             elif status == "A" and raw in safe_paths and raw not in sections:
-                synthetic[raw] = _no_index_new_file_patch(
+                new_file = _no_index_new_file_patch(
                     root, raw, deadline, min(64 * 1024 * 1024, remaining)
                 )
-                remaining -= len(synthetic[raw])
+                # ``git diff --no-index`` reads the filesystem mode, but the
+                # published record carries the epoch-derived mode
+                # (core.filemode=false normalizes to 100644); align the
+                # header so the snapshot cannot contradict itself.
+                workspace_mode = workspace_entries.get(raw)
+                if workspace_mode is not None:
+                    derived = workspace_mode.split(b" ", 1)[0]
+                    new_file = _rewrite_new_file_mode(new_file, derived)
+                synthetic[raw] = new_file
+                remaining -= len(new_file)
         assembled: list[bytes] = []
         for raw in sorted(set(sections) | set(synthetic)):
             section = synthetic.get(raw, sections.get(raw))

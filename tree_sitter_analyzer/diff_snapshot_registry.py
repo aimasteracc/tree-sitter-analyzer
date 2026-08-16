@@ -78,6 +78,15 @@ def shared_source_generation(project_root: str, deadline: float) -> str:
     )
 
 
+def shared_source_generation_readonly(project_root: str, deadline: float) -> str:
+    """P0.4 variant: resolve the shared token through the zero-write oracle."""
+    return resolve_shared_source_generation(
+        project_root,
+        deadline,
+        oracle_generation=oracle_generation_readonly,
+    )
+
+
 @dataclass
 class _State:
     snapshot: FrozenDiffSnapshot
@@ -385,6 +394,7 @@ class DiffSnapshotRegistry:
                 constraint_config_error=constraint_config_error,
                 staged_source_matches_worktree=staged_source_matches_worktree,
                 staged_config_matches_worktree=staged_config_matches_worktree,
+                readonly=readonly,
                 _inventory_raw_paths=tuple(
                     sorted(path_to_raw(path) for path in inventory_paths)
                 ),
@@ -435,12 +445,21 @@ class DiffSnapshotRegistry:
         *,
         deadline: float | None = None,
     ) -> tuple[SnapshotConsumer | None, str | None]:
+        with self._lock:
+            state = self._states.get(snapshot_id)
+            readonly = bool(state is not None and state.snapshot.readonly)
+        oracle = oracle_generation_readonly if readonly else oracle_generation
+        shared = (
+            shared_source_generation_readonly
+            if readonly
+            else shared_source_generation
+        )
         return acquire_snapshot(
             self,
             snapshot_id,
             project_root,
-            oracle_generation=oracle_generation,
-            shared_source_generation=shared_source_generation,
+            oracle_generation=oracle,
+            shared_source_generation=shared,
             hard_lifetime_seconds=HARD_LIFETIME_SECONDS,
             canonicalize_root=canonical_root,
             deadline=deadline,
@@ -466,12 +485,20 @@ class DiffSnapshotRegistry:
         *,
         deadline: float | None = None,
     ) -> str | None:
+        snapshot = consumer.snapshot
+        readonly = bool(snapshot is not None and snapshot.readonly)
+        oracle = oracle_generation_readonly if readonly else oracle_generation
+        shared = (
+            shared_source_generation_readonly
+            if readonly
+            else shared_source_generation
+        )
         return validate_snapshot_publish(
             self,
             consumer,
             publish_guard,
-            oracle_generation=oracle_generation,
-            shared_source_generation=shared_source_generation,
+            oracle_generation=oracle,
+            shared_source_generation=shared,
             hard_lifetime_seconds=HARD_LIFETIME_SECONDS,
             deadline=deadline,
         )

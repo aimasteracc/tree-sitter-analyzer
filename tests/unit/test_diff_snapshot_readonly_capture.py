@@ -525,3 +525,187 @@ def test_registry_scoped_snapshots_match(git_repo: str) -> None:
     assert frozen["source_generation"] == readonly["source_generation"]
     assert frozen["changed_records"] == readonly["changed_records"]
     assert frozen["assessed_scope_paths"] == readonly["assessed_scope_paths"]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_intent_to_add_payloads_match(git_repo: str) -> None:
+    """``git add -N`` paths carry real worktree bytes, not the placeholder."""
+    Path(git_repo, "ita.py").write_text("new content\n", encoding="utf-8")
+    subprocess.run(["git", "-C", git_repo, "add", "-N", "ita.py"], check=True)
+    _assert_equal_payloads(git_repo, "diff", 1)
+
+
+@POSIX_SNAPSHOT_TEST
+def test_quoted_header_paths_match(git_repo: str) -> None:
+    """A path needing C quoting round-trips through the section parser."""
+    tab_path = Path(git_repo, "tab\tname.py")
+    tab_path.write_text("x\n", encoding="utf-8")
+    subprocess.run(["git", "-C", git_repo, "add", "."], check=True)
+    subprocess.run(["git", "-C", git_repo, "commit", "-qm", "tab"], check=True)
+    tab_path.write_text("y\n", encoding="utf-8")
+    _assert_equal_payloads(git_repo, "diff", 1)
+
+
+@POSIX_SNAPSHOT_TEST
+def test_space_paths_sections_do_not_collide(git_repo: str) -> None:
+    """Unquoted space-containing headers keep distinct section keys."""
+    Path(git_repo, "a b.py").write_text("two\n", encoding="utf-8")
+    Path(git_repo, "a c.py").write_text("three\n", encoding="utf-8")
+    subprocess.run(["git", "-C", git_repo, "add", "."], check=True)
+    subprocess.run(["git", "-C", git_repo, "commit", "-qm", "spaces"], check=True)
+    Path(git_repo, "a b.py").write_text("two2\n", encoding="utf-8")
+    _assert_equal_payloads(git_repo, "diff", 1)
+
+
+@POSIX_SNAPSHOT_TEST
+def test_exact_rename_with_mode_change_payloads_match(git_repo: str) -> None:
+    """R100 sections carry old/new mode lines when the mode changed."""
+    script = Path(git_repo, "m.sh")
+    script.write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
+    script.chmod(0o755)
+    subprocess.run(["git", "-C", git_repo, "add", "."], check=True)
+    subprocess.run(["git", "-C", git_repo, "commit", "-qm", "m"], check=True)
+    os.rename(script, Path(git_repo, "n.sh"))
+    Path(git_repo, "n.sh").chmod(0o644)
+    _assert_equal_payloads(git_repo, "diff", 1)
+
+
+@POSIX_SNAPSHOT_TEST
+def test_ambiguous_identical_moves_stay_delete_add(git_repo: str) -> None:
+    """Ambiguous exact-rename candidates are not paired by guessing."""
+    Path(git_repo, "x.py").write_text("same\n", encoding="utf-8")
+    Path(git_repo, "y.py").write_text("same\n", encoding="utf-8")
+    subprocess.run(["git", "-C", git_repo, "add", "."], check=True)
+    subprocess.run(["git", "-C", git_repo, "commit", "-qm", "two"], check=True)
+    os.rename(Path(git_repo, "x.py"), Path(git_repo, "x2.py"))
+    os.rename(Path(git_repo, "y.py"), Path(git_repo, "y2.py"))
+    _readonly_epochs: list[GitEpoch] = []
+    manifest: dict = {}
+    oracle_generation_readonly(
+        git_repo, "diff", manifest=manifest, epoch_out=_readonly_epochs
+    )
+    _patch, files = capture_payload_readonly(
+        git_repo,
+        "diff",
+        time.monotonic() + 60.0,
+        _BUDGET,
+        expected_manifest=manifest,
+        epoch=_readonly_epochs[0],
+    )
+    assert sorted(file.record.status for file in files) == ["A", "A", "D", "D"]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_filemode_false_untracked_exec_payloads_match(git_repo: str) -> None:
+    subprocess.run(
+        ["git", "-C", git_repo, "config", "core.filemode", "false"], check=True
+    )
+    script = Path(git_repo, "run.sh")
+    script.write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
+    script.chmod(0o755)
+    _assert_equal_payloads(git_repo, "diff", 1)
+
+
+@POSIX_SNAPSHOT_TEST
+def test_working_tree_encoding_fails_closed_without_crlf(git_repo: str) -> None:
+    Path(git_repo, ".gitattributes").write_text(
+        "*.txt working-tree-encoding=UTF-16LE\n", encoding="utf-8"
+    )
+    Path(git_repo, "data.txt").write_text("hello\n", encoding="utf-8")
+    _readonly_epochs: list[GitEpoch] = []
+    manifest: dict = {}
+    oracle_generation_readonly(
+        git_repo, "diff", manifest=manifest, epoch_out=_readonly_epochs
+    )
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_UNSUPPORTED_CONVERSION"):
+        capture_payload_readonly(
+            git_repo,
+            "diff",
+            time.monotonic() + 60.0,
+            _BUDGET,
+            expected_manifest=manifest,
+            epoch=_readonly_epochs[0],
+        )
+
+
+@POSIX_SNAPSHOT_TEST
+def test_ident_attribute_fails_closed(git_repo: str) -> None:
+    Path(git_repo, ".gitattributes").write_text("*.c ident\n", encoding="utf-8")
+    Path(git_repo, "main.c").write_text("$Id$\n", encoding="utf-8")
+    _readonly_epochs: list[GitEpoch] = []
+    manifest: dict = {}
+    oracle_generation_readonly(
+        git_repo, "diff", manifest=manifest, epoch_out=_readonly_epochs
+    )
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_UNSUPPORTED_CONVERSION"):
+        capture_payload_readonly(
+            git_repo,
+            "diff",
+            time.monotonic() + 60.0,
+            _BUDGET,
+            expected_manifest=manifest,
+            epoch=_readonly_epochs[0],
+        )
+
+
+@POSIX_SNAPSHOT_TEST
+def test_untracked_diff_attribute_binary_matches(git_repo: str) -> None:
+    """``*.dat binary`` marks an untracked NUL-free file binary."""
+    Path(git_repo, ".gitattributes").write_text("*.dat binary\n", encoding="utf-8")
+    Path(git_repo, "blob.dat").write_text("plain text no nul\n", encoding="utf-8")
+    # .gitattributes is itself untracked: two added records, one binary.
+    _assert_equal_payloads(git_repo, "diff", 2)
+
+
+@POSIX_SNAPSHOT_TEST
+def test_skip_worktree_entry_matches(git_repo: str) -> None:
+    Path(git_repo, "sw.py").write_text("hidden\n", encoding="utf-8")
+    subprocess.run(["git", "-C", git_repo, "add", "."], check=True)
+    subprocess.run(["git", "-C", git_repo, "commit", "-qm", "sw"], check=True)
+    subprocess.run(
+        ["git", "-C", git_repo, "update-index", "--skip-worktree", "sw.py"],
+        check=True,
+    )
+    Path(git_repo, "sw.py").write_text("changed\n", encoding="utf-8")
+    Path(git_repo, "base.py").write_text("value = 2\n", encoding="utf-8")
+    _assert_equal_payloads(git_repo, "diff", 1)
+
+
+@POSIX_SNAPSHOT_TEST
+def test_readonly_revalidation_uses_readonly_oracle(git_repo: str) -> None:
+    """acquire/validate_publish revalidate readonly snapshots zero-write."""
+    import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+
+    Path(git_repo, "base.py").write_text("value = 2\n", encoding="utf-8")
+    snapshots.reset_registry()
+    created = snapshots.REGISTRY.create(git_repo, "diff", [], readonly=True)
+    assert created.get("success"), created
+    frozen_calls: list[str] = []
+    readonly_calls: list[str] = []
+    original_frozen = snapshots.oracle_generation
+    original_readonly = snapshots.oracle_generation_readonly
+
+    @__import__("functools").wraps(original_frozen)
+    def spy_frozen(*args, **kwargs):
+        frozen_calls.append("frozen")
+        return original_frozen(*args, **kwargs)
+
+    @__import__("functools").wraps(original_readonly)
+    def spy_readonly(*args, **kwargs):
+        readonly_calls.append("readonly")
+        return original_readonly(*args, **kwargs)
+
+    monkeypatch = __import__("pytest").MonkeyPatch()
+    monkeypatch.setattr(snapshots, "oracle_generation", spy_frozen)
+    monkeypatch.setattr(snapshots, "oracle_generation_readonly", spy_readonly)
+    try:
+        consumer, error = snapshots.REGISTRY.acquire(
+            str(created["diff_snapshot_id"]), git_repo
+        )
+        assert error is None and consumer is not None
+        assert snapshots.REGISTRY.validate_publish(consumer) is None
+        consumer.release()
+    finally:
+        monkeypatch.undo()
+    assert frozen_calls == []
+    assert readonly_calls
