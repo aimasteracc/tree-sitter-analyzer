@@ -450,10 +450,12 @@ async def test_edit_impact_read_existing_producer_publishes_snapshot(
     (tmp_path / "inside.py").write_text("value = 2\n")
     (tmp_path / "new.py").write_text("x = 1\n")
 
+    arguments = dict(_READ_EXISTING_ROUTE_ARGS["impact"])
+    arguments["scope_paths"] = []
     result = await build_edit_facade(str(tmp_path)).execute(
         {
             "action": "impact",
-            **_READ_EXISTING_ROUTE_ARGS["impact"],
+            **arguments,
             "output_format": "json",
         }
     )

@@ -485,7 +485,9 @@ class DiffSnapshotRegistry:
         *,
         deadline: float | None = None,
     ) -> str | None:
-        snapshot = consumer.snapshot
+        # ``_snapshot`` (not the raising property) so a released consumer
+        # still classifies through the registry state checks below.
+        snapshot = consumer._snapshot
         readonly = bool(snapshot is not None and snapshot.readonly)
         oracle = oracle_generation_readonly if readonly else oracle_generation
         shared = (
