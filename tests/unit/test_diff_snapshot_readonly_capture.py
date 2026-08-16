@@ -516,6 +516,7 @@ def test_registry_staged_mode_snapshots_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@pytest.mark.slow_ok  # real git diff capture x2; brushes the 5s budget under --cov
 def test_registry_scoped_snapshots_match(git_repo: str) -> None:
     Path(git_repo, "base.py").write_text("value = 2\n", encoding="utf-8")
     Path(git_repo, "new.py").write_text("x = 1\n", encoding="utf-8")
