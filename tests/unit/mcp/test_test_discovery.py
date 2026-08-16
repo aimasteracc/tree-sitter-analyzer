@@ -4,6 +4,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from tree_sitter_analyzer.mcp.tools.utils.test_discovery import (
     detect_language_from_ext,
     find_test_files,
@@ -690,6 +692,54 @@ class TestFindTestFilesJavascript:
             assert any("utils.test.js" in r for r in results)
 
 
+@pytest.mark.parametrize(
+    ("target", "expected"),
+    [
+        ("handler_test.go", ["handler_test.go"]),
+        ("lib_test.rs", ["lib_test.rs"]),
+        ("CalcTest.java", ["CalcTest.java"]),
+        ("app.test.js", ["app.test.js"]),
+        ("app.test.ts", ["app.test.ts"]),
+        ("test_util.c", ["test_util.c"]),
+        ("test_util.cpp", ["test_util.cpp"]),
+        ("CalcTest.cs", ["CalcTest.cs"]),
+        ("CalcTest.kt", ["CalcTest.kt"]),
+        ("calc_test.rb", ["calc_test.rb"]),
+        ("CalcTest.php", ["CalcTest.php"]),
+    ],
+)
+def test_certified_test_files_cross_language_conventions(
+    target: str, expected: list[str]
+) -> None:
+    """Round-6 (C27): a test-named target counts in every language."""
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_test_files,
+    )
+
+    found = _certified_test_files(frozenset({target}), target)
+    assert found == expected
+
+
+def test_looks_like_test_name_unknown_language_is_false() -> None:
+    """An unknown language is never treated as a test-name convention."""
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _looks_like_test_name,
+    )
+
+    assert _looks_like_test_name("test_x.py", "futurelang") is False
+    assert _looks_like_test_name("test_x.py", "python") is True
+    assert _looks_like_test_name("app.py", "python") is False
+
+
+def test_certified_test_files_rejects_non_test_target() -> None:
+    """A non-test target is not its own test file."""
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_test_files,
+    )
+
+    assert _certified_test_files(frozenset({"app.py"}), "app.py") == []
+
+
 def test_certified_test_files_walk_inventory_only() -> None:
     """Codex P1 (#1299 round-3/4): certified discovery walks the inventory."""
     from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
@@ -726,3 +776,17 @@ def test_certified_test_files_walk_inventory_only() -> None:
         frozenset({"handler.go", "handler_test.go"}), "handler.go"
     )
     assert go_tests == ["handler_test.go"]
+
+    # Round-6 (C27): a target that is itself a test file counts, and
+    # inventory-covered dependents matching the test patterns count
+    # (symbol-reference mode over certified inputs).
+    self_test = _certified_test_files(
+        frozenset({"tests/test_app.py", "src/app.py"}), "tests/test_app.py"
+    )
+    assert self_test == ["tests/test_app.py"]
+    dep_tests = _certified_test_files(
+        frozenset({"src/app.py", "tests/test_app.py", "tests/test_routes.py"}),
+        "src/app.py",
+        dependents=["tests/test_routes.py"],
+    )
+    assert dep_tests == ["tests/test_app.py", "tests/test_routes.py"]

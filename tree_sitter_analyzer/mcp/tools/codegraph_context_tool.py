@@ -358,6 +358,12 @@ class CodeGraphContextTool(BaseMCPTool):
 
             if nodes:
                 nodes = self._expand_nodes(nodes, task, max_nodes, graph=edge_store)
+                # Codex P1 (#1299 round-6): graph expansion can surface node
+                # paths that are absolute or contain '..' (encoded in edge
+                # metadata); those are outside the certified snapshot root —
+                # drop them before any code-block read so no uncertified or
+                # out-of-scope file bytes are served.
+                nodes = [n for n in nodes if _snapshot_certified_node_path(n)]
                 edges = self._build_edges(nodes, graph=edge_store)
 
             code_blocks = _build_code_blocks(
@@ -1094,6 +1100,24 @@ def _edge_degrees(
         if edge["target"] in degrees:
             degrees[edge["target"]] += 1
     return degrees
+
+
+def _snapshot_certified_node_path(node: dict[str, Any]) -> bool:
+    """Return whether one nav node's file path is snapshot-certified.
+
+    The certified route serves code blocks only for relative, in-root file
+    paths: absolute paths and ``..`` segments (which can be encoded in edge
+    metadata) would read bytes outside the snapshot's canonical root
+    (Codex P1 #1299 round-6).
+    """
+
+    file_path = node.get("file")
+    if not isinstance(file_path, str) or not file_path:
+        return False
+    normalized = file_path.replace("\\", "/")
+    if normalized.startswith("/") or ".." in normalized.split("/"):
+        return False
+    return True
 
 
 def _unique_files(nodes: list[dict[str, Any]]) -> list[str]:

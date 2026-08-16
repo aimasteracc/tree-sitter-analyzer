@@ -1900,6 +1900,22 @@ def test_next_step_lean_entry_points_without_code() -> None:
     assert "include_graph=true" in msg
 
 
+def test_snapshot_certified_node_path_rejects_unsafe_files() -> None:
+    """Codex P1 round-6 (C29): only relative in-root paths are certified."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _snapshot_certified_node_path,
+    )
+
+    assert _snapshot_certified_node_path({"file": "src/app.py"}) is True
+    assert _snapshot_certified_node_path({"file": "app.py"}) is True
+    assert _snapshot_certified_node_path({"file": "/etc/passwd"}) is False
+    assert _snapshot_certified_node_path({"file": "../secret.py"}) is False
+    assert _snapshot_certified_node_path({"file": "src/../secret.py"}) is False
+    assert _snapshot_certified_node_path({"file": ""}) is False
+    assert _snapshot_certified_node_path({}) is False
+    assert _snapshot_certified_node_path({"file": 42}) is False
+
+
 def test_next_step_lean_production_anchor() -> None:
     from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
         _next_step_lean,

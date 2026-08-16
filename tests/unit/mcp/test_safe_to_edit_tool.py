@@ -634,6 +634,58 @@ async def test_edit_safe_read_existing_consumes_published_snapshot(
     assert result["health_grade"]
 
 
+def test_certified_commands_ignore_live_config_files(tmp_path: Path) -> None:
+    """Codex P2 round-6 (C28): certified checklists/workflows use the
+    analyzer's pytest default, never live non-inventoried config files."""
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        AgentWorkflowContext,
+        build_agent_workflow,
+    )
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_risk import (
+        build_checklist,
+    )
+
+    (tmp_path / "package.json").write_text('{"scripts": {"test": "node test"}}')
+    live_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="app.py",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["tests/test_app.py"],
+            health_grade="A",
+            project_root=str(tmp_path),
+        )
+    )
+    assert "npm test" in str(live_workflow.get("after_edit_commands", []))
+
+    certified_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="app.py",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["tests/test_app.py"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        )
+    )
+    assert "npm test" not in str(certified_workflow.get("after_edit_commands", []))
+    assert "uv run pytest" in str(certified_workflow.get("after_edit_commands", []))
+
+    certified_checklist = build_checklist(
+        "safe",
+        0,
+        False,
+        [],
+        "refactor",
+        project_root=str(tmp_path),
+        certified=True,
+    )
+    assert all("npm test" not in item for item in certified_checklist)
+
+
 def test_live_violations_query_degrades_on_corrupt_db_file(
     tmp_path: Path,
 ) -> None:

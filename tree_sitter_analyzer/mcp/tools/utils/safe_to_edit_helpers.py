@@ -76,7 +76,13 @@ class FileDependencyView:
 
 @dataclass(frozen=True)
 class AgentWorkflowContext:
-    """Inputs needed to build the structured agent edit workflow."""
+    """Inputs needed to build the structured agent edit workflow.
+
+    ``certified`` (Codex P2 #1299 round-6): on snapshot-certified routes the
+    workflow's default test command must not be derived from live
+    non-inventoried config files (package.json/go.mod/...) that can drift
+    for the same snapshot identity.
+    """
 
     file_path: str
     risk: str
@@ -85,6 +91,7 @@ class AgentWorkflowContext:
     test_files: list[str]
     health_grade: str
     project_root: str
+    certified: bool = False
 
 
 @dataclass(frozen=True)
@@ -126,7 +133,7 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
         # set, so oracle-excluded files (tests/vendor/) can neither fill the
         # discovery cap nor change has_tests/verdict for the same identity.
         inventory = snapshot_inventory(context.snapshot_conn)
-        test_files = _certified_test_files(inventory, rel_path)
+        test_files = _certified_test_files(inventory, rel_path, dependents)
         certified_health = True
     else:
         test_files = find_test_files(context.resolved_path, context.project_root)
@@ -154,6 +161,7 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
         health_grade=health.grade,
         file_path=context.file_path,
         project_root=context.project_root,
+        certified=context.snapshot_conn is not None,
     )
     return SafeToEditFacts(
         dependents=dependents,
@@ -180,6 +188,7 @@ def _format_safe_to_edit_result(
         test_files=facts.test_files,
         health_grade=facts.health.grade,
         project_root=context.project_root,
+        certified=context.snapshot_conn is not None,
     )
     workflow = build_agent_workflow(workflow_context)
     # ``risk_level`` is the canonical field; ``verdict`` mirrors it for
@@ -427,7 +436,14 @@ def build_agent_summary(
 
 def build_agent_workflow(context: AgentWorkflowContext) -> dict[str, Any]:
     """Build a machine-friendly edit workflow for autonomous agents."""
-    default_command = detect_default_test_command(context.project_root)
+    if context.certified:
+        # Codex P2 (#1299 round-6): snapshot-bound default — live config
+        # detection would read non-inventoried files.
+        from .verification_command import PYTEST_COMMAND as _PYTEST_COMMAND
+
+        default_command = _PYTEST_COMMAND
+    else:
+        default_command = detect_default_test_command(context.project_root)
     focused_command = (
         build_test_command(default_command, context.test_files)
         if context.has_tests
@@ -713,7 +729,49 @@ def _require_edges_callee_name(conn: Any) -> None:
         raise ValueError("CORRUPT_INDEX")
 
 
-def _certified_test_files(inventory: frozenset[str], rel_path: str) -> list[str]:
+def _looks_like_test_name(name: str, language: str) -> bool:
+    """Mirror is_existing_test_file's NAME conventions over certified inputs.
+
+    The certified route has no filesystem to probe (and oracle-excluded
+    paths must not influence facts), so only the file-name conventions of
+    :func:`test_discovery_predicates.is_existing_test_file` are applied.
+    Unknown languages (never produced by the current extension map, but
+    possible after a future plugin addition) return False — the honest
+    "not recognized as a test" answer.
+    """
+
+    if language == "python":
+        return name.endswith(("_test.py", "_tests.py")) or name.startswith("test_")
+    if language == "go":
+        return name.endswith("_test.go")
+    if language == "rust":
+        return name.endswith(("_test.rs", "_tests.rs"))
+    if language == "java":
+        return name.endswith(("Test.java", "Tests.java"))
+    if language == "javascript":
+        return name.endswith((".test.js", ".spec.js", ".test.jsx"))
+    if language == "typescript":
+        return name.endswith((".test.ts", ".spec.ts", ".test.tsx"))
+    if language == "c":
+        return name.startswith("test_") and name.endswith((".c", ".h"))
+    if language == "cpp":
+        return name.startswith("test_") and name.endswith((".cpp", ".hpp"))
+    if language == "csharp":
+        return name.endswith(("Test.cs", "Tests.cs"))
+    if language == "kotlin":
+        return name.endswith(("Test.kt", "Tests.kt"))
+    if language == "ruby":
+        return name.endswith(("_test.rb", "_spec.rb")) or name.startswith("test_")
+    if language == "php":
+        return name.endswith(("Test.php", "test.php"))
+    return False
+
+
+def _certified_test_files(
+    inventory: frozenset[str],
+    rel_path: str,
+    dependents: list[str] | tuple[str, ...] = (),
+) -> list[str]:
     """Find inventory-covered test files for one target (RELATIVE posix path).
 
     Codex P1 (#1299 round-3/4): snapshot-certified test discovery walks the
@@ -723,7 +781,11 @@ def _certified_test_files(inventory: frozenset[str], rel_path: str) -> list[str]
     candidates. Pattern and colocated conventions mirror the live axis:
     basenames are matched with the patterns' GLOB semantics (round-5, e.g.
     ``test_app_*.py``) and ``test_dirs`` of ``"."`` (Go's co-located
-    convention) accept any inventory path (round-5).
+    convention) accept any inventory path (round-5). The legacy
+    ``_is_existing_test_file`` and ``_find_symbol_reference_tests`` modes are
+    preserved over certified inputs: a target that is itself a test file
+    counts, and inventory-covered dependents whose names match the test
+    patterns (tests that import the target) count (round-6).
     """
 
     import fnmatch
@@ -742,11 +804,17 @@ def _certified_test_files(inventory: frozenset[str], rel_path: str) -> list[str]
     test_dirs = _TEST_DIRS.get(language, ["tests"])
     filenames = [_format_pattern(pattern, stem) for pattern in patterns]
 
+    def matches_test_pattern(name: str) -> bool:
+        return any(fnmatch.fnmatchcase(name, pattern) for pattern in filenames)
+
     results: list[str] = []
+    if _looks_like_test_name(p.name, language):
+        # The target itself is a test file (legacy _is_existing_test_file).
+        results.append(rel_path)
     for rel in sorted(inventory):
-        if not any(
-            fnmatch.fnmatchcase(Path(rel).name, pattern) for pattern in filenames
-        ):
+        if rel == rel_path:
+            continue
+        if not matches_test_pattern(Path(rel).name):
             continue
         if any(
             test_dir == "." or rel.startswith(f"{test_dir}/") for test_dir in test_dirs
@@ -759,6 +827,11 @@ def _certified_test_files(inventory: frozenset[str], rel_path: str) -> list[str]
         colocated = f"{parent}/{filename}"
         if colocated in inventory and colocated not in results:
             results.append(colocated)
+    for dep in dependents:
+        # Symbol-reference mode over certified inputs: inventory-covered
+        # dependents that import the target and look like tests count.
+        if _looks_like_test_name(Path(dep).name, language) and dep not in results:
+            results.append(dep)
     return results[:10]
 
 
