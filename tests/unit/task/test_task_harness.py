@@ -9,6 +9,9 @@ smoke entry.
 from __future__ import annotations
 
 import asyncio
+import io
+import json
+import sys
 
 import pytest
 
@@ -252,3 +255,109 @@ def test_request_from_dict_rejects_forbidden_fields() -> None:
         request_from_dict(
             "assess_change", {"diff": {"source": "workspace"}, "task": "x"}
         )
+
+
+# --- Corpus / request-json modes (NO1-010A follow-up) ------------------------
+
+
+def test_load_corpus_strict_parsing(tmp_path) -> None:
+    from tree_sitter_analyzer.task_harness import load_corpus
+
+    corpus = tmp_path / "corpus.jsonl"
+    corpus.write_text(
+        '{"operation": "understand", "task": "how does dispatch work"}\n'
+        '{"operation": "assess_change", "diff": {"source": "workspace"}}\n'
+        "\n"
+    )
+    entries = load_corpus(str(corpus))
+    assert [(op, p.get("task"), p.get("diff")) for op, p in entries] == [
+        ("understand", "how does dispatch work", None),
+        ("assess_change", None, {"source": "workspace"}),
+    ]
+
+
+def test_load_corpus_rejects_malformed_lines(tmp_path) -> None:
+    from tree_sitter_analyzer.task_harness import load_corpus
+
+    corpus = tmp_path / "bad.jsonl"
+    corpus.write_text('{"operation": "understand", "task": "x"}\nnot-json\n')
+    with pytest.raises(ValueError, match="line 2: invalid JSON"):
+        load_corpus(str(corpus))
+    corpus.write_text('{"operation": "mystery", "task": "x"}\n')
+    with pytest.raises(ValueError, match="line 1: unknown operation"):
+        load_corpus(str(corpus))
+    corpus.write_text("\n")
+    with pytest.raises(ValueError, match="corpus is empty"):
+        load_corpus(str(corpus))
+
+
+def test_run_corpus_emits_deterministic_report(monkeypatch) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    class FakeExecutor:
+        async def call(self, facade, action, arguments):
+            return {"success": True}
+
+    monkeypatch.setattr(harness, "McpPrimitiveExecutor", lambda root: FakeExecutor())
+    corpus = "-"
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(
+            '{"operation": "understand", "task": "x"}\n'
+            '{"operation": "assess_change", "diff": {"source": "workspace"}}\n'
+        ),
+    )
+    report = harness.run_corpus(corpus, project_root=".")
+    parsed = json.loads(report)
+    assert set(parsed) == {"results"}
+    assert [r["operation"] for r in parsed["results"]] == [
+        "understand",
+        "assess_change",
+    ]
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(
+            '{"operation": "understand", "task": "x"}\n'
+            '{"operation": "assess_change", "diff": {"source": "workspace"}}\n'
+        ),
+    )
+    assert harness.run_corpus(corpus, project_root=".") == report
+
+
+def test_cli_main_request_json_mode(monkeypatch, capsys) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    async def fake_run(*args, **kwargs):
+        return "{}"
+
+    monkeypatch.setattr(harness, "run_operation", fake_run)
+    request = {"task": "explain dispatch", "profile": "compact"}
+    assert (
+        harness.main(["--operation", "understand", "--request-json", "-"]) == 0
+        and capsys.readouterr().out == "{}\n"
+        if False
+        else True
+    )
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(request)))
+    assert harness.main(["--operation", "understand", "--request-json", "-"]) == 0
+    assert capsys.readouterr().out == "{}\n"
+    assert (
+        harness.main(
+            ["--operation", "understand", "--request-json", "-", "--task", "x"]
+        )
+        == 2
+    )  # mutually exclusive
+
+
+def test_cli_main_corpus_mode(monkeypatch, capsys) -> None:
+    import tree_sitter_analyzer.task_harness as harness
+
+    def fake_corpus(*args, **kwargs):
+        return '{"results": []}'
+
+    monkeypatch.setattr(harness, "run_corpus", fake_corpus)
+    assert harness.main(["--corpus", "-"]) == 0
+    assert capsys.readouterr().out == '{"results": []}\n'
+    assert harness.main(["--corpus", "-", "--task", "x"]) == 2

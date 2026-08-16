@@ -23,8 +23,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from .mcp.tools.change_impact_tool import ChangeImpactTool
 from .mcp.tools.codegraph_context_tool import CodeGraphContextTool
@@ -176,6 +177,69 @@ async def run_operation(
     return serialize_json(outcome)
 
 
+def load_corpus(path: str) -> list[tuple[Operation, dict[str, Any]]]:
+    """Load a JSONL experiment corpus (one request mapping per line).
+
+    Each line is ``{"operation": "understand|plan_change|assess_change",
+    **request fields}``. Malformed lines raise ValueError with the line
+    number so the corpus manifest stays exact (RFC-0022 experiment
+    discipline).
+    """
+    entries: list[tuple[Operation, dict[str, Any]]] = []
+    if path == "-":
+        import io
+
+        lines = io.StringIO(sys.stdin.read()).readlines()
+    else:
+        with open(path, encoding="utf-8") as handle:
+            lines = handle.readlines()
+    for index, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"corpus line {index}: invalid JSON: {exc}") from exc
+        if type(payload) is not dict:
+            raise ValueError(f"corpus line {index}: not an object")
+        operation = payload.get("operation")
+        if operation not in ("understand", "plan_change", "assess_change"):
+            raise ValueError(f"corpus line {index}: unknown operation {operation!r}")
+        request_payload = dict(payload)
+        request_payload.pop("operation", None)
+        entries.append((cast(Operation, operation), request_payload))
+    if not entries:
+        raise ValueError("corpus is empty")
+    return entries
+
+
+def run_corpus(
+    corpus_path: str,
+    project_root: str | None = None,
+) -> str:
+    """Run a JSONL corpus and emit one deterministic JSON report.
+
+    Every outcome is serialized into ``{"results": [...]}`` so experiments
+    can be diffed byte-for-byte across runs; a failed request mapping is a
+    hard corpus error (exact manifest discipline), never a skipped case.
+    """
+    entries = load_corpus(corpus_path)
+    serialized: list[str] = []
+    for operation, payload in entries:
+        request = request_from_dict(operation, payload)
+        serialized.append(
+            asyncio.run(run_operation(operation, request, project_root=project_root))
+        )
+    results = [json.loads(text) for text in serialized]
+    return json.dumps(
+        {"results": results},
+        indent=2,
+        sort_keys=True,
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m tree_sitter_analyzer.task_harness",
@@ -190,7 +254,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--operation",
         choices=("understand", "plan_change", "assess_change"),
-        required=True,
+        default=None,
     )
     parser.add_argument("--task", default="", help="Task text (task routes).")
     parser.add_argument(
@@ -232,21 +296,97 @@ def _build_parser() -> argparse.ArgumentParser:
         default="json",
         help="Output format (harness-local; no default is flipped).",
     )
+    parser.add_argument(
+        "--request-json",
+        default=None,
+        help=(
+            "Read one strict request mapping from this path ('-' = stdin); "
+            "mutually exclusive with --task/--diff."
+        ),
+    )
+    parser.add_argument(
+        "--corpus",
+        default=None,
+        help=(
+            "JSONL experiment corpus ('-' = stdin); each line is "
+            '{"operation": ..., ...request fields}. Emits one JSON report.'
+        ),
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+    request: Any
+    if args.operation is None and args.corpus is None:
+        print("--operation is required (or use --corpus)", file=sys.stderr)
+        return 2
     if args.task and args.diff:
         print("task and diff are mutually exclusive", file=sys.stderr)
         return 2
+    if args.corpus is not None and (args.task or args.diff or args.request_json):
+        print(
+            "--corpus is exclusive with --task/--diff/--request-json",
+            file=sys.stderr,
+        )
+        return 2
+    if args.request_json is not None and (args.task or args.diff):
+        print(
+            "--request-json is exclusive with --task/--diff",
+            file=sys.stderr,
+        )
+        return 2
+    if args.corpus is not None:
+        try:
+            report = run_corpus(args.corpus, project_root=args.project_root)
+        except ValueError as exc:
+            print(f"invalid corpus: {exc}", file=sys.stderr)
+            return 2
+        except Exception as exc:  # pragma: no cover - CLI crash path
+            print(f"harness failure: {exc}", file=sys.stderr)
+            return 1
+        print(report)
+        return 0
+    if args.request_json is not None:
+        try:
+            if args.request_json == "-":
+                import io
+
+                payload = json.loads(io.StringIO(sys.stdin.read()).read())
+            else:
+                with open(args.request_json, encoding="utf-8") as handle:
+                    payload = json.load(handle)
+        except (json.JSONDecodeError, OSError) as exc:
+            print(f"invalid request JSON: {exc}", file=sys.stderr)
+            return 2
+        if type(payload) is not dict:
+            print("invalid request JSON: not an object", file=sys.stderr)
+            return 2
+        try:
+            request = request_from_dict(args.operation, payload)
+        except ValueError as exc:
+            print(f"invalid request: {exc}", file=sys.stderr)
+            return 2
+        try:
+            serialized = asyncio.run(
+                run_operation(
+                    args.operation,
+                    request,
+                    project_root=args.project_root,
+                    output_format=args.format,
+                )
+            )
+        except Exception as exc:  # pragma: no cover - CLI crash path
+            print(f"harness failure: {exc}", file=sys.stderr)
+            return 1
+        print(serialized)
+        return 0
     budget = Budget(
         profile=args.profile,
         max_primitive_calls=args.max_primitive_calls,
         max_evidence_items=args.max_evidence_items,
         routing_deadline_ms=args.routing_deadline_ms,
     )
-    request: Any
     try:
         if args.diff:
             request = (
