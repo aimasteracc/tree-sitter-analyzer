@@ -14,6 +14,7 @@ import subprocess
 
 import pytest
 
+from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST
 from tree_sitter_analyzer.diff_snapshot_readonly import (
     _live_index_output,
     oracle_generation_readonly,
@@ -43,6 +44,7 @@ def _epochs(root: str, mode: str) -> tuple[GitEpoch, GitEpoch]:
     return frozen_epochs[0], readonly_epochs[0]
 
 
+@POSIX_SNAPSHOT_TEST
 def test_clean_repo_generations_match(git_repo: str) -> None:
     for mode in ("diff", "staged"):
         frozen_epoch, readonly_epoch = _epochs(git_repo, mode)
@@ -51,6 +53,7 @@ def test_clean_repo_generations_match(git_repo: str) -> None:
         assert frozen_epoch.untracked_paths == readonly_epoch.untracked_paths
 
 
+@POSIX_SNAPSHOT_TEST
 def test_dirty_and_untracked_generations_match(git_repo: str) -> None:
     import pathlib
 
@@ -75,6 +78,7 @@ def test_dirty_and_untracked_generations_match(git_repo: str) -> None:
     assert readonly_epoch.untracked_paths == frozen_epoch.untracked_paths
 
 
+@POSIX_SNAPSHOT_TEST
 def test_generation_changes_when_source_changes(git_repo: str) -> None:
     import pathlib
 
@@ -86,6 +90,7 @@ def test_generation_changes_when_source_changes(git_repo: str) -> None:
     assert after == oracle_generation_readonly(git_repo, "diff")[0]
 
 
+@POSIX_SNAPSHOT_TEST
 def test_readonly_never_materializes_temporary_index(git_repo: str) -> None:
     import tempfile
 
@@ -101,6 +106,7 @@ def test_readonly_never_materializes_temporary_index(git_repo: str) -> None:
     assert mkstemp_calls == []
 
 
+@POSIX_SNAPSHOT_TEST
 def test_live_index_output_is_readonly_invocation(git_repo: str) -> None:
     """GIT_OPTIONAL_LOCKS=0 is set and no GIT_INDEX_FILE is injected."""
     import tree_sitter_analyzer.diff_snapshot_readonly as module
