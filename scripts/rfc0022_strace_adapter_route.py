@@ -21,10 +21,24 @@ import argparse
 import asyncio
 import json
 import os
+import sys
 
 
 def _produce(root: str) -> tuple[dict[str, object], str]:
     """Run the P0.4 producer route; return (deterministic identity, id)."""
+    # Diagnostic: surface the raise-site traceback of capture failures.
+    import traceback
+
+    import tree_sitter_analyzer.diff_snapshot_registry as _registry
+
+    _original_snapshot_error = _registry.snapshot_error
+
+    def _snapshot_error_spy(code: str):
+        if code == "DIFF_SNAPSHOT_GIT_ERROR":
+            traceback.print_exc(file=sys.stderr)
+        return _original_snapshot_error(code)
+
+    _registry.snapshot_error = _snapshot_error_spy
     from tree_sitter_analyzer.diff_snapshot_registry import REGISTRY, reset_registry
 
     reset_registry()
