@@ -81,21 +81,37 @@ forwarded to the task harness `request_from_dict`. A record example:
 The runner is a **patch verifier**; it never mutates the repository itself
 (the `task_harness` bridge contract stays read-only). Two input channels:
 
-1. **Supplied patch** (default): the corpus runner receives a **unified diff
-   in `git apply`-parseable form** (stdin `-` route or `--patch <file>`), a
-   `--repo` commit, and an optional `--arm` identity. The runner creates an
-   isolated worktree copy at the pinned commit, applies the patch with
-   `git apply --check` first (a non-applicable patch is `UNKNOWN`, never
-   `FAIL`), then evaluates the five criteria on the patched tree.
-2. **Agent arm** (separate, provenance-bound): an optional runner mode that
+1. **Supplied patch** (validation channel, not the agent measurement): the
+   corpus runner receives a **unified diff in `git apply`-parseable form**
+   (`--patch <file>`; the stdin `-` mode is mutually exclusive with the
+   corpus `-` mode — one stdin stream cannot feed both parsers, so at most
+   one input may use `-` and the other must be a file). A `--repo` commit,
+   `--arm` identity, and — for criterion 5 — a **provenance transcript**
+   (the set of graph relationships the patch producer recorded seeing/using,
+   e.g. the `nav.context` + `edit.safe` envelopes observed during
+   production) are required. The runner creates an isolated worktree copy at
+   the pinned commit, applies the patch with `git apply --check` first (a
+   non-applicable patch is `UNKNOWN`, never `FAIL`), then evaluates the five
+   criteria on the patched tree. **Criterion 5 is `UNKNOWN` for any supplied
+   patch without a provenance transcript** — a final diff cannot prove which
+   relationships justified the change.
+2. **Agent arm** (provenance-bound, MANDATORY gate): a runner mode that
    drives a pinned model/client through the task layer and captures the
    agent's produced patch AND its **verification-command transcript** (the
    exact commands the agent selected and ran, recorded with their outputs).
    Each arm carries `client`, `model`, `backend`, and `arm_id` identity in the
    manifest; arms are never pooled (ROADMAP requires ≥3 clients/models
-   measured without pooling). The primary B0–B2 endpoint is the patch
-   verifier; agent arms are isolated measurements feeding the same report
-   format.
+   measured without pooling). **At least three distinct client/model arms,
+   isolated and non-pooled, are a mandatory B2 completion gate** — a VCSR
+   baseline produced only from supplied reference patches does not satisfy
+   NO1-010B (the patch verifier validates the runner; it is not the agent
+   measurement).
+
+**Sandbox**: patched code is executed in a resource-bounded sandbox — no
+network, no secrets/credentials mounted, and only the disposable worktree
+writable (C21). An isolated Git worktree does not isolate processes; the
+oracle and verification command must run with host permissions that cannot
+read credentials or touch files outside the worktree.
 
 The corpus record gains an optional `patch` field only for *fixture* tasks
 used to validate the runner's positive/negative controls (§5) — the real
@@ -114,53 +130,68 @@ After applying the patch in the isolated worktree:
 | no high-confidence unsupported relationship used to justify the change | RFC-0022 truth-table rejection family | `UNSUPPORTED_RELATIONSHIP` |
 | evidence insufficient / infra failure | any check unavailable, oracle error, patch not applicable, timeout | `UNKNOWN` |
 
-**Oracle exit-code contract** (three channels, never conflated):
+**Oracle result protocol (trusted wrapper, not raw exit codes)**:
 
-- `0` = behavioral assertion PASSED;
-- `1` = behavioral assertion FAILED (this is the only path that yields
-  `ORACLE_FAILED`);
-- `2` = oracle execution error (syntax error, missing interpreter/dependency,
-  harness failure);
-- timeout (60 s) or non-zero `2`-class exits and any `UNKNOWN`-class
-  infrastructure failure are scored `UNKNOWN`, never `FAIL`. The runner
-  validates that the baseline run fails with the recorded
-  `oracle_baseline_reason` before any patch is evaluated.
+Raw numeric codes are insufficient: an uncaught `AssertionError`,
+`ImportError`, or `SyntaxError` in a Python oracle all exit with code 1, so a
+missing dependency or malformed oracle would masquerade as a behavioral
+failure (C19). The runner instead invokes each oracle through a **trusted
+wrapper** that separates loading/execution from the declared assertion:
+
+- wrapper performs import/load first; any import/syntax/type error → `UNKNOWN`;
+- only the oracle's explicitly declared assertion result maps to PASS
+  (exit 0) or FAIL (exit 1 → `ORACLE_FAILED`);
+- every other exception, timeout (60 s), or unexpected process exit → `UNKNOWN`.
+The runner validates that the baseline run fails with the recorded
+`oracle_baseline_reason` before any patch is evaluated.
 
 **Stale-row check (persisted rows, not evidence freshness)**:
 
 `task/edge_evidence.py` validates *bundles*; it cannot see obsolete rows
-already in the index. The runner instead runs exact, post-change queries
-against the refreshed index and asserts present/absent counts, mirroring
-RFC-0021's incremental oracle:
+already in the index. The runner compares the **refreshed projection** with a
+**clean-rebuild projection** of the patched tree and requires byte-identical
+rows for the affected files — this covers added, deleted, AND modified rows
+(a symbol that keeps `(file, name)` but moves line, or an edge that keeps
+endpoints but changes kind/line/resolution, must not survive) (C16):
 
-- for every deleted symbol `S` (file, name): `SELECT 1 FROM ast_symbol_rows
-  WHERE file_path = ? AND name = ?` must return no row;
-- for every deleted edge `E` (caller, callee): no `edges` row may reference
-  `E`;
-- for every added symbol/edge: exactly the expected rows exist (count-pinned,
-  no `>=` bounds).
-The refresh operation is specified as: rebuild the changed files' symbol and
-edge rows from the patched tree, then run the above queries.
+1. index the patched tree fresh (clean rebuild);
+2. apply the incremental refresh;
+3. assert `ast_symbol_rows` + `edges` for every affected file are identical
+   between the two projections (exact row-set equality, count-pinned, no
+   `>=` bounds).
+
+**Allowed-path recheck**: the allowlist is compared against the applied diff
+AND re-compared after every executed command (oracle, verification) against a
+worktree snapshot, including untracked files — an allowed test-file change
+that rewrites a production file during evaluation is `PATH_VIOLATION` (C18).
 
 ### 4. Claim policy and pre-registration gate
 
 - **Immutable registration record**: before the first execution of any task,
-  the runner appends the corpus manifest hash + per-task oracle hashes to an
-  **append-only registration registry** (a committed `registration.jsonl`
-  under `benchmarks/no1_010b/`, itself committed to git). A run's report is
-  only valid if every task/oracle hash in it was registered *before* that
-  run's first execution; a run whose hashes were registered after the fact is
-  rejected. Post-result oracle replacement is impossible by construction.
+  the runner appends the corpus manifest hash + per-task oracle hashes +
+  **`repo_commit` + clean-tree fingerprint** (C15) to an **append-only
+  registration registry**. The registry is anchored OUTSIDE evaluator
+  control (C14): an externally timestamped or independently controlled
+  append-only store (e.g. a CI-only workflow with a dedicated key, or a
+  third-party notary) — a plain git-committed file is NOT sufficient,
+  because the evaluator can run privately, tune, and then commit an entry
+  that appears to pre-date the disclosed run. ALL registration attempts are
+  retained (including superseded ones). A run's report is only valid if every
+  task/oracle hash in it was registered *before* that run's first execution;
+  a run whose hashes were registered after the fact is rejected.
 - E0–E3: internal numbers only, no public competitive wording.
 - **E3 requires separately attested reproduction**: an independent machine,
   blind evaluation, and a separate attestation record — a CI job in the
   repository is still internal evidence and does not satisfy E3.
-- **E4** (the only admissible public sentence —
+- **E4** (the only admissible public sentence — must be bounded by arm
+  identity, repository revisions, date, and versions per ROADMAP §6-7, C20):
   `VCSR = X/Y (Z%) on the pre-registered NO1-010B corpus vN at analyzer commit
-  <sha>`): requires all of: corpus pre-registered before the run, zero
-  UNKNOWNs, the E3 independent reproduction, AND an external E4 reproduction
-  artifact (a third party reproducing the report from the registration
-  record). Absent any one, no public wording is emitted.
+  <sha>, arm <client>/<model>/<backend>/<arm_id>, repos <repo@commit,...>,
+  run <date>, evidence E4`. Requires all of: corpus pre-registered before the
+  run, zero UNKNOWNs, the three non-pooled agent arms executed, the E3
+  independent reproduction, AND an external E4 reproduction artifact (a
+  third party reproducing the report from the registration record). Absent
+  any one, no public wording is emitted.
 
 ### 5. Seed corpus and B1 non-vacuous gate
 
@@ -182,7 +213,9 @@ survives a mutation suite** that forces every reason code:
 - `UNSUPPORTED_RELATIONSHIP`: patch justified by a high-confidence
   unsupported relationship (fixture) → exact code;
 - `UNKNOWN`: a non-applicable patch and an oracle-execution-error fixture →
-  exact code.
+  exact code;
+- `TEST_SELECTION_FAILED`: on a test_selection task, a transcript with an
+  incorrect, empty, or full-suite selected-test set → exact code (C17).
 
 An implementation that always returns `UNKNOWN` or always `FAIL` fails B1.
 
