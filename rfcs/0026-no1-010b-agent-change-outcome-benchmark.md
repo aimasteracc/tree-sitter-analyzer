@@ -99,13 +99,24 @@ The runner is a **patch verifier**; it never mutates the repository itself
    drives a pinned model/client through the task layer and captures the
    agent's produced patch AND its **verification-command transcript** (the
    exact commands the agent selected and ran, recorded with their outputs).
-   Each arm carries `client`, `model`, `backend`, and `arm_id` identity in the
-   manifest; arms are never pooled (ROADMAP requires ≥3 clients/models
-   measured without pooling). **At least three distinct client/model arms,
-   isolated and non-pooled, are a mandatory B2 completion gate** — a VCSR
-   baseline produced only from supplied reference patches does not satisfy
-   NO1-010B (the patch verifier validates the runner; it is not the agent
-   measurement).
+   Each arm carries `client`, `model`, `backend`, `arm_id`, AND a **frozen
+   full configuration hash** (client executable/version, system and
+   developer prompts, tool permissions/config, sampling parameters) — the
+   configuration is frozen before execution and any change invalidates the
+   arm (C29). The arm ALSO records the **graph evidence it was presented
+   with and used** (the `nav.context`/`edit.safe`/impact envelopes observed
+   during production) so criterion 5 is evaluable for arms, not only for
+   supplied patches (C33). Each arm has a **pre-authorized spend gate**: a
+   registered per-arm ceiling on calls, tokens, and cost, plus an
+   authorization artifact, per the ROADMAP budget-gate rule (C36). Arms are
+   never pooled (ROADMAP requires ≥3 clients/models measured without
+   pooling). **At least three distinct client/model arms, isolated and
+   non-pooled, are a mandatory B2 completion gate** — a VCSR baseline
+   produced only from supplied reference patches does not satisfy NO1-010B.
+   **Paired control arms are also mandatory for the Wave-2 outcome**: for
+   each evidence-enabled arm there is a pre-registered control arm (same
+   client/model, graph evidence disabled) so the counterfactual "graph
+   evidence improved the change" is measurable, not asserted (C28).
 
 **Sandbox**: patched code is executed in a resource-bounded sandbox — no
 network, no secrets/credentials mounted, and only the disposable worktree
@@ -127,7 +138,7 @@ After applying the patch in the isolated worktree:
 | satisfy the behavioral oracle | oracle exit-code contract (below) | `ORACLE_FAILED` |
 | pass the declared verification command | run `verification_command`, exit 0 required | `VERIFICATION_FAILED` |
 | leave no stale symbol or edge rows | **exact persisted-row queries** (below) | `STALE_ROWS` |
-| no high-confidence unsupported relationship used to justify the change | RFC-0022 truth-table rejection family | `UNSUPPORTED_RELATIONSHIP` |
+| no high-confidence unsupported relationship used to justify the change | **explicit oracle**: the RFC-0023 `edge_evidence` rejection family (concrete per-edge rules: unsupported kind, unresolved callee with high-confidence reliance, provenance-conflicting rows) applied to the recorded graph-evidence transcript; the RFC-0022 truth table alone does not classify this criterion (C30) | `UNSUPPORTED_RELATIONSHIP` |
 | evidence insufficient / infra failure | any check unavailable, oracle error, patch not applicable, timeout | `UNKNOWN` |
 
 **Oracle result protocol (trusted wrapper, not raw exit codes)**:
@@ -154,23 +165,42 @@ rows for the affected files — this covers added, deleted, AND modified rows
 (a symbol that keeps `(file, name)` but moves line, or an edge that keeps
 endpoints but changes kind/line/resolution, must not survive) (C16):
 
-1. index the patched tree fresh (clean rebuild);
-2. apply the incremental refresh;
-3. assert `ast_symbol_rows` + `edges` for every affected file are identical
-   between the two projections (exact row-set equality, count-pinned, no
-   `>=` bounds).
+1. index the BASELINE (pre-patch) tree;
+2. apply the incremental refresh over the baseline→patched transition (the
+   transition where stale rows actually arise — refreshing an index already
+   representing the patched sources proves nothing, C24);
+3. index the patched tree fresh (clean rebuild);
+4. assert the refreshed projection equals the clean-rebuild projection using
+   a **canonical semantic identity** that EXCLUDES surrogate keys
+   (`ast_symbol_rows.id`, `edges.id`, and the inherited `callee_symbol_id`)
+   — autoincrement keys differ across rebuilds even when every semantic
+   symbol/edge is correct (C35); compare `(file_path, name, line, kind, ...)`
+   and `(source, target, kind, line, resolution, provenance, ...)`;
+5. include **incoming edges owned by unchanged files** (an unchanged caller's
+   `edges.file_path` row whose `callee_resolved_file` points into the changed
+   file must be compared too) — restricting to affected files misses those
+   cross-file rows (C34).
 
 **Allowed-path recheck**: the allowlist is compared against the applied diff
 AND re-compared after every executed command (oracle, verification) against a
 worktree snapshot, including untracked files — an allowed test-file change
 that rewrites a production file during evaluation is `PATH_VIOLATION` (C18).
+**Trusted tool artifacts are excluded**: files the declared verification
+command or oracle legitimately creates (`.pytest_cache/`, `__pycache__/`,
+`.mypy_cache/`, `.ruff_cache/`) are on a pinned allowlist of excluded paths,
+so a correct reference patch never deterministically fails path enforcement
+(C25).
 
 ### 4. Claim policy and pre-registration gate
 
 - **Immutable registration record**: before the first execution of any task,
   the runner appends the corpus manifest hash + per-task oracle hashes +
-  **`repo_commit` + clean-tree fingerprint** (C15) to an **append-only
-  registration registry**. The registry is anchored OUTSIDE evaluator
+  **`repo_commit` + clean-tree fingerprint** (C15) + a **run/attempt
+  identity** to an **append-only registration registry**. **Every execution
+  attempt is retained in the score** — a stochastic arm rerun after a
+  failing patch cannot discard that run; a fixed repeat count and retry rule
+  are registered per arm, and the report reflects all attempts, never a
+  cherry-picked subset (C23). The registry is anchored OUTSIDE evaluator
   control (C14): an externally timestamped or independently controlled
   append-only store (e.g. a CI-only workflow with a dedicated key, or a
   third-party notary) — a plain git-committed file is NOT sufficient,
@@ -220,10 +250,14 @@ survives a mutation suite** that forces every reason code:
 An implementation that always returns `UNKNOWN` or always `FAIL` fails B1.
 
 For **test_selection** tasks, the check compares the agent arm's recorded
-selected-test transcript (or the supplied `selected_tests` field) against an
-exact affected-test oracle derived from the causality index — running the
-full suite, no tests, or the wrong subset is `TEST_SELECTION_FAILED`, not a
-pass.
+selected-test transcript (or the supplied `selected_tests` field — a typed,
+canonical relative-path list on the strict `BenchmarkRecord`, provided
+through the same `--patch`/`--selected-tests` CLI channel, C32) against an
+**independently pre-registered affected-test oracle** — frozen per task at
+registration, never derived at runtime from the causality index being
+evaluated (a self-derived oracle would validate comparison plumbing, not
+selection correctness, C26). Running the full suite, no tests, or the wrong
+subset is `TEST_SELECTION_FAILED`, not a pass.
 
 ## Phases with visible exit artifacts
 
@@ -231,7 +265,7 @@ pass.
 |---|---|---|
 | **B0** | RFC accepted; strict `BenchmarkRecord` model; 10-task seed corpus; registration registry | `benchmarks/no1_010b/` with 10 tasks; corpus contract tests green (unknown-field rejection, oracle red-baseline + reason, allowlist semantics, per-class counts) |
 | **B1** | Patch-verifier runner complete (all 5 checks + oracle exit-code contract + stale-row queries + mutation suite) | 10/10 pre-registered outcomes matched exactly; mutation suite forces all 7 reason codes; CI reproduces |
-| **B2** | VCSR baseline measurement on pinned versions | `report.json` with VCSR + per-class/per-repo breakdown + provenance; baseline recorded in STATE.md; E0–E3 internal only |
+| **B2** | VCSR baseline measurement on pinned versions | `report.json` with VCSR + per-class/per-repo **and per-arm** breakdown (exact task counts and outcomes per client/model/backend — arms are never pooled in the report, C31) + provenance; baseline recorded in STATE.md; E0–E3 internal only |
 | **B3** | (gated) E4 bounded admission | only with zero UNKNOWNs, E3 independent attestation, external E4 reproduction — per §4 |
 
 ## Interaction with existing seams
@@ -263,7 +297,9 @@ pass.
 1. Whether the agent-arm transcript should include raw stdout or only
    exit-code + selected-test sets (propose: exit-codes + selected sets for
    privacy; raw stdout stored locally, never in the committed report).
-2. Registration registry rotation: append-only file vs SQLite table (propose:
-   committed `registration.jsonl` + the runner's local SQLite mirror).
+2. Whether the externally controlled registration store should be a CI-only
+   workflow with a dedicated signing key or a third-party notary (both are
+   outside evaluator control; the committed-file + SQLite-mirror proposal is
+   rejected — it cannot establish pre-execution ordering, C27).
 3. Whether `git apply` should accept fuzz (propose: no — fuzz would admit
    patches that do not match the pinned commit, breaking pre-registration).
