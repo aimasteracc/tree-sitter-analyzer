@@ -376,6 +376,11 @@ class CodeGraphContextTool(BaseMCPTool):
                     for n in nodes
                     if _snapshot_certified_node_file(n.get("file"), reader_root, conn)
                 ]
+                # Codex P2 (#1299 round-13, C59): cross-file callee nodes
+                # carry the CALL-SITE line; re-resolve the definition line
+                # from ast_symbol_rows so code blocks serve the certified
+                # definition context, never unrelated call-site lines.
+                nodes = _snapshot_definition_lines(nodes, conn)
                 edges = self._build_edges(nodes, graph=edge_store)
 
             code_blocks = _build_code_blocks(
@@ -1129,6 +1134,37 @@ def _edge_degrees(
         if edge["target"] in degrees:
             degrees[edge["target"]] += 1
     return degrees
+
+
+def _snapshot_definition_lines(
+    nodes: list[dict[str, Any]], conn: Any
+) -> list[dict[str, Any]]:
+    """Re-resolve each node's line to its symbol definition line.
+
+    Codex P2 (#1299 round-13, C59): ``EdgeStore.query_callees`` keeps the
+    call-site line on resolved cross-file callee nodes; certified code
+    blocks must point at the definition, so the line is re-looked-up from
+    ``ast_symbol_rows`` (degrading to the node's own line when unknown).
+    """
+
+    try:
+        rows = conn.execute(
+            "SELECT file_path, name, line FROM ast_symbol_rows"
+        ).fetchall()
+    except Exception:  # nosec B110 — legacy schema keeps node lines
+        return nodes
+    by_key: dict[tuple[str, str], int] = {}
+    for row in rows:
+        key = (str(row["file_path"]), str(row["name"]))
+        by_key.setdefault(key, int(row["line"]))
+    resolved: list[dict[str, Any]] = []
+    for node in nodes:
+        line = by_key.get((str(node.get("file", "")), str(node.get("name", ""))))
+        if line is not None:
+            node = dict(node)
+            node["line"] = line
+        resolved.append(node)
+    return resolved
 
 
 def _snapshot_certified_node_file(file_path: Any, reader_root: str, conn: Any) -> bool:

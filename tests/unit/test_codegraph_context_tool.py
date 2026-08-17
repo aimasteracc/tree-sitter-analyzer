@@ -1964,6 +1964,32 @@ def test_resolve_entry_points_tolerates_cascade_failures() -> None:
     assert entry_points == []
 
 
+def test_snapshot_definition_lines_resolve_callee_lines() -> None:
+    """Codex P2 round-13 (C59): cross-file callee nodes get definition lines."""
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _snapshot_definition_lines,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_symbol_rows (file_path TEXT, name TEXT, line INTEGER)"
+    )
+    conn.execute("INSERT INTO ast_symbol_rows VALUES ('pkg/callee.py', 'run', 5)")
+    nodes = [
+        {"name": "run", "file": "pkg/callee.py", "line": 80},
+        {"name": "unknown", "file": "pkg/x.py", "line": 3},
+    ]
+    resolved = _snapshot_definition_lines(nodes, conn)
+    assert resolved[0]["line"] == 5
+    assert resolved[1]["line"] == 3
+
+    bare = sqlite3.connect(":memory:")
+    assert _snapshot_definition_lines(nodes, bare) == nodes
+
+
 def test_certified_expansion_propagates_edge_errors() -> None:
     """Codex P2 round-10 (C45): certified expansion re-raises edge errors."""
     import pytest

@@ -99,6 +99,14 @@ class TestHealthScorer:
         assert "git_hotspot" not in certified.dimensions
         assert certified.total > 0.0
 
+    def test_invalidate_stat_cache_drops_only_stat_fast_path(self) -> None:
+        from tree_sitter_analyzer.core.parser import Parser
+
+        Parser.invalidate_stat_cache()
+        assert Parser._stat_cache == {}
+        # The content-addressed cache is untouched.
+        assert isinstance(Parser._cache, object)
+
     def test_certified_score_never_touches_coverage_or_git(
         self, scorer, tmp_path, monkeypatch
     ):

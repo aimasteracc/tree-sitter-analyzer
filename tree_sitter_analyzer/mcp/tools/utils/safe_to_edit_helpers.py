@@ -144,6 +144,13 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
     else:
         test_files = find_test_files(context.resolved_path, context.project_root)
         certified_health = False
+    if certified_health:
+        # Codex P2 (#1299 round-13, C60): certified reads must parse the
+        # freshly recaptured bytes — bypass the stat-only parser cache
+        # (same-size + restored-mtime rewrites would serve stale results).
+        from ....core.parser import Parser as _Parser
+
+        _Parser.invalidate_stat_cache()
     health = context.scorer.score_file(
         context.resolved_path,
         fast_dependencies=True,
@@ -921,8 +928,10 @@ def _certified_symbol_reference_tests(
             # itself defines the symbol, the import belongs to that module.
             import_module = _import_module_name(text)
             if import_module:
+                # Codex P2 (#1299 round-13, C58): relative imports resolve
+                # from the IMPORTING TEST's directory, never the target's.
                 resolved_module = _resolve_import_spec_in_snapshot(
-                    conn, import_module, rel_path
+                    conn, import_module, rel
                 )
                 if (
                     resolved_module

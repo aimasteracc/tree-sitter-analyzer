@@ -151,6 +151,18 @@ class Parser:
         cls._misses = 0
         cls._stat_hits = 0
 
+    @classmethod
+    def invalidate_stat_cache(cls) -> None:
+        """Drop only the stat-only fast path.
+
+        Codex P2 (#1299 round-13, C60): the stat fast path keys on
+        (path, mtime_ns, size) — a same-size rewrite with a restored mtime
+        would serve a stale parse on snapshot-certified reads, which must
+        always parse the freshly recaptured bytes. The content-addressed
+        SHA-256 cache stays intact.
+        """
+        cls._stat_cache.clear()
+
     def parse_file(self, file_path: str | Path, language: str) -> ParseResult:
         """Parse a source code file.
 

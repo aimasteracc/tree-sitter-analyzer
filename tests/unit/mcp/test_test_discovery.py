@@ -1013,6 +1013,31 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
     assert "tests/test_plain.py" in plain_found
     assert "tests/test_bare.py" in plain_found
 
+    # C58: a relative import resolves from the TEST's directory — a test
+    # doing 'from .other import run' must not count for pkg/impl.py.
+    rel_bound = sqlite3.connect(":memory:")
+    rel_bound.row_factory = sqlite3.Row
+    rel_bound.execute(
+        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
+    )
+    rel_bound.execute(
+        "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
+        (json.dumps({"symbols": [{"name": "run"}]}),),
+    )
+    rel_bound.execute(
+        "INSERT INTO ast_index VALUES ('tests/other.py', ?, '[]')",
+        (json.dumps({"symbols": [{"name": "run"}]}),),
+    )
+    rel_bound.execute(
+        "INSERT INTO ast_index VALUES ('tests/test_other.py', '{}', ?)",
+        (json.dumps([{"text": "from .other import run", "line": 1}]),),
+    )
+    rel_inventory = frozenset({"pkg/impl.py", "tests/other.py", "tests/test_other.py"})
+    rel_found = _certified_symbol_reference_tests(
+        rel_bound, rel_inventory, "pkg/impl.py", "python"
+    )
+    assert rel_found == []
+
     # C34: a non-object symbols_json payload degrades, never crashes.
     array_payload = sqlite3.connect(":memory:")
     array_payload.row_factory = sqlite3.Row

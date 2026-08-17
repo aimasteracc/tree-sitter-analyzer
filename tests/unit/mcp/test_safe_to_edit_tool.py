@@ -695,6 +695,35 @@ def test_certified_commands_use_extension_runner(tmp_path: Path) -> None:
     )
     assert java_summary.get("verification_command") == ""
     assert "unidentified" in java_summary.get("stop_condition", "")
+    # A workflow without guardrails exercises the empty-guardrails branch.
+    bare_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="Calc.java",
+            risk="safe",
+            edit_type="add",
+            has_tests=True,
+            test_files=["CalcTest.java"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        )
+    )
+    assert bare_workflow.get("guardrails") == []
+    bare_summary = build_agent_summary(
+        AgentWorkflowContext(
+            file_path="Calc.java",
+            risk="safe",
+            edit_type="add",
+            has_tests=True,
+            test_files=["CalcTest.java"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        ),
+        bare_workflow,
+        verdict_override=None,
+    )
+    assert "guardrails" not in bare_summary
     # C41: the queue-boundary list stays empty, never [""].
     assert java_workflow.get("queue_boundary_commands") == []
 
