@@ -86,9 +86,12 @@ The runner is a **patch verifier**; it never mutates the repository itself
    (`--patch <file>`; the stdin `-` mode is mutually exclusive with the
    corpus `-` mode — one stdin stream cannot feed both parsers, so at most
    one input may use `-` and the other must be a file). The patch input is
-   **bounded before `git apply`** — a size cap (e.g. 1 MiB), a hunk-count
-   cap, and a per-hunk line cap; an over-bound patch is `UNKNOWN`, never
-   applied (C40). A `--repo` commit,
+   **bounded before `git apply`** — CANONICAL limits bound into the
+   registered manifest, not examples: `patch_max_bytes = 1 MiB`,
+   `patch_max_hunks = 512`, `patch_max_lines_per_hunk = 2000` (C41). An
+   over-bound patch is `UNKNOWN`, never applied (C40). The limits are part
+   of the manifest hash so an evaluator cannot choose thresholds after
+   observing an attempt. A `--repo` commit,
    `--arm` identity, and — for criterion 5 — a **provenance transcript**
    (the set of graph relationships the patch producer recorded seeing/using,
    e.g. the `nav.context` + `edit.safe` envelopes observed during
@@ -160,8 +163,12 @@ wrapper** that separates loading/execution from the declared assertion:
 - only the oracle's explicitly declared assertion result maps to PASS
   (exit 0) or FAIL (exit 1 → `ORACLE_FAILED`);
 - every other exception, timeout (60 s), or unexpected process exit → `UNKNOWN`.
-The runner validates that the baseline run fails with the recorded
-`oracle_baseline_reason` before any patch is evaluated.
+The baseline validation uses a **typed reason protocol** (C42): on a FAIL
+result the oracle also prints a second declared line
+`NO1_010B_ORACLE_REASON: <token>`; the runner requires the baseline FAIL
+reason token to EQUAL the registered `oracle_baseline_reason` token (exact
+match, no exception-text comparison). A baseline red for a different reason —
+or missing the reason line — is a corpus/fixture error and fails closed.
 
 **Stale-row check (persisted rows, not evidence freshness)**:
 
