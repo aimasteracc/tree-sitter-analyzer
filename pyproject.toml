@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.27,<1.32"]
+requires = ["hatchling>=1.27,<1.33"]
 build-backend = "hatchling.build"
 
 [project]
@@ -700,8 +700,8 @@ required-version = ">=0.11.0"
 # Exact, independently exportable toolchain for the NO1-006B collector.
 # These packages are not part of the measured subject runtime closure.
 no1-006b-collector-tool = [
-    "hatchling==1.31.0",
-    "jsonschema==4.25.1",
+    "hatchling==1.32.0",
+    "jsonschema==4.26.0",
     "packaging==25.0",
 ]
 dev = [
