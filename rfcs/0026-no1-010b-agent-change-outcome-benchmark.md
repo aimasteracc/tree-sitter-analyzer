@@ -85,7 +85,10 @@ The runner is a **patch verifier**; it never mutates the repository itself
    corpus runner receives a **unified diff in `git apply`-parseable form**
    (`--patch <file>`; the stdin `-` mode is mutually exclusive with the
    corpus `-` mode — one stdin stream cannot feed both parsers, so at most
-   one input may use `-` and the other must be a file). A `--repo` commit,
+   one input may use `-` and the other must be a file). The patch input is
+   **bounded before `git apply`** — a size cap (e.g. 1 MiB), a hunk-count
+   cap, and a per-hunk line cap; an over-bound patch is `UNKNOWN`, never
+   applied (C40). A `--repo` commit,
    `--arm` identity, and — for criterion 5 — a **provenance transcript**
    (the set of graph relationships the patch producer recorded seeing/using,
    e.g. the `nav.context` + `edit.safe` envelopes observed during
@@ -269,7 +272,7 @@ subset is `TEST_SELECTION_FAILED`, not a pass.
 |---|---|---|
 | **B0** | RFC accepted; strict `BenchmarkRecord` model; 10-task seed corpus; registration registry | `benchmarks/no1_010b/` with 10 tasks; corpus contract tests green (unknown-field rejection, oracle red-baseline + reason, allowlist semantics, per-class counts) |
 | **B1** | Patch-verifier runner complete (all 5 checks + oracle exit-code contract + stale-row queries + mutation suite) | 10/10 pre-registered outcomes matched exactly; mutation suite forces all 7 reason codes; CI reproduces |
-| **B2** | VCSR baseline measurement on pinned versions | `report.json` with VCSR + per-class/per-repo **and per-arm** breakdown (exact task counts and outcomes per client/model/backend — arms are never pooled in the report, C31) + **the reliability metric per arm and overall**: `successful_indexed_trials / all_trials` with exact numerator, denominator, failure classes (infrastructure vs product), and the 99% reliability gate status (C38) + provenance; baseline recorded in STATE.md; E0–E3 internal only |
+| **B2** | VCSR baseline measurement on pinned versions | `report.json` with VCSR + per-class/per-repo **and per-arm** breakdown (exact task counts and outcomes per client/model/backend — arms are never pooled in the report, C31) + **the reliability metric per arm and overall**: `successful_indexed_trials / all_trials` with exact numerator, denominator, failure classes (infrastructure vs product), and the 99% reliability gate status (C38). **B2 does not complete unless the 99% reliability threshold is met per arm and overall** — a below-threshold run is recorded but cannot advance to baseline (C39) + provenance; baseline recorded in STATE.md; E0–E3 internal only |
 | **B3** | (gated) E4 bounded admission | only with zero UNKNOWNs, E3 independent attestation, external E4 reproduction — per §4 |
 
 ## Interaction with existing seams
