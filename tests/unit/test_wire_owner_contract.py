@@ -551,6 +551,25 @@ def test_read_existing_consumer_classifies_reader_sql_failures(
     assert interrupted["action_version"] == NAV_CONTEXT_ACTION_VERSION
 
     # Codex P2 round-4 (C20): a damaged edges row surfaces as IndexError
+    # Codex P2 round-12 (C55): a BLOB in a nominally textual edge column
+    # surfaces as TypeError from parse_node_id — classified too.
+    def type_error_reader(snapshot, conn):
+        raise TypeError("startswith first arg must be str")
+
+    type_error = read_access.read_existing_index_consumer(
+        CodeGraphContextTool(str(tmp_path)),
+        {
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+            "output_format": "json",
+        },
+        reader=type_error_reader,
+        action_version=NAV_CONTEXT_ACTION_VERSION,
+    )
+    assert type_error["success"] is False
+    assert type_error["error_code"] == "CORRUPT_INDEX"
+
     # Codex P2 round-11 (C50): a metadata cell holding valid JSON of a
     # non-object type surfaces as AttributeError — classified too.
     def attr_error_reader(snapshot, conn):

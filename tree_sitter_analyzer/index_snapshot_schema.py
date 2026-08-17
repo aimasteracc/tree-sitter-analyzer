@@ -77,6 +77,9 @@ _REQUIRED_COLUMNS = {
             "line",
             "provenance",
             "metadata",
+            # Codex P2 (#1299 round-12, C52): the certified symbol-reference
+            # query binds call edges by callee_resolved_file.
+            "callee_resolved_file",
         }
     ),
     "ast_index_snapshot_manifest": frozenset(

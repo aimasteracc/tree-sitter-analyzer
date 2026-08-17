@@ -413,10 +413,11 @@ def _stable_consumer_code(exc: Exception) -> str:
         if "interrupt" in message.lower():
             return "INDEX_SNAPSHOT_DEADLINE"
         return "CORRUPT_INDEX"
-    if isinstance(exc, (IndexError, AttributeError)):
+    if isinstance(exc, (IndexError, AttributeError, TypeError)):
         # EdgeStore._edge_from_row on a damaged edges row surfaces as
-        # IndexError (missing columns) or AttributeError (a metadata cell
-        # holding valid JSON of a non-object type, e.g. []).
+        # IndexError (missing columns), AttributeError (a metadata cell
+        # holding valid JSON of a non-object type, e.g. []), or TypeError
+        # (a BLOB in a nominally textual column, e.g. source_node_id).
         return "CORRUPT_INDEX"
     token = message.split(":", 1)[0].strip()
     return token if token in _INDEX_CONSUMER_STABLE_CODES else "INDEX_SNAPSHOT_FAILED"
@@ -510,6 +511,7 @@ def read_existing_index_consumer(
         sqlite3.OperationalError,
         IndexError,
         AttributeError,
+        TypeError,
     ) as exc:
         # Codex P2 (#1299): pre-yield failures (completeness/scope gate or
         # pre-read recapture) attach the acquired identity to the exception;

@@ -1260,6 +1260,8 @@ def test_snapshot_dependency_view_recalls_member_imports() -> None:
     )
     # The target's OWN import row can also carry a BLOB (pass-1 skip).
     conn.execute("INSERT INTO edges VALUES ('app.py', ?, 'imports')", (b"blob-own",))
+    # C53: a BLOB importer path in pass 2 is skipped, not fatal.
+    conn.execute("INSERT INTO edges VALUES (?, 'app', 'imports')", (b"blob-path",))
     conn.execute("INSERT INTO edges VALUES ('app.py', 'app', 'imports')")
     # 'app.py' importing a module that does not index -> resolved is None.
     conn.execute("INSERT INTO edges VALUES ('app.py', 'missing.mod', 'imports')")

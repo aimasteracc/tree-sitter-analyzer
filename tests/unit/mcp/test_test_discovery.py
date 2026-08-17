@@ -932,6 +932,87 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
     )
     assert drifted == ["tests/test_calls.py"]
 
+    # C56: 'from other import run' must not count for pkg/impl.py when
+    # other.py itself defines 'run'.
+    bound = sqlite3.connect(":memory:")
+    bound.row_factory = sqlite3.Row
+    bound.execute(
+        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
+    )
+    bound.execute(
+        "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
+        (json.dumps({"symbols": [{"name": "run"}]}),),
+    )
+    bound.execute(
+        "INSERT INTO ast_index VALUES ('other.py', ?, '[]')",
+        (json.dumps({"symbols": [{"name": "run"}]}),),
+    )
+    bound.execute(
+        "INSERT INTO ast_index VALUES ('tests/test_other.py', '{}', ?)",
+        (json.dumps([{"text": "from other import run", "line": 1}]),),
+    )
+    bound.execute(
+        "INSERT INTO ast_index VALUES ('tests/test_pkg.py', '{}', ?)",
+        (json.dumps([{"text": "from pkg import run", "line": 1}]),),
+    )
+    bound.execute("INSERT INTO ast_index VALUES ('pkg/__init__.py', '{}', '[]')")
+    bound_inventory = frozenset(
+        {
+            "pkg/impl.py",
+            "other.py",
+            "pkg/__init__.py",
+            "tests/test_other.py",
+            "tests/test_pkg.py",
+        }
+    )
+    bound_found = _certified_symbol_reference_tests(
+        bound, bound_inventory, "pkg/impl.py", "python"
+    )
+    # 'from other import run' is rejected (other.py defines run); the
+    # package-level import through pkg/__init__.py is accepted.
+    assert bound_found == ["tests/test_pkg.py"]
+
+    # _file_defines_any direct branch coverage.
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _file_defines_any,
+    )
+
+    defs = sqlite3.connect(":memory:")
+    defs.row_factory = sqlite3.Row
+    defs.execute("CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT)")
+    defs.execute(
+        "INSERT INTO ast_index VALUES ('ok.py', ?)",
+        (json.dumps({"symbols": [{"name": "run"}]}),),
+    )
+    defs.execute("INSERT INTO ast_index VALUES ('malformed.py', 'not-json')")
+    defs.execute("INSERT INTO ast_index VALUES ('array.py', '[]')")
+    assert _file_defines_any(defs, "ok.py", ["run"]) is True
+    assert _file_defines_any(defs, "ok.py", ["nope"]) is False
+    assert _file_defines_any(defs, "malformed.py", ["run"]) is False
+    assert _file_defines_any(defs, "array.py", ["run"]) is False
+    assert _file_defines_any(defs, "ghost.py", ["run"]) is False
+    bare = sqlite3.connect(":memory:")
+    assert _file_defines_any(bare, "ghost.py", ["run"]) is False
+
+    # C56: 'import run' and a bare 'run' record still accept via the
+    # no-module / import-module paths.
+    bound.execute(
+        "INSERT INTO ast_index VALUES ('tests/test_plain.py', '{}', ?)",
+        (json.dumps([{"text": "import run", "line": 1}]),),
+    )
+    bound.execute(
+        "INSERT INTO ast_index VALUES ('tests/test_bare.py', '{}', ?)",
+        (json.dumps([{"text": "run", "line": 1}]),),
+    )
+    plain_inventory = bound_inventory | frozenset(
+        {"tests/test_plain.py", "tests/test_bare.py"}
+    )
+    plain_found = _certified_symbol_reference_tests(
+        bound, plain_inventory, "pkg/impl.py", "python"
+    )
+    assert "tests/test_plain.py" in plain_found
+    assert "tests/test_bare.py" in plain_found
+
     # C34: a non-object symbols_json payload degrades, never crashes.
     array_payload = sqlite3.connect(":memory:")
     array_payload.row_factory = sqlite3.Row
@@ -1058,3 +1139,10 @@ def test_certified_test_files_walk_inventory_only() -> None:
         dependents=["tests/test_routes.py"],
     )
     assert dep_tests == ["tests/test_app.py", "tests/test_routes.py"]
+    # C54: a dependent outside the inventory is never a certified test.
+    outside_dep = _certified_test_files(
+        frozenset({"src/app.py", "tests/test_app.py"}),
+        "src/app.py",
+        dependents=["tests/test_routes.py"],
+    )
+    assert outside_dep == ["tests/test_app.py"]

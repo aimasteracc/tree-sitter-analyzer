@@ -794,6 +794,48 @@ def _looks_like_test_name(name: str, language: str) -> bool:
     return False
 
 
+def _import_module_name(import_text: str) -> str | None:
+    """Return the imported module path from one import statement text."""
+
+    import re as _re
+
+    m = _re.match(r"^\s*from\s+([.\w]+)\s+import\b", import_text)
+    if m:
+        return m.group(1)
+    m = _re.match(r"^\s*import\s+([.\w]+)", import_text)
+    if m:
+        return m.group(1)
+    return None
+
+
+def _file_defines_any(conn: Any, file_path: str, symbols: list[str]) -> bool:
+    """Return whether one indexed file defines ANY of the given symbols."""
+
+    import json as _json
+
+    try:
+        row = conn.execute(
+            "SELECT symbols_json FROM ast_index WHERE file_path = ?",
+            (file_path,),
+        ).fetchone()
+    except Exception:  # nosec B110
+        return False
+    if row is None:
+        return False
+    try:
+        payload = _json.loads(str(row["symbols_json"]))
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    defined = {
+        entry.get("name")
+        for entry in payload.get("symbols", [])
+        if isinstance(entry, dict)
+    }
+    return bool(defined.intersection(symbols))
+
+
 def _certified_symbol_reference_tests(
     conn: Any, inventory: frozenset[str], rel_path: str, language: str
 ) -> list[str]:
@@ -865,9 +907,31 @@ def _certified_symbol_reference_tests(
             text = record.get("text") if isinstance(record, dict) else None
             if not isinstance(text, str):
                 continue
-            if any(re.search(rf"\b{re.escape(symbol)}\b", text) for symbol in symbols):
-                results.append(rel)
-                break
+            matched = [
+                symbol
+                for symbol in symbols
+                if re.search(rf"\b{re.escape(symbol)}\b", text)
+            ]
+            if not matched:
+                continue
+            # Codex P2 (#1299 round-12, C56): bind the import to the target
+            # module — a test doing 'from other import run' must not count
+            # for pkg/impl.py just because both define 'run'. Resolve the
+            # imported module; if it resolves to a DIFFERENT file that
+            # itself defines the symbol, the import belongs to that module.
+            import_module = _import_module_name(text)
+            if import_module:
+                resolved_module = _resolve_import_spec_in_snapshot(
+                    conn, import_module, rel_path
+                )
+                if (
+                    resolved_module
+                    and resolved_module != rel_path
+                    and _file_defines_any(conn, resolved_module, matched)
+                ):
+                    continue
+            results.append(rel)
+            break
     # Codex P2 (#1299 round-10, C42): snapshot CALL references too — a test
     # doing 'import pkg; pkg.public_fn()' references the symbol through a
     # call edge even though imports_json carries only 'import pkg'.
@@ -986,8 +1050,14 @@ def _certified_test_files(
                         results.append(rel)
     for dep in dependents:
         # Symbol-reference mode over certified inputs: inventory-covered
-        # dependents that import the target and look like tests count.
-        if _looks_like_test_name(Path(dep).name, language) and dep not in results:
+        # dependents that import the target and look like tests count —
+        # an IMPORTS edge left for an excluded/unindexed path must NOT be
+        # served as a certified test (Codex P2 #1299 round-12, C54).
+        if (
+            dep in inventory
+            and _looks_like_test_name(Path(dep).name, language)
+            and dep not in results
+        ):
             results.append(dep)
     return results[:10]
 
@@ -1097,7 +1167,7 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
             "SELECT file_path, callee_name FROM edges WHERE kind = 'imports'",
         ).fetchall()
         for file_path, module in all_rows:
-            if not file_path or file_path == rel_path:
+            if not isinstance(file_path, str) or not file_path or file_path == rel_path:
                 continue
             if not isinstance(module, str):
                 continue

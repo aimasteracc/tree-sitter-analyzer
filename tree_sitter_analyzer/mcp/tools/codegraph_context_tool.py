@@ -401,12 +401,13 @@ class CodeGraphContextTool(BaseMCPTool):
                 max_nodes=max_nodes,
                 elapsed_ms=int((time.perf_counter() - started) * 1000),
             )
-            # Codex P2 (#1299 round-10, C46): RFC-0022's input-only contract
-            # forbids echoing raw task text from routed adapters (tasks may
-            # carry credentials / absolute host paths); the task layer's
-            # projection drops it later, but the primitive wire response
-            # must not carry the sensitive bytes either.
+            # Codex P2 (#1299 round-10/12, C46/C51): RFC-0022's input-only
+            # contract forbids echoing raw task text from routed adapters —
+            # tasks may carry credentials / absolute host paths. Drop the
+            # task AND the task-derived candidate tokens (which copy task
+            # words verbatim) from the primitive wire response.
             payload.pop("task", None)
+            payload.pop("candidates", None)
             return payload
 
         result = read_access.read_existing_index_consumer(
