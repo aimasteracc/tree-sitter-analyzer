@@ -11,6 +11,7 @@ projection is forwarded to `task_harness.request_from_dict`, preserving the
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -23,6 +24,10 @@ _OPERATIONS = frozenset({"understand", "plan_change", "assess_change"})
 _EXPECTED_OUTCOMES = frozenset({"PASS", "FAIL"})
 _MAX_CORPUS_BYTES = 8 * 1024 * 1024  # mirrors task_harness's input bound
 
+# Canonical kebab-case token for the oracle baseline reason (RFC-0026 C43):
+# the oracle's NO1_010B_ORACLE_REASON line must equal it exactly.
+_REASON_TOKEN_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+
 _REQUIRED_FIELDS = frozenset(
     {
         "id",
@@ -34,11 +39,13 @@ _REQUIRED_FIELDS = frozenset(
         "allowed_paths",
         "oracle",
         "oracle_baseline_reason",
-        "verification_command",
+        "verification_argv",
         "expected_outcome",
     }
 )
-_OPTIONAL_FIELDS = frozenset({"defect", "patch", "selected_tests"})
+_OPTIONAL_FIELDS = frozenset(
+    {"defect", "patch", "selected_tests", "verification_command"}
+)
 
 
 class BenchmarkRecordError(ValueError):
@@ -54,7 +61,11 @@ class BenchmarkRecord:
     path-segment boundaries; a file entry matches exactly. ``repo_commit``
     pins the fixture revision (RFC-0026 C15); ``expected_outcome`` is the
     pre-registered PASS/FAIL for the reference patch (RFC-0026 §5, non-vacuous
-    B1 gate). ``patch`` and ``selected_tests`` exist only on fixture records.
+    B1 gate). ``verification_argv`` is the typed execution spec (no shell
+    parsing, RFC-0026 C43); ``verification_command`` is a display-only hint.
+    ``oracle_baseline_reason`` is a canonical kebab-case token the oracle's
+    ``NO1_010B_ORACLE_REASON`` line must equal exactly (RFC-0026 C42/C43).
+    ``patch`` and ``selected_tests`` exist only on fixture records.
     """
 
     id: str
@@ -66,8 +77,9 @@ class BenchmarkRecord:
     allowed_paths: tuple[str, ...]
     oracle: str
     oracle_baseline_reason: str
-    verification_command: str
+    verification_argv: tuple[str, ...]
     expected_outcome: ExpectedOutcome
+    verification_command: str | None = None
     defect: dict[str, Any] | None = None
     patch: str | None = None
     selected_tests: tuple[str, ...] = ()
@@ -171,14 +183,33 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
 
     oracle = payload["oracle"]
     oracle_reason = payload["oracle_baseline_reason"]
-    verification = payload["verification_command"]
     for name, value in (
         ("oracle", oracle),
         ("oracle_baseline_reason", oracle_reason),
-        ("verification_command", verification),
     ):
         if not isinstance(value, str) or not value.strip():
             raise BenchmarkRecordError(f"{name} must be a non-empty string")
+    if not _REASON_TOKEN_RE.fullmatch(oracle_reason):
+        raise BenchmarkRecordError(
+            "oracle_baseline_reason must be a lowercase-kebab token"
+        )
+
+    raw_argv = payload["verification_argv"]
+    if not isinstance(raw_argv, list) or not raw_argv:
+        raise BenchmarkRecordError("verification_argv must be a non-empty list")
+    if not all(isinstance(item, str) and item.strip() for item in raw_argv):
+        raise BenchmarkRecordError(
+            "verification_argv entries must be non-empty strings"
+        )
+    verification_argv = tuple(raw_argv)
+
+    verification_hint = payload.get("verification_command")
+    if verification_hint is not None and (
+        not isinstance(verification_hint, str) or not verification_hint.strip()
+    ):
+        raise BenchmarkRecordError(
+            "verification_command must be a non-empty string when present"
+        )
 
     expected = payload["expected_outcome"]
     if expected not in _EXPECTED_OUTCOMES:
@@ -211,8 +242,9 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
         allowed_paths=allowed_paths,
         oracle=oracle,
         oracle_baseline_reason=oracle_reason,
-        verification_command=verification,
+        verification_argv=verification_argv,
         expected_outcome=expected,
+        verification_command=verification_hint,
         defect=defect,
         patch=patch,
         selected_tests=selected_tests,

@@ -42,6 +42,16 @@ def test_diff_paths_parse_canonical_headers() -> None:
     assert diff_paths("no headers here\n") == []
 
 
+def test_diff_paths_reject_non_canonical_headers() -> None:
+    # RFC-0026 §2: a +++ header must be canonical and repository-relative;
+    # absolute, dot-prefixed, and ..-segment headers are not valid paths.
+    assert diff_paths("+++ b//abs.py\n") == []
+    assert diff_paths("+++ b/./rel.py\n") == []
+    assert diff_paths("+++ b/a/../b.py\n") == []
+    assert diff_paths("+++ not-a-header\n") == []
+    assert [p.rel_path for p in diff_paths("+++ b/ok.py\n")] == ["ok.py"]
+
+
 def test_bound_patch_enforces_canonical_limits() -> None:
     bound_patch(PATCH_OK)  # in bounds
     with pytest.raises(PatchBoundError, match="max bytes"):

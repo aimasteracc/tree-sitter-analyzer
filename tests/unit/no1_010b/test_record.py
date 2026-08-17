@@ -28,8 +28,8 @@ def _valid_payload() -> dict:
         "task": "dispatch returns None for an unknown route",
         "allowed_paths": ["src/dispatch.py", "tests/"],
         "oracle": "oracles/0001.py",
-        "oracle_baseline_reason": "returns None, no 404 branch",
-        "verification_command": "uv run pytest tests/ -q",
+        "oracle_baseline_reason": "dispatch-returns-none",
+        "verification_argv": ["uv", "run", "pytest", "tests/", "-q"],
         "expected_outcome": "PASS",
         "defect": {"file": "src/dispatch.py", "line": 12, "kind": "missing-else"},
     }
@@ -41,6 +41,8 @@ def test_record_from_dict_accepts_valid_payload() -> None:
     assert record.task_class == "bugfix"
     assert record.repo_commit == "0" * 40
     assert record.allowed_paths == ("src/dispatch.py", "tests/")
+    assert record.verification_argv == ("uv", "run", "pytest", "tests/", "-q")
+    assert record.oracle_baseline_reason == "dispatch-returns-none"
 
 
 def test_record_from_dict_rejects_unknown_fields() -> None:
@@ -106,6 +108,25 @@ def test_record_rejects_malformed_payloads() -> None:
         payload[field] = "  "
         with pytest.raises(BenchmarkRecordError, match=f"{field} must be a non-empty"):
             record_from_dict(payload)
+    for bad_reason in (
+        "Returns None",
+        "has space",
+        "UPPER",
+        "trailing-",
+        "-leading",
+        "double--dash",
+    ):
+        payload = _valid_payload()
+        payload["oracle_baseline_reason"] = bad_reason
+        with pytest.raises(BenchmarkRecordError, match="lowercase-kebab token"):
+            record_from_dict(payload)
+    for bad_argv in ("uv run pytest", [], [""], ["uv", 42], ["uv", " "]):
+        payload = _valid_payload()
+        payload["verification_argv"] = bad_argv
+        with pytest.raises(BenchmarkRecordError, match="verification_argv"):
+            record_from_dict(payload)
+    payload = _valid_payload()
+    assert record_from_dict(payload).verification_command is None
     payload = _valid_payload()
     payload["defect"] = "not-an-object"
     with pytest.raises(BenchmarkRecordError, match="defect must be an object"):
