@@ -3,13 +3,14 @@
 - **Status**: draft
 - **Author(s)**: @lead-agent
 - **Created**: 2026-08-17
-- **Last updated**: 2026-08-17
+- **Last updated**: 2026-08-18
 - **Tracking issue**: TBD
 - **Affected source paths** (pin them — reviewers watch for drift here):
   - `tree_sitter_analyzer/task_harness.py` (corpus runner, stdin route)
   - `tree_sitter_analyzer/task/` (router truth-table, edge-evidence)
+  - `tree_sitter_analyzer/no1_010b/` (record, patch bounds, oracle, runner)
   - `benchmarks/no1_010b/` (corpus, oracles, runner, report, registration)
-  - `tests/unit/task/test_no1_010b_corpus.py` (exact pins for the runner)
+  - `tests/unit/no1_010b/` (exact record/oracle/runner contracts)
   - `rfcs/ROADMAP-no1-agent-trust.md` (ledger row NO1-010B)
 
 ## Summary
@@ -54,12 +55,14 @@ forwarded to the task harness `request_from_dict`. A record example:
   "id": "no1-010b/0001-bugfix-dispatch-null",
   "task_class": "bugfix",
   "repo": "fixtures/dispatch_app",
+  "repo_commit": "0000000000000000000000000000000000000000",
   "operation": "plan_change",
   "task": "dispatch returns None for an unknown route; return a 404 object instead",
   "allowed_paths": ["src/dispatch.py", "tests/"],
   "oracle": "oracles/0001.py",
   "oracle_baseline_reason": "dispatch-returns-none",
   "verification_argv": ["uv", "run", "pytest", "tests/", "-q"],
+  "expected_terminal": {"verdict": "PASS", "reason_code": null},
   "defect": {"file": "src/dispatch.py", "line": 12, "kind": "missing-else"}
 }
 ```
@@ -73,9 +76,17 @@ forwarded to the task harness `request_from_dict`. A record example:
   descendants on path-segment boundaries (`tests/test_dispatch.py` yes,
   `tests-escape/file.py` no); a file entry matches exactly.
 - `oracle_baseline_reason` is a **canonical token** (lowercase-kebab, e.g.
-  `dispatch-returns-none`) naming why the oracle is red on the unmodified
-  fixture; the runner asserts the oracle's emitted reason token equals it
-  exactly (see §3). Free-text descriptions are rejected at load (C43).
+  `dispatch-returns-none`) identifying the pre-registered assertion that is
+  red on the unmodified fixture; the runner asserts the oracle emits that
+  same token on every declared PASS or FAIL (see §3). Free-text descriptions
+  are rejected at load (C43).
+- `expected_terminal` is a **required strict object** registered per task and
+  included in the manifest hash. Its `verdict` is `PASS | FAIL | UNKNOWN`.
+  `reason_code` is `null` only for `PASS`, one exact product reason code for
+  `FAIL`, and one exact `unknown_reason` member for `UNKNOWN`. The aggregate
+  `9 PASS + 1 FAIL` statement is not executable truth; this object is. A
+  runner compares each reference attempt with this exact pair and may not
+  choose the failing task or code after execution (C55).
 - The verification executable is a **typed argv list, never a shell string**:
   `verification_argv` is executed with no shell, no quoting rules, and no
   globbing; a display-only `verification_command` string may accompany it for
@@ -98,10 +109,12 @@ The runner is a **patch verifier**; it never mutates the repository itself
    `patch_max_hunks = 512`, `patch_max_lines_per_hunk = 2000` (C41). An
    over-bound patch is `UNKNOWN`, never applied (C40). The limits are part
    of the manifest hash so an evaluator cannot choose thresholds after
-   observing an attempt. `patch_max_lines_per_hunk` counts **hunk-body
-   added + deleted lines only**: context lines, `@@` headers, and
-   `\ No newline at end of file` markers do not count; a hunk at exactly
-   the limit is accepted, limit+1 is over-bound (C43). **The same bounds
+   observing an attempt. `patch_max_lines_per_hunk` counts **every physical
+   hunk-body line** after an `@@` header and before the next hunk/file header:
+   additions, deletions, context, blank body lines, and
+   `\ No newline at end of file` markers all count; only the `@@` header and
+   file/diff headers do not. A hunk at exactly the limit is accepted, limit+1
+   is over-bound (C43/C44). **The same bounds
    apply to every input channel** — an agent-produced patch from a
    mandatory arm must pass the same registered streaming limits before
    parsing, so an oversized arm output is `UNKNOWN`, never processed (C43).
@@ -148,11 +161,37 @@ The runner is a **patch verifier**; it never mutates the repository itself
    over; the treatment/control pair uses identical fresh-state procedures so
    results are order-independent.
 
+**Pre-registered paired evidence-effect endpoint** (C56): every treatment
+arm has a `pair_id` with exactly one evidence-disabled control, and the
+external registration freezes the complete `pair_id × task_id ×
+repeat_index` matrix, matched random seed, and these endpoint parameters:
+`minimum_effect = 0.05`, one-sided exact McNemar/binomial test
+`alpha = 0.05`. For each registered cell, let `T`/`C` be 1 only when the
+treatment/control verdict is `PASS` (every FAIL or UNKNOWN is 0). Report
+`n11`, `n10`, `n01`, `n00`, where `n10` means treatment-only success, and
+`paired_effect = (n10 - n01) / N`. For `D = n10 + n01 > 0`, the exact
+one-sided p-value is `sum(comb(D, k) * 0.5^D for k = n10..D)`; for `D = 0`,
+`p = 1`. The improvement endpoint is `ADMITTED`
+iff the matrix is complete, there are zero UNKNOWN attempts, every arm and
+the overall run pass the 99% reliability gate, `paired_effect >= 0.05`, and
+the one-sided exact binomial test over the `n10 + n01` discordant pairs has
+`p <= 0.05` in the direction `n10 > n01`; with zero discordant pairs,
+`p = 1`. Missing cells are never dropped or imputed: they make the matrix
+invalid and block B2. The report always emits the counts, effect, p-value,
+thresholds, and `ADMITTED | NOT_ADMITTED`; only `ADMITTED` permits the
+bounded statement that graph evidence improved changes. A valid negative
+result remains publishable as `NOT_ADMITTED` and cannot be reframed after
+the run.
+
 **Sandbox**: patched code is executed in a resource-bounded sandbox — no
-network, no secrets/credentials mounted, and only the disposable worktree
-writable (C21). An isolated Git worktree does not isolate processes; the
-oracle and verification command must run with host permissions that cannot
-read credentials or touch files outside the worktree.
+network and no secrets/credentials mounted (C21). Patch application is the
+only phase allowed to write the candidate tree. Before oracle, verification,
+or index checks begin, the runner snapshots then mounts the **entire patched
+candidate tree read-only**, including paths that were allowed during patch
+application. The only writable mount is a fresh runner-owned scratch root
+outside the candidate tree; `TMPDIR`, tool caches, coverage files, Python
+bytecode, and both analyzer comparison databases are redirected there via
+the frozen environment. An isolated Git worktree alone is not a sandbox.
 
 The corpus record gains an optional `patch` field only for *fixture* tasks
 used to validate the runner's positive/negative controls (§5) — the real
@@ -181,19 +220,22 @@ failure (C19). The runner instead invokes each oracle through a **trusted
 wrapper** that separates loading/execution from the declared assertion:
 
 - wrapper performs import/load first; any import/syntax/type error → `UNKNOWN`;
-- only the oracle's explicitly declared assertion result maps to PASS
-  (exit 0) or FAIL (exit 1 → `ORACLE_FAILED`);
+- only a process exit 0 with exactly one final declared assertion result maps
+  to PASS or FAIL (`FAIL` → `ORACLE_FAILED`); the result marker, not the raw
+  process code, carries the behavioral verdict;
 - every other exception, timeout, or unexpected process exit → `UNKNOWN`
   (see the canonical timeouts below).
-The baseline validation uses a **typed reason protocol** (C42, C43): on a FAIL
-result the oracle also prints exactly one declared line
+The baseline validation uses a **typed reason protocol** (C42, C43): on every
+declared PASS or FAIL the oracle also prints exactly one declared line
 `NO1_010B_ORACLE_REASON: <token>`; the token must EQUAL the registered
 `oracle_baseline_reason` token (exact string match, no exception-text
-comparison). A PASS result must NOT print a reason line. Missing, duplicate,
-or mismatched reason lines are **corpus validation failures checked in
-preflight, before any attempt is recorded** — they never consume an attempt,
-never enter the `all_trials` denominator, and reject the whole corpus run
-with no report emitted (C43).
+comparison). Preflight executes the oracle on the unmodified fixture and
+requires declared FAIL plus the exact token. Missing, duplicate, or
+mismatched lines during that baseline check are corpus validation failures:
+they consume zero attempts and emit no report. After preflight, the same
+protocol failure during a retained patched-tree attempt is `UNKNOWN /
+ORACLE_PROTOCOL_ERROR`; it is never silently converted to PASS or a product
+failure.
 
 **Canonical execution spec (typed argv, frozen environment, canonical
 timeouts)** (C43):
@@ -210,19 +252,35 @@ timeouts)** (C43):
   a short grace period, then SIGKILL) and records `UNKNOWN` with
   `unknown_reason = ORACLE_TIMEOUT` / `VERIFICATION_TIMEOUT`.
 
-**Reliability mapping (exhaustive terminal states)** (C43): every retained
+**Reliability mapping (exhaustive terminal states)** (C43/C55): every retained
 attempt ends in exactly one terminal state; `UNKNOWN` outcomes MUST carry an
-`unknown_reason` subcode from the closed enum
-`{PATCH_NOT_APPLICABLE, PATCH_OVER_BOUND, ORACLE_LOAD_ERROR, ORACLE_TIMEOUT,
-VERIFICATION_TIMEOUT, SANDBOX_FAILURE, REGISTRY_FAILURE}`. The mapping to the
+`unknown_reason` subcode from the closed enum below. No catch-all string is
+permitted:
+
+`{PATCH_NOT_APPLICABLE, PATCH_OVER_BOUND, PROVENANCE_MISSING,
+AGENT_OUTPUT_ERROR, ORACLE_LOAD_ERROR, ORACLE_EXECUTION_ERROR,
+ORACLE_PROTOCOL_ERROR, ORACLE_TIMEOUT, VERIFICATION_EXECUTION_ERROR,
+VERIFICATION_TIMEOUT, INDEX_REFRESH_ERROR, INDEX_QUERY_ERROR,
+EVIDENCE_CHECK_ERROR, SANDBOX_FAILURE, REGISTRY_FAILURE}`.
+
+`ORACLE_EXECUTION_ERROR` covers runtime exceptions and unexpected exits after
+load; `PROVENANCE_MISSING` covers a supplied patch or arm without the required
+graph transcript; `INDEX_REFRESH_ERROR` and `INDEX_QUERY_ERROR` distinguish
+index construction/refresh from semantic comparison failures; command spawn,
+signal termination, or protocol-level launch failures use
+`VERIFICATION_EXECUTION_ERROR` (an ordinary nonzero verification exit remains
+the product verdict `VERIFICATION_FAILED`). A write
+journal or read-only mount failure is `SANDBOX_FAILURE`, and an unavailable
+unsupported-evidence check is `EVIDENCE_CHECK_ERROR`. The mapping to the
 per-arm reliability metric `successful_indexed_trials / all_trials` is fixed:
 
 | Terminal state | Verdict reached? | Counts toward numerator | Failure class |
 |---|---|---|---|
 | `PASS` | yes | yes | — |
-| `PATH_VIOLATION`, `ORACLE_FAILED`, `VERIFICATION_FAILED`, `STALE_ROWS`, `UNSUPPORTED_RELATIONSHIP`, `TEST_SELECTION_FAILED` | yes | yes | product |
-| `UNKNOWN` (`PATCH_NOT_APPLICABLE`, `PATCH_OVER_BOUND`) | no | no | product (input) |
-| `UNKNOWN` (`ORACLE_LOAD_ERROR`, `ORACLE_TIMEOUT`, `VERIFICATION_TIMEOUT`, `SANDBOX_FAILURE`, `REGISTRY_FAILURE`) | no | no | infrastructure |
+| `PATH_VIOLATION`, `ORACLE_FAILED`, `VERIFICATION_FAILED`, `STALE_ROWS`, `UNSUPPORTED_RELATIONSHIP`, `TEST_SELECTION_FAILED` (`{FAIL, reason_code}`) | yes | yes | product |
+| `UNKNOWN` (`PATCH_NOT_APPLICABLE`, `PATCH_OVER_BOUND`, `PROVENANCE_MISSING`, `AGENT_OUTPUT_ERROR`) | no | no | product (input/output) |
+| `UNKNOWN` (`ORACLE_LOAD_ERROR`, `ORACLE_EXECUTION_ERROR`, `ORACLE_PROTOCOL_ERROR`, `ORACLE_TIMEOUT`, `VERIFICATION_EXECUTION_ERROR`, `VERIFICATION_TIMEOUT`) | no | no | infrastructure (execution) |
+| `UNKNOWN` (`INDEX_REFRESH_ERROR`, `INDEX_QUERY_ERROR`, `EVIDENCE_CHECK_ERROR`, `SANDBOX_FAILURE`, `REGISTRY_FAILURE`) | no | no | infrastructure (runner) |
 
 The 99% reliability gate is `numerator / denominator ≥ 0.99` per arm and
 overall: at most 1% of retained attempts may end as `UNKNOWN`. Every product
@@ -238,7 +296,10 @@ whose denominator silently drops attempts is not trustworthy (C38, C43).
 `task/edge_evidence.py` validates *bundles*; it cannot see obsolete rows
 already in the index. The runner compares the **refreshed projection** with a
 **clean-rebuild projection** of the patched tree and requires byte-identical
-rows for the affected files — this covers added, deleted, AND modified rows
+semantic rows across the **complete symbol and edge tables** — benchmark
+fixtures are bounded, and a partial affected-file projection misses global
+resolution changes such as a new duplicate name altering an unchanged
+caller's target. This covers added, deleted, AND modified rows
 (a symbol that keeps `(file, name)` but moves line, or an edge that keeps
 endpoints but changes kind/line/resolution, must not survive) (C16):
 
@@ -253,39 +314,48 @@ endpoints but changes kind/line/resolution, must not survive) (C16):
    — autoincrement keys differ across rebuilds even when every semantic
    symbol/edge is correct (C35); compare `(file_path, name, line, kind, ...)`
    and `(source, target, kind, line, resolution, provenance, ...)`;
-5. include **incoming edges owned by unchanged files** (an unchanged caller's
-   `edges.file_path` row whose `callee_resolved_file` points into the changed
-   file must be compared too) — restricting to affected files misses those
-   cross-file rows (C34).
+5. compare the complete canonical edge projection, including incoming edges
+   owned by unchanged files and edges whose source/target files are unchanged
+   but whose resolution changed through a duplicate/renamed symbol; separately
+   validate referential integrity after deterministic surrogate-ID remapping
+   (C34/C57).
 
-**Allowed-path recheck**: the allowlist is compared against the applied diff
-AND re-compared after every executed command (oracle, verification) against a
-worktree snapshot, including untracked files — an allowed test-file change
-that rewrites a production file during evaluation is `PATH_VIOLATION` (C18).
+**Allowed-path recheck**: the allowlist is compared against the applied diff.
+After patch application, the immutable candidate-tree snapshot is re-compared
+after every executed command, including untracked files. Any candidate-tree
+change is `PATH_VIOLATION`, even if it touches a path that was allowed for the
+patch itself (C18/C55).
 
 **Write-boundary enforcement during execution, not only after** (C43):
 post-command snapshots cannot detect a write that is reverted before the
-process exits — an allowed test hook can temporarily overwrite an
-out-of-allowlist production file, run verification against the altered
-implementation, then restore the original bytes, leaving the snapshot clean
+process exits — an allowed test hook can temporarily overwrite a candidate
+production file, run verification against the altered implementation, then
+restore the original bytes, leaving the snapshot clean
 while an otherwise failing patch passes. The runner therefore enforces the
-boundary WHILE each process runs: out-of-allowlist worktree files are made
-**read-only before execution** (kernel-enforced, so a process cannot write
-them at all) AND a **write journal** records every write during each command;
-a journaled write outside the allowlist is `PATH_VIOLATION` regardless of the
-final bytes. The post-command snapshot is retained as defense in depth.
-**Trusted tool artifacts are excluded**: files the declared verification
-command or oracle legitimately creates (`.pytest_cache/`, `__pycache__/`,
-`.mypy_cache/`, `.ruff_cache/`) are on a pinned allowlist of excluded paths,
-so a correct reference patch never deterministically fails path enforcement
-(C25).
+boundary WHILE each process runs: the **entire candidate tree is read-only**
+(kernel-enforced) AND an audit/write journal records attempted and successful
+writes during each command. A journaled candidate-tree write is
+`PATH_VIOLATION` regardless of allowlist membership or final bytes. This
+prevents a candidate-controlled test hook from temporarily replacing even an
+allowed production file and restoring it after verification (C55). The
+post-command snapshot remains defense in depth. There is no trusted-artifact
+exception inside the candidate tree: `.pytest_cache`, `__pycache__`, mypy,
+ruff, coverage, temporary files, and TSA `.ast-cache` databases are redirected
+to the fresh runner scratch mount; if one appears in the candidate tree it is
+a violation (C25/C58).
 
 ### 4. Claim policy and pre-registration gate
 
 - **Immutable registration record**: before the first execution of any task,
-  the runner appends the corpus manifest hash + per-task oracle hashes +
-  **`repo_commit` + clean-tree fingerprint** (C15) + a **run/attempt
-  identity** to an **append-only registration registry**. **Every execution
+  the runner appends an explicit canonical payload containing the corpus
+  manifest hash; each task's `repo_commit`, clean-tree fingerprint,
+  `expected_terminal`, oracle hash, affected-test-oracle hash, and independent
+  oracle signature; the frozen environment/timeout/patch-limit digest; every
+  `arm_id`, `pair_id`, evidence toggle, full arm-configuration hash, spend
+  authorization hash, and random seed; the complete arm × task × repeat
+  matrix; repeat/retry policy; paired-endpoint thresholds; and every
+  **run/attempt identity** to an **append-only registration registry**. Any
+  execution-time mismatch rejects the run. **Every execution
   attempt is retained in the score** — a stochastic arm rerun after a
   failing patch cannot discard that run; a fixed repeat count and retry rule
   are registered per arm, and the report reflects all attempts, never a
@@ -302,6 +372,14 @@ so a correct reference patch never deterministically fails path enforcement
   typed argv, manifest limits, and oracle strict-subset validation (§5) are
   all checked first; a preflight failure rejects the corpus run with zero
   attempts consumed (C43).
+- **Independent oracle approval**: each registered behavioral and
+  affected-test oracle is signed over `(task_id, repo_commit, oracle_hash,
+  expected_terminal)` by at least one reviewer who is neither the corpus/
+  reference-patch author nor an author of the implementation under test. The
+  signer identity, public-key fingerprint, signature, and non-tool provenance
+  declaration are part of the external registration payload. Missing,
+  invalid, or non-independent signatures fail preflight; a hash timestamp
+  alone is not oracle truth (C59).
 - E0–E3: internal numbers only, no public competitive wording.
 - **E3 requires separately attested reproduction**: an independent machine,
   blind evaluation, and a separate attestation record — a CI job in the
@@ -319,8 +397,10 @@ so a correct reference patch never deterministically fails path enforcement
 ### 5. Seed corpus and B1 non-vacuous gate
 
 The first corpus ships with **10 pre-registered tasks** (4 bugfix, 2
-refactor, 2 migration, 2 test_selection), each with a **pre-registered
-expected outcome** (9 PASS + 1 FAIL for a known-wrong reference patch).
+refactor, 2 migration, 2 test_selection), each with its exact
+`expected_terminal = {verdict, reason_code}` in the strict JSONL and manifest
+hash (9 `PASS/null` + 1 named `FAIL/<product-code>` for a known-wrong
+reference patch). Aggregate counts never substitute for per-task truth.
 
 **B1 completes only when the runner matches exact expected outcomes AND
 survives a mutation suite** that forces every reason code:
@@ -335,9 +415,13 @@ survives a mutation suite** that forces every reason code:
   exact code;
 - `UNSUPPORTED_RELATIONSHIP`: patch justified by a high-confidence
   unsupported relationship (fixture) → exact code;
-- `UNKNOWN`: a non-applicable patch, an oracle-execution-error fixture, and
-  hunk-boundary fixtures (a hunk at exactly `patch_max_lines_per_hunk` is
-  processed; limit+1 is `UNKNOWN`) → exact code;
+- `UNKNOWN`: each closed subcode is forced independently, including a
+  non-applicable patch (`PATCH_NOT_APPLICABLE`), missing provenance
+  (`PROVENANCE_MISSING`), oracle runtime/unexpected exit
+  (`ORACLE_EXECUTION_ERROR`), index refresh/query failures, and hunk-boundary
+  fixtures (a physical-body hunk at exactly
+  `patch_max_lines_per_hunk` is processed; limit+1 is
+  `UNKNOWN/PATCH_OVER_BOUND`) → exact verdict/subcode;
 - `TEST_SELECTION_FAILED`: on a test_selection task, a transcript with an
   incorrect, empty, or full-suite selected-test set → exact code (C17).
 
@@ -362,9 +446,9 @@ oracle, running the full suite, no tests, or the wrong subset is always
 
 | Phase | Scope | Verifiable exit artifact |
 |---|---|---|
-| **B0** | RFC accepted; strict `BenchmarkRecord` model; 10-task seed corpus; registration registry | `benchmarks/no1_010b/` with 10 tasks; corpus contract tests green (unknown-field rejection, oracle red-baseline + reason, allowlist semantics, per-class counts) |
-| **B1** | Patch-verifier runner complete (all applicable checks + oracle exit-code contract + stale-row queries + mutation suite) | 10/10 pre-registered outcomes matched exactly; mutation suite forces all 7 reason codes; CI reproduces |
-| **B2** | VCSR baseline measurement on pinned versions | `report.json` with VCSR + per-class/per-repo **and per-arm** breakdown (exact task counts and outcomes per client/model/backend — arms are never pooled in the report, C31) + **the reliability metric per arm and overall**: `successful_indexed_trials / all_trials` with exact numerator, denominator, failure classes (infrastructure vs product), and the 99% reliability gate status (C38); the terminal-state → numerator/failure-class mapping is fixed in §3 (C43). **B2 does not complete unless the 99% reliability threshold is met per arm and overall** — a below-threshold run is recorded but cannot advance to baseline (C39) + provenance; baseline recorded in STATE.md; E0–E3 internal only |
+| **B0** | RFC accepted; strict `BenchmarkRecord` model; 10-task seed corpus; registration registry | `benchmarks/no1_010b/` with 10 tasks; corpus contract tests green (unknown-field rejection, exact per-task terminal state, oracle red-baseline + reason/signature, allowlist semantics, per-class counts) |
+| **B1** | Patch-verifier runner complete (all applicable checks + oracle exit-code contract + stale-row queries + mutation suite) | 10/10 pre-registered terminal pairs matched exactly; mutation suite forces every named product reason and every closed UNKNOWN subcode; CI reproduces |
+| **B2** | VCSR baseline measurement on pinned versions | `report.json` with VCSR + per-class/per-repo **and per-arm** breakdown (exact task counts and outcomes per client/model/backend — arms are never pooled in the report, C31) + **the reliability metric per arm and overall**: `successful_indexed_trials / all_trials` with exact numerator, denominator, failure classes (infrastructure vs product), and the 99% reliability gate status (C38); the terminal-state → numerator/failure-class mapping is fixed in §3 (C43). The complete registered arm × task × repeat matrix is mandatory; a missing cell blocks B2. The report also emits the paired endpoint's `n11/n10/n01/n00`, effect, exact p-value, frozen thresholds, and admission state. **B2 does not complete unless the 99% reliability threshold is met per arm and overall** — a below-threshold run is recorded but cannot advance to baseline (C39) + provenance; baseline recorded in STATE.md; E0–E3 internal only |
 | **B3** | (gated) E4 bounded admission | only with zero UNKNOWNs, E3 independent attestation, external E4 reproduction — per §4 |
 
 ## Interaction with existing seams
