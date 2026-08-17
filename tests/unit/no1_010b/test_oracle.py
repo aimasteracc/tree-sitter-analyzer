@@ -265,7 +265,7 @@ def test_kill_process_tree_falls_back_without_killpg(
 
     proc = Mock(pid=321)
     monkeypatch.setattr(oracle_module, "_IS_WINDOWS", False)
-    monkeypatch.setattr(oracle_module.os, "killpg", None)
+    monkeypatch.setattr(oracle_module.os, "killpg", None, raising=False)
 
     _kill_process_tree(proc)
 
@@ -281,7 +281,10 @@ def test_kill_process_tree_suppresses_cleanup_failures(
     proc.kill.side_effect = OSError("kill failed")
     monkeypatch.setattr(oracle_module, "_IS_WINDOWS", False)
     monkeypatch.setattr(
-        oracle_module.os, "killpg", Mock(side_effect=OSError("killpg failed"))
+        oracle_module.os,
+        "killpg",
+        Mock(side_effect=OSError("killpg failed")),
+        raising=False,
     )
 
     _kill_process_tree(proc)
