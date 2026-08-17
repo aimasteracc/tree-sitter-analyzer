@@ -61,6 +61,29 @@ def test_run_oracle_missing_file_is_unknown(tmp_path: Path) -> None:
     assert outcome.status == OracleStatus.UNKNOWN
 
 
+def test_run_oracle_os_error_is_unknown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess
+
+    def boom(*args, **kwargs):
+        raise OSError("no such executable")
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    oracle = _write_oracle(tmp_path, "oracle.py", ORACLE_PASS)
+    outcome = run_oracle(str(oracle), str(tmp_path))
+    assert outcome.status == OracleStatus.UNKNOWN
+    assert "could not execute" in outcome.stdout_tail
+    monkeypatch.undo()
+
+
+def test_oracle_command_line_quotes_path() -> None:
+    from tree_sitter_analyzer.no1_010b.oracle import oracle_command_line
+
+    assert oracle_command_line("oracles/0001.py") == "oracles/0001.py"
+    assert oracle_command_line("my oracle.py") == "'my oracle.py'"
+
+
 def test_parse_result_line_uses_final_declared_line() -> None:
     assert (
         _parse_result_line("noise\nNO1_010B_ORACLE_RESULT: FAIL\n") is OracleStatus.FAIL

@@ -132,6 +132,14 @@ def test_record_rejects_malformed_payloads() -> None:
         record_from_dict(payload)
 
 
+def test_is_trusted_tool_artifact_matches_root_files() -> None:
+    from tree_sitter_analyzer.no1_010b.artifacts import is_trusted_tool_artifact
+
+    assert is_trusted_tool_artifact(".coverage") is True
+    assert is_trusted_tool_artifact("src/app.py") is False
+    assert is_trusted_tool_artifact("tests/__pycache__/x.pyc") is True
+
+
 def test_path_canonicalization_rejects_all_bad_forms() -> None:
     for bad in (
         None,
