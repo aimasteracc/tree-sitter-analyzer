@@ -114,9 +114,13 @@ The runner is a **patch verifier**; it never mutates the repository itself
    non-pooled, are a mandatory B2 completion gate** — a VCSR baseline
    produced only from supplied reference patches does not satisfy NO1-010B.
    **Paired control arms are also mandatory for the Wave-2 outcome**: for
-   each evidence-enabled arm there is a pre-registered control arm (same
-   client/model, graph evidence disabled) so the counterfactual "graph
-   evidence improved the change" is measurable, not asserted (C28).
+   each evidence-enabled arm there is a pre-registered control arm (graph
+   evidence disabled) so the counterfactual "graph evidence improved the
+   change" is measurable, not asserted (C28). The pair holds **every
+   non-evidence parameter constant** — same backend, system/developer
+   prompts, sampling parameters, permissions, budgets, random seeds, and
+   repeat schedule; the ONLY permitted difference is the pre-registered
+   evidence toggle (C37).
 
 **Sandbox**: patched code is executed in a resource-bounded sandbox — no
 network, no secrets/credentials mounted, and only the disposable worktree
@@ -265,7 +269,7 @@ subset is `TEST_SELECTION_FAILED`, not a pass.
 |---|---|---|
 | **B0** | RFC accepted; strict `BenchmarkRecord` model; 10-task seed corpus; registration registry | `benchmarks/no1_010b/` with 10 tasks; corpus contract tests green (unknown-field rejection, oracle red-baseline + reason, allowlist semantics, per-class counts) |
 | **B1** | Patch-verifier runner complete (all 5 checks + oracle exit-code contract + stale-row queries + mutation suite) | 10/10 pre-registered outcomes matched exactly; mutation suite forces all 7 reason codes; CI reproduces |
-| **B2** | VCSR baseline measurement on pinned versions | `report.json` with VCSR + per-class/per-repo **and per-arm** breakdown (exact task counts and outcomes per client/model/backend — arms are never pooled in the report, C31) + provenance; baseline recorded in STATE.md; E0–E3 internal only |
+| **B2** | VCSR baseline measurement on pinned versions | `report.json` with VCSR + per-class/per-repo **and per-arm** breakdown (exact task counts and outcomes per client/model/backend — arms are never pooled in the report, C31) + **the reliability metric per arm and overall**: `successful_indexed_trials / all_trials` with exact numerator, denominator, failure classes (infrastructure vs product), and the 99% reliability gate status (C38) + provenance; baseline recorded in STATE.md; E0–E3 internal only |
 | **B3** | (gated) E4 bounded admission | only with zero UNKNOWNs, E3 independent attestation, external E4 reproduction — per §4 |
 
 ## Interaction with existing seams
