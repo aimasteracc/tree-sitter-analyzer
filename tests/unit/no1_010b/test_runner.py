@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from tree_sitter_analyzer.no1_010b.runner import (
+    DiffPath,
     PatchBoundError,
     allowlist_violations,
     bound_patch,
@@ -42,14 +43,34 @@ def test_diff_paths_parse_canonical_headers() -> None:
     assert diff_paths("no headers here\n") == []
 
 
-def test_diff_paths_reject_non_canonical_headers() -> None:
-    # RFC-0026 §2: a +++ header must be canonical and repository-relative;
-    # absolute, dot-prefixed, and ..-segment headers are not valid paths.
-    assert diff_paths("+++ b//abs.py\n") == []
-    assert diff_paths("+++ b/./rel.py\n") == []
-    assert diff_paths("+++ b/a/../b.py\n") == []
-    assert diff_paths("+++ not-a-header\n") == []
-    assert [p.rel_path for p in diff_paths("+++ b/ok.py\n")] == ["ok.py"]
+def test_diff_paths_retains_source_path_for_deletion() -> None:
+    patch = "--- a/secret.py\n+++ /dev/null\n@@ -1 +0,0 @@\n-secret\n"
+    assert [path.rel_path for path in diff_paths(patch)] == ["secret.py"]
+
+
+def test_diff_paths_retains_both_paths_for_rename() -> None:
+    patch = "--- a/old.py\n+++ b/new.py\n@@ -1 +1 @@\n-old\n+new\n"
+    assert [path.rel_path for path in diff_paths(patch)] == ["old.py", "new.py"]
+
+
+@pytest.mark.parametrize(
+    ("header", "marker"),
+    [
+        ("+++ b/ok.py", "---"),
+        ("--- a//abs.py", "---"),
+        ("--- a/./rel.py", "---"),
+        ("--- a/a/../b.py", "---"),
+        ("--- a/dir\\file.py", "---"),
+        ("--- a/", "---"),
+        ("+++ not-a-header", "+++"),
+    ],
+)
+def test_diff_path_rejects_non_canonical_header(header: str, marker: str) -> None:
+    assert DiffPath.from_diff_header(header, marker) is None
+
+
+def test_diff_paths_ignores_unpaired_file_header() -> None:
+    assert diff_paths("+++ b/ok.py\n") == []
 
 
 def test_bound_patch_enforces_canonical_limits() -> None:
@@ -60,6 +81,12 @@ def test_bound_patch_enforces_canonical_limits() -> None:
     with pytest.raises(PatchBoundError, match="max hunks"):
         bound_patch(many_hunks)
     long_hunk = "@@ -1 +1 @@\n" + "+x\n" * 2001
+    with pytest.raises(PatchBoundError, match="max lines per hunk"):
+        bound_patch(long_hunk)
+
+
+def test_bound_patch_counts_context_lines_in_hunk_limit() -> None:
+    long_hunk = "@@ -1 +1 @@\n" + " context\n" * 2001
     with pytest.raises(PatchBoundError, match="max lines per hunk"):
         bound_patch(long_hunk)
 

@@ -209,6 +209,8 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
         raise BenchmarkRecordError(
             "verification_argv entries must be non-empty strings"
         )
+    if any("\x00" in item for item in raw_argv):
+        raise BenchmarkRecordError("verification_argv entries must not contain NUL")
     verification_argv = tuple(raw_argv)
 
     verification_hint = payload.get("verification_command")
@@ -231,6 +233,18 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
     patch = payload.get("patch")
     if patch is not None and not isinstance(patch, str):
         raise BenchmarkRecordError("patch must be a string")
+    if isinstance(patch, str):
+        if not patch.strip():
+            raise BenchmarkRecordError("patch must be a non-empty unified diff")
+        lines = patch.split("\n")
+        has_file_header = any(
+            line.startswith("--- ")
+            and index + 1 < len(lines)
+            and lines[index + 1].startswith("+++ ")
+            for index, line in enumerate(lines)
+        )
+        if not has_file_header:
+            raise BenchmarkRecordError("patch must be a non-empty unified diff")
 
     raw_selected = payload.get("selected_tests", [])
     if not isinstance(raw_selected, list) or not all(
@@ -295,20 +309,31 @@ def load_corpus_records(path: str) -> list[BenchmarkRecord]:
     import sys
 
     if path == "-":
-        raw = sys.stdin.read(_MAX_CORPUS_BYTES + 1)
-        if len(raw) > _MAX_CORPUS_BYTES:
-            raise BenchmarkRecordError("corpus exceeds the 8 MiB input bound")
-        lines = raw.splitlines()
+        binary_stdin = getattr(sys.stdin, "buffer", None)
+        if binary_stdin is not None:
+            raw_bytes = binary_stdin.read(_MAX_CORPUS_BYTES + 1)
+        else:
+            raw_bytes = sys.stdin.read(_MAX_CORPUS_BYTES + 1).encode("utf-8")
     else:
         from pathlib import Path
 
-        # Open once and read at most the bound + 1 so a file that grows
-        # between a stat and a read cannot exceed the advertised limit.
-        with Path(path).open("r", encoding="utf-8") as handle:
-            raw = handle.read(_MAX_CORPUS_BYTES + 1)
-        if len(raw) > _MAX_CORPUS_BYTES:
-            raise BenchmarkRecordError("corpus exceeds the 8 MiB input bound")
-        lines = raw.splitlines()
+        # Open once in binary mode and read at most the byte bound + 1. Text
+        # mode counts decoded characters and can admit a multi-byte corpus
+        # larger than the registered 8 MiB boundary.
+        with Path(path).open("rb") as handle:
+            raw_bytes = handle.read(_MAX_CORPUS_BYTES + 1)
+
+    if len(raw_bytes) > _MAX_CORPUS_BYTES:
+        raise BenchmarkRecordError("corpus exceeds the 8 MiB input bound")
+    try:
+        raw = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise BenchmarkRecordError("corpus must be valid UTF-8") from exc
+
+    # JSONL is delimited only by LF (with optional CR before LF). Unicode
+    # separators such as U+2028 are valid inside JSON strings and must not
+    # split a record.
+    lines = [line.removesuffix("\r") for line in raw.split("\n")]
 
     records: list[BenchmarkRecord] = []
     seen_ids: set[str] = set()

@@ -64,11 +64,14 @@ def test_record_from_dict_rejects_invalid_enums() -> None:
             record_from_dict(payload)
 
 
-def test_record_from_dict_rejects_empty_task_and_short_commit() -> None:
+def test_record_from_dict_rejects_empty_task() -> None:
     payload = _valid_payload()
     payload["task"] = "  "
     with pytest.raises(BenchmarkRecordError, match="task must not be empty"):
         record_from_dict(payload)
+
+
+def test_record_from_dict_rejects_short_commit() -> None:
     payload = _valid_payload()
     payload["repo_commit"] = "abc"
     with pytest.raises(BenchmarkRecordError, match="hex git sha"):
@@ -165,6 +168,20 @@ def test_record_rejects_malformed_patch() -> None:
         record_from_dict(payload)
 
 
+def test_record_accepts_unified_diff_patch() -> None:
+    payload = _valid_payload()
+    payload["patch"] = "--- a/src/dispatch.py\n+++ b/src/dispatch.py\n@@ -1 +1 @@\n"
+    assert record_from_dict(payload).patch == payload["patch"]
+
+
+@pytest.mark.parametrize("patch", ["", "  ", "not a unified diff"])
+def test_record_rejects_empty_or_non_diff_patch(patch: str) -> None:
+    payload = _valid_payload()
+    payload["patch"] = patch
+    with pytest.raises(BenchmarkRecordError, match="non-empty unified diff"):
+        record_from_dict(payload)
+
+
 @pytest.mark.parametrize("bad_selected", ["tests/x.py", ["tests/x.py", 42]])
 def test_record_rejects_malformed_selected_tests(bad_selected: object) -> None:
     payload = _valid_payload()
@@ -199,6 +216,13 @@ def test_record_rejects_non_hex_repo_commit() -> None:
     payload = _valid_payload()
     payload["repo_commit"] = "g" * 40
     with pytest.raises(BenchmarkRecordError, match="hex git sha"):
+        record_from_dict(payload)
+
+
+def test_record_rejects_nul_in_verification_argv() -> None:
+    payload = _valid_payload()
+    payload["verification_argv"] = ["python", "bad\x00arg"]
+    with pytest.raises(BenchmarkRecordError, match="must not contain NUL"):
         record_from_dict(payload)
 
 
@@ -281,6 +305,17 @@ def test_loader_rejects_oversized_stdin(monkeypatch: pytest.MonkeyPatch) -> None
         load_corpus_records("-")
 
 
+def test_loader_reads_binary_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    import io
+    import sys
+    from types import SimpleNamespace
+
+    raw = (json.dumps(_valid_payload()) + "\n").encode()
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(raw)))
+
+    assert load_corpus_records("-")[0].id == _valid_payload()["id"]
+
+
 def test_loader_rejects_empty_corpus(tmp_path: Path) -> None:
     corpus = tmp_path / "empty.jsonl"
     corpus.write_text("\n\n", encoding="utf-8")
@@ -293,6 +328,29 @@ def test_loader_rejects_oversized_file(tmp_path: Path) -> None:
     corpus.write_text("x" * (8 * 1024 * 1024 + 1), encoding="utf-8")
     with pytest.raises(BenchmarkRecordError, match="8 MiB"):
         load_corpus_records(str(corpus))
+
+
+def test_loader_enforces_file_limit_in_bytes(tmp_path: Path) -> None:
+    corpus = tmp_path / "multi-byte.jsonl"
+    corpus.write_bytes("界".encode() * ((8 * 1024 * 1024) // 3 + 1))
+    with pytest.raises(BenchmarkRecordError, match="8 MiB"):
+        load_corpus_records(str(corpus))
+
+
+def test_loader_rejects_non_utf8_bytes(tmp_path: Path) -> None:
+    corpus = tmp_path / "binary.jsonl"
+    corpus.write_bytes(b"\xff\n")
+    with pytest.raises(BenchmarkRecordError, match="valid UTF-8"):
+        load_corpus_records(str(corpus))
+
+
+def test_loader_preserves_unicode_line_separator_inside_json(tmp_path: Path) -> None:
+    payload = _valid_payload()
+    payload["task"] = "first\u2028second"
+    corpus = tmp_path / "unicode-separator.jsonl"
+    corpus.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+    records = load_corpus_records(str(corpus))
+    assert records[0].task == "first\u2028second"
 
 
 def test_loader_rejects_duplicate_keys(tmp_path: Path) -> None:

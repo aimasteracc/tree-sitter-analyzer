@@ -45,26 +45,35 @@ class DiffPath:
     rel_path: str
 
     @classmethod
-    def from_diff_header(cls, header_line: str) -> DiffPath | None:
-        """Parse a unified-diff ``+++ b/<path>`` header into a canonical path."""
-        if not header_line.startswith("+++ b/"):
+    def from_diff_header(cls, header_line: str, marker: str) -> DiffPath | None:
+        """Parse one canonical ``--- a/`` or ``+++ b/`` diff header."""
+        prefix = f"{marker} "
+        side = "a/" if marker == "---" else "b/"
+        if not header_line.startswith(prefix):
             return None
-        value = header_line[len("+++ b/") :].rstrip()
+        raw = header_line[len(prefix) :].rstrip()
+        if raw == "/dev/null" or not raw.startswith(side):
+            return None
+        value = raw[len(side) :]
         if value.startswith("/") or value.startswith("./"):
             return None
-        if ".." in PurePosixPath(value).parts:
+        if not value or "\\" in value or ".." in PurePosixPath(value).parts:
             return None
-        return cls(value.replace("\\", "/"))
+        return cls(value)
 
 
 def diff_paths(patch_text: str) -> list[DiffPath]:
     """Return the canonical paths a unified diff touches (bounded first)."""
     bound_patch(patch_text)
     paths: list[DiffPath] = []
-    for line in patch_text.splitlines():
-        parsed = DiffPath.from_diff_header(line)
-        if parsed is not None and parsed not in paths:
-            paths.append(parsed)
+    lines = patch_text.split("\n")
+    for index, line in enumerate(lines[:-1]):
+        if not line.startswith("--- ") or not lines[index + 1].startswith("+++ "):
+            continue
+        for marker, header in (("---", line), ("+++", lines[index + 1])):
+            parsed = DiffPath.from_diff_header(header, marker)
+            if parsed is not None and parsed not in paths:
+                paths.append(parsed)
     return paths
 
 
@@ -76,7 +85,7 @@ def bound_patch(patch_text: str) -> None:
     """
     if len(patch_text.encode("utf-8")) > PATCH_MAX_BYTES:
         raise PatchBoundError("patch exceeds max bytes")
-    lines = patch_text.splitlines()
+    lines = patch_text.split("\n")
     hunks = 0
     for line in lines:
         if line.startswith("@@"):
@@ -84,10 +93,21 @@ def bound_patch(patch_text: str) -> None:
     if hunks > PATCH_MAX_HUNKS:
         raise PatchBoundError("patch exceeds max hunks")
     current_hunk_lines = 0
-    for line in lines:
+    in_hunk = False
+    for index, line in enumerate(lines):
         if line.startswith("@@"):
+            in_hunk = True
             current_hunk_lines = 0
-        elif line.startswith(("+", "-")):
+        elif in_hunk and (
+            line.startswith("diff --git ")
+            or (
+                line.startswith("--- ")
+                and index + 1 < len(lines)
+                and lines[index + 1].startswith("+++ ")
+            )
+        ):
+            in_hunk = False
+        elif in_hunk:
             current_hunk_lines += 1
             if current_hunk_lines > PATCH_MAX_LINES_PER_HUNK:
                 raise PatchBoundError("patch exceeds max lines per hunk")
