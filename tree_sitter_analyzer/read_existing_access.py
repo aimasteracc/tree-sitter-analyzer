@@ -413,9 +413,10 @@ def _stable_consumer_code(exc: Exception) -> str:
         if "interrupt" in message.lower():
             return "INDEX_SNAPSHOT_DEADLINE"
         return "CORRUPT_INDEX"
-    if isinstance(exc, IndexError):
-        # EdgeStore._edge_from_row on a damaged edges row (missing columns
-        # that slipped past the schema gate) surfaces as IndexError.
+    if isinstance(exc, (IndexError, AttributeError)):
+        # EdgeStore._edge_from_row on a damaged edges row surfaces as
+        # IndexError (missing columns) or AttributeError (a metadata cell
+        # holding valid JSON of a non-object type, e.g. []).
         return "CORRUPT_INDEX"
     token = message.split(":", 1)[0].strip()
     return token if token in _INDEX_CONSUMER_STABLE_CODES else "INDEX_SNAPSHOT_FAILED"
@@ -503,7 +504,13 @@ def read_existing_index_consumer(
             return apply_toon_format_to_response(
                 result, output_format, compact_only=compact_only
             )
-    except (ValueError, RuntimeError, sqlite3.OperationalError, IndexError) as exc:
+    except (
+        ValueError,
+        RuntimeError,
+        sqlite3.OperationalError,
+        IndexError,
+        AttributeError,
+    ) as exc:
         # Codex P2 (#1299): pre-yield failures (completeness/scope gate or
         # pre-read recapture) attach the acquired identity to the exception;
         # post-yield failures record it in ``acquired``. Either way the

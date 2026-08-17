@@ -1990,6 +1990,19 @@ def test_certified_expansion_propagates_edge_errors() -> None:
     )
     assert tolerated == seed
 
+    # A caller-query failure alone also propagates on the certified route.
+    class CallersBrokenStore:
+        def query_callees(self, name, file_path=None, max_depth=1):
+            return []
+
+        def query_callers(self, name, file_path=None):
+            raise RuntimeError("broken caller row")
+
+    with pytest.raises(RuntimeError, match="broken caller row"):
+        tool._expand_nodes(
+            seed, "explain run", 10, graph=CallersBrokenStore(), certified=True
+        )
+
 
 def test_next_step_lean_production_anchor() -> None:
     from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (

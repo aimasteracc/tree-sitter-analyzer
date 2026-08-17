@@ -905,15 +905,32 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
         "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
         (json.dumps({"symbols": [{"name": "public_fn"}]}),),
     )
-    calls.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
     calls.execute(
-        "INSERT INTO edges VALUES ('tests/test_calls.py', 'public_fn', 'calls')"
+        "CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT, "
+        "callee_resolved_file TEXT)"
+    )
+    calls.execute(
+        "INSERT INTO edges VALUES "
+        "('tests/test_calls.py', 'public_fn', 'calls', 'pkg/impl.py')"
     )
     calls_inventory = frozenset({"pkg/impl.py", "tests/test_calls.py"})
     found_calls = _certified_symbol_reference_tests(
         calls, calls_inventory, "pkg/impl.py", "python"
     )
     assert found_calls == ["tests/test_calls.py"]
+    # C48: a same-named symbol resolved to ANOTHER file must not attribute
+    # its calls to this target.
+    calls.execute(
+        "INSERT INTO edges VALUES "
+        "('tests/test_other.py', 'public_fn', 'calls', 'pkg/other.py')"
+    )
+    drift_inventory = frozenset(
+        {"pkg/impl.py", "tests/test_calls.py", "tests/test_other.py"}
+    )
+    drifted = _certified_symbol_reference_tests(
+        calls, drift_inventory, "pkg/impl.py", "python"
+    )
+    assert drifted == ["tests/test_calls.py"]
 
     # C34: a non-object symbols_json payload degrades, never crashes.
     array_payload = sqlite3.connect(":memory:")
@@ -993,6 +1010,12 @@ def test_certified_test_files_walk_inventory_only() -> None:
 
     # No inventory-covered test for the target -> empty.
     assert _certified_test_files(frozenset({"src/app.py"}), "src/app.py") == []
+
+    # C47: a root-level target's colocated test matches the normalized key.
+    root_colocated = _certified_test_files(
+        frozenset({"app.py", "test_app.py"}), "app.py"
+    )
+    assert root_colocated == ["test_app.py"]
 
     # Glob patterns (test_{stem}_*.py) match conventional suffixed tests.
     globbed = _certified_test_files(

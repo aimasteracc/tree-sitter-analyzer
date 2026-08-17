@@ -673,6 +673,28 @@ def test_certified_commands_use_extension_runner(tmp_path: Path) -> None:
     assert "go test" not in str(java_workflow.get("after_edit_commands", []))
     # C41: the queue-boundary list stays empty, never [""].
     assert java_workflow.get("queue_boundary_commands") == []
+    # C49: no runner -> health/impact commands are never promoted to TEST
+    # verification, and the stop condition says verification is unidentified.
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_agent_summary,
+    )
+
+    java_summary = build_agent_summary(
+        AgentWorkflowContext(
+            file_path="Calc.java",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["CalcTest.java"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        ),
+        java_workflow,
+        verdict_override=None,
+    )
+    assert java_summary.get("verification_command") == ""
+    assert "unidentified" in java_summary.get("stop_condition", "")
     # C41: the queue-boundary list stays empty, never [""].
     assert java_workflow.get("queue_boundary_commands") == []
 

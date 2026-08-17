@@ -147,6 +147,23 @@ class TestTier2Scan:
         assert fact.is_fixture is True
         assert fact.source == "repo_relative_literal"
 
+    def test_signature_tolerates_dangling_symlink(self, tmp_path: Path) -> None:
+        # A dangling tests/ symlink makes path.stat() raise; the signature
+        # walk skips it instead of failing the fixture scan.
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": "def test_x(): pass\n",
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        import os
+
+        os.symlink(root / "tests" / "ghost.py", root / "tests" / "dangling.py")
+        # Drive the signature walk directly so the stat except fires.
+        index = fixture_detector._load_or_build_index(root)
+        assert index == {}
+
     def test_certified_scan_tolerates_non_utf8_tests(self, tmp_path: Path) -> None:
         # Codex P2 (#1299 round-10, C43): a non-UTF-8 indexed test must
         # degrade, never raise UnicodeDecodeError out of the certified route.

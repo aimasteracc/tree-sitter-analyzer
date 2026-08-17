@@ -426,9 +426,11 @@ def build_agent_summary(
         "risk": context.risk,
         "edit_strategy": workflow["edit_strategy"],
         "next_step": _agent_next_step(context, workflow),
-        "verification_command": after[0]
-        if after
-        else (boundary[0] if boundary else ""),
+        "verification_command": (
+            ""
+            if workflow.get("test_verification_unidentified")
+            else (after[0] if after else (boundary[0] if boundary else ""))
+        ),
         "stop_condition": _agent_stop_condition(context, workflow),
     }
     if before:
@@ -458,6 +460,9 @@ def build_agent_workflow(context: AgentWorkflowContext) -> dict[str, Any]:
         else ""
     )
     boundary_command = default_command.command if default_command is not None else ""
+    # Codex P2 (#1299 round-11, C49): when no runner can be identified, the
+    # health/impact commands must never be promoted to TEST verification.
+    test_verification_unidentified = context.certified and default_command is None
     quoted_path = shlex.quote(context.file_path)
     pre_edit_commands = [focused_command] if focused_command else []
     post_edit_commands = [
@@ -478,6 +483,7 @@ def build_agent_workflow(context: AgentWorkflowContext) -> dict[str, Any]:
         "before_edit_commands": pre_edit_commands,
         "after_edit_commands": post_edit_commands,
         "queue_boundary_commands": [boundary_command] if boundary_command else [],
+        "test_verification_unidentified": test_verification_unidentified,
         "guardrails": _agent_guardrails(
             context.risk,
             context.edit_type,
@@ -542,6 +548,11 @@ def _agent_stop_condition(
     after = workflow["after_edit_commands"]
     boundary = workflow["queue_boundary_commands"]
     verify = after[0] if after else (boundary[0] if boundary else "")
+    if workflow.get("test_verification_unidentified"):
+        return (
+            "Test verification is unidentified for this project; run the "
+            "project's test suite manually before and after the edit."
+        )
     if context.risk == "dangerous":
         return "Each smaller edit passes focused verification before scope expands."
     if verify and boundary and verify != boundary[0]:
@@ -863,10 +874,14 @@ def _certified_symbol_reference_tests(
     # symbols is guaranteed non-empty here (the early return above).
     placeholders = ",".join("?" for _ in symbols)  # nosec B608
     try:
+        # Codex P2 (#1299 round-11, C48): bind by the resolved callee file,
+        # not the bare name — a same-named symbol exported by another module
+        # must not attribute its tests to this target.
         call_rows = conn.execute(
             f"SELECT DISTINCT file_path FROM edges "
-            f"WHERE kind = 'calls' AND callee_name IN ({placeholders})",
-            tuple(symbols),
+            f"WHERE kind = 'calls' AND callee_name IN ({placeholders}) "
+            f"AND callee_resolved_file = ?",
+            (*tuple(symbols), rel_path),
         ).fetchall()
     except Exception:  # nosec B110 — legacy schema degrades per call
         call_rows = []
@@ -937,10 +952,14 @@ def _certified_test_files(
         ):
             results.append(rel)
     parent = p.parent.as_posix()
+    # Codex P2 (#1299 round-11, C47): a root-level target's parent is '.',
+    # which would build './test_app.py' while inventory keys are normalized
+    # without the leading './'.
+    parent = "" if parent == "." else parent
     for filename in filenames:
         if "*" in filename:
             continue
-        colocated = f"{parent}/{filename}"
+        colocated = filename if not parent else f"{parent}/{filename}"
         if colocated in inventory and colocated not in results:
             results.append(colocated)
     if language == "python":
