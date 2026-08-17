@@ -71,7 +71,7 @@ def test_record_from_dict_rejects_empty_task_and_short_commit() -> None:
         record_from_dict(payload)
     payload = _valid_payload()
     payload["repo_commit"] = "abc"
-    with pytest.raises(BenchmarkRecordError, match="40-char git sha"):
+    with pytest.raises(BenchmarkRecordError, match="hex git sha"):
         record_from_dict(payload)
 
 
@@ -92,64 +92,113 @@ def test_path_allowed_is_segment_aware() -> None:
     assert path_allowed("tests", allowed) is False  # the dir itself is not a descendant
 
 
-def test_record_rejects_malformed_payloads() -> None:
+def test_record_rejects_non_object_payload() -> None:
     with pytest.raises(BenchmarkRecordError, match="JSON object"):
         record_from_dict([])  # type: ignore[arg-type]
+
+
+def test_record_rejects_missing_fields() -> None:
     payload = _valid_payload()
     del payload["operation"]
     with pytest.raises(BenchmarkRecordError, match="missing record fields"):
         record_from_dict(payload)
+
+
+def test_record_rejects_blank_id() -> None:
     payload = _valid_payload()
     payload["id"] = "  "
     with pytest.raises(BenchmarkRecordError, match="id must be a non-empty"):
         record_from_dict(payload)
-    for field in ("repo", "oracle", "oracle_baseline_reason", "verification_command"):
-        payload = _valid_payload()
-        payload[field] = "  "
-        with pytest.raises(BenchmarkRecordError, match=f"{field} must be a non-empty"):
-            record_from_dict(payload)
-    for bad_reason in (
-        "Returns None",
-        "has space",
-        "UPPER",
-        "trailing-",
-        "-leading",
-        "double--dash",
-    ):
-        payload = _valid_payload()
-        payload["oracle_baseline_reason"] = bad_reason
-        with pytest.raises(BenchmarkRecordError, match="lowercase-kebab token"):
-            record_from_dict(payload)
-    for bad_argv in ("uv run pytest", [], [""], ["uv", 42], ["uv", " "]):
-        payload = _valid_payload()
-        payload["verification_argv"] = bad_argv
-        with pytest.raises(BenchmarkRecordError, match="verification_argv"):
-            record_from_dict(payload)
+
+
+@pytest.mark.parametrize("field", ["repo", "oracle", "oracle_baseline_reason"])
+def test_record_rejects_blank_scalar_fields(field: str) -> None:
     payload = _valid_payload()
-    assert record_from_dict(payload).verification_command is None
+    payload[field] = "  "
+    with pytest.raises(BenchmarkRecordError, match=f"{field} must be a non-empty"):
+        record_from_dict(payload)
+
+
+def test_record_rejects_blank_verification_command_hint() -> None:
+    payload = _valid_payload()
+    payload["verification_command"] = "  "
+    with pytest.raises(BenchmarkRecordError, match="verification_command"):
+        record_from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "bad_reason",
+    ["Returns None", "has space", "UPPER", "trailing-", "-leading", "double--dash"],
+)
+def test_record_rejects_non_kebab_reason_tokens(bad_reason: str) -> None:
+    payload = _valid_payload()
+    payload["oracle_baseline_reason"] = bad_reason
+    with pytest.raises(BenchmarkRecordError, match="lowercase-kebab token"):
+        record_from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "bad_argv", ["uv run pytest", [], [""], ["uv", 42], ["uv", " "]]
+)
+def test_record_rejects_invalid_verification_argv(bad_argv: object) -> None:
+    payload = _valid_payload()
+    payload["verification_argv"] = bad_argv
+    with pytest.raises(BenchmarkRecordError, match="verification_argv"):
+        record_from_dict(payload)
+
+
+def test_record_allows_absent_verification_command() -> None:
+    assert record_from_dict(_valid_payload()).verification_command is None
+
+
+def test_record_rejects_malformed_defect() -> None:
     payload = _valid_payload()
     payload["defect"] = "not-an-object"
     with pytest.raises(BenchmarkRecordError, match="defect must be an object"):
         record_from_dict(payload)
+
+
+def test_record_rejects_malformed_patch() -> None:
     payload = _valid_payload()
     payload["patch"] = 42
     with pytest.raises(BenchmarkRecordError, match="patch must be a string"):
         record_from_dict(payload)
+
+
+@pytest.mark.parametrize("bad_selected", ["tests/x.py", ["tests/x.py", 42]])
+def test_record_rejects_malformed_selected_tests(bad_selected: object) -> None:
     payload = _valid_payload()
-    payload["selected_tests"] = "tests/x.py"
+    payload["selected_tests"] = bad_selected
     with pytest.raises(BenchmarkRecordError, match="list of strings"):
         record_from_dict(payload)
-    payload = _valid_payload()
-    payload["selected_tests"] = ["tests/x.py", 42]
-    with pytest.raises(BenchmarkRecordError, match="list of strings"):
-        record_from_dict(payload)
+
+
+def test_record_rejects_duplicate_allowed_paths() -> None:
     payload = _valid_payload()
     payload["allowed_paths"] = ["tests/", "tests/"]
     with pytest.raises(BenchmarkRecordError, match="duplicates"):
         record_from_dict(payload)
+
+
+def test_record_rejects_empty_allowed_paths() -> None:
     payload = _valid_payload()
     payload["allowed_paths"] = []
     with pytest.raises(BenchmarkRecordError, match="non-empty list"):
+        record_from_dict(payload)
+
+
+@pytest.mark.parametrize("field", ["task_class", "operation", "expected_outcome"])
+def test_record_rejects_non_string_enum_values(field: str) -> None:
+    payload = _valid_payload()
+    payload[field] = ["bugfix"]
+    with pytest.raises(BenchmarkRecordError, match="invalid"):
+        record_from_dict(payload)
+
+
+def test_record_rejects_non_hex_repo_commit() -> None:
+    payload = _valid_payload()
+    payload["repo_commit"] = "g" * 40
+    with pytest.raises(BenchmarkRecordError, match="hex git sha"):
         record_from_dict(payload)
 
 
@@ -157,6 +206,7 @@ def test_is_trusted_tool_artifact_matches_root_files() -> None:
     from tree_sitter_analyzer.no1_010b.artifacts import is_trusted_tool_artifact
 
     assert is_trusted_tool_artifact(".coverage") is True
+    assert is_trusted_tool_artifact(".coverage.host.123.456") is True
     assert is_trusted_tool_artifact("src/app.py") is False
     assert is_trusted_tool_artifact("tests/__pycache__/x.pyc") is True
 
@@ -169,6 +219,9 @@ def test_path_canonicalization_rejects_all_bad_forms() -> None:
         "../x.py",
         "a/../b.py",
         "a//b.py",
+        "a\\b.py",
+        "C:/outside/file.py",
+        "C:\\outside\\file.py",
     ):
         payload = _valid_payload()
         payload["allowed_paths"] = [bad]
@@ -239,6 +292,20 @@ def test_loader_rejects_oversized_file(tmp_path: Path) -> None:
     corpus = tmp_path / "big.jsonl"
     corpus.write_text("x" * (8 * 1024 * 1024 + 1), encoding="utf-8")
     with pytest.raises(BenchmarkRecordError, match="8 MiB"):
+        load_corpus_records(str(corpus))
+
+
+def test_loader_rejects_duplicate_keys(tmp_path: Path) -> None:
+    corpus = tmp_path / "dup.jsonl"
+    corpus.write_text('{"id": "a", "id": "b"}\n', encoding="utf-8")
+    with pytest.raises(BenchmarkRecordError, match="duplicate key"):
+        load_corpus_records(str(corpus))
+
+
+def test_loader_rejects_nan_constant(tmp_path: Path) -> None:
+    corpus = tmp_path / "nan.jsonl"
+    corpus.write_text('{"id": "a", "task": NaN}\n', encoding="utf-8")
+    with pytest.raises(BenchmarkRecordError, match="non-standard JSON constant"):
         load_corpus_records(str(corpus))
 
 

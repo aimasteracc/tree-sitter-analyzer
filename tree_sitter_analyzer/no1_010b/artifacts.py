@@ -26,6 +26,10 @@ TRUSTED_TOOL_ARTIFACT_DIRS = frozenset(
 # Trusted artifact files at the repository root (coverage databases etc.).
 TRUSTED_TOOL_ARTIFACT_FILES = frozenset({".coverage", ".pytest_cache"})
 
+# Parallel coverage mode writes root files named `.coverage.<machine>.<pid>.<n>`;
+# those are standard tool artifacts too (Codex #1307 P2).
+_COVERAGE_DATA_PREFIX = ".coverage."
+
 
 def is_trusted_tool_artifact(rel_path: str) -> bool:
     """Return whether one repository-relative path is a trusted artifact.
@@ -37,5 +41,7 @@ def is_trusted_tool_artifact(rel_path: str) -> bool:
     if any(part in TRUSTED_TOOL_ARTIFACT_DIRS for part in parts):
         return True
     if len(parts) == 1 and parts[0] in TRUSTED_TOOL_ARTIFACT_FILES:
+        return True
+    if len(parts) == 1 and parts[0].startswith(_COVERAGE_DATA_PREFIX):
         return True
     return False

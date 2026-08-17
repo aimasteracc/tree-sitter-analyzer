@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 TaskClass = Literal["bugfix", "refactor", "migration", "test_selection"]
 Operation = Literal["understand", "plan_change", "assess_change"]
@@ -101,14 +101,18 @@ def _canonical_rel_path(raw: Any, field: str) -> str:
     """Normalize one allowed-path entry or reject it.
 
     Accepts repository-relative POSIX paths only: no leading ``/``, no
-    ``./`` prefix, no ``..`` segments, no backslashes. Directory entries must
-    end with ``/``.
+    ``./`` prefix, no ``..`` segments, no backslashes, and no drive-qualified
+    (``C:``) paths. Directory entries must end with ``/``.
     """
     if not isinstance(raw, str) or not raw:
         raise BenchmarkRecordError(f"{field}: path must be a non-empty string")
-    value = raw.replace("\\", "/")
+    if "\\" in raw:
+        raise BenchmarkRecordError(f"{field}: backslashes are not allowed")
+    value = raw
     if value.startswith("/") or value.startswith("./"):
         raise BenchmarkRecordError(f"{field}: path must be repository-relative")
+    if len(value) >= 2 and value[1] == ":" and value[0].isalpha():
+        raise BenchmarkRecordError(f"{field}: drive-qualified paths are not allowed")
     if value == ".." or value.startswith("../"):
         raise BenchmarkRecordError(f"{field}: '..' segments are not allowed")
     if "//" in value:
@@ -155,20 +159,24 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
     if not isinstance(record_id, str) or not record_id.strip():
         raise BenchmarkRecordError("id must be a non-empty string")
 
-    task_class = payload["task_class"]
-    if task_class not in _TASK_CLASSES:
-        raise BenchmarkRecordError(f"invalid task_class: {task_class!r}")
+    task_class_raw = payload["task_class"]
+    if not isinstance(task_class_raw, str) or task_class_raw not in _TASK_CLASSES:
+        raise BenchmarkRecordError(f"invalid task_class: {task_class_raw!r}")
+    task_class: TaskClass = cast(TaskClass, task_class_raw)
 
     repo = payload["repo"]
     repo_commit = payload["repo_commit"]
     if not isinstance(repo, str) or not repo.strip():
         raise BenchmarkRecordError("repo must be a non-empty string")
-    if not isinstance(repo_commit, str) or len(repo_commit) != 40:
-        raise BenchmarkRecordError("repo_commit must be a 40-char git sha")
+    if not isinstance(repo_commit, str) or not re.fullmatch(
+        r"[0-9a-fA-F]{40}", repo_commit
+    ):
+        raise BenchmarkRecordError("repo_commit must be a 40-char hex git sha")
 
-    operation = payload["operation"]
-    if operation not in _OPERATIONS:
-        raise BenchmarkRecordError(f"invalid operation: {operation!r}")
+    operation_raw = payload["operation"]
+    if not isinstance(operation_raw, str) or operation_raw not in _OPERATIONS:
+        raise BenchmarkRecordError(f"invalid operation: {operation_raw!r}")
+    operation: Operation = cast(Operation, operation_raw)
 
     task = payload["task"]
     if not isinstance(task, str) or not task.strip():
@@ -211,9 +219,10 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
             "verification_command must be a non-empty string when present"
         )
 
-    expected = payload["expected_outcome"]
-    if expected not in _EXPECTED_OUTCOMES:
-        raise BenchmarkRecordError(f"invalid expected_outcome: {expected!r}")
+    expected_raw = payload["expected_outcome"]
+    if not isinstance(expected_raw, str) or expected_raw not in _EXPECTED_OUTCOMES:
+        raise BenchmarkRecordError(f"invalid expected_outcome: {expected_raw!r}")
+    expected: ExpectedOutcome = cast(ExpectedOutcome, expected_raw)
 
     defect = payload.get("defect")
     if defect is not None and not isinstance(defect, dict):
@@ -251,6 +260,32 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
     )
 
 
+def _strict_json_loads(text: str) -> Any:
+    """JSON decode that rejects duplicate keys and NaN/Infinity constants.
+
+    The default decoder silently keeps the last duplicate key and accepts
+    non-standard constants; an exact pre-registered manifest must reject both,
+    mirroring ``task_harness._strict_json_loads`` (Codex #1307 P1).
+    """
+
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate key {key!r}")
+            result[key] = value
+        return result
+
+    def reject_constant(value: str) -> Any:
+        raise ValueError(f"non-standard JSON constant {value!r}")
+
+    return json.loads(
+        text,
+        object_pairs_hook=reject_duplicates,
+        parse_constant=reject_constant,
+    )
+
+
 def load_corpus_records(path: str) -> list[BenchmarkRecord]:
     """Load a strict JSONL corpus (one record per line, bounded input).
 
@@ -267,26 +302,31 @@ def load_corpus_records(path: str) -> list[BenchmarkRecord]:
     else:
         from pathlib import Path
 
-        size = Path(path).stat().st_size
-        if size > _MAX_CORPUS_BYTES:
+        # Open once and read at most the bound + 1 so a file that grows
+        # between a stat and a read cannot exceed the advertised limit.
+        with Path(path).open("r", encoding="utf-8") as handle:
+            raw = handle.read(_MAX_CORPUS_BYTES + 1)
+        if len(raw) > _MAX_CORPUS_BYTES:
             raise BenchmarkRecordError("corpus exceeds the 8 MiB input bound")
-        lines = Path(path).read_text(encoding="utf-8").splitlines()
+        lines = raw.splitlines()
 
     records: list[BenchmarkRecord] = []
+    seen_ids: set[str] = set()
     for index, line in enumerate(lines, 1):
         if not line.strip():
             continue
         try:
-            payload = json.loads(line)
-        except json.JSONDecodeError as exc:
+            payload = _strict_json_loads(line)
+        except ValueError as exc:
             raise BenchmarkRecordError(
                 f"corpus line {index}: invalid JSON: {exc}"
             ) from exc
         record = record_from_dict(payload)
-        if record.id in {existing.id for existing in records}:
+        if record.id in seen_ids:
             raise BenchmarkRecordError(
                 f"corpus line {index}: duplicate id {record.id!r}"
             )
+        seen_ids.add(record.id)
         records.append(record)
     if not records:
         raise BenchmarkRecordError("corpus is empty")
