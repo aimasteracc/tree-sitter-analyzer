@@ -1318,6 +1318,11 @@ def test_snapshot_dependency_view_recalls_member_imports() -> None:
     # C40: a valid-JSON non-array cell (42) must be skipped per row, NOT
     # abort the whole needle pass — the later matching row still counts.
     conn.execute("INSERT INTO ast_index VALUES ('scalar.py', '42')")
+    # C64: 'import happy' must NOT match the 'app' needle as a substring.
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('tests/test_happy.py', ?)",
+        (json.dumps([{"text": "import happy", "line": 1}]),),
+    )
     conn.execute(
         "INSERT INTO ast_index VALUES ('later.py', ?)",
         (json.dumps([{"text": "from app import Member", "line": 1}]),),

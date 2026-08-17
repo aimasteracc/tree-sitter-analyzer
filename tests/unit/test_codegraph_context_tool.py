@@ -1989,6 +1989,42 @@ def test_snapshot_definition_lines_resolve_callee_lines() -> None:
     bare = sqlite3.connect(":memory:")
     assert _snapshot_definition_lines(nodes, bare) == nodes
 
+    # C62: duplicate same-named definitions preserve identity — a node
+    # already on a definition line keeps it; an ambiguous line is not
+    # rewritten to a guessed definition.
+    dup = sqlite3.connect(":memory:")
+    dup.row_factory = sqlite3.Row
+    dup.execute(
+        "CREATE TABLE ast_symbol_rows (file_path TEXT, name TEXT, line INTEGER)"
+    )
+    dup.execute("INSERT INTO ast_symbol_rows VALUES ('pkg/callee.py', 'run', 5)")
+    dup.execute("INSERT INTO ast_symbol_rows VALUES ('pkg/callee.py', 'run', 80)")
+    dup_nodes = [
+        {"name": "run", "file": "pkg/callee.py", "line": 80},
+        {"name": "run", "file": "pkg/callee.py", "line": 200},
+    ]
+    dup_resolved = _snapshot_definition_lines(dup_nodes, dup)
+    assert dup_resolved[0]["line"] == 80  # already a definition line
+    assert dup_resolved[1]["line"] == 200  # ambiguous: not guessed
+
+    # C62: duplicate same-named definitions preserve identity — a node
+    # already on a definition line keeps it; an ambiguous line is not
+    # rewritten to a guessed definition.
+    dup = sqlite3.connect(":memory:")
+    dup.row_factory = sqlite3.Row
+    dup.execute(
+        "CREATE TABLE ast_symbol_rows (file_path TEXT, name TEXT, line INTEGER)"
+    )
+    dup.execute("INSERT INTO ast_symbol_rows VALUES ('pkg/callee.py', 'run', 5)")
+    dup.execute("INSERT INTO ast_symbol_rows VALUES ('pkg/callee.py', 'run', 80)")
+    dup_nodes = [
+        {"name": "run", "file": "pkg/callee.py", "line": 80},
+        {"name": "run", "file": "pkg/callee.py", "line": 200},
+    ]
+    dup_resolved = _snapshot_definition_lines(dup_nodes, dup)
+    assert dup_resolved[0]["line"] == 80  # already a definition line
+    assert dup_resolved[1]["line"] == 200  # ambiguous: not guessed
+
 
 def test_certified_expansion_propagates_edge_errors() -> None:
     """Codex P2 round-10 (C45): certified expansion re-raises edge errors."""

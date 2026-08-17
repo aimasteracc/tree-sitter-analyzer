@@ -1081,6 +1081,12 @@ def test_looks_like_test_name_unknown_language_is_false() -> None:
     assert _looks_like_test_name("test_x.py", "futurelang") is False
     assert _looks_like_test_name("test_x.py", "python") is True
     assert _looks_like_test_name("app.py", "python") is False
+    # C63: JSX/TSX spec conventions count.
+    assert _looks_like_test_name("component.spec.jsx", "javascript") is True
+    assert _looks_like_test_name("component.spec.tsx", "typescript") is True
+    # C63: JSX/TSX spec conventions count.
+    assert _looks_like_test_name("component.spec.jsx", "javascript") is True
+    assert _looks_like_test_name("component.spec.tsx", "typescript") is True
 
 
 def test_certified_test_files_rejects_non_test_target() -> None:

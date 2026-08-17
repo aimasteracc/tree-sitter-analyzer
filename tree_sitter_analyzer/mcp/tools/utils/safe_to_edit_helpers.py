@@ -145,12 +145,15 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
         test_files = find_test_files(context.resolved_path, context.project_root)
         certified_health = False
     if certified_health:
-        # Codex P2 (#1299 round-13, C60): certified reads must parse the
-        # freshly recaptured bytes — bypass the stat-only parser cache
-        # (same-size + restored-mtime rewrites would serve stale results).
+        # Codex P2 (#1299 round-13/14, C60/C61): certified reads must parse
+        # the freshly recaptured bytes. The content cache key derives from
+        # (path, mtime, size) too, so a same-size rewrite with a restored
+        # mtime regenerates the same key and would serve a stale parse —
+        # evict the whole parser cache (certified reads are rare; parse
+        # correctness beats cache warmth here).
         from ....core.parser import Parser as _Parser
 
-        _Parser.invalidate_stat_cache()
+        _Parser.cache_clear()
     health = context.scorer.score_file(
         context.resolved_path,
         fast_dependencies=True,
@@ -783,9 +786,9 @@ def _looks_like_test_name(name: str, language: str) -> bool:
     if language == "java":
         return name.endswith(("Test.java", "Tests.java"))
     if language == "javascript":
-        return name.endswith((".test.js", ".spec.js", ".test.jsx"))
+        return name.endswith((".test.js", ".spec.js", ".test.jsx", ".spec.jsx"))
     if language == "typescript":
-        return name.endswith((".test.ts", ".spec.ts", ".test.tsx"))
+        return name.endswith((".test.ts", ".spec.ts", ".test.tsx", ".spec.tsx"))
     if language == "c":
         return name.startswith("test_") and name.endswith((".c", ".h"))
     if language == "cpp":
@@ -1208,7 +1211,13 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
                 imp_text = imp["text"] if isinstance(imp, dict) else imp
                 if not isinstance(imp_text, str):
                     continue
-                if any(needle in imp_text for needle in needles):
+                # Codex P2 (#1299 round-14, C64): match import identifiers
+                # as whole tokens — a short basename like 'app' must not
+                # match 'import happy' as a substring.
+                if any(
+                    re.search(rf"\b{re.escape(needle)}\b", imp_text)
+                    for needle in needles
+                ):
                     dependents.add(file_path)
                     break
     except Exception:  # nosec B110 — snapshot schema drift degrades to empty

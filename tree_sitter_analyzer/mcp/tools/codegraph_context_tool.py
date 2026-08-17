@@ -1153,16 +1153,24 @@ def _snapshot_definition_lines(
         ).fetchall()
     except Exception:  # nosec B110 — legacy schema keeps node lines
         return nodes
-    by_key: dict[tuple[str, str], int] = {}
+    by_key: dict[tuple[str, str], set[int]] = {}
     for row in rows:
         key = (str(row["file_path"]), str(row["name"]))
-        by_key.setdefault(key, int(row["line"]))
+        by_key.setdefault(key, set()).add(int(row["line"]))
     resolved: list[dict[str, Any]] = []
     for node in nodes:
-        line = by_key.get((str(node.get("file", "")), str(node.get("name", ""))))
-        if line is not None:
+        lines = by_key.get((str(node.get("file", "")), str(node.get("name", ""))))
+        if lines:
             node = dict(node)
-            node["line"] = line
+            current = node.get("line")
+            if current in lines:
+                pass  # already a definition line
+            elif len(lines) == 1:
+                # Single definition: the cross-file call-site line resolves
+                # to it deterministically.
+                node["line"] = next(iter(lines))
+            # else: overloaded/duplicate names — the call-site line is the
+            # only identity evidence; do NOT guess a different definition.
         resolved.append(node)
     return resolved
 
