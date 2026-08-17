@@ -173,13 +173,22 @@ class HealthScorer:
         self._windows_coverage_cache: dict[str, float] | None = None
 
     def score_file(
-        self, file_path: str, *, fast_dependencies: bool = False
+        self,
+        file_path: str,
+        *,
+        fast_dependencies: bool = False,
+        certified: bool = False,
     ) -> HealthScore:
         """
         Score a single file.
 
         Args:
             file_path: Path to the source file
+            certified: True on RFC-0022 read_existing routes — the
+                ``coverage`` (coverage.json) and ``git_hotspot`` (git
+                history) dimensions are NOT part of the snapshot source
+                generation and are omitted (Codex P1 #1299 round-4); the
+                remaining dimensions renormalize.
 
         Returns:
             HealthScore with total and per-dimension scores
@@ -191,7 +200,11 @@ class HealthScorer:
 
         language = _EXT_TO_LANG.get(path.suffix.lower())
         dims = self._score_dimensions(
-            file_path, source, language, fast_dependencies=fast_dependencies
+            file_path,
+            source,
+            language,
+            fast_dependencies=fast_dependencies,
+            certified=certified,
         )
         total = calculate_weighted_total(dims, self.weights)
 
@@ -208,6 +221,7 @@ class HealthScorer:
         language: str | None,
         *,
         fast_dependencies: bool = False,
+        certified: bool = False,
     ) -> dict[str, float | None]:
         """Score each health dimension for a source file."""
         dependency_score = (
@@ -215,6 +229,19 @@ class HealthScorer:
             if fast_dependencies
             else score_dependencies(file_path)
         )
+        if certified:
+            # Codex P1 (#1299 round-4/5): coverage.json and git history are
+            # outside the snapshot source generation — a certified read must
+            # not even TOUCH them (a corrupt coverage.json must not flip a
+            # certified request to INDEX_SNAPSHOT_FAILED), so they are
+            # branched away from, never evaluated-and-discarded.
+            return {
+                "size": score_size(len(source.splitlines())),
+                "complexity": score_complexity(file_path, source, language),
+                "dependencies": dependency_score,
+                "duplication": score_duplication(source, language),
+                "structure": score_structure(file_path, source, language),
+            }
         return {
             "size": score_size(len(source.splitlines())),
             "complexity": score_complexity(file_path, source, language),

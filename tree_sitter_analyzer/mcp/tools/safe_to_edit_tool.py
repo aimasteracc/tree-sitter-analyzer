@@ -8,6 +8,7 @@ Combines dependency analysis, health scoring, and test proximity to produce
 a risk assessment with specific warnings and a concrete pre-edit checklist.
 """
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -15,8 +16,9 @@ from ...constants import EDIT_KINDS
 from ...health_scorer import HealthScorer
 from ...project_graph import DependencyGraph
 from ...read_existing_access import (
-    format_read_existing_unavailable,
+    format_read_existing_failure,
     index_capability_schema_properties,
+    read_existing_index_consumer,
     validate_required_index_access,
 )
 from ...utils import setup_logger
@@ -25,12 +27,15 @@ from .base_tool import BaseMCPTool, mirror_summary_line
 from .utils.parse_validity import is_file_parse_broken
 from .utils.safe_to_edit_helpers import (
     SafeToEditContext,
+    _snapshot_file_indexed,
     build_file_dependency_view,
+    build_snapshot_file_dependency_view,
     is_init_file,
 )
 from .utils.safe_to_edit_helpers import (
     build_safe_to_edit_result as _build_safe_to_edit_result,
 )
+from .utils.safe_to_edit_helpers import to_relative as _to_relative
 from .utils.safe_to_edit_risk import compute_risk
 
 logger = setup_logger(__name__)
@@ -160,21 +165,32 @@ class SafeToEditTool(BaseMCPTool):
         # established. Mirror validate_read_existing_paths: unbound root +
         # read_existing route raises the stable MISSING_PROJECT_ROOT error.
         if arguments.get("access_mode") == "read_existing" and not self.project_root:
-            raise ValueError(
-                "MISSING_PROJECT_ROOT: project_root must be bound before "
-                "read_existing path validation"
+            # Codex P1 (#1257) + review P2 (#1299): fail closed BEFORE path
+            # validation (an arbitrary path must not validate with no
+            # boundary), and emit the CLASSIFIED failure envelope (evidence +
+            # action_version) instead of a bare raise that escapes the wire
+            # contract.
+            failure = format_read_existing_failure(
+                "MISSING_PROJECT_ROOT",
+                output_format=arguments.get("output_format", "toon"),
+                action_version=EDIT_SAFE_ACTION_VERSION,
             )
+            return failure
         # Security/project-boundary checks precede successful unavailable
         # classification so malformed paths remain validation failures.
         resolved = self.resolve_and_validate_file_path(file_path)
         self.validate_arguments(arguments)
-        unavailable = format_read_existing_unavailable(
+        read_existing_result = read_existing_index_consumer(
+            self,
             arguments,
-            compact_only=bool(arguments.get("compact_only", False)),
+            reader=lambda snapshot, conn: self._read_existing_payload(
+                arguments, resolved, conn, snapshot=snapshot
+            ),
             action_version=EDIT_SAFE_ACTION_VERSION,
+            compact_only=bool(arguments.get("compact_only", False)),
         )
-        if unavailable is not None:
-            return unavailable
+        if read_existing_result is not None:
+            return read_existing_result
 
         edit_type = arguments.get("edit_type", "refactor")
         output_format = arguments.get("output_format", "toon")
@@ -247,6 +263,88 @@ class SafeToEditTool(BaseMCPTool):
         return apply_toon_format_to_response(
             result, output_format, compact_only=compact_only
         )
+
+    def _read_existing_payload(
+        self,
+        arguments: dict[str, Any],
+        resolved: str,
+        conn: Any,
+        snapshot: Any | None = None,
+    ) -> dict[str, Any]:
+        """RFC-0022 P0.4: build the risk envelope from the certified snapshot.
+
+        The dependency view comes exclusively from the snapshot ``edges``
+        table (IMPORTS kind); the syntax gate, health score, and test
+        discovery still read the live source, but the after-read source
+        recapture (in the consumer seam) certifies those bytes still match
+        the snapshot generation before any result is emitted. Syntax errors
+        short-circuit the dependency/health walk exactly like the legacy
+        path (M3 round-26 gate).
+        """
+        file_path = arguments["file_path"]
+        edit_type = arguments.get("edit_type", "refactor")
+
+        # Codex-review P3 (#1297-followup): the snapshot's canonical_root is
+        # the authoritative root for every relative/live-file computation —
+        # never the shared tool root (a concurrent set_project_path could
+        # re-point it mid-read).
+        reader_root = (
+            snapshot.canonical_root
+            if snapshot is not None and snapshot.canonical_root
+            else self.project_root or "."
+        )
+        # Canonicalize the resolved path before relativising: on macOS the
+        # security validator's abspath (/var/folders/...) and the snapshot's
+        # canonical_root (/private/var/folders/...) differ by symlink, which
+        # would make to_relative fall back to the absolute path and miss every
+        # ast_index/edges row (CLAUDE.md §2 resolution contract).
+        rel_path = _to_relative(os.path.realpath(resolved), reader_root).replace(
+            "\\", "/"
+        )
+        # Codex P1 (#1299): a target outside the snapshot source inventory
+        # (markdown/yaml, hidden, or excluded files) is not covered by the
+        # before/after source recaptures. The gate runs BEFORE any
+        # existence/language/syntax probe so uncertified bytes can never
+        # short-circuit into an available envelope — a missing target is
+        # necessarily outside the inventory too, so its answer also comes
+        # from the snapshot, never from live filesystem state (round-3/4).
+        if snapshot is not None and not _snapshot_file_indexed(conn, rel_path):
+            raise ValueError("FILE_NOT_INDEXED")
+        if not Path(resolved).exists():
+            raise ValueError("FILE_NOT_FOUND")
+
+        syntax_response = _syntax_error_response(resolved, file_path, edit_type)
+        if syntax_response is not None:
+            return syntax_response
+
+        result = _build_safe_to_edit_result(
+            SafeToEditContext(
+                file_path=file_path,
+                edit_type=edit_type,
+                resolved_path=resolved,
+                project_root=reader_root,
+                graph=build_snapshot_file_dependency_view(conn, rel_path),
+                scorer=self._get_scorer(),
+                # Codex P1 (#1299): the certified route derives constraint
+                # facts from the snapshot connection and never touches the
+                # live .ast-cache (zero-write read).
+                snapshot_conn=conn if snapshot is not None else None,
+            )
+        )
+        # RFC-0022 P0.5: echo the adapter-owned wire owner version on the
+        # success path (the consumer seam adds output_format + evidence).
+        # The builder never sets ``language``, so detect it here (the legacy
+        # axis keeps its own equivalent guard at the execute level).
+        result["action_version"] = EDIT_SAFE_ACTION_VERSION
+        from ...language_detector import detect_language_from_file
+
+        try:
+            detected = detect_language_from_file(resolved, project_root=reader_root)
+        except Exception:  # nosec B110 — language detection best-effort
+            detected = "unknown"
+        if detected and detected != "unknown":
+            result["language"] = detected
+        return mirror_summary_line(result)
 
 
 def _syntax_error_response(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import sys
 from typing import Any
 
@@ -274,6 +275,40 @@ def format_read_existing_unavailable(
     )
 
 
+def format_read_existing_failure(
+    code: str,
+    *,
+    output_format: str = "toon",
+    compact_only: bool = False,
+    action_version: str | None = None,
+    source_snapshots: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    """Format one classified failure envelope with P0.4 evidence.
+
+    Used by consumers that must fail closed BEFORE reaching the shared seam
+    (e.g. edit.safe's unbound-root guard, which must precede path
+    validation): produces the same envelope shape the seam's except block
+    emits, so the wire contract (evidence + action_version) is never lost.
+    ``source_snapshots`` cites the exact capability identity actually read
+    when the failure happened AFTER acquisition (Codex P2 #1299); failures
+    before acquisition keep the empty list.
+    """
+    from .mcp.utils.format_helper import apply_toon_format_to_response
+
+    failure: dict[str, Any] = {
+        "success": False,
+        "verdict": "ERROR",
+        "error_code": code,
+        "error": code,
+        "action_version": action_version,
+        "output_format": output_format,
+    }
+    attach_read_existing_evidence(failure, records=source_snapshots)
+    return apply_toon_format_to_response(
+        failure, output_format, compact_only=compact_only
+    )
+
+
 def read_existing_gate(
     tool: Any,
     arguments: dict[str, Any],
@@ -328,3 +363,175 @@ def attach_read_existing_evidence(
     result["access_reason"] = reason
     result["source_snapshots"] = list(records or [])
     return result
+
+
+# Stable acquire/after-read failure codes a P0.1 index consumer can raise;
+# anything outside this set degrades to the generic fallback code.
+_INDEX_CONSUMER_STABLE_CODES = frozenset(
+    {
+        "INDEX_SNAPSHOT_UNKNOWN",
+        "INDEX_SNAPSHOT_ROOT_MISMATCH",
+        "SOURCE_GENERATION_MISMATCH",
+        "INDEX_SNAPSHOT_DEADLINE",
+        "INDEX_SNAPSHOT_CAPACITY",
+        "INDEX_SNAPSHOT_FAILED",
+        "SOURCE_SCOPE_UNKNOWN",
+        "CONCURRENT_SOURCE",
+        "MISSING_PROJECT_ROOT",
+        "MISSING_INDEX",
+        "CORRUPT_INDEX",
+        "CONCURRENT_WRITER",
+        "SOURCE_SCOPE_UNSAFE",
+        "SOURCE_SCOPE_UNREADABLE",
+        "SOURCE_SCOPE_UNSUPPORTED",
+        "SOURCE_SCAN_DEADLINE",
+        "SOURCE_SCOPE_UNBOUNDED",
+        "SOURCE_INDEX_MISMATCH",
+        "CONSTRAINED_INDEX_SCOPE",
+        "INDEX_SNAPSHOT_INCOMPLETE",
+        "FILE_NOT_FOUND",
+        "FILE_NOT_INDEXED",
+    }
+)
+
+
+def _stable_consumer_code(exc: Exception) -> str:
+    """Map a consumer exception to its stable wire code.
+
+    ``acquire_index_snapshot`` raises ``ValueError``/``RuntimeError`` whose
+    message IS the stable code; the after-read recapture does the same; the
+    unbound-root guard raises ``MISSING_PROJECT_ROOT: <detail>``. A reader's
+    ``sqlite3.OperationalError`` is classified: an interrupt (the deadline
+    progress handler's abort) is ``INDEX_SNAPSHOT_DEADLINE``, anything else
+    (missing column/table in a damaged index) is ``CORRUPT_INDEX`` (Codex P2
+    #1299 round-3). The RFC requires those codes as result data, never
+    serialized exception text, so any message outside the stable set degrades
+    to the generic fallback.
+    """
+    message = str(exc)
+    if isinstance(exc, sqlite3.OperationalError):
+        if "interrupt" in message.lower():
+            return "INDEX_SNAPSHOT_DEADLINE"
+        return "CORRUPT_INDEX"
+    if isinstance(exc, (IndexError, AttributeError, TypeError)):
+        # EdgeStore._edge_from_row on a damaged edges row surfaces as
+        # IndexError (missing columns), AttributeError (a metadata cell
+        # holding valid JSON of a non-object type, e.g. []), or TypeError
+        # (a BLOB in a nominally textual column, e.g. source_node_id).
+        return "CORRUPT_INDEX"
+    token = message.split(":", 1)[0].strip()
+    return token if token in _INDEX_CONSUMER_STABLE_CODES else "INDEX_SNAPSHOT_FAILED"
+
+
+def read_existing_index_consumer(
+    tool: Any,
+    arguments: dict[str, Any],
+    *,
+    reader: Any,
+    action_version: str,
+    compact_only: bool = False,
+    default_output_format: str = "toon",
+) -> dict[str, Any] | None:
+    """Run one explicit read_existing route against the certified index snapshot.
+
+    Returns the formatted response envelope, or ``None`` when the request is
+    not an explicit read_existing call. Non-certified axes (no Linux strace
+    authority) keep the stable UNCERTIFIED envelope. On the certified axis the
+    snapshot is acquired (before-read token revalidation), read through
+    ``reader(snapshot, conn)``, re-captured after the read, and the ACTUALLY
+    used tokens are echoed from the acquired snapshot with the P0.4 evidence.
+    ``reader`` must return the full success payload (the route adds the token
+    echoes, ``output_format``, and access evidence); any stable
+    ``ValueError``/``RuntimeError`` is classified as a failure envelope with
+    ``error_code``/``access_reason`` equal to the stable code and no result.
+    """
+    if "access_mode" not in arguments:
+        return None
+    output_format = arguments.get("output_format", default_output_format)
+    if not read_existing_platform_supported():
+        return format_read_existing_unavailable(
+            arguments,
+            compact_only=compact_only,
+            default_output_format=default_output_format,
+            action_version=action_version,
+        )
+    from .index_snapshot import read_existing_index_scope
+    from .mcp.utils.format_helper import apply_toon_format_to_response
+
+    # Codex P2 (#1299): keep the acquired capability identity so failures
+    # that happen AFTER acquisition still cite the snapshot that was read
+    # (auditability); pre-acquisition failures keep the empty list.
+    acquired: tuple[str, str] | None = None
+    try:
+        # Codex-review P2 (#1299): an unbound root must be CLASSIFIED (failure
+        # envelope with evidence + action_version), never a bare raise that
+        # escapes the wire contract — so the check lives inside the try.
+        if not tool.project_root:
+            raise ValueError(
+                "MISSING_PROJECT_ROOT: project_root must be bound before "
+                "read_existing access"
+            )
+        # validate_required_index_access has already bound both tokens as
+        # non-empty strings; index them directly so the acquire types cleanly.
+        with read_existing_index_scope(
+            arguments["snapshot_id"],
+            tool.project_root,
+            arguments["source_generation"],
+        ) as (snapshot, conn):
+            assert snapshot.snapshot_id is not None
+            assert snapshot.source_generation is not None
+            acquired = (snapshot.snapshot_id, snapshot.source_generation)
+            payload = reader(snapshot, conn)
+            if not isinstance(payload, dict):
+                raise ValueError("INDEX_SNAPSHOT_FAILED")
+            # The acquired capability is identity-matched to the request pair
+            # (the registry raises otherwise), so both tokens are bound here.
+            result = dict(payload)
+            result["snapshot_id"] = snapshot.snapshot_id
+            result["source_generation"] = snapshot.source_generation
+            result["source_fingerprint"] = snapshot.source_fingerprint
+            result["index_fingerprint"] = snapshot.index_fingerprint
+            result["output_format"] = output_format
+            attach_read_existing_evidence(
+                result,
+                records=[
+                    {
+                        "kind": "index",
+                        "snapshot_id": snapshot.snapshot_id,
+                        "source_generation": snapshot.source_generation,
+                    }
+                ],
+            )
+            return apply_toon_format_to_response(
+                result, output_format, compact_only=compact_only
+            )
+    except (
+        ValueError,
+        RuntimeError,
+        sqlite3.OperationalError,
+        IndexError,
+        AttributeError,
+        TypeError,
+    ) as exc:
+        # Codex P2 (#1299): pre-yield failures (completeness/scope gate or
+        # pre-read recapture) attach the acquired identity to the exception;
+        # post-yield failures record it in ``acquired``. Either way the
+        # failure envelope cites the exact capability that was acquired.
+        identity = getattr(exc, "_read_existing_identity", None) or acquired
+        return format_read_existing_failure(
+            _stable_consumer_code(exc),
+            output_format=output_format,
+            compact_only=compact_only,
+            action_version=action_version,
+            source_snapshots=(
+                [
+                    {
+                        "kind": "index",
+                        "snapshot_id": identity[0],
+                        "source_generation": identity[1],
+                    }
+                ]
+                if identity is not None
+                else None
+            ),
+        )

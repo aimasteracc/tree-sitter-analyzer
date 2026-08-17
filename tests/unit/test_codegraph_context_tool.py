@@ -1900,6 +1900,172 @@ def test_next_step_lean_entry_points_without_code() -> None:
     assert "include_graph=true" in msg
 
 
+def test_snapshot_certified_node_file_rejects_unsafe_files(
+    tmp_path: Path,
+) -> None:
+    """Codex P1 round-6/7 (C29/C30): only relative, in-root, INVENTORY
+    paths are certified — symlinked escapes and excluded files are not."""
+    import os
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _snapshot_certified_node_file,
+    )
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "excluded.py").write_text("y = 2\n", encoding="utf-8")
+    outside = tmp_path.parent / "outside_secret.py"
+    outside.write_text("z = 3\n", encoding="utf-8")
+    os.symlink(outside, tmp_path / "external_link")
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT)")
+    conn.execute("INSERT INTO ast_index VALUES ('src/app.py')")
+    conn.row_factory = sqlite3.Row
+    root = str(tmp_path.resolve())
+
+    assert _snapshot_certified_node_file("src/app.py", root, conn) is True
+    assert _snapshot_certified_node_file("/etc/passwd", root, conn) is False
+    assert _snapshot_certified_node_file("../secret.py", root, conn) is False
+    assert _snapshot_certified_node_file("src/../secret.py", root, conn) is False
+    assert _snapshot_certified_node_file("", root, conn) is False
+    assert _snapshot_certified_node_file(None, root, conn) is False
+    assert _snapshot_certified_node_file(42, root, conn) is False
+    # Symlink escape: lexical path is relative, realpath leaves the root.
+    assert _snapshot_certified_node_file("external_link", root, conn) is False
+    # Existing but not in the inventory: not generation-certified.
+    assert _snapshot_certified_node_file("excluded.py", root, conn) is False
+    # Legacy schema (no ast_index) degrades to reject.
+    import sqlite3 as _sqlite3
+
+    bare = _sqlite3.connect(":memory:")
+    bare.row_factory = _sqlite3.Row
+    assert _snapshot_certified_node_file("src/app.py", root, bare) is False
+
+
+def test_resolve_entry_points_tolerates_cascade_failures() -> None:
+    """The substring-cascade failure path degrades to no hits."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    class BoomCache:
+        def fts_search_ranked(self, candidate, limit=None):
+            return []
+
+        def search_symbols_cascade(self, candidate, limit=None):
+            raise RuntimeError("cascade down")
+
+    tool = CodeGraphContextTool("/nonexistent")
+    entry_points = tool._resolve_entry_points(
+        ["apply", "index", "zzz"], 5, cache=BoomCache()
+    )
+    assert entry_points == []
+
+
+def test_snapshot_definition_lines_resolve_callee_lines() -> None:
+    """Codex P2 round-13 (C59): cross-file callee nodes get definition lines."""
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _snapshot_definition_lines,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_symbol_rows (file_path TEXT, name TEXT, line INTEGER)"
+    )
+    conn.execute("INSERT INTO ast_symbol_rows VALUES ('pkg/callee.py', 'run', 5)")
+    nodes = [
+        {"name": "run", "file": "pkg/callee.py", "line": 80},
+        {"name": "unknown", "file": "pkg/x.py", "line": 3},
+    ]
+    resolved = _snapshot_definition_lines(nodes, conn)
+    assert resolved[0]["line"] == 5
+    assert resolved[1]["line"] == 3
+
+    bare = sqlite3.connect(":memory:")
+    assert _snapshot_definition_lines(nodes, bare) == nodes
+
+    # C62: duplicate same-named definitions preserve identity — a node
+    # already on a definition line keeps it; an ambiguous line is not
+    # rewritten to a guessed definition.
+    dup = sqlite3.connect(":memory:")
+    dup.row_factory = sqlite3.Row
+    dup.execute(
+        "CREATE TABLE ast_symbol_rows (file_path TEXT, name TEXT, line INTEGER)"
+    )
+    dup.execute("INSERT INTO ast_symbol_rows VALUES ('pkg/callee.py', 'run', 5)")
+    dup.execute("INSERT INTO ast_symbol_rows VALUES ('pkg/callee.py', 'run', 80)")
+    dup_nodes = [
+        {"name": "run", "file": "pkg/callee.py", "line": 80},
+        {"name": "run", "file": "pkg/callee.py", "line": 200},
+    ]
+    dup_resolved = _snapshot_definition_lines(dup_nodes, dup)
+    assert dup_resolved[0]["line"] == 80  # already a definition line
+    assert dup_resolved[1]["line"] == 200  # ambiguous: not guessed
+
+    # C62: duplicate same-named definitions preserve identity — a node
+    # already on a definition line keeps it; an ambiguous line is not
+    # rewritten to a guessed definition.
+    dup = sqlite3.connect(":memory:")
+    dup.row_factory = sqlite3.Row
+    dup.execute(
+        "CREATE TABLE ast_symbol_rows (file_path TEXT, name TEXT, line INTEGER)"
+    )
+    dup.execute("INSERT INTO ast_symbol_rows VALUES ('pkg/callee.py', 'run', 5)")
+    dup.execute("INSERT INTO ast_symbol_rows VALUES ('pkg/callee.py', 'run', 80)")
+    dup_nodes = [
+        {"name": "run", "file": "pkg/callee.py", "line": 80},
+        {"name": "run", "file": "pkg/callee.py", "line": 200},
+    ]
+    dup_resolved = _snapshot_definition_lines(dup_nodes, dup)
+    assert dup_resolved[0]["line"] == 80  # already a definition line
+    assert dup_resolved[1]["line"] == 200  # ambiguous: not guessed
+
+
+def test_certified_expansion_propagates_edge_errors() -> None:
+    """Codex P2 round-10 (C45): certified expansion re-raises edge errors."""
+    import pytest
+
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    tool = CodeGraphContextTool("/nonexistent")
+
+    class BrokenStore:
+        def query_callees(self, name, file_path=None, max_depth=1):
+            raise RuntimeError("broken edge row")
+
+        def query_callers(self, name, file_path=None):
+            raise RuntimeError("broken edge row")
+
+    seed = [{"name": "run", "file": "app.py"}]
+    with pytest.raises(RuntimeError, match="broken edge row"):
+        tool._expand_nodes(seed, "explain run", 10, graph=BrokenStore(), certified=True)
+    # The live path keeps its stale-graph tolerance.
+    tolerated = tool._expand_nodes(
+        seed, "explain run", 10, graph=BrokenStore(), certified=False
+    )
+    assert tolerated == seed
+
+    # A caller-query failure alone also propagates on the certified route.
+    class CallersBrokenStore:
+        def query_callees(self, name, file_path=None, max_depth=1):
+            return []
+
+        def query_callers(self, name, file_path=None):
+            raise RuntimeError("broken caller row")
+
+    with pytest.raises(RuntimeError, match="broken caller row"):
+        tool._expand_nodes(
+            seed, "explain run", 10, graph=CallersBrokenStore(), certified=True
+        )
+
+
 def test_next_step_lean_production_anchor() -> None:
     from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
         _next_step_lean,

@@ -1,6 +1,8 @@
 """Unit tests for SafeToEditTool."""
 
 import asyncio
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -391,6 +393,8 @@ class TestChecklistSequentialNumbering:
 async def test_edit_safe_explicit_read_existing_honors_compact_only(
     tmp_path,
 ) -> None:
+    import sys
+
     file_path = tmp_path / "inside.py"
     file_path.write_text("value = 1\n")
     result = await build_edit_facade(str(tmp_path)).execute(
@@ -404,6 +408,34 @@ async def test_edit_safe_explicit_read_existing_honors_compact_only(
             "compact_only": True,
         }
     )
+
+    if sys.platform.startswith("linux"):
+        # RFC-0022 P0.4: the certified backend runs and classifies the
+        # missing snapshot; the classified failure keeps the same TOON
+        # control surface and the wire-owner echo.
+        assert result["format"] == "toon"
+        assert "INDEX_SNAPSHOT_UNKNOWN" in result["toon_content"]
+        assert {
+            key: result[key]
+            for key in (
+                "success",
+                "verdict",
+                "access_mode",
+                "access_state",
+                "access_reason",
+                "output_format",
+                "action_version",
+            )
+        } == {
+            "success": False,
+            "verdict": "ERROR",
+            "access_mode": "read_existing",
+            "access_state": "unknown",
+            "access_reason": "INDEX_SNAPSHOT_UNKNOWN",
+            "output_format": "toon",
+            "action_version": "edit.safe/v1",
+        }
+        return
 
     assert result == {
         "format": "toon",
@@ -452,20 +484,930 @@ def test_execute_read_existing_fails_closed_without_project_root() -> None:
     # Codex P1 (#1257): with project_root unbound, resolve_and_validate_
     # file_path would pass base_path=None into SecurityValidator and skip
     # the project-boundary layer; the read_existing route must fail closed
-    # with the stable MISSING_PROJECT_ROOT error instead.
+    # with the stable MISSING_PROJECT_ROOT error. Review P2 (#1299): the
+    # failure is a classified envelope (evidence + action_version), not a
+    # bare raise.
     tool = SafeToEditTool()  # no project root bound
-    with pytest.raises(ValueError) as exc_info:
-        _run(
-            tool.execute(
-                {
-                    "file_path": "src/app.py",
-                    "access_mode": "read_existing",
-                    "snapshot_id": "snap-1",
-                    "source_generation": 1,
-                }
-            )
+    result = _run(
+        tool.execute(
+            {
+                "file_path": "src/app.py",
+                "access_mode": "read_existing",
+                "snapshot_id": "snap-1",
+                "source_generation": "1",
+            }
         )
-    assert str(exc_info.value) == (
-        "MISSING_PROJECT_ROOT: project_root must be bound before "
-        "read_existing path validation"
     )
+    assert result["success"] is False
+    assert result["error_code"] == "MISSING_PROJECT_ROOT"
+    assert result["access_reason"] == "MISSING_PROJECT_ROOT"
+    assert result["access_state"] == "missing"
+    assert result["action_version"] == "edit.safe/v1"
+    assert result["source_snapshots"] == []
+
+
+# ---------------------------------------------------------------------------
+# RFC-0022 P0.4: certified-axis index-snapshot consumers (portable gate open)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _close_index_snapshot_registry():
+    yield
+    from tree_sitter_analyzer.index_snapshot import REGISTRY
+
+    REGISTRY.close_all()
+
+
+def _indexed_project(tmp_path: Path) -> Path:
+    """Index one small project and return its resolved root."""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "app.py").write_text(
+        "def helper():\n"
+        "    return 1\n"
+        "\n"
+        "class UserService:\n"
+        "    def get_user(self, user_id):\n"
+        "        return self._find_user(user_id)\n"
+        "\n"
+        "    def _find_user(self, user_id):\n"
+        "        return {'id': user_id}\n",
+        encoding="utf-8",
+    )
+    (project / "routes.py").write_text(
+        "from app import UserService\n"
+        "\n"
+        "def dispatch(request):\n"
+        "    return UserService().get_user(1)\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(project))
+    cache.index_project(max_files=20)
+    cache.close()
+    return project.resolve()
+
+
+def _publish_index_snapshot(project: Path, *, source_generation: str | None = None):
+    """Publish one real index.db connection under the process-global registry.
+
+    The published capability carries the REAL captured source generation and
+    a full source scope so the consumer's after-read recapture passes: a
+    hand-faked generation would raise SOURCE_GENERATION_MISMATCH on exit.
+    """
+    import sqlite3
+
+    from tree_sitter_analyzer.index_snapshot import (
+        REGISTRY,
+        IndexSnapshot,
+        _capture_sources_with_deadline,
+    )
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    scope = make_source_scope_descriptor()
+    current = _capture_sources_with_deadline(str(project), scope, deadline=10**18)
+    assert current.state == "exact", current.reason
+    conn = sqlite3.connect(str(project / ".ast-cache" / "index.db"))
+    conn.row_factory = sqlite3.Row
+    snapshot = IndexSnapshot(
+        None,
+        current.fingerprint,
+        "index-fp",
+        source_generation or current.generation,
+        "complete",
+        None,
+        str(project.resolve()),
+        2,
+        None,
+        None,
+        scope,
+    )
+    return REGISTRY.publish(snapshot, conn, 0)
+
+
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
+)
+@pytest.mark.asyncio
+async def test_edit_safe_read_existing_consumes_published_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The certified backend serves the risk envelope from the snapshot."""
+    import tree_sitter_analyzer.read_existing_access as read_access
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    published = _publish_index_snapshot(project)
+
+    tool = SafeToEditTool(str(project))
+    result = await tool.execute(
+        {
+            "file_path": "app.py",
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+            "output_format": "json",
+        }
+    )
+
+    assert result["success"] is True
+    assert result["access_mode"] == "read_existing"
+    assert result["access_state"] == "available"
+    assert result["access_reason"] is None
+    assert result["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+        }
+    ]
+    # The echo must come from the ACQUIRED snapshot, byte-matching the
+    # source_snapshots record (RFC-0022 route-table common rule 5).
+    assert result["snapshot_id"] == published.snapshot_id
+    assert result["source_generation"] == published.source_generation
+    assert result["action_version"] == "edit.safe/v1"
+    assert result["risk_level"] in {"safe", "caution", "dangerous"}
+    assert result["health_grade"]
+
+
+def test_certified_commands_use_extension_runner(tmp_path: Path) -> None:
+    """Codex P2 round-7 (C32): the certified runner is inferred from the
+    target extension, never forced to pytest."""
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        AgentWorkflowContext,
+        build_agent_workflow,
+    )
+
+    go_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="handler.go",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["handler_test.go"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        )
+    )
+    assert "go test" in str(go_workflow.get("after_edit_commands", []))
+
+    java_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="Calc.java",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["CalcTest.java"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        )
+    )
+    # C35: ambiguous ecosystems omit the command rather than guess.
+    assert "mvn test" not in str(java_workflow.get("after_edit_commands", []))
+    assert "go test" not in str(java_workflow.get("after_edit_commands", []))
+    # C41: the queue-boundary list stays empty, never [""].
+    assert java_workflow.get("queue_boundary_commands") == []
+    # C49: no runner -> health/impact commands are never promoted to TEST
+    # verification, and the stop condition says verification is unidentified.
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_agent_summary,
+    )
+
+    java_summary = build_agent_summary(
+        AgentWorkflowContext(
+            file_path="Calc.java",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["CalcTest.java"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        ),
+        java_workflow,
+        verdict_override=None,
+    )
+    assert java_summary.get("verification_command") == ""
+    assert "unidentified" in java_summary.get("stop_condition", "")
+    # A workflow without guardrails exercises the empty-guardrails branch.
+    bare_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="Calc.java",
+            risk="safe",
+            edit_type="add",
+            has_tests=True,
+            test_files=["CalcTest.java"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        )
+    )
+    assert bare_workflow.get("guardrails") == []
+    bare_summary = build_agent_summary(
+        AgentWorkflowContext(
+            file_path="Calc.java",
+            risk="safe",
+            edit_type="add",
+            has_tests=True,
+            test_files=["CalcTest.java"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        ),
+        bare_workflow,
+        verdict_override=None,
+    )
+    assert "guardrails" not in bare_summary
+    # C41: the queue-boundary list stays empty, never [""].
+    assert java_workflow.get("queue_boundary_commands") == []
+
+    rust_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="lib.rs",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["tests/lib_test.rs"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        )
+    )
+    assert "cargo test" in str(rust_workflow.get("after_edit_commands", []))
+
+    js_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="app.js",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["__tests__/app.test.js"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        )
+    )
+    # C39: JS/TS npm-vs-pnpm-vs-Yarn cannot be distinguished snapshot-bound.
+    assert "npm test" not in str(js_workflow.get("after_edit_commands", []))
+
+    py_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="app.py",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["tests/test_app.py"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        )
+    )
+    assert "uv run pytest" in str(py_workflow.get("after_edit_commands", []))
+
+
+def test_certified_commands_ignore_live_config_files(tmp_path: Path) -> None:
+    """Codex P2 round-6 (C28): certified checklists/workflows use the
+    analyzer's pytest default, never live non-inventoried config files."""
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        AgentWorkflowContext,
+        build_agent_workflow,
+    )
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_risk import (
+        build_checklist,
+    )
+
+    (tmp_path / "package.json").write_text('{"scripts": {"test": "node test"}}')
+    live_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="app.py",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["tests/test_app.py"],
+            health_grade="A",
+            project_root=str(tmp_path),
+        )
+    )
+    assert "npm test" in str(live_workflow.get("after_edit_commands", []))
+
+    certified_workflow = build_agent_workflow(
+        AgentWorkflowContext(
+            file_path="app.py",
+            risk="safe",
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["tests/test_app.py"],
+            health_grade="A",
+            project_root=str(tmp_path),
+            certified=True,
+        )
+    )
+    assert "npm test" not in str(certified_workflow.get("after_edit_commands", []))
+    assert "uv run pytest" in str(certified_workflow.get("after_edit_commands", []))
+
+    certified_checklist = build_checklist(
+        "safe",
+        0,
+        False,
+        [],
+        "refactor",
+        project_root=str(tmp_path),
+        certified=True,
+    )
+    assert all("npm test" not in item for item in certified_checklist)
+
+    # C35: ambiguous ecosystem + no tests -> the checklist omits the
+    # command items entirely instead of advertising an unverifiable runner.
+    no_command = build_checklist(
+        "safe",
+        0,
+        False,
+        [],
+        "refactor",
+        file_path="Calc.java",
+        project_root=str(tmp_path),
+        certified=True,
+    )
+    assert all("command" not in item.lower() for item in no_command)
+
+    # C35: ambiguous ecosystem + tests -> the test items still appear,
+    # but without an advertised command.
+    java_tests = build_checklist(
+        "safe",
+        0,
+        True,
+        ["CalcTest.java"],
+        "refactor",
+        file_path="Calc.java",
+        project_root=str(tmp_path),
+        certified=True,
+    )
+    assert any("Run existing tests FIRST" in item for item in java_tests)
+    assert all(
+        "java" not in item.lower() and "mvn" not in item.lower() for item in java_tests
+    )
+
+    # Certified python + tests -> the pytest command items are present.
+    py_tests = build_checklist(
+        "safe",
+        0,
+        True,
+        ["tests/test_app.py"],
+        "refactor",
+        file_path="app.py",
+        project_root=str(tmp_path),
+        certified=True,
+    )
+    assert any("uv run pytest" in item for item in py_tests)
+
+
+def test_live_violations_query_degrades_on_corrupt_db_file(
+    tmp_path: Path,
+) -> None:
+    """A non-SQLite index.db degrades to an empty violation list."""
+    from tree_sitter_analyzer.mcp.tools.utils.constraint_violation_query import (
+        violations_for_files,
+    )
+
+    (tmp_path / ".ast-cache").mkdir()
+    (tmp_path / ".ast-cache" / "index.db").write_text(
+        "not-a-sqlite-database", encoding="utf-8"
+    )
+    assert violations_for_files(str(tmp_path), ["app.py"]) == []
+
+
+def test_snapshot_dependency_view_degrades_on_closed_conn() -> None:
+    """An unreadable connection degrades to an empty view, never raises."""
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.close()
+    view = build_snapshot_file_dependency_view(conn, "app.py")
+    assert view.dependents_of("app.py") == []
+    assert view.dependencies_of("app.py") == []
+
+
+def test_read_existing_payload_missing_indexed_file_returns_not_found(
+    tmp_path: Path,
+) -> None:
+    """An indexed target missing at read time still answers FILE_NOT_FOUND.
+
+    Codex P1 round-4 (C19): the inventory gate passes (the file IS in
+    ast_index), then the existence probe answers from the filesystem.
+    """
+    import sqlite3
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE ast_index (file_path TEXT)")
+    conn.execute("INSERT INTO ast_index VALUES ('app.py')")
+    tool = SafeToEditTool(str(tmp_path))
+    with pytest.raises(ValueError, match="FILE_NOT_FOUND"):
+        tool._read_existing_payload(
+            {"file_path": "app.py", "edit_type": "refactor"},
+            str(tmp_path / "app.py"),
+            conn,
+            snapshot=SimpleNamespace(canonical_root=str(tmp_path.resolve())),
+        )
+
+
+def test_read_existing_payload_language_detection_degrades(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A detector failure on the snapshot route degrades to no language key.
+
+    Codex-review P3 (#1299): language detection is best-effort — an
+    exception must yield a language-less result, never a crash.
+    """
+    import sqlite3
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.mcp.tools.safe_to_edit_tool as tool_module
+
+    target = tmp_path / "app.py"
+    target.write_text("x = 1\n", encoding="utf-8")
+    monkeypatch.setattr(
+        tool_module,
+        "_syntax_error_response",
+        lambda resolved, file_path, edit_type: None,
+    )
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("detector down")
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.language_detector.detect_language_from_file", boom
+    )
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    # The FILE_NOT_INDEXED gate needs the target present in ast_index.
+    conn.execute("CREATE TABLE ast_index (file_path TEXT)")
+    conn.execute("INSERT INTO ast_index VALUES ('app.py')")
+    tool = tool_module.SafeToEditTool(str(tmp_path))
+    result = tool._read_existing_payload(
+        {"file_path": "app.py", "edit_type": "refactor"},
+        str(target),
+        conn,
+        snapshot=SimpleNamespace(canonical_root=str(tmp_path)),
+    )
+    assert result["success"] is True
+    assert "language" not in result
+
+
+def test_snapshot_constraint_query_reads_from_given_conn() -> None:
+    """The conn variant returns rows and degrades to [] on a missing table."""
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.constraint_violation_query import (
+        violations_for_files_from_conn,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_constraint_violations ("
+        "rule_id TEXT NOT NULL, caller_file TEXT NOT NULL, "
+        "caller_name TEXT NOT NULL, caller_line INTEGER NOT NULL, "
+        "callee_name TEXT NOT NULL, callee_file TEXT NOT NULL DEFAULT '', "
+        "severity TEXT NOT NULL, detected_at INTEGER NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO ast_constraint_violations VALUES "
+        "('R1', 'app.py', 'app', 1, 'secret', '', 'error', 1)"
+    )
+    rows = violations_for_files_from_conn(conn, ["app.py"])
+    assert rows == [
+        {
+            "rule_id": "R1",
+            "caller_file": "app.py",
+            "caller_name": "app",
+            "caller_line": 1,
+            "callee_name": "secret",
+            "callee_file": "",
+            "severity": "error",
+            "detected_at": 1,
+            "factor": "constraint_violation",
+        }
+    ]
+    assert violations_for_files_from_conn(conn, []) == []
+    bare = sqlite3.connect(":memory:")
+    assert violations_for_files_from_conn(bare, ["app.py"]) == []
+
+
+def test_format_result_reads_constraints_from_snapshot_conn(
+    tmp_path: Path,
+) -> None:
+    """Snapshot-mode formatting ignores rows that cannot prove freshness."""
+    import sqlite3
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        SafeToEditContext,
+        SafeToEditFacts,
+        _format_safe_to_edit_result,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_constraint_violations ("
+        "rule_id TEXT NOT NULL, caller_file TEXT NOT NULL, "
+        "caller_name TEXT NOT NULL, caller_line INTEGER NOT NULL, "
+        "callee_name TEXT NOT NULL, callee_file TEXT NOT NULL DEFAULT '', "
+        "severity TEXT NOT NULL, detected_at INTEGER NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO ast_constraint_violations VALUES "
+        "('R1', 'app.py', 'app', 1, 'secret', '', 'error', 1)"
+    )
+    health = SimpleNamespace(grade="A", total=95, dimensions={})
+    facts = SafeToEditFacts(
+        dependents=[],
+        dependencies=[],
+        health=health,
+        test_files=[],
+        has_tests=False,
+        risk="safe",
+        risk_factors=[],
+        pre_edit_checklist=[],
+    )
+    context = SafeToEditContext(
+        file_path="app.py",
+        edit_type="refactor",
+        resolved_path=str(tmp_path / "app.py"),
+        project_root=str(tmp_path),
+        graph=None,
+        scorer=None,
+        snapshot_conn=conn,
+    )
+    result = _format_safe_to_edit_result(context, facts)
+    # C21: the seeded error row is unbound to the snapshot generation and
+    # must not escalate the verdict.
+    assert result["verdict"] == "SAFE"
+    assert not any(
+        factor.get("factor") == "constraint_violation"
+        for factor in result["risk_factors"]
+    )
+
+
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
+)
+@pytest.mark.asyncio
+async def test_edit_safe_read_existing_ignores_unbound_constraint_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unbound constraint rows never escalate; the certified read stays zero-write.
+
+    Codex P1 (#1299 round-4, C21): reindexing stamps the manifest without
+    recomputing ast_constraint_violations, so the rows cannot prove they
+    match the published generation — the certified route must NOT promote
+    UNSAFE from them. The route also never creates
+    ``.ast-cache/fixture_index.json`` (zero-write read).
+    """
+    import sqlite3
+
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.index_snapshot import (
+        REGISTRY,
+        IndexSnapshot,
+        _capture_sources_with_deadline,
+    )
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    scope = make_source_scope_descriptor()
+    current = _capture_sources_with_deadline(str(project), scope, deadline=10**18)
+    assert current.state == "exact", current.reason
+    conn = sqlite3.connect(str(project / ".ast-cache" / "index.db"))
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "INSERT INTO ast_constraint_violations VALUES "
+        "('R1', 'app.py', 'app', 1, 'secret', '', 'error', 1)"
+    )
+    conn.commit()
+    snapshot = IndexSnapshot(
+        None,
+        current.fingerprint,
+        "index-fp",
+        current.generation,
+        "complete",
+        None,
+        str(project.resolve()),
+        2,
+        None,
+        None,
+        scope,
+    )
+    published = REGISTRY.publish(snapshot, conn, 0)
+
+    tool = SafeToEditTool(str(project))
+    result = await tool.execute(
+        {
+            "file_path": "app.py",
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+            "output_format": "json",
+        }
+    )
+
+    assert result["success"] is True
+    assert result["access_state"] == "available"
+    # The seeded error-severity row must NOT escalate: it cannot prove it
+    # belongs to the published generation (C21). The CAUTION verdict comes
+    # from the snapshot dependency view (routes.py imports app.py), never
+    # from constraint rows.
+    assert result["verdict"] == "CAUTION"
+    assert result["downstream_count"] == 1
+    assert not any(
+        factor.get("factor") == "constraint_violation"
+        for factor in result["risk_factors"]
+    )
+    # Zero-write: the certified read never persisted a fixture index.
+    assert not (project / ".ast-cache" / "fixture_index.json").exists()
+
+
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
+)
+@pytest.mark.asyncio
+async def test_edit_safe_read_existing_unindexed_target_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A target outside the snapshot inventory is never served uncertified.
+
+    Codex P1 (#1299): hidden/excluded files are not covered by the source
+    recaptures, so the certified route rejects them with FILE_NOT_INDEXED
+    instead of reading and scoring their live bytes.
+    """
+    import tree_sitter_analyzer.read_existing_access as read_access
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    # Broken syntax on purpose (Codex P1 round-3): the inventory gate must
+    # run BEFORE the syntax probe, so a broken out-of-inventory file can
+    # never short-circuit into a syntax-error success envelope.
+    (project / ".hidden.py").write_text("def broken(:\n", encoding="utf-8")
+    published = _publish_index_snapshot(project)
+
+    tool = SafeToEditTool(str(project))
+    result = await tool.execute(
+        {
+            "file_path": ".hidden.py",
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+            "output_format": "json",
+        }
+    )
+
+    assert result["success"] is False
+    assert result["error_code"] == "FILE_NOT_INDEXED"
+    assert result["access_reason"] == "FILE_NOT_INDEXED"
+    assert result["action_version"] == "edit.safe/v1"
+    assert result["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+        }
+    ]
+
+
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
+)
+@pytest.mark.asyncio
+async def test_edit_safe_read_existing_generation_mismatch_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A wrong source_generation token classifies, never a successful read."""
+    import tree_sitter_analyzer.read_existing_access as read_access
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    published = _publish_index_snapshot(project)
+
+    tool = SafeToEditTool(str(project))
+    result = await tool.execute(
+        {
+            "file_path": "app.py",
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "WRONG-GENERATION",
+            "output_format": "json",
+        }
+    )
+
+    assert result["success"] is False
+    assert result["access_state"] == "unknown"
+    assert result["access_reason"] == "SOURCE_GENERATION_MISMATCH"
+    assert result["error_code"] == "SOURCE_GENERATION_MISMATCH"
+    assert result["source_snapshots"] == []
+    assert result["action_version"] == "edit.safe/v1"
+
+
+# RFC-0022 P0.4: the snapshot dependency view degrades to an empty view on
+# schema drift (legacy connection without the edges/ast_index tables) so the
+# route still classifies honestly instead of crashing.
+def test_snapshot_dependency_view_degrades_on_schema_drift() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+        snapshot_inventory,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    view = build_snapshot_file_dependency_view(conn, "app.py")
+    assert view.dependents_of("app.py") == []
+    assert view.dependencies_of("app.py") == []
+    # An unreadable inventory degrades to the empty set (fail-closed).
+    assert snapshot_inventory(conn) == frozenset()
+
+    # edges present but ast_index absent: exact resolution probes the missing
+    # table and degrades to not-indexed.
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("INSERT INTO edges VALUES ('routes.py', 'app', 'imports')")
+    partial = build_snapshot_file_dependency_view(conn, "app.py")
+    assert partial.dependents_of("app.py") == []
+
+    # Codex P2 (#1299): a current-version but damaged edges table (present,
+    # missing the callee_name column this reader selects) fails the route
+    # instead of silently degrading to an empty view (which would undercount
+    # risk).
+    import pytest
+
+    damaged = sqlite3.connect(":memory:")
+    damaged.row_factory = sqlite3.Row
+    damaged.execute(
+        "CREATE TABLE edges (source_node_id TEXT, target_node_id TEXT, "
+        "kind TEXT, file_path TEXT)"
+    )
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        build_snapshot_file_dependency_view(damaged, "app.py")
+
+
+# RFC-0022 P0.4: the snapshot dependency view resolves exact IMPORTS edges
+# AND recalls member imports via the imports_json needle pass, matching the
+# legacy live axis ('from pkg import app' / 'from . import app').
+def test_snapshot_dependency_view_recalls_member_imports() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.execute("INSERT INTO edges VALUES ('routes.py', 'app', 'imports')")
+    # C44: a BLOB callee_name row must not abort the whole edges pass.
+    conn.execute(
+        "INSERT INTO edges VALUES ('blobbed.py', ?, 'imports')", (b"blob-module",)
+    )
+    # The target's OWN import row can also carry a BLOB (pass-1 skip).
+    conn.execute("INSERT INTO edges VALUES ('app.py', ?, 'imports')", (b"blob-own",))
+    # C53: a BLOB importer path in pass 2 is skipped, not fatal.
+    conn.execute("INSERT INTO edges VALUES (?, 'app', 'imports')", (b"blob-path",))
+    conn.execute("INSERT INTO edges VALUES ('app.py', 'app', 'imports')")
+    # 'app.py' importing a module that does not index -> resolved is None.
+    conn.execute("INSERT INTO edges VALUES ('app.py', 'missing.mod', 'imports')")
+    # Relative import spec ('.sibling') exercises the relative branch.
+    conn.execute("INSERT INTO edges VALUES ('pkg/app.py', '.sibling', 'imports')")
+    # Parent-relative spec ('..') is rejected outright.
+    conn.execute("INSERT INTO edges VALUES ('pkg/app.py', '..up', 'imports')")
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('routes.py', ?)",
+        (json.dumps([{"text": "from app import UserService", "line": 1}]),),
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('unrelated.py', ?)",
+        (json.dumps([{"text": "import os", "line": 1}]),),
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('odd.py', ?)",
+        (json.dumps([{"text": 123, "line": 1}]),),
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('app.py', ?)",
+        (json.dumps([{"text": "import os", "line": 1}]),),
+    )
+    conn.execute("INSERT INTO ast_index VALUES ('broken.py', 'not-json')")
+    # C40: a valid-JSON non-array cell (42) must be skipped per row, NOT
+    # abort the whole needle pass — the later matching row still counts.
+    conn.execute("INSERT INTO ast_index VALUES ('scalar.py', '42')")
+    # C64: 'import happy' must NOT match the 'app' needle as a substring.
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('tests/test_happy.py', ?)",
+        (json.dumps([{"text": "import happy", "line": 1}]),),
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('later.py', ?)",
+        (json.dumps([{"text": "from app import Member", "line": 1}]),),
+    )
+    view = build_snapshot_file_dependency_view(conn, "app.py")
+    # 'routes.py' matches the needle pass; 'unrelated.py' exercises the
+    # non-match branch (no dependent added); 'later.py' proves the pass
+    # survived the malformed 'scalar.py' row.
+    assert view.dependents_of("app.py") == ["later.py", "routes.py"]
+
+
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
+)
+@pytest.mark.asyncio
+async def test_edit_safe_read_existing_syntax_error_short_circuits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A broken file short-circuits the snapshot route like the legacy axis."""
+    import tree_sitter_analyzer.read_existing_access as read_access
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    (project / "app.py").write_text("def broken(:\n", encoding="utf-8")
+    published = _publish_index_snapshot(project)
+
+    tool = SafeToEditTool(str(project))
+    result = await tool.execute(
+        {
+            "file_path": "app.py",
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+            "output_format": "json",
+        }
+    )
+    assert result["success"] is True
+    assert result["verdict"] == "ERROR"
+    assert result["access_state"] == "available"
+    assert result["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+        }
+    ]
+
+
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
+)
+@pytest.mark.asyncio
+async def test_edit_safe_read_existing_missing_file_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A missing target fails closed on the snapshot route.
+
+    Codex P1 round-4 (C19): the inventory gate precedes every live-filesystem
+    probe — a file the snapshot never indexed (missing or not) is answered
+    from the snapshot with FILE_NOT_INDEXED, never from uncertified disk
+    state. (An indexed-but-deleted file surfaces as SOURCE_GENERATION_MISMATCH
+    in the pre-read recapture instead.)
+    """
+    import tree_sitter_analyzer.read_existing_access as read_access
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    published = _publish_index_snapshot(project)
+
+    tool = SafeToEditTool(str(project))
+    result = await tool.execute(
+        {
+            "file_path": "does_not_exist.py",
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+            "output_format": "json",
+        }
+    )
+    assert result["success"] is False
+    assert result["error_code"] == "FILE_NOT_INDEXED"
+    assert result["access_reason"] == "FILE_NOT_INDEXED"
+    assert result["access_state"] == "unknown"
+    assert result["action_version"] == "edit.safe/v1"

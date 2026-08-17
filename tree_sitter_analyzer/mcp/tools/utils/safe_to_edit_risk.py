@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .verification_command import build_test_command, detect_default_test_command
+from .verification_command import (
+    build_test_command,
+    detect_default_test_command,
+)
 
 RiskFactor = dict[str, str]
 
@@ -40,6 +43,8 @@ def build_checklist(
     health_grade: str = "",
     file_path: str = "",
     project_root: str | Path | None = None,
+    *,
+    certified: bool = False,
 ) -> list[str]:
     """Build a pre-edit checklist for the AI agent.
 
@@ -49,7 +54,15 @@ def build_checklist(
     [1, 2, 3, 5] when downstream_count == 0 (issue #641).
     """
     raw: list[str] = [_risk_instruction(risk)]
-    raw.extend(_test_instructions(has_tests, test_files, project_root))
+    raw.extend(
+        _test_instructions(
+            has_tests,
+            test_files,
+            project_root,
+            certified=certified,
+            file_path=file_path,
+        )
+    )
 
     if downstream_count > 0:
         raw.append(
@@ -260,9 +273,32 @@ def _test_instructions(
     has_tests: bool,
     test_files: list[str],
     project_root: str | Path | None,
+    *,
+    certified: bool = False,
+    file_path: str = "",
 ) -> list[str]:
-    """Return checklist items for test coverage."""
-    default_command = detect_default_test_command(project_root)
+    """Return checklist items for test coverage.
+
+    ``certified`` (Codex P2 #1299 round-6/7): the default test command must be
+    snapshot-bound — live config detection (package.json/go.mod/Cargo.toml)
+    reads non-inventoried files that can drift for the same identity, so the
+    certified route infers the runner from the target's extension.
+    """
+    if certified:
+        from .verification_command import certified_default_test_command
+
+        default_command = certified_default_test_command(file_path or "app.py")
+    else:
+        default_command = detect_default_test_command(project_root)
+    if default_command is None:
+        # Codex P2 (#1299 round-8, C35): ambiguous ecosystem — omit the
+        # command items rather than advertise an unverifiable runner.
+        if has_tests:
+            return [
+                "2. Run existing tests FIRST",
+                "3. Run same verification AFTER editing",
+            ]
+        return ["2. No tests found nearby - write tests BEFORE editing (TDD)"]
     if has_tests:
         test_command = build_test_command(default_command, test_files)
         return [

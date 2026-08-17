@@ -50,6 +50,32 @@ def detect_default_test_command(project_root: str | Path | None) -> DefaultTestC
     return PYTEST_COMMAND
 
 
+def certified_default_test_command(
+    file_path: str,
+) -> DefaultTestCommand | None:
+    """Extension-derived default test command, snapshot-bound.
+
+    Codex P2 (#1299 round-7/8, C32/C35): the certified route cannot read
+    live config files (package.json/go.mod/...), so the runner is inferred
+    from the TARGET's extension — a fact bound to the snapshot inventory.
+    Only ecosystems with an unambiguous canonical runner map; ambiguous
+    ones (Java's Maven-vs-Gradle, Kotlin, C#, PHP, C/C++, Ruby's
+    rspec-vs-minitest, and JavaScript/TypeScript's npm-vs-pnpm-vs-Yarn-
+    vs-Bun, which only non-inventoried lockfiles can distinguish) return
+    ``None`` so the route OMITS the command rather than advertising an
+    unverifiable choice. Python keeps the pytest default.
+    """
+
+    ext = Path(file_path).suffix.lower()
+    if ext == ".go":
+        return DefaultTestCommand("go", "go test ./...")
+    if ext == ".rs":
+        return DefaultTestCommand("cargo", "cargo test")
+    if ext == ".py":
+        return PYTEST_COMMAND
+    return None
+
+
 def build_test_command(
     default_command: DefaultTestCommand,
     tests_to_run: list[str],

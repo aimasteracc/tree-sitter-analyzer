@@ -70,6 +70,67 @@ class TestHealthScorer:
         for r in results:
             assert 0 <= r.total <= 100
 
+    def test_certified_score_omits_coverage_and_git_dimensions(
+        self, scorer, tmp_path, monkeypatch
+    ):
+        # Codex P1 (#1299 round-4): coverage.json and git history are outside
+        # the snapshot source generation — certified reads must not report
+        # dimensions that can drift for the same snapshot identity, even when
+        # those inputs are present.
+        import tree_sitter_analyzer.health_scorer as health_scorer
+
+        monkeypatch.setattr(health_scorer, "score_git_hotspot", lambda file_path: 80.0)
+        monkeypatch.setattr(
+            health_scorer.HealthScorer,
+            "_score_coverage",
+            lambda self, file_path: 90.0,
+        )
+        target = tmp_path / "app.py"
+        target.write_text("def run():\n    return 1\n", encoding="utf-8")
+
+        live = scorer.score_file(str(target), fast_dependencies=True)
+        assert "coverage" in live.dimensions
+        assert "git_hotspot" in live.dimensions
+
+        certified = scorer.score_file(
+            str(target), fast_dependencies=True, certified=True
+        )
+        assert "coverage" not in certified.dimensions
+        assert "git_hotspot" not in certified.dimensions
+        assert certified.total > 0.0
+
+    def test_invalidate_stat_cache_drops_only_stat_fast_path(self) -> None:
+        from tree_sitter_analyzer.core.parser import Parser
+
+        Parser.invalidate_stat_cache()
+        assert Parser._stat_cache == {}
+        # The content-addressed cache is untouched.
+        assert isinstance(Parser._cache, object)
+
+    def test_certified_score_never_touches_coverage_or_git(
+        self, scorer, tmp_path, monkeypatch
+    ):
+        # Codex P2 round-5 (C23): the certified branch must not EVALUATE the
+        # omitted dimensions — a corrupt coverage.json must not flip a
+        # certified request into a failure.
+        import tree_sitter_analyzer.health_scorer as health_scorer
+
+        def boom_coverage(self, file_path):
+            raise ValueError("corrupt coverage.json")
+
+        monkeypatch.setattr(
+            health_scorer.HealthScorer, "_score_coverage", boom_coverage
+        )
+        monkeypatch.setattr(health_scorer, "score_git_hotspot", lambda file_path: 1 / 0)
+        target = tmp_path / "app.py"
+        target.write_text("def run():\n    return 1\n", encoding="utf-8")
+
+        certified = scorer.score_file(
+            str(target), fast_dependencies=True, certified=True
+        )
+        assert certified.total > 0.0
+        assert "coverage" not in certified.dimensions
+
     def test_score_project_includes_reported_source_extensions(self, scorer, tmp_path):
         """Project scoring should include all configured reportable extensions."""
         from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS

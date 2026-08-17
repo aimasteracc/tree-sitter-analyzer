@@ -58,7 +58,30 @@ _REQUIRED_COLUMNS = {
     "ast_symbol_projection_state": frozenset(
         {"file_path", "content_hash", "symbol_count", "projection_digest"}
     ),
-    "edges": frozenset({"source_node_id", "target_node_id", "kind", "file_path"}),
+    "edges": frozenset(
+        {
+            "source_node_id",
+            "target_node_id",
+            "kind",
+            "file_path",
+            # Codex P2 (#1299): the snapshot dependency reader selects
+            # callee_name; a current-version index missing it would degrade
+            # to an empty dependency view and undercount risk. caller_name is
+            # selected by nav.context's _callees_by_name, whose OperationalError
+            # would escape the classified failure envelope (round-3). Every
+            # column EdgeStore._edge_from_row indexes directly (line,
+            # provenance, metadata) must also be present, or nav.context
+            # would hit an IndexError outside the classified set (round-4).
+            "callee_name",
+            "caller_name",
+            "line",
+            "provenance",
+            "metadata",
+            # Codex P2 (#1299 round-12, C52): the certified symbol-reference
+            # query binds call edges by callee_resolved_file.
+            "callee_resolved_file",
+        }
+    ),
     "ast_index_snapshot_manifest": frozenset(
         {
             "canonical_root",

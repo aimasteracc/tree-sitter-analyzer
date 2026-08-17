@@ -19,6 +19,8 @@ Required cases per p0-facade-framework-spec.md §5:
 from __future__ import annotations
 
 import asyncio
+import os
+import sys
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -894,6 +896,8 @@ def test_context_forwards_explicit_read_existing_capability() -> None:
 def test_context_read_existing_returns_exact_access_evidence_without_backend(
     tmp_path: Any, output_format: str, format_fields: dict[str, Any]
 ) -> None:
+    import sys
+
     facade = build_nav_facade(project_root=str(tmp_path))
     context_inner = facade._bespoke_inners[0]
 
@@ -908,7 +912,35 @@ def test_context_read_existing_returns_exact_access_evidence_without_backend(
             )
         )
 
+    # On every axis the certified/live backends never touch the live ASTCache
+    # (zero-write); the missing snapshot classifies before the reader runs.
     get_cache.assert_not_called()
+    if sys.platform.startswith("linux"):
+        # RFC-0022 P0.4: the certified backend runs and classifies the
+        # never-published pair as an unknown acquisition failure.
+        assert {
+            key: result[key]
+            for key in (
+                "success",
+                "access_mode",
+                "access_state",
+                "access_reason",
+                "error_code",
+                "source_snapshots",
+                "action_version",
+                "output_format",
+            )
+        } == {
+            "success": False,
+            "access_mode": "read_existing",
+            "access_state": "unknown",
+            "access_reason": "INDEX_SNAPSHOT_UNKNOWN",
+            "error_code": "INDEX_SNAPSHOT_UNKNOWN",
+            "source_snapshots": [],
+            "action_version": "nav.context/v1",
+            "output_format": output_format,
+        }
+        return
     assert result == {
         **format_fields,
         **_ACCESS_EVIDENCE,
@@ -971,5 +1003,326 @@ def test_navigate_rejects_context_only_access_mode() -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# RFC-0022 P0.4: certified-axis index-snapshot consumers (portable gate open)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _close_index_snapshot_registry():
+    yield
+    from tree_sitter_analyzer.index_snapshot import REGISTRY
+
+    REGISTRY.close_all()
+
+
+def _indexed_project(tmp_path: Any) -> Any:
+    """Index one small project and return its resolved root."""
+    from pathlib import Path
+
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "app.py").write_text(
+        "class UserService:\n"
+        "    def get_user(self, user_id):\n"
+        "        return self._find_user(user_id)\n"
+        "\n"
+        "    def _find_user(self, user_id):\n"
+        "        return {'id': user_id}\n"
+        "\n"
+        "def handle_request(request):\n"
+        "    svc = UserService()\n"
+        "    return svc.get_user(1)\n",
+        encoding="utf-8",
+    )
+    (project / "routes.py").write_text(
+        "from app import handle_request\n"
+        "\n"
+        "def dispatch(request):\n"
+        "    return handle_request(request)\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(project))
+    cache.index_project(max_files=20)
+    cache.close()
+    return Path(str(project.resolve()))
+
+
+def _publish_index_snapshot(project: Any, *, source_generation: str | None = None):
+    """Publish one real index.db connection under the process-global registry.
+
+    The published capability carries the REAL captured source generation and
+    a full source scope so the consumer's after-read recapture passes: a
+    hand-faked generation would raise SOURCE_GENERATION_MISMATCH on exit.
+    """
+    import sqlite3
+
+    from tree_sitter_analyzer.index_snapshot import (
+        REGISTRY,
+        IndexSnapshot,
+        _capture_sources_with_deadline,
+    )
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    scope = make_source_scope_descriptor()
+    current = _capture_sources_with_deadline(str(project), scope, deadline=10**18)
+    assert current.state == "exact", current.reason
+    conn = sqlite3.connect(str(project / ".ast-cache" / "index.db"))
+    conn.row_factory = sqlite3.Row
+    snapshot = IndexSnapshot(
+        None,
+        current.fingerprint,
+        "index-fp",
+        source_generation or current.generation,
+        "complete",
+        None,
+        str(project.resolve()),
+        2,
+        None,
+        None,
+        scope,
+    )
+    return REGISTRY.publish(snapshot, conn, 0)
+
+
+def test_context_read_existing_fails_closed_without_project_root() -> None:
+    """MISSING_PROJECT_ROOT on the certified axis; UNCERTIFIED elsewhere.
+
+    Codex P1 (#1257) mirror for nav.context: an unbound root must never let
+    the certified backend run (it would classify success with no project
+    boundary). Non-certified axes keep the stable UNCERTIFIED success stub.
+    """
+    import sys
+
+    facade = build_nav_facade(project_root=None)
+    context_inner = facade._bespoke_inners[0]
+    arguments = {
+        key: value
+        for key, value in _CONTEXT_READ_EXISTING_ARGS.items()
+        if key != "action"
+    }
+    arguments["output_format"] = "json"
+
+    if sys.platform.startswith("linux"):
+        # The consumer seam classifies the unbound root (evidence + wire
+        # owner), it does not escape as a bare raise.
+        result = asyncio.run(context_inner.execute(arguments))
+        assert result["success"] is False
+        assert result["error_code"] == "MISSING_PROJECT_ROOT"
+        assert result["access_reason"] == "MISSING_PROJECT_ROOT"
+        assert result["access_state"] == "missing"
+        assert result["action_version"] == "nav.context/v1"
+        return
+    result = asyncio.run(context_inner.execute(arguments))
+    assert result["success"] is True
+    assert result["access_reason"] == "READ_EXISTING_AUTHORITY_UNCERTIFIED"
+    assert result["action_version"] == "nav.context/v1"
+
+
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
+)
+def test_context_read_existing_consumes_published_snapshot(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The certified backend serves graph content from the snapshot connection."""
+    import tree_sitter_analyzer.read_existing_access as read_access
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    published = _publish_index_snapshot(project)
+
+    facade = build_nav_facade(project_root=str(project))
+    result = asyncio.run(
+        facade.execute(
+            {
+                "action": "context",
+                "task": "explain dispatch",
+                "access_mode": "read_existing",
+                "snapshot_id": published.snapshot_id,
+                "source_generation": published.source_generation,
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert result["success"] is True
+    assert result["verdict"] == "INFO"
+    assert result["access_mode"] == "read_existing"
+    assert result["access_state"] == "available"
+    assert result["access_reason"] is None
+    assert result["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+        }
+    ]
+    # The echo must come from the ACQUIRED snapshot, byte-matching the
+    # source_snapshots record (RFC-0022 route-table common rule 5).
+    assert result["snapshot_id"] == published.snapshot_id
+    assert result["source_generation"] == published.source_generation
+    assert result["snapshot_id"] == published.snapshot_id
+    assert result["source_generation"] == published.source_generation
+    assert result["action_version"] == "nav.context/v1"
+    # C46/C51: the certified adapter never echoes raw task text or the
+    # task-derived candidate tokens.
+    assert "task" not in result
+    assert "candidates" not in result
+    assert [entry.get("name") for entry in result["entry_points"]] == ["dispatch"]
+    assert result["related_symbols"]
+    assert result["code_blocks"]
+
+
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
+)
+def test_context_read_existing_no_match_returns_not_found(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A task with no symbol hits yields a certified NOT_FOUND envelope.
+
+    The empty-nodes path must still carry the full read_existing evidence
+    (echo tokens + action_version), not a bare success stub.
+    """
+    import tree_sitter_analyzer.read_existing_access as read_access
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    published = _publish_index_snapshot(project)
+
+    facade = build_nav_facade(project_root=str(project))
+    result = asyncio.run(
+        facade.execute(
+            {
+                "action": "context",
+                "task": "zzz_nonexistent_symbol_xyz",
+                "access_mode": "read_existing",
+                "snapshot_id": published.snapshot_id,
+                "source_generation": published.source_generation,
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert result["success"] is True
+    assert result["verdict"] == "NOT_FOUND"
+    assert result["access_mode"] == "read_existing"
+    assert result["access_state"] == "available"
+    assert result["access_reason"] is None
+    assert result["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": published.source_generation,
+        }
+    ]
+    assert result["snapshot_id"] == published.snapshot_id
+    assert result["source_generation"] == published.source_generation
+    assert result["action_version"] == "nav.context/v1"
+    assert result["entry_points"] == []
+    assert result["code_blocks"] == []
+    assert result["stats"] == {
+        "entry_points": 0,
+        "entry_points_total": 0,
+        "nodes_total": 0,
+        "edges_total": 0,
+        "code_blocks": 0,
+    }
+
+
+@pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0022 P0.4 source recapture needs POSIX /dev/fd",
+)
+def test_context_read_existing_generation_mismatch_fails_closed(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A wrong source_generation token classifies, never a successful read."""
+    import tree_sitter_analyzer.read_existing_access as read_access
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    project = _indexed_project(tmp_path)
+    published = _publish_index_snapshot(project)
+
+    facade = build_nav_facade(project_root=str(project))
+    result = asyncio.run(
+        facade.execute(
+            {
+                "action": "context",
+                "task": "explain dispatch",
+                "access_mode": "read_existing",
+                "snapshot_id": published.snapshot_id,
+                "source_generation": "WRONG-GENERATION",
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert result["success"] is False
+    assert result["access_state"] == "unknown"
+    assert result["access_reason"] == "SOURCE_GENERATION_MISMATCH"
+    assert result["error_code"] == "SOURCE_GENERATION_MISMATCH"
+    assert result["source_snapshots"] == []
+    assert result["action_version"] == "nav.context/v1"
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+def test_snapshot_search_surface_degrades_without_fts5(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without FTS5 the snapshot search surface returns no raw hits."""
+    import sqlite3
+
+    import tree_sitter_analyzer.mcp.tools.codegraph_context_tool as cgt
+
+    monkeypatch.setattr(cgt, "sqlite_compile_supports_fts5", lambda conn: False)
+    conn = sqlite3.connect(":memory:")
+    surface = cgt._snapshot_search_surface(conn)
+    assert surface.fts_search("anything") == []
+    assert surface.fts_search_ranked("anything") == []
+
+
+def test_snapshot_search_surface_queries_real_fts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With FTS5 the snapshot search surface queries the connection."""
+    import sqlite3
+
+    import tree_sitter_analyzer.mcp.tools.codegraph_context_tool as cgt
+
+    monkeypatch.setattr(cgt, "sqlite_compile_supports_fts5", lambda conn: True)
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_symbol_rows (id INTEGER PRIMARY KEY, name TEXT, "
+        "kind TEXT, file_path TEXT, language TEXT, line INTEGER, end_line INTEGER)"
+    )
+    conn.execute("CREATE VIRTUAL TABLE ast_symbols_fts USING fts5(name, content='')")
+    conn.execute(
+        "INSERT INTO ast_symbol_rows VALUES "
+        "(1, 'hello_world', 'function', 'a.py', 'python', 1, 3)"
+    )
+    conn.execute("INSERT INTO ast_symbols_fts (rowid, name) VALUES (1, 'hello_world')")
+    surface = cgt._snapshot_search_surface(conn)
+    hits = surface.fts_search("hello")
+    assert hits == [
+        {
+            "name": "hello_world",
+            "kind": "function",
+            "file": "a.py",
+            "language": "python",
+            "line": 1,
+            "end_line": 3,
+        }
+    ]

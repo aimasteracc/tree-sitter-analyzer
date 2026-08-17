@@ -10,7 +10,7 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote
 
 from .index_snapshot_capability import (
@@ -490,6 +490,124 @@ def acquire_index_snapshot(
     return REGISTRY.acquire(
         snapshot_id, project_root, source_generation, deadline=deadline
     )
+
+
+def verify_snapshot_source_current(
+    snapshot: IndexSnapshot, *, deadline: float | None = None
+) -> None:
+    """Revalidate one acquired snapshot's source state after a read.
+
+    RFC-0022 P0.4 after-read revalidation: recapture the current source over
+    the snapshot's ``source_scope`` and compare the generation (or fingerprint)
+    with the acquired capability. A mismatch raises ``SOURCE_GENERATION_MISMATCH``
+    and the caller must emit no result. Snapshots without a scope descriptor
+    (no manifest to capture against) skip the check, mirroring
+    ``constraint_index_snapshot.evaluate_ordinary_snapshot``.
+    """
+    source_scope = snapshot.source_scope
+    if source_scope is None:
+        return
+    source_root = snapshot.canonical_root
+    if not isinstance(source_root, str) or not source_root:
+        raise ValueError("INDEX_SNAPSHOT_UNKNOWN")
+    deadline = _clock() + _CAPTURE_DEADLINE_SECONDS if deadline is None else deadline
+    current = _capture_sources_with_deadline(source_root, source_scope, deadline)
+    if current.state != "exact":
+        raise ValueError(current.reason or "SOURCE_SCOPE_UNKNOWN")
+    expected_generation = snapshot.source_generation
+    if expected_generation is None:
+        expected_fingerprint = snapshot.source_fingerprint
+        if expected_fingerprint is None:
+            raise ValueError("SOURCE_GENERATION_MISMATCH")
+        if current.fingerprint != expected_fingerprint:
+            raise ValueError("SOURCE_GENERATION_MISMATCH")
+    elif current.generation != expected_generation:
+        raise ValueError("SOURCE_GENERATION_MISMATCH")
+
+
+@contextmanager
+def read_existing_index_scope(
+    snapshot_id: str,
+    project_root: str,
+    source_generation: str | None = None,
+    *,
+    deadline: float | None = None,
+) -> Iterator[tuple[IndexSnapshot, sqlite3.Connection]]:
+    """Acquire one certified index capability and revalidate it around the read.
+
+    Consumer seam for the P0.1 read_existing route: acquires the registry copy
+    (before-read token revalidation) under one absolute deadline, gates the
+    capability (completeness + full source scope), re-captures the current
+    source BEFORE the read and AGAIN after it, and compares generations both
+    times. Any mismatch raises the stable code and the route emits no result.
+    Reader pins and the I/O lock are released by ``acquire_index_snapshot``'s
+    own cleanup on exit.
+    """
+    scope_deadline = (
+        deadline if deadline is not None else _clock() + _CAPTURE_DEADLINE_SECONDS
+    )
+    with acquire_index_snapshot(
+        snapshot_id, project_root, source_generation, deadline=scope_deadline
+    ) as (snapshot, conn):
+        try:
+            # Codex P1 (#1299): a partial capability (CALL_GRAPH_INCOMPLETE /
+            # SYMBOL_PROJECTION_INCOMPLETE) cannot certify project-wide graph
+            # claims. RFC-0022 P0.1 oracle: graph-consuming rows do not start
+            # without completeness "complete"; mirror the constraint route's
+            # completeness gate.
+            if snapshot.completeness != "complete":
+                raise ValueError("INDEX_SNAPSHOT_INCOMPLETE")
+            # A partial source scope (exclusions / non-root roots) cannot
+            # certify project-wide graph claims: the after-read recapture
+            # only re-checks the snapshot's OWN scope, so out-of-scope files
+            # could be served uncertified. Mirror the constraint route's
+            # full-scope gate.
+            from .index_source_scope import SourceScopeDescriptor
+
+            if not (
+                isinstance(snapshot.source_scope, SourceScopeDescriptor)
+                and snapshot.source_scope.roots == (".",)
+                and not snapshot.source_scope.exclude_patterns
+            ):
+                raise ValueError("CONSTRAINED_INDEX_SCOPE")
+            # Codex P1 (#1299): recapture BEFORE the read too. Acquisition
+            # only compares the caller's token against registry metadata — a
+            # source already modified when the read starts (and restored
+            # mid-read) would otherwise pass the single after-read check
+            # while the reader consumed the modified bytes. The pre-read
+            # check runs at __enter__ (normal generator start), the
+            # post-read check only on normal exit — the reader's own
+            # exception always wins over the after-read check.
+            verify_snapshot_source_current(snapshot, deadline=scope_deadline)
+        except (ValueError, RuntimeError) as exc:
+            # Codex P2 (#1299): pre-yield failures still acquired the
+            # capability; carry its identity so the consumer's failure
+            # envelope can cite the exact snapshot that was acquired.
+            # cast(Any, ...) keeps mypy happy (ValueError/RuntimeError have
+            # no such attribute) without ruff rewriting a setattr back into
+            # an attribute assignment.
+            cast(Any, exc)._read_existing_identity = (
+                snapshot.snapshot_id,
+                snapshot.source_generation,
+            )
+            raise
+
+        # Codex P2 (#1299): bound the reader's SQL work with the same
+        # absolute deadline. SQLite's progress handler fires every 1000 VM
+        # opcodes; returning nonzero aborts the running statement. The
+        # post-yield deadline re-check below is the hard guarantee even when
+        # a reader swallows the abort inside its own exception guards.
+        def _deadline_breached() -> int:
+            return int(_clock() >= scope_deadline)
+
+        conn.set_progress_handler(_deadline_breached, 1_000)
+        try:
+            yield snapshot, conn
+        finally:
+            conn.set_progress_handler(None, 0)
+        if _clock() >= scope_deadline:
+            raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+        verify_snapshot_source_current(snapshot, deadline=scope_deadline)
 
 
 def _unknown(reason: str) -> IndexSnapshot:

@@ -14,6 +14,10 @@ import time
 from typing import Any
 
 from ... import read_existing_access as read_access
+from ...cache.query import fts_search as _conn_fts_search
+from ...cache.query import fts_search_ranked as _conn_fts_search_ranked
+from ...cache.search import search_symbols_cascade as _conn_search_symbols_cascade
+from ...index_symbol_projection import sqlite_compile_supports_fts5
 from ...test_gap_analyzer import _NON_PROD_DIRS as _SHARED_NON_PROD_DIRS
 from ...utils.test_detection import is_test_file as _shared_is_test_file
 from ...utils.test_detection import query_wants_tests as _task_wants_tests
@@ -239,11 +243,8 @@ class CodeGraphContextTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
-        if unavailable := read_access.format_read_existing_unavailable(
-            arguments,
-            action_version=NAV_CONTEXT_ACTION_VERSION,
-        ):
-            return unavailable
+        if "access_mode" in arguments:
+            return await self._execute_read_existing(arguments)
         started = time.perf_counter()
 
         task = str(arguments["task"]).strip()
@@ -275,12 +276,6 @@ class CodeGraphContextTool(BaseMCPTool):
         )
         related_files = _unique_files(nodes)
 
-        # Totals always computed from the FULL set before any capping so the
-        # agent knows how much graph is available even in lean mode.
-        total_nodes = len(nodes)
-        total_edges = len(edges)
-        total_entry_points = len(entry_points)
-
         # Compact related-symbols list (RFC-0006): always built, tiny cost.
         # Groups the full node set by file as "name:line" entries — mirrors
         # CG's Related Symbols format without the heavy per-node dict.
@@ -288,105 +283,162 @@ class CodeGraphContextTool(BaseMCPTool):
 
         verdict = "INFO" if entry_points else "NOT_FOUND"
 
-        # Cap entry_points for echo (same as before).
-        entry_points = entry_points[:_MAX_INLINE_ENTRY_POINTS]
-
-        if include_graph:
-            # Full graph path — identical to old default behaviour.
-            # The inline caps scale with max_nodes so agents that request more
-            # nodes actually receive them. _MAX_INLINE_NODES / _MAX_INLINE_EDGES
-            # are the floor defaults; larger max_nodes raises the cap
-            # proportionally.
-            inline_node_cap = max(_MAX_INLINE_NODES, max_nodes)
-            inline_edge_cap = max(_MAX_INLINE_EDGES, max_nodes * 2)
-            inline_nodes = nodes[:inline_node_cap]
-            _echoed_ids = {n.get("id") for n in inline_nodes}
-            inline_edges = [
-                e
-                for e in edges
-                if e.get("source") in _echoed_ids and e.get("target") in _echoed_ids
-            ][:inline_edge_cap]
-            result: dict[str, Any] = {
-                "success": True,
-                "verdict": verdict,
-                "action_version": NAV_CONTEXT_ACTION_VERSION,
-                "task": task,
-                "candidates": candidates,
-                "entry_points": entry_points,
-                "nodes": inline_nodes,
-                "edges": inline_edges,
-                "related_symbols": related_symbols,
-                "code_blocks": code_blocks,
-                "related_files": related_files,
-                "stats": {
-                    "entry_points": len(entry_points),
-                    "entry_points_total": total_entry_points,
-                    "nodes": len(inline_nodes),
-                    "nodes_total": total_nodes,
-                    "edges": len(inline_edges),
-                    "edges_total": total_edges,
-                    "code_blocks": len(code_blocks),
-                },
-                "agent_summary": {
-                    "summary_line": (
-                        f"codegraph_context: {len(entry_points)} entry points, "
-                        f"{len(inline_nodes)} nodes, {len(inline_edges)} edges, "
-                        f"{len(code_blocks)} code blocks"
-                    ),
-                    "verdict": verdict,
-                    "next_step": _next_step(bool(code_blocks), bool(entry_points)),
-                },
-                "elapsed_ms": int((time.perf_counter() - started) * 1000),
-            }
-        else:
-            # Lean path (default, RFC-0006): omit nodes/edges, expose totals.
-            # ~60% smaller payload — matches CG's compact related-symbols
-            # format. The agent answers from entry_points + code_blocks; the
-            # full graph is available on re-request with include_graph=true.
-            result = {
-                "success": True,
-                "verdict": verdict,
-                "action_version": NAV_CONTEXT_ACTION_VERSION,
-                "task": task,
-                "candidates": candidates,
-                "entry_points": entry_points,
-                "related_symbols": related_symbols,
-                "code_blocks": code_blocks,
-                "related_files": related_files,
-                "stats": {
-                    "entry_points": len(entry_points),
-                    "entry_points_total": total_entry_points,
-                    "nodes_total": total_nodes,
-                    "edges_total": total_edges,
-                    "code_blocks": len(code_blocks),
-                },
-                "agent_summary": {
-                    "summary_line": (
-                        f"codegraph_context: {len(entry_points)} entry points, "
-                        f"{total_nodes} symbols, "
-                        f"{len(code_blocks)} code blocks"
-                    ),
-                    "verdict": verdict,
-                    "next_step": _next_step_lean(
-                        bool(code_blocks), bool(entry_points), entry_points
-                    ),
-                },
-                "elapsed_ms": int((time.perf_counter() - started) * 1000),
-            }
+        result = _compose_context_result(
+            verdict=verdict,
+            task=task,
+            candidates=candidates,
+            entry_points=entry_points,
+            nodes=nodes,
+            edges=edges,
+            related_symbols=related_symbols,
+            code_blocks=code_blocks,
+            related_files=related_files,
+            include_graph=include_graph,
+            max_nodes=max_nodes,
+            elapsed_ms=int((time.perf_counter() - started) * 1000),
+        )
 
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)
 
+    async def _execute_read_existing(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """RFC-0022 P0.4: serve context from the certified index snapshot.
+
+        The platform gate runs FIRST: non-certified axes keep the stable
+        UNCERTIFIED envelope even when the project root is unbound (the
+        backend never runs there). On the certified axis an unbound root
+        fails closed with the stable MISSING_PROJECT_ROOT error, then the
+        graph/symbol data is read exclusively from the acquired snapshot
+        connection (never the live ASTCache) and the after-read source
+        recapture gates the whole result; source snippets are only served
+        once that recapture certifies the live source still matches the
+        snapshot generation.
+        """
+        if not read_access.read_existing_platform_supported():
+            # access_mode is present here (this route only runs for explicit
+            # read_existing calls), so the envelope is never None.
+            unavailable = read_access.format_read_existing_unavailable(
+                arguments,
+                action_version=NAV_CONTEXT_ACTION_VERSION,
+            )
+            assert unavailable is not None  # access_mode is present -> our route
+            return unavailable
+        # Unbound root on the certified axis is classified by the consumer
+        # seam (MISSING_PROJECT_ROOT envelope with evidence + action_version);
+        # on non-certified axes the UNCERTIFIED stub above already returned.
+
+        def reader(snapshot: Any, conn: Any) -> dict[str, Any]:
+            task = str(arguments["task"]).strip()
+            max_nodes = _bounded_int(arguments.get("max_nodes", 30), 1, 100)
+            max_code_blocks = _bounded_int(arguments.get("max_code_blocks", 5), 0, 25)
+            include_graph = _coerce_bool(arguments.get("include_graph", False))
+            started = time.perf_counter()
+            # Codex-review P3 (#1297-followup): live-file reads (code blocks)
+            # must use the ACQUIRED snapshot's root, never the shared tool
+            # root (a concurrent set_project_path could re-point it mid-read).
+            reader_root = snapshot.canonical_root or self.project_root or ""
+            # Zero-write: the private snapshot connection is the ONLY symbol /
+            # edge authority here — ASTCache is never constructed (it would
+            # mkdir + open the live index read-write).
+            cache = _snapshot_search_surface(conn)
+            from ...graph.edge_store import EdgeStore
+
+            edge_store = EdgeStore(conn, ensure_schema=False)
+            candidates = _extract_symbol_candidates(task)
+            wants_tests = _task_wants_tests(task)
+            entry_points = self._resolve_entry_points(
+                candidates,
+                max(5, max_nodes // 3),
+                wants_tests,
+                cache=cache,
+            )
+            nodes = _nodes_from_hits(entry_points, max_nodes)
+            edges: list[dict[str, Any]] = []
+
+            if nodes:
+                nodes = self._expand_nodes(
+                    nodes,
+                    task,
+                    max_nodes,
+                    graph=edge_store,
+                    certified=True,
+                )
+                # Codex P1 (#1299 round-6/7): graph expansion can surface node
+                # paths that are absolute or contain '..' (encoded in edge
+                # metadata), or that resolve through an in-project symlink to
+                # an outside directory, or that name an excluded-but-existing
+                # file — none of those are generation-certified. Drop them
+                # before any code-block read so no out-of-inventory file
+                # bytes are served.
+                nodes = [
+                    n
+                    for n in nodes
+                    if _snapshot_certified_node_file(n.get("file"), reader_root, conn)
+                ]
+                # Codex P2 (#1299 round-13, C59): cross-file callee nodes
+                # carry the CALL-SITE line; re-resolve the definition line
+                # from ast_symbol_rows so code blocks serve the certified
+                # definition context, never unrelated call-site lines.
+                nodes = _snapshot_definition_lines(nodes, conn)
+                edges = self._build_edges(nodes, graph=edge_store)
+
+            code_blocks = _build_code_blocks(
+                nodes=nodes,
+                edges=edges,
+                max_code_blocks=max_code_blocks,
+                project_root=reader_root,
+            )
+            related_files = _unique_files(nodes)
+            related_symbols = _build_related_symbols(nodes)
+            verdict = "INFO" if entry_points else "NOT_FOUND"
+            payload = _compose_context_result(
+                verdict=verdict,
+                task=task,
+                candidates=candidates,
+                entry_points=entry_points,
+                nodes=nodes,
+                edges=edges,
+                related_symbols=related_symbols,
+                code_blocks=code_blocks,
+                related_files=related_files,
+                include_graph=include_graph,
+                max_nodes=max_nodes,
+                elapsed_ms=int((time.perf_counter() - started) * 1000),
+            )
+            # Codex P2 (#1299 round-10/12, C46/C51): RFC-0022's input-only
+            # contract forbids echoing raw task text from routed adapters —
+            # tasks may carry credentials / absolute host paths. Drop the
+            # task AND the task-derived candidate tokens (which copy task
+            # words verbatim) from the primitive wire response.
+            payload.pop("task", None)
+            payload.pop("candidates", None)
+            return payload
+
+        result = read_access.read_existing_index_consumer(
+            self,
+            arguments,
+            reader=reader,
+            action_version=NAV_CONTEXT_ACTION_VERSION,
+        )
+        assert result is not None  # access_mode is present -> our route
+        return result
+
     def _resolve_entry_points(
-        self, candidates: list[str], limit: int, wants_tests: bool = False
+        self,
+        candidates: list[str],
+        limit: int,
+        wants_tests: bool = False,
+        *,
+        cache: Any = None,
     ) -> list[dict[str, Any]]:
         if not candidates:
             return []
-        try:
-            cache = self._get_cache()
-        except Exception:
-            return []
+        if cache is None:
+            try:
+                cache = self._get_cache()
+            except Exception:
+                return []
 
         # Aggregate hits across ALL candidates before ranking. A symbol that
         # matches more task words (e.g. ``applyIndexOperationOnPrimary`` for
@@ -477,12 +529,19 @@ class CodeGraphContextTool(BaseMCPTool):
         return [e["hit"] for e in ranked[:limit]]
 
     def _expand_nodes(
-        self, seed_nodes: list[dict[str, Any]], task: str, max_nodes: int
+        self,
+        seed_nodes: list[dict[str, Any]],
+        task: str,
+        max_nodes: int,
+        *,
+        graph: Any = None,
+        certified: bool = False,
     ) -> list[dict[str, Any]]:
-        try:
-            graph = self._get_call_graph()
-        except Exception:
-            return seed_nodes
+        if graph is None:
+            try:
+                graph = self._get_call_graph()
+            except Exception:
+                return seed_nodes
 
         nodes = list(seed_nodes)
         seen = {(n["name"], n.get("file", "")) for n in nodes}
@@ -507,6 +566,12 @@ class CodeGraphContextTool(BaseMCPTool):
             try:
                 return graph.query_callees(name, file_path, max_depth=depth) or []
             except Exception:
+                # Codex P2 (#1299 round-10, C45): on the certified route a
+                # malformed edge row means a corrupt snapshot — propagate so
+                # the consumer classifies CORRUPT_INDEX instead of serving
+                # an incomplete graph. The live path keeps its tolerance.
+                if certified:
+                    raise
                 return []
 
         def _edge_store_callers(
@@ -515,6 +580,8 @@ class CodeGraphContextTool(BaseMCPTool):
             try:
                 return graph.query_callers(name, file_path) or []
             except Exception:
+                if certified:
+                    raise
                 return []
 
         for node in list(seed_nodes):
@@ -541,11 +608,14 @@ class CodeGraphContextTool(BaseMCPTool):
 
         return nodes[:max_nodes]
 
-    def _build_edges(self, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        try:
-            graph = self._get_call_graph()
-        except Exception:
-            return []
+    def _build_edges(
+        self, nodes: list[dict[str, Any]], *, graph: Any = None
+    ) -> list[dict[str, Any]]:
+        if graph is None:
+            try:
+                graph = self._get_call_graph()
+            except Exception:
+                return []
 
         by_key = {(n["name"], n.get("file", "")): n for n in nodes}
         by_name: dict[str, list[dict[str, Any]]] = {}
@@ -604,6 +674,146 @@ class CodeGraphContextTool(BaseMCPTool):
                         }
                     )
         return edges
+
+
+def _snapshot_search_surface(conn: Any) -> Any:
+    """Wrap one snapshot connection with the ASTCache search surface.
+
+    RFC-0022 P0.4 zero-write: nav.context's live path searches through
+    ``ASTCache`` (which mkdirs the cache dirs and opens the live index
+    read-write). The read_existing route instead binds the same method
+    names to the pure connection-based search helpers over the immutable
+    snapshot connection. ``fts5_available`` comes from the connection, not
+    from ASTCache state.
+    """
+    fts5 = sqlite_compile_supports_fts5(conn)
+
+    class _Surface:
+        def fts_search(self, query: str, limit: int = 100) -> list[dict[str, Any]]:
+            if not fts5:
+                return []
+            return _conn_fts_search(conn, query, None, limit)
+
+        def fts_search_ranked(
+            self, query: str, limit: int = 100
+        ) -> list[dict[str, Any]]:
+            return _conn_fts_search_ranked(conn, query, None, limit)
+
+        def search_symbols_cascade(
+            self, query: str, limit: int = 100
+        ) -> list[dict[str, Any]]:
+            return _conn_search_symbols_cascade(conn, query, None, limit, bool(fts5))
+
+    return _Surface()
+
+
+def _compose_context_result(
+    *,
+    verdict: str,
+    task: str,
+    candidates: list[str],
+    entry_points: list[dict[str, Any]],
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+    related_symbols: list[dict[str, Any]],
+    code_blocks: list[dict[str, Any]],
+    related_files: list[str],
+    include_graph: bool,
+    max_nodes: int,
+    elapsed_ms: int,
+) -> dict[str, Any]:
+    """Compose the nav.context success envelope (shared by live + snapshot).
+
+    Totals are always computed from the FULL sets before any echo capping so
+    the agent knows how much graph is available even in lean mode. Entry
+    points are capped for echo at :data:`_MAX_INLINE_ENTRY_POINTS`.
+    """
+    total_nodes = len(nodes)
+    total_edges = len(edges)
+    total_entry_points = len(entry_points)
+    entry_points = entry_points[:_MAX_INLINE_ENTRY_POINTS]
+
+    if include_graph:
+        # Full graph path — identical to old default behaviour.
+        # The inline caps scale with max_nodes so agents that request more
+        # nodes actually receive them. _MAX_INLINE_NODES / _MAX_INLINE_EDGES
+        # are the floor defaults; larger max_nodes raises the cap
+        # proportionally.
+        inline_node_cap = max(_MAX_INLINE_NODES, max_nodes)
+        inline_edge_cap = max(_MAX_INLINE_EDGES, max_nodes * 2)
+        inline_nodes = nodes[:inline_node_cap]
+        _echoed_ids = {n.get("id") for n in inline_nodes}
+        inline_edges = [
+            e
+            for e in edges
+            if e.get("source") in _echoed_ids and e.get("target") in _echoed_ids
+        ][:inline_edge_cap]
+        return {
+            "success": True,
+            "verdict": verdict,
+            "action_version": NAV_CONTEXT_ACTION_VERSION,
+            "task": task,
+            "candidates": candidates,
+            "entry_points": entry_points,
+            "nodes": inline_nodes,
+            "edges": inline_edges,
+            "related_symbols": related_symbols,
+            "code_blocks": code_blocks,
+            "related_files": related_files,
+            "stats": {
+                "entry_points": len(entry_points),
+                "entry_points_total": total_entry_points,
+                "nodes": len(inline_nodes),
+                "nodes_total": total_nodes,
+                "edges": len(inline_edges),
+                "edges_total": total_edges,
+                "code_blocks": len(code_blocks),
+            },
+            "agent_summary": {
+                "summary_line": (
+                    f"codegraph_context: {len(entry_points)} entry points, "
+                    f"{len(inline_nodes)} nodes, {len(inline_edges)} edges, "
+                    f"{len(code_blocks)} code blocks"
+                ),
+                "verdict": verdict,
+                "next_step": _next_step(bool(code_blocks), bool(entry_points)),
+            },
+            "elapsed_ms": elapsed_ms,
+        }
+    # Lean path (default, RFC-0006): omit nodes/edges, expose totals.
+    # ~60% smaller payload — matches CG's compact related-symbols
+    # format. The agent answers from entry_points + code_blocks; the
+    # full graph is available on re-request with include_graph=true.
+    return {
+        "success": True,
+        "verdict": verdict,
+        "action_version": NAV_CONTEXT_ACTION_VERSION,
+        "task": task,
+        "candidates": candidates,
+        "entry_points": entry_points,
+        "related_symbols": related_symbols,
+        "code_blocks": code_blocks,
+        "related_files": related_files,
+        "stats": {
+            "entry_points": len(entry_points),
+            "entry_points_total": total_entry_points,
+            "nodes_total": total_nodes,
+            "edges_total": total_edges,
+            "code_blocks": len(code_blocks),
+        },
+        "agent_summary": {
+            "summary_line": (
+                f"codegraph_context: {len(entry_points)} entry points, "
+                f"{total_nodes} symbols, "
+                f"{len(code_blocks)} code blocks"
+            ),
+            "verdict": verdict,
+            "next_step": _next_step_lean(
+                bool(code_blocks), bool(entry_points), entry_points
+            ),
+        },
+        "elapsed_ms": elapsed_ms,
+    }
 
 
 def _bounded_int(value: Any, minimum: int, maximum: int) -> int:
@@ -924,6 +1134,74 @@ def _edge_degrees(
         if edge["target"] in degrees:
             degrees[edge["target"]] += 1
     return degrees
+
+
+def _snapshot_definition_lines(
+    nodes: list[dict[str, Any]], conn: Any
+) -> list[dict[str, Any]]:
+    """Re-resolve each node's line to its symbol definition line.
+
+    Codex P2 (#1299 round-13, C59): ``EdgeStore.query_callees`` keeps the
+    call-site line on resolved cross-file callee nodes; certified code
+    blocks must point at the definition, so the line is re-looked-up from
+    ``ast_symbol_rows`` (degrading to the node's own line when unknown).
+    """
+
+    try:
+        rows = conn.execute(
+            "SELECT file_path, name, line FROM ast_symbol_rows"
+        ).fetchall()
+    except Exception:  # nosec B110 — legacy schema keeps node lines
+        return nodes
+    by_key: dict[tuple[str, str], set[int]] = {}
+    for row in rows:
+        key = (str(row["file_path"]), str(row["name"]))
+        by_key.setdefault(key, set()).add(int(row["line"]))
+    resolved: list[dict[str, Any]] = []
+    for node in nodes:
+        lines = by_key.get((str(node.get("file", "")), str(node.get("name", ""))))
+        if lines:
+            node = dict(node)
+            current = node.get("line")
+            if current in lines:
+                pass  # already a definition line
+            elif len(lines) == 1:
+                # Single definition: the cross-file call-site line resolves
+                # to it deterministically.
+                node["line"] = next(iter(lines))
+            # else: overloaded/duplicate names — the call-site line is the
+            # only identity evidence; do NOT guess a different definition.
+        resolved.append(node)
+    return resolved
+
+
+def _snapshot_certified_node_file(file_path: Any, reader_root: str, conn: Any) -> bool:
+    """Return whether one nav node's file path is snapshot-certified.
+
+    The certified route serves code blocks only for relative, in-root,
+    INVENTORY-COVERED file paths: absolute paths and ``..`` segments (which
+    can be encoded in edge metadata) are rejected lexically; a symlink-
+    resolved containment check keeps the path inside the snapshot's
+    canonical root; and ``ast_index`` membership guarantees the bytes are
+    generation-certified (Codex P1 #1299 round-6/7).
+    """
+
+    if not isinstance(file_path, str) or not file_path:
+        return False
+    normalized = file_path.replace("\\", "/")
+    if normalized.startswith("/") or ".." in normalized.split("/"):
+        return False
+    root_resolved = os.path.realpath(reader_root)
+    candidate = os.path.realpath(os.path.join(reader_root, normalized))
+    if candidate != root_resolved and not candidate.startswith(root_resolved + os.sep):
+        return False
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM ast_index WHERE file_path = ? LIMIT 1", (normalized,)
+        ).fetchone()
+    except Exception:  # nosec B110 — legacy schema degrades to reject
+        return False
+    return row is not None
 
 
 def _unique_files(nodes: list[dict[str, Any]]) -> list[str]:

@@ -49,13 +49,15 @@ def test_nav_context_success_echoes_action_version(tmp_path: Path) -> None:
     assert result["action_version"] == "nav.context/v1"
 
 
-def test_nav_context_unavailable_echoes_action_version() -> None:
+def test_nav_context_unavailable_echoes_action_version(tmp_path: Path) -> None:
+    import sys
+
     from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
         CodeGraphContextTool,
     )
     from tree_sitter_analyzer.wire_owner import NAV_CONTEXT_ACTION_VERSION
 
-    tool = CodeGraphContextTool()
+    tool = CodeGraphContextTool(str(tmp_path))
     result = _run(
         tool.execute(
             {
@@ -67,9 +69,20 @@ def test_nav_context_unavailable_echoes_action_version() -> None:
         )
     )
     assert result["action_version"] == NAV_CONTEXT_ACTION_VERSION
+    if sys.platform.startswith("linux"):
+        # RFC-0022 P0.4: the certified backend runs and classifies the
+        # never-published pair; the classified failure still echoes the
+        # owner version.
+        assert result["success"] is False
+        assert result["access_state"] == "unknown"
+        assert result["access_reason"] == "INDEX_SNAPSHOT_UNKNOWN"
+        assert result["error_code"] == "INDEX_SNAPSHOT_UNKNOWN"
+        assert result["source_snapshots"] == []
 
 
 def test_safe_to_edit_unavailable_echoes_action_version() -> None:
+    import sys
+
     from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
     from tree_sitter_analyzer.wire_owner import EDIT_SAFE_ACTION_VERSION
 
@@ -86,6 +99,15 @@ def test_safe_to_edit_unavailable_echoes_action_version() -> None:
     )
     assert result["action_version"] == EDIT_SAFE_ACTION_VERSION
     assert result["action_version"] == "edit.safe/v1"
+    if sys.platform.startswith("linux"):
+        # RFC-0022 P0.4: the certified backend runs and classifies the
+        # never-published pair; the classified failure still echoes the
+        # owner version.
+        assert result["success"] is False
+        assert result["access_state"] == "unknown"
+        assert result["access_reason"] == "INDEX_SNAPSHOT_UNKNOWN"
+        assert result["error_code"] == "INDEX_SNAPSHOT_UNKNOWN"
+        assert result["source_snapshots"] == []
 
 
 def test_change_impact_unavailable_echoes_action_version(tmp_path: Path) -> None:
@@ -304,6 +326,290 @@ def test_diff_snapshot_consumers_frozen_error_echoes_action_version(
 # ``read_existing_unavailable`` as potentially None; that defensive branch
 # cannot be reached from a read_existing call (the mode implies the access
 # token), so force it with a stub to keep the guard exact.
+def test_read_existing_consumer_post_read_mismatch_preserves_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An after-read recapture failure still cites the acquired snapshot."""
+    import sqlite3
+
+    import tree_sitter_analyzer.index_snapshot as snapshot_owner
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.index_snapshot import REGISTRY, IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+    from tree_sitter_analyzer.index_source_snapshot import CurrentSourceSnapshot
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+    from tree_sitter_analyzer.wire_owner import NAV_CONTEXT_ACTION_VERSION
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    calls = {"n": 0}
+
+    def sequence_capture(root, source_scope, deadline=None):
+        calls["n"] += 1
+        generation = "gen-1" if calls["n"] == 1 else "gen-2"
+        return CurrentSourceSnapshot(frozenset(), "fp", generation, "exact", None)
+
+    monkeypatch.setattr(
+        snapshot_owner, "_capture_sources_with_deadline", sequence_capture
+    )
+    conn = sqlite3.connect(":memory:")
+    snapshot = IndexSnapshot(
+        None,
+        "fp",
+        "ifp",
+        "gen-1",
+        "complete",
+        None,
+        str(tmp_path.resolve()),
+        0,
+        None,
+        None,
+        make_source_scope_descriptor(),
+    )
+    published = REGISTRY.publish(snapshot, conn, 0)
+
+    def ok_reader(snapshot, conn):
+        return {"success": True, "verdict": "INFO"}
+
+    result = read_access.read_existing_index_consumer(
+        CodeGraphContextTool(str(tmp_path)),
+        {
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+            "output_format": "json",
+        },
+        reader=ok_reader,
+        action_version=NAV_CONTEXT_ACTION_VERSION,
+    )
+    assert result["success"] is False
+    assert result["error_code"] == "SOURCE_GENERATION_MISMATCH"
+    assert result["access_reason"] == "SOURCE_GENERATION_MISMATCH"
+    assert result["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+        }
+    ]
+    assert result["action_version"] == NAV_CONTEXT_ACTION_VERSION
+
+
+def test_read_existing_consumer_pre_read_mismatch_preserves_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pre-yield recapture failure still cites the acquired snapshot."""
+    import sqlite3
+
+    import tree_sitter_analyzer.index_snapshot as snapshot_owner
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.index_snapshot import REGISTRY, IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+    from tree_sitter_analyzer.index_source_snapshot import CurrentSourceSnapshot
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+    from tree_sitter_analyzer.wire_owner import NAV_CONTEXT_ACTION_VERSION
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    monkeypatch.setattr(
+        snapshot_owner,
+        "_capture_sources_with_deadline",
+        lambda root, source_scope, deadline=None: CurrentSourceSnapshot(
+            frozenset(), "fp", "gen-2", "exact", None
+        ),
+    )
+    conn = sqlite3.connect(":memory:")
+    snapshot = IndexSnapshot(
+        None,
+        "fp",
+        "ifp",
+        "gen-1",
+        "complete",
+        None,
+        str(tmp_path.resolve()),
+        0,
+        None,
+        None,
+        make_source_scope_descriptor(),
+    )
+    published = REGISTRY.publish(snapshot, conn, 0)
+
+    def ok_reader(snapshot, conn):
+        return {"success": True, "verdict": "INFO"}
+
+    result = read_access.read_existing_index_consumer(
+        CodeGraphContextTool(str(tmp_path)),
+        {
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+            "output_format": "json",
+        },
+        reader=ok_reader,
+        action_version=NAV_CONTEXT_ACTION_VERSION,
+    )
+    assert result["success"] is False
+    assert result["error_code"] == "SOURCE_GENERATION_MISMATCH"
+    assert result["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+        }
+    ]
+    assert result["action_version"] == NAV_CONTEXT_ACTION_VERSION
+
+
+def test_read_existing_consumer_classifies_reader_sql_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """sqlite3.OperationalError from a reader maps to stable wire codes.
+
+    Codex P2 (#1299 round-3): a damaged index column (e.g. edges lacking
+    caller_name) must classify as CORRUPT_INDEX and the deadline progress
+    handler's interrupt as INDEX_SNAPSHOT_DEADLINE — never escape the wire
+    contract.
+    """
+    import sqlite3
+
+    import tree_sitter_analyzer.index_snapshot as snapshot_owner
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.index_snapshot import REGISTRY, IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+    from tree_sitter_analyzer.index_source_snapshot import CurrentSourceSnapshot
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+    from tree_sitter_analyzer.wire_owner import NAV_CONTEXT_ACTION_VERSION
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    monkeypatch.setattr(
+        snapshot_owner,
+        "_capture_sources_with_deadline",
+        lambda root, source_scope, deadline=None: CurrentSourceSnapshot(
+            frozenset(), "fp", "gen-1", "exact", None
+        ),
+    )
+    conn = sqlite3.connect(":memory:")
+    snapshot = IndexSnapshot(
+        None,
+        "fp",
+        "ifp",
+        "gen-1",
+        "complete",
+        None,
+        str(tmp_path.resolve()),
+        0,
+        None,
+        None,
+        make_source_scope_descriptor(),
+    )
+    published = REGISTRY.publish(snapshot, conn, 0)
+
+    def reader_raising(message: str):
+        def bad_reader(snapshot, conn):
+            raise sqlite3.OperationalError(message)
+
+        return bad_reader
+
+    corrupt = read_access.read_existing_index_consumer(
+        CodeGraphContextTool(str(tmp_path)),
+        {
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+            "output_format": "json",
+        },
+        reader=reader_raising("no such column: caller_name"),
+        action_version=NAV_CONTEXT_ACTION_VERSION,
+    )
+    assert corrupt["success"] is False
+    assert corrupt["error_code"] == "CORRUPT_INDEX"
+    assert corrupt["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+        }
+    ]
+
+    interrupted = read_access.read_existing_index_consumer(
+        CodeGraphContextTool(str(tmp_path)),
+        {
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+            "output_format": "json",
+        },
+        reader=reader_raising("interrupted"),
+        action_version=NAV_CONTEXT_ACTION_VERSION,
+    )
+    assert interrupted["success"] is False
+    assert interrupted["error_code"] == "INDEX_SNAPSHOT_DEADLINE"
+    assert interrupted["action_version"] == NAV_CONTEXT_ACTION_VERSION
+
+    # Codex P2 round-4 (C20): a damaged edges row surfaces as IndexError
+    # Codex P2 round-12 (C55): a BLOB in a nominally textual edge column
+    # surfaces as TypeError from parse_node_id — classified too.
+    def type_error_reader(snapshot, conn):
+        raise TypeError("startswith first arg must be str")
+
+    type_error = read_access.read_existing_index_consumer(
+        CodeGraphContextTool(str(tmp_path)),
+        {
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+            "output_format": "json",
+        },
+        reader=type_error_reader,
+        action_version=NAV_CONTEXT_ACTION_VERSION,
+    )
+    assert type_error["success"] is False
+    assert type_error["error_code"] == "CORRUPT_INDEX"
+
+    # Codex P2 round-11 (C50): a metadata cell holding valid JSON of a
+    # non-object type surfaces as AttributeError — classified too.
+    def attr_error_reader(snapshot, conn):
+        raise AttributeError("'list' object has no attribute 'get'")
+
+    attr_error = read_access.read_existing_index_consumer(
+        CodeGraphContextTool(str(tmp_path)),
+        {
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+            "output_format": "json",
+        },
+        reader=attr_error_reader,
+        action_version=NAV_CONTEXT_ACTION_VERSION,
+    )
+    assert attr_error["success"] is False
+    assert attr_error["error_code"] == "CORRUPT_INDEX"
+
+    # from EdgeStore._edge_from_row — classified, never escaping the wire
+    # contract.
+    def index_error_reader(snapshot, conn):
+        raise IndexError("tuple index out of range")
+
+    index_error = read_access.read_existing_index_consumer(
+        CodeGraphContextTool(str(tmp_path)),
+        {
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+            "output_format": "json",
+        },
+        reader=index_error_reader,
+        action_version=NAV_CONTEXT_ACTION_VERSION,
+    )
+    assert index_error["success"] is False
+    assert index_error["error_code"] == "CORRUPT_INDEX"
+    assert index_error["action_version"] == NAV_CONTEXT_ACTION_VERSION
+
+
 @pytest.mark.parametrize(
     ("tool_type", "module_name"),
     [
@@ -352,3 +658,164 @@ def test_diff_consumer_platform_gate_handles_none_unavailable(
         "DIFF_SNAPSHOT_UNKNOWN",
         "MISSING_PROJECT_ROOT",
     }
+
+
+# RFC-0022 P0.4 (Codex P1 #1297, extended to the P0.1 consumers): with the
+# platform authority forced open, the acquire-failure envelopes of nav.context
+# and edit.safe must still echo their wire-owner action_version.
+def test_nav_and_safe_certified_failure_echoes_action_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+    from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+    from tree_sitter_analyzer.wire_owner import (
+        EDIT_SAFE_ACTION_VERSION,
+        NAV_CONTEXT_ACTION_VERSION,
+    )
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    nav = _run(
+        CodeGraphContextTool(str(tmp_path)).execute(
+            {
+                "task": "x",
+                "access_mode": "read_existing",
+                "snapshot_id": "s1",
+                "source_generation": "1",
+                "output_format": "json",
+            }
+        )
+    )
+    assert nav["action_version"] == NAV_CONTEXT_ACTION_VERSION
+    assert nav["success"] is False
+    assert nav["access_reason"] == "INDEX_SNAPSHOT_UNKNOWN"
+    safe = _run(
+        SafeToEditTool(str(tmp_path)).execute(
+            {
+                "file_path": "x.py",
+                "access_mode": "read_existing",
+                "snapshot_id": "s1",
+                "source_generation": "1",
+                "output_format": "json",
+            }
+        )
+    )
+    assert safe["action_version"] == EDIT_SAFE_ACTION_VERSION
+    assert safe["success"] is False
+    assert safe["access_reason"] == "INDEX_SNAPSHOT_UNKNOWN"
+
+
+# The P0.1 consumer seam classifies an unbound project root as a
+# MISSING_PROJECT_ROOT failure envelope with evidence + action_version
+# (Codex review P2, #1299): the raise is inside read_existing_index_consumer,
+# not a bare escape that loses the wire contract.
+def test_read_existing_consumer_unbound_root_is_classified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+    from tree_sitter_analyzer.wire_owner import NAV_CONTEXT_ACTION_VERSION
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+
+    class UnboundTool(CodeGraphContextTool):
+        def __init__(self) -> None:
+            super().__init__(None)
+
+    result = _run(
+        UnboundTool().execute(
+            {
+                "task": "x",
+                "access_mode": "read_existing",
+                "snapshot_id": "s1",
+                "source_generation": "1",
+                "output_format": "json",
+            }
+        )
+    )
+    assert result["success"] is False
+    assert result["error_code"] == "MISSING_PROJECT_ROOT"
+    assert result["access_reason"] == "MISSING_PROJECT_ROOT"
+    assert result["access_state"] == "missing"
+    assert result["action_version"] == NAV_CONTEXT_ACTION_VERSION
+    assert result["source_snapshots"] == []
+
+
+# A reader that returns a non-dict payload is classified as
+# INDEX_SNAPSHOT_FAILED by the consumer seam (never served to the caller).
+def test_read_existing_consumer_rejects_non_dict_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlite3
+
+    import tree_sitter_analyzer.read_existing_access as read_access
+    from tree_sitter_analyzer.index_snapshot import REGISTRY, IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+    from tree_sitter_analyzer.wire_owner import NAV_CONTEXT_ACTION_VERSION
+
+    monkeypatch.setattr(read_access, "read_existing_platform_supported", lambda: True)
+    # The pre-read recapture (Codex P1 #1299) must see the same generation
+    # the capability was published with, exactly like a real publish would.
+    import tree_sitter_analyzer.index_snapshot as snapshot_owner
+    from tree_sitter_analyzer.index_source_snapshot import CurrentSourceSnapshot
+
+    monkeypatch.setattr(
+        snapshot_owner,
+        "_capture_sources_with_deadline",
+        lambda root, source_scope, deadline=None: CurrentSourceSnapshot(
+            frozenset(), "fp", "gen-1", "exact", None
+        ),
+    )
+    scope = make_source_scope_descriptor()
+    conn = sqlite3.connect(":memory:")
+    snapshot = IndexSnapshot(
+        None,
+        "fp",
+        "ifp",
+        "gen-1",
+        "complete",
+        None,
+        str(tmp_path.resolve()),
+        0,
+        None,
+        None,
+        scope,
+    )
+    published = REGISTRY.publish(snapshot, conn, 0)
+
+    import tree_sitter_analyzer.read_existing_access as seam
+
+    def bad_reader(snapshot, conn):
+        return "not-a-dict"
+
+    result = seam.read_existing_index_consumer(
+        CodeGraphContextTool(str(tmp_path)),
+        {
+            "access_mode": "read_existing",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+            "output_format": "json",
+        },
+        reader=bad_reader,
+        action_version=NAV_CONTEXT_ACTION_VERSION,
+    )
+    assert result["success"] is False
+    assert result["error_code"] == "INDEX_SNAPSHOT_FAILED"
+    assert result["access_reason"] == "INDEX_SNAPSHOT_FAILED"
+    assert result["action_version"] == NAV_CONTEXT_ACTION_VERSION
+    # Codex P2 (#1299): a failure AFTER acquisition still cites the exact
+    # capability identity that was read.
+    assert result["source_snapshots"] == [
+        {
+            "kind": "index",
+            "snapshot_id": published.snapshot_id,
+            "source_generation": "gen-1",
+        }
+    ]

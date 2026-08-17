@@ -24,7 +24,13 @@ from .verification_command import build_test_command, detect_default_test_comman
 
 @dataclass(frozen=True)
 class SafeToEditContext:
-    """Inputs needed to build a safe-to-edit response."""
+    """Inputs needed to build a safe-to-edit response.
+
+    ``snapshot_conn`` is the certified index-snapshot connection on the
+    read_existing route; when set, constraint violations are read from the
+    snapshot and fixture detection runs read-only (Codex P1 #1299: the
+    certified route must never open or write the live ``.ast-cache``).
+    """
 
     file_path: str
     edit_type: str
@@ -32,6 +38,7 @@ class SafeToEditContext:
     project_root: str
     graph: Any
     scorer: HealthScorer
+    snapshot_conn: Any | None = None
 
 
 class FileDependencyView:
@@ -69,7 +76,13 @@ class FileDependencyView:
 
 @dataclass(frozen=True)
 class AgentWorkflowContext:
-    """Inputs needed to build the structured agent edit workflow."""
+    """Inputs needed to build the structured agent edit workflow.
+
+    ``certified`` (Codex P2 #1299 round-6): on snapshot-certified routes the
+    workflow's default test command must not be derived from live
+    non-inventoried config files (package.json/go.mod/...) that can drift
+    for the same snapshot identity.
+    """
 
     file_path: str
     risk: str
@@ -78,6 +91,7 @@ class AgentWorkflowContext:
     test_files: list[str]
     health_grade: str
     project_root: str
+    certified: bool = False
 
 
 @dataclass(frozen=True)
@@ -102,11 +116,49 @@ def build_safe_to_edit_result(context: SafeToEditContext) -> dict[str, Any]:
 
 def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
     """Collect graph, health, test, and risk facts for a file."""
-    rel_path = to_relative(context.resolved_path, context.project_root)
+    # Canonicalize before relativising: on macOS the security validator's
+    # abspath (/var/folders/...) and a canonical project_root
+    # (/private/var/folders/...) differ by symlink, which would make
+    # to_relative fall back to the absolute path and miss every graph node
+    # (CLAUDE.md §2 resolution contract) — downstream facts would silently
+    # undercount on macOS while Linux CI saw them.
+    rel_path = to_relative(
+        os.path.realpath(context.resolved_path), context.project_root
+    )
     dependents = safe_dependents(context.graph, rel_path)
     dependencies = safe_dependencies(context.graph, rel_path)
-    health = context.scorer.score_file(context.resolved_path, fast_dependencies=True)
-    test_files = find_test_files(context.resolved_path, context.project_root)
+    if context.snapshot_conn is not None:
+        # Codex P1 (#1299 round-3/4): test facts must come from inventory-
+        # covered paths only — discovery runs over the snapshot's ast_index
+        # set, so oracle-excluded files (tests/vendor/) can neither fill the
+        # discovery cap nor change has_tests/verdict for the same identity.
+        inventory = snapshot_inventory(context.snapshot_conn)
+        test_files = _certified_test_files(inventory, rel_path, dependents)
+        test_files.extend(
+            _certified_symbol_reference_tests(
+                context.snapshot_conn, inventory, rel_path, _target_language(rel_path)
+            )
+        )
+        test_files = list(dict.fromkeys(test_files))[:10]
+        certified_health = True
+    else:
+        test_files = find_test_files(context.resolved_path, context.project_root)
+        certified_health = False
+    if certified_health:
+        # Codex P2 (#1299 round-13/14, C60/C61): certified reads must parse
+        # the freshly recaptured bytes. The content cache key derives from
+        # (path, mtime, size) too, so a same-size rewrite with a restored
+        # mtime regenerates the same key and would serve a stale parse —
+        # evict the whole parser cache (certified reads are rare; parse
+        # correctness beats cache warmth here).
+        from ....core.parser import Parser as _Parser
+
+        _Parser.cache_clear()
+    health = context.scorer.score_file(
+        context.resolved_path,
+        fast_dependencies=True,
+        certified=certified_health,
+    )
     has_tests = bool(test_files)
     risk, risk_factors = compute_risk(
         forward_count=len(dependents),
@@ -125,6 +177,7 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
         health_grade=health.grade,
         file_path=context.file_path,
         project_root=context.project_root,
+        certified=context.snapshot_conn is not None,
     )
     return SafeToEditFacts(
         dependents=dependents,
@@ -151,6 +204,7 @@ def _format_safe_to_edit_result(
         test_files=facts.test_files,
         health_grade=facts.health.grade,
         project_root=context.project_root,
+        certified=context.snapshot_conn is not None,
     )
     workflow = build_agent_workflow(workflow_context)
     # ``risk_level`` is the canonical field; ``verdict`` mirrors it for
@@ -163,15 +217,38 @@ def _format_safe_to_edit_result(
     # Constraint violations promote the verdict: an error-severity
     # violation referencing this file forces UNSAFE; warn-only forces
     # CAUTION. The base_verdict (derived from risk_level) is the floor.
-    violations = violations_for_files(
-        context.project_root, [_relative_for_constraints(context)]
-    )
+    if context.snapshot_conn is not None:
+        # Codex P1 (#1299): the certified read_existing route runs the
+        # certified fixture probe — never the live .ast-cache DB and never
+        # the live allowlist/cache (both are outside the source generation
+        # and could drift after snapshot publication). The inventory
+        # restriction keeps the fixture scan on generation-certified test
+        # files only (round-3: oracle-pruned paths such as tests/vendor/
+        # must not influence escalation). Constraint rows are OMITTED on
+        # the certified route: reindexing stamps the manifest without
+        # recomputing ast_constraint_violations, so the rows cannot prove
+        # they match the published generation (round-4; an evaluation epoch
+        # bound to the index generation is the tracked follow-up).
+        violations: list[dict[str, Any]] = []
+        fixture_inventory = snapshot_inventory(context.snapshot_conn)
+        fixture_certified = True
+    else:
+        violations = violations_for_files(
+            context.project_root, [_relative_for_constraints(context)]
+        )
+        fixture_inventory = None
+        fixture_certified = False
     constraint_verdict = verdict_from_violations(violations)
     # P3: also check whether the file is a registered test fixture; that
     # promotes the verdict on top of any constraint-derived escalation.
     # The chokepoint design (see PRD §P3) is "every override flows
     # through _max_verdict" — so chaining is the only safe composition.
-    fixture_fact = is_fixture(context.resolved_path, context.project_root)
+    fixture_fact = is_fixture(
+        context.resolved_path,
+        context.project_root,
+        certified=fixture_certified,
+        inventory=fixture_inventory,
+    )
     fixture_verdict = fixture_to_verdict(fixture_fact)
     verdict = _max_verdict(
         _max_verdict(base_verdict, constraint_verdict), fixture_verdict
@@ -359,9 +436,11 @@ def build_agent_summary(
         "risk": context.risk,
         "edit_strategy": workflow["edit_strategy"],
         "next_step": _agent_next_step(context, workflow),
-        "verification_command": after[0]
-        if after
-        else (boundary[0] if boundary else ""),
+        "verification_command": (
+            ""
+            if workflow.get("test_verification_unidentified")
+            else (after[0] if after else (boundary[0] if boundary else ""))
+        ),
         "stop_condition": _agent_stop_condition(context, workflow),
     }
     if before:
@@ -375,13 +454,25 @@ def build_agent_summary(
 
 def build_agent_workflow(context: AgentWorkflowContext) -> dict[str, Any]:
     """Build a machine-friendly edit workflow for autonomous agents."""
-    default_command = detect_default_test_command(context.project_root)
+    if context.certified:
+        # Codex P2 (#1299 round-6/7/8): snapshot-bound default — live config
+        # detection would read non-inventoried files, so the runner is
+        # inferred from the target's extension; ambiguous ecosystems omit
+        # the command entirely (None) rather than guessing.
+        from .verification_command import certified_default_test_command
+
+        default_command = certified_default_test_command(context.file_path)
+    else:
+        default_command = detect_default_test_command(context.project_root)
     focused_command = (
         build_test_command(default_command, context.test_files)
-        if context.has_tests
+        if context.has_tests and default_command is not None
         else ""
     )
-    boundary_command = default_command.command
+    boundary_command = default_command.command if default_command is not None else ""
+    # Codex P2 (#1299 round-11, C49): when no runner can be identified, the
+    # health/impact commands must never be promoted to TEST verification.
+    test_verification_unidentified = context.certified and default_command is None
     quoted_path = shlex.quote(context.file_path)
     pre_edit_commands = [focused_command] if focused_command else []
     post_edit_commands = [
@@ -401,7 +492,8 @@ def build_agent_workflow(context: AgentWorkflowContext) -> dict[str, Any]:
         "edit_strategy": _edit_strategy(context.risk, context.edit_type),
         "before_edit_commands": pre_edit_commands,
         "after_edit_commands": post_edit_commands,
-        "queue_boundary_commands": [boundary_command],
+        "queue_boundary_commands": [boundary_command] if boundary_command else [],
+        "test_verification_unidentified": test_verification_unidentified,
         "guardrails": _agent_guardrails(
             context.risk,
             context.edit_type,
@@ -466,6 +558,11 @@ def _agent_stop_condition(
     after = workflow["after_edit_commands"]
     boundary = workflow["queue_boundary_commands"]
     verify = after[0] if after else (boundary[0] if boundary else "")
+    if workflow.get("test_verification_unidentified"):
+        return (
+            "Test verification is unidentified for this project; run the "
+            "project's test suite manually before and after the edit."
+        )
     if context.risk == "dangerous":
         return "Each smaller edit passes focused verification before scope expands."
     if verify and boundary and verify != boundary[0]:
@@ -635,6 +732,501 @@ def _import_needles_for_target(rel_path: str) -> set[str]:
     if basename and basename != "__init__":
         needles.add(basename)
     return {needle for needle in needles if needle}
+
+
+def _require_edges_callee_name(conn: Any) -> None:
+    """Raise ``CORRUPT_INDEX`` when ``edges`` exists but lacks ``callee_name``.
+
+    The snapshot reader's pass 1 selects ``edges.callee_name``; a partially
+    migrated or damaged index would otherwise make that query fail inside the
+    broad degrade handler, returning an empty dependency view and
+    undercounting risk instead of classifying the snapshot as incompatible.
+    """
+
+    try:
+        table_row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='edges' LIMIT 1"
+        ).fetchone()
+        if table_row is None:
+            return  # legacy schema without the table: degrade to empty
+        columns = {
+            str(row[1]) for row in conn.execute("PRAGMA table_info(edges)").fetchall()
+        }
+    except Exception:  # nosec B110 — unreadable conn degrades to legacy
+        return
+    if "callee_name" not in columns:
+        raise ValueError("CORRUPT_INDEX")
+
+
+def _target_language(rel_path: str) -> str:
+    """Return the test-discovery language name for one relative path."""
+
+    from .test_discovery import detect_language_from_ext
+
+    return detect_language_from_ext(Path(rel_path).suffix.lower()) or "python"
+
+
+def _looks_like_test_name(name: str, language: str) -> bool:
+    """Mirror is_existing_test_file's NAME conventions over certified inputs.
+
+    The certified route has no filesystem to probe (and oracle-excluded
+    paths must not influence facts), so only the file-name conventions of
+    :func:`test_discovery_predicates.is_existing_test_file` are applied.
+    Unknown languages (never produced by the current extension map, but
+    possible after a future plugin addition) return False — the honest
+    "not recognized as a test" answer.
+    """
+
+    if language == "python":
+        return name.endswith(("_test.py", "_tests.py")) or name.startswith("test_")
+    if language == "go":
+        return name.endswith("_test.go")
+    if language == "rust":
+        return name.endswith(("_test.rs", "_tests.rs"))
+    if language == "java":
+        return name.endswith(("Test.java", "Tests.java"))
+    if language == "javascript":
+        return name.endswith((".test.js", ".spec.js", ".test.jsx", ".spec.jsx"))
+    if language == "typescript":
+        return name.endswith((".test.ts", ".spec.ts", ".test.tsx", ".spec.tsx"))
+    if language == "c":
+        return name.startswith("test_") and name.endswith((".c", ".h"))
+    if language == "cpp":
+        return name.startswith("test_") and name.endswith((".cpp", ".hpp"))
+    if language == "csharp":
+        return name.endswith(("Test.cs", "Tests.cs"))
+    if language == "kotlin":
+        return name.endswith(("Test.kt", "Tests.kt"))
+    if language == "ruby":
+        return name.endswith(("_test.rb", "_spec.rb")) or name.startswith("test_")
+    if language == "php":
+        return name.endswith(("Test.php", "test.php"))
+    return False
+
+
+def _import_module_name(import_text: str) -> str | None:
+    """Return the imported module path from one import statement text."""
+
+    import re as _re
+
+    m = _re.match(r"^\s*from\s+([.\w]+)\s+import\b", import_text)
+    if m:
+        return m.group(1)
+    m = _re.match(r"^\s*import\s+([.\w]+)", import_text)
+    if m:
+        return m.group(1)
+    return None
+
+
+def _file_defines_any(conn: Any, file_path: str, symbols: list[str]) -> bool:
+    """Return whether one indexed file defines ANY of the given symbols."""
+
+    import json as _json
+
+    try:
+        row = conn.execute(
+            "SELECT symbols_json FROM ast_index WHERE file_path = ?",
+            (file_path,),
+        ).fetchone()
+    except Exception:  # nosec B110
+        return False
+    if row is None:
+        return False
+    try:
+        payload = _json.loads(str(row["symbols_json"]))
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    defined = {
+        entry.get("name")
+        for entry in payload.get("symbols", [])
+        if isinstance(entry, dict)
+    }
+    return bool(defined.intersection(symbols))
+
+
+def _certified_symbol_reference_tests(
+    conn: Any, inventory: frozenset[str], rel_path: str, language: str
+) -> list[str]:
+    """Symbol-reference test discovery over snapshot-owned data.
+
+    The legacy ``_find_symbol_reference_tests`` scans live test bytes for
+    the target's public symbols; the certified variant (Codex P2 #1299
+    round-7, C31) scans the snapshot's recorded import statements
+    (``imports_json``) of inventory-covered, test-named files for the
+    target's INDEXED public symbol names — tests that use ``from pkg
+    import public_fn`` are found even when they import a package, not the
+    defining file.
+    """
+
+    import json as _json
+
+    try:
+        target_row = conn.execute(
+            "SELECT symbols_json FROM ast_index WHERE file_path = ?",
+            (rel_path,),
+        ).fetchone()
+    except Exception:  # nosec B110 — legacy schema degrades to no matches
+        return []
+    if target_row is None:
+        return []
+    symbols: set[str] = set()
+    try:
+        payload = _json.loads(str(target_row["symbols_json"]))
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(payload, dict):
+        # Codex P2 (#1299 round-8, C34): valid JSON of the wrong top-level
+        # shape must degrade, never crash with AttributeError outside the
+        # classified exception set.
+        return []
+    for entry in payload.get("symbols", []):
+        name = entry.get("name") if isinstance(entry, dict) else None
+        if isinstance(name, str) and not name.startswith("_"):
+            symbols.add(name)
+    if not symbols:
+        return []
+
+    results: list[str] = []
+    for rel in sorted(inventory):
+        if rel == rel_path:
+            continue
+        if not _looks_like_test_name(Path(rel).name, language):
+            continue
+        try:
+            row = conn.execute(
+                "SELECT imports_json FROM ast_index WHERE file_path = ?",
+                (rel,),
+            ).fetchone()
+        except Exception:  # nosec B110 — legacy schema degrades per row
+            continue
+        if row is None:
+            continue
+        # Codex P2 (#1299 round-8, C33): match symbols against the PARSED
+        # import identifiers, never the serialized cell — substrings and
+        # JSON keys (e.g. a symbol 'text' matching every record's "text"
+        # key) would otherwise produce false has_tests=True.
+        try:
+            records = _json.loads(str(row["imports_json"]))
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(records, list):
+            continue
+        for record in records:
+            text = record.get("text") if isinstance(record, dict) else None
+            if not isinstance(text, str):
+                continue
+            matched = [
+                symbol
+                for symbol in symbols
+                if re.search(rf"\b{re.escape(symbol)}\b", text)
+            ]
+            if not matched:
+                continue
+            # Codex P2 (#1299 round-12, C56): bind the import to the target
+            # module — a test doing 'from other import run' must not count
+            # for pkg/impl.py just because both define 'run'. Resolve the
+            # imported module; if it resolves to a DIFFERENT file that
+            # itself defines the symbol, the import belongs to that module.
+            import_module = _import_module_name(text)
+            if import_module:
+                # Codex P2 (#1299 round-13, C58): relative imports resolve
+                # from the IMPORTING TEST's directory, never the target's.
+                resolved_module = _resolve_import_spec_in_snapshot(
+                    conn, import_module, rel
+                )
+                if (
+                    resolved_module
+                    and resolved_module != rel_path
+                    and _file_defines_any(conn, resolved_module, matched)
+                ):
+                    continue
+            results.append(rel)
+            break
+    # Codex P2 (#1299 round-10, C42): snapshot CALL references too — a test
+    # doing 'import pkg; pkg.public_fn()' references the symbol through a
+    # call edge even though imports_json carries only 'import pkg'.
+    # symbols is guaranteed non-empty here (the early return above).
+    placeholders = ",".join("?" for _ in symbols)  # nosec B608
+    try:
+        # Codex P2 (#1299 round-11, C48): bind by the resolved callee file,
+        # not the bare name — a same-named symbol exported by another module
+        # must not attribute its tests to this target.
+        call_rows = conn.execute(
+            f"SELECT DISTINCT file_path FROM edges "
+            f"WHERE kind = 'calls' AND callee_name IN ({placeholders}) "
+            f"AND callee_resolved_file = ?",
+            (*tuple(symbols), rel_path),
+        ).fetchall()
+    except Exception:  # nosec B110 — legacy schema degrades per call
+        call_rows = []
+    for row in call_rows:
+        rel = str(row["file_path"])
+        if (
+            rel
+            and rel != rel_path
+            and rel in inventory
+            and _looks_like_test_name(Path(rel).name, language)
+            and rel not in results
+        ):
+            results.append(rel)
+    return results
+
+
+def _certified_test_files(
+    inventory: frozenset[str],
+    rel_path: str,
+    dependents: list[str] | tuple[str, ...] = (),
+) -> list[str]:
+    """Find inventory-covered test files for one target (RELATIVE posix path).
+
+    Codex P1 (#1299 round-3/4): snapshot-certified test discovery walks the
+    snapshot's ``ast_index`` file set instead of the live filesystem, so
+    oracle-excluded paths (e.g. ``tests/vendor/``) can never influence
+    ``has_tests`` and the discovery cap cannot be filled by un-certified
+    candidates. Pattern and colocated conventions mirror the live axis:
+    basenames are matched with the patterns' GLOB semantics (round-5, e.g.
+    ``test_app_*.py``) and ``test_dirs`` of ``"."`` (Go's co-located
+    convention) accept any inventory path (round-5). The legacy
+    ``_is_existing_test_file`` and ``_find_symbol_reference_tests`` modes are
+    preserved over certified inputs: a target that is itself a test file
+    counts, and inventory-covered dependents whose names match the test
+    patterns (tests that import the target) count (round-6).
+    """
+
+    import fnmatch
+
+    from .test_discovery import (
+        _TEST_DIRS,
+        _TEST_PATTERNS,
+        _format_pattern,
+        detect_language_from_ext,
+    )
+
+    p = Path(rel_path)
+    stem = p.stem
+    language = detect_language_from_ext(p.suffix.lower()) or "python"
+    patterns = _TEST_PATTERNS.get(language, ["test_{stem}.py"])
+    test_dirs = _TEST_DIRS.get(language, ["tests"])
+    filenames = [_format_pattern(pattern, stem) for pattern in patterns]
+
+    def matches_test_pattern(name: str) -> bool:
+        return any(fnmatch.fnmatchcase(name, pattern) for pattern in filenames)
+
+    results: list[str] = []
+    if _looks_like_test_name(p.name, language):
+        # The target itself is a test file (legacy _is_existing_test_file).
+        results.append(rel_path)
+    for rel in sorted(inventory):
+        if rel == rel_path:
+            continue
+        if not matches_test_pattern(Path(rel).name):
+            continue
+        if any(
+            test_dir == "." or rel.startswith(f"{test_dir}/") for test_dir in test_dirs
+        ):
+            results.append(rel)
+    parent = p.parent.as_posix()
+    # Codex P2 (#1299 round-11, C47): a root-level target's parent is '.',
+    # which would build './test_app.py' while inventory keys are normalized
+    # without the leading './'.
+    parent = "" if parent == "." else parent
+    for filename in filenames:
+        if "*" in filename:
+            continue
+        colocated = filename if not parent else f"{parent}/{filename}"
+        if colocated in inventory and colocated not in results:
+            results.append(colocated)
+    if language == "python":
+        # Codex P2 (#1299 round-8, C36): preserve the live route's
+        # package-family convention (test_<plugin>.py) over the inventory.
+        from .test_discovery_stems import python_package_test_stems
+
+        for package_stem in python_package_test_stems(rel_path):
+            for pattern in (
+                f"test_{package_stem}.py",
+                f"test_{package_stem}_*.py",
+            ):
+                for rel in sorted(inventory):
+                    if rel == rel_path:
+                        continue
+                    if (
+                        fnmatch.fnmatchcase(Path(rel).name, pattern)
+                        and any(
+                            test_dir == "." or rel.startswith(f"{test_dir}/")
+                            for test_dir in test_dirs
+                        )
+                        and rel not in results
+                    ):
+                        results.append(rel)
+    for dep in dependents:
+        # Symbol-reference mode over certified inputs: inventory-covered
+        # dependents that import the target and look like tests count —
+        # an IMPORTS edge left for an excluded/unindexed path must NOT be
+        # served as a certified test (Codex P2 #1299 round-12, C54).
+        if (
+            dep in inventory
+            and _looks_like_test_name(Path(dep).name, language)
+            and dep not in results
+        ):
+            results.append(dep)
+    return results[:10]
+
+
+def snapshot_inventory(conn: Any) -> frozenset[str]:
+    """Return the snapshot's ``ast_index`` relative file set.
+
+    Codex P1 (#1299 round-3): certified reads must derive facts only from
+    inventory-covered paths (the source oracle prunes e.g. ``tests/vendor``
+    from the generation). An unreadable inventory degrades to the empty
+    set — the conservative, fail-closed direction for certified facts.
+    """
+
+    try:
+        rows = conn.execute("SELECT file_path FROM ast_index").fetchall()
+    except Exception:  # nosec B110 — legacy/partial schema
+        return frozenset()
+    return frozenset(str(row["file_path"]) for row in rows)
+
+
+def _snapshot_file_indexed(conn: Any, rel_path: str) -> bool:
+    """Return whether the snapshot connection has indexed one relative file."""
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM ast_index WHERE file_path = ? LIMIT 1", (rel_path,)
+        ).fetchone()
+    except Exception:  # nosec B110 — legacy/partial schema degrades to missing
+        return False
+    return row is not None
+
+
+def _resolve_import_spec_in_snapshot(
+    conn: Any, spec: str, importer_rel_path: str
+) -> str | None:
+    """Mirror :func:`_resolve_import_spec` against the snapshot's ``ast_index``.
+
+    The live variant probes ``(root / candidate).is_file()``; the snapshot
+    variant asks the immutable connection instead, so no live filesystem byte
+    is consulted to build the dependency view.
+    """
+    if not spec or spec.startswith(".."):
+        return None
+    if spec.startswith("."):
+        base = Path(importer_rel_path).parent
+        candidate_base = (base / spec.lstrip("./")).as_posix()
+    else:
+        candidate_base = spec.replace(".", "/")
+
+    candidates = [
+        candidate_base,
+        f"{candidate_base}.py",
+        f"{candidate_base}.js",
+        f"{candidate_base}.ts",
+        f"{candidate_base}.tsx",
+        f"{candidate_base}.java",
+        f"{candidate_base}/__init__.py",
+        f"{candidate_base}/index.js",
+        f"{candidate_base}/index.ts",
+    ]
+    for candidate in candidates:
+        if _snapshot_file_indexed(conn, candidate):
+            return candidate
+    return None
+
+
+def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDependencyView:
+    """Build the one-file import view from the snapshot connection.
+
+    RFC-0022 P0.4 read_existing: the live ``build_file_dependency_view``
+    re-parses the filesystem; this variant reads only the immutable snapshot
+    connection. Two passes mirror the legacy axis:
+
+    1. ``edges`` IMPORTS rows: exact module-path resolution (``callee_name``
+       resolved against the indexed files).
+    2. ``ast_index.imports_json`` needle pass: ``from pkg import app`` and
+       ``from . import app`` store the module path (``pkg`` / ``.``), which
+       exact resolution cannot map to the member file ``pkg/app.py``; the
+       legacy axis scans source text for import needles, so the snapshot
+       variant matches the same needles against each importer's recorded
+       import-statement text instead (no live bytes are consulted).
+
+    A missing/legacy schema degrades to an empty view so the route can still
+    classify honestly. A current-version but damaged ``edges`` table (present
+    yet missing the ``callee_name`` column this reader requires) raises
+    ``CORRUPT_INDEX`` instead of degrading silently — an empty view would
+    undercount risk (Codex P2 #1299).
+    """
+    import json
+
+    _require_edges_callee_name(conn)
+    dependencies: set[str] = set()
+    dependents: set[str] = set()
+    try:
+        import_rows = conn.execute(
+            "SELECT callee_name FROM edges WHERE kind = 'imports' AND file_path = ?",
+            (rel_path,),
+        ).fetchall()
+        for (module,) in import_rows:
+            if not isinstance(module, str):
+                # Codex P2 (#1299 round-10, C44): a BLOB callee_name would
+                # raise TypeError at startswith and abandon the whole pass.
+                continue
+            resolved = _resolve_import_spec_in_snapshot(conn, module, rel_path)
+            if resolved:
+                dependencies.add(resolved)
+        all_rows = conn.execute(
+            "SELECT file_path, callee_name FROM edges WHERE kind = 'imports'",
+        ).fetchall()
+        for file_path, module in all_rows:
+            if not isinstance(file_path, str) or not file_path or file_path == rel_path:
+                continue
+            if not isinstance(module, str):
+                continue
+            resolved = _resolve_import_spec_in_snapshot(conn, module, file_path)
+            if resolved == rel_path:
+                dependents.add(file_path)
+    except Exception:  # nosec B110 — snapshot schema drift degrades to empty
+        pass
+    try:
+        # _import_needles_for_target always yields at least one needle for a
+        # non-empty rel_path, so no guard is needed around the scan.
+        needles = _import_needles_for_target(rel_path)
+        rows = conn.execute("SELECT file_path, imports_json FROM ast_index").fetchall()
+        for row in rows:
+            file_path = row["file_path"]
+            if not file_path or file_path == rel_path:
+                continue
+            try:
+                imports = json.loads(row["imports_json"])
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(imports, list):
+                # Codex P2 (#1299 round-9, C40): a non-array cell would
+                # otherwise raise TypeError and abandon the WHOLE needle
+                # pass, dropping later member-import dependents; skip the
+                # malformed row only.
+                continue
+            for imp in imports:
+                imp_text = imp["text"] if isinstance(imp, dict) else imp
+                if not isinstance(imp_text, str):
+                    continue
+                # Codex P2 (#1299 round-14, C64): match import identifiers
+                # as whole tokens — a short basename like 'app' must not
+                # match 'import happy' as a substring.
+                if any(
+                    re.search(rf"\b{re.escape(needle)}\b", imp_text)
+                    for needle in needles
+                ):
+                    dependents.add(file_path)
+                    break
+    except Exception:  # nosec B110 — snapshot schema drift degrades to empty
+        pass
+    return FileDependencyView(
+        rel_path=rel_path,
+        dependencies=dependencies,
+        dependents=dependents,
+    )
 
 
 def safe_dependents(graph: Any, rel_path: str) -> list[str]:

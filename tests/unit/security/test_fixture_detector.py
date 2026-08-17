@@ -133,6 +133,66 @@ class TestTier2Scan:
         assert fact.source in {"path_literal", "constant_assignment"}
         assert any("test_x.py" in line for line in fact.evidence)
 
+    def test_repo_relative_literal_statement_signal(self, tmp_path: Path) -> None:
+        # A bare repo-relative string EXPRESSION (non-assign) goes through
+        # _process_repo_relative_literals.
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": ("print('tree_sitter_analyzer/foo.py')\n"),
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        fact = is_fixture("tree_sitter_analyzer/foo.py", root)
+        assert fact.is_fixture is True
+        assert fact.source == "repo_relative_literal"
+
+    def test_signature_tolerates_dangling_symlink(self, tmp_path: Path) -> None:
+        # A dangling tests/ symlink makes path.stat() raise; the signature
+        # walk skips it instead of failing the fixture scan.
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": "def test_x(): pass\n",
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        import os
+
+        os.symlink(root / "tests" / "ghost.py", root / "tests" / "dangling.py")
+        # Drive the signature walk directly so the stat except fires.
+        index = fixture_detector._load_or_build_index(root)
+        assert index == {}
+
+    def test_certified_scan_tolerates_non_utf8_tests(self, tmp_path: Path) -> None:
+        # Codex P2 (#1299 round-10, C43): a non-UTF-8 indexed test must
+        # degrade, never raise UnicodeDecodeError out of the certified route.
+        root = _make_project(tmp_path, {"tree_sitter_analyzer/foo.py": ""})
+        bad = root / "tests" / "bad_utf8.py"
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_bytes(b"x = b'\xff\xfe'\n")
+        inventory = frozenset({"tree_sitter_analyzer/foo.py"})
+        fact = is_fixture(
+            "tree_sitter_analyzer/foo.py",
+            root,
+            certified=True,
+            inventory=inventory,
+        )
+        assert fact.is_fixture is False
+
+    def test_bare_basename_literal_falls_through(self, tmp_path: Path) -> None:
+        # A bare '.py' basename with no package prefix matches none of the
+        # signal tiers and records nothing (falls through the elif chain).
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": "name = 'foo.py'\n",
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        fact = is_fixture("tree_sitter_analyzer/foo.py", root)
+        assert fact.is_fixture is False
+
     def test_bare_repo_relative_literal_is_caution(self, tmp_path: Path) -> None:
         # A bare string ``"tree_sitter_analyzer/foo.py"`` outside any
         # SAMPLE_ assignment hits the lowest-confidence tier (0.7).
@@ -141,8 +201,12 @@ class TestTier2Scan:
         root = _make_project(
             tmp_path,
             {
-                "tests/test_x.py": "name = 'tree_sitter_analyzer/foo.py'\n",
+                "tests/test_x.py": (
+                    "name = ('tree_sitter_analyzer/foo.py', "
+                    "'tree_sitter_analyzer/bar.py')\n"
+                ),
                 "tree_sitter_analyzer/foo.py": "def f(): pass\n",
+                "tree_sitter_analyzer/bar.py": "def b(): pass\n",
             },
         )
         fact = is_fixture("tree_sitter_analyzer/foo.py", root)
@@ -221,6 +285,183 @@ class TestCache:
         assert not (root / ".ast-cache" / "fixture_index.json").exists()
         is_fixture("tree_sitter_analyzer/foo.py", root)
         assert (root / ".ast-cache" / "fixture_index.json").is_file()
+
+    def test_certified_scan_never_writes_cache(self, tmp_path: Path) -> None:
+        # Codex P1 (#1299): the certified read_existing route must stay
+        # zero-write — the generation-certified scan never persists
+        # fixture_index.json.
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": (
+                    "from pathlib import Path\n"
+                    "PROJECT_ROOT = Path('.')\n"
+                    "name = PROJECT_ROOT / 'tree_sitter_analyzer' / 'foo.py'\n"
+                ),
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        fact = is_fixture("tree_sitter_analyzer/foo.py", root, certified=True)
+        assert fact.is_fixture is True
+        assert not (root / ".ast-cache" / "fixture_index.json").exists()
+        # The default path still persists (unchanged behaviour).
+        is_fixture("tree_sitter_analyzer/foo.py", root)
+        assert (root / ".ast-cache" / "fixture_index.json").is_file()
+
+    def test_valid_cache_hit_returns_without_rescan(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Tier-2 cache hit: the second call serves from cache and never
+        # rescans tests/ (basename seen but no PROJECT_ROOT pattern, so the
+        # targeted scan returns None and tier 2 is reached).
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": ("def test_x():\n    assert 'foo.py' in __file__\n"),
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        first = is_fixture("tree_sitter_analyzer/foo.py", root)
+        assert first.is_fixture is False
+        assert (root / ".ast-cache" / "fixture_index.json").is_file()
+
+        scans = {"n": 0}
+
+        def counting_scan(tests_dir, project_root):
+            scans["n"] += 1
+            return {}
+
+        monkeypatch.setattr(fixture_detector, "_scan_tests", counting_scan)
+        second = is_fixture("tree_sitter_analyzer/foo.py", root)
+        assert second.is_fixture is False
+        assert scans["n"] == 0  # served from the valid cache
+
+    def test_certified_scan_respects_snapshot_inventory(self, tmp_path: Path) -> None:
+        # Codex P1 (#1299 round-3): the certified probe must only consult
+        # generation-certified test files — a reference inside an
+        # oracle-pruned path (tests/vendor/) must not escalate.
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/vendor/helper.py": (
+                    "from pathlib import Path\n"
+                    "PROJECT_ROOT = Path('.')\n"
+                    "name = PROJECT_ROOT / 'tree_sitter_analyzer' / 'foo.py'\n"
+                ),
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        inventory = frozenset({"tree_sitter_analyzer/foo.py"})
+        excluded = is_fixture(
+            "tree_sitter_analyzer/foo.py",
+            root,
+            certified=True,
+            inventory=inventory,
+        )
+        assert excluded.is_fixture is False
+        included = is_fixture(
+            "tree_sitter_analyzer/foo.py",
+            root,
+            certified=True,
+            inventory=inventory | frozenset({"tests/vendor/helper.py"}),
+        )
+        assert included.is_fixture is True
+
+    def test_certified_scan_falls_through_to_inventory_filtered_scan(
+        self, tmp_path: Path
+    ) -> None:
+        # Codex P1 (#1299 round-3): when the targeted scan misses, the full
+        # in-memory scan runs over the inventory — files outside the
+        # inventory (e.g. tests/other_y.py) are skipped.
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": ("def test_x():\n    assert 'foo.py' in __file__\n"),
+                "tests/other_y.py": (
+                    "from pathlib import Path\n"
+                    "PROJECT_ROOT = Path('.')\n"
+                    "name = PROJECT_ROOT / 'tree_sitter_analyzer' / 'foo.py'\n"
+                ),
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        inventory = frozenset({"tests/test_x.py"})
+        fact = is_fixture(
+            "tree_sitter_analyzer/foo.py",
+            root,
+            certified=True,
+            inventory=inventory,
+        )
+        # test_x.py only mentions the basename (no PROJECT_ROOT pattern) and
+        # other_y.py is outside the inventory -> no escalation.
+        assert fact.is_fixture is False
+
+    def test_constant_assignment_signal_with_plain_string(self, tmp_path: Path) -> None:
+        # The has_fixture_name branch: a plain-string assignment carrying a
+        # fixture basename records the constant-assignment signal.
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": (
+                    "SAMPLE_FOO = ('tree_sitter_analyzer/foo.py', "
+                    "'tree_sitter_analyzer/bar.py')\n"
+                ),
+                "tree_sitter_analyzer/foo.py": "",
+                "tree_sitter_analyzer/bar.py": "",
+            },
+        )
+        fact = is_fixture("tree_sitter_analyzer/foo.py", root)
+        assert fact.is_fixture is True
+        assert fact.source == "constant_assignment"
+
+    def test_basename_with_separator_returns_normally(self, tmp_path: Path) -> None:
+        root = _make_project(tmp_path, {"tree_sitter_analyzer/foo.py": "x"})
+        resolved = fixture_detector._basename_to_repo_relative(
+            "tree_sitter_analyzer/foo.py", root
+        )
+        assert resolved == "tree_sitter_analyzer/foo.py"
+        # A path outside the root falls back to its string form.
+        import os
+
+        outside = os.path.realpath("/etc/passwd")
+        fallback = fixture_detector._safe_relative(Path(outside), root)
+        assert fallback == outside.replace("\\", "/")
+
+    def test_basename_resolution_honors_inventory(self, tmp_path: Path) -> None:
+        # Codex P1 (#1299 round-8, C37): an oracle-excluded duplicate must
+        # not make the basename lookup ambiguous on a certified read.
+        root = _make_project(
+            tmp_path,
+            {
+                "tree_sitter_analyzer/foo.py": "x = 1\n",
+                "tree_sitter_analyzer/vendor/foo.py": "y = 2\n",
+            },
+        )
+        ambiguous = fixture_detector._basename_to_repo_relative("foo.py", root)
+        assert ambiguous is None  # two live matches, cannot disambiguate
+        certified = fixture_detector._basename_to_repo_relative(
+            "foo.py",
+            root,
+            inventory=frozenset({"tree_sitter_analyzer/foo.py"}),
+        )
+        assert certified == "tree_sitter_analyzer/foo.py"
+
+    def test_certified_scan_skips_live_allowlist(self, tmp_path: Path) -> None:
+        # Codex P1 (#1299): the CLAUDE.md allowlist is outside the source
+        # generation, so a certified probe must not consult it — only
+        # test-file references count.
+        root = _make_project(
+            tmp_path,
+            {
+                "CLAUDE.md": _frontmatter([{"path": "tree_sitter_analyzer/foo.py"}]),
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        certified = is_fixture("tree_sitter_analyzer/foo.py", root, certified=True)
+        assert certified.is_fixture is False
+        live = is_fixture("tree_sitter_analyzer/foo.py", root)
+        assert live.is_fixture is True
+        assert live.source == "allowlist"
 
     def test_cache_corrupt_falls_through_to_scan(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
