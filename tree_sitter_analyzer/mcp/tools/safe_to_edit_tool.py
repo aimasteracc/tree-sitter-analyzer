@@ -27,11 +27,11 @@ from .base_tool import BaseMCPTool, mirror_summary_line
 from .utils.parse_validity import is_file_parse_broken
 from .utils.safe_to_edit_helpers import (
     SafeToEditContext,
-    _snapshot_file_indexed,
     build_file_dependency_view,
     build_snapshot_file_dependency_view,
     build_snapshot_syntax_causal_envelope,
     is_init_file,
+    snapshot_inventory,
     snapshot_stale_edges,
 )
 from .utils.safe_to_edit_helpers import (
@@ -310,8 +310,10 @@ class SafeToEditTool(BaseMCPTool):
         # short-circuit into an available envelope — a missing target is
         # necessarily outside the inventory too, so its answer also comes
         # from the snapshot, never from live filesystem state (round-3/4).
-        if snapshot is not None and not _snapshot_file_indexed(conn, rel_path):
-            raise ValueError("FILE_NOT_INDEXED")
+        inventory = snapshot_inventory(conn) if snapshot is not None else None
+        if snapshot is not None:
+            if inventory is None or rel_path not in inventory:
+                raise ValueError("FILE_NOT_INDEXED")
         if not Path(resolved).exists():
             raise ValueError("FILE_NOT_FOUND")
 
@@ -319,11 +321,20 @@ class SafeToEditTool(BaseMCPTool):
         if syntax_response is not None:
             if snapshot is not None:
                 syntax_response["causal_envelope"] = (
-                    build_snapshot_syntax_causal_envelope(conn, rel_path, file_path)
+                    build_snapshot_syntax_causal_envelope(
+                        conn,
+                        rel_path,
+                        file_path,
+                        inventory=inventory,
+                    )
                 )
             return syntax_response
 
-        graph = build_snapshot_file_dependency_view(conn, rel_path)
+        graph = build_snapshot_file_dependency_view(
+            conn,
+            rel_path,
+            inventory=inventory,
+        )
         result = _build_safe_to_edit_result(
             SafeToEditContext(
                 file_path=file_path,
@@ -336,7 +347,10 @@ class SafeToEditTool(BaseMCPTool):
                 # facts from the snapshot connection and never touches the
                 # live .ast-cache (zero-write read).
                 snapshot_conn=conn if snapshot is not None else None,
-                stale_edges=tuple(snapshot_stale_edges(conn, rel_path)),
+                certified_inventory=inventory,
+                stale_edges=tuple(
+                    snapshot_stale_edges(conn, rel_path, inventory=inventory)
+                ),
             )
         )
         # RFC-0022 P0.5: echo the adapter-owned wire owner version on the

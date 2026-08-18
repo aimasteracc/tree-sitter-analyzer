@@ -24,6 +24,38 @@ CAUSAL_FIELDS = frozenset(
 )
 
 
+def _invalid_causal_fields(envelope: Any) -> list[str]:
+    """Return certified causal fields whose values violate the P1 contract."""
+    if not isinstance(envelope, dict):
+        return sorted(CAUSAL_FIELDS)
+    invalid: list[str] = []
+    for name in ("dependents", "dependencies", "exercising_tests", "stale_edges"):
+        value = envelope.get(name)
+        if not isinstance(value, list) or any(
+            not isinstance(item, str) or not item for item in value
+        ):
+            invalid.append(name)
+    if envelope.get("constraint_verdict") not in {
+        "unknown",
+        "SAFE",
+        "CAUTION",
+        "UNSAFE",
+    }:
+        invalid.append("constraint_verdict")
+    verification = envelope.get("verification_command")
+    if verification is not None and (
+        not isinstance(verification, str) or not verification.strip()
+    ):
+        invalid.append("verification_command")
+    if (
+        isinstance(envelope.get("exercising_tests"), list)
+        and envelope["exercising_tests"]
+        and verification is None
+    ):
+        invalid.append("verification_command")
+    return sorted(set(invalid))
+
+
 async def _check(project_root: Path, file_path: str) -> dict[str, Any]:
     tool = SafeToEditTool(str(project_root))
     with lease_existing_snapshot(str(project_root)) as snapshot:
@@ -39,6 +71,7 @@ async def _check(project_root: Path, file_path: str) -> dict[str, Any]:
                 "certified_snapshot": False,
                 "file_path": file_path,
                 "missing_fields": sorted(CAUSAL_FIELDS),
+                "invalid_fields": [],
                 "verification_command": None,
                 "reason": snapshot.reason or "INDEX_SNAPSHOT_INCOMPLETE",
             }
@@ -55,17 +88,20 @@ async def _check(project_root: Path, file_path: str) -> dict[str, Any]:
     envelope = result.get("causal_envelope")
     fields = frozenset(envelope) if isinstance(envelope, dict) else frozenset()
     missing = sorted(CAUSAL_FIELDS - fields)
+    invalid = _invalid_causal_fields(envelope)
     return {
         "success": (
             result.get("success") is True
             and result.get("access_state") == "available"
             and not missing
+            and not invalid
         ),
         "analyzer_calls": 1,
         "separate_causality_queries": 0,
         "certified_snapshot": result.get("access_state") == "available",
         "file_path": file_path,
         "missing_fields": missing,
+        "invalid_fields": invalid,
         "verification_command": (
             envelope.get("verification_command") if isinstance(envelope, dict) else None
         ),

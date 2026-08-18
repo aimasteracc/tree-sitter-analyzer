@@ -39,6 +39,7 @@ class SafeToEditContext:
     graph: Any
     scorer: HealthScorer
     snapshot_conn: Any | None = None
+    certified_inventory: frozenset[str] | None = None
     stale_edges: tuple[str, ...] = ()
 
 
@@ -133,8 +134,14 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
         # covered paths only — discovery runs over the snapshot's ast_index
         # set, so oracle-excluded files (tests/vendor/) cannot change the
         # exercising-test set or has_tests/verdict for the same identity.
+        inventory = context.certified_inventory
+        if inventory is None:
+            inventory = snapshot_inventory(context.snapshot_conn)
         test_files = _certified_exercising_tests(
-            context.snapshot_conn, rel_path, dependents
+            context.snapshot_conn,
+            rel_path,
+            dependents,
+            inventory=inventory,
         )
         certified_health = True
     else:
@@ -226,7 +233,9 @@ def _format_safe_to_edit_result(
         # they match the published generation (round-4; an evaluation epoch
         # bound to the index generation is the tracked follow-up).
         violations: list[dict[str, Any]] = []
-        fixture_inventory = snapshot_inventory(context.snapshot_conn)
+        fixture_inventory = context.certified_inventory
+        if fixture_inventory is None:
+            fixture_inventory = snapshot_inventory(context.snapshot_conn)
         fixture_certified = True
     else:
         violations = violations_for_files(
@@ -1104,10 +1113,20 @@ def _certified_exercising_tests(
     conn: Any,
     rel_path: str,
     dependents: list[str] | tuple[str, ...],
+    *,
+    inventory: frozenset[str] | None = None,
 ) -> list[str]:
     """Return the complete deduplicated exercising-test set from a snapshot."""
-    inventory = snapshot_inventory(conn)
-    test_files = _certified_test_files(inventory, rel_path, dependents)
+    if inventory is None:
+        inventory = snapshot_inventory(conn)
+    language = _target_language(rel_path)
+    test_files = [
+        dep
+        for dep in dependents
+        if dep in inventory and _looks_like_test_name(Path(dep).name, language)
+    ]
+    if _looks_like_test_name(Path(rel_path).name, language):
+        test_files.insert(0, rel_path)
     test_files.extend(
         _certified_symbol_reference_tests(
             conn, inventory, rel_path, _target_language(rel_path)
@@ -1130,17 +1149,6 @@ def snapshot_inventory(conn: Any) -> frozenset[str]:
     except Exception:  # nosec B110 — legacy/partial schema
         return frozenset()
     return frozenset(str(row["file_path"]) for row in rows)
-
-
-def _snapshot_file_indexed(conn: Any, rel_path: str) -> bool:
-    """Return whether the snapshot connection has indexed one relative file."""
-    try:
-        row = conn.execute(
-            "SELECT 1 FROM ast_index WHERE file_path = ? LIMIT 1", (rel_path,)
-        ).fetchone()
-    except Exception:  # nosec B110 — legacy/partial schema degrades to missing
-        return False
-    return row is not None
 
 
 def _resolve_import_spec_from_inventory(
@@ -1171,13 +1179,20 @@ def _resolve_import_spec_from_inventory(
         if not parts:
             return None
         candidate_base = "/".join(parts)
-    elif spec.startswith(".."):
-        # Parent-relative Python imports are not represented precisely enough
-        # by the current projection.  Preserve the existing fail-closed rule.
-        return None
     elif spec.startswith("."):
-        base = Path(importer_rel_path).parent
-        candidate_base = (base / spec.lstrip("./")).as_posix()
+        dot_count = len(spec) - len(spec.lstrip("."))
+        dots = spec[:dot_count]
+        module_tail = spec[dot_count:]
+        package_parts = tuple(
+            part for part in Path(importer_rel_path).parent.parts if part != "."
+        )
+        parent_hops = len(dots) - 1
+        if not package_parts or parent_hops >= len(package_parts):
+            return None
+        base_parts = package_parts[: len(package_parts) - parent_hops]
+        tail_parts = tuple(part for part in module_tail.split(".") if part)
+        candidate_parts = (*base_parts, *tail_parts)
+        candidate_base = "/".join(candidate_parts)
     else:
         candidate_base = spec.replace(".", "/")
 
@@ -1268,7 +1283,10 @@ def _import_targets_from_text(
     }
 
 
-def _edge_import_names_for_target(rel_path: str) -> tuple[str, ...]:
+def _edge_import_names_for_target(
+    rel_path: str,
+    inventory: frozenset[str] = frozenset(),
+) -> tuple[str, ...]:
     """Return bounded unresolved-edge names that could identify *rel_path*."""
 
     path = Path(rel_path)
@@ -1286,6 +1304,35 @@ def _edge_import_names_for_target(rel_path: str) -> tuple[str, ...]:
     }
     if path.parent.name:
         names.add(f".{path.parent.name}")
+    target_module_parts = (
+        path.parent.parts if path.name == "__init__.py" else path.with_suffix("").parts
+    )
+    target_parent_parts = target_module_parts[:-1]
+    for importer in inventory:
+        importer_parts = tuple(
+            part for part in Path(importer).parent.parts if part != "."
+        )
+        common = 0
+        for importer_part, target_part in zip(
+            importer_parts, target_module_parts, strict=False
+        ):
+            if importer_part != target_part:
+                break
+            common += 1
+        dots = "." * (len(importer_parts) - common + 1)
+        module_tail = ".".join(target_module_parts[common:])
+        names.add(f"{dots}{module_tail}")
+
+        parent_common = 0
+        for importer_part, target_part in zip(
+            importer_parts, target_parent_parts, strict=False
+        ):
+            if importer_part != target_part:
+                break
+            parent_common += 1
+        parent_dots = "." * (len(importer_parts) - parent_common + 1)
+        parent_tail = ".".join(target_parent_parts[parent_common:])
+        names.add(f"{parent_dots}{parent_tail}")
     if path.name == "__init__.py":
         names.discard("__init__")
     return tuple(sorted(name for name in names if name and name != ".")) + (".",)
@@ -1298,6 +1345,10 @@ def _projection_search_tokens(rel_path: str) -> tuple[str, ...]:
     tokens = _import_needles_for_target(rel_path)
     if path.stem and path.stem != "__init__":
         tokens.add(f"./{path.stem}")
+    if path.stem == "index" and path.parent.name:
+        tokens.add(path.parent.as_posix())
+        tokens.add(path.parent.name)
+        tokens.add(f"./{path.parent.name}")
     return tuple(sorted(tokens))
 
 
@@ -1305,7 +1356,12 @@ def _escape_sql_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDependencyView:
+def build_snapshot_file_dependency_view(
+    conn: Any,
+    rel_path: str,
+    *,
+    inventory: frozenset[str] | None = None,
+) -> FileDependencyView:
     """Build the one-file import view from the snapshot connection.
 
     RFC-0022 P0.4 read_existing: the live ``build_file_dependency_view``
@@ -1330,7 +1386,8 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
     import json
 
     _require_edges_callee_name(conn)
-    inventory = snapshot_inventory(conn)
+    if inventory is None:
+        inventory = snapshot_inventory(conn)
     dependencies: set[str] = set()
     dependents: set[str] = set()
     try:
@@ -1367,7 +1424,7 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
             resolved = _resolve_import_spec_from_inventory(module, rel_path, inventory)
             if resolved:
                 dependencies.add(resolved)
-        candidate_names = _edge_import_names_for_target(rel_path)
+        candidate_names = _edge_import_names_for_target(rel_path, inventory)
         placeholders = ", ".join("?" for _ in candidate_names)
         all_rows = conn.execute(
             "SELECT file_path, callee_name FROM edges WHERE kind = 'imports' "
@@ -1400,21 +1457,17 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
         for row in rows:
             file_path = row["file_path"]
             if not isinstance(file_path, str) or not file_path:
-                continue
+                raise ValueError("CORRUPT_INDEX")
             try:
                 imports = json.loads(row["imports_json"])
-            except (TypeError, ValueError):
-                continue
+            except (TypeError, ValueError) as exc:
+                raise ValueError("CORRUPT_INDEX") from exc
             if not isinstance(imports, list):
-                # Codex P2 (#1299 round-9, C40): a non-array cell would
-                # otherwise raise TypeError and abandon the WHOLE needle
-                # pass, dropping later member-import dependents; skip the
-                # malformed row only.
-                continue
+                raise ValueError("CORRUPT_INDEX")
             for imp in imports:
                 imp_text = imp["text"] if isinstance(imp, dict) else imp
                 if not isinstance(imp_text, str):
-                    continue
+                    raise ValueError("CORRUPT_INDEX")
                 targets = _import_targets_from_text(imp_text, file_path, inventory)
                 if file_path == rel_path:
                     dependencies.update(
@@ -1422,7 +1475,9 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
                     )
                 elif rel_path in targets:
                     dependents.add(file_path)
-    except Exception:  # nosec B110 — snapshot schema drift degrades to empty
+    except ValueError:
+        raise
+    except Exception:  # nosec B110 — legacy snapshot schema degrades to empty
         pass
     return FileDependencyView(
         rel_path=rel_path,
@@ -1431,7 +1486,12 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
     )
 
 
-def snapshot_stale_edges(conn: Any, rel_path: str) -> list[str]:
+def snapshot_stale_edges(
+    conn: Any,
+    rel_path: str,
+    *,
+    inventory: frozenset[str] | None = None,
+) -> list[str]:
     """Return snapshot-bound labels for edge rows an edit may invalidate.
 
     An edit always invalidates its outgoing rows; it may also invalidate
@@ -1440,7 +1500,9 @@ def snapshot_stale_edges(conn: Any, rel_path: str) -> list[str]:
     fails closed instead of reporting a misleading empty set.
     """
 
-    candidate_names = _edge_import_names_for_target(rel_path)
+    if inventory is None:
+        inventory = snapshot_inventory(conn)
+    candidate_names = _edge_import_names_for_target(rel_path, inventory)
     placeholders = ", ".join("?" for _ in candidate_names)
     try:
         rows = conn.execute(
@@ -1453,7 +1515,6 @@ def snapshot_stale_edges(conn: Any, rel_path: str) -> list[str]:
     except Exception as exc:
         raise ValueError("CORRUPT_INDEX") from exc
 
-    inventory = snapshot_inventory(conn)
     unresolved_callers = {
         caller_file
         for _, kind, caller_file, _, resolved_file in rows
@@ -1527,8 +1588,6 @@ def _snapshot_needle_importers(
     seen: set[str] = set()
     for row in rows:
         file_path = row["file_path"]
-        if file_path not in candidate_files:
-            continue
         if not isinstance(file_path, str):
             raise ValueError("CORRUPT_INDEX")
         seen.add(file_path)
@@ -1554,12 +1613,16 @@ def build_snapshot_syntax_causal_envelope(
     conn: Any,
     rel_path: str,
     file_path: str,
+    *,
+    inventory: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Build certified causal facts when live syntax blocks health analysis."""
-    graph = build_snapshot_file_dependency_view(conn, rel_path)
+    if inventory is None:
+        inventory = snapshot_inventory(conn)
+    graph = build_snapshot_file_dependency_view(conn, rel_path, inventory=inventory)
     dependents = safe_dependents(graph, rel_path)
     dependencies = safe_dependencies(graph, rel_path)
-    tests = _certified_exercising_tests(conn, rel_path, dependents)
+    tests = _certified_exercising_tests(conn, rel_path, dependents, inventory=inventory)
 
     from .verification_command import certified_default_test_command
 
@@ -1575,7 +1638,7 @@ def build_snapshot_syntax_causal_envelope(
         "exercising_tests": tests,
         "constraint_verdict": "unknown",
         "verification_command": verification_command,
-        "stale_edges": snapshot_stale_edges(conn, rel_path),
+        "stale_edges": snapshot_stale_edges(conn, rel_path, inventory=inventory),
     }
 
 
