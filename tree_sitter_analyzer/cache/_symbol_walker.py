@@ -272,28 +272,40 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                     nested_bindings.add(node.args.vararg.arg)
                 if node.args.kwarg is not None:
                     nested_bindings.add(node.args.kwarg.arg)
+                defaults = (*node.args.defaults, *node.args.kw_defaults)
+                nested_loader_alias = nested_loader_alias or any(
+                    default is not None and _python_value_stores_loader(default, names)
+                    for default in defaults
+                )
             elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
                 nested_bindings.add(node.id)
             elif isinstance(node, ast.ExceptHandler) and isinstance(node.name, str):
                 nested_bindings.add(node.name)
             elif isinstance(node, ast.Assign):
                 bound = {
-                    target.id for target in node.targets if isinstance(target, ast.Name)
+                    leaf.id
+                    for target in node.targets
+                    for leaf in _python_assignment_target_leaves(target)
+                    if isinstance(leaf, ast.Name)
                 }
                 nested_bindings.update(bound)
                 nested_loader_alias = nested_loader_alias or (
-                    _python_reference_name(node.value) in names and bool(bound)
+                    _python_value_stores_loader(node.value, names)
                 )
-            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-                nested_bindings.add(node.target.id)
+            elif isinstance(node, ast.AnnAssign):
+                nested_bindings.update(
+                    leaf.id
+                    for leaf in _python_assignment_target_leaves(node.target)
+                    if isinstance(leaf, ast.Name)
+                )
                 nested_loader_alias = nested_loader_alias or (
                     node.value is not None
-                    and _python_reference_name(node.value) in names
+                    and _python_value_stores_loader(node.value, names)
                 )
             elif isinstance(node, ast.NamedExpr):
                 nested_loader_alias = nested_loader_alias or (
                     isinstance(node.target, ast.Name)
-                    and _python_reference_name(node.value) in names
+                    and _python_value_stores_loader(node.value, names)
                 )
             elif isinstance(node, ast.Import):
                 for alias in node.names:

@@ -205,13 +205,41 @@ def test_python_loader_analysis_rejects_qualified_loader_rebinding(
     assert complete is False
 
 
-def test_python_loader_analysis_accepts_assigned_loader_call_result() -> None:
-    names, complete = _python_dynamic_loader_analysis(
-        "import importlib\nloaded = importlib.import_module('pkg.util')\n"
-    )
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import importlib\nloaded = importlib.import_module('pkg.util')\n",
+        "import importlib\ndef load():\n"
+        "    loaded = importlib.import_module('pkg.util')\n"
+        "    return loaded\n",
+    ],
+)
+def test_python_loader_analysis_accepts_assigned_loader_call_result(
+    source: str,
+) -> None:
+    names, complete = _python_dynamic_loader_analysis(source)
 
     assert "importlib.import_module" in names
     assert complete is True
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import importlib\ndef load(callback=importlib.import_module):\n"
+        "    return callback('pkg.util')\n",
+        "import importlib\ndef load(value):\n"
+        "    pair = (importlib.import_module, value)\n"
+        "    callback, other = pair\n"
+        "    return callback('pkg.util')\n",
+        "import importlib\nload = lambda callback=importlib.import_module: "
+        "callback('pkg.util')\n",
+    ],
+)
+def test_python_loader_analysis_rejects_nested_stored_loader(source: str) -> None:
+    _names, complete = _python_dynamic_loader_analysis(source)
+
+    assert complete is False
 
 
 @pytest.mark.parametrize(
