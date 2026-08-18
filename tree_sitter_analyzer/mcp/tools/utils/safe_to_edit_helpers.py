@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 import shlex
@@ -863,6 +864,10 @@ def _certified_import_facts_available(
             conn, rel_path, inventory
         ):
             return False
+        if conn is not None and not _java_reflection_projection_complete(
+            conn, inventory
+        ):
+            return False
     if language in {"javascript", "typescript"} and conn is not None:
         return _jsts_import_projection_complete(conn, inventory)
     if language == "python" and conn is not None:
@@ -929,7 +934,7 @@ def _looks_like_test_path(rel_path: str, language: str) -> bool:
     if language == "java":
         return in_test_dir and _looks_like_test_name(name, language)
     if language in {"c", "cpp"}:
-        return in_test_dir and _looks_like_test_name(name, language)
+        return in_test_dir and name.startswith("test_")
     if language == "ruby":
         return name.endswith(("_test.rb", "_spec.rb")) or (
             in_test_dir and name.startswith("test_")
@@ -970,7 +975,76 @@ def _import_module_name(import_text: str) -> str | None:
     )
     if m:
         return m.group(1)
+    m = _re.search(
+        r"\b(?:java\.lang\.)?Class\.forName\s*\(\s*['\"]([^'\"]+)['\"]",
+        import_text,
+    )
+    if m:
+        return m.group(1).split("$", 1)[0]
     return None
+
+
+def _python_projected_call(import_text: str) -> tuple[str, str | None] | None:
+    """Parse one projected Python call and its literal first argument."""
+
+    try:
+        body = ast.parse(import_text).body
+    except SyntaxError:
+        return None
+    if len(body) != 1 or not isinstance(body[0], ast.Expr):
+        return None
+    call = body[0].value
+    if not isinstance(call, ast.Call):
+        return None
+
+    def qualified_name(node: ast.expr) -> str | None:
+        if isinstance(node, ast.Name):
+            return node.id
+        if isinstance(node, ast.Attribute):
+            owner = qualified_name(node.value)
+            return f"{owner}.{node.attr}" if owner else None
+        return None
+
+    name = qualified_name(call.func)
+    if name is None:
+        return None
+    spec = (
+        call.args[0].value
+        if call.args
+        and isinstance(call.args[0], ast.Constant)
+        and isinstance(call.args[0].value, str)
+        else None
+    )
+    return name, spec
+
+
+def _python_dynamic_loader_names_from_projection(
+    import_texts: list[str],
+) -> frozenset[str] | None:
+    """Derive dynamic-import aliases from one file's static projections."""
+
+    names = {"__import__", "importlib.import_module"}
+    for import_text in import_texts:
+        try:
+            body = ast.parse(import_text).body
+        except SyntaxError:
+            return None
+        if len(body) != 1:
+            return None
+        statement = body[0]
+        if isinstance(statement, ast.Import):
+            for alias in statement.names:
+                if alias.name == "importlib":
+                    names.add(f"{alias.asname or alias.name}.import_module")
+        elif (
+            isinstance(statement, ast.ImportFrom)
+            and statement.level == 0
+            and statement.module == "importlib"
+        ):
+            for alias in statement.names:
+                if alias.name == "import_module":
+                    names.add(alias.asname or alias.name)
+    return frozenset(names)
 
 
 def _file_defines_any(conn: Any, file_path: str, symbols: list[str]) -> bool:
@@ -1622,6 +1696,19 @@ def _import_targets_from_text(
             import_text,
         )
     )
+    if importer_language == "python":
+        projected_call = _python_projected_call(import_text)
+        if projected_call is not None and projected_call[1] is not None:
+            specs.add(projected_call[1])
+    if importer_language == "java":
+        reflection = re.match(
+            r"^\s*(?:java\.lang\.)?Class\.forName\s*"
+            r"\(\s*(['\"])([^'\"]+)\1",
+            import_text,
+            re.S,
+        )
+        if reflection is not None:
+            specs.add(reflection.group(2).split("$", 1)[0])
     specs.update(
         match.group(2)
         for match in re.finditer(
@@ -1745,21 +1832,113 @@ def _jsts_import_projection_complete(conn: Any, inventory: frozenset[str]) -> bo
     return True
 
 
+def _python_static_import_specs(import_text: str) -> tuple[str, ...] | None:
+    """Return module candidates named by one projected Python import."""
+
+    try:
+        body = ast.parse(import_text).body
+    except SyntaxError:
+        return None
+    if len(body) != 1:
+        return None
+    statement = body[0]
+    if isinstance(statement, ast.Import):
+        return tuple(alias.name for alias in statement.names)
+    if not isinstance(statement, ast.ImportFrom):
+        return ()
+    prefix = "." * statement.level
+    module = f"{prefix}{statement.module or ''}"
+    specs = [module] if module else []
+    for alias in statement.names:
+        if alias.name == "*":
+            continue
+        separator = "" if module.endswith(".") else "."
+        specs.append(f"{module}{separator}{alias.name}")
+    return tuple(specs)
+
+
+def _python_inventory_matches(
+    spec: str, importer: str, inventory: frozenset[str]
+) -> set[str]:
+    """Return all Python snapshot candidates at the resolver's chosen tier."""
+
+    if spec.startswith("."):
+        resolved = _resolve_import_spec_from_inventory(spec, importer, inventory)
+        return {resolved} if resolved else set()
+    module_path = spec.replace(".", "/")
+    candidates = (f"{module_path}/__init__.py", f"{module_path}.py")
+    for candidate in candidates:
+        if candidate in inventory:
+            return {candidate}
+    return {
+        indexed
+        for candidate in candidates
+        for indexed in inventory
+        if indexed.endswith(f"/{candidate}")
+    }
+
+
 def _python_import_projection_complete(conn: Any, inventory: frozenset[str]) -> bool:
-    """Reject Python facts when a projected dynamic load cannot be resolved."""
+    """Reject Python facts when a projected import is incomplete or ambiguous."""
 
     projected = _snapshot_import_texts(conn, inventory)
     if projected is None:
         return False
-    dynamic_call = re.compile(r"^\s*(?:importlib\.import_module|__import__)\s*\(", re.S)
     for file_path, import_texts in projected.items():
         if _target_language(file_path) != "python":
             continue
+        loaders = _python_dynamic_loader_names_from_projection(import_texts)
+        if loaders is None:
+            return False
         for import_text in import_texts:
-            if not dynamic_call.match(import_text):
+            static_specs = _python_static_import_specs(import_text)
+            if static_specs is None:
+                return False
+            for spec in static_specs:
+                if len(_python_inventory_matches(spec, file_path, inventory)) > 1:
+                    return False
+            projected_call = _python_projected_call(import_text)
+            if projected_call is None or projected_call[0] not in loaders:
+                continue
+            dynamic_spec = projected_call[1]
+            if dynamic_spec is None or dynamic_spec.startswith("."):
+                return False
+            if len(_python_inventory_matches(dynamic_spec, file_path, inventory)) > 1:
+                return False
+    return True
+
+
+def _java_inventory_matches(spec: str, inventory: frozenset[str]) -> set[str]:
+    """Return Java source candidates for a binary or canonical class name."""
+
+    owner = spec.split("$", 1)[0]
+    candidate = f"{owner.replace('.', '/')}.java"
+    if candidate in inventory:
+        return {candidate}
+    return {
+        indexed
+        for indexed in inventory
+        if indexed == candidate or indexed.endswith(f"/{candidate}")
+    }
+
+
+def _java_reflection_projection_complete(conn: Any, inventory: frozenset[str]) -> bool:
+    """Reject Java facts when a Class.forName target is dynamic or ambiguous."""
+
+    projected = _snapshot_import_texts(conn, inventory)
+    if projected is None:
+        return False
+    reflective_call = re.compile(r"^\s*(?:java\.lang\.)?Class\.forName\s*\(", re.S)
+    for file_path, import_texts in projected.items():
+        if _target_language(file_path) != "java":
+            continue
+        for import_text in import_texts:
+            if not reflective_call.match(import_text):
                 continue
             spec = _import_module_name(import_text)
-            if spec is None or spec.startswith("."):
+            if spec is None:
+                return False
+            if len(_java_inventory_matches(spec, inventory)) > 1:
                 return False
     return True
 

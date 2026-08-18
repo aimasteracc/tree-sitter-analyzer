@@ -53,7 +53,8 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v17: P1 causal envelopes project C/C++ preprocessor includes.
 # v18: P1 causal envelopes project static templates and Python dynamic imports.
 # v19: retain unresolved JS/TS module calls as fail-closed evidence.
-_AST_CACHE_EXTRACTOR_VERSION = 19
+# v20: project JS/TS re-exports and aliased/reflection dynamic loads.
+_AST_CACHE_EXTRACTOR_VERSION = 20
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__

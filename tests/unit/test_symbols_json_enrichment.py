@@ -146,9 +146,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v19: unresolved JS/TS module calls remain fail-closed evidence.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 19
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 19
+        # v20: re-exports and aliased/reflection loads enter the projection.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 20
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 20
 
 
 class TestJavaScriptModuleCallProjection:
@@ -209,6 +209,20 @@ class TestJavaScriptModuleCallProjection:
 
         assert walker._append_jsts_module_call(_IncompleteCall()) is False
 
+    @pytest.mark.parametrize(
+        "source",
+        ["export { run } from './util';", "export * from './util';"],
+    )
+    def test_reexport_is_projected_as_import(self, source: str) -> None:
+        symbols = {"symbols": _symbols_for(source, "typescript")}
+
+        assert _extract_imports(symbols) == [{"text": source, "line": 1}]
+
+    def test_local_export_is_not_projected_as_import(self) -> None:
+        symbols = {"symbols": _symbols_for("export const value = 1;", "typescript")}
+
+        assert _extract_imports(symbols) == []
+
 
 class TestPythonDynamicImportProjection:
     @pytest.mark.parametrize(
@@ -226,6 +240,24 @@ class TestPythonDynamicImportProjection:
         assert _extract_imports(symbols) == [
             {"text": "__import__(module_name)", "line": 1}
         ]
+
+    def test_aliased_import_module_call_is_projected(self) -> None:
+        source = "from importlib import import_module as load\nload('pkg.util')"
+        symbols = {"symbols": _symbols_for(source, "python")}
+
+        assert _extract_imports(symbols) == [
+            {"text": "from importlib import import_module as load", "line": 1},
+            {"text": "load('pkg.util')", "line": 2},
+        ]
+
+    def test_alias_survives_unrelated_syntax_error(self) -> None:
+        source = "from importlib import import_module as load\nload('pkg.util')\nif ("
+        symbols = {"symbols": _symbols_for(source, "python")}
+
+        assert {item["text"] for item in _extract_imports(symbols)} == {
+            "from importlib import import_module as load",
+            "load('pkg.util')",
+        }
 
     @pytest.mark.parametrize("missing_field", ["function", "arguments"])
     def test_incomplete_dynamic_import_node_is_not_projected(
@@ -264,6 +296,22 @@ class TestCIncludeProjection:
         symbols = {"symbols": _symbols_for('#define HDR "util.h"\n#include HDR\n', "c")}
 
         assert _extract_imports(symbols) == [{"text": "#include HDR\n", "line": 2}]
+
+
+class TestJavaReflectionProjection:
+    @pytest.mark.parametrize(
+        "call",
+        [
+            'Class.forName("com.acme.Util")',
+            'java.lang.Class.forName("com.acme.Util")',
+            "Class.forName(className)",
+        ],
+    )
+    def test_class_for_name_is_projected(self, call: str) -> None:
+        source = f"class Main {{ void load() {{ {call}; }} }}"
+        symbols = {"symbols": _symbols_for(source, "java")}
+
+        assert _extract_imports(symbols) == [{"text": call, "line": 1}]
 
 
 class TestBashVariableAssignmentScope:

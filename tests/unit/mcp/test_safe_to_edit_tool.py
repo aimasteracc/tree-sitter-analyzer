@@ -1730,6 +1730,97 @@ def test_snapshot_dependency_view_reads_dynamic_import_with_options() -> None:
     assert view.dependencies_of("src/main.ts") == ["src/util.ts"]
 
 
+@pytest.mark.parametrize(
+    "projection", ["export { run } from './util';", "export * from './util';"]
+)
+def test_snapshot_dependency_view_reads_jsts_reexport(projection: str) -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("src/index.ts", json.dumps([{"text": projection}])),
+            ("src/util.ts", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/index.ts")
+
+    assert view.dependencies_of("src/index.ts") == ["src/util.ts"]
+
+
+def test_snapshot_dependency_view_reads_aliased_python_dynamic_import() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "app.py",
+                json.dumps(
+                    [
+                        {"text": "from importlib import import_module as load"},
+                        {"text": "load('pkg.util')"},
+                    ]
+                ),
+            ),
+            ("pkg/util.py", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "app.py")
+
+    assert view.dependencies_of("app.py") == ["pkg/util.py"]
+
+
+def test_snapshot_dependency_view_reads_java_class_for_name() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "src/main/java/com/acme/Main.java",
+                json.dumps([{"text": 'Class.forName("com.acme.Util")'}]),
+            ),
+            ("src/main/java/com/acme/Util.java", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/main/java/com/acme/Main.java")
+
+    assert view.dependencies_of("src/main/java/com/acme/Main.java") == [
+        "src/main/java/com/acme/Util.java"
+    ]
+
+
 def test_snapshot_import_module_name_reads_dynamic_import_with_options() -> None:
     # PR #1308 review: symbol-reference matching uses the same first argument.
     pass
@@ -2740,6 +2831,17 @@ def test_target_language_recognizes_indexed_cpp_extensions(path: str) -> None:
     assert _target_language(path) == "cpp"
 
 
+@pytest.mark.parametrize(
+    "path", ["tests/test_util.cc", "test/test_util.cxx", "spec/test_util.hxx"]
+)
+def test_certified_test_path_recognizes_cpp_extensions(path: str) -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _looks_like_test_path,
+    )
+
+    assert _looks_like_test_path(path, "cpp")
+
+
 def test_snapshot_import_targets_keep_python_wildcard_on_package() -> None:
     from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
         _import_targets_from_text,
@@ -3288,6 +3390,62 @@ def test_python_projection_rejects_relative_dynamic_import() -> None:
     assert not _python_import_projection_complete(conn, frozenset({"pkg/app.py"}))
 
 
+def test_python_projection_rejects_ambiguous_absolute_import() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _python_import_projection_complete,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("routes.py", json.dumps([{"text": "import pkg.app"}])),
+            ("src/pkg/app.py", "[]"),
+            ("vendor/pkg/app.py", "[]"),
+        ],
+    )
+
+    assert not _python_import_projection_complete(
+        conn,
+        frozenset({"routes.py", "src/pkg/app.py", "vendor/pkg/app.py"}),
+    )
+
+
+def test_python_projection_accepts_aliased_literal_dynamic_import() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _python_import_projection_complete,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "app.py",
+                json.dumps(
+                    [
+                        {"text": "from importlib import import_module as load"},
+                        {"text": "load('pkg.util')"},
+                    ]
+                ),
+            ),
+            ("pkg/util.py", "[]"),
+        ],
+    )
+
+    assert _python_import_projection_complete(
+        conn, frozenset({"app.py", "pkg/util.py"})
+    )
+
+
 def test_jsts_projection_complete_for_relative_imports_only() -> None:
     import json
     import sqlite3
@@ -3512,6 +3670,41 @@ def test_snapshot_syntax_envelope_rejects_missing_java_projection() -> None:
     )
 
     assert envelope["dependents"] is None
+
+
+@pytest.mark.parametrize(
+    ("projection", "expected"),
+    [
+        ('Class.forName("com.acme.Util")', True),
+        ("Class.forName(className)", False),
+    ],
+)
+def test_java_reflection_projection_requires_literal_target(
+    projection: str, expected: bool
+) -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _java_reflection_projection_complete,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("src/Main.java", json.dumps([{"text": projection}])),
+            ("src/com/acme/Util.java", "[]"),
+        ],
+    )
+
+    assert (
+        _java_reflection_projection_complete(
+            conn, frozenset({"src/Main.java", "src/com/acme/Util.java"})
+        )
+        is expected
+    )
 
 
 def test_snapshot_syntax_envelope_rejects_conflicting_java_packages() -> None:

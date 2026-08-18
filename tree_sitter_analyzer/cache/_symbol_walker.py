@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import ast
+from dataclasses import dataclass, field
 from typing import Any
 
 from ._symbol_declarations import (
@@ -38,12 +39,40 @@ from ._symbol_syntax import (
 )
 
 
+def _python_dynamic_loader_names(source: str) -> frozenset[str]:
+    """Return canonical and locally aliased Python dynamic-import call names."""
+
+    names = {"__import__", "importlib.import_module"}
+    try:
+        module = ast.parse(source)
+    except SyntaxError:
+        return frozenset(names)
+    for statement in module.body:
+        if isinstance(statement, ast.Import):
+            for alias in statement.names:
+                if alias.name == "importlib":
+                    names.add(f"{alias.asname or alias.name}.import_module")
+        elif (
+            isinstance(statement, ast.ImportFrom)
+            and statement.level == 0
+            and statement.module == "importlib"
+        ):
+            for alias in statement.names:
+                if alias.name == "import_module":
+                    names.add(alias.asname or alias.name)
+    return frozenset(names)
+
+
 @dataclass(slots=True)
 class _SymbolWalker:
     source: str
     symbols: list[dict[str, Any]]
     language: str
     truncated_flag: list[bool] | None
+    python_dynamic_loaders: set[str] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.python_dynamic_loaders = {"__import__", "importlib.import_module"}
 
     def walk(self, node: Any, depth: int = 0, enclosed: bool = False) -> None:
         if depth > _WALK_MAX_DEPTH:
@@ -71,9 +100,13 @@ class _SymbolWalker:
         if node.type in _IMPORT_LIKE:
             self._append_import(node)
             return
+        if self._append_jsts_reexport(node):
+            return
         if self._append_jsts_module_call(node):
             return
         if self._append_python_module_call(node):
+            return
+        if self._append_java_reflective_load(node):
             return
         if self._is_variable(node, name_node, enclosed):
             self._append_variable(node, name_node, depth)
@@ -157,10 +190,13 @@ class _SymbolWalker:
         return None
 
     def _append_import(self, node: Any) -> None:
+        text = _node_text(node, self.source)
+        if self.language == "python":
+            self.python_dynamic_loaders.update(_python_dynamic_loader_names(text))
         self.symbols.append(
             {
                 "kind": "import",
-                "text": _node_text(node, self.source),
+                "text": text,
                 "line": node.start_point[0] + 1,
                 "language": self.language,
             }
@@ -181,6 +217,17 @@ class _SymbolWalker:
         self._append_import(node)
         return True
 
+    def _append_jsts_reexport(self, node: Any) -> bool:
+        """Project JS/TS re-exports that introduce module dependencies."""
+        if self.language not in {"javascript", "typescript"}:
+            return False
+        if node.type != "export_statement":
+            return False
+        if node.child_by_field_name("source") is None:
+            return False
+        self._append_import(node)
+        return True
+
     def _append_python_module_call(self, node: Any) -> bool:
         """Project Python dynamic loads so unresolved calls fail closed."""
         if self.language != "python" or node.type != "call":
@@ -189,10 +236,23 @@ class _SymbolWalker:
         arguments = node.child_by_field_name("arguments")
         if function is None or arguments is None:
             return False
-        if _node_text(function, self.source) not in {
-            "__import__",
-            "importlib.import_module",
-        }:
+        if _node_text(function, self.source) not in self.python_dynamic_loaders:
+            return False
+        self._append_import(node)
+        return True
+
+    def _append_java_reflective_load(self, node: Any) -> bool:
+        """Project Class.forName calls so reflection cannot hide dependencies."""
+        if self.language != "java" or node.type != "method_invocation":
+            return False
+        name = node.child_by_field_name("name")
+        object_node = node.child_by_field_name("object")
+        arguments = node.child_by_field_name("arguments")
+        if name is None or object_node is None or arguments is None:
+            return False
+        if _node_text(name, self.source) != "forName":
+            return False
+        if _node_text(object_node, self.source) not in {"Class", "java.lang.Class"}:
             return False
         self._append_import(node)
         return True

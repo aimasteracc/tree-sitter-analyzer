@@ -123,9 +123,9 @@ _PLUGIN_EXTS: frozenset[str] = frozenset(
 # De-duplication set: only warn once per extension per process lifetime.
 _warned_extensions: set[str] = set()
 
-# Extractor version constant — kept in sync with ast_cache.py. Version 19
-# retains unresolved JS/TS module calls as fail-closed imports_json evidence.
-_AST_CACHE_EXTRACTOR_VERSION = 19
+# Extractor version constant — kept in sync with ast_cache.py. Version 20
+# projects JS/TS re-exports and aliased/reflection dynamic loads.
+_AST_CACHE_EXTRACTOR_VERSION = 20
 
 
 def _walk_source_files(project_root: str) -> Iterator[str]:
