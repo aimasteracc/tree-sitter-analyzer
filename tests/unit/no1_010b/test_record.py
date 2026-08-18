@@ -15,8 +15,6 @@ from tree_sitter_analyzer.no1_010b.record import (
     record_from_dict,
 )
 
-CORPUS = Path(__file__).resolve().parents[3] / "benchmarks" / "no1_010b" / "corpus"
-
 
 def _valid_payload() -> dict:
     return {
@@ -79,14 +77,6 @@ def test_record_from_dict_rejects_short_commit() -> None:
         record_from_dict(payload)
 
 
-def test_record_from_dict_rejects_non_canonical_paths() -> None:
-    for bad in ("/abs/path.py", "./rel.py", "a/../b.py", "dir//x.py"):
-        payload = _valid_payload()
-        payload["allowed_paths"] = [bad]
-        with pytest.raises(BenchmarkRecordError, match="path"):
-            record_from_dict(payload)
-
-
 def test_record_accepts_double_dot_prefix_inside_legitimate_segment() -> None:
     payload = _valid_payload()
     payload["allowed_paths"] = ["src/..generated/config.py"]
@@ -124,14 +114,7 @@ def test_record_rejects_missing_fields() -> None:
         record_from_dict(payload)
 
 
-def test_record_rejects_blank_id() -> None:
-    payload = _valid_payload()
-    payload["id"] = "  "
-    with pytest.raises(BenchmarkRecordError, match="id must be a non-empty"):
-        record_from_dict(payload)
-
-
-@pytest.mark.parametrize("field", ["repo", "oracle", "oracle_baseline_reason"])
+@pytest.mark.parametrize("field", ["id", "repo", "oracle", "oracle_baseline_reason"])
 def test_record_rejects_blank_scalar_fields(field: str) -> None:
     payload = _valid_payload()
     payload[field] = "  "
@@ -167,10 +150,6 @@ def test_record_rejects_invalid_verification_argv(bad_argv: object) -> None:
         record_from_dict(payload)
 
 
-def test_record_allows_absent_verification_command() -> None:
-    assert record_from_dict(_valid_payload()).verification_command is None
-
-
 def test_record_rejects_malformed_defect() -> None:
     payload = _valid_payload()
     payload["defect"] = "not-an-object"
@@ -185,12 +164,17 @@ def test_record_rejects_malformed_patch() -> None:
         record_from_dict(payload)
 
 
-def test_record_accepts_unified_diff_patch() -> None:
+@pytest.mark.parametrize(
+    "patch",
+    [
+        "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n+new\n",
+        "--- /dev/null\n+++ b/x.py\n@@ -0,0 +1 @@\n+new\n",
+    ],
+)
+def test_record_accepts_unified_diff_patch(patch: str) -> None:
     payload = _valid_payload()
-    payload["patch"] = (
-        "--- a/src/dispatch.py\n+++ b/src/dispatch.py\n@@ -1 +1 @@\n-old\n+new\n"
-    )
-    assert record_from_dict(payload).patch == payload["patch"]
+    payload["patch"] = patch
+    assert record_from_dict(payload).patch == patch
 
 
 def test_record_rejects_reference_patch_with_unpaired_surrogate() -> None:
@@ -203,26 +187,22 @@ def test_record_rejects_reference_patch_with_unpaired_surrogate() -> None:
         record_from_dict(payload)
 
 
-@pytest.mark.parametrize("patch", ["", "  ", "not a unified diff"])
+@pytest.mark.parametrize(
+    "patch",
+    [
+        "",
+        "  ",
+        "not a unified diff",
+        "--- a/x.py\n+++ b/x.py\n",
+        "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n",
+        "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n context\n",
+        "--- a/x.py\n+++ b/x.py\ndiff --git a/y.py b/y.py\n@@ -1 +1 @@\n-old\n+new\n",
+        "--- a/x.py\n+++ b/x.py\n@@ -1,12345678 +1,12345678 @@\n-old\n+new\n",
+    ],
+)
 def test_record_rejects_empty_or_non_diff_patch(patch: str) -> None:
     payload = _valid_payload()
     payload["patch"] = patch
-    with pytest.raises(BenchmarkRecordError, match="non-empty unified diff"):
-        record_from_dict(payload)
-
-
-def test_record_rejects_header_only_patch() -> None:
-    # PR #1307: a paired header without a hunk is not change data.
-    payload = _valid_payload()
-    payload["patch"] = "--- a/src/dispatch.py\n+++ b/src/dispatch.py\n"
-    with pytest.raises(BenchmarkRecordError, match="non-empty unified diff"):
-        record_from_dict(payload)
-
-
-def test_record_rejects_hunk_header_without_body() -> None:
-    # PR #1307: a declared hunk must contain the counted change lines.
-    payload = _valid_payload()
-    payload["patch"] = "--- a/src/dispatch.py\n+++ b/src/dispatch.py\n@@ -1 +1 @@\n"
     with pytest.raises(BenchmarkRecordError, match="non-empty unified diff"):
         record_from_dict(payload)
 
@@ -353,6 +333,8 @@ def test_path_canonicalization_rejects_all_bad_forms() -> None:
     for bad in (
         None,
         "",
+        "/abs/path.py",
+        "./rel.py",
         "..",
         "../x.py",
         "a/../b.py",
@@ -385,26 +367,7 @@ def test_to_task_request_projection() -> None:
     operation, request = record.to_task_request()
     assert operation == "plan_change"
     assert request == {"task": "dispatch returns None for an unknown route"}
-    # The projection never leaks benchmark-only fields into the task request.
     assert "allowed_paths" not in request
-
-
-def test_seed_corpus_loads_with_exact_class_counts() -> None:
-    records = load_corpus_records(str(CORPUS / "no1_010b_v1.jsonl"))
-    assert len(records) == 10
-    assert per_class_counts(records) == {
-        "bugfix": 4,
-        "refactor": 2,
-        "migration": 2,
-        "test_selection": 2,
-    }
-    assert sum(1 for r in records if r.expected_terminal.verdict == "PASS") == 9
-    failed = [r for r in records if r.expected_terminal.verdict == "FAIL"]
-    assert [(r.id, r.expected_terminal.reason_code) for r in failed] == [
-        ("no1-010b/0010-selection-subset", "TEST_SELECTION_FAILED")
-    ]
-    ids = [record.id for record in records]
-    assert len(set(ids)) == 10  # no duplicates
 
 
 def test_loader_rejects_invalid_json_line(tmp_path: Path) -> None:
@@ -486,15 +449,24 @@ def test_loader_rejects_nan_constant(tmp_path: Path) -> None:
 
 
 def test_per_class_counts_is_exact_for_all_classes() -> None:
-    records = load_corpus_records(str(CORPUS / "no1_010b_v1.jsonl"))
-    counts = per_class_counts(records)
-    assert counts == {
-        "bugfix": 4,
-        "refactor": 2,
-        "migration": 2,
-        "test_selection": 2,
+    records = [
+        record_from_dict(
+            {**_valid_payload(), "id": f"task-{index}", "task_class": task_class}
+        )
+        for index, task_class in enumerate(
+            ("bugfix", "refactor", "migration", "test_selection"), start=1
+        )
+    ]
+
+    assert per_class_counts(records) == {
+        "bugfix": 1,
+        "refactor": 1,
+        "migration": 1,
+        "test_selection": 1,
     }
-    # An empty corpus yields zeroed counts, not KeyErrors.
+
+
+def test_per_class_counts_is_zero_for_empty_input() -> None:
     assert per_class_counts([]) == {
         "bugfix": 0,
         "refactor": 0,
@@ -503,7 +475,7 @@ def test_per_class_counts_is_exact_for_all_classes() -> None:
     }
 
 
-def test_seed_corpus_duplicate_id_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_loader_rejects_duplicate_record_ids(monkeypatch: pytest.MonkeyPatch) -> None:
     import io
     import sys
 

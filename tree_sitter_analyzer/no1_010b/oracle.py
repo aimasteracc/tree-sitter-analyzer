@@ -35,7 +35,7 @@ import threading
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Literal
 
 ORACLE_TIMEOUT_S = 60.0
 ORACLE_OUTPUT_MAX_BYTES = 64 * 1024
@@ -56,9 +56,18 @@ class OracleStatus(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
+OracleUnknownReason = Literal[
+    "ORACLE_LOAD_ERROR",
+    "ORACLE_EXECUTION_ERROR",
+    "ORACLE_PROTOCOL_ERROR",
+    "ORACLE_TIMEOUT",
+]
+
+
 @dataclass(frozen=True)
 class OracleOutcome:
     status: OracleStatus
+    unknown_reason: OracleUnknownReason | None = None
     stdout_tail: str = ""
 
 
@@ -190,7 +199,9 @@ def _run_oracle_process_unisolated_for_tests(
     if not oracle.is_absolute():
         oracle = cwd_path / oracle
     if not oracle.is_file():
-        return OracleOutcome(OracleStatus.UNKNOWN, "oracle file not found")
+        return OracleOutcome(
+            OracleStatus.UNKNOWN, "ORACLE_LOAD_ERROR", "oracle file not found"
+        )
     command = [sys.executable, str(oracle)]
     env = _sanitized_env(env_extra)
     try:
@@ -219,7 +230,11 @@ def _run_oracle_process_unisolated_for_tests(
                 start_new_session=True,
             )
     except OSError as exc:
-        return OracleOutcome(OracleStatus.UNKNOWN, f"oracle could not execute: {exc}")
+        return OracleOutcome(
+            OracleStatus.UNKNOWN,
+            "ORACLE_EXECUTION_ERROR",
+            f"oracle could not execute: {exc}",
+        )
 
     stdout_b = bytearray()
     overflow = threading.Event()
@@ -240,33 +255,52 @@ def _run_oracle_process_unisolated_for_tests(
         _reap_process(proc)
         for thread in threads:
             thread.join(timeout=_REAP_TIMEOUT_S)
-        return OracleOutcome(OracleStatus.UNKNOWN, "oracle timed out")
+        return OracleOutcome(OracleStatus.UNKNOWN, "ORACLE_TIMEOUT", "oracle timed out")
 
     for thread in threads:
         thread.join(timeout=_REAP_TIMEOUT_S)
     if any(thread.is_alive() for thread in threads):
         _kill_process_tree(proc)
         _reap_process(proc)
-        return OracleOutcome(OracleStatus.UNKNOWN, "oracle output did not close")
+        return OracleOutcome(
+            OracleStatus.UNKNOWN,
+            "ORACLE_PROTOCOL_ERROR",
+            "oracle output did not close",
+        )
     if overflow.is_set():
         _reap_process(proc)
-        return OracleOutcome(OracleStatus.UNKNOWN, "oracle output exceeded limit")
+        return OracleOutcome(
+            OracleStatus.UNKNOWN,
+            "ORACLE_PROTOCOL_ERROR",
+            "oracle output exceeded limit",
+        )
     if drain_failed.is_set():
         _reap_process(proc)
-        return OracleOutcome(OracleStatus.UNKNOWN, "oracle output could not be read")
+        return OracleOutcome(
+            OracleStatus.UNKNOWN,
+            "ORACLE_PROTOCOL_ERROR",
+            "oracle output could not be read",
+        )
 
     # Undecodable bytes from the oracle or its children are an infrastructure
     # failure, never a verdict (C19).
     try:
         stdout = bytes(stdout_b).decode("utf-8")
     except UnicodeDecodeError:
-        return OracleOutcome(OracleStatus.UNKNOWN, "oracle output was not UTF-8")
+        return OracleOutcome(
+            OracleStatus.UNKNOWN,
+            "ORACLE_PROTOCOL_ERROR",
+            "oracle output was not UTF-8",
+        )
     tail = stdout[-2000:]
     if proc.returncode != 0:
         # Uncaught exception / interpreter error / non-zero exit: never a
         # behavioral FAIL (RFC-0026 C19).
-        return OracleOutcome(OracleStatus.UNKNOWN, tail)
-    return OracleOutcome(_parse_result_line(stdout, expected_reason), tail)
+        return OracleOutcome(OracleStatus.UNKNOWN, "ORACLE_EXECUTION_ERROR", tail)
+    status = _parse_result_line(stdout, expected_reason)
+    if status is OracleStatus.UNKNOWN:
+        return OracleOutcome(status, "ORACLE_PROTOCOL_ERROR", tail)
+    return OracleOutcome(status, stdout_tail=tail)
 
 
 def oracle_command_line(oracle_path: str) -> str:

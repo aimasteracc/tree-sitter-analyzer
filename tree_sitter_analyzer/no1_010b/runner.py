@@ -12,7 +12,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .record import UnknownReasonCode, path_allowed
+from .record import BenchmarkRecordError, UnknownReasonCode, path_allowed
 
 # Canonical patch limits, bound into the registered manifest (RFC-0026 C41).
 PATCH_MAX_BYTES = 1 * 1024 * 1024
@@ -241,7 +241,11 @@ def allowlist_violations(
     """
     violations = []
     for rel in touched:
-        if not path_allowed(rel, allowed_paths):
+        try:
+            allowed = path_allowed(rel, allowed_paths)
+        except BenchmarkRecordError:
+            allowed = False
+        if not allowed:
             violations.append(rel)
     return violations
 
@@ -253,6 +257,17 @@ class Verdict:
 
     def as_reason(self) -> str:
         return self.reason_code or "PASS"
+
+
+def preflight_agent_patch(patch_text: str) -> Verdict | None:
+    """Map bounded agent-patch input failures to closed UNKNOWN outcomes."""
+    try:
+        diff_paths(patch_text)
+    except PatchBoundError:
+        return Verdict("UNKNOWN", "PATCH_OVER_BOUND")
+    except (PatchFormatError, UnicodeEncodeError):
+        return Verdict("UNKNOWN", "AGENT_OUTPUT_ERROR")
+    return None
 
 
 def classify(

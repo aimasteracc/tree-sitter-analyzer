@@ -83,7 +83,8 @@ _MAX_CORPUS_BYTES = 8 * 1024 * 1024  # mirrors task_harness's input bound
 # Canonical kebab-case token for the oracle baseline reason (RFC-0026 C43):
 # the oracle's NO1_010B_ORACLE_REASON line must equal it exactly.
 _REASON_TOKEN_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-_PATCH_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@(?: .*)?$")
+_PATCH_HUNK_RE = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@(?: .*)?$")
+_PATCH_COUNT_MAX_DIGITS = 7
 
 _REQUIRED_FIELDS = frozenset(
     {
@@ -202,6 +203,52 @@ def path_allowed(rel_path: str, allowed_paths: tuple[str, ...]) -> bool:
                 return True
         elif value == entry:
             return True
+    return False
+
+
+def _patch_has_changed_hunk(lines: list[str]) -> bool:
+    """Return whether a paired file header owns a hunk with a real change."""
+    file_header_seen = False
+    remaining_old: int | None = None
+    remaining_new: int | None = None
+    for index, line in enumerate(lines):
+        if line.startswith("diff --git "):
+            file_header_seen = False
+            remaining_old = None
+            remaining_new = None
+            continue
+        if remaining_old == 0 and remaining_new == 0:
+            remaining_old = None
+            remaining_new = None
+        if remaining_old is not None and remaining_new is not None:
+            if line.startswith(" "):
+                remaining_old = max(0, remaining_old - 1)
+                remaining_new = max(0, remaining_new - 1)
+            elif line.startswith("-"):
+                return True
+            elif line.startswith("+"):
+                return True
+            continue
+        if (
+            line.startswith("--- ")
+            and index + 1 < len(lines)
+            and lines[index + 1].startswith("+++ ")
+        ):
+            file_header_seen = True
+            continue
+        if not file_header_seen:
+            continue
+        match = _PATCH_HUNK_RE.fullmatch(line)
+        if match is None:
+            continue
+        old_count, new_count = match.groups()
+        if any(
+            count is not None and len(count) > _PATCH_COUNT_MAX_DIGITS
+            for count in (old_count, new_count)
+        ):
+            continue
+        remaining_old = int(old_count) if old_count is not None else 1
+        remaining_new = int(new_count) if new_count is not None else 1
     return False
 
 
@@ -342,19 +389,7 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
         if not patch.strip():
             raise BenchmarkRecordError("patch must be a non-empty unified diff")
         lines = patch.split("\n")
-        has_file_header = any(
-            line.startswith("--- ")
-            and index + 1 < len(lines)
-            and lines[index + 1].startswith("+++ ")
-            for index, line in enumerate(lines)
-        )
-        has_hunk_body = any(
-            _PATCH_HUNK_RE.fullmatch(line)
-            and index + 1 < len(lines)
-            and lines[index + 1][:1] in {" ", "-", "+"}
-            for index, line in enumerate(lines)
-        )
-        if not has_file_header or not has_hunk_body:
+        if not _patch_has_changed_hunk(lines):
             raise BenchmarkRecordError("patch must be a non-empty unified diff")
 
     raw_selected = payload.get("selected_tests", [])

@@ -46,26 +46,30 @@ def _write_oracle(tmp_path: Path, name: str, body: str) -> Path:
 
 
 @pytest.mark.parametrize(
-    ("body", "expected"),
+    ("body", "expected", "unknown_reason"),
     [
-        (ORACLE_PASS, OracleStatus.PASS),
-        (ORACLE_FAIL, OracleStatus.FAIL),
+        (ORACLE_PASS, OracleStatus.PASS, None),
+        (ORACLE_FAIL, OracleStatus.FAIL, None),
         # C19: uncaught exceptions and syntax errors are UNKNOWN, never FAIL.
-        (ORACLE_CRASH, OracleStatus.UNKNOWN),
-        (ORACLE_SYNTAX, OracleStatus.UNKNOWN),
+        (ORACLE_CRASH, OracleStatus.UNKNOWN, "ORACLE_EXECUTION_ERROR"),
+        (ORACLE_SYNTAX, OracleStatus.UNKNOWN, "ORACLE_EXECUTION_ERROR"),
         # Missing/malformed declared result -> UNKNOWN.
-        (ORACLE_MALFORMED, OracleStatus.UNKNOWN),
-        (ORACLE_NOMARKER, OracleStatus.UNKNOWN),
+        (ORACLE_MALFORMED, OracleStatus.UNKNOWN, "ORACLE_PROTOCOL_ERROR"),
+        (ORACLE_NOMARKER, OracleStatus.UNKNOWN, "ORACLE_PROTOCOL_ERROR"),
     ],
 )
 def test_run_oracle_classifies_declared_results(
-    tmp_path: Path, body: str, expected: OracleStatus
+    tmp_path: Path,
+    body: str,
+    expected: OracleStatus,
+    unknown_reason: str | None,
 ) -> None:
     oracle = _write_oracle(tmp_path, "oracle.py", body)
     outcome = _run_oracle_process_unisolated_for_tests(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
     assert outcome.status == expected
+    assert outcome.unknown_reason == unknown_reason
 
 
 def test_run_oracle_timeout_is_unknown(tmp_path: Path) -> None:
@@ -77,6 +81,7 @@ def test_run_oracle_timeout_is_unknown(tmp_path: Path) -> None:
         timeout_s=1.0,
     )
     assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_TIMEOUT"
     assert "timed out" in outcome.stdout_tail
 
 
@@ -87,6 +92,7 @@ def test_run_oracle_missing_file_is_unknown(tmp_path: Path) -> None:
         expected_reason="dispatch-returns-none",
     )
     assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_LOAD_ERROR"
 
 
 def test_run_oracle_os_error_is_unknown(
@@ -103,6 +109,7 @@ def test_run_oracle_os_error_is_unknown(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
     assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_EXECUTION_ERROR"
     assert "could not execute" in outcome.stdout_tail
     monkeypatch.undo()
 
@@ -114,7 +121,7 @@ def test_oracle_command_line_quotes_path() -> None:
     assert oracle_command_line("my oracle.py") == "'my oracle.py'"
 
 
-def test_parse_result_line_uses_final_declared_line() -> None:
+def test_parse_result_line_reads_declared_fail() -> None:
     assert (
         _parse_result_line(
             "NO1_010B_ORACLE_REASON: dispatch-returns-none\n"
@@ -123,6 +130,9 @@ def test_parse_result_line_uses_final_declared_line() -> None:
         )
         is OracleStatus.FAIL
     )
+
+
+def test_parse_result_line_reads_declared_pass() -> None:
     assert (
         _parse_result_line(
             "NO1_010B_ORACLE_REASON: dispatch-returns-none\n"
@@ -131,8 +141,17 @@ def test_parse_result_line_uses_final_declared_line() -> None:
         )
         is OracleStatus.PASS
     )
+
+
+def test_parse_result_line_rejects_missing_marker() -> None:
     assert _parse_result_line("no marker here\n", "reason") is OracleStatus.UNKNOWN
+
+
+def test_parse_result_line_rejects_empty_output() -> None:
     assert _parse_result_line("", "reason") is OracleStatus.UNKNOWN
+
+
+def test_parse_result_line_allows_trailing_blank_lines() -> None:
     # Blank lines after the marker do not change that it is the final output.
     assert (
         _parse_result_line(
@@ -193,6 +212,7 @@ def test_run_oracle_undecodable_output_is_unknown(tmp_path: Path) -> None:
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
     assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_PROTOCOL_ERROR"
 
 
 def test_run_oracle_resolves_relative_path_against_cwd(tmp_path: Path) -> None:
@@ -226,6 +246,7 @@ def test_run_oracle_rejects_invalid_reason_protocol(tmp_path: Path, body: str) -
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
     assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_PROTOCOL_ERROR"
 
 
 def test_run_oracle_rejects_stderr_after_result_marker(tmp_path: Path) -> None:
@@ -242,6 +263,7 @@ def test_run_oracle_rejects_stderr_after_result_marker(tmp_path: Path) -> None:
     )
 
     assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_PROTOCOL_ERROR"
 
 
 def test_run_oracle_bounds_output_while_running(
@@ -261,6 +283,7 @@ def test_run_oracle_bounds_output_while_running(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
     assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_PROTOCOL_ERROR"
     assert outcome.stdout_tail == "oracle output exceeded limit"
 
 
@@ -371,6 +394,7 @@ def test_run_oracle_rejects_missing_output_pipe(
     )
 
     assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_PROTOCOL_ERROR"
     assert outcome.stdout_tail == "oracle output could not be read"
 
 
@@ -407,6 +431,7 @@ def test_run_oracle_rejects_unclosed_output_thread(
     )
 
     assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_PROTOCOL_ERROR"
     assert outcome.stdout_tail == "oracle output did not close"
 
 

@@ -8,10 +8,12 @@ from tree_sitter_analyzer.no1_010b.runner import (
     DiffPath,
     PatchBoundError,
     PatchFormatError,
+    Verdict,
     allowlist_violations,
     bound_patch,
     classify,
     diff_paths,
+    preflight_agent_patch,
 )
 
 PATCH_OK = (
@@ -41,8 +43,11 @@ def test_diff_paths_parse_canonical_headers() -> None:
         "src/dispatch.py",
         "tests/test_dispatch.py",
     ]
-    assert diff_paths("no headers here\n") == []
-    assert diff_paths("no headers here") == []
+
+
+@pytest.mark.parametrize("patch", ["no headers here\n", "no headers here"])
+def test_diff_paths_without_headers_is_empty(patch: str) -> None:
+    assert diff_paths(patch) == []
 
 
 def test_diff_paths_retains_source_path_for_deletion() -> None:
@@ -320,6 +325,24 @@ def test_allowlist_violations_rejects_candidate_tree_tool_artifacts() -> None:
         ".coverage.host.123.456",
     ]
     assert allowlist_violations(touched, ("src/app.py",)) == touched
+
+
+def test_allowlist_violations_retains_noncanonical_touched_path() -> None:
+    assert allowlist_violations(["bad\\name"], ("src/",)) == ["bad\\name"]
+
+
+def test_preflight_agent_patch_maps_unencodable_output() -> None:
+    assert preflight_agent_patch("\ud800") == Verdict("UNKNOWN", "AGENT_OUTPUT_ERROR")
+
+
+def test_preflight_agent_patch_maps_over_bound_output() -> None:
+    assert preflight_agent_patch("x" * (1024 * 1024 + 1)) == Verdict(
+        "UNKNOWN", "PATCH_OVER_BOUND"
+    )
+
+
+def test_preflight_agent_patch_allows_bounded_canonical_output() -> None:
+    assert preflight_agent_patch(PATCH_OK) is None
 
 
 @pytest.mark.parametrize(
