@@ -833,7 +833,9 @@ def _looks_like_test_name(name: str, language: str) -> bool:
     if language == "rust":
         return name.endswith(("_test.rs", "_tests.rs"))
     if language == "java":
-        return name.endswith(("Test.java", "Tests.java"))
+        return name.endswith(("Test.java", "Tests.java")) or (
+            name.startswith("Test") and name.endswith(".java")
+        )
     if language == "javascript":
         return name.endswith((".test.js", ".spec.js", ".test.jsx", ".spec.jsx"))
     if language == "typescript":
@@ -858,6 +860,13 @@ def _import_module_name(import_text: str) -> str | None:
 
     import re as _re
 
+    static_java = _re.match(
+        r"^\s*import\s+static\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)\s*;?\s*$",
+        import_text,
+    )
+    if static_java:
+        owner, _, _member = static_java.group(1).rpartition(".")
+        return owner or None
     m = _re.match(r"^\s*from\s+([.\w]+)\s+import\b", import_text)
     if m:
         return m.group(1)
@@ -1004,7 +1013,7 @@ def _certified_symbol_reference_tests(
                         continue
                     results.append(rel)
                     break
-                if importer_language == "python" and resolved_module is None:
+                if importer_language in {"python", "java"} and resolved_module is None:
                     continue
                 if (
                     resolved_module
@@ -1278,14 +1287,16 @@ def _resolve_import_spec_from_inventory(
             return candidate
     infer_source_root = language in {"python", "java"} and not spec.startswith(".")
     if infer_source_root:
-        for candidate in candidates:
-            matches = sorted(
-                indexed for indexed in inventory if indexed.endswith(f"/{candidate}")
-            )
-            if len(matches) == 1:
-                return matches[0]
-            if len(matches) > 1:
-                return None
+        matches = {
+            indexed
+            for candidate in candidates
+            for indexed in inventory
+            if indexed.endswith(f"/{candidate}")
+        }
+        if len(matches) == 1:
+            return next(iter(matches))
+        if len(matches) > 1:
+            return None
     return None
 
 
@@ -1339,7 +1350,12 @@ def _import_targets_from_text(
         direct_match = re.match(r"^\s*import\s+(.+)$", import_text, re.S)
         if direct_match and not direct_match.group(1).lstrip().startswith(("'", '"')):
             for item in direct_match.group(1).split(","):
-                spec = item.strip().split(maxsplit=1)[0].rstrip(";")
+                raw_spec = item.strip().rstrip(";")
+                if raw_spec.startswith("static "):
+                    static_target = raw_spec.removeprefix("static ").strip()
+                    spec, _, _member = static_target.rpartition(".")
+                else:
+                    spec = raw_spec.split(maxsplit=1)[0]
                 if re.fullmatch(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*", spec):
                     specs.add(spec)
 

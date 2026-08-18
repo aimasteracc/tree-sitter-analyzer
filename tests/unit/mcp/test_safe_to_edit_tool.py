@@ -1708,6 +1708,12 @@ def test_snapshot_dependency_view_reads_dynamic_import_projection() -> None:
             {"src/pkg/app.py", "vendor/pkg/app.py"},
             None,
         ),
+        (
+            "pkg.app",
+            "consumer.py",
+            {"src/pkg/app.py", "vendor/pkg/app/__init__.py"},
+            None,
+        ),
     ],
 )
 def test_snapshot_import_resolution_uses_importer_language(
@@ -1997,6 +2003,36 @@ def test_snapshot_java_import_resolves_maven_source_root() -> None:
             (
                 "src/main/java/com/acme/Main.java",
                 json.dumps([{"text": "import com.acme.Util;"}]),
+            ),
+            ("src/main/java/com/acme/Util.java", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/main/java/com/acme/Main.java")
+
+    assert view.dependencies_of("src/main/java/com/acme/Main.java") == [
+        "src/main/java/com/acme/Util.java"
+    ]
+
+
+def test_snapshot_java_static_import_resolves_owner_class() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "src/main/java/com/acme/Main.java",
+                json.dumps([{"text": "import static com.acme.Util.helper;"}]),
             ),
             ("src/main/java/com/acme/Util.java", "[]"),
         ],

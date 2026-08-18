@@ -994,11 +994,66 @@ def test_certified_symbol_reference_tests_reject_unresolved_python_imports(
     assert _certified_refs(conn, {"pkg/impl.py", "tests/test_impl.py"}) == []
 
 
+def test_certified_symbol_reference_tests_reject_unresolved_java_imports() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("src/main/java/com/acme/Util.java", _symbol_payload("Util"), "[]"),
+            (
+                "src/test/java/com/acme/UtilTest.java",
+                "{}",
+                _import_payload("import third.party.Util;"),
+            ),
+        ]
+    )
+    inventory = {
+        "src/main/java/com/acme/Util.java",
+        "src/test/java/com/acme/UtilTest.java",
+    }
+
+    assert (
+        _certified_refs(
+            conn,
+            inventory,
+            target="src/main/java/com/acme/Util.java",
+            language="java",
+        )
+        == []
+    )
+
+
+def test_certified_symbol_reference_tests_resolve_java_static_owner() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("src/main/java/com/acme/Util.java", _symbol_payload("helper"), "[]"),
+            (
+                "src/test/java/com/acme/UtilTest.java",
+                "{}",
+                _import_payload("import static com.acme.Util.helper;"),
+            ),
+        ]
+    )
+    inventory = {
+        "src/main/java/com/acme/Util.java",
+        "src/test/java/com/acme/UtilTest.java",
+    }
+
+    assert _certified_refs(
+        conn,
+        inventory,
+        target="src/main/java/com/acme/Util.java",
+        language="java",
+    ) == ["src/test/java/com/acme/UtilTest.java"]
+
+
 @pytest.mark.parametrize(
     ("target", "dependent"),
     [
         ("src/lib.js", "tests/lib.test.ts"),
         ("src/util.h", "tests/test_util.cpp"),
+        (
+            "src/main/java/com/acme/Util.java",
+            "src/test/java/com/acme/TestUtil.java",
+        ),
     ],
 )
 def test_certified_exercising_tests_use_dependent_language(
