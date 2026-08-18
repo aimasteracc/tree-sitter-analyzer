@@ -33,7 +33,7 @@ SKIPPED_SCAN_DIRS = {
 
 
 def test_reusable_test_workflow_has_job_timeout() -> None:
-    """The CI matrix must fail fast instead of hanging forever on runner stalls."""
+    """The CI matrix must be bounded while leaving time for post-test cleanup."""
     workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
     text = workflow.read_text(encoding="utf-8")
 
@@ -45,7 +45,7 @@ def test_reusable_test_workflow_has_job_timeout() -> None:
 
         assert test_matrix is not None, job_name
         assert re.search(
-            r"(?m)^    timeout-minutes:\s*15\s*$",
+            r"(?m)^    timeout-minutes:\s*20\s*$",
             test_matrix.group("body"),
         ), job_name
 

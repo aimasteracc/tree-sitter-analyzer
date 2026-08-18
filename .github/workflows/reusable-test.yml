@@ -44,7 +44,7 @@ jobs:
   test-matrix-pr:
     name: Test Suite (PR fast)
     if: inputs.matrix-profile == 'pr'
-    timeout-minutes: 15
+    timeout-minutes: 20
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -176,7 +176,7 @@ jobs:
   test-matrix-full:
     name: Test Suite (full)
     if: inputs.matrix-profile == 'full'
-    timeout-minutes: 15
+    timeout-minutes: 20
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
