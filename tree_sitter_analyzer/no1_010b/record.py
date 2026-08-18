@@ -374,7 +374,10 @@ def load_corpus_records(path: str) -> list[BenchmarkRecord]:
         if binary_stdin is not None:
             raw_bytes = binary_stdin.read(_MAX_CORPUS_BYTES + 1)
         else:
-            raw_bytes = sys.stdin.read(_MAX_CORPUS_BYTES + 1).encode("utf-8")
+            try:
+                raw_bytes = sys.stdin.read(_MAX_CORPUS_BYTES + 1).encode("utf-8")
+            except UnicodeEncodeError as exc:
+                raise BenchmarkRecordError("corpus must be valid UTF-8") from exc
     else:
         from pathlib import Path
 

@@ -41,6 +41,8 @@ ORACLE_TIMEOUT_S = 60.0
 ORACLE_OUTPUT_MAX_BYTES = 64 * 1024
 _RESULT_MARKER = "NO1_010B_ORACLE_RESULT:"
 _REASON_MARKER = "NO1_010B_ORACLE_REASON:"
+_RESULT_PREFIX = f"{_RESULT_MARKER} "
+_REASON_PREFIX = f"{_REASON_MARKER} "
 _MINIMAL_PATH = "/usr/bin:/bin"
 _IS_WINDOWS = os.name == "nt"
 _TASKKILL = subprocess.run
@@ -82,17 +84,15 @@ def _parse_result_line(stdout: str, expected_reason: str) -> OracleStatus:
     non_empty = [line for line in stdout.splitlines() if line.strip()]
     if not non_empty:
         return OracleStatus.UNKNOWN
-    result_lines = [
-        line.strip() for line in non_empty if line.strip().startswith(_RESULT_MARKER)
-    ]
-    if len(result_lines) != 1 or non_empty[-1].strip() != result_lines[0]:
+    result_lines = [line for line in non_empty if line.startswith(_RESULT_PREFIX)]
+    if len(result_lines) != 1 or non_empty[-1] != result_lines[0]:
         return OracleStatus.UNKNOWN
     final = result_lines[0]
-    value = final[len(_RESULT_MARKER) :].strip()
+    value = final[len(_RESULT_PREFIX) :]
     reason_lines = [
-        line.strip()[len(_REASON_MARKER) :].strip()
+        line[len(_REASON_PREFIX) :]
         for line in non_empty
-        if line.strip().startswith(_REASON_MARKER)
+        if line.startswith(_REASON_PREFIX)
     ]
     if len(reason_lines) != 1 or reason_lines[0] != expected_reason:
         return OracleStatus.UNKNOWN

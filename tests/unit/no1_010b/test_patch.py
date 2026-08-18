@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 from tree_sitter_analyzer.no1_010b.patch import (
+    PATCH_MAX_BYTES,
+    PatchBoundError,
     PatchFormatError,
     diff_paths,
     validate_patch,
@@ -13,6 +15,16 @@ from tree_sitter_analyzer.no1_010b.patch import (
 PATCH = "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n+new\n"
 MODE_ONLY_PATCH = (
     "diff --git a/scripts/run.sh b/scripts/run.sh\nold mode 100644\nnew mode 100755\n"
+)
+BINARY_PATCH = (
+    "diff --git a/assets/payload.bin b/assets/payload.bin\n"
+    "index eaf36c1daccfdf325514461cd1a2ffbc139b5464.."
+    "f75c32acfbf126176c30bf9bda9a5f2bb8f78d06 100644\n"
+    "GIT binary patch\n"
+    "literal 4\n"
+    "LcmZQzWMTmT01p5N\n\n"
+    "literal 4\n"
+    "LcmZQzWMT#Y01f~L\n\n"
 )
 
 
@@ -77,6 +89,38 @@ def test_validate_patch_accepts_mode_only_change() -> None:
     assert [path.rel_path for path in validate_patch(MODE_ONLY_PATCH)] == [
         "scripts/run.sh"
     ]
+
+
+def test_validate_patch_accepts_canonical_git_binary_patch() -> None:
+    # PR #1307 review: git diff --binary output is a changed patch.
+    assert [path.rel_path for path in validate_patch(BINARY_PATCH)] == [
+        "assets/payload.bin"
+    ]
+
+
+@pytest.mark.parametrize("size", [str(PATCH_MAX_BYTES + 1), "0" * 8])
+def test_validate_patch_bounds_declared_binary_output(size: str) -> None:
+    patch = BINARY_PATCH.replace("literal 4", f"literal {size}", 1)
+    with pytest.raises(PatchBoundError, match="exceeds"):
+        validate_patch(patch)
+
+
+@pytest.mark.parametrize(
+    "body",
+    ["", "garbage\n", "literal 4\n\n", "literal 4\n?invalid\n\n"],
+    ids=["missing-payload", "invalid-size", "missing-data", "invalid-base85"],
+)
+def test_validate_patch_rejects_malformed_binary_payload(body: str) -> None:
+    prefix = BINARY_PATCH.split("GIT binary patch\n", 1)[0]
+    patch = f"{prefix}GIT binary patch\n{body}"
+    with pytest.raises(PatchFormatError, match="binary patch"):
+        validate_patch(patch)
+
+
+def test_validate_patch_rejects_binary_payload_without_git_header() -> None:
+    patch = BINARY_PATCH.split("GIT binary patch\n", 1)[1]
+    with pytest.raises(PatchFormatError, match="no Git header"):
+        validate_patch(f"GIT binary patch\n{patch}")
 
 
 @pytest.mark.parametrize("operation", ["rename", "copy"])

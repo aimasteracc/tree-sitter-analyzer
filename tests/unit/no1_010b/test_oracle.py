@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from subprocess import CompletedProcess, TimeoutExpired
 from unittest.mock import Mock
@@ -193,9 +194,15 @@ def test_parse_result_line_allows_trailing_blank_lines() -> None:
     )
 
 
-@pytest.mark.parametrize("token", ["pass", "Pass", "fail", "Fail"])
+@pytest.mark.parametrize("token", ["pass", "Pass", "fail", "Fail", "PASS "])
 def test_parse_result_line_rejects_noncanonical_token_case(token: str) -> None:
     stdout = f"NO1_010B_ORACLE_REASON: reason\nNO1_010B_ORACLE_RESULT: {token}\n"
+    assert _parse_result_line(stdout, "reason") is OracleStatus.UNKNOWN
+
+
+def test_parse_result_line_rejects_reason_trailing_space() -> None:
+    # PR #1307 review: the declared reason is an exact protocol token.
+    stdout = "NO1_010B_ORACLE_REASON: reason \nNO1_010B_ORACLE_RESULT: PASS\n"
     assert _parse_result_line(stdout, "reason") is OracleStatus.UNKNOWN
 
 
@@ -411,8 +418,6 @@ def test_drain_bounded_marks_pipe_read_failure(
 def test_run_oracle_rejects_missing_output_pipe(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import io
-
     import tree_sitter_analyzer.no1_010b.oracle as oracle_module
 
     proc = Mock(pid=321, stdout=None, stderr=io.BytesIO())
@@ -435,8 +440,6 @@ def test_run_oracle_rejects_missing_output_pipe(
 def test_run_oracle_rejects_unclosed_output_thread(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import io
-
     import tree_sitter_analyzer.no1_010b.oracle as oracle_module
 
     class HungThread:
@@ -472,8 +475,6 @@ def test_run_oracle_rejects_unclosed_output_thread(
 def test_run_oracle_uses_windows_process_group(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import io
-
     import tree_sitter_analyzer.no1_010b.oracle as oracle_module
 
     output = (

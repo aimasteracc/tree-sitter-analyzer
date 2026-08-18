@@ -18,6 +18,11 @@ _MODE_HEADER_RE = re.compile(
 )
 _INDEX_HEADER_RE = re.compile(r"^index [0-9a-f]+\.\.[0-9a-f]+(?: [0-7]{6})?$")
 _SIMILARITY_HEADER_RE = re.compile(r"^(?:dis)?similarity index (?:100|[0-9]{1,2})%$")
+_BINARY_SIZE_RE = re.compile(r"^(?:literal|delta) ([0-9]+)$")
+_BINARY_DATA_ALPHABET = frozenset(
+    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+    "!#$%&()*+-;<=>?@^_`{|}~"
+)
 _EXTENDED_PATH_PREFIXES = ("rename from ", "rename to ", "copy from ", "copy to ")
 
 
@@ -324,10 +329,73 @@ def _git_metadata_block_state(
     return True, bool(rename or copy or mode_changed)
 
 
-def _metadata_state(lines: list[str]) -> tuple[bool, bool]:
-    """Validate metadata forms and relationships; return ``(valid, changed)``."""
+def _binary_data_line_is_canonical(line: str) -> bool:
+    if not line or not line[0].isalpha() or not line[0].isascii():
+        return False
+    decoded_count = (
+        ord(line[0]) - ord("A") + 1
+        if line[0].isupper()
+        else ord(line[0]) - ord("a") + 27
+    )
+    encoded_count = ((decoded_count + 3) // 4) * 5
+    return len(line) == encoded_count + 1 and all(
+        character in _BINARY_DATA_ALPHABET for character in line[1:]
+    )
+
+
+def _binary_patch_state(lines: list[str]) -> tuple[set[int], bool]:
+    """Validate and locate bounded canonical ``git diff --binary`` payloads."""
+
+    indexes: set[int] = set()
+    git_header_seen = False
+    cursor = 0
+    while cursor < len(lines):
+        line = lines[cursor]
+        if line.startswith("diff --git "):
+            git_header_seen = True
+            cursor += 1
+            continue
+        if line != "GIT binary patch":
+            cursor += 1
+            continue
+        if not git_header_seen:
+            raise PatchFormatError("binary patch has no Git header")
+        indexes.add(cursor)
+        cursor += 1
+        section_count = 0
+        while cursor < len(lines) and not lines[cursor].startswith("diff --git "):
+            size_match = _BINARY_SIZE_RE.fullmatch(lines[cursor])
+            if size_match is None:
+                raise PatchFormatError("non-canonical binary patch size")
+            raw_size = size_match.group(1)
+            if len(raw_size) > _HUNK_COUNT_MAX_DIGITS:
+                raise PatchBoundError("binary patch size exceeds numeric bound")
+            if int(raw_size) > PATCH_MAX_BYTES:
+                raise PatchBoundError("binary patch output exceeds max bytes")
+            indexes.add(cursor)
+            section_count += 1
+            cursor += 1
+            data_count = 0
+            while cursor < len(lines) and lines[cursor]:
+                if not _binary_data_line_is_canonical(lines[cursor]):
+                    raise PatchFormatError("non-canonical binary patch payload")
+                indexes.add(cursor)
+                data_count += 1
+                cursor += 1
+            if data_count == 0 or cursor >= len(lines):
+                raise PatchFormatError("incomplete binary patch payload")
+            indexes.add(cursor)
+            cursor += 1
+        if section_count == 0:
+            raise PatchFormatError("binary patch has no payload")
+    return indexes, bool(indexes)
+
+
+def _metadata_state(lines: list[str]) -> tuple[bool, bool, bool]:
+    """Validate metadata and return valid, metadata-change, binary-change."""
 
     hunk_body = _hunk_body_indexes(lines)
+    binary_body, binary_changed = _binary_patch_state(lines)
     paired_indexes = {
         item
         for index in range(len(lines) - 1)
@@ -347,11 +415,16 @@ def _metadata_state(lines: list[str]) -> tuple[bool, bool]:
         return valid
 
     for index, line in enumerate(lines):
-        if index in hunk_body or index in paired_indexes or not line:
+        if (
+            index in hunk_body
+            or index in binary_body
+            or index in paired_indexes
+            or not line
+        ):
             continue
         if line.startswith("diff --git "):
             if not finish_block():
-                return False, False
+                return False, False, False
             current_paths = _git_header_paths(line)
             current_fields = {}
             continue
@@ -363,16 +436,16 @@ def _metadata_state(lines: list[str]) -> tuple[bool, bool]:
         )
         if extended_prefix is not None:
             if current_paths is None:
-                return False, False
+                return False, False, False
             key = extended_prefix.rstrip()
             parsed = DiffPath.from_extended_header(line, extended_prefix)
             if parsed is None or key in current_fields:
-                return False, False
+                return False, False, False
             current_fields[key] = parsed.rel_path
             continue
         if _MODE_HEADER_RE.fullmatch(line):
             if current_paths is None:
-                return False, False
+                return False, False, False
             key = next(
                 prefix
                 for prefix in (
@@ -384,15 +457,19 @@ def _metadata_state(lines: list[str]) -> tuple[bool, bool]:
                 if line.startswith(f"{prefix} ")
             )
             if key in current_fields:
-                return False, False
+                return False, False, False
             current_fields[key] = line[len(key) + 1 :]
             continue
         if _INDEX_HEADER_RE.fullmatch(line) or _SIMILARITY_HEADER_RE.fullmatch(line):
             if current_paths is None:
-                return False, False
+                return False, False, False
             continue
-        return False, False
-    return (True, metadata_changed) if finish_block() else (False, False)
+        return False, False, False
+    return (
+        (True, metadata_changed, binary_changed)
+        if finish_block()
+        else (False, False, False)
+    )
 
 
 def validate_patch(patch_text: str) -> list[DiffPath]:
@@ -400,7 +477,11 @@ def validate_patch(patch_text: str) -> list[DiffPath]:
     paths = diff_paths(patch_text)
     lines = physical_lines(patch_text)
     text_changed = _patch_has_changed_hunk(lines)
-    metadata_valid, metadata_changed = _metadata_state(lines)
-    if not paths or not metadata_valid or not (text_changed or metadata_changed):
+    metadata_valid, metadata_changed, binary_changed = _metadata_state(lines)
+    if (
+        not paths
+        or not metadata_valid
+        or not (text_changed or metadata_changed or binary_changed)
+    ):
         raise PatchFormatError("patch must be a changed canonical unified diff")
     return paths

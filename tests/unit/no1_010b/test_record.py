@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import io
 import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -402,19 +405,12 @@ def test_loader_rejects_excessive_json_nesting(tmp_path: Path) -> None:
 
 
 def test_loader_rejects_oversized_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
-    import io
-    import sys
-
     monkeypatch.setattr(sys, "stdin", io.StringIO("x" * (8 * 1024 * 1024 + 1)))
     with pytest.raises(BenchmarkRecordError, match="8 MiB"):
         load_corpus_records("-")
 
 
 def test_loader_reads_binary_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
-    import io
-    import sys
-    from types import SimpleNamespace
-
     raw = (json.dumps(_valid_payload()) + "\n").encode()
     monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(raw)))
 
@@ -440,6 +436,13 @@ def test_loader_rejects_non_utf8_bytes(tmp_path: Path) -> None:
     corpus.write_bytes(b"\xff\n")
     with pytest.raises(BenchmarkRecordError, match="valid UTF-8"):
         load_corpus_records(str(corpus))
+
+
+def test_loader_rejects_unencodable_text_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    # PR #1307 review: text-only stdin maps surrogate failures to record errors.
+    monkeypatch.setattr(sys, "stdin", io.StringIO("\ud800"))
+    with pytest.raises(BenchmarkRecordError, match="valid UTF-8"):
+        load_corpus_records("-")
 
 
 def test_loader_preserves_unicode_line_separator_inside_json(tmp_path: Path) -> None:
@@ -488,9 +491,6 @@ def test_per_class_counts_is_zero_for_empty_input() -> None:
 
 
 def test_loader_rejects_duplicate_record_ids(monkeypatch: pytest.MonkeyPatch) -> None:
-    import io
-    import sys
-
     line = json.dumps(_valid_payload())
     monkeypatch.setattr(sys, "stdin", io.StringIO(line + "\n" + line + "\n"))
     with pytest.raises(BenchmarkRecordError, match="duplicate id"):
