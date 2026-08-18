@@ -772,7 +772,11 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
     conn = _symbol_reference_conn(
         [
             ("pkg/impl.py", _symbol_payload("public_fn"), "[]"),
-            ("pkg/__init__.py", "{}", "[]"),
+            (
+                "pkg/__init__.py",
+                "{}",
+                _import_payload("from .impl import public_fn"),
+            ),
             (
                 "tests/test_behavior.py",
                 "{}",
@@ -889,7 +893,7 @@ def test_certified_symbol_reference_tests_bind_python_imports_to_modules() -> No
         [
             ("pkg/impl.py", _symbol_payload("run"), "[]"),
             ("other.py", _symbol_payload("run"), "[]"),
-            ("pkg/__init__.py", "{}", "[]"),
+            ("pkg/__init__.py", "{}", _import_payload("from .impl import run")),
             ("tests/test_other.py", "{}", _import_payload("from other import run")),
             ("tests/test_pkg.py", "{}", _import_payload("from pkg import run")),
         ]

@@ -2461,6 +2461,145 @@ def test_certified_exercising_tests_loads_inventory_for_test_target() -> None:
     ]
 
 
+def test_certified_import_facts_default_to_empty_inventory() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_import_facts_available,
+    )
+
+    assert _certified_import_facts_available("app.py") is True
+
+
+@pytest.mark.parametrize(
+    ("file_path", "imports_json", "create_table", "expected"),
+    [
+        ("app.py", "[]", False, None),
+        (b"app.py", "[]", True, {}),
+        ("app.py", "not-json", True, None),
+        ("app.py", "{}", True, None),
+        ("app.py", "[42]", True, None),
+    ],
+    ids=["missing-table", "invalid-path", "invalid-json", "scalar", "invalid-item"],
+)
+def test_snapshot_import_texts_fail_closed_on_invalid_projection(
+    file_path: str | bytes,
+    imports_json: str,
+    create_table: bool,
+    expected: dict[str, list[str]] | None,
+) -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _snapshot_import_texts,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    if create_table:
+        conn.execute("CREATE TABLE ast_index (file_path, imports_json TEXT)")
+        conn.execute("INSERT INTO ast_index VALUES (?, ?)", (file_path, imports_json))
+
+    assert _snapshot_import_texts(conn, frozenset({"app.py"})) == expected
+
+
+def test_certified_symbol_tests_bind_package_reexport_to_defining_module() -> None:
+    # PR #1308 review: package imports must not attach to every same-name sibling.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_symbol_reference_tests,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    symbol = json.dumps({"symbols": [{"name": "run"}]})
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, ?)",
+        [
+            (
+                "pkg/__init__.py",
+                json.dumps(
+                    [
+                        {"text": "import os"},
+                        {"text": "from .missing import run"},
+                        {"text": "from .b import missing as run"},
+                        {"text": "from .b import *"},
+                        {"text": "from .b import run"},
+                    ]
+                ),
+                "{}",
+            ),
+            ("pkg/a.py", "[]", symbol),
+            ("pkg/b.py", "[]", symbol),
+            (
+                "tests/test_pkg.py",
+                json.dumps([{"text": "from pkg import run"}]),
+                "{}",
+            ),
+        ],
+    )
+    inventory = frozenset(
+        {"pkg/__init__.py", "pkg/a.py", "pkg/b.py", "tests/test_pkg.py"}
+    )
+
+    assert (
+        _certified_symbol_reference_tests(conn, inventory, "pkg/a.py", "python") == []
+    )
+    assert _certified_symbol_reference_tests(conn, inventory, "pkg/b.py", "python") == [
+        "tests/test_pkg.py"
+    ]
+
+    conn.execute(
+        "UPDATE ast_index SET symbols_json = ? WHERE file_path = 'pkg/__init__.py'",
+        (symbol,),
+    )
+    assert (
+        _certified_symbol_reference_tests(conn, inventory, "pkg/b.py", "python") == []
+    )
+
+
+def test_certified_exercising_tests_traverse_dependent_chain() -> None:
+    # PR #1308 review: test -> api -> util must still certify the test for util.
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_exercising_tests,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, '[]', '{}')",
+        [("util.py",), ("api.py",), ("tests/test_api.py",)],
+    )
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO edges VALUES (?, 'calls', ?, ?, ?)",
+        [
+            (1, "api.py", "normalize", "util.py"),
+            (2, "tests/test_api.py", "handle", "api.py"),
+        ],
+    )
+
+    assert _certified_exercising_tests(
+        conn, "util.py", ["api.py", "missing.py", "api.py"]
+    ) == ["tests/test_api.py"]
+
+
 def test_snapshot_import_targets_keep_python_wildcard_on_package() -> None:
     from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
         _import_targets_from_text,

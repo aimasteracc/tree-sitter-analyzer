@@ -951,6 +951,49 @@ def _file_defines_any(conn: Any, file_path: str, symbols: list[str]) -> bool:
     return bool(defined.intersection(symbols))
 
 
+def _python_package_symbol_providers(
+    conn: Any,
+    package_file: str,
+    symbols: list[str],
+    inventory: frozenset[str],
+) -> dict[str, set[str]]:
+    """Bind package-level names to snapshot-proven defining modules.
+
+    A test importing ``from pkg import run`` resolves first to
+    ``pkg/__init__.py``.  When the initializer re-exports ``run``, its
+    recorded import projection is the only certified evidence that can bind
+    the name to ``pkg/a.py`` rather than another sibling defining the same
+    public symbol.  Multiple possible providers stay ambiguous and therefore
+    cannot certify a match.
+    """
+
+    import ast
+
+    providers: dict[str, set[str]] = {symbol: set() for symbol in symbols}
+    for symbol in symbols:
+        if _file_defines_any(conn, package_file, [symbol]):
+            providers[symbol].add(package_file)
+    import_texts = (_snapshot_import_texts(conn, inventory) or {}).get(package_file, [])
+    for import_text in import_texts:
+        module = ast.parse(import_text)
+        for statement in module.body:
+            if not isinstance(statement, ast.ImportFrom):
+                continue
+            spec = "." * statement.level + (statement.module or "")
+            source = _resolve_import_spec_from_inventory(spec, package_file, inventory)
+            if source is None:
+                continue
+            for alias in statement.names:
+                exposed = alias.asname or alias.name
+                candidates = symbols if alias.name == "*" else [exposed]
+                for symbol in candidates:
+                    if symbol in providers and _file_defines_any(
+                        conn, source, [alias.name if alias.name != "*" else symbol]
+                    ):
+                        providers[symbol].add(source)
+    return providers
+
+
 def _certified_symbol_reference_tests(
     conn: Any, inventory: frozenset[str], rel_path: str, language: str
 ) -> list[str]:
@@ -1034,11 +1077,9 @@ def _certified_symbol_reference_tests(
             ]
             if not matched:
                 continue
-            # Codex P2 (#1299 round-12, C56): bind the import to the target
-            # module — a test doing 'from other import run' must not count
-            # for pkg/impl.py just because both define 'run'. Resolve the
-            # imported module; if it resolves to a DIFFERENT file that
-            # itself defines the symbol, the import belongs to that module.
+            # Bind the import to the target module — a test doing
+            # ``from pkg import run`` must follow pkg/__init__.py's certified
+            # re-export projection, not count every sibling defining ``run``.
             import_module = _import_module_name(text)
             if import_module:
                 # Codex P2 (#1299 round-13, C58): relative imports resolve
@@ -1053,8 +1094,20 @@ def _certified_symbol_reference_tests(
                     break
                 if importer_language in {"python", "java"} and resolved_module is None:
                     continue
+                if importer_language == "python" and resolved_module != rel_path:
+                    if (
+                        not resolved_module
+                        or Path(resolved_module).name != "__init__.py"
+                    ):
+                        continue
+                    providers = _python_package_symbol_providers(
+                        conn, resolved_module, matched, inventory
+                    )
+                    if not any(providers[symbol] == {rel_path} for symbol in matched):
+                        continue
                 if (
-                    resolved_module
+                    importer_language == "java"
+                    and resolved_module
                     and resolved_module != rel_path
                     and _file_defines_any(conn, resolved_module, matched)
                 ):
@@ -1201,12 +1254,23 @@ def _certified_exercising_tests(
     """Return the complete deduplicated exercising-test set from a snapshot."""
     if inventory is None:
         inventory = snapshot_inventory(conn)
-    test_files = [
-        dep
-        for dep in dependents
-        if dep in inventory
-        and _looks_like_test_name(Path(dep).name, _target_language(dep))
-    ]
+    test_files: list[str] = []
+    seen = {rel_path}
+    queue = list(dependents)
+    cursor = 0
+    while cursor < len(queue):
+        dependent = queue[cursor]
+        cursor += 1
+        if dependent in seen or dependent not in inventory:
+            continue
+        seen.add(dependent)
+        if _looks_like_test_name(Path(dependent).name, _target_language(dependent)):
+            test_files.append(dependent)
+            continue
+        graph = build_snapshot_file_dependency_view(
+            conn, dependent, inventory=inventory
+        )
+        queue.extend(graph.dependents_of(dependent))
     language = _target_language(rel_path)
     if _looks_like_test_name(Path(rel_path).name, language):
         test_files.insert(0, rel_path)
