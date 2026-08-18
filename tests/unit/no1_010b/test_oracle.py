@@ -126,7 +126,7 @@ def test_parse_result_line_uses_final_declared_line() -> None:
     assert (
         _parse_result_line(
             "NO1_010B_ORACLE_REASON: dispatch-returns-none\n"
-            "NO1_010B_ORACLE_RESULT: pass\n",
+            "NO1_010B_ORACLE_RESULT: PASS\n",
             "dispatch-returns-none",
         )
         is OracleStatus.PASS
@@ -141,6 +141,12 @@ def test_parse_result_line_uses_final_declared_line() -> None:
         )
         is OracleStatus.PASS
     )
+
+
+@pytest.mark.parametrize("token", ["pass", "Pass", "fail", "Fail"])
+def test_parse_result_line_rejects_noncanonical_token_case(token: str) -> None:
+    stdout = f"NO1_010B_ORACLE_REASON: reason\nNO1_010B_ORACLE_RESULT: {token}\n"
+    assert _parse_result_line(stdout, "reason") is OracleStatus.UNKNOWN
 
 
 def test_parse_result_line_rejects_trailing_diagnostics() -> None:

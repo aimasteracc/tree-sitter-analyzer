@@ -78,7 +78,7 @@ def _parse_result_line(stdout: str, expected_reason: str) -> OracleStatus:
     if len(result_lines) != 1 or non_empty[-1].strip() != result_lines[0]:
         return OracleStatus.UNKNOWN
     final = result_lines[0]
-    value = final[len(_RESULT_MARKER) :].strip().upper()
+    value = final[len(_RESULT_MARKER) :].strip()
     reason_lines = [
         line.strip()[len(_REASON_MARKER) :].strip()
         for line in non_empty

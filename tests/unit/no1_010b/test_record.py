@@ -87,6 +87,15 @@ def test_record_from_dict_rejects_non_canonical_paths() -> None:
             record_from_dict(payload)
 
 
+def test_record_accepts_double_dot_prefix_inside_legitimate_segment() -> None:
+    payload = _valid_payload()
+    payload["allowed_paths"] = ["src/..generated/config.py"]
+    record = record_from_dict(payload)
+
+    assert record.allowed_paths == ("src/..generated/config.py",)
+    assert path_allowed("src/..generated/config.py", record.allowed_paths) is True
+
+
 def test_path_allowed_is_segment_aware() -> None:
     allowed = ("src/dispatch.py", "tests/")
     assert path_allowed("src/dispatch.py", allowed) is True
@@ -198,6 +207,13 @@ def test_record_rejects_duplicate_allowed_paths() -> None:
         record_from_dict(payload)
 
 
+def test_record_rejects_duplicate_selected_tests() -> None:
+    payload = _valid_payload()
+    payload["selected_tests"] = ["tests/test_app.py", "tests/test_app.py"]
+    with pytest.raises(BenchmarkRecordError, match="selected_tests.*duplicates"):
+        record_from_dict(payload)
+
+
 def test_record_rejects_empty_allowed_paths() -> None:
     payload = _valid_payload()
     payload["allowed_paths"] = []
@@ -305,6 +321,7 @@ def test_path_canonicalization_rejects_all_bad_forms() -> None:
         "..",
         "../x.py",
         "a/../b.py",
+        "a/./b.py",
         "a//b.py",
         "a\\b.py",
         "C:/outside/file.py",

@@ -10,31 +10,21 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from pathlib import PurePosixPath
 
-from .record import path_allowed
+from .record import UnknownReasonCode, path_allowed
 
 # Canonical patch limits, bound into the registered manifest (RFC-0026 C41).
 PATCH_MAX_BYTES = 1 * 1024 * 1024
 PATCH_MAX_HUNKS = 512
 PATCH_MAX_LINES_PER_HUNK = 2000
 
-_REASON_CODES = frozenset(
-    {
-        "PATH_VIOLATION",
-        "ORACLE_FAILED",
-        "VERIFICATION_FAILED",
-        "STALE_ROWS",
-        "UNSUPPORTED_RELATIONSHIP",
-        "TEST_SELECTION_FAILED",
-        "UNKNOWN",
-        "PASS",
-    }
-)
-
 
 class PatchBoundError(ValueError):
     """An over-bound patch; the runner must score it UNKNOWN, never apply it."""
+
+
+class PatchFormatError(ValueError):
+    """A diff header whose touched paths cannot be classified safely."""
 
 
 @dataclass(frozen=True)
@@ -56,16 +46,57 @@ class DiffPath:
         value = raw[len(side) :]
         if value.startswith("/") or value.startswith("./"):
             return None
-        if not value or "\\" in value or ".." in PurePosixPath(value).parts:
+        if (
+            not value
+            or "\\" in value
+            or any(part in {"", ".", ".."} for part in value.split("/"))
+        ):
             return None
         return cls(value)
+
+    @classmethod
+    def from_git_token(cls, token: str, side: str) -> DiffPath | None:
+        """Parse one unquoted canonical path from a ``diff --git`` header."""
+        if not token.startswith(side):
+            return None
+        value = token[len(side) :]
+        if (
+            not value
+            or value.startswith("/")
+            or "\\" in value
+            or any(part in {"", ".", ".."} for part in value.split("/"))
+        ):
+            return None
+        return cls(value)
+
+
+def _physical_lines(patch_text: str) -> list[str]:
+    """Split LF-delimited patch lines without a synthetic trailing item."""
+    lines = patch_text.split("\n")
+    if patch_text.endswith("\n"):
+        lines.pop()
+    return lines
 
 
 def diff_paths(patch_text: str) -> list[DiffPath]:
     """Return the canonical paths a unified diff touches (bounded first)."""
     bound_patch(patch_text)
     paths: list[DiffPath] = []
-    lines = patch_text.split("\n")
+    lines = _physical_lines(patch_text)
+    for line in lines:
+        if not line.startswith("diff --git "):
+            continue
+        tokens = line.split(" ")
+        if len(tokens) != 4:
+            # Quoted/escaped or otherwise ambiguous paths fail closed. The
+            # bounded seed corpus uses canonical unquoted repository paths.
+            raise PatchFormatError("non-canonical diff --git header")
+        for token, side in ((tokens[2], "a/"), (tokens[3], "b/")):
+            parsed = DiffPath.from_git_token(token, side)
+            if parsed is None:
+                raise PatchFormatError("non-canonical diff --git header")
+            if parsed not in paths:
+                paths.append(parsed)
     for index, line in enumerate(lines[:-1]):
         if not line.startswith("--- ") or not lines[index + 1].startswith("+++ "):
             continue
@@ -84,7 +115,7 @@ def bound_patch(patch_text: str) -> None:
     """
     if len(patch_text.encode("utf-8")) > PATCH_MAX_BYTES:
         raise PatchBoundError("patch exceeds max bytes")
-    lines = patch_text.split("\n")
+    lines = _physical_lines(patch_text)
     hunks = 0
     for line in lines:
         if line.startswith("@@"):
@@ -132,8 +163,8 @@ def allowlist_violations(
 
 @dataclass(frozen=True)
 class Verdict:
-    status: str  # PASS | FAIL
-    reason_code: str | None = None  # one of _REASON_CODES except PASS
+    status: str  # PASS | FAIL | UNKNOWN
+    reason_code: str | None = None  # product/unknown reason, or None for PASS
 
     def as_reason(self) -> str:
         return self.reason_code or "PASS"
@@ -147,15 +178,15 @@ def classify(
     stale_ok: bool,
     unsupported_ok: bool,
     selection_ok: bool | None = None,
-    unknown: bool = False,
+    unknown_reason: UnknownReasonCode | None = None,
 ) -> Verdict:
-    """Map the five VCSR criteria to a PASS / FAIL + exact reason code.
+    """Map the five VCSR criteria to an exact terminal verdict/reason pair.
 
     ``UNKNOWN`` takes precedence over every FAIL (RFC-0026 §3 fail-closed);
     the first failing criterion in a fixed order names the reason code.
     """
-    if unknown:
-        return Verdict("FAIL", "UNKNOWN")
+    if unknown_reason is not None:
+        return Verdict("UNKNOWN", unknown_reason)
     if not path_ok:
         return Verdict("FAIL", "PATH_VIOLATION")
     if not oracle_ok:

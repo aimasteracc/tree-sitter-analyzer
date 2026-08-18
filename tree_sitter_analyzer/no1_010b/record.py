@@ -178,12 +178,11 @@ def _canonical_rel_path(raw: Any, field: str) -> str:
         raise BenchmarkRecordError(f"{field}: path must be repository-relative")
     if len(value) >= 2 and value[1] == ":" and value[0].isalpha():
         raise BenchmarkRecordError(f"{field}: drive-qualified paths are not allowed")
-    if value == ".." or value.startswith("../"):
-        raise BenchmarkRecordError(f"{field}: '..' segments are not allowed")
     if "//" in value:
         raise BenchmarkRecordError(f"{field}: empty path segments are not allowed")
-    if "/.." in value or value.endswith("/.."):
-        raise BenchmarkRecordError(f"{field}: '..' segments are not allowed")
+    segments = value[:-1].split("/") if value.endswith("/") else value.split("/")
+    if any(segment in {".", ".."} for segment in segments):
+        raise BenchmarkRecordError(f"{field}: '.' and '..' segments are not allowed")
     return value
 
 
@@ -355,6 +354,8 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
     selected_tests = tuple(
         _canonical_rel_path(item, "selected_tests") for item in raw_selected
     )
+    if len(set(selected_tests)) != len(selected_tests):
+        raise BenchmarkRecordError("selected_tests must not contain duplicates")
 
     return BenchmarkRecord(
         id=record_id,

@@ -7,6 +7,7 @@ import pytest
 from tree_sitter_analyzer.no1_010b.runner import (
     DiffPath,
     PatchBoundError,
+    PatchFormatError,
     allowlist_violations,
     bound_patch,
     classify,
@@ -41,6 +42,7 @@ def test_diff_paths_parse_canonical_headers() -> None:
         "tests/test_dispatch.py",
     ]
     assert diff_paths("no headers here\n") == []
+    assert diff_paths("no headers here") == []
 
 
 def test_diff_paths_retains_source_path_for_deletion() -> None:
@@ -54,11 +56,65 @@ def test_diff_paths_retains_both_paths_for_rename() -> None:
 
 
 @pytest.mark.parametrize(
+    ("patch", "expected"),
+    [
+        (
+            (
+                "diff --git a/scripts/run.sh b/scripts/run.sh\n"
+                "old mode 100644\n"
+                "new mode 100755\n"
+            ),
+            ["scripts/run.sh"],
+        ),
+        (
+            (
+                "diff --git a/assets/payload.bin b/assets/payload.bin\n"
+                "new file mode 100644\n"
+                "index 0000000..0123456\n"
+                "GIT binary patch\n"
+            ),
+            ["assets/payload.bin"],
+        ),
+    ],
+    ids=["mode-only", "binary"],
+)
+def test_diff_paths_reads_git_headers_without_text_headers(
+    patch: str, expected: list[str]
+) -> None:
+    assert [path.rel_path for path in diff_paths(patch)] == expected
+
+
+def test_diff_paths_fails_closed_on_ambiguous_git_header() -> None:
+    with pytest.raises(PatchFormatError, match="non-canonical"):
+        diff_paths('diff --git "a/path with spaces" "b/path with spaces"\n')
+    with pytest.raises(PatchFormatError, match="non-canonical"):
+        diff_paths("diff --git b/wrong-side.py b/wrong-side.py\n")
+
+
+@pytest.mark.parametrize(
+    ("token", "side"),
+    [
+        ("b/wrong.py", "a/"),
+        ("a/", "a/"),
+        ("a//absolute.py", "a/"),
+        ("a/dir\\file.py", "a/"),
+        ("a/nested//file.py", "a/"),
+        ("a/nested/./file.py", "a/"),
+        ("a/nested/../file.py", "a/"),
+    ],
+)
+def test_git_header_token_rejects_noncanonical_paths(token: str, side: str) -> None:
+    assert DiffPath.from_git_token(token, side) is None
+
+
+@pytest.mark.parametrize(
     ("header", "marker"),
     [
         ("+++ b/ok.py", "---"),
         ("--- a//abs.py", "---"),
         ("--- a/./rel.py", "---"),
+        ("--- a/nested/./rel.py", "---"),
+        ("--- a/nested//rel.py", "---"),
         ("--- a/a/../b.py", "---"),
         ("--- a/dir\\file.py", "---"),
         ("--- a/", "---"),
@@ -83,6 +139,16 @@ def test_bound_patch_enforces_canonical_limits() -> None:
     long_hunk = "@@ -1 +1 @@\n" + "+x\n" * 2001
     with pytest.raises(PatchBoundError, match="max lines per hunk"):
         bound_patch(long_hunk)
+
+
+def test_bound_patch_accepts_exact_physical_line_limit_with_final_newline() -> None:
+    exact = "@@ -1 +1 @@\n" + "+x\n" * 2000
+    bound_patch(exact)
+
+    exact_with_blank = "@@ -1 +1 @@\n" + "+x\n" * 1999 + "\n"
+    bound_patch(exact_with_blank)
+    with pytest.raises(PatchBoundError, match="max lines per hunk"):
+        bound_patch(exact_with_blank + "\n")
 
 
 def test_bound_patch_counts_context_lines_in_hunk_limit() -> None:
@@ -189,7 +255,7 @@ def test_allowlist_violations_rejects_candidate_tree_tool_artifacts() -> None:
             },
             "TEST_SELECTION_FAILED",
         ),
-        # UNKNOWN always wins over every FAIL.
+        # UNKNOWN always wins over every FAIL and retains its closed subcode.
         (
             {
                 "path_ok": False,
@@ -197,9 +263,9 @@ def test_allowlist_violations_rejects_candidate_tree_tool_artifacts() -> None:
                 "verification_ok": False,
                 "stale_ok": False,
                 "unsupported_ok": False,
-                "unknown": True,
+                "unknown_reason": "ORACLE_TIMEOUT",
             },
-            "UNKNOWN",
+            "ORACLE_TIMEOUT",
         ),
     ],
 )
@@ -208,7 +274,10 @@ def test_classify_maps_criteria_to_exact_reason_codes(
 ) -> None:
     verdict = classify(**kwargs)
     assert verdict.as_reason() == expected
-    assert verdict.status == ("PASS" if expected == "PASS" else "FAIL")
+    expected_status = {"PASS": "PASS", "ORACLE_TIMEOUT": "UNKNOWN"}.get(
+        expected, "FAIL"
+    )
+    assert verdict.status == expected_status
 
 
 def test_verdict_pass_has_no_reason_code() -> None:
