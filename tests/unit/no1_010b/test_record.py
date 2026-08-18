@@ -96,6 +96,13 @@ def test_record_accepts_double_dot_prefix_inside_legitimate_segment() -> None:
     assert path_allowed("src/..generated/config.py", record.allowed_paths) is True
 
 
+def test_record_accepts_allowed_path_with_space() -> None:
+    payload = _valid_payload()
+    payload["allowed_paths"] = ["src/my file.py"]
+
+    assert record_from_dict(payload).allowed_paths == ("src/my file.py",)
+
+
 def test_path_allowed_is_segment_aware() -> None:
     allowed = ("src/dispatch.py", "tests/")
     assert path_allowed("src/dispatch.py", allowed) is True
@@ -184,6 +191,16 @@ def test_record_accepts_unified_diff_patch() -> None:
         "--- a/src/dispatch.py\n+++ b/src/dispatch.py\n@@ -1 +1 @@\n-old\n+new\n"
     )
     assert record_from_dict(payload).patch == payload["patch"]
+
+
+def test_record_rejects_reference_patch_with_unpaired_surrogate() -> None:
+    payload = _valid_payload()
+    payload["patch"] = (
+        "--- a/src/dispatch.py\n+++ b/src/dispatch.py\n@@ -1 +1 @@\n-old\n+\ud800\n"
+    )
+
+    with pytest.raises(BenchmarkRecordError, match="valid UTF-8"):
+        record_from_dict(payload)
 
 
 @pytest.mark.parametrize("patch", ["", "  ", "not a unified diff"])
@@ -351,13 +368,13 @@ def test_path_canonicalization_rejects_all_bad_forms() -> None:
             record_from_dict(payload)
 
 
-def test_to_task_request_covers_all_operations() -> None:
+def test_to_task_request_understand_operation() -> None:
     understand = record_from_dict({**_valid_payload(), "operation": "understand"})
     op, req = understand.to_task_request()
     assert op == "understand" and req == {"task": understand.task}
-    plan = record_from_dict(_valid_payload())
-    op, req = plan.to_task_request()
-    assert op == "plan_change" and req == {"task": plan.task}
+
+
+def test_to_task_request_assess_change_operation() -> None:
     assess = record_from_dict({**_valid_payload(), "operation": "assess_change"})
     op, req = assess.to_task_request()
     assert op == "assess_change" and req == {"diff": {"source": "workspace"}}

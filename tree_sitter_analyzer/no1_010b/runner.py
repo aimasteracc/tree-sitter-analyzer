@@ -18,6 +18,7 @@ from .record import UnknownReasonCode, path_allowed
 PATCH_MAX_BYTES = 1 * 1024 * 1024
 PATCH_MAX_HUNKS = 512
 PATCH_MAX_LINES_PER_HUNK = 2000
+_HUNK_COUNT_MAX_DIGITS = len(str(PATCH_MAX_BYTES))
 _HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@(?: .*)?$")
 
 
@@ -51,7 +52,7 @@ class DiffPath:
         if (
             not value
             or "\\" in value
-            or any(char.isspace() for char in value)
+            or any(char in "\t\r\n\v\f" for char in value)
             or any(part in {"", ".", ".."} for part in value.split("/"))
         ):
             return None
@@ -67,7 +68,7 @@ class DiffPath:
             not value
             or value.startswith("/")
             or "\\" in value
-            or any(char.isspace() for char in value)
+            or any(char in "\t\r\n\v\f" for char in value)
             or any(part in {"", ".", ".."} for part in value.split("/"))
         ):
             return None
@@ -96,6 +97,33 @@ def _is_paired_file_header(lines: list[str], index: int) -> bool:
     return old_header.startswith("--- ") and new_header.startswith("+++ ")
 
 
+def _hunk_count(raw: str | None) -> int:
+    """Parse one hunk count without entering Python's unbounded-int path."""
+    if raw is None:
+        return 1
+    if len(raw) > _HUNK_COUNT_MAX_DIGITS:
+        raise PatchBoundError("patch hunk count exceeds numeric bound")
+    return int(raw)
+
+
+def _git_header_paths(line: str) -> tuple[DiffPath, DiffPath]:
+    """Parse one unquoted Git header, including canonical paths with spaces."""
+    prefix = "diff --git "
+    if not line.startswith(f"{prefix}a/"):
+        raise PatchFormatError("non-canonical diff --git header")
+    body = line[len(prefix) :]
+    separator = body.find(" b/")
+    if separator < 0 or body.find(" b/", separator + 1) >= 0:
+        raise PatchFormatError("non-canonical diff --git header")
+    old_path = DiffPath.from_git_token(body[:separator], "a/")
+    if old_path is None:
+        raise PatchFormatError("non-canonical diff --git header")
+    new_path = DiffPath.from_git_token(body[separator + 1 :], "b/")
+    if new_path is None:
+        raise PatchFormatError("non-canonical diff --git header")
+    return old_path, new_path
+
+
 def _hunk_body_indexes(lines: list[str]) -> set[int]:
     """Return physical line indexes belonging to parsed unified-diff hunks."""
 
@@ -107,8 +135,8 @@ def _hunk_body_indexes(lines: list[str]) -> set[int]:
         if line.startswith("@@"):
             match = _HUNK_HEADER_RE.fullmatch(line)
             in_hunk = True
-            remaining_old = int(match.group(1) or "1") if match else None
-            remaining_new = int(match.group(2) or "1") if match else None
+            remaining_old = _hunk_count(match.group(1)) if match else None
+            remaining_new = _hunk_count(match.group(2)) if match else None
             continue
         if not in_hunk:
             continue
@@ -140,22 +168,20 @@ def diff_paths(patch_text: str) -> list[DiffPath]:
     """Return the canonical paths a unified diff touches (bounded first)."""
     bound_patch(patch_text)
     paths: list[DiffPath] = []
+    seen: set[str] = set()
+
+    def append_path(parsed: DiffPath) -> None:
+        if parsed.rel_path not in seen:
+            seen.add(parsed.rel_path)
+            paths.append(parsed)
+
     lines = _physical_lines(patch_text)
     hunk_body = _hunk_body_indexes(lines)
     for line in lines:
         if not line.startswith("diff --git "):
             continue
-        tokens = line.split(" ")
-        if len(tokens) != 4:
-            # Quoted/escaped or otherwise ambiguous paths fail closed. The
-            # bounded seed corpus uses canonical unquoted repository paths.
-            raise PatchFormatError("non-canonical diff --git header")
-        for token, side in ((tokens[2], "a/"), (tokens[3], "b/")):
-            parsed = DiffPath.from_git_token(token, side)
-            if parsed is None:
-                raise PatchFormatError("non-canonical diff --git header")
-            if parsed not in paths:
-                paths.append(parsed)
+        for parsed in _git_header_paths(line):
+            append_path(parsed)
     for index, line in enumerate(lines[:-1]):
         if index in hunk_body or index + 1 in hunk_body:
             continue
@@ -163,17 +189,16 @@ def diff_paths(patch_text: str) -> list[DiffPath]:
             continue
         pair_paths: list[DiffPath] = []
         for marker, header in (("---", line), ("+++", lines[index + 1])):
-            parsed = DiffPath.from_diff_header(header, marker)
-            if parsed is None:
+            header_path = DiffPath.from_diff_header(header, marker)
+            if header_path is None:
                 if _is_dev_null_header(header, marker):
                     continue
                 raise PatchFormatError("non-canonical paired file header")
-            pair_paths.append(parsed)
+            pair_paths.append(header_path)
         if not pair_paths:
             raise PatchFormatError("paired file header has no repository path")
         for parsed in pair_paths:
-            if parsed not in paths:
-                paths.append(parsed)
+            append_path(parsed)
     return paths
 
 

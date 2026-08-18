@@ -91,6 +91,67 @@ def test_diff_paths_fails_closed_on_ambiguous_git_header() -> None:
         diff_paths("diff --git b/wrong-side.py b/wrong-side.py\n")
 
 
+def test_diff_paths_accepts_unquoted_git_path_with_spaces() -> None:
+    patch = (
+        "diff --git a/src/my file.py b/src/my file.py\n"
+        "--- a/src/my file.py\n"
+        "+++ b/src/my file.py\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n"
+    )
+
+    assert [path.rel_path for path in diff_paths(patch)] == ["src/my file.py"]
+
+
+def test_diff_paths_rejects_invalid_new_path_after_valid_old_path() -> None:
+    patch = "diff --git a/src/app.py b/../secret.py\n"
+
+    with pytest.raises(PatchFormatError, match="non-canonical"):
+        diff_paths(patch)
+
+
+def test_diff_paths_rejects_invalid_old_path_before_valid_new_path() -> None:
+    patch = "diff --git a/../secret.py b/src/app.py\n"
+
+    with pytest.raises(PatchFormatError, match="non-canonical"):
+        diff_paths(patch)
+
+
+def test_diff_paths_rejects_git_header_without_new_side_separator() -> None:
+    patch = "diff --git a/src/app.py c/src/app.py\n"
+
+    with pytest.raises(PatchFormatError, match="non-canonical"):
+        diff_paths(patch)
+
+
+def test_diff_paths_rejects_ambiguous_unquoted_space_separator() -> None:
+    patch = "diff --git a/left b/mid b/right\n"
+
+    with pytest.raises(PatchFormatError, match="non-canonical"):
+        diff_paths(patch)
+
+
+def test_diff_paths_deduplicates_with_bounded_equality_checks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    comparisons = 0
+    original = DiffPath.__eq__
+
+    def counted(left: object, right: object) -> bool:
+        nonlocal comparisons
+        comparisons += 1
+        return original(left, right)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(DiffPath, "__eq__", counted)
+    patch = "".join(
+        f"diff --git a/file-{index}.py b/file-{index}.py\n" for index in range(200)
+    )
+
+    assert len(diff_paths(patch)) == 200
+    assert comparisons <= 400
+
+
 def test_diff_paths_rejects_unparseable_paired_header() -> None:
     # PR #1307: traditional diffs still receive git apply path stripping, so
     # silently skipping a non-canonical side can bypass allowed_paths.
@@ -166,14 +227,28 @@ def test_bound_patch_rejects_per_hunk_line_limit() -> None:
         bound_patch(long_hunk)
 
 
-def test_bound_patch_accepts_exact_physical_line_limit_with_final_newline() -> None:
+def test_bound_patch_accepts_exact_physical_line_limit() -> None:
     exact = "@@ -1 +1 @@\n" + "+x\n" * 2000
     bound_patch(exact)
 
+
+def test_bound_patch_accepts_exact_limit_with_blank_final_body_line() -> None:
     exact_with_blank = "@@ -1 +1 @@\n" + "+x\n" * 1999 + "\n"
     bound_patch(exact_with_blank)
+
+
+def test_bound_patch_rejects_blank_body_line_beyond_limit() -> None:
+    exact_with_blank = "@@ -1 +1 @@\n" + "+x\n" * 1999 + "\n"
     with pytest.raises(PatchBoundError, match="max lines per hunk"):
         bound_patch(exact_with_blank + "\n")
+
+
+def test_bound_patch_rejects_hunk_count_with_excessive_digits() -> None:
+    huge_count = "9" * 4301
+    patch = f"@@ -1,{huge_count} +1,1 @@\n-old\n+new\n"
+
+    with pytest.raises(PatchBoundError, match="numeric bound"):
+        bound_patch(patch)
 
 
 def test_bound_patch_counts_context_lines_in_hunk_limit() -> None:

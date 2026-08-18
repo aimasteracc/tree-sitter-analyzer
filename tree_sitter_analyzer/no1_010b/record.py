@@ -335,6 +335,10 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
     if patch is not None and not isinstance(patch, str):
         raise BenchmarkRecordError("patch must be a string")
     if isinstance(patch, str):
+        try:
+            patch.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise BenchmarkRecordError("patch must be valid UTF-8") from exc
         if not patch.strip():
             raise BenchmarkRecordError("patch must be a non-empty unified diff")
         lines = patch.split("\n")
