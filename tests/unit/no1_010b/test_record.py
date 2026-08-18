@@ -194,6 +194,7 @@ def test_record_rejects_reference_patch_with_unpaired_surrogate() -> None:
         "--- a/x.py\n+++ b/x.py\n",
         "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n",
         "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n context\n@@ -0,0 +1 @@\n context\n",
+        'diff --git "a/x.py" "b/x.py"\n--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n+new\n',
         "--- a/x.py\n+++ b/x.py\n@@ -0,0 +1 @@\n-old\n",
         "--- a/x.py\n+++ b/x.py\n@@ -1 +0,0 @@\n+new\n",
         "--- a/x.py\n+++ b/x.py\n@@ -١ +١ @@\n-old\n+new\n",
@@ -353,10 +354,16 @@ def test_path_canonicalization_rejects_all_bad_forms() -> None:
         "src/é.py",
         "C:/outside/file.py",
         'src/a"b.py',
+        "outside.py",
     ):
+        if bad != "outside.py":
+            payload = _valid_payload()
+            payload["allowed_paths"] = [bad]
+            with pytest.raises(BenchmarkRecordError, match="path"):
+                record_from_dict(payload)
         payload = _valid_payload()
-        payload["allowed_paths"] = [bad]
-        with pytest.raises(BenchmarkRecordError, match="path"):
+        payload["oracle"] = bad
+        with pytest.raises(BenchmarkRecordError, match="oracle"):
             record_from_dict(payload)
 
 
@@ -421,15 +428,8 @@ def test_loader_rejects_empty_corpus(tmp_path: Path) -> None:
         load_corpus_records(str(corpus))
 
 
-def test_loader_rejects_oversized_file(tmp_path: Path) -> None:
-    corpus = tmp_path / "big.jsonl"
-    corpus.write_text("x" * (8 * 1024 * 1024 + 1), encoding="utf-8")
-    with pytest.raises(BenchmarkRecordError, match="8 MiB"):
-        load_corpus_records(str(corpus))
-
-
 def test_loader_enforces_file_limit_in_bytes(tmp_path: Path) -> None:
-    corpus = tmp_path / "multi-byte.jsonl"
+    corpus = tmp_path / "oversized.jsonl"
     corpus.write_bytes("界".encode() * ((8 * 1024 * 1024) // 3 + 1))
     with pytest.raises(BenchmarkRecordError, match="8 MiB"):
         load_corpus_records(str(corpus))
@@ -447,8 +447,7 @@ def test_loader_preserves_unicode_line_separator_inside_json(tmp_path: Path) -> 
     payload["task"] = "first\u2028second"
     corpus = tmp_path / "unicode-separator.jsonl"
     corpus.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
-    records = load_corpus_records(str(corpus))
-    assert records[0].task == "first\u2028second"
+    assert load_corpus_records(str(corpus))[0].task == "first\u2028second"
 
 
 def test_loader_rejects_duplicate_keys(tmp_path: Path) -> None:

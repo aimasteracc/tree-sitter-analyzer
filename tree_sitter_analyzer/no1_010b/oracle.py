@@ -18,16 +18,15 @@ uncaught exception or missing/stale reason is an infrastructure failure, not a
 behavioral answer.
 
 This B0 module deliberately exports no production oracle runner. Its private
-process helper exists only to contract-test the declared-result protocol; it
-sanitizes the environment but does not claim network or filesystem isolation.
-RFC-0026 B1 owns the public entry point and may call the private helper only
-from inside its kernel-enforced sandbox.
+process helper can exercise transport failures, but because it has no
+kernel-enforced sandbox it never authorizes PASS or FAIL. The pure parser below
+contract-tests the declared-result protocol. RFC-0026 B1 owns the public entry
+point and the trusted wrapper/control channel.
 """
 
 from __future__ import annotations
 
 import os
-import secrets
 import shlex
 import signal
 import subprocess
@@ -46,34 +45,6 @@ _MINIMAL_PATH = "/usr/bin:/bin"
 _IS_WINDOWS = os.name == "nt"
 _TASKKILL = subprocess.run
 _REAP_TIMEOUT_S = 5.0
-_WRAPPER_MARKER = "NO1_010B_TRUSTED_WRAPPER:"
-
-
-def _oracle_bootstrap(token: str) -> str:
-    """Build a per-run capability marker not exposed through argv or env."""
-    marker = f"{_WRAPPER_MARKER}{token}:"
-    return (
-        "import builtins, runpy, sys, traceback\n"
-        "_original_import = builtins.__import__\n"
-        "_import_failure = None\n"
-        "def _tracked_import(*args, **kwargs):\n"
-        "    global _import_failure\n"
-        "    try:\n"
-        "        return _original_import(*args, **kwargs)\n"
-        "    except BaseException as exc:\n"
-        "        _import_failure = exc\n"
-        "        raise\n"
-        "builtins.__import__ = _tracked_import\n"
-        "try:\n"
-        "    runpy.run_path(sys.argv[1], run_name='__main__')\n"
-        "except BaseException as exc:\n"
-        "    if exc is _import_failure or isinstance(exc, (ImportError, SyntaxError)):\n"
-        "        traceback.print_exc()\n"
-        f"        print({marker + 'LOAD_ERROR'!r}, flush=True)\n"
-        "        raise SystemExit(1)\n"
-        "    raise\n"
-        f"print({marker + 'COMPLETE'!r}, flush=True)\n"
-    )
 
 
 class OracleStatus(str, Enum):
@@ -90,6 +61,7 @@ OracleUnknownReason = Literal[
     "ORACLE_EXECUTION_ERROR",
     "ORACLE_PROTOCOL_ERROR",
     "ORACLE_TIMEOUT",
+    "SANDBOX_FAILURE",
 ]
 
 
@@ -129,30 +101,6 @@ def _parse_result_line(stdout: str, expected_reason: str) -> OracleStatus:
     if value == "FAIL":
         return OracleStatus.FAIL
     return OracleStatus.UNKNOWN
-
-
-def _extract_wrapper_status(
-    stdout: str, token: str
-) -> tuple[Literal["COMPLETE", "LOAD_ERROR"] | None, str]:
-    """Separate the per-run wrapper capability from oracle-controlled output."""
-    prefix = f"{_WRAPPER_MARKER}{token}:"
-    lines = stdout.splitlines()
-    matches = [index for index, line in enumerate(lines) if line.startswith(prefix)]
-    if len(matches) != 1:
-        return None, stdout
-    index = matches[0]
-    if any(line.strip() for line in lines[index + 1 :]):
-        return None, stdout
-    raw_status = lines[index][len(prefix) :]
-    if raw_status not in {"COMPLETE", "LOAD_ERROR"}:
-        return None, stdout
-    status: Literal["COMPLETE", "LOAD_ERROR"] = (
-        "COMPLETE" if raw_status == "COMPLETE" else "LOAD_ERROR"
-    )
-    payload = "\n".join(lines[:index])
-    if payload:
-        payload += "\n"
-    return status, payload
 
 
 def _sanitized_env(env_extra: dict[str, str] | None) -> dict[str, str]:
@@ -255,14 +203,7 @@ def _run_oracle_process_unisolated_for_tests(
         return OracleOutcome(
             OracleStatus.UNKNOWN, "ORACLE_LOAD_ERROR", "oracle file not found"
         )
-    wrapper_token = secrets.token_hex(32)
-    command = [
-        sys.executable,
-        "-u",
-        "-c",
-        _oracle_bootstrap(wrapper_token),
-        str(oracle),
-    ]
+    command = [sys.executable, "-u", str(oracle)]
     env = _sanitized_env(env_extra)
     try:
         if _IS_WINDOWS:
@@ -352,21 +293,17 @@ def _run_oracle_process_unisolated_for_tests(
             "ORACLE_PROTOCOL_ERROR",
             "oracle output was not UTF-8",
         )
-    wrapper_status, oracle_stdout = _extract_wrapper_status(stdout, wrapper_token)
-    tail = oracle_stdout[-2000:]
+    tail = stdout[-2000:]
     if proc.returncode != 0:
-        reason: OracleUnknownReason = (
-            "ORACLE_LOAD_ERROR"
-            if wrapper_status == "LOAD_ERROR"
-            else "ORACLE_EXECUTION_ERROR"
-        )
-        return OracleOutcome(OracleStatus.UNKNOWN, reason, tail)
-    if wrapper_status != "COMPLETE":
         return OracleOutcome(OracleStatus.UNKNOWN, "ORACLE_EXECUTION_ERROR", tail)
-    status = _parse_result_line(oracle_stdout, expected_reason)
+    status = _parse_result_line(stdout, expected_reason)
     if status is OracleStatus.UNKNOWN:
         return OracleOutcome(status, "ORACLE_PROTOCOL_ERROR", tail)
-    return OracleOutcome(status, stdout_tail=tail)
+    # Arbitrary code in this interpreter can call os._exit(), inspect argv,
+    # frames, and open descriptors. B0 therefore has no unforgeable completion
+    # capability. Only B1's separate trusted wrapper/control channel may turn
+    # a parsed declaration into a product verdict.
+    return OracleOutcome(OracleStatus.UNKNOWN, "SANDBOX_FAILURE", tail)
 
 
 def oracle_command_line(oracle_path: str) -> str:

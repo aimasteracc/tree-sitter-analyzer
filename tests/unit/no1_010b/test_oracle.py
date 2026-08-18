@@ -52,61 +52,58 @@ def _run_written_oracle(tmp_path: Path, body: str) -> OracleOutcome:
     )
 
 
-def test_run_oracle_preserves_caught_optional_import(tmp_path: Path) -> None:
-    body = "try:\n import no_such_optional\nexcept ImportError:\n pass\n"
-    outcome = _run_written_oracle(tmp_path, body + ORACLE_PASS)
-    assert outcome.status == OracleStatus.PASS
-    assert outcome.unknown_reason is None
+def test_unisolated_oracle_cannot_forge_completion_from_argv(tmp_path: Path) -> None:
+    # PR #1307: candidate code sees no trusted capability in sys.orig_argv,
+    # and a forged PASS followed by os._exit(0) never becomes a verdict.
+    body = (
+        "import os, sys\n"
+        "assert 'NO1_010B_TRUSTED_WRAPPER:' not in ' '.join(sys.orig_argv)\n"
+        + ORACLE_PASS
+        + "os._exit(0)\n"
+    )
+    outcome = _run_written_oracle(tmp_path, body)
+    assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "SANDBOX_FAILURE"
 
 
-def test_run_oracle_accepts_declared_fail(tmp_path: Path) -> None:
+def test_unisolated_oracle_rejects_declared_fail(tmp_path: Path) -> None:
     outcome = _run_written_oracle(tmp_path, ORACLE_FAIL)
-    assert outcome.status == OracleStatus.FAIL
-    assert outcome.unknown_reason is None
-
-
-def test_run_oracle_classifies_import_failure_as_load_error(tmp_path: Path) -> None:
-    outcome = _run_written_oracle(tmp_path, ORACLE_IMPORT_ERROR)
     assert outcome.status == OracleStatus.UNKNOWN
-    assert outcome.unknown_reason == "ORACLE_LOAD_ERROR"
+    assert outcome.unknown_reason == "SANDBOX_FAILURE"
 
 
-def test_run_oracle_classifies_syntax_failure_as_load_error(tmp_path: Path) -> None:
-    outcome = _run_written_oracle(tmp_path, ORACLE_SYNTAX)
-    assert outcome.status == OracleStatus.UNKNOWN
-    assert outcome.unknown_reason == "ORACLE_LOAD_ERROR"
-
-
-def test_run_oracle_classifies_runtime_failure_as_execution_error(
-    tmp_path: Path,
+@pytest.mark.parametrize("body", [ORACLE_IMPORT_ERROR, ORACLE_SYNTAX])
+def test_unisolated_oracle_classifies_load_failure_as_execution_error(
+    tmp_path: Path, body: str
 ) -> None:
-    outcome = _run_written_oracle(tmp_path, ORACLE_RUNTIME_ERROR)
+    outcome = _run_written_oracle(tmp_path, body)
     assert outcome.status == OracleStatus.UNKNOWN
     assert outcome.unknown_reason == "ORACLE_EXECUTION_ERROR"
 
 
-def test_run_oracle_classifies_malformed_result_as_protocol_error(
-    tmp_path: Path,
+@pytest.mark.parametrize("body", [ORACLE_RUNTIME_ERROR, "raise SystemExit(86)\n"])
+def test_run_oracle_classifies_runtime_exit_as_execution_error(
+    tmp_path: Path, body: str
 ) -> None:
-    outcome = _run_written_oracle(tmp_path, ORACLE_MALFORMED)
+    outcome = _run_written_oracle(tmp_path, body)
+    assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_EXECUTION_ERROR"
+
+
+@pytest.mark.parametrize("body", [ORACLE_MALFORMED, ORACLE_NOMARKER])
+def test_run_oracle_classifies_invalid_result_as_protocol_error(
+    tmp_path: Path, body: str
+) -> None:
+    outcome = _run_written_oracle(tmp_path, body)
     assert outcome.status == OracleStatus.UNKNOWN
     assert outcome.unknown_reason == "ORACLE_PROTOCOL_ERROR"
 
 
-def test_run_oracle_classifies_missing_marker_as_protocol_error(
-    tmp_path: Path,
-) -> None:
-    outcome = _run_written_oracle(tmp_path, ORACLE_NOMARKER)
-
-    assert outcome.status == OracleStatus.UNKNOWN
-    assert outcome.unknown_reason == "ORACLE_PROTOCOL_ERROR"
-
-
-def test_dependency_initialization_is_load_error(tmp_path: Path) -> None:
+def test_dependency_initialization_is_execution_error(tmp_path: Path) -> None:
     _write_oracle(tmp_path, "broken_dep.py", "raise TypeError('broken init')\n")
     outcome = _run_written_oracle(tmp_path, "import broken_dep\n")
     assert outcome.status == OracleStatus.UNKNOWN
-    assert outcome.unknown_reason == "ORACLE_LOAD_ERROR"
+    assert outcome.unknown_reason == "ORACLE_EXECUTION_ERROR"
 
 
 def test_run_oracle_timeout_is_unknown(tmp_path: Path) -> None:
@@ -180,12 +177,9 @@ def test_parse_result_line_reads_declared_pass() -> None:
     )
 
 
-def test_parse_result_line_rejects_missing_marker() -> None:
-    assert _parse_result_line("no marker here\n", "reason") is OracleStatus.UNKNOWN
-
-
-def test_parse_result_line_rejects_empty_output() -> None:
-    assert _parse_result_line("", "reason") is OracleStatus.UNKNOWN
+@pytest.mark.parametrize("output", ["no marker here\n", ""])
+def test_parse_result_line_rejects_missing_marker(output: str) -> None:
+    assert _parse_result_line(output, "reason") is OracleStatus.UNKNOWN
 
 
 def test_parse_result_line_allows_trailing_blank_lines() -> None:
@@ -235,7 +229,11 @@ def test_oracle_env_does_not_inherit_runner_secrets(
     outcome = _run_oracle_process_unisolated_for_tests(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
-    assert outcome.status == OracleStatus.PASS
+    assert outcome.unknown_reason == "SANDBOX_FAILURE"
+    assert (
+        _parse_result_line(outcome.stdout_tail, "dispatch-returns-none")
+        is OracleStatus.PASS
+    )
 
 
 def test_run_oracle_undecodable_output_is_unknown(tmp_path: Path) -> None:
@@ -257,7 +255,7 @@ def test_run_oracle_resolves_relative_path_against_cwd(tmp_path: Path) -> None:
     outcome = _run_oracle_process_unisolated_for_tests(
         "relative.py", str(tmp_path), expected_reason="dispatch-returns-none"
     )
-    assert outcome.status == OracleStatus.PASS
+    assert outcome.unknown_reason == "SANDBOX_FAILURE"
 
 
 @pytest.mark.parametrize(
@@ -479,14 +477,12 @@ def test_run_oracle_uses_windows_process_group(
     import tree_sitter_analyzer.no1_010b.oracle as oracle_module
 
     output = (
-        b"NO1_010B_ORACLE_REASON: dispatch-returns-none\n"
-        b"NO1_010B_ORACLE_RESULT: PASS\nNO1_010B_TRUSTED_WRAPPER:fixed:COMPLETE\n"
+        b"NO1_010B_ORACLE_REASON: dispatch-returns-none\nNO1_010B_ORACLE_RESULT: PASS\n"
     )
     proc = Mock(pid=321, stdout=io.BytesIO(output), stderr=io.BytesIO())
     proc.returncode = 0
     popen = Mock(return_value=proc)
     monkeypatch.setattr(oracle_module, "_IS_WINDOWS", True)
-    monkeypatch.setattr(oracle_module.secrets, "token_hex", lambda _: "fixed")
     monkeypatch.setattr(oracle_module.subprocess, "Popen", popen)
     oracle = _write_oracle(tmp_path, "oracle.py", ORACLE_PASS)
 
@@ -494,6 +490,6 @@ def test_run_oracle_uses_windows_process_group(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
 
-    assert outcome.status == OracleStatus.PASS
+    assert outcome.unknown_reason == "SANDBOX_FAILURE"
     assert "creationflags" in popen.call_args.kwargs
     assert "start_new_session" not in popen.call_args.kwargs

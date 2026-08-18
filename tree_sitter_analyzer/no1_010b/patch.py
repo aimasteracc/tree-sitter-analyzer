@@ -285,7 +285,48 @@ def _patch_has_changed_hunk(lines: list[str]) -> bool:
     return completed_change and not in_hunk
 
 
-def _metadata_is_canonical(lines: list[str]) -> bool:
+def _git_metadata_block_state(
+    git_paths: tuple[DiffPath, DiffPath],
+    fields: dict[str, str],
+) -> tuple[bool, bool]:
+    """Validate one Git metadata block and report whether it changes content."""
+
+    rename = {key for key in fields if key.startswith("rename ")}
+    copy = {key for key in fields if key.startswith("copy ")}
+    if rename and (rename != {"rename from", "rename to"} or copy):
+        return False, False
+    if copy and copy != {"copy from", "copy to"}:
+        return False, False
+    old_path, new_path = (path.rel_path for path in git_paths)
+    if rename and (
+        fields["rename from"] != old_path or fields["rename to"] != new_path
+    ):
+        return False, False
+    if copy and (fields["copy from"] != old_path or fields["copy to"] != new_path):
+        return False, False
+
+    modes = {
+        key
+        for key in fields
+        if key in {"old mode", "new mode", "new file mode", "deleted file mode"}
+    }
+    if modes & {"old mode", "new mode"} and modes != {"old mode", "new mode"}:
+        return False, False
+    if modes & {"new file mode", "deleted file mode"} and len(modes) != 1:
+        return False, False
+    mode_changed = (
+        modes in ({"new file mode"}, {"deleted file mode"})
+        or modes == {"old mode", "new mode"}
+        and fields["old mode"] != fields["new mode"]
+    )
+    if mode_changed and not rename and not copy and old_path != new_path:
+        return False, False
+    return True, bool(rename or copy or mode_changed)
+
+
+def _metadata_state(lines: list[str]) -> tuple[bool, bool]:
+    """Validate metadata forms and relationships; return ``(valid, changed)``."""
+
     hunk_body = _hunk_body_indexes(lines)
     paired_indexes = {
         item
@@ -293,31 +334,73 @@ def _metadata_is_canonical(lines: list[str]) -> bool:
         if _is_paired_file_header(lines, index)
         for item in (index, index + 1)
     }
+    current_paths: tuple[DiffPath, DiffPath] | None = None
+    current_fields: dict[str, str] = {}
+    metadata_changed = False
+
+    def finish_block() -> bool:
+        nonlocal metadata_changed
+        if current_paths is None:
+            return not current_fields
+        valid, changed = _git_metadata_block_state(current_paths, current_fields)
+        metadata_changed = metadata_changed or changed
+        return valid
+
     for index, line in enumerate(lines):
         if index in hunk_body or index in paired_indexes or not line:
             continue
-        if line.startswith("diff --git ") or _HUNK_HEADER_RE.fullmatch(line):
+        if line.startswith("diff --git "):
+            if not finish_block():
+                return False, False
+            current_paths = _git_header_paths(line)
+            current_fields = {}
             continue
-        if any(line.startswith(prefix) for prefix in _EXTENDED_PATH_PREFIXES):
+        if _HUNK_HEADER_RE.fullmatch(line):
             continue
-        if (
-            _MODE_HEADER_RE.fullmatch(line)
-            or _INDEX_HEADER_RE.fullmatch(line)
-            or _SIMILARITY_HEADER_RE.fullmatch(line)
-        ):
+        extended_prefix = next(
+            (prefix for prefix in _EXTENDED_PATH_PREFIXES if line.startswith(prefix)),
+            None,
+        )
+        if extended_prefix is not None:
+            if current_paths is None:
+                return False, False
+            key = extended_prefix.rstrip()
+            parsed = DiffPath.from_extended_header(line, extended_prefix)
+            if parsed is None or key in current_fields:
+                return False, False
+            current_fields[key] = parsed.rel_path
             continue
-        return False
-    return True
+        if _MODE_HEADER_RE.fullmatch(line):
+            if current_paths is None:
+                return False, False
+            key = next(
+                prefix
+                for prefix in (
+                    "old mode",
+                    "new mode",
+                    "new file mode",
+                    "deleted file mode",
+                )
+                if line.startswith(f"{prefix} ")
+            )
+            if key in current_fields:
+                return False, False
+            current_fields[key] = line[len(key) + 1 :]
+            continue
+        if _INDEX_HEADER_RE.fullmatch(line) or _SIMILARITY_HEADER_RE.fullmatch(line):
+            if current_paths is None:
+                return False, False
+            continue
+        return False, False
+    return (True, metadata_changed) if finish_block() else (False, False)
 
 
 def validate_patch(patch_text: str) -> list[DiffPath]:
-    """Validate a changed text patch and return all canonical touched paths."""
+    """Validate a changed canonical patch and return all touched paths."""
     paths = diff_paths(patch_text)
     lines = physical_lines(patch_text)
-    if (
-        not paths
-        or not _metadata_is_canonical(lines)
-        or not _patch_has_changed_hunk(lines)
-    ):
+    text_changed = _patch_has_changed_hunk(lines)
+    metadata_valid, metadata_changed = _metadata_state(lines)
+    if not paths or not metadata_valid or not (text_changed or metadata_changed):
         raise PatchFormatError("patch must be a changed canonical unified diff")
     return paths

@@ -72,6 +72,7 @@ _UNKNOWN_REASON_CODES = frozenset(
 )
 _EXPECTED_TERMINAL_FIELDS = frozenset({"verdict", "reason_code"})
 _MAX_CORPUS_BYTES = 8 * 1024 * 1024  # mirrors task_harness's input bound
+_ORACLE_ROOT = "oracles/"
 
 _REASON_TOKEN_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _REQUIRED_FIELDS = frozenset(
@@ -251,6 +252,11 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
     ):
         if not isinstance(value, str) or not value.strip():
             raise BenchmarkRecordError(f"{name} must be a non-empty string")
+    oracle = _canonical_rel_path(oracle, "oracle")
+    if not oracle.startswith(_ORACLE_ROOT) or oracle.endswith("/"):
+        raise BenchmarkRecordError(
+            f"oracle must resolve beneath the registered {_ORACLE_ROOT} root"
+        )
     if not _REASON_TOKEN_RE.fullmatch(oracle_reason):
         raise BenchmarkRecordError(
             "oracle_baseline_reason must be a lowercase-kebab token"
