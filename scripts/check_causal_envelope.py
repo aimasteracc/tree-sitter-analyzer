@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.index_snapshot import lease_existing_snapshot
 from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
 
 CAUSAL_FIELDS = frozenset(
@@ -25,21 +26,50 @@ CAUSAL_FIELDS = frozenset(
 
 async def _check(project_root: Path, file_path: str) -> dict[str, Any]:
     tool = SafeToEditTool(str(project_root))
-    result = await tool.execute(
-        {"file_path": file_path, "edit_type": "refactor", "output_format": "json"}
-    )
+    with lease_existing_snapshot(str(project_root)) as snapshot:
+        if (
+            snapshot.completeness != "complete"
+            or snapshot.snapshot_id is None
+            or snapshot.source_generation is None
+        ):
+            return {
+                "success": False,
+                "analyzer_calls": 0,
+                "separate_causality_queries": 0,
+                "certified_snapshot": False,
+                "file_path": file_path,
+                "missing_fields": sorted(CAUSAL_FIELDS),
+                "verification_command": None,
+                "reason": snapshot.reason or "INDEX_SNAPSHOT_INCOMPLETE",
+            }
+        result = await tool.execute(
+            {
+                "file_path": file_path,
+                "edit_type": "refactor",
+                "access_mode": "read_existing",
+                "snapshot_id": snapshot.snapshot_id,
+                "source_generation": snapshot.source_generation,
+                "output_format": "json",
+            }
+        )
     envelope = result.get("causal_envelope")
     fields = frozenset(envelope) if isinstance(envelope, dict) else frozenset()
     missing = sorted(CAUSAL_FIELDS - fields)
     return {
-        "success": result.get("success") is True and not missing,
+        "success": (
+            result.get("success") is True
+            and result.get("access_state") == "available"
+            and not missing
+        ),
         "analyzer_calls": 1,
         "separate_causality_queries": 0,
+        "certified_snapshot": result.get("access_state") == "available",
         "file_path": file_path,
         "missing_fields": missing,
         "verification_command": (
             envelope.get("verification_command") if isinstance(envelope, dict) else None
         ),
+        "reason": result.get("access_reason"),
     }
 
 

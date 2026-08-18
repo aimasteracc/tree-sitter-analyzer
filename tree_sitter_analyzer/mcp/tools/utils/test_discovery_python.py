@@ -17,6 +17,8 @@ def find_python_specific_tests(
     root: Path,
     test_dirs: list[str],
     results: list[str],
+    *,
+    max_results: int | None = 10,
 ) -> None:
     """Find Python tests that need project-aware conventions."""
     for finder in (
@@ -24,8 +26,8 @@ def find_python_specific_tests(
         _find_python_family_tests,
         _find_fixture_tests,
     ):
-        finder(source_path, root, test_dirs, results)
-        if len(results) >= 10:
+        finder(source_path, root, test_dirs, results, max_results=max_results)
+        if max_results is not None and len(results) >= max_results:
             return
 
 
@@ -34,6 +36,8 @@ def _find_python_package_tests(
     root: Path,
     test_dirs: list[str],
     results: list[str],
+    *,
+    max_results: int | None,
 ) -> None:
     """Find package-level tests for plugin-style source modules."""
     rel = _relative_to_root(source_path, root)
@@ -45,7 +49,7 @@ def _find_python_package_tests(
         for package_stem in _unique_stems(python_package_test_stems(rel))
         for pattern in (f"test_{package_stem}.py", f"test_{package_stem}_*.py")
     ]
-    _add_pattern_matches(root, test_dirs, patterns, results)
+    _add_pattern_matches(root, test_dirs, patterns, results, max_results=max_results)
 
 
 def _find_fixture_tests(
@@ -53,6 +57,8 @@ def _find_fixture_tests(
     root: Path,
     test_dirs: list[str],
     results: list[str],
+    *,
+    max_results: int | None,
 ) -> None:
     """Find tests that name the domain of a file under tests/fixtures."""
     rel = _relative_to_root(source_path, root)
@@ -62,7 +68,13 @@ def _find_fixture_tests(
     if "fixtures" not in rel.parts:
         return
 
-    _add_stem_named_tests(root, test_dirs, fixture_test_stems(rel), results)
+    _add_stem_named_tests(
+        root,
+        test_dirs,
+        fixture_test_stems(rel),
+        results,
+        max_results=max_results,
+    )
 
 
 def _find_python_family_tests(
@@ -70,10 +82,16 @@ def _find_python_family_tests(
     root: Path,
     test_dirs: list[str],
     results: list[str],
+    *,
+    max_results: int | None,
 ) -> None:
     """Find tests for extracted helper modules that share a family stem."""
     _add_stem_named_tests(
-        root, test_dirs, module_family_test_stems(source_path), results
+        root,
+        test_dirs,
+        module_family_test_stems(source_path),
+        results,
+        max_results=max_results,
     )
 
 
@@ -82,11 +100,13 @@ def _add_pattern_matches(
     test_dirs: list[str],
     patterns: list[str],
     results: list[str],
+    *,
+    max_results: int | None,
 ) -> None:
     """Add tests matching one of the provided glob patterns."""
     for candidate in _iter_pattern_matches(root, test_dirs, patterns):
         _add_result(results, candidate, root)
-        if len(results) >= 10:
+        if max_results is not None and len(results) >= max_results:
             return
 
 
@@ -95,12 +115,14 @@ def _add_stem_named_tests(
     test_dirs: list[str],
     stems: list[str],
     results: list[str],
+    *,
+    max_results: int | None,
 ) -> None:
     """Add tests whose test module stem matches one of the source stems."""
     for candidate in _iter_python_test_files(root, test_dirs):
         if _matches_any_stem(candidate.stem, stems):
             _add_result(results, candidate, root)
-        if len(results) >= 10:
+        if max_results is not None and len(results) >= max_results:
             return
 
 

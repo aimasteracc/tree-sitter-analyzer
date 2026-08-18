@@ -184,6 +184,27 @@ class TestSafeToEditTool:
         )
         assert envelope["stale_edges"] == []
 
+    def test_causal_envelope_does_not_inherit_legacy_test_cap(self, tool):
+        for index in range(12):
+            test_file = (
+                Path(tool.project_root)
+                / "tests"
+                / "unit"
+                / "mcp"
+                / f"test_safe_to_edit_tool_{index}.py"
+            )
+            test_file.write_text("def test_safe_to_edit_tool(): pass\n")
+
+        result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
+
+        assert len(result["test_files_nearby"]) == 10
+        assert len(result["causal_envelope"]["exercising_tests"]) == 13
+        for index in range(12):
+            assert (
+                f"tests/unit/mcp/test_safe_to_edit_tool_{index}.py"
+                in result["causal_envelope"]["exercising_tests"]
+            )
+
     def test_edit_type_rename_higher_risk(self, tool):
         result_refactor = _run(
             tool.execute(
@@ -987,6 +1008,11 @@ def test_read_existing_payload_language_detection_degrades(
     # The FILE_NOT_INDEXED gate needs the target present in ast_index.
     conn.execute("CREATE TABLE ast_index (file_path TEXT)")
     conn.execute("INSERT INTO ast_index VALUES ('app.py')")
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
     tool = tool_module.SafeToEditTool(str(tmp_path))
     result = tool._read_existing_payload(
         {"file_path": "app.py", "edit_type": "refactor"},
@@ -1393,7 +1419,6 @@ def test_snapshot_causal_view_includes_resolved_edges_and_stale_ids() -> None:
             (3, "calls", "other.py", "normalize", "util.py"),
             (4, "imports", "lazy.py", "app", ""),
             (5, "imports", "other.py", "missing", ""),
-            (6, "calls", b"invalid-caller", "handler", "app.py"),
         ],
     )
 
@@ -1406,6 +1431,110 @@ def test_snapshot_causal_view_includes_resolved_edges_and_stale_ids() -> None:
         "calls:app.py->util.py#2",
         "imports:lazy.py->app.py#4",
     ]
+
+
+def test_snapshot_stale_edges_rejects_malformed_relevant_row() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        snapshot_stale_edges,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', '[]')")
+    conn.execute(
+        "INSERT INTO edges VALUES (1, 'calls', ?, 'handler', 'app.py')",
+        (sqlite3.Binary(b"routes.py"),),
+    )
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        snapshot_stale_edges(conn, "app.py")
+
+
+def test_snapshot_stale_edges_includes_relative_member_import() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        snapshot_stale_edges,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("pkg/app.py", "[]"),
+            ("pkg/__init__.py", "[]"),
+            (
+                "pkg/routes.py",
+                json.dumps([{"text": "from . import app", "line": 1}]),
+            ),
+        ],
+    )
+    conn.execute("INSERT INTO edges VALUES (1, 'imports', 'pkg/routes.py', '.', '')")
+
+    assert snapshot_stale_edges(conn, "pkg/app.py") == [
+        "imports:pkg/routes.py->pkg/app.py#1"
+    ]
+
+
+def test_snapshot_stale_edges_uses_bounded_snapshot_queries() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        snapshot_stale_edges,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', '[]')")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, '[]')",
+        [(f"caller_{index}.py",) for index in range(1, 101)],
+    )
+    conn.executemany(
+        "INSERT INTO edges VALUES (?, 'imports', ?, ?, '')",
+        [(index, f"caller_{index}.py", f"missing_{index}") for index in range(1, 101)],
+    )
+    queries: list[str] = []
+    conn.set_trace_callback(queries.append)
+
+    assert snapshot_stale_edges(conn, "app.py") == []
+    assert len(queries) == 3
+
+
+def test_snapshot_stale_edges_fails_closed_without_required_schema() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        snapshot_stale_edges,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE edges (kind TEXT, file_path TEXT)")
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        snapshot_stale_edges(conn, "app.py")
 
 
 @pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work

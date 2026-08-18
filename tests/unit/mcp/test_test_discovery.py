@@ -54,6 +54,21 @@ class TestDetectLanguageFromExt:
 
 
 class TestFindTestFilesPython:
+    def test_optional_limit_preserves_complete_result_set(self, tmp_path: Path):
+        source = tmp_path / "calculator.py"
+        source.write_text("def add(): pass")
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        expected = {f"tests/test_calculator_{index}.py" for index in range(12)}
+        for rel_path in expected:
+            (tmp_path / rel_path).write_text("def test_add(): pass")
+
+        capped = find_test_files(str(source), str(tmp_path))
+        complete = find_test_files(str(source), str(tmp_path), max_results=None)
+
+        assert len(capped) == 10
+        assert set(complete) == expected
+
     def test_finds_python_test_in_unit_dir(self):
         """Finds tests/unit/module/test_file.py for file.py."""
         with tempfile.TemporaryDirectory() as tmp:

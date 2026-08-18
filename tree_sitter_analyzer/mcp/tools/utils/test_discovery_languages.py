@@ -14,12 +14,20 @@ def find_language_specific_tests(
     root: Path,
     python_test_dirs: list[str],
     results: list[str],
+    *,
+    max_results: int | None = 10,
 ) -> None:
     """Run extra test discovery conventions for languages that need them."""
     if language == "java":
         _find_java_tests(source_path, stem, root, results)
     if language == "python":
-        find_python_specific_tests(source_path, root, python_test_dirs, results)
+        find_python_specific_tests(
+            source_path,
+            root,
+            python_test_dirs,
+            results,
+            max_results=max_results,
+        )
     if language == "go":
         _add_direct_test_candidate(
             source_path.parent / f"{stem}_test.go", root, results

@@ -131,8 +131,8 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
     if context.snapshot_conn is not None:
         # Codex P1 (#1299 round-3/4): test facts must come from inventory-
         # covered paths only — discovery runs over the snapshot's ast_index
-        # set, so oracle-excluded files (tests/vendor/) can neither fill the
-        # discovery cap nor change has_tests/verdict for the same identity.
+        # set, so oracle-excluded files (tests/vendor/) cannot change the
+        # exercising-test set or has_tests/verdict for the same identity.
         inventory = snapshot_inventory(context.snapshot_conn)
         test_files = _certified_test_files(inventory, rel_path, dependents)
         test_files.extend(
@@ -140,10 +140,12 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
                 context.snapshot_conn, inventory, rel_path, _target_language(rel_path)
             )
         )
-        test_files = list(dict.fromkeys(test_files))[:10]
+        test_files = list(dict.fromkeys(test_files))
         certified_health = True
     else:
-        test_files = find_test_files(context.resolved_path, context.project_root)
+        test_files = find_test_files(
+            context.resolved_path, context.project_root, max_results=None
+        )
         certified_health = False
     if certified_health:
         # Codex P2 (#1299 round-13/14, C60/C61): certified reads must parse
@@ -278,7 +280,7 @@ def _format_safe_to_edit_result(
         causal_constraint_verdict = (constraint_verdict or "SAFE").lower()
     causal_envelope = {
         # These are the untruncated facts used to compute the verdict.  The
-        # legacy top-level fields remain capped for wire compatibility.
+        # legacy top-level list fields remain capped for wire compatibility.
         "dependents": list(facts.dependents),
         "dependencies": list(facts.dependencies),
         "exercising_tests": list(facts.test_files),
@@ -301,7 +303,7 @@ def _format_safe_to_edit_result(
         "downstream_count": len(facts.dependents),
         "dependencies": facts.dependencies[:10],
         "dependency_count": len(facts.dependencies),
-        "test_files_nearby": facts.test_files,
+        "test_files_nearby": facts.test_files[:10],
         "pre_edit_checklist": facts.pre_edit_checklist,
         "agent_workflow": workflow,
         "causal_envelope": causal_envelope,
@@ -1091,7 +1093,7 @@ def _certified_test_files(
             and dep not in results
         ):
             results.append(dep)
-    return results[:10]
+    return results
 
 
 def snapshot_inventory(conn: Any) -> frozenset[str]:
@@ -1130,6 +1132,17 @@ def _resolve_import_spec_in_snapshot(
     variant asks the immutable connection instead, so no live filesystem byte
     is consulted to build the dependency view.
     """
+    return _resolve_import_spec_from_inventory(
+        spec, importer_rel_path, snapshot_inventory(conn)
+    )
+
+
+def _resolve_import_spec_from_inventory(
+    spec: str,
+    importer_rel_path: str,
+    inventory: frozenset[str],
+) -> str | None:
+    """Resolve an import using one already captured snapshot inventory."""
     if not spec or spec.startswith(".."):
         return None
     if spec.startswith("."):
@@ -1150,7 +1163,7 @@ def _resolve_import_spec_in_snapshot(
         f"{candidate_base}/index.ts",
     ]
     for candidate in candidates:
-        if _snapshot_file_indexed(conn, candidate):
+        if candidate in inventory:
             return candidate
     return None
 
@@ -1180,6 +1193,7 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
     import json
 
     _require_edges_callee_name(conn)
+    inventory = snapshot_inventory(conn)
     dependencies: set[str] = set()
     dependents: set[str] = set()
     try:
@@ -1188,7 +1202,9 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
         # is the definition file for every resolved cross-file edge.
         resolved_rows = conn.execute(
             "SELECT file_path, callee_resolved_file FROM edges "
-            "WHERE callee_resolved_file != ''"
+            "WHERE callee_resolved_file != '' "
+            "AND (file_path = ? OR callee_resolved_file = ?)",
+            (rel_path, rel_path),
         ).fetchall()
         for caller_file, callee_file in resolved_rows:
             if not isinstance(caller_file, str) or not isinstance(callee_file, str):
@@ -1209,7 +1225,7 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
                 # Codex P2 (#1299 round-10, C44): a BLOB callee_name would
                 # raise TypeError at startswith and abandon the whole pass.
                 continue
-            resolved = _resolve_import_spec_in_snapshot(conn, module, rel_path)
+            resolved = _resolve_import_spec_from_inventory(module, rel_path, inventory)
             if resolved:
                 dependencies.add(resolved)
         all_rows = conn.execute(
@@ -1220,7 +1236,7 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
                 continue
             if not isinstance(module, str):
                 continue
-            resolved = _resolve_import_spec_in_snapshot(conn, module, file_path)
+            resolved = _resolve_import_spec_from_inventory(module, file_path, inventory)
             if resolved == rel_path:
                 dependents.add(file_path)
     except Exception:  # nosec B110 — snapshot schema drift degrades to empty
@@ -1271,8 +1287,8 @@ def snapshot_stale_edges(conn: Any, rel_path: str) -> list[str]:
 
     An edit always invalidates its outgoing rows; it may also invalidate
     incoming rows when definitions move, disappear, or change signature.  P1
-    therefore reports both directions conservatively.  Legacy/partial schemas
-    return an empty list instead of inventing row identities.
+    therefore reports both directions conservatively.  A missing edge schema
+    fails closed instead of reporting a misleading empty set.
     """
 
     try:
@@ -1282,24 +1298,93 @@ def snapshot_stale_edges(conn: Any, rel_path: str) -> list[str]:
             "OR (kind = 'imports' AND callee_resolved_file = '') ORDER BY id",
             (rel_path, rel_path),
         ).fetchall()
-    except Exception:  # nosec B110 — stale-edge identity is unavailable
-        return []
+    except Exception as exc:
+        raise ValueError("CORRUPT_INDEX") from exc
 
+    inventory = snapshot_inventory(conn)
+    unresolved_callers = {
+        caller_file
+        for _, kind, caller_file, _, resolved_file in rows
+        if kind == "imports"
+        and resolved_file == ""
+        and isinstance(caller_file, str)
+        and caller_file in inventory
+    }
+    needle_importers = _snapshot_needle_importers(conn, rel_path, unresolved_callers)
     labels: list[str] = []
     for row in rows:
         edge_id, kind, caller_file, callee_name, resolved_file = row
-        if not isinstance(caller_file, str) or not isinstance(kind, str):
-            continue
-        target_file = resolved_file if isinstance(resolved_file, str) else ""
-        if not target_file and kind == "imports" and isinstance(callee_name, str):
+        if (
+            not isinstance(edge_id, int)
+            or isinstance(edge_id, bool)
+            or not isinstance(kind, str)
+            or not kind
+            or not isinstance(caller_file, str)
+            or not caller_file
+            or not isinstance(callee_name, str)
+            or not isinstance(resolved_file, str)
+        ):
+            raise ValueError("CORRUPT_INDEX")
+        target_file = resolved_file
+        if not target_file and kind == "imports":
             target_file = (
-                _resolve_import_spec_in_snapshot(conn, callee_name, caller_file) or ""
+                _resolve_import_spec_from_inventory(callee_name, caller_file, inventory)
+                or ""
             )
+            # Member imports such as ``from . import app`` resolve the module
+            # edge to ``pkg/__init__.py``.  The immutable imports projection
+            # is the only snapshot-bound evidence that the row also touches
+            # ``pkg/app.py``; mark it conservatively instead of dropping it.
+            if caller_file in needle_importers:
+                target_file = rel_path
         if caller_file != rel_path and target_file != rel_path:
             continue
-        target = target_file or (callee_name if isinstance(callee_name, str) else "")
+        target = target_file or callee_name
         labels.append(f"{kind}:{caller_file}->{target}#{edge_id}")
     return labels
+
+
+def _snapshot_needle_importers(
+    conn: Any,
+    rel_path: str,
+    candidate_files: set[str],
+) -> set[str]:
+    """Return unresolved importers whose recorded text names ``rel_path``."""
+    if not candidate_files:
+        return set()
+    import json
+
+    needles = _import_needles_for_target(rel_path)
+    try:
+        rows = conn.execute("SELECT file_path, imports_json FROM ast_index").fetchall()
+    except Exception as exc:
+        raise ValueError("CORRUPT_INDEX") from exc
+
+    matched: set[str] = set()
+    seen: set[str] = set()
+    for row in rows:
+        file_path = row["file_path"]
+        if file_path not in candidate_files:
+            continue
+        if not isinstance(file_path, str):
+            raise ValueError("CORRUPT_INDEX")
+        seen.add(file_path)
+        try:
+            imports = json.loads(row["imports_json"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("CORRUPT_INDEX") from exc
+        if not isinstance(imports, list):
+            raise ValueError("CORRUPT_INDEX")
+        for item in imports:
+            text = item.get("text") if isinstance(item, dict) else item
+            if not isinstance(text, str):
+                raise ValueError("CORRUPT_INDEX")
+            if any(re.search(rf"\b{re.escape(needle)}\b", text) for needle in needles):
+                matched.add(file_path)
+                break
+    if seen != candidate_files:
+        raise ValueError("CORRUPT_INDEX")
+    return matched
 
 
 def safe_dependents(graph: Any, rel_path: str) -> list[str]:

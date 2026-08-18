@@ -275,7 +275,7 @@ class SafeToEditTool(BaseMCPTool):
         """RFC-0022 P0.4: build the risk envelope from the certified snapshot.
 
         The dependency view comes exclusively from the snapshot ``edges``
-        table (IMPORTS kind); the syntax gate, health score, and test
+        and ``ast_index`` tables; the syntax gate, health score, and test
         discovery still read the live source, but the after-read source
         recapture (in the consumer seam) certifies those bytes still match
         the snapshot generation before any result is emitted. Syntax errors
