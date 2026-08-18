@@ -1149,9 +1149,33 @@ def _resolve_import_spec_from_inventory(
     inventory: frozenset[str],
 ) -> str | None:
     """Resolve an import using one already captured snapshot inventory."""
-    if not spec or spec.startswith(".."):
+    if not spec:
         return None
-    if spec.startswith("."):
+
+    # JavaScript/TypeScript module specifiers use POSIX path syntax.  Resolve
+    # them separately from Python's leading-dot package syntax so a valid
+    # ``../shared`` import cannot escape the repository root and ``./setup``
+    # maps to the importing file's directory.
+    if spec.startswith(("./", "../")):
+        parts: list[str] = []
+        joined = f"{Path(importer_rel_path).parent.as_posix()}/{spec}"
+        for part in joined.split("/"):
+            if part in {"", "."}:
+                continue
+            if part == "..":
+                if not parts:
+                    return None
+                parts.pop()
+            else:
+                parts.append(part)
+        if not parts:
+            return None
+        candidate_base = "/".join(parts)
+    elif spec.startswith(".."):
+        # Parent-relative Python imports are not represented precisely enough
+        # by the current projection.  Preserve the existing fail-closed rule.
+        return None
+    elif spec.startswith("."):
         base = Path(importer_rel_path).parent
         candidate_base = (base / spec.lstrip("./")).as_posix()
     else:
@@ -1161,17 +1185,124 @@ def _resolve_import_spec_from_inventory(
         candidate_base,
         f"{candidate_base}.py",
         f"{candidate_base}.js",
+        f"{candidate_base}.jsx",
         f"{candidate_base}.ts",
         f"{candidate_base}.tsx",
         f"{candidate_base}.java",
         f"{candidate_base}/__init__.py",
         f"{candidate_base}/index.js",
+        f"{candidate_base}/index.jsx",
         f"{candidate_base}/index.ts",
+        f"{candidate_base}/index.tsx",
     ]
     for candidate in candidates:
         if candidate in inventory:
             return candidate
     return None
+
+
+def _import_targets_from_text(
+    import_text: str,
+    importer_rel_path: str,
+    inventory: frozenset[str],
+) -> set[str]:
+    """Resolve every inventory-covered file named by one import statement.
+
+    Import projections preserve source text, not a normalized target list.
+    Parse the small syntax surface needed by the supported Python and
+    JavaScript/TypeScript forms and always resolve against the immutable
+    snapshot inventory.  In particular, a member import is bound to its
+    module (``from other import app`` -> ``other/app.py``), never to an
+    unrelated repository-wide basename match.
+    """
+
+    specs: set[str] = set()
+    from_match = re.match(
+        r"^\s*from\s+([.A-Za-z_][\w.]*)\s+import\s+(.+)$",
+        import_text,
+        re.S,
+    )
+    if from_match:
+        module, imported = from_match.groups()
+        specs.add(module)
+        payload = imported.split("#", 1)[0].replace("(", "").replace(")", "")
+        for item in payload.split(","):
+            member = item.strip().split(maxsplit=1)[0] if item.strip() else ""
+            if member and member != "*" and re.fullmatch(r"[A-Za-z_]\w*", member):
+                separator = "" if module.endswith(".") else "."
+                specs.add(f"{module}{separator}{member}")
+    else:
+        # Python/Java direct imports.  Multiple Python imports on one line are
+        # kept distinct; aliases and Java's trailing semicolon are ignored.
+        direct_match = re.match(r"^\s*import\s+(.+)$", import_text, re.S)
+        if direct_match and not direct_match.group(1).lstrip().startswith(("'", '"')):
+            for item in direct_match.group(1).split(","):
+                spec = item.strip().split(maxsplit=1)[0].rstrip(";")
+                if re.fullmatch(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*", spec):
+                    specs.add(spec)
+
+    # ESM side-effect/default/named imports and re-exports, plus CommonJS and
+    # dynamic import expressions.  All capture the quoted module specifier.
+    specs.update(
+        re.findall(
+            r"(?:\bfrom\s*|^\s*import\s*)['\"]([^'\"]+)['\"]",
+            import_text,
+            re.M,
+        )
+    )
+    specs.update(
+        re.findall(
+            r"\b(?:require|import)\s*\(\s*['\"]([^'\"]+)['\"]\s*\)",
+            import_text,
+        )
+    )
+
+    return {
+        resolved
+        for spec in specs
+        if (
+            resolved := _resolve_import_spec_from_inventory(
+                spec, importer_rel_path, inventory
+            )
+        )
+    }
+
+
+def _edge_import_names_for_target(rel_path: str) -> tuple[str, ...]:
+    """Return bounded unresolved-edge names that could identify *rel_path*."""
+
+    path = Path(rel_path)
+    without_suffix = path.with_suffix("").as_posix()
+    module = without_suffix.replace("/", ".")
+    parent_module = path.parent.as_posix().replace("/", ".")
+    names = {
+        without_suffix,
+        module,
+        path.stem,
+        parent_module,
+        ".",
+        f".{path.stem}",
+        f"./{path.stem}",
+    }
+    if path.parent.name:
+        names.add(f".{path.parent.name}")
+    if path.name == "__init__.py":
+        names.discard("__init__")
+    return tuple(sorted(name for name in names if name and name != ".")) + (".",)
+
+
+def _projection_search_tokens(rel_path: str) -> tuple[str, ...]:
+    """Return coarse SQL tokens; exact import parsing is the trust boundary."""
+
+    path = Path(rel_path)
+    tokens = _import_needles_for_target(rel_path)
+    if path.stem and path.stem != "__init__":
+        tokens.add(f"./{path.stem}")
+    return tuple(sorted(tokens))
+
+
+def _escape_sql_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDependencyView:
@@ -1236,13 +1367,15 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
             resolved = _resolve_import_spec_from_inventory(module, rel_path, inventory)
             if resolved:
                 dependencies.add(resolved)
+        candidate_names = _edge_import_names_for_target(rel_path)
+        placeholders = ", ".join("?" for _ in candidate_names)
         all_rows = conn.execute(
-            "SELECT file_path, callee_name FROM edges WHERE kind = 'imports'",
+            "SELECT file_path, callee_name FROM edges WHERE kind = 'imports' "
+            f"AND callee_name IN ({placeholders})",
+            candidate_names,
         ).fetchall()
         for file_path, module in all_rows:
             if not isinstance(file_path, str) or not file_path or file_path == rel_path:
-                continue
-            if not isinstance(module, str):
                 continue
             resolved = _resolve_import_spec_from_inventory(module, file_path, inventory)
             if resolved == rel_path:
@@ -1250,13 +1383,23 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
     except Exception:  # nosec B110 — snapshot schema drift degrades to empty
         pass
     try:
-        # _import_needles_for_target always yields at least one needle for a
-        # non-empty rel_path, so no guard is needed around the scan.
-        needles = _import_needles_for_target(rel_path)
-        rows = conn.execute("SELECT file_path, imports_json FROM ast_index").fetchall()
+        # Fetch the target's own projection for outgoing dependencies and only
+        # coarse candidate importers for the incoming direction.  Exact parsing
+        # below remains the trust boundary; LIKE is only a bounded SQL prefilter.
+        tokens = _projection_search_tokens(rel_path)
+        like_terms = " OR ".join("imports_json LIKE ? ESCAPE '\\'" for _ in tokens)
+        rows = conn.execute(
+            "SELECT file_path, imports_json FROM ast_index WHERE file_path = ? "
+            f"OR (file_path != ? AND ({like_terms}))",
+            (
+                rel_path,
+                rel_path,
+                *(f"%{_escape_sql_like(token)}%" for token in tokens),
+            ),
+        ).fetchall()
         for row in rows:
             file_path = row["file_path"]
-            if not file_path or file_path == rel_path:
+            if not isinstance(file_path, str) or not file_path:
                 continue
             try:
                 imports = json.loads(row["imports_json"])
@@ -1272,15 +1415,13 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
                 imp_text = imp["text"] if isinstance(imp, dict) else imp
                 if not isinstance(imp_text, str):
                     continue
-                # Codex P2 (#1299 round-14, C64): match import identifiers
-                # as whole tokens — a short basename like 'app' must not
-                # match 'import happy' as a substring.
-                if any(
-                    re.search(rf"\b{re.escape(needle)}\b", imp_text)
-                    for needle in needles
-                ):
+                targets = _import_targets_from_text(imp_text, file_path, inventory)
+                if file_path == rel_path:
+                    dependencies.update(
+                        target for target in targets if target != rel_path
+                    )
+                elif rel_path in targets:
                     dependents.add(file_path)
-                    break
     except Exception:  # nosec B110 — snapshot schema drift degrades to empty
         pass
     return FileDependencyView(
@@ -1299,12 +1440,15 @@ def snapshot_stale_edges(conn: Any, rel_path: str) -> list[str]:
     fails closed instead of reporting a misleading empty set.
     """
 
+    candidate_names = _edge_import_names_for_target(rel_path)
+    placeholders = ", ".join("?" for _ in candidate_names)
     try:
         rows = conn.execute(
             "SELECT id, kind, file_path, callee_name, callee_resolved_file "
             "FROM edges WHERE file_path = ? OR callee_resolved_file = ? "
-            "OR (kind = 'imports' AND callee_resolved_file = '') ORDER BY id",
-            (rel_path, rel_path),
+            "OR (kind = 'imports' AND callee_resolved_file = '' "
+            f"AND callee_name IN ({placeholders})) ORDER BY id",
+            (rel_path, rel_path, *candidate_names),
         ).fetchall()
     except Exception as exc:
         raise ValueError("CORRUPT_INDEX") from exc
@@ -1318,7 +1462,9 @@ def snapshot_stale_edges(conn: Any, rel_path: str) -> list[str]:
         and isinstance(caller_file, str)
         and caller_file in inventory
     }
-    needle_importers = _snapshot_needle_importers(conn, rel_path, unresolved_callers)
+    needle_importers = _snapshot_needle_importers(
+        conn, rel_path, unresolved_callers, inventory=inventory
+    )
     labels: list[str] = []
     for row in rows:
         edge_id, kind, caller_file, callee_name, resolved_file = row
@@ -1355,18 +1501,27 @@ def snapshot_stale_edges(conn: Any, rel_path: str) -> list[str]:
 def _snapshot_needle_importers(
     conn: Any,
     rel_path: str,
-    candidate_files: set[str],
+    candidate_files: set[str] | set[bytes],
+    *,
+    inventory: frozenset[str] | None = None,
 ) -> set[str]:
     """Return unresolved importers whose recorded text names ``rel_path``."""
     if not candidate_files:
         return set()
     import json
 
-    needles = _import_needles_for_target(rel_path)
+    placeholders = ", ".join("?" for _ in candidate_files)
     try:
-        rows = conn.execute("SELECT file_path, imports_json FROM ast_index").fetchall()
+        rows = conn.execute(
+            "SELECT file_path, imports_json FROM ast_index "
+            f"WHERE file_path IN ({placeholders})",
+            tuple(candidate_files),
+        ).fetchall()
     except Exception as exc:
         raise ValueError("CORRUPT_INDEX") from exc
+
+    if inventory is None:
+        inventory = snapshot_inventory(conn)
 
     matched: set[str] = set()
     seen: set[str] = set()
@@ -1387,7 +1542,7 @@ def _snapshot_needle_importers(
             text = item.get("text") if isinstance(item, dict) else item
             if not isinstance(text, str):
                 raise ValueError("CORRUPT_INDEX")
-            if any(re.search(rf"\b{re.escape(needle)}\b", text) for needle in needles):
+            if rel_path in _import_targets_from_text(text, file_path, inventory):
                 matched.add(file_path)
                 break
     if seen != candidate_files:

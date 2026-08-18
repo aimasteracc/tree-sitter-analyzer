@@ -1382,16 +1382,23 @@ def test_snapshot_dependency_view_recalls_member_imports() -> None:
     )
     conn.execute(
         "INSERT INTO ast_index VALUES ('odd.py', ?)",
-        (json.dumps([{"text": 123, "line": 1}]),),
+        (json.dumps([{"text": 123, "module": "app", "line": 1}]),),
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        (
+            sqlite3.Binary(b"blob-projection.py"),
+            json.dumps([{"text": "import app", "line": 1}]),
+        ),
     )
     conn.execute(
         "INSERT INTO ast_index VALUES ('app.py', ?)",
         (json.dumps([{"text": "import os", "line": 1}]),),
     )
-    conn.execute("INSERT INTO ast_index VALUES ('broken.py', 'not-json')")
+    conn.execute("INSERT INTO ast_index VALUES ('broken.py', 'not-json-app')")
     # C40: a valid-JSON non-array cell (42) must be skipped per row, NOT
     # abort the whole needle pass — the later matching row still counts.
-    conn.execute("INSERT INTO ast_index VALUES ('scalar.py', '42')")
+    conn.execute("INSERT INTO ast_index VALUES ('scalar.py', '\"app\"')")
     # C64: 'import happy' must NOT match the 'app' needle as a substring.
     conn.execute(
         "INSERT INTO ast_index VALUES ('tests/test_happy.py', ?)",
@@ -1406,6 +1413,87 @@ def test_snapshot_dependency_view_recalls_member_imports() -> None:
     # non-match branch (no dependent added); 'later.py' proves the pass
     # survived the malformed 'scalar.py' row.
     assert view.dependents_of("app.py") == ["later.py", "routes.py"]
+
+
+def test_snapshot_dependency_view_binds_member_import_to_its_package() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("pkg/app.py", "[]"),
+            ("other/app.py", "[]"),
+            ("other/__init__.py", "[]"),
+            (
+                "routes.py",
+                json.dumps([{"text": "from other import app", "line": 1}]),
+            ),
+        ],
+    )
+
+    pkg_view = build_snapshot_file_dependency_view(conn, "pkg/app.py")
+    other_view = build_snapshot_file_dependency_view(conn, "other/app.py")
+
+    assert pkg_view.dependents_of("pkg/app.py") == []
+    assert other_view.dependents_of("other/app.py") == ["routes.py"]
+
+
+def test_snapshot_dependency_view_reads_javascript_projection_both_ways() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "src/main.ts",
+                json.dumps([{"text": "import './setup';", "line": 1}]),
+            ),
+            ("src/setup.ts", "[]"),
+        ],
+    )
+
+    main_view = build_snapshot_file_dependency_view(conn, "src/main.ts")
+    setup_view = build_snapshot_file_dependency_view(conn, "src/setup.ts")
+
+    assert main_view.dependencies_of("src/main.ts") == ["src/setup.ts"]
+    assert setup_view.dependents_of("src/setup.ts") == ["src/main.ts"]
+
+
+def test_snapshot_import_resolution_bounds_javascript_paths() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _projection_search_tokens,
+        _resolve_import_spec_from_inventory,
+    )
+
+    inventory = frozenset({"shared.ts", "src/main.ts", "pkg/__init__.py"})
+
+    assert (
+        _resolve_import_spec_from_inventory("../shared", "src/main.ts", inventory)
+        == "shared.ts"
+    )
+    assert (
+        _resolve_import_spec_from_inventory("../shared", "main.ts", inventory) is None
+    )
+    assert _resolve_import_spec_from_inventory("./", "main.ts", inventory) is None
+    assert "./__init__" not in _projection_search_tokens("pkg/__init__.py")
 
 
 def test_snapshot_causal_view_includes_resolved_edges_and_stale_ids() -> None:
@@ -1625,7 +1713,8 @@ def test_snapshot_stale_edges_uses_bounded_snapshot_queries() -> None:
     conn.set_trace_callback(queries.append)
 
     assert snapshot_stale_edges(conn, "app.py") == []
-    assert len(queries) == 3
+    assert len(queries) == 2
+    assert "SELECT file_path, imports_json FROM ast_index" not in queries
 
 
 def test_snapshot_syntax_envelope_keeps_complete_exercising_tests() -> None:
@@ -1686,12 +1775,12 @@ def test_read_existing_payload_without_snapshot_keeps_syntax_envelope_unknown(
 
     assert result["signal"] == "syntax_error"
     assert result["causal_envelope"] == {
-        "dependents": [],
-        "dependencies": [],
-        "exercising_tests": [],
+        "dependents": None,
+        "dependencies": None,
+        "exercising_tests": None,
         "constraint_verdict": "unknown",
         "verification_command": None,
-        "stale_edges": [],
+        "stale_edges": None,
     }
 
 

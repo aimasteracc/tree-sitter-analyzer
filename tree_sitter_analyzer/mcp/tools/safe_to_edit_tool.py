@@ -405,12 +405,15 @@ def _syntax_error_response(
         "test_files": [],
         "has_tests": False,
         "causal_envelope": {
-            "dependents": [],
-            "dependencies": [],
-            "exercising_tests": [],
+            # ``None`` means unevaluated.  Empty lists would falsely certify
+            # that the live path evaluated these complete-set fields and found
+            # nothing, even though syntax failure prevented the walk.
+            "dependents": None,
+            "dependencies": None,
+            "exercising_tests": None,
             "constraint_verdict": "unknown",
             "verification_command": None,
-            "stale_edges": [],
+            "stale_edges": None,
         },
         "pre_edit_checklist": [
             "Fix syntax errors so the file parses cleanly.",
