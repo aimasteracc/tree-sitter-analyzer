@@ -54,52 +54,6 @@ class TestDetectLanguageFromExt:
 
 
 class TestFindTestFilesPython:
-    def test_python_specific_helpers_honor_finite_limit(self, tmp_path: Path):
-        from tree_sitter_analyzer.mcp.tools.utils.test_discovery_python import (
-            _add_pattern_matches,
-            _add_stem_named_tests,
-        )
-
-        tests_dir = tmp_path / "tests"
-        tests_dir.mkdir()
-        for name in ("test_alpha.py", "test_alpha_more.py"):
-            (tests_dir / name).write_text("def test_alpha(): pass")
-
-        pattern_results: list[str] = []
-        _add_pattern_matches(
-            tmp_path,
-            ["tests"],
-            ["test_alpha*.py"],
-            pattern_results,
-            max_results=1,
-        )
-        stem_results: list[str] = []
-        _add_stem_named_tests(
-            tmp_path,
-            ["tests"],
-            ["alpha"],
-            stem_results,
-            max_results=1,
-        )
-
-        assert len(pattern_results) == 1
-        assert len(stem_results) == 1
-
-    def test_optional_limit_preserves_complete_result_set(self, tmp_path: Path):
-        source = tmp_path / "calculator.py"
-        source.write_text("def add(): pass")
-        tests_dir = tmp_path / "tests"
-        tests_dir.mkdir()
-        expected = {f"tests/test_calculator_{index}.py" for index in range(12)}
-        for rel_path in expected:
-            (tmp_path / rel_path).write_text("def test_add(): pass")
-
-        capped = find_test_files(str(source), str(tmp_path))
-        complete = find_test_files(str(source), str(tmp_path), max_results=None)
-
-        assert len(capped) == 10
-        assert set(complete) == expected
-
     def test_finds_python_test_in_unit_dir(self):
         """Finds tests/unit/module/test_file.py for file.py."""
         with tempfile.TemporaryDirectory() as tmp:

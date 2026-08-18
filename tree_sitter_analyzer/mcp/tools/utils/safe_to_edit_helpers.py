@@ -138,9 +138,7 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
         )
         certified_health = True
     else:
-        test_files = find_test_files(
-            context.resolved_path, context.project_root, max_results=None
-        )
+        test_files = find_test_files(context.resolved_path, context.project_root)
         certified_health = False
     if certified_health:
         # Codex P2 (#1299 round-13/14, C60/C61): certified reads must parse

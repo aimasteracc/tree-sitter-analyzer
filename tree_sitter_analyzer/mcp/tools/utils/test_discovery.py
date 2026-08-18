@@ -96,14 +96,10 @@ def detect_language_from_ext(ext: str) -> str | None:
 def find_test_files(
     file_path: str,
     project_root: str,
-    *,
-    max_results: int | None = 10,
 ) -> list[str]:
     """Find test files for the given source file, language-aware.
 
-    Returns relative paths to test files found within the project.  The
-    historical public response is capped at ten by default; callers building
-    a complete causal envelope can pass ``max_results=None``.
+    Returns relative paths to test files found within the project.
     """
     p = Path(file_path)
     root = Path(project_root)
@@ -118,7 +114,7 @@ def find_test_files(
     patterns = _TEST_PATTERNS.get(language, ["test_{stem}.py"])
     test_dirs = _TEST_DIRS.get(language, ["tests"])
 
-    _find_pattern_tests(root, stem, patterns, test_dirs, results, max_results)
+    _find_pattern_tests(root, stem, patterns, test_dirs, results)
     _find_colocated_tests(p, stem, patterns, root, results)
     _find_symbol_reference_tests(p, language, root, results)
     find_language_specific_tests(
@@ -128,10 +124,9 @@ def find_test_files(
         root,
         _TEST_DIRS.get("python", ["tests"]),
         results,
-        max_results=max_results,
     )
 
-    return results if max_results is None else results[:max_results]
+    return results[:10]
 
 
 def _find_pattern_tests(
@@ -140,7 +135,6 @@ def _find_pattern_tests(
     patterns: list[str],
     test_dirs: list[str],
     results: list[str],
-    max_results: int | None,
 ) -> None:
     """Find tests in common test directories using language patterns."""
     for pattern in patterns:
@@ -148,7 +142,7 @@ def _find_pattern_tests(
         for test_dir in test_dirs:
             _add_direct_test_candidate(root / test_dir / test_filename, root, results)
             _find_recursive_test_candidates(
-                root / test_dir, test_filename, root, results, max_results
+                root / test_dir, test_filename, root, results
             )
 
 
@@ -163,14 +157,13 @@ def _find_recursive_test_candidates(
     test_filename: str,
     root: Path,
     results: list[str],
-    max_results: int | None,
 ) -> None:
     """Find matching tests recursively within a test directory."""
     if not test_dir.is_dir():
         return
     for candidate in test_dir.rglob(test_filename):
         _add_result(results, candidate, root)
-        if max_results is not None and len(results) >= max_results:
+        if len(results) >= 10:
             break
 
 
