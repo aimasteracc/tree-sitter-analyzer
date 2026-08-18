@@ -59,7 +59,7 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v23: seal ambiguous Python scopes and project static Java/CommonJS loads.
 # v24: project CommonJS aliases and C++20 imports for fail-closed reads.
 # v33: invalidate caches for computed and header-retained loader semantics.
-_AST_CACHE_EXTRACTOR_VERSION = 33
+_AST_CACHE_EXTRACTOR_VERSION = 34
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__

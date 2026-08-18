@@ -326,6 +326,10 @@ def _python_control_flow_header_values(statement: ast.stmt) -> tuple[ast.expr, .
         )
     if isinstance(statement, ast.Assert):
         return (statement.test,) + (() if statement.msg is None else (statement.msg,))
+    if isinstance(statement, ast.Try):
+        return tuple(
+            handler.type for handler in statement.handlers if handler.type is not None
+        )
     return ()
 
 
@@ -498,6 +502,14 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                     _python_value_stores_loader(decorator, names)
                     for decorator in node.decorator_list
                 )
+            if isinstance(node, ast.ClassDef):
+                nested_loader_alias = nested_loader_alias or any(
+                    _python_value_stores_loader(value, names)
+                    for value in (
+                        *node.bases,
+                        *(keyword.value for keyword in node.keywords),
+                    )
+                )
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
                 arguments = (
                     *node.args.posonlyargs,
@@ -624,6 +636,19 @@ _JSTS_FILE_ALIAS_ANCESTORS = frozenset(
 )
 
 
+def _jsts_unwrap_parenthesized(node: Any) -> Any | None:
+    """Return the single expression enclosed by any JS/TS parentheses."""
+
+    while node.type == "parenthesized_expression":
+        named_children = [
+            child for child in node.children if getattr(child, "is_named", True)
+        ]
+        if len(named_children) != 1:
+            return None
+        node = named_children[0]
+    return node
+
+
 def _jsts_file_scoped_alias(node: Any) -> bool:
     """Return whether a declarator is unconditionally file scoped."""
 
@@ -689,13 +714,9 @@ def _jsts_pattern_binds_module_loader(
 def _jsts_module_loader_reference(node: Any, source: str, loaders: set[str]) -> bool:
     """Return whether one syntax node is a tracked JS/TS module loader."""
 
-    while node.type == "parenthesized_expression":
-        named_children = [
-            child for child in node.children if getattr(child, "is_named", True)
-        ]
-        if len(named_children) != 1:
-            return False
-        node = named_children[0]
+    node = _jsts_unwrap_parenthesized(node)
+    if node is None:
+        return False
     value = _node_text(node, source)
     value = value.replace("?.", ".")
     return value in loaders or bool(
@@ -733,7 +754,7 @@ def _jsts_require_utility_member(node: Any, source: str, loaders: set[str]) -> b
     if owner is None or accessor is None:
         return False
     member = _node_text(accessor, source).strip("'\"`")
-    return member in {"cache", "extensions", "main", "resolve"} and (
+    return member == "resolve" and (
         _jsts_module_loader_reference(owner, source, loaders)
     )
 
@@ -745,12 +766,31 @@ def _jsts_dynamic_module_member(node: Any, source: str) -> bool:
         return False
     owner = node.child_by_field_name("object")
     index = node.child_by_field_name("index")
-    if owner is None or index is None or _node_text(owner, source).strip() != "module":
+    if owner is None or index is None:
+        return False
+    owner = _jsts_unwrap_parenthesized(owner)
+    if owner is None or _node_text(owner, source).strip() != "module":
         return False
     index_text = _node_text(index, source).strip()
     quoted_literal = re.fullmatch(r"(['\"])[^'\"]*\1", index_text)
     template_literal = re.fullmatch(r"`[^`$]*`", index_text)
     return quoted_literal is None and template_literal is None
+
+
+def _jsts_pattern_selects_require_property(node: Any, source: str) -> bool:
+    """Return whether a binding pattern extracts ``module.require``."""
+
+    if node.type == "pair_pattern":
+        key = node.child_by_field_name("key")
+        if key is not None and _node_text(key, source).strip("'\"`") == "require":
+            return True
+    if node.type == "shorthand_property_identifier_pattern":
+        return _node_text(node, source) == "require"
+    return any(
+        _jsts_pattern_selects_require_property(child, source)
+        for child in node.children
+        if getattr(child, "is_named", True)
+    )
 
 
 def _jsts_value_stores_module_loader(node: Any, source: str, loaders: set[str]) -> bool:
@@ -913,6 +953,16 @@ class _SymbolWalker:
                     self.import_projection_complete = False
             else:
                 patterns.append(name)
+                normalized_value = (
+                    _jsts_unwrap_parenthesized(value) if value is not None else None
+                )
+                if (
+                    name is not None
+                    and normalized_value is not None
+                    and _node_text(normalized_value, self.source).strip() == "module"
+                    and _jsts_pattern_selects_require_property(name, self.source)
+                ):
+                    self.import_projection_complete = False
         elif node.type == "formal_parameters":
             patterns.extend(node.children)
         elif node.type in {
@@ -962,6 +1012,17 @@ class _SymbolWalker:
                 for operand in operands
             ):
                 self.import_projection_complete = False
+        elif node.type in {"return_statement", "yield_expression"}:
+            self.import_projection_complete = (
+                self.import_projection_complete
+                and not any(
+                    _jsts_value_stores_module_loader(
+                        child, self.source, self.jsts_module_loaders
+                    )
+                    for child in node.children
+                    if getattr(child, "is_named", True)
+                )
+            )
         self.import_projection_complete = self.import_projection_complete and not any(
             pattern is not None
             and _jsts_pattern_binds_module_loader(
@@ -1069,14 +1130,10 @@ class _SymbolWalker:
         arguments = node.child_by_field_name("arguments")
         if function is None or arguments is None:
             return False
-        while function.type == "parenthesized_expression":
-            named_children = [
-                child for child in function.children if getattr(child, "is_named", True)
-            ]
-            if len(named_children) != 1:
-                self.import_projection_complete = False
-                return False
-            function = named_children[0]
+        function = _jsts_unwrap_parenthesized(function)
+        if function is None:
+            self.import_projection_complete = False
+            return False
         if _jsts_indirect_module_loader_call(
             function, self.source, self.jsts_module_loaders
         ):
@@ -1088,8 +1145,11 @@ class _SymbolWalker:
         if not _jsts_module_loader_reference(
             function, self.source, self.jsts_module_loaders
         ):
-            if _jsts_value_stores_module_loader(
-                arguments, self.source, self.jsts_module_loaders
+            if any(
+                _jsts_value_stores_module_loader(
+                    candidate, self.source, self.jsts_module_loaders
+                )
+                for candidate in (function, arguments)
             ):
                 self.import_projection_complete = False
             return False

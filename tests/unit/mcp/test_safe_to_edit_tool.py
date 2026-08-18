@@ -3963,12 +3963,12 @@ def test_snapshot_syntax_envelope_keeps_complete_exercising_tests() -> None:
         "INSERT INTO ast_index VALUES "
         "('app.py', '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 33)'
+        '"syntax_error": false}\', 34)'
     )
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 33)',
+        '"syntax_error": false}\', 34)',
         [(f"tests/test_app_{index}.py",) for index in range(12)],
     )
     conn.executemany(
@@ -4005,7 +4005,7 @@ def test_snapshot_syntax_envelope_excludes_unrelated_nearby_test() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 33)',
+        '"syntax_error": false}\', 34)',
         [("app.py",), ("tests/test_app.py",)],
     )
 
@@ -4523,7 +4523,7 @@ def test_snapshot_syntax_envelope_certifies_single_java_file() -> None:
     conn.execute(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 33)',
+        '"syntax_error": false}\', 34)',
         (
             "src/main/java/com/acme/Util.java",
             json.dumps([{"text": "package com.acme;"}]),
@@ -4632,7 +4632,7 @@ def test_snapshot_syntax_envelope_rejects_conflicting_java_packages() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 33)',
+        '"syntax_error": false}\', 34)',
         [
             (
                 target,
@@ -4802,7 +4802,7 @@ def test_snapshot_syntax_envelope_rejects_uncaptured_include_root() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 33)',
+        '"syntax_error": false}\', 34)',
         [
             (
                 importer,
@@ -5055,7 +5055,7 @@ def _symbol_conn(raw_symbols: object) -> sqlite3.Connection:
         "CREATE TABLE ast_index ("
         "file_path TEXT, symbols_json TEXT, extractor_version INTEGER)"
     )
-    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 33)", (raw_symbols,))
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 34)", (raw_symbols,))
     return conn
 
 
@@ -5599,7 +5599,7 @@ def test_jsts_projection_rejects_casefold_collision() -> None:
     assert helpers._jsts_import_projection_complete(conn, inventory) is False
 
 
-def test_commonjs_loader_alias_projection_fails_closed() -> None:
+def test_commonjs_loader_alias_projection_is_consumed() -> None:
     conn = _projection_conn(
         [
             ("src/main.js", [{"text": "load('./util')"}]),
@@ -5607,9 +5607,36 @@ def test_commonjs_loader_alias_projection_fails_closed() -> None:
         ]
     )
 
+    inventory = frozenset({"src/main.js", "src/util.js"})
+
+    assert helpers._jsts_import_projection_complete(conn, inventory) is True
+    assert helpers._import_targets_from_text(
+        "load('./util')", "src/main.js", inventory
+    ) == {"src/util.js"}
+
+
+@pytest.mark.parametrize("loader", ["import", "require"])
+def test_projected_alias_parser_excludes_canonical_loaders(loader: str) -> None:
+    assert helpers._jsts_projected_alias_spec(f"{loader}('./util')") is None
+
+
+def test_projected_alias_parser_handles_template_literals() -> None:
+    assert helpers._jsts_projected_alias_spec("load(`./util`)") == "./util"
+    assert helpers._jsts_projected_alias_spec("import(`./util`)") is None
+    assert helpers._jsts_projected_alias_spec("load(`./${name}`)") is None
+
+
+def test_commonjs_loader_alias_projection_rejects_directory_entry_ambiguity() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.js", [{"text": "load('./util')"}]),
+            ("src/util/index.js", []),
+        ]
+    )
+
     assert (
         helpers._jsts_import_projection_complete(
-            conn, frozenset({"src/main.js", "src/util.js"})
+            conn, frozenset({"src/main.js", "src/util/index.js"})
         )
         is False
     )

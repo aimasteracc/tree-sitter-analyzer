@@ -1123,6 +1123,32 @@ def _import_module_name(import_text: str) -> str | None:
     return None
 
 
+def _jsts_projected_alias_spec(import_text: str) -> str | None:
+    """Return the static specifier from one trusted projected loader-alias call."""
+
+    quoted = re.match(
+        r"^\s*([A-Za-z_$][\w$]*)\s*(?:\?\.)?\s*\(\s*(['\"])([^'\"]+)\2"
+        r"\s*\)\s*;?\s*$",
+        import_text,
+        re.S,
+    )
+    if quoted is not None and quoted.group(1) not in {"import", "require"}:
+        return quoted.group(3)
+    template = re.match(
+        r"^\s*([A-Za-z_$][\w$]*)\s*(?:\?\.)?\s*\(\s*`([^`]*)`"
+        r"\s*\)\s*;?\s*$",
+        import_text,
+        re.S,
+    )
+    if (
+        template is not None
+        and template.group(1) not in {"import", "require"}
+        and "${" not in template.group(2)
+    ):
+        return template.group(2)
+    return None
+
+
 def _python_projected_call(import_text: str) -> tuple[str, str | None] | None:
     """Parse one projected Python call and its literal first argument."""
 
@@ -2022,6 +2048,10 @@ def _import_targets_from_text(
             import_text,
         )
     specs: set[str] = set()
+    if importer_language in {"javascript", "typescript"}:
+        projected_alias_spec = _jsts_projected_alias_spec(import_text)
+        if projected_alias_spec is not None:
+            specs.add(projected_alias_spec)
     java_wildcard_packages: set[str] = set()
     if importer_language == "python":
         static_specs = _python_static_import_specs(import_text)
@@ -2278,7 +2308,8 @@ def _jsts_import_projection_complete(conn: Any, inventory: frozenset[str]) -> bo
         if _target_language(file_path) not in {"javascript", "typescript"}:
             continue
         for import_text in import_texts:
-            spec = _import_module_name(import_text)
+            alias_spec = _jsts_projected_alias_spec(import_text)
+            spec = _import_module_name(import_text) or alias_spec
             normalized = re.split(r"[?#]", spec, maxsplit=1)[0] if spec else None
             if normalized is None or not normalized.startswith(("./", "../")):
                 return False
@@ -2294,14 +2325,12 @@ def _jsts_import_projection_complete(conn: Any, inventory: frozenset[str]) -> bo
                 resolved is not None and casefold_counts.get(resolved.casefold(), 0) > 1
             ):
                 return False
-            if (
-                re.search(
-                    r"(?:\brequire|module(?:\?\.)?\s*\[\s*['\"`]require['\"`]\s*\])"
-                    r"(?:\?\.)?\s*\(",
-                    import_text,
-                )
-                and not Path(normalized).suffix
-            ):
+            commonjs_call = alias_spec is not None or re.search(
+                r"(?:\brequire|module(?:\?\.)?\s*\[\s*['\"`]require['\"`]\s*\])"
+                r"(?:\?\.)?\s*\(",
+                import_text,
+            )
+            if commonjs_call and not Path(normalized).suffix:
                 if (
                     resolved is None
                     or Path(resolved).parent.name == Path(normalized).name

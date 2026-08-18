@@ -167,9 +167,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v33: computed and header-retained loader semantics are persisted.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 33
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 33
+        # v34: retained loader object paths and projected aliases are persisted.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 34
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 34
 
 
 def test_python_module_control_bindings_cover_all_module_control_targets() -> None:
@@ -440,8 +440,8 @@ def test_indirect_commonjs_loader_call_fails_closed(source: str) -> None:
     "source",
     [
         'const path = require.resolve("./util.js");',
-        "const cache = require.cache;",
-        "const main = require['main'];",
+        "const path = require['resolve'];",
+        "const path = require[`resolve`];",
     ],
 )
 def test_commonjs_utility_members_preserve_projection_completeness(
@@ -453,9 +453,52 @@ def test_commonjs_utility_members_preserve_projection_completeness(
     assert _extract_imports(extraction) == []
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        'const key = "require"; (module)[key]("./util.js");',
+        '(enabled ? require : fallback)("./util.js");',
+        'function getLoader() { return require; } getLoader()("./util.js");',
+        'const { require: load } = module; load("./util.js");',
+        'const mainModule = require.main; mainModule.require("./util.js");',
+    ],
+)
+def test_retained_commonjs_loader_object_paths_fail_closed(source: str) -> None:
+    extraction = _extraction_for(source, "javascript")
+
+    assert extraction["import_projection_complete"] is False
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import importlib\nclass C(retain(importlib.import_module)):\n    pass\n",
+        (
+            "import importlib\n"
+            "class C(metaclass=retain(importlib.import_module)):\n"
+            "    pass\n"
+        ),
+        (
+            "import importlib\ntry:\n    pass\n"
+            "except retain(importlib.import_module):\n    pass\n"
+        ),
+    ],
+)
+def test_python_class_and_exception_loader_paths_fail_closed(source: str) -> None:
+    _loaders, complete = _python_dynamic_loader_analysis(source)
+
+    assert complete is False
+
+
 @pytest.mark.parametrize("key", ['"other"', "'other'", "`other`"])
 def test_static_non_loader_module_member_preserves_completeness(key: str) -> None:
     extraction = _extraction_for(f"module[{key}]();", "javascript")
+
+    assert extraction["import_projection_complete"] is True
+
+
+def test_non_loader_module_destructuring_preserves_completeness() -> None:
+    extraction = _extraction_for("const { other: value } = module;", "javascript")
 
     assert extraction["import_projection_complete"] is True
 
@@ -468,6 +511,19 @@ def test_malformed_indirect_commonjs_loader_member_is_not_matched() -> None:
 
     assert not walker_module._jsts_indirect_module_loader_call(node, "", {"require"})
     assert not walker_module._jsts_require_utility_member(node, "", {"require"})
+
+    malformed_subscript = SimpleNamespace(
+        type="subscript_expression",
+        child_by_field_name=lambda _field: None,
+    )
+    assert not walker_module._jsts_dynamic_module_member(malformed_subscript, "")
+
+    malformed_pair = SimpleNamespace(
+        type="pair_pattern",
+        children=[],
+        child_by_field_name=lambda _field: None,
+    )
+    assert not walker_module._jsts_pattern_selects_require_property(malformed_pair, "")
 
 
 def test_malformed_parenthesized_commonjs_nodes_fail_closed() -> None:
@@ -488,6 +544,23 @@ def test_malformed_parenthesized_commonjs_nodes_fail_closed() -> None:
 
     symbol_walker = _SymbolWalker("", [], "javascript", None)
     assert not symbol_walker._append_jsts_module_call(MalformedCall())
+    assert symbol_walker.import_projection_complete is False
+
+
+def test_malformed_parenthesized_python_call_fails_closed() -> None:
+    malformed_function = SimpleNamespace(type="parenthesized_expression", children=[])
+
+    class MalformedCall:
+        type = "call"
+
+        @staticmethod
+        def child_by_field_name(name: str) -> object:
+            if name == "function":
+                return malformed_function
+            return SimpleNamespace(type="argument_list")
+
+    symbol_walker = _SymbolWalker("", [], "python", None)
+    assert not symbol_walker._append_python_module_call(MalformedCall())
     assert symbol_walker.import_projection_complete is False
 
 
