@@ -56,7 +56,8 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v20: project JS/TS re-exports and aliased/reflection dynamic loads.
 # v21: project TypeScript path references and pre-discover Python aliases.
 # v22: project assignment aliases of Python dynamic-import loaders.
-_AST_CACHE_EXTRACTOR_VERSION = 22
+# v23: seal ambiguous Python scopes and project static Java/CommonJS loads.
+_AST_CACHE_EXTRACTOR_VERSION = 23
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__

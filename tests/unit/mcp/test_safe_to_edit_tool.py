@@ -1789,6 +1789,31 @@ def test_snapshot_dependency_view_normalizes_jsts_url_suffix(
     assert view.dependencies_of("src/index.ts") == ["src/util.js"]
 
 
+def test_snapshot_dependency_view_reads_module_require() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("src/main.js", json.dumps([{"text": "module.require('./util')"}])),
+            ("src/util.js", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/main.js")
+
+    assert view.dependencies_of("src/main.js") == ["src/util.js"]
+
+
 def test_snapshot_dependency_view_substitutes_typescript_source_for_js_spec() -> None:
     import json
     import sqlite3
@@ -1893,6 +1918,41 @@ def test_snapshot_dependency_view_reads_java_class_for_name() -> None:
             (
                 "src/main/java/com/acme/Main.java",
                 json.dumps([{"text": 'Class.forName("com.acme.Util")'}]),
+            ),
+            ("src/main/java/com/acme/Util.java", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/main/java/com/acme/Main.java")
+
+    assert view.dependencies_of("src/main/java/com/acme/Main.java") == [
+        "src/main/java/com/acme/Util.java"
+    ]
+
+
+def test_snapshot_dependency_view_reads_static_java_class_for_name() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "src/main/java/com/acme/Main.java",
+                json.dumps(
+                    [
+                        {"text": "import static java.lang.Class.forName;"},
+                        {"text": 'forName("com.acme.Util")'},
+                    ]
+                ),
             ),
             ("src/main/java/com/acme/Util.java", "[]"),
         ],
@@ -3453,6 +3513,43 @@ def test_snapshot_syntax_envelope_marks_truncated_projection_unavailable() -> No
     )
 
     envelope = build_snapshot_syntax_causal_envelope(conn, "pkg/util.py", "pkg/util.py")
+
+    assert envelope == {
+        "dependents": None,
+        "dependencies": None,
+        "exercising_tests": None,
+        "constraint_verdict": "unknown",
+        "verification_command": None,
+        "stale_edges": None,
+    }
+
+
+def test_snapshot_syntax_envelope_marks_incomplete_import_projection_unavailable() -> (
+    None
+):
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES (?, '[]', ?)",
+        ("app.py", json.dumps({"import_projection_complete": False})),
+    )
+
+    envelope = build_snapshot_syntax_causal_envelope(conn, "app.py", "app.py")
 
     assert envelope == {
         "dependents": None,

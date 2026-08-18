@@ -40,15 +40,14 @@ from ._symbol_syntax import (
 )
 
 
-def _python_dynamic_loader_names(source: str) -> frozenset[str]:
-    """Return canonical and locally aliased Python dynamic-import call names."""
-
+def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
+    """Return module loader aliases and whether their scope is unambiguous."""
     names = {"__import__", "importlib.import_module"}
     try:
         module = ast.parse(source)
     except SyntaxError:
-        return frozenset(names)
-    for statement in ast.walk(module):
+        return frozenset(names), False
+    for statement in module.body:
         if isinstance(statement, ast.Import):
             for alias in statement.names:
                 if alias.name == "importlib":
@@ -62,11 +61,11 @@ def _python_dynamic_loader_names(source: str) -> frozenset[str]:
                 if alias.name == "import_module":
                     names.add(alias.asname or alias.name)
     assignments: list[tuple[list[ast.expr], ast.expr]] = []
-    for node in ast.walk(module):
-        if isinstance(node, ast.Assign):
-            assignments.append((node.targets, node.value))
-        elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            assignments.append(([node.target], node.value))
+    for statement in module.body:
+        if isinstance(statement, ast.Assign):
+            assignments.append((statement.targets, statement.value))
+        elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
+            assignments.append(([statement.target], statement.value))
     changed = True
     while changed:
         changed = False
@@ -78,7 +77,64 @@ def _python_dynamic_loader_names(source: str) -> frozenset[str]:
                 if isinstance(target, ast.Name) and target.id not in names:
                     names.add(target.id)
                     changed = True
-    return frozenset(names)
+    loader_roots = {name.split(".", 1)[0] for name in names}
+    nested_bindings: set[str] = set()
+    nested_loader_alias = False
+    for statement in module.body:
+        if not isinstance(
+            statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        ):
+            continue
+        for node in ast.walk(statement):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                arguments = (
+                    *node.args.posonlyargs,
+                    *node.args.args,
+                    *node.args.kwonlyargs,
+                )
+                nested_bindings.update(argument.arg for argument in arguments)
+                if node.args.vararg is not None:
+                    nested_bindings.add(node.args.vararg.arg)
+                if node.args.kwarg is not None:
+                    nested_bindings.add(node.args.kwarg.arg)
+            elif isinstance(node, ast.Assign):
+                bound = {
+                    target.id for target in node.targets if isinstance(target, ast.Name)
+                }
+                nested_bindings.update(bound)
+                nested_loader_alias = nested_loader_alias or (
+                    _python_reference_name(node.value) in names and bool(bound)
+                )
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                nested_bindings.add(node.target.id)
+                nested_loader_alias = nested_loader_alias or (
+                    node.value is not None
+                    and _python_reference_name(node.value) in names
+                )
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    nested_bindings.add(alias.asname or alias.name.split(".", 1)[0])
+                    nested_loader_alias = (
+                        nested_loader_alias or alias.name == "importlib"
+                    )
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    nested_bindings.add(alias.asname or alias.name)
+                    nested_loader_alias = nested_loader_alias or (
+                        node.level == 0
+                        and node.module == "importlib"
+                        and alias.name == "import_module"
+                    )
+    complete = not nested_loader_alias and not loader_roots.intersection(
+        nested_bindings
+    )
+    return frozenset(names), complete
+
+
+def _python_dynamic_loader_names(source: str) -> frozenset[str]:
+    """Return module-scoped Python dynamic-import call names."""
+
+    return _python_dynamic_loader_analysis(source)[0]
 
 
 def _python_reference_name(node: ast.expr) -> str | None:
@@ -97,13 +153,23 @@ class _SymbolWalker:
     language: str
     truncated_flag: list[bool] | None
     python_dynamic_loaders: set[str] = field(init=False, repr=False)
+    import_projection_complete: bool = field(init=False, repr=False, default=True)
+    java_static_for_name: bool = field(init=False, repr=False, default=False)
 
     def __post_init__(self) -> None:
-        self.python_dynamic_loaders = (
-            set(_python_dynamic_loader_names(self.source))
-            if self.language == "python"
-            else set()
-        )
+        self.python_dynamic_loaders = set()
+        if self.language == "python":
+            loaders, self.import_projection_complete = _python_dynamic_loader_analysis(
+                self.source
+            )
+            self.python_dynamic_loaders.update(loaders)
+        if self.language == "java":
+            self.java_static_for_name = bool(
+                re.search(
+                    r"(?m)^\s*import\s+static\s+java\.lang\.Class\.forName\s*;",
+                    self.source,
+                )
+            )
 
     def walk(self, node: Any, depth: int = 0, enclosed: bool = False) -> None:
         if depth > _WALK_MAX_DEPTH:
@@ -131,8 +197,7 @@ class _SymbolWalker:
         if node.type in _IMPORT_LIKE:
             self._append_import(node)
             return
-        if self._append_python_loader_assignment(node):
-            return
+        self._append_python_loader_assignment(node)
         if self._append_jsts_reexport(node):
             return
         if self._append_typescript_path_reference(node):
@@ -247,7 +312,11 @@ class _SymbolWalker:
         arguments = node.child_by_field_name("arguments")
         if function is None or arguments is None:
             return False
-        if _node_text(function, self.source) not in {"require", "import"}:
+        if _node_text(function, self.source) not in {
+            "require",
+            "module.require",
+            "import",
+        }:
             return False
         self._append_import(node)
         return True
@@ -327,11 +396,17 @@ class _SymbolWalker:
         name = node.child_by_field_name("name")
         object_node = node.child_by_field_name("object")
         arguments = node.child_by_field_name("arguments")
-        if name is None or object_node is None or arguments is None:
+        if name is None or arguments is None:
             return False
         if _node_text(name, self.source) != "forName":
             return False
-        if _node_text(object_node, self.source) not in {"Class", "java.lang.Class"}:
+        if object_node is None:
+            if not self.java_static_for_name:
+                return False
+        elif _node_text(object_node, self.source) not in {
+            "Class",
+            "java.lang.Class",
+        }:
             return False
         self._append_import(node)
         return True
@@ -413,15 +488,22 @@ def _walk_for_symbols(
 def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, Any]:
     symbols: list[dict[str, Any]] = []
     if tree is None:
-        return {"symbols": symbols, "node_count": 0, "truncated_depth": False}
+        return {
+            "symbols": symbols,
+            "node_count": 0,
+            "truncated_depth": False,
+            "import_projection_complete": True,
+        }
     root = tree.root_node
     truncated_flag = [False]
-    _SymbolWalker(source_code, symbols, language, truncated_flag).walk(root)
+    walker = _SymbolWalker(source_code, symbols, language, truncated_flag)
+    walker.walk(root)
     _annotate_canonical_complexity(symbols, tree, source_code, language)
     return {
         "symbols": symbols,
         "node_count": _count_nodes(root),
         "truncated_depth": truncated_flag[0],
+        "import_projection_complete": walker.import_projection_complete,
     }
 
 

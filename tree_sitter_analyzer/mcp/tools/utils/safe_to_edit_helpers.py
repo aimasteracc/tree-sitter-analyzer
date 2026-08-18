@@ -987,7 +987,8 @@ def _import_module_name(import_text: str) -> str | None:
     if m:
         return m.group(1)
     m = _re.search(
-        r"\b(?:java\.lang\.)?Class\.forName\s*\(\s*['\"]([^'\"]+)['\"]",
+        r"\b(?:(?:java\.lang\.)?Class\.)?forName\s*"
+        r"\(\s*['\"]([^'\"]+)['\"]",
         import_text,
     )
     if m:
@@ -1763,7 +1764,7 @@ def _import_targets_from_text(
             specs.add(projected_call[1])
     if importer_language == "java":
         reflection = re.match(
-            r"^\s*(?:java\.lang\.)?Class\.forName\s*"
+            r"^\s*(?:(?:java\.lang\.)?Class\.)?forName\s*"
             r"\(\s*(['\"])([^'\"]+)\1",
             import_text,
             re.S,
@@ -1915,7 +1916,13 @@ def _symbol_walk_projections_complete(
         if not isinstance(payload, dict):
             return False
         truncated = payload.get("truncated_depth", False)
-        if not isinstance(truncated, bool) or truncated:
+        projection_complete = payload.get("import_projection_complete", True)
+        if (
+            not isinstance(truncated, bool)
+            or truncated
+            or not isinstance(projection_complete, bool)
+            or not projection_complete
+        ):
             return False
     return True
 
@@ -2045,13 +2052,27 @@ def _java_reflection_projection_complete(conn: Any, inventory: frozenset[str]) -
     projected = _snapshot_import_texts(conn, inventory)
     if projected is None:
         return False
-    reflective_call = re.compile(r"^\s*(?:java\.lang\.)?Class\.forName\s*\(", re.S)
     for file_path, import_texts in projected.items():
         if _target_language(file_path) != "java":
             continue
+        static_for_name = any(
+            re.fullmatch(
+                r"\s*import\s+static\s+java\.lang\.Class\.forName\s*;\s*",
+                text,
+            )
+            is not None
+            for text in import_texts
+        )
         for import_text in import_texts:
-            if not reflective_call.match(import_text):
+            reflective_call = re.match(
+                r"^\s*(?:(?:java\.lang\.)?Class\.)?forName\s*\(",
+                import_text,
+                re.S,
+            )
+            if reflective_call is None:
                 continue
+            if re.match(r"^\s*forName\s*\(", import_text) and not static_for_name:
+                return False
             spec = _import_module_name(import_text)
             if spec is None:
                 return False

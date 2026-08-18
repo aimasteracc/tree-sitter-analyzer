@@ -31,6 +31,15 @@ def _symbols_for(source: str, lang: str) -> list[dict]:
     return _extract_symbols(result.tree, source, lang)["symbols"]
 
 
+def _extraction_for(source: str, lang: str) -> dict:
+    from tree_sitter_analyzer.cache.extraction import _extract_symbols
+    from tree_sitter_analyzer.core.parser import Parser
+
+    result = Parser().parse_code(source, lang)
+    assert result.success and result.tree is not None
+    return _extract_symbols(result.tree, source, lang)
+
+
 _PY_SRC = '''\
 """Module docstring — must NOT become a symbol docstring."""
 
@@ -146,9 +155,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v22: assignment aliases of dynamic loaders enter the projection.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 22
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 22
+        # v23: scoped Python and static Java/CommonJS loads enter the projection.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 23
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 23
 
 
 class TestJavaScriptModuleCallProjection:
@@ -194,6 +203,14 @@ class TestJavaScriptModuleCallProjection:
         symbols = {"symbols": _symbols_for("require(moduleName);", "typescript")}
 
         assert _extract_imports(symbols) == [{"text": "require(moduleName)", "line": 1}]
+
+    @pytest.mark.parametrize(
+        "call", ["module.require('./legacy')", "module.require(moduleName)"]
+    )
+    def test_module_require_is_projected(self, call: str) -> None:
+        symbols = {"symbols": _symbols_for(f"{call};", "typescript")}
+
+        assert _extract_imports(symbols) == [{"text": call, "line": 1}]
 
     def test_incomplete_call_node_is_not_projected_as_import(self):
         from tree_sitter_analyzer.cache._symbol_walker import _SymbolWalker
@@ -300,6 +317,38 @@ class TestPythonDynamicImportProjection:
             "loader('pkg.util')",
         }
 
+    def test_assignment_alias_preserves_module_symbol(self) -> None:
+        source = "import importlib\nLOADER = importlib.import_module\n"
+        extraction = _extraction_for(source, "python")
+
+        assert any(symbol.get("name") == "LOADER" for symbol in extraction["symbols"])
+        assert {item["text"] for item in _extract_imports(extraction)} == {
+            "import importlib",
+            "LOADER = importlib.import_module",
+        }
+
+    def test_scope_shadowing_marks_import_projection_incomplete(self) -> None:
+        source = (
+            "import importlib\n"
+            "loader = importlib.import_module\n"
+            "def second(loader):\n"
+            "    return loader('pkg.util')\n"
+        )
+
+        assert _extraction_for(source, "python")["import_projection_complete"] is False
+
+    def test_partial_parse_with_deferred_alias_marks_projection_incomplete(
+        self,
+    ) -> None:
+        source = (
+            "def load_plugin():\n"
+            "    return load('pkg.util')\n"
+            "from importlib import import_module as load\n"
+            "if (\n"
+        )
+
+        assert _extraction_for(source, "python")["import_projection_complete"] is False
+
     @pytest.mark.parametrize("missing_field", ["function", "arguments"])
     def test_incomplete_dynamic_import_node_is_not_projected(
         self, missing_field: str
@@ -353,6 +402,18 @@ class TestJavaReflectionProjection:
         symbols = {"symbols": _symbols_for(source, "java")}
 
         assert _extract_imports(symbols) == [{"text": call, "line": 1}]
+
+    def test_static_imported_for_name_is_projected(self) -> None:
+        source = (
+            "import static java.lang.Class.forName;\n"
+            'class Main { void load() { forName("com.acme.Util"); } }'
+        )
+        extraction = _extraction_for(source, "java")
+
+        assert {item["text"] for item in _extract_imports(extraction)} == {
+            "import static java.lang.Class.forName;",
+            'forName("com.acme.Util")',
+        }
 
 
 class TestBashVariableAssignmentScope:
