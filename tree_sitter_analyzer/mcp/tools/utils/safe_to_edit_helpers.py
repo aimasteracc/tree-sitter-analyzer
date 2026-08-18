@@ -132,7 +132,7 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
     # undercount on macOS while Linux CI saw them.
     rel_path = to_relative(
         os.path.realpath(context.resolved_path), context.project_root
-    )
+    ).replace("\\", "/")
     dependents = safe_dependents(context.graph, rel_path)
     dependencies = safe_dependencies(context.graph, rel_path)
     if context.snapshot_conn is not None:
@@ -228,7 +228,7 @@ def _format_safe_to_edit_result(
     # CAUTION. The base_verdict (derived from risk_level) is the floor.
     certified_rel_path = to_relative(
         os.path.realpath(context.resolved_path), context.project_root
-    )
+    ).replace("\\", "/")
     if context.snapshot_conn is not None:
         # Codex P1 (#1299): the certified read_existing route runs the
         # certified fixture probe — never the live .ast-cache DB and never
@@ -1318,6 +1318,22 @@ def _certified_symbol_reference_tests(
                 results.append(rel)
                 break
             if not matched:
+                continue
+            # Symbol-text fallback is valid only for importer languages whose
+            # snapshot projections have resolver-backed ownership semantics.
+            # Other languages (for example Go) must arrive through a resolved
+            # dependency edge; a same-named package segment is not evidence.
+            if importer_language not in {
+                "python",
+                "javascript",
+                "typescript",
+                "java",
+            }:
+                continue
+            if importer_language != language and {
+                importer_language,
+                language,
+            } != {"javascript", "typescript"}:
                 continue
             # Bind the import to the target module — a test doing
             # ``from pkg import run`` must follow pkg/__init__.py's certified

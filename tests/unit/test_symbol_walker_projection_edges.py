@@ -38,6 +38,34 @@ def test_cpp_code_mask_excludes_comments_and_literals(
     )
 
 
+def test_cpp_module_fallback_does_not_duplicate_walker_projection(monkeypatch) -> None:
+    source = "import project.core;"
+
+    def project_import(walker: _SymbolWalker, *_args: object) -> None:
+        walker.symbols.append(
+            {
+                "kind": "import",
+                "text": source,
+                "line": 1,
+                "language": "cpp",
+            }
+        )
+
+    monkeypatch.setattr(_SymbolWalker, "walk", project_import)
+    tree = SimpleNamespace(root_node=SimpleNamespace(children=[]))
+
+    result = walker_module._extract_symbols(tree, source, "cpp")
+
+    assert result["symbols"] == [
+        {
+            "kind": "import",
+            "text": source,
+            "line": 1,
+            "language": "cpp",
+        }
+    ]
+
+
 def test_python_loader_analysis_fails_closed_on_invalid_module() -> None:
     names, complete = _python_dynamic_loader_analysis("if (")
 
@@ -138,6 +166,24 @@ load("pkg.util")
     names, complete = _python_dynamic_loader_analysis(source)
 
     assert "load" in names
+    assert complete is False
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import importlib\nimportlib.import_module = fake\n"
+        "importlib.import_module('pkg.util')\n",
+        "import builtins as runtime\nruntime.__import__ = fake\n"
+        "runtime.__import__('pkg.util')\n",
+    ],
+)
+def test_python_loader_analysis_rejects_qualified_loader_rebinding(
+    source: str,
+) -> None:
+    names, complete = _python_dynamic_loader_analysis(source)
+
+    assert any(name.endswith((".import_module", ".__import__")) for name in names)
     assert complete is False
 
 

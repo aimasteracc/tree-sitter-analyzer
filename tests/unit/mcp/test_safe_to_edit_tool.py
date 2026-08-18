@@ -2171,6 +2171,48 @@ def test_certified_facts_load_inventory_when_not_precomputed(
     assert loads == [conn]
 
 
+def test_certified_facts_normalize_windows_snapshot_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlite3
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers as helpers
+
+    captured: list[tuple[str, list[str]]] = []
+    monkeypatch.setattr(helpers, "to_relative", lambda *_args: "pkg\\app.py")
+    monkeypatch.setattr(
+        helpers,
+        "_certified_exercising_tests",
+        lambda _conn, rel_path, dependents, *, inventory: (
+            captured.append((rel_path, dependents)) or []
+        ),
+    )
+    context = helpers.SafeToEditContext(
+        file_path="pkg/app.py",
+        edit_type="refactor",
+        resolved_path=str(tmp_path / "pkg" / "app.py"),
+        project_root=str(tmp_path),
+        graph=helpers.FileDependencyView(
+            rel_path="pkg/app.py",
+            dependencies={"pkg/dep.py"},
+            dependents={"tests/test_app.py"},
+        ),
+        scorer=SimpleNamespace(
+            score_file=lambda *args, **kwargs: SimpleNamespace(
+                grade="A", total=100, dimensions={}
+            )
+        ),
+        snapshot_conn=sqlite3.connect(":memory:"),
+        certified_inventory=frozenset({"pkg/app.py", "tests/test_app.py"}),
+    )
+
+    facts = helpers._collect_safe_to_edit_facts(context)
+
+    assert facts.dependencies == ["pkg/dep.py"]
+    assert captured == [("pkg/app.py", ["tests/test_app.py"])]
+
+
 def test_snapshot_dependency_view_matches_javascript_directory_index_import() -> None:
     import json
     import sqlite3

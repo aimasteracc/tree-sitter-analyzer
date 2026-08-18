@@ -154,8 +154,10 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                     changed = True
     loader_roots = {name.split(".", 1)[0] for name in names}
     module_rebinding = any(
-        isinstance(target, ast.Name)
-        and target.id in loader_roots
+        (
+            _python_reference_name(target) in names
+            or (isinstance(target, ast.Name) and target.id in loader_roots)
+        )
         and _python_reference_name(value) not in names
         for targets, value in assignments
         for target in targets

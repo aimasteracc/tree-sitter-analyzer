@@ -1165,6 +1165,58 @@ def test_certified_symbol_reference_tests_resolve_relative_from_importer() -> No
     )
 
 
+def test_certified_symbol_reference_tests_reject_cross_language_name_collision() -> (
+    None
+):
+    conn = _symbol_reference_conn(
+        [
+            ("pkg/impl.py", _symbol_payload("run"), "[]"),
+            (
+                "pkg/run_test.go",
+                "{}",
+                _import_payload('import "example.com/run"'),
+            ),
+        ]
+    )
+
+    assert _certified_refs(conn, {"pkg/impl.py", "pkg/run_test.go"}) == []
+
+
+def test_certified_symbol_reference_tests_reject_supported_language_collision() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("pkg/impl.py", _symbol_payload("run"), "[]"),
+            (
+                "src/test/java/RunTest.java",
+                "{}",
+                _import_payload("import example.run;"),
+            ),
+        ]
+    )
+
+    assert _certified_refs(conn, {"pkg/impl.py", "src/test/java/RunTest.java"}) == []
+
+
+def test_certified_symbol_reference_tests_allow_javascript_typescript_family() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("src/impl.js", _symbol_payload("run"), "[]"),
+            (
+                "tests/impl.test.ts",
+                "{}",
+                _import_payload("import { run } from '../src/impl.js'"),
+            ),
+        ]
+    )
+
+    assert _certified_refs(
+        conn,
+        {"src/impl.js", "tests/impl.test.ts"},
+        target="src/impl.js",
+        language="javascript",
+    ) == ["tests/impl.test.ts"]
+
+
 def test_certified_symbol_reference_tests_reject_missing_test_row() -> None:
     conn = _symbol_reference_conn([("pkg/impl.py", _symbol_payload("public_fn"), "[]")])
 
