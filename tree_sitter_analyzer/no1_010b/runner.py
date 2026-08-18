@@ -12,7 +12,12 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .record import BenchmarkRecordError, UnknownReasonCode, path_allowed
+from .record import (
+    BenchmarkRecordError,
+    UnknownReasonCode,
+    patch_has_changed_hunk,
+    path_allowed,
+)
 
 # Canonical patch limits, bound into the registered manifest (RFC-0026 C41).
 PATCH_MAX_BYTES = 1 * 1024 * 1024
@@ -262,10 +267,12 @@ class Verdict:
 def preflight_agent_patch(patch_text: str) -> Verdict | None:
     """Map bounded agent-patch input failures to closed UNKNOWN outcomes."""
     try:
-        diff_paths(patch_text)
+        paths = diff_paths(patch_text)
     except PatchBoundError:
         return Verdict("UNKNOWN", "PATCH_OVER_BOUND")
     except (PatchFormatError, UnicodeEncodeError):
+        return Verdict("UNKNOWN", "AGENT_OUTPUT_ERROR")
+    if not paths or not patch_has_changed_hunk(_physical_lines(patch_text)):
         return Verdict("UNKNOWN", "AGENT_OUTPUT_ERROR")
     return None
 

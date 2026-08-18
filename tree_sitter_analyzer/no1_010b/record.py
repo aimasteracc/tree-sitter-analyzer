@@ -1,12 +1,4 @@
-"""Strict benchmark-record model for the NO1-010B corpus (RFC-0026 §1).
-
-The corpus is a pre-registered set of agent change tasks. Every record is
-validated by a strict allowlist model: unknown fields, wrong types, invalid
-enums, empty tasks, and non-canonical paths are rejected before a record can
-reach the task layer. Only the `understand` / `plan_change` / `assess_change`
-projection is forwarded to `task_harness.request_from_dict`, preserving the
-`task/` import boundary.
-"""
+"""Strict benchmark-record model for the NO1-010B corpus (RFC-0026 §1)."""
 
 from __future__ import annotations
 
@@ -80,8 +72,6 @@ _UNKNOWN_REASON_CODES = frozenset(
 _EXPECTED_TERMINAL_FIELDS = frozenset({"verdict", "reason_code"})
 _MAX_CORPUS_BYTES = 8 * 1024 * 1024  # mirrors task_harness's input bound
 
-# Canonical kebab-case token for the oracle baseline reason (RFC-0026 C43):
-# the oracle's NO1_010B_ORACLE_REASON line must equal it exactly.
 _REASON_TOKEN_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _PATCH_HUNK_RE = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@(?: .*)?$")
 _PATCH_COUNT_MAX_DIGITS = 7
@@ -120,20 +110,7 @@ class ExpectedTerminal:
 
 @dataclass(frozen=True)
 class BenchmarkRecord:
-    """One pre-registered agent change task (RFC-0026 §1).
-
-    ``allowed_paths`` are canonical, repository-relative POSIX paths: a
-    directory entry ends with ``/`` and matches its descendants on
-    path-segment boundaries; a file entry matches exactly. ``repo_commit``
-    pins the fixture revision (RFC-0026 C15); ``expected_terminal`` is the
-    exact pre-registered verdict/reason pair for the reference patch
-    (RFC-0026 §5, non-vacuous B1 gate). ``verification_argv`` is the typed
-    execution spec (no shell parsing, RFC-0026 C43);
-    ``verification_command`` is a display-only hint.
-    ``oracle_baseline_reason`` is a canonical kebab-case token the oracle's
-    ``NO1_010B_ORACLE_REASON`` line must equal exactly (RFC-0026 C42/C43).
-    ``patch`` and ``selected_tests`` exist only on fixture records.
-    """
+    """One task with pinned provenance and an exact expected terminal state."""
 
     id: str
     task_class: TaskClass
@@ -152,11 +129,7 @@ class BenchmarkRecord:
     selected_tests: tuple[str, ...] = ()
 
     def to_task_request(self) -> tuple[str, dict[str, Any]]:
-        """Project only the task-layer fields (RFC-0026 §1).
-
-        ``assess_change`` needs a real diff at run time; the runner supplies
-        it (the record carries no diff).
-        """
+        """Project only the task-layer fields (RFC-0026 §1)."""
         if self.operation == "understand":
             return "understand", {"task": self.task}
         if self.operation == "plan_change":
@@ -165,16 +138,13 @@ class BenchmarkRecord:
 
 
 def _canonical_rel_path(raw: Any, field: str) -> str:
-    """Normalize one allowed-path entry or reject it.
-
-    Accepts repository-relative POSIX paths only: no leading ``/``, no
-    ``./`` prefix, no ``..`` segments, no backslashes, and no drive-qualified
-    (``C:``) paths. Directory entries must end with ``/``.
-    """
+    """Accept only paths representable by the runner's unquoted Git grammar."""
     if not isinstance(raw, str) or not raw:
         raise BenchmarkRecordError(f"{field}: path must be a non-empty string")
     if "\\" in raw:
         raise BenchmarkRecordError(f"{field}: backslashes are not allowed")
+    if not raw.isascii():
+        raise BenchmarkRecordError(f"{field}: path must contain only ASCII")
     value = raw
     if value.startswith("/") or value.startswith("./"):
         raise BenchmarkRecordError(f"{field}: path must be repository-relative")
@@ -189,12 +159,7 @@ def _canonical_rel_path(raw: Any, field: str) -> str:
 
 
 def path_allowed(rel_path: str, allowed_paths: tuple[str, ...]) -> bool:
-    """Segment-aware allowlist check (RFC-0026 C6).
-
-    A directory entry (``tests/``) matches its exact descendants on
-    path-segment boundaries (``tests/test_dispatch.py`` yes,
-    ``tests-escape/file.py`` no); a file entry matches exactly.
-    """
+    """Apply the segment-aware allowed-path contract (RFC-0026 C6)."""
     value = _canonical_rel_path(rel_path, "rel_path")
     for entry in allowed_paths:
         if entry.endswith("/"):
@@ -206,28 +171,41 @@ def path_allowed(rel_path: str, allowed_paths: tuple[str, ...]) -> bool:
     return False
 
 
-def _patch_has_changed_hunk(lines: list[str]) -> bool:
-    """Return whether a paired file header owns a hunk with a real change."""
+def patch_has_changed_hunk(lines: list[str]) -> bool:
+    """Validate counted hunks and require at least one real changed line."""
     file_header_seen = False
-    remaining_old: int | None = None
-    remaining_new: int | None = None
+    in_hunk = False
+    remaining_old = 0
+    remaining_new = 0
+    hunk_changed = False
+    completed_change = False
     for index, line in enumerate(lines):
+        if in_hunk:
+            if line == r"\ No newline at end of file":
+                continue
+            if line.startswith(" "):
+                if remaining_old == 0 or remaining_new == 0:
+                    return False
+                remaining_old -= 1
+                remaining_new -= 1
+            elif line.startswith("-"):
+                if remaining_old == 0:
+                    return False
+                remaining_old -= 1
+                hunk_changed = True
+            elif line.startswith("+"):
+                if remaining_new == 0:
+                    return False
+                remaining_new -= 1
+                hunk_changed = True
+            else:
+                return False
+            if remaining_old == 0 and remaining_new == 0:
+                completed_change = completed_change or hunk_changed
+                in_hunk = False
+            continue
         if line.startswith("diff --git "):
             file_header_seen = False
-            remaining_old = None
-            remaining_new = None
-            continue
-        if remaining_old == 0 and remaining_new == 0:
-            remaining_old = None
-            remaining_new = None
-        if remaining_old is not None and remaining_new is not None:
-            if line.startswith(" "):
-                remaining_old = max(0, remaining_old - 1)
-                remaining_new = max(0, remaining_new - 1)
-            elif line.startswith("-"):
-                return True
-            elif line.startswith("+"):
-                return True
             continue
         if (
             line.startswith("--- ")
@@ -236,20 +214,32 @@ def _patch_has_changed_hunk(lines: list[str]) -> bool:
         ):
             file_header_seen = True
             continue
-        if not file_header_seen:
+        if (
+            line.startswith("+++ ")
+            and index > 0
+            and lines[index - 1].startswith("--- ")
+        ):
             continue
+        if not line.startswith("@@"):
+            if line.startswith(("+", "-")):
+                return False
+            continue
+        if not file_header_seen:
+            return False
         match = _PATCH_HUNK_RE.fullmatch(line)
         if match is None:
-            continue
+            return False
         old_count, new_count = match.groups()
         if any(
             count is not None and len(count) > _PATCH_COUNT_MAX_DIGITS
             for count in (old_count, new_count)
         ):
-            continue
+            return False
         remaining_old = int(old_count) if old_count is not None else 1
         remaining_new = int(new_count) if new_count is not None else 1
-    return False
+        hunk_changed = False
+        in_hunk = remaining_old != 0 or remaining_new != 0
+    return completed_change and not in_hunk
 
 
 def _expected_terminal_from_dict(raw: Any) -> ExpectedTerminal:
@@ -292,11 +282,7 @@ def _expected_terminal_from_dict(raw: Any) -> ExpectedTerminal:
 
 
 def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
-    """Build one strict record, rejecting unknown fields and bad values.
-
-    Mirrors ``task_harness._strict_json_loads``'s rejection discipline at the
-    record level: schema typos fail loudly instead of silently passing.
-    """
+    """Build one strict record, rejecting unknown fields and bad values."""
     if not isinstance(payload, dict):
         raise BenchmarkRecordError("record must be a JSON object")
     unknown = set(payload) - _REQUIRED_FIELDS - _OPTIONAL_FIELDS
@@ -389,7 +375,7 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
         if not patch.strip():
             raise BenchmarkRecordError("patch must be a non-empty unified diff")
         lines = patch.split("\n")
-        if not _patch_has_changed_hunk(lines):
+        if not patch_has_changed_hunk(lines):
             raise BenchmarkRecordError("patch must be a non-empty unified diff")
 
     raw_selected = payload.get("selected_tests", [])
@@ -402,6 +388,15 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
     )
     if len(set(selected_tests)) != len(selected_tests):
         raise BenchmarkRecordError("selected_tests must not contain duplicates")
+    if task_class != "test_selection" and selected_tests:
+        raise BenchmarkRecordError("selected_tests require task_class test_selection")
+    if (
+        task_class != "test_selection"
+        and expected_terminal.reason_code == "TEST_SELECTION_FAILED"
+    ):
+        raise BenchmarkRecordError(
+            "TEST_SELECTION_FAILED requires task_class test_selection"
+        )
 
     return BenchmarkRecord(
         id=record_id,
@@ -423,12 +418,7 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
 
 
 def _strict_json_loads(text: str) -> Any:
-    """JSON decode that rejects duplicate keys and NaN/Infinity constants.
-
-    The default decoder silently keeps the last duplicate key and accepts
-    non-standard constants; an exact pre-registered manifest must reject both,
-    mirroring ``task_harness._strict_json_loads`` (Codex #1307 P1).
-    """
+    """JSON decode that rejects duplicate keys and NaN/Infinity constants."""
 
     def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -449,11 +439,7 @@ def _strict_json_loads(text: str) -> Any:
 
 
 def load_corpus_records(path: str) -> list[BenchmarkRecord]:
-    """Load a strict JSONL corpus (one record per line, bounded input).
-
-    ``path == "-"`` reads stdin, mirroring ``task_harness.load_corpus``; the
-    same 8 MiB input bound and strict-JSON discipline apply.
-    """
+    """Load a strict, bounded JSONL corpus from a file or stdin."""
     import sys
 
     if path == "-":
@@ -465,9 +451,6 @@ def load_corpus_records(path: str) -> list[BenchmarkRecord]:
     else:
         from pathlib import Path
 
-        # Open once in binary mode and read at most the byte bound + 1. Text
-        # mode counts decoded characters and can admit a multi-byte corpus
-        # larger than the registered 8 MiB boundary.
         with Path(path).open("rb") as handle:
             raw_bytes = handle.read(_MAX_CORPUS_BYTES + 1)
 
@@ -478,9 +461,6 @@ def load_corpus_records(path: str) -> list[BenchmarkRecord]:
     except UnicodeDecodeError as exc:
         raise BenchmarkRecordError("corpus must be valid UTF-8") from exc
 
-    # JSONL is delimited only by LF (with optional CR before LF). Unicode
-    # separators such as U+2028 are valid inside JSON strings and must not
-    # split a record.
     lines = [line.removesuffix("\r") for line in raw.split("\n")]
 
     records: list[BenchmarkRecord] = []

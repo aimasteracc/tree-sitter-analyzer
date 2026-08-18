@@ -45,6 +45,15 @@ _MINIMAL_PATH = "/usr/bin:/bin"
 _IS_WINDOWS = os.name == "nt"
 _TASKKILL = subprocess.run
 _REAP_TIMEOUT_S = 5.0
+_ORACLE_LOAD_EXIT_CODE = 86
+_ORACLE_BOOTSTRAP = (
+    "import runpy, sys, traceback\n"
+    "try:\n"
+    "    runpy.run_path(sys.argv[1], run_name='__main__')\n"
+    "except (ImportError, SyntaxError):\n"
+    "    traceback.print_exc()\n"
+    f"    raise SystemExit({_ORACLE_LOAD_EXIT_CODE})\n"
+)
 
 
 class OracleStatus(str, Enum):
@@ -202,7 +211,7 @@ def _run_oracle_process_unisolated_for_tests(
         return OracleOutcome(
             OracleStatus.UNKNOWN, "ORACLE_LOAD_ERROR", "oracle file not found"
         )
-    command = [sys.executable, str(oracle)]
+    command = [sys.executable, "-c", _ORACLE_BOOTSTRAP, str(oracle)]
     env = _sanitized_env(env_extra)
     try:
         if _IS_WINDOWS:
@@ -294,9 +303,12 @@ def _run_oracle_process_unisolated_for_tests(
         )
     tail = stdout[-2000:]
     if proc.returncode != 0:
-        # Uncaught exception / interpreter error / non-zero exit: never a
-        # behavioral FAIL (RFC-0026 C19).
-        return OracleOutcome(OracleStatus.UNKNOWN, "ORACLE_EXECUTION_ERROR", tail)
+        reason: OracleUnknownReason = (
+            "ORACLE_LOAD_ERROR"
+            if proc.returncode == _ORACLE_LOAD_EXIT_CODE
+            else "ORACLE_EXECUTION_ERROR"
+        )
+        return OracleOutcome(OracleStatus.UNKNOWN, reason, tail)
     status = _parse_result_line(stdout, expected_reason)
     if status is OracleStatus.UNKNOWN:
         return OracleOutcome(status, "ORACLE_PROTOCOL_ERROR", tail)

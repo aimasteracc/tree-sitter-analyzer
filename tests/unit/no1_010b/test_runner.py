@@ -341,6 +341,11 @@ def test_preflight_agent_patch_maps_over_bound_output() -> None:
     )
 
 
+@pytest.mark.parametrize("patch", ["", "hello", "--- a/x.py\n+++ b/x.py\n"])
+def test_preflight_agent_patch_rejects_output_without_change(patch: str) -> None:
+    assert preflight_agent_patch(patch) == Verdict("UNKNOWN", "AGENT_OUTPUT_ERROR")
+
+
 def test_preflight_agent_patch_allows_bounded_canonical_output() -> None:
     assert preflight_agent_patch(PATCH_OK) is None
 

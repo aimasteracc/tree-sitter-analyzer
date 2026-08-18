@@ -9,6 +9,7 @@ from unittest.mock import Mock
 import pytest
 
 from tree_sitter_analyzer.no1_010b.oracle import (
+    OracleOutcome,
     OracleStatus,
     _drain_bounded,
     _kill_process_tree,
@@ -27,7 +28,8 @@ ORACLE_FAIL = (
     "print('NO1_010B_ORACLE_REASON: dispatch-returns-none')\n"
     "print('NO1_010B_ORACLE_RESULT: FAIL')\n"
 )
-ORACLE_CRASH = "#!/usr/bin/env python3\nraise ImportError('missing dep')\n"
+ORACLE_IMPORT_ERROR = "#!/usr/bin/env python3\nraise ImportError('missing dep')\n"
+ORACLE_RUNTIME_ERROR = "#!/usr/bin/env python3\nraise RuntimeError('broken')\n"
 ORACLE_SYNTAX = "#!/usr/bin/env python3\ndef broken(:\n"
 ORACLE_MALFORMED = (
     "#!/usr/bin/env python3\n"
@@ -45,31 +47,66 @@ def _write_oracle(tmp_path: Path, name: str, body: str) -> Path:
     return path
 
 
-@pytest.mark.parametrize(
-    ("body", "expected", "unknown_reason"),
-    [
-        (ORACLE_PASS, OracleStatus.PASS, None),
-        (ORACLE_FAIL, OracleStatus.FAIL, None),
-        # C19: uncaught exceptions and syntax errors are UNKNOWN, never FAIL.
-        (ORACLE_CRASH, OracleStatus.UNKNOWN, "ORACLE_EXECUTION_ERROR"),
-        (ORACLE_SYNTAX, OracleStatus.UNKNOWN, "ORACLE_EXECUTION_ERROR"),
-        # Missing/malformed declared result -> UNKNOWN.
-        (ORACLE_MALFORMED, OracleStatus.UNKNOWN, "ORACLE_PROTOCOL_ERROR"),
-        (ORACLE_NOMARKER, OracleStatus.UNKNOWN, "ORACLE_PROTOCOL_ERROR"),
-    ],
-)
-def test_run_oracle_classifies_declared_results(
-    tmp_path: Path,
-    body: str,
-    expected: OracleStatus,
-    unknown_reason: str | None,
-) -> None:
+def _run_written_oracle(tmp_path: Path, body: str) -> OracleOutcome:
     oracle = _write_oracle(tmp_path, "oracle.py", body)
-    outcome = _run_oracle_process_unisolated_for_tests(
+    return _run_oracle_process_unisolated_for_tests(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
-    assert outcome.status == expected
-    assert outcome.unknown_reason == unknown_reason
+
+
+def test_run_oracle_accepts_declared_pass(tmp_path: Path) -> None:
+    outcome = _run_written_oracle(tmp_path, ORACLE_PASS)
+
+    assert outcome.status == OracleStatus.PASS
+    assert outcome.unknown_reason is None
+
+
+def test_run_oracle_accepts_declared_fail(tmp_path: Path) -> None:
+    outcome = _run_written_oracle(tmp_path, ORACLE_FAIL)
+
+    assert outcome.status == OracleStatus.FAIL
+    assert outcome.unknown_reason is None
+
+
+def test_run_oracle_classifies_import_failure_as_load_error(tmp_path: Path) -> None:
+    outcome = _run_written_oracle(tmp_path, ORACLE_IMPORT_ERROR)
+
+    assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_LOAD_ERROR"
+
+
+def test_run_oracle_classifies_syntax_failure_as_load_error(tmp_path: Path) -> None:
+    outcome = _run_written_oracle(tmp_path, ORACLE_SYNTAX)
+
+    assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_LOAD_ERROR"
+
+
+def test_run_oracle_classifies_runtime_failure_as_execution_error(
+    tmp_path: Path,
+) -> None:
+    outcome = _run_written_oracle(tmp_path, ORACLE_RUNTIME_ERROR)
+
+    assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_EXECUTION_ERROR"
+
+
+def test_run_oracle_classifies_malformed_result_as_protocol_error(
+    tmp_path: Path,
+) -> None:
+    outcome = _run_written_oracle(tmp_path, ORACLE_MALFORMED)
+
+    assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_PROTOCOL_ERROR"
+
+
+def test_run_oracle_classifies_missing_marker_as_protocol_error(
+    tmp_path: Path,
+) -> None:
+    outcome = _run_written_oracle(tmp_path, ORACLE_NOMARKER)
+
+    assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_PROTOCOL_ERROR"
 
 
 def test_run_oracle_timeout_is_unknown(tmp_path: Path) -> None:

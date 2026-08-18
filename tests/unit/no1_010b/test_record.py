@@ -167,7 +167,7 @@ def test_record_rejects_malformed_patch() -> None:
 @pytest.mark.parametrize(
     "patch",
     [
-        "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n+new\n",
+        "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n\\ No newline at end of file\n+new\n",
         "--- /dev/null\n+++ b/x.py\n@@ -0,0 +1 @@\n+new\n",
     ],
 )
@@ -191,11 +191,13 @@ def test_record_rejects_reference_patch_with_unpaired_surrogate() -> None:
     "patch",
     [
         "",
-        "  ",
-        "not a unified diff",
+        "--- a/x.py\n+++ b/x.py\n@@ malformed @@\n",
+        "+stray",
         "--- a/x.py\n+++ b/x.py\n",
         "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n",
-        "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n context\n",
+        "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n context\n@@ -0,0 +1 @@\n context\n",
+        "--- a/x.py\n+++ b/x.py\n@@ -0,0 +1 @@\n-old\n",
+        "--- a/x.py\n+++ b/x.py\n@@ -1 +0,0 @@\n+new\n",
         "--- a/x.py\n+++ b/x.py\ndiff --git a/y.py b/y.py\n@@ -1 +1 @@\n-old\n+new\n",
         "--- a/x.py\n+++ b/x.py\n@@ -1,12345678 +1,12345678 @@\n-old\n+new\n",
     ],
@@ -281,12 +283,15 @@ def test_record_rejects_invalid_expected_terminal_verdict(verdict: object) -> No
         {"verdict": "FAIL", "reason_code": "ORACLE_TIMEOUT"},
         {"verdict": "UNKNOWN", "reason_code": None},
         {"verdict": "UNKNOWN", "reason_code": "ORACLE_FAILED"},
+        {"verdict": "FAIL", "reason_code": "TEST_SELECTION_FAILED"},
     ],
 )
 def test_record_rejects_mismatched_expected_terminal_reason(terminal: dict) -> None:
     payload = _valid_payload()
     payload["expected_terminal"] = terminal
-    with pytest.raises(BenchmarkRecordError, match="reason_code|unknown_reason"):
+    with pytest.raises(
+        BenchmarkRecordError, match="reason_code|unknown_reason|task_class"
+    ):
         record_from_dict(payload)
 
 
@@ -310,6 +315,8 @@ def test_record_accepts_non_pass_expected_terminal(
 ) -> None:
     payload = _valid_payload()
     payload["expected_terminal"] = terminal
+    if reason_code == "TEST_SELECTION_FAILED":
+        payload["task_class"] = "test_selection"
     result = record_from_dict(payload).expected_terminal
     assert result.verdict == verdict
     assert result.reason_code == reason_code
@@ -341,6 +348,7 @@ def test_path_canonicalization_rejects_all_bad_forms() -> None:
         "a/./b.py",
         "a//b.py",
         "a\\b.py",
+        "src/é.py",
         "C:/outside/file.py",
         "C:\\outside\\file.py",
     ):
@@ -348,6 +356,13 @@ def test_path_canonicalization_rejects_all_bad_forms() -> None:
         payload["allowed_paths"] = [bad]
         with pytest.raises(BenchmarkRecordError, match="path"):
             record_from_dict(payload)
+
+
+def test_record_rejects_selected_tests_for_non_selection_task() -> None:
+    payload = _valid_payload()
+    payload["selected_tests"] = ["tests/test_app.py"]
+    with pytest.raises(BenchmarkRecordError, match="task_class test_selection"):
+        record_from_dict(payload)
 
 
 def test_to_task_request_understand_operation() -> None:
