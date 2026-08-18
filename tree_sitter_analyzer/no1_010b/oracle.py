@@ -17,11 +17,11 @@ exactly one reason line matching the record before the declared result; an
 uncaught exception or missing/stale reason is an infrastructure failure, not a
 behavioral answer.
 
-Security boundary (RFC-0026 C21): the wrapper never inherits the runner's
-environment — the oracle runs with a deliberately constructed minimal
-environment (explicit ``env_extra`` entries plus a minimal PATH), so no
-secrets or project settings leak. Network isolation and out-of-worktree
-write-bounds are enforced by the runner's sandbox around this wrapper (B1).
+This B0 module deliberately exports no production oracle runner. Its private
+process helper exists only to contract-test the declared-result protocol; it
+sanitizes the environment but does not claim network or filesystem isolation.
+RFC-0026 B1 owns the public entry point and may call the private helper only
+from inside its kernel-enforced sandbox.
 """
 
 from __future__ import annotations
@@ -169,7 +169,7 @@ def _drain_bounded(
         _kill_process_tree(proc)
 
 
-def run_oracle(
+def _run_oracle_process_unisolated_for_tests(
     oracle_path: str,
     cwd: str,
     *,
@@ -177,12 +177,13 @@ def run_oracle(
     timeout_s: float = ORACLE_TIMEOUT_S,
     env_extra: dict[str, str] | None = None,
 ) -> OracleOutcome:
-    """Run one oracle and classify its outcome via the declared-result line.
+    """Exercise the oracle protocol without claiming a B1 sandbox.
 
-    Executes with ``start_new_session`` (its own session/process group) so a
-    hung oracle AND its descendants can be killed cleanly on timeout; the
-    timeout maps to ``UNKNOWN``. The environment is ``_sanitized_env`` — the
-    runner's environment is never inherited (C21).
+    The helper is intentionally private and has no production callers. It uses
+    a separate process group so timeout cleanup is deterministic and a minimal
+    environment so protocol tests do not leak parent secrets. It does *not*
+    satisfy RFC-0026 C21 by itself; B1 must establish the read-only candidate,
+    scratch redirection, no-network boundary, and write journal first.
     """
     cwd_path = Path(cwd).resolve()
     oracle = Path(oracle_path)

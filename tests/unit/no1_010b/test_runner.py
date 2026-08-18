@@ -105,14 +105,14 @@ def test_allowlist_violations_is_segment_aware() -> None:
     ]
 
 
-def test_allowlist_violations_excludes_trusted_artifacts() -> None:
-    allowed = ("src/dispatch.py", "tests/")
+def test_allowlist_violations_rejects_candidate_tree_tool_artifacts() -> None:
     touched = [
-        "src/dispatch.py",
         "tests/__pycache__/test_dispatch.cpython-311.pyc",
         ".pytest_cache/README.md",
+        ".coverage",
+        ".coverage.host.123.456",
     ]
-    assert allowlist_violations(touched, allowed) == []
+    assert allowlist_violations(touched, ("src/app.py",)) == touched
 
 
 @pytest.mark.parametrize(

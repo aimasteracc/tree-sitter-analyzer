@@ -1,9 +1,9 @@
 """NO1-010B patch-verifier core (RFC-0026 §2/§3, C40/C41).
 
-Pure-logic pieces of the runner: segment-aware allowlist enforcement with
-trusted-artifact exclusions, canonical patch-input bounds (C40/C41), and the
-five-criterion verdict classifier. The sandboxed execution and staleness
-projection live with the harness bridge.
+Pure-logic pieces of the runner: segment-aware allowlist enforcement,
+canonical patch-input bounds (C40/C41), and the five-criterion verdict
+classifier. The sandboxed execution and staleness projection live with the
+harness bridge.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-from .artifacts import is_trusted_tool_artifact
 from .record import path_allowed
 
 # Canonical patch limits, bound into the registered manifest (RFC-0026 C41).
@@ -119,14 +118,13 @@ def allowlist_violations(
 ) -> list[str]:
     """Return touched paths that violate the allowlist.
 
-    Directory entries match segment-aware descendants; trusted tool artifacts
-    (``.pytest_cache``, ``__pycache__``, ...) are never violations
-    (RFC-0026 C25).
+    Directory entries match segment-aware descendants. RFC-0026 C25/C58 has
+    no trusted-artifact exception inside the immutable candidate tree: runner
+    caches and coverage data must be redirected to scratch, and any such path
+    appearing here is a violation.
     """
     violations = []
     for rel in touched:
-        if is_trusted_tool_artifact(rel):
-            continue
         if not path_allowed(rel, allowed_paths):
             violations.append(rel)
     return violations

@@ -14,7 +14,7 @@ from tree_sitter_analyzer.no1_010b.oracle import (
     _kill_process_tree,
     _parse_result_line,
     _reap_process,
-    run_oracle,
+    _run_oracle_process_unisolated_for_tests,
 )
 
 ORACLE_PASS = (
@@ -62,7 +62,7 @@ def test_run_oracle_classifies_declared_results(
     tmp_path: Path, body: str, expected: OracleStatus
 ) -> None:
     oracle = _write_oracle(tmp_path, "oracle.py", body)
-    outcome = run_oracle(
+    outcome = _run_oracle_process_unisolated_for_tests(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
     assert outcome.status == expected
@@ -70,7 +70,7 @@ def test_run_oracle_classifies_declared_results(
 
 def test_run_oracle_timeout_is_unknown(tmp_path: Path) -> None:
     oracle = _write_oracle(tmp_path, "hang.py", ORACLE_HANG)
-    outcome = run_oracle(
+    outcome = _run_oracle_process_unisolated_for_tests(
         str(oracle),
         str(tmp_path),
         expected_reason="dispatch-returns-none",
@@ -81,7 +81,7 @@ def test_run_oracle_timeout_is_unknown(tmp_path: Path) -> None:
 
 
 def test_run_oracle_missing_file_is_unknown(tmp_path: Path) -> None:
-    outcome = run_oracle(
+    outcome = _run_oracle_process_unisolated_for_tests(
         str(tmp_path / "ghost.py"),
         str(tmp_path),
         expected_reason="dispatch-returns-none",
@@ -99,7 +99,7 @@ def test_run_oracle_os_error_is_unknown(
 
     monkeypatch.setattr(subprocess, "Popen", boom)
     oracle = _write_oracle(tmp_path, "oracle.py", ORACLE_PASS)
-    outcome = run_oracle(
+    outcome = _run_oracle_process_unisolated_for_tests(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
     assert outcome.status == OracleStatus.UNKNOWN
@@ -170,7 +170,7 @@ def test_oracle_env_does_not_inherit_runner_secrets(
         "print('NO1_010B_ORACLE_RESULT: ' + ('PASS' if ok else 'FAIL'))\n"
     )
     oracle = _write_oracle(tmp_path, "env_check.py", body)
-    outcome = run_oracle(
+    outcome = _run_oracle_process_unisolated_for_tests(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
     assert outcome.status == OracleStatus.PASS
@@ -183,7 +183,7 @@ def test_run_oracle_undecodable_output_is_unknown(tmp_path: Path) -> None:
         "dispatch-returns-none\\nNO1_010B_ORACLE_RESULT: PASS\\n')\n"
     )
     oracle = _write_oracle(tmp_path, "binary.py", body)
-    outcome = run_oracle(
+    outcome = _run_oracle_process_unisolated_for_tests(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
     assert outcome.status == OracleStatus.UNKNOWN
@@ -191,7 +191,7 @@ def test_run_oracle_undecodable_output_is_unknown(tmp_path: Path) -> None:
 
 def test_run_oracle_resolves_relative_path_against_cwd(tmp_path: Path) -> None:
     _write_oracle(tmp_path, "relative.py", ORACLE_PASS)
-    outcome = run_oracle(
+    outcome = _run_oracle_process_unisolated_for_tests(
         "relative.py", str(tmp_path), expected_reason="dispatch-returns-none"
     )
     assert outcome.status == OracleStatus.PASS
@@ -216,7 +216,7 @@ def test_run_oracle_resolves_relative_path_against_cwd(tmp_path: Path) -> None:
 )
 def test_run_oracle_rejects_invalid_reason_protocol(tmp_path: Path, body: str) -> None:
     oracle = _write_oracle(tmp_path, "reason.py", body)
-    outcome = run_oracle(
+    outcome = _run_oracle_process_unisolated_for_tests(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
     assert outcome.status == OracleStatus.UNKNOWN
@@ -235,7 +235,7 @@ def test_run_oracle_bounds_output_while_running(
         "print('NO1_010B_ORACLE_RESULT: PASS')\n"
     )
     oracle = _write_oracle(tmp_path, "flood.py", body)
-    outcome = run_oracle(
+    outcome = _run_oracle_process_unisolated_for_tests(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
     assert outcome.status == OracleStatus.UNKNOWN
@@ -344,7 +344,7 @@ def test_run_oracle_rejects_missing_output_pipe(
     monkeypatch.setattr(oracle_module, "_reap_process", Mock())
     oracle = _write_oracle(tmp_path, "oracle.py", ORACLE_PASS)
 
-    outcome = run_oracle(
+    outcome = _run_oracle_process_unisolated_for_tests(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
 
@@ -380,7 +380,7 @@ def test_run_oracle_rejects_unclosed_output_thread(
     monkeypatch.setattr(oracle_module, "_reap_process", Mock())
     oracle = _write_oracle(tmp_path, "oracle.py", ORACLE_PASS)
 
-    outcome = run_oracle(
+    outcome = _run_oracle_process_unisolated_for_tests(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
 
@@ -405,7 +405,7 @@ def test_run_oracle_uses_windows_process_group(
     monkeypatch.setattr(oracle_module.subprocess, "Popen", popen)
     oracle = _write_oracle(tmp_path, "oracle.py", ORACLE_PASS)
 
-    outcome = run_oracle(
+    outcome = _run_oracle_process_unisolated_for_tests(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
 
