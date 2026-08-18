@@ -723,7 +723,7 @@ class TestFindTestFilesJavascript:
         test.write_text("test('value', () => {})")
 
         assert find_test_files(str(source), str(tmp_path)) == [
-            str(test.relative_to(tmp_path))
+            test.relative_to(tmp_path).as_posix()
         ]
 
 

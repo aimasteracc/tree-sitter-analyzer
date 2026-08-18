@@ -340,6 +340,16 @@ def test_commonjs_loader_assignment_and_delete_fail_closed(source: str) -> None:
     assert extraction["import_projection_complete"] is False
 
 
+def test_deleting_non_loader_preserves_projection_completeness() -> None:
+    extraction = _extraction_for(
+        'delete cache.value; require("./util.js");\n',
+        "javascript",
+    )
+
+    assert extraction["import_projection_complete"] is True
+    assert _extract_imports(extraction) == [{"text": 'require("./util.js")', "line": 1}]
+
+
 @pytest.mark.parametrize(
     "source",
     ['(require)("./util.js");\n', '(module.require)("./util.js");\n'],
