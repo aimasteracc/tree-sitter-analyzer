@@ -375,6 +375,13 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
         for statement in module_statements
         for node in ast.walk(statement)
     )
+    dynamic_code_execution = any(
+        isinstance(node, ast.Call)
+        and _python_reference_name(node.func)
+        in {"exec", "eval", "builtins.exec", "builtins.eval"}
+        for statement in module_statements
+        for node in ast.walk(statement)
+    )
     module_rebinding = module_rebinding or unsafe_loader_storage
     module_rebinding = module_rebinding or bool(
         loader_roots.intersection(_python_module_control_bindings(module_statements))
@@ -439,6 +446,11 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                 )
             )
         for node in (child for scope in nested_scopes for child in ast.walk(scope)):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                nested_loader_alias = nested_loader_alias or any(
+                    _python_value_stores_loader(decorator, names)
+                    for decorator in node.decorator_list
+                )
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
                 arguments = (
                     *node.args.posonlyargs,
@@ -538,6 +550,7 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
     complete = (
         not module_rebinding
         and not nested_loader_alias
+        and not dynamic_code_execution
         and not loader_roots.intersection(nested_bindings)
     )
     return frozenset(names), complete

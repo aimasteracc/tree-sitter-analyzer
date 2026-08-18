@@ -167,9 +167,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v30: loader escape and NodeNext projection semantics are persisted.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 30
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 30
+        # v31: dynamic-code and decorator retention semantics are persisted.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 31
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 31
 
 
 def test_python_module_control_bindings_cover_all_module_control_targets() -> None:
@@ -392,6 +392,15 @@ def test_indirect_commonjs_loader_call_fails_closed(source: str) -> None:
     extraction = _extraction_for(source, "javascript")
 
     assert extraction["import_projection_complete"] is False
+
+
+def test_malformed_indirect_commonjs_loader_member_is_not_matched() -> None:
+    node = SimpleNamespace(
+        type="member_expression",
+        child_by_field_name=lambda _field: None,
+    )
+
+    assert not walker_module._jsts_indirect_module_loader_call(node, "", {"require"})
 
 
 def test_malformed_parenthesized_commonjs_nodes_fail_closed() -> None:
@@ -1223,6 +1232,45 @@ def test_python_loader_analysis_rejects_nested_stored_loader(source: str) -> Non
     _names, complete = _python_dynamic_loader_analysis(source)
 
     assert complete is False
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import importlib\n@register(importlib.import_module)\ndef run(): pass\n",
+        "import importlib\n@register(importlib.import_module)\nclass Plugin: pass\n",
+        (
+            "import importlib\ndef outer():\n"
+            "    @register(importlib.import_module)\n"
+            "    def inner(): pass\n"
+        ),
+    ],
+)
+def test_python_loader_analysis_rejects_decorator_retention(source: str) -> None:
+    _names, complete = _python_dynamic_loader_analysis(source)
+
+    assert complete is False
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'exec("import pkg.util")\n',
+        'eval("__import__(\\"pkg.util\\")")\n',
+        'def load():\n    exec("import pkg.util")\n',
+        'import builtins\nbuiltins.eval("__import__(\\"pkg.util\\")")\n',
+    ],
+)
+def test_python_loader_analysis_rejects_dynamic_code_execution(source: str) -> None:
+    _names, complete = _python_dynamic_loader_analysis(source)
+
+    assert complete is False
+
+
+def test_python_loader_analysis_allows_non_dynamic_execute_name() -> None:
+    _names, complete = _python_dynamic_loader_analysis('execute("import pkg.util")\n')
+
+    assert complete is True
 
 
 @pytest.mark.parametrize(
