@@ -103,7 +103,7 @@ def test_diff_paths_accepts_unquoted_git_path_with_spaces() -> None:
 
 
 @pytest.mark.parametrize("operation", ["rename", "copy"])
-def test_diff_paths_exposes_extended_paths_to_allowlist(operation: str) -> None:
+def test_diff_paths_exposes_extended_paths(operation: str) -> None:
     patch = (
         PATCH_OK
         + "diff --git a/src/dispatch.py b/src/dispatch.py\n"
@@ -113,6 +113,11 @@ def test_diff_paths_exposes_extended_paths_to_allowlist(operation: str) -> None:
     touched = [path.rel_path for path in diff_paths(patch)]
 
     assert touched == ["src/dispatch.py", "outside/old.py", "outside/new.py"]
+
+
+def test_allowlist_rejects_extended_paths_outside_registration() -> None:
+    touched = ["src/dispatch.py", "outside/old.py", "outside/new.py"]
+
     assert allowlist_violations(touched, ("src/dispatch.py",)) == [
         "outside/old.py",
         "outside/new.py",
@@ -363,6 +368,7 @@ def test_preflight_agent_patch_maps_over_bound_output() -> None:
         "",
         "hello",
         "--- a/x.py\n+++ b/x.py\n",
+        "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n+old\n",
         "--- a/x.py\n+++ b/x.py\n@@ -١ +١ @@\n-old\n+new\n",
     ],
 )

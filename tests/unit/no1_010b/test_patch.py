@@ -376,6 +376,59 @@ def test_validate_patch_accepts_consistent_path_metadata(operation: str) -> None
 
 
 @pytest.mark.parametrize("operation", ["rename", "copy"])
+def test_validate_patch_uses_metadata_to_disambiguate_git_header(
+    operation: str,
+) -> None:
+    patch = (
+        "diff --git a/left b/mid b/right\n"
+        f"similarity index 100%\n{operation} from left b/mid\n"
+        f"{operation} to right\n"
+    )
+
+    assert [path.rel_path for path in validate_patch(patch)] == [
+        "left b/mid",
+        "right",
+    ]
+
+
+def test_validate_patch_rejects_ambiguous_header_with_mismatched_metadata() -> None:
+    patch = (
+        "diff --git a/left b/mid b/right\n"
+        "similarity index 100%\nrename from different\nrename to right\n"
+    )
+
+    with pytest.raises(PatchFormatError, match="non-canonical"):
+        validate_patch(patch)
+
+
+def test_validate_patch_rejects_semantically_empty_replacement() -> None:
+    patch = "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n+old\n"
+
+    with pytest.raises(PatchFormatError, match="changed canonical"):
+        validate_patch(patch)
+
+
+def test_validate_patch_accepts_newline_status_change() -> None:
+    patch = (
+        "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n"
+        "-old\n\\ No newline at end of file\n+old\n"
+    )
+
+    assert [path.rel_path for path in validate_patch(patch)] == ["x.py"]
+
+
+def test_validate_patch_rejects_empty_replacement_without_newlines() -> None:
+    patch = (
+        "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n"
+        "-old\n\\ No newline at end of file\n"
+        "+old\n\\ No newline at end of file\n"
+    )
+
+    with pytest.raises(PatchFormatError, match="changed canonical"):
+        validate_patch(patch)
+
+
+@pytest.mark.parametrize("operation", ["rename", "copy"])
 def test_validate_patch_rejects_unpaired_path_metadata(operation: str) -> None:
     patch = f"diff --git a/old.py b/new.py\n{operation} from old.py\n"
     with pytest.raises(PatchFormatError, match="changed canonical"):

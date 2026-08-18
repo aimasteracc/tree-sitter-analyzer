@@ -123,7 +123,10 @@ def _hunk_count(raw: str | None) -> int:
     return int(raw)
 
 
-def _git_header_paths(line: str) -> tuple[DiffPath, DiffPath]:
+def _git_header_paths(
+    line: str,
+    metadata_paths: tuple[str, str] | None = None,
+) -> tuple[DiffPath, DiffPath]:
     """Parse one unquoted Git header, including canonical paths with spaces."""
     prefix = "diff --git "
     if not line.startswith(f"{prefix}a/"):
@@ -140,10 +143,46 @@ def _git_header_paths(line: str) -> tuple[DiffPath, DiffPath]:
             candidates.append((old_path, new_path))
     if len(candidates) == 1:
         return candidates[0]
+    if metadata_paths is not None:
+        metadata_matches = [
+            pair
+            for pair in candidates
+            if tuple(path.rel_path for path in pair) == metadata_paths
+        ]
+        if len(metadata_matches) == 1:
+            return metadata_matches[0]
     same_path = [pair for pair in candidates if pair[0].rel_path == pair[1].rel_path]
     if len(same_path) == 1:
         return same_path[0]
     raise PatchFormatError("non-canonical diff --git header")
+
+
+def _git_block_extended_paths(
+    lines: list[str], header_index: int
+) -> tuple[str, str] | None:
+    """Return one complete rename/copy pair following a Git header."""
+
+    fields: dict[str, str] = {}
+    for line in lines[header_index + 1 :]:
+        if line.startswith(("diff --git ", "@@", "--- ")) or line == "GIT binary patch":
+            break
+        prefix = next(
+            (item for item in _EXTENDED_PATH_PREFIXES if line.startswith(item)),
+            None,
+        )
+        if prefix is None:
+            continue
+        key = prefix.rstrip()
+        parsed = DiffPath.from_extended_header(line, prefix)
+        if parsed is None or key in fields:
+            return None
+        fields[key] = parsed.rel_path
+    pairs = [
+        (fields[f"{operation} from"], fields[f"{operation} to"])
+        for operation in ("rename", "copy")
+        if {f"{operation} from", f"{operation} to"}.issubset(fields)
+    ]
+    return pairs[0] if len(pairs) == 1 else None
 
 
 def _hunk_body_indexes(lines: list[str]) -> set[int]:
@@ -196,9 +235,10 @@ def diff_paths(patch_text: str) -> list[DiffPath]:
 
     lines = physical_lines(patch_text)
     hunk_body = _hunk_body_indexes(lines)
-    for line in lines:
+    for index, line in enumerate(lines):
         if line.startswith("diff --git "):
-            for parsed in _git_header_paths(line):
+            metadata_paths = _git_block_extended_paths(lines, index)
+            for parsed in _git_header_paths(line, metadata_paths):
                 append_path(parsed)
     for index, line in enumerate(lines):
         if index in hunk_body:
@@ -253,22 +293,31 @@ def _patch_has_changed_hunk(lines: list[str]) -> bool:
     in_hunk = False
     remaining_old = remaining_new = 0
     hunk_changed = completed_change = False
+    old_lines: list[tuple[str, bool]] = []
+    new_lines: list[tuple[str, bool]] = []
     for index, line in enumerate(lines):
         if in_hunk:
             if line == r"\ No newline at end of file":
                 continue
+            has_newline = not (
+                index + 1 < len(lines)
+                and lines[index + 1] == r"\ No newline at end of file"
+            )
             if line.startswith(" ") and remaining_old and remaining_new:
                 remaining_old -= 1
                 remaining_new -= 1
+                old_lines.append((line[1:], has_newline))
+                new_lines.append((line[1:], has_newline))
             elif line.startswith("-") and remaining_old:
                 remaining_old -= 1
-                hunk_changed = True
+                old_lines.append((line[1:], has_newline))
             elif line.startswith("+") and remaining_new:
                 remaining_new -= 1
-                hunk_changed = True
+                new_lines.append((line[1:], has_newline))
             else:
                 return False
             if remaining_old == 0 and remaining_new == 0:
+                hunk_changed = old_lines != new_lines
                 completed_change = completed_change or hunk_changed
                 in_hunk = False
             continue
@@ -286,7 +335,11 @@ def _patch_has_changed_hunk(lines: list[str]) -> bool:
             remaining_old = _hunk_count(old_count)
             remaining_new = _hunk_count(new_count)
             hunk_changed = False
+            old_lines = []
+            new_lines = []
             in_hunk = bool(remaining_old or remaining_new)
+        elif line == r"\ No newline at end of file":
+            continue
         elif line.startswith(("+", "-")):
             return False
     return completed_change and not in_hunk
@@ -395,7 +448,9 @@ def _metadata_state(lines: list[str]) -> tuple[bool, bool, bool]:
         if line.startswith("diff --git "):
             if not finish_block():
                 return False, False, False
-            current_paths = _git_header_paths(line)
+            current_paths = _git_header_paths(
+                line, _git_block_extended_paths(lines, index)
+            )
             current_fields = {}
             current_null_sides = None
             current_full_index = None
