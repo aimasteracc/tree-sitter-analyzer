@@ -1,9 +1,13 @@
 """Unit tests for SafeToEditTool."""
 
+import ast
 import asyncio
+import json
 import os
+import sqlite3
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -13,6 +17,7 @@ from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import (
     _compute_risk,
     _is_init_file,
 )
+from tree_sitter_analyzer.mcp.tools.utils import safe_to_edit_helpers as helpers
 from tree_sitter_analyzer.mcp.tools.utils.test_discovery import find_test_files
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -781,10 +786,12 @@ async def test_edit_safe_read_existing_consumes_published_snapshot(
     assert result["risk_level"] in {"safe", "caution", "dangerous"}
     assert result["health_grade"]
     causal = result["causal_envelope"]
-    assert causal["dependents"] == ["routes.py"]
+    assert causal["dependents"] is None
+    assert causal["dependencies"] is None
+    assert causal["exercising_tests"] is None
     assert causal["constraint_verdict"] == "unknown"
-    assert causal["verification_command"] == "uv run pytest -q"
-    assert causal["stale_edges"]
+    assert causal["verification_command"] is None
+    assert causal["stale_edges"] is None
 
 
 def test_certified_commands_use_extension_runner(tmp_path: Path) -> None:
@@ -1266,6 +1273,65 @@ def test_format_result_marks_unsupported_import_facts_unavailable(
         "verification_command": None,
         "stale_edges": None,
     }
+
+
+def test_format_result_exposes_certified_envelope_and_fixture_risk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A complete certified projection returns facts and keeps fixture escalation."""
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.security.fixture_detector import FixtureFact
+
+    monkeypatch.setattr(
+        helpers, "_certified_import_facts_available", lambda *_a, **_k: True
+    )
+    monkeypatch.setattr(
+        helpers,
+        "is_fixture",
+        lambda *_a, **_k: FixtureFact(
+            is_fixture=True,
+            confidence=0.9,
+            source="test_scan",
+            evidence=("tests/test_app.py",),
+            note="fixture evidence",
+        ),
+    )
+    facts = helpers.SafeToEditFacts(
+        dependents=["consumer.py"],
+        dependencies=["dependency.py"],
+        health=SimpleNamespace(grade="A", total=95, dimensions={}),
+        test_files=["tests/test_app.py"],
+        has_tests=True,
+        risk="safe",
+        risk_factors=[],
+        pre_edit_checklist=[],
+        test_projection_complete=True,
+    )
+    context = helpers.SafeToEditContext(
+        file_path="app.py",
+        edit_type="refactor",
+        resolved_path=str(tmp_path / "app.py"),
+        project_root=str(tmp_path),
+        graph=None,
+        scorer=None,
+        snapshot_conn=sqlite3.connect(":memory:"),
+        certified_inventory=frozenset({"app.py", "consumer.py", "dependency.py"}),
+        stale_edges=("old.py",),
+    )
+
+    result = helpers._format_safe_to_edit_result(context, facts)
+
+    assert result["verdict"] == "UNSAFE"
+    assert result["causal_envelope"] == {
+        "dependents": ["consumer.py"],
+        "dependencies": ["dependency.py"],
+        "exercising_tests": ["tests/test_app.py"],
+        "constraint_verdict": "unknown",
+        "verification_command": "uv run pytest tests/test_app.py -q",
+        "stale_edges": ["old.py"],
+    }
+    assert result["risk_factors"][-1]["reason_code"] == "TEST_FIXTURE"
 
 
 @pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
@@ -2169,7 +2235,7 @@ def test_certified_facts_load_inventory_when_not_precomputed(
     monkeypatch.setattr(
         helpers,
         "_certified_exercising_tests",
-        lambda snapshot_conn, rel_path, dependents, *, inventory: [],
+        lambda snapshot_conn, rel_path, dependents, **_kwargs: [],
     )
     context = helpers.SafeToEditContext(
         file_path="app.py",
@@ -2206,7 +2272,7 @@ def test_certified_facts_normalize_windows_snapshot_path(
     monkeypatch.setattr(
         helpers,
         "_certified_exercising_tests",
-        lambda _conn, rel_path, dependents, *, inventory: (
+        lambda _conn, rel_path, dependents, **_kwargs: (
             captured.append((rel_path, dependents)) or []
         ),
     )
@@ -2397,8 +2463,8 @@ def test_snapshot_dependency_view_includes_c_header() -> None:
     assert view.dependencies_of("src/main.c") == ["src/util.h"]
 
 
-def test_snapshot_dependency_view_infers_unique_c_include_root() -> None:
-    # PR #1308 review: a unique inventory suffix certifies an -I-style root.
+def test_snapshot_dependency_view_rejects_uncaptured_c_include_root() -> None:
+    # A unique inventory suffix does not prove compiler -I search order.
     import json
     import sqlite3
 
@@ -2423,7 +2489,7 @@ def test_snapshot_dependency_view_infers_unique_c_include_root() -> None:
 
     view = build_snapshot_file_dependency_view(conn, "src/main.c")
 
-    assert view.dependencies_of("src/main.c") == ["include/project/util.h"]
+    assert view.dependencies_of("src/main.c") == []
 
 
 def test_snapshot_dependency_view_rejects_ambiguous_c_include_root() -> None:
@@ -3070,6 +3136,63 @@ def test_certified_exercising_tests_traverse_dependent_chain() -> None:
     ) == ["tests/test_api.py"]
 
 
+def test_certified_exercising_tests_cover_custom_pytest_filename_pattern() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_exercising_tests,
+        _pytest_exercising_projection_complete,
+        _snapshot_reverse_dependencies,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, '[]', '{}')",
+        [("util.py",), ("checks/check_api.py",)],
+    )
+    conn.execute(
+        "CREATE TABLE edges ("
+        "kind TEXT, file_path TEXT, callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO edges VALUES ('calls', 'checks/check_api.py', "
+        "'normalize', 'util.py')"
+    )
+
+    queries: list[str] = []
+    conn.set_trace_callback(queries.append)
+
+    inventory = frozenset({"util.py", "checks/check_api.py"})
+    reverse = _snapshot_reverse_dependencies(conn, inventory)
+
+    assert (
+        _certified_exercising_tests(
+            conn,
+            "util.py",
+            ["checks/check_api.py"],
+            inventory=inventory,
+            reverse_dependencies=reverse,
+        )
+        == []
+    )
+    assert (
+        _pytest_exercising_projection_complete(
+            "util.py",
+            ["checks/check_api.py"],
+            inventory,
+            reverse_dependencies=reverse,
+        )
+        is False
+    )
+    # One adjacency pass plus one bounded symbol-reference pass; never one
+    # snapshot rescan per transitive dependent.
+    assert sum("FROM ast_index" in query for query in queries) == 2
+
+
 def test_certified_exercising_tests_continue_through_test_chain() -> None:
     import sqlite3
 
@@ -3628,9 +3751,11 @@ def test_snapshot_syntax_envelope_keeps_complete_exercising_tests() -> None:
         "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, "
         "symbols_json TEXT, extractor_version INTEGER)"
     )
-    conn.execute("INSERT INTO ast_index VALUES ('app.py', '[]', '{}', 24)")
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('app.py', '[]', '{\"syntax_error\": false}', 25)"
+    )
     conn.executemany(
-        "INSERT INTO ast_index VALUES (?, '[]', '{}', 24)",
+        "INSERT INTO ast_index VALUES (?, '[]', '{\"syntax_error\": false}', 25)",
         [(f"tests/test_app_{index}.py",) for index in range(12)],
     )
     conn.executemany(
@@ -3665,7 +3790,7 @@ def test_snapshot_syntax_envelope_excludes_unrelated_nearby_test() -> None:
         "symbols_json TEXT, extractor_version INTEGER)"
     )
     conn.executemany(
-        "INSERT INTO ast_index VALUES (?, '[]', '{}', 24)",
+        "INSERT INTO ast_index VALUES (?, '[]', '{\"syntax_error\": false}', 25)",
         [("app.py",), ("tests/test_app.py",)],
     )
 
@@ -4181,7 +4306,7 @@ def test_snapshot_syntax_envelope_certifies_single_java_file() -> None:
         "symbols_json TEXT, extractor_version INTEGER)"
     )
     conn.execute(
-        "INSERT INTO ast_index VALUES (?, ?, '{}', 24)",
+        "INSERT INTO ast_index VALUES (?, ?, '{\"syntax_error\": false}', 25)",
         (
             "src/main/java/com/acme/Util.java",
             json.dumps([{"text": "package com.acme;"}]),
@@ -4288,7 +4413,7 @@ def test_snapshot_syntax_envelope_rejects_conflicting_java_packages() -> None:
         "symbols_json TEXT, extractor_version INTEGER)"
     )
     conn.executemany(
-        "INSERT INTO ast_index VALUES (?, ?, '{}', 24)",
+        "INSERT INTO ast_index VALUES (?, ?, '{\"syntax_error\": false}', 25)",
         [
             (
                 target,
@@ -4433,8 +4558,8 @@ def test_snapshot_syntax_envelope_marks_nonquoted_include_unavailable(
     }
 
 
-def test_snapshot_syntax_envelope_certifies_unique_include_root() -> None:
-    # PR #1308 review: a unique suffix match is complete despite unrelated records.
+def test_snapshot_syntax_envelope_rejects_uncaptured_include_root() -> None:
+    # A unique suffix match does not capture compiler -I search order.
     import json
     import sqlite3
 
@@ -4456,7 +4581,7 @@ def test_snapshot_syntax_envelope_certifies_unique_include_root() -> None:
         "symbols_json TEXT, extractor_version INTEGER)"
     )
     conn.executemany(
-        "INSERT INTO ast_index VALUES (?, ?, '{}', 24)",
+        "INSERT INTO ast_index VALUES (?, ?, '{\"syntax_error\": false}', 25)",
         [
             (
                 importer,
@@ -4473,7 +4598,14 @@ def test_snapshot_syntax_envelope_certifies_unique_include_root() -> None:
 
     envelope = build_snapshot_syntax_causal_envelope(conn, target, target)
 
-    assert envelope["dependents"] == [importer]
+    assert envelope == {
+        "dependents": None,
+        "dependencies": None,
+        "exercising_tests": None,
+        "constraint_verdict": "unknown",
+        "verification_command": None,
+        "stale_edges": None,
+    }
 
 
 def test_snapshot_syntax_envelope_rejects_missing_c_projection_table() -> None:
@@ -4631,11 +4763,12 @@ async def test_edit_safe_read_existing_syntax_error_short_circuits(
     assert result["verdict"] == "ERROR"
     assert result["access_state"] == "available"
     causal = result["causal_envelope"]
-    assert causal["dependents"] == ["routes.py"]
-    assert causal["dependencies"] == []
+    assert causal["dependents"] is None
+    assert causal["dependencies"] is None
+    assert causal["exercising_tests"] is None
     assert causal["constraint_verdict"] == "unknown"
-    assert causal["verification_command"] == "uv run pytest -q"
-    assert causal["stale_edges"]
+    assert causal["verification_command"] is None
+    assert causal["stale_edges"] is None
     assert result["source_snapshots"] == [
         {
             "kind": "index",
@@ -4683,3 +4816,873 @@ async def test_edit_safe_read_existing_missing_file_fails_closed(
     assert result["access_reason"] == "FILE_NOT_INDEXED"
     assert result["access_state"] == "unknown"
     assert result["action_version"] == "edit.safe/v1"
+
+
+def _projection_conn(rows: list[tuple[str, object]]) -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [(path, json.dumps(imports)) for path, imports in rows],
+    )
+    return conn
+
+
+def _symbol_conn(raw_symbols: object) -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_index ("
+        "file_path TEXT, symbols_json TEXT, extractor_version INTEGER)"
+    )
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 25)", (raw_symbols,))
+    return conn
+
+
+def test_agent_stop_condition_covers_dangerous_single_and_empty_verification() -> None:
+    def context(risk: str) -> helpers.AgentWorkflowContext:
+        return helpers.AgentWorkflowContext(
+            file_path="app.py",
+            risk=risk,
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["tests/test_app.py"],
+            health_grade="A",
+            project_root=".",
+        )
+
+    assert "smaller edit" in helpers._agent_stop_condition(
+        context("dangerous"),
+        {"after_edit_commands": ["focused"], "queue_boundary_commands": ["all"]},
+    )
+    assert (
+        helpers._agent_stop_condition(
+            context("safe"),
+            {"after_edit_commands": ["focused"], "queue_boundary_commands": []},
+        )
+        == "focused exits successfully."
+    )
+    assert "identified and run" in helpers._agent_stop_condition(
+        context("safe"),
+        {"after_edit_commands": [], "queue_boundary_commands": []},
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "language", "expected"),
+    [
+        ("test_parser.c", "c", True),
+        ("parser.c", "c", False),
+        ("test_parser.cpp", "cpp", True),
+        ("parser.cpp", "cpp", False),
+    ],
+)
+def test_c_family_test_name_conventions(
+    name: str, language: str, expected: bool
+) -> None:
+    assert helpers._looks_like_test_name(name, language) is expected
+
+
+def test_python_projected_call_simple_arguments_rejects_unparseable_and_statement() -> (
+    None
+):
+    assert helpers._python_projected_call_has_simple_arguments("if (") is False
+    assert helpers._python_projected_call_has_simple_arguments("value = 1") is False
+
+
+def _reverse_dependency_conn(
+    rows: list[tuple[object, object]],
+) -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path, imports_json)")
+    conn.executemany("INSERT INTO ast_index VALUES (?, ?)", rows)
+    return conn
+
+
+def test_reverse_dependency_snapshot_uses_resolved_and_import_edges() -> None:
+    conn = _reverse_dependency_conn(
+        [("app.py", "[]"), ("pkg/util.py", "[]"), ("outside.py", "[]")]
+    )
+    conn.execute(
+        "CREATE TABLE edges (kind TEXT, file_path, callee_name, callee_resolved_file)"
+    )
+    conn.executemany(
+        "INSERT INTO edges VALUES (?, ?, ?, ?)",
+        [
+            ("calls", "app.py", "run", "pkg/util.py"),
+            ("imports", "app.py", "pkg.util", ""),
+            ("imports", "app.py", "missing.module", ""),
+            ("imports", "app.py", 7, ""),
+            ("calls", "outside.py", "run", "pkg/util.py"),
+        ],
+    )
+
+    assert helpers._snapshot_reverse_dependencies(
+        conn, frozenset({"app.py", "pkg/util.py"})
+    ) == {"pkg/util.py": {"app.py"}}
+
+
+@pytest.mark.parametrize(
+    ("caller", "raw_imports"),
+    [
+        (None, "[]"),
+        ("app.py", "not-json"),
+        ("app.py", "{}"),
+        ("app.py", "[1]"),
+    ],
+)
+def test_reverse_dependency_snapshot_rejects_corrupt_ast_rows(
+    caller: object, raw_imports: object
+) -> None:
+    conn = _reverse_dependency_conn([(caller, raw_imports)])
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        helpers._snapshot_reverse_dependencies(conn, frozenset({"app.py"}))
+
+
+def test_reverse_dependency_snapshot_skips_outside_and_invalid_projection_rows() -> (
+    None
+):
+    conn = _reverse_dependency_conn(
+        [("outside.py", "not-json"), ("app.py", json.dumps(["if ("]))]
+    )
+
+    assert helpers._snapshot_reverse_dependencies(conn, frozenset({"app.py"})) == {}
+
+
+def test_reverse_dependency_snapshot_degrades_when_tables_are_unreadable() -> None:
+    assert (
+        helpers._snapshot_reverse_dependencies(_BrokenConnection(), frozenset()) == {}
+    )
+
+
+def test_pytest_projection_skips_seen_and_outside_dependents() -> None:
+    assert helpers._pytest_exercising_projection_complete(
+        "util.py",
+        ["util.py", "missing.py", "tests/test_util.py"],
+        frozenset({"util.py", "tests/test_util.py"}),
+        reverse_dependencies={},
+    )
+
+
+def test_cpp_same_directory_header_unit_resolves_and_certifies() -> None:
+    inventory = frozenset({"src/main.cpp", "src/util.h"})
+    conn = _projection_conn(
+        [("src/main.cpp", [{"text": 'import "util.h";'}]), ("src/util.h", [])]
+    )
+
+    assert helpers._import_targets_from_text(
+        'import "util.h";', "src/main.cpp", inventory
+    ) == {"src/util.h"}
+    assert helpers._quoted_include_projection_complete(conn, "src/util.h", inventory)
+
+
+def test_c_same_directory_include_certifies_with_non_import_projection() -> None:
+    inventory = frozenset({"src/main.c", "src/util.h"})
+    conn = _projection_conn(
+        [
+            ("src/main.c", [{"text": "int value;"}, {"text": '#include "util.h"'}]),
+            ("src/util.h", []),
+        ]
+    )
+
+    assert helpers._quoted_include_projection_complete(conn, "src/util.h", inventory)
+
+
+def test_python_relative_root_helper_and_dynamic_relative_loader_fail_closed() -> None:
+    inventory = frozenset({"src/__init__.py", "src/pkg/__init__.py", "src/pkg/app.py"})
+    assert not helpers._python_relative_package_root_ambiguous(
+        "pkg.util", "src/pkg/app.py", inventory
+    )
+    assert helpers._python_relative_package_root_ambiguous(
+        ".util", "src/pkg/app.py", inventory
+    )
+
+    conn = _projection_conn(
+        [
+            ("src/pkg/app.py", [{"text": "importlib.import_module('.util')"}]),
+            ("src/pkg/util.py", []),
+        ]
+    )
+    assert not helpers._python_import_projection_complete(
+        conn, frozenset({"src/pkg/app.py", "src/pkg/util.py"})
+    )
+
+
+def test_python_projection_rejects_relative_import_across_package_boundaries() -> None:
+    conn = _projection_conn(
+        [
+            ("src/pkg/app.py", [{"text": "from .missing import value"}]),
+            ("src/pkg/__init__.py", []),
+            ("src/__init__.py", []),
+        ]
+    )
+    inventory = frozenset({"src/pkg/app.py", "src/pkg/__init__.py", "src/__init__.py"})
+
+    assert not helpers._python_import_projection_complete(conn, inventory)
+
+
+def test_certified_java_facts_require_complete_reflection_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(helpers, "_symbol_walk_projections_complete", lambda *_: True)
+    monkeypatch.setattr(
+        helpers, "_java_same_package_projection_complete", lambda *_: True
+    )
+    monkeypatch.setattr(
+        helpers, "_java_reflection_projection_complete", lambda *_: False
+    )
+
+    assert (
+        helpers._certified_import_facts_available(
+            "src/Util.java", conn=object(), inventory=frozenset()
+        )
+        is False
+    )
+
+
+def test_certified_java_facts_reject_unprojected_jvm_languages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(helpers, "_symbol_walk_projections_complete", lambda *_: True)
+
+    assert (
+        helpers._certified_import_facts_available(
+            "src/Util.java",
+            conn=object(),
+            inventory=frozenset({"src/Util.java", "src/Use.kt"}),
+        )
+        is False
+    )
+
+
+def test_certified_jsts_facts_use_language_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(helpers, "_symbol_walk_projections_complete", lambda *_: True)
+    monkeypatch.setattr(helpers, "_jsts_import_projection_complete", lambda *_: False)
+
+    assert (
+        helpers._certified_import_facts_available(
+            "src/main.ts", conn=object(), inventory=frozenset({"src/main.ts"})
+        )
+        is False
+    )
+
+
+def test_python_projected_call_rejects_non_calls_and_unqualified_owners() -> None:
+    assert helpers._python_projected_call("value") is None
+    assert helpers._python_projected_call("(factory()).load()") is None
+
+
+def test_python_loader_projection_rejects_invalid_or_multiple_statements() -> None:
+    assert helpers._python_dynamic_loader_names_from_projection(["if ("]) is None
+    assert (
+        helpers._python_dynamic_loader_names_from_projection(["import os\nimport sys"])
+        is None
+    )
+
+
+def test_python_loader_projection_tracks_annotated_alias_chains() -> None:
+    names = helpers._python_dynamic_loader_names_from_projection(
+        [
+            "import importlib as il",
+            "from importlib import import_module, invalidate_caches",
+            "loader: object = il.import_module",
+            "later = loader",
+            "ignored = missing",
+            "holder.loader = loader",
+        ]
+    )
+
+    assert names == frozenset(
+        {
+            "__import__",
+            "builtins.__import__",
+            "importlib.import_module",
+            "il.import_module",
+            "import_module",
+            "loader",
+            "later",
+        }
+    )
+
+
+def test_python_ast_name_rejects_attribute_with_dynamic_owner() -> None:
+    expression = ast.parse("(factory()).load").body[0]
+    assert isinstance(expression, ast.Expr)
+
+    assert helpers._python_ast_name(expression.value) is None
+
+
+def test_query_only_jsts_specifier_is_not_resolved() -> None:
+    assert (
+        helpers._resolve_import_spec_from_inventory(
+            "?worker", "src/main.ts", frozenset({"src/main.ts"})
+        )
+        is None
+    )
+
+
+class _BrokenConnection:
+    def execute(self, _query: str) -> Any:
+        raise sqlite3.DatabaseError("broken snapshot")
+
+
+def test_symbol_projection_completeness_rejects_query_failure() -> None:
+    assert (
+        helpers._symbol_walk_projections_complete(
+            _BrokenConnection(), frozenset({"app.py"}), {"python"}
+        )
+        is False
+    )
+
+
+def test_symbol_projection_completeness_ignores_irrelevant_rows() -> None:
+    conn = _symbol_conn(json.dumps({"truncated_depth": False, "syntax_error": False}))
+    conn.execute("INSERT INTO ast_index VALUES ('notes.md', 'not-json', 0)")
+
+    assert helpers._symbol_walk_projections_complete(
+        conn, frozenset({"app.py"}), {"python"}
+    )
+
+
+def test_symbol_projection_completeness_rejects_incomplete_walk() -> None:
+    conn = _symbol_conn(json.dumps({"import_projection_complete": False}))
+
+    assert (
+        helpers._symbol_walk_projections_complete(
+            conn, frozenset({"app.py"}), {"python"}
+        )
+        is False
+    )
+
+
+def test_symbol_projection_completeness_rejects_syntax_error() -> None:
+    conn = _symbol_conn(json.dumps({"syntax_error": True}))
+
+    assert (
+        helpers._symbol_walk_projections_complete(
+            conn, frozenset({"app.py"}), {"python"}
+        )
+        is False
+    )
+
+
+@pytest.mark.parametrize("payload", ["not-json", "[]"])
+def test_symbol_projection_completeness_rejects_malformed_payload(
+    payload: str,
+) -> None:
+    conn = _symbol_conn(payload)
+
+    assert (
+        helpers._symbol_walk_projections_complete(
+            conn, frozenset({"app.py"}), {"python"}
+        )
+        is False
+    )
+
+
+def test_commonjs_projection_rejects_missing_extensionless_target() -> None:
+    conn = _projection_conn([("src/main.js", [{"text": "require('./missing')"}])])
+
+    assert (
+        helpers._jsts_import_projection_complete(conn, frozenset({"src/main.js"}))
+        is False
+    )
+
+
+def test_commonjs_projection_accepts_extensionless_file_target() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.js", [{"text": "require('./util')"}]),
+            ("src/util.js", []),
+        ]
+    )
+    inventory = frozenset({"src/main.js", "src/util.js"})
+
+    assert helpers._jsts_import_projection_complete(conn, inventory) is True
+
+
+def test_computed_commonjs_projection_accepts_literal_target() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.js", [{"text": "module['require']('./util.js')"}]),
+            ("src/util.js", []),
+        ]
+    )
+    inventory = frozenset({"src/main.js", "src/util.js"})
+
+    assert helpers._jsts_import_projection_complete(conn, inventory) is True
+    assert helpers._import_targets_from_text(
+        "module['require']('./util.js')", "src/main.js", inventory
+    ) == {"src/util.js"}
+
+
+@pytest.mark.parametrize("extension", ["mjs", "cjs"])
+def test_typescript_projection_accepts_explicit_javascript_module_extension(
+    extension: str,
+) -> None:
+    import_text = f"import './util.{extension}'"
+    target = f"src/util.{extension}"
+    conn = _projection_conn(
+        [
+            ("src/main.ts", [{"text": import_text}]),
+            (target, []),
+        ]
+    )
+    inventory = frozenset({"src/main.ts", target})
+
+    assert helpers._jsts_import_projection_complete(conn, inventory) is True
+    assert helpers._import_targets_from_text(import_text, "src/main.ts", inventory) == {
+        target
+    }
+
+
+def test_jsts_projection_rejects_casefold_only_target() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.js", [{"text": "import './Util.js'"}]),
+            ("src/util.js", []),
+        ]
+    )
+    inventory = frozenset({"src/main.js", "src/util.js"})
+
+    assert helpers._jsts_import_projection_complete(conn, inventory) is False
+
+
+def test_jsts_projection_rejects_casefold_collision() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.js", [{"text": "import './util.js'"}]),
+            ("src/util.js", []),
+            ("src/Util.js", []),
+        ]
+    )
+    inventory = frozenset({"src/main.js", "src/util.js", "src/Util.js"})
+
+    assert helpers._jsts_import_projection_complete(conn, inventory) is False
+
+
+def test_commonjs_loader_alias_projection_fails_closed() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.js", [{"text": "load('./util')"}]),
+            ("src/util.js", []),
+        ]
+    )
+
+    assert (
+        helpers._jsts_import_projection_complete(
+            conn, frozenset({"src/main.js", "src/util.js"})
+        )
+        is False
+    )
+
+
+def test_python_static_projection_parser_covers_invalid_and_wildcard_forms() -> None:
+    assert helpers._python_static_import_specs("if (") is None
+    assert helpers._python_static_import_specs("import os\nimport sys") is None
+    assert helpers._python_static_import_specs("value") == ()
+    assert helpers._python_static_import_specs("from pkg import *") == ("pkg",)
+    assert helpers._python_static_import_specs("from pkg import value") == (
+        "pkg",
+        "pkg.value",
+    )
+
+
+def test_python_relative_inventory_match_can_be_empty() -> None:
+    assert (
+        helpers._python_inventory_matches(
+            ".missing", "pkg/app.py", frozenset({"pkg/app.py"})
+        )
+        == set()
+    )
+
+
+def test_python_from_import_rejects_attribute_submodule_ambiguity() -> None:
+    conn = _projection_conn(
+        [
+            ("consumer.py", [{"text": "from pkg import value"}]),
+            ("pkg/__init__.py", []),
+            ("pkg/value.py", []),
+        ]
+    )
+    inventory = frozenset({"consumer.py", "pkg/__init__.py", "pkg/value.py"})
+
+    assert helpers._python_import_projection_complete(conn, inventory) is False
+
+
+def test_python_from_import_ambiguity_parser_ignores_invalid_projection() -> None:
+    assert (
+        helpers._python_from_import_is_ambiguous("if (", "app.py", frozenset()) is False
+    )
+
+
+def test_python_projection_rejects_invalid_loader_statement() -> None:
+    conn = _projection_conn([("app.py", [{"text": "if ("}])])
+
+    assert (
+        helpers._python_import_projection_complete(conn, frozenset({"app.py"})) is False
+    )
+
+
+def test_dependency_view_ignores_calls_when_loader_projection_is_invalid() -> None:
+    conn = _projection_conn(
+        [
+            ("app.py", [{"text": "if ("}, {"text": "load('pkg.util')"}]),
+            ("pkg/util.py", []),
+        ]
+    )
+    conn.row_factory = sqlite3.Row
+
+    view = helpers.build_snapshot_file_dependency_view(
+        conn,
+        "app.py",
+        inventory=frozenset({"app.py", "pkg/util.py"}),
+    )
+
+    assert view.dependencies_of("app.py") == []
+    assert view.dependents_of("app.py") == []
+
+
+def test_python_projection_rejects_missing_snapshot_table() -> None:
+    assert (
+        helpers._python_import_projection_complete(
+            sqlite3.connect(":memory:"), frozenset()
+        )
+        is False
+    )
+
+
+def test_python_future_import_never_resolves_to_project_file() -> None:
+    inventory = frozenset({"app.py", "__future__.py"})
+
+    assert (
+        helpers._import_targets_from_text(
+            "from __future__ import annotations", "app.py", inventory
+        )
+        == set()
+    )
+
+
+def test_python_future_import_has_no_causal_module_name() -> None:
+    assert helpers._import_module_name("from __future__ import annotations") is None
+
+
+def test_python_future_import_has_no_static_dependency_spec() -> None:
+    assert (
+        helpers._python_static_import_specs("from __future__ import annotations") == ()
+    )
+
+
+def test_python_builtins_import_never_resolves_to_project_file() -> None:
+    inventory = frozenset({"app.py", "builtins.py"})
+
+    assert (
+        helpers._import_targets_from_text("import builtins", "app.py", inventory)
+        == set()
+    )
+
+
+def test_python_builtins_loader_resolves_literal_target() -> None:
+    inventory = frozenset({"app.py", "pkg/util.py"})
+
+    assert helpers._import_targets_from_text(
+        "builtins.__import__('pkg.util')", "app.py", inventory
+    ) == {"pkg/util.py"}
+
+
+def test_python_builtins_loader_projection_is_complete() -> None:
+    conn = _projection_conn(
+        [
+            (
+                "app.py",
+                [
+                    {"text": "import builtins"},
+                    {"text": "builtins.__import__('pkg.util')"},
+                ],
+            ),
+            ("pkg/util.py", []),
+        ]
+    )
+    inventory = frozenset({"app.py", "pkg/util.py"})
+
+    assert helpers._python_import_projection_complete(conn, inventory) is True
+
+
+def test_python_projection_rejects_invalid_static_statement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _projection_conn([("app.py", [{"text": "if ("}])])
+    monkeypatch.setattr(
+        helpers,
+        "_python_dynamic_loader_names_from_projection",
+        lambda _: frozenset({"__import__"}),
+    )
+
+    assert (
+        helpers._python_import_projection_complete(conn, frozenset({"app.py"})) is False
+    )
+
+
+def test_python_projection_rejects_ambiguous_dynamic_import() -> None:
+    conn = _projection_conn(
+        [
+            ("app.py", [{"text": "__import__('pkg.util')"}]),
+            ("src/pkg/util.py", []),
+            ("vendor/pkg/util.py", []),
+        ]
+    )
+    inventory = frozenset({"app.py", "src/pkg/util.py", "vendor/pkg/util.py"})
+
+    assert helpers._python_import_projection_complete(conn, inventory) is False
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "__import__('pkg', fromlist=['util'])",
+        "__import__('pkg.util', globals(), locals(), (), 1)",
+    ],
+)
+def test_python_projection_rejects_extended_loader_call_semantics(call: str) -> None:
+    conn = _projection_conn(
+        [
+            ("app.py", [{"text": call}]),
+            ("pkg/__init__.py", []),
+            ("pkg/util.py", []),
+        ]
+    )
+    inventory = frozenset({"app.py", "pkg/__init__.py", "pkg/util.py"})
+
+    assert helpers._python_import_projection_complete(conn, inventory) is False
+
+
+def test_python_projection_rejects_ambiguous_relative_package_root() -> None:
+    conn = _projection_conn(
+        [
+            ("src/pkg/main.py", [{"text": "from . import util"}]),
+            ("src/pkg/util.py", []),
+            ("src/pkg/__init__.py", []),
+            ("src/__init__.py", []),
+        ]
+    )
+    inventory = frozenset(
+        {
+            "src/pkg/main.py",
+            "src/pkg/util.py",
+            "src/pkg/__init__.py",
+            "src/__init__.py",
+        }
+    )
+
+    assert helpers._python_import_projection_complete(conn, inventory) is False
+
+
+def test_python_inventory_matches_root_and_source_root_candidates() -> None:
+    inventory = frozenset({"pkg/util.py", "src/pkg/util.py"})
+
+    assert helpers._python_inventory_matches("pkg.util", "app.py", inventory) == {
+        "pkg/util.py",
+        "src/pkg/util.py",
+    }
+
+
+def test_python_resolver_rejects_root_and_source_root_ambiguity() -> None:
+    inventory = frozenset({"app.py", "pkg/util.py", "src/pkg/util.py"})
+
+    assert (
+        helpers._resolve_import_spec_from_inventory("pkg.util", "app.py", inventory)
+        is None
+    )
+
+
+def test_python_resolver_rejects_duplicate_normalized_candidate() -> None:
+    inventory = frozenset({"pkg.py", "./pkg.py"})
+
+    assert (
+        helpers._resolve_import_spec_from_inventory("pkg", "app.py", inventory) is None
+    )
+
+
+def test_python_projection_rejects_root_and_source_root_ambiguity() -> None:
+    conn = _projection_conn(
+        [
+            ("app.py", [{"text": "import pkg.util"}]),
+            ("pkg/util.py", []),
+            ("src/pkg/util.py", []),
+        ]
+    )
+    inventory = frozenset({"app.py", "pkg/util.py", "src/pkg/util.py"})
+
+    assert helpers._python_import_projection_complete(conn, inventory) is False
+
+
+def test_symbol_projection_rejects_stale_extractor_version() -> None:
+    conn = _symbol_conn(json.dumps({"truncated_depth": False}))
+    conn.execute("UPDATE ast_index SET extractor_version = 24")
+
+    assert (
+        helpers._symbol_walk_projections_complete(
+            conn, frozenset({"app.py"}), {"python"}
+        )
+        is False
+    )
+
+
+def test_java_inventory_match_prefers_exact_candidate() -> None:
+    assert helpers._java_inventory_matches(
+        "com.acme.Util$Inner", frozenset({"com/acme/Util.java"})
+    ) == {"com/acme/Util.java"}
+
+
+def test_java_multi_file_projection_fails_closed_for_qualified_references() -> None:
+    inventory = frozenset({"src/com/acme/Util.java", "src/org/example/Use.java"})
+
+    assert (
+        helpers._java_same_package_projection_complete(
+            object(), "src/com/acme/Util.java", inventory
+        )
+        is False
+    )
+
+
+def test_cpp_header_unit_without_captured_search_root_does_not_resolve() -> None:
+    inventory = frozenset({"src/main.cpp", "include/util.h"})
+
+    assert (
+        helpers._import_targets_from_text('import "util.h";', "src/main.cpp", inventory)
+        == set()
+    )
+
+
+def test_cpp_ambiguous_header_unit_does_not_guess_target() -> None:
+    inventory = frozenset({"src/main.cpp", "include-one/util.h", "include-two/util.h"})
+
+    assert (
+        helpers._import_targets_from_text('import "util.h";', "src/main.cpp", inventory)
+        == set()
+    )
+
+
+def test_cpp_header_unit_without_captured_include_root_fails_closed() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.cpp", [{"text": 'import "util.h";'}]),
+            ("include/util.h", []),
+        ]
+    )
+    inventory = frozenset({"src/main.cpp", "include/util.h"})
+
+    assert not helpers._quoted_include_projection_complete(
+        conn, "include/util.h", inventory
+    )
+
+
+def test_cpp_named_module_projection_fails_closed() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.cpp", [{"text": "import project.core;"}]),
+            ("include/util.h", []),
+        ]
+    )
+    inventory = frozenset({"src/main.cpp", "include/util.h"})
+
+    assert not helpers._quoted_include_projection_complete(
+        conn, "include/util.h", inventory
+    )
+
+
+def test_c_target_rejects_ambiguous_outgoing_quoted_include() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.c", [{"text": '#include "util.h"'}]),
+            ("a/util.h", []),
+            ("b/util.h", []),
+        ]
+    )
+    inventory = frozenset({"src/main.c", "a/util.h", "b/util.h"})
+
+    assert not helpers._quoted_include_projection_complete(
+        conn, "src/main.c", inventory
+    )
+
+
+def test_include_next_projection_fails_closed() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.cpp", [{"text": '#include_next "util.h"'}]),
+            ("include/util.h", []),
+        ]
+    )
+    inventory = frozenset({"src/main.cpp", "include/util.h"})
+
+    assert not helpers._quoted_include_projection_complete(
+        conn, "include/util.h", inventory
+    )
+
+
+def test_include_projection_rejects_missing_snapshot_table() -> None:
+    assert (
+        helpers._quoted_include_projection_complete(
+            sqlite3.connect(":memory:"), "include/util.h", frozenset()
+        )
+        is False
+    )
+
+
+def test_include_projection_rejects_unprojected_inventory_file() -> None:
+    conn = _projection_conn([("include/util.h", [])])
+
+    assert (
+        helpers._quoted_include_projection_complete(
+            conn,
+            "include/util.h",
+            frozenset({"include/util.h", "src/main.c"}),
+        )
+        is False
+    )
+
+
+def test_java_reflection_projection_rejects_missing_snapshot_table() -> None:
+    assert (
+        helpers._java_reflection_projection_complete(
+            sqlite3.connect(":memory:"), frozenset()
+        )
+        is False
+    )
+
+
+def test_java_reflection_projection_rejects_unbound_bare_call() -> None:
+    conn = _projection_conn(
+        [
+            ("tool.py", [{"text": "ignored"}]),
+            ("src/Main.java", [{"text": 'forName("com.acme.Util")'}]),
+            ("src/com/acme/Util.java", []),
+        ]
+    )
+    inventory = frozenset({"tool.py", "src/Main.java", "src/com/acme/Util.java"})
+
+    assert helpers._java_reflection_projection_complete(conn, inventory) is False
+
+
+def test_java_reflection_projection_rejects_ambiguous_target() -> None:
+    conn = _projection_conn(
+        [
+            (
+                "src/Main.java",
+                [{"text": 'Class.forName("com.acme.Util")'}],
+            ),
+            ("src/com/acme/Util.java", []),
+            ("vendor/com/acme/Util.java", []),
+        ]
+    )
+    inventory = frozenset(
+        {
+            "src/Main.java",
+            "src/com/acme/Util.java",
+            "vendor/com/acme/Util.java",
+        }
+    )
+
+    assert helpers._java_reflection_projection_complete(conn, inventory) is False

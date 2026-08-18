@@ -123,9 +123,9 @@ _PLUGIN_EXTS: frozenset[str] = frozenset(
 # De-duplication set: only warn once per extension per process lifetime.
 _warned_extensions: set[str] = set()
 
-# Extractor version constant — kept in sync with ast_cache.py. Version 24
-# projects CommonJS aliases and C++20 imports for fail-closed reads.
-_AST_CACHE_EXTRACTOR_VERSION = 24
+# Extractor version constant — kept in sync with ast_cache.py. Version 25
+# persists parse-error state and invalidates every projection semantic fix.
+_AST_CACHE_EXTRACTOR_VERSION = 25
 
 
 def _walk_source_files(project_root: str) -> Iterator[str]:

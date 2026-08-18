@@ -114,6 +114,7 @@ class SafeToEditFacts:
     risk: str
     risk_factors: list[dict[str, str]]
     pre_edit_checklist: list[str]
+    test_projection_complete: bool = True
 
 
 def build_safe_to_edit_result(context: SafeToEditContext) -> dict[str, Any]:
@@ -143,15 +144,26 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
         inventory = context.certified_inventory
         if inventory is None:
             inventory = snapshot_inventory(context.snapshot_conn)
+        reverse_dependencies = _snapshot_reverse_dependencies(
+            context.snapshot_conn, inventory
+        )
         test_files = _certified_exercising_tests(
             context.snapshot_conn,
             rel_path,
             dependents,
             inventory=inventory,
+            reverse_dependencies=reverse_dependencies,
+        )
+        test_projection_complete = _pytest_exercising_projection_complete(
+            rel_path,
+            dependents,
+            inventory,
+            reverse_dependencies=reverse_dependencies,
         )
         certified_health = True
     else:
         test_files = find_test_files(context.resolved_path, context.project_root)
+        test_projection_complete = True
         certified_health = False
     if certified_health:
         # Codex P2 (#1299 round-13/14, C60/C61): certified reads must parse
@@ -193,6 +205,7 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
         dependencies=dependencies,
         health=health,
         test_files=test_files,
+        test_projection_complete=test_projection_complete,
         has_tests=has_tests,
         risk=risk,
         risk_factors=risk_factors,
@@ -285,10 +298,14 @@ def _format_safe_to_edit_result(
     causal_inventory = context.certified_inventory
     if context.snapshot_conn is not None and causal_inventory is None:
         causal_inventory = snapshot_inventory(context.snapshot_conn)
-    if context.snapshot_conn is not None and _certified_import_facts_available(
-        certified_rel_path,
-        conn=context.snapshot_conn,
-        inventory=causal_inventory,
+    if (
+        context.snapshot_conn is not None
+        and facts.test_projection_complete
+        and _certified_import_facts_available(
+            certified_rel_path,
+            conn=context.snapshot_conn,
+            inventory=causal_inventory,
+        )
     ):
         # Constraint rows are not generation-bound until RFC-0025 P3.  An
         # empty result therefore cannot honestly mean "safe" on a certified
@@ -1052,6 +1069,19 @@ def _python_projected_call(import_text: str) -> tuple[str, str | None] | None:
     return name, spec
 
 
+def _python_projected_call_has_simple_arguments(import_text: str) -> bool:
+    """Return whether a projected loader call has only its module argument."""
+
+    try:
+        body = ast.parse(import_text).body
+    except SyntaxError:
+        return False
+    if len(body) != 1 or not isinstance(body[0], ast.Expr):
+        return False
+    call = body[0].value
+    return isinstance(call, ast.Call) and len(call.args) == 1 and not call.keywords
+
+
 def _python_dynamic_loader_names_from_projection(
     import_texts: list[str],
 ) -> frozenset[str] | None:
@@ -1501,19 +1531,102 @@ def _certified_test_files(
     return results
 
 
+def _snapshot_reverse_dependencies(
+    conn: Any, inventory: frozenset[str]
+) -> dict[str, set[str]]:
+    """Build the snapshot's reverse adjacency with bounded full-table passes."""
+
+    import json
+
+    reverse: dict[str, set[str]] = {}
+
+    def add(caller: str, dependency: str) -> None:
+        if caller in inventory and dependency in inventory and caller != dependency:
+            reverse.setdefault(dependency, set()).add(caller)
+
+    _require_edges_callee_name(conn)
+    try:
+        rows = conn.execute(
+            "SELECT file_path, callee_resolved_file FROM edges "
+            "WHERE callee_resolved_file != ''"
+        ).fetchall()
+        for caller, dependency in rows:
+            if not isinstance(caller, str) or not isinstance(dependency, str):
+                raise ValueError("CORRUPT_INDEX")
+            add(caller, dependency)
+    except ValueError:
+        raise
+    except Exception:  # nosec B110 — legacy schema may lack resolved edges
+        pass
+    try:
+        rows = conn.execute(
+            "SELECT file_path, callee_name FROM edges WHERE kind = 'imports'"
+        ).fetchall()
+        for caller, spec in rows:
+            if not isinstance(caller, str) or not isinstance(spec, str):
+                continue
+            resolved = _resolve_import_spec_from_inventory(spec, caller, inventory)
+            if resolved is not None:
+                add(caller, resolved)
+    except Exception:  # nosec B110 — legacy schema may lack import edges
+        pass
+    try:
+        rows = conn.execute("SELECT file_path, imports_json FROM ast_index").fetchall()
+        for caller, raw_imports in rows:
+            if not isinstance(caller, str) or not caller:
+                raise ValueError("CORRUPT_INDEX")
+            if caller not in inventory:
+                continue
+            try:
+                imports = json.loads(raw_imports)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("CORRUPT_INDEX") from exc
+            if not isinstance(imports, list):
+                raise ValueError("CORRUPT_INDEX")
+            import_texts: list[str] = []
+            for item in imports:
+                text = item.get("text") if isinstance(item, dict) else item
+                if not isinstance(text, str):
+                    raise ValueError("CORRUPT_INDEX")
+                import_texts.append(text)
+            dynamic_loaders = (
+                _python_dynamic_loader_names_from_projection(import_texts)
+                if _target_language(caller) == "python"
+                else None
+            )
+            if dynamic_loaders is None and _target_language(caller) == "python":
+                dynamic_loaders = frozenset()
+            for import_text in import_texts:
+                for dependency in _import_targets_from_text(
+                    import_text,
+                    caller,
+                    inventory,
+                    python_dynamic_loaders=dynamic_loaders,
+                ):
+                    add(caller, dependency)
+    except ValueError:
+        raise
+    except Exception:  # nosec B110 — legacy schema degrades to edge facts
+        pass
+    return reverse
+
+
 def _certified_exercising_tests(
     conn: Any,
     rel_path: str,
     dependents: list[str] | tuple[str, ...],
     *,
     inventory: frozenset[str] | None = None,
+    reverse_dependencies: dict[str, set[str]] | None = None,
 ) -> list[str]:
-    """Return the complete deduplicated exercising-test set from a snapshot."""
+    """Return complete convention-matched tests when collection is provable."""
     if inventory is None:
         inventory = snapshot_inventory(conn)
     test_files: list[str] = []
     seen = {rel_path}
     queue = list(dependents)
+    if reverse_dependencies is None:
+        reverse_dependencies = _snapshot_reverse_dependencies(conn, inventory)
     cursor = 0
     while cursor < len(queue):
         dependent = queue[cursor]
@@ -1531,12 +1644,10 @@ def _certified_exercising_tests(
                 and _looks_like_test_path(path, "python")
                 and (scope == "." or path.startswith(f"{scope}/"))
             )
-        if _looks_like_test_path(dependent, _target_language(dependent)):
+        language = _target_language(dependent)
+        if _looks_like_test_path(dependent, language):
             test_files.append(dependent)
-        graph = build_snapshot_file_dependency_view(
-            conn, dependent, inventory=inventory
-        )
-        queue.extend(graph.dependents_of(dependent))
+        queue.extend(sorted(reverse_dependencies.get(dependent, set())))
     language = _target_language(rel_path)
     if _looks_like_test_path(rel_path, language):
         test_files.insert(0, rel_path)
@@ -1546,6 +1657,34 @@ def _certified_exercising_tests(
         )
     )
     return list(dict.fromkeys(test_files))
+
+
+def _pytest_exercising_projection_complete(
+    rel_path: str,
+    dependents: list[str] | tuple[str, ...],
+    inventory: frozenset[str],
+    *,
+    reverse_dependencies: dict[str, set[str]],
+) -> bool:
+    """Reject Python test facts when custom collection could hide a module."""
+
+    seen = {rel_path}
+    queue = list(dependents)
+    cursor = 0
+    while cursor < len(queue):
+        dependent = queue[cursor]
+        cursor += 1
+        if dependent in seen or dependent not in inventory:
+            continue
+        seen.add(dependent)
+        if (
+            _target_language(dependent) == "python"
+            and Path(dependent).name not in {"__init__.py", "conftest.py"}
+            and not _looks_like_test_path(dependent, "python")
+        ):
+            return False
+        queue.extend(sorted(reverse_dependencies.get(dependent, set())))
+    return True
 
 
 def snapshot_inventory(conn: Any) -> frozenset[str]:
@@ -1946,17 +2085,9 @@ def _quoted_include_matches(
     )
     if relative is not None:
         return {relative}
-    if (
-        spec.startswith(("/", "."))
-        or "\\" in spec
-        or any(part in {"", ".", ".."} for part in spec.split("/"))
-    ):
-        return set()
-    return {
-        indexed
-        for indexed in inventory
-        if indexed == spec or indexed.endswith(f"/{spec}")
-    }
+    # The snapshot does not capture compiler -iquote/-I search order. A
+    # repository-wide suffix match therefore cannot certify a quoted include.
+    return set()
 
 
 def _snapshot_import_texts(
@@ -2032,11 +2163,14 @@ def _symbol_walk_projections_complete(
             return False
         truncated = payload.get("truncated_depth", False)
         projection_complete = payload.get("import_projection_complete", True)
+        syntax_error = payload.get("syntax_error", True)
         if (
             not isinstance(truncated, bool)
             or truncated
             or not isinstance(projection_complete, bool)
             or not projection_complete
+            or not isinstance(syntax_error, bool)
+            or syntax_error
         ):
             return False
     return True
@@ -2153,6 +2287,20 @@ def _python_inventory_matches(
     return set()
 
 
+def _python_relative_package_root_ambiguous(
+    spec: str, importer: str, inventory: frozenset[str]
+) -> bool:
+    """Return whether a relative import has multiple initializer boundaries."""
+
+    if not spec.startswith("."):
+        return False
+    parent = Path(importer).parent
+    return any(
+        ancestor != Path(".") and (ancestor / "__init__.py").as_posix() in inventory
+        for ancestor in parent.parents
+    )
+
+
 def _python_from_import_is_ambiguous(
     import_text: str, importer: str, inventory: frozenset[str]
 ) -> bool:
@@ -2199,11 +2347,15 @@ def _python_import_projection_complete(conn: Any, inventory: frozenset[str]) -> 
             if _python_from_import_is_ambiguous(import_text, file_path, inventory):
                 return False
             for spec in static_specs:
+                if _python_relative_package_root_ambiguous(spec, file_path, inventory):
+                    return False
                 if len(_python_inventory_matches(spec, file_path, inventory)) > 1:
                     return False
             projected_call = _python_projected_call(import_text)
             if projected_call is None or projected_call[0] not in loaders:
                 continue
+            if not _python_projected_call_has_simple_arguments(import_text):
+                return False
             dynamic_spec = projected_call[1]
             if dynamic_spec is None or dynamic_spec.startswith("."):
                 return False
@@ -2310,9 +2462,7 @@ def _quoted_include_projection_complete(
             if match is None:
                 return False
             candidates = _quoted_include_matches(match.group(1), importer, inventory)
-            if len(candidates) != 1 and (
-                importer == rel_path or rel_path in candidates
-            ):
+            if len(candidates) != 1:
                 return False
     return True
 
@@ -2737,7 +2887,28 @@ def build_snapshot_syntax_causal_envelope(
     graph = build_snapshot_file_dependency_view(conn, rel_path, inventory=inventory)
     dependents = safe_dependents(graph, rel_path)
     dependencies = safe_dependencies(graph, rel_path)
-    tests = _certified_exercising_tests(conn, rel_path, dependents, inventory=inventory)
+    reverse_dependencies = _snapshot_reverse_dependencies(conn, inventory)
+    if not _pytest_exercising_projection_complete(
+        rel_path,
+        dependents,
+        inventory,
+        reverse_dependencies=reverse_dependencies,
+    ):
+        return {
+            "dependents": None,
+            "dependencies": None,
+            "exercising_tests": None,
+            "constraint_verdict": "unknown",
+            "verification_command": None,
+            "stale_edges": None,
+        }
+    tests = _certified_exercising_tests(
+        conn,
+        rel_path,
+        dependents,
+        inventory=inventory,
+        reverse_dependencies=reverse_dependencies,
+    )
 
     from .verification_command import certified_default_test_command
 

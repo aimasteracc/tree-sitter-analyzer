@@ -123,6 +123,92 @@ def _python_assignment_target_leaves(target: ast.expr) -> list[ast.expr]:
     return [target]
 
 
+def _python_module_control_bindings(statements: list[ast.stmt]) -> set[str]:
+    """Return names rebound by module-level control-flow targets."""
+
+    bindings: set[str] = set()
+
+    def add_target(target: ast.expr) -> None:
+        bindings.update(
+            leaf.id
+            for leaf in _python_assignment_target_leaves(target)
+            if isinstance(leaf, ast.Name)
+        )
+
+    class BindingVisitor(ast.NodeVisitor):
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            del node
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            del node
+
+        def visit_ClassDef(self, node: ast.ClassDef) -> None:
+            del node
+
+        def visit_Lambda(self, node: ast.Lambda) -> None:
+            del node
+
+        def visit_ListComp(self, node: ast.ListComp) -> None:
+            del node
+
+        def visit_SetComp(self, node: ast.SetComp) -> None:
+            del node
+
+        def visit_DictComp(self, node: ast.DictComp) -> None:
+            del node
+
+        def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+            del node
+
+        def visit_For(self, node: ast.For) -> None:
+            add_target(node.target)
+            self.generic_visit(node)
+
+        def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+            add_target(node.target)
+            self.generic_visit(node)
+
+        def visit_With(self, node: ast.With) -> None:
+            for item in node.items:
+                if item.optional_vars is not None:
+                    add_target(item.optional_vars)
+            self.generic_visit(node)
+
+        def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+            for item in node.items:
+                if item.optional_vars is not None:
+                    add_target(item.optional_vars)
+            self.generic_visit(node)
+
+        def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+            if isinstance(node.name, str):
+                bindings.add(node.name)
+            self.generic_visit(node)
+
+        def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+            add_target(node.target)
+            self.generic_visit(node.value)
+
+        def visit_MatchAs(self, node: ast.MatchAs) -> None:
+            if node.name is not None:
+                bindings.add(node.name)
+            self.generic_visit(node)
+
+        def visit_MatchStar(self, node: ast.MatchStar) -> None:
+            if node.name is not None:
+                bindings.add(node.name)
+
+        def visit_MatchMapping(self, node: ast.MatchMapping) -> None:
+            if node.rest is not None:
+                bindings.add(node.rest)
+            self.generic_visit(node)
+
+    visitor = BindingVisitor()
+    for statement in statements:
+        visitor.visit(statement)
+    return bindings
+
+
 def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
     """Return whether a value retains a loader reference for later use."""
 
@@ -233,6 +319,9 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
         for statement in module_statements
     )
     module_rebinding = module_rebinding or unsafe_loader_storage
+    module_rebinding = module_rebinding or bool(
+        loader_roots.intersection(_python_module_control_bindings(module_statements))
+    )
     for statement in module_statements:
         if isinstance(statement, ast.Import):
             for alias in statement.names:
@@ -451,14 +540,6 @@ class _SymbolWalker:
                 self.source
             )
             self.python_dynamic_loaders.update(loaders)
-        if self.language in {"javascript", "typescript"}:
-            self.jsts_module_loaders.update(
-                re.findall(
-                    r"(?m)\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*"
-                    r"(?:require\b|module(?:\.require\b|\s*\[\s*['\"`]require['\"`]\s*\]))",
-                    self.source,
-                )
-            )
         if self.language == "java":
             self.java_static_for_name = bool(
                 re.search(
@@ -519,7 +600,20 @@ class _SymbolWalker:
             return
         patterns: list[Any] = []
         if node.type == "variable_declarator":
-            patterns.append(node.child_by_field_name("name"))
+            name = node.child_by_field_name("name")
+            patterns.append(name)
+            value = node.child_by_field_name("value")
+            if name is not None and value is not None and name.type == "identifier":
+                value_text = _node_text(value, self.source)
+                if re.fullmatch(
+                    r"(?:module\.require|module\s*\[\s*(['\"`])require\1\s*\]|"
+                    r"[A-Za-z_$][\w$]*)",
+                    value_text,
+                ) and (
+                    value_text in self.jsts_module_loaders
+                    or re.fullmatch(r"module\s*\[\s*(['\"`])require\1\s*\]", value_text)
+                ):
+                    self.jsts_module_loaders.add(_node_text(name, self.source))
         elif node.type == "formal_parameters":
             patterns.extend(node.children)
         elif node.type in {
@@ -539,6 +633,8 @@ class _SymbolWalker:
         elif node.type == "import_clause":
             patterns.append(node)
         elif node.type in {"assignment_expression", "augmented_assignment_expression"}:
+            patterns.append(node.child_by_field_name("left"))
+        elif node.type == "for_in_statement":
             patterns.append(node.child_by_field_name("left"))
         self.import_projection_complete = self.import_projection_complete and not any(
             pattern is not None
@@ -834,6 +930,7 @@ def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, An
             "node_count": 0,
             "truncated_depth": False,
             "import_projection_complete": True,
+            "syntax_error": True,
         }
     root = tree.root_node
     truncated_flag = [False]
@@ -867,6 +964,7 @@ def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, An
         "node_count": _count_nodes(root),
         "truncated_depth": truncated_flag[0],
         "import_projection_complete": walker.import_projection_complete,
+        "syntax_error": bool(getattr(root, "has_error", False)),
     }
 
 

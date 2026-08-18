@@ -137,6 +137,7 @@ def _assert_agent_wire_envelope(payload: dict, facade_name: str) -> None:
 
 
 class TestFacadeWireContract:
+    @pytest.mark.timeout(60)
     @pytest.mark.parametrize(
         ("facade_name", "arguments"),
         FACADE_WIRE_CASES,
