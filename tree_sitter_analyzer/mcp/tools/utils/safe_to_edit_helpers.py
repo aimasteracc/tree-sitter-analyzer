@@ -682,8 +682,12 @@ _DEPENDENCY_SOURCE_EXTS = frozenset(
         ".py",
         ".js",
         ".jsx",
+        ".mjs",
+        ".cjs",
         ".ts",
         ".tsx",
+        ".mts",
+        ".cts",
         ".java",
         ".go",
         ".rs",
@@ -774,7 +778,7 @@ def _extract_import_specs(source: str, suffix: str) -> set[str]:
     if suffix == ".py":
         specs.update(re.findall(r"^\s*import\s+([A-Za-z_][\w.]*)", source, re.M))
         specs.update(re.findall(r"^\s*from\s+([.\w]+)\s+import\b", source, re.M))
-    elif suffix in {".js", ".jsx", ".ts", ".tsx"}:
+    elif suffix in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"}:
         specs.update(re.findall(r"\bfrom\s+['\"]([^'\"]+)['\"]", source))
         specs.update(re.findall(r"\brequire\(\s*['\"]([^'\"]+)['\"]\s*\)", source))
     elif suffix == ".java":
@@ -791,17 +795,51 @@ def _resolve_import_spec(spec: str, rel_path: str, root: Path) -> str | None:
     else:
         candidate_base = spec.replace(".", "/")
 
-    candidates = [
-        candidate_base,
-        f"{candidate_base}.py",
-        f"{candidate_base}.js",
-        f"{candidate_base}.ts",
-        f"{candidate_base}.tsx",
-        f"{candidate_base}.java",
-        f"{candidate_base}/__init__.py",
-        f"{candidate_base}/index.js",
-        f"{candidate_base}/index.ts",
-    ]
+    explicit_suffix = Path(candidate_base).suffix.lower()
+    importer_suffix = Path(rel_path).suffix.lower()
+    substitutions = {
+        ".js": (".ts", ".tsx", ".d.ts", ".js", ".jsx"),
+        ".jsx": (".tsx", ".d.ts", ".jsx"),
+        ".mjs": (".mts", ".d.mts", ".mjs"),
+        ".cjs": (".cts", ".d.cts", ".cjs"),
+    }
+    if (
+        importer_suffix in {".ts", ".tsx", ".mts", ".cts"}
+        and explicit_suffix in substitutions
+    ):
+        source_base = candidate_base.removesuffix(explicit_suffix)
+        candidates = [
+            f"{source_base}{suffix}" for suffix in substitutions[explicit_suffix]
+        ]
+    elif explicit_suffix:
+        candidates = [candidate_base]
+    else:
+        source_suffixes = (
+            ".py",
+            ".js",
+            ".jsx",
+            ".mjs",
+            ".cjs",
+            ".ts",
+            ".tsx",
+            ".mts",
+            ".cts",
+            ".java",
+        )
+        package_entries = (
+            "__init__.py",
+            "index.js",
+            "index.jsx",
+            "index.mjs",
+            "index.cjs",
+            "index.ts",
+            "index.tsx",
+            "index.mts",
+            "index.cts",
+        )
+        candidates = [candidate_base]
+        candidates.extend(f"{candidate_base}{suffix}" for suffix in source_suffixes)
+        candidates.extend(f"{candidate_base}/{entry}" for entry in package_entries)
     for candidate in candidates:
         if (root / candidate).is_file():
             return candidate
@@ -832,6 +870,23 @@ def _module_path_without_suffix(path: Path) -> Path:
         if path.name.endswith(suffix):
             return path.with_name(path.name[: -len(suffix)])
     return path.with_suffix("")
+
+
+def _typescript_emitted_import_path(path: Path) -> Path | None:
+    """Map a TypeScript source path to the suffix importers emit at runtime."""
+
+    for source_suffix, emitted_suffix in (
+        (".d.mts", ".mjs"),
+        (".d.cts", ".cjs"),
+        (".d.ts", ".js"),
+        (".mts", ".mjs"),
+        (".cts", ".cjs"),
+        (".tsx", ".js"),
+        (".ts", ".js"),
+    ):
+        if path.name.endswith(source_suffix):
+            return path.with_name(f"{path.name[: -len(source_suffix)]}{emitted_suffix}")
+    return None
 
 
 def _require_edges_callee_name(conn: Any) -> None:
@@ -2552,6 +2607,8 @@ def _edge_import_names_for_target(
     without_suffix = module_path.as_posix()
     module = without_suffix.replace("/", ".")
     parent_module = path.parent.as_posix().replace("/", ".")
+    emitted_path = _typescript_emitted_import_path(path)
+    specifier_paths = (path,) if emitted_path is None else (path, emitted_path)
     names = {
         path.as_posix(),
         path.name,
@@ -2564,6 +2621,14 @@ def _edge_import_names_for_target(
         f"./{module_path.name}",
         f"./{path.name}",
     }
+    for specifier_path in specifier_paths:
+        names.update(
+            {
+                specifier_path.as_posix(),
+                specifier_path.name,
+                f"./{specifier_path.name}",
+            }
+        )
     if path.parent.name:
         names.add(f".{path.parent.name}")
     target_module_parts = (
@@ -2576,12 +2641,15 @@ def _edge_import_names_for_target(
         for offset in range(len(target_parent_parts)):
             names.add(".".join(target_parent_parts[offset:]))
     for importer in inventory:
-        relative_file = posixpath.relpath(
-            path.as_posix(), Path(importer).parent.as_posix()
-        )
-        names.add(
-            relative_file if relative_file.startswith("../") else f"./{relative_file}"
-        )
+        for specifier_path in specifier_paths:
+            relative_file = posixpath.relpath(
+                specifier_path.as_posix(), Path(importer).parent.as_posix()
+            )
+            names.add(
+                relative_file
+                if relative_file.startswith("../")
+                else f"./{relative_file}"
+            )
         importer_parts = tuple(
             part for part in Path(importer).parent.parts if part != "."
         )

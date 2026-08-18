@@ -209,6 +209,20 @@ def _python_module_control_bindings(statements: list[ast.stmt]) -> set[str]:
     return bindings
 
 
+def _python_loader_mapping_owner(node: ast.expr) -> str | None:
+    """Return the module whose attribute dictionary *node* exposes."""
+
+    if isinstance(node, ast.Attribute) and node.attr == "__dict__":
+        return _python_reference_name(node.value)
+    if (
+        isinstance(node, ast.Call)
+        and _python_reference_name(node.func) in {"vars", "builtins.vars"}
+        and node.args
+    ):
+        return _python_reference_name(node.args[0])
+    return None
+
+
 def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
     """Return whether a value retains a loader reference for later use."""
 
@@ -217,18 +231,22 @@ def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
     if isinstance(node, ast.Subscript):
         key = node.slice.value if isinstance(node.slice, ast.Constant) else None
         dynamic_key = not isinstance(node.slice, ast.Constant)
-        owner: str | None = None
-        if isinstance(node.value, ast.Attribute):
-            if node.value.attr == "__dict__":
-                owner = _python_reference_name(node.value.value)
-        elif (
-            isinstance(node.value, ast.Call)
-            and _python_reference_name(node.value.func) in {"vars", "builtins.vars"}
-            and node.value.args
-        ):
-            owner = _python_reference_name(node.value.args[0])
+        owner = _python_loader_mapping_owner(node.value)
         if owner is not None and (
             dynamic_key or (isinstance(key, str) and f"{owner}.{key}" in names)
+        ):
+            return True
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in {"get", "__getitem__", "pop", "setdefault"}
+        and node.args
+    ):
+        owner = _python_loader_mapping_owner(node.func.value)
+        key = node.args[0].value if isinstance(node.args[0], ast.Constant) else None
+        if owner is not None and (
+            not isinstance(node.args[0], ast.Constant)
+            or (isinstance(key, str) and f"{owner}.{key}" in names)
         ):
             return True
     if (
@@ -628,6 +646,23 @@ def _jsts_module_loader_reference(node: Any, source: str, loaders: set[str]) -> 
     )
 
 
+def _jsts_indirect_module_loader_call(
+    node: Any, source: str, loaders: set[str]
+) -> bool:
+    """Return whether ``node`` is a tracked loader's ``call``/``apply`` member."""
+
+    if node.type not in {"member_expression", "subscript_expression"}:
+        return False
+    owner = node.child_by_field_name("object")
+    accessor = node.child_by_field_name("property") or node.child_by_field_name("index")
+    if owner is None or accessor is None:
+        return False
+    method = _node_text(accessor, source).strip("'\"`")
+    return method in {"call", "apply"} and _jsts_module_loader_reference(
+        owner, source, loaders
+    )
+
+
 def _jsts_value_stores_module_loader(node: Any, source: str, loaders: set[str]) -> bool:
     """Detect a loader retained or passed as a value rather than invoked."""
 
@@ -948,6 +983,11 @@ class _SymbolWalker:
                 self.import_projection_complete = False
                 return False
             function = named_children[0]
+        if _jsts_indirect_module_loader_call(
+            function, self.source, self.jsts_module_loaders
+        ):
+            self.import_projection_complete = False
+            return False
         if not _jsts_module_loader_reference(
             function, self.source, self.jsts_module_loaders
         ):

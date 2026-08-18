@@ -58,8 +58,8 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v22: project assignment aliases of Python dynamic-import loaders.
 # v23: seal ambiguous Python scopes and project static Java/CommonJS loads.
 # v24: project CommonJS aliases and C++20 imports for fail-closed reads.
-# v25: persist parse-error state and invalidate every projection semantic fix.
-_AST_CACHE_EXTRACTOR_VERSION = 29
+# v30: invalidate caches for loader escape and NodeNext projection hardening.
+_AST_CACHE_EXTRACTOR_VERSION = 30
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__

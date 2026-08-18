@@ -167,9 +167,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v29: parse-error state and current projection semantics are persisted.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 29
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 29
+        # v30: loader escape and NodeNext projection semantics are persisted.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 30
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 30
 
 
 def test_python_module_control_bindings_cover_all_module_control_targets() -> None:
@@ -293,12 +293,29 @@ def test_python_non_loader_reflection_remains_complete() -> None:
     [
         'import importlib\nvalue = importlib.other["import_module"]\n',
         'import importlib\nvalue = vars()["import_module"]\n',
+        'import importlib\nvalue = importlib.__dict__.get("other")\n',
+        'import importlib\nvalue = vars(importlib).get("other")\n',
+        'import importlib\nvalue = mapping.get("import_module")\n',
     ],
 )
 def test_python_unrelated_dictionary_access_remains_complete(source: str) -> None:
     _loaders, complete = _python_dynamic_loader_analysis(source)
 
     assert complete is True
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'import importlib\nload = importlib.__dict__.get("import_module")\n',
+        'import importlib\nload = vars(importlib).get("import_module")\n',
+        "import importlib\nname = choose_name()\nload = vars(importlib).get(name)\n",
+    ],
+)
+def test_python_loader_dictionary_method_retrieval_fails_closed(source: str) -> None:
+    _loaders, complete = _python_dynamic_loader_analysis(source)
+
+    assert complete is False
 
 
 def test_js_alias_scope_without_parent_is_not_file_scoped() -> None:
@@ -361,6 +378,20 @@ def test_parenthesized_commonjs_loader_call_is_projected(source: str) -> None:
     assert [
         symbol["text"] for symbol in extraction["symbols"] if symbol["kind"] == "import"
     ] == [source.strip().removesuffix(";")]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'require.call(null, "./util.js");',
+        'module.require.apply(null, ["./util.js"]);',
+        'const load = require; load.call(null, "./util.js");',
+    ],
+)
+def test_indirect_commonjs_loader_call_fails_closed(source: str) -> None:
+    extraction = _extraction_for(source, "javascript")
+
+    assert extraction["import_projection_complete"] is False
 
 
 def test_malformed_parenthesized_commonjs_nodes_fail_closed() -> None:

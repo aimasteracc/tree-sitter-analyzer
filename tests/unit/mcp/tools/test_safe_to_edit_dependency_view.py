@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from tree_sitter_analyzer.mcp.tools.utils import safe_to_edit_helpers
 from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
     FileDependencyView,
@@ -110,6 +112,35 @@ def test_build_file_dependency_view_finds_typescript_imports(tmp_path: Path) -> 
     view = build_file_dependency_view(str(target), str(tmp_path))
 
     assert view.dependencies_of("src/main.ts") == ["src/dep.ts", "src/legacy.ts"]
+
+
+@pytest.mark.parametrize(
+    ("source_suffix", "emitted_suffix"),
+    [(".mjs", ".mjs"), (".cjs", ".cjs"), (".mts", ".mjs"), (".cts", ".cjs")],
+)
+def test_build_file_dependency_view_supports_node_module_extensions(
+    tmp_path: Path, source_suffix: str, emitted_suffix: str
+) -> None:
+    target = _write(
+        tmp_path,
+        f"src/main{source_suffix}",
+        f"import {{ dep }} from './dep{emitted_suffix}';\n",
+    )
+    _write(tmp_path, f"src/dep{source_suffix}", "export const dep = 1;\n")
+    _write(
+        tmp_path,
+        f"src/caller{source_suffix}",
+        f"import './main{emitted_suffix}';\n",
+    )
+
+    view = build_file_dependency_view(str(target), str(tmp_path))
+
+    assert view.dependencies_of(f"src/main{source_suffix}") == [
+        f"src/dep{source_suffix}"
+    ]
+    assert view.dependents_of(f"src/main{source_suffix}") == [
+        f"src/caller{source_suffix}"
+    ]
 
 
 def test_build_file_dependency_view_finds_java_imports(tmp_path: Path) -> None:

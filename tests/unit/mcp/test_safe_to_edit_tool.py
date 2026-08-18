@@ -3871,6 +3871,42 @@ def test_snapshot_stale_edges_includes_explicit_relative_extension() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("source_suffix", "emitted_suffix"),
+    [
+        (".mts", ".mjs"),
+        (".d.mts", ".mjs"),
+        (".cts", ".cjs"),
+        (".d.cts", ".cjs"),
+    ],
+)
+def test_snapshot_stale_edges_include_typescript_emitted_suffixes(
+    source_suffix: str, emitted_suffix: str
+) -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    target = f"src/util{source_suffix}"
+    import_text = f"import './util{emitted_suffix}'"
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [("src/main.mts", json.dumps([{"text": import_text}])), (target, "[]")],
+    )
+    conn.execute(
+        "INSERT INTO edges VALUES (1, 'imports', 'src/main.mts', ?, '')",
+        (f"./util{emitted_suffix}",),
+    )
+
+    assert helpers.snapshot_stale_edges(conn, target) == [
+        f"imports:src/main.mts->{target}#1"
+    ]
+
+
 def test_snapshot_stale_edges_uses_bounded_snapshot_queries() -> None:
     import sqlite3
 
@@ -3925,12 +3961,12 @@ def test_snapshot_syntax_envelope_keeps_complete_exercising_tests() -> None:
         "INSERT INTO ast_index VALUES "
         "('app.py', '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 29)'
+        '"syntax_error": false}\', 30)'
     )
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 29)',
+        '"syntax_error": false}\', 30)',
         [(f"tests/test_app_{index}.py",) for index in range(12)],
     )
     conn.executemany(
@@ -3967,7 +4003,7 @@ def test_snapshot_syntax_envelope_excludes_unrelated_nearby_test() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 29)',
+        '"syntax_error": false}\', 30)',
         [("app.py",), ("tests/test_app.py",)],
     )
 
@@ -4485,7 +4521,7 @@ def test_snapshot_syntax_envelope_certifies_single_java_file() -> None:
     conn.execute(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 29)',
+        '"syntax_error": false}\', 30)',
         (
             "src/main/java/com/acme/Util.java",
             json.dumps([{"text": "package com.acme;"}]),
@@ -4594,7 +4630,7 @@ def test_snapshot_syntax_envelope_rejects_conflicting_java_packages() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 29)',
+        '"syntax_error": false}\', 30)',
         [
             (
                 target,
@@ -4764,7 +4800,7 @@ def test_snapshot_syntax_envelope_rejects_uncaptured_include_root() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 29)',
+        '"syntax_error": false}\', 30)',
         [
             (
                 importer,
@@ -5017,7 +5053,7 @@ def _symbol_conn(raw_symbols: object) -> sqlite3.Connection:
         "CREATE TABLE ast_index ("
         "file_path TEXT, symbols_json TEXT, extractor_version INTEGER)"
     )
-    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 29)", (raw_symbols,))
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 30)", (raw_symbols,))
     return conn
 
 
