@@ -123,6 +123,23 @@ def _python_assignment_target_leaves(target: ast.expr) -> list[ast.expr]:
     return [target]
 
 
+def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
+    """Return whether a value retains a loader reference for later use."""
+
+    if _python_reference_name(node) in names:
+        return True
+    children: list[ast.expr]
+    if isinstance(node, ast.Call):
+        children = [*node.args, *(keyword.value for keyword in node.keywords)]
+        if _python_reference_name(node.func) not in names:
+            children.append(node.func)
+    else:
+        children = [
+            child for child in ast.iter_child_nodes(node) if isinstance(child, ast.expr)
+        ]
+    return any(_python_value_stores_loader(child, names) for child in children)
+
+
 def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
     """Return module loader aliases and whether their scope is unambiguous."""
     names = {"__import__", "builtins.__import__", "importlib.import_module"}
@@ -177,16 +194,18 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
         for outer_target in targets
         for target in _python_assignment_target_leaves(outer_target)
     )
-    destructured_loader_alias = any(
-        isinstance(target, (ast.List, ast.Tuple))
-        and any(
-            _python_reference_name(value_leaf) in names
-            for value_leaf in _python_assignment_target_leaves(value)
+    unsafe_loader_storage = any(
+        (
+            _python_reference_name(value) in names
+            and any(not isinstance(target, ast.Name) for target in targets)
+        )
+        or (
+            _python_reference_name(value) not in names
+            and _python_value_stores_loader(value, names)
         )
         for targets, value in assignments
-        for target in targets
     )
-    module_rebinding = module_rebinding or destructured_loader_alias
+    module_rebinding = module_rebinding or unsafe_loader_storage
     for statement in module_statements:
         if isinstance(statement, ast.Import):
             for alias in statement.names:

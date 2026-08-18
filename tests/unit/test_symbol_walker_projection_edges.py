@@ -184,6 +184,16 @@ load("pkg.util")
         "runtime.__import__('pkg.util')\n",
         "import importlib\nload, other = importlib.import_module, value\n"
         "load('pkg.util')\n",
+        "import importlib\npair = (importlib.import_module, value)\n"
+        "load, other = pair\nload('pkg.util')\n",
+        "import importlib\npair = {'load': importlib.import_module}\n"
+        "load = pair['load']\nload('pkg.util')\n",
+        "import importlib\npair = wrap(importlib.import_module)\n"
+        "load = pair[0]\nload('pkg.util')\n",
+        "import importlib\nholder.load = importlib.import_module\n"
+        "holder.load('pkg.util')\n",
+        "import importlib\nregistry['load'] = importlib.import_module\n"
+        "registry['load']('pkg.util')\n",
     ],
 )
 def test_python_loader_analysis_rejects_qualified_loader_rebinding(
@@ -193,6 +203,15 @@ def test_python_loader_analysis_rejects_qualified_loader_rebinding(
 
     assert any(name.endswith((".import_module", ".__import__")) for name in names)
     assert complete is False
+
+
+def test_python_loader_analysis_accepts_assigned_loader_call_result() -> None:
+    names, complete = _python_dynamic_loader_analysis(
+        "import importlib\nloaded = importlib.import_module('pkg.util')\n"
+    )
+
+    assert "importlib.import_module" in names
+    assert complete is True
 
 
 @pytest.mark.parametrize(
