@@ -987,7 +987,7 @@ def _import_module_name(import_text: str) -> str | None:
     if _re.match(r"^\s*from\s+__future__\s+import\b", import_text):
         return None
     import_text = _re.sub(
-        r"\bmodule\s*\[\s*(['\"`])require\1\s*\]",
+        r"\bmodule(?:\?\.)?\s*\[\s*(['\"`])require\1\s*\]",
         "module.require",
         import_text,
     )
@@ -1007,7 +1007,10 @@ def _import_module_name(import_text: str) -> str | None:
     m = _re.match(r"^\s*import\s+([.\w]+)", import_text)
     if m:
         return m.group(1)
-    m = _re.search(r"\b(?:require|import)\s*\(\s*['\"]([^'\"]+)['\"]", import_text)
+    m = _re.search(
+        r"\b(?:require|import)(?:\?\.)?\s*\(\s*['\"]([^'\"]+)['\"]",
+        import_text,
+    )
     if m:
         return m.group(1)
     m = _re.search(r"\b(?:require|import)\s*\(\s*`([^`]*)`", import_text)
@@ -1935,7 +1938,7 @@ def _import_targets_from_text(
         import_text = re.sub(r"\\\r?\n", "", import_text)
     elif importer_language in {"javascript", "typescript"}:
         import_text = re.sub(
-            r"\bmodule\s*\[\s*(['\"`])require\1\s*\]",
+            r"\bmodule(?:\?\.)?\s*\[\s*(['\"`])require\1\s*\]",
             "module.require",
             import_text,
         )
@@ -1974,7 +1977,7 @@ def _import_targets_from_text(
     specs.update(
         match.group(1)
         for match in re.finditer(
-            r"\b(?:require|import)\s*\(\s*`([^`]*)`\s*(?=[,)])",
+            r"\b(?:require|import)(?:\?\.)?\s*\(\s*`([^`]*)`\s*(?=[,)])",
             import_text,
         )
         if "${" not in match.group(1)
@@ -2019,7 +2022,8 @@ def _import_targets_from_text(
     specs.update(
         match.group(2)
         for match in re.finditer(
-            r"\b(?:require|import)\s*\(\s*(['\"])([^'\"]+)\1\s*(?=[,)])",
+            r"\b(?:require|import)(?:\?\.)?\s*\(\s*(['\"])([^'\"]+)\1"
+            r"\s*(?=[,)])",
             import_text,
         )
     )
@@ -2213,7 +2217,8 @@ def _jsts_import_projection_complete(conn: Any, inventory: frozenset[str]) -> bo
                 return False
             if (
                 re.search(
-                    r"(?:\brequire|module\s*\[\s*['\"`]require['\"`]\s*\])\s*\(",
+                    r"(?:\brequire|module(?:\?\.)?\s*\[\s*['\"`]require['\"`]\s*\])"
+                    r"(?:\?\.)?\s*\(",
                     import_text,
                 )
                 and not Path(normalized).suffix
@@ -2293,6 +2298,25 @@ def _python_inventory_matches(
     return set()
 
 
+def _python_inventory_case_ambiguous(
+    spec: str, importer: str, inventory: frozenset[str]
+) -> bool:
+    """Return whether only case-folded or colliding Python candidates resolve."""
+
+    exact = _python_inventory_matches(spec, importer, inventory)
+    folded_inventory = frozenset(path.casefold() for path in inventory)
+    folded = _python_inventory_matches(
+        spec.casefold(), importer.casefold(), folded_inventory
+    )
+    if {path.casefold() for path in exact} != folded:
+        return bool(folded)
+    counts: dict[str, int] = {}
+    for path in inventory:
+        folded_path = path.casefold()
+        counts[folded_path] = counts.get(folded_path, 0) + 1
+    return any(counts.get(path, 0) > 1 for path in folded)
+
+
 def _python_relative_package_root_ambiguous(
     spec: str, importer: str, inventory: frozenset[str]
 ) -> bool:
@@ -2362,6 +2386,8 @@ def _python_import_projection_complete(conn: Any, inventory: frozenset[str]) -> 
             for spec in static_specs:
                 if _python_relative_package_root_ambiguous(spec, file_path, inventory):
                     return False
+                if _python_inventory_case_ambiguous(spec, file_path, inventory):
+                    return False
                 matches = _python_inventory_matches(spec, file_path, inventory)
                 if not spec.startswith(".") and any(
                     not _python_absolute_inventory_match_is_rooted(spec, match)
@@ -2375,6 +2401,8 @@ def _python_import_projection_complete(conn: Any, inventory: frozenset[str]) -> 
                 return False
             dynamic_spec = projected_call[1]
             if dynamic_spec is None or dynamic_spec.startswith("."):
+                return False
+            if _python_inventory_case_ambiguous(dynamic_spec, file_path, inventory):
                 return False
             dynamic_matches = _python_inventory_matches(
                 dynamic_spec, file_path, inventory

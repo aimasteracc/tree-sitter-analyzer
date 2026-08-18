@@ -214,6 +214,15 @@ def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
 
     if _python_reference_name(node) in names:
         return True
+    if (
+        isinstance(node, ast.Call)
+        and len(node.args) >= 2
+        and isinstance(node.args[1], ast.Constant)
+        and isinstance(node.args[1].value, str)
+    ):
+        owner = _python_reference_name(node.args[0])
+        if owner is not None and f"{owner}.{node.args[1].value}" in names:
+            return True
     children: list[ast.expr]
     if isinstance(node, ast.Call):
         children = [*node.args, *(keyword.value for keyword in node.keywords)]
@@ -517,7 +526,9 @@ def _python_reference_name(node: ast.expr) -> str | None:
 _JSTS_MODULE_LOADER_ROOTS = frozenset({"module", "require"})
 
 
-def _jsts_pattern_binds_module_loader(node: Any, source: str) -> bool:
+def _jsts_pattern_binds_module_loader(
+    node: Any, source: str, loaders: set[str]
+) -> bool:
     """Return whether one JS/TS binding pattern shadows a module loader."""
 
     if node.type in {
@@ -525,13 +536,14 @@ def _jsts_pattern_binds_module_loader(node: Any, source: str) -> bool:
         "shorthand_property_identifier_pattern",
         "type_identifier",
     }:
-        return _node_text(node, source) in _JSTS_MODULE_LOADER_ROOTS
+        value = _node_text(node, source)
+        return value in loaders or value in _JSTS_MODULE_LOADER_ROOTS
     if node.type == "import_specifier":
         local_name = node.child_by_field_name("alias") or node.child_by_field_name(
             "name"
         )
         return local_name is not None and _jsts_pattern_binds_module_loader(
-            local_name, source
+            local_name, source, loaders
         )
     field = (
         "value"
@@ -545,7 +557,7 @@ def _jsts_pattern_binds_module_loader(node: Any, source: str) -> bool:
     if field is not None:
         pattern = node.child_by_field_name(field)
         return pattern is not None and _jsts_pattern_binds_module_loader(
-            pattern, source
+            pattern, source, loaders
         )
     if node.type in {
         "array_pattern",
@@ -556,7 +568,7 @@ def _jsts_pattern_binds_module_loader(node: Any, source: str) -> bool:
         "rest_pattern",
     }:
         return any(
-            _jsts_pattern_binds_module_loader(child, source)
+            _jsts_pattern_binds_module_loader(child, source, loaders)
             for child in node.children
             if getattr(child, "is_named", True)
         )
@@ -574,8 +586,12 @@ def _jsts_module_loader_reference(node: Any, source: str, loaders: set[str]) -> 
             return False
         node = named_children[0]
     value = _node_text(node, source)
+    value = value.replace("?.", ".")
     return value in loaders or bool(
-        re.fullmatch(r"module\s*\[\s*(['\"`])require\1\s*\]", value)
+        re.fullmatch(
+            r"module\s*(?:\.\s*require|\.?\s*\[\s*(['\"`])require\1\s*\])",
+            value,
+        )
     )
 
 
@@ -631,6 +647,8 @@ class _SymbolWalker:
             )
 
     def walk(self, node: Any, depth: int = 0, enclosed: bool = False) -> None:
+        if depth == 0:
+            self._discover_jsts_module_loaders(node)
         if depth > _WALK_MAX_DEPTH:
             if self.truncated_flag is not None:
                 self.truncated_flag[0] = True
@@ -641,6 +659,33 @@ class _SymbolWalker:
         )
         for child in node.children:
             self.walk(child, depth + 1, child_enclosed)
+
+    def _discover_jsts_module_loaders(self, root: Any) -> None:
+        """Collect direct JS/TS loader aliases before projecting any calls."""
+
+        if self.language not in {"javascript", "typescript"}:
+            return
+        candidates: list[tuple[str, Any]] = []
+        stack = [root]
+        while stack:
+            node = stack.pop()
+            if node.type == "variable_declarator":
+                name = node.child_by_field_name("name")
+                value = node.child_by_field_name("value")
+                if name is not None and value is not None and name.type == "identifier":
+                    candidates.append((_node_text(name, self.source), value))
+            stack.extend(node.children)
+        changed = True
+        while changed:
+            changed = False
+            for name, value in candidates:
+                if name not in self.jsts_module_loaders and (
+                    _jsts_module_loader_reference(
+                        value, self.source, self.jsts_module_loaders
+                    )
+                ):
+                    self.jsts_module_loaders.add(name)
+                    changed = True
 
     def _collect_node(self, node: Any, depth: int, enclosed: bool) -> None:
         self._mark_jsts_loader_binding(node)
@@ -683,23 +728,25 @@ class _SymbolWalker:
         patterns: list[Any] = []
         if node.type == "variable_declarator":
             name = node.child_by_field_name("name")
-            patterns.append(name)
             value = node.child_by_field_name("value")
             if name is not None and value is not None and name.type == "identifier":
-                value_text = _node_text(value, self.source)
-                if re.fullmatch(
-                    r"(?:module\.require|module\s*\[\s*(['\"`])require\1\s*\]|"
-                    r"[A-Za-z_$][\w$]*)",
-                    value_text,
-                ) and (
-                    value_text in self.jsts_module_loaders
-                    or re.fullmatch(r"module\s*\[\s*(['\"`])require\1\s*\]", value_text)
+                name_text = _node_text(name, self.source)
+                if _jsts_module_loader_reference(
+                    value, self.source, self.jsts_module_loaders
                 ):
-                    self.jsts_module_loaders.add(_node_text(name, self.source))
-                elif _jsts_value_stores_module_loader(
+                    self.jsts_module_loaders.add(name_text)
+                    if name_text in _JSTS_MODULE_LOADER_ROOTS:
+                        patterns.append(name)
+                else:
+                    patterns.append(name)
+                if _jsts_value_stores_module_loader(
+                    value, self.source, self.jsts_module_loaders
+                ) and not _jsts_module_loader_reference(
                     value, self.source, self.jsts_module_loaders
                 ):
                     self.import_projection_complete = False
+            else:
+                patterns.append(name)
         elif node.type == "formal_parameters":
             patterns.extend(node.children)
         elif node.type in {
@@ -751,7 +798,9 @@ class _SymbolWalker:
                 self.import_projection_complete = False
         self.import_projection_complete = self.import_projection_complete and not any(
             pattern is not None
-            and _jsts_pattern_binds_module_loader(pattern, self.source)
+            and _jsts_pattern_binds_module_loader(
+                pattern, self.source, self.jsts_module_loaders
+            )
             for pattern in patterns
         )
 
@@ -862,10 +911,9 @@ class _SymbolWalker:
                 self.import_projection_complete = False
                 return False
             function = named_children[0]
-        function_text = _node_text(function, self.source)
-        if re.fullmatch(r"module\s*\[\s*(['\"`])require\1\s*\]", function_text):
-            function_text = "module.require"
-        if function_text not in self.jsts_module_loaders:
+        if not _jsts_module_loader_reference(
+            function, self.source, self.jsts_module_loaders
+        ):
             return False
         self._append_import(node)
         return True

@@ -167,9 +167,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v27: parse-error state and current projection semantics are persisted.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 27
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 27
+        # v28: parse-error state and current projection semantics are persisted.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 28
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 28
 
 
 def test_python_module_control_bindings_cover_all_module_control_targets() -> None:
@@ -239,6 +239,11 @@ def test_python_star_imported_loader_fails_closed() -> None:
     "source",
     [
         "import importlib\nregistry.append(importlib.import_module)\n",
+        (
+            "import importlib\n"
+            'load = getattr(importlib, "import_module")\n'
+            'load("pkg.util")\n'
+        ),
         "import importlib\nif (load := importlib.import_module):\n    pass\n",
         "import importlib\nimportlib.import_module += fake\n",
         "import importlib\ndel importlib.import_module\n",
@@ -257,6 +262,14 @@ def test_python_loader_escape_and_nested_rebinding_fail_closed(source: str) -> N
     _loaders, complete = _python_dynamic_loader_analysis(source)
 
     assert complete is False
+
+
+def test_python_non_loader_reflection_remains_complete() -> None:
+    _loaders, complete = _python_dynamic_loader_analysis(
+        'import importlib\nvalue = getattr(importlib, "other")\n'
+    )
+
+    assert complete is True
 
 
 def test_commonjs_loader_stored_in_composite_fails_closed() -> None:
@@ -402,6 +415,30 @@ class TestJavaScriptModuleCallProjection:
 
         assert _extract_imports(symbols) == [{"text": "load('./legacy')", "line": 2}]
 
+    def test_forward_commonjs_loader_alias_call_is_projected(self) -> None:
+        source = "function run() { load('./util.js'); }\nconst load = require;\nrun();"
+        extraction = _extraction_for(source, "javascript")
+
+        assert extraction["import_projection_complete"] is True
+        assert _extract_imports(extraction) == [
+            {"text": "load('./util.js')", "line": 1}
+        ]
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            "module?.require('./util.js')",
+            "require?.('./util.js')",
+            "module?.require?.('./util.js')",
+            "module?.['require']('./util.js')",
+        ],
+    )
+    def test_optional_commonjs_loader_call_is_projected(self, call: str) -> None:
+        extraction = _extraction_for(f"{call};", "javascript")
+
+        assert extraction["import_projection_complete"] is True
+        assert _extract_imports(extraction) == [{"text": call, "line": 1}]
+
     @pytest.mark.parametrize(
         "source",
         [
@@ -415,6 +452,7 @@ class TestJavaScriptModuleCallProjection:
             "try {} catch (require) { require('./util'); }",
             "function require() { require('./util'); }",
             "class module {}",
+            "const require = require; require('./util');",
             "require = fake; require('./util');",
         ],
     )

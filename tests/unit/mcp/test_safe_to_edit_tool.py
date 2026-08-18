@@ -2103,6 +2103,9 @@ def test_snapshot_import_module_name_reads_dynamic_import_with_options() -> None
     [
         ("import(`./util`)", "./util"),
         ("import(`./${name}`)", None),
+        ("module?.require('./util.js')", "./util.js"),
+        ("require?.('./util.js')", "./util.js"),
+        ("module?.require?.('./util.js')", "./util.js"),
         ("importlib.import_module('pkg.util')", "pkg.util"),
         ("__import__('pkg.util')", "pkg.util"),
         ('/// <reference path="./types.d.ts" />', "./types.d.ts"),
@@ -3898,12 +3901,12 @@ def test_snapshot_syntax_envelope_keeps_complete_exercising_tests() -> None:
         "INSERT INTO ast_index VALUES "
         "('app.py', '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 27)'
+        '"syntax_error": false}\', 28)'
     )
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 27)',
+        '"syntax_error": false}\', 28)',
         [(f"tests/test_app_{index}.py",) for index in range(12)],
     )
     conn.executemany(
@@ -3940,7 +3943,7 @@ def test_snapshot_syntax_envelope_excludes_unrelated_nearby_test() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 27)',
+        '"syntax_error": false}\', 28)',
         [("app.py",), ("tests/test_app.py",)],
     )
 
@@ -4458,7 +4461,7 @@ def test_snapshot_syntax_envelope_certifies_single_java_file() -> None:
     conn.execute(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 27)',
+        '"syntax_error": false}\', 28)',
         (
             "src/main/java/com/acme/Util.java",
             json.dumps([{"text": "package com.acme;"}]),
@@ -4567,7 +4570,7 @@ def test_snapshot_syntax_envelope_rejects_conflicting_java_packages() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 27)',
+        '"syntax_error": false}\', 28)',
         [
             (
                 target,
@@ -4737,7 +4740,7 @@ def test_snapshot_syntax_envelope_rejects_uncaptured_include_root() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 27)',
+        '"syntax_error": false}\', 28)',
         [
             (
                 importer,
@@ -4990,7 +4993,7 @@ def _symbol_conn(raw_symbols: object) -> sqlite3.Connection:
         "CREATE TABLE ast_index ("
         "file_path TEXT, symbols_json TEXT, extractor_version INTEGER)"
     )
-    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 27)", (raw_symbols,))
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 28)", (raw_symbols,))
     return conn
 
 
@@ -5461,12 +5464,40 @@ def test_computed_commonjs_projection_accepts_literal_target() -> None:
     ) == {"src/util.js"}
 
 
-@pytest.mark.parametrize("extension", ["mjs", "cjs"])
-def test_typescript_projection_accepts_explicit_javascript_module_extension(
-    extension: str,
+@pytest.mark.parametrize(
+    "import_text",
+    [
+        "module?.require('./util.js')",
+        "require?.('./util.js')",
+        "module?.require?.('./util.js')",
+    ],
+)
+def test_optional_commonjs_projection_accepts_literal_target(
+    import_text: str,
 ) -> None:
-    import_text = f"import './util.{extension}'"
-    target = f"src/util.{extension}"
+    conn = _projection_conn(
+        [
+            ("src/main.js", [{"text": import_text}]),
+            ("src/util.js", []),
+        ]
+    )
+    inventory = frozenset({"src/main.js", "src/util.js"})
+
+    assert helpers._jsts_import_projection_complete(conn, inventory) is True
+    assert helpers._import_targets_from_text(import_text, "src/main.js", inventory) == {
+        "src/util.js"
+    }
+
+
+@pytest.mark.parametrize(
+    ("import_extension", "source_extension"),
+    [("mjs", "mts"), ("cjs", "cts")],
+)
+def test_typescript_projection_accepts_node_module_source_extension(
+    import_extension: str, source_extension: str
+) -> None:
+    import_text = f"import './util.{import_extension}'"
+    target = f"src/util.{source_extension}"
     conn = _projection_conn(
         [
             ("src/main.ts", [{"text": import_text}]),
@@ -5729,6 +5760,38 @@ def test_python_inventory_matches_root_and_source_root_candidates() -> None:
         "pkg/util.py",
         "src/pkg/util.py",
     }
+
+
+@pytest.mark.parametrize(
+    "inventory",
+    [
+        frozenset({"consumer.py", "pkg/util.py"}),
+        frozenset({"consumer.py", "Pkg/util.py", "pkg/util.py"}),
+    ],
+)
+def test_python_projection_rejects_casefold_only_or_colliding_target(
+    inventory: frozenset[str],
+) -> None:
+    conn = _projection_conn(
+        [
+            ("consumer.py", [{"text": "import Pkg.util"}]),
+            *((path, []) for path in inventory if path != "consumer.py"),
+        ]
+    )
+
+    assert helpers._python_import_projection_complete(conn, inventory) is False
+
+
+def test_python_dynamic_projection_rejects_casefold_only_target() -> None:
+    conn = _projection_conn(
+        [
+            ("consumer.py", [{"text": "__import__('Pkg.util')"}]),
+            ("pkg/util.py", []),
+        ]
+    )
+    inventory = frozenset({"consumer.py", "pkg/util.py"})
+
+    assert helpers._python_import_projection_complete(conn, inventory) is False
 
 
 def test_python_resolver_rejects_root_and_source_root_ambiguity() -> None:
