@@ -354,7 +354,7 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
     if any("\x00" in item for item in raw_argv):
         raise BenchmarkRecordError("verification_argv entries must not contain NUL")
     try:
-        tuple(os.fsencode(item) for item in raw_argv)
+        tuple((item.encode("utf-8"), os.fsencode(item)) for item in raw_argv)
     except UnicodeEncodeError as exc:
         raise BenchmarkRecordError(
             "verification_argv entries must be encodable"
