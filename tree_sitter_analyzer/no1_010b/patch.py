@@ -6,24 +6,39 @@ import re
 from dataclasses import dataclass
 
 from .git_binary import (
-    FULL_INDEX_HEADER_RE,
     GitBinaryBoundError,
     GitBinaryError,
     binary_patch_state,
 )
-
-PATCH_MAX_BYTES = 1 * 1024 * 1024
-PATCH_MAX_HUNKS = 512
-PATCH_MAX_LINES_PER_HUNK = 2000
-_HUNK_COUNT_MAX_DIGITS = len(str(PATCH_MAX_BYTES))
-_GIT_HEADER_SEPARATOR_MAX = 64
-_HUNK_HEADER_RE = re.compile(
-    r"^@@ -[0-9]+(?:,([0-9]+))? \+[0-9]+(?:,([0-9]+))? @@(?: .*)?$"
+from .git_hunks import (
+    HUNK_HEADER_RE as _HUNK_HEADER_RE,
 )
+from .git_hunks import (
+    PATCH_MAX_BYTES,
+    GitHunkBoundError,
+    physical_lines,
+)
+from .git_hunks import (
+    PATCH_MAX_HUNKS as PATCH_MAX_HUNKS,
+)
+from .git_hunks import (
+    PATCH_MAX_LINES_PER_HUNK as PATCH_MAX_LINES_PER_HUNK,
+)
+from .git_hunks import (
+    bound_patch as _bound_patch,
+)
+from .git_hunks import (
+    hunk_body_indexes as _hunk_body_indexes,
+)
+from .git_hunks import (
+    patch_has_changed_hunk as _patch_has_changed_hunk,
+)
+
+_GIT_HEADER_SEPARATOR_MAX = 64
 _MODE_HEADER_RE = re.compile(
     r"^(?:(?:old|new) mode|(?:deleted|new) file mode) [0-7]{6}$"
 )
-_INDEX_HEADER_RE = re.compile(r"^index [0-9a-f]+\.\.[0-9a-f]+(?: [0-7]{6})?$")
+_INDEX_HEADER_RE = re.compile(r"^index ([0-9a-f]+)\.\.([0-9a-f]+)(?: [0-7]{6})?$")
 _SIMILARITY_HEADER_RE = re.compile(r"^(?:dis)?similarity index (?:100|[0-9]{1,2})%$")
 _EXTENDED_PATH_PREFIXES = ("rename from ", "rename to ", "copy from ", "copy to ")
 
@@ -86,14 +101,6 @@ class DiffPath:
         return cls.from_git_token(f"a/{line[len(prefix) :]}", "a/")
 
 
-def physical_lines(patch_text: str) -> list[str]:
-    """Split LF/CRLF patch text without a synthetic trailing item."""
-    lines = patch_text.split("\n")
-    if patch_text.endswith("\n"):
-        lines.pop()
-    return [line.removesuffix("\r") for line in lines]
-
-
 def _paired_header_token(header_line: str, marker: str) -> str:
     """Keep path spaces while removing an optional tab-delimited timestamp."""
     return header_line[len(marker) + 1 :].split("\t", 1)[0]
@@ -113,14 +120,6 @@ def _is_paired_file_header(lines: list[str], index: int) -> bool:
         and lines[index].startswith("--- ")
         and lines[index + 1].startswith("+++ ")
     )
-
-
-def _hunk_count(raw: str | None) -> int:
-    if raw is None:
-        return 1
-    if len(raw) > _HUNK_COUNT_MAX_DIGITS:
-        raise PatchBoundError("patch hunk count exceeds numeric bound")
-    return int(raw)
 
 
 def _git_header_paths(
@@ -185,43 +184,6 @@ def _git_block_extended_paths(
     return pairs[0] if len(pairs) == 1 else None
 
 
-def _hunk_body_indexes(lines: list[str]) -> set[int]:
-    indexes: set[int] = set()
-    in_hunk = False
-    remaining_old: int | None = None
-    remaining_new: int | None = None
-    for index, line in enumerate(lines):
-        if line.startswith("@@"):
-            match = _HUNK_HEADER_RE.fullmatch(line)
-            in_hunk = True
-            remaining_old = _hunk_count(match.group(1)) if match else None
-            remaining_new = _hunk_count(match.group(2)) if match else None
-            continue
-        if not in_hunk:
-            continue
-        if line.startswith("diff --git "):
-            in_hunk = False
-            continue
-        if remaining_old == 0 and remaining_new == 0:
-            if _is_paired_file_header(lines, index):
-                in_hunk = False
-                continue
-            if line.startswith("\\ No newline at end of file"):
-                indexes.add(index)
-                continue
-        indexes.add(index)
-        if remaining_old is None or remaining_new is None or not line:
-            continue
-        if line[0] == " ":
-            remaining_old = max(0, remaining_old - 1)
-            remaining_new = max(0, remaining_new - 1)
-        elif line[0] == "-":
-            remaining_old = max(0, remaining_old - 1)
-        elif line[0] == "+":
-            remaining_new = max(0, remaining_new - 1)
-    return indexes
-
-
 def diff_paths(patch_text: str) -> list[DiffPath]:
     """Return the canonical paths a unified diff touches (bounded first)."""
     bound_patch(patch_text)
@@ -272,84 +234,17 @@ def diff_paths(patch_text: str) -> list[DiffPath]:
 
 def bound_patch(patch_text: str) -> None:
     """Enforce the RFC-0026 C40/C41 canonical patch limits."""
-    if len(patch_text.encode("utf-8")) > PATCH_MAX_BYTES:
-        raise PatchBoundError("patch exceeds max bytes")
-    lines = physical_lines(patch_text)
-    if sum(line.startswith("@@") for line in lines) > PATCH_MAX_HUNKS:
-        raise PatchBoundError("patch exceeds max hunks")
-    hunk_body = _hunk_body_indexes(lines)
-    current_hunk_lines = 0
-    for index, line in enumerate(lines):
-        if line.startswith("@@"):
-            current_hunk_lines = 0
-        elif index in hunk_body:
-            current_hunk_lines += 1
-            if current_hunk_lines > PATCH_MAX_LINES_PER_HUNK:
-                raise PatchBoundError("patch exceeds max lines per hunk")
-
-
-def _patch_has_changed_hunk(lines: list[str]) -> bool:
-    file_header_seen = False
-    in_hunk = False
-    remaining_old = remaining_new = 0
-    hunk_changed = completed_change = False
-    old_lines: list[tuple[str, bool]] = []
-    new_lines: list[tuple[str, bool]] = []
-    for index, line in enumerate(lines):
-        if in_hunk:
-            if line == r"\ No newline at end of file":
-                continue
-            has_newline = not (
-                index + 1 < len(lines)
-                and lines[index + 1] == r"\ No newline at end of file"
-            )
-            if line.startswith(" ") and remaining_old and remaining_new:
-                remaining_old -= 1
-                remaining_new -= 1
-                old_lines.append((line[1:], has_newline))
-                new_lines.append((line[1:], has_newline))
-            elif line.startswith("-") and remaining_old:
-                remaining_old -= 1
-                old_lines.append((line[1:], has_newline))
-            elif line.startswith("+") and remaining_new:
-                remaining_new -= 1
-                new_lines.append((line[1:], has_newline))
-            else:
-                return False
-            if remaining_old == 0 and remaining_new == 0:
-                hunk_changed = old_lines != new_lines
-                completed_change = completed_change or hunk_changed
-                in_hunk = False
-            continue
-        if line.startswith("diff --git "):
-            file_header_seen = False
-        elif _is_paired_file_header(lines, index):
-            file_header_seen = True
-        elif line.startswith("+++ ") and index and lines[index - 1].startswith("--- "):
-            continue
-        elif line.startswith("@@"):
-            match = _HUNK_HEADER_RE.fullmatch(line)
-            if not file_header_seen or match is None:
-                return False
-            old_count, new_count = match.groups()
-            remaining_old = _hunk_count(old_count)
-            remaining_new = _hunk_count(new_count)
-            hunk_changed = False
-            old_lines = []
-            new_lines = []
-            in_hunk = bool(remaining_old or remaining_new)
-        elif line == r"\ No newline at end of file":
-            continue
-        elif line.startswith(("+", "-")):
-            return False
-    return completed_change and not in_hunk
+    try:
+        _bound_patch(patch_text)
+    except GitHunkBoundError as exc:
+        raise PatchBoundError(str(exc)) from exc
 
 
 def _git_metadata_block_state(
     git_paths: tuple[DiffPath, DiffPath],
     fields: dict[str, str],
     paired_null_sides: tuple[bool, bool] | None,
-    full_index: tuple[str, str] | None,
+    index_objects: tuple[str, str] | None,
 ) -> tuple[bool, bool]:
     """Validate one Git metadata block and report whether it changes content."""
 
@@ -379,15 +274,15 @@ def _git_metadata_block_state(
     if "new file mode" in modes and not (
         paired_null_sides == (True, False)
         or paired_null_sides is None
-        and full_index is not None
-        and set(full_index[0]) == {"0"}
+        and index_objects is not None
+        and index_objects[0] in {"0" * 7, "0" * 40}
     ):
         return False, False
     if "deleted file mode" in modes and not (
         paired_null_sides == (False, True)
         or paired_null_sides is None
-        and full_index is not None
-        and set(full_index[1]) == {"0"}
+        and index_objects is not None
+        and index_objects[1] in {"0" * 7, "0" * 40}
     ):
         return False, False
     mode_changed = (
@@ -419,7 +314,7 @@ def _metadata_state(lines: list[str]) -> tuple[bool, bool, bool]:
     current_paths: tuple[DiffPath, DiffPath] | None = None
     current_fields: dict[str, str] = {}
     current_null_sides: tuple[bool, bool] | None = None
-    current_full_index: tuple[str, str] | None = None
+    current_index_objects: tuple[str, str] | None = None
     metadata_changed = False
 
     def finish_block() -> bool:
@@ -427,7 +322,7 @@ def _metadata_state(lines: list[str]) -> tuple[bool, bool, bool]:
         if current_paths is None:
             return not current_fields
         valid, changed = _git_metadata_block_state(
-            current_paths, current_fields, current_null_sides, current_full_index
+            current_paths, current_fields, current_null_sides, current_index_objects
         )
         metadata_changed = metadata_changed or changed
         return valid
@@ -453,7 +348,7 @@ def _metadata_state(lines: list[str]) -> tuple[bool, bool, bool]:
             )
             current_fields = {}
             current_null_sides = None
-            current_full_index = None
+            current_index_objects = None
             continue
         if _HUNK_HEADER_RE.fullmatch(line):
             continue
@@ -487,15 +382,12 @@ def _metadata_state(lines: list[str]) -> tuple[bool, bool, bool]:
                 return False, False, False
             current_fields[key] = line[len(key) + 1 :]
             continue
-        if _INDEX_HEADER_RE.fullmatch(line) or _SIMILARITY_HEADER_RE.fullmatch(line):
+        index_match = _INDEX_HEADER_RE.fullmatch(line)
+        if index_match is not None or _SIMILARITY_HEADER_RE.fullmatch(line):
             if current_paths is None:
                 return False, False, False
-            full_index_match = FULL_INDEX_HEADER_RE.fullmatch(line)
-            if full_index_match is not None:
-                current_full_index = (
-                    full_index_match.group(1),
-                    full_index_match.group(2),
-                )
+            if index_match is not None:
+                current_index_objects = index_match.group(1), index_match.group(2)
             continue
         return False, False, False
     return (

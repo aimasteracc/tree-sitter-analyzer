@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import zlib
 
@@ -101,7 +102,7 @@ def _validate_delta(data: bytes, max_output: int) -> None:
 
 def validate_binary_section(
     kind: str, declared_size: int, encoded_lines: list[str], max_output: int
-) -> None:
+) -> bytes | None:
     """Decode one Git binary section and verify zlib/delta integrity."""
 
     compressed = b"".join(_decode_line(line) for line in encoded_lines)
@@ -117,8 +118,16 @@ def validate_binary_section(
     if len(data) != declared_size:
         raise GitBinaryError("binary section size disagrees with header")
     if kind == "literal":
-        return
+        return data
     _validate_delta(data, max_output)
+    return None
+
+
+def _literal_matches_oid(data: bytes, oid: str) -> bool:
+    if set(oid) == {"0"}:
+        return not data
+    header = f"blob {len(data)}\0".encode()
+    return hashlib.sha1(header + data, usedforsecurity=False).hexdigest() == oid
 
 
 def _data_line_is_canonical(line: str) -> bool:
@@ -139,17 +148,18 @@ def binary_patch_state(lines: list[str], max_output: int) -> tuple[set[int], boo
     """Validate and locate bounded canonical ``git diff --binary`` payloads."""
 
     indexes: set[int] = set()
-    git_header_seen = full_index_seen = False
+    git_header_seen = False
+    full_index: tuple[str, str] | None = None
     cursor = 0
     while cursor < len(lines):
         line = lines[cursor]
         if line.startswith("diff --git "):
             git_header_seen = True
-            full_index_seen = False
+            full_index = None
             cursor += 1
             continue
-        if FULL_INDEX_HEADER_RE.fullmatch(line):
-            full_index_seen = True
+        if index_match := FULL_INDEX_HEADER_RE.fullmatch(line):
+            full_index = index_match.group(1), index_match.group(2)
             cursor += 1
             continue
         if line != "GIT binary patch":
@@ -157,7 +167,7 @@ def binary_patch_state(lines: list[str], max_output: int) -> tuple[set[int], boo
             continue
         if not git_header_seen:
             raise GitBinaryError("binary patch has no Git header")
-        if not full_index_seen:
+        if full_index is None:
             raise GitBinaryError("binary patch requires a full index line")
         indexes.add(cursor)
         cursor += 1
@@ -186,11 +196,21 @@ def binary_patch_state(lines: list[str], max_output: int) -> tuple[set[int], boo
             if not data_lines or cursor >= len(lines):
                 raise GitBinaryError("incomplete binary patch payload")
             try:
-                validate_binary_section(kind, declared_size, data_lines, max_output)
+                literal = validate_binary_section(
+                    kind, declared_size, data_lines, max_output
+                )
             except GitBinaryBoundError:
                 raise
             except GitBinaryError as exc:
                 raise GitBinaryError("corrupt binary patch payload") from exc
+            if literal is not None:
+                if section_count > 2:
+                    raise GitBinaryError("binary patch has too many literal sections")
+                expected_oid = full_index[1] if section_count == 1 else full_index[0]
+                if not _literal_matches_oid(literal, expected_oid):
+                    raise GitBinaryError(
+                        "literal binary payload does not match index object"
+                    )
             indexes.add(cursor)
             cursor += 1
         if section_count == 0:

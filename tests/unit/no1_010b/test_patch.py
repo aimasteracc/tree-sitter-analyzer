@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import zlib
 
 import pytest
@@ -69,7 +70,12 @@ def _binary_patch_from_compressed(
 
 
 def _binary_patch(kind: str, declared_size: int, inflated: bytes) -> str:
-    return _binary_patch_from_compressed(kind, declared_size, zlib.compress(inflated))
+    patch = _binary_patch_from_compressed(kind, declared_size, zlib.compress(inflated))
+    if kind == "literal":
+        header = f"blob {len(inflated)}\0".encode()
+        oid = hashlib.sha1(header + inflated, usedforsecurity=False).hexdigest()
+        patch = patch.replace("1" * 40, oid, 1)
+    return patch
 
 
 def test_diff_paths_rejects_quoted_git_header() -> None:
@@ -207,11 +213,42 @@ def test_validate_patch_accepts_abbreviated_index_for_text_patch() -> None:
     assert [path.rel_path for path in validate_patch(patch)] == ["x.py"]
 
 
+@pytest.mark.parametrize(
+    "patch",
+    [
+        (
+            "diff --git a/empty.txt b/empty.txt\n"
+            "new file mode 100644\n"
+            "index 0000000..e69de29\n"
+        ),
+        (
+            "diff --git a/empty.txt b/empty.txt\n"
+            "deleted file mode 100644\n"
+            "index e69de29..0000000\n"
+        ),
+    ],
+    ids=["add", "delete"],
+)
+def test_validate_patch_accepts_git_empty_file_mode_patch(patch: str) -> None:
+    assert [path.rel_path for path in validate_patch(patch)] == ["empty.txt"]
+
+
 def test_validate_patch_accepts_canonical_git_binary_patch() -> None:
     # PR #1307 review: git diff --binary output is a changed patch.
     assert [path.rel_path for path in validate_patch(BINARY_PATCH)] == [
         "assets/payload.bin"
     ]
+
+
+def test_validate_patch_rejects_literal_mismatched_to_index_object() -> None:
+    valid_oid = hashlib.sha1(
+        b"blob 4\0\x00\x01\x02\x04", usedforsecurity=False
+    ).hexdigest()
+    mismatched_oid = f"{valid_oid[:-1]}{'0' if valid_oid[-1] != '0' else '1'}"
+    patch = BINARY_PATCH.replace(valid_oid, mismatched_oid)
+
+    with pytest.raises(PatchFormatError, match="does not match index object"):
+        validate_patch(patch)
 
 
 @pytest.mark.parametrize(
@@ -242,6 +279,27 @@ def test_validate_patch_accepts_binary_new_file_with_zero_old_object() -> None:
     )
 
     assert [path.rel_path for path in validate_patch(patch)] == ["assets/payload.bin"]
+
+
+def test_validate_patch_accepts_binary_delete_with_zero_new_object() -> None:
+    empty_oid = hashlib.sha1(b"blob 0\0", usedforsecurity=False).hexdigest()
+    patch = _binary_patch("literal", 0, b"").replace(
+        f"index {'0' * 40}..{empty_oid} 100644\n",
+        f"deleted file mode 100644\nindex {empty_oid}..{'0' * 40} 100644\n",
+    )
+
+    assert [path.rel_path for path in validate_patch(patch)] == ["assets/payload.bin"]
+
+
+def test_validate_patch_rejects_nonempty_literal_for_zero_new_object() -> None:
+    payload_oid = hashlib.sha1(b"blob 3\0new", usedforsecurity=False).hexdigest()
+    patch = _binary_patch("literal", 3, b"new").replace(
+        f"index {'0' * 40}..{payload_oid} 100644\n",
+        f"deleted file mode 100644\nindex {payload_oid}..{'0' * 40} 100644\n",
+    )
+
+    with pytest.raises(PatchFormatError, match="does not match index object"):
+        validate_patch(patch)
 
 
 def test_validate_patch_rejects_corrupt_binary_payload_checksum() -> None:
