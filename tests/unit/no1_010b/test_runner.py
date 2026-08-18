@@ -94,19 +94,42 @@ def test_diff_paths_fails_closed_on_ambiguous_git_header() -> None:
         diff_paths('diff --git "a/path with spaces" "b/path with spaces"\n')
     with pytest.raises(PatchFormatError, match="non-canonical"):
         diff_paths("diff --git b/wrong-side.py b/wrong-side.py\n")
+    with pytest.raises(PatchFormatError, match="extended path"):
+        diff_paths(
+            PATCH_OK
+            + "diff --git a/src/dispatch.py b/src/dispatch.py\n"
+            + "rename from ../secret.py\n"
+        )
 
 
 def test_diff_paths_accepts_unquoted_git_path_with_spaces() -> None:
     patch = (
-        "diff --git a/src/my file.py b/src/my file.py\n"
-        "--- a/src/my file.py\n"
-        "+++ b/src/my file.py\n"
+        "diff --git a/src/a b/file.py b/src/a b/file.py\n"
+        "--- a/src/a b/file.py\n"
+        "+++ b/src/a b/file.py\n"
         "@@ -1 +1 @@\n"
         "-old\n"
         "+new\n"
     )
 
-    assert [path.rel_path for path in diff_paths(patch)] == ["src/my file.py"]
+    assert [path.rel_path for path in diff_paths(patch)] == ["src/a b/file.py"]
+
+
+@pytest.mark.parametrize("operation", ["rename", "copy"])
+def test_diff_paths_exposes_extended_paths_to_allowlist(operation: str) -> None:
+    patch = (
+        PATCH_OK
+        + "diff --git a/src/dispatch.py b/src/dispatch.py\n"
+        + f"{operation} from outside/old.py\n"
+        + f"{operation} to outside/new.py\n"
+    )
+    touched = [path.rel_path for path in diff_paths(patch)]
+
+    assert touched == ["src/dispatch.py", "outside/old.py", "outside/new.py"]
+    assert allowlist_violations(touched, ("src/dispatch.py",)) == [
+        "outside/old.py",
+        "outside/new.py",
+    ]
 
 
 def test_diff_paths_rejects_invalid_new_path_after_valid_old_path() -> None:
@@ -341,7 +364,15 @@ def test_preflight_agent_patch_maps_over_bound_output() -> None:
     )
 
 
-@pytest.mark.parametrize("patch", ["", "hello", "--- a/x.py\n+++ b/x.py\n"])
+@pytest.mark.parametrize(
+    "patch",
+    [
+        "",
+        "hello",
+        "--- a/x.py\n+++ b/x.py\n",
+        "--- a/x.py\n+++ b/x.py\n@@ -١ +١ @@\n-old\n+new\n",
+    ],
+)
 def test_preflight_agent_patch_rejects_output_without_change(patch: str) -> None:
     assert preflight_agent_patch(patch) == Verdict("UNKNOWN", "AGENT_OUTPUT_ERROR")
 

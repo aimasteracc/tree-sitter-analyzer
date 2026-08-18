@@ -1,8 +1,7 @@
-"""Strict benchmark-record model for the NO1-010B corpus (RFC-0026 §1)."""
-
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from typing import Any, Literal, cast
@@ -73,7 +72,9 @@ _EXPECTED_TERMINAL_FIELDS = frozenset({"verdict", "reason_code"})
 _MAX_CORPUS_BYTES = 8 * 1024 * 1024  # mirrors task_harness's input bound
 
 _REASON_TOKEN_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-_PATCH_HUNK_RE = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@(?: .*)?$")
+_PATCH_HUNK_RE = re.compile(
+    r"^@@ -[0-9]+(?:,([0-9]+))? \+[0-9]+(?:,([0-9]+))? @@(?: .*)?$"
+)
 _PATCH_COUNT_MAX_DIGITS = 7
 
 _REQUIRED_FIELDS = frozenset(
@@ -96,22 +97,17 @@ _OPTIONAL_FIELDS = frozenset(
 )
 
 
-class BenchmarkRecordError(ValueError):
-    """One malformed corpus record; the exact message names the offending field."""
+class BenchmarkRecordError(ValueError): ...
 
 
 @dataclass(frozen=True)
 class ExpectedTerminal:
-    """The exact pre-registered verdict/reason pair for one reference attempt."""
-
     verdict: ExpectedVerdict
     reason_code: TerminalReasonCode | None
 
 
 @dataclass(frozen=True)
 class BenchmarkRecord:
-    """One task with pinned provenance and an exact expected terminal state."""
-
     id: str
     task_class: TaskClass
     repo: str
@@ -129,7 +125,6 @@ class BenchmarkRecord:
     selected_tests: tuple[str, ...] = ()
 
     def to_task_request(self) -> tuple[str, dict[str, Any]]:
-        """Project only the task-layer fields (RFC-0026 §1)."""
         if self.operation == "understand":
             return "understand", {"task": self.task}
         if self.operation == "plan_change":
@@ -138,7 +133,6 @@ class BenchmarkRecord:
 
 
 def _canonical_rel_path(raw: Any, field: str) -> str:
-    """Accept only paths representable by the runner's unquoted Git grammar."""
     if not isinstance(raw, str) or not raw:
         raise BenchmarkRecordError(f"{field}: path must be a non-empty string")
     if "\\" in raw:
@@ -159,7 +153,6 @@ def _canonical_rel_path(raw: Any, field: str) -> str:
 
 
 def path_allowed(rel_path: str, allowed_paths: tuple[str, ...]) -> bool:
-    """Apply the segment-aware allowed-path contract (RFC-0026 C6)."""
     value = _canonical_rel_path(rel_path, "rel_path")
     for entry in allowed_paths:
         if entry.endswith("/"):
@@ -172,7 +165,6 @@ def path_allowed(rel_path: str, allowed_paths: tuple[str, ...]) -> bool:
 
 
 def patch_has_changed_hunk(lines: list[str]) -> bool:
-    """Validate counted hunks and require at least one real changed line."""
     file_header_seen = False
     in_hunk = False
     remaining_old = 0
@@ -212,6 +204,21 @@ def patch_has_changed_hunk(lines: list[str]) -> bool:
             and index + 1 < len(lines)
             and lines[index + 1].startswith("+++ ")
         ):
+            headers = (
+                (line[len("--- ") :].rstrip(), "a/"),
+                (lines[index + 1][len("+++ ") :].rstrip(), "b/"),
+            )
+            if all(raw == "/dev/null" for raw, _ in headers):
+                return False
+            for raw, side in headers:
+                if raw == "/dev/null":
+                    continue
+                if not raw.startswith(side):
+                    return False
+                try:
+                    _canonical_rel_path(raw[2:], "patch")
+                except BenchmarkRecordError:
+                    return False
             file_header_seen = True
             continue
         if (
@@ -282,7 +289,6 @@ def _expected_terminal_from_dict(raw: Any) -> ExpectedTerminal:
 
 
 def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
-    """Build one strict record, rejecting unknown fields and bad values."""
     if not isinstance(payload, dict):
         raise BenchmarkRecordError("record must be a JSON object")
     unknown = set(payload) - _REQUIRED_FIELDS - _OPTIONAL_FIELDS
@@ -325,7 +331,6 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
     allowed_paths = tuple(_canonical_rel_path(p, "allowed_paths") for p in raw_paths)
     if len(set(allowed_paths)) != len(allowed_paths):
         raise BenchmarkRecordError("allowed_paths must not contain duplicates")
-
     oracle = payload["oracle"]
     oracle_reason = payload["oracle_baseline_reason"]
     for name, value in (
@@ -348,8 +353,13 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
         )
     if any("\x00" in item for item in raw_argv):
         raise BenchmarkRecordError("verification_argv entries must not contain NUL")
+    try:
+        tuple(os.fsencode(item) for item in raw_argv)
+    except UnicodeEncodeError as exc:
+        raise BenchmarkRecordError(
+            "verification_argv entries must be encodable"
+        ) from exc
     verification_argv = tuple(raw_argv)
-
     verification_hint = payload.get("verification_command")
     if verification_hint is not None and (
         not isinstance(verification_hint, str) or not verification_hint.strip()
@@ -357,7 +367,6 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
         raise BenchmarkRecordError(
             "verification_command must be a non-empty string when present"
         )
-
     expected_terminal = _expected_terminal_from_dict(payload["expected_terminal"])
 
     defect = payload.get("defect")
@@ -418,8 +427,6 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
 
 
 def _strict_json_loads(text: str) -> Any:
-    """JSON decode that rejects duplicate keys and NaN/Infinity constants."""
-
     def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for key, value in pairs:
@@ -439,7 +446,6 @@ def _strict_json_loads(text: str) -> Any:
 
 
 def load_corpus_records(path: str) -> list[BenchmarkRecord]:
-    """Load a strict, bounded JSONL corpus from a file or stdin."""
     import sys
 
     if path == "-":
@@ -487,7 +493,6 @@ def load_corpus_records(path: str) -> list[BenchmarkRecord]:
 
 
 def per_class_counts(records: list[BenchmarkRecord]) -> dict[str, int]:
-    """Exact per-class counts for the report (RFC-0026 §1, C8)."""
     return {
         task_class: sum(1 for record in records if record.task_class == task_class)
         for task_class in ("bugfix", "refactor", "migration", "test_selection")

@@ -24,7 +24,9 @@ PATCH_MAX_BYTES = 1 * 1024 * 1024
 PATCH_MAX_HUNKS = 512
 PATCH_MAX_LINES_PER_HUNK = 2000
 _HUNK_COUNT_MAX_DIGITS = len(str(PATCH_MAX_BYTES))
-_HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@(?: .*)?$")
+_HUNK_HEADER_RE = re.compile(
+    r"^@@ -[0-9]+(?:,([0-9]+))? \+[0-9]+(?:,([0-9]+))? @@(?: .*)?$"
+)
 
 
 class PatchBoundError(ValueError):
@@ -79,6 +81,12 @@ class DiffPath:
             return None
         return cls(value)
 
+    @classmethod
+    def from_extended_header(cls, line: str, prefix: str) -> DiffPath | None:
+        """Parse an unquoted rename/copy path (which has no a/ or b/ prefix)."""
+        value = line[len(prefix) :].rstrip()
+        return cls.from_git_token(f"a/{value}", "a/")
+
 
 def _physical_lines(patch_text: str) -> list[str]:
     """Split LF-delimited patch lines without a synthetic trailing item."""
@@ -117,16 +125,19 @@ def _git_header_paths(line: str) -> tuple[DiffPath, DiffPath]:
     if not line.startswith(f"{prefix}a/"):
         raise PatchFormatError("non-canonical diff --git header")
     body = line[len(prefix) :]
-    separator = body.find(" b/")
-    if separator < 0 or body.find(" b/", separator + 1) >= 0:
-        raise PatchFormatError("non-canonical diff --git header")
-    old_path = DiffPath.from_git_token(body[:separator], "a/")
-    if old_path is None:
-        raise PatchFormatError("non-canonical diff --git header")
-    new_path = DiffPath.from_git_token(body[separator + 1 :], "b/")
-    if new_path is None:
-        raise PatchFormatError("non-canonical diff --git header")
-    return old_path, new_path
+    candidates: list[tuple[DiffPath, DiffPath]] = []
+    for match in re.finditer(r" b/", body):
+        separator = match.start()
+        old_path = DiffPath.from_git_token(body[:separator], "a/")
+        new_path = DiffPath.from_git_token(body[separator + 1 :], "b/")
+        if old_path is not None and new_path is not None:
+            candidates.append((old_path, new_path))
+    if len(candidates) == 1:
+        return candidates[0]
+    same_path = [pair for pair in candidates if pair[0].rel_path == pair[1].rel_path]
+    if len(same_path) == 1:
+        return same_path[0]
+    raise PatchFormatError("non-canonical diff --git header")
 
 
 def _hunk_body_indexes(lines: list[str]) -> set[int]:
@@ -187,6 +198,17 @@ def diff_paths(patch_text: str) -> list[DiffPath]:
             continue
         for parsed in _git_header_paths(line):
             append_path(parsed)
+    for index, line in enumerate(lines):
+        if index in hunk_body:
+            continue
+        for prefix in ("rename from ", "rename to ", "copy from ", "copy to "):
+            if not line.startswith(prefix):
+                continue
+            extended_path = DiffPath.from_extended_header(line, prefix)
+            if extended_path is None:
+                raise PatchFormatError("non-canonical extended path header")
+            append_path(extended_path)
+            break
     for index, line in enumerate(lines[:-1]):
         if index in hunk_body or index + 1 in hunk_body:
             continue

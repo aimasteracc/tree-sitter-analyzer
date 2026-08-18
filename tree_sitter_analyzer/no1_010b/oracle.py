@@ -47,7 +47,15 @@ _TASKKILL = subprocess.run
 _REAP_TIMEOUT_S = 5.0
 _ORACLE_LOAD_EXIT_CODE = 86
 _ORACLE_BOOTSTRAP = (
-    "import runpy, sys, traceback\n"
+    "import builtins, runpy, sys, traceback\n"
+    "_original_import = builtins.__import__\n"
+    "def _tracked_import(*args, **kwargs):\n"
+    "    try:\n"
+    "        return _original_import(*args, **kwargs)\n"
+    "    except BaseException:\n"
+    "        traceback.print_exc()\n"
+    f"        raise SystemExit({_ORACLE_LOAD_EXIT_CODE})\n"
+    "builtins.__import__ = _tracked_import\n"
     "try:\n"
     "    runpy.run_path(sys.argv[1], run_name='__main__')\n"
     "except (ImportError, SyntaxError):\n"

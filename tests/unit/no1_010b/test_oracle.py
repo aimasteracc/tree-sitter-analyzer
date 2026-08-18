@@ -56,28 +56,24 @@ def _run_written_oracle(tmp_path: Path, body: str) -> OracleOutcome:
 
 def test_run_oracle_accepts_declared_pass(tmp_path: Path) -> None:
     outcome = _run_written_oracle(tmp_path, ORACLE_PASS)
-
     assert outcome.status == OracleStatus.PASS
     assert outcome.unknown_reason is None
 
 
 def test_run_oracle_accepts_declared_fail(tmp_path: Path) -> None:
     outcome = _run_written_oracle(tmp_path, ORACLE_FAIL)
-
     assert outcome.status == OracleStatus.FAIL
     assert outcome.unknown_reason is None
 
 
 def test_run_oracle_classifies_import_failure_as_load_error(tmp_path: Path) -> None:
     outcome = _run_written_oracle(tmp_path, ORACLE_IMPORT_ERROR)
-
     assert outcome.status == OracleStatus.UNKNOWN
     assert outcome.unknown_reason == "ORACLE_LOAD_ERROR"
 
 
 def test_run_oracle_classifies_syntax_failure_as_load_error(tmp_path: Path) -> None:
     outcome = _run_written_oracle(tmp_path, ORACLE_SYNTAX)
-
     assert outcome.status == OracleStatus.UNKNOWN
     assert outcome.unknown_reason == "ORACLE_LOAD_ERROR"
 
@@ -86,7 +82,6 @@ def test_run_oracle_classifies_runtime_failure_as_execution_error(
     tmp_path: Path,
 ) -> None:
     outcome = _run_written_oracle(tmp_path, ORACLE_RUNTIME_ERROR)
-
     assert outcome.status == OracleStatus.UNKNOWN
     assert outcome.unknown_reason == "ORACLE_EXECUTION_ERROR"
 
@@ -95,7 +90,6 @@ def test_run_oracle_classifies_malformed_result_as_protocol_error(
     tmp_path: Path,
 ) -> None:
     outcome = _run_written_oracle(tmp_path, ORACLE_MALFORMED)
-
     assert outcome.status == OracleStatus.UNKNOWN
     assert outcome.unknown_reason == "ORACLE_PROTOCOL_ERROR"
 
@@ -107,6 +101,13 @@ def test_run_oracle_classifies_missing_marker_as_protocol_error(
 
     assert outcome.status == OracleStatus.UNKNOWN
     assert outcome.unknown_reason == "ORACLE_PROTOCOL_ERROR"
+
+
+def test_dependency_initialization_is_load_error(tmp_path: Path) -> None:
+    _write_oracle(tmp_path, "broken_dep.py", "raise TypeError('broken init')\n")
+    outcome = _run_written_oracle(tmp_path, "import broken_dep\n")
+    assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.unknown_reason == "ORACLE_LOAD_ERROR"
 
 
 def test_run_oracle_timeout_is_unknown(tmp_path: Path) -> None:

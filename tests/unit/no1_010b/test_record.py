@@ -141,7 +141,7 @@ def test_record_rejects_non_kebab_reason_tokens(bad_reason: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "bad_argv", ["uv run pytest", [], [""], ["uv", 42], ["uv", " "]]
+    "bad_argv", ["uv run pytest", [], [""], ["uv", 42], ["uv", " "], ["uv", "\ud800"]]
 )
 def test_record_rejects_invalid_verification_argv(bad_argv: object) -> None:
     payload = _valid_payload()
@@ -182,7 +182,6 @@ def test_record_rejects_reference_patch_with_unpaired_surrogate() -> None:
     payload["patch"] = (
         "--- a/src/dispatch.py\n+++ b/src/dispatch.py\n@@ -1 +1 @@\n-old\n+\ud800\n"
     )
-
     with pytest.raises(BenchmarkRecordError, match="valid UTF-8"):
         record_from_dict(payload)
 
@@ -198,6 +197,10 @@ def test_record_rejects_reference_patch_with_unpaired_surrogate() -> None:
         "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n context\n@@ -0,0 +1 @@\n context\n",
         "--- a/x.py\n+++ b/x.py\n@@ -0,0 +1 @@\n-old\n",
         "--- a/x.py\n+++ b/x.py\n@@ -1 +0,0 @@\n+new\n",
+        "--- a/x.py\n+++ b/x.py\n@@ -١ +١ @@\n-old\n+new\n",
+        "--- a/allowed.txt\n+++ x/secret.txt\n@@ -1 +1 @@\n-old\n+new\n",
+        "--- a/../secret.txt\n+++ b/allowed.txt\n@@ -1 +1 @@\n-old\n+new\n",
+        "--- /dev/null\n+++ /dev/null\n@@ -0,0 +1 @@\n+new\n",
         "--- a/x.py\n+++ b/x.py\ndiff --git a/y.py b/y.py\n@@ -1 +1 @@\n-old\n+new\n",
         "--- a/x.py\n+++ b/x.py\n@@ -1,12345678 +1,12345678 @@\n-old\n+new\n",
     ],
@@ -472,7 +475,6 @@ def test_per_class_counts_is_exact_for_all_classes() -> None:
             ("bugfix", "refactor", "migration", "test_selection"), start=1
         )
     ]
-
     assert per_class_counts(records) == {
         "bugfix": 1,
         "refactor": 1,
@@ -482,12 +484,9 @@ def test_per_class_counts_is_exact_for_all_classes() -> None:
 
 
 def test_per_class_counts_is_zero_for_empty_input() -> None:
-    assert per_class_counts([]) == {
-        "bugfix": 0,
-        "refactor": 0,
-        "migration": 0,
-        "test_selection": 0,
-    }
+    assert per_class_counts([]) == dict.fromkeys(
+        ("bugfix", "refactor", "migration", "test_selection"), 0
+    )
 
 
 def test_loader_rejects_duplicate_record_ids(monkeypatch: pytest.MonkeyPatch) -> None:
