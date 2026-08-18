@@ -52,7 +52,9 @@ def _exchange(
     client.connect(str(path))
     payload = canonical_json_bytes(request)
     client.sendall(struct.pack("!I", len(payload)) + payload)
-    client.shutdown(socket.SHUT_WR)
+    # The protocol is length-framed, so EOF is not part of request completion.
+    # A fast server can send its reply and close before this client half-closes;
+    # macOS then raises ENOTCONN even though the complete reply is buffered.
     size = struct.unpack("!I", client.recv(4))[0]
     response = bytearray()
     while len(response) < size:
