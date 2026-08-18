@@ -1667,7 +1667,7 @@ def _pytest_exercising_projection_complete(
     *,
     reverse_dependencies: dict[str, set[str]],
 ) -> bool:
-    """Reject Python test facts when custom collection could hide a module."""
+    """Reject certified test facts when custom collection could hide a module."""
 
     seen = {rel_path}
     queue = list(dependents)
@@ -1679,7 +1679,7 @@ def _pytest_exercising_projection_complete(
             continue
         seen.add(dependent)
         language = _target_language(dependent)
-        if language in {"python", "javascript", "typescript"}:
+        if language in _CERTIFIED_IMPORT_LANGUAGES:
             conventional_support_file = language == "python" and Path(
                 dependent
             ).name in {"__init__.py", "conftest.py"}

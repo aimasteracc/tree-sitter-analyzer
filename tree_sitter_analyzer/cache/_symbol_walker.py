@@ -320,6 +320,17 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
         and _python_value_stores_loader(statement.annotation, names)
         for statement in module_statements
     )
+    unsafe_loader_storage = unsafe_loader_storage or any(
+        isinstance(statement, ast.Expr)
+        and _python_value_stores_loader(statement.value, names)
+        for statement in module_statements
+    )
+    unsafe_loader_storage = unsafe_loader_storage or any(
+        isinstance(node, ast.NamedExpr)
+        and _python_value_stores_loader(node.value, names)
+        for statement in module_statements
+        for node in ast.walk(statement)
+    )
     module_rebinding = module_rebinding or unsafe_loader_storage
     module_rebinding = module_rebinding or bool(
         loader_roots.intersection(_python_module_control_bindings(module_statements))
@@ -351,11 +362,16 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
             statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
         ):
             module_rebinding = module_rebinding or statement.name in loader_roots
+        elif isinstance(statement, ast.AugAssign):
+            module_rebinding = module_rebinding or any(
+                _python_reference_name(leaf) in names
+                for leaf in _python_assignment_target_leaves(statement.target)
+            )
         elif isinstance(statement, ast.Delete):
             module_rebinding = module_rebinding or any(
-                isinstance(node, ast.Name) and node.id in loader_roots
+                _python_reference_name(leaf) in names
                 for target in statement.targets
-                for node in ast.walk(target)
+                for leaf in _python_assignment_target_leaves(target)
             )
     nested_bindings: set[str] = set()
     nested_loader_alias = False
@@ -405,21 +421,25 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
             elif isinstance(node, ast.ExceptHandler) and isinstance(node.name, str):
                 nested_bindings.add(node.name)
             elif isinstance(node, ast.Assign):
-                bound = {
-                    leaf.id
+                leaves = {
+                    leaf
                     for target in node.targets
                     for leaf in _python_assignment_target_leaves(target)
-                    if isinstance(leaf, ast.Name)
                 }
-                nested_bindings.update(bound)
+                nested_bindings.update(
+                    leaf.id for leaf in leaves if isinstance(leaf, ast.Name)
+                )
                 nested_loader_alias = nested_loader_alias or (
                     _python_value_stores_loader(node.value, names)
+                    or any(_python_reference_name(leaf) in names for leaf in leaves)
                 )
             elif isinstance(node, ast.AnnAssign):
+                leaves = set(_python_assignment_target_leaves(node.target))
                 nested_bindings.update(
-                    leaf.id
-                    for leaf in _python_assignment_target_leaves(node.target)
-                    if isinstance(leaf, ast.Name)
+                    leaf.id for leaf in leaves if isinstance(leaf, ast.Name)
+                )
+                nested_loader_alias = nested_loader_alias or any(
+                    _python_reference_name(leaf) in names for leaf in leaves
                 )
                 nested_loader_alias = nested_loader_alias or (
                     node.value is not None
@@ -428,10 +448,30 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                 nested_loader_alias = nested_loader_alias or (
                     _python_value_stores_loader(node.annotation, names)
                 )
+            elif isinstance(node, ast.AugAssign):
+                leaves = set(_python_assignment_target_leaves(node.target))
+                nested_bindings.update(
+                    leaf.id for leaf in leaves if isinstance(leaf, ast.Name)
+                )
+                nested_loader_alias = nested_loader_alias or any(
+                    _python_reference_name(leaf) in names for leaf in leaves
+                )
+            elif isinstance(node, ast.Delete):
+                nested_loader_alias = nested_loader_alias or any(
+                    _python_reference_name(leaf) in names
+                    for target in node.targets
+                    for leaf in _python_assignment_target_leaves(target)
+                )
             elif isinstance(node, ast.NamedExpr):
                 nested_loader_alias = nested_loader_alias or (
                     isinstance(node.target, ast.Name)
                     and _python_value_stores_loader(node.value, names)
+                )
+            elif isinstance(node, (ast.Expr, ast.Return, ast.Yield, ast.YieldFrom)):
+                escaped_value = getattr(node, "value", None)
+                nested_loader_alias = nested_loader_alias or (
+                    isinstance(escaped_value, ast.expr)
+                    and _python_value_stores_loader(escaped_value, names)
                 )
             elif isinstance(node, ast.Import):
                 for alias in node.names:
@@ -526,6 +566,13 @@ def _jsts_pattern_binds_module_loader(node: Any, source: str) -> bool:
 def _jsts_module_loader_reference(node: Any, source: str, loaders: set[str]) -> bool:
     """Return whether one syntax node is a tracked JS/TS module loader."""
 
+    while node.type == "parenthesized_expression":
+        named_children = [
+            child for child in node.children if getattr(child, "is_named", True)
+        ]
+        if len(named_children) != 1:
+            return False
+        node = named_children[0]
     value = _node_text(node, source)
     return value in loaders or bool(
         re.fullmatch(r"module\s*\[\s*(['\"`])require\1\s*\]", value)
@@ -672,9 +719,36 @@ class _SymbolWalker:
         elif node.type == "import_clause":
             patterns.append(node)
         elif node.type in {"assignment_expression", "augmented_assignment_expression"}:
-            patterns.append(node.child_by_field_name("left"))
+            left = node.child_by_field_name("left")
+            right = node.child_by_field_name("right")
+            patterns.append(left)
+            if (
+                left is not None
+                and _jsts_module_loader_reference(
+                    left, self.source, self.jsts_module_loaders
+                )
+            ) or (
+                right is not None
+                and _jsts_value_stores_module_loader(
+                    right, self.source, self.jsts_module_loaders
+                )
+            ):
+                self.import_projection_complete = False
         elif node.type == "for_in_statement":
             patterns.append(node.child_by_field_name("left"))
+        elif node.type == "unary_expression" and re.match(
+            r"^\s*delete\b", _node_text(node, self.source)
+        ):
+            operands = [
+                child for child in node.children if getattr(child, "is_named", True)
+            ]
+            if any(
+                _jsts_module_loader_reference(
+                    operand, self.source, self.jsts_module_loaders
+                )
+                for operand in operands
+            ):
+                self.import_projection_complete = False
         self.import_projection_complete = self.import_projection_complete and not any(
             pattern is not None
             and _jsts_pattern_binds_module_loader(pattern, self.source)
@@ -780,6 +854,14 @@ class _SymbolWalker:
         arguments = node.child_by_field_name("arguments")
         if function is None or arguments is None:
             return False
+        while function.type == "parenthesized_expression":
+            named_children = [
+                child for child in function.children if getattr(child, "is_named", True)
+            ]
+            if len(named_children) != 1:
+                self.import_projection_complete = False
+                return False
+            function = named_children[0]
         function_text = _node_text(function, self.source)
         if re.fullmatch(r"module\s*\[\s*(['\"`])require\1\s*\]", function_text):
             function_text = "module.require"

@@ -170,6 +170,13 @@ def test_long_broken_extensions_stay_wired(ext: str, expected: str) -> None:
     )
 
 
+@pytest.mark.parametrize("ext", [".mjs", ".cjs"])
+def test_javascript_module_extensions_are_index_admitted(ext: str) -> None:
+    from tree_sitter_analyzer.languages.lang_extension_map import language_from_ext
+
+    assert language_from_ext(f"module{ext}") == "javascript"
+
+
 def test_swiftinterface_resolves_in_all_known_ext_maps() -> None:
     """``.swiftinterface`` must map to swift across every ext-resolver.
 

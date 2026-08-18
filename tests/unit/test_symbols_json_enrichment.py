@@ -167,9 +167,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v26: parse-error state and current projection semantics are persisted.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 26
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 26
+        # v27: parse-error state and current projection semantics are persisted.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 27
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 27
 
 
 def test_python_module_control_bindings_cover_all_module_control_targets() -> None:
@@ -235,6 +235,30 @@ def test_python_star_imported_loader_fails_closed() -> None:
     assert complete is False
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import importlib\nregistry.append(importlib.import_module)\n",
+        "import importlib\nif (load := importlib.import_module):\n    pass\n",
+        "import importlib\nimportlib.import_module += fake\n",
+        "import importlib\ndel importlib.import_module\n",
+        (
+            "import importlib\n"
+            "def run():\n"
+            "    importlib.import_module = fake\n"
+            "    importlib.import_module('pkg.util')\n"
+        ),
+        ("import importlib\ndef run():\n    importlib.import_module += fake\n"),
+        "import importlib\ndef run():\n    del importlib.import_module\n",
+        ("import importlib\ndef expose():\n    return importlib.import_module\n"),
+    ],
+)
+def test_python_loader_escape_and_nested_rebinding_fail_closed(source: str) -> None:
+    _loaders, complete = _python_dynamic_loader_analysis(source)
+
+    assert complete is False
+
+
 def test_commonjs_loader_stored_in_composite_fails_closed() -> None:
     extraction = _extraction_for(
         'const loaders = [require];\nloaders[0]("./util.js");\n',
@@ -251,6 +275,57 @@ def test_commonjs_loader_passed_to_unknown_call_fails_closed() -> None:
     )
 
     assert extraction["import_projection_complete"] is False
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'let load; load = require; load("./util.js");\n',
+        'let load; load = (require); load("./util.js");\n',
+        'module.require = fake; module.require("./util.js");\n',
+        'delete require; require("./util.js");\n',
+        'delete module.require; module.require("./util.js");\n',
+        'delete (module.require); module.require("./util.js");\n',
+    ],
+)
+def test_commonjs_loader_assignment_and_delete_fail_closed(source: str) -> None:
+    extraction = _extraction_for(source, "javascript")
+
+    assert extraction["import_projection_complete"] is False
+
+
+@pytest.mark.parametrize(
+    "source",
+    ['(require)("./util.js");\n', '(module.require)("./util.js");\n'],
+)
+def test_parenthesized_commonjs_loader_call_is_projected(source: str) -> None:
+    extraction = _extraction_for(source, "javascript")
+
+    assert extraction["import_projection_complete"] is True
+    assert [
+        symbol["text"] for symbol in extraction["symbols"] if symbol["kind"] == "import"
+    ] == [source.strip().removesuffix(";")]
+
+
+def test_malformed_parenthesized_commonjs_nodes_fail_closed() -> None:
+    malformed_function = SimpleNamespace(type="parenthesized_expression", children=[])
+
+    assert not walker_module._jsts_module_loader_reference(
+        malformed_function, "", {"require"}
+    )
+
+    class MalformedCall:
+        type = "call_expression"
+
+        @staticmethod
+        def child_by_field_name(name: str) -> object:
+            if name == "function":
+                return malformed_function
+            return SimpleNamespace(type="arguments")
+
+    symbol_walker = _SymbolWalker("", [], "javascript", None)
+    assert not symbol_walker._append_jsts_module_call(MalformedCall())
+    assert symbol_walker.import_projection_complete is False
 
 
 def test_commonjs_loader_call_result_is_not_loader_storage() -> None:
@@ -678,6 +753,19 @@ class TestBashVariableAssignmentScope:
         # variable so the symbol is ``arr``.
         syms = {s["name"] for s in _symbols_for("arr[0]=x\n", "bash") if "name" in s}
         assert "arr" in syms
+
+    def test_deep_private_variable_is_omitted_but_shallow_one_is_recorded(self):
+        name_node = SimpleNamespace(
+            type="variable_name", start_byte=0, end_byte=len("_private")
+        )
+        declaration = SimpleNamespace(start_point=(0, 0))
+        symbol_walker = _SymbolWalker("_private", [], "bash", None)
+
+        symbol_walker._append_variable(declaration, name_node, depth=3)
+        assert symbol_walker.symbols == []
+
+        symbol_walker._append_variable(declaration, name_node, depth=2)
+        assert [symbol["name"] for symbol in symbol_walker.symbols] == ["_private"]
 
 
 class _FakeChild:

@@ -2335,6 +2335,10 @@ def test_safe_to_edit_preserves_posix_literal_backslash(
     assert facts.dependents == ["tests/test_app.py"]
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="tracked: PR #1308 POSIX-only literal-backslash filename contract",
+)
 def test_snapshot_route_preserves_posix_literal_backslash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2383,6 +2387,56 @@ def test_snapshot_route_preserves_posix_literal_backslash(
 
     assert result["success"] is True
     assert captured == [literal_path, literal_path]
+
+
+def test_snapshot_route_normalizes_windows_separator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.mcp.tools.safe_to_edit_tool as tool_module
+
+    target = tmp_path / "pkg" / "app.py"
+    target.parent.mkdir()
+    target.write_text("value = 1\n")
+    captured: list[str] = []
+    monkeypatch.setattr(tool_module.os, "sep", "\\")
+    monkeypatch.setattr(tool_module, "_to_relative", lambda *_args: "pkg\\app.py")
+    monkeypatch.setattr(
+        tool_module, "snapshot_inventory", lambda _conn: frozenset({"pkg/app.py"})
+    )
+    monkeypatch.setattr(tool_module, "_syntax_error_response", lambda *_args: None)
+    monkeypatch.setattr(
+        tool_module,
+        "build_snapshot_file_dependency_view",
+        lambda _conn, rel_path, **_kwargs: captured.append(rel_path) or object(),
+    )
+    monkeypatch.setattr(
+        tool_module,
+        "snapshot_stale_edges",
+        lambda _conn, rel_path, **_kwargs: captured.append(rel_path) or [],
+    )
+    monkeypatch.setattr(
+        tool_module,
+        "_build_safe_to_edit_result",
+        lambda _context: {
+            "success": True,
+            "verdict": "SAFE",
+            "agent_summary": {"summary_line": "safe"},
+        },
+    )
+    tool = SafeToEditTool(str(tmp_path))
+    monkeypatch.setattr(tool, "_get_scorer", lambda: object())
+
+    result = tool._read_existing_payload(
+        {"file_path": "pkg/app.py"},
+        str(target),
+        object(),
+        SimpleNamespace(canonical_root=str(tmp_path)),
+    )
+
+    assert result["success"] is True
+    assert captured == ["pkg/app.py", "pkg/app.py"]
 
 
 def test_snapshot_dependency_view_matches_javascript_directory_index_import() -> None:
@@ -3844,12 +3898,12 @@ def test_snapshot_syntax_envelope_keeps_complete_exercising_tests() -> None:
         "INSERT INTO ast_index VALUES "
         "('app.py', '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 26)'
+        '"syntax_error": false}\', 27)'
     )
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 26)',
+        '"syntax_error": false}\', 27)',
         [(f"tests/test_app_{index}.py",) for index in range(12)],
     )
     conn.executemany(
@@ -3886,7 +3940,7 @@ def test_snapshot_syntax_envelope_excludes_unrelated_nearby_test() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 26)',
+        '"syntax_error": false}\', 27)',
         [("app.py",), ("tests/test_app.py",)],
     )
 
@@ -4404,7 +4458,7 @@ def test_snapshot_syntax_envelope_certifies_single_java_file() -> None:
     conn.execute(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 26)',
+        '"syntax_error": false}\', 27)',
         (
             "src/main/java/com/acme/Util.java",
             json.dumps([{"text": "package com.acme;"}]),
@@ -4513,7 +4567,7 @@ def test_snapshot_syntax_envelope_rejects_conflicting_java_packages() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 26)',
+        '"syntax_error": false}\', 27)',
         [
             (
                 target,
@@ -4683,7 +4737,7 @@ def test_snapshot_syntax_envelope_rejects_uncaptured_include_root() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 26)',
+        '"syntax_error": false}\', 27)',
         [
             (
                 importer,
@@ -4936,7 +4990,7 @@ def _symbol_conn(raw_symbols: object) -> sqlite3.Connection:
         "CREATE TABLE ast_index ("
         "file_path TEXT, symbols_json TEXT, extractor_version INTEGER)"
     )
-    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 26)", (raw_symbols,))
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 27)", (raw_symbols,))
     return conn
 
 
@@ -5079,14 +5133,36 @@ def test_pytest_projection_skips_seen_and_outside_dependents() -> None:
     )
 
 
-@pytest.mark.parametrize("dependent", ["pkg/__init__.py", "src/Use.java"])
-def test_exercising_projection_accepts_support_and_non_dynamic_test_languages(
-    dependent: str,
-) -> None:
+def test_exercising_projection_accepts_python_support_module() -> None:
+    dependent = "pkg/__init__.py"
     assert helpers._pytest_exercising_projection_complete(
         "util.py",
         [dependent],
         frozenset({"util.py", dependent}),
+        reverse_dependencies={},
+    )
+
+
+def test_exercising_projection_ignores_non_certified_language_dependent() -> None:
+    assert helpers._pytest_exercising_projection_complete(
+        "util.py",
+        ["docs/guide.md"],
+        frozenset({"util.py", "docs/guide.md"}),
+        reverse_dependencies={},
+    )
+
+
+@pytest.mark.parametrize(
+    "test_path",
+    ["checks/check_api.c", "checks/check_api.cpp", "checks/ApiCheck.java"],
+)
+def test_exercising_projection_rejects_custom_native_test_names(
+    test_path: str,
+) -> None:
+    assert not helpers._pytest_exercising_projection_complete(
+        "src/util.h",
+        [test_path],
+        frozenset({"src/util.h", test_path}),
         reverse_dependencies={},
     )
 
