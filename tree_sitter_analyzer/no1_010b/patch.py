@@ -5,7 +5,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .git_binary import GIT_BASE85_ALPHABET, GitBinaryError, validate_binary_section
+from .git_binary import (
+    FULL_INDEX_HEADER_RE,
+    GitBinaryBoundError,
+    GitBinaryError,
+    binary_patch_state,
+)
 
 PATCH_MAX_BYTES = 1 * 1024 * 1024
 PATCH_MAX_HUNKS = 512
@@ -20,8 +25,6 @@ _MODE_HEADER_RE = re.compile(
 )
 _INDEX_HEADER_RE = re.compile(r"^index [0-9a-f]+\.\.[0-9a-f]+(?: [0-7]{6})?$")
 _SIMILARITY_HEADER_RE = re.compile(r"^(?:dis)?similarity index (?:100|[0-9]{1,2})%$")
-_BINARY_SIZE_RE = re.compile(r"^(?:literal|delta) ([0-9]+)$")
-_BINARY_DATA_ALPHABET = frozenset(GIT_BASE85_ALPHABET)
 _EXTENDED_PATH_PREFIXES = ("rename from ", "rename to ", "copy from ", "copy to ")
 
 
@@ -292,6 +295,8 @@ def _patch_has_changed_hunk(lines: list[str]) -> bool:
 def _git_metadata_block_state(
     git_paths: tuple[DiffPath, DiffPath],
     fields: dict[str, str],
+    paired_null_sides: tuple[bool, bool] | None,
+    full_index: tuple[str, str] | None,
 ) -> tuple[bool, bool]:
     """Validate one Git metadata block and report whether it changes content."""
 
@@ -318,6 +323,20 @@ def _git_metadata_block_state(
         return False, False
     if modes & {"new file mode", "deleted file mode"} and len(modes) != 1:
         return False, False
+    if "new file mode" in modes and not (
+        paired_null_sides == (True, False)
+        or paired_null_sides is None
+        and full_index is not None
+        and set(full_index[0]) == {"0"}
+    ):
+        return False, False
+    if "deleted file mode" in modes and not (
+        paired_null_sides == (False, True)
+        or paired_null_sides is None
+        and full_index is not None
+        and set(full_index[1]) == {"0"}
+    ):
+        return False, False
     mode_changed = (
         modes in ({"new file mode"}, {"deleted file mode"})
         or modes == {"old mode", "new mode"}
@@ -328,83 +347,16 @@ def _git_metadata_block_state(
     return True, bool(rename or copy or mode_changed)
 
 
-def _binary_data_line_is_canonical(line: str) -> bool:
-    if not line or not line[0].isalpha() or not line[0].isascii():
-        return False
-    decoded_count = (
-        ord(line[0]) - ord("A") + 1
-        if line[0].isupper()
-        else ord(line[0]) - ord("a") + 27
-    )
-    encoded_count = ((decoded_count + 3) // 4) * 5
-    return len(line) == encoded_count + 1 and all(
-        character in _BINARY_DATA_ALPHABET for character in line[1:]
-    )
-
-
-def _binary_patch_state(lines: list[str]) -> tuple[set[int], bool]:
-    """Validate and locate bounded canonical ``git diff --binary`` payloads."""
-
-    indexes: set[int] = set()
-    git_header_seen = False
-    cursor = 0
-    while cursor < len(lines):
-        line = lines[cursor]
-        if line.startswith("diff --git "):
-            git_header_seen = True
-            cursor += 1
-            continue
-        if line != "GIT binary patch":
-            cursor += 1
-            continue
-        if not git_header_seen:
-            raise PatchFormatError("binary patch has no Git header")
-        indexes.add(cursor)
-        cursor += 1
-        section_count = 0
-        while cursor < len(lines) and not lines[cursor].startswith("diff --git "):
-            size_match = _BINARY_SIZE_RE.fullmatch(lines[cursor])
-            if size_match is None:
-                raise PatchFormatError("non-canonical binary patch size")
-            raw_size = size_match.group(1)
-            if len(raw_size) > _HUNK_COUNT_MAX_DIGITS:
-                raise PatchBoundError("binary patch size exceeds numeric bound")
-            if int(raw_size) > PATCH_MAX_BYTES:
-                raise PatchBoundError("binary patch output exceeds max bytes")
-            kind = lines[cursor].split(" ", 1)[0]
-            declared_size = int(raw_size)
-            indexes.add(cursor)
-            section_count += 1
-            cursor += 1
-            data_count = 0
-            data_lines: list[str] = []
-            while cursor < len(lines) and lines[cursor]:
-                if not _binary_data_line_is_canonical(lines[cursor]):
-                    raise PatchFormatError("non-canonical binary patch payload")
-                data_lines.append(lines[cursor])
-                indexes.add(cursor)
-                data_count += 1
-                cursor += 1
-            if data_count == 0 or cursor >= len(lines):
-                raise PatchFormatError("incomplete binary patch payload")
-            try:
-                validate_binary_section(
-                    kind, declared_size, data_lines, PATCH_MAX_BYTES
-                )
-            except GitBinaryError as exc:
-                raise PatchFormatError("corrupt binary patch payload") from exc
-            indexes.add(cursor)
-            cursor += 1
-        if section_count == 0:
-            raise PatchFormatError("binary patch has no payload")
-    return indexes, bool(indexes)
-
-
 def _metadata_state(lines: list[str]) -> tuple[bool, bool, bool]:
     """Validate metadata and return valid, metadata-change, binary-change."""
 
     hunk_body = _hunk_body_indexes(lines)
-    binary_body, binary_changed = _binary_patch_state(lines)
+    try:
+        binary_body, binary_changed = binary_patch_state(lines, PATCH_MAX_BYTES)
+    except GitBinaryBoundError as exc:
+        raise PatchBoundError(str(exc)) from exc
+    except GitBinaryError as exc:
+        raise PatchFormatError(str(exc)) from exc
     paired_indexes = {
         item
         for index in range(len(lines) - 1)
@@ -413,29 +365,40 @@ def _metadata_state(lines: list[str]) -> tuple[bool, bool, bool]:
     }
     current_paths: tuple[DiffPath, DiffPath] | None = None
     current_fields: dict[str, str] = {}
+    current_null_sides: tuple[bool, bool] | None = None
+    current_full_index: tuple[str, str] | None = None
     metadata_changed = False
 
     def finish_block() -> bool:
         nonlocal metadata_changed
         if current_paths is None:
             return not current_fields
-        valid, changed = _git_metadata_block_state(current_paths, current_fields)
+        valid, changed = _git_metadata_block_state(
+            current_paths, current_fields, current_null_sides, current_full_index
+        )
         metadata_changed = metadata_changed or changed
         return valid
 
     for index, line in enumerate(lines):
-        if (
-            index in hunk_body
-            or index in binary_body
-            or index in paired_indexes
-            or not line
-        ):
+        if index in paired_indexes:
+            if _is_paired_file_header(lines, index):
+                if current_paths is not None:
+                    if current_null_sides is not None:
+                        return False, False, False
+                    current_null_sides = (
+                        _is_dev_null_header(line, "---"),
+                        _is_dev_null_header(lines[index + 1], "+++"),
+                    )
+            continue
+        if index in hunk_body or index in binary_body or not line:
             continue
         if line.startswith("diff --git "):
             if not finish_block():
                 return False, False, False
             current_paths = _git_header_paths(line)
             current_fields = {}
+            current_null_sides = None
+            current_full_index = None
             continue
         if _HUNK_HEADER_RE.fullmatch(line):
             continue
@@ -472,6 +435,12 @@ def _metadata_state(lines: list[str]) -> tuple[bool, bool, bool]:
         if _INDEX_HEADER_RE.fullmatch(line) or _SIMILARITY_HEADER_RE.fullmatch(line):
             if current_paths is None:
                 return False, False, False
+            full_index_match = FULL_INDEX_HEADER_RE.fullmatch(line)
+            if full_index_match is not None:
+                current_full_index = (
+                    full_index_match.group(1),
+                    full_index_match.group(2),
+                )
             continue
         return False, False, False
     return (

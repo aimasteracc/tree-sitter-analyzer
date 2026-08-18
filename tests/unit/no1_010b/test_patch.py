@@ -31,8 +31,10 @@ BINARY_PATCH = (
 )
 DELTA_BINARY_PATCH = (
     "diff --git a/assets/payload.bin b/assets/payload.bin\n"
+    "index 0000000000000000000000000000000000000000.."
+    "1111111111111111111111111111111111111111 100644\n"
     "GIT binary patch\n"
-    "delta 4\n"
+    "delta 7\n"
     "Oc${NlVaZD^=K=r(E&*Wx\n\n"
 )
 
@@ -60,6 +62,8 @@ def _binary_patch_from_compressed(
     body = "\n".join(encoded_lines)
     return (
         "diff --git a/assets/payload.bin b/assets/payload.bin\n"
+        "index 0000000000000000000000000000000000000000.."
+        "1111111111111111111111111111111111111111 100644\n"
         f"GIT binary patch\n{kind} {declared_size}\n{body}\n\n"
     )
 
@@ -134,6 +138,10 @@ def test_validate_patch_rejects_standalone_metadata_garbage() -> None:
         "old mode 100644\n",
         "diff --git a/x.py b/x.py\nold mode 100644\nold mode 100755\n",
         "index abc..def\n",
+        (
+            "diff --git a/x.py b/x.py\n--- a/x.py\n+++ b/x.py\n"
+            "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n+new\n"
+        ),
     ],
     ids=[
         "unfinished-block",
@@ -142,11 +150,49 @@ def test_validate_patch_rejects_standalone_metadata_garbage() -> None:
         "orphan-mode",
         "duplicate-mode",
         "orphan-index",
+        "duplicate-paired-header",
     ],
 )
 def test_validate_patch_rejects_misplaced_or_duplicate_metadata(patch: str) -> None:
     with pytest.raises(PatchFormatError, match="changed canonical"):
         validate_patch(patch)
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        (
+            "diff --git a/x.py b/x.py\nnew file mode 100644\n"
+            "--- a/x.py\n+++ b/x.py\n@@ -0,0 +1 @@\n+new\n"
+        ),
+        (
+            "diff --git a/x.py b/x.py\ndeleted file mode 100644\n"
+            "--- a/x.py\n+++ b/x.py\n@@ -1 +0,0 @@\n-old\n"
+        ),
+    ],
+    ids=["new-file", "deleted-file"],
+)
+def test_validate_patch_rejects_mode_with_nonnull_paired_side(patch: str) -> None:
+    with pytest.raises(PatchFormatError, match="changed canonical"):
+        validate_patch(patch)
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        (
+            "diff --git a/x.py b/x.py\nnew file mode 100644\n"
+            "--- /dev/null\n+++ b/x.py\n@@ -0,0 +1 @@\n+new\n"
+        ),
+        (
+            "diff --git a/x.py b/x.py\ndeleted file mode 100644\n"
+            "--- a/x.py\n+++ /dev/null\n@@ -1 +0,0 @@\n-old\n"
+        ),
+    ],
+    ids=["new-file", "deleted-file"],
+)
+def test_validate_patch_accepts_mode_with_canonical_null_side(patch: str) -> None:
+    assert [path.rel_path for path in validate_patch(patch)] == ["x.py"]
 
 
 def test_validate_patch_accepts_mode_only_change() -> None:
@@ -155,11 +201,47 @@ def test_validate_patch_accepts_mode_only_change() -> None:
     ]
 
 
+def test_validate_patch_accepts_abbreviated_index_for_text_patch() -> None:
+    patch = "diff --git a/x.py b/x.py\nindex abc..def 100644\n" + PATCH
+
+    assert [path.rel_path for path in validate_patch(patch)] == ["x.py"]
+
+
 def test_validate_patch_accepts_canonical_git_binary_patch() -> None:
     # PR #1307 review: git diff --binary output is a changed patch.
     assert [path.rel_path for path in validate_patch(BINARY_PATCH)] == [
         "assets/payload.bin"
     ]
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        BINARY_PATCH.replace(
+            "index eaf36c1daccfdf325514461cd1a2ffbc139b5464.."
+            "f75c32acfbf126176c30bf9bda9a5f2bb8f78d06 100644\n",
+            "",
+        ),
+        BINARY_PATCH.replace(
+            "index eaf36c1daccfdf325514461cd1a2ffbc139b5464.."
+            "f75c32acfbf126176c30bf9bda9a5f2bb8f78d06 100644",
+            "index eaf36c1..f75c32a 100644",
+        ),
+    ],
+    ids=["missing", "abbreviated"],
+)
+def test_validate_patch_rejects_binary_without_full_index(patch: str) -> None:
+    with pytest.raises(PatchFormatError, match="full index line"):
+        validate_patch(patch)
+
+
+def test_validate_patch_accepts_binary_new_file_with_zero_old_object() -> None:
+    patch = _binary_patch("literal", 3, b"new").replace(
+        "diff --git a/assets/payload.bin b/assets/payload.bin\n",
+        "diff --git a/assets/payload.bin b/assets/payload.bin\nnew file mode 100644\n",
+    )
+
+    assert [path.rel_path for path in validate_patch(patch)] == ["assets/payload.bin"]
 
 
 def test_validate_patch_rejects_corrupt_binary_payload_checksum() -> None:
@@ -176,19 +258,17 @@ def test_validate_patch_accepts_canonical_binary_delta() -> None:
 
 
 @pytest.mark.parametrize(
-    ("declared_size", "delta"),
+    "delta",
     [
-        (65536, b"\x80\x80\x04\x80\x80\x04\x80"),
-        (197121, b"\x85\x8a\x94\x08\x81\x84\x0c\xff\x04\x03\x02\x01\x01\x02\x03"),
+        b"\x80\x80\x04\x80\x80\x04\x80",
+        b"\x85\x8a\x94\x08\x81\x84\x0c\xff\x04\x03\x02\x01\x01\x02\x03",
     ],
     ids=["default-copy-size", "all-copy-fields"],
 )
-def test_validate_patch_accepts_canonical_delta_copy(
-    declared_size: int, delta: bytes
-) -> None:
+def test_validate_patch_accepts_canonical_delta_copy(delta: bytes) -> None:
     assert [
         path.rel_path
-        for path in validate_patch(_binary_patch("delta", declared_size, delta))
+        for path in validate_patch(_binary_patch("delta", len(delta), delta))
     ] == ["assets/payload.bin"]
 
 
@@ -219,7 +299,14 @@ def test_validate_patch_accepts_canonical_delta_copy(
 )
 def test_validate_patch_rejects_malformed_binary_delta(delta: bytes) -> None:
     with pytest.raises(PatchFormatError, match="corrupt binary patch payload"):
-        validate_patch(_binary_patch("delta", 4, delta))
+        validate_patch(_binary_patch("delta", len(delta), delta))
+
+
+def test_validate_patch_bounds_internal_delta_result() -> None:
+    delta = b"\x00\x81\x80\x40"
+
+    with pytest.raises(PatchBoundError, match="exceeds output bound"):
+        validate_patch(_binary_patch("delta", len(delta), delta))
 
 
 @pytest.mark.parametrize("line", ["A~~~~~", "A00001"], ids=["overflow", "padding"])
