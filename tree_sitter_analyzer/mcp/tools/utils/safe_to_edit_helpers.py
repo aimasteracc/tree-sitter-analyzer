@@ -828,8 +828,9 @@ def _import_needles_for_target(rel_path: str) -> set[str]:
 def _module_path_without_suffix(path: Path) -> Path:
     """Strip one source module suffix, including TypeScript's compound suffix."""
 
-    if path.name.endswith(".d.ts"):
-        return path.with_name(path.name[: -len(".d.ts")])
+    for suffix in (".d.mts", ".d.cts", ".d.ts"):
+        if path.name.endswith(suffix):
+            return path.with_name(path.name[: -len(suffix)])
     return path.with_suffix("")
 
 
@@ -934,9 +935,31 @@ def _looks_like_test_name(name: str, language: str) -> bool:
             name.startswith("Test") and name.endswith(".java")
         )
     if language == "javascript":
-        return name.endswith((".test.js", ".spec.js", ".test.jsx", ".spec.jsx"))
+        return name.endswith(
+            (
+                ".test.js",
+                ".spec.js",
+                ".test.jsx",
+                ".spec.jsx",
+                ".test.mjs",
+                ".spec.mjs",
+                ".test.cjs",
+                ".spec.cjs",
+            )
+        )
     if language == "typescript":
-        return name.endswith((".test.ts", ".spec.ts", ".test.tsx", ".spec.tsx"))
+        return name.endswith(
+            (
+                ".test.ts",
+                ".spec.ts",
+                ".test.tsx",
+                ".spec.tsx",
+                ".test.mts",
+                ".spec.mts",
+                ".test.cts",
+                ".spec.cts",
+            )
+        )
     if language == "c":
         return name.startswith("test_") and name.endswith((".c", ".h"))
     if language == "cpp":

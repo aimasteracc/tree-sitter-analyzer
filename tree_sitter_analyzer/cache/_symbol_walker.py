@@ -214,6 +214,23 @@ def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
 
     if _python_reference_name(node) in names:
         return True
+    if isinstance(node, ast.Subscript):
+        key = node.slice.value if isinstance(node.slice, ast.Constant) else None
+        dynamic_key = not isinstance(node.slice, ast.Constant)
+        owner: str | None = None
+        if isinstance(node.value, ast.Attribute):
+            if node.value.attr == "__dict__":
+                owner = _python_reference_name(node.value.value)
+        elif (
+            isinstance(node.value, ast.Call)
+            and _python_reference_name(node.value.func) in {"vars", "builtins.vars"}
+            and node.value.args
+        ):
+            owner = _python_reference_name(node.value.args[0])
+        if owner is not None and (
+            dynamic_key or (isinstance(key, str) and f"{owner}.{key}" in names)
+        ):
+            return True
     if (
         isinstance(node, ast.Call)
         and len(node.args) >= 2
@@ -524,6 +541,22 @@ def _python_reference_name(node: ast.expr) -> str | None:
 
 
 _JSTS_MODULE_LOADER_ROOTS = frozenset({"module", "require"})
+_JSTS_FILE_ALIAS_ANCESTORS = frozenset(
+    {"program", "export_statement", "lexical_declaration", "variable_declaration"}
+)
+
+
+def _jsts_file_scoped_alias(node: Any) -> bool:
+    """Return whether a declarator is unconditionally file scoped."""
+
+    parent = getattr(node, "parent", None)
+    while parent is not None:
+        if parent.type not in _JSTS_FILE_ALIAS_ANCESTORS:
+            return False
+        if parent.type == "program":
+            return True
+        parent = getattr(parent, "parent", None)
+    return False
 
 
 def _jsts_pattern_binds_module_loader(
@@ -669,7 +702,7 @@ class _SymbolWalker:
         stack = [root]
         while stack:
             node = stack.pop()
-            if node.type == "variable_declarator":
+            if node.type == "variable_declarator" and _jsts_file_scoped_alias(node):
                 name = node.child_by_field_name("name")
                 value = node.child_by_field_name("value")
                 if name is not None and value is not None and name.type == "identifier":
@@ -734,8 +767,12 @@ class _SymbolWalker:
                 if _jsts_module_loader_reference(
                     value, self.source, self.jsts_module_loaders
                 ):
-                    self.jsts_module_loaders.add(name_text)
-                    if name_text in _JSTS_MODULE_LOADER_ROOTS:
+                    file_scoped = _jsts_file_scoped_alias(node)
+                    if not file_scoped:
+                        self.import_projection_complete = False
+                    else:
+                        self.jsts_module_loaders.add(name_text)
+                    if name_text in _JSTS_MODULE_LOADER_ROOTS or not file_scoped:
                         patterns.append(name)
                 else:
                     patterns.append(name)

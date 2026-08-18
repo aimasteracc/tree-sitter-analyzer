@@ -167,9 +167,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v28: parse-error state and current projection semantics are persisted.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 28
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 28
+        # v29: parse-error state and current projection semantics are persisted.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 29
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 29
 
 
 def test_python_module_control_bindings_cover_all_module_control_targets() -> None:
@@ -244,6 +244,22 @@ def test_python_star_imported_loader_fails_closed() -> None:
             'load = getattr(importlib, "import_module")\n'
             'load("pkg.util")\n'
         ),
+        (
+            "import importlib\n"
+            'load = vars(importlib)["import_module"]\n'
+            'load("pkg.util")\n'
+        ),
+        (
+            "import importlib\n"
+            'load = importlib.__dict__["import_module"]\n'
+            'load("pkg.util")\n'
+        ),
+        (
+            "import importlib\n"
+            "name = choose_name()\n"
+            "load = vars(importlib)[name]\n"
+            'load("pkg.util")\n'
+        ),
         "import importlib\nif (load := importlib.import_module):\n    pass\n",
         "import importlib\nimportlib.import_module += fake\n",
         "import importlib\ndel importlib.import_module\n",
@@ -270,6 +286,23 @@ def test_python_non_loader_reflection_remains_complete() -> None:
     )
 
     assert complete is True
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'import importlib\nvalue = importlib.other["import_module"]\n',
+        'import importlib\nvalue = vars()["import_module"]\n',
+    ],
+)
+def test_python_unrelated_dictionary_access_remains_complete(source: str) -> None:
+    _loaders, complete = _python_dynamic_loader_analysis(source)
+
+    assert complete is True
+
+
+def test_js_alias_scope_without_parent_is_not_file_scoped() -> None:
+    assert not walker_module._jsts_file_scoped_alias(SimpleNamespace(parent=None))
 
 
 def test_commonjs_loader_stored_in_composite_fails_closed() -> None:
@@ -423,6 +456,22 @@ class TestJavaScriptModuleCallProjection:
         assert _extract_imports(extraction) == [
             {"text": "load('./util.js')", "line": 1}
         ]
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "function define() { const load = require; }\nload('./util.js');",
+            "{ const load = require; }\nload('./util.js');",
+            "if (enabled) { const load = require; }\nload('./util.js');",
+        ],
+    )
+    def test_nested_commonjs_loader_alias_fails_closed_without_promotion(
+        self, source: str
+    ) -> None:
+        extraction = _extraction_for(source, "javascript")
+
+        assert extraction["import_projection_complete"] is False
+        assert _extract_imports(extraction) == []
 
     @pytest.mark.parametrize(
         "call",

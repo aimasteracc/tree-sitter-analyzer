@@ -31,6 +31,18 @@ class TestDetectLanguageFromExt:
     def test_typescript(self):
         assert detect_language_from_ext(".ts") == "typescript"
 
+    @pytest.mark.parametrize(
+        ("extension", "language"),
+        [
+            (".mjs", "javascript"),
+            (".cjs", "javascript"),
+            (".mts", "typescript"),
+            (".cts", "typescript"),
+        ],
+    )
+    def test_node_module_extensions(self, extension: str, language: str) -> None:
+        assert detect_language_from_ext(extension) == language
+
     def test_c(self):
         assert detect_language_from_ext(".c") == "c"
 
@@ -691,6 +703,29 @@ class TestFindTestFilesJavascript:
             results = find_test_files(str(source), tmp)
             assert any("utils.test.js" in r for r in results)
 
+    @pytest.mark.parametrize(
+        ("source_name", "test_name"),
+        [
+            ("utils.mjs", "utils.test.mjs"),
+            ("utils.cjs", "utils.spec.cjs"),
+            ("utils.mts", "utils.test.mts"),
+            ("utils.cts", "utils.spec.cts"),
+        ],
+    )
+    def test_finds_node_module_extension_test(
+        self, source_name: str, test_name: str, tmp_path: Path
+    ) -> None:
+        source = tmp_path / "src" / source_name
+        source.parent.mkdir(parents=True)
+        source.write_text("export const value = 1")
+        test = tmp_path / "tests" / test_name
+        test.parent.mkdir(parents=True)
+        test.write_text("test('value', () => {})")
+
+        assert find_test_files(str(source), str(tmp_path)) == [
+            str(test.relative_to(tmp_path))
+        ]
+
 
 @pytest.mark.parametrize(
     ("target", "expected"),
@@ -700,6 +735,10 @@ class TestFindTestFilesJavascript:
         ("test/CalcTest.java", ["test/CalcTest.java"]),
         ("app.test.js", ["app.test.js"]),
         ("app.test.ts", ["app.test.ts"]),
+        ("app.test.mjs", ["app.test.mjs"]),
+        ("app.spec.cjs", ["app.spec.cjs"]),
+        ("app.test.mts", ["app.test.mts"]),
+        ("app.spec.cts", ["app.spec.cts"]),
         ("tests/test_util.c", ["tests/test_util.c"]),
         ("tests/test_util.cpp", ["tests/test_util.cpp"]),
         ("CalcTest.cs", ["CalcTest.cs"]),

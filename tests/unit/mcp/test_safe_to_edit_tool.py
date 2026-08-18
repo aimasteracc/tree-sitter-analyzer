@@ -2987,6 +2987,30 @@ def test_snapshot_typescript_declaration_import_is_bidirectional() -> None:
     assert reverse_view.dependents_of("src/types.d.ts") == ["src/main.ts"]
 
 
+@pytest.mark.parametrize(
+    ("import_extension", "declaration_extension"),
+    [("mjs", "d.mts"), ("cjs", "d.cts")],
+)
+def test_snapshot_nodenext_declaration_import_is_bidirectional(
+    import_extension: str, declaration_extension: str
+) -> None:
+    target = f"src/util.{declaration_extension}"
+    conn = _projection_conn(
+        [
+            ("src/main.ts", [{"text": f"import './util.{import_extension}'"}]),
+            (target, []),
+        ]
+    )
+    conn.row_factory = sqlite3.Row
+    inventory = frozenset({"src/main.ts", target})
+
+    view = helpers.build_snapshot_file_dependency_view(
+        conn, target, inventory=inventory
+    )
+
+    assert view.dependents_of(target) == ["src/main.ts"]
+
+
 def test_snapshot_python_relative_import_cannot_escape_top_package() -> None:
     from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
         _resolve_import_spec_from_inventory,
@@ -3901,12 +3925,12 @@ def test_snapshot_syntax_envelope_keeps_complete_exercising_tests() -> None:
         "INSERT INTO ast_index VALUES "
         "('app.py', '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 28)'
+        '"syntax_error": false}\', 29)'
     )
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 28)',
+        '"syntax_error": false}\', 29)',
         [(f"tests/test_app_{index}.py",) for index in range(12)],
     )
     conn.executemany(
@@ -3943,7 +3967,7 @@ def test_snapshot_syntax_envelope_excludes_unrelated_nearby_test() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 28)',
+        '"syntax_error": false}\', 29)',
         [("app.py",), ("tests/test_app.py",)],
     )
 
@@ -4461,7 +4485,7 @@ def test_snapshot_syntax_envelope_certifies_single_java_file() -> None:
     conn.execute(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 28)',
+        '"syntax_error": false}\', 29)',
         (
             "src/main/java/com/acme/Util.java",
             json.dumps([{"text": "package com.acme;"}]),
@@ -4570,7 +4594,7 @@ def test_snapshot_syntax_envelope_rejects_conflicting_java_packages() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 28)',
+        '"syntax_error": false}\', 29)',
         [
             (
                 target,
@@ -4740,7 +4764,7 @@ def test_snapshot_syntax_envelope_rejects_uncaptured_include_root() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 28)',
+        '"syntax_error": false}\', 29)',
         [
             (
                 importer,
@@ -4993,7 +5017,7 @@ def _symbol_conn(raw_symbols: object) -> sqlite3.Connection:
         "CREATE TABLE ast_index ("
         "file_path TEXT, symbols_json TEXT, extractor_version INTEGER)"
     )
-    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 28)", (raw_symbols,))
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 29)", (raw_symbols,))
     return conn
 
 
