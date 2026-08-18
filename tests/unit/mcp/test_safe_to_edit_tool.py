@@ -1392,6 +1392,8 @@ def test_snapshot_causal_view_includes_resolved_edges_and_stale_ids() -> None:
             (2, "calls", "app.py", "normalize", "util.py"),
             (3, "calls", "other.py", "normalize", "util.py"),
             (4, "imports", "lazy.py", "app", ""),
+            (5, "imports", "other.py", "missing", ""),
+            (6, "calls", b"invalid-caller", "handler", "app.py"),
         ],
     )
 
