@@ -223,19 +223,28 @@ def _python_loader_mapping_owner(node: ast.expr) -> str | None:
     return None
 
 
+def _python_owner_exposes_loader(owner: str | None, names: set[str]) -> bool:
+    return owner is not None and any(name.startswith(f"{owner}.") for name in names)
+
+
 def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
     """Return whether a value retains a loader reference for later use."""
 
     if _python_reference_name(node) in names:
         return True
+    mapping_owner = _python_loader_mapping_owner(node)
+    if _python_owner_exposes_loader(mapping_owner, names):
+        return True
     if isinstance(node, ast.Subscript):
         key = node.slice.value if isinstance(node.slice, ast.Constant) else None
         dynamic_key = not isinstance(node.slice, ast.Constant)
         owner = _python_loader_mapping_owner(node.value)
-        if owner is not None and (
-            dynamic_key or (isinstance(key, str) and f"{owner}.{key}" in names)
-        ):
-            return True
+        if owner is not None:
+            if (dynamic_key and _python_owner_exposes_loader(owner, names)) or (
+                isinstance(key, str) and f"{owner}.{key}" in names
+            ):
+                return True
+            return _python_value_stores_loader(node.slice, names)
     if (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -244,11 +253,16 @@ def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
     ):
         owner = _python_loader_mapping_owner(node.func.value)
         key = node.args[0].value if isinstance(node.args[0], ast.Constant) else None
-        if owner is not None and (
-            not isinstance(node.args[0], ast.Constant)
-            or (isinstance(key, str) and f"{owner}.{key}" in names)
-        ):
-            return True
+        if owner is not None:
+            if (
+                not isinstance(node.args[0], ast.Constant)
+                and _python_owner_exposes_loader(owner, names)
+            ) or (isinstance(key, str) and f"{owner}.{key}" in names):
+                return True
+            return any(
+                _python_value_stores_loader(child, names)
+                for child in (*node.args, *(kw.value for kw in node.keywords))
+            )
     if (
         isinstance(node, ast.Call)
         and len(node.args) >= 2
@@ -671,7 +685,7 @@ def _jsts_indirect_module_loader_call(
     if owner is None or accessor is None:
         return False
     method = _node_text(accessor, source).strip("'\"`")
-    return method in {"call", "apply"} and _jsts_module_loader_reference(
+    return method in {"call", "apply", "bind"} and _jsts_module_loader_reference(
         owner, source, loaders
     )
 

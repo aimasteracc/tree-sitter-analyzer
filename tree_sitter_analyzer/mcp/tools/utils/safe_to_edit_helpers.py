@@ -700,6 +700,12 @@ _DEPENDENCY_SOURCE_EXTS = frozenset(
         ".hxx",
     }
 )
+_TYPESCRIPT_SOURCE_SUBSTITUTIONS = {
+    ".js": (".ts", ".tsx", ".d.ts", ".js"),
+    ".jsx": (".tsx", ".d.ts", ".jsx"),
+    ".mjs": (".mts", ".d.mts", ".mjs"),
+    ".cjs": (".cts", ".d.cts", ".cjs"),
+}
 
 
 def build_file_dependency_view(
@@ -780,6 +786,7 @@ def _extract_import_specs(source: str, suffix: str) -> set[str]:
         specs.update(re.findall(r"^\s*from\s+([.\w]+)\s+import\b", source, re.M))
     elif suffix in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"}:
         specs.update(re.findall(r"\bfrom\s+['\"]([^'\"]+)['\"]", source))
+        specs.update(re.findall(r"\bimport\s*['\"]([^'\"]+)['\"]", source))
         specs.update(re.findall(r"\brequire\(\s*['\"]([^'\"]+)['\"]\s*\)", source))
     elif suffix == ".java":
         specs.update(re.findall(r"^\s*import\s+([\w.]+);", source, re.M))
@@ -797,19 +804,14 @@ def _resolve_import_spec(spec: str, rel_path: str, root: Path) -> str | None:
 
     explicit_suffix = Path(candidate_base).suffix.lower()
     importer_suffix = Path(rel_path).suffix.lower()
-    substitutions = {
-        ".js": (".ts", ".tsx", ".d.ts", ".js", ".jsx"),
-        ".jsx": (".tsx", ".d.ts", ".jsx"),
-        ".mjs": (".mts", ".d.mts", ".mjs"),
-        ".cjs": (".cts", ".d.cts", ".cjs"),
-    }
     if (
         importer_suffix in {".ts", ".tsx", ".mts", ".cts"}
-        and explicit_suffix in substitutions
+        and explicit_suffix in _TYPESCRIPT_SOURCE_SUBSTITUTIONS
     ):
         source_base = candidate_base.removesuffix(explicit_suffix)
         candidates = [
-            f"{source_base}{suffix}" for suffix in substitutions[explicit_suffix]
+            f"{source_base}{suffix}"
+            for suffix in _TYPESCRIPT_SOURCE_SUBSTITUTIONS[explicit_suffix]
         ]
     elif explicit_suffix:
         candidates = [candidate_base]
@@ -872,21 +874,25 @@ def _module_path_without_suffix(path: Path) -> Path:
     return path.with_suffix("")
 
 
-def _typescript_emitted_import_path(path: Path) -> Path | None:
-    """Map a TypeScript source path to the suffix importers emit at runtime."""
+def _typescript_emitted_import_paths(path: Path) -> tuple[Path, ...]:
+    """Map a TypeScript source path to runtime spellings importers may use."""
 
-    for source_suffix, emitted_suffix in (
-        (".d.mts", ".mjs"),
-        (".d.cts", ".cjs"),
-        (".d.ts", ".js"),
-        (".mts", ".mjs"),
-        (".cts", ".cjs"),
-        (".tsx", ".js"),
-        (".ts", ".js"),
+    for source_suffix, emitted_suffixes in (
+        (".d.mts", (".mjs",)),
+        (".d.cts", (".cjs",)),
+        (".d.ts", (".js", ".jsx")),
+        (".mts", (".mjs",)),
+        (".cts", (".cjs",)),
+        (".tsx", (".js", ".jsx")),
+        (".ts", (".js",)),
     ):
         if path.name.endswith(source_suffix):
-            return path.with_name(f"{path.name[: -len(source_suffix)]}{emitted_suffix}")
-    return None
+            stem = path.name[: -len(source_suffix)]
+            return tuple(
+                path.with_name(f"{stem}{emitted_suffix}")
+                for emitted_suffix in emitted_suffixes
+            )
+    return ()
 
 
 def _require_edges_callee_name(conn: Any) -> None:
@@ -1894,12 +1900,7 @@ def _resolve_import_spec_from_inventory(
             ".cjs",
         }:
             source_base = candidate_base.removesuffix(explicit_suffix)
-            substitutions = {
-                ".js": (".ts", ".tsx", ".d.ts", ".js"),
-                ".jsx": (".tsx", ".d.ts", ".jsx"),
-                ".mjs": (".mts", ".d.mts", ".mjs"),
-                ".cjs": (".cts", ".d.cts", ".cjs"),
-            }[explicit_suffix]
+            substitutions = _TYPESCRIPT_SOURCE_SUBSTITUTIONS[explicit_suffix]
             candidates.extend(f"{source_base}{suffix}" for suffix in substitutions)
         else:
             candidates.append(candidate_base)
@@ -2607,8 +2608,7 @@ def _edge_import_names_for_target(
     without_suffix = module_path.as_posix()
     module = without_suffix.replace("/", ".")
     parent_module = path.parent.as_posix().replace("/", ".")
-    emitted_path = _typescript_emitted_import_path(path)
-    specifier_paths = (path,) if emitted_path is None else (path, emitted_path)
+    specifier_paths = (path, *_typescript_emitted_import_paths(path))
     names = {
         path.as_posix(),
         path.name,

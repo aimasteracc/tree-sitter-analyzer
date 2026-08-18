@@ -143,6 +143,25 @@ def test_build_file_dependency_view_supports_node_module_extensions(
     ]
 
 
+def test_build_file_dependency_view_parses_side_effect_node_imports(
+    tmp_path: Path,
+) -> None:
+    target = _write(tmp_path, "src/main.mts", "import './setup.mjs';\n")
+    _write(tmp_path, "src/setup.mts", "export const ready = true;\n")
+
+    view = build_file_dependency_view(str(target), str(tmp_path))
+
+    assert view.dependencies_of("src/main.mts") == ["src/setup.mts"]
+
+
+def test_live_typescript_js_specifier_does_not_resolve_to_jsx(
+    tmp_path: Path,
+) -> None:
+    _write(tmp_path, "src/dep.jsx", "export const dep = 1;\n")
+
+    assert _resolve_import_spec("./dep.js", "src/main.ts", tmp_path) is None
+
+
 def test_build_file_dependency_view_finds_java_imports(tmp_path: Path) -> None:
     target = _write(
         tmp_path,

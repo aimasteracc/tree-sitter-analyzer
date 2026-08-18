@@ -167,9 +167,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v31: dynamic-code and decorator retention semantics are persisted.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 31
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 31
+        # v32: loader-dictionary alias and bound-loader semantics are persisted.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 32
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 32
 
 
 def test_python_module_control_bindings_cover_all_module_control_targets() -> None:
@@ -296,6 +296,8 @@ def test_python_non_loader_reflection_remains_complete() -> None:
         'import importlib\nvalue = importlib.__dict__.get("other")\n',
         'import importlib\nvalue = vars(importlib).get("other")\n',
         'import importlib\nvalue = mapping.get("import_module")\n',
+        "value = vars(config).get(dynamic_key)\n",
+        "value = config.__dict__[dynamic_key]\n",
     ],
 )
 def test_python_unrelated_dictionary_access_remains_complete(source: str) -> None:
@@ -310,6 +312,14 @@ def test_python_unrelated_dictionary_access_remains_complete(source: str) -> Non
         'import importlib\nload = importlib.__dict__.get("import_module")\n',
         'import importlib\nload = vars(importlib).get("import_module")\n',
         "import importlib\nname = choose_name()\nload = vars(importlib).get(name)\n",
+        (
+            "import importlib\nmapping = importlib.__dict__\n"
+            'load = mapping.get("import_module")\n'
+        ),
+        (
+            "import importlib\nmapping = vars(importlib)\n"
+            'load = mapping.get("import_module")\n'
+        ),
     ],
 )
 def test_python_loader_dictionary_method_retrieval_fails_closed(source: str) -> None:
@@ -386,6 +396,7 @@ def test_parenthesized_commonjs_loader_call_is_projected(source: str) -> None:
         'require.call(null, "./util.js");',
         'module.require.apply(null, ["./util.js"]);',
         'const load = require; load.call(null, "./util.js");',
+        'require.bind(null)("./util.js");',
     ],
 )
 def test_indirect_commonjs_loader_call_fails_closed(source: str) -> None:
