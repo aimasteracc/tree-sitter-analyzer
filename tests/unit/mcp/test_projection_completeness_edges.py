@@ -186,6 +186,25 @@ def test_python_relative_inventory_match_can_be_empty() -> None:
     )
 
 
+def test_python_from_import_rejects_attribute_submodule_ambiguity() -> None:
+    conn = _projection_conn(
+        [
+            ("consumer.py", [{"text": "from pkg import value"}]),
+            ("pkg/__init__.py", []),
+            ("pkg/value.py", []),
+        ]
+    )
+    inventory = frozenset({"consumer.py", "pkg/__init__.py", "pkg/value.py"})
+
+    assert helpers._python_import_projection_complete(conn, inventory) is False
+
+
+def test_python_from_import_ambiguity_parser_ignores_invalid_projection() -> None:
+    assert (
+        helpers._python_from_import_is_ambiguous("if (", "app.py", frozenset()) is False
+    )
+
+
 def test_python_projection_rejects_invalid_loader_statement() -> None:
     conn = _projection_conn([("app.py", [{"text": "if ("}])])
 
@@ -281,6 +300,21 @@ def test_cpp_named_module_projection_fails_closed() -> None:
 
     assert not helpers._quoted_include_projection_complete(
         conn, "include/util.h", inventory
+    )
+
+
+def test_c_target_rejects_ambiguous_outgoing_quoted_include() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.c", [{"text": '#include "util.h"'}]),
+            ("a/util.h", []),
+            ("b/util.h", []),
+        ]
+    )
+    inventory = frozenset({"src/main.c", "a/util.h", "b/util.h"})
+
+    assert not helpers._quoted_include_projection_complete(
+        conn, "src/main.c", inventory
     )
 
 

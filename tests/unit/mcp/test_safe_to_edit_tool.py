@@ -1642,6 +1642,40 @@ def test_snapshot_dependency_view_reads_javascript_projection_both_ways() -> Non
     assert setup_view.dependents_of("src/setup.ts") == ["src/main.ts"]
 
 
+def _snapshot_view_with_resolved_edge(caller: str, callee: str):
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "kind TEXT, file_path TEXT, callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO edges VALUES ('calls', ?, '', ?)",
+        (caller, callee),
+    )
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', '[]')")
+    return build_snapshot_file_dependency_view(conn, "app.py")
+
+
+def test_snapshot_dependency_view_filters_dependent_outside_inventory() -> None:
+    view = _snapshot_view_with_resolved_edge("vendor/use.py", "app.py")
+
+    assert view.dependents_of("app.py") == []
+
+
+def test_snapshot_dependency_view_filters_dependency_outside_inventory() -> None:
+    view = _snapshot_view_with_resolved_edge("app.py", "removed.py")
+
+    assert view.dependencies_of("app.py") == []
+
+
 def test_snapshot_dependency_view_reads_commonjs_projection() -> None:
     import json
     import sqlite3

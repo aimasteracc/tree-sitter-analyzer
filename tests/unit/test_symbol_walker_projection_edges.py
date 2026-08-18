@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from types import SimpleNamespace
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 from tree_sitter_analyzer.cache import _symbol_walker as walker_module
 from tree_sitter_analyzer.cache._symbol_walker import (
     _python_dynamic_loader_analysis,
+    _python_module_scope_statements,
     _SymbolWalker,
     _walk_for_symbols,
 )
@@ -84,6 +86,42 @@ def test_python_loader_analysis_rejects_additional_lexical_bindings(
     _names, complete = _python_dynamic_loader_analysis(source)
 
     assert complete is False
+
+
+def test_python_loader_analysis_discovers_module_control_flow_alias() -> None:
+    source = """
+def load_plugin():
+    return load("pkg.util")
+
+if enabled:
+    from importlib import import_module as load
+"""
+
+    names, complete = _python_dynamic_loader_analysis(source)
+
+    assert "load" in names
+    assert complete is True
+
+
+def test_python_loader_analysis_rejects_module_rebinding() -> None:
+    source = """
+from importlib import import_module as load
+load = fake
+load("pkg.util")
+"""
+
+    names, complete = _python_dynamic_loader_analysis(source)
+
+    assert "load" in names
+    assert complete is False
+
+
+def test_module_scope_statement_walk_skips_nested_function_body() -> None:
+    module = ast.parse("if enabled:\n    def nested():\n        import importlib\n")
+
+    statements = _python_module_scope_statements(module)
+
+    assert [type(statement) for statement in statements] == [ast.If, ast.FunctionDef]
 
 
 @pytest.mark.parametrize(
@@ -240,6 +278,25 @@ def test_symbol_walk_records_depth_truncation() -> None:
     walker.walk(object(), depth=10_000)
 
     assert truncated == [True]
+
+
+def test_symbol_walk_without_truncation_sink_stops_cleanly() -> None:
+    walker = _SymbolWalker("", [], "unknown", None)
+
+    walker.walk(object(), depth=10_000)
+
+    assert walker.symbols == []
+
+
+def test_php_constant_projection_appends_extracted_constants(monkeypatch) -> None:
+    expected = {"kind": "constant", "name": "LIMIT"}
+    monkeypatch.setattr(walker_module, "_php_constants", lambda *_: [expected])
+    node = SimpleNamespace(type="const_declaration")
+    walker = _SymbolWalker("", [], "php", None)
+
+    walker._append_constant(node, None, False)
+
+    assert walker.symbols == [expected]
 
 
 def test_class_projection_covers_empty_fallback_and_parents(monkeypatch) -> None:

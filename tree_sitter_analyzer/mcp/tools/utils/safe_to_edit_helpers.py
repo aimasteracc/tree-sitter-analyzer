@@ -2012,6 +2012,33 @@ def _python_inventory_matches(
     }
 
 
+def _python_from_import_is_ambiguous(
+    import_text: str, importer: str, inventory: frozenset[str]
+) -> bool:
+    """Detect package-attribute versus same-named-submodule ambiguity."""
+    try:
+        body = ast.parse(import_text).body
+    except SyntaxError:
+        return False
+    if len(body) != 1 or not isinstance(body[0], ast.ImportFrom):
+        return False
+    statement = body[0]
+    module = f"{'.' * statement.level}{statement.module or ''}"
+    package_matches = _python_inventory_matches(module, importer, inventory)
+    if not any(path.endswith("/__init__.py") for path in package_matches):
+        return False
+    separator = "" if module.endswith(".") else "."
+    return any(
+        alias.name != "*"
+        and bool(
+            _python_inventory_matches(
+                f"{module}{separator}{alias.name}", importer, inventory
+            )
+        )
+        for alias in statement.names
+    )
+
+
 def _python_import_projection_complete(conn: Any, inventory: frozenset[str]) -> bool:
     """Reject Python facts when a projected import is incomplete or ambiguous."""
 
@@ -2027,6 +2054,8 @@ def _python_import_projection_complete(conn: Any, inventory: frozenset[str]) -> 
         for import_text in import_texts:
             static_specs = _python_static_import_specs(import_text)
             if static_specs is None:
+                return False
+            if _python_from_import_is_ambiguous(import_text, file_path, inventory):
                 return False
             for spec in static_specs:
                 if len(_python_inventory_matches(spec, file_path, inventory)) > 1:
@@ -2138,7 +2167,9 @@ def _quoted_include_projection_complete(
             if match is None:
                 return False
             candidates = _quoted_include_matches(match.group(1), importer, inventory)
-            if rel_path in candidates and len(candidates) != 1:
+            if len(candidates) != 1 and (
+                importer == rel_path or rel_path in candidates
+            ):
                 return False
     return True
 
@@ -2281,6 +2312,8 @@ def build_snapshot_file_dependency_view(
         for caller_file, callee_file in resolved_rows:
             if not isinstance(caller_file, str) or not isinstance(callee_file, str):
                 raise ValueError("CORRUPT_INDEX")
+            if caller_file not in inventory or callee_file not in inventory:
+                continue
             if caller_file == rel_path and callee_file != rel_path:
                 dependencies.add(callee_file)
             elif callee_file == rel_path and caller_file != rel_path:
@@ -2310,7 +2343,12 @@ def build_snapshot_file_dependency_view(
             candidate_names,
         ).fetchall()
         for file_path, module in all_rows:
-            if not isinstance(file_path, str) or not file_path or file_path == rel_path:
+            if (
+                not isinstance(file_path, str)
+                or not file_path
+                or file_path == rel_path
+                or file_path not in inventory
+            ):
                 continue
             resolved = _resolve_import_spec_from_inventory(module, file_path, inventory)
             if resolved == rel_path:

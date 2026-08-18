@@ -44,6 +44,26 @@ _CPP_MODULE_IMPORT_RE = re.compile(
 )
 
 
+def _python_module_scope_statements(module: ast.Module) -> list[ast.stmt]:
+    """Return statements executed in module scope, excluding nested scopes."""
+    statements: list[ast.stmt] = []
+    scope_nodes = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+    def visit_children(node: ast.AST) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.stmt):
+                statements.append(child)
+                if isinstance(child, scope_nodes):
+                    continue
+            visit_children(child)
+
+    for statement in module.body:
+        statements.append(statement)
+        if not isinstance(statement, scope_nodes):
+            visit_children(statement)
+    return statements
+
+
 def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
     """Return module loader aliases and whether their scope is unambiguous."""
     names = {"__import__", "importlib.import_module"}
@@ -51,7 +71,8 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
         module = ast.parse(source)
     except SyntaxError:
         return frozenset(names), False
-    for statement in module.body:
+    module_statements = _python_module_scope_statements(module)
+    for statement in module_statements:
         if isinstance(statement, ast.Import):
             for alias in statement.names:
                 if alias.name == "importlib":
@@ -65,7 +86,7 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                 if alias.name == "import_module":
                     names.add(alias.asname or alias.name)
     assignments: list[tuple[list[ast.expr], ast.expr]] = []
-    for statement in module.body:
+    for statement in module_statements:
         if isinstance(statement, ast.Assign):
             assignments.append((statement.targets, statement.value))
         elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
@@ -82,9 +103,16 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                     names.add(target.id)
                     changed = True
     loader_roots = {name.split(".", 1)[0] for name in names}
+    module_rebinding = any(
+        isinstance(target, ast.Name)
+        and target.id in loader_roots
+        and _python_reference_name(value) not in names
+        for targets, value in assignments
+        for target in targets
+    )
     nested_bindings: set[str] = set()
     nested_loader_alias = False
-    for statement in module.body:
+    for statement in module_statements:
         if not isinstance(
             statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
         ):
@@ -138,8 +166,10 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                         and node.module == "importlib"
                         and alias.name == "import_module"
                     )
-    complete = not nested_loader_alias and not loader_roots.intersection(
-        nested_bindings
+    complete = (
+        not module_rebinding
+        and not nested_loader_alias
+        and not loader_roots.intersection(nested_bindings)
     )
     return frozenset(names), complete
 
