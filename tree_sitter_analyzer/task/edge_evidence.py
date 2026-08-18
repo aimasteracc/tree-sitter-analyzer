@@ -163,7 +163,6 @@ def validate_shape(bundle: dict[str, Any]) -> None:
 
     schema = load_schema()
     jsonschema.validate(instance=bundle, schema=schema)
-    jsonschema.validate(instance=bundle, schema=schema)
 
 
 def _recompute_raw_digests(bundle: dict[str, Any]) -> list[str]:
