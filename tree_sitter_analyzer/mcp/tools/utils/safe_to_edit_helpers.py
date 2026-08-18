@@ -280,8 +280,13 @@ def _format_safe_to_edit_result(
     # summary["verdict"] are both built from it — never a CAUTION/UNSAFE split.
     summary = build_agent_summary(workflow_context, workflow, verdict_override=verdict)
     verification_command = summary.get("verification_command") or None
+    causal_inventory = context.certified_inventory
+    if context.snapshot_conn is not None and causal_inventory is None:
+        causal_inventory = snapshot_inventory(context.snapshot_conn)
     if context.snapshot_conn is not None and _certified_import_facts_available(
-        certified_rel_path
+        certified_rel_path,
+        conn=context.snapshot_conn,
+        inventory=causal_inventory,
     ):
         # Constraint rows are not generation-bound until RFC-0025 P3.  An
         # empty result therefore cannot honestly mean "safe" on a certified
@@ -818,10 +823,34 @@ def _target_language(rel_path: str) -> str:
     return detect_language_from_ext(Path(rel_path).suffix.lower()) or "unknown"
 
 
-def _certified_import_facts_available(rel_path: str) -> bool:
-    """Return whether snapshot projections cover this language's imports."""
+def _certified_import_facts_available(
+    rel_path: str,
+    *,
+    conn: Any | None = None,
+    inventory: frozenset[str] | None = None,
+) -> bool:
+    """Return whether every possible snapshot importer is covered."""
 
-    return _target_language(rel_path) in _CERTIFIED_IMPORT_LANGUAGES
+    language = _target_language(rel_path)
+    if language not in _CERTIFIED_IMPORT_LANGUAGES:
+        return False
+    if inventory is None:
+        inventory = frozenset()
+    if language == "java":
+        # Other supported JVM languages can reference Java without a Java
+        # import projection. Until their resolvers exist, even one indexed
+        # Kotlin or Scala source makes Java's incoming direction incomplete.
+        if any(
+            Path(path).suffix.lower() in {".kt", ".kts", ".scala"} for path in inventory
+        ):
+            return False
+        if conn is not None and not _java_same_package_projection_complete(
+            conn, rel_path, inventory
+        ):
+            return False
+    if language in {"c", "cpp"} and conn is not None:
+        return _quoted_include_projection_complete(conn, rel_path, inventory)
+    return True
 
 
 def _looks_like_test_name(name: str, language: str) -> bool:
@@ -1325,12 +1354,33 @@ def _resolve_import_spec_from_inventory(
     return None
 
 
-def _python_package_initializers(resolved: str, inventory: frozenset[str]) -> set[str]:
+def _python_import_root(spec: str, resolved: str) -> Path | None:
+    """Return the inferred source root for one absolute Python import."""
+
+    if spec.startswith("."):
+        return None
+    module_path = spec.replace(".", "/")
+    for candidate in (f"{module_path}.py", f"{module_path}/__init__.py"):
+        if resolved == candidate:
+            return Path()
+        suffix = f"/{candidate}"
+        if resolved.endswith(suffix):
+            root_parts = Path(resolved).parts[: -len(Path(candidate).parts)]
+            return Path(*root_parts)
+    return None
+
+
+def _python_package_initializers(
+    resolved: str,
+    inventory: frozenset[str],
+    *,
+    source_root: Path | None,
+) -> set[str]:
     """Return indexed package initializers executed while importing a module."""
 
     initializers: set[str] = set()
     parent = Path(resolved).parent
-    while parent.parts:
+    while parent.parts and parent != source_root:
         candidate = (parent / "__init__.py").as_posix()
         if candidate in inventory:
             initializers.add(candidate)
@@ -1401,16 +1451,21 @@ def _import_targets_from_text(
         )
     )
     specs.update(
-        re.findall(
-            r"\b(?:require|import)\s*\(\s*['\"]([^'\"]+)['\"]\s*\)",
+        match.group(2)
+        for match in re.finditer(
+            r"\b(?:require|import)\s*\(\s*(['\"])([^'\"]+)\1\s*(?=[,)])",
             import_text,
         )
     )
     include_match = re.match(r'^\s*#\s*include\s*"([^"]+)"', import_text)
-    if include_match:
-        specs.add(f"./{include_match.group(1)}")
 
     targets = _java_wildcard_targets(java_wildcard_packages, inventory)
+    if include_match:
+        include_targets = _quoted_include_matches(
+            include_match.group(1), importer_rel_path, inventory
+        )
+        if len(include_targets) == 1:
+            targets.update(include_targets)
     for spec in specs:
         resolved = _resolve_import_spec_from_inventory(
             spec, importer_rel_path, inventory
@@ -1419,7 +1474,13 @@ def _import_targets_from_text(
             continue
         targets.add(resolved)
         if importer_language == "python":
-            targets.update(_python_package_initializers(resolved, inventory))
+            targets.update(
+                _python_package_initializers(
+                    resolved,
+                    inventory,
+                    source_root=_python_import_root(spec, resolved),
+                )
+            )
     return targets
 
 
@@ -1437,6 +1498,122 @@ def _java_wildcard_targets(packages: set[str], inventory: frozenset[str]) -> set
             for package in package_paths
         )
     }
+
+
+def _quoted_include_matches(
+    spec: str,
+    importer_rel_path: str,
+    inventory: frozenset[str],
+) -> set[str]:
+    """Return the ordered-search result set for a quoted C/C++ include."""
+
+    relative = _resolve_import_spec_from_inventory(
+        f"./{spec}", importer_rel_path, inventory
+    )
+    if relative is not None:
+        return {relative}
+    if (
+        spec.startswith(("/", "."))
+        or "\\" in spec
+        or any(part in {"", ".", ".."} for part in spec.split("/"))
+    ):
+        return set()
+    return {
+        indexed
+        for indexed in inventory
+        if indexed == spec or indexed.endswith(f"/{spec}")
+    }
+
+
+def _snapshot_import_texts(
+    conn: Any, inventory: frozenset[str]
+) -> dict[str, list[str]] | None:
+    """Read and validate every inventory-covered imports projection."""
+
+    import json
+
+    try:
+        rows = conn.execute("SELECT file_path, imports_json FROM ast_index").fetchall()
+    except Exception:
+        return None
+    projected: dict[str, list[str]] = {}
+    for row in rows:
+        file_path, raw_imports = row[0], row[1]
+        if not isinstance(file_path, str) or file_path not in inventory:
+            continue
+        try:
+            imports = json.loads(raw_imports)
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(imports, list):
+            return None
+        texts: list[str] = []
+        for item in imports:
+            text = item.get("text") if isinstance(item, dict) else item
+            if not isinstance(text, str):
+                return None
+            texts.append(text)
+        projected[file_path] = texts
+    return projected
+
+
+def _java_same_package_projection_complete(
+    conn: Any,
+    rel_path: str,
+    inventory: frozenset[str],
+) -> bool:
+    """Fail closed until same-package Java type/member references are indexed."""
+
+    java_files = {path for path in inventory if _target_language(path) == "java"}
+    if len(java_files) <= 1:
+        return True
+    projected = _snapshot_import_texts(conn, inventory)
+    if projected is None or not java_files.issubset(projected):
+        return False
+    packages: dict[str, str] = {}
+    package_re = re.compile(r"^\s*package\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*;\s*$")
+    for file_path in java_files:
+        declarations = {
+            match.group(1)
+            for text in projected[file_path]
+            if (match := package_re.match(text)) is not None
+        }
+        if len(declarations) > 1:
+            return False
+        packages[file_path] = next(iter(declarations), "")
+    target_package = packages.get(rel_path)
+    if target_package is None:
+        return False
+    return all(
+        file_path == rel_path or package != target_package
+        for file_path, package in packages.items()
+    )
+
+
+def _quoted_include_projection_complete(
+    conn: Any,
+    rel_path: str,
+    inventory: frozenset[str],
+) -> bool:
+    """Return whether ambiguous include-root matches cannot hide this target."""
+
+    projected = _snapshot_import_texts(conn, inventory)
+    if projected is None:
+        return False
+    source_files = {
+        path for path in inventory if _target_language(path) in {"c", "cpp"}
+    }
+    if not source_files.issubset(projected):
+        return False
+    for importer in source_files:
+        for text in projected[importer]:
+            match = re.match(r'^\s*#\s*include\s*"([^"]+)"', text)
+            if match is None:
+                continue
+            candidates = _quoted_include_matches(match.group(1), importer, inventory)
+            if rel_path in candidates and len(candidates) != 1:
+                return False
+    return True
 
 
 def _edge_import_names_for_target(
@@ -1467,6 +1644,9 @@ def _edge_import_names_for_target(
     target_parent_parts = target_module_parts[:-1]
     for offset in range(len(target_module_parts)):
         names.add(".".join(target_module_parts[offset:]))
+    if path.suffix == ".java":
+        for offset in range(len(target_parent_parts)):
+            names.add(".".join(target_parent_parts[offset:]))
     for importer in inventory:
         importer_parts = tuple(
             part for part in Path(importer).parent.parts if part != "."
@@ -1805,7 +1985,9 @@ def build_snapshot_syntax_causal_envelope(
     inventory: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Build certified causal facts when live syntax blocks health analysis."""
-    if not _certified_import_facts_available(rel_path):
+    if inventory is None:
+        inventory = snapshot_inventory(conn)
+    if not _certified_import_facts_available(rel_path, conn=conn, inventory=inventory):
         return {
             "dependents": None,
             "dependencies": None,
@@ -1814,8 +1996,6 @@ def build_snapshot_syntax_causal_envelope(
             "verification_command": None,
             "stale_edges": None,
         }
-    if inventory is None:
-        inventory = snapshot_inventory(conn)
     graph = build_snapshot_file_dependency_view(conn, rel_path, inventory=inventory)
     dependents = safe_dependents(graph, rel_path)
     dependencies = safe_dependencies(graph, rel_path)

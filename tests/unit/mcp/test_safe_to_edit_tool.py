@@ -1692,6 +1692,56 @@ def test_snapshot_dependency_view_reads_dynamic_import_projection() -> None:
     assert view.dependencies_of("src/main.ts") == ["src/lazy.ts"]
 
 
+def test_snapshot_dependency_view_reads_dynamic_import_with_options() -> None:
+    # PR #1308 review: the first literal remains the specifier when options follow.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "src/main.ts",
+                json.dumps(
+                    [
+                        {
+                            "text": (
+                                "import('./util', { with: { type: 'javascript' } })"
+                            ),
+                            "line": 1,
+                        }
+                    ]
+                ),
+            ),
+            ("src/util.ts", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/main.ts")
+
+    assert view.dependencies_of("src/main.ts") == ["src/util.ts"]
+
+
+def test_snapshot_import_module_name_reads_dynamic_import_with_options() -> None:
+    # PR #1308 review: symbol-reference matching uses the same first argument.
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _import_module_name,
+    )
+
+    assert (
+        _import_module_name("import('./util', { with: { type: 'javascript' } })")
+        == "./util"
+    )
+
+
 @pytest.mark.parametrize(
     ("spec", "importer", "inventory", "expected"),
     [
@@ -1768,6 +1818,15 @@ def test_snapshot_import_resolution_uses_importer_language(
         _resolve_import_spec_from_inventory(spec, importer, frozenset(inventory))
         == expected
     )
+
+
+def test_python_import_root_rejects_unrelated_resolution() -> None:
+    # PR #1308 review: only a root proven by the resolved module may bound init files.
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _python_import_root,
+    )
+
+    assert _python_import_root("pkg.app", "vendor/other.py") is None
 
 
 def test_certified_facts_load_inventory_when_not_precomputed(
@@ -1946,6 +2005,94 @@ def test_snapshot_dependency_view_includes_c_header() -> None:
     assert view.dependencies_of("src/main.c") == ["src/util.h"]
 
 
+def test_snapshot_dependency_view_infers_unique_c_include_root() -> None:
+    # PR #1308 review: a unique inventory suffix certifies an -I-style root.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "src/main.c",
+                json.dumps([{"text": '#include "project/util.h"', "line": 1}]),
+            ),
+            ("include/project/util.h", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/main.c")
+
+    assert view.dependencies_of("src/main.c") == ["include/project/util.h"]
+
+
+def test_snapshot_dependency_view_rejects_ambiguous_c_include_root() -> None:
+    # PR #1308 review: multiple -I-style inventory matches are not guessable.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "src/main.c",
+                json.dumps([{"text": '#include "project/util.h"', "line": 1}]),
+            ),
+            ("include-one/project/util.h", "[]"),
+            ("include-two/project/util.h", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/main.c")
+
+    assert view.dependencies_of("src/main.c") == []
+
+
+def test_snapshot_dependency_view_rejects_absolute_quoted_include() -> None:
+    # PR #1308 review: absolute include text is not a snapshot-certified root.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "src/main.c",
+                json.dumps([{"text": '#include "/project/util.h"', "line": 1}]),
+            ),
+            ("project/util.h", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/main.c")
+
+    assert view.dependencies_of("src/main.c") == []
+
+
 def test_snapshot_dependency_view_finds_c_header_dependent() -> None:
     import json
     import sqlite3
@@ -2045,6 +2192,37 @@ def test_snapshot_python_import_includes_source_root_package_initializer() -> No
     assert view.dependents_of("src/pkg/__init__.py") == ["consumer.py"]
     assert snapshot_stale_edges(conn, "src/pkg/__init__.py") == [
         "imports:consumer.py->src/pkg/__init__.py#1"
+    ]
+
+
+def test_snapshot_python_import_stops_initializers_at_source_root() -> None:
+    # PR #1308 review: import pkg.app must not execute src/__init__.py.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("src/__init__.py", "[]"),
+            ("src/pkg/__init__.py", "[]"),
+            ("src/pkg/app.py", "[]"),
+            ("consumer.py", json.dumps([{"text": "import pkg.app"}])),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "consumer.py")
+
+    assert view.dependencies_of("consumer.py") == [
+        "src/pkg/__init__.py",
+        "src/pkg/app.py",
     ]
 
 
@@ -2174,6 +2352,43 @@ def test_snapshot_java_wildcard_import_expands_indexed_package() -> None:
     ]
     assert reverse_view.dependents_of("src/main/java/com/acme/Util.java") == [
         "src/main/java/com/acme/Main.java"
+    ]
+
+
+def test_snapshot_java_wildcard_import_marks_package_edge_stale() -> None:
+    # PR #1308 review: unresolved wildcard rows use the package as callee_name.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        snapshot_stale_edges,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "src/main/java/com/acme/Main.java",
+                json.dumps([{"text": "import com.acme.*;"}]),
+            ),
+            ("src/main/java/com/acme/Util.java", "[]"),
+        ],
+    )
+    conn.execute(
+        "INSERT INTO edges VALUES "
+        "(1, 'imports', 'src/main/java/com/acme/Main.java', 'com.acme', '')"
+    )
+
+    assert snapshot_stale_edges(conn, "src/main/java/com/acme/Util.java") == [
+        "imports:src/main/java/com/acme/Main.java->src/main/java/com/acme/Util.java#1"
     ]
 
 
@@ -2646,6 +2861,383 @@ def test_snapshot_syntax_envelope_marks_unsupported_import_facts_unavailable() -
         "verification_command": None,
         "stale_edges": None,
     }
+
+
+@pytest.mark.parametrize("importer_suffix", ["Use.kt", "Use.scala"])
+def test_snapshot_syntax_envelope_marks_mixed_jvm_java_unavailable(
+    importer_suffix: str,
+) -> None:
+    # PR #1308 review: non-Java JVM references lack a certified projection.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, '{}')",
+        [
+            (
+                "src/main/java/com/acme/Util.java",
+                json.dumps([{"text": "package com.acme;"}]),
+            ),
+            (
+                f"src/test/jvm/com/acme/{importer_suffix}",
+                json.dumps([{"text": "import com.acme.Util"}]),
+            ),
+        ],
+    )
+
+    envelope = build_snapshot_syntax_causal_envelope(
+        conn,
+        "src/main/java/com/acme/Util.java",
+        "src/main/java/com/acme/Util.java",
+    )
+
+    assert envelope == {
+        "dependents": None,
+        "dependencies": None,
+        "exercising_tests": None,
+        "constraint_verdict": "unknown",
+        "verification_command": None,
+        "stale_edges": None,
+    }
+
+
+def test_snapshot_syntax_envelope_marks_same_package_java_unavailable() -> None:
+    # PR #1308 review: same-package references can exist without import rows.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    package_projection = json.dumps([{"text": "package com.acme;"}])
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, '{}')",
+        [
+            ("src/main/java/com/acme/Util.java", package_projection),
+            ("src/test/java/com/acme/UtilTest.java", package_projection),
+        ],
+    )
+
+    envelope = build_snapshot_syntax_causal_envelope(
+        conn,
+        "src/main/java/com/acme/Util.java",
+        "src/main/java/com/acme/Util.java",
+    )
+
+    assert envelope == {
+        "dependents": None,
+        "dependencies": None,
+        "exercising_tests": None,
+        "constraint_verdict": "unknown",
+        "verification_command": None,
+        "stale_edges": None,
+    }
+
+
+def test_snapshot_syntax_envelope_certifies_single_java_file() -> None:
+    # PR #1308 review: fail-closed same-package handling keeps provable projects usable.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES (?, ?, '{}')",
+        (
+            "src/main/java/com/acme/Util.java",
+            json.dumps([{"text": "package com.acme;"}]),
+        ),
+    )
+
+    envelope = build_snapshot_syntax_causal_envelope(
+        conn,
+        "src/main/java/com/acme/Util.java",
+        "src/main/java/com/acme/Util.java",
+    )
+
+    assert envelope == {
+        "dependents": [],
+        "dependencies": [],
+        "exercising_tests": [],
+        "constraint_verdict": "unknown",
+        "verification_command": None,
+        "stale_edges": [],
+    }
+
+
+def test_snapshot_syntax_envelope_rejects_missing_java_projection() -> None:
+    # PR #1308 review: every Java inventory member needs an import projection.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    target = "src/main/java/com/acme/Util.java"
+    absent = "src/test/java/org/example/Use.java"
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES (?, ?, '{}')",
+        (target, json.dumps([{"text": "package com.acme;"}])),
+    )
+
+    envelope = build_snapshot_syntax_causal_envelope(
+        conn,
+        target,
+        target,
+        inventory=frozenset({target, absent}),
+    )
+
+    assert envelope["dependents"] is None
+
+
+def test_snapshot_syntax_envelope_rejects_conflicting_java_packages() -> None:
+    # PR #1308 review: a corrupt multi-package projection cannot certify Java.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    target = "src/main/java/com/acme/Util.java"
+    other = "src/main/java/org/example/Use.java"
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, '{}')",
+        [
+            (
+                target,
+                json.dumps(
+                    [
+                        {"text": "package com.acme;"},
+                        {"text": "package forged.name;"},
+                    ]
+                ),
+            ),
+            (other, json.dumps([{"text": "package org.example;"}])),
+        ],
+    )
+
+    envelope = build_snapshot_syntax_causal_envelope(conn, target, target)
+
+    assert envelope["dependencies"] is None
+
+
+def test_snapshot_syntax_envelope_rejects_unprojected_java_target() -> None:
+    # PR #1308 review: the inspected Java target itself must have a projection.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    target = "src/main/java/com/acme/Missing.java"
+    first = "src/main/java/com/acme/Util.java"
+    second = "src/main/java/org/example/Use.java"
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, '{}')",
+        [
+            (first, json.dumps([{"text": "package com.acme;"}])),
+            (second, json.dumps([{"text": "package org.example;"}])),
+        ],
+    )
+
+    envelope = build_snapshot_syntax_causal_envelope(
+        conn,
+        target,
+        target,
+        inventory=frozenset({first, second}),
+    )
+
+    assert envelope["exercising_tests"] is None
+
+
+def test_snapshot_syntax_envelope_marks_ambiguous_include_root_unavailable() -> None:
+    # PR #1308 review: two inventory suffix matches cannot certify an include root.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, '{}')",
+        [
+            (
+                "src/main.c",
+                json.dumps([{"text": '#include "project/util.h"'}]),
+            ),
+            ("include-one/project/util.h", "[]"),
+            ("include-two/project/util.h", "[]"),
+        ],
+    )
+
+    envelope = build_snapshot_syntax_causal_envelope(
+        conn,
+        "include-one/project/util.h",
+        "include-one/project/util.h",
+    )
+
+    assert envelope == {
+        "dependents": None,
+        "dependencies": None,
+        "exercising_tests": None,
+        "constraint_verdict": "unknown",
+        "verification_command": None,
+        "stale_edges": None,
+    }
+
+
+def test_snapshot_syntax_envelope_certifies_unique_include_root() -> None:
+    # PR #1308 review: a unique suffix match is complete despite unrelated records.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    target = "include/project/util.h"
+    importer = "src/main.c"
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, '{}')",
+        [
+            (
+                importer,
+                json.dumps(
+                    [
+                        {"text": "#define DEBUG 1"},
+                        {"text": '#include "project/util.h"'},
+                    ]
+                ),
+            ),
+            (target, "[]"),
+        ],
+    )
+
+    envelope = build_snapshot_syntax_causal_envelope(conn, target, target)
+
+    assert envelope["dependents"] == [importer]
+
+
+def test_snapshot_syntax_envelope_rejects_missing_c_projection_table() -> None:
+    # PR #1308 review: absent include projections make C causality unavailable.
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    target = "include/project/util.h"
+    envelope = build_snapshot_syntax_causal_envelope(
+        sqlite3.connect(":memory:"),
+        target,
+        target,
+        inventory=frozenset({target}),
+    )
+
+    assert envelope["stale_edges"] is None
+
+
+def test_snapshot_syntax_envelope_rejects_unprojected_c_inventory_file() -> None:
+    # PR #1308 review: every possible C importer needs an imports projection.
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    target = "include/project/util.h"
+    absent = "src/main.c"
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.execute("INSERT INTO ast_index VALUES (?, '[]', '{}')", (target,))
+
+    envelope = build_snapshot_syntax_causal_envelope(
+        conn,
+        target,
+        target,
+        inventory=frozenset({target, absent}),
+    )
+
+    assert envelope["verification_command"] is None
 
 
 def test_read_existing_payload_scans_snapshot_inventory_once(
