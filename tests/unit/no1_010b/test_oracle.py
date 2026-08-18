@@ -298,7 +298,6 @@ def test_run_oracle_rejects_stderr_after_result_marker(tmp_path: Path) -> None:
     outcome = _run_oracle_process_unisolated_for_tests(
         str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
     )
-
     assert outcome.status == OracleStatus.UNKNOWN
     assert outcome.unknown_reason == "ORACLE_PROTOCOL_ERROR"
 
@@ -480,12 +479,14 @@ def test_run_oracle_uses_windows_process_group(
     import tree_sitter_analyzer.no1_010b.oracle as oracle_module
 
     output = (
-        b"NO1_010B_ORACLE_REASON: dispatch-returns-none\nNO1_010B_ORACLE_RESULT: PASS\n"
+        b"NO1_010B_ORACLE_REASON: dispatch-returns-none\n"
+        b"NO1_010B_ORACLE_RESULT: PASS\nNO1_010B_TRUSTED_WRAPPER:fixed:COMPLETE\n"
     )
     proc = Mock(pid=321, stdout=io.BytesIO(output), stderr=io.BytesIO())
     proc.returncode = 0
     popen = Mock(return_value=proc)
     monkeypatch.setattr(oracle_module, "_IS_WINDOWS", True)
+    monkeypatch.setattr(oracle_module.secrets, "token_hex", lambda _: "fixed")
     monkeypatch.setattr(oracle_module.subprocess, "Popen", popen)
     oracle = _write_oracle(tmp_path, "oracle.py", ORACLE_PASS)
 

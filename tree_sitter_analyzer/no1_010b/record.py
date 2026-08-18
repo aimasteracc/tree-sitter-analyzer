@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
+from .patch import PatchBoundError, PatchFormatError, validate_patch
+
 TaskClass = Literal["bugfix", "refactor", "migration", "test_selection"]
 Operation = Literal["understand", "plan_change", "assess_change"]
 ExpectedVerdict = Literal["PASS", "FAIL", "UNKNOWN"]
@@ -72,11 +74,6 @@ _EXPECTED_TERMINAL_FIELDS = frozenset({"verdict", "reason_code"})
 _MAX_CORPUS_BYTES = 8 * 1024 * 1024  # mirrors task_harness's input bound
 
 _REASON_TOKEN_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-_PATCH_HUNK_RE = re.compile(
-    r"^@@ -[0-9]+(?:,([0-9]+))? \+[0-9]+(?:,([0-9]+))? @@(?: .*)?$"
-)
-_PATCH_COUNT_MAX_DIGITS = 7
-
 _REQUIRED_FIELDS = frozenset(
     {
         "id",
@@ -162,91 +159,6 @@ def path_allowed(rel_path: str, allowed_paths: tuple[str, ...]) -> bool:
         elif value == entry:
             return True
     return False
-
-
-def patch_has_changed_hunk(lines: list[str]) -> bool:
-    file_header_seen = False
-    in_hunk = False
-    remaining_old = 0
-    remaining_new = 0
-    hunk_changed = False
-    completed_change = False
-    for index, line in enumerate(lines):
-        if in_hunk:
-            if line == r"\ No newline at end of file":
-                continue
-            if line.startswith(" "):
-                if remaining_old == 0 or remaining_new == 0:
-                    return False
-                remaining_old -= 1
-                remaining_new -= 1
-            elif line.startswith("-"):
-                if remaining_old == 0:
-                    return False
-                remaining_old -= 1
-                hunk_changed = True
-            elif line.startswith("+"):
-                if remaining_new == 0:
-                    return False
-                remaining_new -= 1
-                hunk_changed = True
-            else:
-                return False
-            if remaining_old == 0 and remaining_new == 0:
-                completed_change = completed_change or hunk_changed
-                in_hunk = False
-            continue
-        if line.startswith("diff --git "):
-            file_header_seen = False
-            continue
-        if (
-            line.startswith("--- ")
-            and index + 1 < len(lines)
-            and lines[index + 1].startswith("+++ ")
-        ):
-            headers = (
-                (line[len("--- ") :].rstrip(), "a/"),
-                (lines[index + 1][len("+++ ") :].rstrip(), "b/"),
-            )
-            if all(raw == "/dev/null" for raw, _ in headers):
-                return False
-            for raw, side in headers:
-                if raw == "/dev/null":
-                    continue
-                if not raw.startswith(side):
-                    return False
-                try:
-                    _canonical_rel_path(raw[2:], "patch")
-                except BenchmarkRecordError:
-                    return False
-            file_header_seen = True
-            continue
-        if (
-            line.startswith("+++ ")
-            and index > 0
-            and lines[index - 1].startswith("--- ")
-        ):
-            continue
-        if not line.startswith("@@"):
-            if line.startswith(("+", "-")):
-                return False
-            continue
-        if not file_header_seen:
-            return False
-        match = _PATCH_HUNK_RE.fullmatch(line)
-        if match is None:
-            return False
-        old_count, new_count = match.groups()
-        if any(
-            count is not None and len(count) > _PATCH_COUNT_MAX_DIGITS
-            for count in (old_count, new_count)
-        ):
-            return False
-        remaining_old = int(old_count) if old_count is not None else 1
-        remaining_new = int(new_count) if new_count is not None else 1
-        hunk_changed = False
-        in_hunk = remaining_old != 0 or remaining_new != 0
-    return completed_change and not in_hunk
 
 
 def _expected_terminal_from_dict(raw: Any) -> ExpectedTerminal:
@@ -383,9 +295,12 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
             raise BenchmarkRecordError("patch must be valid UTF-8") from exc
         if not patch.strip():
             raise BenchmarkRecordError("patch must be a non-empty unified diff")
-        lines = patch.split("\n")
-        if not patch_has_changed_hunk(lines):
-            raise BenchmarkRecordError("patch must be a non-empty unified diff")
+        try:
+            validate_patch(patch)
+        except (PatchBoundError, PatchFormatError) as exc:
+            raise BenchmarkRecordError(
+                "patch must be a non-empty unified diff"
+            ) from exc
 
     raw_selected = payload.get("selected_tests", [])
     if not isinstance(raw_selected, list) or not all(

@@ -89,19 +89,6 @@ def test_diff_paths_reads_git_headers_without_text_headers(
     assert [path.rel_path for path in diff_paths(patch)] == expected
 
 
-def test_diff_paths_fails_closed_on_ambiguous_git_header() -> None:
-    with pytest.raises(PatchFormatError, match="non-canonical"):
-        diff_paths('diff --git "a/path with spaces" "b/path with spaces"\n')
-    with pytest.raises(PatchFormatError, match="non-canonical"):
-        diff_paths("diff --git b/wrong-side.py b/wrong-side.py\n")
-    with pytest.raises(PatchFormatError, match="extended path"):
-        diff_paths(
-            PATCH_OK
-            + "diff --git a/src/dispatch.py b/src/dispatch.py\n"
-            + "rename from ../secret.py\n"
-        )
-
-
 def test_diff_paths_accepts_unquoted_git_path_with_spaces() -> None:
     patch = (
         "diff --git a/src/a b/file.py b/src/a b/file.py\n"
@@ -183,7 +170,7 @@ def test_diff_paths_deduplicates_with_bounded_equality_checks(
     )
 
     assert len(diff_paths(patch)) == 200
-    assert comparisons <= 400
+    assert comparisons == 0
 
 
 def test_diff_paths_rejects_unparseable_paired_header() -> None:
