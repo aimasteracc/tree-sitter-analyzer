@@ -144,9 +144,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v16: P1 causal envelopes project literal JS/TS module calls.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 16
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 16
+        # v17: P1 causal envelopes project C/C++ preprocessor includes.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 17
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 17
 
 
 class TestJavaScriptModuleCallProjection:
@@ -183,6 +183,20 @@ class TestJavaScriptModuleCallProjection:
         walker = _SymbolWalker("", [], "typescript", None)
 
         assert walker._append_jsts_module_call(_IncompleteCall()) is False
+
+
+class TestCIncludeProjection:
+    def test_c_project_local_include_is_projected_as_import(self):
+        symbols = {"symbols": _symbols_for('#include "util.h"\n', "c")}
+
+        assert _extract_imports(symbols) == [{"text": '#include "util.h"\n', "line": 1}]
+
+    def test_cpp_project_local_include_is_projected_as_import(self):
+        symbols = {"symbols": _symbols_for('#include "util.hpp"\n', "cpp")}
+
+        assert _extract_imports(symbols) == [
+            {"text": '#include "util.hpp"\n', "line": 1}
+        ]
 
 
 class TestBashVariableAssignmentScope:

@@ -72,6 +72,7 @@ _IMPORT_LIKE = frozenset(
         "extern_crate_item",
         "package_declaration",
         "include_directive",
+        "preproc_include",
     }
 )
 

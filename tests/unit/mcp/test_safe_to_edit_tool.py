@@ -1623,6 +1623,11 @@ def test_snapshot_dependency_view_reads_dynamic_import_projection() -> None:
         ("pkg/lib", "cmd/main.go", {"pkg/lib.go"}, "pkg/lib.go"),
         ("./util.ts", "src/main.ts", {"src/util.ts"}, "src/util.ts"),
         ("./util.py", "src/main.ts", {"src/util.py"}, None),
+        ("./", "main.js", {"index.js"}, "index.js"),
+        ("react", "src/main.ts", {"react.ts"}, None),
+        ("pkg", "main.py", {"pkg.py", "pkg/__init__.py"}, "pkg/__init__.py"),
+        ("./util.h", "src/main.c", {"src/util.h"}, "src/util.h"),
+        ("./util.hpp", "src/main.cpp", {"src/util.hpp"}, "src/util.hpp"),
     ],
 )
 def test_snapshot_import_resolution_uses_importer_language(
@@ -1715,6 +1720,106 @@ def test_snapshot_dependency_view_matches_javascript_directory_index_import() ->
     view = build_snapshot_file_dependency_view(conn, "src/lib/index.ts")
 
     assert view.dependents_of("src/lib/index.ts") == ["src/main.ts"]
+
+
+def test_snapshot_dependency_view_resolves_root_commonjs_directory() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("main.js", json.dumps([{"text": "require('./')"}])),
+            ("index.js", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "main.js")
+
+    assert view.dependencies_of("main.js") == ["index.js"]
+
+
+def test_snapshot_dependency_view_rejects_bare_javascript_package() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("src/main.ts", json.dumps([{"text": "import 'react'"}])),
+            ("react.ts", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/main.ts")
+
+    assert view.dependencies_of("src/main.ts") == []
+
+
+def test_snapshot_dependency_view_includes_c_header() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("src/main.c", json.dumps([{"text": '#include "util.h"', "line": 1}])),
+            ("src/util.h", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/main.c")
+
+    assert view.dependencies_of("src/main.c") == ["src/util.h"]
+
+
+def test_snapshot_dependency_view_finds_c_header_dependent() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("src/test_util.cpp", json.dumps([{"text": '#include "util.h"'}])),
+            ("src/util.h", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/util.h")
+
+    assert view.dependents_of("src/util.h") == ["src/test_util.cpp"]
 
 
 def test_snapshot_dependency_view_resolves_parent_relative_python_import() -> None:
@@ -1827,6 +1932,18 @@ def test_snapshot_import_targets_ignore_non_import_text() -> None:
         _import_targets_from_text("raise RuntimeError", "routes.py", frozenset())
         == set()
     )
+
+
+def test_snapshot_import_targets_preserve_members_after_inline_comments() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _import_targets_from_text,
+    )
+
+    inventory = frozenset({"pkg/b.py"})
+
+    assert _import_targets_from_text(
+        "from pkg import (a, # first member\n b)", "routes.py", inventory
+    ) == {"pkg/b.py"}
 
 
 def test_snapshot_import_resolution_bounds_javascript_paths() -> None:

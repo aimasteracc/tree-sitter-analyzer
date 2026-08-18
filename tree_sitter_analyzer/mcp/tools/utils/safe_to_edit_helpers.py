@@ -847,7 +847,13 @@ def _import_module_name(import_text: str) -> str | None:
     m = _re.match(r"^\s*from\s+([.\w]+)\s+import\b", import_text)
     if m:
         return m.group(1)
+    m = _re.search(r"(?:\bfrom\s*|^\s*import\s*)['\"]([^'\"]+)['\"]", import_text)
+    if m:
+        return m.group(1)
     m = _re.match(r"^\s*import\s+([.\w]+)", import_text)
+    if m:
+        return m.group(1)
+    m = _re.search(r"\b(?:require|import)\s*\(\s*['\"]([^'\"]+)['\"]", import_text)
     if m:
         return m.group(1)
     return None
@@ -978,6 +984,11 @@ def _certified_symbol_reference_tests(
                 resolved_module = _resolve_import_spec_from_inventory(
                     import_module, rel, inventory
                 )
+                if language in {"javascript", "typescript"}:
+                    if resolved_module != rel_path:
+                        continue
+                    results.append(rel)
+                    break
                 if (
                     resolved_module
                     and resolved_module != rel_path
@@ -1183,8 +1194,6 @@ def _resolve_import_spec_from_inventory(
                 parts.pop()
             else:
                 parts.append(part)
-        if not parts:
-            return None
         candidate_base = "/".join(parts)
     elif spec.startswith("."):
         dot_count = len(spec) - len(spec.lstrip("."))
@@ -1204,6 +1213,8 @@ def _resolve_import_spec_from_inventory(
         candidate_base = spec.replace(".", "/")
 
     language = _target_language(importer_rel_path)
+    if language in {"javascript", "typescript"} and not spec.startswith(("./", "../")):
+        return None
     suffixes: tuple[str, ...]
     package_entries: tuple[str, ...]
     if language == "python":
@@ -1218,18 +1229,32 @@ def _resolve_import_spec_from_inventory(
     elif language == "java":
         suffixes = (".java",)
         package_entries = ()
+    elif language == "c":
+        suffixes = (".c", ".h")
+        package_entries = ()
+    elif language == "cpp":
+        suffixes = (".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h")
+        package_entries = ()
     else:
         suffixes = (Path(importer_rel_path).suffix.lower(),)
         package_entries = ()
 
     allowed_suffixes = {suffix for suffix in suffixes if suffix}
     explicit_suffix = Path(candidate_base).suffix.lower()
-    candidates = []
-    if explicit_suffix in allowed_suffixes:
+    candidates: list[str] = []
+    if not candidate_base:
+        candidates.extend(package_entries)
+    elif explicit_suffix in allowed_suffixes:
         candidates.append(candidate_base)
     elif not explicit_suffix:
-        candidates.extend(f"{candidate_base}{suffix}" for suffix in suffixes)
-        candidates.extend(f"{candidate_base}/{entry}" for entry in package_entries)
+        package_candidates = [f"{candidate_base}/{entry}" for entry in package_entries]
+        file_candidates = [f"{candidate_base}{suffix}" for suffix in suffixes]
+        if language == "python":
+            candidates.extend(package_candidates)
+            candidates.extend(file_candidates)
+        else:
+            candidates.extend(file_candidates)
+            candidates.extend(package_candidates)
     for candidate in candidates:
         if candidate in inventory:
             return candidate
@@ -1260,7 +1285,8 @@ def _import_targets_from_text(
     if from_match:
         module, imported = from_match.groups()
         specs.add(module)
-        payload = imported.split("#", 1)[0].replace("(", "").replace(")", "")
+        payload = "\n".join(line.split("#", 1)[0] for line in imported.splitlines())
+        payload = payload.replace("(", "").replace(")", "")
         for item in payload.split(","):
             member = item.strip().split(maxsplit=1)[0] if item.strip() else ""
             if member and member != "*" and re.fullmatch(r"[A-Za-z_]\w*", member):
@@ -1291,6 +1317,9 @@ def _import_targets_from_text(
             import_text,
         )
     )
+    include_match = re.match(r'^\s*#\s*include\s*"([^"]+)"', import_text)
+    if include_match:
+        specs.add(f"./{include_match.group(1)}")
 
     return {
         resolved
