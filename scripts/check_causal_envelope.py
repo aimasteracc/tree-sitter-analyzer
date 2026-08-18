@@ -11,6 +11,9 @@ from typing import Any
 
 from tree_sitter_analyzer.index_snapshot import lease_existing_snapshot
 from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+    certified_default_test_command,
+)
 
 CAUSAL_FIELDS = frozenset(
     {
@@ -24,7 +27,7 @@ CAUSAL_FIELDS = frozenset(
 )
 
 
-def _invalid_causal_fields(envelope: Any) -> list[str]:
+def _invalid_causal_fields(envelope: Any, file_path: str | None = None) -> list[str]:
     """Return certified causal fields whose values violate the P1 contract."""
     if not isinstance(envelope, dict):
         return sorted(CAUSAL_FIELDS)
@@ -57,6 +60,7 @@ def _invalid_causal_fields(envelope: Any) -> list[str]:
         isinstance(envelope.get("exercising_tests"), list)
         and envelope["exercising_tests"]
         and verification is None
+        and (file_path is None or certified_default_test_command(file_path) is not None)
     ):
         invalid.append("verification_command")
     return sorted(set(invalid))
@@ -94,7 +98,7 @@ async def _check(project_root: Path, file_path: str) -> dict[str, Any]:
     envelope = result.get("causal_envelope")
     fields = frozenset(envelope) if isinstance(envelope, dict) else frozenset()
     missing = sorted(CAUSAL_FIELDS - fields)
-    invalid = _invalid_causal_fields(envelope)
+    invalid = _invalid_causal_fields(envelope, file_path)
     return {
         "success": (
             result.get("success") is True

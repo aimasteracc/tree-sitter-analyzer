@@ -764,9 +764,10 @@ def _resolve_import_spec(spec: str, rel_path: str, root: Path) -> str | None:
 def _import_needles_for_target(rel_path: str) -> set[str]:
     path = Path(rel_path)
     suffix = path.suffix
-    without_suffix = path.with_suffix("").as_posix()
+    module_path = _module_path_without_suffix(path)
+    without_suffix = module_path.as_posix()
     module = without_suffix.replace("/", ".")
-    basename = path.stem
+    basename = module_path.name
     needles = {without_suffix, module}
     if suffix == ".py" and path.name == "__init__.py":
         package = path.parent.as_posix()
@@ -775,6 +776,14 @@ def _import_needles_for_target(rel_path: str) -> set[str]:
     if basename and basename != "__init__":
         needles.add(basename)
     return {needle for needle in needles if needle}
+
+
+def _module_path_without_suffix(path: Path) -> Path:
+    """Strip one source module suffix, including TypeScript's compound suffix."""
+
+    if path.name.endswith(".d.ts"):
+        return path.with_name(path.name[: -len(".d.ts")])
+    return path.with_suffix("")
 
 
 def _require_edges_callee_name(conn: Any) -> None:
@@ -1251,7 +1260,7 @@ def _resolve_import_spec_from_inventory(
         suffixes = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")
         package_entries = tuple(f"index{suffix}" for suffix in suffixes)
     elif language == "typescript":
-        suffixes = (".ts", ".tsx", ".js", ".jsx", ".mts", ".cts")
+        suffixes = (".ts", ".tsx", ".d.ts", ".js", ".jsx", ".mts", ".cts")
         package_entries = tuple(f"index{suffix}" for suffix in suffixes)
     elif language == "java":
         suffixes = (".java",)
@@ -1297,6 +1306,22 @@ def _resolve_import_spec_from_inventory(
             return next(iter(matches))
         if len(matches) > 1:
             return None
+    if language == "java" and not spec.startswith("."):
+        parts = candidate_base.split("/")
+        owner_matches: set[str] = set()
+        for end in range(len(parts) - 1, 0, -1):
+            owner_candidate = f"{'/'.join(parts[:end])}.java"
+            if owner_candidate in inventory:
+                owner_matches.add(owner_candidate)
+            owner_matches.update(
+                indexed
+                for indexed in inventory
+                if indexed.endswith(f"/{owner_candidate}")
+            )
+        if len(owner_matches) == 1:
+            return next(iter(owner_matches))
+        if len(owner_matches) > 1:
+            return None
     return None
 
 
@@ -1328,7 +1353,11 @@ def _import_targets_from_text(
     unrelated repository-wide basename match.
     """
 
+    importer_language = _target_language(importer_rel_path)
+    if importer_language == "python":
+        import_text = re.sub(r"\\\r?\n", "", import_text)
     specs: set[str] = set()
+    java_wildcard_packages: set[str] = set()
     from_match = re.match(
         r"^\s*from\s+([.A-Za-z_][\w.]*)\s+import\s+(.+)$",
         import_text,
@@ -1356,6 +1385,9 @@ def _import_targets_from_text(
                     spec, _, _member = static_target.rpartition(".")
                 else:
                     spec = raw_spec.split(maxsplit=1)[0]
+                    if importer_language == "java" and spec.endswith(".*"):
+                        java_wildcard_packages.add(spec.removesuffix(".*"))
+                        continue
                 if re.fullmatch(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*", spec):
                     specs.add(spec)
 
@@ -1378,8 +1410,7 @@ def _import_targets_from_text(
     if include_match:
         specs.add(f"./{include_match.group(1)}")
 
-    targets: set[str] = set()
-    importer_language = _target_language(importer_rel_path)
+    targets = _java_wildcard_targets(java_wildcard_packages, inventory)
     for spec in specs:
         resolved = _resolve_import_spec_from_inventory(
             spec, importer_rel_path, inventory
@@ -1392,6 +1423,22 @@ def _import_targets_from_text(
     return targets
 
 
+def _java_wildcard_targets(packages: set[str], inventory: frozenset[str]) -> set[str]:
+    """Expand Java package wildcards over direct, inventory-covered classes."""
+
+    package_paths = {package.replace(".", "/") for package in packages}
+    return {
+        indexed
+        for indexed in inventory
+        if indexed.endswith(".java")
+        and any(
+            Path(indexed).parent.as_posix() == package
+            or Path(indexed).parent.as_posix().endswith(f"/{package}")
+            for package in package_paths
+        )
+    }
+
+
 def _edge_import_names_for_target(
     rel_path: str,
     inventory: frozenset[str] = frozenset(),
@@ -1399,22 +1446,23 @@ def _edge_import_names_for_target(
     """Return bounded unresolved-edge names that could identify *rel_path*."""
 
     path = Path(rel_path)
-    without_suffix = path.with_suffix("").as_posix()
+    module_path = _module_path_without_suffix(path)
+    without_suffix = module_path.as_posix()
     module = without_suffix.replace("/", ".")
     parent_module = path.parent.as_posix().replace("/", ".")
     names = {
         without_suffix,
         module,
-        path.stem,
+        module_path.name,
         parent_module,
         ".",
-        f".{path.stem}",
-        f"./{path.stem}",
+        f".{module_path.name}",
+        f"./{module_path.name}",
     }
     if path.parent.name:
         names.add(f".{path.parent.name}")
     target_module_parts = (
-        path.parent.parts if path.name == "__init__.py" else path.with_suffix("").parts
+        path.parent.parts if path.name == "__init__.py" else module_path.parts
     )
     target_parent_parts = target_module_parts[:-1]
     for offset in range(len(target_module_parts)):
@@ -1453,18 +1501,25 @@ def _projection_search_tokens(rel_path: str) -> tuple[str, ...]:
     """Return coarse SQL tokens; exact import parsing is the trust boundary."""
 
     path = Path(rel_path)
+    module_path = _module_path_without_suffix(path)
     tokens = _import_needles_for_target(rel_path)
     module_parts = (
-        path.parent.parts if path.name == "__init__.py" else path.with_suffix("").parts
+        path.parent.parts if path.name == "__init__.py" else module_path.parts
     )
     for offset in range(len(module_parts)):
         tokens.add(".".join(module_parts[offset:]))
-    if path.stem and path.stem != "__init__":
-        tokens.add(f"./{path.stem}")
-    if path.stem == "index" and path.parent.name:
-        tokens.add(path.parent.as_posix())
-        tokens.add(path.parent.name)
-        tokens.add(f"./{path.parent.name}")
+    if module_path.name and module_path.name != "__init__":
+        tokens.add(f"./{module_path.name}")
+    if module_path.name == "index":
+        if path.parent.name:
+            tokens.add(path.parent.as_posix())
+            tokens.add(path.parent.name)
+            tokens.add(f"./{path.parent.name}")
+        else:
+            tokens.add("./")
+    if path.suffix == ".java":
+        for offset in range(max(len(module_parts) - 1, 0)):
+            tokens.add(f"{'.'.join(module_parts[offset:-1])}.*")
     return tuple(sorted(tokens))
 
 

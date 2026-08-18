@@ -699,6 +699,22 @@ def test_causal_envelope_dogfood_requires_command_for_exercising_tests() -> None
     assert check(envelope) == ["verification_command"]
 
 
+def test_causal_envelope_dogfood_allows_unavailable_test_runner() -> None:
+    import runpy
+
+    check = runpy.run_path("scripts/check_causal_envelope.py")["_invalid_causal_fields"]
+    envelope = {
+        "dependents": [],
+        "dependencies": [],
+        "exercising_tests": ["src/test/java/com/acme/UtilTest.java"],
+        "constraint_verdict": "unknown",
+        "verification_command": None,
+        "stale_edges": [],
+    }
+
+    assert check(envelope, "src/main/java/com/acme/Util.java") == []
+
+
 def test_causal_envelope_dogfood_accepts_explicitly_unavailable_facts() -> None:
     import runpy
 
@@ -1680,6 +1696,7 @@ def test_snapshot_dependency_view_reads_dynamic_import_projection() -> None:
     ("spec", "importer", "inventory", "expected"),
     [
         ("./util", "src/main.ts", {"src/util.py", "src/util.ts"}, "src/util.ts"),
+        ("./types", "src/main.ts", {"src/types.d.ts"}, "src/types.d.ts"),
         ("./lib", "src/main.js", {"src/lib/index.js"}, "src/lib/index.js"),
         (
             "com.example.Util",
@@ -1701,6 +1718,27 @@ def test_snapshot_dependency_view_reads_dynamic_import_projection() -> None:
             "src/main/java/com/acme/Main.java",
             {"src/main/java/com/acme/App.java"},
             "src/main/java/com/acme/App.java",
+        ),
+        (
+            "com.acme.Outer.Inner",
+            "src/main/java/com/acme/Main.java",
+            {"src/main/java/com/acme/Outer.java"},
+            "src/main/java/com/acme/Outer.java",
+        ),
+        (
+            "com.acme.Outer.Inner",
+            "Main.java",
+            {"com/acme/Outer.java"},
+            "com/acme/Outer.java",
+        ),
+        (
+            "com.acme.Outer.Inner",
+            "src/main/java/com/acme/Main.java",
+            {
+                "src/main/java/com/acme/Outer.java",
+                "vendor/com/acme/Outer.java",
+            },
+            None,
         ),
         (
             "pkg.app",
@@ -1831,6 +1869,31 @@ def test_snapshot_dependency_view_resolves_root_commonjs_directory() -> None:
     view = build_snapshot_file_dependency_view(conn, "main.js")
 
     assert view.dependencies_of("main.js") == ["index.js"]
+
+
+def test_snapshot_dependency_view_finds_root_index_dependent() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("main.js", json.dumps([{"text": "require('./')"}])),
+            ("index.js", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "index.js")
+
+    assert view.dependents_of("index.js") == ["main.js"]
 
 
 def test_snapshot_dependency_view_rejects_bare_javascript_package() -> None:
@@ -1985,6 +2048,37 @@ def test_snapshot_python_import_includes_source_root_package_initializer() -> No
     ]
 
 
+def test_snapshot_python_import_normalizes_line_continuation() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("pkg/a.py", "[]"),
+            ("pkg/b.py", "[]"),
+            (
+                "routes.py",
+                json.dumps([{"text": "import pkg.a, \\\n pkg.b"}]),
+            ),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "routes.py")
+    reverse_view = build_snapshot_file_dependency_view(conn, "pkg/b.py")
+
+    assert view.dependencies_of("routes.py") == ["pkg/a.py", "pkg/b.py"]
+    assert reverse_view.dependents_of("pkg/b.py") == ["routes.py"]
+
+
 def test_snapshot_java_import_resolves_maven_source_root() -> None:
     import json
     import sqlite3
@@ -2009,7 +2103,6 @@ def test_snapshot_java_import_resolves_maven_source_root() -> None:
     )
 
     view = build_snapshot_file_dependency_view(conn, "src/main/java/com/acme/Main.java")
-
     assert view.dependencies_of("src/main/java/com/acme/Main.java") == [
         "src/main/java/com/acme/Util.java"
     ]
@@ -2043,6 +2136,75 @@ def test_snapshot_java_static_import_resolves_owner_class() -> None:
     assert view.dependencies_of("src/main/java/com/acme/Main.java") == [
         "src/main/java/com/acme/Util.java"
     ]
+
+
+def test_snapshot_java_wildcard_import_expands_indexed_package() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "src/main/java/com/acme/Main.java",
+                json.dumps([{"text": "import com.acme.*;"}]),
+            ),
+            ("src/main/java/com/acme/Helper.java", "[]"),
+            ("src/main/java/com/acme/Util.java", "[]"),
+            ("src/main/java/com/acme/sub/Nested.java", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/main/java/com/acme/Main.java")
+    reverse_view = build_snapshot_file_dependency_view(
+        conn, "src/main/java/com/acme/Util.java"
+    )
+
+    assert view.dependencies_of("src/main/java/com/acme/Main.java") == [
+        "src/main/java/com/acme/Helper.java",
+        "src/main/java/com/acme/Util.java",
+    ]
+    assert reverse_view.dependents_of("src/main/java/com/acme/Util.java") == [
+        "src/main/java/com/acme/Main.java"
+    ]
+
+
+def test_snapshot_typescript_declaration_import_is_bidirectional() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "src/main.ts",
+                json.dumps([{"text": "import type { Foo } from './types'"}]),
+            ),
+            ("src/types.d.ts", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/main.ts")
+    reverse_view = build_snapshot_file_dependency_view(conn, "src/types.d.ts")
+
+    assert view.dependencies_of("src/main.ts") == ["src/types.d.ts"]
+    assert reverse_view.dependents_of("src/types.d.ts") == ["src/main.ts"]
 
 
 def test_snapshot_python_relative_import_cannot_escape_top_package() -> None:
