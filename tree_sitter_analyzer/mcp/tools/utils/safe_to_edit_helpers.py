@@ -981,6 +981,12 @@ def _import_module_name(import_text: str) -> str | None:
     )
     if m:
         return m.group(1).split("$", 1)[0]
+    m = _re.search(
+        r"^\s*///\s*<reference\b[^>]*\bpath\s*=\s*(['\"])([^'\"]+)\1",
+        import_text,
+    )
+    if m:
+        return m.group(2)
     return None
 
 
@@ -1474,6 +1480,12 @@ def _resolve_import_spec_from_inventory(
     if not spec:
         return None
 
+    language = _target_language(importer_rel_path)
+    if language in {"javascript", "typescript"}:
+        spec = re.split(r"[?#]", spec, maxsplit=1)[0]
+        if not spec:
+            return None
+
     # JavaScript/TypeScript module specifiers use POSIX path syntax.  Resolve
     # them separately from Python's leading-dot package syntax so a valid
     # ``../shared`` import cannot escape the repository root and ``./setup``
@@ -1508,7 +1520,6 @@ def _resolve_import_spec_from_inventory(
     else:
         candidate_base = spec.replace(".", "/")
 
-    language = _target_language(importer_rel_path)
     if language in {"javascript", "typescript"} and not spec.startswith(("./", "../")):
         return None
     suffixes: tuple[str, ...]
@@ -1709,6 +1720,13 @@ def _import_targets_from_text(
         )
         if reflection is not None:
             specs.add(reflection.group(2).split("$", 1)[0])
+    if importer_language == "typescript":
+        path_reference = re.match(
+            r"^\s*///\s*<reference\b[^>]*\bpath\s*=\s*(['\"])([^'\"]+)\1",
+            import_text,
+        )
+        if path_reference is not None:
+            specs.add(path_reference.group(2))
     specs.update(
         match.group(2)
         for match in re.finditer(
@@ -1827,7 +1845,8 @@ def _jsts_import_projection_complete(conn: Any, inventory: frozenset[str]) -> bo
             continue
         for import_text in import_texts:
             spec = _import_module_name(import_text)
-            if spec is None or not spec.startswith(("./", "../")):
+            normalized = re.split(r"[?#]", spec, maxsplit=1)[0] if spec else None
+            if normalized is None or not normalized.startswith(("./", "../")):
                 return False
     return True
 

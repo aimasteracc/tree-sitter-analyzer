@@ -146,9 +146,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v20: re-exports and aliased/reflection loads enter the projection.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 20
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 20
+        # v21: path references and deferred Python aliases enter the projection.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 21
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 21
 
 
 class TestJavaScriptModuleCallProjection:
@@ -223,6 +223,20 @@ class TestJavaScriptModuleCallProjection:
 
         assert _extract_imports(symbols) == []
 
+    def test_triple_slash_path_reference_is_projected(self) -> None:
+        source = '/// <reference path="./types.d.ts" />\nconst value = 1;'
+        symbols = {"symbols": _symbols_for(source, "typescript")}
+
+        assert _extract_imports(symbols) == [
+            {"text": '/// <reference path="./types.d.ts" />', "line": 1}
+        ]
+
+    def test_triple_slash_types_reference_is_not_projected(self) -> None:
+        source = '/// <reference types="node" />\nconst value = 1;'
+        symbols = {"symbols": _symbols_for(source, "typescript")}
+
+        assert _extract_imports(symbols) == []
+
 
 class TestPythonDynamicImportProjection:
     @pytest.mark.parametrize(
@@ -257,6 +271,19 @@ class TestPythonDynamicImportProjection:
         assert {item["text"] for item in _extract_imports(symbols)} == {
             "from importlib import import_module as load",
             "load('pkg.util')",
+        }
+
+    def test_alias_declared_after_deferred_call_is_projected(self) -> None:
+        source = (
+            "def load_plugin():\n"
+            "    return load('pkg.util')\n"
+            "from importlib import import_module as load\n"
+        )
+        symbols = {"symbols": _symbols_for(source, "python")}
+
+        assert {item["text"] for item in _extract_imports(symbols)} == {
+            "load('pkg.util')",
+            "from importlib import import_module as load",
         }
 
     @pytest.mark.parametrize("missing_field", ["function", "arguments"])

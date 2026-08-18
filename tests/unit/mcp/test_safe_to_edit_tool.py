@@ -1758,6 +1758,65 @@ def test_snapshot_dependency_view_reads_jsts_reexport(projection: str) -> None:
     assert view.dependencies_of("src/index.ts") == ["src/util.ts"]
 
 
+@pytest.mark.parametrize(
+    "projection",
+    ["import './util.js?worker';", "export * from './util.js#worker';"],
+)
+def test_snapshot_dependency_view_normalizes_jsts_url_suffix(
+    projection: str,
+) -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("src/index.ts", json.dumps([{"text": projection}])),
+            ("src/util.js", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/index.ts")
+
+    assert view.dependencies_of("src/index.ts") == ["src/util.js"]
+
+
+def test_snapshot_dependency_view_reads_typescript_path_reference() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "src/index.ts",
+                json.dumps([{"text": '/// <reference path="./types.d.ts" />'}]),
+            ),
+            ("src/types.d.ts", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/index.ts")
+
+    assert view.dependencies_of("src/index.ts") == ["src/types.d.ts"]
+
+
 def test_snapshot_dependency_view_reads_aliased_python_dynamic_import() -> None:
     import json
     import sqlite3
@@ -1833,6 +1892,7 @@ def test_snapshot_import_module_name_reads_dynamic_import_with_options() -> None
         ("import(`./${name}`)", None),
         ("importlib.import_module('pkg.util')", "pkg.util"),
         ("__import__('pkg.util')", "pkg.util"),
+        ('/// <reference path="./types.d.ts" />', "./types.d.ts"),
     ],
 )
 def test_snapshot_import_module_name_reads_static_dynamic_forms(

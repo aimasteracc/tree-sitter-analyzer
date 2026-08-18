@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -72,7 +73,11 @@ class _SymbolWalker:
     python_dynamic_loaders: set[str] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self.python_dynamic_loaders = {"__import__", "importlib.import_module"}
+        self.python_dynamic_loaders = (
+            set(_python_dynamic_loader_names(self.source))
+            if self.language == "python"
+            else set()
+        )
 
     def walk(self, node: Any, depth: int = 0, enclosed: bool = False) -> None:
         if depth > _WALK_MAX_DEPTH:
@@ -101,6 +106,8 @@ class _SymbolWalker:
             self._append_import(node)
             return
         if self._append_jsts_reexport(node):
+            return
+        if self._append_typescript_path_reference(node):
             return
         if self._append_jsts_module_call(node):
             return
@@ -224,6 +231,23 @@ class _SymbolWalker:
         if node.type != "export_statement":
             return False
         if node.child_by_field_name("source") is None:
+            return False
+        self._append_import(node)
+        return True
+
+    def _append_typescript_path_reference(self, node: Any) -> bool:
+        """Project triple-slash declaration-file references as dependencies."""
+        if self.language != "typescript" or node.type != "comment":
+            return False
+        text = _node_text(node, self.source)
+        if (
+            re.fullmatch(
+                r"\s*///\s*<reference\b"
+                r"(?=[^>]*\bpath\s*=\s*(['\"])[^'\"]+\1)[^>]*?/?>\s*",
+                text,
+            )
+            is None
+        ):
             return False
         self._append_import(node)
         return True
