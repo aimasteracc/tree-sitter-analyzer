@@ -109,6 +109,20 @@ def _python_module_scope_statements(module: ast.Module) -> list[ast.stmt]:
     return statements
 
 
+def _python_assignment_target_leaves(target: ast.expr) -> list[ast.expr]:
+    """Return the binding leaves of one assignment target."""
+
+    if isinstance(target, (ast.List, ast.Tuple)):
+        return [
+            leaf
+            for element in target.elts
+            for leaf in _python_assignment_target_leaves(element)
+        ]
+    if isinstance(target, ast.Starred):
+        return _python_assignment_target_leaves(target.value)
+    return [target]
+
+
 def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
     """Return module loader aliases and whether their scope is unambiguous."""
     names = {"__import__", "builtins.__import__", "importlib.import_module"}
@@ -160,8 +174,19 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
         )
         and _python_reference_name(value) not in names
         for targets, value in assignments
+        for outer_target in targets
+        for target in _python_assignment_target_leaves(outer_target)
+    )
+    destructured_loader_alias = any(
+        isinstance(target, (ast.List, ast.Tuple))
+        and any(
+            _python_reference_name(value_leaf) in names
+            for value_leaf in _python_assignment_target_leaves(value)
+        )
+        for targets, value in assignments
         for target in targets
     )
+    module_rebinding = module_rebinding or destructured_loader_alias
     for statement in module_statements:
         if isinstance(statement, ast.Import):
             for alias in statement.names:

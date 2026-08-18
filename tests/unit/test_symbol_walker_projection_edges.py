@@ -176,6 +176,14 @@ load("pkg.util")
         "importlib.import_module('pkg.util')\n",
         "import builtins as runtime\nruntime.__import__ = fake\n"
         "runtime.__import__('pkg.util')\n",
+        "import importlib\nimportlib.import_module, other = fake, value\n"
+        "importlib.import_module('pkg.util')\n",
+        "import builtins as runtime\n[other, [runtime.__import__]] = values\n"
+        "runtime.__import__('pkg.util')\n",
+        "import builtins as runtime\nother, *runtime.__import__ = values\n"
+        "runtime.__import__('pkg.util')\n",
+        "import importlib\nload, other = importlib.import_module, value\n"
+        "load('pkg.util')\n",
     ],
 )
 def test_python_loader_analysis_rejects_qualified_loader_rebinding(

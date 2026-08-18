@@ -130,9 +130,9 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
     # to_relative fall back to the absolute path and miss every graph node
     # (CLAUDE.md §2 resolution contract) — downstream facts would silently
     # undercount on macOS while Linux CI saw them.
-    rel_path = to_relative(
-        os.path.realpath(context.resolved_path), context.project_root
-    ).replace("\\", "/")
+    rel_path = _normalize_relative_path(
+        to_relative(os.path.realpath(context.resolved_path), context.project_root)
+    )
     dependents = safe_dependents(context.graph, rel_path)
     dependencies = safe_dependencies(context.graph, rel_path)
     if context.snapshot_conn is not None:
@@ -226,9 +226,9 @@ def _format_safe_to_edit_result(
     # Constraint violations promote the verdict: an error-severity
     # violation referencing this file forces UNSAFE; warn-only forces
     # CAUTION. The base_verdict (derived from risk_level) is the floor.
-    certified_rel_path = to_relative(
-        os.path.realpath(context.resolved_path), context.project_root
-    ).replace("\\", "/")
+    certified_rel_path = _normalize_relative_path(
+        to_relative(os.path.realpath(context.resolved_path), context.project_root)
+    )
     if context.snapshot_conn is not None:
         # Codex P1 (#1299): the certified read_existing route runs the
         # certified fixture probe — never the live .ast-cache DB and never
@@ -630,6 +630,12 @@ def to_relative(abs_path: str, project_root: str) -> str:
         return abs_path
 
 
+def _normalize_relative_path(path: str) -> str:
+    """Use snapshot separators without changing legal POSIX backslashes."""
+
+    return path.replace("\\", "/") if os.sep == "\\" else path
+
+
 _DEPENDENCY_SKIP_DIRS = frozenset(
     {
         "node_modules",
@@ -687,7 +693,7 @@ def build_file_dependency_view(
     """
     root = Path(project_root).resolve()
     target = Path(resolved_path).resolve()
-    rel_path = to_relative(str(target), str(root)).replace("\\", "/")
+    rel_path = _normalize_relative_path(to_relative(str(target), str(root)))
     dependencies = _target_dependencies(target, rel_path, root)
     dependents = _target_dependents(target, rel_path, root)
     return FileDependencyView(
@@ -725,7 +731,7 @@ def _target_dependents(target: Path, rel_path: str, root: Path) -> set[str]:
         except OSError:
             continue
         if any(needle in text for needle in needles):
-            dependents.add(to_relative(str(path), str(root)).replace("\\", "/"))
+            dependents.add(_normalize_relative_path(to_relative(str(path), str(root))))
     return dependents
 
 
@@ -1547,15 +1553,21 @@ def snapshot_inventory(conn: Any) -> frozenset[str]:
 
     Codex P1 (#1299 round-3): certified reads must derive facts only from
     inventory-covered paths (the source oracle prunes e.g. ``tests/vendor``
-    from the generation). An unreadable inventory degrades to the empty
-    set — the conservative, fail-closed direction for certified facts.
+    from the generation). A missing legacy table degrades to the empty set;
+    malformed rows in a present inventory fail closed as ``CORRUPT_INDEX``.
     """
 
     try:
         rows = conn.execute("SELECT file_path FROM ast_index").fetchall()
     except Exception:  # nosec B110 — legacy/partial schema
         return frozenset()
-    return frozenset(str(row["file_path"]) for row in rows)
+    inventory: set[str] = set()
+    for row in rows:
+        file_path = row["file_path"]
+        if not isinstance(file_path, str) or not file_path:
+            raise ValueError("CORRUPT_INDEX")
+        inventory.add(file_path)
+    return frozenset(inventory)
 
 
 def _resolve_import_spec_from_inventory(

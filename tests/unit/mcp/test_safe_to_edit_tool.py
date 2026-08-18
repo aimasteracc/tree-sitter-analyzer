@@ -1474,6 +1474,23 @@ def test_snapshot_dependency_view_degrades_on_schema_drift() -> None:
         build_snapshot_file_dependency_view(damaged, "app.py")
 
 
+@pytest.mark.parametrize("stored_path", [None, "", 42, b"app.py"])
+def test_snapshot_inventory_rejects_malformed_paths(stored_path: object) -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        snapshot_inventory,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE ast_index (file_path)")
+    conn.execute("INSERT INTO ast_index VALUES (?)", (stored_path,))
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        snapshot_inventory(conn)
+
+
 # RFC-0022 P0.4: the snapshot dependency view resolves exact IMPORTS edges
 # AND recalls member imports via the imports_json needle pass, matching the
 # legacy live axis ('from pkg import app' / 'from . import app').
@@ -1560,7 +1577,11 @@ def test_snapshot_dependency_view_rejects_malformed_candidate_projection(
     conn.execute("INSERT INTO ast_index VALUES (?, ?)", (stored_path, imports_json))
 
     with pytest.raises(ValueError, match="CORRUPT_INDEX"):
-        build_snapshot_file_dependency_view(conn, "app.py")
+        build_snapshot_file_dependency_view(
+            conn,
+            "app.py",
+            inventory=frozenset({"app.py", "candidate.py"}),
+        )
 
 
 def test_snapshot_dependency_view_rejects_malformed_target_projection() -> None:
@@ -2180,6 +2201,7 @@ def test_certified_facts_normalize_windows_snapshot_path(
     import tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers as helpers
 
     captured: list[tuple[str, list[str]]] = []
+    monkeypatch.setattr(helpers.os, "sep", "\\")
     monkeypatch.setattr(helpers, "to_relative", lambda *_args: "pkg\\app.py")
     monkeypatch.setattr(
         helpers,
@@ -2211,6 +2233,40 @@ def test_certified_facts_normalize_windows_snapshot_path(
 
     assert facts.dependencies == ["pkg/dep.py"]
     assert captured == [("pkg/app.py", ["tests/test_app.py"])]
+
+
+def test_safe_to_edit_preserves_posix_literal_backslash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers as helpers
+
+    literal_path = "pkg/a\\b.py"
+    monkeypatch.setattr(helpers.os, "sep", "/")
+    monkeypatch.setattr(helpers, "to_relative", lambda *_args: literal_path)
+    monkeypatch.setattr(helpers, "find_test_files", lambda *_args: [])
+    context = helpers.SafeToEditContext(
+        file_path=literal_path,
+        edit_type="refactor",
+        resolved_path=str(tmp_path / literal_path),
+        project_root=str(tmp_path),
+        graph=helpers.FileDependencyView(
+            rel_path=literal_path,
+            dependencies={"pkg/dep.py"},
+            dependents={"tests/test_app.py"},
+        ),
+        scorer=SimpleNamespace(
+            score_file=lambda *args, **kwargs: SimpleNamespace(
+                grade="A", total=100, dimensions={}
+            )
+        ),
+    )
+
+    facts = helpers._collect_safe_to_edit_facts(context)
+
+    assert facts.dependencies == ["pkg/dep.py"]
+    assert facts.dependents == ["tests/test_app.py"]
 
 
 def test_snapshot_dependency_view_matches_javascript_directory_index_import() -> None:
@@ -3411,7 +3467,12 @@ def test_snapshot_needle_importers_rejects_malformed_projection(
         conn.execute("INSERT INTO ast_index VALUES (?, ?)", (stored_path, imports_json))
 
     with pytest.raises(ValueError, match="CORRUPT_INDEX"):
-        _snapshot_needle_importers(conn, "app.py", candidates)
+        _snapshot_needle_importers(
+            conn,
+            "app.py",
+            candidates,
+            inventory=frozenset({"app.py", "routes.py"}),
+        )
 
 
 def test_snapshot_needle_importers_ignores_unrelated_import_text() -> None:
