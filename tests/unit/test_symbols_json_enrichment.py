@@ -146,12 +146,24 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v18: causal envelopes project literal template/Python dynamic imports.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 18
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 18
+        # v19: unresolved JS/TS module calls remain fail-closed evidence.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 19
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 19
 
 
 class TestJavaScriptModuleCallProjection:
+    def test_module_variable_remains_a_module_symbol(self):
+        symbols = _symbols_for("const visible = 1;\n", "typescript")
+
+        assert [item["name"] for item in symbols if item["kind"] == "variable"] == [
+            "visible"
+        ]
+
+    def test_enclosed_variable_is_not_a_module_symbol(self):
+        symbols = _symbols_for("function f() { const hidden = 1; }\n", "typescript")
+
+        assert [item["name"] for item in symbols if item["kind"] == "variable"] == []
+
     def test_commonjs_literal_is_projected_as_import(self):
         symbols = {"symbols": _symbols_for("require('./legacy');", "typescript")}
 
@@ -168,20 +180,20 @@ class TestJavaScriptModuleCallProjection:
 
         assert _extract_imports(symbols) == [{"text": "import(`./lazy`)", "line": 1}]
 
-    def test_dynamic_import_interpolated_template_is_not_projected(self):
+    def test_dynamic_import_interpolated_template_is_projected_for_fail_closed(self):
         symbols = {"symbols": _symbols_for("import(`./${name}`);", "typescript")}
 
-        assert _extract_imports(symbols) == []
+        assert _extract_imports(symbols) == [{"text": "import(`./${name}`)", "line": 1}]
 
     def test_ordinary_call_is_not_projected_as_import(self):
         symbols = {"symbols": _symbols_for("load('./module');", "typescript")}
 
         assert _extract_imports(symbols) == []
 
-    def test_nonliteral_require_is_not_projected_as_import(self):
+    def test_nonliteral_require_is_projected_for_fail_closed(self):
         symbols = {"symbols": _symbols_for("require(moduleName);", "typescript")}
 
-        assert _extract_imports(symbols) == []
+        assert _extract_imports(symbols) == [{"text": "require(moduleName)", "line": 1}]
 
     def test_incomplete_call_node_is_not_projected_as_import(self):
         from tree_sitter_analyzer.cache._symbol_walker import _SymbolWalker
@@ -215,6 +227,25 @@ class TestPythonDynamicImportProjection:
             {"text": "__import__(module_name)", "line": 1}
         ]
 
+    @pytest.mark.parametrize("missing_field", ["function", "arguments"])
+    def test_incomplete_dynamic_import_node_is_not_projected(
+        self, missing_field: str
+    ) -> None:
+        from types import SimpleNamespace
+
+        from tree_sitter_analyzer.cache._symbol_walker import _SymbolWalker
+
+        class _IncompleteCall:
+            type = "call"
+
+            @staticmethod
+            def child_by_field_name(name: str):
+                return None if name == missing_field else SimpleNamespace()
+
+        walker = _SymbolWalker("", [], "python", None)
+
+        assert walker._append_python_module_call(_IncompleteCall()) is False
+
 
 class TestCIncludeProjection:
     def test_c_project_local_include_is_projected_as_import(self):
@@ -228,6 +259,11 @@ class TestCIncludeProjection:
         assert _extract_imports(symbols) == [
             {"text": '#include "util.hpp"\n', "line": 1}
         ]
+
+    def test_macro_include_is_projected_for_fail_closed_read(self):
+        symbols = {"symbols": _symbols_for('#define HDR "util.h"\n#include HDR\n', "c")}
+
+        assert _extract_imports(symbols) == [{"text": "#include HDR\n", "line": 2}]
 
 
 class TestBashVariableAssignmentScope:

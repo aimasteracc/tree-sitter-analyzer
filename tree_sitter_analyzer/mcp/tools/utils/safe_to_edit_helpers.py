@@ -1195,16 +1195,9 @@ def _certified_symbol_reference_tests(
                 if importer_language in {"python", "java"} and resolved_module is None:
                     continue
                 if importer_language == "python" and resolved_module != rel_path:
-                    if (
-                        not resolved_module
-                        or Path(resolved_module).name != "__init__.py"
-                    ):
-                        continue
-                    providers = _python_package_symbol_providers(
-                        conn, resolved_module, matched, inventory
-                    )
-                    if not any(providers[symbol] == {rel_path} for symbol in matched):
-                        continue
+                    # Package member imports were resolved above; every other
+                    # Python module mismatch disproves attribution to target.
+                    continue
                 if (
                     importer_language == "java"
                     and resolved_module
@@ -1821,9 +1814,11 @@ def _quoted_include_projection_complete(
         return False
     for importer in source_files:
         for text in projected[importer]:
+            if re.match(r"^\s*#\s*include\b", text) is None:
+                continue
             match = re.match(r'^\s*#\s*include\s*"([^"]+)"', text)
             if match is None:
-                continue
+                return False
             candidates = _quoted_include_matches(match.group(1), importer, inventory)
             if rel_path in candidates and len(candidates) != 1:
                 return False

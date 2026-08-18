@@ -1025,6 +1025,37 @@ def test_certified_symbol_reference_tests_reject_unresolved_java_imports() -> No
     )
 
 
+def test_certified_symbol_reference_tests_reject_java_import_resolved_elsewhere() -> (
+    None
+):
+    conn = _symbol_reference_conn(
+        [
+            ("src/main/java/com/acme/Util.java", _symbol_payload("Util"), "[]"),
+            ("src/main/java/other/Util.java", _symbol_payload("Util"), "[]"),
+            (
+                "src/test/java/com/acme/UtilTest.java",
+                "{}",
+                _import_payload("import other.Util;"),
+            ),
+        ]
+    )
+    inventory = {
+        "src/main/java/com/acme/Util.java",
+        "src/main/java/other/Util.java",
+        "src/test/java/com/acme/UtilTest.java",
+    }
+
+    assert (
+        _certified_refs(
+            conn,
+            inventory,
+            target="src/main/java/com/acme/Util.java",
+            language="java",
+        )
+        == []
+    )
+
+
 def test_certified_symbol_reference_tests_resolve_java_static_owner() -> None:
     conn = _symbol_reference_conn(
         [

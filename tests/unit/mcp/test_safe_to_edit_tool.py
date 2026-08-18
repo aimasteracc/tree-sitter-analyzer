@@ -2558,7 +2558,7 @@ def test_certified_symbol_tests_bind_package_reexport_to_defining_module() -> No
             ("pkg/b.py", "[]", symbol),
             (
                 "tests/test_pkg.py",
-                json.dumps([{"text": "from pkg import run"}]),
+                json.dumps([{"text": "import pkg"}, {"text": "from pkg import *"}]),
                 "{}",
             ),
         ],
@@ -3622,6 +3622,49 @@ def test_snapshot_syntax_envelope_marks_ambiguous_include_root_unavailable() -> 
         "include-one/project/util.h",
         "include-one/project/util.h",
     )
+
+    assert envelope == {
+        "dependents": None,
+        "dependencies": None,
+        "exercising_tests": None,
+        "constraint_verdict": "unknown",
+        "verification_command": None,
+        "stale_edges": None,
+    }
+
+
+@pytest.mark.parametrize("include_text", ["#include HDR", "#include <util.h>"])
+def test_snapshot_syntax_envelope_marks_nonquoted_include_unavailable(
+    include_text: str,
+) -> None:
+    # PR #1308: macro/build-resolved includes lack snapshot-bound resolution.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    target = "include/util.h"
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, '{}')",
+        [
+            ("src/main.c", json.dumps([{"text": include_text}])),
+            (target, "[]"),
+        ],
+    )
+
+    envelope = build_snapshot_syntax_causal_envelope(conn, target, target)
 
     assert envelope == {
         "dependents": None,

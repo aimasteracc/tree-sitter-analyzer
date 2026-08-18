@@ -167,7 +167,7 @@ class _SymbolWalker:
         )
 
     def _append_jsts_module_call(self, node: Any) -> bool:
-        """Project literal CommonJS and dynamic imports into ``imports_json``."""
+        """Project JS/TS module loads so unresolved calls fail closed."""
         if self.language not in {"javascript", "typescript"}:
             return False
         if node.type != "call_expression":
@@ -177,18 +177,6 @@ class _SymbolWalker:
         if function is None or arguments is None:
             return False
         if _node_text(function, self.source) not in {"require", "import"}:
-            return False
-        literals = [
-            child
-            for child in arguments.children
-            if child.type in {"string", "template_string"}
-        ]
-        if not literals or (
-            literals[0].type == "template_string"
-            and any(
-                child.type == "template_substitution" for child in literals[0].children
-            )
-        ):
             return False
         self._append_import(node)
         return True
