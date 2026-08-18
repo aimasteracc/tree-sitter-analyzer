@@ -167,9 +167,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v34: retained loader object paths and projected aliases are persisted.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 34
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 34
+        # v35: dynamic owners, loader factories, and eval are persisted.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 35
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 35
 
 
 def test_python_module_control_bindings_cover_all_module_control_targets() -> None:
@@ -276,6 +276,16 @@ def test_python_star_imported_loader_fails_closed() -> None:
         ("import importlib\ndef run():\n    importlib.import_module += fake\n"),
         "import importlib\ndef run():\n    del importlib.import_module\n",
         ("import importlib\ndef expose():\n    return importlib.import_module\n"),
+        (
+            'load = getattr(__import__("importlib"), "import_module")\n'
+            'load("pkg.util")\n'
+        ),
+        ('load = vars(__import__("importlib"))["import_module"]\nload("pkg.util")\n'),
+        (
+            'load = __import__("importlib").__dict__.get("import_module")\n'
+            'load("pkg.util")\n'
+        ),
+        ('load = __import__("importlib").import_module\nload("pkg.util")\n'),
     ],
 )
 def test_python_loader_escape_and_nested_rebinding_fail_closed(source: str) -> None:
@@ -460,7 +470,18 @@ def test_commonjs_utility_members_preserve_projection_completeness(
         '(enabled ? require : fallback)("./util.js");',
         'function getLoader() { return require; } getLoader()("./util.js");',
         'const { require: load } = module; load("./util.js");',
+        'const { require } = module; require("./util.js");',
         'const mainModule = require.main; mainModule.require("./util.js");',
+        (
+            "const load = module.constructor.createRequire(__filename); "
+            'load("./util.js");'
+        ),
+        'module.constructor.createRequire(__filename)("./util.js");',
+        "eval('require(\"./util.js\")');",
+        "(0, eval)('require(\"./util.js\")');",
+        'globalThis["eval"](\'require("./util.js")\');',
+        "self.eval('require(\"./util.js\")');",
+        "const run = eval; run('require(\"./util.js\")');",
     ],
 )
 def test_retained_commonjs_loader_object_paths_fail_closed(source: str) -> None:
@@ -503,6 +524,12 @@ def test_non_loader_module_destructuring_preserves_completeness() -> None:
     assert extraction["import_projection_complete"] is True
 
 
+def test_unrelated_eval_member_preserves_projection_completeness() -> None:
+    extraction = _extraction_for('config.eval("safe expression");', "javascript")
+
+    assert extraction["import_projection_complete"] is True
+
+
 def test_malformed_indirect_commonjs_loader_member_is_not_matched() -> None:
     node = SimpleNamespace(
         type="member_expression",
@@ -524,6 +551,55 @@ def test_malformed_indirect_commonjs_loader_member_is_not_matched() -> None:
         child_by_field_name=lambda _field: None,
     )
     assert not walker_module._jsts_pattern_selects_require_property(malformed_pair, "")
+
+    malformed_parenthesized = SimpleNamespace(
+        type="parenthesized_expression", children=[]
+    )
+    assert not walker_module._jsts_global_eval_reference(malformed_parenthesized, "")
+
+    malformed_eval_member = SimpleNamespace(
+        type="member_expression",
+        child_by_field_name=lambda field: (
+            SimpleNamespace(type="identifier") if field == "object" else None
+        ),
+    )
+    assert not walker_module._jsts_global_eval_reference(malformed_eval_member, "")
+
+    missing_factory_function = SimpleNamespace(
+        type="call_expression",
+        child_by_field_name=lambda _field: None,
+    )
+    assert not walker_module._jsts_module_loader_factory_call(
+        missing_factory_function, ""
+    )
+
+    malformed_factory_function = SimpleNamespace(
+        type="call_expression",
+        child_by_field_name=lambda field: (
+            malformed_parenthesized if field == "function" else None
+        ),
+    )
+    assert walker_module._jsts_module_loader_factory_call(
+        malformed_factory_function, ""
+    )
+
+    non_factory_function = SimpleNamespace(
+        type="call_expression",
+        child_by_field_name=lambda field: (
+            SimpleNamespace(type="arrow_function") if field == "function" else None
+        ),
+    )
+    assert not walker_module._jsts_module_loader_factory_call(non_factory_function, "")
+
+    non_loader_shorthand = SimpleNamespace(
+        type="shorthand_property_identifier_pattern",
+        start_byte=0,
+        end_byte=5,
+        children=[],
+    )
+    assert not walker_module._jsts_pattern_selects_require_property(
+        non_loader_shorthand, "other"
+    )
 
 
 def test_malformed_parenthesized_commonjs_nodes_fail_closed() -> None:

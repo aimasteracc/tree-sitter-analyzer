@@ -227,6 +227,25 @@ def _python_owner_exposes_loader(owner: str | None, names: set[str]) -> bool:
     return owner is not None and any(name.startswith(f"{owner}.") for name in names)
 
 
+def _python_loader_call_result(node: ast.expr, names: set[str]) -> bool:
+    """Return whether *node* is the module object returned by a loader call."""
+
+    return isinstance(node, ast.Call) and _python_reference_name(node.func) in names
+
+
+def _python_mapping_has_dynamic_loader_owner(node: ast.expr, names: set[str]) -> bool:
+    """Return whether a mapping view belongs to a dynamically loaded module."""
+
+    if isinstance(node, ast.Attribute) and node.attr == "__dict__":
+        return _python_loader_call_result(node.value, names)
+    return bool(
+        isinstance(node, ast.Call)
+        and _python_reference_name(node.func) in {"vars", "builtins.vars"}
+        and node.args
+        and _python_loader_call_result(node.args[0], names)
+    )
+
+
 def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
     """Return whether a value retains a loader reference for later use."""
 
@@ -235,10 +254,16 @@ def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
     mapping_owner = _python_loader_mapping_owner(node)
     if _python_owner_exposes_loader(mapping_owner, names):
         return True
+    if isinstance(node, ast.Attribute) and _python_loader_call_result(
+        node.value, names
+    ):
+        return True
     if isinstance(node, ast.Subscript):
         key = node.slice.value if isinstance(node.slice, ast.Constant) else None
         dynamic_key = not isinstance(node.slice, ast.Constant)
         owner = _python_loader_mapping_owner(node.value)
+        if _python_mapping_has_dynamic_loader_owner(node.value, names):
+            return True
         if owner is not None:
             if (dynamic_key and _python_owner_exposes_loader(owner, names)) or (
                 isinstance(key, str) and f"{owner}.{key}" in names
@@ -252,6 +277,8 @@ def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
         and node.args
     ):
         owner = _python_loader_mapping_owner(node.func.value)
+        if _python_mapping_has_dynamic_loader_owner(node.func.value, names):
+            return True
         key = node.args[0].value if isinstance(node.args[0], ast.Constant) else None
         if owner is not None:
             if (
@@ -276,6 +303,8 @@ def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
             not isinstance(node.args[1], ast.Constant)
             or (isinstance(attribute, str) and f"{owner}.{attribute}" in names)
         ):
+            return True
+        if _python_loader_call_result(node.args[0], names):
             return True
     children: list[ast.expr]
     if isinstance(node, ast.Call):
@@ -777,6 +806,59 @@ def _jsts_dynamic_module_member(node: Any, source: str) -> bool:
     return quoted_literal is None and template_literal is None
 
 
+def _jsts_global_eval_reference(node: Any, source: str) -> bool:
+    """Return whether one JS/TS expression references the global evaluator."""
+
+    node = _jsts_unwrap_parenthesized(node)
+    if node is None:
+        return False
+    if node.type == "identifier":
+        return _node_text(node, source) == "eval"
+    if node.type in {"member_expression", "subscript_expression"}:
+        owner = node.child_by_field_name("object")
+        accessor = node.child_by_field_name("property") or node.child_by_field_name(
+            "index"
+        )
+        if owner is None or accessor is None:
+            return False
+        return _node_text(owner, source).strip() in {
+            "global",
+            "globalThis",
+            "self",
+            "window",
+        } and (_node_text(accessor, source).strip("'\"`") == "eval")
+    if node.type == "sequence_expression":
+        return any(
+            _jsts_global_eval_reference(child, source)
+            for child in node.children
+            if getattr(child, "is_named", True)
+        )
+    return False
+
+
+def _jsts_module_loader_factory_call(node: Any, source: str) -> bool:
+    """Return whether one call produces a CommonJS loader function."""
+
+    if node.type != "call_expression":
+        return False
+    function = node.child_by_field_name("function")
+    if function is None:
+        return False
+    function = _jsts_unwrap_parenthesized(function)
+    if function is None:
+        return True
+    if function.type == "identifier":
+        return _node_text(function, source) == "createRequire"
+    if function.type not in {"member_expression", "subscript_expression"}:
+        return False
+    accessor = function.child_by_field_name("property") or function.child_by_field_name(
+        "index"
+    )
+    return accessor is not None and (
+        _node_text(accessor, source).strip("'\"`") == "createRequire"
+    )
+
+
 def _jsts_pattern_selects_require_property(node: Any, source: str) -> bool:
     """Return whether a binding pattern extracts ``module.require``."""
 
@@ -797,6 +879,10 @@ def _jsts_value_stores_module_loader(node: Any, source: str, loaders: set[str]) 
     """Detect a loader retained or passed as a value rather than invoked."""
 
     if _jsts_dynamic_module_member(node, source):
+        return True
+    if _jsts_global_eval_reference(node, source):
+        return True
+    if _jsts_module_loader_factory_call(node, source):
         return True
     if _jsts_require_utility_member(node, source, loaders):
         return False

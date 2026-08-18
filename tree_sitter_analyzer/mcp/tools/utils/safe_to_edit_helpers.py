@@ -794,16 +794,25 @@ def _extract_import_specs(source: str, suffix: str) -> set[str]:
 
 
 def _resolve_import_spec(spec: str, rel_path: str, root: Path) -> str | None:
-    if not spec or spec.startswith(".."):
+    if not spec or "\\" in spec:
         return None
-    if spec.startswith("."):
+    importer_suffix = Path(rel_path).suffix.lower()
+    if spec.startswith(("./", "../")):
+        base = Path(rel_path).parent
+        candidate_base = posixpath.normpath(f"{base.as_posix()}/{spec}")
+        if candidate_base == ".." or candidate_base.startswith("../"):
+            return None
+    elif spec.startswith(".."):
+        return None
+    elif spec.startswith("."):
         base = Path(rel_path).parent
         candidate_base = (base / spec.lstrip("./")).as_posix()
     else:
         candidate_base = spec.replace(".", "/")
+    if posixpath.isabs(candidate_base) or Path(candidate_base).is_absolute():
+        return None
 
     explicit_suffix = Path(candidate_base).suffix.lower()
-    importer_suffix = Path(rel_path).suffix.lower()
     if (
         importer_suffix in {".ts", ".tsx", ".mts", ".cts"}
         and explicit_suffix in _TYPESCRIPT_SOURCE_SUBSTITUTIONS

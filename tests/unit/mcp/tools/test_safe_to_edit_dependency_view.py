@@ -154,6 +154,31 @@ def test_build_file_dependency_view_parses_side_effect_node_imports(
     assert view.dependencies_of("src/main.mts") == ["src/setup.mts"]
 
 
+def test_live_node_import_resolves_bounded_parent_traversal(tmp_path: Path) -> None:
+    target = _write(
+        tmp_path,
+        "src/pages/view.mts",
+        'import { util } from "../util.mjs";\n',
+    )
+    _write(tmp_path, "src/util.mts", "export const util = true;\n")
+
+    view = build_file_dependency_view(str(target), str(tmp_path))
+
+    assert view.dependencies_of("src/pages/view.mts") == ["src/util.mts"]
+
+
+@pytest.mark.parametrize(
+    "specifier",
+    ["../../escape.mjs", "./../../escape.mjs", "/escape.mjs", "..\\escape.mjs"],
+)
+def test_live_node_import_rejects_repository_escape(
+    tmp_path: Path, specifier: str
+) -> None:
+    _write(tmp_path.parent, "escape.mjs", "export const escaped = true;\n")
+
+    assert _resolve_import_spec(specifier, "src/main.mts", tmp_path) is None
+
+
 def test_live_typescript_js_specifier_does_not_resolve_to_jsx(
     tmp_path: Path,
 ) -> None:
