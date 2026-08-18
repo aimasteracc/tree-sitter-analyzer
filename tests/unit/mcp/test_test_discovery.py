@@ -938,6 +938,48 @@ def test_certified_symbol_reference_tests_bind_esm_imports_to_modules() -> None:
     ) == ["tests/impl.test.ts"]
 
 
+def test_certified_symbol_reference_tests_bind_cpp_include_to_target() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("include/config.h", _symbol_payload("config"), "[]"),
+            ("third_party/config.h", "{}", "[]"),
+            (
+                "tests/test_other.cpp",
+                "{}",
+                _import_payload('#include "../third_party/config.h"'),
+            ),
+        ]
+    )
+    inventory = {
+        "include/config.h",
+        "third_party/config.h",
+        "tests/test_other.cpp",
+    }
+
+    assert (
+        _certified_refs(conn, inventory, target="include/config.h", language="cpp")
+        == []
+    )
+
+
+def test_certified_symbol_reference_tests_accept_cpp_target_include() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("include/config.h", _symbol_payload("config"), "[]"),
+            (
+                "tests/test_config.cpp",
+                "{}",
+                _import_payload('#include "../include/config.h"'),
+            ),
+        ]
+    )
+    inventory = {"include/config.h", "tests/test_config.cpp"}
+
+    assert _certified_refs(
+        conn, inventory, target="include/config.h", language="cpp"
+    ) == ["tests/test_config.cpp"]
+
+
 def test_file_defines_any_matches_indexed_symbols() -> None:
     from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
         _file_defines_any,

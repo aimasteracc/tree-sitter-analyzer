@@ -279,6 +279,15 @@ class TestPythonDynamicImportProjection:
             {"text": "__import__(module_name)", "line": 1}
         ]
 
+    def test_builtins_qualified_dynamic_import_is_projected(self) -> None:
+        source = "import builtins\nbuiltins.__import__('pkg.util')"
+        symbols = {"symbols": _symbols_for(source, "python")}
+
+        assert _extract_imports(symbols) == [
+            {"text": "import builtins", "line": 1},
+            {"text": "builtins.__import__('pkg.util')", "line": 2},
+        ]
+
     def test_aliased_import_module_call_is_projected(self) -> None:
         source = "from importlib import import_module as load\nload('pkg.util')"
         symbols = {"symbols": _symbols_for(source, "python")}
@@ -394,6 +403,13 @@ class TestCIncludeProjection:
 
         assert _extract_imports(symbols) == [{"text": "#include HDR\n", "line": 2}]
 
+    def test_include_next_is_projected_for_fail_closed_read(self) -> None:
+        symbols = {"symbols": _symbols_for('#include_next "util.h"\n', "cpp")}
+
+        assert _extract_imports(symbols) == [
+            {"text": '#include_next "util.h"\n', "line": 1}
+        ]
+
     @pytest.mark.parametrize(
         "source",
         ['import "util.h";', "import project.core;", "export import project.core;"],
@@ -402,6 +418,18 @@ class TestCIncludeProjection:
         symbols = {"symbols": _symbols_for(source, "cpp")}
 
         assert _extract_imports(symbols) == [{"text": source, "line": 1}]
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            '/*\nimport "fake.h";\n*/\n',
+            'const char *text = R"tag(\nimport "fake.h";\n)tag";\n',
+        ],
+    )
+    def test_cpp20_import_like_text_in_noncode_is_ignored(self, source: str) -> None:
+        symbols = {"symbols": _symbols_for(source, "cpp")}
+
+        assert _extract_imports(symbols) == []
 
 
 class TestJavaReflectionProjection:

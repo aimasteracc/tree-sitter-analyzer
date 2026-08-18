@@ -44,6 +44,44 @@ _CPP_MODULE_IMPORT_RE = re.compile(
 )
 
 
+def _cpp_code_mask(source: str) -> list[bool]:
+    """Mark C++ source positions that are outside comments and literals."""
+    mask = [True] * len(source)
+    i = 0
+    while i < len(source):
+        end = i
+        if source.startswith("//", i):
+            end = source.find("\n", i)
+            end = len(source) if end < 0 else end
+        elif source.startswith("/*", i):
+            closing = source.find("*/", i + 2)
+            end = len(source) if closing < 0 else closing + 2
+        elif source.startswith('R"', i):
+            opening = source.find("(", i + 2)
+            delimiter = source[i + 2 : opening] if opening >= 0 else ""
+            if opening >= 0 and len(delimiter) <= 16:
+                marker = f'){delimiter}"'
+                closing = source.find(marker, opening + 1)
+                end = len(source) if closing < 0 else closing + len(marker)
+        elif source[i] in {'"', "'"}:
+            quote = source[i]
+            end = i + 1
+            while end < len(source):
+                if source[end] == "\\":
+                    end += 2
+                elif source[end] == quote:
+                    end += 1
+                    break
+                else:
+                    end += 1
+        if end > i:
+            mask[i:end] = [False] * (end - i)
+            i = end
+        else:
+            i += 1
+    return mask
+
+
 def _python_module_scope_statements(module: ast.Module) -> list[ast.stmt]:
     """Return statements executed in module scope, excluding nested scopes."""
     statements: list[ast.stmt] = []
@@ -66,7 +104,7 @@ def _python_module_scope_statements(module: ast.Module) -> list[ast.stmt]:
 
 def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
     """Return module loader aliases and whether their scope is unambiguous."""
-    names = {"__import__", "importlib.import_module"}
+    names = {"__import__", "builtins.__import__", "importlib.import_module"}
     try:
         module = ast.parse(source)
     except SyntaxError:
@@ -251,6 +289,8 @@ class _SymbolWalker:
             self._append_import(node)
             return
         self._append_python_loader_assignment(node)
+        if self._append_include_next(node):
+            return
         if self._append_jsts_reexport(node):
             return
         if self._append_typescript_path_reference(node):
@@ -366,6 +406,15 @@ class _SymbolWalker:
         if function is None or arguments is None:
             return False
         if _node_text(function, self.source) not in self.jsts_module_loaders:
+            return False
+        self._append_import(node)
+        return True
+
+    def _append_include_next(self, node: Any) -> bool:
+        """Retain compiler search-path includes as fail-closed evidence."""
+        if self.language not in {"c", "cpp"} or node.type != "preproc_call":
+            return False
+        if re.match(r"^\s*#\s*include_next\b", _node_text(node, self.source)) is None:
             return False
         self._append_import(node)
         return True
@@ -548,12 +597,16 @@ def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, An
     walker = _SymbolWalker(source_code, symbols, language, truncated_flag)
     walker.walk(root)
     if language == "cpp":
+        code_mask = _cpp_code_mask(source_code)
         projected = {
             (symbol.get("text"), symbol.get("line"))
             for symbol in symbols
             if symbol.get("kind") == "import"
         }
         for match in _CPP_MODULE_IMPORT_RE.finditer(source_code):
+            keyword = re.search(r"\bimport\b", match.group(0))
+            if keyword is None or not code_mask[match.start() + keyword.start()]:
+                continue
             text = match.group(0).strip()
             line = source_code.count("\n", 0, match.start()) + 1
             if (text, line) not in projected:

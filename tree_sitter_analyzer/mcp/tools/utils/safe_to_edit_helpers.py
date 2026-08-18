@@ -958,6 +958,8 @@ def _import_module_name(import_text: str) -> str | None:
 
     import re as _re
 
+    if _re.match(r"^\s*from\s+__future__\s+import\b", import_text):
+        return None
     static_java = _re.match(
         r"^\s*import\s+static\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)\s*;?\s*$",
         import_text,
@@ -981,7 +983,8 @@ def _import_module_name(import_text: str) -> str | None:
     if m and "${" not in m.group(1):
         return m.group(1)
     m = _re.search(
-        r"\b(?:importlib\.import_module|__import__)\s*\(\s*['\"]([^'\"]+)['\"]",
+        r"\b(?:importlib\.import_module|builtins\.__import__|__import__)\s*"
+        r"\(\s*['\"]([^'\"]+)['\"]",
         import_text,
     )
     if m:
@@ -1041,7 +1044,7 @@ def _python_dynamic_loader_names_from_projection(
 ) -> frozenset[str] | None:
     """Derive dynamic-import aliases from one file's static projections."""
 
-    names = {"__import__", "importlib.import_module"}
+    names = {"__import__", "builtins.__import__", "importlib.import_module"}
     statements: list[ast.stmt] = []
     for import_text in import_texts:
         try:
@@ -1297,6 +1300,11 @@ def _certified_symbol_reference_tests(
                         # A package member import was resolved and disproved;
                         # do not fall back to a textual local-alias match.
                         continue
+            if importer_language in {"c", "cpp"}:
+                if rel_path not in _import_targets_from_text(text, rel, inventory):
+                    continue
+                results.append(rel)
+                break
             if not matched:
                 continue
             # Bind the import to the target module — a test doing
@@ -1522,6 +1530,8 @@ def _resolve_import_spec_from_inventory(
         return None
 
     language = _target_language(importer_rel_path)
+    if language == "python" and spec in {"builtins", "__future__"}:
+        return None
     if language in {"javascript", "typescript"}:
         spec = re.split(r"[?#]", spec, maxsplit=1)[0]
         if not spec:
@@ -1707,6 +1717,8 @@ def _import_targets_from_text(
     )
     if from_match:
         module, imported = from_match.groups()
+        if importer_language == "python" and module == "__future__":
+            return set()
         specs.add(module)
         payload = "\n".join(line.split("#", 1)[0] for line in imported.splitlines())
         payload = payload.replace("(", "").replace(")", "")
@@ -1753,7 +1765,8 @@ def _import_targets_from_text(
     specs.update(
         match.group(2)
         for match in re.finditer(
-            r"\b(?:importlib\.import_module|__import__)\s*\(\s*(['\"])([^'\"]+)\1",
+            r"\b(?:importlib\.import_module|builtins\.__import__|__import__)\s*"
+            r"\(\s*(['\"])([^'\"]+)\1",
             import_text,
         )
     )
@@ -1980,6 +1993,8 @@ def _python_static_import_specs(import_text: str) -> tuple[str, ...] | None:
         return tuple(alias.name for alias in statement.names)
     if not isinstance(statement, ast.ImportFrom):
         return ()
+    if statement.level == 0 and statement.module == "__future__":
+        return ()
     prefix = "." * statement.level
     module = f"{prefix}{statement.module or ''}"
     specs = [module] if module else []
@@ -1996,6 +2011,8 @@ def _python_inventory_matches(
 ) -> set[str]:
     """Return all Python snapshot candidates at the resolver's chosen tier."""
 
+    if spec in {"builtins", "__future__"}:
+        return set()
     if spec.startswith("."):
         resolved = _resolve_import_spec_from_inventory(spec, importer, inventory)
         return {resolved} if resolved else set()
@@ -2152,6 +2169,8 @@ def _quoted_include_projection_complete(
         return False
     for importer in source_files:
         for text in projected[importer]:
+            if re.match(r"^\s*#\s*include_next\b", text):
+                return False
             is_include = re.match(r"^\s*#\s*include\b", text) is not None
             cpp_import = (
                 re.match(r"^\s*(?:export\s+)?import\s+(.+?)\s*;\s*$", text)

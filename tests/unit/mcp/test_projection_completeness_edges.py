@@ -76,6 +76,7 @@ def test_python_loader_projection_tracks_annotated_alias_chains() -> None:
     assert names == frozenset(
         {
             "__import__",
+            "builtins.__import__",
             "importlib.import_module",
             "il.import_module",
             "import_module",
@@ -213,6 +214,62 @@ def test_python_projection_rejects_invalid_loader_statement() -> None:
     )
 
 
+def test_python_future_import_never_resolves_to_project_file() -> None:
+    inventory = frozenset({"app.py", "__future__.py"})
+
+    assert (
+        helpers._import_targets_from_text(
+            "from __future__ import annotations", "app.py", inventory
+        )
+        == set()
+    )
+
+
+def test_python_future_import_has_no_causal_module_name() -> None:
+    assert helpers._import_module_name("from __future__ import annotations") is None
+
+
+def test_python_future_import_has_no_static_dependency_spec() -> None:
+    assert (
+        helpers._python_static_import_specs("from __future__ import annotations") == ()
+    )
+
+
+def test_python_builtins_import_never_resolves_to_project_file() -> None:
+    inventory = frozenset({"app.py", "builtins.py"})
+
+    assert (
+        helpers._import_targets_from_text("import builtins", "app.py", inventory)
+        == set()
+    )
+
+
+def test_python_builtins_loader_resolves_literal_target() -> None:
+    inventory = frozenset({"app.py", "pkg/util.py"})
+
+    assert helpers._import_targets_from_text(
+        "builtins.__import__('pkg.util')", "app.py", inventory
+    ) == {"pkg/util.py"}
+
+
+def test_python_builtins_loader_projection_is_complete() -> None:
+    conn = _projection_conn(
+        [
+            (
+                "app.py",
+                [
+                    {"text": "import builtins"},
+                    {"text": "builtins.__import__('pkg.util')"},
+                ],
+            ),
+            ("pkg/util.py", []),
+        ]
+    )
+    inventory = frozenset({"app.py", "pkg/util.py"})
+
+    assert helpers._python_import_projection_complete(conn, inventory) is True
+
+
 def test_python_projection_rejects_invalid_static_statement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -315,6 +372,20 @@ def test_c_target_rejects_ambiguous_outgoing_quoted_include() -> None:
 
     assert not helpers._quoted_include_projection_complete(
         conn, "src/main.c", inventory
+    )
+
+
+def test_include_next_projection_fails_closed() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.cpp", [{"text": '#include_next "util.h"'}]),
+            ("include/util.h", []),
+        ]
+    )
+    inventory = frozenset({"src/main.cpp", "include/util.h"})
+
+    assert not helpers._quoted_include_projection_complete(
+        conn, "include/util.h", inventory
     )
 
 

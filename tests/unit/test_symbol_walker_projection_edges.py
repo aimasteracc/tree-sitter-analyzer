@@ -9,6 +9,7 @@ import pytest
 
 from tree_sitter_analyzer.cache import _symbol_walker as walker_module
 from tree_sitter_analyzer.cache._symbol_walker import (
+    _cpp_code_mask,
     _python_dynamic_loader_analysis,
     _python_module_scope_statements,
     _SymbolWalker,
@@ -16,10 +17,33 @@ from tree_sitter_analyzer.cache._symbol_walker import (
 )
 
 
+@pytest.mark.parametrize(
+    ("source", "visible"),
+    [
+        ("// comment", ""),
+        ("// comment\nx", "\nx"),
+        ('R"(unterminated', ""),
+        ('R"12345678901234567(payload)', "R"),
+        ('"a\\"b"x', "x"),
+    ],
+)
+def test_cpp_code_mask_excludes_comments_and_literals(
+    source: str, visible: str
+) -> None:
+    mask = _cpp_code_mask(source)
+
+    assert (
+        "".join(char for char, is_code in zip(source, mask, strict=True) if is_code)
+        == visible
+    )
+
+
 def test_python_loader_analysis_fails_closed_on_invalid_module() -> None:
     names, complete = _python_dynamic_loader_analysis("if (")
 
-    assert names == frozenset({"__import__", "importlib.import_module"})
+    assert names == frozenset(
+        {"__import__", "builtins.__import__", "importlib.import_module"}
+    )
     assert complete is False
 
 
@@ -37,6 +61,7 @@ annotation_only: object
     assert names == frozenset(
         {
             "__import__",
+            "builtins.__import__",
             "importlib.import_module",
             "il.import_module",
             "import_module",
@@ -174,6 +199,7 @@ class _TextNode:
         self.start_byte = 0
         self.end_byte = len(source.encode())
         self.start_point = (0, 0)
+        self.end_point = (0, len(source))
 
 
 def test_python_loader_assignment_rejects_invalid_syntax() -> None:
@@ -260,6 +286,13 @@ def test_java_reflection_rejects_other_method_name() -> None:
     )
 
 
+def test_include_next_projection_ignores_other_preprocessor_calls() -> None:
+    source = "#pragma once"
+    node = _TextNode("preproc_call", source)
+
+    assert _SymbolWalker(source, [], "cpp", None)._append_include_next(node) is False
+
+
 def test_historical_walk_wrapper_delegates_to_walker() -> None:
     node = SimpleNamespace(
         type="comment", children=[], child_by_field_name=lambda _name: None
@@ -297,6 +330,38 @@ def test_php_constant_projection_appends_extracted_constants(monkeypatch) -> Non
     walker._append_constant(node, None, False)
 
     assert walker.symbols == [expected]
+
+
+def test_go_constant_projection_appends_extracted_constants(monkeypatch) -> None:
+    expected = {"kind": "constant", "name": "Limit"}
+    monkeypatch.setattr(walker_module, "_go_package_constants", lambda *_: [expected])
+    node = SimpleNamespace(type="const_declaration")
+    walker = _SymbolWalker("", [], "go", None)
+
+    walker._append_constant(node, None, False)
+
+    assert walker.symbols == [expected]
+
+
+def test_rust_constant_projection_appends_named_constant() -> None:
+    source = "LIMIT"
+    name = _TextNode("identifier", source)
+    node = SimpleNamespace(
+        type="const_item", start_point=(0, 0), end_point=(0, len(source))
+    )
+    walker = _SymbolWalker(source, [], "rust", None)
+
+    walker._append_constant(node, name, False)
+
+    assert walker.symbols == [
+        {
+            "kind": "constant",
+            "name": "LIMIT",
+            "line": 1,
+            "end_line": 1,
+            "language": "rust",
+        }
+    ]
 
 
 def test_class_projection_covers_empty_fallback_and_parents(monkeypatch) -> None:
