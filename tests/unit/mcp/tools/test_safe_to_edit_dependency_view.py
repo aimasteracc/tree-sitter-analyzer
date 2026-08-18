@@ -121,15 +121,19 @@ def test_live_node_imports_include_static_dynamic_imports(tmp_path: Path) -> Non
         (
             'const quoted = import("./quoted.js");\n'
             "const template = import(`./template.js`);\n"
+            'const options = import("./options.js", '
+            '{ with: { type: "json" } });\n'
             "const unknown = import(`./${name}.js`);\n"
         ),
     )
     _write(tmp_path, "src/quoted.ts", "export const quoted = true;\n")
     _write(tmp_path, "src/template.ts", "export const template = true;\n")
+    _write(tmp_path, "src/options.ts", "export const options = true;\n")
 
     view = build_file_dependency_view(str(target), str(tmp_path))
 
     assert view.dependencies_of("src/main.ts") == [
+        "src/options.ts",
         "src/quoted.ts",
         "src/template.ts",
     ]

@@ -790,9 +790,9 @@ def _extract_import_specs(source: str, suffix: str) -> set[str]:
         specs.update(re.findall(r"\brequire\(\s*['\"]([^'\"]+)['\"]\s*\)", source))
         specs.update(
             match.group(2)
-            for match in re.finditer(r"\bimport\s*\(\s*(['\"])([^'\"]+)\1\s*\)", source)
+            for match in re.finditer(r"\bimport\s*\(\s*(['\"])([^'\"]+)\1", source)
         )
-        specs.update(re.findall(r"\bimport\s*\(\s*`([^`$]+)`\s*\)", source))
+        specs.update(re.findall(r"\bimport\s*\(\s*`([^`$]+)`", source))
     elif suffix == ".java":
         specs.update(re.findall(r"^\s*import\s+([\w.]+);", source, re.M))
     return specs
@@ -1910,7 +1910,16 @@ def _resolve_import_spec_from_inventory(
         suffixes = (".py",)
         package_entries = ("__init__.py",)
     elif language == "javascript":
-        suffixes = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")
+        suffixes = (
+            ".js",
+            ".jsx",
+            ".mjs",
+            ".cjs",
+            ".ts",
+            ".tsx",
+            ".mts",
+            ".cts",
+        )
         package_entries = tuple(f"index{suffix}" for suffix in suffixes)
     elif language == "typescript":
         suffixes = (

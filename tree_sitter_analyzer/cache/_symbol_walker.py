@@ -363,6 +363,10 @@ def _python_control_flow_header_values(statement: ast.stmt) -> tuple[ast.expr, .
         )
     if isinstance(statement, ast.Assert):
         return (statement.test,) + (() if statement.msg is None else (statement.msg,))
+    if isinstance(statement, ast.Raise):
+        return tuple(
+            value for value in (statement.exc, statement.cause) if value is not None
+        )
     if isinstance(statement, ast.Try):
         return tuple(
             handler.type for handler in statement.handlers if handler.type is not None
@@ -373,6 +377,7 @@ def _python_control_flow_header_values(statement: ast.stmt) -> tuple[ast.expr, .
 def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
     """Return module loader aliases and whether their scope is unambiguous."""
     names = {"__import__", "builtins.__import__", "importlib.import_module"}
+    evaluator_names = {"exec", "eval", "builtins.exec", "builtins.eval"}
     try:
         module = ast.parse(source)
     except SyntaxError:
@@ -384,7 +389,9 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                 if alias.name == "importlib":
                     names.add(f"{alias.asname or alias.name}.import_module")
                 elif alias.name == "builtins":
-                    names.add(f"{alias.asname or alias.name}.__import__")
+                    bound_name = alias.asname or alias.name
+                    names.add(f"{bound_name}.__import__")
+                    evaluator_names.update({f"{bound_name}.eval", f"{bound_name}.exec"})
         elif (
             isinstance(statement, ast.ImportFrom)
             and statement.level == 0
@@ -398,6 +405,8 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                     ("importlib", "import_module"),
                 }:
                     names.add(alias.asname or alias.name)
+                if statement.module == "builtins" and alias.name in {"eval", "exec"}:
+                    evaluator_names.add(alias.asname or alias.name)
     assignments: list[tuple[list[ast.expr], ast.expr]] = []
     for statement in module_statements:
         if isinstance(statement, ast.Assign):
@@ -415,6 +424,23 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                 if isinstance(target, ast.Name) and target.id not in names:
                     names.add(target.id)
                     changed = True
+    evaluator_assignments: list[tuple[list[ast.expr], ast.expr]] = []
+    for node in ast.walk(module):
+        if isinstance(node, ast.Assign):
+            evaluator_assignments.append((node.targets, node.value))
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            evaluator_assignments.append(([node.target], node.value))
+    changed = True
+    while changed:
+        changed = False
+        for targets, value in evaluator_assignments:
+            if _python_reference_name(value) not in evaluator_names:
+                continue
+            for target in targets:
+                for leaf in _python_assignment_target_leaves(target):
+                    if isinstance(leaf, ast.Name) and leaf.id not in evaluator_names:
+                        evaluator_names.add(leaf.id)
+                        changed = True
     loader_roots = {name.split(".", 1)[0] for name in names}
     module_rebinding = any(
         (
@@ -463,8 +489,7 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
     )
     dynamic_code_execution = any(
         isinstance(node, ast.Call)
-        and _python_reference_name(node.func)
-        in {"exec", "eval", "builtins.exec", "builtins.eval"}
+        and _python_reference_name(node.func) in evaluator_names
         for statement in module_statements
         for node in ast.walk(statement)
     )
@@ -845,6 +870,18 @@ def _jsts_module_owner_reference(node: Any, source: str) -> bool:
     )
 
 
+def _jsts_global_owner_reference(node: Any, source: str) -> bool:
+    """Return whether *node* is a known JS global object."""
+
+    node = _jsts_unwrap_parenthesized(node)
+    return bool(
+        node is not None
+        and node.type == "identifier"
+        and _node_text(node, source).strip()
+        in {"global", "globalThis", "self", "window"}
+    )
+
+
 def _jsts_indirect_module_loader_call(
     node: Any, source: str, loaders: set[str]
 ) -> bool:
@@ -946,6 +983,55 @@ def _jsts_static_first_argument(node: Any, source: str) -> str | None:
     return _jsts_static_accessor_name(first, source)
 
 
+def _jsts_node_module_api_call(node: Any, source: str, loaders: set[str]) -> bool:
+    """Return whether one loader call returns Node's module API owner."""
+
+    node = _jsts_unwrap_parenthesized(node)
+    if node is None or node.type != "call_expression":
+        return False
+    function = node.child_by_field_name("function")
+    return bool(
+        function is not None
+        and _jsts_module_loader_reference(function, source, loaders)
+        and _jsts_static_first_argument(node, source) in {"module", "node:module"}
+    )
+
+
+def _jsts_import_exposes_create_require(node: Any, source: str) -> bool:
+    """Return whether a Node module import binds its loader factory or owner."""
+
+    if node.type != "import_statement":
+        return False
+    import_source = node.child_by_field_name("source")
+    if import_source is None or _jsts_static_accessor_name(
+        import_source, source
+    ) not in {"module", "node:module"}:
+        return False
+    clause = next(
+        (child for child in node.children if child.type == "import_clause"),
+        None,
+    )
+    if clause is None:
+        return False
+    stack = [clause]
+    while stack:
+        candidate = stack.pop()
+        if candidate.type == "namespace_import":
+            return True
+        if candidate.type == "import_specifier":
+            imported_name = candidate.child_by_field_name("name")
+            if (
+                imported_name is not None
+                and _node_text(imported_name, source) == "createRequire"
+            ):
+                return True
+            continue
+        if candidate.type == "identifier" and candidate.parent == clause:
+            return True
+        stack.extend(candidate.children)
+    return False
+
+
 def _jsts_node_create_require_reference(
     node: Any, source: str, loaders: set[str]
 ) -> bool:
@@ -1016,6 +1102,22 @@ def _jsts_pattern_selects_require_property(node: Any, source: str) -> bool:
     )
 
 
+def _jsts_pattern_selects_create_require_property(node: Any, source: str) -> bool:
+    """Return whether a binding pattern extracts Node's loader factory."""
+
+    if node.type == "pair_pattern":
+        key = node.child_by_field_name("key")
+        if key is not None and _node_text(key, source).strip("'\"`") == "createRequire":
+            return True
+    if node.type == "shorthand_property_identifier_pattern":
+        return _node_text(node, source) == "createRequire"
+    return any(
+        _jsts_pattern_selects_create_require_property(child, source)
+        for child in node.children
+        if getattr(child, "is_named", True)
+    )
+
+
 def _jsts_value_stores_module_loader(
     node: Any,
     source: str,
@@ -1032,7 +1134,11 @@ def _jsts_value_stores_module_loader(
         return True
     if _jsts_module_loader_factory_call(node, source, loaders):
         return True
+    if _jsts_node_module_api_call(node, source, loaders):
+        return True
     if _jsts_module_owner_reference(node, source):
+        return True
+    if _jsts_global_owner_reference(node, source):
         return True
     if _jsts_require_utility_member(node, source, loaders):
         return False
@@ -1047,6 +1153,13 @@ def _jsts_value_stores_module_loader(
             owner is not None
             and accessor is not None
             and _jsts_module_owner_reference(owner, source)
+            and _jsts_static_accessor_name(accessor, source) is not None
+        ):
+            return False
+        if (
+            owner is not None
+            and accessor is not None
+            and _jsts_global_owner_reference(owner, source)
             and _jsts_static_accessor_name(accessor, source) is not None
         ):
             return False
@@ -1233,12 +1346,41 @@ class _SymbolWalker:
                 normalized_value = (
                     _jsts_unwrap_parenthesized(value) if value is not None else None
                 )
-                if (
+                module_destructure = bool(
                     name is not None
                     and normalized_value is not None
                     and _node_text(normalized_value, self.source).strip() == "module"
+                )
+                selects_require = bool(
+                    name is not None
                     and _jsts_pattern_selects_require_property(name, self.source)
+                )
+                node_module_api_destructure = bool(
+                    name is not None
+                    and normalized_value is not None
+                    and _jsts_node_module_api_call(
+                        normalized_value, self.source, self.jsts_module_loaders
+                    )
+                )
+                selects_create_require = bool(
+                    name is not None
+                    and _jsts_pattern_selects_create_require_property(name, self.source)
+                )
+                if (
+                    value is not None
+                    and _jsts_value_stores_module_loader(
+                        value,
+                        self.source,
+                        self.jsts_module_loaders,
+                        self.jsts_shadowed_evaluators,
+                    )
+                    and not (module_destructure and not selects_require)
+                    and not (node_module_api_destructure and not selects_create_require)
                 ):
+                    self.import_projection_complete = False
+                if module_destructure and selects_require:
+                    self.import_projection_complete = False
+                if node_module_api_destructure and selects_create_require:
                     self.import_projection_complete = False
         elif node.type == "formal_parameters":
             patterns.extend(node.children)
@@ -1276,6 +1418,9 @@ class _SymbolWalker:
             patterns.append(node.child_by_field_name("parameter"))
         elif node.type == "import_clause":
             patterns.append(node)
+        elif node.type == "import_statement":
+            if _jsts_import_exposes_create_require(node, self.source):
+                self.import_projection_complete = False
         elif node.type in {"assignment_expression", "augmented_assignment_expression"}:
             left = node.child_by_field_name("left")
             right = node.child_by_field_name("right")
@@ -1297,6 +1442,23 @@ class _SymbolWalker:
                 self.import_projection_complete = False
         elif node.type == "for_in_statement":
             patterns.append(node.child_by_field_name("left"))
+            right = node.child_by_field_name("right")
+            if right is not None and _jsts_value_stores_module_loader(
+                right,
+                self.source,
+                self.jsts_module_loaders,
+                self.jsts_shadowed_evaluators,
+            ):
+                self.import_projection_complete = False
+        elif node.type == "new_expression":
+            arguments = node.child_by_field_name("arguments")
+            if arguments is not None and _jsts_value_stores_module_loader(
+                arguments,
+                self.source,
+                self.jsts_module_loaders,
+                self.jsts_shadowed_evaluators,
+            ):
+                self.import_projection_complete = False
         elif node.type == "unary_expression" and re.match(
             r"^\s*delete\b", _node_text(node, self.source)
         ):

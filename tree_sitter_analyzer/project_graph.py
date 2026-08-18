@@ -461,6 +461,8 @@ class DependencyGraph:
         supported_exts = {
             ".py",
             ".js",
+            ".mjs",
+            ".cjs",
             ".ts",
             ".jsx",
             ".tsx",
