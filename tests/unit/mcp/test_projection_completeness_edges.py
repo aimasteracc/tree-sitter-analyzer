@@ -24,8 +24,11 @@ def _projection_conn(rows: list[tuple[str, object]]) -> sqlite3.Connection:
 
 def _symbol_conn(raw_symbols: object) -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
-    conn.execute("CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT)")
-    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?)", (raw_symbols,))
+    conn.execute(
+        "CREATE TABLE ast_index ("
+        "file_path TEXT, symbols_json TEXT, extractor_version INTEGER)"
+    )
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 24)", (raw_symbols,))
     return conn
 
 
@@ -43,6 +46,35 @@ def test_certified_java_facts_require_complete_reflection_projection(
     assert (
         helpers._certified_import_facts_available(
             "src/Util.java", conn=object(), inventory=frozenset()
+        )
+        is False
+    )
+
+
+def test_certified_java_facts_reject_unprojected_jvm_languages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(helpers, "_symbol_walk_projections_complete", lambda *_: True)
+
+    assert (
+        helpers._certified_import_facts_available(
+            "src/Util.java",
+            conn=object(),
+            inventory=frozenset({"src/Util.java", "src/Use.kt"}),
+        )
+        is False
+    )
+
+
+def test_certified_jsts_facts_use_language_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(helpers, "_symbol_walk_projections_complete", lambda *_: True)
+    monkeypatch.setattr(helpers, "_jsts_import_projection_complete", lambda *_: False)
+
+    assert (
+        helpers._certified_import_facts_available(
+            "src/main.ts", conn=object(), inventory=frozenset({"src/main.ts"})
         )
         is False
     )
@@ -116,6 +148,26 @@ def test_symbol_projection_completeness_rejects_query_failure() -> None:
     )
 
 
+def test_symbol_projection_completeness_ignores_irrelevant_rows() -> None:
+    conn = _symbol_conn(json.dumps({"truncated_depth": False}))
+    conn.execute("INSERT INTO ast_index VALUES ('notes.md', 'not-json', 0)")
+
+    assert helpers._symbol_walk_projections_complete(
+        conn, frozenset({"app.py"}), {"python"}
+    )
+
+
+def test_symbol_projection_completeness_rejects_incomplete_walk() -> None:
+    conn = _symbol_conn(json.dumps({"import_projection_complete": False}))
+
+    assert (
+        helpers._symbol_walk_projections_complete(
+            conn, frozenset({"app.py"}), {"python"}
+        )
+        is False
+    )
+
+
 @pytest.mark.parametrize("payload", ["not-json", "[]"])
 def test_symbol_projection_completeness_rejects_malformed_payload(
     payload: str,
@@ -149,6 +201,46 @@ def test_commonjs_projection_accepts_extensionless_file_target() -> None:
     inventory = frozenset({"src/main.js", "src/util.js"})
 
     assert helpers._jsts_import_projection_complete(conn, inventory) is True
+
+
+def test_computed_commonjs_projection_accepts_literal_target() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.js", [{"text": "module['require']('./util.js')"}]),
+            ("src/util.js", []),
+        ]
+    )
+    inventory = frozenset({"src/main.js", "src/util.js"})
+
+    assert helpers._jsts_import_projection_complete(conn, inventory) is True
+    assert helpers._import_targets_from_text(
+        "module['require']('./util.js')", "src/main.js", inventory
+    ) == {"src/util.js"}
+
+
+def test_jsts_projection_rejects_casefold_only_target() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.js", [{"text": "import './Util.js'"}]),
+            ("src/util.js", []),
+        ]
+    )
+    inventory = frozenset({"src/main.js", "src/util.js"})
+
+    assert helpers._jsts_import_projection_complete(conn, inventory) is False
+
+
+def test_jsts_projection_rejects_casefold_collision() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.js", [{"text": "import './util.js'"}]),
+            ("src/util.js", []),
+            ("src/Util.js", []),
+        ]
+    )
+    inventory = frozenset({"src/main.js", "src/util.js", "src/Util.js"})
+
+    assert helpers._jsts_import_projection_complete(conn, inventory) is False
 
 
 def test_commonjs_loader_alias_projection_fails_closed() -> None:
@@ -211,6 +303,34 @@ def test_python_projection_rejects_invalid_loader_statement() -> None:
 
     assert (
         helpers._python_import_projection_complete(conn, frozenset({"app.py"})) is False
+    )
+
+
+def test_dependency_view_ignores_calls_when_loader_projection_is_invalid() -> None:
+    conn = _projection_conn(
+        [
+            ("app.py", [{"text": "if ("}, {"text": "load('pkg.util')"}]),
+            ("pkg/util.py", []),
+        ]
+    )
+    conn.row_factory = sqlite3.Row
+
+    view = helpers.build_snapshot_file_dependency_view(
+        conn,
+        "app.py",
+        inventory=frozenset({"app.py", "pkg/util.py"}),
+    )
+
+    assert view.dependencies_of("app.py") == []
+    assert view.dependents_of("app.py") == []
+
+
+def test_python_projection_rejects_missing_snapshot_table() -> None:
+    assert (
+        helpers._python_import_projection_complete(
+            sqlite3.connect(":memory:"), frozenset()
+        )
+        is False
     )
 
 
@@ -296,6 +416,57 @@ def test_python_projection_rejects_ambiguous_dynamic_import() -> None:
     inventory = frozenset({"app.py", "src/pkg/util.py", "vendor/pkg/util.py"})
 
     assert helpers._python_import_projection_complete(conn, inventory) is False
+
+
+def test_python_inventory_matches_root_and_source_root_candidates() -> None:
+    inventory = frozenset({"pkg/util.py", "src/pkg/util.py"})
+
+    assert helpers._python_inventory_matches("pkg.util", "app.py", inventory) == {
+        "pkg/util.py",
+        "src/pkg/util.py",
+    }
+
+
+def test_python_resolver_rejects_root_and_source_root_ambiguity() -> None:
+    inventory = frozenset({"app.py", "pkg/util.py", "src/pkg/util.py"})
+
+    assert (
+        helpers._resolve_import_spec_from_inventory("pkg.util", "app.py", inventory)
+        is None
+    )
+
+
+def test_python_resolver_rejects_duplicate_normalized_candidate() -> None:
+    inventory = frozenset({"pkg.py", "./pkg.py"})
+
+    assert (
+        helpers._resolve_import_spec_from_inventory("pkg", "app.py", inventory) is None
+    )
+
+
+def test_python_projection_rejects_root_and_source_root_ambiguity() -> None:
+    conn = _projection_conn(
+        [
+            ("app.py", [{"text": "import pkg.util"}]),
+            ("pkg/util.py", []),
+            ("src/pkg/util.py", []),
+        ]
+    )
+    inventory = frozenset({"app.py", "pkg/util.py", "src/pkg/util.py"})
+
+    assert helpers._python_import_projection_complete(conn, inventory) is False
+
+
+def test_symbol_projection_rejects_stale_extractor_version() -> None:
+    conn = _symbol_conn(json.dumps({"truncated_depth": False}))
+    conn.execute("UPDATE ast_index SET extractor_version = 23")
+
+    assert (
+        helpers._symbol_walk_projections_complete(
+            conn, frozenset({"app.py"}), {"python"}
+        )
+        is False
+    )
 
 
 def test_java_inventory_match_prefers_exact_candidate() -> None:
@@ -386,6 +557,28 @@ def test_include_next_projection_fails_closed() -> None:
 
     assert not helpers._quoted_include_projection_complete(
         conn, "include/util.h", inventory
+    )
+
+
+def test_include_projection_rejects_missing_snapshot_table() -> None:
+    assert (
+        helpers._quoted_include_projection_complete(
+            sqlite3.connect(":memory:"), "include/util.h", frozenset()
+        )
+        is False
+    )
+
+
+def test_include_projection_rejects_unprojected_inventory_file() -> None:
+    conn = _projection_conn([("include/util.h", [])])
+
+    assert (
+        helpers._quoted_include_projection_complete(
+            conn,
+            "include/util.h",
+            frozenset({"include/util.h", "src/main.c"}),
+        )
+        is False
     )
 
 

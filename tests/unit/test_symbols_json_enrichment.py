@@ -212,6 +212,19 @@ class TestJavaScriptModuleCallProjection:
 
         assert _extract_imports(symbols) == [{"text": call, "line": 1}]
 
+    @pytest.mark.parametrize("quote", ["'", '"', "`"])
+    def test_computed_module_require_is_projected(self, quote: str) -> None:
+        call = f"module[{quote}require{quote}]('./legacy')"
+        symbols = {"symbols": _symbols_for(f"{call};", "typescript")}
+
+        assert _extract_imports(symbols) == [{"text": call, "line": 1}]
+
+    def test_computed_commonjs_loader_alias_call_is_projected(self) -> None:
+        source = "const load = module['require'];\nload('./legacy');"
+        symbols = {"symbols": _symbols_for(source, "typescript")}
+
+        assert _extract_imports(symbols) == [{"text": "load('./legacy')", "line": 2}]
+
     @pytest.mark.parametrize("declaration", ["const", "let", "var"])
     def test_commonjs_loader_alias_call_is_projected(self, declaration: str) -> None:
         source = f"{declaration} load = require;\nload('./legacy');"
@@ -427,6 +440,15 @@ class TestCIncludeProjection:
         ],
     )
     def test_cpp20_import_like_text_in_noncode_is_ignored(self, source: str) -> None:
+        symbols = {"symbols": _symbols_for(source, "cpp")}
+
+        assert _extract_imports(symbols) == []
+
+    @pytest.mark.parametrize("line_ending", ["\n", "\r\n"])
+    def test_cpp20_import_in_continued_line_comment_is_ignored(
+        self, line_ending: str
+    ) -> None:
+        source = f'// disabled \\{line_ending}import "fake.h";{line_ending}int value;'
         symbols = {"symbols": _symbols_for(source, "cpp")}
 
         assert _extract_imports(symbols) == []

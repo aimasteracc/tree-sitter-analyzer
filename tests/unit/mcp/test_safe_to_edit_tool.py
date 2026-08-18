@@ -2001,7 +2001,14 @@ def test_snapshot_dependency_view_reads_static_java_class_for_name() -> None:
 
 def test_snapshot_import_module_name_reads_dynamic_import_with_options() -> None:
     # PR #1308 review: symbol-reference matching uses the same first argument.
-    pass
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _import_module_name,
+    )
+
+    assert (
+        _import_module_name("import('./data.json', { with: { type: 'json' } })")
+        == "./data.json"
+    )
 
 
 @pytest.mark.parametrize(
@@ -3000,6 +3007,44 @@ def test_certified_exercising_tests_continue_through_test_chain() -> None:
     ]
 
 
+def test_certified_exercising_tests_expand_conftest_scope() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_exercising_tests,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, '[]', '{}')",
+        [
+            ("util.py",),
+            ("tests/conftest.py",),
+            ("tests/test_api.py",),
+            ("tests/sub/test_nested.py",),
+            ("other/test_outside.py",),
+        ],
+    )
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO edges VALUES (1, 'calls', 'tests/conftest.py', "
+        "'fixture', 'util.py')"
+    )
+
+    assert _certified_exercising_tests(conn, "util.py", ["tests/conftest.py"]) == [
+        "tests/sub/test_nested.py",
+        "tests/test_api.py",
+    ]
+
+
 def test_certified_exercising_tests_traverse_test_named_production_file() -> None:
     # PR #1308 review: src/test_adapter.py is not itself a runnable test target.
     import sqlite3
@@ -3056,6 +3101,15 @@ def test_certified_test_path_recognizes_cpp_extensions(path: str) -> None:
     assert _looks_like_test_path(path, "cpp")
 
 
+def test_certified_test_path_recognizes_root_pytest_module() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _looks_like_test_path,
+    )
+
+    assert _looks_like_test_path("test_app.py", "python") is True
+    assert _looks_like_test_path("src/test_adapter.py", "python") is False
+
+
 def test_snapshot_import_targets_keep_python_wildcard_on_package() -> None:
     from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
         _import_targets_from_text,
@@ -3079,7 +3133,16 @@ def test_snapshot_import_targets_ignore_invalid_python_direct_spec() -> None:
 
 
 def test_snapshot_import_targets_ignore_non_import_text() -> None:
-    pass
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _import_targets_from_text,
+    )
+
+    assert (
+        _import_targets_from_text(
+            "configure('pkg.util')", "app.py", frozenset({"pkg/util.py"})
+        )
+        == set()
+    )
 
 
 @pytest.mark.parametrize(
@@ -3409,11 +3472,12 @@ def test_snapshot_syntax_envelope_keeps_complete_exercising_tests() -> None:
         "callee_name TEXT, callee_resolved_file TEXT)"
     )
     conn.execute(
-        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, "
+        "symbols_json TEXT, extractor_version INTEGER)"
     )
-    conn.execute("INSERT INTO ast_index VALUES ('app.py', '[]', '{}')")
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', '[]', '{}', 24)")
     conn.executemany(
-        "INSERT INTO ast_index VALUES (?, '[]', '{}')",
+        "INSERT INTO ast_index VALUES (?, '[]', '{}', 24)",
         [(f"tests/test_app_{index}.py",) for index in range(12)],
     )
     conn.executemany(
@@ -3444,10 +3508,11 @@ def test_snapshot_syntax_envelope_excludes_unrelated_nearby_test() -> None:
         "callee_name TEXT, callee_resolved_file TEXT)"
     )
     conn.execute(
-        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, "
+        "symbols_json TEXT, extractor_version INTEGER)"
     )
     conn.executemany(
-        "INSERT INTO ast_index VALUES (?, '[]', '{}')",
+        "INSERT INTO ast_index VALUES (?, '[]', '{}', 24)",
         [("app.py",), ("tests/test_app.py",)],
     )
 
@@ -3959,10 +4024,11 @@ def test_snapshot_syntax_envelope_certifies_single_java_file() -> None:
         "callee_name TEXT, callee_resolved_file TEXT)"
     )
     conn.execute(
-        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, "
+        "symbols_json TEXT, extractor_version INTEGER)"
     )
     conn.execute(
-        "INSERT INTO ast_index VALUES (?, ?, '{}')",
+        "INSERT INTO ast_index VALUES (?, ?, '{}', 24)",
         (
             "src/main/java/com/acme/Util.java",
             json.dumps([{"text": "package com.acme;"}]),
@@ -4065,10 +4131,11 @@ def test_snapshot_syntax_envelope_rejects_conflicting_java_packages() -> None:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     conn.execute(
-        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, "
+        "symbols_json TEXT, extractor_version INTEGER)"
     )
     conn.executemany(
-        "INSERT INTO ast_index VALUES (?, ?, '{}')",
+        "INSERT INTO ast_index VALUES (?, ?, '{}', 24)",
         [
             (
                 target,
@@ -4232,10 +4299,11 @@ def test_snapshot_syntax_envelope_certifies_unique_include_root() -> None:
         "callee_name TEXT, callee_resolved_file TEXT)"
     )
     conn.execute(
-        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, "
+        "symbols_json TEXT, extractor_version INTEGER)"
     )
     conn.executemany(
-        "INSERT INTO ast_index VALUES (?, ?, '{}')",
+        "INSERT INTO ast_index VALUES (?, ?, '{}', 24)",
         [
             (
                 importer,

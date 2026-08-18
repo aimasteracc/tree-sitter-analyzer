@@ -940,7 +940,9 @@ def _looks_like_test_path(rel_path: str, language: str) -> bool:
     )
     if language == "python":
         return name.endswith(("_test.py", "_tests.py")) or (
-            in_test_dir and name.startswith("test_") and name.endswith(".py")
+            (in_test_dir or len(path.parts) == 1)
+            and name.startswith("test_")
+            and name.endswith(".py")
         )
     if language == "java":
         return in_test_dir and _looks_like_test_name(name, language)
@@ -960,6 +962,11 @@ def _import_module_name(import_text: str) -> str | None:
 
     if _re.match(r"^\s*from\s+__future__\s+import\b", import_text):
         return None
+    import_text = _re.sub(
+        r"\bmodule\s*\[\s*(['\"`])require\1\s*\]",
+        "module.require",
+        import_text,
+    )
     static_java = _re.match(
         r"^\s*import\s+static\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)\s*;?\s*$",
         import_text,
@@ -1059,13 +1066,18 @@ def _python_dynamic_loader_names_from_projection(
             for alias in statement.names:
                 if alias.name == "importlib":
                     names.add(f"{alias.asname or alias.name}.import_module")
+                elif alias.name == "builtins":
+                    names.add(f"{alias.asname or alias.name}.__import__")
         elif (
             isinstance(statement, ast.ImportFrom)
             and statement.level == 0
-            and statement.module == "importlib"
+            and statement.module in {"builtins", "importlib"}
         ):
             for alias in statement.names:
-                if alias.name == "import_module":
+                if (statement.module, alias.name) in {
+                    ("builtins", "__import__"),
+                    ("importlib", "import_module"),
+                }:
                     names.add(alias.asname or alias.name)
     changed = True
     while changed:
@@ -1487,6 +1499,16 @@ def _certified_exercising_tests(
         if dependent in seen or dependent not in inventory:
             continue
         seen.add(dependent)
+        if Path(dependent).name == "conftest.py":
+            scope = Path(dependent).parent.as_posix()
+            test_files.extend(
+                path
+                for path in sorted(inventory)
+                if path != dependent
+                and _target_language(path) == "python"
+                and _looks_like_test_path(path, "python")
+                and (scope == "." or path.startswith(f"{scope}/"))
+            )
         if _looks_like_test_path(dependent, _target_language(dependent)):
             test_files.append(dependent)
         graph = build_snapshot_file_dependency_view(
@@ -1622,21 +1644,35 @@ def _resolve_import_spec_from_inventory(
         else:
             candidates.extend(file_candidates)
             candidates.extend(package_candidates)
-    for candidate in candidates:
-        if candidate in inventory:
-            return candidate
     infer_source_root = language in {"python", "java"} and not spec.startswith(".")
     if infer_source_root:
-        matches = {
-            indexed
+        matches_by_candidate = [
+            (
+                candidate,
+                {
+                    indexed
+                    for indexed in inventory
+                    if indexed == candidate or indexed.endswith(f"/{candidate}")
+                },
+            )
             for candidate in candidates
-            for indexed in inventory
-            if indexed.endswith(f"/{candidate}")
+        ]
+        source_roots = {
+            Path(indexed).parts[: -len(Path(candidate).parts)]
+            for candidate, matches in matches_by_candidate
+            for indexed in matches
         }
-        if len(matches) == 1:
-            return next(iter(matches))
-        if len(matches) > 1:
+        if len(source_roots) > 1:
             return None
+        for _candidate, matches in matches_by_candidate:
+            if len(matches) == 1:
+                return next(iter(matches))
+            if len(matches) > 1:
+                return None
+    else:
+        for candidate in candidates:
+            if candidate in inventory:
+                return candidate
     if language == "java" and not spec.startswith("."):
         parts = candidate_base.split("/")
         owner_matches: set[str] = set()
@@ -1694,6 +1730,8 @@ def _import_targets_from_text(
     import_text: str,
     importer_rel_path: str,
     inventory: frozenset[str],
+    *,
+    python_dynamic_loaders: frozenset[str] | None = None,
 ) -> set[str]:
     """Resolve every inventory-covered file named by one import statement.
 
@@ -1708,6 +1746,12 @@ def _import_targets_from_text(
     importer_language = _target_language(importer_rel_path)
     if importer_language == "python":
         import_text = re.sub(r"\\\r?\n", "", import_text)
+    elif importer_language in {"javascript", "typescript"}:
+        import_text = re.sub(
+            r"\bmodule\s*\[\s*(['\"`])require\1\s*\]",
+            "module.require",
+            import_text,
+        )
     specs: set[str] = set()
     java_wildcard_packages: set[str] = set()
     from_match = re.match(
@@ -1772,7 +1816,16 @@ def _import_targets_from_text(
     )
     if importer_language == "python":
         projected_call = _python_projected_call(import_text)
-        if projected_call is not None and projected_call[1] is not None:
+        loader_names = (
+            frozenset({"__import__", "builtins.__import__", "importlib.import_module"})
+            if python_dynamic_loaders is None
+            else python_dynamic_loaders
+        )
+        if (
+            projected_call is not None
+            and projected_call[0] in loader_names
+            and projected_call[1] is not None
+        ):
             specs.add(projected_call[1])
     if importer_language == "java":
         reflection = re.match(
@@ -1917,21 +1970,30 @@ def _symbol_walk_projections_complete(
 
     import json
 
+    from tree_sitter_analyzer.ast_cache import _AST_CACHE_EXTRACTOR_VERSION
+
     try:
         columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(ast_index)")}
-        if "symbols_json" not in columns:
-            return True  # legacy schemas predate the explicit truncation signal
-        rows = conn.execute("SELECT file_path, symbols_json FROM ast_index").fetchall()
+        if not {"extractor_version", "symbols_json"}.issubset(columns):
+            return False
+        rows = conn.execute(
+            "SELECT file_path, symbols_json, extractor_version FROM ast_index"
+        ).fetchall()
     except Exception:
         return False
     for row in rows:
-        file_path, raw_symbols = row[0], row[1]
+        file_path, raw_symbols, extractor_version = row[0], row[1], row[2]
         if (
             not isinstance(file_path, str)
             or file_path not in inventory
             or _target_language(file_path) not in languages
         ):
             continue
+        if (
+            type(extractor_version) is not int
+            or extractor_version != _AST_CACHE_EXTRACTOR_VERSION
+        ):
+            return False
         try:
             payload = json.loads(raw_symbols)
         except (TypeError, ValueError):
@@ -1956,6 +2018,11 @@ def _jsts_import_projection_complete(conn: Any, inventory: frozenset[str]) -> bo
     projected = _snapshot_import_texts(conn, inventory)
     if projected is None:
         return False
+    folded_inventory = frozenset(path.casefold() for path in inventory)
+    casefold_counts: dict[str, int] = {}
+    for path in inventory:
+        folded_path = path.casefold()
+        casefold_counts[folded_path] = casefold_counts.get(folded_path, 0) + 1
     for file_path, import_texts in projected.items():
         if _target_language(file_path) not in {"javascript", "typescript"}:
             continue
@@ -1964,13 +2031,23 @@ def _jsts_import_projection_complete(conn: Any, inventory: frozenset[str]) -> bo
             normalized = re.split(r"[?#]", spec, maxsplit=1)[0] if spec else None
             if normalized is None or not normalized.startswith(("./", "../")):
                 return False
+            resolved = _resolve_import_spec_from_inventory(
+                normalized, file_path, inventory
+            )
+            folded_resolved = _resolve_import_spec_from_inventory(
+                normalized.casefold(), file_path.casefold(), folded_inventory
+            )
+            if (resolved is None and folded_resolved is not None) or (
+                resolved is not None and casefold_counts.get(resolved.casefold(), 0) > 1
+            ):
+                return False
             if (
-                re.search(r"\brequire\s*\(", import_text)
+                re.search(
+                    r"(?:\brequire|module\s*\[\s*['\"`]require['\"`]\s*\])\s*\(",
+                    import_text,
+                )
                 and not Path(normalized).suffix
             ):
-                resolved = _resolve_import_spec_from_inventory(
-                    normalized, file_path, inventory
-                )
                 if (
                     resolved is None
                     or Path(resolved).parent.name == Path(normalized).name
@@ -2018,15 +2095,32 @@ def _python_inventory_matches(
         return {resolved} if resolved else set()
     module_path = spec.replace(".", "/")
     candidates = (f"{module_path}/__init__.py", f"{module_path}.py")
-    for candidate in candidates:
-        if candidate in inventory:
-            return {candidate}
-    return {
-        indexed
+    matches_by_candidate = [
+        (
+            candidate,
+            {
+                indexed
+                for indexed in inventory
+                if indexed == candidate or indexed.endswith(f"/{candidate}")
+            },
+        )
         for candidate in candidates
-        for indexed in inventory
-        if indexed.endswith(f"/{candidate}")
+    ]
+    source_roots = {
+        Path(indexed).parts[: -len(Path(candidate).parts)]
+        for candidate, matches in matches_by_candidate
+        for indexed in matches
     }
+    if len(source_roots) > 1:
+        return {
+            indexed
+            for _candidate, matches in matches_by_candidate
+            for indexed in matches
+        }
+    for _candidate, matches in matches_by_candidate:
+        if matches:
+            return matches
+    return set()
 
 
 def _python_from_import_is_ambiguous(
@@ -2399,11 +2493,26 @@ def build_snapshot_file_dependency_view(
                 raise ValueError("CORRUPT_INDEX") from exc
             if not isinstance(imports, list):
                 raise ValueError("CORRUPT_INDEX")
+            import_texts: list[str] = []
             for imp in imports:
-                imp_text = imp["text"] if isinstance(imp, dict) else imp
-                if not isinstance(imp_text, str):
+                text = imp.get("text") if isinstance(imp, dict) else imp
+                if not isinstance(text, str):
                     raise ValueError("CORRUPT_INDEX")
-                targets = _import_targets_from_text(imp_text, file_path, inventory)
+                import_texts.append(text)
+            dynamic_loaders = (
+                _python_dynamic_loader_names_from_projection(import_texts)
+                if _target_language(file_path) == "python"
+                else None
+            )
+            if dynamic_loaders is None and _target_language(file_path) == "python":
+                dynamic_loaders = frozenset()
+            for imp_text in import_texts:
+                targets = _import_targets_from_text(
+                    imp_text,
+                    file_path,
+                    inventory,
+                    python_dynamic_loaders=dynamic_loaders,
+                )
                 if file_path == rel_path:
                     dependencies.update(
                         target for target in targets if target != rel_path
@@ -2549,11 +2658,26 @@ def _snapshot_needle_importers(
             raise ValueError("CORRUPT_INDEX") from exc
         if not isinstance(imports, list):
             raise ValueError("CORRUPT_INDEX")
+        import_texts = []
         for item in imports:
             text = item.get("text") if isinstance(item, dict) else item
             if not isinstance(text, str):
                 raise ValueError("CORRUPT_INDEX")
-            if rel_path in _import_targets_from_text(text, file_path, inventory):
+            import_texts.append(text)
+        dynamic_loaders = (
+            _python_dynamic_loader_names_from_projection(import_texts)
+            if _target_language(file_path) == "python"
+            else None
+        )
+        if dynamic_loaders is None and _target_language(file_path) == "python":
+            dynamic_loaders = frozenset()
+        for text in import_texts:
+            if rel_path in _import_targets_from_text(
+                text,
+                file_path,
+                inventory,
+                python_dynamic_loaders=dynamic_loaders,
+            ):
                 matched.add(file_path)
                 break
     if seen != candidate_files:

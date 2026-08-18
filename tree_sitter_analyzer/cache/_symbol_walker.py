@@ -52,6 +52,13 @@ def _cpp_code_mask(source: str) -> list[bool]:
         end = i
         if source.startswith("//", i):
             end = source.find("\n", i)
+            while end >= 0:
+                splice = end - 1
+                if splice >= i and source[splice] == "\r":
+                    splice -= 1
+                if splice < i or source[splice] != "\\":
+                    break
+                end = source.find("\n", end + 1)
             end = len(source) if end < 0 else end
         elif source.startswith("/*", i):
             closing = source.find("*/", i + 2)
@@ -115,13 +122,18 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
             for alias in statement.names:
                 if alias.name == "importlib":
                     names.add(f"{alias.asname or alias.name}.import_module")
+                elif alias.name == "builtins":
+                    names.add(f"{alias.asname or alias.name}.__import__")
         elif (
             isinstance(statement, ast.ImportFrom)
             and statement.level == 0
-            and statement.module == "importlib"
+            and statement.module in {"builtins", "importlib"}
         ):
             for alias in statement.names:
-                if alias.name == "import_module":
+                if (statement.module, alias.name) in {
+                    ("builtins", "__import__"),
+                    ("importlib", "import_module"),
+                }:
                     names.add(alias.asname or alias.name)
     assignments: list[tuple[list[ast.expr], ast.expr]] = []
     for statement in module_statements:
@@ -148,6 +160,39 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
         for targets, value in assignments
         for target in targets
     )
+    for statement in module_statements:
+        if isinstance(statement, ast.Import):
+            for alias in statement.names:
+                bound_name = alias.asname or alias.name.split(".", 1)[0]
+                safe = (
+                    alias.name == "importlib" and f"{bound_name}.import_module" in names
+                ) or (alias.name == "builtins" and f"{bound_name}.__import__" in names)
+                module_rebinding = module_rebinding or (
+                    bound_name in loader_roots and not safe
+                )
+        elif isinstance(statement, ast.ImportFrom):
+            for alias in statement.names:
+                bound_name = alias.asname or alias.name
+                safe = statement.level == 0 and (
+                    (statement.module, alias.name)
+                    in {
+                        ("builtins", "__import__"),
+                        ("importlib", "import_module"),
+                    }
+                )
+                module_rebinding = module_rebinding or (
+                    bound_name in loader_roots and not safe
+                )
+        elif isinstance(
+            statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        ):
+            module_rebinding = module_rebinding or statement.name in loader_roots
+        elif isinstance(statement, ast.Delete):
+            module_rebinding = module_rebinding or any(
+                isinstance(node, ast.Name) and node.id in loader_roots
+                for target in statement.targets
+                for node in ast.walk(target)
+            )
     nested_bindings: set[str] = set()
     nested_loader_alias = False
     for statement in module_statements:
@@ -193,16 +238,20 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
             elif isinstance(node, ast.Import):
                 for alias in node.names:
                     nested_bindings.add(alias.asname or alias.name.split(".", 1)[0])
-                    nested_loader_alias = (
-                        nested_loader_alias or alias.name == "importlib"
-                    )
+                    nested_loader_alias = nested_loader_alias or alias.name in {
+                        "builtins",
+                        "importlib",
+                    }
             elif isinstance(node, ast.ImportFrom):
                 for alias in node.names:
                     nested_bindings.add(alias.asname or alias.name)
                     nested_loader_alias = nested_loader_alias or (
                         node.level == 0
-                        and node.module == "importlib"
-                        and alias.name == "import_module"
+                        and (node.module, alias.name)
+                        in {
+                            ("builtins", "__import__"),
+                            ("importlib", "import_module"),
+                        }
                     )
     complete = (
         not module_rebinding
@@ -250,7 +299,7 @@ class _SymbolWalker:
             self.jsts_module_loaders.update(
                 re.findall(
                     r"(?m)\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*"
-                    r"(?:module\.)?require\b",
+                    r"(?:require\b|module(?:\.require\b|\s*\[\s*['\"`]require['\"`]\s*\]))",
                     self.source,
                 )
             )
@@ -405,7 +454,10 @@ class _SymbolWalker:
         arguments = node.child_by_field_name("arguments")
         if function is None or arguments is None:
             return False
-        if _node_text(function, self.source) not in self.jsts_module_loaders:
+        function_text = _node_text(function, self.source)
+        if re.fullmatch(r"module\s*\[\s*(['\"`])require\1\s*\]", function_text):
+            function_text = "module.require"
+        if function_text not in self.jsts_module_loaders:
             return False
         self._append_import(node)
         return True

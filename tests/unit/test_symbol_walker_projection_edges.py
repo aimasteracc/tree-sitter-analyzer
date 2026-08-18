@@ -141,6 +141,37 @@ load("pkg.util")
     assert complete is False
 
 
+@pytest.mark.parametrize(
+    "rebind",
+    [
+        "from helpers import load",
+        "def load():\n    pass",
+        "class load:\n    pass",
+        "del load",
+    ],
+)
+def test_python_loader_analysis_rejects_nonassignment_rebinding(
+    rebind: str,
+) -> None:
+    source = (
+        f"from importlib import import_module as load\n{rebind}\nload('pkg.util')\n"
+    )
+
+    names, complete = _python_dynamic_loader_analysis(source)
+
+    assert "load" in names
+    assert complete is False
+
+
+def test_python_loader_analysis_tracks_builtins_alias() -> None:
+    names, complete = _python_dynamic_loader_analysis(
+        "import builtins as runtime\nruntime.__import__('pkg.util')\n"
+    )
+
+    assert "runtime.__import__" in names
+    assert complete is True
+
+
 def test_module_scope_statement_walk_skips_nested_function_body() -> None:
     module = ast.parse("if enabled:\n    def nested():\n        import importlib\n")
 
