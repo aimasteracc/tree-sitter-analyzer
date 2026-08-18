@@ -49,18 +49,22 @@ _ORACLE_LOAD_EXIT_CODE = 86
 _ORACLE_BOOTSTRAP = (
     "import builtins, runpy, sys, traceback\n"
     "_original_import = builtins.__import__\n"
+    "_import_failure = None\n"
     "def _tracked_import(*args, **kwargs):\n"
+    "    global _import_failure\n"
     "    try:\n"
     "        return _original_import(*args, **kwargs)\n"
-    "    except BaseException:\n"
-    "        traceback.print_exc()\n"
-    f"        raise SystemExit({_ORACLE_LOAD_EXIT_CODE})\n"
+    "    except BaseException as exc:\n"
+    "        _import_failure = exc\n"
+    "        raise\n"
     "builtins.__import__ = _tracked_import\n"
     "try:\n"
     "    runpy.run_path(sys.argv[1], run_name='__main__')\n"
-    "except (ImportError, SyntaxError):\n"
-    "    traceback.print_exc()\n"
-    f"    raise SystemExit({_ORACLE_LOAD_EXIT_CODE})\n"
+    "except BaseException as exc:\n"
+    "    if exc is _import_failure or isinstance(exc, (ImportError, SyntaxError)):\n"
+    "        traceback.print_exc()\n"
+    f"        raise SystemExit({_ORACLE_LOAD_EXIT_CODE})\n"
+    "    raise\n"
 )
 
 
@@ -219,7 +223,7 @@ def _run_oracle_process_unisolated_for_tests(
         return OracleOutcome(
             OracleStatus.UNKNOWN, "ORACLE_LOAD_ERROR", "oracle file not found"
         )
-    command = [sys.executable, "-c", _ORACLE_BOOTSTRAP, str(oracle)]
+    command = [sys.executable, "-u", "-c", _ORACLE_BOOTSTRAP, str(oracle)]
     env = _sanitized_env(env_extra)
     try:
         if _IS_WINDOWS:

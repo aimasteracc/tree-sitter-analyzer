@@ -137,8 +137,8 @@ def _canonical_rel_path(raw: Any, field: str) -> str:
         raise BenchmarkRecordError(f"{field}: path must be a non-empty string")
     if "\\" in raw:
         raise BenchmarkRecordError(f"{field}: backslashes are not allowed")
-    if not raw.isascii():
-        raise BenchmarkRecordError(f"{field}: path must contain only ASCII")
+    if re.fullmatch(r"[\x20-\x21\x23-\x7e]+", raw) is None:
+        raise BenchmarkRecordError(f"{field}: path must use unquoted printable ASCII")
     value = raw
     if value.startswith("/") or value.startswith("./"):
         raise BenchmarkRecordError(f"{field}: path must be repository-relative")
@@ -476,7 +476,7 @@ def load_corpus_records(path: str) -> list[BenchmarkRecord]:
             continue
         try:
             payload = _strict_json_loads(line)
-        except ValueError as exc:
+        except (RecursionError, ValueError) as exc:
             raise BenchmarkRecordError(
                 f"corpus line {index}: invalid JSON: {exc}"
             ) from exc

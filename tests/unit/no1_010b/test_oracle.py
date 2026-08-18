@@ -1,5 +1,3 @@
-"""Contract tests for the NO1-010B oracle wrapper (RFC-0026 §3, C19)."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -54,8 +52,9 @@ def _run_written_oracle(tmp_path: Path, body: str) -> OracleOutcome:
     )
 
 
-def test_run_oracle_accepts_declared_pass(tmp_path: Path) -> None:
-    outcome = _run_written_oracle(tmp_path, ORACLE_PASS)
+def test_run_oracle_preserves_caught_optional_import(tmp_path: Path) -> None:
+    body = "try:\n import no_such_optional\nexcept ImportError:\n pass\n"
+    outcome = _run_written_oracle(tmp_path, body + ORACLE_PASS)
     assert outcome.status == OracleStatus.PASS
     assert outcome.unknown_reason is None
 
@@ -292,7 +291,7 @@ def test_run_oracle_rejects_stderr_after_result_marker(tmp_path: Path) -> None:
     body = (
         "#!/usr/bin/env python3\nimport sys\n"
         "print('NO1_010B_ORACLE_REASON: dispatch-returns-none')\n"
-        "print('NO1_010B_ORACLE_RESULT: PASS', flush=True)\n"
+        "print('NO1_010B_ORACLE_RESULT: PASS')\n"
         "print('later diagnostic', file=sys.stderr, flush=True)\n"
     )
     oracle = _write_oracle(tmp_path, "stderr_after.py", body)

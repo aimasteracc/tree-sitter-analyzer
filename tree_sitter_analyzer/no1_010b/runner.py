@@ -24,6 +24,7 @@ PATCH_MAX_BYTES = 1 * 1024 * 1024
 PATCH_MAX_HUNKS = 512
 PATCH_MAX_LINES_PER_HUNK = 2000
 _HUNK_COUNT_MAX_DIGITS = len(str(PATCH_MAX_BYTES))
+_GIT_HEADER_SEPARATOR_MAX = 64
 _HUNK_HEADER_RE = re.compile(
     r"^@@ -[0-9]+(?:,([0-9]+))? \+[0-9]+(?:,([0-9]+))? @@(?: .*)?$"
 )
@@ -126,7 +127,9 @@ def _git_header_paths(line: str) -> tuple[DiffPath, DiffPath]:
         raise PatchFormatError("non-canonical diff --git header")
     body = line[len(prefix) :]
     candidates: list[tuple[DiffPath, DiffPath]] = []
-    for match in re.finditer(r" b/", body):
+    for candidate_count, match in enumerate(re.finditer(r" b/", body), 1):
+        if candidate_count > _GIT_HEADER_SEPARATOR_MAX:
+            raise PatchFormatError("too many Git header separators")
         separator = match.start()
         old_path = DiffPath.from_git_token(body[:separator], "a/")
         new_path = DiffPath.from_git_token(body[separator + 1 :], "b/")

@@ -52,15 +52,14 @@ def test_record_from_dict_rejects_unknown_fields() -> None:
         record_from_dict(payload)
 
 
-def test_record_from_dict_rejects_invalid_enums() -> None:
-    for field, bad in (
-        ("task_class", "bugfiix"),
-        ("operation", "understnd"),
-    ):
-        payload = _valid_payload()
-        payload[field] = bad
-        with pytest.raises(BenchmarkRecordError, match="invalid"):
-            record_from_dict(payload)
+@pytest.mark.parametrize(
+    ("field", "bad"), [("task_class", "bugfiix"), ("operation", "understnd")]
+)
+def test_record_from_dict_rejects_invalid_enums(field: str, bad: str) -> None:
+    payload = _valid_payload()
+    payload[field] = bad
+    with pytest.raises(BenchmarkRecordError, match="invalid"):
+        record_from_dict(payload)
 
 
 def test_record_from_dict_rejects_empty_task() -> None:
@@ -353,7 +352,7 @@ def test_path_canonicalization_rejects_all_bad_forms() -> None:
         "a\\b.py",
         "src/é.py",
         "C:/outside/file.py",
-        "C:\\outside\\file.py",
+        'src/a"b.py',
     ):
         payload = _valid_payload()
         payload["allowed_paths"] = [bad]
@@ -388,9 +387,9 @@ def test_to_task_request_projection() -> None:
     assert "allowed_paths" not in request
 
 
-def test_loader_rejects_invalid_json_line(tmp_path: Path) -> None:
+def test_loader_rejects_excessive_json_nesting(tmp_path: Path) -> None:
     corpus = tmp_path / "bad.jsonl"
-    corpus.write_text("not-json\n", encoding="utf-8")
+    corpus.write_text("[" * 100_000 + "]" * 100_000 + "\n", encoding="utf-8")
     with pytest.raises(BenchmarkRecordError, match="invalid JSON"):
         load_corpus_records(str(corpus))
 

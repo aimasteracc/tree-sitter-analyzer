@@ -160,6 +160,12 @@ def test_diff_paths_rejects_ambiguous_unquoted_space_separator() -> None:
         diff_paths(patch)
 
 
+def test_diff_paths_bounds_git_header_separators() -> None:
+    patch = "diff --git a/root" + " b/part" * 65 + "\n"
+    with pytest.raises(PatchFormatError, match="too many"):
+        diff_paths(patch)
+
+
 def test_diff_paths_deduplicates_with_bounded_equality_checks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
