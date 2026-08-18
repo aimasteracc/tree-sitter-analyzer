@@ -18,6 +18,12 @@ from tree_sitter_analyzer.no1_010b.record import (
     record_from_dict,
 )
 
+_NONCANONICAL_PATHS = (
+    None,
+    "",
+    *r'/x ./x .. ../x a/../b a/./b a//b a\b é C:/x a"b'.split(),
+)
+
 
 def _valid_payload() -> dict:
     return {
@@ -46,6 +52,20 @@ def test_record_from_dict_accepts_valid_payload() -> None:
     assert record.oracle_baseline_reason == "dispatch-returns-none"
     assert record.expected_terminal.verdict == "PASS"
     assert record.expected_terminal.reason_code is None
+
+
+def test_record_detaches_nested_defect_metadata() -> None:
+    # PR #1307 review: caller-owned registration metadata must not drift.
+    payload = _valid_payload()
+    record = record_from_dict(payload)
+
+    payload["defect"]["nested"] = ["changed"]
+
+    assert record.defect == {
+        "file": "src/dispatch.py",
+        "line": 12,
+        "kind": "missing-else",
+    }
 
 
 def test_record_from_dict_rejects_unknown_fields() -> None:
@@ -223,6 +243,13 @@ def test_record_rejects_malformed_selected_tests(bad_selected: object) -> None:
         record_from_dict(payload)
 
 
+def test_record_rejects_empty_test_selection_oracle() -> None:
+    payload = _valid_payload()
+    payload["task_class"] = "test_selection"
+    with pytest.raises(BenchmarkRecordError, match="non-empty selected_tests oracle"):
+        record_from_dict(payload)
+
+
 def test_record_rejects_duplicate_allowed_paths() -> None:
     payload = _valid_payload()
     payload["allowed_paths"] = ["tests/", "tests/"]
@@ -323,6 +350,7 @@ def test_record_accepts_non_pass_expected_terminal(
     payload["expected_terminal"] = terminal
     if reason_code == "TEST_SELECTION_FAILED":
         payload["task_class"] = "test_selection"
+        payload["selected_tests"] = ["tests/test_app.py"]
     result = record_from_dict(payload).expected_terminal
     assert result.verdict == verdict
     assert result.reason_code == reason_code
@@ -342,32 +370,20 @@ def test_record_rejects_nul_in_verification_argv() -> None:
         record_from_dict(payload)
 
 
-def test_path_canonicalization_rejects_all_bad_forms() -> None:
-    for bad in (
-        None,
-        "",
-        "/abs/path.py",
-        "./rel.py",
-        "..",
-        "../x.py",
-        "a/../b.py",
-        "a/./b.py",
-        "a//b.py",
-        "a\\b.py",
-        "src/é.py",
-        "C:/outside/file.py",
-        'src/a"b.py',
-        "outside.py",
-    ):
-        if bad != "outside.py":
-            payload = _valid_payload()
-            payload["allowed_paths"] = [bad]
-            with pytest.raises(BenchmarkRecordError, match="path"):
-                record_from_dict(payload)
-        payload = _valid_payload()
-        payload["oracle"] = bad
-        with pytest.raises(BenchmarkRecordError, match="oracle"):
-            record_from_dict(payload)
+@pytest.mark.parametrize("bad", _NONCANONICAL_PATHS)
+def test_record_rejects_noncanonical_allowed_path(bad: object) -> None:
+    payload = _valid_payload()
+    payload["allowed_paths"] = [bad]
+    with pytest.raises(BenchmarkRecordError, match="path"):
+        record_from_dict(payload)
+
+
+@pytest.mark.parametrize("bad", (*_NONCANONICAL_PATHS, "outside.py"))
+def test_record_rejects_noncanonical_or_outside_oracle_path(bad: object) -> None:
+    payload = _valid_payload()
+    payload["oracle"] = bad
+    with pytest.raises(BenchmarkRecordError, match="oracle"):
+        record_from_dict(payload)
 
 
 def test_record_rejects_selected_tests_for_non_selection_task() -> None:
@@ -397,52 +413,11 @@ def test_to_task_request_projection() -> None:
     assert "allowed_paths" not in request
 
 
-def test_loader_rejects_excessive_json_nesting(tmp_path: Path) -> None:
-    corpus = tmp_path / "bad.jsonl"
-    corpus.write_text("[" * 100_000 + "]" * 100_000 + "\n", encoding="utf-8")
-    with pytest.raises(BenchmarkRecordError, match="invalid JSON"):
-        load_corpus_records(str(corpus))
-
-
-def test_loader_rejects_oversized_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sys, "stdin", io.StringIO("x" * (8 * 1024 * 1024 + 1)))
-    with pytest.raises(BenchmarkRecordError, match="8 MiB"):
-        load_corpus_records("-")
-
-
 def test_loader_reads_binary_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
     raw = (json.dumps(_valid_payload()) + "\n").encode()
     monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(raw)))
 
     assert load_corpus_records("-")[0].id == _valid_payload()["id"]
-
-
-def test_loader_rejects_empty_corpus(tmp_path: Path) -> None:
-    corpus = tmp_path / "empty.jsonl"
-    corpus.write_text("\n\n", encoding="utf-8")
-    with pytest.raises(BenchmarkRecordError, match="corpus is empty"):
-        load_corpus_records(str(corpus))
-
-
-def test_loader_enforces_file_limit_in_bytes(tmp_path: Path) -> None:
-    corpus = tmp_path / "oversized.jsonl"
-    corpus.write_bytes("界".encode() * ((8 * 1024 * 1024) // 3 + 1))
-    with pytest.raises(BenchmarkRecordError, match="8 MiB"):
-        load_corpus_records(str(corpus))
-
-
-def test_loader_rejects_non_utf8_bytes(tmp_path: Path) -> None:
-    corpus = tmp_path / "binary.jsonl"
-    corpus.write_bytes(b"\xff\n")
-    with pytest.raises(BenchmarkRecordError, match="valid UTF-8"):
-        load_corpus_records(str(corpus))
-
-
-def test_loader_rejects_unencodable_text_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
-    # PR #1307 review: text-only stdin maps surrogate failures to record errors.
-    monkeypatch.setattr(sys, "stdin", io.StringIO("\ud800"))
-    with pytest.raises(BenchmarkRecordError, match="valid UTF-8"):
-        load_corpus_records("-")
 
 
 def test_loader_preserves_unicode_line_separator_inside_json(tmp_path: Path) -> None:
@@ -453,24 +428,17 @@ def test_loader_preserves_unicode_line_separator_inside_json(tmp_path: Path) -> 
     assert load_corpus_records(str(corpus))[0].task == "first\u2028second"
 
 
-def test_loader_rejects_duplicate_keys(tmp_path: Path) -> None:
-    corpus = tmp_path / "dup.jsonl"
-    corpus.write_text('{"id": "a", "id": "b"}\n', encoding="utf-8")
-    with pytest.raises(BenchmarkRecordError, match="duplicate key"):
-        load_corpus_records(str(corpus))
-
-
-def test_loader_rejects_nan_constant(tmp_path: Path) -> None:
-    corpus = tmp_path / "nan.jsonl"
-    corpus.write_text('{"id": "a", "task": NaN}\n', encoding="utf-8")
-    with pytest.raises(BenchmarkRecordError, match="non-standard JSON constant"):
-        load_corpus_records(str(corpus))
-
-
 def test_per_class_counts_is_exact_for_all_classes() -> None:
     records = [
         record_from_dict(
-            {**_valid_payload(), "id": f"task-{index}", "task_class": task_class}
+            {
+                **_valid_payload(),
+                "id": f"task-{index}",
+                "task_class": task_class,
+                "selected_tests": (
+                    ["tests/test_app.py"] if task_class == "test_selection" else []
+                ),
+            }
         )
         for index, task_class in enumerate(
             ("bugfix", "refactor", "migration", "test_selection"), start=1

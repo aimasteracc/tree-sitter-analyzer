@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import zlib
+
 import pytest
 
+from tree_sitter_analyzer.no1_010b.git_binary import GIT_BASE85_ALPHABET
 from tree_sitter_analyzer.no1_010b.patch import (
     PATCH_MAX_BYTES,
     PatchBoundError,
@@ -26,6 +29,43 @@ BINARY_PATCH = (
     "literal 4\n"
     "LcmZQzWMT#Y01f~L\n\n"
 )
+DELTA_BINARY_PATCH = (
+    "diff --git a/assets/payload.bin b/assets/payload.bin\n"
+    "GIT binary patch\n"
+    "delta 4\n"
+    "Oc${NlVaZD^=K=r(E&*Wx\n\n"
+)
+
+
+def _binary_patch_from_compressed(
+    kind: str, declared_size: int, compressed: bytes
+) -> str:
+    encoded_lines: list[str] = []
+    for start in range(0, len(compressed), 52):
+        chunk = compressed[start : start + 52]
+        count = len(chunk)
+        prefix = (
+            chr(ord("A") + count - 1) if count <= 26 else chr(ord("a") + count - 27)
+        )
+        padded = chunk + b"\0" * (-count % 4)
+        encoded = []
+        for offset in range(0, len(padded), 4):
+            value = int.from_bytes(padded[offset : offset + 4], "big")
+            digits = []
+            for _ in range(5):
+                value, digit = divmod(value, 85)
+                digits.append(GIT_BASE85_ALPHABET[digit])
+            encoded.extend(reversed(digits))
+        encoded_lines.append(prefix + "".join(encoded))
+    body = "\n".join(encoded_lines)
+    return (
+        "diff --git a/assets/payload.bin b/assets/payload.bin\n"
+        f"GIT binary patch\n{kind} {declared_size}\n{body}\n\n"
+    )
+
+
+def _binary_patch(kind: str, declared_size: int, inflated: bytes) -> str:
+    return _binary_patch_from_compressed(kind, declared_size, zlib.compress(inflated))
 
 
 def test_diff_paths_rejects_quoted_git_header() -> None:
@@ -85,6 +125,30 @@ def test_validate_patch_rejects_standalone_metadata_garbage() -> None:
         validate_patch(patch)
 
 
+@pytest.mark.parametrize(
+    "patch",
+    [
+        "diff --git a/x.py b/x.py\nold mode 100644\ndiff --git a/y.py b/y.py\n",
+        "rename from x.py\n",
+        "diff --git a/x.py b/x.py\nrename from x.py\nrename from x.py\n",
+        "old mode 100644\n",
+        "diff --git a/x.py b/x.py\nold mode 100644\nold mode 100755\n",
+        "index abc..def\n",
+    ],
+    ids=[
+        "unfinished-block",
+        "orphan-rename",
+        "duplicate-rename",
+        "orphan-mode",
+        "duplicate-mode",
+        "orphan-index",
+    ],
+)
+def test_validate_patch_rejects_misplaced_or_duplicate_metadata(patch: str) -> None:
+    with pytest.raises(PatchFormatError, match="changed canonical"):
+        validate_patch(patch)
+
+
 def test_validate_patch_accepts_mode_only_change() -> None:
     assert [path.rel_path for path in validate_patch(MODE_ONLY_PATCH)] == [
         "scripts/run.sh"
@@ -96,6 +160,97 @@ def test_validate_patch_accepts_canonical_git_binary_patch() -> None:
     assert [path.rel_path for path in validate_patch(BINARY_PATCH)] == [
         "assets/payload.bin"
     ]
+
+
+def test_validate_patch_rejects_corrupt_binary_payload_checksum() -> None:
+    # PR #1307: legal base85 text must still decode to an intact zlib stream.
+    corrupted = BINARY_PATCH.replace("LcmZQzWMTmT01p5N", "LcmZQzWMTmT01p5O")
+    with pytest.raises(PatchFormatError, match="corrupt binary patch payload"):
+        validate_patch(corrupted)
+
+
+def test_validate_patch_accepts_canonical_binary_delta() -> None:
+    assert [path.rel_path for path in validate_patch(DELTA_BINARY_PATCH)] == [
+        "assets/payload.bin"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("declared_size", "delta"),
+    [
+        (65536, b"\x80\x80\x04\x80\x80\x04\x80"),
+        (197121, b"\x85\x8a\x94\x08\x81\x84\x0c\xff\x04\x03\x02\x01\x01\x02\x03"),
+    ],
+    ids=["default-copy-size", "all-copy-fields"],
+)
+def test_validate_patch_accepts_canonical_delta_copy(
+    declared_size: int, delta: bytes
+) -> None:
+    assert [
+        path.rel_path
+        for path in validate_patch(_binary_patch("delta", declared_size, delta))
+    ] == ["assets/payload.bin"]
+
+
+@pytest.mark.parametrize(
+    "delta",
+    [
+        b"\x80" * 10,
+        b"\x04\x05\x04data",
+        b"\x04\x04\x81",
+        b"\x04\x04\x90",
+        b"\x04\x04\x91\x04\x01",
+        b"\x04\x04\x04abc",
+        b"\x04\x04\x00",
+        b"\x04\x04\x05abcde",
+        b"\x04\x04\x03abc",
+    ],
+    ids=[
+        "bad-varint",
+        "result-size",
+        "copy-offset",
+        "copy-size",
+        "copy-source",
+        "insert",
+        "zero-command",
+        "long-output",
+        "short-output",
+    ],
+)
+def test_validate_patch_rejects_malformed_binary_delta(delta: bytes) -> None:
+    with pytest.raises(PatchFormatError, match="corrupt binary patch payload"):
+        validate_patch(_binary_patch("delta", 4, delta))
+
+
+@pytest.mark.parametrize("line", ["A~~~~~", "A00001"], ids=["overflow", "padding"])
+def test_validate_patch_rejects_noncanonical_base85_value(line: str) -> None:
+    prefix = BINARY_PATCH.split("GIT binary patch\n", 1)[0]
+    patch = f"{prefix}GIT binary patch\nliteral 1\n{line}\n\n"
+    with pytest.raises(PatchFormatError, match="corrupt binary patch payload"):
+        validate_patch(patch)
+
+
+def test_validate_patch_rejects_literal_size_mismatch() -> None:
+    with pytest.raises(PatchFormatError, match="corrupt binary patch payload"):
+        validate_patch(_binary_patch("literal", 4, b"abc"))
+
+
+def test_validate_patch_rejects_truncated_zlib_stream() -> None:
+    compressed = zlib.compress(b"abc")[:-1]
+    with pytest.raises(PatchFormatError, match="corrupt binary patch payload"):
+        validate_patch(_binary_patch_from_compressed("literal", 3, compressed))
+
+
+def test_validate_patch_rejects_concatenated_zlib_streams() -> None:
+    compressed = zlib.compress(b"abc") + zlib.compress(b"def")
+    with pytest.raises(PatchFormatError, match="corrupt binary patch payload"):
+        validate_patch(_binary_patch_from_compressed("literal", 3, compressed))
+
+
+def test_validate_patch_rejects_inflated_instruction_bomb() -> None:
+    inflated = b"x" * (PATCH_MAX_BYTES * 2 + 65)
+    with pytest.raises(PatchFormatError, match="corrupt binary patch payload"):
+        validate_patch(_binary_patch("literal", 1, inflated))
 
 
 @pytest.mark.parametrize("size", [str(PATCH_MAX_BYTES + 1), "0" * 8])

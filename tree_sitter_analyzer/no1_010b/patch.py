@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .git_binary import GIT_BASE85_ALPHABET, GitBinaryError, validate_binary_section
+
 PATCH_MAX_BYTES = 1 * 1024 * 1024
 PATCH_MAX_HUNKS = 512
 PATCH_MAX_LINES_PER_HUNK = 2000
@@ -19,10 +21,7 @@ _MODE_HEADER_RE = re.compile(
 _INDEX_HEADER_RE = re.compile(r"^index [0-9a-f]+\.\.[0-9a-f]+(?: [0-7]{6})?$")
 _SIMILARITY_HEADER_RE = re.compile(r"^(?:dis)?similarity index (?:100|[0-9]{1,2})%$")
 _BINARY_SIZE_RE = re.compile(r"^(?:literal|delta) ([0-9]+)$")
-_BINARY_DATA_ALPHABET = frozenset(
-    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-    "!#$%&()*+-;<=>?@^_`{|}~"
-)
+_BINARY_DATA_ALPHABET = frozenset(GIT_BASE85_ALPHABET)
 _EXTENDED_PATH_PREFIXES = ("rename from ", "rename to ", "copy from ", "copy to ")
 
 
@@ -372,18 +371,28 @@ def _binary_patch_state(lines: list[str]) -> tuple[set[int], bool]:
                 raise PatchBoundError("binary patch size exceeds numeric bound")
             if int(raw_size) > PATCH_MAX_BYTES:
                 raise PatchBoundError("binary patch output exceeds max bytes")
+            kind = lines[cursor].split(" ", 1)[0]
+            declared_size = int(raw_size)
             indexes.add(cursor)
             section_count += 1
             cursor += 1
             data_count = 0
+            data_lines: list[str] = []
             while cursor < len(lines) and lines[cursor]:
                 if not _binary_data_line_is_canonical(lines[cursor]):
                     raise PatchFormatError("non-canonical binary patch payload")
+                data_lines.append(lines[cursor])
                 indexes.add(cursor)
                 data_count += 1
                 cursor += 1
             if data_count == 0 or cursor >= len(lines):
                 raise PatchFormatError("incomplete binary patch payload")
+            try:
+                validate_binary_section(
+                    kind, declared_size, data_lines, PATCH_MAX_BYTES
+                )
+            except GitBinaryError as exc:
+                raise PatchFormatError("corrupt binary patch payload") from exc
             indexes.add(cursor)
             cursor += 1
         if section_count == 0:

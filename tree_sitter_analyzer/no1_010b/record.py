@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
@@ -318,6 +319,10 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
     )
     if len(set(selected_tests)) != len(selected_tests):
         raise BenchmarkRecordError("selected_tests must not contain duplicates")
+    if task_class == "test_selection" and not selected_tests:
+        raise BenchmarkRecordError(
+            "test_selection requires a non-empty selected_tests oracle"
+        )
     if task_class != "test_selection" and selected_tests:
         raise BenchmarkRecordError("selected_tests require task_class test_selection")
     if (
@@ -341,7 +346,7 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
         verification_argv=verification_argv,
         expected_terminal=expected_terminal,
         verification_command=verification_hint,
-        defect=defect,
+        defect=deepcopy(defect),
         patch=patch,
         selected_tests=selected_tests,
     )
