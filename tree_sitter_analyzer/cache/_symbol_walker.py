@@ -265,12 +265,17 @@ def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
             )
     if (
         isinstance(node, ast.Call)
+        and _python_reference_name(node.func) in {"getattr", "builtins.getattr"}
         and len(node.args) >= 2
-        and isinstance(node.args[1], ast.Constant)
-        and isinstance(node.args[1].value, str)
     ):
         owner = _python_reference_name(node.args[0])
-        if owner is not None and f"{owner}.{node.args[1].value}" in names:
+        attribute = (
+            node.args[1].value if isinstance(node.args[1], ast.Constant) else None
+        )
+        if _python_owner_exposes_loader(owner, names) and (
+            not isinstance(node.args[1], ast.Constant)
+            or (isinstance(attribute, str) and f"{owner}.{attribute}" in names)
+        ):
             return True
     children: list[ast.expr]
     if isinstance(node, ast.Call):
@@ -304,6 +309,24 @@ def _python_function_annotations(
     if node.returns is not None:
         annotations += (node.returns,)
     return annotations
+
+
+def _python_control_flow_header_values(statement: ast.stmt) -> tuple[ast.expr, ...]:
+    """Return expressions evaluated by a control-flow statement's header."""
+
+    if isinstance(statement, (ast.If, ast.While)):
+        return (statement.test,)
+    if isinstance(statement, (ast.For, ast.AsyncFor)):
+        return (statement.iter,)
+    if isinstance(statement, (ast.With, ast.AsyncWith)):
+        return tuple(item.context_expr for item in statement.items)
+    if isinstance(statement, ast.Match):
+        return (statement.subject,) + tuple(
+            case.guard for case in statement.cases if case.guard is not None
+        )
+    if isinstance(statement, ast.Assert):
+        return (statement.test,) + (() if statement.msg is None else (statement.msg,))
+    return ()
 
 
 def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
@@ -389,6 +412,11 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
         for statement in module_statements
         for node in ast.walk(statement)
     )
+    unsafe_loader_storage = unsafe_loader_storage or any(
+        _python_value_stores_loader(value, names)
+        for statement in module_statements
+        for value in _python_control_flow_header_values(statement)
+    )
     dynamic_code_execution = any(
         isinstance(node, ast.Call)
         and _python_reference_name(node.func)
@@ -460,6 +488,11 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                 )
             )
         for node in (child for scope in nested_scopes for child in ast.walk(scope)):
+            if isinstance(node, ast.stmt):
+                nested_loader_alias = nested_loader_alias or any(
+                    _python_value_stores_loader(value, names)
+                    for value in _python_control_flow_header_values(node)
+                )
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 nested_loader_alias = nested_loader_alias or any(
                     _python_value_stores_loader(decorator, names)
@@ -690,9 +723,43 @@ def _jsts_indirect_module_loader_call(
     )
 
 
+def _jsts_require_utility_member(node: Any, source: str, loaders: set[str]) -> bool:
+    """Return whether *node* is a known non-loader CommonJS utility member."""
+
+    if node.type not in {"member_expression", "subscript_expression"}:
+        return False
+    owner = node.child_by_field_name("object")
+    accessor = node.child_by_field_name("property") or node.child_by_field_name("index")
+    if owner is None or accessor is None:
+        return False
+    member = _node_text(accessor, source).strip("'\"`")
+    return member in {"cache", "extensions", "main", "resolve"} and (
+        _jsts_module_loader_reference(owner, source, loaders)
+    )
+
+
+def _jsts_dynamic_module_member(node: Any, source: str) -> bool:
+    """Return whether *node* dynamically selects a property from ``module``."""
+
+    if node.type != "subscript_expression":
+        return False
+    owner = node.child_by_field_name("object")
+    index = node.child_by_field_name("index")
+    if owner is None or index is None or _node_text(owner, source).strip() != "module":
+        return False
+    index_text = _node_text(index, source).strip()
+    quoted_literal = re.fullmatch(r"(['\"])[^'\"]*\1", index_text)
+    template_literal = re.fullmatch(r"`[^`$]*`", index_text)
+    return quoted_literal is None and template_literal is None
+
+
 def _jsts_value_stores_module_loader(node: Any, source: str, loaders: set[str]) -> bool:
     """Detect a loader retained or passed as a value rather than invoked."""
 
+    if _jsts_dynamic_module_member(node, source):
+        return True
+    if _jsts_require_utility_member(node, source, loaders):
+        return False
     if _jsts_module_loader_reference(node, source, loaders):
         return True
     if node.type == "call_expression":
@@ -1015,9 +1082,16 @@ class _SymbolWalker:
         ):
             self.import_projection_complete = False
             return False
+        if _jsts_dynamic_module_member(function, self.source):
+            self.import_projection_complete = False
+            return False
         if not _jsts_module_loader_reference(
             function, self.source, self.jsts_module_loaders
         ):
+            if _jsts_value_stores_module_loader(
+                arguments, self.source, self.jsts_module_loaders
+            ):
+                self.import_projection_complete = False
             return False
         self._append_import(node)
         return True
@@ -1067,6 +1141,14 @@ class _SymbolWalker:
         arguments = node.child_by_field_name("arguments")
         if function is None or arguments is None:
             return False
+        while function.type == "parenthesized_expression":
+            named_children = [
+                child for child in function.children if getattr(child, "is_named", True)
+            ]
+            if len(named_children) != 1:
+                self.import_projection_complete = False
+                return False
+            function = named_children[0]
         if _node_text(function, self.source) not in self.python_dynamic_loaders:
             return False
         self._append_import(node)

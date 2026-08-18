@@ -167,9 +167,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v32: loader-dictionary alias and bound-loader semantics are persisted.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 32
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 32
+        # v33: computed and header-retained loader semantics are persisted.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 33
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 33
 
 
 def test_python_module_control_bindings_cover_all_module_control_targets() -> None:
@@ -197,6 +197,9 @@ async with manager(), other() as async_bound:
 with manager(), other() as sync_bound:
     pass
 
+if (walrus_bound := value):
+    pass
+
 try:
     pass
 except Exception:
@@ -220,6 +223,7 @@ match value:
         "async_item",
         "async_bound",
         "sync_bound",
+        "walrus_bound",
         "rest",
         "item",
         "remaining",
@@ -288,6 +292,14 @@ def test_python_non_loader_reflection_remains_complete() -> None:
     assert complete is True
 
 
+def test_python_dynamic_non_loader_getattr_remains_complete() -> None:
+    _loaders, complete = _python_dynamic_loader_analysis(
+        "key = choose_name()\nvalue = getattr(config, key)\n"
+    )
+
+    assert complete is True
+
+
 @pytest.mark.parametrize(
     "source",
     [
@@ -320,12 +332,27 @@ def test_python_unrelated_dictionary_access_remains_complete(source: str) -> Non
             "import importlib\nmapping = vars(importlib)\n"
             'load = mapping.get("import_module")\n'
         ),
+        ("import importlib\nkey = choose_name()\nload = getattr(importlib, key)\n"),
     ],
 )
 def test_python_loader_dictionary_method_retrieval_fails_closed(source: str) -> None:
     _loaders, complete = _python_dynamic_loader_analysis(source)
 
     assert complete is False
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'import importlib\n(importlib.import_module)("pkg.util")\n',
+        ('from importlib import import_module as load\n(load)("pkg.util")\n'),
+    ],
+)
+def test_parenthesized_python_loader_call_is_projected(source: str) -> None:
+    extraction = _extraction_for(source, "python")
+
+    assert extraction["import_projection_complete"] is True
+    assert _extract_imports(extraction)[-1]["text"].endswith('("pkg.util")')
 
 
 def test_js_alias_scope_without_parent_is_not_file_scoped() -> None:
@@ -397,12 +424,40 @@ def test_parenthesized_commonjs_loader_call_is_projected(source: str) -> None:
         'module.require.apply(null, ["./util.js"]);',
         'const load = require; load.call(null, "./util.js");',
         'require.bind(null)("./util.js");',
+        'const key = "require"; module[key]("./util.js");',
+        'registry.push(require); registry[0]("./util.js");',
+        'const key = "require"; const load = module[key]; load("./util.js");',
+        'module[`${key}`]("./util.js");',
     ],
 )
 def test_indirect_commonjs_loader_call_fails_closed(source: str) -> None:
     extraction = _extraction_for(source, "javascript")
 
     assert extraction["import_projection_complete"] is False
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'const path = require.resolve("./util.js");',
+        "const cache = require.cache;",
+        "const main = require['main'];",
+    ],
+)
+def test_commonjs_utility_members_preserve_projection_completeness(
+    source: str,
+) -> None:
+    extraction = _extraction_for(source, "javascript")
+
+    assert extraction["import_projection_complete"] is True
+    assert _extract_imports(extraction) == []
+
+
+@pytest.mark.parametrize("key", ['"other"', "'other'", "`other`"])
+def test_static_non_loader_module_member_preserves_completeness(key: str) -> None:
+    extraction = _extraction_for(f"module[{key}]();", "javascript")
+
+    assert extraction["import_projection_complete"] is True
 
 
 def test_malformed_indirect_commonjs_loader_member_is_not_matched() -> None:
@@ -412,6 +467,7 @@ def test_malformed_indirect_commonjs_loader_member_is_not_matched() -> None:
     )
 
     assert not walker_module._jsts_indirect_module_loader_call(node, "", {"require"})
+    assert not walker_module._jsts_require_utility_member(node, "", {"require"})
 
 
 def test_malformed_parenthesized_commonjs_nodes_fail_closed() -> None:
@@ -1274,6 +1330,26 @@ def test_python_loader_analysis_rejects_decorator_retention(source: str) -> None
 )
 def test_python_loader_analysis_rejects_dynamic_code_execution(source: str) -> None:
     _names, complete = _python_dynamic_loader_analysis(source)
+
+    assert complete is False
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "if register(importlib.import_module):\n    pass",
+        "while retain(importlib.import_module):\n    break",
+        "for item in retain(importlib.import_module):\n    pass",
+        "with retain(importlib.import_module):\n    pass",
+        "match retain(importlib.import_module):\n    case _:\n        pass",
+        "assert retain(importlib.import_module)",
+        ("def run():\n    if register(importlib.import_module):\n        pass"),
+    ],
+)
+def test_python_loader_analysis_rejects_control_header_retention(
+    header: str,
+) -> None:
+    _names, complete = _python_dynamic_loader_analysis(f"import importlib\n{header}\n")
 
     assert complete is False
 
