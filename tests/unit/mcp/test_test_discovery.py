@@ -760,26 +760,22 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
     found = _certified_symbol_reference_tests(conn, inventory, "pkg/impl.py", "python")
     assert found == ["tests/test_behavior.py"]
 
-    # Legacy schema (no ast_index) degrades to no matches.
+    # Missing certified schema cannot prove a complete test set.
     bare = sqlite3.connect(":memory:")
     bare.row_factory = sqlite3.Row
-    assert (
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
         _certified_symbol_reference_tests(bare, frozenset(), "pkg/impl.py", "python")
-        == []
-    )
-    # Malformed symbols_json degrades to no matches.
+    # Malformed target symbols_json cannot prove a complete test set.
     broken = sqlite3.connect(":memory:")
     broken.row_factory = sqlite3.Row
     broken.execute(
         "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
     )
     broken.execute("INSERT INTO ast_index VALUES ('pkg/impl.py', 'not-json', '[]')")
-    assert (
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
         _certified_symbol_reference_tests(
             broken, frozenset({"pkg/impl.py"}), "pkg/impl.py", "python"
         )
-        == []
-    )
     # No public symbols -> no matches.
     private = sqlite3.connect(":memory:")
     private.row_factory = sqlite3.Row
@@ -803,12 +799,10 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
         "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
     )
     no_target.execute("INSERT INTO ast_index VALUES ('other.py', '{}', '[]')")
-    assert (
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
         _certified_symbol_reference_tests(
             no_target, frozenset({"tests/test_x.py"}), "pkg/impl.py", "python"
         )
-        == []
-    )
 
     # A mid-loop query failure (schema drift) degrades per row.
     class _FlakyConn:
@@ -826,12 +820,10 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
     flaky_inventory = frozenset(
         {"pkg/impl.py", "tests/test_behavior.py", "tests/test_unrelated.py"}
     )
-    assert (
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
         _certified_symbol_reference_tests(
             flaky_conn, flaky_inventory, "pkg/impl.py", "python"
         )
-        == []
-    )
     # C33: symbols match import IDENTIFIERS with word boundaries, never
     # serialized substrings or JSON keys ('text' must not match every
     # record's "text" key; 'get' must not match 'widget').
@@ -855,7 +847,7 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
         )
         == []
     )
-    # C33: malformed/non-list/non-str import records are skipped.
+    # A malformed inventory-covered import projection fails closed.
     messy = sqlite3.connect(":memory:")
     messy.row_factory = sqlite3.Row
     messy.execute(
@@ -889,12 +881,10 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
             "tests/test_obj.py",
         }
     )
-    assert (
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
         _certified_symbol_reference_tests(
             messy, messy_inventory, "pkg/impl.py", "python"
         )
-        == []
-    )
     # C42: snapshot CALL references find tests using pkg.public_fn().
     calls = sqlite3.connect(":memory:")
     calls.row_factory = sqlite3.Row
@@ -905,6 +895,7 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
         "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
         (json.dumps({"symbols": [{"name": "public_fn"}]}),),
     )
+    calls.execute("INSERT INTO ast_index VALUES ('tests/test_calls.py', '{}', '[]')")
     calls.execute(
         "CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT, "
         "callee_resolved_file TEXT)"
@@ -924,6 +915,7 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
         "INSERT INTO edges VALUES "
         "('tests/test_other.py', 'public_fn', 'calls', 'pkg/other.py')"
     )
+    calls.execute("INSERT INTO ast_index VALUES ('tests/test_other.py', '{}', '[]')")
     drift_inventory = frozenset(
         {"pkg/impl.py", "tests/test_calls.py", "tests/test_other.py"}
     )
@@ -988,11 +980,15 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
     defs.execute("INSERT INTO ast_index VALUES ('array.py', '[]')")
     assert _file_defines_any(defs, "ok.py", ["run"]) is True
     assert _file_defines_any(defs, "ok.py", ["nope"]) is False
-    assert _file_defines_any(defs, "malformed.py", ["run"]) is False
-    assert _file_defines_any(defs, "array.py", ["run"]) is False
-    assert _file_defines_any(defs, "ghost.py", ["run"]) is False
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _file_defines_any(defs, "malformed.py", ["run"])
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _file_defines_any(defs, "array.py", ["run"])
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _file_defines_any(defs, "ghost.py", ["run"])
     bare = sqlite3.connect(":memory:")
-    assert _file_defines_any(bare, "ghost.py", ["run"]) is False
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _file_defines_any(bare, "ghost.py", ["run"])
 
     # C56: 'import run' and a bare 'run' record still accept via the
     # no-module / import-module paths.
@@ -1038,20 +1034,18 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
     )
     assert rel_found == []
 
-    # C34: a non-object symbols_json payload degrades, never crashes.
+    # A non-object target symbols projection fails closed.
     array_payload = sqlite3.connect(":memory:")
     array_payload.row_factory = sqlite3.Row
     array_payload.execute(
         "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
     )
     array_payload.execute("INSERT INTO ast_index VALUES ('pkg/impl.py', '[]', '[]')")
-    assert (
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
         _certified_symbol_reference_tests(
             array_payload, frozenset({"pkg/impl.py"}), "pkg/impl.py", "python"
         )
-        == []
-    )
-    # A test-named inventory file absent from ast_index is skipped.
+    # A test-named inventory file absent from ast_index fails closed.
     missing = sqlite3.connect(":memory:")
     missing.row_factory = sqlite3.Row
     missing.execute(
@@ -1061,15 +1055,72 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
         "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
         (json.dumps({"symbols": [{"name": "public_fn"}]}),),
     )
-    assert (
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
         _certified_symbol_reference_tests(
             missing,
             frozenset({"pkg/impl.py", "tests/test_ghost.py"}),
             "pkg/impl.py",
             "python",
         )
-        == []
+
+
+@pytest.mark.parametrize(
+    ("target_symbols", "test_imports"),
+    [
+        ('{"symbols": {}}', "[]"),
+        ('{"symbols": [42]}', "[]"),
+        ('{"symbols": [{"name": "run"}]}', "not-json"),
+        ('{"symbols": [{"name": "run"}]}', "{}"),
+        ('{"symbols": [{"name": "run"}]}', '["not-a-record"]'),
+        ('{"symbols": [{"name": "run"}]}', '[{"text": 42}]'),
+    ],
+)
+def test_certified_symbol_reference_tests_reject_malformed_projections(
+    target_symbols: str, test_imports: str
+) -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_symbol_reference_tests,
     )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, ?)",
+        [
+            ("pkg/impl.py", target_symbols, "[]"),
+            ("tests/test_impl.py", "{}", test_imports),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _certified_symbol_reference_tests(
+            conn,
+            frozenset({"pkg/impl.py", "tests/test_impl.py"}),
+            "pkg/impl.py",
+            "python",
+        )
+
+
+@pytest.mark.parametrize("symbols_json", ['{"symbols": {}}', '{"symbols": [42]}'])
+def test_file_defines_any_rejects_malformed_symbol_entries(symbols_json: str) -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _file_defines_any,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT)")
+    conn.execute("INSERT INTO ast_index VALUES ('pkg/impl.py', ?)", (symbols_json,))
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _file_defines_any(conn, "pkg/impl.py", ["run"])
 
 
 def test_looks_like_test_name_unknown_language_is_false() -> None:

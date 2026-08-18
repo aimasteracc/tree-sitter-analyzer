@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from tree_sitter_analyzer.cache.extraction import (
     _DOCSTRING_MAX_CHARS,
+    _extract_imports,
 )
 
 
@@ -143,9 +144,45 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v15: #1275 (dogfood F5) — imports_json entries carry a line field.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 15
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 15
+        # v16: P1 causal envelopes project literal JS/TS module calls.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 16
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 16
+
+
+class TestJavaScriptModuleCallProjection:
+    def test_commonjs_literal_is_projected_as_import(self):
+        symbols = {"symbols": _symbols_for("require('./legacy');", "typescript")}
+
+        assert _extract_imports(symbols) == [{"text": "require('./legacy')", "line": 1}]
+
+    def test_dynamic_import_literal_is_projected_as_import(self):
+        symbols = {"symbols": _symbols_for("import('./lazy');", "typescript")}
+
+        assert _extract_imports(symbols) == [{"text": "import('./lazy')", "line": 1}]
+
+    def test_ordinary_call_is_not_projected_as_import(self):
+        symbols = {"symbols": _symbols_for("load('./module');", "typescript")}
+
+        assert _extract_imports(symbols) == []
+
+    def test_nonliteral_require_is_not_projected_as_import(self):
+        symbols = {"symbols": _symbols_for("require(moduleName);", "typescript")}
+
+        assert _extract_imports(symbols) == []
+
+    def test_incomplete_call_node_is_not_projected_as_import(self):
+        from tree_sitter_analyzer.cache._symbol_walker import _SymbolWalker
+
+        class _IncompleteCall:
+            type = "call_expression"
+
+            @staticmethod
+            def child_by_field_name(name: str):
+                return None
+
+        walker = _SymbolWalker("", [], "typescript", None)
+
+        assert walker._append_jsts_module_call(_IncompleteCall()) is False
 
 
 class TestBashVariableAssignmentScope:

@@ -49,7 +49,8 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v14: #1094 / RFC-0019 — symbols carry canonical extractor complexity.
 # v15: #1275 (dogfood F5) — ast_index.imports_json entries carry a line
 # field (dict entries instead of bare statement strings).
-_AST_CACHE_EXTRACTOR_VERSION = 15
+# v16: P1 causal envelopes project literal CommonJS/dynamic module calls.
+_AST_CACHE_EXTRACTOR_VERSION = 16
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__

@@ -863,20 +863,23 @@ def _file_defines_any(conn: Any, file_path: str, symbols: list[str]) -> bool:
             "SELECT symbols_json FROM ast_index WHERE file_path = ?",
             (file_path,),
         ).fetchone()
-    except Exception:  # nosec B110
-        return False
+    except Exception as exc:
+        raise ValueError("CORRUPT_INDEX") from exc
     if row is None:
-        return False
+        raise ValueError("CORRUPT_INDEX")
     try:
         payload = _json.loads(str(row["symbols_json"]))
-    except (TypeError, ValueError):
-        return False
+    except (TypeError, ValueError) as exc:
+        raise ValueError("CORRUPT_INDEX") from exc
     if not isinstance(payload, dict):
-        return False
+        raise ValueError("CORRUPT_INDEX")
+    entries = payload.get("symbols", [])
+    if not isinstance(entries, list) or any(
+        not isinstance(entry, dict) for entry in entries
+    ):
+        raise ValueError("CORRUPT_INDEX")
     defined = {
-        entry.get("name")
-        for entry in payload.get("symbols", [])
-        if isinstance(entry, dict)
+        entry.get("name") for entry in entries if isinstance(entry.get("name"), str)
     }
     return bool(defined.intersection(symbols))
 
@@ -902,22 +905,24 @@ def _certified_symbol_reference_tests(
             "SELECT symbols_json FROM ast_index WHERE file_path = ?",
             (rel_path,),
         ).fetchone()
-    except Exception:  # nosec B110 — legacy schema degrades to no matches
-        return []
+    except Exception as exc:
+        raise ValueError("CORRUPT_INDEX") from exc
     if target_row is None:
-        return []
+        raise ValueError("CORRUPT_INDEX")
     symbols: set[str] = set()
     try:
         payload = _json.loads(str(target_row["symbols_json"]))
-    except (TypeError, ValueError):
-        return []
+    except (TypeError, ValueError) as exc:
+        raise ValueError("CORRUPT_INDEX") from exc
     if not isinstance(payload, dict):
-        # Codex P2 (#1299 round-8, C34): valid JSON of the wrong top-level
-        # shape must degrade, never crash with AttributeError outside the
-        # classified exception set.
-        return []
-    for entry in payload.get("symbols", []):
-        name = entry.get("name") if isinstance(entry, dict) else None
+        raise ValueError("CORRUPT_INDEX")
+    entries = payload.get("symbols", [])
+    if not isinstance(entries, list) or any(
+        not isinstance(entry, dict) for entry in entries
+    ):
+        raise ValueError("CORRUPT_INDEX")
+    for entry in entries:
+        name = entry.get("name")
         if isinstance(name, str) and not name.startswith("_"):
             symbols.add(name)
     if not symbols:
@@ -934,24 +939,26 @@ def _certified_symbol_reference_tests(
                 "SELECT imports_json FROM ast_index WHERE file_path = ?",
                 (rel,),
             ).fetchone()
-        except Exception:  # nosec B110 — legacy schema degrades per row
-            continue
+        except Exception as exc:
+            raise ValueError("CORRUPT_INDEX") from exc
         if row is None:
-            continue
+            raise ValueError("CORRUPT_INDEX")
         # Codex P2 (#1299 round-8, C33): match symbols against the PARSED
         # import identifiers, never the serialized cell — substrings and
         # JSON keys (e.g. a symbol 'text' matching every record's "text"
         # key) would otherwise produce false has_tests=True.
         try:
             records = _json.loads(str(row["imports_json"]))
-        except (TypeError, ValueError):
-            continue
+        except (TypeError, ValueError) as exc:
+            raise ValueError("CORRUPT_INDEX") from exc
         if not isinstance(records, list):
-            continue
+            raise ValueError("CORRUPT_INDEX")
         for record in records:
-            text = record.get("text") if isinstance(record, dict) else None
+            if not isinstance(record, dict):
+                raise ValueError("CORRUPT_INDEX")
+            text = record.get("text")
             if not isinstance(text, str):
-                continue
+                raise ValueError("CORRUPT_INDEX")
             matched = [
                 symbol
                 for symbol in symbols
@@ -1196,20 +1203,33 @@ def _resolve_import_spec_from_inventory(
     else:
         candidate_base = spec.replace(".", "/")
 
-    candidates = [
-        candidate_base,
-        f"{candidate_base}.py",
-        f"{candidate_base}.js",
-        f"{candidate_base}.jsx",
-        f"{candidate_base}.ts",
-        f"{candidate_base}.tsx",
-        f"{candidate_base}.java",
-        f"{candidate_base}/__init__.py",
-        f"{candidate_base}/index.js",
-        f"{candidate_base}/index.jsx",
-        f"{candidate_base}/index.ts",
-        f"{candidate_base}/index.tsx",
-    ]
+    language = _target_language(importer_rel_path)
+    suffixes: tuple[str, ...]
+    package_entries: tuple[str, ...]
+    if language == "python":
+        suffixes = (".py",)
+        package_entries = ("__init__.py",)
+    elif language == "javascript":
+        suffixes = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")
+        package_entries = tuple(f"index{suffix}" for suffix in suffixes)
+    elif language == "typescript":
+        suffixes = (".ts", ".tsx", ".js", ".jsx", ".mts", ".cts")
+        package_entries = tuple(f"index{suffix}" for suffix in suffixes)
+    elif language == "java":
+        suffixes = (".java",)
+        package_entries = ()
+    else:
+        suffixes = (Path(importer_rel_path).suffix.lower(),)
+        package_entries = ()
+
+    allowed_suffixes = {suffix for suffix in suffixes if suffix}
+    explicit_suffix = Path(candidate_base).suffix.lower()
+    candidates = []
+    if explicit_suffix in allowed_suffixes:
+        candidates.append(candidate_base)
+    elif not explicit_suffix:
+        candidates.extend(f"{candidate_base}{suffix}" for suffix in suffixes)
+        candidates.extend(f"{candidate_base}/{entry}" for entry in package_entries)
     for candidate in candidates:
         if candidate in inventory:
             return candidate

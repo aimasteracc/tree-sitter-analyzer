@@ -1071,8 +1071,10 @@ def test_read_existing_payload_language_detection_degrades(
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     # The FILE_NOT_INDEXED gate needs the target present in ast_index.
-    conn.execute("CREATE TABLE ast_index (file_path TEXT)")
-    conn.execute("INSERT INTO ast_index VALUES ('app.py')")
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
+    )
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', '{}', '[]')")
     conn.execute(
         "CREATE TABLE edges ("
         "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
@@ -1555,6 +1557,136 @@ def test_snapshot_dependency_view_reads_javascript_projection_both_ways() -> Non
 
     assert main_view.dependencies_of("src/main.ts") == ["src/setup.ts"]
     assert setup_view.dependents_of("src/setup.ts") == ["src/main.ts"]
+
+
+def test_snapshot_dependency_view_reads_commonjs_projection() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("src/main.ts", json.dumps([{"text": "require('./legacy')", "line": 1}])),
+            ("src/legacy.ts", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/main.ts")
+
+    assert view.dependencies_of("src/main.ts") == ["src/legacy.ts"]
+
+
+def test_snapshot_dependency_view_reads_dynamic_import_projection() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("src/main.ts", json.dumps([{"text": "import('./lazy')", "line": 1}])),
+            ("src/lazy.ts", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/main.ts")
+
+    assert view.dependencies_of("src/main.ts") == ["src/lazy.ts"]
+
+
+@pytest.mark.parametrize(
+    ("spec", "importer", "inventory", "expected"),
+    [
+        ("./util", "src/main.ts", {"src/util.py", "src/util.ts"}, "src/util.ts"),
+        ("./lib", "src/main.js", {"src/lib/index.js"}, "src/lib/index.js"),
+        (
+            "com.example.Util",
+            "src/Main.java",
+            {"com/example/Util.java"},
+            "com/example/Util.java",
+        ),
+        ("pkg/lib", "cmd/main.go", {"pkg/lib.go"}, "pkg/lib.go"),
+        ("./util.ts", "src/main.ts", {"src/util.ts"}, "src/util.ts"),
+        ("./util.py", "src/main.ts", {"src/util.py"}, None),
+    ],
+)
+def test_snapshot_import_resolution_uses_importer_language(
+    spec: str,
+    importer: str,
+    inventory: set[str],
+    expected: str | None,
+) -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _resolve_import_spec_from_inventory,
+    )
+
+    assert (
+        _resolve_import_spec_from_inventory(spec, importer, frozenset(inventory))
+        == expected
+    )
+
+
+def test_certified_facts_load_inventory_when_not_precomputed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlite3
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers as helpers
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
+    )
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', '{}', '[]')")
+    inventory = frozenset({"app.py"})
+    loads: list[object] = []
+
+    def load_inventory(snapshot_conn):
+        loads.append(snapshot_conn)
+        return inventory
+
+    monkeypatch.setattr(helpers, "snapshot_inventory", load_inventory)
+    monkeypatch.setattr(
+        helpers,
+        "_certified_exercising_tests",
+        lambda snapshot_conn, rel_path, dependents, *, inventory: [],
+    )
+    context = helpers.SafeToEditContext(
+        file_path="app.py",
+        edit_type="refactor",
+        resolved_path=str(tmp_path / "app.py"),
+        project_root=str(tmp_path),
+        graph=helpers.FileDependencyView(
+            rel_path="app.py", dependencies=set(), dependents=set()
+        ),
+        scorer=SimpleNamespace(
+            score_file=lambda *args, **kwargs: SimpleNamespace(
+                grade="A", total=100, dimensions={}
+            )
+        ),
+        snapshot_conn=conn,
+    )
+
+    helpers._collect_safe_to_edit_facts(context)
+
+    assert loads == [conn]
 
 
 def test_snapshot_dependency_view_matches_javascript_directory_index_import() -> None:

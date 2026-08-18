@@ -71,6 +71,8 @@ class _SymbolWalker:
         if node.type in _IMPORT_LIKE:
             self._append_import(node)
             return
+        if self._append_jsts_module_call(node):
+            return
         if self._is_variable(node, name_node, enclosed):
             self._append_variable(node, name_node, depth)
             return
@@ -161,6 +163,23 @@ class _SymbolWalker:
                 "language": self.language,
             }
         )
+
+    def _append_jsts_module_call(self, node: Any) -> bool:
+        """Project literal CommonJS and dynamic imports into ``imports_json``."""
+        if self.language not in {"javascript", "typescript"}:
+            return False
+        if node.type != "call_expression":
+            return False
+        function = node.child_by_field_name("function")
+        arguments = node.child_by_field_name("arguments")
+        if function is None or arguments is None:
+            return False
+        if _node_text(function, self.source) not in {"require", "import"}:
+            return False
+        if not any(child.type == "string" for child in arguments.children):
+            return False
+        self._append_import(node)
+        return True
 
     def _is_variable(self, node: Any, name_node: Any, enclosed: bool) -> bool:
         if node.type not in _VAR_DECL_LIKE or name_node is None:
