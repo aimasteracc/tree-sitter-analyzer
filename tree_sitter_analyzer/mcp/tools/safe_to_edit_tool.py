@@ -31,6 +31,7 @@ from .utils.safe_to_edit_helpers import (
     build_file_dependency_view,
     build_snapshot_file_dependency_view,
     is_init_file,
+    snapshot_stale_edges,
 )
 from .utils.safe_to_edit_helpers import (
     build_safe_to_edit_result as _build_safe_to_edit_result,
@@ -317,18 +318,20 @@ class SafeToEditTool(BaseMCPTool):
         if syntax_response is not None:
             return syntax_response
 
+        graph = build_snapshot_file_dependency_view(conn, rel_path)
         result = _build_safe_to_edit_result(
             SafeToEditContext(
                 file_path=file_path,
                 edit_type=edit_type,
                 resolved_path=resolved,
                 project_root=reader_root,
-                graph=build_snapshot_file_dependency_view(conn, rel_path),
+                graph=graph,
                 scorer=self._get_scorer(),
                 # Codex P1 (#1299): the certified route derives constraint
                 # facts from the snapshot connection and never touches the
                 # live .ast-cache (zero-write read).
                 snapshot_conn=conn if snapshot is not None else None,
+                stale_edges=tuple(snapshot_stale_edges(conn, rel_path)),
             )
         )
         # RFC-0022 P0.5: echo the adapter-owned wire owner version on the
@@ -395,6 +398,14 @@ def _syntax_error_response(
         "dependencies": [],
         "test_files": [],
         "has_tests": False,
+        "causal_envelope": {
+            "dependents": [],
+            "dependencies": [],
+            "exercising_tests": [],
+            "constraint_verdict": "unknown",
+            "verification_command": None,
+            "stale_edges": [],
+        },
         "pre_edit_checklist": [
             "Fix syntax errors so the file parses cleanly.",
             "Re-run safe_to_edit after the file parses.",

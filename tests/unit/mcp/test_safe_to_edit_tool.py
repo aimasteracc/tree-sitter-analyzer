@@ -158,6 +158,32 @@ class TestSafeToEditTool:
         result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         assert "test_files_nearby" in result
 
+    def test_execute_includes_complete_causal_envelope(self, tool):
+        result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
+
+        envelope = result["causal_envelope"]
+        assert set(envelope) == {
+            "dependents",
+            "dependencies",
+            "exercising_tests",
+            "constraint_verdict",
+            "verification_command",
+            "stale_edges",
+        }
+        assert envelope["dependents"] == result["downstream_files"]
+        assert envelope["dependencies"] == result["dependencies"]
+        assert envelope["exercising_tests"] == result["test_files_nearby"]
+        assert envelope["constraint_verdict"] in {
+            "safe",
+            "caution",
+            "unsafe",
+        }
+        assert (
+            envelope["verification_command"]
+            == result["agent_summary"]["verification_command"]
+        )
+        assert envelope["stale_edges"] == []
+
     def test_edit_type_rename_higher_risk(self, tool):
         result_refactor = _run(
             tool.execute(
@@ -632,6 +658,11 @@ async def test_edit_safe_read_existing_consumes_published_snapshot(
     assert result["action_version"] == "edit.safe/v1"
     assert result["risk_level"] in {"safe", "caution", "dangerous"}
     assert result["health_grade"]
+    causal = result["causal_envelope"]
+    assert causal["dependents"] == ["routes.py"]
+    assert causal["constraint_verdict"] == "unknown"
+    assert causal["verification_command"] == "uv run pytest -q"
+    assert causal["stale_edges"]
 
 
 def test_certified_commands_use_extension_runner(tmp_path: Path) -> None:
@@ -1332,6 +1363,47 @@ def test_snapshot_dependency_view_recalls_member_imports() -> None:
     # non-match branch (no dependent added); 'later.py' proves the pass
     # survived the malformed 'scalar.py' row.
     assert view.dependents_of("app.py") == ["later.py", "routes.py"]
+
+
+def test_snapshot_causal_view_includes_resolved_edges_and_stale_ids() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+        snapshot_stale_edges,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, '[]')",
+        [("app.py",), ("routes.py",), ("util.py",), ("lazy.py",)],
+    )
+    conn.executemany(
+        "INSERT INTO edges VALUES (?, ?, ?, ?, ?)",
+        [
+            (1, "calls", "routes.py", "handler", "app.py"),
+            (2, "calls", "app.py", "normalize", "util.py"),
+            (3, "calls", "other.py", "normalize", "util.py"),
+            (4, "imports", "lazy.py", "app", ""),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "app.py")
+
+    assert view.dependents_of("app.py") == ["lazy.py", "routes.py"]
+    assert view.dependencies_of("app.py") == ["util.py"]
+    assert snapshot_stale_edges(conn, "app.py") == [
+        "calls:routes.py->app.py#1",
+        "calls:app.py->util.py#2",
+        "imports:lazy.py->app.py#4",
+    ]
 
 
 @pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work

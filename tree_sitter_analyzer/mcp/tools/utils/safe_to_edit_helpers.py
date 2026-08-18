@@ -39,6 +39,7 @@ class SafeToEditContext:
     graph: Any
     scorer: HealthScorer
     snapshot_conn: Any | None = None
+    stale_edges: tuple[str, ...] = ()
 
 
 class FileDependencyView:
@@ -267,6 +268,24 @@ def _format_safe_to_edit_result(
     # #781: pass the (possibly escalated) verdict so summary_line AND
     # summary["verdict"] are both built from it — never a CAUTION/UNSAFE split.
     summary = build_agent_summary(workflow_context, workflow, verdict_override=verdict)
+    verification_command = summary.get("verification_command") or None
+    if context.snapshot_conn is not None:
+        # Constraint rows are not generation-bound until RFC-0025 P3.  An
+        # empty result therefore cannot honestly mean "safe" on a certified
+        # read; expose the unavailable fact as first-class ``unknown``.
+        causal_constraint_verdict = "unknown"
+    else:
+        causal_constraint_verdict = (constraint_verdict or "SAFE").lower()
+    causal_envelope = {
+        # These are the untruncated facts used to compute the verdict.  The
+        # legacy top-level fields remain capped for wire compatibility.
+        "dependents": list(facts.dependents),
+        "dependencies": list(facts.dependencies),
+        "exercising_tests": list(facts.test_files),
+        "constraint_verdict": causal_constraint_verdict,
+        "verification_command": verification_command,
+        "stale_edges": list(context.stale_edges),
+    }
     return {
         "success": True,
         "file_path": context.file_path,
@@ -285,6 +304,7 @@ def _format_safe_to_edit_result(
         "test_files_nearby": facts.test_files,
         "pre_edit_checklist": facts.pre_edit_checklist,
         "agent_workflow": workflow,
+        "causal_envelope": causal_envelope,
     }
 
 
@@ -1163,6 +1183,23 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
     dependencies: set[str] = set()
     dependents: set[str] = set()
     try:
+        # P1 causal envelope: include resolved CALLS/IMPLEMENTS/etc., not only
+        # IMPORTS.  ``file_path`` is the caller and ``callee_resolved_file``
+        # is the definition file for every resolved cross-file edge.
+        resolved_rows = conn.execute(
+            "SELECT file_path, callee_resolved_file FROM edges "
+            "WHERE callee_resolved_file != ''"
+        ).fetchall()
+        for caller_file, callee_file in resolved_rows:
+            if not isinstance(caller_file, str) or not isinstance(callee_file, str):
+                continue
+            if caller_file == rel_path and callee_file != rel_path:
+                dependencies.add(callee_file)
+            elif callee_file == rel_path and caller_file != rel_path:
+                dependents.add(caller_file)
+    except Exception:  # nosec B110 — legacy schema degrades to import facts
+        pass
+    try:
         import_rows = conn.execute(
             "SELECT callee_name FROM edges WHERE kind = 'imports' AND file_path = ?",
             (rel_path,),
@@ -1227,6 +1264,42 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
         dependencies=dependencies,
         dependents=dependents,
     )
+
+
+def snapshot_stale_edges(conn: Any, rel_path: str) -> list[str]:
+    """Return snapshot-bound labels for edge rows an edit may invalidate.
+
+    An edit always invalidates its outgoing rows; it may also invalidate
+    incoming rows when definitions move, disappear, or change signature.  P1
+    therefore reports both directions conservatively.  Legacy/partial schemas
+    return an empty list instead of inventing row identities.
+    """
+
+    try:
+        rows = conn.execute(
+            "SELECT id, kind, file_path, callee_name, callee_resolved_file "
+            "FROM edges WHERE file_path = ? OR callee_resolved_file = ? "
+            "OR (kind = 'imports' AND callee_resolved_file = '') ORDER BY id",
+            (rel_path, rel_path),
+        ).fetchall()
+    except Exception:  # nosec B110 — stale-edge identity is unavailable
+        return []
+
+    labels: list[str] = []
+    for row in rows:
+        edge_id, kind, caller_file, callee_name, resolved_file = row
+        if not isinstance(caller_file, str) or not isinstance(kind, str):
+            continue
+        target_file = resolved_file if isinstance(resolved_file, str) else ""
+        if not target_file and kind == "imports" and isinstance(callee_name, str):
+            target_file = (
+                _resolve_import_spec_in_snapshot(conn, callee_name, caller_file) or ""
+            )
+        if caller_file != rel_path and target_file != rel_path:
+            continue
+        target = target_file or (callee_name if isinstance(callee_name, str) else "")
+        labels.append(f"{kind}:{caller_file}->{target}#{edge_id}")
+    return labels
 
 
 def safe_dependents(graph: Any, rel_path: str) -> list[str]:

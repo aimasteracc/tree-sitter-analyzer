@@ -285,8 +285,8 @@ marketing-driven tool will not do.
 |---|---|---|---|
 | 1 | #1299 (merged) | Certified `read_existing` for `nav.context`/`edit.safe`; fail-closed seam; strace-certified on Linux | RFC-0022 P0.4 |
 | 2 | RFC-0025 (merged) | Proprioception vision, phased P0–P4 | — |
-| 3 | RFC-0026 (PR #1305) | VCSR benchmark design, 10-task seed corpus spec | NO1-010A |
-| 4 | **P1: causal envelope** | `edit.safe` returns `causal_envelope` | #1299's snapshot reader |
+| 3 | RFC-0026 (#1305 merged) | VCSR benchmark design, 10-task seed corpus spec | NO1-010A |
+| 4 | **P1: causal envelope (implemented)** | `edit.safe` returns `causal_envelope`; `scripts/check_causal_envelope.py` proves one analyzer call / zero separate causality queries | #1299's snapshot reader |
 | 5 | **B0: corpus + contract tests** | `benchmarks/no1_010b/` with 10 tasks; oracle red-ness enforced | RFC-0026 accepted |
 | 6 | **B1: runner** | `report.json` with exact reason codes | B0 |
 | 7 | **B2: VCSR baseline** | pinned VCSR + provenance; STATE.md record | B1 |
