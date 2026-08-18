@@ -29,8 +29,12 @@ def _invalid_causal_fields(envelope: Any) -> list[str]:
     if not isinstance(envelope, dict):
         return sorted(CAUSAL_FIELDS)
     invalid: list[str] = []
-    for name in ("dependents", "dependencies", "exercising_tests", "stale_edges"):
+    fact_names = ("dependents", "dependencies", "exercising_tests", "stale_edges")
+    unavailable = all(envelope.get(name) is None for name in fact_names)
+    for name in fact_names:
         value = envelope.get(name)
+        if unavailable:
+            continue
         if not isinstance(value, list) or any(
             not isinstance(item, str) or not item for item in value
         ):
@@ -43,6 +47,8 @@ def _invalid_causal_fields(envelope: Any) -> list[str]:
     }:
         invalid.append("constraint_verdict")
     verification = envelope.get("verification_command")
+    if unavailable and verification is not None:
+        invalid.append("verification_command")
     if verification is not None and (
         not isinstance(verification, str) or not verification.strip()
     ):

@@ -772,6 +772,7 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
     conn = _symbol_reference_conn(
         [
             ("pkg/impl.py", _symbol_payload("public_fn"), "[]"),
+            ("pkg/__init__.py", "{}", "[]"),
             (
                 "tests/test_behavior.py",
                 "{}",
@@ -782,7 +783,13 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
     )
 
     assert _certified_refs(
-        conn, {"pkg/impl.py", "tests/test_behavior.py", "tests/test_unrelated.py"}
+        conn,
+        {
+            "pkg/impl.py",
+            "pkg/__init__.py",
+            "tests/test_behavior.py",
+            "tests/test_unrelated.py",
+        },
     ) == ["tests/test_behavior.py"]
 
 
@@ -960,8 +967,23 @@ def test_file_defines_any_rejects_missing_row() -> None:
         _file_defines_any(conn, "ghost.py", ["run"])
 
 
-@pytest.mark.parametrize("text", ["import run", "run"])
-def test_certified_symbol_reference_tests_accept_unbound_records(text: str) -> None:
+def test_certified_symbol_reference_tests_accept_unbound_symbol_record() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("pkg/impl.py", _symbol_payload("run"), "[]"),
+            ("tests/test_impl.py", "{}", _import_payload("run")),
+        ]
+    )
+
+    assert _certified_refs(conn, {"pkg/impl.py", "tests/test_impl.py"}) == [
+        "tests/test_impl.py"
+    ]
+
+
+@pytest.mark.parametrize("text", ["import run", "from third_party import run"])
+def test_certified_symbol_reference_tests_reject_unresolved_python_imports(
+    text: str,
+) -> None:
     conn = _symbol_reference_conn(
         [
             ("pkg/impl.py", _symbol_payload("run"), "[]"),
@@ -969,9 +991,31 @@ def test_certified_symbol_reference_tests_accept_unbound_records(text: str) -> N
         ]
     )
 
-    assert _certified_refs(conn, {"pkg/impl.py", "tests/test_impl.py"}) == [
-        "tests/test_impl.py"
-    ]
+    assert _certified_refs(conn, {"pkg/impl.py", "tests/test_impl.py"}) == []
+
+
+@pytest.mark.parametrize(
+    ("target", "dependent"),
+    [
+        ("src/lib.js", "tests/lib.test.ts"),
+        ("src/util.h", "tests/test_util.cpp"),
+    ],
+)
+def test_certified_exercising_tests_use_dependent_language(
+    target: str, dependent: str
+) -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_exercising_tests,
+    )
+
+    conn = _symbol_reference_conn(
+        [(target, _symbol_payload(), "[]"), (dependent, "{}", "[]")]
+    )
+    inventory = frozenset({target, dependent})
+
+    assert _certified_exercising_tests(
+        conn, target, [dependent], inventory=inventory
+    ) == [dependent]
 
 
 def test_certified_symbol_reference_tests_resolve_relative_from_importer() -> None:

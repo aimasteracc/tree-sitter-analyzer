@@ -21,6 +21,10 @@ from .safe_to_edit_risk import build_checklist, compute_risk
 from .test_discovery import find_test_files
 from .verification_command import build_test_command, detect_default_test_command
 
+_CERTIFIED_IMPORT_LANGUAGES = frozenset(
+    {"python", "javascript", "typescript", "java", "c", "cpp"}
+)
+
 
 @dataclass(frozen=True)
 class SafeToEditContext:
@@ -220,6 +224,9 @@ def _format_safe_to_edit_result(
     # Constraint violations promote the verdict: an error-severity
     # violation referencing this file forces UNSAFE; warn-only forces
     # CAUTION. The base_verdict (derived from risk_level) is the floor.
+    certified_rel_path = to_relative(
+        os.path.realpath(context.resolved_path), context.project_root
+    )
     if context.snapshot_conn is not None:
         # Codex P1 (#1299): the certified read_existing route runs the
         # certified fixture probe — never the live .ast-cache DB and never
@@ -273,7 +280,9 @@ def _format_safe_to_edit_result(
     # summary["verdict"] are both built from it — never a CAUTION/UNSAFE split.
     summary = build_agent_summary(workflow_context, workflow, verdict_override=verdict)
     verification_command = summary.get("verification_command") or None
-    if context.snapshot_conn is not None:
+    if context.snapshot_conn is not None and _certified_import_facts_available(
+        certified_rel_path
+    ):
         # Constraint rows are not generation-bound until RFC-0025 P3.  An
         # empty result therefore cannot honestly mean "safe" on a certified
         # read; expose the unavailable fact as first-class ``unknown``.
@@ -289,10 +298,9 @@ def _format_safe_to_edit_result(
             "stale_edges": list(context.stale_edges),
         }
     else:
-        # The legacy live view is import-only and constraint queries degrade
-        # missing/corrupt storage to an empty list. Neither can prove a
-        # complete causal fact. Keep the legacy top-level hints, but make the
-        # new trust-bearing envelope explicitly unavailable.
+        # The legacy live view and languages without a complete snapshot
+        # import resolver cannot prove complete causal facts. Keep legacy
+        # top-level hints, but make the trust-bearing envelope unavailable.
         causal_envelope = {
             "dependents": None,
             "dependencies": None,
@@ -798,7 +806,13 @@ def _target_language(rel_path: str) -> str:
 
     from .test_discovery import detect_language_from_ext
 
-    return detect_language_from_ext(Path(rel_path).suffix.lower()) or "python"
+    return detect_language_from_ext(Path(rel_path).suffix.lower()) or "unknown"
+
+
+def _certified_import_facts_available(rel_path: str) -> bool:
+    """Return whether snapshot projections cover this language's imports."""
+
+    return _target_language(rel_path) in _CERTIFIED_IMPORT_LANGUAGES
 
 
 def _looks_like_test_name(name: str, language: str) -> bool:
@@ -938,7 +952,8 @@ def _certified_symbol_reference_tests(
     for rel in sorted(inventory):
         if rel == rel_path:
             continue
-        if not _looks_like_test_name(Path(rel).name, language):
+        importer_language = _target_language(rel)
+        if not _looks_like_test_name(Path(rel).name, importer_language):
             continue
         try:
             row = conn.execute(
@@ -984,11 +999,13 @@ def _certified_symbol_reference_tests(
                 resolved_module = _resolve_import_spec_from_inventory(
                     import_module, rel, inventory
                 )
-                if language in {"javascript", "typescript"}:
+                if importer_language in {"javascript", "typescript"}:
                     if resolved_module != rel_path:
                         continue
                     results.append(rel)
                     break
+                if importer_language == "python" and resolved_module is None:
+                    continue
                 if (
                     resolved_module
                     and resolved_module != rel_path
@@ -1020,7 +1037,7 @@ def _certified_symbol_reference_tests(
             rel
             and rel != rel_path
             and rel in inventory
-            and _looks_like_test_name(Path(rel).name, language)
+            and _looks_like_test_name(Path(rel).name, _target_language(rel))
             and rel not in results
         ):
             results.append(rel)
@@ -1120,7 +1137,7 @@ def _certified_test_files(
         # served as a certified test (Codex P2 #1299 round-12, C54).
         if (
             dep in inventory
-            and _looks_like_test_name(Path(dep).name, language)
+            and _looks_like_test_name(Path(dep).name, _target_language(dep))
             and dep not in results
         ):
             results.append(dep)
@@ -1137,12 +1154,13 @@ def _certified_exercising_tests(
     """Return the complete deduplicated exercising-test set from a snapshot."""
     if inventory is None:
         inventory = snapshot_inventory(conn)
-    language = _target_language(rel_path)
     test_files = [
         dep
         for dep in dependents
-        if dep in inventory and _looks_like_test_name(Path(dep).name, language)
+        if dep in inventory
+        and _looks_like_test_name(Path(dep).name, _target_language(dep))
     ]
+    language = _target_language(rel_path)
     if _looks_like_test_name(Path(rel_path).name, language):
         test_files.insert(0, rel_path)
     test_files.extend(
@@ -1258,7 +1276,30 @@ def _resolve_import_spec_from_inventory(
     for candidate in candidates:
         if candidate in inventory:
             return candidate
+    infer_source_root = language in {"python", "java"} and not spec.startswith(".")
+    if infer_source_root:
+        for candidate in candidates:
+            matches = sorted(
+                indexed for indexed in inventory if indexed.endswith(f"/{candidate}")
+            )
+            if len(matches) == 1:
+                return matches[0]
+            if len(matches) > 1:
+                return None
     return None
+
+
+def _python_package_initializers(resolved: str, inventory: frozenset[str]) -> set[str]:
+    """Return indexed package initializers executed while importing a module."""
+
+    initializers: set[str] = set()
+    parent = Path(resolved).parent
+    while parent.parts:
+        candidate = (parent / "__init__.py").as_posix()
+        if candidate in inventory:
+            initializers.add(candidate)
+        parent = parent.parent
+    return initializers
 
 
 def _import_targets_from_text(
@@ -1321,15 +1362,18 @@ def _import_targets_from_text(
     if include_match:
         specs.add(f"./{include_match.group(1)}")
 
-    return {
-        resolved
-        for spec in specs
-        if (
-            resolved := _resolve_import_spec_from_inventory(
-                spec, importer_rel_path, inventory
-            )
+    targets: set[str] = set()
+    importer_language = _target_language(importer_rel_path)
+    for spec in specs:
+        resolved = _resolve_import_spec_from_inventory(
+            spec, importer_rel_path, inventory
         )
-    }
+        if resolved is None:
+            continue
+        targets.add(resolved)
+        if importer_language == "python":
+            targets.update(_python_package_initializers(resolved, inventory))
+    return targets
 
 
 def _edge_import_names_for_target(
@@ -1357,6 +1401,8 @@ def _edge_import_names_for_target(
         path.parent.parts if path.name == "__init__.py" else path.with_suffix("").parts
     )
     target_parent_parts = target_module_parts[:-1]
+    for offset in range(len(target_module_parts)):
+        names.add(".".join(target_module_parts[offset:]))
     for importer in inventory:
         importer_parts = tuple(
             part for part in Path(importer).parent.parts if part != "."
@@ -1392,6 +1438,11 @@ def _projection_search_tokens(rel_path: str) -> tuple[str, ...]:
 
     path = Path(rel_path)
     tokens = _import_needles_for_target(rel_path)
+    module_parts = (
+        path.parent.parts if path.name == "__init__.py" else path.with_suffix("").parts
+    )
+    for offset in range(len(module_parts)):
+        tokens.add(".".join(module_parts[offset:]))
     if path.stem and path.stem != "__init__":
         tokens.add(f"./{path.stem}")
     if path.stem == "index" and path.parent.name:
@@ -1553,13 +1604,30 @@ def snapshot_stale_edges(
         inventory = snapshot_inventory(conn)
     candidate_names = _edge_import_names_for_target(rel_path, inventory)
     placeholders = ", ".join("?" for _ in candidate_names)
+    package_prefixes: tuple[str, ...] = ()
+    if _target_language(rel_path) == "python" and Path(rel_path).name == "__init__.py":
+        module_parts = Path(rel_path).parent.parts
+        package_prefixes = tuple(
+            ".".join(module_parts[offset:]) for offset in range(len(module_parts))
+        )
+    prefix_terms = " OR ".join(
+        "callee_name LIKE ? ESCAPE '\\'" for _ in package_prefixes
+    )
+    unresolved_match = f"callee_name IN ({placeholders})"
+    if prefix_terms:
+        unresolved_match = f"({unresolved_match} OR {prefix_terms})"
     try:
         rows = conn.execute(
             "SELECT id, kind, file_path, callee_name, callee_resolved_file "
             "FROM edges WHERE file_path = ? OR callee_resolved_file = ? "
             "OR (kind = 'imports' AND callee_resolved_file = '' "
-            f"AND callee_name IN ({placeholders})) ORDER BY id",
-            (rel_path, rel_path, *candidate_names),
+            f"AND {unresolved_match}) ORDER BY id",
+            (
+                rel_path,
+                rel_path,
+                *candidate_names,
+                *(f"{_escape_sql_like(prefix)}.%" for prefix in package_prefixes),
+            ),
         ).fetchall()
     except Exception as exc:
         raise ValueError("CORRUPT_INDEX") from exc
@@ -1666,6 +1734,15 @@ def build_snapshot_syntax_causal_envelope(
     inventory: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Build certified causal facts when live syntax blocks health analysis."""
+    if not _certified_import_facts_available(rel_path):
+        return {
+            "dependents": None,
+            "dependencies": None,
+            "exercising_tests": None,
+            "constraint_verdict": "unknown",
+            "verification_command": None,
+            "stale_edges": None,
+        }
     if inventory is None:
         inventory = snapshot_inventory(conn)
     graph = build_snapshot_file_dependency_view(conn, rel_path, inventory=inventory)

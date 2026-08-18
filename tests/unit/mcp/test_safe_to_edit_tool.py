@@ -699,6 +699,26 @@ def test_causal_envelope_dogfood_requires_command_for_exercising_tests() -> None
     assert check(envelope) == ["verification_command"]
 
 
+def test_causal_envelope_dogfood_accepts_explicitly_unavailable_facts() -> None:
+    import runpy
+
+    check = runpy.run_path("scripts/check_causal_envelope.py")["_invalid_causal_fields"]
+
+    assert (
+        check(
+            {
+                "dependents": None,
+                "dependencies": None,
+                "exercising_tests": None,
+                "constraint_verdict": "unknown",
+                "verification_command": None,
+                "stale_edges": None,
+            }
+        )
+        == []
+    )
+
+
 @pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
 @pytest.mark.skipif(
     sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
@@ -1185,6 +1205,53 @@ def test_format_result_reads_constraints_from_snapshot_conn(
     )
 
 
+def test_format_result_marks_unsupported_import_facts_unavailable(
+    tmp_path: Path,
+) -> None:
+    import sqlite3
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        SafeToEditContext,
+        SafeToEditFacts,
+        _format_safe_to_edit_result,
+    )
+
+    health = SimpleNamespace(grade="A", total=95, dimensions={})
+    facts = SafeToEditFacts(
+        dependents=[],
+        dependencies=[],
+        health=health,
+        test_files=[],
+        has_tests=False,
+        risk="safe",
+        risk_factors=[],
+        pre_edit_checklist=[],
+    )
+    result = _format_safe_to_edit_result(
+        SafeToEditContext(
+            file_path="src/main.go",
+            edit_type="refactor",
+            resolved_path=str(tmp_path / "src/main.go"),
+            project_root=str(tmp_path),
+            graph=None,
+            scorer=None,
+            snapshot_conn=sqlite3.connect(":memory:"),
+            certified_inventory=frozenset({"src/main.go"}),
+        ),
+        facts,
+    )
+
+    assert result["causal_envelope"] == {
+        "dependents": None,
+        "dependencies": None,
+        "exercising_tests": None,
+        "constraint_verdict": "unknown",
+        "verification_command": None,
+        "stale_edges": None,
+    }
+
+
 @pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
 @pytest.mark.skipif(
     sys.platform.startswith("win") or not os.path.exists("/dev/fd"),
@@ -1628,6 +1695,19 @@ def test_snapshot_dependency_view_reads_dynamic_import_projection() -> None:
         ("pkg", "main.py", {"pkg.py", "pkg/__init__.py"}, "pkg/__init__.py"),
         ("./util.h", "src/main.c", {"src/util.h"}, "src/util.h"),
         ("./util.hpp", "src/main.cpp", {"src/util.hpp"}, "src/util.hpp"),
+        ("pkg.app", "consumer.py", {"src/pkg/app.py"}, "src/pkg/app.py"),
+        (
+            "com.acme.App",
+            "src/main/java/com/acme/Main.java",
+            {"src/main/java/com/acme/App.java"},
+            "src/main/java/com/acme/App.java",
+        ),
+        (
+            "pkg.app",
+            "consumer.py",
+            {"src/pkg/app.py", "vendor/pkg/app.py"},
+            None,
+        ),
     ],
 )
 def test_snapshot_import_resolution_uses_importer_language(
@@ -1859,6 +1939,73 @@ def test_snapshot_dependency_view_resolves_parent_relative_python_import() -> No
     assert view.dependents_of("pkg/app.py") == ["pkg/sub/routes.py"]
     assert snapshot_stale_edges(conn, "pkg/app.py") == [
         "imports:pkg/sub/routes.py->pkg/app.py#1"
+    ]
+
+
+def test_snapshot_python_import_includes_source_root_package_initializer() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+        snapshot_stale_edges,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("src/pkg/__init__.py", "[]"),
+            ("src/pkg/app.py", "[]"),
+            ("consumer.py", json.dumps([{"text": "import pkg.app"}])),
+        ],
+    )
+    conn.execute(
+        "INSERT INTO edges VALUES (1, 'imports', 'consumer.py', 'pkg.app', '')"
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/pkg/__init__.py")
+
+    assert view.dependents_of("src/pkg/__init__.py") == ["consumer.py"]
+    assert snapshot_stale_edges(conn, "src/pkg/__init__.py") == [
+        "imports:consumer.py->src/pkg/__init__.py#1"
+    ]
+
+
+def test_snapshot_java_import_resolves_maven_source_root() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "src/main/java/com/acme/Main.java",
+                json.dumps([{"text": "import com.acme.Util;"}]),
+            ),
+            ("src/main/java/com/acme/Util.java", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/main/java/com/acme/Main.java")
+
+    assert view.dependencies_of("src/main/java/com/acme/Main.java") == [
+        "src/main/java/com/acme/Util.java"
     ]
 
 
@@ -2280,6 +2427,27 @@ def test_snapshot_syntax_envelope_excludes_unrelated_nearby_test() -> None:
     envelope = build_snapshot_syntax_causal_envelope(conn, "app.py", "app.py")
 
     assert envelope["exercising_tests"] == []
+
+
+def test_snapshot_syntax_envelope_marks_unsupported_import_facts_unavailable() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    envelope = build_snapshot_syntax_causal_envelope(
+        sqlite3.connect(":memory:"), "src/main.go", "src/main.go"
+    )
+
+    assert envelope == {
+        "dependents": None,
+        "dependencies": None,
+        "exercising_tests": None,
+        "constraint_verdict": "unknown",
+        "verification_command": None,
+        "stale_edges": None,
+    }
 
 
 def test_read_existing_payload_scans_snapshot_inventory_once(
