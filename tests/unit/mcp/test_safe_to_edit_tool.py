@@ -1732,9 +1732,26 @@ def test_snapshot_dependency_view_reads_dynamic_import_with_options() -> None:
 
 def test_snapshot_import_module_name_reads_dynamic_import_with_options() -> None:
     # PR #1308 review: symbol-reference matching uses the same first argument.
+    pass
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("import(`./util`)", "./util"),
+        ("import(`./${name}`)", None),
+        ("importlib.import_module('pkg.util')", "pkg.util"),
+        ("__import__('pkg.util')", "pkg.util"),
+    ],
+)
+def test_snapshot_import_module_name_reads_static_dynamic_forms(
+    text: str, expected: str | None
+) -> None:
     from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
         _import_module_name,
     )
+
+    assert _import_module_name(text) == expected
 
     assert (
         _import_module_name("import('./util', { with: { type: 'javascript' } })")
@@ -2529,6 +2546,7 @@ def test_certified_symbol_tests_bind_package_reexport_to_defining_module() -> No
                     [
                         {"text": "import os"},
                         {"text": "from .missing import run"},
+                        {"text": "from .b import unrelated"},
                         {"text": "from .b import missing as run"},
                         {"text": "from .b import *"},
                         {"text": "from .b import run"},
@@ -2563,6 +2581,83 @@ def test_certified_symbol_tests_bind_package_reexport_to_defining_module() -> No
     assert (
         _certified_symbol_reference_tests(conn, inventory, "pkg/b.py", "python") == []
     )
+
+
+def test_certified_symbol_tests_follow_transitive_package_reexport() -> None:
+    # PR #1308 review: pkg -> api -> impl remains bound to impl.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_symbol_reference_tests,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, ?)",
+        [
+            (
+                "pkg/__init__.py",
+                json.dumps([{"text": "from .api import execute"}]),
+                "{}",
+            ),
+            (
+                "pkg/api.py",
+                json.dumps([{"text": "from .impl import run as execute"}]),
+                "{}",
+            ),
+            ("pkg/impl.py", "[]", json.dumps({"symbols": [{"name": "run"}]})),
+            (
+                "tests/test_pkg.py",
+                json.dumps([{"text": "from pkg import execute as invoke"}]),
+                "{}",
+            ),
+        ],
+    )
+    inventory = frozenset(
+        {"pkg/__init__.py", "pkg/api.py", "pkg/impl.py", "tests/test_pkg.py"}
+    )
+
+    assert _certified_symbol_reference_tests(
+        conn, inventory, "pkg/impl.py", "python"
+    ) == ["tests/test_pkg.py"]
+
+
+def test_certified_symbol_tests_omit_cyclic_package_reexport() -> None:
+    # PR #1308 review: a re-export cycle is not unique provider evidence.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _python_package_symbol_providers,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, '{}')",
+        [
+            ("pkg/__init__.py", json.dumps([{"text": "from .api import run"}])),
+            ("pkg/api.py", json.dumps([{"text": "from . import run"}])),
+        ],
+    )
+    inventory = frozenset({"pkg/__init__.py", "pkg/api.py"})
+
+    assert _python_package_symbol_providers(
+        conn, "pkg/__init__.py", ["run"], inventory
+    ) == {"run": set()}
 
 
 def test_certified_exercising_tests_traverse_dependent_chain() -> None:
@@ -2600,6 +2695,51 @@ def test_certified_exercising_tests_traverse_dependent_chain() -> None:
     ) == ["tests/test_api.py"]
 
 
+def test_certified_exercising_tests_traverse_test_named_production_file() -> None:
+    # PR #1308 review: src/test_adapter.py is not itself a runnable test target.
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_exercising_tests,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, '[]', '{}')",
+        [("src/util.py",), ("src/test_adapter.py",), ("tests/test_adapter.py",)],
+    )
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO edges VALUES (?, 'calls', ?, ?, ?)",
+        [
+            (1, "src/test_adapter.py", "normalize", "src/util.py"),
+            (2, "tests/test_adapter.py", "adapt", "src/test_adapter.py"),
+        ],
+    )
+
+    assert _certified_exercising_tests(
+        conn, "src/util.py", ["src/test_adapter.py"]
+    ) == ["tests/test_adapter.py"]
+
+
+@pytest.mark.parametrize("path", ["src/util.cxx", "include/util.hxx"])
+def test_target_language_recognizes_indexed_cpp_extensions(path: str) -> None:
+    # PR #1308 review: certified reads use the canonical index extension map.
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _target_language,
+    )
+
+    assert _target_language(path) == "cpp"
+
+
 def test_snapshot_import_targets_keep_python_wildcard_on_package() -> None:
     from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
         _import_targets_from_text,
@@ -2623,9 +2763,28 @@ def test_snapshot_import_targets_ignore_invalid_python_direct_spec() -> None:
 
 
 def test_snapshot_import_targets_ignore_non_import_text() -> None:
+    pass
+
+
+@pytest.mark.parametrize(
+    ("text", "importer"),
+    [
+        ("import(`./util`)", "src/main.ts"),
+        ("importlib.import_module('pkg.util')", "app.py"),
+        ("__import__('pkg.util')", "app.py"),
+    ],
+)
+def test_snapshot_import_targets_resolve_literal_dynamic_imports(
+    text: str, importer: str
+) -> None:
+    # PR #1308 review: literal dynamic loads are snapshot dependencies.
     from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
         _import_targets_from_text,
     )
+
+    inventory = frozenset({"src/util.ts", "pkg/util.py"})
+    expected = {"src/util.ts"} if importer.endswith(".ts") else {"pkg/util.py"}
+    assert _import_targets_from_text(text, importer, inventory) == expected
 
     assert (
         _import_targets_from_text("raise RuntimeError", "routes.py", frozenset())
@@ -3000,6 +3159,189 @@ def test_snapshot_syntax_envelope_marks_unsupported_import_facts_unavailable() -
         "verification_command": None,
         "stale_edges": None,
     }
+
+
+def test_snapshot_syntax_envelope_marks_typescript_alias_unavailable() -> None:
+    # PR #1308 review: a bare specifier may resolve through snapshot-external tsconfig.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, '{}')",
+        [
+            ("src/main.ts", json.dumps([{"text": "import { run } from '@app/util'"}])),
+            ("src/util.ts", "[]"),
+        ],
+    )
+
+    envelope = build_snapshot_syntax_causal_envelope(conn, "src/util.ts", "src/util.ts")
+
+    assert envelope == {
+        "dependents": None,
+        "dependencies": None,
+        "exercising_tests": None,
+        "constraint_verdict": "unknown",
+        "verification_command": None,
+        "stale_edges": None,
+    }
+
+
+def test_snapshot_syntax_envelope_marks_dynamic_python_import_unavailable() -> None:
+    # PR #1308 review: a nonliteral module name cannot certify incoming edges.
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, '{}')",
+        [
+            ("app.py", json.dumps([{"text": "__import__(module_name)"}])),
+            ("pkg/util.py", "[]"),
+        ],
+    )
+
+    envelope = build_snapshot_syntax_causal_envelope(conn, "pkg/util.py", "pkg/util.py")
+
+    assert envelope == {
+        "dependents": None,
+        "dependencies": None,
+        "exercising_tests": None,
+        "constraint_verdict": "unknown",
+        "verification_command": None,
+        "stale_edges": None,
+    }
+
+
+def test_python_projection_complete_ignores_static_and_non_python_imports() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _python_import_projection_complete,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "app.py",
+                json.dumps(
+                    [
+                        {"text": "import os"},
+                        {"text": "importlib.import_module('pkg.util')"},
+                    ]
+                ),
+            ),
+            ("src/main.ts", json.dumps([{"text": "import '@app/util'"}])),
+        ],
+    )
+
+    assert _python_import_projection_complete(
+        conn, frozenset({"app.py", "src/main.ts"})
+    )
+
+
+def test_python_projection_rejects_relative_dynamic_import() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _python_import_projection_complete,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('pkg/app.py', ?)",
+        (json.dumps([{"text": "importlib.import_module('.util', __package__)"}]),),
+    )
+
+    assert not _python_import_projection_complete(conn, frozenset({"pkg/app.py"}))
+
+
+def test_jsts_projection_complete_for_relative_imports_only() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _jsts_import_projection_complete,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("src/main.ts", json.dumps([{"text": "import './util'"}])),
+            ("src/util.ts", "[]"),
+            ("tools/build.py", json.dumps([{"text": "import os"}])),
+        ],
+    )
+    inventory = frozenset({"src/main.ts", "src/util.ts", "tools/build.py"})
+
+    assert _jsts_import_projection_complete(conn, inventory) is True
+
+
+def test_jsts_projection_rejects_unparseable_module_load() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _jsts_import_projection_complete,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('src/main.ts', ?)",
+        (json.dumps([{"text": "import(`./${name}`)"}]),),
+    )
+
+    assert _jsts_import_projection_complete(conn, frozenset({"src/main.ts"})) is False
+
+
+def test_jsts_projection_fails_closed_without_snapshot_table() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _jsts_import_projection_complete,
+    )
+
+    assert (
+        _jsts_import_projection_complete(sqlite3.connect(":memory:"), frozenset())
+        is False
+    )
 
 
 @pytest.mark.parametrize("importer_suffix", ["Use.kt", "Use.scala"])

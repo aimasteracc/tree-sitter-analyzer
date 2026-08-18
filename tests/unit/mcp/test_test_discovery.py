@@ -697,11 +697,11 @@ class TestFindTestFilesJavascript:
     [
         ("handler_test.go", ["handler_test.go"]),
         ("lib_test.rs", ["lib_test.rs"]),
-        ("CalcTest.java", ["CalcTest.java"]),
+        ("test/CalcTest.java", ["test/CalcTest.java"]),
         ("app.test.js", ["app.test.js"]),
         ("app.test.ts", ["app.test.ts"]),
-        ("test_util.c", ["test_util.c"]),
-        ("test_util.cpp", ["test_util.cpp"]),
+        ("tests/test_util.c", ["tests/test_util.c"]),
+        ("tests/test_util.cpp", ["tests/test_util.cpp"]),
         ("CalcTest.cs", ["CalcTest.cs"]),
         ("CalcTest.kt", ["CalcTest.kt"]),
         ("calc_test.rb", ["calc_test.rb"]),
@@ -1185,6 +1185,14 @@ def test_certified_test_files_rejects_non_test_target() -> None:
     )
 
     assert _certified_test_files(frozenset({"app.py"}), "app.py") == []
+
+
+def test_test_name_predicate_recognizes_ruby_test_prefix() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _looks_like_test_name,
+    )
+
+    assert _looks_like_test_name("test_parser.rb", "ruby") is True
 
 
 def test_certified_test_files_walk_inventory_only() -> None:

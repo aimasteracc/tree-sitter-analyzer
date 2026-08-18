@@ -14,6 +14,8 @@ both weights. Only the serialization half ships; pilot data on #517.
 
 from __future__ import annotations
 
+import pytest
+
 from tree_sitter_analyzer.cache.extraction import (
     _DOCSTRING_MAX_CHARS,
     _extract_imports,
@@ -144,9 +146,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v17: P1 causal envelopes project C/C++ preprocessor includes.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 17
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 17
+        # v18: causal envelopes project literal template/Python dynamic imports.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 18
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 18
 
 
 class TestJavaScriptModuleCallProjection:
@@ -159,6 +161,17 @@ class TestJavaScriptModuleCallProjection:
         symbols = {"symbols": _symbols_for("import('./lazy');", "typescript")}
 
         assert _extract_imports(symbols) == [{"text": "import('./lazy')", "line": 1}]
+
+    def test_dynamic_import_static_template_is_projected_as_import(self):
+        # PR #1308 review: no-substitution templates are static module loads.
+        symbols = {"symbols": _symbols_for("import(`./lazy`);", "typescript")}
+
+        assert _extract_imports(symbols) == [{"text": "import(`./lazy`)", "line": 1}]
+
+    def test_dynamic_import_interpolated_template_is_not_projected(self):
+        symbols = {"symbols": _symbols_for("import(`./${name}`);", "typescript")}
+
+        assert _extract_imports(symbols) == []
 
     def test_ordinary_call_is_not_projected_as_import(self):
         symbols = {"symbols": _symbols_for("load('./module');", "typescript")}
@@ -183,6 +196,24 @@ class TestJavaScriptModuleCallProjection:
         walker = _SymbolWalker("", [], "typescript", None)
 
         assert walker._append_jsts_module_call(_IncompleteCall()) is False
+
+
+class TestPythonDynamicImportProjection:
+    @pytest.mark.parametrize(
+        "source", ["importlib.import_module('pkg.util')", "__import__('pkg.util')"]
+    )
+    def test_literal_dynamic_import_is_projected(self, source: str) -> None:
+        # PR #1308 review: literal Python loads participate in causal facts.
+        symbols = {"symbols": _symbols_for(source, "python")}
+
+        assert _extract_imports(symbols) == [{"text": source, "line": 1}]
+
+    def test_nonliteral_dynamic_import_is_projected_for_fail_closed_read(self) -> None:
+        symbols = {"symbols": _symbols_for("__import__(module_name)", "python")}
+
+        assert _extract_imports(symbols) == [
+            {"text": "__import__(module_name)", "line": 1}
+        ]
 
 
 class TestCIncludeProjection:

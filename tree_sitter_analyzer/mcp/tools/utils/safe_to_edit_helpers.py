@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ....health_scorer import HealthScorer
+from ....languages.lang_extension_map import EXT_TO_LANG
 from ....security.fixture_detector import fixture_to_verdict, is_fixture
 from ..file_health_tool import _build_signal
 from .constraint_violation_query import (
@@ -652,7 +653,23 @@ _DEPENDENCY_SKIP_DIRS = frozenset(
     }
 )
 _DEPENDENCY_SOURCE_EXTS = frozenset(
-    {".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".go", ".rs", ".c", ".cpp", ".h"}
+    {
+        ".py",
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".java",
+        ".go",
+        ".rs",
+        ".c",
+        ".cc",
+        ".cpp",
+        ".cxx",
+        ".h",
+        ".hpp",
+        ".hxx",
+    }
 )
 
 
@@ -816,11 +833,9 @@ def _require_edges_callee_name(conn: Any) -> None:
 
 
 def _target_language(rel_path: str) -> str:
-    """Return the test-discovery language name for one relative path."""
+    """Return the canonical indexed language for one relative path."""
 
-    from .test_discovery import detect_language_from_ext
-
-    return detect_language_from_ext(Path(rel_path).suffix.lower()) or "unknown"
+    return EXT_TO_LANG.get(Path(rel_path).suffix.lower(), "unknown")
 
 
 def _certified_import_facts_available(
@@ -848,6 +863,10 @@ def _certified_import_facts_available(
             conn, rel_path, inventory
         ):
             return False
+    if language in {"javascript", "typescript"} and conn is not None:
+        return _jsts_import_projection_complete(conn, inventory)
+    if language == "python" and conn is not None:
+        return _python_import_projection_complete(conn, inventory)
     if language in {"c", "cpp"} and conn is not None:
         return _quoted_include_projection_complete(conn, rel_path, inventory)
     return True
@@ -893,6 +912,31 @@ def _looks_like_test_name(name: str, language: str) -> bool:
     return False
 
 
+def _looks_like_test_path(rel_path: str, language: str) -> bool:
+    """Mirror the live runnable-test predicate over one snapshot path."""
+
+    path = Path(rel_path)
+    name = path.name
+    if name in {"conftest.py", "__init__.py"}:
+        return False
+    in_test_dir = any(
+        part in {"tests", "test", "spec", "__tests__"} for part in path.parts[:-1]
+    )
+    if language == "python":
+        return name.endswith(("_test.py", "_tests.py")) or (
+            in_test_dir and name.startswith("test_") and name.endswith(".py")
+        )
+    if language == "java":
+        return in_test_dir and _looks_like_test_name(name, language)
+    if language in {"c", "cpp"}:
+        return in_test_dir and _looks_like_test_name(name, language)
+    if language == "ruby":
+        return name.endswith(("_test.rb", "_spec.rb")) or (
+            in_test_dir and name.startswith("test_")
+        )
+    return _looks_like_test_name(name, language)
+
+
 def _import_module_name(import_text: str) -> str | None:
     """Return the imported module path from one import statement text."""
 
@@ -915,6 +959,15 @@ def _import_module_name(import_text: str) -> str | None:
     if m:
         return m.group(1)
     m = _re.search(r"\b(?:require|import)\s*\(\s*['\"]([^'\"]+)['\"]", import_text)
+    if m:
+        return m.group(1)
+    m = _re.search(r"\b(?:require|import)\s*\(\s*`([^`]*)`", import_text)
+    if m and "${" not in m.group(1):
+        return m.group(1)
+    m = _re.search(
+        r"\b(?:importlib\.import_module|__import__)\s*\(\s*['\"]([^'\"]+)['\"]",
+        import_text,
+    )
     if m:
         return m.group(1)
     return None
@@ -969,29 +1022,42 @@ def _python_package_symbol_providers(
 
     import ast
 
-    providers: dict[str, set[str]] = {symbol: set() for symbol in symbols}
-    for symbol in symbols:
-        if _file_defines_any(conn, package_file, [symbol]):
-            providers[symbol].add(package_file)
-    import_texts = (_snapshot_import_texts(conn, inventory) or {}).get(package_file, [])
-    for import_text in import_texts:
-        module = ast.parse(import_text)
-        for statement in module.body:
-            if not isinstance(statement, ast.ImportFrom):
-                continue
-            spec = "." * statement.level + (statement.module or "")
-            source = _resolve_import_spec_from_inventory(spec, package_file, inventory)
-            if source is None:
-                continue
-            for alias in statement.names:
-                exposed = alias.asname or alias.name
-                candidates = symbols if alias.name == "*" else [exposed]
-                for symbol in candidates:
-                    if symbol in providers and _file_defines_any(
-                        conn, source, [alias.name if alias.name != "*" else symbol]
-                    ):
-                        providers[symbol].add(source)
-    return providers
+    projections = _snapshot_import_texts(conn, inventory) or {}
+
+    def provider_files(
+        module_file: str, exported_symbol: str, stack: frozenset[tuple[str, str]]
+    ) -> set[str]:
+        key = (module_file, exported_symbol)
+        if key in stack:
+            return set()
+        next_stack = stack | {key}
+        providers = (
+            {module_file}
+            if _file_defines_any(conn, module_file, [exported_symbol])
+            else set()
+        )
+        for import_text in projections.get(module_file, []):
+            module = ast.parse(import_text)
+            for statement in module.body:
+                if not isinstance(statement, ast.ImportFrom):
+                    continue
+                spec = "." * statement.level + (statement.module or "")
+                source = _resolve_import_spec_from_inventory(
+                    spec, module_file, inventory
+                )
+                if source is None:
+                    continue
+                for alias in statement.names:
+                    exposed = alias.asname or alias.name
+                    if alias.name != "*" and exposed != exported_symbol:
+                        continue
+                    source_symbol = exported_symbol if alias.name == "*" else alias.name
+                    providers.update(provider_files(source, source_symbol, next_stack))
+        return providers
+
+    return {
+        symbol: provider_files(package_file, symbol, frozenset()) for symbol in symbols
+    }
 
 
 def _certified_symbol_reference_tests(
@@ -1043,7 +1109,7 @@ def _certified_symbol_reference_tests(
         if rel == rel_path:
             continue
         importer_language = _target_language(rel)
-        if not _looks_like_test_name(Path(rel).name, importer_language):
+        if not _looks_like_test_path(rel, importer_language):
             continue
         try:
             row = conn.execute(
@@ -1075,6 +1141,40 @@ def _certified_symbol_reference_tests(
                 for symbol in symbols
                 if re.search(rf"\b{re.escape(symbol)}\b", text)
             ]
+            if importer_language == "python":
+                import ast
+
+                import_module = _import_module_name(text)
+                resolved_module = (
+                    _resolve_import_spec_from_inventory(import_module, rel, inventory)
+                    if import_module
+                    else None
+                )
+                if resolved_module and Path(resolved_module).name == "__init__.py":
+                    imported_names: list[str] = []
+                    for statement in ast.parse(text).body:
+                        if not isinstance(statement, ast.ImportFrom):
+                            continue
+                        for alias in statement.names:
+                            if alias.name == "*":
+                                imported_names.extend(symbols)
+                            else:
+                                # Resolve the package's exported name.  A local
+                                # alias (``execute as invoke``) is irrelevant to
+                                # which defining module supplied the symbol.
+                                imported_names.append(alias.name)
+                    if imported_names:
+                        providers = _python_package_symbol_providers(
+                            conn, resolved_module, imported_names, inventory
+                        )
+                        if any(
+                            providers[name] == {rel_path} for name in imported_names
+                        ):
+                            results.append(rel)
+                            break
+                        # A package member import was resolved and disproved;
+                        # do not fall back to a textual local-alias match.
+                        continue
             if not matched:
                 continue
             # Bind the import to the target module — a test doing
@@ -1137,7 +1237,7 @@ def _certified_symbol_reference_tests(
             rel
             and rel != rel_path
             and rel in inventory
-            and _looks_like_test_name(Path(rel).name, _target_language(rel))
+            and _looks_like_test_path(rel, _target_language(rel))
             and rel not in results
         ):
             results.append(rel)
@@ -1185,7 +1285,7 @@ def _certified_test_files(
         return any(fnmatch.fnmatchcase(name, pattern) for pattern in filenames)
 
     results: list[str] = []
-    if _looks_like_test_name(p.name, language):
+    if _looks_like_test_path(rel_path, language):
         # The target itself is a test file (legacy _is_existing_test_file).
         results.append(rel_path)
     for rel in sorted(inventory):
@@ -1237,7 +1337,7 @@ def _certified_test_files(
         # served as a certified test (Codex P2 #1299 round-12, C54).
         if (
             dep in inventory
-            and _looks_like_test_name(Path(dep).name, _target_language(dep))
+            and _looks_like_test_path(dep, _target_language(dep))
             and dep not in results
         ):
             results.append(dep)
@@ -1264,7 +1364,7 @@ def _certified_exercising_tests(
         if dependent in seen or dependent not in inventory:
             continue
         seen.add(dependent)
-        if _looks_like_test_name(Path(dependent).name, _target_language(dependent)):
+        if _looks_like_test_path(dependent, _target_language(dependent)):
             test_files.append(dependent)
             continue
         graph = build_snapshot_file_dependency_view(
@@ -1272,7 +1372,7 @@ def _certified_exercising_tests(
         )
         queue.extend(graph.dependents_of(dependent))
     language = _target_language(rel_path)
-    if _looks_like_test_name(Path(rel_path).name, language):
+    if _looks_like_test_path(rel_path, language):
         test_files.insert(0, rel_path)
     test_files.extend(
         _certified_symbol_reference_tests(
@@ -1515,6 +1615,21 @@ def _import_targets_from_text(
         )
     )
     specs.update(
+        match.group(1)
+        for match in re.finditer(
+            r"\b(?:require|import)\s*\(\s*`([^`]*)`\s*(?=[,)])",
+            import_text,
+        )
+        if "${" not in match.group(1)
+    )
+    specs.update(
+        match.group(2)
+        for match in re.finditer(
+            r"\b(?:importlib\.import_module|__import__)\s*\(\s*(['\"])([^'\"]+)\1",
+            import_text,
+        )
+    )
+    specs.update(
         match.group(2)
         for match in re.finditer(
             r"\b(?:require|import)\s*\(\s*(['\"])([^'\"]+)\1\s*(?=[,)])",
@@ -1619,6 +1734,41 @@ def _snapshot_import_texts(
             texts.append(text)
         projected[file_path] = texts
     return projected
+
+
+def _jsts_import_projection_complete(conn: Any, inventory: frozenset[str]) -> bool:
+    """Reject certified JS/TS facts when a bare specifier may be an alias."""
+
+    projected = _snapshot_import_texts(conn, inventory)
+    if projected is None:
+        return False
+    for file_path, import_texts in projected.items():
+        if _target_language(file_path) not in {"javascript", "typescript"}:
+            continue
+        for import_text in import_texts:
+            spec = _import_module_name(import_text)
+            if spec is None or not spec.startswith(("./", "../")):
+                return False
+    return True
+
+
+def _python_import_projection_complete(conn: Any, inventory: frozenset[str]) -> bool:
+    """Reject Python facts when a projected dynamic load cannot be resolved."""
+
+    projected = _snapshot_import_texts(conn, inventory)
+    if projected is None:
+        return False
+    dynamic_call = re.compile(r"^\s*(?:importlib\.import_module|__import__)\s*\(", re.S)
+    for file_path, import_texts in projected.items():
+        if _target_language(file_path) != "python":
+            continue
+        for import_text in import_texts:
+            if not dynamic_call.match(import_text):
+                continue
+            spec = _import_module_name(import_text)
+            if spec is None or spec.startswith("."):
+                return False
+    return True
 
 
 def _java_same_package_projection_complete(

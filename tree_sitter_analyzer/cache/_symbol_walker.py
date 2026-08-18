@@ -73,6 +73,8 @@ class _SymbolWalker:
             return
         if self._append_jsts_module_call(node):
             return
+        if self._append_python_module_call(node):
+            return
         if self._is_variable(node, name_node, enclosed):
             self._append_variable(node, name_node, depth)
             return
@@ -176,7 +178,33 @@ class _SymbolWalker:
             return False
         if _node_text(function, self.source) not in {"require", "import"}:
             return False
-        if not any(child.type == "string" for child in arguments.children):
+        literals = [
+            child
+            for child in arguments.children
+            if child.type in {"string", "template_string"}
+        ]
+        if not literals or (
+            literals[0].type == "template_string"
+            and any(
+                child.type == "template_substitution" for child in literals[0].children
+            )
+        ):
+            return False
+        self._append_import(node)
+        return True
+
+    def _append_python_module_call(self, node: Any) -> bool:
+        """Project Python dynamic loads so unresolved calls fail closed."""
+        if self.language != "python" or node.type != "call":
+            return False
+        function = node.child_by_field_name("function")
+        arguments = node.child_by_field_name("arguments")
+        if function is None or arguments is None:
+            return False
+        if _node_text(function, self.source) not in {
+            "__import__",
+            "importlib.import_module",
+        }:
             return False
         self._append_import(node)
         return True

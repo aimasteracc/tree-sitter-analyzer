@@ -51,7 +51,8 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # field (dict entries instead of bare statement strings).
 # v16: P1 causal envelopes project literal CommonJS/dynamic module calls.
 # v17: P1 causal envelopes project C/C++ preprocessor includes.
-_AST_CACHE_EXTRACTOR_VERSION = 17
+# v18: P1 causal envelopes project static templates and Python dynamic imports.
+_AST_CACHE_EXTRACTOR_VERSION = 18
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__
