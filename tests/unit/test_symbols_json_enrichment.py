@@ -155,9 +155,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v23: scoped Python and static Java/CommonJS loads enter the projection.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 23
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 23
+        # v24: CommonJS aliases and C++20 imports enter the projection.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 24
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 24
 
 
 class TestJavaScriptModuleCallProjection:
@@ -211,6 +211,13 @@ class TestJavaScriptModuleCallProjection:
         symbols = {"symbols": _symbols_for(f"{call};", "typescript")}
 
         assert _extract_imports(symbols) == [{"text": call, "line": 1}]
+
+    @pytest.mark.parametrize("declaration", ["const", "let", "var"])
+    def test_commonjs_loader_alias_call_is_projected(self, declaration: str) -> None:
+        source = f"{declaration} load = require;\nload('./legacy');"
+        symbols = {"symbols": _symbols_for(source, "typescript")}
+
+        assert _extract_imports(symbols) == [{"text": "load('./legacy')", "line": 2}]
 
     def test_incomplete_call_node_is_not_projected_as_import(self):
         from tree_sitter_analyzer.cache._symbol_walker import _SymbolWalker
@@ -386,6 +393,15 @@ class TestCIncludeProjection:
         symbols = {"symbols": _symbols_for('#define HDR "util.h"\n#include HDR\n', "c")}
 
         assert _extract_imports(symbols) == [{"text": "#include HDR\n", "line": 2}]
+
+    @pytest.mark.parametrize(
+        "source",
+        ['import "util.h";', "import project.core;", "export import project.core;"],
+    )
+    def test_cpp20_import_is_projected(self, source: str) -> None:
+        symbols = {"symbols": _symbols_for(source, "cpp")}
+
+        assert _extract_imports(symbols) == [{"text": source, "line": 1}]
 
 
 class TestJavaReflectionProjection:

@@ -150,6 +150,22 @@ def test_commonjs_projection_accepts_extensionless_file_target() -> None:
     assert helpers._jsts_import_projection_complete(conn, inventory) is True
 
 
+def test_commonjs_loader_alias_projection_fails_closed() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.js", [{"text": "load('./util')"}]),
+            ("src/util.js", []),
+        ]
+    )
+
+    assert (
+        helpers._jsts_import_projection_complete(
+            conn, frozenset({"src/main.js", "src/util.js"})
+        )
+        is False
+    )
+
+
 def test_python_static_projection_parser_covers_invalid_and_wildcard_forms() -> None:
     assert helpers._python_static_import_specs("if (") is None
     assert helpers._python_static_import_specs("import os\nimport sys") is None
@@ -210,6 +226,62 @@ def test_java_inventory_match_prefers_exact_candidate() -> None:
     assert helpers._java_inventory_matches(
         "com.acme.Util$Inner", frozenset({"com/acme/Util.java"})
     ) == {"com/acme/Util.java"}
+
+
+def test_java_multi_file_projection_fails_closed_for_qualified_references() -> None:
+    inventory = frozenset({"src/com/acme/Util.java", "src/org/example/Use.java"})
+
+    assert (
+        helpers._java_same_package_projection_complete(
+            object(), "src/com/acme/Util.java", inventory
+        )
+        is False
+    )
+
+
+def test_cpp_header_unit_resolves_to_inventory() -> None:
+    inventory = frozenset({"src/main.cpp", "include/util.h"})
+
+    assert helpers._import_targets_from_text(
+        'import "util.h";', "src/main.cpp", inventory
+    ) == {"include/util.h"}
+
+
+def test_cpp_ambiguous_header_unit_does_not_guess_target() -> None:
+    inventory = frozenset({"src/main.cpp", "include-one/util.h", "include-two/util.h"})
+
+    assert (
+        helpers._import_targets_from_text('import "util.h";', "src/main.cpp", inventory)
+        == set()
+    )
+
+
+def test_cpp_header_unit_projection_is_complete() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.cpp", [{"text": 'import "util.h";'}]),
+            ("include/util.h", []),
+        ]
+    )
+    inventory = frozenset({"src/main.cpp", "include/util.h"})
+
+    assert helpers._quoted_include_projection_complete(
+        conn, "include/util.h", inventory
+    )
+
+
+def test_cpp_named_module_projection_fails_closed() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.cpp", [{"text": "import project.core;"}]),
+            ("include/util.h", []),
+        ]
+    )
+    inventory = frozenset({"src/main.cpp", "include/util.h"})
+
+    assert not helpers._quoted_include_projection_complete(
+        conn, "include/util.h", inventory
+    )
 
 
 def test_java_reflection_projection_rejects_missing_snapshot_table() -> None:

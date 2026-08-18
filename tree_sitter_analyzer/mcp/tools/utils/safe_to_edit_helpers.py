@@ -1481,7 +1481,6 @@ def _certified_exercising_tests(
         seen.add(dependent)
         if _looks_like_test_path(dependent, _target_language(dependent)):
             test_files.append(dependent)
-            continue
         graph = build_snapshot_file_dependency_view(
             conn, dependent, inventory=inventory
         )
@@ -1786,6 +1785,11 @@ def _import_targets_from_text(
         )
     )
     include_match = re.match(r'^\s*#\s*include\s*"([^"]+)"', import_text)
+    cpp_header_unit = (
+        re.match(r'^\s*(?:export\s+)?import\s+"([^"]+)"\s*;', import_text)
+        if importer_language == "cpp"
+        else None
+    )
 
     targets = _java_wildcard_targets(java_wildcard_packages, inventory)
     if include_match:
@@ -1794,6 +1798,12 @@ def _import_targets_from_text(
         )
         if len(include_targets) == 1:
             targets.update(include_targets)
+    if cpp_header_unit:
+        header_targets = _quoted_include_matches(
+            cpp_header_unit.group(1), importer_rel_path, inventory
+        )
+        if len(header_targets) == 1:
+            targets.update(header_targets)
     for spec in specs:
         resolved = _resolve_import_spec_from_inventory(
             spec, importer_rel_path, inventory
@@ -2086,32 +2096,14 @@ def _java_same_package_projection_complete(
     rel_path: str,
     inventory: frozenset[str],
 ) -> bool:
-    """Fail closed until same-package Java type/member references are indexed."""
+    """Fail closed until every Java type/member reference is projected."""
 
+    del conn, rel_path
     java_files = {path for path in inventory if _target_language(path) == "java"}
-    if len(java_files) <= 1:
-        return True
-    projected = _snapshot_import_texts(conn, inventory)
-    if projected is None or not java_files.issubset(projected):
-        return False
-    packages: dict[str, str] = {}
-    package_re = re.compile(r"^\s*package\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*;\s*$")
-    for file_path in java_files:
-        declarations = {
-            match.group(1)
-            for text in projected[file_path]
-            if (match := package_re.match(text)) is not None
-        }
-        if len(declarations) > 1:
-            return False
-        packages[file_path] = next(iter(declarations), "")
-    target_package = packages.get(rel_path)
-    if target_package is None:
-        return False
-    return all(
-        file_path == rel_path or package != target_package
-        for file_path, package in packages.items()
-    )
+    # One Java file cannot hide an incoming Java reference. With two or more,
+    # fully-qualified cross-package references need no import and are absent
+    # from the current projection, so completeness cannot yet be certified.
+    return len(java_files) <= 1
 
 
 def _quoted_include_projection_complete(
@@ -2131,9 +2123,18 @@ def _quoted_include_projection_complete(
         return False
     for importer in source_files:
         for text in projected[importer]:
-            if re.match(r"^\s*#\s*include\b", text) is None:
+            is_include = re.match(r"^\s*#\s*include\b", text) is not None
+            cpp_import = (
+                re.match(r"^\s*(?:export\s+)?import\s+(.+?)\s*;\s*$", text)
+                if _target_language(importer) == "cpp"
+                else None
+            )
+            if not is_include and cpp_import is None:
                 continue
-            match = re.match(r'^\s*#\s*include\s*"([^"]+)"', text)
+            match = re.match(
+                r'^\s*(?:#\s*include|(?:export\s+)?import)\s*"([^"]+)"',
+                text,
+            )
             if match is None:
                 return False
             candidates = _quoted_include_matches(match.group(1), importer, inventory)

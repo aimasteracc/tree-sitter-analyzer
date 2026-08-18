@@ -2931,6 +2931,41 @@ def test_certified_exercising_tests_traverse_dependent_chain() -> None:
     ) == ["tests/test_api.py"]
 
 
+def test_certified_exercising_tests_continue_through_test_chain() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_exercising_tests,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, '[]', '{}')",
+        [("util.py",), ("tests/test_helper.py",), ("tests/test_api.py",)],
+    )
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO edges VALUES (?, 'calls', ?, ?, ?)",
+        [
+            (1, "tests/test_helper.py", "normalize", "util.py"),
+            (2, "tests/test_api.py", "fixture", "tests/test_helper.py"),
+        ],
+    )
+
+    assert _certified_exercising_tests(conn, "util.py", ["tests/test_helper.py"]) == [
+        "tests/test_helper.py",
+        "tests/test_api.py",
+    ]
+
+
 def test_certified_exercising_tests_traverse_test_named_production_file() -> None:
     # PR #1308 review: src/test_adapter.py is not itself a runnable test target.
     import sqlite3

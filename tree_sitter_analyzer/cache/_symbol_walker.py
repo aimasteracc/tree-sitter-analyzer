@@ -39,6 +39,10 @@ from ._symbol_syntax import (
     _scala_symbol_from_node,
 )
 
+_CPP_MODULE_IMPORT_RE = re.compile(
+    r"(?m)^[ \t]*(?:export[ \t]+)?import[ \t]+[^;\r\n]+[ \t]*;"
+)
+
 
 def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
     """Return module loader aliases and whether their scope is unambiguous."""
@@ -97,6 +101,10 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                     nested_bindings.add(node.args.vararg.arg)
                 if node.args.kwarg is not None:
                     nested_bindings.add(node.args.kwarg.arg)
+            elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                nested_bindings.add(node.id)
+            elif isinstance(node, ast.ExceptHandler) and isinstance(node.name, str):
+                nested_bindings.add(node.name)
             elif isinstance(node, ast.Assign):
                 bound = {
                     target.id for target in node.targets if isinstance(target, ast.Name)
@@ -109,6 +117,11 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                 nested_bindings.add(node.target.id)
                 nested_loader_alias = nested_loader_alias or (
                     node.value is not None
+                    and _python_reference_name(node.value) in names
+                )
+            elif isinstance(node, ast.NamedExpr):
+                nested_loader_alias = nested_loader_alias or (
+                    isinstance(node.target, ast.Name)
                     and _python_reference_name(node.value) in names
                 )
             elif isinstance(node, ast.Import):
@@ -153,16 +166,26 @@ class _SymbolWalker:
     language: str
     truncated_flag: list[bool] | None
     python_dynamic_loaders: set[str] = field(init=False, repr=False)
+    jsts_module_loaders: set[str] = field(init=False, repr=False)
     import_projection_complete: bool = field(init=False, repr=False, default=True)
     java_static_for_name: bool = field(init=False, repr=False, default=False)
 
     def __post_init__(self) -> None:
         self.python_dynamic_loaders = set()
+        self.jsts_module_loaders = {"require", "module.require", "import"}
         if self.language == "python":
             loaders, self.import_projection_complete = _python_dynamic_loader_analysis(
                 self.source
             )
             self.python_dynamic_loaders.update(loaders)
+        if self.language in {"javascript", "typescript"}:
+            self.jsts_module_loaders.update(
+                re.findall(
+                    r"(?m)\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*"
+                    r"(?:module\.)?require\b",
+                    self.source,
+                )
+            )
         if self.language == "java":
             self.java_static_for_name = bool(
                 re.search(
@@ -312,11 +335,7 @@ class _SymbolWalker:
         arguments = node.child_by_field_name("arguments")
         if function is None or arguments is None:
             return False
-        if _node_text(function, self.source) not in {
-            "require",
-            "module.require",
-            "import",
-        }:
+        if _node_text(function, self.source) not in self.jsts_module_loaders:
             return False
         self._append_import(node)
         return True
@@ -498,6 +517,24 @@ def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, An
     truncated_flag = [False]
     walker = _SymbolWalker(source_code, symbols, language, truncated_flag)
     walker.walk(root)
+    if language == "cpp":
+        projected = {
+            (symbol.get("text"), symbol.get("line"))
+            for symbol in symbols
+            if symbol.get("kind") == "import"
+        }
+        for match in _CPP_MODULE_IMPORT_RE.finditer(source_code):
+            text = match.group(0).strip()
+            line = source_code.count("\n", 0, match.start()) + 1
+            if (text, line) not in projected:
+                symbols.append(
+                    {
+                        "kind": "import",
+                        "text": text,
+                        "line": line,
+                        "language": language,
+                    }
+                )
     _annotate_canonical_complexity(symbols, tree, source_code, language)
     return {
         "symbols": symbols,
