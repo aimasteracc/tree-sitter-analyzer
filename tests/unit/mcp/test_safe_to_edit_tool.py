@@ -3230,6 +3230,29 @@ def test_snapshot_import_targets_ignore_invalid_python_direct_spec() -> None:
     )
 
 
+def test_snapshot_import_targets_accept_python_unicode_identifier() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _import_targets_from_text,
+    )
+
+    inventory = frozenset({"éclair.py"})
+
+    assert _import_targets_from_text("import éclair", "routes.py", inventory) == {
+        "éclair.py"
+    }
+
+
+def test_snapshot_import_targets_ignore_invalid_java_direct_spec() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _import_targets_from_text,
+    )
+
+    assert (
+        _import_targets_from_text("import pkg-name;", "Routes.java", frozenset())
+        == set()
+    )
+
+
 def test_snapshot_import_targets_ignore_non_import_text() -> None:
     from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
         _import_targets_from_text,

@@ -218,6 +218,26 @@ def test_computed_commonjs_projection_accepts_literal_target() -> None:
     ) == {"src/util.js"}
 
 
+@pytest.mark.parametrize("extension", ["mjs", "cjs"])
+def test_typescript_projection_accepts_explicit_javascript_module_extension(
+    extension: str,
+) -> None:
+    import_text = f"import './util.{extension}'"
+    target = f"src/util.{extension}"
+    conn = _projection_conn(
+        [
+            ("src/main.ts", [{"text": import_text}]),
+            (target, []),
+        ]
+    )
+    inventory = frozenset({"src/main.ts", target})
+
+    assert helpers._jsts_import_projection_complete(conn, inventory) is True
+    assert helpers._import_targets_from_text(import_text, "src/main.ts", inventory) == {
+        target
+    }
+
+
 def test_jsts_projection_rejects_casefold_only_target() -> None:
     conn = _projection_conn(
         [

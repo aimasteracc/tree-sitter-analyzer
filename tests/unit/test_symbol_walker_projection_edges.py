@@ -243,6 +243,23 @@ def test_python_loader_analysis_rejects_nested_stored_loader(source: str) -> Non
 
 
 @pytest.mark.parametrize(
+    "source",
+    [
+        "import importlib\ndef holder(value: importlib.import_module):\n    pass\n",
+        "import importlib\ndef holder(*values: importlib.import_module):\n    pass\n",
+        "import importlib\ndef holder(**values: importlib.import_module):\n    pass\n",
+        "import importlib\ndef holder() -> importlib.import_module:\n    pass\n",
+        "import importlib\nholder: importlib.import_module\n",
+        "import importlib\ndef outer():\n    holder: importlib.import_module\n",
+    ],
+)
+def test_python_loader_analysis_rejects_annotation_storage(source: str) -> None:
+    _names, complete = _python_dynamic_loader_analysis(source)
+
+    assert complete is False
+
+
+@pytest.mark.parametrize(
     "rebind",
     [
         "from helpers import load",

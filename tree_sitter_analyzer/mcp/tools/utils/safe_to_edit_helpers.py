@@ -1632,7 +1632,17 @@ def _resolve_import_spec_from_inventory(
         suffixes = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")
         package_entries = tuple(f"index{suffix}" for suffix in suffixes)
     elif language == "typescript":
-        suffixes = (".ts", ".tsx", ".d.ts", ".js", ".jsx", ".mts", ".cts")
+        suffixes = (
+            ".ts",
+            ".tsx",
+            ".d.ts",
+            ".js",
+            ".jsx",
+            ".mts",
+            ".cts",
+            ".mjs",
+            ".cjs",
+        )
         package_entries = tuple(f"index{suffix}" for suffix in suffixes)
     elif language == "java":
         suffixes = (".java",)
@@ -1653,13 +1663,19 @@ def _resolve_import_spec_from_inventory(
     if not candidate_base:
         candidates.extend(package_entries)
     elif explicit_suffix in allowed_suffixes:
-        if language == "typescript" and explicit_suffix in {".js", ".jsx"}:
+        if language == "typescript" and explicit_suffix in {
+            ".js",
+            ".jsx",
+            ".mjs",
+            ".cjs",
+        }:
             source_base = candidate_base.removesuffix(explicit_suffix)
-            substitutions = (
-                (".ts", ".tsx", ".d.ts", ".js")
-                if explicit_suffix == ".js"
-                else (".tsx", ".d.ts", ".jsx")
-            )
+            substitutions = {
+                ".js": (".ts", ".tsx", ".d.ts", ".js"),
+                ".jsx": (".tsx", ".d.ts", ".jsx"),
+                ".mjs": (".mts", ".d.mts", ".mjs"),
+                ".cjs": (".cts", ".d.cts", ".cjs"),
+            }[explicit_suffix]
             candidates.extend(f"{source_base}{suffix}" for suffix in substitutions)
         else:
             candidates.append(candidate_base)
@@ -1782,26 +1798,12 @@ def _import_targets_from_text(
         )
     specs: set[str] = set()
     java_wildcard_packages: set[str] = set()
-    from_match = re.match(
-        r"^\s*from\s+([.A-Za-z_][\w.]*)\s+import\s+(.+)$",
-        import_text,
-        re.S,
-    )
-    if from_match:
-        module, imported = from_match.groups()
-        if importer_language == "python" and module == "__future__":
-            return set()
-        specs.add(module)
-        payload = "\n".join(line.split("#", 1)[0] for line in imported.splitlines())
-        payload = payload.replace("(", "").replace(")", "")
-        for item in payload.split(","):
-            member = item.strip().split(maxsplit=1)[0] if item.strip() else ""
-            if member and member != "*" and re.fullmatch(r"[A-Za-z_]\w*", member):
-                separator = "" if module.endswith(".") else "."
-                specs.add(f"{module}{separator}{member}")
+    if importer_language == "python":
+        static_specs = _python_static_import_specs(import_text)
+        if static_specs is not None:
+            specs.update(static_specs)
     else:
-        # Python/Java direct imports.  Multiple Python imports on one line are
-        # kept distinct; aliases and Java's trailing semicolon are ignored.
+        # Java direct imports; aliases and the trailing semicolon are ignored.
         direct_match = re.match(r"^\s*import\s+(.+)$", import_text, re.S)
         if direct_match and not direct_match.group(1).lstrip().startswith(("'", '"')):
             for item in direct_match.group(1).split(","):

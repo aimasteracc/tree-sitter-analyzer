@@ -140,6 +140,28 @@ def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
     return any(_python_value_stores_loader(child, names) for child in children)
 
 
+def _python_function_annotations(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> tuple[ast.expr, ...]:
+    """Return evaluated parameter and return annotations for a function."""
+
+    arguments = (
+        *node.args.posonlyargs,
+        *node.args.args,
+        *node.args.kwonlyargs,
+    )
+    annotations = tuple(
+        argument.annotation for argument in arguments if argument.annotation is not None
+    )
+    if node.args.vararg is not None and node.args.vararg.annotation is not None:
+        annotations += (node.args.vararg.annotation,)
+    if node.args.kwarg is not None and node.args.kwarg.annotation is not None:
+        annotations += (node.args.kwarg.annotation,)
+    if node.returns is not None:
+        annotations += (node.returns,)
+    return annotations
+
+
 def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
     """Return module loader aliases and whether their scope is unambiguous."""
     names = {"__import__", "builtins.__import__", "importlib.import_module"}
@@ -204,6 +226,11 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
             and _python_value_stores_loader(value, names)
         )
         for targets, value in assignments
+    )
+    unsafe_loader_storage = unsafe_loader_storage or any(
+        isinstance(statement, ast.AnnAssign)
+        and _python_value_stores_loader(statement.annotation, names)
+        for statement in module_statements
     )
     module_rebinding = module_rebinding or unsafe_loader_storage
     for statement in module_statements:
@@ -277,6 +304,11 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                     default is not None and _python_value_stores_loader(default, names)
                     for default in defaults
                 )
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    nested_loader_alias = nested_loader_alias or any(
+                        _python_value_stores_loader(annotation, names)
+                        for annotation in _python_function_annotations(node)
+                    )
             elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
                 nested_bindings.add(node.id)
             elif isinstance(node, ast.ExceptHandler) and isinstance(node.name, str):
@@ -301,6 +333,9 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                 nested_loader_alias = nested_loader_alias or (
                     node.value is not None
                     and _python_value_stores_loader(node.value, names)
+                )
+                nested_loader_alias = nested_loader_alias or (
+                    _python_value_stores_loader(node.annotation, names)
                 )
             elif isinstance(node, ast.NamedExpr):
                 nested_loader_alias = nested_loader_alias or (
