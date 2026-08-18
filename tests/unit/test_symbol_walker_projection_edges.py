@@ -172,6 +172,24 @@ def test_python_loader_analysis_tracks_builtins_alias() -> None:
     assert complete is True
 
 
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "callback = lambda load: load('pkg.util')",
+        "results = [load('pkg.util') for load in loaders]",
+    ],
+)
+def test_python_loader_analysis_rejects_expression_scope_shadowing(
+    expression: str,
+) -> None:
+    source = f"from importlib import import_module as load\n{expression}\n"
+
+    names, complete = _python_dynamic_loader_analysis(source)
+
+    assert "load" in names
+    assert complete is False
+
+
 def test_module_scope_statement_walk_skips_nested_function_body() -> None:
     module = ast.parse("if enabled:\n    def nested():\n        import importlib\n")
 

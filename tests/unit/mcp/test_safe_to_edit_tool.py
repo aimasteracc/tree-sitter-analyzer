@@ -3391,6 +3391,33 @@ def test_snapshot_needle_importers_ignores_unrelated_import_text() -> None:
     assert _snapshot_needle_importers(conn, "app.py", {"routes.py"}) == set()
 
 
+def test_snapshot_needle_importers_ignores_calls_after_invalid_loader_projection() -> (
+    None
+):
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _snapshot_needle_importers,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "routes.py",
+                json.dumps([{"text": "if ("}, {"text": "load('app')"}]),
+            ),
+            ("app.py", "[]"),
+        ],
+    )
+
+    assert _snapshot_needle_importers(conn, "app.py", {"routes.py"}) == set()
+
+
 def test_snapshot_stale_edges_includes_relative_member_import() -> None:
     import json
     import sqlite3

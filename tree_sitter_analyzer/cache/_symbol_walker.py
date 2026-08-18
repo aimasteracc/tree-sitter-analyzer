@@ -196,11 +196,25 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
     nested_bindings: set[str] = set()
     nested_loader_alias = False
     for statement in module_statements:
-        if not isinstance(
-            statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-        ):
-            continue
-        for node in ast.walk(statement):
+        nested_scopes: list[ast.AST] = []
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            nested_scopes.append(statement)
+        else:
+            nested_scopes.extend(
+                node
+                for node in ast.walk(statement)
+                if isinstance(
+                    node,
+                    (
+                        ast.Lambda,
+                        ast.ListComp,
+                        ast.SetComp,
+                        ast.DictComp,
+                        ast.GeneratorExp,
+                    ),
+                )
+            )
+        for node in (child for scope in nested_scopes for child in ast.walk(scope)):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
                 arguments = (
                     *node.args.posonlyargs,
@@ -276,6 +290,55 @@ def _python_reference_name(node: ast.expr) -> str | None:
     return None
 
 
+_JSTS_MODULE_LOADER_ROOTS = frozenset({"module", "require"})
+
+
+def _jsts_pattern_binds_module_loader(node: Any, source: str) -> bool:
+    """Return whether one JS/TS binding pattern shadows a module loader."""
+
+    if node.type in {
+        "identifier",
+        "shorthand_property_identifier_pattern",
+        "type_identifier",
+    }:
+        return _node_text(node, source) in _JSTS_MODULE_LOADER_ROOTS
+    if node.type == "import_specifier":
+        local_name = node.child_by_field_name("alias") or node.child_by_field_name(
+            "name"
+        )
+        return local_name is not None and _jsts_pattern_binds_module_loader(
+            local_name, source
+        )
+    field = (
+        "value"
+        if node.type == "pair_pattern"
+        else "left"
+        if node.type == "assignment_pattern"
+        else "pattern"
+        if node.type in {"optional_parameter", "required_parameter", "rest_parameter"}
+        else None
+    )
+    if field is not None:
+        pattern = node.child_by_field_name(field)
+        return pattern is not None and _jsts_pattern_binds_module_loader(
+            pattern, source
+        )
+    if node.type in {
+        "array_pattern",
+        "import_clause",
+        "named_imports",
+        "namespace_import",
+        "object_pattern",
+        "rest_pattern",
+    }:
+        return any(
+            _jsts_pattern_binds_module_loader(child, source)
+            for child in node.children
+            if getattr(child, "is_named", True)
+        )
+    return False
+
+
 @dataclass(slots=True)
 class _SymbolWalker:
     source: str
@@ -324,6 +387,7 @@ class _SymbolWalker:
             self.walk(child, depth + 1, child_enclosed)
 
     def _collect_node(self, node: Any, depth: int, enclosed: bool) -> None:
+        self._mark_jsts_loader_binding(node)
         name_node = node.child_by_field_name("name")
         function_name = self._function_name(node, name_node)
         if function_name is not None:
@@ -354,6 +418,40 @@ class _SymbolWalker:
             self._append_variable(node, name_node, depth)
             return
         self._append_constant(node, name_node, enclosed)
+
+    def _mark_jsts_loader_binding(self, node: Any) -> None:
+        """Fail closed when a lexical binding can shadow require/module."""
+
+        if self.language not in {"javascript", "typescript"}:
+            return
+        patterns: list[Any] = []
+        if node.type == "variable_declarator":
+            patterns.append(node.child_by_field_name("name"))
+        elif node.type == "formal_parameters":
+            patterns.extend(node.children)
+        elif node.type in {
+            "arrow_function",
+            "class_declaration",
+            "function_declaration",
+            "function_expression",
+            "generator_function_declaration",
+            "generator_function_expression",
+        }:
+            patterns.extend(
+                node.child_by_field_name(field)
+                for field in ("name", "parameter", "parameters")
+            )
+        elif node.type == "catch_clause":
+            patterns.append(node.child_by_field_name("parameter"))
+        elif node.type == "import_clause":
+            patterns.append(node)
+        elif node.type in {"assignment_expression", "augmented_assignment_expression"}:
+            patterns.append(node.child_by_field_name("left"))
+        self.import_projection_complete = self.import_projection_complete and not any(
+            pattern is not None
+            and _jsts_pattern_binds_module_loader(pattern, self.source)
+            for pattern in patterns
+        )
 
     def _function_name(self, node: Any, name_node: Any) -> str | None:
         if node.type not in _FUNCTION_LIKE:

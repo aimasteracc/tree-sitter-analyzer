@@ -225,6 +225,37 @@ class TestJavaScriptModuleCallProjection:
 
         assert _extract_imports(symbols) == [{"text": "load('./legacy')", "line": 2}]
 
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "function run(require) { require('./util'); }",
+            "const run = require => require('./util');",
+            "function run() { const module = {}; module.require('./util'); }",
+            "const { require } = runtime; require('./util');",
+            "import require from './loader'; require('./util');",
+            "import * as module from './loader'; module.require('./util');",
+            "import { load as require } from './loader'; require('./util');",
+            "try {} catch (require) { require('./util'); }",
+            "function require() { require('./util'); }",
+            "class module {}",
+            "require = fake; require('./util');",
+        ],
+    )
+    def test_shadowed_commonjs_loader_marks_projection_incomplete(
+        self, source: str
+    ) -> None:
+        extraction = _extraction_for(source, "typescript")
+
+        assert extraction["import_projection_complete"] is False
+
+    def test_renamed_commonjs_import_does_not_shadow_loader(self) -> None:
+        extraction = _extraction_for(
+            "import { require as load, module as local } from './loader';",
+            "typescript",
+        )
+
+        assert extraction["import_projection_complete"] is True
+
     @pytest.mark.parametrize("declaration", ["const", "let", "var"])
     def test_commonjs_loader_alias_call_is_projected(self, declaration: str) -> None:
         source = f"{declaration} load = require;\nload('./legacy');"
@@ -480,6 +511,16 @@ class TestJavaReflectionProjection:
             "import static java.lang.Class.forName;",
             'forName("com.acme.Util")',
         }
+
+    @pytest.mark.parametrize(
+        "call",
+        ['forName("com.acme.Util")', 'loader.forName("com.acme.Util")'],
+    )
+    def test_unbound_reflective_for_name_is_not_projected(self, call: str) -> None:
+        source = f"class Main {{ void load() {{ {call}; }} }}"
+        extraction = _extraction_for(source, "java")
+
+        assert _extract_imports(extraction) == []
 
 
 class TestBashVariableAssignmentScope:
