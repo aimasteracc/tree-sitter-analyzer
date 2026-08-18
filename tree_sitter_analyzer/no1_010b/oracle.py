@@ -199,7 +199,11 @@ def _run_oracle_process_unisolated_for_tests(
                 command,
                 cwd=str(cwd_path),
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                # One pipe preserves stdout/stderr write order, so a
+                # diagnostic emitted after the declared result invalidates
+                # the final-output protocol instead of being hidden on a
+                # separately parsed stream.
+                stderr=subprocess.STDOUT,
                 env=env,
                 creationflags=getattr(
                     subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200
@@ -210,7 +214,7 @@ def _run_oracle_process_unisolated_for_tests(
                 command,
                 cwd=str(cwd_path),
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 env=env,
                 start_new_session=True,
             )
@@ -218,18 +222,12 @@ def _run_oracle_process_unisolated_for_tests(
         return OracleOutcome(OracleStatus.UNKNOWN, f"oracle could not execute: {exc}")
 
     stdout_b = bytearray()
-    stderr_b = bytearray()
     overflow = threading.Event()
     drain_failed = threading.Event()
     threads = [
         threading.Thread(
             target=_drain_bounded,
             args=(proc.stdout, stdout_b, overflow, drain_failed, proc),
-            daemon=True,
-        ),
-        threading.Thread(
-            target=_drain_bounded,
-            args=(proc.stderr, stderr_b, overflow, drain_failed, proc),
             daemon=True,
         ),
     ]
@@ -261,11 +259,9 @@ def _run_oracle_process_unisolated_for_tests(
     # failure, never a verdict (C19).
     try:
         stdout = bytes(stdout_b).decode("utf-8")
-        stderr = bytes(stderr_b).decode("utf-8")
     except UnicodeDecodeError:
         return OracleOutcome(OracleStatus.UNKNOWN, "oracle output was not UTF-8")
-    stderr_tail = stderr[-2000:]
-    tail = (stdout[-2000:] + stderr_tail)[-2000:]
+    tail = stdout[-2000:]
     if proc.returncode != 0:
         # Uncaught exception / interpreter error / non-zero exit: never a
         # behavioral FAIL (RFC-0026 C19).

@@ -228,6 +228,22 @@ def test_run_oracle_rejects_invalid_reason_protocol(tmp_path: Path, body: str) -
     assert outcome.status == OracleStatus.UNKNOWN
 
 
+def test_run_oracle_rejects_stderr_after_result_marker(tmp_path: Path) -> None:
+    # PR #1307: the declared marker is final across both output streams.
+    body = (
+        "#!/usr/bin/env python3\nimport sys\n"
+        "print('NO1_010B_ORACLE_REASON: dispatch-returns-none')\n"
+        "print('NO1_010B_ORACLE_RESULT: PASS', flush=True)\n"
+        "print('later diagnostic', file=sys.stderr, flush=True)\n"
+    )
+    oracle = _write_oracle(tmp_path, "stderr_after.py", body)
+    outcome = _run_oracle_process_unisolated_for_tests(
+        str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
+    )
+
+    assert outcome.status == OracleStatus.UNKNOWN
+
+
 def test_run_oracle_bounds_output_while_running(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

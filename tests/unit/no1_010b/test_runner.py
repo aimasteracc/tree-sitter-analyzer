@@ -91,6 +91,22 @@ def test_diff_paths_fails_closed_on_ambiguous_git_header() -> None:
         diff_paths("diff --git b/wrong-side.py b/wrong-side.py\n")
 
 
+def test_diff_paths_rejects_unparseable_paired_header() -> None:
+    # PR #1307: traditional diffs still receive git apply path stripping, so
+    # silently skipping a non-canonical side can bypass allowed_paths.
+    patch = (
+        "--- a/allowed.txt\n+++ b/allowed.txt\n@@ -1 +1 @@\n-old\n+new\n"
+        "--- a/allowed.txt\n+++ x/secret.txt\n@@ -1 +1 @@\n-old\n+new\n"
+    )
+    with pytest.raises(PatchFormatError, match="paired file header"):
+        diff_paths(patch)
+
+
+def test_diff_paths_rejects_dev_null_to_dev_null_pair() -> None:
+    with pytest.raises(PatchFormatError, match="no repository path"):
+        diff_paths("--- /dev/null\n+++ /dev/null\n@@ -0,0 +0,0 @@\n")
+
+
 @pytest.mark.parametrize(
     ("token", "side"),
     [
@@ -129,13 +145,22 @@ def test_diff_paths_ignores_unpaired_file_header() -> None:
     assert diff_paths("+++ b/ok.py\n") == []
 
 
-def test_bound_patch_enforces_canonical_limits() -> None:
-    bound_patch(PATCH_OK)  # in bounds
+def test_bound_patch_accepts_in_bound_patch() -> None:
+    bound_patch(PATCH_OK)
+
+
+def test_bound_patch_rejects_byte_limit() -> None:
     with pytest.raises(PatchBoundError, match="max bytes"):
         bound_patch("x" * (1024 * 1024 + 1))
+
+
+def test_bound_patch_rejects_hunk_count_limit() -> None:
     many_hunks = "".join(f"@@ -{i} +{i} @@\n" for i in range(513))
     with pytest.raises(PatchBoundError, match="max hunks"):
         bound_patch(many_hunks)
+
+
+def test_bound_patch_rejects_per_hunk_line_limit() -> None:
     long_hunk = "@@ -1 +1 @@\n" + "+x\n" * 2001
     with pytest.raises(PatchBoundError, match="max lines per hunk"):
         bound_patch(long_hunk)
@@ -155,6 +180,47 @@ def test_bound_patch_counts_context_lines_in_hunk_limit() -> None:
     long_hunk = "@@ -1 +1 @@\n" + " context\n" * 2001
     with pytest.raises(PatchBoundError, match="max lines per hunk"):
         bound_patch(long_hunk)
+
+
+def test_bound_patch_counts_body_lines_that_resemble_file_headers() -> None:
+    # PR #1307: deleted text beginning with two dashes followed by added text
+    # beginning with two pluses is hunk body, not a new file-header pair.
+    long_hunk = "@@ -1,2002 +1,2002 @@\n--- old\n+++ new\n" + " context\n" * 2001
+    with pytest.raises(PatchBoundError, match="max lines per hunk"):
+        bound_patch(long_hunk)
+
+
+def test_bound_patch_resets_hunk_at_git_file_header() -> None:
+    patch = (
+        "@@ -1 +1 @@\n"
+        + "+x\n" * 2000
+        + "diff --git a/next.py b/next.py\n"
+        + "@@ -1 +1 @@\n"
+        + "+y\n" * 2000
+    )
+    bound_patch(patch)
+
+
+def test_bound_patch_counts_no_newline_marker_toward_limit() -> None:
+    patch = (
+        "@@ -1,2000 +1,2000 @@\n"
+        + " context\n" * 2000
+        + "\\ No newline at end of file\n"
+    )
+    with pytest.raises(PatchBoundError, match="max lines per hunk"):
+        bound_patch(patch)
+
+
+def test_bound_patch_counts_intermediate_no_newline_marker() -> None:
+    patch = (
+        "@@ -1,2000 +1,2000 @@\n"
+        + " context\n" * 1999
+        + "-old\n"
+        + "\\ No newline at end of file\n"
+        + "+new\n"
+    )
+    with pytest.raises(PatchBoundError, match="max lines per hunk"):
+        bound_patch(patch)
 
 
 def test_allowlist_violations_is_segment_aware() -> None:

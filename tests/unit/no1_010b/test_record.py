@@ -180,7 +180,9 @@ def test_record_rejects_malformed_patch() -> None:
 
 def test_record_accepts_unified_diff_patch() -> None:
     payload = _valid_payload()
-    payload["patch"] = "--- a/src/dispatch.py\n+++ b/src/dispatch.py\n@@ -1 +1 @@\n"
+    payload["patch"] = (
+        "--- a/src/dispatch.py\n+++ b/src/dispatch.py\n@@ -1 +1 @@\n-old\n+new\n"
+    )
     assert record_from_dict(payload).patch == payload["patch"]
 
 
@@ -188,6 +190,22 @@ def test_record_accepts_unified_diff_patch() -> None:
 def test_record_rejects_empty_or_non_diff_patch(patch: str) -> None:
     payload = _valid_payload()
     payload["patch"] = patch
+    with pytest.raises(BenchmarkRecordError, match="non-empty unified diff"):
+        record_from_dict(payload)
+
+
+def test_record_rejects_header_only_patch() -> None:
+    # PR #1307: a paired header without a hunk is not change data.
+    payload = _valid_payload()
+    payload["patch"] = "--- a/src/dispatch.py\n+++ b/src/dispatch.py\n"
+    with pytest.raises(BenchmarkRecordError, match="non-empty unified diff"):
+        record_from_dict(payload)
+
+
+def test_record_rejects_hunk_header_without_body() -> None:
+    # PR #1307: a declared hunk must contain the counted change lines.
+    payload = _valid_payload()
+    payload["patch"] = "--- a/src/dispatch.py\n+++ b/src/dispatch.py\n@@ -1 +1 @@\n"
     with pytest.raises(BenchmarkRecordError, match="non-empty unified diff"):
         record_from_dict(payload)
 

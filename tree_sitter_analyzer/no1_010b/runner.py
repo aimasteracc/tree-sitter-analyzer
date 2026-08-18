@@ -8,6 +8,7 @@ harness bridge.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -17,6 +18,7 @@ from .record import UnknownReasonCode, path_allowed
 PATCH_MAX_BYTES = 1 * 1024 * 1024
 PATCH_MAX_HUNKS = 512
 PATCH_MAX_LINES_PER_HUNK = 2000
+_HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@(?: .*)?$")
 
 
 class PatchBoundError(ValueError):
@@ -49,6 +51,7 @@ class DiffPath:
         if (
             not value
             or "\\" in value
+            or any(char.isspace() for char in value)
             or any(part in {"", ".", ".."} for part in value.split("/"))
         ):
             return None
@@ -64,6 +67,7 @@ class DiffPath:
             not value
             or value.startswith("/")
             or "\\" in value
+            or any(char.isspace() for char in value)
             or any(part in {"", ".", ".."} for part in value.split("/"))
         ):
             return None
@@ -78,11 +82,66 @@ def _physical_lines(patch_text: str) -> list[str]:
     return lines
 
 
+def _is_dev_null_header(header_line: str, marker: str) -> bool:
+    prefix = f"{marker} "
+    return header_line.startswith(prefix) and header_line[len(prefix) :].rstrip() == (
+        "/dev/null"
+    )
+
+
+def _is_paired_file_header(lines: list[str], index: int) -> bool:
+    if index + 1 >= len(lines):
+        return False
+    old_header, new_header = lines[index], lines[index + 1]
+    return old_header.startswith("--- ") and new_header.startswith("+++ ")
+
+
+def _hunk_body_indexes(lines: list[str]) -> set[int]:
+    """Return physical line indexes belonging to parsed unified-diff hunks."""
+
+    indexes: set[int] = set()
+    in_hunk = False
+    remaining_old: int | None = None
+    remaining_new: int | None = None
+    for index, line in enumerate(lines):
+        if line.startswith("@@"):
+            match = _HUNK_HEADER_RE.fullmatch(line)
+            in_hunk = True
+            remaining_old = int(match.group(1) or "1") if match else None
+            remaining_new = int(match.group(2) or "1") if match else None
+            continue
+        if not in_hunk:
+            continue
+        if line.startswith("diff --git "):
+            in_hunk = False
+            continue
+        if remaining_old == 0 and remaining_new == 0:
+            if _is_paired_file_header(lines, index):
+                in_hunk = False
+                continue
+            if line.startswith("\\ No newline at end of file"):
+                indexes.add(index)
+                continue
+
+        indexes.add(index)
+        if remaining_old is None or remaining_new is None or not line:
+            continue
+        if line[0] == " ":
+            remaining_old = max(0, remaining_old - 1)
+            remaining_new = max(0, remaining_new - 1)
+        elif line[0] == "-":
+            remaining_old = max(0, remaining_old - 1)
+        elif line[0] == "+":
+            remaining_new = max(0, remaining_new - 1)
+    return indexes
+
+
 def diff_paths(patch_text: str) -> list[DiffPath]:
     """Return the canonical paths a unified diff touches (bounded first)."""
     bound_patch(patch_text)
     paths: list[DiffPath] = []
     lines = _physical_lines(patch_text)
+    hunk_body = _hunk_body_indexes(lines)
     for line in lines:
         if not line.startswith("diff --git "):
             continue
@@ -98,11 +157,22 @@ def diff_paths(patch_text: str) -> list[DiffPath]:
             if parsed not in paths:
                 paths.append(parsed)
     for index, line in enumerate(lines[:-1]):
+        if index in hunk_body or index + 1 in hunk_body:
+            continue
         if not line.startswith("--- ") or not lines[index + 1].startswith("+++ "):
             continue
+        pair_paths: list[DiffPath] = []
         for marker, header in (("---", line), ("+++", lines[index + 1])):
             parsed = DiffPath.from_diff_header(header, marker)
-            if parsed is not None and parsed not in paths:
+            if parsed is None:
+                if _is_dev_null_header(header, marker):
+                    continue
+                raise PatchFormatError("non-canonical paired file header")
+            pair_paths.append(parsed)
+        if not pair_paths:
+            raise PatchFormatError("paired file header has no repository path")
+        for parsed in pair_paths:
+            if parsed not in paths:
                 paths.append(parsed)
     return paths
 
@@ -122,22 +192,12 @@ def bound_patch(patch_text: str) -> None:
             hunks += 1
     if hunks > PATCH_MAX_HUNKS:
         raise PatchBoundError("patch exceeds max hunks")
+    hunk_body = _hunk_body_indexes(lines)
     current_hunk_lines = 0
-    in_hunk = False
     for index, line in enumerate(lines):
         if line.startswith("@@"):
-            in_hunk = True
             current_hunk_lines = 0
-        elif in_hunk and (
-            line.startswith("diff --git ")
-            or (
-                line.startswith("--- ")
-                and index + 1 < len(lines)
-                and lines[index + 1].startswith("+++ ")
-            )
-        ):
-            in_hunk = False
-        elif in_hunk:
+        elif index in hunk_body:
             current_hunk_lines += 1
             if current_hunk_lines > PATCH_MAX_LINES_PER_HUNK:
                 raise PatchBoundError("patch exceeds max lines per hunk")

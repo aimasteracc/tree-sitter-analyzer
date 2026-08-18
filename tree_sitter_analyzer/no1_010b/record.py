@@ -83,6 +83,7 @@ _MAX_CORPUS_BYTES = 8 * 1024 * 1024  # mirrors task_harness's input bound
 # Canonical kebab-case token for the oracle baseline reason (RFC-0026 C43):
 # the oracle's NO1_010B_ORACLE_REASON line must equal it exactly.
 _REASON_TOKEN_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+_PATCH_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@(?: .*)?$")
 
 _REQUIRED_FIELDS = frozenset(
     {
@@ -343,7 +344,13 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
             and lines[index + 1].startswith("+++ ")
             for index, line in enumerate(lines)
         )
-        if not has_file_header:
+        has_hunk_body = any(
+            _PATCH_HUNK_RE.fullmatch(line)
+            and index + 1 < len(lines)
+            and lines[index + 1][:1] in {" ", "-", "+"}
+            for index, line in enumerate(lines)
+        )
+        if not has_file_header or not has_hunk_body:
             raise BenchmarkRecordError("patch must be a non-empty unified diff")
 
     raw_selected = payload.get("selected_tests", [])
