@@ -133,14 +133,9 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
         # covered paths only — discovery runs over the snapshot's ast_index
         # set, so oracle-excluded files (tests/vendor/) cannot change the
         # exercising-test set or has_tests/verdict for the same identity.
-        inventory = snapshot_inventory(context.snapshot_conn)
-        test_files = _certified_test_files(inventory, rel_path, dependents)
-        test_files.extend(
-            _certified_symbol_reference_tests(
-                context.snapshot_conn, inventory, rel_path, _target_language(rel_path)
-            )
+        test_files = _certified_exercising_tests(
+            context.snapshot_conn, rel_path, dependents
         )
-        test_files = list(dict.fromkeys(test_files))
         certified_health = True
     else:
         test_files = find_test_files(
@@ -275,19 +270,30 @@ def _format_safe_to_edit_result(
         # Constraint rows are not generation-bound until RFC-0025 P3.  An
         # empty result therefore cannot honestly mean "safe" on a certified
         # read; expose the unavailable fact as first-class ``unknown``.
-        causal_constraint_verdict = "unknown"
+        causal_envelope = {
+            # These are the untruncated snapshot facts used to compute the
+            # verdict. Legacy top-level list fields remain capped for wire
+            # compatibility.
+            "dependents": list(facts.dependents),
+            "dependencies": list(facts.dependencies),
+            "exercising_tests": list(facts.test_files),
+            "constraint_verdict": "unknown",
+            "verification_command": verification_command,
+            "stale_edges": list(context.stale_edges),
+        }
     else:
-        causal_constraint_verdict = (constraint_verdict or "SAFE").lower()
-    causal_envelope = {
-        # These are the untruncated facts used to compute the verdict.  The
-        # legacy top-level list fields remain capped for wire compatibility.
-        "dependents": list(facts.dependents),
-        "dependencies": list(facts.dependencies),
-        "exercising_tests": list(facts.test_files),
-        "constraint_verdict": causal_constraint_verdict,
-        "verification_command": verification_command,
-        "stale_edges": list(context.stale_edges),
-    }
+        # The legacy live view is import-only and constraint queries degrade
+        # missing/corrupt storage to an empty list. Neither can prove a
+        # complete causal fact. Keep the legacy top-level hints, but make the
+        # new trust-bearing envelope explicitly unavailable.
+        causal_envelope = {
+            "dependents": None,
+            "dependencies": None,
+            "exercising_tests": None,
+            "constraint_verdict": "unknown",
+            "verification_command": None,
+            "stale_edges": None,
+        }
     return {
         "success": True,
         "file_path": context.file_path,
@@ -955,8 +961,8 @@ def _certified_symbol_reference_tests(
             if import_module:
                 # Codex P2 (#1299 round-13, C58): relative imports resolve
                 # from the IMPORTING TEST's directory, never the target's.
-                resolved_module = _resolve_import_spec_in_snapshot(
-                    conn, import_module, rel
+                resolved_module = _resolve_import_spec_from_inventory(
+                    import_module, rel, inventory
                 )
                 if (
                     resolved_module
@@ -1096,6 +1102,22 @@ def _certified_test_files(
     return results
 
 
+def _certified_exercising_tests(
+    conn: Any,
+    rel_path: str,
+    dependents: list[str] | tuple[str, ...],
+) -> list[str]:
+    """Return the complete deduplicated exercising-test set from a snapshot."""
+    inventory = snapshot_inventory(conn)
+    test_files = _certified_test_files(inventory, rel_path, dependents)
+    test_files.extend(
+        _certified_symbol_reference_tests(
+            conn, inventory, rel_path, _target_language(rel_path)
+        )
+    )
+    return list(dict.fromkeys(test_files))
+
+
 def snapshot_inventory(conn: Any) -> frozenset[str]:
     """Return the snapshot's ``ast_index`` relative file set.
 
@@ -1121,20 +1143,6 @@ def _snapshot_file_indexed(conn: Any, rel_path: str) -> bool:
     except Exception:  # nosec B110 — legacy/partial schema degrades to missing
         return False
     return row is not None
-
-
-def _resolve_import_spec_in_snapshot(
-    conn: Any, spec: str, importer_rel_path: str
-) -> str | None:
-    """Mirror :func:`_resolve_import_spec` against the snapshot's ``ast_index``.
-
-    The live variant probes ``(root / candidate).is_file()``; the snapshot
-    variant asks the immutable connection instead, so no live filesystem byte
-    is consulted to build the dependency view.
-    """
-    return _resolve_import_spec_from_inventory(
-        spec, importer_rel_path, snapshot_inventory(conn)
-    )
 
 
 def _resolve_import_spec_from_inventory(
@@ -1208,11 +1216,13 @@ def build_snapshot_file_dependency_view(conn: Any, rel_path: str) -> FileDepende
         ).fetchall()
         for caller_file, callee_file in resolved_rows:
             if not isinstance(caller_file, str) or not isinstance(callee_file, str):
-                continue
+                raise ValueError("CORRUPT_INDEX")
             if caller_file == rel_path and callee_file != rel_path:
                 dependencies.add(callee_file)
             elif callee_file == rel_path and caller_file != rel_path:
                 dependents.add(caller_file)
+    except ValueError:
+        raise
     except Exception:  # nosec B110 — legacy schema degrades to import facts
         pass
     try:
@@ -1385,6 +1395,35 @@ def _snapshot_needle_importers(
     if seen != candidate_files:
         raise ValueError("CORRUPT_INDEX")
     return matched
+
+
+def build_snapshot_syntax_causal_envelope(
+    conn: Any,
+    rel_path: str,
+    file_path: str,
+) -> dict[str, Any]:
+    """Build certified causal facts when live syntax blocks health analysis."""
+    graph = build_snapshot_file_dependency_view(conn, rel_path)
+    dependents = safe_dependents(graph, rel_path)
+    dependencies = safe_dependencies(graph, rel_path)
+    tests = _certified_exercising_tests(conn, rel_path, dependents)
+
+    from .verification_command import certified_default_test_command
+
+    default_command = certified_default_test_command(file_path)
+    verification_command = (
+        build_test_command(default_command, tests)
+        if default_command is not None
+        else None
+    )
+    return {
+        "dependents": dependents,
+        "dependencies": dependencies,
+        "exercising_tests": tests,
+        "constraint_verdict": "unknown",
+        "verification_command": verification_command,
+        "stale_edges": snapshot_stale_edges(conn, rel_path),
+    }
 
 
 def safe_dependents(graph: Any, rel_path: str) -> list[str]:

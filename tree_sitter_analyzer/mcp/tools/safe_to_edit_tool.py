@@ -30,6 +30,7 @@ from .utils.safe_to_edit_helpers import (
     _snapshot_file_indexed,
     build_file_dependency_view,
     build_snapshot_file_dependency_view,
+    build_snapshot_syntax_causal_envelope,
     is_init_file,
     snapshot_stale_edges,
 )
@@ -316,6 +317,10 @@ class SafeToEditTool(BaseMCPTool):
 
         syntax_response = _syntax_error_response(resolved, file_path, edit_type)
         if syntax_response is not None:
+            if snapshot is not None:
+                syntax_response["causal_envelope"] = (
+                    build_snapshot_syntax_causal_envelope(conn, rel_path, file_path)
+                )
             return syntax_response
 
         graph = build_snapshot_file_dependency_view(conn, rel_path)
@@ -392,8 +397,9 @@ def _syntax_error_response(
         "risk": "dangerous",
         "verdict": "ERROR",
         "signal": "syntax_error",
-        # Empty downstream / test lists — we couldn't compute them on a
-        # broken tree. ``has_tests=False`` keeps the schema valid.
+        # Empty live downstream/test hints — we cannot compute them from the
+        # broken tree. The certified route overwrites ``causal_envelope``
+        # with immutable snapshot facts before this response is emitted.
         "downstream_dependents": [],
         "dependencies": [],
         "test_files": [],

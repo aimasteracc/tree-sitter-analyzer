@@ -158,7 +158,7 @@ class TestSafeToEditTool:
         result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         assert "test_files_nearby" in result
 
-    def test_execute_includes_complete_causal_envelope(self, tool):
+    def test_execute_marks_uncertified_causal_facts_unknown(self, tool):
         result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
 
         envelope = result["causal_envelope"]
@@ -170,40 +170,14 @@ class TestSafeToEditTool:
             "verification_command",
             "stale_edges",
         }
-        assert envelope["dependents"] == result["downstream_files"]
-        assert envelope["dependencies"] == result["dependencies"]
-        assert envelope["exercising_tests"] == result["test_files_nearby"]
-        assert envelope["constraint_verdict"] in {
-            "safe",
-            "caution",
-            "unsafe",
+        assert envelope == {
+            "dependents": None,
+            "dependencies": None,
+            "exercising_tests": None,
+            "constraint_verdict": "unknown",
+            "verification_command": None,
+            "stale_edges": None,
         }
-        assert (
-            envelope["verification_command"]
-            == result["agent_summary"]["verification_command"]
-        )
-        assert envelope["stale_edges"] == []
-
-    def test_causal_envelope_does_not_inherit_legacy_test_cap(self, tool):
-        for index in range(12):
-            test_file = (
-                Path(tool.project_root)
-                / "tests"
-                / "unit"
-                / "mcp"
-                / f"test_safe_to_edit_tool_{index}.py"
-            )
-            test_file.write_text("def test_safe_to_edit_tool(): pass\n")
-
-        result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
-
-        assert len(result["test_files_nearby"]) == 10
-        assert len(result["causal_envelope"]["exercising_tests"]) == 13
-        for index in range(12):
-            assert (
-                f"tests/unit/mcp/test_safe_to_edit_tool_{index}.py"
-                in result["causal_envelope"]["exercising_tests"]
-            )
 
     def test_edit_type_rename_higher_risk(self, tool):
         result_refactor = _run(
@@ -632,6 +606,49 @@ def _publish_index_snapshot(project: Path, *, source_generation: str | None = No
         scope,
     )
     return REGISTRY.publish(snapshot, conn, 0)
+
+
+@pytest.mark.slow_ok  # real index + subprocess + certified snapshot capture
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux") or not os.path.exists("/dev/fd"),
+    reason="tracked: RFC-0025 P1 read_existing authority is Linux-only",
+)
+def test_causal_envelope_dogfood_needs_one_analyzer_call(tmp_path: Path) -> None:
+    import json
+    import subprocess
+
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
+
+    source = tmp_path / "app.py"
+    source.write_text("def answer():\n    return 42\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(max_files=20)
+    stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
+    cache.close()
+    script = Path("scripts/check_causal_envelope.py").resolve()
+
+    completed = subprocess.run(  # nosec B603 — fixed interpreter/script argv
+        [
+            sys.executable,
+            str(script),
+            "app.py",
+            "--project-root",
+            str(tmp_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    report = json.loads(completed.stdout)
+    assert report["success"] is True
+    assert report["analyzer_calls"] == 1
+    assert report["separate_causality_queries"] == 0
+    assert report["certified_snapshot"] is True
+    assert report["missing_fields"] == []
 
 
 @pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
@@ -1433,6 +1450,31 @@ def test_snapshot_causal_view_includes_resolved_edges_and_stale_ids() -> None:
     ]
 
 
+def test_snapshot_causal_view_rejects_malformed_resolved_edge() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', '[]')")
+    conn.execute(
+        "INSERT INTO edges VALUES (1, 'calls', 'app.py', 'normalize', ?)",
+        (sqlite3.Binary(b"util.py"),),
+    )
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        build_snapshot_file_dependency_view(conn, "app.py")
+
+
 def test_snapshot_stale_edges_rejects_malformed_relevant_row() -> None:
     import sqlite3
 
@@ -1456,6 +1498,69 @@ def test_snapshot_stale_edges_rejects_malformed_relevant_row() -> None:
 
     with pytest.raises(ValueError, match="CORRUPT_INDEX"):
         snapshot_stale_edges(conn, "app.py")
+
+
+def test_snapshot_needle_importers_fails_closed_without_projection() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _snapshot_needle_importers,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _snapshot_needle_importers(conn, "app.py", {"routes.py"})
+
+
+@pytest.mark.parametrize(
+    ("stored_path", "imports_json", "candidates"),
+    [
+        (b"routes.py", "[]", {b"routes.py"}),
+        ("routes.py", "not-json", {"routes.py"}),
+        ("routes.py", "42", {"routes.py"}),
+        ("routes.py", "[42]", {"routes.py"}),
+        (None, None, {"routes.py"}),
+    ],
+    ids=["blob-path", "invalid-json", "scalar-json", "invalid-item", "missing-row"],
+)
+def test_snapshot_needle_importers_rejects_malformed_projection(
+    stored_path: str | bytes | None,
+    imports_json: str | None,
+    candidates: set[str],
+) -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _snapshot_needle_importers,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    if stored_path is not None:
+        conn.execute("INSERT INTO ast_index VALUES (?, ?)", (stored_path, imports_json))
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _snapshot_needle_importers(conn, "app.py", candidates)
+
+
+def test_snapshot_needle_importers_ignores_unrelated_import_text() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _snapshot_needle_importers,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('routes.py', ?)",
+        (json.dumps([{"text": "import other"}]),),
+    )
+
+    assert _snapshot_needle_importers(conn, "app.py", {"routes.py"}) == set()
 
 
 def test_snapshot_stale_edges_includes_relative_member_import() -> None:
@@ -1523,6 +1628,37 @@ def test_snapshot_stale_edges_uses_bounded_snapshot_queries() -> None:
     assert len(queries) == 3
 
 
+def test_snapshot_syntax_envelope_keeps_complete_exercising_tests() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', '[]', '{}')")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, '[]', '{}')",
+        [(f"tests/test_app_{index}.py",) for index in range(12)],
+    )
+
+    envelope = build_snapshot_syntax_causal_envelope(conn, "app.py", "app.py")
+
+    assert len(envelope["exercising_tests"]) == 12
+    assert envelope["verification_command"] == (
+        "uv run pytest " + " ".join(envelope["exercising_tests"]) + " -q"
+    )
+
+
 def test_snapshot_stale_edges_fails_closed_without_required_schema() -> None:
     import sqlite3
 
@@ -1535,6 +1671,28 @@ def test_snapshot_stale_edges_fails_closed_without_required_schema() -> None:
 
     with pytest.raises(ValueError, match="CORRUPT_INDEX"):
         snapshot_stale_edges(conn, "app.py")
+
+
+def test_read_existing_payload_without_snapshot_keeps_syntax_envelope_unknown(
+    tmp_path: Path,
+) -> None:
+    import sqlite3
+
+    target = tmp_path / "app.py"
+    target.write_text("def broken(:\n", encoding="utf-8")
+    result = SafeToEditTool(str(tmp_path))._read_existing_payload(
+        {"file_path": "app.py"}, str(target), sqlite3.connect(":memory:")
+    )
+
+    assert result["signal"] == "syntax_error"
+    assert result["causal_envelope"] == {
+        "dependents": [],
+        "dependencies": [],
+        "exercising_tests": [],
+        "constraint_verdict": "unknown",
+        "verification_command": None,
+        "stale_edges": [],
+    }
 
 
 @pytest.mark.slow_ok  # real git + index_project + source capture: subprocess work
@@ -1567,6 +1725,12 @@ async def test_edit_safe_read_existing_syntax_error_short_circuits(
     assert result["success"] is True
     assert result["verdict"] == "ERROR"
     assert result["access_state"] == "available"
+    causal = result["causal_envelope"]
+    assert causal["dependents"] == ["routes.py"]
+    assert causal["dependencies"] == []
+    assert causal["constraint_verdict"] == "unknown"
+    assert causal["verification_command"] == "uv run pytest -q"
+    assert causal["stale_edges"]
     assert result["source_snapshots"] == [
         {
             "kind": "index",
