@@ -3963,12 +3963,12 @@ def test_snapshot_syntax_envelope_keeps_complete_exercising_tests() -> None:
         "INSERT INTO ast_index VALUES "
         "('app.py', '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 35)'
+        '"syntax_error": false}\', 36)'
     )
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 35)',
+        '"syntax_error": false}\', 36)',
         [(f"tests/test_app_{index}.py",) for index in range(12)],
     )
     conn.executemany(
@@ -4005,7 +4005,7 @@ def test_snapshot_syntax_envelope_excludes_unrelated_nearby_test() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 35)',
+        '"syntax_error": false}\', 36)',
         [("app.py",), ("tests/test_app.py",)],
     )
 
@@ -4523,7 +4523,7 @@ def test_snapshot_syntax_envelope_certifies_single_java_file() -> None:
     conn.execute(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 35)',
+        '"syntax_error": false}\', 36)',
         (
             "src/main/java/com/acme/Util.java",
             json.dumps([{"text": "package com.acme;"}]),
@@ -4632,7 +4632,7 @@ def test_snapshot_syntax_envelope_rejects_conflicting_java_packages() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 35)',
+        '"syntax_error": false}\', 36)',
         [
             (
                 target,
@@ -4802,7 +4802,7 @@ def test_snapshot_syntax_envelope_rejects_uncaptured_include_root() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 35)',
+        '"syntax_error": false}\', 36)',
         [
             (
                 importer,
@@ -5055,7 +5055,7 @@ def _symbol_conn(raw_symbols: object) -> sqlite3.Connection:
         "CREATE TABLE ast_index ("
         "file_path TEXT, symbols_json TEXT, extractor_version INTEGER)"
     )
-    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 35)", (raw_symbols,))
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 36)", (raw_symbols,))
     return conn
 
 

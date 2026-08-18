@@ -788,15 +788,31 @@ def _extract_import_specs(source: str, suffix: str) -> set[str]:
         specs.update(re.findall(r"\bfrom\s+['\"]([^'\"]+)['\"]", source))
         specs.update(re.findall(r"\bimport\s*['\"]([^'\"]+)['\"]", source))
         specs.update(re.findall(r"\brequire\(\s*['\"]([^'\"]+)['\"]\s*\)", source))
+        specs.update(
+            match.group(2)
+            for match in re.finditer(r"\bimport\s*\(\s*(['\"])([^'\"]+)\1\s*\)", source)
+        )
+        specs.update(re.findall(r"\bimport\s*\(\s*`([^`$]+)`\s*\)", source))
     elif suffix == ".java":
         specs.update(re.findall(r"^\s*import\s+([\w.]+);", source, re.M))
     return specs
 
 
 def _resolve_import_spec(spec: str, rel_path: str, root: Path) -> str | None:
+    importer_suffix = Path(rel_path).suffix.lower()
+    if importer_suffix in {
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs",
+        ".ts",
+        ".tsx",
+        ".mts",
+        ".cts",
+    }:
+        spec = re.split(r"[?#]", spec, maxsplit=1)[0]
     if not spec or "\\" in spec:
         return None
-    importer_suffix = Path(rel_path).suffix.lower()
     if spec.startswith(("./", "../")):
         base = Path(rel_path).parent
         candidate_base = posixpath.normpath(f"{base.as_posix()}/{spec}")

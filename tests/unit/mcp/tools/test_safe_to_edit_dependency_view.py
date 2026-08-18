@@ -114,6 +114,43 @@ def test_build_file_dependency_view_finds_typescript_imports(tmp_path: Path) -> 
     assert view.dependencies_of("src/main.ts") == ["src/dep.ts", "src/legacy.ts"]
 
 
+def test_live_node_imports_include_static_dynamic_imports(tmp_path: Path) -> None:
+    target = _write(
+        tmp_path,
+        "src/main.ts",
+        (
+            'const quoted = import("./quoted.js");\n'
+            "const template = import(`./template.js`);\n"
+            "const unknown = import(`./${name}.js`);\n"
+        ),
+    )
+    _write(tmp_path, "src/quoted.ts", "export const quoted = true;\n")
+    _write(tmp_path, "src/template.ts", "export const template = true;\n")
+
+    view = build_file_dependency_view(str(target), str(tmp_path))
+
+    assert view.dependencies_of("src/main.ts") == [
+        "src/quoted.ts",
+        "src/template.ts",
+    ]
+
+
+@pytest.mark.parametrize("suffix", ["?worker", "#fragment"])
+def test_live_node_import_strips_query_and_fragment(
+    tmp_path: Path, suffix: str
+) -> None:
+    target = _write(
+        tmp_path,
+        "src/main.ts",
+        f'import worker from "./worker.js{suffix}";\n',
+    )
+    _write(tmp_path, "src/worker.ts", "export default true;\n")
+
+    view = build_file_dependency_view(str(target), str(tmp_path))
+
+    assert view.dependencies_of("src/main.ts") == ["src/worker.ts"]
+
+
 @pytest.mark.parametrize(
     ("source_suffix", "emitted_suffix"),
     [(".mjs", ".mjs"), (".cjs", ".cjs"), (".mts", ".mjs"), (".cts", ".cjs")],

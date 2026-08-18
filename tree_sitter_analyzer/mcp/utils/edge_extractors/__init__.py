@@ -21,6 +21,8 @@ REGISTRY: dict[str, EdgeExtractor] = {
     # TypeScript / JavaScript
     ".ts": TypeScriptEdgeExtractor(),
     ".tsx": TypeScriptEdgeExtractor(),
+    ".mts": TypeScriptEdgeExtractor(),
+    ".cts": TypeScriptEdgeExtractor(),
     ".js": TypeScriptEdgeExtractor(),
     ".jsx": TypeScriptEdgeExtractor(),
 }

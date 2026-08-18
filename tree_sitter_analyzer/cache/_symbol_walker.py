@@ -249,11 +249,14 @@ def _python_mapping_has_dynamic_loader_owner(node: ast.expr, names: set[str]) ->
 def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
     """Return whether a value retains a loader reference for later use."""
 
-    if _python_reference_name(node) in names:
+    reference = _python_reference_name(node)
+    if reference in names:
         return True
     mapping_owner = _python_loader_mapping_owner(node)
     if _python_owner_exposes_loader(mapping_owner, names):
         return True
+    if reference is not None:
+        return _python_owner_exposes_loader(reference, names)
     if isinstance(node, ast.Attribute) and _python_loader_call_result(
         node.value, names
     ):
@@ -304,6 +307,11 @@ def _python_value_stores_loader(node: ast.expr, names: set[str]) -> bool:
             or (isinstance(attribute, str) and f"{owner}.{attribute}" in names)
         ):
             return True
+        if _python_owner_exposes_loader(owner, names):
+            return any(
+                _python_value_stores_loader(child, names)
+                for child in (*node.args[2:], *(kw.value for kw in node.keywords))
+            )
         if _python_loader_call_result(node.args[0], names):
             return True
     children: list[ast.expr]
@@ -425,7 +433,10 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
         )
         or (
             _python_reference_name(value) not in names
-            and _python_value_stores_loader(value, names)
+            and (
+                _python_value_stores_loader(value, names)
+                or _python_loader_call_result(value, names)
+            )
         )
         for targets, value in assignments
     )
@@ -575,6 +586,7 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                 )
                 nested_loader_alias = nested_loader_alias or (
                     _python_value_stores_loader(node.value, names)
+                    or _python_loader_call_result(node.value, names)
                     or any(_python_reference_name(leaf) in names for leaf in leaves)
                 )
             elif isinstance(node, ast.AnnAssign):
@@ -587,7 +599,10 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
                 )
                 nested_loader_alias = nested_loader_alias or (
                     node.value is not None
-                    and _python_value_stores_loader(node.value, names)
+                    and (
+                        _python_value_stores_loader(node.value, names)
+                        or _python_loader_call_result(node.value, names)
+                    )
                 )
                 nested_loader_alias = nested_loader_alias or (
                     _python_value_stores_loader(node.annotation, names)
@@ -691,6 +706,50 @@ def _jsts_file_scoped_alias(node: Any) -> bool:
     return False
 
 
+def _jsts_file_scoped_declaration(node: Any) -> bool:
+    """Return whether a named declaration binds in the program scope."""
+
+    parent = getattr(node, "parent", None)
+    while parent is not None and parent.type == "export_statement":
+        parent = getattr(parent, "parent", None)
+    return parent is not None and parent.type == "program"
+
+
+def _jsts_pattern_binds_name(node: Any, source: str, target: str) -> bool:
+    """Return whether one binding pattern introduces *target*."""
+
+    if node.type in {
+        "identifier",
+        "shorthand_property_identifier_pattern",
+        "type_identifier",
+    }:
+        return _node_text(node, source) == target
+    if node.type == "import_specifier":
+        local_name = node.child_by_field_name("alias") or node.child_by_field_name(
+            "name"
+        )
+        return local_name is not None and _jsts_pattern_binds_name(
+            local_name, source, target
+        )
+    field = (
+        "value"
+        if node.type == "pair_pattern"
+        else "left"
+        if node.type == "assignment_pattern"
+        else "pattern"
+        if node.type in {"optional_parameter", "required_parameter", "rest_parameter"}
+        else None
+    )
+    if field is not None:
+        pattern = node.child_by_field_name(field)
+        return pattern is not None and _jsts_pattern_binds_name(pattern, source, target)
+    return any(
+        _jsts_pattern_binds_name(child, source, target)
+        for child in node.children
+        if getattr(child, "is_named", True)
+    )
+
+
 def _jsts_pattern_binds_module_loader(
     node: Any, source: str, loaders: set[str]
 ) -> bool:
@@ -748,11 +807,41 @@ def _jsts_module_loader_reference(node: Any, source: str, loaders: set[str]) -> 
         return False
     value = _node_text(node, source)
     value = value.replace("?.", ".")
-    return value in loaders or bool(
-        re.fullmatch(
-            r"module\s*(?:\.\s*require|\.?\s*\[\s*(['\"`])require\1\s*\])",
-            value,
-        )
+    if value in loaders:
+        return True
+    if node.type not in {"member_expression", "subscript_expression"}:
+        return False
+    owner = node.child_by_field_name("object")
+    accessor = node.child_by_field_name("property") or node.child_by_field_name("index")
+    return bool(
+        owner is not None
+        and accessor is not None
+        and _jsts_module_owner_reference(owner, source)
+        and _jsts_static_accessor_name(accessor, source) == "require"
+    )
+
+
+def _jsts_static_accessor_name(node: Any, source: str) -> str | None:
+    """Return a member accessor that is statically known from syntax."""
+
+    if node.type in {"property_identifier", "private_property_identifier"}:
+        return _node_text(node, source).strip()
+    text = _node_text(node, source).strip()
+    if node.type == "string" and re.fullmatch(r"(['\"])[^'\"]*\1", text):
+        return text[1:-1]
+    if node.type == "template_string" and re.fullmatch(r"`[^`$]*`", text):
+        return text[1:-1]
+    return None
+
+
+def _jsts_module_owner_reference(node: Any, source: str) -> bool:
+    """Return whether *node* is the CommonJS ``module`` object."""
+
+    node = _jsts_unwrap_parenthesized(node)
+    return bool(
+        node is not None
+        and node.type == "identifier"
+        and _node_text(node, source).strip() == "module"
     )
 
 
@@ -797,23 +886,23 @@ def _jsts_dynamic_module_member(node: Any, source: str) -> bool:
     index = node.child_by_field_name("index")
     if owner is None or index is None:
         return False
-    owner = _jsts_unwrap_parenthesized(owner)
-    if owner is None or _node_text(owner, source).strip() != "module":
+    if not _jsts_module_owner_reference(owner, source):
         return False
-    index_text = _node_text(index, source).strip()
-    quoted_literal = re.fullmatch(r"(['\"])[^'\"]*\1", index_text)
-    template_literal = re.fullmatch(r"`[^`$]*`", index_text)
-    return quoted_literal is None and template_literal is None
+    return _jsts_static_accessor_name(index, source) is None
 
 
-def _jsts_global_eval_reference(node: Any, source: str) -> bool:
+def _jsts_global_eval_reference(
+    node: Any, source: str, shadowed_evaluators: set[str] | None = None
+) -> bool:
     """Return whether one JS/TS expression references the global evaluator."""
 
+    shadowed_evaluators = shadowed_evaluators or set()
     node = _jsts_unwrap_parenthesized(node)
     if node is None:
         return False
     if node.type == "identifier":
-        return _node_text(node, source) == "eval"
+        name = _node_text(node, source)
+        return name in {"eval", "Function"} and name not in shadowed_evaluators
     if node.type in {"member_expression", "subscript_expression"}:
         owner = node.child_by_field_name("object")
         accessor = node.child_by_field_name("property") or node.child_by_field_name(
@@ -821,22 +910,86 @@ def _jsts_global_eval_reference(node: Any, source: str) -> bool:
         )
         if owner is None or accessor is None:
             return False
-        return _node_text(owner, source).strip() in {
+        owner = _jsts_unwrap_parenthesized(owner)
+        if owner is None or _node_text(owner, source).strip() not in {
             "global",
             "globalThis",
             "self",
             "window",
-        } and (_node_text(accessor, source).strip("'\"`") == "eval")
+        }:
+            return False
+        accessor_name = _jsts_static_accessor_name(accessor, source)
+        if node.type == "subscript_expression" and accessor_name is None:
+            return True
+        return accessor_name in {"eval", "Function"}
     if node.type == "sequence_expression":
         return any(
-            _jsts_global_eval_reference(child, source)
+            _jsts_global_eval_reference(child, source, shadowed_evaluators)
             for child in node.children
             if getattr(child, "is_named", True)
         )
     return False
 
 
-def _jsts_module_loader_factory_call(node: Any, source: str) -> bool:
+def _jsts_static_first_argument(node: Any, source: str) -> str | None:
+    """Return a call's first literal string argument, if it has one."""
+
+    arguments = node.child_by_field_name("arguments")
+    if arguments is None:
+        return None
+    first = next(
+        (child for child in arguments.children if getattr(child, "is_named", True)),
+        None,
+    )
+    if first is None:
+        return None
+    return _jsts_static_accessor_name(first, source)
+
+
+def _jsts_node_create_require_reference(
+    node: Any, source: str, loaders: set[str]
+) -> bool:
+    """Return whether *node* is a proven Node ``createRequire`` factory."""
+
+    node = _jsts_unwrap_parenthesized(node)
+    if node is None or node.type not in {
+        "member_expression",
+        "subscript_expression",
+    }:
+        return False
+    owner = node.child_by_field_name("object")
+    accessor = node.child_by_field_name("property") or node.child_by_field_name("index")
+    if (
+        owner is None
+        or accessor is None
+        or _jsts_static_accessor_name(accessor, source) != "createRequire"
+    ):
+        return False
+    owner = _jsts_unwrap_parenthesized(owner)
+    if owner is None:
+        return True
+    if owner.type in {"member_expression", "subscript_expression"}:
+        module_owner = owner.child_by_field_name("object")
+        module_accessor = owner.child_by_field_name(
+            "property"
+        ) or owner.child_by_field_name("index")
+        return bool(
+            module_owner is not None
+            and module_accessor is not None
+            and _jsts_module_owner_reference(module_owner, source)
+            and _jsts_static_accessor_name(module_accessor, source) == "constructor"
+        )
+    if owner.type != "call_expression":
+        return False
+    function = owner.child_by_field_name("function")
+    return bool(
+        function is not None
+        and _jsts_module_loader_reference(function, source, loaders)
+        and _jsts_static_first_argument(owner, source) in {"module", "node:module"}
+    )
+
+
+def _jsts_module_loader_factory_call(node: Any, source: str, loaders: set[str]) -> bool:
     """Return whether one call produces a CommonJS loader function."""
 
     if node.type != "call_expression":
@@ -844,19 +997,7 @@ def _jsts_module_loader_factory_call(node: Any, source: str) -> bool:
     function = node.child_by_field_name("function")
     if function is None:
         return False
-    function = _jsts_unwrap_parenthesized(function)
-    if function is None:
-        return True
-    if function.type == "identifier":
-        return _node_text(function, source) == "createRequire"
-    if function.type not in {"member_expression", "subscript_expression"}:
-        return False
-    accessor = function.child_by_field_name("property") or function.child_by_field_name(
-        "index"
-    )
-    return accessor is not None and (
-        _node_text(accessor, source).strip("'\"`") == "createRequire"
-    )
+    return _jsts_node_create_require_reference(function, source, loaders)
 
 
 def _jsts_pattern_selects_require_property(node: Any, source: str) -> bool:
@@ -875,19 +1016,40 @@ def _jsts_pattern_selects_require_property(node: Any, source: str) -> bool:
     )
 
 
-def _jsts_value_stores_module_loader(node: Any, source: str, loaders: set[str]) -> bool:
+def _jsts_value_stores_module_loader(
+    node: Any,
+    source: str,
+    loaders: set[str],
+    shadowed_evaluators: set[str] | None = None,
+) -> bool:
     """Detect a loader retained or passed as a value rather than invoked."""
 
     if _jsts_dynamic_module_member(node, source):
         return True
-    if _jsts_global_eval_reference(node, source):
+    if _jsts_global_eval_reference(node, source, shadowed_evaluators):
         return True
-    if _jsts_module_loader_factory_call(node, source):
+    if _jsts_node_create_require_reference(node, source, loaders):
+        return True
+    if _jsts_module_loader_factory_call(node, source, loaders):
+        return True
+    if _jsts_module_owner_reference(node, source):
         return True
     if _jsts_require_utility_member(node, source, loaders):
         return False
     if _jsts_module_loader_reference(node, source, loaders):
         return True
+    if node.type in {"member_expression", "subscript_expression"}:
+        owner = node.child_by_field_name("object")
+        accessor = node.child_by_field_name("property") or node.child_by_field_name(
+            "index"
+        )
+        if (
+            owner is not None
+            and accessor is not None
+            and _jsts_module_owner_reference(owner, source)
+            and _jsts_static_accessor_name(accessor, source) is not None
+        ):
+            return False
     if node.type == "call_expression":
         function = node.child_by_field_name("function")
         arguments = node.child_by_field_name("arguments")
@@ -895,14 +1057,16 @@ def _jsts_value_stores_module_loader(node: Any, source: str, loaders: set[str]) 
             function, source, loaders
         ):
             return arguments is not None and _jsts_value_stores_module_loader(
-                arguments, source, loaders
+                arguments, source, loaders, shadowed_evaluators
             )
         return any(
-            _jsts_value_stores_module_loader(child, source, loaders)
+            _jsts_value_stores_module_loader(
+                child, source, loaders, shadowed_evaluators
+            )
             for child in node.children
         )
     return any(
-        _jsts_value_stores_module_loader(child, source, loaders)
+        _jsts_value_stores_module_loader(child, source, loaders, shadowed_evaluators)
         for child in node.children
     )
 
@@ -915,12 +1079,14 @@ class _SymbolWalker:
     truncated_flag: list[bool] | None
     python_dynamic_loaders: set[str] = field(init=False, repr=False)
     jsts_module_loaders: set[str] = field(init=False, repr=False)
+    jsts_shadowed_evaluators: set[str] = field(init=False, repr=False)
     import_projection_complete: bool = field(init=False, repr=False, default=True)
     java_static_for_name: bool = field(init=False, repr=False, default=False)
 
     def __post_init__(self) -> None:
         self.python_dynamic_loaders = set()
         self.jsts_module_loaders = {"require", "module.require", "import"}
+        self.jsts_shadowed_evaluators = set()
         if self.language == "python":
             loaders, self.import_projection_complete = _python_dynamic_loader_analysis(
                 self.source
@@ -960,8 +1126,30 @@ class _SymbolWalker:
             if node.type == "variable_declarator" and _jsts_file_scoped_alias(node):
                 name = node.child_by_field_name("name")
                 value = node.child_by_field_name("value")
+                if name is not None:
+                    self.jsts_shadowed_evaluators.update(
+                        evaluator
+                        for evaluator in ("eval", "Function")
+                        if _jsts_pattern_binds_name(name, self.source, evaluator)
+                    )
                 if name is not None and value is not None and name.type == "identifier":
                     candidates.append((_node_text(name, self.source), value))
+            elif node.type in {
+                "class_declaration",
+                "function_declaration",
+                "generator_function_declaration",
+            } and _jsts_file_scoped_declaration(node):
+                name = node.child_by_field_name("name")
+                if name is not None:
+                    name_text = _node_text(name, self.source)
+                    if name_text in {"eval", "Function"}:
+                        self.jsts_shadowed_evaluators.add(name_text)
+            elif node.type == "import_clause":
+                self.jsts_shadowed_evaluators.update(
+                    evaluator
+                    for evaluator in ("eval", "Function")
+                    if _jsts_pattern_binds_name(node, self.source, evaluator)
+                )
             stack.extend(node.children)
         changed = True
         while changed:
@@ -1032,7 +1220,10 @@ class _SymbolWalker:
                 else:
                     patterns.append(name)
                 if _jsts_value_stores_module_loader(
-                    value, self.source, self.jsts_module_loaders
+                    value,
+                    self.source,
+                    self.jsts_module_loaders,
+                    self.jsts_shadowed_evaluators,
                 ) and not _jsts_module_loader_reference(
                     value, self.source, self.jsts_module_loaders
                 ):
@@ -1051,6 +1242,24 @@ class _SymbolWalker:
                     self.import_projection_complete = False
         elif node.type == "formal_parameters":
             patterns.extend(node.children)
+        elif node.type == "assignment_pattern":
+            right = node.child_by_field_name("right")
+            if right is not None and _jsts_value_stores_module_loader(
+                right,
+                self.source,
+                self.jsts_module_loaders,
+                self.jsts_shadowed_evaluators,
+            ):
+                self.import_projection_complete = False
+        elif node.type in {"field_definition", "public_field_definition"}:
+            value = node.child_by_field_name("value")
+            if value is not None and _jsts_value_stores_module_loader(
+                value,
+                self.source,
+                self.jsts_module_loaders,
+                self.jsts_shadowed_evaluators,
+            ):
+                self.import_projection_complete = False
         elif node.type in {
             "arrow_function",
             "class_declaration",
@@ -1079,7 +1288,10 @@ class _SymbolWalker:
             ) or (
                 right is not None
                 and _jsts_value_stores_module_loader(
-                    right, self.source, self.jsts_module_loaders
+                    right,
+                    self.source,
+                    self.jsts_module_loaders,
+                    self.jsts_shadowed_evaluators,
                 )
             ):
                 self.import_projection_complete = False
@@ -1103,7 +1315,10 @@ class _SymbolWalker:
                 self.import_projection_complete
                 and not any(
                     _jsts_value_stores_module_loader(
-                        child, self.source, self.jsts_module_loaders
+                        child,
+                        self.source,
+                        self.jsts_module_loaders,
+                        self.jsts_shadowed_evaluators,
                     )
                     for child in node.children
                     if getattr(child, "is_named", True)
@@ -1233,7 +1448,10 @@ class _SymbolWalker:
         ):
             if any(
                 _jsts_value_stores_module_loader(
-                    candidate, self.source, self.jsts_module_loaders
+                    candidate,
+                    self.source,
+                    self.jsts_module_loaders,
+                    self.jsts_shadowed_evaluators,
                 )
                 for candidate in (function, arguments)
             ):

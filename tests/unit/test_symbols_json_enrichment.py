@@ -167,9 +167,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v35: dynamic owners, loader factories, and eval are persisted.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 35
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 35
+        # v36: retained loader owners and evaluator aliases are persisted.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 36
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 36
 
 
 def test_python_module_control_bindings_cover_all_module_control_targets() -> None:
@@ -365,6 +365,19 @@ def test_parenthesized_python_loader_call_is_projected(source: str) -> None:
     assert _extract_imports(extraction)[-1]["text"].endswith('("pkg.util")')
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        ('import importlib\nowner = importlib\nowner.import_module("pkg.util")\n'),
+        ('owner = __import__("importlib")\nowner.import_module("pkg.util")\n'),
+    ],
+)
+def test_python_dynamic_loader_owner_retention_fails_closed(source: str) -> None:
+    extraction = _extraction_for(source, "python")
+
+    assert extraction["import_projection_complete"] is False
+
+
 def test_js_alias_scope_without_parent_is_not_file_scoped() -> None:
     assert not walker_module._jsts_file_scoped_alias(SimpleNamespace(parent=None))
 
@@ -416,7 +429,13 @@ def test_deleting_non_loader_preserves_projection_completeness() -> None:
 
 @pytest.mark.parametrize(
     "source",
-    ['(require)("./util.js");\n', '(module.require)("./util.js");\n'],
+    [
+        '(require)("./util.js");\n',
+        '(module.require)("./util.js");\n',
+        '(module).require("./util.js");\n',
+        '(module)["require"]("./util.js");\n',
+        '(module)[`require`]("./util.js");\n',
+    ],
 )
 def test_parenthesized_commonjs_loader_call_is_projected(source: str) -> None:
     extraction = _extraction_for(source, "javascript")
@@ -488,6 +507,65 @@ def test_retained_commonjs_loader_object_paths_fail_closed(source: str) -> None:
     extraction = _extraction_for(source, "javascript")
 
     assert extraction["import_projection_complete"] is False
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'const owner = module; owner.require("./util.js");',
+        (
+            "const make = module.constructor.createRequire; "
+            "const load = make(__filename); "
+            'load("./util.js");'
+        ),
+        (
+            'const make = require("node:module").createRequire; '
+            "const load = make(__filename); "
+            'load("./util.js");'
+        ),
+        'function run(load = require) { load("./util.js"); }',
+        'class C { load = require; run() { this.load("./util.js"); } }',
+        'const key = "eval"; globalThis[key]("require(\\"./util.js\\")");',
+        'Function("return import(\\"./util.js\\")")();',
+        'globalThis.Function("return import(\\"./util.js\\")")();',
+    ],
+)
+def test_additional_jsts_loader_retention_paths_fail_closed(source: str) -> None:
+    extraction = _extraction_for(source, "javascript")
+
+    assert extraction["import_projection_complete"] is False
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        ("function createRequire() { return {}; } const value = createRequire();"),
+        'const eval = console.log; eval("ordinary text");',
+        'import eval from "./logger.js"; eval("ordinary text");',
+        (
+            "function Function(value) { return () => value; } "
+            'Function("ordinary text")();'
+        ),
+    ],
+)
+def test_shadowed_evaluators_and_local_factory_preserve_completeness(
+    source: str,
+) -> None:
+    extraction = _extraction_for(source, "javascript")
+
+    assert extraction["import_projection_complete"] is True
+
+
+def test_non_loader_default_and_class_fields_preserve_completeness() -> None:
+    extraction = _extraction_for(
+        (
+            "function run(load = ordinary) { return load; } "
+            "class C { empty; value = ordinary; }"
+        ),
+        "javascript",
+    )
+
+    assert extraction["import_projection_complete"] is True
 
 
 @pytest.mark.parametrize(
@@ -565,12 +643,44 @@ def test_malformed_indirect_commonjs_loader_member_is_not_matched() -> None:
     )
     assert not walker_module._jsts_global_eval_reference(malformed_eval_member, "")
 
+    missing_arguments = SimpleNamespace(
+        child_by_field_name=lambda _field: None,
+    )
+    assert walker_module._jsts_static_first_argument(missing_arguments, "") is None
+
+    create_require_accessor = SimpleNamespace(
+        type="property_identifier",
+        start_byte=0,
+        end_byte=len("createRequire"),
+    )
+    malformed_create_require_owner = SimpleNamespace(
+        type="member_expression",
+        child_by_field_name=lambda field: (
+            malformed_parenthesized
+            if field == "object"
+            else create_require_accessor
+            if field == "property"
+            else None
+        ),
+    )
+    assert walker_module._jsts_node_create_require_reference(
+        malformed_create_require_owner, "createRequire", {"require"}
+    )
+
+    missing_default = SimpleNamespace(
+        type="assignment_pattern",
+        child_by_field_name=lambda _field: None,
+    )
+    symbol_walker = _SymbolWalker("", [], "javascript", None)
+    symbol_walker._mark_jsts_loader_binding(missing_default)
+    assert symbol_walker.import_projection_complete is True
+
     missing_factory_function = SimpleNamespace(
         type="call_expression",
         child_by_field_name=lambda _field: None,
     )
     assert not walker_module._jsts_module_loader_factory_call(
-        missing_factory_function, ""
+        missing_factory_function, "", {"require"}
     )
 
     malformed_factory_function = SimpleNamespace(
@@ -579,8 +689,8 @@ def test_malformed_indirect_commonjs_loader_member_is_not_matched() -> None:
             malformed_parenthesized if field == "function" else None
         ),
     )
-    assert walker_module._jsts_module_loader_factory_call(
-        malformed_factory_function, ""
+    assert not walker_module._jsts_module_loader_factory_call(
+        malformed_factory_function, "", {"require"}
     )
 
     non_factory_function = SimpleNamespace(
@@ -589,7 +699,9 @@ def test_malformed_indirect_commonjs_loader_member_is_not_matched() -> None:
             SimpleNamespace(type="arrow_function") if field == "function" else None
         ),
     )
-    assert not walker_module._jsts_module_loader_factory_call(non_factory_function, "")
+    assert not walker_module._jsts_module_loader_factory_call(
+        non_factory_function, "", {"require"}
+    )
 
     non_loader_shorthand = SimpleNamespace(
         type="shorthand_property_identifier_pattern",
@@ -1422,13 +1534,13 @@ def test_python_loader_analysis_rejects_qualified_loader_rebinding(
         "    return loaded\n",
     ],
 )
-def test_python_loader_analysis_accepts_assigned_loader_call_result(
+def test_python_loader_analysis_rejects_assigned_loader_call_result(
     source: str,
 ) -> None:
     names, complete = _python_dynamic_loader_analysis(source)
 
     assert "importlib.import_module" in names
-    assert complete is True
+    assert complete is False
 
 
 @pytest.mark.parametrize(

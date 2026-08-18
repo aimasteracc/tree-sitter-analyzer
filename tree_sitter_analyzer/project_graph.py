@@ -250,7 +250,22 @@ def _resolve_js_ts_import(
     if not is_relative:
         return None
     candidate_raw = _project_rel_join(source_rel, module)
-    for ext in (".js", ".ts", ".jsx", ".tsx", "/index.js", "/index.ts"):
+    for ext in (
+        ".js",
+        ".ts",
+        ".jsx",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".mts",
+        ".cts",
+        "/index.js",
+        "/index.ts",
+        "/index.mjs",
+        "/index.cjs",
+        "/index.mts",
+        "/index.cts",
+    ):
         candidate = candidate_raw + ext
         if candidate in nodes:
             return candidate
@@ -449,6 +464,8 @@ class DependencyGraph:
             ".ts",
             ".jsx",
             ".tsx",
+            ".mts",
+            ".cts",
             ".java",
             ".go",
             ".rs",
