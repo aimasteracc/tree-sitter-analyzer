@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import os
+import posixpath
 import re
 import shlex
 from dataclasses import dataclass
@@ -1677,12 +1678,15 @@ def _pytest_exercising_projection_complete(
         if dependent in seen or dependent not in inventory:
             continue
         seen.add(dependent)
-        if (
-            _target_language(dependent) == "python"
-            and Path(dependent).name not in {"__init__.py", "conftest.py"}
-            and not _looks_like_test_path(dependent, "python")
-        ):
-            return False
+        language = _target_language(dependent)
+        if language in {"python", "javascript", "typescript"}:
+            conventional_support_file = language == "python" and Path(
+                dependent
+            ).name in {"__init__.py", "conftest.py"}
+            if not conventional_support_file and not _looks_like_test_path(
+                dependent, language
+            ):
+                return False
         queue.extend(sorted(reverse_dependencies.get(dependent, set())))
     return True
 
@@ -2161,9 +2165,9 @@ def _symbol_walk_projections_complete(
             return False
         if not isinstance(payload, dict):
             return False
-        truncated = payload.get("truncated_depth", False)
-        projection_complete = payload.get("import_projection_complete", True)
-        syntax_error = payload.get("syntax_error", True)
+        truncated = payload.get("truncated_depth")
+        projection_complete = payload.get("import_projection_complete")
+        syntax_error = payload.get("syntax_error")
         if (
             not isinstance(truncated, bool)
             or truncated
@@ -2194,6 +2198,8 @@ def _jsts_import_projection_complete(conn: Any, inventory: frozenset[str]) -> bo
             spec = _import_module_name(import_text)
             normalized = re.split(r"[?#]", spec, maxsplit=1)[0] if spec else None
             if normalized is None or not normalized.startswith(("./", "../")):
+                return False
+            if "\\" in normalized:
                 return False
             resolved = _resolve_import_spec_from_inventory(
                 normalized, file_path, inventory
@@ -2301,6 +2307,13 @@ def _python_relative_package_root_ambiguous(
     )
 
 
+def _python_absolute_inventory_match_is_rooted(spec: str, match: str) -> bool:
+    """Return whether an absolute import match is rooted at the snapshot root."""
+
+    module_path = spec.replace(".", "/")
+    return match in {f"{module_path}/__init__.py", f"{module_path}.py"}
+
+
 def _python_from_import_is_ambiguous(
     import_text: str, importer: str, inventory: frozenset[str]
 ) -> bool:
@@ -2349,7 +2362,11 @@ def _python_import_projection_complete(conn: Any, inventory: frozenset[str]) -> 
             for spec in static_specs:
                 if _python_relative_package_root_ambiguous(spec, file_path, inventory):
                     return False
-                if len(_python_inventory_matches(spec, file_path, inventory)) > 1:
+                matches = _python_inventory_matches(spec, file_path, inventory)
+                if not spec.startswith(".") and any(
+                    not _python_absolute_inventory_match_is_rooted(spec, match)
+                    for match in matches
+                ):
                     return False
             projected_call = _python_projected_call(import_text)
             if projected_call is None or projected_call[0] not in loaders:
@@ -2359,7 +2376,13 @@ def _python_import_projection_complete(conn: Any, inventory: frozenset[str]) -> 
             dynamic_spec = projected_call[1]
             if dynamic_spec is None or dynamic_spec.startswith("."):
                 return False
-            if len(_python_inventory_matches(dynamic_spec, file_path, inventory)) > 1:
+            dynamic_matches = _python_inventory_matches(
+                dynamic_spec, file_path, inventory
+            )
+            if any(
+                not _python_absolute_inventory_match_is_rooted(dynamic_spec, match)
+                for match in dynamic_matches
+            ):
                 return False
     return True
 
@@ -2479,6 +2502,8 @@ def _edge_import_names_for_target(
     module = without_suffix.replace("/", ".")
     parent_module = path.parent.as_posix().replace("/", ".")
     names = {
+        path.as_posix(),
+        path.name,
         without_suffix,
         module,
         module_path.name,
@@ -2486,6 +2511,7 @@ def _edge_import_names_for_target(
         ".",
         f".{module_path.name}",
         f"./{module_path.name}",
+        f"./{path.name}",
     }
     if path.parent.name:
         names.add(f".{path.parent.name}")
@@ -2499,6 +2525,12 @@ def _edge_import_names_for_target(
         for offset in range(len(target_parent_parts)):
             names.add(".".join(target_parent_parts[offset:]))
     for importer in inventory:
+        relative_file = posixpath.relpath(
+            path.as_posix(), Path(importer).parent.as_posix()
+        )
+        names.add(
+            relative_file if relative_file.startswith("../") else f"./{relative_file}"
+        )
         importer_parts = tuple(
             part for part in Path(importer).parent.parts if part != "."
         )

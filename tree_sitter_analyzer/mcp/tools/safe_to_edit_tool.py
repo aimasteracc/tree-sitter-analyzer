@@ -300,9 +300,9 @@ class SafeToEditTool(BaseMCPTool):
         # canonical_root (/private/var/folders/...) differ by symlink, which
         # would make to_relative fall back to the absolute path and miss every
         # ast_index/edges row (CLAUDE.md §2 resolution contract).
-        rel_path = _to_relative(os.path.realpath(resolved), reader_root).replace(
-            "\\", "/"
-        )
+        rel_path = _to_relative(os.path.realpath(resolved), reader_root)
+        if os.sep == "\\":
+            rel_path = rel_path.replace("\\", "/")
         # Codex P1 (#1299): a target outside the snapshot source inventory
         # (markdown/yaml, hidden, or excluded files) is not covered by the
         # before/after source recaptures. The gate runs BEFORE any

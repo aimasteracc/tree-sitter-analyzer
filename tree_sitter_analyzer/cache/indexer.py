@@ -125,7 +125,7 @@ _warned_extensions: set[str] = set()
 
 # Extractor version constant — kept in sync with ast_cache.py. Version 25
 # persists parse-error state and invalidates every projection semantic fix.
-_AST_CACHE_EXTRACTOR_VERSION = 25
+_AST_CACHE_EXTRACTOR_VERSION = 26
 
 
 def _walk_source_files(project_root: str) -> Iterator[str]:

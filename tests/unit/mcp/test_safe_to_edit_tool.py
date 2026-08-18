@@ -2335,6 +2335,56 @@ def test_safe_to_edit_preserves_posix_literal_backslash(
     assert facts.dependents == ["tests/test_app.py"]
 
 
+def test_snapshot_route_preserves_posix_literal_backslash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.mcp.tools.safe_to_edit_tool as tool_module
+
+    literal_path = "pkg/a\\b.py"
+    target = tmp_path / literal_path
+    target.parent.mkdir()
+    target.write_text("value = 1\n")
+    captured: list[str] = []
+    monkeypatch.setattr(tool_module.os, "sep", "/")
+    monkeypatch.setattr(
+        tool_module, "snapshot_inventory", lambda _conn: frozenset({literal_path})
+    )
+    monkeypatch.setattr(tool_module, "_syntax_error_response", lambda *_args: None)
+    monkeypatch.setattr(
+        tool_module,
+        "build_snapshot_file_dependency_view",
+        lambda _conn, rel_path, **_kwargs: captured.append(rel_path) or object(),
+    )
+    monkeypatch.setattr(
+        tool_module,
+        "snapshot_stale_edges",
+        lambda _conn, rel_path, **_kwargs: captured.append(rel_path) or [],
+    )
+    monkeypatch.setattr(
+        tool_module,
+        "_build_safe_to_edit_result",
+        lambda _context: {
+            "success": True,
+            "verdict": "SAFE",
+            "agent_summary": {"summary_line": "safe"},
+        },
+    )
+    tool = SafeToEditTool(str(tmp_path))
+    monkeypatch.setattr(tool, "_get_scorer", lambda: object())
+
+    result = tool._read_existing_payload(
+        {"file_path": literal_path},
+        str(target),
+        object(),
+        SimpleNamespace(canonical_root=str(tmp_path)),
+    )
+
+    assert result["success"] is True
+    assert captured == [literal_path, literal_path]
+
+
 def test_snapshot_dependency_view_matches_javascript_directory_index_import() -> None:
     import json
     import sqlite3
@@ -3193,6 +3243,20 @@ def test_certified_exercising_tests_cover_custom_pytest_filename_pattern() -> No
     assert sum("FROM ast_index" in query for query in queries) == 2
 
 
+@pytest.mark.parametrize("test_path", ["checks/check_api.js", "checks/check_api.ts"])
+def test_certified_exercising_tests_reject_custom_jsts_filename_pattern(
+    test_path: str,
+) -> None:
+    inventory = frozenset({"src/util.js", test_path})
+
+    assert not helpers._pytest_exercising_projection_complete(
+        "src/util.js",
+        [test_path],
+        inventory,
+        reverse_dependencies={},
+    )
+
+
 def test_certified_exercising_tests_continue_through_test_chain() -> None:
     import sqlite3
 
@@ -3701,6 +3765,31 @@ def test_snapshot_stale_edges_includes_relative_member_import() -> None:
     ]
 
 
+def test_snapshot_stale_edges_includes_explicit_relative_extension() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("src/main.js", json.dumps([{"text": "import './util.js'"}])),
+            ("src/util.js", "[]"),
+        ],
+    )
+    conn.execute(
+        "INSERT INTO edges VALUES (1, 'imports', 'src/main.js', './util.js', '')"
+    )
+
+    assert helpers.snapshot_stale_edges(conn, "src/util.js") == [
+        "imports:src/main.js->src/util.js#1"
+    ]
+
+
 def test_snapshot_stale_edges_uses_bounded_snapshot_queries() -> None:
     import sqlite3
 
@@ -3752,10 +3841,15 @@ def test_snapshot_syntax_envelope_keeps_complete_exercising_tests() -> None:
         "symbols_json TEXT, extractor_version INTEGER)"
     )
     conn.execute(
-        "INSERT INTO ast_index VALUES ('app.py', '[]', '{\"syntax_error\": false}', 25)"
+        "INSERT INTO ast_index VALUES "
+        "('app.py', '[]', "
+        '\'{"truncated_depth": false, "import_projection_complete": true, '
+        '"syntax_error": false}\', 26)'
     )
     conn.executemany(
-        "INSERT INTO ast_index VALUES (?, '[]', '{\"syntax_error\": false}', 25)",
+        "INSERT INTO ast_index VALUES (?, '[]', "
+        '\'{"truncated_depth": false, "import_projection_complete": true, '
+        '"syntax_error": false}\', 26)',
         [(f"tests/test_app_{index}.py",) for index in range(12)],
     )
     conn.executemany(
@@ -3790,7 +3884,9 @@ def test_snapshot_syntax_envelope_excludes_unrelated_nearby_test() -> None:
         "symbols_json TEXT, extractor_version INTEGER)"
     )
     conn.executemany(
-        "INSERT INTO ast_index VALUES (?, '[]', '{\"syntax_error\": false}', 25)",
+        "INSERT INTO ast_index VALUES (?, '[]', "
+        '\'{"truncated_depth": false, "import_projection_complete": true, '
+        '"syntax_error": false}\', 26)',
         [("app.py",), ("tests/test_app.py",)],
     )
 
@@ -4306,7 +4402,9 @@ def test_snapshot_syntax_envelope_certifies_single_java_file() -> None:
         "symbols_json TEXT, extractor_version INTEGER)"
     )
     conn.execute(
-        "INSERT INTO ast_index VALUES (?, ?, '{\"syntax_error\": false}', 25)",
+        "INSERT INTO ast_index VALUES (?, ?, "
+        '\'{"truncated_depth": false, "import_projection_complete": true, '
+        '"syntax_error": false}\', 26)',
         (
             "src/main/java/com/acme/Util.java",
             json.dumps([{"text": "package com.acme;"}]),
@@ -4413,7 +4511,9 @@ def test_snapshot_syntax_envelope_rejects_conflicting_java_packages() -> None:
         "symbols_json TEXT, extractor_version INTEGER)"
     )
     conn.executemany(
-        "INSERT INTO ast_index VALUES (?, ?, '{\"syntax_error\": false}', 25)",
+        "INSERT INTO ast_index VALUES (?, ?, "
+        '\'{"truncated_depth": false, "import_projection_complete": true, '
+        '"syntax_error": false}\', 26)',
         [
             (
                 target,
@@ -4581,7 +4681,9 @@ def test_snapshot_syntax_envelope_rejects_uncaptured_include_root() -> None:
         "symbols_json TEXT, extractor_version INTEGER)"
     )
     conn.executemany(
-        "INSERT INTO ast_index VALUES (?, ?, '{\"syntax_error\": false}', 25)",
+        "INSERT INTO ast_index VALUES (?, ?, "
+        '\'{"truncated_depth": false, "import_projection_complete": true, '
+        '"syntax_error": false}\', 26)',
         [
             (
                 importer,
@@ -4834,7 +4936,7 @@ def _symbol_conn(raw_symbols: object) -> sqlite3.Connection:
         "CREATE TABLE ast_index ("
         "file_path TEXT, symbols_json TEXT, extractor_version INTEGER)"
     )
-    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 25)", (raw_symbols,))
+    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 26)", (raw_symbols,))
     return conn
 
 
@@ -4921,6 +5023,19 @@ def test_reverse_dependency_snapshot_uses_resolved_and_import_edges() -> None:
     ) == {"pkg/util.py": {"app.py"}}
 
 
+def test_reverse_dependency_snapshot_rejects_corrupt_resolved_edge() -> None:
+    conn = _reverse_dependency_conn([("app.py", "[]"), ("pkg/util.py", "[]")])
+    conn.execute(
+        "CREATE TABLE edges (kind TEXT, file_path, callee_name, callee_resolved_file)"
+    )
+    conn.execute("INSERT INTO edges VALUES ('calls', 7, 'run', 'pkg/util.py')")
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        helpers._snapshot_reverse_dependencies(
+            conn, frozenset({"app.py", "pkg/util.py"})
+        )
+
+
 @pytest.mark.parametrize(
     ("caller", "raw_imports"),
     [
@@ -4960,6 +5075,18 @@ def test_pytest_projection_skips_seen_and_outside_dependents() -> None:
         "util.py",
         ["util.py", "missing.py", "tests/test_util.py"],
         frozenset({"util.py", "tests/test_util.py"}),
+        reverse_dependencies={},
+    )
+
+
+@pytest.mark.parametrize("dependent", ["pkg/__init__.py", "src/Use.java"])
+def test_exercising_projection_accepts_support_and_non_dynamic_test_languages(
+    dependent: str,
+) -> None:
+    assert helpers._pytest_exercising_projection_complete(
+        "util.py",
+        [dependent],
+        frozenset({"util.py", dependent}),
         reverse_dependencies={},
     )
 
@@ -5138,7 +5265,15 @@ def test_symbol_projection_completeness_rejects_query_failure() -> None:
 
 
 def test_symbol_projection_completeness_ignores_irrelevant_rows() -> None:
-    conn = _symbol_conn(json.dumps({"truncated_depth": False, "syntax_error": False}))
+    conn = _symbol_conn(
+        json.dumps(
+            {
+                "truncated_depth": False,
+                "import_projection_complete": True,
+                "syntax_error": False,
+            }
+        )
+    )
     conn.execute("INSERT INTO ast_index VALUES ('notes.md', 'not-json', 0)")
 
     assert helpers._symbol_walk_projections_complete(
@@ -5165,6 +5300,25 @@ def test_symbol_projection_completeness_rejects_syntax_error() -> None:
             conn, frozenset({"app.py"}), {"python"}
         )
         is False
+    )
+
+
+@pytest.mark.parametrize(
+    "missing_field",
+    ["truncated_depth", "import_projection_complete", "syntax_error"],
+)
+def test_symbol_projection_completeness_requires_every_proof_field(
+    missing_field: str,
+) -> None:
+    payload = {
+        "truncated_depth": False,
+        "import_projection_complete": True,
+        "syntax_error": False,
+    }
+    payload.pop(missing_field)
+
+    assert not helpers._symbol_walk_projections_complete(
+        _symbol_conn(json.dumps(payload)), frozenset({"app.py"}), {"python"}
     )
 
 
@@ -5201,6 +5355,19 @@ def test_commonjs_projection_accepts_extensionless_file_target() -> None:
     inventory = frozenset({"src/main.js", "src/util.js"})
 
     assert helpers._jsts_import_projection_complete(conn, inventory) is True
+
+
+def test_commonjs_projection_rejects_escaped_module_specifier() -> None:
+    conn = _projection_conn(
+        [
+            ("src/main.js", [{"text": r'require("./uti\x6c.js")'}]),
+            ("src/util.js", []),
+        ]
+    )
+
+    assert not helpers._jsts_import_projection_complete(
+        conn, frozenset({"src/main.js", "src/util.js"})
+    )
 
 
 def test_computed_commonjs_projection_accepts_literal_target() -> None:
@@ -5516,6 +5683,29 @@ def test_python_projection_rejects_root_and_source_root_ambiguity() -> None:
     inventory = frozenset({"app.py", "pkg/util.py", "src/pkg/util.py"})
 
     assert helpers._python_import_projection_complete(conn, inventory) is False
+
+
+def test_python_projection_rejects_suffix_only_source_root_guess() -> None:
+    conn = _projection_conn(
+        [("app.py", [{"text": "import acme"}]), ("vendor/acme.py", [])]
+    )
+
+    assert not helpers._python_import_projection_complete(
+        conn, frozenset({"app.py", "vendor/acme.py"})
+    )
+
+
+def test_python_projection_rejects_dynamic_suffix_only_source_root_guess() -> None:
+    conn = _projection_conn(
+        [
+            ("app.py", [{"text": "importlib.import_module('acme')"}]),
+            ("vendor/acme.py", []),
+        ]
+    )
+
+    assert not helpers._python_import_projection_complete(
+        conn, frozenset({"app.py", "vendor/acme.py"})
+    )
 
 
 def test_symbol_projection_rejects_stale_extractor_version() -> None:

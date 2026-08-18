@@ -269,6 +269,8 @@ def _python_dynamic_loader_analysis(source: str) -> tuple[frozenset[str], bool]:
             and statement.module in {"builtins", "importlib"}
         ):
             for alias in statement.names:
+                if statement.module == "importlib" and alias.name == "*":
+                    return frozenset(names), False
                 if (statement.module, alias.name) in {
                     ("builtins", "__import__"),
                     ("importlib", "import_module"),
@@ -521,6 +523,39 @@ def _jsts_pattern_binds_module_loader(node: Any, source: str) -> bool:
     return False
 
 
+def _jsts_module_loader_reference(node: Any, source: str, loaders: set[str]) -> bool:
+    """Return whether one syntax node is a tracked JS/TS module loader."""
+
+    value = _node_text(node, source)
+    return value in loaders or bool(
+        re.fullmatch(r"module\s*\[\s*(['\"`])require\1\s*\]", value)
+    )
+
+
+def _jsts_value_stores_module_loader(node: Any, source: str, loaders: set[str]) -> bool:
+    """Detect a loader retained or passed as a value rather than invoked."""
+
+    if _jsts_module_loader_reference(node, source, loaders):
+        return True
+    if node.type == "call_expression":
+        function = node.child_by_field_name("function")
+        arguments = node.child_by_field_name("arguments")
+        if function is not None and _jsts_module_loader_reference(
+            function, source, loaders
+        ):
+            return arguments is not None and _jsts_value_stores_module_loader(
+                arguments, source, loaders
+            )
+        return any(
+            _jsts_value_stores_module_loader(child, source, loaders)
+            for child in node.children
+        )
+    return any(
+        _jsts_value_stores_module_loader(child, source, loaders)
+        for child in node.children
+    )
+
+
 @dataclass(slots=True)
 class _SymbolWalker:
     source: str
@@ -614,6 +649,10 @@ class _SymbolWalker:
                     or re.fullmatch(r"module\s*\[\s*(['\"`])require\1\s*\]", value_text)
                 ):
                     self.jsts_module_loaders.add(_node_text(name, self.source))
+                elif _jsts_value_stores_module_loader(
+                    value, self.source, self.jsts_module_loaders
+                ):
+                    self.import_projection_complete = False
         elif node.type == "formal_parameters":
             patterns.extend(node.children)
         elif node.type in {

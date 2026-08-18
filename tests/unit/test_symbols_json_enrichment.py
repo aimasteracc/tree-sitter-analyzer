@@ -167,9 +167,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v25: parse-error state and current projection semantics are persisted.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 25
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 25
+        # v26: parse-error state and current projection semantics are persisted.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 26
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 26
 
 
 def test_python_module_control_bindings_cover_all_module_control_targets() -> None:
@@ -224,6 +224,42 @@ match value:
         "item",
         "remaining",
     }
+
+
+def test_python_star_imported_loader_fails_closed() -> None:
+    loaders, complete = _python_dynamic_loader_analysis(
+        'from importlib import *\nimport_module("pkg.util")\n'
+    )
+
+    assert "import_module" not in loaders
+    assert complete is False
+
+
+def test_commonjs_loader_stored_in_composite_fails_closed() -> None:
+    extraction = _extraction_for(
+        'const loaders = [require];\nloaders[0]("./util.js");\n',
+        "javascript",
+    )
+
+    assert extraction["import_projection_complete"] is False
+
+
+def test_commonjs_loader_passed_to_unknown_call_fails_closed() -> None:
+    extraction = _extraction_for(
+        "const loaders = wrap(require);\n",
+        "javascript",
+    )
+
+    assert extraction["import_projection_complete"] is False
+
+
+def test_commonjs_loader_call_result_is_not_loader_storage() -> None:
+    extraction = _extraction_for(
+        'const loaded = require("./util.js");\n',
+        "javascript",
+    )
+
+    assert extraction["import_projection_complete"] is True
 
 
 class TestJavaScriptModuleCallProjection:
