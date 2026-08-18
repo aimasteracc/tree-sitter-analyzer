@@ -56,6 +56,23 @@ def test_golden_passes_json_schema_shape() -> None:
     validate_shape(_load_fixture("golden"))
 
 
+def test_shape_validation_runs_schema_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    import jsonschema
+
+    calls: list[tuple[object, object]] = []
+
+    def record_validate(*, instance: object, schema: object) -> None:
+        calls.append((instance, schema))
+
+    monkeypatch.setattr(jsonschema, "validate", record_validate)
+    bundle = _load_fixture("golden")
+
+    validate_shape(bundle)
+
+    assert len(calls) == 1
+    assert calls[0][0] is bundle
+
+
 def _run_case_batch(case_ids: set[str]) -> None:
     """Run one batch of denial cases and pin exact reasons.
 
