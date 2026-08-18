@@ -146,9 +146,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v21: path references and deferred Python aliases enter the projection.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 21
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 21
+        # v22: assignment aliases of dynamic loaders enter the projection.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 22
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 22
 
 
 class TestJavaScriptModuleCallProjection:
@@ -284,6 +284,20 @@ class TestPythonDynamicImportProjection:
         assert {item["text"] for item in _extract_imports(symbols)} == {
             "load('pkg.util')",
             "from importlib import import_module as load",
+        }
+
+    def test_assignment_alias_is_projected(self) -> None:
+        source = (
+            "import importlib\n"
+            "loader = importlib.import_module\n"
+            "plugin = loader('pkg.util')\n"
+        )
+        symbols = {"symbols": _symbols_for(source, "python")}
+
+        assert {item["text"] for item in _extract_imports(symbols)} == {
+            "import importlib",
+            "loader = importlib.import_module",
+            "loader('pkg.util')",
         }
 
     @pytest.mark.parametrize("missing_field", ["function", "arguments"])

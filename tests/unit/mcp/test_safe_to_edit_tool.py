@@ -1789,6 +1789,31 @@ def test_snapshot_dependency_view_normalizes_jsts_url_suffix(
     assert view.dependencies_of("src/index.ts") == ["src/util.js"]
 
 
+def test_snapshot_dependency_view_substitutes_typescript_source_for_js_spec() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_file_dependency_view,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT)")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("src/index.ts", json.dumps([{"text": "import './util.js'"}])),
+            ("src/util.ts", "[]"),
+        ],
+    )
+
+    view = build_snapshot_file_dependency_view(conn, "src/index.ts")
+
+    assert view.dependencies_of("src/index.ts") == ["src/util.ts"]
+
+
 def test_snapshot_dependency_view_reads_typescript_path_reference() -> None:
     import json
     import sqlite3
@@ -3401,6 +3426,44 @@ def test_snapshot_syntax_envelope_marks_dynamic_python_import_unavailable() -> N
     }
 
 
+def test_snapshot_syntax_envelope_marks_truncated_projection_unavailable() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        build_snapshot_syntax_causal_envelope,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY, kind TEXT, file_path TEXT, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, imports_json TEXT, symbols_json TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, ?)",
+        [
+            ("app.py", "[]", json.dumps({"truncated_depth": True})),
+            ("pkg/util.py", "[]", json.dumps({"truncated_depth": False})),
+        ],
+    )
+
+    envelope = build_snapshot_syntax_causal_envelope(conn, "pkg/util.py", "pkg/util.py")
+
+    assert envelope == {
+        "dependents": None,
+        "dependencies": None,
+        "exercising_tests": None,
+        "constraint_verdict": "unknown",
+        "verification_command": None,
+        "stale_edges": None,
+    }
+
+
 def test_python_projection_complete_ignores_static_and_non_python_imports() -> None:
     import json
     import sqlite3
@@ -3506,6 +3569,38 @@ def test_python_projection_accepts_aliased_literal_dynamic_import() -> None:
     )
 
 
+def test_python_projection_accepts_assignment_aliased_dynamic_import() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _python_import_projection_complete,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            (
+                "app.py",
+                json.dumps(
+                    [
+                        {"text": "import importlib"},
+                        {"text": "loader = importlib.import_module"},
+                        {"text": "loader('pkg.util')"},
+                    ]
+                ),
+            ),
+            ("pkg/util.py", "[]"),
+        ],
+    )
+
+    assert _python_import_projection_complete(
+        conn, frozenset({"app.py", "pkg/util.py"})
+    )
+
+
 def test_jsts_projection_complete_for_relative_imports_only() -> None:
     import json
     import sqlite3
@@ -3547,6 +3642,29 @@ def test_jsts_projection_rejects_unparseable_module_load() -> None:
     )
 
     assert _jsts_import_projection_complete(conn, frozenset({"src/main.ts"})) is False
+
+
+def test_jsts_projection_rejects_commonjs_directory_entry_without_metadata() -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _jsts_import_projection_complete,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, imports_json TEXT)")
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?)",
+        [
+            ("src/main.js", json.dumps([{"text": "require('./lib')"}])),
+            ("src/lib/index.js", "[]"),
+            ("src/lib/entry.js", "[]"),
+        ],
+    )
+    inventory = frozenset({"src/main.js", "src/lib/index.js", "src/lib/entry.js"})
+
+    assert _jsts_import_projection_complete(conn, inventory) is False
 
 
 def test_jsts_projection_fails_closed_without_snapshot_table() -> None:

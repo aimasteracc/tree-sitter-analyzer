@@ -852,6 +852,17 @@ def _certified_import_facts_available(
         return False
     if inventory is None:
         inventory = frozenset()
+    related_languages = (
+        {"javascript", "typescript"}
+        if language in {"javascript", "typescript"}
+        else {"c", "cpp"}
+        if language in {"c", "cpp"}
+        else {language}
+    )
+    if conn is not None and not _symbol_walk_projections_complete(
+        conn, inventory, related_languages
+    ):
+        return False
     if language == "java":
         # Other supported JVM languages can reference Java without a Java
         # import projection. Until their resolvers exist, even one indexed
@@ -1030,6 +1041,7 @@ def _python_dynamic_loader_names_from_projection(
     """Derive dynamic-import aliases from one file's static projections."""
 
     names = {"__import__", "importlib.import_module"}
+    statements: list[ast.stmt] = []
     for import_text in import_texts:
         try:
             body = ast.parse(import_text).body
@@ -1038,6 +1050,7 @@ def _python_dynamic_loader_names_from_projection(
         if len(body) != 1:
             return None
         statement = body[0]
+        statements.append(statement)
         if isinstance(statement, ast.Import):
             for alias in statement.names:
                 if alias.name == "importlib":
@@ -1050,7 +1063,35 @@ def _python_dynamic_loader_names_from_projection(
             for alias in statement.names:
                 if alias.name == "import_module":
                     names.add(alias.asname or alias.name)
+    changed = True
+    while changed:
+        changed = False
+        for statement in statements:
+            if isinstance(statement, ast.Assign):
+                targets, value = statement.targets, statement.value
+            elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
+                targets, value = [statement.target], statement.value
+            else:
+                continue
+            reference = _python_ast_name(value)
+            if reference not in names:
+                continue
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id not in names:
+                    names.add(target.id)
+                    changed = True
     return frozenset(names)
+
+
+def _python_ast_name(node: ast.expr) -> str | None:
+    """Return one dotted Python name without evaluating the expression."""
+
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        owner = _python_ast_name(node.value)
+        return f"{owner}.{node.attr}" if owner else None
+    return None
 
 
 def _file_defines_any(conn: Any, file_path: str, symbols: list[str]) -> bool:
@@ -1552,7 +1593,16 @@ def _resolve_import_spec_from_inventory(
     if not candidate_base:
         candidates.extend(package_entries)
     elif explicit_suffix in allowed_suffixes:
-        candidates.append(candidate_base)
+        if language == "typescript" and explicit_suffix in {".js", ".jsx"}:
+            source_base = candidate_base.removesuffix(explicit_suffix)
+            substitutions = (
+                (".ts", ".tsx", ".d.ts", ".js")
+                if explicit_suffix == ".js"
+                else (".tsx", ".d.ts", ".jsx")
+            )
+            candidates.extend(f"{source_base}{suffix}" for suffix in substitutions)
+        else:
+            candidates.append(candidate_base)
     elif not explicit_suffix:
         package_candidates = [f"{candidate_base}/{entry}" for entry in package_entries]
         file_candidates = [f"{candidate_base}{suffix}" for suffix in suffixes]
@@ -1834,6 +1884,42 @@ def _snapshot_import_texts(
     return projected
 
 
+def _symbol_walk_projections_complete(
+    conn: Any,
+    inventory: frozenset[str],
+    languages: set[str],
+) -> bool:
+    """Reject current projections whose bounded symbol walk was truncated."""
+
+    import json
+
+    try:
+        columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(ast_index)")}
+        if "symbols_json" not in columns:
+            return True  # legacy schemas predate the explicit truncation signal
+        rows = conn.execute("SELECT file_path, symbols_json FROM ast_index").fetchall()
+    except Exception:
+        return False
+    for row in rows:
+        file_path, raw_symbols = row[0], row[1]
+        if (
+            not isinstance(file_path, str)
+            or file_path not in inventory
+            or _target_language(file_path) not in languages
+        ):
+            continue
+        try:
+            payload = json.loads(raw_symbols)
+        except (TypeError, ValueError):
+            return False
+        if not isinstance(payload, dict):
+            return False
+        truncated = payload.get("truncated_depth", False)
+        if not isinstance(truncated, bool) or truncated:
+            return False
+    return True
+
+
 def _jsts_import_projection_complete(conn: Any, inventory: frozenset[str]) -> bool:
     """Reject certified JS/TS facts when a bare specifier may be an alias."""
 
@@ -1848,6 +1934,18 @@ def _jsts_import_projection_complete(conn: Any, inventory: frozenset[str]) -> bo
             normalized = re.split(r"[?#]", spec, maxsplit=1)[0] if spec else None
             if normalized is None or not normalized.startswith(("./", "../")):
                 return False
+            if (
+                re.search(r"\brequire\s*\(", import_text)
+                and not Path(normalized).suffix
+            ):
+                resolved = _resolve_import_spec_from_inventory(
+                    normalized, file_path, inventory
+                )
+                if (
+                    resolved is None
+                    or Path(resolved).parent.name == Path(normalized).name
+                ):
+                    return False
     return True
 
 

@@ -48,7 +48,7 @@ def _python_dynamic_loader_names(source: str) -> frozenset[str]:
         module = ast.parse(source)
     except SyntaxError:
         return frozenset(names)
-    for statement in module.body:
+    for statement in ast.walk(module):
         if isinstance(statement, ast.Import):
             for alias in statement.names:
                 if alias.name == "importlib":
@@ -61,7 +61,33 @@ def _python_dynamic_loader_names(source: str) -> frozenset[str]:
             for alias in statement.names:
                 if alias.name == "import_module":
                     names.add(alias.asname or alias.name)
+    assignments: list[tuple[list[ast.expr], ast.expr]] = []
+    for node in ast.walk(module):
+        if isinstance(node, ast.Assign):
+            assignments.append((node.targets, node.value))
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            assignments.append(([node.target], node.value))
+    changed = True
+    while changed:
+        changed = False
+        for targets, value in assignments:
+            reference = _python_reference_name(value)
+            if reference not in names:
+                continue
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id not in names:
+                    names.add(target.id)
+                    changed = True
     return frozenset(names)
+
+
+def _python_reference_name(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        owner = _python_reference_name(node.value)
+        return f"{owner}.{node.attr}" if owner else None
+    return None
 
 
 @dataclass(slots=True)
@@ -104,6 +130,8 @@ class _SymbolWalker:
             return
         if node.type in _IMPORT_LIKE:
             self._append_import(node)
+            return
+        if self._append_python_loader_assignment(node):
             return
         if self._append_jsts_reexport(node):
             return
@@ -261,6 +289,33 @@ class _SymbolWalker:
         if function is None or arguments is None:
             return False
         if _node_text(function, self.source) not in self.python_dynamic_loaders:
+            return False
+        self._append_import(node)
+        return True
+
+    def _append_python_loader_assignment(self, node: Any) -> bool:
+        """Project simple aliases so snapshot readers can verify loader calls."""
+        if self.language != "python" or node.type not in {
+            "assignment",
+            "annotated_assignment",
+        }:
+            return False
+        try:
+            body = ast.parse(_node_text(node, self.source)).body
+        except SyntaxError:
+            return False
+        if len(body) != 1:
+            return False
+        statement = body[0]
+        if isinstance(statement, ast.Assign):
+            targets, value = statement.targets, statement.value
+        elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
+            targets, value = [statement.target], statement.value
+        else:
+            return False
+        if _python_reference_name(value) not in self.python_dynamic_loaders or not any(
+            isinstance(target, ast.Name) for target in targets
+        ):
             return False
         self._append_import(node)
         return True
