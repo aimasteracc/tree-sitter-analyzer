@@ -30,7 +30,7 @@ def _valid_payload() -> dict:
         "oracle": "oracles/0001.py",
         "oracle_baseline_reason": "dispatch-returns-none",
         "verification_argv": ["uv", "run", "pytest", "tests/", "-q"],
-        "expected_outcome": "PASS",
+        "expected_terminal": {"verdict": "PASS", "reason_code": None},
         "defect": {"file": "src/dispatch.py", "line": 12, "kind": "missing-else"},
     }
 
@@ -43,6 +43,8 @@ def test_record_from_dict_accepts_valid_payload() -> None:
     assert record.allowed_paths == ("src/dispatch.py", "tests/")
     assert record.verification_argv == ("uv", "run", "pytest", "tests/", "-q")
     assert record.oracle_baseline_reason == "dispatch-returns-none"
+    assert record.expected_terminal.verdict == "PASS"
+    assert record.expected_terminal.reason_code is None
 
 
 def test_record_from_dict_rejects_unknown_fields() -> None:
@@ -56,7 +58,6 @@ def test_record_from_dict_rejects_invalid_enums() -> None:
     for field, bad in (
         ("task_class", "bugfiix"),
         ("operation", "understnd"),
-        ("expected_outcome", "MAYBE"),
     ):
         payload = _valid_payload()
         payload[field] = bad
@@ -204,12 +205,83 @@ def test_record_rejects_empty_allowed_paths() -> None:
         record_from_dict(payload)
 
 
-@pytest.mark.parametrize("field", ["task_class", "operation", "expected_outcome"])
+@pytest.mark.parametrize("field", ["task_class", "operation"])
 def test_record_rejects_non_string_enum_values(field: str) -> None:
     payload = _valid_payload()
     payload[field] = ["bugfix"]
     with pytest.raises(BenchmarkRecordError, match="invalid"):
         record_from_dict(payload)
+
+
+def test_record_rejects_non_object_expected_terminal() -> None:
+    payload = _valid_payload()
+    payload["expected_terminal"] = "PASS"
+    with pytest.raises(BenchmarkRecordError, match="must be an object"):
+        record_from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "terminal",
+    [
+        {"verdict": "PASS"},
+        {"verdict": "PASS", "reason_code": None, "extra": True},
+    ],
+)
+def test_record_rejects_non_exact_expected_terminal_shape(terminal: dict) -> None:
+    payload = _valid_payload()
+    payload["expected_terminal"] = terminal
+    with pytest.raises(BenchmarkRecordError, match="contain exactly"):
+        record_from_dict(payload)
+
+
+@pytest.mark.parametrize("verdict", ["MAYBE", ["PASS"]])
+def test_record_rejects_invalid_expected_terminal_verdict(verdict: object) -> None:
+    payload = _valid_payload()
+    payload["expected_terminal"] = {"verdict": verdict, "reason_code": None}
+    with pytest.raises(BenchmarkRecordError, match="invalid expected_terminal verdict"):
+        record_from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "terminal",
+    [
+        {"verdict": "PASS", "reason_code": "ORACLE_FAILED"},
+        {"verdict": "FAIL", "reason_code": None},
+        {"verdict": "FAIL", "reason_code": "ORACLE_TIMEOUT"},
+        {"verdict": "UNKNOWN", "reason_code": None},
+        {"verdict": "UNKNOWN", "reason_code": "ORACLE_FAILED"},
+    ],
+)
+def test_record_rejects_mismatched_expected_terminal_reason(terminal: dict) -> None:
+    payload = _valid_payload()
+    payload["expected_terminal"] = terminal
+    with pytest.raises(BenchmarkRecordError, match="reason_code|unknown_reason"):
+        record_from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    ("terminal", "verdict", "reason_code"),
+    [
+        (
+            {"verdict": "FAIL", "reason_code": "TEST_SELECTION_FAILED"},
+            "FAIL",
+            "TEST_SELECTION_FAILED",
+        ),
+        (
+            {"verdict": "UNKNOWN", "reason_code": "PATCH_NOT_APPLICABLE"},
+            "UNKNOWN",
+            "PATCH_NOT_APPLICABLE",
+        ),
+    ],
+)
+def test_record_accepts_non_pass_expected_terminal(
+    terminal: dict, verdict: str, reason_code: str
+) -> None:
+    payload = _valid_payload()
+    payload["expected_terminal"] = terminal
+    result = record_from_dict(payload).expected_terminal
+    assert result.verdict == verdict
+    assert result.reason_code == reason_code
 
 
 def test_record_rejects_non_hex_repo_commit() -> None:
@@ -283,8 +355,11 @@ def test_seed_corpus_loads_with_exact_class_counts() -> None:
         "migration": 2,
         "test_selection": 2,
     }
-    assert sum(1 for r in records if r.expected_outcome == "PASS") == 9
-    assert sum(1 for r in records if r.expected_outcome == "FAIL") == 1
+    assert sum(1 for r in records if r.expected_terminal.verdict == "PASS") == 9
+    failed = [r for r in records if r.expected_terminal.verdict == "FAIL"]
+    assert [(r.id, r.expected_terminal.reason_code) for r in failed] == [
+        ("no1-010b/0010-selection-subset", "TEST_SELECTION_FAILED")
+    ]
     ids = [record.id for record in records]
     assert len(set(ids)) == 10  # no duplicates
 

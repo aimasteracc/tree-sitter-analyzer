@@ -10,6 +10,7 @@ import pytest
 
 from tree_sitter_analyzer.no1_010b.oracle import (
     OracleStatus,
+    _drain_bounded,
     _kill_process_tree,
     _parse_result_line,
     _reap_process,
@@ -306,3 +307,108 @@ def test_reap_process_retries_after_timeout(
 
     assert proc.wait.call_count == 2
     kill_tree.assert_called_once_with(proc)
+
+
+def test_drain_bounded_marks_pipe_read_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import threading
+
+    import tree_sitter_analyzer.no1_010b.oracle as oracle_module
+
+    stream = Mock()
+    stream.read.side_effect = OSError("pipe failed")
+    proc = Mock()
+    failed = threading.Event()
+    kill_tree = Mock()
+    monkeypatch.setattr(oracle_module, "_kill_process_tree", kill_tree)
+
+    _drain_bounded(stream, bytearray(), threading.Event(), failed, proc)
+
+    assert failed.is_set()
+    kill_tree.assert_called_once_with(proc)
+
+
+def test_run_oracle_rejects_missing_output_pipe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import io
+
+    import tree_sitter_analyzer.no1_010b.oracle as oracle_module
+
+    proc = Mock(pid=321, stdout=None, stderr=io.BytesIO())
+    proc.returncode = 0
+    popen = Mock(return_value=proc)
+    monkeypatch.setattr(oracle_module.subprocess, "Popen", popen)
+    monkeypatch.setattr(oracle_module, "_kill_process_tree", Mock())
+    monkeypatch.setattr(oracle_module, "_reap_process", Mock())
+    oracle = _write_oracle(tmp_path, "oracle.py", ORACLE_PASS)
+
+    outcome = run_oracle(
+        str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
+    )
+
+    assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.stdout_tail == "oracle output could not be read"
+
+
+def test_run_oracle_rejects_unclosed_output_thread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import io
+
+    import tree_sitter_analyzer.no1_010b.oracle as oracle_module
+
+    class HungThread:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        def start(self) -> None:
+            pass
+
+        def join(self, timeout: float) -> None:
+            pass
+
+        def is_alive(self) -> bool:
+            return True
+
+    proc = Mock(pid=321, stdout=io.BytesIO(), stderr=io.BytesIO())
+    proc.returncode = 0
+    monkeypatch.setattr(oracle_module.subprocess, "Popen", Mock(return_value=proc))
+    monkeypatch.setattr(oracle_module.threading, "Thread", HungThread)
+    monkeypatch.setattr(oracle_module, "_kill_process_tree", Mock())
+    monkeypatch.setattr(oracle_module, "_reap_process", Mock())
+    oracle = _write_oracle(tmp_path, "oracle.py", ORACLE_PASS)
+
+    outcome = run_oracle(
+        str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
+    )
+
+    assert outcome.status == OracleStatus.UNKNOWN
+    assert outcome.stdout_tail == "oracle output did not close"
+
+
+def test_run_oracle_uses_windows_process_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import io
+
+    import tree_sitter_analyzer.no1_010b.oracle as oracle_module
+
+    output = (
+        b"NO1_010B_ORACLE_REASON: dispatch-returns-none\nNO1_010B_ORACLE_RESULT: PASS\n"
+    )
+    proc = Mock(pid=321, stdout=io.BytesIO(output), stderr=io.BytesIO())
+    proc.returncode = 0
+    popen = Mock(return_value=proc)
+    monkeypatch.setattr(oracle_module, "_IS_WINDOWS", True)
+    monkeypatch.setattr(oracle_module.subprocess, "Popen", popen)
+    oracle = _write_oracle(tmp_path, "oracle.py", ORACLE_PASS)
+
+    outcome = run_oracle(
+        str(oracle), str(tmp_path), expected_reason="dispatch-returns-none"
+    )
+
+    assert outcome.status == OracleStatus.PASS
+    assert "creationflags" in popen.call_args.kwargs
+    assert "start_new_session" not in popen.call_args.kwargs

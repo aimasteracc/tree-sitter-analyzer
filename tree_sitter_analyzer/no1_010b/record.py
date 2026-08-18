@@ -17,11 +17,67 @@ from typing import Any, Literal, cast
 
 TaskClass = Literal["bugfix", "refactor", "migration", "test_selection"]
 Operation = Literal["understand", "plan_change", "assess_change"]
-ExpectedOutcome = Literal["PASS", "FAIL"]
+ExpectedVerdict = Literal["PASS", "FAIL", "UNKNOWN"]
+ProductReasonCode = Literal[
+    "PATH_VIOLATION",
+    "ORACLE_FAILED",
+    "VERIFICATION_FAILED",
+    "STALE_ROWS",
+    "UNSUPPORTED_RELATIONSHIP",
+    "TEST_SELECTION_FAILED",
+]
+UnknownReasonCode = Literal[
+    "PATCH_NOT_APPLICABLE",
+    "PATCH_OVER_BOUND",
+    "PROVENANCE_MISSING",
+    "AGENT_OUTPUT_ERROR",
+    "ORACLE_LOAD_ERROR",
+    "ORACLE_EXECUTION_ERROR",
+    "ORACLE_PROTOCOL_ERROR",
+    "ORACLE_TIMEOUT",
+    "VERIFICATION_EXECUTION_ERROR",
+    "VERIFICATION_TIMEOUT",
+    "INDEX_REFRESH_ERROR",
+    "INDEX_QUERY_ERROR",
+    "EVIDENCE_CHECK_ERROR",
+    "SANDBOX_FAILURE",
+    "REGISTRY_FAILURE",
+]
+TerminalReasonCode = ProductReasonCode | UnknownReasonCode
 
 _TASK_CLASSES = frozenset({"bugfix", "refactor", "migration", "test_selection"})
 _OPERATIONS = frozenset({"understand", "plan_change", "assess_change"})
-_EXPECTED_OUTCOMES = frozenset({"PASS", "FAIL"})
+_EXPECTED_VERDICTS = frozenset({"PASS", "FAIL", "UNKNOWN"})
+_PRODUCT_REASON_CODES = frozenset(
+    {
+        "PATH_VIOLATION",
+        "ORACLE_FAILED",
+        "VERIFICATION_FAILED",
+        "STALE_ROWS",
+        "UNSUPPORTED_RELATIONSHIP",
+        "TEST_SELECTION_FAILED",
+    }
+)
+_UNKNOWN_REASON_CODES = frozenset(
+    {
+        "PATCH_NOT_APPLICABLE",
+        "PATCH_OVER_BOUND",
+        "PROVENANCE_MISSING",
+        "AGENT_OUTPUT_ERROR",
+        "ORACLE_LOAD_ERROR",
+        "ORACLE_EXECUTION_ERROR",
+        "ORACLE_PROTOCOL_ERROR",
+        "ORACLE_TIMEOUT",
+        "VERIFICATION_EXECUTION_ERROR",
+        "VERIFICATION_TIMEOUT",
+        "INDEX_REFRESH_ERROR",
+        "INDEX_QUERY_ERROR",
+        "EVIDENCE_CHECK_ERROR",
+        "SANDBOX_FAILURE",
+        "REGISTRY_FAILURE",
+    }
+)
+_EXPECTED_TERMINAL_FIELDS = frozenset({"verdict", "reason_code"})
 _MAX_CORPUS_BYTES = 8 * 1024 * 1024  # mirrors task_harness's input bound
 
 # Canonical kebab-case token for the oracle baseline reason (RFC-0026 C43):
@@ -40,7 +96,7 @@ _REQUIRED_FIELDS = frozenset(
         "oracle",
         "oracle_baseline_reason",
         "verification_argv",
-        "expected_outcome",
+        "expected_terminal",
     }
 )
 _OPTIONAL_FIELDS = frozenset(
@@ -53,16 +109,25 @@ class BenchmarkRecordError(ValueError):
 
 
 @dataclass(frozen=True)
+class ExpectedTerminal:
+    """The exact pre-registered verdict/reason pair for one reference attempt."""
+
+    verdict: ExpectedVerdict
+    reason_code: TerminalReasonCode | None
+
+
+@dataclass(frozen=True)
 class BenchmarkRecord:
     """One pre-registered agent change task (RFC-0026 §1).
 
     ``allowed_paths`` are canonical, repository-relative POSIX paths: a
     directory entry ends with ``/`` and matches its descendants on
     path-segment boundaries; a file entry matches exactly. ``repo_commit``
-    pins the fixture revision (RFC-0026 C15); ``expected_outcome`` is the
-    pre-registered PASS/FAIL for the reference patch (RFC-0026 §5, non-vacuous
-    B1 gate). ``verification_argv`` is the typed execution spec (no shell
-    parsing, RFC-0026 C43); ``verification_command`` is a display-only hint.
+    pins the fixture revision (RFC-0026 C15); ``expected_terminal`` is the
+    exact pre-registered verdict/reason pair for the reference patch
+    (RFC-0026 §5, non-vacuous B1 gate). ``verification_argv`` is the typed
+    execution spec (no shell parsing, RFC-0026 C43);
+    ``verification_command`` is a display-only hint.
     ``oracle_baseline_reason`` is a canonical kebab-case token the oracle's
     ``NO1_010B_ORACLE_REASON`` line must equal exactly (RFC-0026 C42/C43).
     ``patch`` and ``selected_tests`` exist only on fixture records.
@@ -78,7 +143,7 @@ class BenchmarkRecord:
     oracle: str
     oracle_baseline_reason: str
     verification_argv: tuple[str, ...]
-    expected_outcome: ExpectedOutcome
+    expected_terminal: ExpectedTerminal
     verification_command: str | None = None
     defect: dict[str, Any] | None = None
     patch: str | None = None
@@ -138,6 +203,45 @@ def path_allowed(rel_path: str, allowed_paths: tuple[str, ...]) -> bool:
         elif value == entry:
             return True
     return False
+
+
+def _expected_terminal_from_dict(raw: Any) -> ExpectedTerminal:
+    if not isinstance(raw, dict):
+        raise BenchmarkRecordError("expected_terminal must be an object")
+    unknown = set(raw) - _EXPECTED_TERMINAL_FIELDS
+    missing = _EXPECTED_TERMINAL_FIELDS - set(raw)
+    if unknown or missing:
+        raise BenchmarkRecordError(
+            "expected_terminal must contain exactly verdict and reason_code"
+        )
+
+    verdict_raw = raw["verdict"]
+    if not isinstance(verdict_raw, str) or verdict_raw not in _EXPECTED_VERDICTS:
+        raise BenchmarkRecordError(
+            f"invalid expected_terminal verdict: {verdict_raw!r}"
+        )
+    verdict = cast(ExpectedVerdict, verdict_raw)
+    reason_raw = raw["reason_code"]
+    if verdict == "PASS":
+        if reason_raw is not None:
+            raise BenchmarkRecordError(
+                "PASS expected_terminal reason_code must be null"
+            )
+        return ExpectedTerminal(verdict, None)
+    if not isinstance(reason_raw, str):
+        raise BenchmarkRecordError(
+            f"{verdict} expected_terminal reason_code must be a string"
+        )
+    if verdict == "FAIL":
+        if reason_raw not in _PRODUCT_REASON_CODES:
+            raise BenchmarkRecordError(
+                "FAIL expected_terminal requires a product reason_code"
+            )
+    elif reason_raw not in _UNKNOWN_REASON_CODES:
+        raise BenchmarkRecordError(
+            "UNKNOWN expected_terminal requires an unknown_reason code"
+        )
+    return ExpectedTerminal(verdict, cast(TerminalReasonCode, reason_raw))
 
 
 def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
@@ -221,10 +325,7 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
             "verification_command must be a non-empty string when present"
         )
 
-    expected_raw = payload["expected_outcome"]
-    if not isinstance(expected_raw, str) or expected_raw not in _EXPECTED_OUTCOMES:
-        raise BenchmarkRecordError(f"invalid expected_outcome: {expected_raw!r}")
-    expected: ExpectedOutcome = cast(ExpectedOutcome, expected_raw)
+    expected_terminal = _expected_terminal_from_dict(payload["expected_terminal"])
 
     defect = payload.get("defect")
     if defect is not None and not isinstance(defect, dict):
@@ -266,7 +367,7 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
         oracle=oracle,
         oracle_baseline_reason=oracle_reason,
         verification_argv=verification_argv,
-        expected_outcome=expected,
+        expected_terminal=expected_terminal,
         verification_command=verification_hint,
         defect=defect,
         patch=patch,
