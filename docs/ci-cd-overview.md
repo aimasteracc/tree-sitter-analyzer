@@ -116,8 +116,11 @@ upload-coverage: true    # Whether to upload coverage to Codecov
 - Manual dispatch
 
 **Jobs**:
-1. **test**: Runs comprehensive test suite (calls reusable-test.yml)
-2. **create-pr**: Creates PR to main after successful tests
+1. **build**: Build verification (calls `reusable-build.yml`)
+2. **create-release-pr**: Creates the PR to main after the build passes
+
+This workflow deliberately has **no `test:` job** — the test suite is run by
+`ci.yml`, and `develop-automation.yml` only handles the transition to main.
 
 **Deployment**: None (develop branch does not deploy)
 
@@ -130,9 +133,10 @@ upload-coverage: true    # Whether to upload coverage to Codecov
 - Manual dispatch
 
 **Jobs**:
-1. **test**: Runs comprehensive test suite (calls reusable-test.yml)
-2. **deploy**: Builds and deploys to PyPI (only after tests pass)
-3. **create-pr**: Creates PR to main after successful deployment
+1. **test**: Runs the comprehensive test suite (calls `reusable-test.yml`)
+2. **build**: Builds the distribution
+3. **publish**: Publishes to PyPI (only after tests and build pass)
+4. **create-main-pr**: Creates the PR to main after a successful publish
 
 **Deployment**: PyPI deployment occurs only after all tests pass
 
@@ -145,9 +149,10 @@ upload-coverage: true    # Whether to upload coverage to Codecov
 - Manual dispatch
 
 **Jobs**:
-1. **test**: Runs comprehensive test suite (calls reusable-test.yml)
-2. **deploy**: Builds and deploys to PyPI (only after tests pass)
-3. **create-pr**: Creates PR to main after successful deployment
+1. **test**: Runs the comprehensive test suite (calls `reusable-test.yml`)
+2. **build**: Builds the distribution
+3. **publish**: Publishes to PyPI (only after tests and build pass)
+4. **create-main-pr**: Creates the PR to main after a successful publish
 
 **Deployment**: PyPI deployment occurs only after all tests pass
 

@@ -525,7 +525,24 @@ review/rollback baselines get muddy. User called it out; rule locked.
 1. `gh release create vX.Y.Z --target main --notes-file <changelog section>` — the git tag and GitHub Release are NOT auto-created.
 2. **Back-merge main → develop.** Conflict conventions: take main's authoritative test-count (measured from release CI), keep develop's newer feature surface (e.g. flag counts for develop-only params). Verify with the registry commands below, not by trusting either side.
 3. Re-verify PyPI version / main README badge / `__version__` agree.
-4. Finalization complete = release closed = develop unfreezes.
+4. **Publish to the official MCP registry.** Not automated, and `server.json` is
+   not covered by any CI check, so a stale version here is silent.
+   - `server.json` at repo root must have `version` equal to the PyPI release
+     just published, and `name` = `io.github.aimasteracc/tree-sitter-analyzer`.
+   - **PyPI ownership marker (fail-closed prerequisite):** the *published PyPI*
+     README must contain the line
+     `mcp-name: io.github.aimasteracc/tree-sitter-analyzer`
+     or `mcp-publisher publish` fails ownership verification with an opaque
+     error. The marker must be on PyPI *before* publishing to the registry, so a
+     new PyPI release is required if it is missing.
+     Ref: <https://modelcontextprotocol.io/registry/package-types#pypi-packages>
+   - Then, from the repo root: `mcp-publisher login github` → `mcp-publisher publish`
+     (install via `brew install modelcontextprotocol/tap/mcp-publisher` or the
+     binary from the registry releases page).
+   - Verify at
+     <https://registry.modelcontextprotocol.io/servers/io.github.aimasteracc%2Ftree-sitter-analyzer>
+     that `name`, `version`, and `packages` match `server.json`.
+5. Finalization complete = release closed = develop unfreezes.
 
 **Past incident (2026-05-31):** merged release/v1.17.0 → main immediately after the Release Automation `Finalize Release` step failed — before confirming PyPI had published and before README numbers were verified. The correct order is: wait for PyPI ✓, fix README, then merge.
 
