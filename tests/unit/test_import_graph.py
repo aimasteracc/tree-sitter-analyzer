@@ -115,6 +115,42 @@ class TestResolveJsImport:
             ROOT,
         ) == _np("src/widget/index.js")
 
+    def test_mts_sibling_resolution(self) -> None:
+        """An extensionless import must probe the ``.mts`` sibling."""
+        assert _resolve_js_import(
+            "import { run } from './util'",
+            _np("src/app.mts"),
+            {_np("src/util.mts")},
+            ROOT,
+        ) == _np("src/util.mts")
+
+    def test_mjs_sibling_resolution(self) -> None:
+        """An extensionless import must probe the ``.mjs`` sibling."""
+        assert _resolve_js_import(
+            "import { run } from './util'",
+            _np("src/app.mjs"),
+            {_np("src/util.mjs")},
+            ROOT,
+        ) == _np("src/util.mjs")
+
+    def test_cts_sibling_resolution(self) -> None:
+        """An extensionless import must probe the ``.cts`` sibling."""
+        assert _resolve_js_import(
+            "const u = require('./util')",
+            _np("src/app.cts"),
+            {_np("src/util.cts")},
+            ROOT,
+        ) == _np("src/util.cts")
+
+    def test_cjs_index_resolution(self) -> None:
+        """A directory import must probe ``<dir>/index.cjs``."""
+        assert _resolve_js_import(
+            "const w = require('./widget')",
+            _np("src/app.cjs"),
+            {_np("src/widget/index.cjs")},
+            ROOT,
+        ) == _np("src/widget/index.cjs")
+
     def test_bare_module_not_resolved(self) -> None:
         assert (
             _resolve_js_import(

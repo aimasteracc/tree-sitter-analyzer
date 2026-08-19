@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from .callee_resolution import CalleeResolver
+from .constants import JS_TS_MODULE_EXTS_LONGEST_FIRST
 
 logger = logging.getLogger(__name__)
 
@@ -245,7 +246,9 @@ class CrossFileResolver:
                 if short not in self._module_to_file:
                     self._module_to_file[short] = fp
         elif language in ("javascript", "typescript"):
-            for ext in (".js", ".jsx", ".ts", ".tsx"):
+            # Longest-first: ``"util.mts".endswith(".ts")`` is True, so a
+            # shortest-first scan registers ``util.mts`` as module ``util.m``.
+            for ext in JS_TS_MODULE_EXTS_LONGEST_FIRST:
                 if parts.endswith(ext):
                     ext_len = len(ext)
                     mod = parts[:-ext_len].replace("/", ".")

@@ -99,6 +99,44 @@ class TestCrossFileResolverBuild:
         assert "utils" in mod_paths
 
 
+class TestRegisterNodeModulePaths:
+    """``_register_module_path`` must strip the full Node module suffix.
+
+    ``"src/util.mts".endswith(".ts")`` is True, so a probe table that lists
+    ``.ts`` before ``.mts`` mangles the module name into ``src.util.m`` and
+    every ``./util`` import against it fails to resolve.
+    """
+
+    @staticmethod
+    def _register(fp: str, language: str) -> dict[str, str]:
+        resolver = CrossFileResolver(None)
+        resolver._register_module_path(fp, language)
+        return resolver._module_to_file
+
+    def test_mts_dotted_module_name(self):
+        assert (
+            self._register("src/util.mts", "typescript")["src.util"] == "src/util.mts"
+        )
+
+    def test_mts_short_module_name(self):
+        assert self._register("src/util.mts", "typescript")["util"] == "src/util.mts"
+
+    def test_cts_dotted_module_name(self):
+        assert (
+            self._register("src/util.cts", "typescript")["src.util"] == "src/util.cts"
+        )
+
+    def test_mjs_dotted_module_name(self):
+        assert (
+            self._register("src/util.mjs", "javascript")["src.util"] == "src/util.mjs"
+        )
+
+    def test_cjs_dotted_module_name(self):
+        assert (
+            self._register("src/util.cjs", "javascript")["src.util"] == "src/util.cjs"
+        )
+
+
 class TestCrossFileResolution:
     def test_resolve_same_file_callee(self, multi_file_project):
         _project, cache = multi_file_project

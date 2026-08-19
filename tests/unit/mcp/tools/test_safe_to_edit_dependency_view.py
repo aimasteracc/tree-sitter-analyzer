@@ -312,6 +312,34 @@ def test_iter_dependency_source_files_skips_hidden_files(tmp_path: Path) -> None
     assert [path.name for path in files] == ["main.py"]
 
 
+def test_dynamic_import_plain_string_yields_spec() -> None:
+    assert _extract_import_specs('import("./dev.js");\n', ".js") == {"./dev.js"}
+
+
+def test_dynamic_import_with_options_object_yields_spec() -> None:
+    source = 'import("./dev.js", { with: { type: "json" } });\n'
+    assert _extract_import_specs(source, ".js") == {"./dev.js"}
+
+
+def test_dynamic_import_with_concatenated_suffix_yields_no_spec() -> None:
+    """A computed specifier must not be recorded by its literal prefix.
+
+    ``import("./dev.js" + suffix)`` selects a module that is unknowable
+    statically. Recording ``./dev.js`` invents an edge that is wrong AND
+    hides the real one, so the prefix must not be admitted at all.
+    """
+    assert _extract_import_specs('import("./dev.js" + suffix);\n', ".js") == set()
+
+
+def test_dynamic_import_template_literal_yields_spec() -> None:
+    assert _extract_import_specs("import(`./dev.js`);\n", ".js") == {"./dev.js"}
+
+
+def test_dynamic_import_template_literal_with_concat_yields_no_spec() -> None:
+    """The template-literal branch has the same computed-prefix hole."""
+    assert _extract_import_specs("import(`./dev.js` + suffix);\n", ".js") == set()
+
+
 def test_import_spec_helpers_cover_unsupported_and_unresolved_cases(
     tmp_path: Path,
 ) -> None:

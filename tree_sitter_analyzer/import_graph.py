@@ -21,6 +21,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from .constants import JS_TS_INDEX_SUFFIXES, JS_TS_MODULE_EXTS
+
 logger = logging.getLogger(__name__)
 
 _PY_FROM_IMPORT_RE = re.compile(r"^from\s+(?P<module>[a-zA-Z_][\w.]*)(?:\s+import\s+)")
@@ -260,7 +262,7 @@ def _resolve_js_import(
     req_path = m.group("path")
     candidate = os.path.normpath(os.path.join(src_dir, req_path))
 
-    for suffix in ("", ".js", ".ts", ".jsx", ".tsx", "/index.js", "/index.ts"):
+    for suffix in ("", *JS_TS_MODULE_EXTS, *JS_TS_INDEX_SUFFIXES):
         test = candidate + suffix
         test = os.path.normpath(test)
         if test in project_files:
