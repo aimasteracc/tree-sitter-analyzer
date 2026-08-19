@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 
+from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.import_graph import (
     ImportEdge,
     ImportGraph,
@@ -264,6 +265,133 @@ class TestImportGraphBuild:
         assert result.edge_count == 1
         assert result.edges[0].source_file == "a.py"
         assert result.edges[0].target_file == "b.py"
+
+    def test_build_resolves_esm_import_from_mts_file(self, monkeypatch) -> None:
+        """PUBLIC API: an ESM import in a .mts file must produce an edge.
+
+        Regression for the Codex finding on #1312: ``_resolve_import``
+        dispatched on the text prefix, and ``import { run } from './util'``
+        starts with ``import `` — so ESM statements were routed to the PYTHON
+        resolver and never reached ``_resolve_js_import``. Unit tests on the
+        private helper passed while ``health action=imports`` still dropped
+        every ESM edge, which is the dominant form in .mjs/.mts files.
+        """
+        imports = {
+            "src/app.mts": ["import { run } from './util'"],
+            "src/util.mts": [],
+        }
+
+        class _FakeCache:
+            def __init__(self, root: str) -> None:
+                pass
+
+            def get_imports(self) -> dict[str, list[str]]:
+                return imports
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr("tree_sitter_analyzer.ast_cache.ASTCache", _FakeCache)
+        result = ImportGraph(ROOT).build()
+
+        assert result.edge_count == 1
+        assert result.edges[0].target_file == "src/util.mts"
+
+    def test_build_resolves_esm_import_from_mjs_file(self, monkeypatch) -> None:
+        """PUBLIC API: same dispatch path for the .mjs/JavaScript family."""
+        imports = {
+            "src/app.mjs": ["import { run } from './util'"],
+            "src/util.mjs": [],
+        }
+
+        class _FakeCache:
+            def __init__(self, root: str) -> None:
+                pass
+
+            def get_imports(self) -> dict[str, list[str]]:
+                return imports
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr("tree_sitter_analyzer.ast_cache.ASTCache", _FakeCache)
+        result = ImportGraph(ROOT).build()
+
+        assert result.edge_count == 1
+        assert result.edges[0].target_file == "src/util.mjs"
+
+    def test_build_still_resolves_python_import_from_py_file(self, monkeypatch) -> None:
+        """Guard: language-based dispatch must not break Python resolution."""
+        imports = {
+            "pkg/a.py": ["from pkg.b import thing"],
+            "pkg/b.py": [],
+        }
+
+        class _FakeCache:
+            def __init__(self, root: str) -> None:
+                pass
+
+            def get_imports(self) -> dict[str, list[str]]:
+                return imports
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr("tree_sitter_analyzer.ast_cache.ASTCache", _FakeCache)
+        result = ImportGraph(ROOT).build()
+
+        assert result.edge_count == 1
+        assert result.edges[0].target_file == "pkg/b.py"
+
+    def test_build_over_real_indexed_mts_project_produces_edge(self, tmp_path) -> None:
+        """END-TO-END: real ASTCache index, no fake cache, no path massaging.
+
+        This is the test that actually proves the feature. The fake-cache tests
+        above passed while ``ImportGraph`` still produced ZERO edges against a
+        real index, because the cache keys paths POSIX-style while both
+        resolvers built candidates with ``os.path.normpath`` (backslashes on
+        Windows) — so every nested project resolved to nothing. Asserting
+        through the real indexer is what surfaced it. (#1312 Codex follow-up.)
+        """
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "util.mts").write_text(
+            "export function run(v: number): number {\n    return v + 1;\n}\n"
+        )
+        (tmp_path / "src" / "app.mts").write_text(
+            'import { run } from "./util";\nexport function main() {\n'
+            "    return run(1);\n}\n"
+        )
+
+        cache = ASTCache(str(tmp_path))
+        cache.index_project(max_files=50)
+        cache.close()
+
+        result = ImportGraph(str(tmp_path)).build()
+
+        assert result.edge_count == 1
+        assert result.edges[0].source_file == "src/app.mts"
+        assert result.edges[0].target_file == "src/util.mts"
+
+    def test_build_over_real_indexed_nested_python_produces_edge(
+        self, tmp_path
+    ) -> None:
+        """END-TO-END guard: the same separator fix must keep Python working."""
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "__init__.py").write_text("")
+        (tmp_path / "pkg" / "b.py").write_text("def bar():\n    return 1\n")
+        (tmp_path / "pkg" / "a.py").write_text(
+            "from pkg.b import bar\n\n\ndef foo():\n    return bar()\n"
+        )
+
+        cache = ASTCache(str(tmp_path))
+        cache.index_project(max_files=50)
+        cache.close()
+
+        result = ImportGraph(str(tmp_path)).build()
+
+        assert result.edge_count == 1
+        assert result.edges[0].source_file == "pkg/a.py"
+        assert result.edges[0].target_file == "pkg/b.py"
 
     def test_build_handles_cache_failure_gracefully(self, monkeypatch) -> None:
         class _BoomCache:

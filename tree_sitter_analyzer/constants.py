@@ -220,6 +220,12 @@ JS_TS_MODULE_EXTS: tuple[str, ...] = (
     ".cts",
 )
 
+# ``EXT_TO_LANG`` language names that share the Node/TypeScript module system.
+# Use this to dispatch import resolution on the SOURCE FILE's language — never
+# on the statement text. ``import `` opens both a Python import and an ESM
+# import, so a text sniff cannot tell them apart.
+JS_TS_LANGUAGES: frozenset[str] = frozenset({"javascript", "typescript"})
+
 # ``./widget`` → ``widget/index.<ext>`` probe forms, one per module extension.
 JS_TS_INDEX_SUFFIXES: tuple[str, ...] = tuple(
     f"/index{ext}" for ext in JS_TS_MODULE_EXTS

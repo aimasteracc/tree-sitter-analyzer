@@ -21,7 +21,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from .constants import JS_TS_INDEX_SUFFIXES, JS_TS_MODULE_EXTS
+from .constants import (
+    JS_TS_INDEX_SUFFIXES,
+    JS_TS_LANGUAGES,
+    JS_TS_MODULE_EXTS,
+)
+from .languages.lang_extension_map import EXT_TO_LANG
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +185,27 @@ class ImportGraphResult:
         }
 
 
+def _file_lookup(project_files: set[str]) -> dict[str, str]:
+    """Index ``project_files`` by separator-agnostic key → original key.
+
+    The AST cache stores ``file_path`` POSIX-style (forward slashes) while both
+    resolvers build candidates with ``os.path.join``/``normpath``, which emits
+    backslashes on Windows. The membership test therefore never matched for any
+    project with a subdirectory, so ``ImportGraph`` produced ZERO edges on
+    Windows for both Python and JS/TS. Linux CI could not see it because
+    ``normpath`` is already POSIX there. (Found while writing the public-API
+    end-to-end test for #1312.)
+
+    Values are the ORIGINAL keys so returned edges reference real cache paths.
+    """
+    return {path.replace("\\", "/"): path for path in project_files}
+
+
+def _match_file(candidate: str, lookup: dict[str, str]) -> str | None:
+    """Return the project file matching ``candidate``, ignoring separator style."""
+    return lookup.get(os.path.normpath(candidate).replace("\\", "/"))
+
+
 def _resolve_python_import(
     import_text: str,
     source_file: str,
@@ -187,6 +213,7 @@ def _resolve_python_import(
     project_root: str,
 ) -> str | None:
     """Resolve a Python import statement to a project-relative file path."""
+    lookup = _file_lookup(project_files)
     rel_src = (
         os.path.relpath(source_file, project_root)
         if os.path.isabs(source_file)
@@ -207,14 +234,10 @@ def _resolve_python_import(
                 test = candidate + os.sep + "__init__.py"
             else:
                 test = candidate + suffix
-            test = os.path.normpath(test)
-            if test in project_files:
-                return test
-        test_pkg = os.path.join(candidate, "__init__.py")
-        test_pkg = os.path.normpath(test_pkg)
-        if test_pkg in project_files:
-            return test_pkg
-        return None
+            hit = _match_file(test, lookup)
+            if hit is not None:
+                return hit
+        return _match_file(os.path.join(candidate, "__init__.py"), lookup)
 
     m = _PY_FROM_IMPORT_RE.match(import_text)
     if not m:
@@ -228,17 +251,11 @@ def _resolve_python_import(
         return None
 
     parts = module.split(".")
-    candidate = os.path.join(*parts) + ".py"
-    candidate = os.path.normpath(candidate)
-    if candidate in project_files:
-        return candidate
+    hit = _match_file(os.path.join(*parts) + ".py", lookup)
+    if hit is not None:
+        return hit
 
-    candidate_pkg = os.path.join(*parts, "__init__.py")
-    candidate_pkg = os.path.normpath(candidate_pkg)
-    if candidate_pkg in project_files:
-        return candidate_pkg
-
-    return None
+    return _match_file(os.path.join(*parts, "__init__.py"), lookup)
 
 
 def _resolve_js_import(
@@ -262,11 +279,11 @@ def _resolve_js_import(
     req_path = m.group("path")
     candidate = os.path.normpath(os.path.join(src_dir, req_path))
 
+    lookup = _file_lookup(project_files)
     for suffix in ("", *JS_TS_MODULE_EXTS, *JS_TS_INDEX_SUFFIXES):
-        test = candidate + suffix
-        test = os.path.normpath(test)
-        if test in project_files:
-            return test
+        hit = _match_file(candidate + suffix, lookup)
+        if hit is not None:
+            return hit
     return None
 
 
@@ -331,6 +348,27 @@ class ImportGraph:
         return self._make_result()
 
     def _resolve_import(self, import_text: str, source_file: str) -> str | None:
+        """Route an import statement to the resolver for its SOURCE language.
+
+        Dispatch is on the source file's language, never on the statement text.
+        ``import `` is ambiguous — it opens both a Python import and an ESM
+        import — so a text-prefix check sent every ESM statement
+        (``import { run } from './util'``) to the Python resolver, and the JS
+        branch was reachable only via ``require(...)``. That made the JS
+        extension probe dead code for exactly the .mjs/.mts files it exists
+        to serve. (Codex review on #1312.)
+        """
+        language = EXT_TO_LANG.get(os.path.splitext(source_file)[1].lower(), "")
+        if language in JS_TS_LANGUAGES:
+            return _resolve_js_import(
+                import_text, source_file, self._project_files, self.project_root
+            )
+        if language == "python":
+            return _resolve_python_import(
+                import_text, source_file, self._project_files, self.project_root
+            )
+        # Unknown/unmapped extension — fall back to the historical text sniff
+        # so languages without an entry in EXT_TO_LANG keep resolving.
         if import_text.startswith("from ") or import_text.startswith("import "):
             return _resolve_python_import(
                 import_text, source_file, self._project_files, self.project_root

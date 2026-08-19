@@ -24,9 +24,43 @@ from pathlib import Path
 from typing import Any
 
 from .callee_resolution import CalleeResolver
-from .constants import JS_TS_MODULE_EXTS_LONGEST_FIRST
+from .constants import (
+    JS_TS_INDEX_SUFFIXES,
+    JS_TS_LANGUAGES,
+    JS_TS_MODULE_EXTS,
+    JS_TS_MODULE_EXTS_LONGEST_FIRST,
+)
+from .languages.lang_extension_map import EXT_TO_LANG
 
 logger = logging.getLogger(__name__)
+
+#: Extension probes for a relative-module lookup, chosen by the IMPORTING
+#: file's language. Kept as two disjoint lists on purpose: a Python file must
+#: never probe ``.mts``, and a ``.mts`` file must never probe ``__init__.py``.
+#: The JS/TS list was previously the Python one (``.js``/``.ts`` only), so
+#: ``./util`` from a ``.mts`` file never found ``util.mts`` even though
+#: ``_register_module_path`` had registered it. (Codex review on #1312.)
+_JS_TS_RELATIVE_PROBE_EXTS: tuple[str, ...] = (
+    "",
+    *JS_TS_MODULE_EXTS,
+    *JS_TS_INDEX_SUFFIXES,
+)
+_DEFAULT_RELATIVE_PROBE_EXTS: tuple[str, ...] = (
+    "",
+    ".py",
+    ".js",
+    ".ts",
+    "/__init__.py",
+)
+
+
+def _relative_probe_exts(source_file: str) -> tuple[str, ...]:
+    """Return the extension probe list for ``source_file``'s language."""
+    language = EXT_TO_LANG.get(os.path.splitext(source_file)[1].lower(), "")
+    if language in JS_TS_LANGUAGES:
+        return _JS_TS_RELATIVE_PROBE_EXTS
+    return _DEFAULT_RELATIVE_PROBE_EXTS
+
 
 _PY_FROM_IMPORT_RE = re.compile(r"^from\s+([\w.]+)\s+import\s+(.+)$", re.MULTILINE)
 _PY_IMPORT_RE = re.compile(r"^import\s+([\w.]+)", re.MULTILINE)
@@ -437,7 +471,7 @@ class CrossFileResolver:
         if is_relative and source_file:
             source_dir = str(Path(source_file).parent)
             candidate = source_dir + "/" + module_path.lstrip("./").replace(".", "/")
-            for ext in ("", ".py", ".js", ".ts", "/__init__.py"):
+            for ext in _relative_probe_exts(source_file):
                 check = candidate + ext
                 if check in self._module_to_file:
                     return self._module_to_file[check]
