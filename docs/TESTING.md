@@ -160,7 +160,11 @@ uv run pytest tests/benchmarks/ -m benchmark --benchmark-enable --benchmark-only
 
 ### Test File Naming
 
-- Unit test files: `test_<module>_comprehensive.py` or `test_<module>.py`
+- Unit test files: `test_<module>.py` — one file per module.
+  Do NOT create a second file for an existing module. Rule T-1 is a
+  BLOCKER and the `block-banned-test-names` hook rejects the
+  `*_comprehensive*`, `*_edge_cases*`, `*_coverage*`, `*_extended*`, and
+  `*_optimized*` name patterns outright. Add to the existing file instead.
 - Integration tests: `test_<feature>_integration.py`
 - End-to-end tests: `test_<workflow>_e2e.py`
 
@@ -385,7 +389,7 @@ uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=term-missing
 
 ```bash
 # Single file
-uv run pytest tests/unit/test_exceptions_comprehensive.py
+uv run pytest tests/unit/test_exceptions_core.py
 
 # Multiple files
 uv run pytest tests/unit/test_*.py
@@ -395,10 +399,10 @@ uv run pytest tests/unit/test_*.py
 
 ```bash
 # Specific class
-uv run pytest tests/unit/test_exceptions_comprehensive.py::TestAnalysisError
+uv run pytest tests/unit/test_exceptions_core.py::TestTreeSitterAnalyzerError
 
 # Specific test
-uv run pytest tests/unit/test_exceptions_comprehensive.py::TestAnalysisError::test_initialization_with_all_parameters
+uv run pytest tests/unit/test_exceptions_core.py::TestTreeSitterAnalyzerError::test_message_and_error_code
 ```
 
 ### Run Tests by Marker
@@ -489,7 +493,7 @@ def mock_analyzer():
 def test_with_fixtures(sample_code, mock_analyzer):
     """Test using fixtures."""
     result = mock_analyzer.analyze(sample_code)
-    assert result is not None
+    assert result.language == "python"
 ```
 
 ### 3. Test Error Conditions
@@ -552,7 +556,7 @@ import pytest
 async def test_async_function():
     """Test async function."""
     result = await async_function()
-    assert result is not None
+    assert result.status == "ok"
 ```
 
 ### 7. Clean Up Resources
@@ -639,7 +643,7 @@ def test_python_function_analysis(tmp_path):
         expected_language="python",
         require_success=True
     )
-    assert len(result["elements"]["functions"]) >= 1
+    assert len(result["elements"]["functions"]) == 2
 ```
 
 ---
