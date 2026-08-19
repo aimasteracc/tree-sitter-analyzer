@@ -55,8 +55,6 @@ For the project overview and install-and-go instructions, see the
 | Doc | What it covers |
 |---|---|
 | [TESTING.md](TESTING.md) | Testing overview |
-| [testing-guide.md](testing-guide.md) | How to run and structure tests |
-| [test-writing-guide.md](test-writing-guide.md) | Writing effective tests |
 | [regression-testing-guide.md](regression-testing-guide.md) | Golden-master regression tests |
 | [grammar-coverage-framework.md](grammar-coverage-framework.md) | Grammar coverage framework |
 | [mcp_compatibility_test_standard.md](mcp_compatibility_test_standard.md) | MCP compatibility test standard |
@@ -68,7 +66,6 @@ For the project overview and install-and-go instructions, see the
 |---|---|
 | [ci-cd-overview.md](ci-cd-overview.md) | CI/CD pipeline overview |
 | [ci-cd-troubleshooting.md](ci-cd-troubleshooting.md) | Fixing CI failures |
-| [ci-cd-migration-guide.md](ci-cd-migration-guide.md) | CI/CD migration notes |
 | [ci-cd-secrets-reference.md](ci-cd-secrets-reference.md) | Required CI secrets |
 
 ## Operations & History
@@ -79,3 +76,12 @@ For the project overview and install-and-go instructions, see the
 | [POSTMORTEM_v1.13.md](POSTMORTEM_v1.13.md) | v1.13 release postmortem (anti-patterns referenced by AGENTS.md) |
 | [AUTONOMOUS_DEV.md](AUTONOMOUS_DEV.md) | Autonomous-development workflow notes |
 | [agent-tooling-gap-report.md](agent-tooling-gap-report.md) | Agent tooling gap analysis |
+
+## Vision & Articles
+
+| Doc | What it covers |
+|---|---|
+| [VISION-proprioception-scenarios.md](VISION-proprioception-scenarios.md) | TSA as proprioception for AI agents — scenarios A–E (design lives in `rfcs/0025`) |
+| [articles/polyglot-miswire-article.md](articles/polyglot-miswire-article.md) | Cross-language miswire detection |
+| [articles/ast-oracle-shootout.md](articles/ast-oracle-shootout.md) | AST oracle comparison |
+| [articles/security-posture.md](articles/security-posture.md) | Security posture walkthrough |
