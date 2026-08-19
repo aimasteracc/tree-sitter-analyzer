@@ -5,10 +5,15 @@
 - **Created**: 2026-08-19
 - **Last updated**: 2026-08-19
 - **Tracking issue**: TBD
-- **Relationship to other RFCs**: complements [RFC-0025](0025-instant-causal-proprioception.md)
-  (the *sensing* layers L1–L5). This RFC specifies the layers *above* sensing:
-  L6–L10. It does not restate or modify RFC-0025's design; where it depends on a
-  RFC-0025 layer, the dependency is named explicitly.
+- **Relationship to other RFCs**:
+  - complements [RFC-0025](0025-instant-causal-proprioception.md) (the *sensing*
+    layers L1–L5). This RFC specifies the layers *above* sensing: L6–L10. It does
+    not restate or modify RFC-0025's design; where it depends on a RFC-0025
+    layer, the dependency is named explicitly.
+  - §L10 **supersedes [RFC-0016](0016-semantic-symbol-search.md) conditionally**.
+    RFC-0016 was rejected on measured evidence (2026-06-13 embedding pilot,
+    2/5 on the conceptual-gap gate). L10 may only proceed after a re-pilot
+    passes; see §L10 for the blocking precondition.
 - **Affected source paths** (pin them — reviewers watch for drift here):
   - `tree_sitter_analyzer/cache/answer_cache.py` (new — L6)
   - `tree_sitter_analyzer/mcp/tools/get_project_summary_tool.py` (L7 — currently unreachable)
@@ -120,8 +125,10 @@ class AnswerKey:
 
     tool: str
     action: str
-    normalized_args: str   # canonical JSON, keys sorted, project-relative paths
-    generation: str        # e.g. "idxsrc-v3:..."
+    normalized_args: str    # canonical JSON, keys sorted, project-relative paths
+    generation: str         # source-tree state, e.g. "idxsrc-v3:..."
+    producer_version: str   # action_version + schema version + resolver-rule digest
+    extra_inputs: str       # digest of declared non-source inputs (config, constraints)
 
 
 def lookup(key: AnswerKey) -> CachedAnswer | None:
@@ -134,19 +141,36 @@ def lookup(key: AnswerKey) -> CachedAnswer | None:
     """
 ```
 
+The key deliberately has **three** independent components, not one. The
+`generation` alone is not sufficient: the same source tree can produce a
+different answer after a TSA upgrade, an `action_version` bump, a resolver-rule
+change, or an edit to `architectural-constraints.yml`. A key that omits those
+would replay a stale verdict under an old schema after an upgrade — the cache
+would be silently serving the previous release's opinion.
+
 Rules (all fail-closed):
 
-1. **Only certified answers are cached.** An answer whose freshness is
+1. **Read-only actions only.** An action is cacheable only if it is registered
+   in an explicit `CACHEABLE_ACTIONS` allowlist, and an action may only enter
+   that allowlist if it performs no filesystem write, no index mutation, no
+   lease acquisition, and no ledger append. Index-lifecycle, doc-sync,
+   snapshot-acquire, and `record_outcome` routes are structurally excluded. A
+   contract test asserts the allowlist is a subset of the actions a
+   side-effect audit marks pure — the allowlist may never be edited by hand
+   alone. (Without this, a cache hit would return the previous answer *without
+   performing the requested side effect*.)
+2. **Only certified answers are cached.** An answer whose freshness is
    `stale`, `missing`, or `unknown` is never stored.
-2. **Whole-cache eviction on generation bump.** No partial invalidation. Partial
-   invalidation would require proving which answers a file change can affect —
-   which is exactly the unresolved-edge problem, so it cannot be proved sound.
-3. **Bounded**: `ANSWER_CACHE_BUDGET_MB` (default 128 MiB), LRU eviction,
+3. **Whole-cache eviction on any key-component bump.** No partial invalidation.
+   Partial invalidation would require proving which answers a file change can
+   affect — which is exactly the unresolved-edge problem, so it cannot be
+   proved sound.
+4. **Bounded**: `ANSWER_CACHE_BUDGET_MB` (default 128 MiB), LRU eviction,
    mirroring the RFC-0022 P0.1 registry's boundedness style.
-4. **A cache hit is visible.** The response carries
-   `provenance.served_from = "cache" | "computed"` and the generation. An agent
-   must always be able to tell. A cache that lies about freshness is worse than
-   no cache.
+5. **A cache hit is visible.** The response carries
+   `provenance.served_from = "cache" | "computed"` and all key components. An
+   agent must always be able to tell. A cache that lies about freshness is
+   worse than no cache.
 
 **Completion criterion (measurable, exact pins — no `>=` bounds):** on the
 dogfood corpus, a repeat `edit action=safe` on an unchanged generation is served
@@ -175,11 +199,27 @@ observation exists. It is never a hardcoded guess.
 
 #### L6.3 Stable cross-turn identities
 
-Every returned symbol, edge, and finding carries a stable short id
-(`sym:7f3a2c`, `edge:91b0`) derived from the RFC-0023 identity scheme. An agent
-in turn N+1 references `sym:7f3a2c` instead of re-describing the symbol. This is
-a token-cost reduction, and it is a *correctness* improvement: re-description is
-where an agent silently substitutes a different symbol.
+Every returned symbol, edge, and finding carries a stable id derived from the
+RFC-0023 identity scheme. An agent in turn N+1 references the id instead of
+re-describing the symbol. This is a token-cost reduction, and it is a
+*correctness* improvement: re-description is where an agent silently
+substitutes a different symbol.
+
+**The short form is a display abbreviation, never the identity.** A naive
+6-hex-digit id is 24 bits; the birthday bound puts a 50% collision probability
+at roughly **4,800 symbols**, so on any repository at the RFC-0025 target scale
+(100k symbols) collisions are effectively certain, and an agent resolving
+`sym:7f3a2c` in a later turn would silently get the wrong symbol. The rule
+instead follows git's abbreviated-hash discipline:
+
+- the **canonical id is the full RFC-0023 identity** and is always present in
+  the response;
+- the abbreviation is lengthened until it is unique **within the emitting
+  project index**, never merely within the response payload;
+- a minimum width is enforced, and resolution of an abbreviation that has since
+  become ambiguous fails closed with `SYMBOL_ID_AMBIGUOUS` listing the
+  candidates — it never silently picks one;
+- a contract test asserts abbreviation-uniqueness on the largest fixture corpus.
 
 ### L7 — Comprehension surfaces
 
@@ -218,10 +258,19 @@ def start_here_score(f: FileFacts) -> float:
 
 ### L8 — Judgment surfaces
 
-1. **Register the minimal-edit-set engine.** `codegraph_refactor_tool` +
-   `rename_symbol` already compute a true minimal rename edit set with 15
-   passing tests. Expose as `edit action=plan_rename` (MCP) / `--plan-rename`
-   (CLI). This is wiring plus a parity test.
+1. **Register the minimal-edit-set engine, preview-only.**
+   `codegraph_refactor_tool` + `rename_symbol` already compute a true minimal
+   rename edit set with 15 passing tests. Expose as `edit action=plan_rename`
+   (MCP) / `--plan-rename` (CLI).
+
+   The underlying tool supports **both preview and apply** modes. `plan_rename`
+   names a planning operation and users will reasonably assume it cannot write.
+   Therefore the binding MUST pin `mode="preview"` internally and **reject**
+   any apply-like argument with a stable error rather than forwarding it — the
+   mode is not a caller-supplied parameter at this surface at all. A contract
+   test asserts that no filesystem write occurs on any `plan_rename` input,
+   including adversarial ones that attempt to smuggle an apply flag through.
+   Applying a rename stays on the existing write-intent surface.
 2. **Implement the refactor queue in code.** `(1 - health) * log(1 + churn) *
    dead_ratio` currently exists only in a markdown skill. Move it into
    `tree_sitter_analyzer/` with exact-value tests. A formula that lives only in
@@ -270,13 +319,41 @@ result and records what *actually* happened:
 @dataclass(frozen=True)
 class Outcome:
     prediction_id: str
-    actually_changed: frozenset[str]   # from the real diff
-    actually_failed: frozenset[str]    # from the real test run
+    actually_changed: frozenset[str]    # from the real diff
+    tests_executed: frozenset[str]      # every test the runner actually ran
+    tests_failed: frozenset[str]        # subset of tests_executed that failed
+    verification_passed: bool           # did the emitted verification command pass
+    escaped_allowed_paths: frozenset[str]  # writes outside the declared allowlist
     observed_at_ns: int
 ```
 
 Ingestion is explicit (`index action=record_outcome`), never scraped. An outcome
 with no matching prediction is rejected, not guessed at.
+
+**Why `tests_executed` and not only failures.** The actual set for
+`kind="exercising_tests"` is the set of tests that genuinely exercise the
+symbol — which is what *ran and was relevant*, not what happened to break. A
+successful verification has an empty failure set even when the prediction was
+exactly right, so scoring against failures alone would make recall undefined on
+every green run and would score correct predictions as false positives. The
+comparison set is `tests_executed`; `tests_failed` is retained because a
+predicted test that *failed* is the strongest possible confirmation and is
+reported separately.
+
+**Why the two extra fields.** `kind="risk_verdict"` predicts a safety judgment,
+and a judgment needs an observed judgment to score against. The observed
+outcome for a risk verdict is derived, by a table pinned in this RFC, from
+`verification_passed` and `escaped_allowed_paths`:
+
+| observed | condition |
+|---|---|
+| `benign` | verification passed and nothing escaped the allowed paths |
+| `harmful` | verification failed, or a write escaped the allowed paths |
+| `indeterminate` | verification was not run, or the outcome is incomplete |
+
+`indeterminate` outcomes are excluded from the risk-verdict denominator and
+counted separately, so an unrun verification can never be laundered into either
+a good or a bad score.
 
 #### L9.3 Calibration is computed and published
 
@@ -289,6 +366,24 @@ per `kind`, per project. Surfaced by `--self-health` (RFC-0025 L5) and pinned in
 CI on the dogfood corpus. **Recall is the honesty metric**: a missed dependent is
 a wrong edit; a spurious one is only wasted tokens. Recall regressions are a
 release blocker; precision regressions are not.
+
+**Empty-set semantics are pinned here, not left to the implementation.** Both
+formulas have a zero-denominator case, and a metric that a release gate depends
+on may not be allowed to emit `NaN` or to differ between implementations:
+
+| case | precision | recall | counted in the aggregate? |
+|---|---|---|---|
+| `predicted` empty, `actual` empty | `1.0` | `1.0` | **no** — recorded as `trivial` |
+| `predicted` empty, `actual` non-empty | `None` | `0.0` | yes (a total miss) |
+| `predicted` non-empty, `actual` empty | `0.0` | `None` | yes (a total false alarm) |
+| both non-empty | as above | as above | yes |
+
+`None` means *undefined for this observation* and is excluded from that metric's
+aggregate while still being counted in the observation total, so the aggregate
+can never be inflated by dropping inconvenient rows. `trivial` observations
+(nothing predicted, nothing happened) are reported with their own count so that
+a ledger dominated by no-op changes is visibly distinguishable from one with
+real signal — otherwise a project with no activity would show a perfect score.
 
 #### L9.4 What learning may and may not do — the soundness fence
 
@@ -328,7 +423,41 @@ Consequences that MUST be handled:
 - Gitignored by default. Sharing a ledger across a team is a **separate future
   RFC**; it raises provenance and trust questions this RFC does not answer.
 
-### L10 — Semantic index
+### L10 — Semantic index (supersedes RFC-0016; gated on a re-pilot)
+
+**RFC-0016 proposed embedding-backed semantic symbol search and was REJECTED on
+measured evidence** (2026-06-13): an embedding pilot at deployment scale scored
+2/5 on the conceptual-gap gate, after stemming (#606), demotion (#609) and
+BM25-docstring (#621) were each measured first. Pilot report:
+`.recon/rfc0016-pilot-step2-embeddings.md`; decision thread #517.
+
+This RFC does not get to quietly reintroduce that design. Two things differ, and
+only one of them is an argument:
+
+- **Not an argument**: nothing in this RFC makes embeddings retrieve better.
+  The measurement that killed RFC-0016 is about retrieval quality and it still
+  stands.
+- **The actual difference**: RFC-0016 positioned semantic search as a *retrieval
+  surface* competing with BM25 on top-5 hit rate. L10 positions it as a
+  **subordinate discovery aid** whose output can never be an answer by itself —
+  it proposes candidates that resolved evidence must then confirm. A recall-ish
+  aid that surfaces one extra true candidate has value even when its ranking
+  loses to BM25, because the confirmation step removes the false ones.
+
+That is a *hypothesis*, not a result. Under CLAUDE.md §11 it stays a belief
+until measured, so:
+
+> **L10 acceptance precondition (blocking).** Before any L10 implementation
+> merges, re-run the RFC-0016 pilot harness, unchanged, plus one added
+> measurement for the new positioning: *does adding subordinate similarity
+> candidates to a resolved-evidence workflow increase the number of true
+> candidates found, at an acceptable confirmation cost, versus BM25 alone?*
+> If it does not, **L10 is rejected with the new data attached** and the rest of
+> RFC-0027 ships without it. That outcome is explicitly acceptable and cheap —
+> exactly the disposition RFC-0016 itself took.
+
+RFC-0016's status changes to `superseded by RFC-0027` only if the re-pilot
+passes; if it fails, RFC-0016 stays `rejected` and this section is struck.
 
 The module named `semantic_search.py` is today a `collections.Counter`
 term-count cosine over **identifier tokens only** — it never reads a body, and
@@ -437,6 +566,19 @@ Unit:
    `causal_envelope`. This test must exist before any learning code is written.
 10. `search action=similar` returns exactly `SEMANTIC_INDEX_UNAVAILABLE` when
     the optional dependency is absent.
+11. A `producer_version` bump at an unchanged `generation` misses the cache
+    (the upgrade-replay case).
+12. A mutating action is absent from `CACHEABLE_ACTIONS`, and the allowlist is
+    a subset of the audited side-effect-free set.
+13. `plan_rename` performs zero filesystem writes on adversarial input that
+    attempts to smuggle an apply flag.
+14. An ambiguous id abbreviation returns exactly `SYMBOL_ID_AMBIGUOUS` with the
+    candidate list, and never resolves to one of them.
+15. `exercising_tests` recall on an all-green verification is scored against
+    `tests_executed` and is exactly `1.0` when the prediction was exact
+    (the case that would be undefined if scored against failures).
+16. Each row of the risk-verdict observation table and each row of the
+    empty-set table, with exact values.
 
 Value invariants (CLAUDE.md §11 — measure the value, not only the shape):
 
@@ -451,26 +593,43 @@ and emits a calibration report with non-placeholder numbers.
 
 ## Acceptance criteria
 
-- [ ] L6.1 answer cache; `served_from` visible; whole-cache eviction on
-      generation bump; bounded and LRU
+- [ ] L6.1 answer cache; `served_from` visible; whole-cache eviction on any
+      key-component bump; bounded and LRU
+- [ ] L6.1 key includes `producer_version` and `extra_inputs`; a TSA/action
+      version bump at an unchanged source generation misses the cache
+- [ ] L6.1 `CACHEABLE_ACTIONS` allowlist exists and a contract test asserts it
+      is a subset of the side-effect-free actions
 - [ ] L6.1 benchmark pins the repeat-vs-first *relationship* (no absolute ceiling)
 - [ ] L6.2 `QueryCost` returned by the three most expensive routes;
       `estimated_ms` is `None` until observed
-- [ ] L6.3 stable short ids on symbols, edges, findings
+- [ ] L6.3 canonical full id always present; abbreviation unique within the
+      project index; `SYMBOL_ID_AMBIGUOUS` fail-closed on an ambiguous
+      abbreviation; uniqueness contract test on the largest fixture corpus
 - [ ] L7 `project action=card` wired; the orphan-pinning assertion in
       `tests/unit/cli/test_install_skills.py:571` is corrected, not preserved
 - [ ] L7 `tour` deterministic (byte-identical at equal generation)
 - [ ] L7 `start_here` excludes untested files
-- [ ] L8 `edit action=plan_rename` registered on both surfaces
+- [ ] L8 `edit action=plan_rename` registered on both surfaces, pinned to
+      preview; apply-like arguments rejected; contract test proves zero
+      filesystem writes on adversarial input
 - [ ] L8 refactor-queue formula in code with exact-value tests
 - [ ] L8 `modification_guard` and `who_should_test` use the resolved-graph
       signal; `unknown` where the graph is silent
 - [ ] L8 `acyclic` constraint kind
 - [ ] L9 prediction + outcome schema, versioned, with migration
+- [ ] L9 outcome records `tests_executed` (not only `tests_failed`);
+      `exercising_tests` recall is scored against the executed set
+- [ ] L9 risk-verdict observed outcome derived by the pinned table;
+      `indeterminate` excluded from the denominator and counted separately
+- [ ] L9 empty-set semantics implemented exactly as the pinned table; `trivial`
+      observations reported with their own count and excluded from aggregates
 - [ ] L9 ledger survives `--clean-state`; deletion requires `--include-ledger`
 - [ ] L9 precision/recall in `--self-health` with exact pins on the fixture
 - [ ] L9.4 soundness-fence test green **before** any learning code merges
 - [ ] L9 recall ratchet wired into CI
+- [ ] **L10 re-pilot passes (BLOCKING).** RFC-0016's harness re-run unchanged,
+      plus the subordinate-discovery measurement. If it fails, L10 is struck,
+      RFC-0016 stays `rejected`, and the rest of RFC-0027 ships without it
 - [ ] L10 embedding index optional; `SEMANTIC_INDEX_UNAVAILABLE` fail-closed;
       model digest in provenance
 - [ ] L10 similarity hits structurally excluded from `causal_envelope`
