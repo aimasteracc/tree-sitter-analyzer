@@ -73,6 +73,42 @@ class TestRepeatIsCheaperThanFirst:
         assert p95_repeat < p95_first
 
 
+class TestProvenanceDoesNotBreakCompaction:
+    """The visibility block rides the compact control surface — it must not
+    make compaction pointless.
+
+    CLAUDE.md §11 rule 1: adding a field to ``TOON_CONTROL_SURFACE`` is a cost
+    claim, so it needs an executable invariant. The relationship asserted is the
+    documented ``compact < default`` one, measured on the **facade** path (where
+    ``provenance`` exists) rather than on the inner tool (where it does not, so
+    the existing cost invariants cannot see this change at all).
+
+    No byte ceiling is asserted: the payload size tracks the target file's
+    dependents and test list, which are not this test's business.
+    """
+
+    def test_compact_toon_stays_strictly_smaller_than_default_toon(
+        self, edit_facade
+    ) -> None:
+        import json
+
+        base = {"action": "safe", "file_path": _TARGET}
+        default = asyncio.run(edit_facade.execute({**base, "output_format": "toon"}))
+        reset_answer_cache()
+        compact = asyncio.run(
+            edit_facade.execute({**base, "output_format": "toon", "compact_only": True})
+        )
+        assert "provenance" in default
+        assert "provenance" in compact
+        default_bytes = len(json.dumps(default))
+        compact_bytes = len(json.dumps(compact))
+        print(
+            f"measured_value: default_toon_bytes={default_bytes} "
+            f"compact_toon_bytes={compact_bytes}"
+        )
+        assert compact_bytes < default_bytes
+
+
 class TestServedFromIsPinned:
     def test_first_call_records_exactly_computed(
         self, edit_facade, edit_safe_args
