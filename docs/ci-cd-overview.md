@@ -428,7 +428,5 @@ Common issues:
 ## Related Documentation
 
 - [CI/CD Troubleshooting Guide](ci-cd-troubleshooting.md)
-- [CI/CD Migration Guide](ci-cd-migration-guide.md)
-- [Testing Guide](testing-guide.md)
 - [Pre-commit Setup](pre-commit-setup.md)
 - [Developer Guide](developer_guide.md)
