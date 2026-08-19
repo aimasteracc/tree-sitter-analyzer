@@ -50,16 +50,13 @@ repos:
     rev: v1.5.0
     hooks:
       - id: detect-secrets
+        # The commit-SHA line exemption lives in .secrets.baseline's
+        # ``filters_used`` (should_exclude_line), NOT as a file glob here and
+        # NOT as a CLI arg — see that file. It exempts one LINE SHAPE (a JSON
+        # key ending in "commit" holding a bare hex string), so every other
+        # line of every file is still scanned.
         args: ['--baseline', '.secrets.baseline']
-        # docs/baselines/*.json are machine-generated provenance receipts:
-        # commit SHAs, content hashes, versions and timings, no hand-authored
-        # content. Their commit SHA reads as a "Hex High Entropy String" and
-        # changes on every regeneration, so a hash-keyed .secrets.baseline
-        # allowlist would go stale the first time the collector is re-run —
-        # which would penalise re-measuring, the one habit these artifacts
-        # exist to encourage. Scoped to this generated directory only;
-        # .secrets.baseline itself is unchanged.
-        exclude: package.lock|^docs/baselines/.*\.json$
+        exclude: package.lock
   - repo: https://github.com/PyCQA/bandit
     rev: 1.9.4
     hooks:

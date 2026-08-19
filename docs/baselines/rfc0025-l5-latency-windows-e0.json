@@ -1,6 +1,6 @@
 {
-  "collection_finished_at_utc": "2026-08-19T07:29:01.446181+00:00",
-  "collection_started_at_utc": "2026-08-19T07:27:28.225738+00:00",
+  "collection_finished_at_utc": "2026-08-19T08:52:54.465964+00:00",
+  "collection_started_at_utc": "2026-08-19T08:51:38.363623+00:00",
   "environment": {
     "machine": "AMD64",
     "os": "Windows-11-10.0.26200-SP0",
@@ -74,8 +74,8 @@
       {
         "action": "safe",
         "count": 1,
-        "p50_ms": 17857.38,
-        "p95_ms": 17857.38,
+        "p50_ms": 18014.645,
+        "p95_ms": 18014.645,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "edit"
@@ -83,8 +83,8 @@
       {
         "action": "safe",
         "count": 5,
-        "p50_ms": 3707.938,
-        "p95_ms": 4894.778,
+        "p50_ms": 3845.746,
+        "p95_ms": 4016.857,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "edit"
@@ -92,8 +92,8 @@
       {
         "action": "file",
         "count": 1,
-        "p50_ms": 16871.196,
-        "p95_ms": 16871.196,
+        "p50_ms": 12100.474,
+        "p95_ms": 12100.474,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "health"
@@ -101,8 +101,8 @@
       {
         "action": "file",
         "count": 5,
-        "p50_ms": 474.398,
-        "p95_ms": 527.62,
+        "p50_ms": 344.638,
+        "p95_ms": 347.764,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "health"
@@ -110,8 +110,8 @@
       {
         "action": "callers",
         "count": 1,
-        "p50_ms": 35191.489,
-        "p95_ms": 35191.489,
+        "p50_ms": 23877.664,
+        "p95_ms": 23877.664,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "nav"
@@ -119,8 +119,8 @@
       {
         "action": "callers",
         "count": 5,
-        "p50_ms": 20.255,
-        "p95_ms": 27.583,
+        "p50_ms": 21.812,
+        "p95_ms": 22.075,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "nav"
@@ -128,8 +128,8 @@
       {
         "action": "outline",
         "count": 1,
-        "p50_ms": 220.074,
-        "p95_ms": 220.074,
+        "p50_ms": 226.142,
+        "p95_ms": 226.142,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "structure"
@@ -137,8 +137,8 @@
       {
         "action": "outline",
         "count": 5,
-        "p50_ms": 6.224,
-        "p95_ms": 8.122,
+        "p50_ms": 3.594,
+        "p95_ms": 4.386,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "structure"
@@ -154,7 +154,7 @@
   },
   "source": {
     "branch": "feature/self-health-latency-instrumentation",
-    "commit": "5fd4b962639d616cc71b4d46796d24d7f475f357"
+    "commit": "bf249ce38f2bd97a83cfbe02b1fd2b252c18bd5d"
   },
   "warm_repeats": 5
 }
