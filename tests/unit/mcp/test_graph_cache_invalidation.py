@@ -75,6 +75,48 @@ class TestGraphFingerprint:
         fp3 = compute_graph_fingerprint(str(project_root))
         assert fp3.file_count == fp1.file_count
 
+    def test_changes_on_added_mjs_file(self, project_root: Path) -> None:
+        """A new ``.mjs`` file must bump file_count.
+
+        ``project_graph`` resolves ``.mjs``/``.cjs``/``.mts``/``.cts``, so the
+        fingerprint must admit them too — otherwise the graph cache never
+        invalidates on Node module edits and stale answers are served.
+        """
+        fp1 = compute_graph_fingerprint(str(project_root))
+        (project_root / "pkg" / "esm.mjs").write_text("export const a = 1;\n")
+        fp2 = compute_graph_fingerprint(str(project_root))
+        assert fp2.file_count == fp1.file_count + 1
+
+    def test_changes_on_added_mts_file(self, project_root: Path) -> None:
+        """A new ``.mts`` file must bump file_count."""
+        fp1 = compute_graph_fingerprint(str(project_root))
+        (project_root / "pkg" / "esm.mts").write_text("export const a: number = 1;\n")
+        fp2 = compute_graph_fingerprint(str(project_root))
+        assert fp2.file_count == fp1.file_count + 1
+
+    def test_changes_on_added_cjs_file(self, project_root: Path) -> None:
+        """A new ``.cjs`` file must bump file_count."""
+        fp1 = compute_graph_fingerprint(str(project_root))
+        (project_root / "pkg" / "legacy.cjs").write_text("module.exports = {};\n")
+        fp2 = compute_graph_fingerprint(str(project_root))
+        assert fp2.file_count == fp1.file_count + 1
+
+    def test_changes_on_added_cts_file(self, project_root: Path) -> None:
+        """A new ``.cts`` file must bump file_count."""
+        fp1 = compute_graph_fingerprint(str(project_root))
+        (project_root / "pkg" / "legacy.cts").write_text("export = {};\n")
+        fp2 = compute_graph_fingerprint(str(project_root))
+        assert fp2.file_count == fp1.file_count + 1
+
+    def test_changes_on_touched_mjs_file(self, project_root: Path) -> None:
+        """Editing an existing ``.mjs`` file must move max_mtime_ns."""
+        (project_root / "pkg" / "esm.mjs").write_text("export const a = 1;\n")
+        fp1 = compute_graph_fingerprint(str(project_root))
+        time.sleep(0.05)  # ensure mtime granularity
+        os.utime(project_root / "pkg" / "esm.mjs")
+        fp2 = compute_graph_fingerprint(str(project_root))
+        assert fp2.max_mtime_ns > fp1.max_mtime_ns
+
     def test_idempotent_when_unchanged(self, project_root: Path) -> None:
         """Calling twice without edits returns the same fingerprint."""
         fp1 = compute_graph_fingerprint(str(project_root))

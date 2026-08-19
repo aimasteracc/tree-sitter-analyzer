@@ -16,7 +16,12 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from .constants import EXCLUDE_DIRS
+from .constants import (
+    EXCLUDE_DIRS,
+    GRAPH_SOURCE_EXTS,
+    JS_TS_INDEX_SUFFIXES,
+    JS_TS_MODULE_EXTS,
+)
 from .core.parser import Parser, ParseResult
 from .import_extractors import (
     walk_imports,
@@ -250,22 +255,7 @@ def _resolve_js_ts_import(
     if not is_relative:
         return None
     candidate_raw = _project_rel_join(source_rel, module)
-    for ext in (
-        ".js",
-        ".ts",
-        ".jsx",
-        ".tsx",
-        ".mjs",
-        ".cjs",
-        ".mts",
-        ".cts",
-        "/index.js",
-        "/index.ts",
-        "/index.mjs",
-        "/index.cjs",
-        "/index.mts",
-        "/index.cts",
-    ):
+    for ext in (*JS_TS_MODULE_EXTS, *JS_TS_INDEX_SUFFIXES):
         candidate = candidate_raw + ext
         if candidate in nodes:
             return candidate
@@ -458,27 +448,9 @@ class DependencyGraph:
 
     def _build(self) -> None:
         """Scan project directory and build the dependency graph."""
-        supported_exts = {
-            ".py",
-            ".js",
-            ".mjs",
-            ".cjs",
-            ".ts",
-            ".jsx",
-            ".tsx",
-            ".mts",
-            ".cts",
-            ".java",
-            ".go",
-            ".rs",
-            ".c",
-            ".cpp",
-            ".cc",
-            ".cxx",
-            ".h",
-            ".hpp",
-            ".hxx",
-        }
+        # Shared with cache/fingerprint.py — the fingerprint is this graph's
+        # staleness signal, so the two sets must never drift.
+        supported_exts = set(GRAPH_SOURCE_EXTS)
 
         # Collect all source files (excluding generated/dependency dirs)
         all_files = self._iter_source_files(supported_exts)

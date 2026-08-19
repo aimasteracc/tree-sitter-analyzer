@@ -788,11 +788,20 @@ def _extract_import_specs(source: str, suffix: str) -> set[str]:
         specs.update(re.findall(r"\bfrom\s+['\"]([^'\"]+)['\"]", source))
         specs.update(re.findall(r"\bimport\s*['\"]([^'\"]+)['\"]", source))
         specs.update(re.findall(r"\brequire\(\s*['\"]([^'\"]+)['\"]\s*\)", source))
+        # The closing quote MUST be followed by the call's ``)`` or the ``,``
+        # that introduces the import-options object (``import(spec, {with:…})``).
+        # Without that anchor, ``import("./dev.js" + suffix)`` recorded the
+        # literal prefix ``./dev.js`` as if it were the whole runtime
+        # specifier — inventing an edge to a module that is never loaded while
+        # omitting the one that actually is. A computed specifier is unknowable
+        # statically, so it must contribute no spec at all.
         specs.update(
             match.group(2)
-            for match in re.finditer(r"\bimport\s*\(\s*(['\"])([^'\"]+)\1", source)
+            for match in re.finditer(
+                r"\bimport\s*\(\s*(['\"])([^'\"]+)\1\s*[,)]", source
+            )
         )
-        specs.update(re.findall(r"\bimport\s*\(\s*`([^`$]+)`", source))
+        specs.update(re.findall(r"\bimport\s*\(\s*`([^`$]+)`\s*[,)]", source))
     elif suffix == ".java":
         specs.update(re.findall(r"^\s*import\s+([\w.]+);", source, re.M))
     return specs

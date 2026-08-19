@@ -178,6 +178,39 @@ class TestCallGraphLanguageParity:
         assert names == {"loadData", "processData", "main"}
 
 
+class TestResolveImportPath:
+    """``CallGraph._resolve_import_path`` extension probing.
+
+    The probe table must cover the Node module suffixes the project graph
+    already admits (``.mjs``/``.cjs``/``.mts``/``.cts``), otherwise an
+    admitted ``.mts`` file importing an extensionless sibling silently
+    loses its cross-file call edges.
+    """
+
+    @staticmethod
+    def _probe(source_rel: str, spec: str, target_rel: str) -> str:
+        cg = CallGraph(str(PY_PROJECT))
+        return cg._resolve_import_path(
+            source_rel, spec, True, {target_rel: f"/abs/{target_rel}"}
+        )
+
+    def test_resolves_mts_sibling(self):
+        target = str(Path("src") / "util.mts")
+        assert self._probe(str(Path("src") / "app.mts"), "./util", target) == target
+
+    def test_resolves_mjs_sibling(self):
+        target = str(Path("src") / "util.mjs")
+        assert self._probe(str(Path("src") / "app.mjs"), "./util", target) == target
+
+    def test_resolves_cts_sibling(self):
+        target = str(Path("src") / "util.cts")
+        assert self._probe(str(Path("src") / "app.cts"), "./util", target) == target
+
+    def test_resolves_cjs_sibling(self):
+        target = str(Path("src") / "util.cjs")
+        assert self._probe(str(Path("src") / "app.cjs"), "./util", target) == target
+
+
 class TestCallGraphCallersOf:
     @_WINDOWS_SKIP_PY_FIXTURE
     def test_callers_of_called_function(self):
