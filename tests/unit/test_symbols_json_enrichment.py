@@ -23,7 +23,6 @@ from tree_sitter_analyzer.cache import _symbol_walker as walker_module
 from tree_sitter_analyzer.cache._symbol_walker import (
     _cpp_code_mask,
     _python_dynamic_loader_analysis,
-    _python_module_control_bindings,
     _python_module_scope_statements,
     _SymbolWalker,
     _walk_for_symbols,
@@ -167,67 +166,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v37: retained loader/evaluator execution paths are persisted.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 37
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 37
-
-
-def test_python_module_control_bindings_cover_all_module_control_targets() -> None:
-    """Control-flow rebinding is complete without descending into nested scopes."""
-    module = ast.parse(
-        """
-async def nested_async():
-    hidden_async = 1
-
-class Nested:
-    hidden_class = 1
-
-lambda: hidden_lambda
-[hidden_list for hidden_list in values]
-{hidden_set for hidden_set in values}
-{hidden_key: hidden_value for hidden_key, hidden_value in pairs}
-(hidden_generator for hidden_generator in values)
-
-async for async_item in items:
-    pass
-
-async with manager(), other() as async_bound:
-    pass
-
-with manager(), other() as sync_bound:
-    pass
-
-if (walrus_bound := value):
-    pass
-
-try:
-    pass
-except Exception:
-    pass
-
-match value:
-    case [*rest]:
-        pass
-    case [*_]:
-        pass
-    case {"key": item, **remaining}:
-        pass
-    case {}:
-        pass
-    case _:
-        pass
-"""
-    )
-
-    assert _python_module_control_bindings(module.body) == {
-        "async_item",
-        "async_bound",
-        "sync_bound",
-        "walrus_bound",
-        "rest",
-        "item",
-        "remaining",
-    }
+        # v38: loader projection fails closed by default.
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 38
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 38
 
 
 def test_python_star_imported_loader_fails_closed() -> None:
@@ -294,12 +235,20 @@ def test_python_loader_escape_and_nested_rebinding_fail_closed(source: str) -> N
     assert complete is False
 
 
-def test_python_non_loader_reflection_remains_complete() -> None:
-    _loaders, complete = _python_dynamic_loader_analysis(
-        'import importlib\nvalue = getattr(importlib, "other")\n'
-    )
+@pytest.mark.parametrize(
+    "source",
+    [
+        'import importlib\nvalue = getattr(importlib, "other")\n',
+        'import importlib\nvalue = importlib.__dict__.get("other")\n',
+        'import importlib\nvalue = vars(importlib).get("other")\n',
+    ],
+)
+def test_python_loader_owner_reflection_fails_closed(source: str) -> None:
+    # PR #1308 review round 6: handing out the module object that carries the
+    # loader is not provably safe, so the projection degrades to unknown.
+    _loaders, complete = _python_dynamic_loader_analysis(source)
 
-    assert complete is True
+    assert complete is False
 
 
 def test_python_dynamic_non_loader_getattr_remains_complete() -> None:
@@ -315,8 +264,6 @@ def test_python_dynamic_non_loader_getattr_remains_complete() -> None:
     [
         'import importlib\nvalue = importlib.other["import_module"]\n',
         'import importlib\nvalue = vars()["import_module"]\n',
-        'import importlib\nvalue = importlib.__dict__.get("other")\n',
-        'import importlib\nvalue = vars(importlib).get("other")\n',
         'import importlib\nvalue = mapping.get("import_module")\n',
         "value = vars(config).get(dynamic_key)\n",
         "value = config.__dict__[dynamic_key]\n",
@@ -612,6 +559,93 @@ def test_non_loader_default_and_class_fields_preserve_completeness() -> None:
 @pytest.mark.parametrize(
     "source",
     [
+        "(run := eval)(\"__import__('pkg.util')\")\n",
+        'load = __builtins__.__import__\nload("pkg.util")\n',
+    ],
+)
+def test_python_unenumerated_loader_position_fails_closed(source: str) -> None:
+    # PR #1308 review round 6: the walker enumerated ~20 dangerous syntax
+    # positions and defaulted to complete, so any position it had not listed
+    # certified a projection while silently dropping the dependency.
+    extraction = _extraction_for(source, "python")
+
+    assert extraction["import_projection_complete"] is False
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        (
+            'const make = process.getBuiltinModule("node:module").createRequire; '
+            "const load = make(__filename); "
+            'load("./util.js");'
+        ),
+        'try { throw require; } catch (load) { load("./util.js"); }',
+    ],
+)
+def test_jsts_unenumerated_loader_position_fails_closed(source: str) -> None:
+    # PR #1308 review round 6: see the Python counterpart above.
+    extraction = _extraction_for(source, "javascript")
+
+    assert extraction["import_projection_complete"] is False
+
+
+def test_jsts_unknown_loader_escape_degrades_to_incomplete() -> None:
+    """Soundness: an unlisted syntax shape degrades to unknown, not to complete."""
+    extraction = _extraction_for("export default require;", "javascript")
+
+    assert extraction["import_projection_complete"] is False
+
+
+@pytest.mark.parametrize(
+    "call",
+    ['runpy.run_module("pkg.util")', 'runpy.run_path("pkg/util.py")'],
+)
+def test_python_runpy_execution_entry_point_is_projected(call: str) -> None:
+    # PR #1308 review round 6: runpy executes a module, so it carries a real
+    # dependency edge; it was previously invisible to the projection.
+    extraction = _extraction_for(f"import runpy\n{call}\n", "python")
+
+    assert _extract_imports(extraction) == [
+        {"text": "import runpy", "line": 1},
+        {"text": call, "line": 2},
+    ]
+
+
+def test_literal_commonjs_require_stays_complete() -> None:
+    extraction = _extraction_for('const u = require("./util.js");\n', "javascript")
+
+    assert extraction["import_projection_complete"] is True
+
+
+def test_literal_commonjs_require_stays_projected() -> None:
+    extraction = _extraction_for('const u = require("./util.js");\n', "javascript")
+
+    assert _extract_imports(extraction) == [{"text": 'require("./util.js")', "line": 1}]
+
+
+_PY_ALIAS_SRC = "import importlib\nload = importlib.import_module\nload('pkg.util')\n"
+
+
+def test_python_module_scope_loader_alias_stays_complete() -> None:
+    extraction = _extraction_for(_PY_ALIAS_SRC, "python")
+
+    assert extraction["import_projection_complete"] is True
+
+
+def test_python_module_scope_loader_alias_stays_projected() -> None:
+    extraction = _extraction_for(_PY_ALIAS_SRC, "python")
+
+    assert {item["text"] for item in _extract_imports(extraction)} == {
+        "import importlib",
+        "load = importlib.import_module",
+        "load('pkg.util')",
+    }
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
         "import importlib\nclass C(retain(importlib.import_module)):\n    pass\n",
         (
             "import importlib\n"
@@ -678,10 +712,13 @@ def test_static_non_loader_module_member_preserves_completeness(key: str) -> Non
     assert extraction["import_projection_complete"] is True
 
 
-def test_non_loader_module_destructuring_preserves_completeness() -> None:
+def test_module_destructuring_fails_closed() -> None:
+    # PR #1308 review round 6: retaining the ``module`` object is not provably
+    # safe, so the projection degrades to unknown regardless of which keys the
+    # pattern happens to select.
     extraction = _extraction_for("const { other: value } = module;", "javascript")
 
-    assert extraction["import_projection_complete"] is True
+    assert extraction["import_projection_complete"] is False
 
 
 def test_unrelated_eval_member_preserves_projection_completeness() -> None:
@@ -709,123 +746,34 @@ def test_unrelated_named_node_module_import_preserves_completeness() -> None:
         assert extraction["import_projection_complete"] is True
 
 
-def test_malformed_indirect_commonjs_loader_member_is_not_matched() -> None:
+def test_malformed_member_reference_path_is_not_resolved() -> None:
     node = SimpleNamespace(
         type="member_expression",
         child_by_field_name=lambda _field: None,
     )
 
-    assert not walker_module._jsts_indirect_module_loader_call(node, "", {"require"})
-    assert not walker_module._jsts_require_utility_member(node, "", {"require"})
+    assert walker_module._jsts_reference_path(node, "") is None
 
-    malformed_subscript = SimpleNamespace(
+
+def test_malformed_parenthesized_reference_path_is_not_resolved() -> None:
+    node = SimpleNamespace(type="parenthesized_expression", children=[])
+
+    assert walker_module._jsts_reference_path(node, "") is None
+
+
+def test_dynamic_member_reference_path_records_an_unknown_segment() -> None:
+    node = SimpleNamespace(
         type="subscript_expression",
-        child_by_field_name=lambda _field: None,
-    )
-    assert not walker_module._jsts_dynamic_module_member(malformed_subscript, "")
-
-    malformed_pair = SimpleNamespace(
-        type="pair_pattern",
-        children=[],
-        child_by_field_name=lambda _field: None,
-    )
-    assert not walker_module._jsts_pattern_selects_require_property(malformed_pair, "")
-
-    malformed_parenthesized = SimpleNamespace(
-        type="parenthesized_expression", children=[]
-    )
-    assert not walker_module._jsts_global_eval_reference(malformed_parenthesized, "")
-
-    malformed_eval_member = SimpleNamespace(
-        type="member_expression",
         child_by_field_name=lambda field: (
-            SimpleNamespace(type="identifier") if field == "object" else None
-        ),
-    )
-    assert not walker_module._jsts_global_eval_reference(malformed_eval_member, "")
-
-    missing_arguments = SimpleNamespace(
-        child_by_field_name=lambda _field: None,
-    )
-    assert walker_module._jsts_static_first_argument(missing_arguments, "") is None
-    empty_arguments = SimpleNamespace(
-        child_by_field_name=lambda field: (
-            SimpleNamespace(children=[]) if field == "arguments" else None
-        ),
-    )
-    assert walker_module._jsts_static_first_argument(empty_arguments, "") is None
-    assert not walker_module._jsts_import_exposes_create_require(
-        SimpleNamespace(type="identifier"), ""
-    )
-
-    create_require_accessor = SimpleNamespace(
-        type="property_identifier",
-        start_byte=0,
-        end_byte=len("createRequire"),
-    )
-    malformed_create_require_owner = SimpleNamespace(
-        type="member_expression",
-        child_by_field_name=lambda field: (
-            malformed_parenthesized
+            SimpleNamespace(type="identifier", start_byte=0, end_byte=6)
             if field == "object"
-            else create_require_accessor
-            if field == "property"
+            else SimpleNamespace(type="identifier", start_byte=0, end_byte=6)
+            if field == "index"
             else None
         ),
     )
-    assert walker_module._jsts_node_create_require_reference(
-        malformed_create_require_owner, "createRequire", {"require"}
-    )
 
-    missing_default = SimpleNamespace(
-        type="assignment_pattern",
-        child_by_field_name=lambda _field: None,
-    )
-    symbol_walker = _SymbolWalker("", [], "javascript", None)
-    symbol_walker._mark_jsts_loader_binding(missing_default)
-    assert symbol_walker.import_projection_complete is True
-    symbol_walker._mark_jsts_loader_binding(
-        SimpleNamespace(type="new_expression", child_by_field_name=lambda _field: None)
-    )
-    assert symbol_walker.import_projection_complete is True
-
-    missing_factory_function = SimpleNamespace(
-        type="call_expression",
-        child_by_field_name=lambda _field: None,
-    )
-    assert not walker_module._jsts_module_loader_factory_call(
-        missing_factory_function, "", {"require"}
-    )
-
-    malformed_factory_function = SimpleNamespace(
-        type="call_expression",
-        child_by_field_name=lambda field: (
-            malformed_parenthesized if field == "function" else None
-        ),
-    )
-    assert not walker_module._jsts_module_loader_factory_call(
-        malformed_factory_function, "", {"require"}
-    )
-
-    non_factory_function = SimpleNamespace(
-        type="call_expression",
-        child_by_field_name=lambda field: (
-            SimpleNamespace(type="arrow_function") if field == "function" else None
-        ),
-    )
-    assert not walker_module._jsts_module_loader_factory_call(
-        non_factory_function, "", {"require"}
-    )
-
-    non_loader_shorthand = SimpleNamespace(
-        type="shorthand_property_identifier_pattern",
-        start_byte=0,
-        end_byte=5,
-        children=[],
-    )
-    assert not walker_module._jsts_pattern_selects_require_property(
-        non_loader_shorthand, "other"
-    )
+    assert walker_module._jsts_reference_path(node, "module") == ["module", None]
 
 
 def test_jsts_loader_discovery_tolerates_missing_declaration_names() -> None:
@@ -1511,7 +1459,13 @@ def test_python_loader_analysis_fails_closed_on_invalid_module() -> None:
     names, complete = _python_dynamic_loader_analysis("if (")
 
     assert names == frozenset(
-        {"__import__", "builtins.__import__", "importlib.import_module"}
+        {
+            "__import__",
+            "builtins.__import__",
+            "importlib.import_module",
+            "runpy.run_module",
+            "runpy.run_path",
+        }
     )
     assert complete is False
 
@@ -1532,6 +1486,8 @@ annotation_only: object
             "__import__",
             "builtins.__import__",
             "importlib.import_module",
+            "runpy.run_module",
+            "runpy.run_path",
             "il.import_module",
             "import_module",
             "loader",
