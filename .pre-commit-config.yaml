@@ -92,7 +92,11 @@ repos:
           - --explicit-package-bases
           - --follow-imports=silent
           - --no-incremental
-        exclude: ^(examples/|scripts/|compatibility_test/|corpus/|collect_project_metrics\.py|test_emergency_fix\.py|debug_async_test\.py|run_regression_tests\.py|generate_golden_masters\.py|check_stability\.py|analyze_specific_sql\.py|upload_interactive\.py|regenerate_with_normalization\.py|llm_code_checker\.py|run_coverage\.py|analyze_coverage_json\.py|verify_workflow_structure\.py|validate_workflows\.py|profile_analysis\.py|upload_to_pypi\.py|check_quality\.py|test_fixes\.py|diagnose_coverage.*\.py|\.kiro/|openspec/)
+        # ``benchmarks/no1_010b/`` is pre-registered corpus DATA (RFC-0026 §1):
+        # fixtures and oracles are pinned by content hash, its three fixtures
+        # each ship a ``src`` package (which trips mypy's duplicate-module
+        # check), and the oracles read those untyped fixtures on purpose.
+        exclude: ^(examples/|scripts/|compatibility_test/|corpus/|benchmarks/no1_010b/|collect_project_metrics\.py|test_emergency_fix\.py|debug_async_test\.py|run_regression_tests\.py|generate_golden_masters\.py|check_stability\.py|analyze_specific_sql\.py|upload_interactive\.py|regenerate_with_normalization\.py|llm_code_checker\.py|run_coverage\.py|analyze_coverage_json\.py|verify_workflow_structure\.py|validate_workflows\.py|profile_analysis\.py|upload_to_pypi\.py|check_quality\.py|test_fixes\.py|diagnose_coverage.*\.py|\.kiro/|openspec/)
         additional_dependencies: [
           types-psutil>=5.9.0,
           types-cachetools,

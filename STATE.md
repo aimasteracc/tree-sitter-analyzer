@@ -2,6 +2,77 @@
 
 Last run: 2026-08-16 (P0.4 strace adapter-route certification merged, #1297)
 
+## NO1-010B first VCSR measurement attempt (2026-08-20) — E0, internal only
+
+**Result: VCSR is `NOT_PRODUCED`. There is no first VCSR number, and RFC-0026
+says there cannot be one from a model-free run.** Recorded here with full
+provenance so the absence is auditable, not re-discovered.
+
+- **Artifact:** `benchmarks/no1_010b/report.json`
+  (`schema = no1-010b/report/1`, `run_status = REJECTED_AT_PREFLIGHT`).
+- **Reproduce:**
+  `uv run python -m tree_sitter_analyzer.no1_010b --corpus benchmarks/no1_010b/corpus.jsonl --report benchmarks/no1_010b/report.json`
+- **Provenance:** analyzer commit `9137b39b` (`origin/develop`), analyzer
+  version `1.29.0`, Python 3.13.5, Windows-11-10.0.26200-SP0,
+  corpus sha256 `2957546f9b42a1b19bc15d7e567381b0c39fd14456800ae65732b05f2d2bdb8c`,
+  per-oracle sha256 in the report. **Model calls: 0. Model spend: none.**
+- **Measured VCSR:** `state = NOT_PRODUCED`, `value = null`,
+  numerator/denominator `0/0`, per-class/per-repo/per-arm all empty.
+  `0/0` is deliberately not reported as `0%` — no attempt reached a verdict, so
+  the endpoint has no value and a `0.0` would be a fabricated measurement.
+- **Reliability metric** (`successful_indexed_trials / all_trials`):
+  `0 / 0`, ratio `null`, threshold `0.99`, `gate_status = NOT_EVALUATED`;
+  failure classes `product = 0`, `infrastructure = 0` (zero retained attempts).
+- **B2 status: BLOCKED — did not complete.** Per C39 a run that does not meet
+  the 99% reliability gate per arm and overall cannot advance to baseline; this
+  run never reached the gate because preflight rejected it with **0 attempts
+  consumed** (RFC-0026 §4).
+
+### Why a model-free VCSR is undefined, not merely unmeasured
+
+The block is at the **spec** level, not the implementation level. RFC-0026 §2
+channel 1 designates the supplied-patch route as "the validation channel, **not
+the agent measurement**", and channel 2 states that at least three distinct,
+non-pooled client/model arms are "a **mandatory B2 completion gate** — a VCSR
+baseline produced only from supplied reference patches does not satisfy
+NO1-010B". Criterion 5 is additionally `UNKNOWN` for any supplied patch without
+a provenance transcript. So even a perfectly executed model-free reference run
+would not be a VCSR baseline. **Producing the first VCSR number requires a
+human budget decision authorizing model spend** (ROADMAP: model spend and
+independent-judge gates are human-controlled; NO1-008A is a precondition and
+NO1-003C is NO-GO).
+
+### Gates the report records as `NOT_SATISFIED`
+
+| Gate | Constraint | Why |
+|---|---|---|
+| `patch_verifier_runner` | RFC-0026 B1 | no patch application, isolated worktree, read-only candidate mount, write journal, stale-row projection comparison, or unsupported-relationship evidence check exists |
+| `oracle_red_baseline` | C42/C43 | `oracle.py` returns `UNKNOWN/SANDBOX_FAILURE` for every parsed declaration by design; only B1's trusted wrapper behind a kernel-enforced sandbox may authorize a verdict |
+| `fixture_commit_pinning` | RFC-0026 §1 | in-tree fixtures carry the RFC's all-zero placeholder `repo_commit`, so drift cannot fail closed |
+| `external_registration_anchor` | C14/C27 | a git-committed file is explicitly insufficient for pre-execution ordering |
+| `independent_oracle_signature` | C59 | no reviewer signature over `(task_id, repo_commit, oracle_hash, expected_terminal)` exists |
+| `three_non_pooled_agent_arms` | C31 / §2 | mandatory B2 gate; needs authorized model spend |
+| `paired_control_arms` | C28/C37/C56 | needs evidence-enabled/disabled arm pairs and a complete matrix |
+
+### What did land (B0 exit artifact, now real committed data)
+
+- **10-task seed corpus** at `benchmarks/no1_010b/corpus.jsonl`, loaded by the
+  existing strict `load_corpus_records`: 4 bugfix / 2 refactor / 2 migration /
+  2 test_selection, 9 `PASS/null` + 1 `FAIL/VERIFICATION_FAILED`, across 3
+  pinned fixture repos (dispatch_app 4, orders_service 4, config_loader 2).
+- **10 self-contained oracles** (`benchmarks/no1_010b/oracles/`), each verified
+  red on its unmodified fixture with the exact registered
+  `oracle_baseline_reason` token; each fixture suite is green
+  (3 / 4 / 3 tests).
+- **Internal-only entry point** `python -m tree_sitter_analyzer.no1_010b`
+  (no MCP facade, no CLI flag, no console script, no codemap surface), guarded
+  by `tests/contracts/test_no1_010b_internal_only_contract.py`.
+- **Claim policy:** E0. No public wording emitted, no README touched, no badge,
+  nothing admitted to the claim registry.
+- **Not landed (B1 scope, deliberately):** reference/mutation patches. The
+  mutation suite that forces every reason code belongs to B1 per §5, and
+  shipping patches that no sandboxed verifier can score would be theatre.
+
 ## NO1-010A completion record (2026-08-16)
 
 - **NO1-010A (three-task prototype) implemented and MERGED** (#1290 → develop,
@@ -196,6 +267,7 @@ Active roadmap: [`rfcs/ROADMAP-no1-agent-trust.md`](rfcs/ROADMAP-no1-agent-trust
 - [x] **NO1-007A:** draft RFC for understand / plan_change / assess_change completed; Phase A internal implementation is gated by read-only snapshot Phase 0, while only public ninth-facade registration is gated by the menu experiment
 - [x] **NO1-007B:** RFC-0023 edge evidence/confidence/freshness draft with strict schema, closed golden fixtures, and an E0 denial corpus for a future semantic validator
 - [x] **NO1-010A:** three-task prototype (`understand`/`plan_change`/`assess_change`) implemented as the RFC-0022 Phase A internal-only router + harness; explicit internal-only status, exact contract tests, real CLI smoke (see completion record above)
+- [ ] **NO1-010B:** RFC-0026 change-outcome benchmark — B0 landed (committed 10-task corpus + oracles + internal `python -m` entry point); B1 patch verifier and B2 VCSR baseline are BLOCKED, and the first VCSR number needs a human model-spend decision (see the 2026-08-20 measurement record above)
 - [ ] **NO1-009A:** qualify a second indexed competitor at install/conformance only after NO1-003A; keep an unavailable arm `NOT_EVALUATED`, and require a separately frozen RFC-0021 v2 experiment before comparative inclusion
 
 Execution policy: at most two L2 agents concurrently; implementation agents use

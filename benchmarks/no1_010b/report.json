@@ -1,0 +1,227 @@
+{
+  "schema": "no1-010b/report/1",
+  "rfc": "RFC-0026",
+  "phase": "B2",
+  "run_status": "REJECTED_AT_PREFLIGHT",
+  "arm_mode": "model_free",
+  "evidence_level": "E0",
+  "public_claim": null,
+  "public_claim_policy": "E0-E3 emit no public or competitive wording (RFC-0026 \u00a74). This report is internal evidence only and is not admitted to the claim registry.",
+  "provenance": {
+    "analyzer": {
+      "commit": "9137b39be7610cb9d8872f0c07f9742333f35d37",
+      "version": "1.29.0"
+    },
+    "corpus_path": "benchmarks/no1_010b/corpus.jsonl",
+    "corpus_sha256": "2957546f9b42a1b19bc15d7e567381b0c39fd14456800ae65732b05f2d2bdb8c",
+    "oracle_digests": [
+      {
+        "oracle": "oracles/0001.py",
+        "oracle_sha256": "793e736397843679af7f6a95ca412c81591d8893134bc04299c02132c9d46249"
+      },
+      {
+        "oracle": "oracles/0002.py",
+        "oracle_sha256": "84e90614b21147a61df0272581d29aac6db5eaf297561af228c5949b229e601b"
+      },
+      {
+        "oracle": "oracles/0003.py",
+        "oracle_sha256": "cc2db4f3728c6738af043437ad7c602c9bdc053469964b12e39bc1ad832d4e48"
+      },
+      {
+        "oracle": "oracles/0004.py",
+        "oracle_sha256": "5dcbab6a34337d78e794534d1f0ac5f213f9258a5ed8b1e0b917baffde4d7c04"
+      },
+      {
+        "oracle": "oracles/0005.py",
+        "oracle_sha256": "164e6d1aa27613f42118b2582eeb7fe0d15a2902a523e003958068f5b978bce7"
+      },
+      {
+        "oracle": "oracles/0006.py",
+        "oracle_sha256": "26b7d134026be55d822eecd88dac362b1bb4899190fa6ccd1b6d95a04acb2a5e"
+      },
+      {
+        "oracle": "oracles/0007.py",
+        "oracle_sha256": "cffe7deccb7bf05b91e665da006b3bda2b4764b118b9787d61c188423412cb6a"
+      },
+      {
+        "oracle": "oracles/0008.py",
+        "oracle_sha256": "c94454fd5c07b49d60a65fccd98ff4a2cfab03c99c92f11ea7200f7e4e8c8feb"
+      },
+      {
+        "oracle": "oracles/0009.py",
+        "oracle_sha256": "638fde0946f7fc47650e8bcc3e263c53087278386544672894c35a6a5b4328d5"
+      },
+      {
+        "oracle": "oracles/0010.py",
+        "oracle_sha256": "d20266a0b4637cb49e637eead116b4cf86b38c4959ad1de7de8707b58ad8042c"
+      }
+    ],
+    "python": "3.13.5",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "model_calls": 0,
+    "model_spend": "none - model-free run, no LLM was invoked",
+    "registration_registry": null
+  },
+  "corpus": {
+    "task_count": 10,
+    "per_class_counts": {
+      "bugfix": 4,
+      "refactor": 2,
+      "test_selection": 2,
+      "migration": 2
+    },
+    "per_repo_counts": {
+      "fixtures/dispatch_app": 4,
+      "fixtures/orders_service": 4,
+      "fixtures/config_loader": 2
+    },
+    "expected_terminals": {
+      "PASS/null": 9,
+      "FAIL/VERIFICATION_FAILED": 1
+    },
+    "task_ids": [
+      "no1-010b/0001-bugfix-dispatch-unknown-route",
+      "no1-010b/0002-bugfix-dispatch-trailing-slash",
+      "no1-010b/0003-refactor-extract-route-registry",
+      "no1-010b/0004-test-selection-dispatch-version",
+      "no1-010b/0005-bugfix-discount-ignored",
+      "no1-010b/0006-bugfix-cancel-unknown-order",
+      "no1-010b/0007-migration-drop-legacy-total",
+      "no1-010b/0008-test-selection-totals-clamp",
+      "no1-010b/0009-refactor-split-load",
+      "no1-010b/0010-migration-coerce-typed-values"
+    ]
+  },
+  "preflight": {
+    "status": "REJECTED",
+    "attempts_consumed": 0,
+    "static_checks": [
+      {
+        "check": "task_count_exact",
+        "status": "PASS",
+        "detail": "10 tasks (registered 10)"
+      },
+      {
+        "check": "per_class_counts_exact",
+        "status": "PASS",
+        "detail": "{'bugfix': 4, 'refactor': 2, 'migration': 2, 'test_selection': 2} (registered {'bugfix': 4, 'refactor': 2, 'migration': 2, 'test_selection': 2})"
+      },
+      {
+        "check": "expected_terminal_distribution_exact",
+        "status": "PASS",
+        "detail": "9 PASS / 1 FAIL (registered 9 PASS / 1 FAIL)"
+      },
+      {
+        "check": "oracle_files_present",
+        "status": "PASS",
+        "detail": "all registered oracles exist"
+      },
+      {
+        "check": "fixture_repos_present",
+        "status": "PASS",
+        "detail": "all pinned fixture repos exist"
+      },
+      {
+        "check": "affected_test_oracle_strict_subset",
+        "status": "PASS",
+        "detail": "every test_selection oracle is a strict subset of its suite"
+      }
+    ],
+    "failed_checks": [],
+    "unsatisfied_gates": [
+      {
+        "gate": "patch_verifier_runner",
+        "constraint": "RFC-0026 B1",
+        "status": "NOT_SATISFIED",
+        "detail": "no patch application, isolated worktree, read-only candidate mount, write journal, stale-row projection comparison, or unsupported-relationship evidence check exists; only the pure record/patch/oracle-protocol pieces are implemented"
+      },
+      {
+        "gate": "oracle_red_baseline",
+        "constraint": "C42/C43",
+        "status": "NOT_SATISFIED",
+        "detail": "the declared-result protocol may only become a verdict through B1's trusted wrapper behind a kernel-enforced sandbox; oracle.py returns UNKNOWN/SANDBOX_FAILURE for every parsed declaration by design"
+      },
+      {
+        "gate": "fixture_commit_pinning",
+        "constraint": "RFC-0026 \u00a71",
+        "status": "NOT_SATISFIED",
+        "detail": "the in-tree seed fixtures carry the RFC's all-zero placeholder repo_commit, so the runner cannot check out a pinned commit and fail closed on drift; a clean-tree fingerprint must replace it in B1"
+      },
+      {
+        "gate": "external_registration_anchor",
+        "constraint": "C14/C27",
+        "status": "NOT_SATISFIED",
+        "detail": "pre-registration must be anchored in an append-only store outside evaluator control; a git-committed file is explicitly insufficient"
+      },
+      {
+        "gate": "independent_oracle_signature",
+        "constraint": "C59",
+        "status": "NOT_SATISFIED",
+        "detail": "every oracle must be signed over (task_id, repo_commit, oracle_hash, expected_terminal) by a reviewer who authored neither the corpus nor the implementation under test; no signature exists"
+      },
+      {
+        "gate": "three_non_pooled_agent_arms",
+        "constraint": "C31 / RFC-0026 \u00a72",
+        "status": "NOT_SATISFIED",
+        "detail": "at least three distinct, non-pooled client/model arms are a mandatory B2 completion gate; a baseline produced only from supplied reference patches does not satisfy NO1-010B"
+      },
+      {
+        "gate": "paired_control_arms",
+        "constraint": "C28/C37/C56",
+        "status": "NOT_SATISFIED",
+        "detail": "each evidence-enabled arm needs a pre-registered evidence-disabled control and a complete pair_id x task_id x repeat_index matrix"
+      }
+    ]
+  },
+  "arms": [],
+  "attempts_retained": 0,
+  "vcsr": {
+    "state": "NOT_PRODUCED",
+    "value": null,
+    "numerator": 0,
+    "denominator": 0,
+    "per_class": {},
+    "per_repo": {},
+    "per_arm": {}
+  },
+  "reliability": {
+    "metric": "successful_indexed_trials / all_trials",
+    "successful_indexed_trials": 0,
+    "all_trials": 0,
+    "ratio": null,
+    "threshold": 0.99,
+    "gate_status": "NOT_EVALUATED",
+    "failure_classes": {
+      "product": 0,
+      "infrastructure": 0
+    },
+    "failure_class_breakdown": {
+      "product": {},
+      "infrastructure": {}
+    },
+    "per_arm": {}
+  },
+  "paired_evidence_endpoint": {
+    "state": "NOT_EVALUATED",
+    "matrix_complete": false,
+    "n11": 0,
+    "n10": 0,
+    "n01": 0,
+    "n00": 0,
+    "paired_effect": null,
+    "p_value": null,
+    "minimum_effect": 0.05,
+    "alpha": 0.05,
+    "admission": "NOT_ADMITTED"
+  },
+  "b2_complete": false,
+  "b2_block_reasons": [
+    "patch_verifier_runner",
+    "oracle_red_baseline",
+    "fixture_commit_pinning",
+    "external_registration_anchor",
+    "independent_oracle_signature",
+    "three_non_pooled_agent_arms",
+    "paired_control_arms"
+  ]
+}
