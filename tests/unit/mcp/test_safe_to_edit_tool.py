@@ -463,6 +463,24 @@ async def test_edit_safe_explicit_read_existing_honors_compact_only(
         }
         return
 
+    # RFC-0027 L6.1: the answer cache attaches its visibility block AFTER the
+    # inner built ``toon_content``, so it rides the compact control surface (it
+    # is not recoverable from the blob). ``served_from`` is pinned exactly; the
+    # key components are digests over this tmp_path, so only their presence is
+    # pinned here — their derivation is pinned in
+    # ``tests/unit/test_answer_cache_policy.py``.
+    provenance = result.pop("provenance")
+    assert provenance["served_from"] == "computed"
+    assert set(provenance) == {
+        "served_from",
+        "tool",
+        "action",
+        "normalized_args",
+        "generation",
+        "producer_version",
+        "extra_inputs",
+    }
+
     assert result == {
         "format": "toon",
         "toon_content": (

@@ -55,6 +55,13 @@ TOON_CONTROL_SURFACE: frozenset[str] = frozenset(
         # only in-band signal for agents that cannot read server stderr, so it
         # must survive compaction (Codex P2 #393).
         "deprecation",
+        # RFC-0027 L6.1 answer cache: ``provenance.served_from`` tells an agent
+        # whether it got a replayed answer or a freshly computed one. TOON is
+        # the MCP default, so dropping this under compaction would make a cache
+        # hit invisible on the very path the cache exists for — and a cache that
+        # lies about freshness is worse than no cache. It is attached AFTER the
+        # inner built ``toon_content``, so it is not recoverable from the blob.
+        "provenance",
     }
 )
 
