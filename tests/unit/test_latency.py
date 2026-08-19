@@ -17,6 +17,8 @@ import threading
 import time
 from unittest import mock
 
+import pytest
+
 from tree_sitter_analyzer.latency import (
     DEFAULT_WINDOW,
     ENV_ENABLED,
@@ -25,6 +27,8 @@ from tree_sitter_analyzer.latency import (
     TIER_COLD,
     TIER_WARM,
     LatencyRecorder,
+    RouteLatency,
+    get_latency_recorder,
     percentile_ns,
 )
 
@@ -303,6 +307,73 @@ def test_routes_are_sorted_by_tool_action_tier() -> None:
     recorder.record("health", "file", 1 * MS)
     tools = [route.tool for route in recorder.snapshot().routes]
     assert tools == ["edit", "health", "nav"]
+
+
+def test_window_below_one_is_rejected() -> None:
+    """A zero-size reservoir would silently discard every sample."""
+    with pytest.raises(ValueError, match="window must be >= 1"):
+        LatencyRecorder(window=0)
+
+
+def test_window_property_reports_the_configured_window() -> None:
+    assert LatencyRecorder(window=8).window == 8
+
+
+def test_route_latency_p50_ms_is_none_when_no_percentile_exists() -> None:
+    """``_ns_to_ms`` preserves ``None`` — a missing percentile must never be
+    rendered as ``0.0`` (the fabricated-zero rule, applied to the ms view)."""
+    route = RouteLatency(
+        tool="t",
+        action="a",
+        tier=TIER_COLD,
+        count=0,
+        samples_in_window=0,
+        p50_ns=None,
+        p95_ns=None,
+    )
+    assert route.p50_ms is None
+
+
+def test_route_latency_report_row_renders_null_not_zero_for_missing_p95() -> None:
+    route = RouteLatency(
+        tool="t",
+        action="a",
+        tier=TIER_COLD,
+        count=0,
+        samples_in_window=0,
+        p50_ns=None,
+        p95_ns=None,
+    )
+    assert route.as_report_row()["p95_ms"] is None
+
+
+def test_get_latency_recorder_returns_one_process_global_instance() -> None:
+    assert get_latency_recorder() is get_latency_recorder()
+
+
+def test_get_latency_recorder_keeps_an_instance_created_during_lock_wait() -> None:
+    """Double-checked locking: if another thread created the recorder while we
+    were blocked on the lock, return theirs rather than replacing it — two
+    recorders would split the reservoirs and halve every count."""
+    import tree_sitter_analyzer.latency as latency_module
+
+    theirs = LatencyRecorder()
+
+    class _LockThatPublishesAnotherRecorder:
+        def __enter__(self) -> object:
+            latency_module._recorder = theirs
+            return self
+
+        def __exit__(self, *exc: object) -> bool:
+            return False
+
+    with (
+        mock.patch.object(latency_module, "_recorder", None),
+        mock.patch.object(
+            latency_module, "_recorder_lock", _LockThatPublishesAnotherRecorder()
+        ),
+    ):
+        assert get_latency_recorder() is theirs
 
 
 def _run_two_concurrent_first_calls(recorder: LatencyRecorder) -> None:

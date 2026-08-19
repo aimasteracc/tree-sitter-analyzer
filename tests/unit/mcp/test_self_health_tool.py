@@ -18,15 +18,32 @@ import pytest
 from tree_sitter_analyzer.latency import (
     TIER_COLD,
     TIER_WARM,
+    LatencyRecorder,
     get_latency_recorder,
 )
 from tree_sitter_analyzer.mcp.tools.self_health_tool import (
     SelfHealthTool,
+    _analysis_cache_report,
     _ast_index_report,
     _engine_root_conflict,
+    _per_root_cache_stats,
 )
 
 MS = 1_000_000
+
+
+class _UnreadableRegistry:
+    """Stands in for ``UnifiedAnalysisEngine._instances`` when it cannot be read.
+
+    Both call sites reach it differently — ``list(...)`` uses ``__iter__``,
+    ``dict(...)`` uses ``keys()`` — so both raise.
+    """
+
+    def __iter__(self) -> Any:
+        raise RuntimeError("registry gone")
+
+    def keys(self) -> Any:
+        raise RuntimeError("registry gone")
 
 
 @pytest.fixture
@@ -507,6 +524,210 @@ def test_single_engine_root_reports_no_conflict(tmp_path: Any) -> None:
 
     get_analysis_engine(str(tmp_path))
     assert _engine_root_conflict(str(tmp_path)) is None
+
+
+def test_two_unrelated_engine_roots_are_not_flagged_as_a_conflict(
+    tmp_path: Any,
+) -> None:
+    """Two engines for genuinely different projects is normal, not ambiguous.
+    Flagging it would make the whole analysis_cache block useless in any
+    process that ever touched a second repository."""
+    from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
+
+    mine = tmp_path / "project-a"
+    other = tmp_path / "project-b"
+    mine.mkdir()
+    other.mkdir()
+    get_analysis_engine(str(mine))
+    get_analysis_engine(str(other))
+    assert _engine_root_conflict(str(mine)) is None
+
+
+def test_unreadable_engine_registry_reports_no_conflict(tmp_path: Any) -> None:
+    """A diagnostic must never raise: if the engine registry cannot be read,
+    conflict detection reports "no conflict" rather than propagating."""
+    import tree_sitter_analyzer.core.analysis_engine as engine_module
+
+    with mock.patch.object(
+        engine_module.UnifiedAnalysisEngine, "_instances", _UnreadableRegistry()
+    ):
+        assert _engine_root_conflict(str(tmp_path)) is None
+
+
+# --------------------------------------------------------------------------
+# analysis_cache — the OK path and the per-root breakdown
+# --------------------------------------------------------------------------
+
+
+def _stub_engine(stats: Any) -> Any:
+    """An engine whose ``get_cache_stats()`` returns *stats* (or raises it)."""
+    engine = mock.Mock()
+    if isinstance(stats, Exception):
+        engine.get_cache_stats.side_effect = stats
+    else:
+        engine.get_cache_stats.return_value = stats
+    return engine
+
+
+def test_busy_analysis_cache_hit_rate_is_computed_exactly(tmp_path: Any) -> None:
+    """The happy path: 3 hits of 4 requests is exactly 0.75, not 0.7 or 0.8."""
+    import tree_sitter_analyzer.core.analysis_engine as engine_module
+
+    stats = {"hits": 3, "misses": 1, "total_requests": 4}
+    with mock.patch.object(
+        engine_module, "get_analysis_engine", return_value=_stub_engine(stats)
+    ):
+        report = _analysis_cache_report(str(tmp_path))
+    assert report["hit_rate"] == 0.75
+
+
+def test_busy_analysis_cache_reports_status_ok_with_no_reason(
+    tmp_path: Any,
+) -> None:
+    import tree_sitter_analyzer.core.analysis_engine as engine_module
+
+    stats = {"hits": 3, "misses": 1, "total_requests": 4}
+    with mock.patch.object(
+        engine_module, "get_analysis_engine", return_value=_stub_engine(stats)
+    ):
+        report = _analysis_cache_report(str(tmp_path))
+    assert (report["status"], report["reason"]) == ("OK", None)
+
+
+def test_uninitialized_analysis_cache_reason_is_not_initialized(
+    tmp_path: Any,
+) -> None:
+    """Empty stats means the engine exists but its cache was never built."""
+    import tree_sitter_analyzer.core.analysis_engine as engine_module
+
+    with mock.patch.object(
+        engine_module, "get_analysis_engine", return_value=_stub_engine({})
+    ):
+        report = _analysis_cache_report(str(tmp_path))
+    assert (report["status"], report["reason"]) == (
+        "UNAVAILABLE",
+        "CACHE_NOT_INITIALIZED",
+    )
+
+
+def test_ambiguous_analysis_cache_carries_the_per_root_breakdown(
+    tmp_path: Any,
+) -> None:
+    """AMBIGUOUS alone would be a dead end; the roots list must carry numbers."""
+    from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
+
+    root = str(tmp_path)
+    get_analysis_engine(root)
+    get_analysis_engine(root + os.sep)
+    report = _analysis_cache_report(root)
+    assert report["status"] == "AMBIGUOUS" and isinstance(report["roots"], list)
+
+
+def test_per_root_stats_report_exact_hit_rate_for_a_busy_engine() -> None:
+    import tree_sitter_analyzer.core.analysis_engine as engine_module
+
+    engines = {"a-root": _stub_engine({"hits": 3, "misses": 1, "total_requests": 4})}
+    with mock.patch.object(engine_module.UnifiedAnalysisEngine, "_instances", engines):
+        rows = _per_root_cache_stats()
+    assert rows == [
+        {
+            "root_key": "a-root",
+            "hits": 3,
+            "misses": 1,
+            "total_requests": 4,
+            "hit_rate": 0.75,
+        }
+    ]
+
+
+def test_per_root_stats_report_null_hit_rate_for_an_idle_engine() -> None:
+    """An idle engine must report ``None``, never ``0.0`` — same honesty rule."""
+    import tree_sitter_analyzer.core.analysis_engine as engine_module
+
+    engines = {"idle": _stub_engine({"hits": 0, "misses": 0, "total_requests": 0})}
+    with mock.patch.object(engine_module.UnifiedAnalysisEngine, "_instances", engines):
+        rows = _per_root_cache_stats()
+    assert rows[0]["hit_rate"] is None
+
+
+def test_per_root_stats_flag_an_unreadable_engine_with_a_reason() -> None:
+    import tree_sitter_analyzer.core.analysis_engine as engine_module
+
+    engines = {"broken": _stub_engine(RuntimeError("db locked"))}
+    with mock.patch.object(engine_module.UnifiedAnalysisEngine, "_instances", engines):
+        rows = _per_root_cache_stats()
+    assert rows[0]["reason"] == "CACHE_STATS_UNREADABLE:RuntimeError"
+
+
+def test_per_root_stats_flag_an_uninitialized_engine_with_a_reason() -> None:
+    import tree_sitter_analyzer.core.analysis_engine as engine_module
+
+    engines = {"fresh": _stub_engine({})}
+    with mock.patch.object(engine_module.UnifiedAnalysisEngine, "_instances", engines):
+        rows = _per_root_cache_stats()
+    assert rows[0]["reason"] == "CACHE_NOT_INITIALIZED"
+
+
+def test_per_root_stats_are_sorted_by_root_key() -> None:
+    """Stable ordering so a diff of two reports is readable."""
+    import tree_sitter_analyzer.core.analysis_engine as engine_module
+
+    engines = {
+        "z-root": _stub_engine({"hits": 1, "misses": 0, "total_requests": 1}),
+        "a-root": _stub_engine({"hits": 1, "misses": 0, "total_requests": 1}),
+    }
+    with mock.patch.object(engine_module.UnifiedAnalysisEngine, "_instances", engines):
+        rows = _per_root_cache_stats()
+    assert [row["root_key"] for row in rows] == ["a-root", "z-root"]
+
+
+def test_per_root_stats_are_empty_when_the_registry_is_unreadable() -> None:
+    import tree_sitter_analyzer.core.analysis_engine as engine_module
+
+    with mock.patch.object(
+        engine_module.UnifiedAnalysisEngine, "_instances", _UnreadableRegistry()
+    ):
+        assert _per_root_cache_stats() == []
+
+
+# --------------------------------------------------------------------------
+# ast_index — corrupt index, and the remaining tool surface
+# --------------------------------------------------------------------------
+
+
+def test_corrupt_ast_index_is_reported_unreadable(tmp_path: Any) -> None:
+    """A file that is not a SQLite database must not read as ABSENT or OK."""
+    cache_dir = tmp_path / ".ast-cache"
+    cache_dir.mkdir()
+    (cache_dir / "index.db").write_text("this is not a database", encoding="utf-8")
+    assert _ast_index_report(str(tmp_path))["status"] == "UNREADABLE"
+
+
+def test_corrupt_ast_index_names_the_failure(tmp_path: Any) -> None:
+    cache_dir = tmp_path / ".ast-cache"
+    cache_dir.mkdir()
+    (cache_dir / "index.db").write_text("this is not a database", encoding="utf-8")
+    reason = _ast_index_report(str(tmp_path))["reason"]
+    assert reason.startswith("INDEX_UNREADABLE:")
+
+
+def test_validate_arguments_accepts_the_parameterless_call(tmp_path: Any) -> None:
+    """The report takes no required params, so validation always admits."""
+    assert SelfHealthTool(project_root=str(tmp_path)).validate_arguments({}) is True
+
+
+@pytest.mark.asyncio
+async def test_next_step_names_the_env_var_when_instrumentation_is_disabled(
+    tmp_path: Any,
+) -> None:
+    """An operator who opted out must be told why the report is empty."""
+    import tree_sitter_analyzer.latency as latency_module
+
+    with mock.patch.object(latency_module, "_recorder", LatencyRecorder(enabled=False)):
+        result = await SelfHealthTool(project_root=str(tmp_path)).execute(
+            {"output_format": "json"}
+        )
+    assert "TSA_LATENCY_INSTRUMENTATION" in result["agent_summary"]["next_step"]
 
 
 @pytest.mark.asyncio
