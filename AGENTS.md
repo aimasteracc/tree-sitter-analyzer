@@ -63,13 +63,21 @@ Any change touching one of these registries MUST update the corresponding `docs/
 | Registry file | Codemap |
 |---|---|
 | `tree_sitter_analyzer/mcp/_tool_registry.py` | `docs/CODEMAPS/mcp-tools.md` |
-| `tree_sitter_analyzer/cli/argument_parser_builder.py` | `docs/CODEMAPS/cli.md` |
+| `tree_sitter_analyzer/cli/argument_groups/*.py` + `tree_sitter_analyzer/cli/argument_parser_builder.py` | `docs/CODEMAPS/cli.md` |
 | `tree_sitter_analyzer/languages/<lang>_plugin/*` | `docs/CODEMAPS/languages.md` |
 | `tree_sitter_analyzer/formatters/*` | `docs/CODEMAPS/formatters.md` |
 
 Enforced by:
 - `scripts/codemap-sync-check.sh` (pre-commit hook + Claude PreToolUse soft-nag)
 - `test_registered_mcp_tools_have_codemap_parity` in `tests/contracts/test_mcp_surface_metadata_contract.py`
+
+"Self-enforcing" is only true while the hook's detectors still match the code they
+watch. Both had gone dead against the current shapes (the MCP detector still looked
+for the pre-facade `("name", SomeTool(` form; the CLI detector still watched
+`argument_parser_builder.py`, which holds zero `add_argument` calls). Verify with
+`bash scripts/codemap-sync-check.sh --self-check`, which fails when a detector
+matches nothing; `tests/integration/test_codemap_sync_hook.sh` runs it and builds
+its fixtures from the real files rather than imitations of them.
 
 Escape hatch for intentional rename/rebase: `SKIP_CODEMAP_SYNC=1 git commit ...`. The pytest test still runs in CI as the final safety net — bypass is local-only.
 

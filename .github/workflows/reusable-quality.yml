@@ -93,3 +93,13 @@ jobs:
         run: |
           bash scripts/check_loose_assertions.sh origin/${{ github.base_ref }}
         continue-on-error: false
+
+  codemap-sync-gate:
+    name: Codemap Sync Gate (detectors alive)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run codemap-sync-check integration test
+        run: |
+          bash tests/integration/test_codemap_sync_hook.sh
+          echo "OK: codemap-sync detectors still match the live registry/CLI surface" >> $GITHUB_STEP_SUMMARY
