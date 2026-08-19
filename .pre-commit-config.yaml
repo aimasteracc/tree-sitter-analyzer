@@ -133,6 +133,18 @@ repos:
         files: ^tests/.*\.py$
         stages: [pre-commit]
 
+      # A test that reads text without encoding= inherits the runner's locale:
+      # green on UTF-8 CI, UnicodeDecodeError on a cp932/latin-1 box, where the
+      # decode error MASKS the assertion. Baseline 2267 is grandfathered; this
+      # only blocks newly added lines. Measure: --baseline.
+      - id: test-encoding-ratchet
+        name: Test Encoding Ratchet
+        entry: uv run python scripts/check_test_encoding.py --staged
+        language: system
+        pass_filenames: false
+        files: ^tests/.*\.py$
+        stages: [pre-commit]
+
       - id: workflow-consistency-tests
         name: Workflow Consistency Tests
         entry: uv run pytest tests/integration/workflows/test_workflow_properties.py -v --tb=short

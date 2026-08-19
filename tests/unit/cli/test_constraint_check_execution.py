@@ -514,7 +514,12 @@ def _ctime_variant(info, delta):
 
 @pytest.mark.skipif(
     sys.platform != "win32",
-    reason="st_ctime is creation time only on Windows; POSIX ctime is asserted below",
+    reason=(
+        "tracked: CI run 32256066101 (windows 3.12). st_ctime is creation time only "
+        "on Windows; the POSIX half of this contract is asserted by "
+        "test_identity_honors_inode_change_time_on_posix, so neither platform is "
+        "left unasserted."
+    ),
 )
 def test_identity_ignores_creation_time_on_windows(tmp_path):
     # CI develop 32256066101 (windows-latest, 3.12): os.stat(path) and
@@ -531,7 +536,11 @@ def test_identity_ignores_creation_time_on_windows(tmp_path):
 
 @pytest.mark.skipif(
     sys.platform == "win32",
-    reason="POSIX-only: st_ctime is inode change time and must stay projected",
+    reason=(
+        "tracked: CI run 32256066101 (windows 3.12). POSIX-only half of the ctime "
+        "contract: st_ctime is inode change time here and must stay projected. The "
+        "Windows half is asserted by test_identity_ignores_creation_time_on_windows."
+    ),
 )
 def test_identity_honors_inode_change_time_on_posix(tmp_path):
     # The Windows carve-out above must not weaken POSIX, where st_ctime is the
