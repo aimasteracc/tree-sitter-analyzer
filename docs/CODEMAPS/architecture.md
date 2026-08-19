@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-22; doc-code re-sync: 2026-06-17 -->
+<!-- Generated: 2026-05-22; doc-code re-sync: 2026-08-19 -->
 # Architecture Codemap
 
 High-level topology of the `tree-sitter-analyzer` Python package.
@@ -10,11 +10,11 @@ tree_sitter_analyzer/
 ├── cli/              ← CLI entry points + commands           (cli.md)
 ├── mcp/              ← MCP server + 8 facade tools             (mcp-tools.md)
 │   ├── server.py     ← stdio transport, tool registration
-│   ├── tools/        ← ~74 inner tool classes (delegated from facades)
+│   ├── tools/        ← 146 modules / 79 inner tool classes (delegated from facades)
 │   ├── server_utils/ ← registration / smart_prompts / intent
 │   ├── utils/        ← project_index, search_cache, file_output_factory
 │   └── resources/    ← MCP resources (read-only data exposed to AI)
-├── languages/        ← 21 tree-sitter plugins                (languages.md)
+├── languages/        ← 22 tree-sitter plugins                (languages.md)
 ├── formatters/       ← TOON / JSON / table / CSV / YAML      (formatters.md)
 ├── core/             ← Parser, engine, AnalysisSession, AnalysisRequest
 ├── models/           ← AnalysisResult + Class/Function/Variable/Import models
