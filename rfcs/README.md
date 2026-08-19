@@ -81,6 +81,9 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0022](0022-task-outcome-apis.md) | Static task outcomes by primitive orchestration | draft |
 | [0023](0023-edge-evidence-confidence-freshness.md) | Edge evidence, confidence, and freshness | draft |
 | [0024](0024-default-dependency-split.md) | Default dependency split, descriptive post-hoc baseline | draft |
+| [0025](0025-instant-causal-proprioception.md) | Instant causal proprioception for agent change intelligence | draft |
+| [0026](0026-no1-010b-agent-change-outcome-benchmark.md) | NO1-010B agent change-outcome benchmark (VCSR) | draft |
+| [0027](0027-agent-secretary-and-calibration.md) | Secretary layer — instant answers, comprehension, calibrated learning | draft |
 
 ## Roadmap
 
