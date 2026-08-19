@@ -140,6 +140,18 @@ def _add_batch_options(parser: argparse.ArgumentParser) -> None:
         help="Project health: score all source files and report grade distribution, worst files, and refactoring targets",
     )
     parser.add_argument(
+        "--self-health",
+        action="store_true",
+        dest="self_health",
+        help=(
+            "Self-proprioception (RFC-0025 Layer 5): per-(tool, action) p50/p95 "
+            "latency by tier (cold/warm/cached), invocation counts, and the "
+            "AST-cache hit rate for THIS process. Scope is the current process, "
+            "so a fresh CLI run honestly reports NO_OBSERVATIONS; use "
+            "scripts/measure_self_health_baseline.py for real numbers."
+        ),
+    )
+    parser.add_argument(
         "--doctor",
         action="store_true",
         help="Run installation diagnostics: check uv/uvx/fd/rg, TREE_SITTER_PROJECT_ROOT, and agent config files.",

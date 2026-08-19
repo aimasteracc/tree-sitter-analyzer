@@ -21,6 +21,8 @@ overview    ``codegraph_overview``                       entry-points / hubs / d
 deps        ``analyze_dependencies`` (R5)                dependency analysis — mode sub-param:
                                                          summary|cycles|blast|file_deps
 test_gap    ``codegraph_test_gap`` (CodeGraphTestGapTool) untested symbol discovery, complexity-ranked
+self        ``self_health``     (SelfHealthTool)         RFC-0025 Layer 5 self-proprioception: per-route
+                                                         p50/p95 latency by tier + AST-cache hit rate
 ==========  ===========================================  ===================================================
 
 R5 (PRD §3): ``deps`` maps to the single ``DependencyAnalysisTool`` whose
@@ -88,6 +90,10 @@ _HEALTH_DESCRIPTION = (
     "- action=test_gap — untested symbol discovery ranked by cyclomatic complexity. "
     "Params: mode (summary|gaps|file), file_path, language, max_files, max_gaps, "
     "include_covered, output_format.\n"
+    "- action=self — self-proprioception (RFC-0025 Layer 5): per-(tool, action) "
+    "p50/p95 latency split by tier (cold/warm/cached), exact invocation counts, "
+    "and the AST-cache hit rate for THIS process. No params. Unmeasured values "
+    "are `null` with status NO_OBSERVATIONS — never a fabricated 0.0.\n"
     "For UML diagrams, call/dependency graph visualizations, and similarity "
     "analysis, use the ``viz`` facade instead."
 )
@@ -114,6 +120,7 @@ def build_health_facade(project_root: str | None = None) -> FacadeTool:
     from .import_graph_tool import CodeGraphImportGraphTool
     from .project_health_tool import ProjectHealthTool
     from .route_detector_tool import RouteDetectorTool
+    from .self_health_tool import SelfHealthTool
     from .test_gap_tool import CodeGraphTestGapTool
 
     facade = FacadeTool(
@@ -135,6 +142,8 @@ def build_health_facade(project_root: str | None = None) -> FacadeTool:
             "deps": DependencyAnalysisTool(project_root),
             # RFC-0003 pre-requisite: wire orphaned test-gap tool into the facade
             "test_gap": CodeGraphTestGapTool(project_root),
+            # RFC-0025 Layer 5: self-proprioception (latency p50/p95 by tier)
+            "self": SelfHealthTool(project_root),
         },
         bespoke_map={},  # no F5 bespoke routes needed for health
         description=_HEALTH_DESCRIPTION,

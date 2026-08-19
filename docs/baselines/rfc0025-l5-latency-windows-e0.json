@@ -1,0 +1,160 @@
+{
+  "collection_finished_at_utc": "2026-08-19T07:29:01.446181+00:00",
+  "collection_started_at_utc": "2026-08-19T07:27:28.225738+00:00",
+  "environment": {
+    "machine": "AMD64",
+    "os": "Windows-11-10.0.26200-SP0",
+    "python": {
+      "implementation": "CPython",
+      "version": "3.13.5"
+    },
+    "system": "windows"
+  },
+  "evidence_level": "E0",
+  "evidence_level_note": "Single un-isolated host: no CPU pinning, no thermal or power control, no repeat-host cross-check. Magnitudes are load-bearing; individual digits are not.",
+  "measured_axis": "windows",
+  "reproduction_command": "uv run python scripts/measure_self_health_baseline.py",
+  "roadmap_id": "RFC-0025-L5",
+  "routes_driven": [
+    {
+      "action": "outline",
+      "calls": 6,
+      "errors": [],
+      "params": {
+        "file_path": "tree_sitter_analyzer/latency.py"
+      },
+      "tool": "structure"
+    },
+    {
+      "action": "file",
+      "calls": 6,
+      "errors": [],
+      "params": {
+        "file_path": "tree_sitter_analyzer/latency.py"
+      },
+      "tool": "health"
+    },
+    {
+      "action": "callers",
+      "calls": 6,
+      "errors": [],
+      "params": {
+        "symbol": "percentile_ns"
+      },
+      "tool": "nav"
+    },
+    {
+      "action": "safe",
+      "calls": 6,
+      "errors": [],
+      "params": {
+        "file_path": "tree_sitter_analyzer/latency.py"
+      },
+      "tool": "edit"
+    }
+  ],
+  "schema_version": 1,
+  "self_health": {
+    "agent_summary": {
+      "next_step": "Compare the cold and warm rows per route: a route with no warm benefit is a standing-index candidate. Pin these numbers with `uv run python scripts/measure_self_health_baseline.py`.",
+      "summary_line": "self_health status=OK routes=8 invocations=24 ast_cache_hit_rate=0.8333",
+      "verdict": "INFO"
+    },
+    "ast_cache": {
+      "hit_rate": 0.8333,
+      "hits": 10,
+      "misses": 2,
+      "status": "OK",
+      "total_requests": 12
+    },
+    "instrumentation_enabled": true,
+    "observations_status": "OK",
+    "percentile_method": "nearest-rank (exact sample value, no interpolation)",
+    "routes": [
+      {
+        "action": "safe",
+        "count": 1,
+        "p50_ms": 17857.38,
+        "p95_ms": 17857.38,
+        "samples_in_window": 1,
+        "tier": "cold",
+        "tool": "edit"
+      },
+      {
+        "action": "safe",
+        "count": 5,
+        "p50_ms": 3707.938,
+        "p95_ms": 4894.778,
+        "samples_in_window": 5,
+        "tier": "warm",
+        "tool": "edit"
+      },
+      {
+        "action": "file",
+        "count": 1,
+        "p50_ms": 16871.196,
+        "p95_ms": 16871.196,
+        "samples_in_window": 1,
+        "tier": "cold",
+        "tool": "health"
+      },
+      {
+        "action": "file",
+        "count": 5,
+        "p50_ms": 474.398,
+        "p95_ms": 527.62,
+        "samples_in_window": 5,
+        "tier": "warm",
+        "tool": "health"
+      },
+      {
+        "action": "callers",
+        "count": 1,
+        "p50_ms": 35191.489,
+        "p95_ms": 35191.489,
+        "samples_in_window": 1,
+        "tier": "cold",
+        "tool": "nav"
+      },
+      {
+        "action": "callers",
+        "count": 5,
+        "p50_ms": 20.255,
+        "p95_ms": 27.583,
+        "samples_in_window": 5,
+        "tier": "warm",
+        "tool": "nav"
+      },
+      {
+        "action": "outline",
+        "count": 1,
+        "p50_ms": 220.074,
+        "p95_ms": 220.074,
+        "samples_in_window": 1,
+        "tier": "cold",
+        "tool": "structure"
+      },
+      {
+        "action": "outline",
+        "count": 5,
+        "p50_ms": 6.224,
+        "p95_ms": 8.122,
+        "samples_in_window": 5,
+        "tier": "warm",
+        "tool": "structure"
+      }
+    ],
+    "scope": "current_process",
+    "success": true,
+    "summary_line": "self_health status=OK routes=8 invocations=24 ast_cache_hit_rate=0.8333",
+    "tier_definition": "cold = first observation of this (tool, action) in this process; warm = every later observation in this process; cached = reported explicitly by a caching layer. cold/warm is a process-lifetime definition, NOT a measured cache probe.",
+    "total_invocations": 24,
+    "verdict": "INFO",
+    "window": 256
+  },
+  "source": {
+    "branch": "feature/self-health-latency-instrumentation",
+    "commit": "5fd4b962639d616cc71b4d46796d24d7f475f357"
+  },
+  "warm_repeats": 5
+}

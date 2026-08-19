@@ -402,6 +402,10 @@ def _reset_all_singletons():
         ),
         ("tree_sitter_analyzer.language_loader", "_loader_instance", "set_none"),
         ("tree_sitter_analyzer.query_loader", "_query_loader_instance", "set_none"),
+        # RFC-0025 Layer 5: the latency recorder is process-global and every
+        # facade call feeds it. Without this reset, a test asserting the
+        # honest NO_OBSERVATIONS empty state would see another test's samples.
+        ("tree_sitter_analyzer.latency", "_recorder", "set_none"),
     ]
 
     for module_path, attr_name, action in _MODULE_ATTR_RESETS:

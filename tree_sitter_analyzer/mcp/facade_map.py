@@ -176,4 +176,6 @@ NEW_ACTION_PARITY: dict[str, tuple[str, str, str]] = {
     "nav_co_change": ("nav", "co_change", "--co-change"),
     "index_knowledge": ("index", "knowledge", "--knowledge-graph-index"),
     "viz_knowledge": ("viz", "knowledge", "--knowledge-graph-export"),
+    # RFC-0025 Layer 5: self-proprioception is new; never a v1.x tool.
+    "health_self": ("health", "self", "--self-health"),
 }

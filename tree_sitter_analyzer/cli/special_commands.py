@@ -35,6 +35,7 @@ def handle_special_commands(
         lambda: _handle_agent_workflow(args, context),
         lambda: _handle_batch_partial_read(args, context),
         lambda: _handle_health_check(args, context),
+        lambda: _handle_self_health(args, context),
         lambda: _handle_doctor(args, context),
         lambda: _handle_check_scale(args, context),
         lambda: _handle_outline(args, context),
@@ -307,6 +308,40 @@ def _handle_health_check(
             context,
             "health_check",
             f"Project health check failed: {exc}",
+            error_type="runtime",
+        )
+        return 1
+
+
+def _handle_self_health(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Run the self-proprioception report for --self-health (RFC-0025 Layer 5).
+
+    Routes through the same ``SelfHealthTool`` the ``health action=self`` MCP
+    action uses, so the two surfaces cannot drift (parity is asserted by
+    ``tests/unit/mcp/test_self_health_tool.py``).
+    """
+    if not getattr(args, "self_health", False):
+        return None
+    try:
+        from tree_sitter_analyzer.mcp.tools.self_health_tool import SelfHealthTool
+
+        project_root = getattr(args, "project_root", None) or os.getcwd()
+        return _run_mcp_tool_sync(
+            SelfHealthTool,
+            {"output_format": _tool_output_format(args)},
+            project_root=project_root,
+            args=args,
+            context=context,
+        )
+    except Exception as exc:
+        _emit_cli_error(
+            args,
+            context,
+            "self_health",
+            f"Self-health report failed: {exc}",
             error_type="runtime",
         )
         return 1

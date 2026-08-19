@@ -58,6 +58,7 @@ import difflib
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from ...latency import get_latency_recorder
 from .base_tool import BaseMCPTool
 
 # A bespoke route may return ``dict`` (normal envelope) or ``int`` (exit code
@@ -355,16 +356,26 @@ class FacadeTool(BaseMCPTool):
                     f"parameter {parameter!r} applies only to action(s): {allowed}"
                 )
 
+        # RFC-0025 Layer 5: the facade is the public (tool, action) surface, so
+        # it is the one seam where a latency observation is unambiguous —
+        # instrumenting inner tools instead would double-count every facade
+        # call and key the reservoir by class name rather than by route.
+        # Only the two dispatching branches are timed; the argument-validation
+        # error paths below are not routes and must not pollute the p95.
+        recorder = get_latency_recorder()
+
         # Bespoke routes (F5) take precedence and bypass schema projection.
         if action in self.bespoke_map:
             handler = self.bespoke_map[action]
             cleaned = self._clean_bespoke_args(arguments)
-            return await handler(cleaned)
+            with recorder.measure(self.facade_name, action):
+                return await handler(cleaned)
 
         if action in self.action_map:
             inner = self.action_map[action]
             projected = self._project_args(inner, arguments)
-            return await inner.execute(projected)
+            with recorder.measure(self.facade_name, action):
+                return await inner.execute(projected)
 
         available = self._available_actions()
         valid = ", ".join(available) if available else "(none registered)"
