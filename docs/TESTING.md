@@ -19,7 +19,10 @@ This document provides comprehensive guidelines for testing the tree-sitter-anal
 
 The tree-sitter-analyzer project maintains high testing standards with comprehensive test coverage across all components. Our testing philosophy prioritizes:
 
-- **Comprehensive Coverage**: >80% overall coverage, with critical modules at >85%
+- **Behavioral assertions first**: every test pins a concrete fact that would fail if
+  the code returned the wrong value. Coverage is a **by-product, never a goal** —
+  CLAUDE.md rule **T-3** is a BLOCKER and writing a test to move a coverage
+  percentage is prohibited.
 - **Clear Documentation**: Self-documenting tests with descriptive names
 - **Maintainability**: DRY principles with reusable fixtures and helpers
 - **Fast Feedback**: Efficient test execution with parallelization where appropriate
@@ -162,9 +165,14 @@ uv run pytest tests/benchmarks/ -m benchmark --benchmark-enable --benchmark-only
 
 - Unit test files: `test_<module>.py` — one file per module.
   Do NOT create a second file for an existing module. Rule T-1 is a
-  BLOCKER and the `block-banned-test-names` hook rejects the
-  `*_comprehensive*`, `*_edge_cases*`, `*_coverage*`, `*_extended*`, and
-  `*_optimized*` name patterns outright. Add to the existing file instead.
+  BLOCKER. Add to the existing file instead.
+  The `block-banned-test-names` hook screens the `*_comprehensive*`,
+  `*_edge_cases*`, `*_coverage*`, `*_extended*` and `*_optimized*` patterns,
+  but it is a screen and not a proof — know its two limits:
+  it inspects only **added** files (`--diff-filter=A`), so renaming an existing
+  test into a banned name passes; and it matches the whole **path**, so a
+  legitimate file under a directory such as `tests/unit/grammar_coverage/`
+  trips it. T-1 is your obligation, not the hook's.
 - Integration tests: `test_<feature>_integration.py`
 - End-to-end tests: `test_<workflow>_e2e.py`
 
@@ -487,8 +495,23 @@ def sample_code():
 
 @pytest.fixture
 def mock_analyzer():
-    """Provide a mock analyzer."""
-    return Mock(spec=CodeAnalyzer)
+    """Provide a mock analyzer with a configured return value.
+
+    Two traps this example exists to avoid:
+
+    1. A bare ``Mock()`` returns a fresh unconfigured ``Mock`` from every
+       call, so ``assert result.language == "python"`` would compare two
+       Mock objects and fail. Configure the value you intend to assert.
+    2. ``Mock(spec=SomeClass)`` auto-specs each attribute, and for an
+       ``async def`` method that yields an ``AsyncMock`` whose call returns
+       a **coroutine**, not your value — the assertion then fails with
+       ``AttributeError: 'coroutine' object has no attribute ...``.
+       Only spec against a class whose call shape you are actually
+       modelling, and ``await`` it if the real method is async.
+    """
+    analyzer = Mock()
+    analyzer.analyze.return_value = Mock(language="python")
+    return analyzer
 
 def test_with_fixtures(sample_code, mock_analyzer):
     """Test using fixtures."""
@@ -556,7 +579,7 @@ import pytest
 async def test_async_function():
     """Test async function."""
     result = await async_function()
-    assert result.status == "ok"
+    assert result["status"] == "ok"
 ```
 
 ### 7. Clean Up Resources
@@ -643,7 +666,7 @@ def test_python_function_analysis(tmp_path):
         expected_language="python",
         require_success=True
     )
-    assert len(result["elements"]["functions"]) == 2
+    assert len(result["elements"]["functions"]) == 1
 ```
 
 ---
