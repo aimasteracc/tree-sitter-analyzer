@@ -646,6 +646,72 @@ def test_python_module_scope_loader_alias_stays_projected() -> None:
 @pytest.mark.parametrize(
     "source",
     [
+        "typeof module !== 'undefined'",
+        "typeof require === 'function'",
+        "typeof window !== 'undefined'",
+    ],
+)
+def test_jsts_typeof_query_preserves_completeness(source: str) -> None:
+    # PR #1308 review round 7: ``typeof`` yields its operand's type tag as a
+    # string and cannot retain, alias, call or propagate the operand value, so
+    # a loader named there provably cannot escape.
+    extraction = _extraction_for(source, "javascript")
+
+    assert extraction["import_projection_complete"] is True
+
+
+def test_jsts_import_meta_preserves_completeness() -> None:
+    # PR #1308 review round 7: ``import.meta`` parses as a meta_property, not
+    # as a member of the dynamic-import operator, so its ``import`` token is a
+    # static keyword rather than a loader reference.
+    extraction = _extraction_for("const u = import.meta.url;", "javascript")
+
+    assert extraction["import_projection_complete"] is True
+
+
+def test_jsts_module_exports_assignment_preserves_completeness() -> None:
+    extraction = _extraction_for("module.exports = f;", "javascript")
+
+    assert extraction["import_projection_complete"] is True
+
+
+def test_jsts_global_property_assignment_preserves_completeness() -> None:
+    extraction = _extraction_for("globalThis.x = 1;", "javascript")
+
+    assert extraction["import_projection_complete"] is True
+
+
+def test_typeof_query_does_not_whitelist_later_loader_escape() -> None:
+    """A typeof operand is safe; the same identifier elsewhere is not."""
+    extraction = _extraction_for(
+        "const t = typeof require;\nregistry.push(require);",
+        "javascript",
+    )
+
+    assert extraction["import_projection_complete"] is False
+
+
+def test_typeof_query_does_not_whitelist_a_nested_evaluator_call() -> None:
+    """Calls inside a typeof operand are still classified on their own merits."""
+    extraction = _extraction_for(
+        "const t = typeof eval(\"require('./util.js')\");",
+        "javascript",
+    )
+
+    assert extraction["import_projection_complete"] is False
+
+
+def test_deleting_a_loader_still_fails_closed() -> None:
+    # ``delete`` shares the unary_expression node with ``typeof`` but rebinds
+    # the loader, so only ``typeof`` is provably safe.
+    extraction = _extraction_for("delete require;", "javascript")
+
+    assert extraction["import_projection_complete"] is False
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
         "import importlib\nclass C(retain(importlib.import_module)):\n    pass\n",
         (
             "import importlib\n"

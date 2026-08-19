@@ -376,7 +376,9 @@ _JSTS_LOADER_OWNER_ROOTS = frozenset(
 _JSTS_EVALUATOR_NAMES = frozenset({"Function", "eval"})
 _JSTS_LOADER_FACTORY_NAME = "createRequire"
 _JSTS_SHADOWABLE_GLOBALS = ("Function", "createRequire", "eval")
-_JSTS_SAFE_LOADER_MEMBERS = frozenset({"meta", "resolve"})
+# ``import.meta`` needs no entry here: it parses as a meta_property, so it
+# never reaches the member-path classification (see _jsts_is_import_keyword).
+_JSTS_SAFE_LOADER_MEMBERS = frozenset({"resolve"})
 _JSTS_NAME_NODES = frozenset(
     {
         "identifier",
@@ -543,13 +545,45 @@ def _jsts_reference_is_owner(node: Any) -> bool:
 
 
 def _jsts_is_import_keyword(node: Any) -> bool:
-    """Return whether a node is the ``import`` keyword of a static import."""
+    """Return whether a node is the ``import`` keyword of a static construct.
+
+    Both ``import "./x"`` and ``import.meta`` embed a named ``import`` token
+    that is a keyword, not the dynamic-import operator. ``import.meta`` in
+    particular parses as a ``meta_property`` rather than a member of
+    ``import``, so it never reaches the member-path classification.
+    """
 
     parent = getattr(node, "parent", None)
     return (
         node.type == "import"
         and parent is not None
-        and parent.type == "import_statement"
+        and parent.type in {"import_statement", "meta_property"}
+    )
+
+
+def _jsts_is_typeof_operand(node: Any, source: str) -> bool:
+    """Return whether a reference is only queried for its type tag.
+
+    ``typeof X`` evaluates ``X`` and yields a string naming its type; it cannot
+    retain, alias, call or propagate the operand value, so a loader named there
+    provably cannot escape. Only reference links (parentheses and member
+    access) are walked, so a call nested inside the operand is still
+    classified on its own merits. ``delete`` shares this node type but rebinds
+    its operand, so the operator is matched exactly.
+    """
+
+    current, parent = node, getattr(node, "parent", None)
+    while parent is not None and (
+        parent.type == "parenthesized_expression" or parent.type in _JSTS_MEMBER_NODES
+    ):
+        current, parent = parent, getattr(parent, "parent", None)
+    if parent is None or parent.type != "unary_expression":
+        return False
+    operator = parent.child_by_field_name("operator")
+    return bool(
+        operator is not None
+        and _node_text(operator, source).strip() == "typeof"
+        and parent.child_by_field_name("argument") == current
     )
 
 
@@ -713,15 +747,17 @@ class _SymbolWalker:
         """Fail closed unless a loader-visible name sits in a projected position.
 
         Every reference to a module loader, to an object that owns one, or to
-        the evaluator must be either invoked on a static module literal or
-        bound as a file-scoped alias the walker follows. Any other position --
-        including syntax this walker does not model -- degrades the file to an
-        honest ``unknown``.
+        the evaluator must be either invoked on a static module literal, bound
+        as a file-scoped alias the walker follows, or queried by ``typeof``.
+        Any other position -- including syntax this walker does not model --
+        degrades the file to an honest ``unknown``.
         """
 
         if self.language not in {"javascript", "typescript"}:
             return
         if not self.import_projection_complete:
+            return
+        if _jsts_is_typeof_operand(node, self.source):
             return
         if self._jsts_exposes_global(node) or self._jsts_retains_loader(node):
             self.import_projection_complete = False
