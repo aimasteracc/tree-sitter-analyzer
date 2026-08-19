@@ -3,7 +3,7 @@
 > **AUTO-GENERATED — do not edit by hand.** Regenerate with `uv run python scripts/generate_facade_actions_doc.py`.
 > Drift-gated by `tests/unit/docs/test_facade_actions_doc_drift.py` (regenerates in-memory and diffs).
 
-The MCP server exposes **8 facade tools** routing **74 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
+The MCP server exposes **8 facade tools** routing **75 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
 
 Reading the tables:
 
@@ -59,7 +59,7 @@ Reading the tables:
 | `signatures` | `file_path`*, `language`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
 | `sitemap` | `directory`, `language`, `max_files`, `max_symbols`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-sitemap` |
 
-## `health` — 12 actions
+## `health` — 13 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
@@ -74,6 +74,7 @@ Reading the tables:
 | `project` | `compact_only`, `max_files`, `min_grade`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--project-health` |
 | `routes` | `file_path`, `framework`, `mode`, `output_format`, `url_pattern` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--detect-routes` |
 | `scale` | `file_path`, `file_paths`, `include_complexity`, `include_details`, `include_guidance`, `language`, `metrics_only`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--metrics-only` |
+| `self` | `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--self-health` |
 | `test_gap` | `coverage_json`, `file_path`, `include_covered`, `language`, `max_files`, `max_gaps`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--test-gap` |
 
 ## `edit` — 9 actions

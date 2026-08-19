@@ -1,0 +1,210 @@
+{
+  "cold_column_caveat": "Every cold row is ONE observation and depends on the on-disk AST-index state recorded in preconditions.ast_index_before. Measured spread on one host at one commit: edit/safe cold p50 18014.645 / 14065.642 / 4104.113 ms (3.4x) purely from that state. Treat cold as indicative of magnitude only; do NOT use it in any cross-run or cross-commit comparison. Warm rows were stable (3845 / 3394 / 3624 ms) and are the comparable column.",
+  "cold_column_status": "INDICATIVE_SINGLE_OBSERVATION",
+  "collection_finished_at_utc": "2026-08-19T11:07:21.237416+00:00",
+  "collection_started_at_utc": "2026-08-19T11:05:46.776276+00:00",
+  "environment": {
+    "machine": "AMD64",
+    "os": "Windows-11-10.0.26200-SP0",
+    "python": {
+      "implementation": "CPython",
+      "version": "3.13.5"
+    },
+    "system": "windows"
+  },
+  "evidence_level": "E0",
+  "evidence_level_note": "Single un-isolated host: no CPU pinning, no thermal or power control, no repeat-host cross-check. Magnitudes are load-bearing; individual digits are not.",
+  "integrity": {
+    "recorder_module_sha256": "b6ac5dd6106da6d207528a7f756735b3ee5bc9883c1c18b863fc3a77991660a6",
+    "script_sha256": "fdb983a92968979ab3daa01a4e187ea22568a0a224dc773b2a20c5556d9308de",
+    "tool_module_sha256": "ae63a3bea8939e4ab28ec851203925fb7a01493b68367e3f1b8ef2da21a813db"
+  },
+  "measured_axis": "windows",
+  "preconditions": {
+    "ast_index_before": {
+      "hit_rate": null,
+      "hit_rate_status": "UNAVAILABLE_NOT_INSTRUMENTED",
+      "indexed_files": 0,
+      "path": "C:\\git-private\\tree-sitter-analyzer\\.claude\\worktrees\\agent-a3b9138364027faf7\\.ast-cache\\index.db",
+      "present": true,
+      "size_bytes": 200704,
+      "status": "EMPTY"
+    },
+    "declared_via": "--require-ast-index",
+    "git_dirty": false,
+    "git_dirty_allowed_by_flag": false,
+    "git_dirty_entry_count": 0,
+    "provenance_note": "provenance_valid is false when the working tree was dirty: the recorded commit then does NOT describe the measured code, and reproduction_command cannot reproduce these numbers.",
+    "provenance_valid": true
+  },
+  "reproduction_command": "uv run python scripts/measure_self_health_baseline.py",
+  "roadmap_id": "RFC-0025-L5",
+  "routes_driven": [
+    {
+      "action": "outline",
+      "calls": 6,
+      "errors": [],
+      "params": {
+        "file_path": "tree_sitter_analyzer/latency.py"
+      },
+      "tool": "structure"
+    },
+    {
+      "action": "file",
+      "calls": 6,
+      "errors": [],
+      "params": {
+        "file_path": "tree_sitter_analyzer/latency.py"
+      },
+      "tool": "health"
+    },
+    {
+      "action": "callers",
+      "calls": 6,
+      "errors": [],
+      "params": {
+        "symbol": "percentile_ns"
+      },
+      "tool": "nav"
+    },
+    {
+      "action": "safe",
+      "calls": 6,
+      "errors": [],
+      "params": {
+        "file_path": "tree_sitter_analyzer/latency.py"
+      },
+      "tool": "edit"
+    }
+  ],
+  "schema_version": 1,
+  "self_health": {
+    "agent_summary": {
+      "next_step": "Compare the cold and warm rows per route: a route with no warm benefit is a standing-index candidate. Pin these numbers with `uv run python scripts/measure_self_health_baseline.py`.",
+      "summary_line": "self_health status=OK routes=8 invocations=24 analysis_cache_hit_rate=n/a ast_index=EMPTY indexed_files=0",
+      "verdict": "INFO"
+    },
+    "analysis_cache": {
+      "hit_rate": null,
+      "hits": null,
+      "misses": null,
+      "reason": "MULTIPLE_ENGINE_ROOTS",
+      "roots": [
+        {
+          "hit_rate": 0.8333,
+          "hits": 10,
+          "misses": 2,
+          "root_key": "C:\\git-private\\tree-sitter-analyzer\\.claude\\worktrees\\agent-a3b9138364027faf7",
+          "total_requests": 12
+        },
+        {
+          "hit_rate": null,
+          "hits": 0,
+          "misses": 0,
+          "root_key": "default",
+          "total_requests": 0
+        }
+      ],
+      "status": "AMBIGUOUS",
+      "total_requests": null
+    },
+    "ast_index": {
+      "hit_rate": null,
+      "hit_rate_status": "UNAVAILABLE_NOT_INSTRUMENTED",
+      "indexed_files": 0,
+      "path": "C:\\git-private\\tree-sitter-analyzer\\.claude\\worktrees\\agent-a3b9138364027faf7\\.ast-cache\\index.db",
+      "present": true,
+      "size_bytes": 200704,
+      "status": "EMPTY"
+    },
+    "instrumentation_enabled": true,
+    "observations_status": "OK",
+    "percentile_method": "nearest-rank (exact sample value, no interpolation)",
+    "routes": [
+      {
+        "action": "safe",
+        "count": 1,
+        "p50_ms": 3339.257,
+        "p95_ms": 3339.257,
+        "samples_in_window": 1,
+        "tier": "cold",
+        "tool": "edit"
+      },
+      {
+        "action": "safe",
+        "count": 5,
+        "p50_ms": 3322.89,
+        "p95_ms": 3393.28,
+        "samples_in_window": 5,
+        "tier": "warm",
+        "tool": "edit"
+      },
+      {
+        "action": "file",
+        "count": 1,
+        "p50_ms": 50631.029,
+        "p95_ms": 50631.029,
+        "samples_in_window": 1,
+        "tier": "cold",
+        "tool": "health"
+      },
+      {
+        "action": "file",
+        "count": 5,
+        "p50_ms": 326.582,
+        "p95_ms": 329.444,
+        "samples_in_window": 5,
+        "tier": "warm",
+        "tool": "health"
+      },
+      {
+        "action": "callers",
+        "count": 1,
+        "p50_ms": 20425.442,
+        "p95_ms": 20425.442,
+        "samples_in_window": 1,
+        "tier": "cold",
+        "tool": "nav"
+      },
+      {
+        "action": "callers",
+        "count": 5,
+        "p50_ms": 17.183,
+        "p95_ms": 18.681,
+        "samples_in_window": 5,
+        "tier": "warm",
+        "tool": "nav"
+      },
+      {
+        "action": "outline",
+        "count": 1,
+        "p50_ms": 204.089,
+        "p95_ms": 204.089,
+        "samples_in_window": 1,
+        "tier": "cold",
+        "tool": "structure"
+      },
+      {
+        "action": "outline",
+        "count": 5,
+        "p50_ms": 2.722,
+        "p95_ms": 3.122,
+        "samples_in_window": 5,
+        "tier": "warm",
+        "tool": "structure"
+      }
+    ],
+    "scope": "current_process",
+    "success": true,
+    "summary_line": "self_health status=OK routes=8 invocations=24 analysis_cache_hit_rate=n/a ast_index=EMPTY indexed_files=0",
+    "tier_definition": "cold = the call STARTED before any call on this (tool, action) had COMPLETED in this process, so it cannot have benefited from warm state \u2014 concurrent first calls are therefore all cold, not one cold and one warm; warm = the call started after at least one call on this route completed; cached = reported explicitly by a caching layer. cold/warm is a process-lifetime definition, NOT a measured cache probe.",
+    "total_invocations": 24,
+    "verdict": "INFO",
+    "window": 256
+  },
+  "source": {
+    "branch": "feature/self-health-latency-instrumentation",
+    "commit": "7e870ed9c39a28025a0486f16a3e7293d8a1e13a"
+  },
+  "warm_repeats": 5
+}

@@ -68,6 +68,7 @@ Categories of CLI surface:
 - `--safe-to-edit` — edit risk verdict
 - `--file-health` — per-file score
 - `--symbol-lineage NAME` — symbol history
+- `--self-health` — self-proprioception (RFC-0025 Layer 5): per-`(tool, action)` p50/p95 latency by tier (cold/warm/cached), invocation counts, in-process analysis-cache hit rate, and on-disk AST-index state (`.ast-cache/index.db` presence/size/indexed-file count; its hit rate is `null` — that index keeps no hit/miss counters). Scope is the **current process**; a fresh CLI run reports `NO_OBSERVATIONS` (never a fabricated `0.0`). MCP twin: `health action=self`. Durable numbers: `scripts/measure_self_health_baseline.py` → `docs/baselines/rfc0025-l5-latency-<axis>-e0.json`
 
 ### Discovery
 - `list-files` subcommand — fd wrapper
@@ -162,7 +163,7 @@ boundary.
 
 ## See Also
 
-- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (324 unique flags total — this codemap is intentionally categorical, not exhaustive)
+- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (325 unique flags total — this codemap is intentionally categorical, not exhaustive)
 - [`docs/CODEMAPS/mcp-tools.md`](./mcp-tools.md) — MCP-side counterpart
 - [`tests/unit/cli/test_mcp_commands.py`](../../tests/unit/cli/test_mcp_commands.py) — Parity contract tests
 - [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks a change to the CLI **flag surface** (any `cli/**/*.py`, compared as a set) without a `cli.md` update
