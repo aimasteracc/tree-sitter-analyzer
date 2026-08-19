@@ -46,6 +46,7 @@ from __future__ import annotations
 from typing import Any
 
 from ... import read_existing_access as read_access
+from ...constants import JS_TS_MODULE_EXTS
 from .facade_tool import FacadeTool
 
 # RFC-0014 Phase B: cap for test_map test_functions list (matches _MAX_LISTED).
@@ -157,7 +158,7 @@ def _is_collectible_caller(file_path: str, name: str, language: str = "") -> boo
     if lang == "go" or file_path.endswith(".go"):
         return _is_go_test_func(name)
     if lang in ("javascript", "typescript", "js", "ts", "jsx", "tsx") or (
-        file_path.endswith((".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs"))
+        file_path.endswith(JS_TS_MODULE_EXTS)
     ):
         return _is_js_test_func(name)
     if lang == "java" or file_path.endswith(".java"):

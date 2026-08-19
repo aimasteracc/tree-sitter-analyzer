@@ -31,6 +31,18 @@ class TestDetectLanguageFromExt:
     def test_typescript(self):
         assert detect_language_from_ext(".ts") == "typescript"
 
+    @pytest.mark.parametrize(
+        ("extension", "language"),
+        [
+            (".mjs", "javascript"),
+            (".cjs", "javascript"),
+            (".mts", "typescript"),
+            (".cts", "typescript"),
+        ],
+    )
+    def test_node_module_extensions(self, extension: str, language: str) -> None:
+        assert detect_language_from_ext(extension) == language
+
     def test_c(self):
         assert detect_language_from_ext(".c") == "c"
 
@@ -691,17 +703,44 @@ class TestFindTestFilesJavascript:
             results = find_test_files(str(source), tmp)
             assert any("utils.test.js" in r for r in results)
 
+    @pytest.mark.parametrize(
+        ("source_name", "test_name"),
+        [
+            ("utils.mjs", "utils.test.mjs"),
+            ("utils.cjs", "utils.spec.cjs"),
+            ("utils.mts", "utils.test.mts"),
+            ("utils.cts", "utils.spec.cts"),
+        ],
+    )
+    def test_finds_node_module_extension_test(
+        self, source_name: str, test_name: str, tmp_path: Path
+    ) -> None:
+        source = tmp_path / "src" / source_name
+        source.parent.mkdir(parents=True)
+        source.write_text("export const value = 1")
+        test = tmp_path / "tests" / test_name
+        test.parent.mkdir(parents=True)
+        test.write_text("test('value', () => {})")
+
+        assert find_test_files(str(source), str(tmp_path)) == [
+            test.relative_to(tmp_path).as_posix()
+        ]
+
 
 @pytest.mark.parametrize(
     ("target", "expected"),
     [
         ("handler_test.go", ["handler_test.go"]),
         ("lib_test.rs", ["lib_test.rs"]),
-        ("CalcTest.java", ["CalcTest.java"]),
+        ("test/CalcTest.java", ["test/CalcTest.java"]),
         ("app.test.js", ["app.test.js"]),
         ("app.test.ts", ["app.test.ts"]),
-        ("test_util.c", ["test_util.c"]),
-        ("test_util.cpp", ["test_util.cpp"]),
+        ("app.test.mjs", ["app.test.mjs"]),
+        ("app.spec.cjs", ["app.spec.cjs"]),
+        ("app.test.mts", ["app.test.mts"]),
+        ("app.spec.cts", ["app.spec.cts"]),
+        ("tests/test_util.c", ["tests/test_util.c"]),
+        ("tests/test_util.cpp", ["tests/test_util.cpp"]),
         ("CalcTest.cs", ["CalcTest.cs"]),
         ("CalcTest.kt", ["CalcTest.kt"]),
         ("calc_test.rb", ["calc_test.rb"]),
@@ -720,10 +759,525 @@ def test_certified_test_files_cross_language_conventions(
     assert found == expected
 
 
-def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
-    """Codex P2 round-7 (C31): tests using the target's public symbols are
-    found through snapshot-owned import records, not only path dependents."""
+def _symbol_reference_conn(
+    rows: list[tuple[str, str, str]],
+    edges: list[tuple[str, str, str, str]] | None = None,
+) -> Any:
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
+    )
+    conn.executemany("INSERT INTO ast_index VALUES (?, ?, ?)", rows)
+    if edges is not None:
+        conn.execute(
+            "CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT, "
+            "callee_resolved_file TEXT)"
+        )
+        conn.executemany("INSERT INTO edges VALUES (?, ?, ?, ?)", edges)
+    return conn
+
+
+def _symbol_payload(*names: str) -> str:
     import json
+
+    return json.dumps({"symbols": [{"name": name} for name in names]})
+
+
+def _import_payload(text: str) -> str:
+    import json
+
+    return json.dumps([{"text": text, "line": 1}])
+
+
+def _certified_refs(
+    conn: Any,
+    inventory: set[str],
+    target: str = "pkg/impl.py",
+    language: str = "python",
+) -> list[str]:
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_symbol_reference_tests,
+    )
+
+    return _certified_symbol_reference_tests(
+        conn, frozenset(inventory), target, language
+    )
+
+
+def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("pkg/impl.py", _symbol_payload("public_fn"), "[]"),
+            (
+                "pkg/__init__.py",
+                "{}",
+                _import_payload("from .impl import public_fn"),
+            ),
+            (
+                "tests/test_behavior.py",
+                "{}",
+                _import_payload("from pkg import public_fn"),
+            ),
+            ("tests/test_unrelated.py", "{}", _import_payload("import os")),
+        ]
+    )
+
+    assert _certified_refs(
+        conn,
+        {
+            "pkg/impl.py",
+            "pkg/__init__.py",
+            "tests/test_behavior.py",
+            "tests/test_unrelated.py",
+        },
+    ) == ["tests/test_behavior.py"]
+
+
+def test_certified_symbol_reference_tests_reject_missing_schema() -> None:
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _certified_refs(conn, set())
+
+
+def test_certified_symbol_reference_tests_reject_invalid_target_json() -> None:
+    conn = _symbol_reference_conn([("pkg/impl.py", "not-json", "[]")])
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _certified_refs(conn, {"pkg/impl.py"})
+
+
+def test_certified_symbol_reference_tests_ignore_private_symbols() -> None:
+    conn = _symbol_reference_conn([("pkg/impl.py", _symbol_payload("_hidden"), "[]")])
+
+    assert _certified_refs(conn, {"pkg/impl.py"}) == []
+
+
+def test_certified_symbol_reference_tests_reject_missing_target_row() -> None:
+    conn = _symbol_reference_conn([("other.py", "{}", "[]")])
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _certified_refs(conn, {"tests/test_x.py"})
+
+
+def test_certified_symbol_reference_tests_reject_mid_query_failure() -> None:
+    import sqlite3
+
+    real = _symbol_reference_conn(
+        [
+            ("pkg/impl.py", _symbol_payload("run"), "[]"),
+            ("tests/test_impl.py", "{}", _import_payload("import run")),
+        ]
+    )
+
+    class _FlakyConn:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def execute(self, sql: str, params: tuple[str, ...] = ()) -> Any:
+            self.calls += 1
+            if self.calls == 2:
+                raise sqlite3.OperationalError("schema drift")
+            return real.execute(sql, params)
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _certified_refs(_FlakyConn(), {"pkg/impl.py", "tests/test_impl.py"})
+
+
+def test_certified_symbol_reference_tests_use_identifier_boundaries() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("text.py", _symbol_payload("text", "get"), "[]"),
+            ("tests/test_any.py", "{}", _import_payload("import widget")),
+        ]
+    )
+
+    assert (
+        _certified_refs(conn, {"text.py", "tests/test_any.py"}, target="text.py") == []
+    )
+
+
+def test_certified_symbol_reference_tests_include_resolved_calls() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("pkg/impl.py", _symbol_payload("run"), "[]"),
+            ("tests/test_calls.py", "{}", "[]"),
+        ],
+        [("tests/test_calls.py", "run", "calls", "pkg/impl.py")],
+    )
+
+    assert _certified_refs(conn, {"pkg/impl.py", "tests/test_calls.py"}) == [
+        "tests/test_calls.py"
+    ]
+
+
+def test_certified_symbol_reference_tests_exclude_calls_resolved_elsewhere() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("pkg/impl.py", _symbol_payload("run"), "[]"),
+            ("tests/test_other.py", "{}", "[]"),
+        ],
+        [("tests/test_other.py", "run", "calls", "pkg/other.py")],
+    )
+
+    assert _certified_refs(conn, {"pkg/impl.py", "tests/test_other.py"}) == []
+
+
+def test_certified_symbol_reference_tests_bind_python_imports_to_modules() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("pkg/impl.py", _symbol_payload("run"), "[]"),
+            ("other.py", _symbol_payload("run"), "[]"),
+            ("pkg/__init__.py", "{}", _import_payload("from .impl import run")),
+            ("tests/test_other.py", "{}", _import_payload("from other import run")),
+            ("tests/test_pkg.py", "{}", _import_payload("from pkg import run")),
+        ]
+    )
+    inventory = {
+        "pkg/impl.py",
+        "other.py",
+        "pkg/__init__.py",
+        "tests/test_other.py",
+        "tests/test_pkg.py",
+    }
+
+    assert _certified_refs(conn, inventory) == ["tests/test_pkg.py"]
+
+
+def test_certified_symbol_reference_tests_bind_esm_imports_to_modules() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("src/impl.ts", _symbol_payload("run"), "[]"),
+            ("src/other.ts", _symbol_payload("run"), "[]"),
+            (
+                "tests/impl.test.ts",
+                "{}",
+                _import_payload("import { run } from '../src/impl'"),
+            ),
+            (
+                "tests/other.test.ts",
+                "{}",
+                _import_payload("import { run } from '../src/other'"),
+            ),
+        ]
+    )
+    inventory = {
+        "src/impl.ts",
+        "src/other.ts",
+        "tests/impl.test.ts",
+        "tests/other.test.ts",
+    }
+
+    assert _certified_refs(
+        conn, inventory, target="src/impl.ts", language="typescript"
+    ) == ["tests/impl.test.ts"]
+
+
+def test_certified_symbol_reference_tests_bind_cpp_include_to_target() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("include/config.h", _symbol_payload("config"), "[]"),
+            ("third_party/config.h", "{}", "[]"),
+            (
+                "tests/test_other.cpp",
+                "{}",
+                _import_payload('#include "../third_party/config.h"'),
+            ),
+        ]
+    )
+    inventory = {
+        "include/config.h",
+        "third_party/config.h",
+        "tests/test_other.cpp",
+    }
+
+    assert (
+        _certified_refs(conn, inventory, target="include/config.h", language="cpp")
+        == []
+    )
+
+
+def test_certified_symbol_reference_tests_accept_cpp_target_include() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("include/config.h", _symbol_payload("config"), "[]"),
+            (
+                "tests/test_config.cpp",
+                "{}",
+                _import_payload('#include "../include/config.h"'),
+            ),
+        ]
+    )
+    inventory = {"include/config.h", "tests/test_config.cpp"}
+
+    assert _certified_refs(
+        conn, inventory, target="include/config.h", language="cpp"
+    ) == ["tests/test_config.cpp"]
+
+
+def test_file_defines_any_matches_indexed_symbols() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _file_defines_any,
+    )
+
+    conn = _symbol_reference_conn([("pkg/impl.py", _symbol_payload("run"), "[]")])
+
+    assert _file_defines_any(conn, "pkg/impl.py", ["run"]) is True
+    assert _file_defines_any(conn, "pkg/impl.py", ["other"]) is False
+
+
+def test_file_defines_any_rejects_missing_schema() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _file_defines_any,
+    )
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _file_defines_any(sqlite3.connect(":memory:"), "ghost.py", ["run"])
+
+
+def test_file_defines_any_rejects_missing_row() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _file_defines_any,
+    )
+
+    conn = _symbol_reference_conn([("pkg/impl.py", _symbol_payload("run"), "[]")])
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _file_defines_any(conn, "ghost.py", ["run"])
+
+
+def test_certified_symbol_reference_tests_accept_unbound_symbol_record() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("pkg/impl.py", _symbol_payload("run"), "[]"),
+            ("tests/test_impl.py", "{}", _import_payload("run")),
+        ]
+    )
+
+    assert _certified_refs(conn, {"pkg/impl.py", "tests/test_impl.py"}) == [
+        "tests/test_impl.py"
+    ]
+
+
+@pytest.mark.parametrize("text", ["import run", "from third_party import run"])
+def test_certified_symbol_reference_tests_reject_unresolved_python_imports(
+    text: str,
+) -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("pkg/impl.py", _symbol_payload("run"), "[]"),
+            ("tests/test_impl.py", "{}", _import_payload(text)),
+        ]
+    )
+
+    assert _certified_refs(conn, {"pkg/impl.py", "tests/test_impl.py"}) == []
+
+
+def test_certified_symbol_reference_tests_reject_unresolved_java_imports() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("src/main/java/com/acme/Util.java", _symbol_payload("Util"), "[]"),
+            (
+                "src/test/java/com/acme/UtilTest.java",
+                "{}",
+                _import_payload("import third.party.Util;"),
+            ),
+        ]
+    )
+    inventory = {
+        "src/main/java/com/acme/Util.java",
+        "src/test/java/com/acme/UtilTest.java",
+    }
+
+    assert (
+        _certified_refs(
+            conn,
+            inventory,
+            target="src/main/java/com/acme/Util.java",
+            language="java",
+        )
+        == []
+    )
+
+
+def test_certified_symbol_reference_tests_reject_java_import_resolved_elsewhere() -> (
+    None
+):
+    conn = _symbol_reference_conn(
+        [
+            ("src/main/java/com/acme/Util.java", _symbol_payload("Util"), "[]"),
+            ("src/main/java/other/Util.java", _symbol_payload("Util"), "[]"),
+            (
+                "src/test/java/com/acme/UtilTest.java",
+                "{}",
+                _import_payload("import other.Util;"),
+            ),
+        ]
+    )
+    inventory = {
+        "src/main/java/com/acme/Util.java",
+        "src/main/java/other/Util.java",
+        "src/test/java/com/acme/UtilTest.java",
+    }
+
+    assert (
+        _certified_refs(
+            conn,
+            inventory,
+            target="src/main/java/com/acme/Util.java",
+            language="java",
+        )
+        == []
+    )
+
+
+def test_certified_symbol_reference_tests_resolve_java_static_owner() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("src/main/java/com/acme/Util.java", _symbol_payload("helper"), "[]"),
+            (
+                "src/test/java/com/acme/UtilTest.java",
+                "{}",
+                _import_payload("import static com.acme.Util.helper;"),
+            ),
+        ]
+    )
+    inventory = {
+        "src/main/java/com/acme/Util.java",
+        "src/test/java/com/acme/UtilTest.java",
+    }
+
+    assert _certified_refs(
+        conn,
+        inventory,
+        target="src/main/java/com/acme/Util.java",
+        language="java",
+    ) == ["src/test/java/com/acme/UtilTest.java"]
+
+
+@pytest.mark.parametrize(
+    ("target", "dependent"),
+    [
+        ("src/lib.js", "tests/lib.test.ts"),
+        ("src/util.h", "tests/test_util.cpp"),
+        (
+            "src/main/java/com/acme/Util.java",
+            "src/test/java/com/acme/TestUtil.java",
+        ),
+    ],
+)
+def test_certified_exercising_tests_use_dependent_language(
+    target: str, dependent: str
+) -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _certified_exercising_tests,
+    )
+
+    conn = _symbol_reference_conn(
+        [(target, _symbol_payload(), "[]"), (dependent, "{}", "[]")]
+    )
+    inventory = frozenset({target, dependent})
+
+    assert _certified_exercising_tests(
+        conn, target, [dependent], inventory=inventory
+    ) == [dependent]
+
+
+def test_certified_symbol_reference_tests_resolve_relative_from_importer() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("pkg/impl.py", _symbol_payload("run"), "[]"),
+            ("tests/other.py", _symbol_payload("run"), "[]"),
+            ("tests/test_other.py", "{}", _import_payload("from .other import run")),
+        ]
+    )
+
+    assert (
+        _certified_refs(conn, {"pkg/impl.py", "tests/other.py", "tests/test_other.py"})
+        == []
+    )
+
+
+def test_certified_symbol_reference_tests_reject_cross_language_name_collision() -> (
+    None
+):
+    conn = _symbol_reference_conn(
+        [
+            ("pkg/impl.py", _symbol_payload("run"), "[]"),
+            (
+                "pkg/run_test.go",
+                "{}",
+                _import_payload('import "example.com/run"'),
+            ),
+        ]
+    )
+
+    assert _certified_refs(conn, {"pkg/impl.py", "pkg/run_test.go"}) == []
+
+
+def test_certified_symbol_reference_tests_reject_supported_language_collision() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("pkg/impl.py", _symbol_payload("run"), "[]"),
+            (
+                "src/test/java/RunTest.java",
+                "{}",
+                _import_payload("import example.run;"),
+            ),
+        ]
+    )
+
+    assert _certified_refs(conn, {"pkg/impl.py", "src/test/java/RunTest.java"}) == []
+
+
+def test_certified_symbol_reference_tests_allow_javascript_typescript_family() -> None:
+    conn = _symbol_reference_conn(
+        [
+            ("src/impl.js", _symbol_payload("run"), "[]"),
+            (
+                "tests/impl.test.ts",
+                "{}",
+                _import_payload("import { run } from '../src/impl.js'"),
+            ),
+        ]
+    )
+
+    assert _certified_refs(
+        conn,
+        {"src/impl.js", "tests/impl.test.ts"},
+        target="src/impl.js",
+        language="javascript",
+    ) == ["tests/impl.test.ts"]
+
+
+def test_certified_symbol_reference_tests_reject_missing_test_row() -> None:
+    conn = _symbol_reference_conn([("pkg/impl.py", _symbol_payload("public_fn"), "[]")])
+
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _certified_refs(conn, {"pkg/impl.py", "tests/test_ghost.py"})
+
+
+@pytest.mark.parametrize(
+    ("target_symbols", "test_imports"),
+    [
+        ("[]", "[]"),
+        ('{"symbols": {}}', "[]"),
+        ('{"symbols": [42]}', "[]"),
+        ('{"symbols": [{"name": "run"}]}', "not-json"),
+        ('{"symbols": [{"name": "run"}]}', "{}"),
+        ('{"symbols": [{"name": "run"}]}', '["not-a-record"]'),
+        ('{"symbols": [{"name": "run"}]}', '[{"text": 42}]'),
+    ],
+)
+def test_certified_symbol_reference_tests_reject_malformed_projections(
+    target_symbols: str, test_imports: str
+) -> None:
     import sqlite3
 
     from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
@@ -735,341 +1289,40 @@ def test_certified_symbol_reference_tests_find_imported_symbols() -> None:
     conn.execute(
         "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
     )
-    conn.execute(
-        "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
-        (
-            json.dumps(
-                {
-                    "symbols": [{"kind": "function", "name": "public_fn", "line": 1}],
-                    "node_count": 1,
-                }
-            ),
-        ),
-    )
-    conn.execute(
-        "INSERT INTO ast_index VALUES ('tests/test_behavior.py', '{}', ?)",
-        (json.dumps([{"text": "from pkg import public_fn", "line": 1}]),),
-    )
-    conn.execute(
-        "INSERT INTO ast_index VALUES ('tests/test_unrelated.py', '{}', ?)",
-        (json.dumps([{"text": "import os", "line": 1}]),),
-    )
-    inventory = frozenset(
-        {"pkg/impl.py", "tests/test_behavior.py", "tests/test_unrelated.py"}
-    )
-    found = _certified_symbol_reference_tests(conn, inventory, "pkg/impl.py", "python")
-    assert found == ["tests/test_behavior.py"]
-
-    # Legacy schema (no ast_index) degrades to no matches.
-    bare = sqlite3.connect(":memory:")
-    bare.row_factory = sqlite3.Row
-    assert (
-        _certified_symbol_reference_tests(bare, frozenset(), "pkg/impl.py", "python")
-        == []
-    )
-    # Malformed symbols_json degrades to no matches.
-    broken = sqlite3.connect(":memory:")
-    broken.row_factory = sqlite3.Row
-    broken.execute(
-        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
-    )
-    broken.execute("INSERT INTO ast_index VALUES ('pkg/impl.py', 'not-json', '[]')")
-    assert (
-        _certified_symbol_reference_tests(
-            broken, frozenset({"pkg/impl.py"}), "pkg/impl.py", "python"
-        )
-        == []
-    )
-    # No public symbols -> no matches.
-    private = sqlite3.connect(":memory:")
-    private.row_factory = sqlite3.Row
-    private.execute(
-        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
-    )
-    private.execute(
-        "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
-        (json.dumps({"symbols": [{"name": "_hidden"}]}),),
-    )
-    assert (
-        _certified_symbol_reference_tests(
-            private, frozenset({"pkg/impl.py"}), "pkg/impl.py", "python"
-        )
-        == []
-    )
-    # Target row absent from ast_index -> no matches.
-    no_target = sqlite3.connect(":memory:")
-    no_target.row_factory = sqlite3.Row
-    no_target.execute(
-        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
-    )
-    no_target.execute("INSERT INTO ast_index VALUES ('other.py', '{}', '[]')")
-    assert (
-        _certified_symbol_reference_tests(
-            no_target, frozenset({"tests/test_x.py"}), "pkg/impl.py", "python"
-        )
-        == []
+    conn.executemany(
+        "INSERT INTO ast_index VALUES (?, ?, ?)",
+        [
+            ("pkg/impl.py", target_symbols, "[]"),
+            ("tests/test_impl.py", "{}", test_imports),
+        ],
     )
 
-    # A mid-loop query failure (schema drift) degrades per row.
-    class _FlakyConn:
-        def __init__(self, real):
-            self._real = real
-            self._calls = 0
-
-        def execute(self, sql, params=()):
-            self._calls += 1
-            if self._calls == 2:
-                raise sqlite3.OperationalError("no such table: ast_index")
-            return self._real.execute(sql, params)
-
-    flaky_conn = _FlakyConn(conn)
-    flaky_inventory = frozenset(
-        {"pkg/impl.py", "tests/test_behavior.py", "tests/test_unrelated.py"}
-    )
-    assert (
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
         _certified_symbol_reference_tests(
-            flaky_conn, flaky_inventory, "pkg/impl.py", "python"
-        )
-        == []
-    )
-    # C33: symbols match import IDENTIFIERS with word boundaries, never
-    # serialized substrings or JSON keys ('text' must not match every
-    # record's "text" key; 'get' must not match 'widget').
-    false_pos = sqlite3.connect(":memory:")
-    false_pos.row_factory = sqlite3.Row
-    false_pos.execute(
-        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
-    )
-    false_pos.execute(
-        "INSERT INTO ast_index VALUES ('text.py', ?, '[]')",
-        (json.dumps({"symbols": [{"name": "text"}, {"name": "get"}]}),),
-    )
-    false_pos.execute(
-        "INSERT INTO ast_index VALUES ('tests/test_any.py', '{}', ?)",
-        (json.dumps([{"text": "import widget", "line": 1}]),),
-    )
-    false_pos_inventory = frozenset({"text.py", "tests/test_any.py"})
-    assert (
-        _certified_symbol_reference_tests(
-            false_pos, false_pos_inventory, "text.py", "python"
-        )
-        == []
-    )
-    # C33: malformed/non-list/non-str import records are skipped.
-    messy = sqlite3.connect(":memory:")
-    messy.row_factory = sqlite3.Row
-    messy.execute(
-        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
-    )
-    messy.execute(
-        "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
-        (json.dumps({"symbols": [{"name": "public_fn"}]}),),
-    )
-    messy.execute(
-        "INSERT INTO ast_index VALUES ('tests/test_messy.py', '{}', 'not-json')"
-    )
-    messy.execute(
-        "INSERT INTO ast_index VALUES ('tests/test_list.py', '{}', ?)",
-        (json.dumps(["just-a-string"]),),
-    )
-    messy.execute(
-        "INSERT INTO ast_index VALUES ('tests/test_num.py', '{}', ?)",
-        (json.dumps([{"text": 42}]),),
-    )
-    messy.execute(
-        "INSERT INTO ast_index VALUES ('tests/test_obj.py', '{}', ?)",
-        (json.dumps({"not": "a list"}),),
-    )
-    messy_inventory = frozenset(
-        {
+            conn,
+            frozenset({"pkg/impl.py", "tests/test_impl.py"}),
             "pkg/impl.py",
-            "tests/test_messy.py",
-            "tests/test_list.py",
-            "tests/test_num.py",
-            "tests/test_obj.py",
-        }
-    )
-    assert (
-        _certified_symbol_reference_tests(
-            messy, messy_inventory, "pkg/impl.py", "python"
+            "python",
         )
-        == []
-    )
-    # C42: snapshot CALL references find tests using pkg.public_fn().
-    calls = sqlite3.connect(":memory:")
-    calls.row_factory = sqlite3.Row
-    calls.execute(
-        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
-    )
-    calls.execute(
-        "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
-        (json.dumps({"symbols": [{"name": "public_fn"}]}),),
-    )
-    calls.execute(
-        "CREATE TABLE edges (file_path TEXT, callee_name TEXT, kind TEXT, "
-        "callee_resolved_file TEXT)"
-    )
-    calls.execute(
-        "INSERT INTO edges VALUES "
-        "('tests/test_calls.py', 'public_fn', 'calls', 'pkg/impl.py')"
-    )
-    calls_inventory = frozenset({"pkg/impl.py", "tests/test_calls.py"})
-    found_calls = _certified_symbol_reference_tests(
-        calls, calls_inventory, "pkg/impl.py", "python"
-    )
-    assert found_calls == ["tests/test_calls.py"]
-    # C48: a same-named symbol resolved to ANOTHER file must not attribute
-    # its calls to this target.
-    calls.execute(
-        "INSERT INTO edges VALUES "
-        "('tests/test_other.py', 'public_fn', 'calls', 'pkg/other.py')"
-    )
-    drift_inventory = frozenset(
-        {"pkg/impl.py", "tests/test_calls.py", "tests/test_other.py"}
-    )
-    drifted = _certified_symbol_reference_tests(
-        calls, drift_inventory, "pkg/impl.py", "python"
-    )
-    assert drifted == ["tests/test_calls.py"]
 
-    # C56: 'from other import run' must not count for pkg/impl.py when
-    # other.py itself defines 'run'.
-    bound = sqlite3.connect(":memory:")
-    bound.row_factory = sqlite3.Row
-    bound.execute(
-        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
-    )
-    bound.execute(
-        "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
-        (json.dumps({"symbols": [{"name": "run"}]}),),
-    )
-    bound.execute(
-        "INSERT INTO ast_index VALUES ('other.py', ?, '[]')",
-        (json.dumps({"symbols": [{"name": "run"}]}),),
-    )
-    bound.execute(
-        "INSERT INTO ast_index VALUES ('tests/test_other.py', '{}', ?)",
-        (json.dumps([{"text": "from other import run", "line": 1}]),),
-    )
-    bound.execute(
-        "INSERT INTO ast_index VALUES ('tests/test_pkg.py', '{}', ?)",
-        (json.dumps([{"text": "from pkg import run", "line": 1}]),),
-    )
-    bound.execute("INSERT INTO ast_index VALUES ('pkg/__init__.py', '{}', '[]')")
-    bound_inventory = frozenset(
-        {
-            "pkg/impl.py",
-            "other.py",
-            "pkg/__init__.py",
-            "tests/test_other.py",
-            "tests/test_pkg.py",
-        }
-    )
-    bound_found = _certified_symbol_reference_tests(
-        bound, bound_inventory, "pkg/impl.py", "python"
-    )
-    # 'from other import run' is rejected (other.py defines run); the
-    # package-level import through pkg/__init__.py is accepted.
-    assert bound_found == ["tests/test_pkg.py"]
 
-    # _file_defines_any direct branch coverage.
+@pytest.mark.parametrize(
+    "symbols_json", ["not-json", "[]", '{"symbols": {}}', '{"symbols": [42]}']
+)
+def test_file_defines_any_rejects_malformed_projection(symbols_json: str) -> None:
+    import sqlite3
+
     from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
         _file_defines_any,
     )
 
-    defs = sqlite3.connect(":memory:")
-    defs.row_factory = sqlite3.Row
-    defs.execute("CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT)")
-    defs.execute(
-        "INSERT INTO ast_index VALUES ('ok.py', ?)",
-        (json.dumps({"symbols": [{"name": "run"}]}),),
-    )
-    defs.execute("INSERT INTO ast_index VALUES ('malformed.py', 'not-json')")
-    defs.execute("INSERT INTO ast_index VALUES ('array.py', '[]')")
-    assert _file_defines_any(defs, "ok.py", ["run"]) is True
-    assert _file_defines_any(defs, "ok.py", ["nope"]) is False
-    assert _file_defines_any(defs, "malformed.py", ["run"]) is False
-    assert _file_defines_any(defs, "array.py", ["run"]) is False
-    assert _file_defines_any(defs, "ghost.py", ["run"]) is False
-    bare = sqlite3.connect(":memory:")
-    assert _file_defines_any(bare, "ghost.py", ["run"]) is False
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT)")
+    conn.execute("INSERT INTO ast_index VALUES ('pkg/impl.py', ?)", (symbols_json,))
 
-    # C56: 'import run' and a bare 'run' record still accept via the
-    # no-module / import-module paths.
-    bound.execute(
-        "INSERT INTO ast_index VALUES ('tests/test_plain.py', '{}', ?)",
-        (json.dumps([{"text": "import run", "line": 1}]),),
-    )
-    bound.execute(
-        "INSERT INTO ast_index VALUES ('tests/test_bare.py', '{}', ?)",
-        (json.dumps([{"text": "run", "line": 1}]),),
-    )
-    plain_inventory = bound_inventory | frozenset(
-        {"tests/test_plain.py", "tests/test_bare.py"}
-    )
-    plain_found = _certified_symbol_reference_tests(
-        bound, plain_inventory, "pkg/impl.py", "python"
-    )
-    assert "tests/test_plain.py" in plain_found
-    assert "tests/test_bare.py" in plain_found
-
-    # C58: a relative import resolves from the TEST's directory — a test
-    # doing 'from .other import run' must not count for pkg/impl.py.
-    rel_bound = sqlite3.connect(":memory:")
-    rel_bound.row_factory = sqlite3.Row
-    rel_bound.execute(
-        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
-    )
-    rel_bound.execute(
-        "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
-        (json.dumps({"symbols": [{"name": "run"}]}),),
-    )
-    rel_bound.execute(
-        "INSERT INTO ast_index VALUES ('tests/other.py', ?, '[]')",
-        (json.dumps({"symbols": [{"name": "run"}]}),),
-    )
-    rel_bound.execute(
-        "INSERT INTO ast_index VALUES ('tests/test_other.py', '{}', ?)",
-        (json.dumps([{"text": "from .other import run", "line": 1}]),),
-    )
-    rel_inventory = frozenset({"pkg/impl.py", "tests/other.py", "tests/test_other.py"})
-    rel_found = _certified_symbol_reference_tests(
-        rel_bound, rel_inventory, "pkg/impl.py", "python"
-    )
-    assert rel_found == []
-
-    # C34: a non-object symbols_json payload degrades, never crashes.
-    array_payload = sqlite3.connect(":memory:")
-    array_payload.row_factory = sqlite3.Row
-    array_payload.execute(
-        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
-    )
-    array_payload.execute("INSERT INTO ast_index VALUES ('pkg/impl.py', '[]', '[]')")
-    assert (
-        _certified_symbol_reference_tests(
-            array_payload, frozenset({"pkg/impl.py"}), "pkg/impl.py", "python"
-        )
-        == []
-    )
-    # A test-named inventory file absent from ast_index is skipped.
-    missing = sqlite3.connect(":memory:")
-    missing.row_factory = sqlite3.Row
-    missing.execute(
-        "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT, imports_json TEXT)"
-    )
-    missing.execute(
-        "INSERT INTO ast_index VALUES ('pkg/impl.py', ?, '[]')",
-        (json.dumps({"symbols": [{"name": "public_fn"}]}),),
-    )
-    assert (
-        _certified_symbol_reference_tests(
-            missing,
-            frozenset({"pkg/impl.py", "tests/test_ghost.py"}),
-            "pkg/impl.py",
-            "python",
-        )
-        == []
-    )
+    with pytest.raises(ValueError, match="CORRUPT_INDEX"):
+        _file_defines_any(conn, "pkg/impl.py", ["run"])
 
 
 def test_looks_like_test_name_unknown_language_is_false() -> None:
@@ -1096,6 +1349,14 @@ def test_certified_test_files_rejects_non_test_target() -> None:
     )
 
     assert _certified_test_files(frozenset({"app.py"}), "app.py") == []
+
+
+def test_test_name_predicate_recognizes_ruby_test_prefix() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _looks_like_test_name,
+    )
+
+    assert _looks_like_test_name("test_parser.rb", "ruby") is True
 
 
 def test_certified_test_files_walk_inventory_only() -> None:

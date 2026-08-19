@@ -21,6 +21,9 @@ from tree_sitter_analyzer.mcp.utils.project_index import (
     ProjectIndex,
     ProjectIndexManager,
 )
+from tree_sitter_analyzer.mcp.utils.project_index._filesystem import (
+    compute_language_distribution,
+)
 
 
 @pytest.fixture
@@ -107,6 +110,13 @@ class TestProjectIndexManagerBuild:
             lang_dist["python"] == 4
         )  # __init__.py, utils.py, test_utils.py, __main__.py
         assert lang_dist["typescript"] == 2  # index.ts, types.ts
+
+    def test_node_module_typescript_extensions_are_counted(self) -> None:
+        distribution = compute_language_distribution(
+            ["src/module.mts", "src/config.cts", "src/types.d.mts"]
+        )
+
+        assert distribution == {"typescript": 3}
 
     def test_artifact_dirs_excluded(self, manager: ProjectIndexManager) -> None:
         """Test that __pycache__ directories are not in top_level_structure."""

@@ -99,6 +99,12 @@ EXPECTED_FACADE_NAMES = [
     "viz",
 ]
 
+# The nav wire case cold-builds the repository-wide call graph. This is a
+# functional framing contract, not a latency assertion; dedicated smoke tests
+# own latency budgets. PR #1308 added enough indexed Python to exceed the
+# generic client wait on Linux while still completing inside pytest's 60 s cap.
+_FACADE_WIRE_TIMEOUTS = {"nav": 45.0}
+
 
 def _json_text_payload(response: dict) -> dict:
     """Return the JSON payload embedded in a JSON-RPC tools/call response."""
@@ -131,6 +137,7 @@ def _assert_agent_wire_envelope(payload: dict, facade_name: str) -> None:
 
 
 class TestFacadeWireContract:
+    @pytest.mark.timeout(60)
     @pytest.mark.parametrize(
         ("facade_name", "arguments"),
         FACADE_WIRE_CASES,
@@ -146,7 +153,11 @@ class TestFacadeWireContract:
         This test drives every public facade once over the actual stdio wire.
         """
         client = initialized(mcp_server)
-        response = client.call(facade_name, arguments, timeout=25.0)
+        response = client.call(
+            facade_name,
+            arguments,
+            timeout=_FACADE_WIRE_TIMEOUTS.get(facade_name, 25.0),
+        )
         payload = _json_text_payload(response)
         _assert_agent_wire_envelope(payload, facade_name)
 

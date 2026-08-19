@@ -27,7 +27,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import NamedTuple
 
-from ..constants import EXCLUDE_DIRS
+from ..constants import EXCLUDE_DIRS, GRAPH_SOURCE_EXTS
 from ..languages.lang_extension_map import EXT_TO_LANG
 
 # Use the shared exclude set so the fingerprint scope matches the graph walkers
@@ -40,23 +40,13 @@ _EXCLUDE_DIRS: frozenset[str] = EXCLUDE_DIRS
 
 # Source file extensions handled by call_graph + project_graph + most plugins.
 # We cast a wide net so the same fingerprint can serve every graph kind.
-_SOURCE_EXTS: tuple[str, ...] = (
-    ".py",
-    ".js",
-    ".ts",
-    ".jsx",
-    ".tsx",
-    ".java",
-    ".go",
-    ".rs",
-    ".c",
-    ".cpp",
-    ".cc",
-    ".cxx",
-    ".h",
-    ".hpp",
-    ".hxx",
-)
+#
+# Sourced from the shared constant so this list can never drift from
+# ``project_graph``'s ``supported_exts`` again: an extension the graph indexes
+# but the fingerprint ignores means edits to those files never invalidate the
+# graph cache. That is exactly how ``.mjs``/``.cjs``/``.mts``/``.cts`` served
+# stale dependency and blast-radius answers.
+_SOURCE_EXTS: tuple[str, ...] = GRAPH_SOURCE_EXTS
 
 
 class GraphFingerprint(NamedTuple):

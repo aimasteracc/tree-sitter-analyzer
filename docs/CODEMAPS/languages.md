@@ -45,7 +45,7 @@ Generated from runtime registries and reviewed classifications by `scripts/gener
 |---|---|---|---|
 | Java | `languages/java_plugin.py` | `_java_*_helpers.py` ×4 | Spring/JPA awareness; **fixture file — DO NOT refactor** (see CLAUDE.md memory rule) |
 | Python | `python_plugin/` | submodules | Type annotations, decorators, async; module constants include chained and same-line assignments |
-| TypeScript | `typescript_plugin/` | submodules | Interfaces, types, TSX/JSX; enum kind/export parity and class-field decorators |
+| TypeScript | `typescript_plugin/` | submodules | Interfaces, types, TSX/JSX, `.mts`/`.cts`; enum kind/export parity and class-field decorators |
 | JavaScript | `javascript_plugin/` | submodules | ES6+, JSX; `languages/javascript_plugin/_function_helpers.py` handles class-field arrow methods (is_method, is_static, computed/string/number key names — #890/#892); `queries/javascript.py` VARIABLES + "variable" query include `field_definition` (#891) |
 | C | `languages/c_plugin.py` | `_c_*_helpers.py` ×8 | functions, structs, unions, enums, preprocessor; unnamed bitfields are skipped as non-addressable fields |
 | C++ | `languages/cpp_plugin.py` | `_cpp_*_helpers.py` ×11 | classes, templates, namespaces; nested template/union type parent metadata and field-reference guards |

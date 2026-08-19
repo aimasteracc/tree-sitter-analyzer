@@ -44,7 +44,7 @@ jobs:
   test-matrix-pr:
     name: Test Suite (PR fast)
     if: inputs.matrix-profile == 'pr'
-    timeout-minutes: 15
+    timeout-minutes: 20
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -123,7 +123,7 @@ jobs:
 
     - name: Run Tests (no coverage)
       if: ${{ !matrix.coverage }}
-      timeout-minutes: 10
+      timeout-minutes: 15
       run: |
         set +e
         uv run pytest tests/ -n auto -q --tb=short --maxfail=200 \
@@ -176,7 +176,7 @@ jobs:
   test-matrix-full:
     name: Test Suite (full)
     if: inputs.matrix-profile == 'full'
-    timeout-minutes: 15
+    timeout-minutes: 20
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

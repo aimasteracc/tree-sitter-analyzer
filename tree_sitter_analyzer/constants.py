@@ -196,3 +196,68 @@ EXCLUDE_DIRS: frozenset[str] = frozenset(
         ".tree-sitter-cache",
     }
 )
+
+
+# ---------------------------------------------------------------------------
+# Node / TypeScript module file extensions, in extension-PROBE order.
+#
+# Plain extensions come first so an extensionless ``./util`` still prefers
+# ``util.js`` over ``util.mjs`` — the precedence the resolvers already had
+# before the Node suffixes were added.
+#
+# Shared so every JS/TS resolver agrees. Previously import_graph, call_graph,
+# cross_file_resolver and project_graph each carried their own copy; the copies
+# drifted and ``.mjs``/``.cjs``/``.mts``/``.cts`` imports silently lost edges.
+# ---------------------------------------------------------------------------
+JS_TS_MODULE_EXTS: tuple[str, ...] = (
+    ".js",
+    ".ts",
+    ".jsx",
+    ".tsx",
+    ".mjs",
+    ".cjs",
+    ".mts",
+    ".cts",
+)
+
+# ``EXT_TO_LANG`` language names that share the Node/TypeScript module system.
+# Use this to dispatch import resolution on the SOURCE FILE's language — never
+# on the statement text. ``import `` opens both a Python import and an ESM
+# import, so a text sniff cannot tell them apart.
+JS_TS_LANGUAGES: frozenset[str] = frozenset({"javascript", "typescript"})
+
+# ``./widget`` → ``widget/index.<ext>`` probe forms, one per module extension.
+JS_TS_INDEX_SUFFIXES: tuple[str, ...] = tuple(
+    f"/index{ext}" for ext in JS_TS_MODULE_EXTS
+)
+
+# Same set as JS_TS_MODULE_EXTS, longest-first, for callers that STRIP the
+# extension off a path instead of appending it. ``"util.mts".endswith(".ts")``
+# is True, so a shortest-first scan mangles ``util.mts`` into ``util.m``.
+JS_TS_MODULE_EXTS_LONGEST_FIRST: tuple[str, ...] = tuple(
+    sorted(JS_TS_MODULE_EXTS, key=len, reverse=True)
+)
+
+# ---------------------------------------------------------------------------
+# Every source extension the project/dependency graph walkers admit.
+#
+# ``cache/fingerprint.py`` and ``project_graph.py`` MUST agree here: the
+# fingerprint is the staleness signal for the graph it invalidates, so an
+# extension the graph indexes but the fingerprint ignores produces a
+# permanently stale cache (adding or editing such a file changes neither
+# file_count nor max_mtime_ns, so the stale graph is reused forever).
+# ---------------------------------------------------------------------------
+GRAPH_SOURCE_EXTS: tuple[str, ...] = (
+    ".py",
+    *JS_TS_MODULE_EXTS,
+    ".java",
+    ".go",
+    ".rs",
+    ".c",
+    ".cpp",
+    ".cc",
+    ".cxx",
+    ".h",
+    ".hpp",
+    ".hxx",
+)
