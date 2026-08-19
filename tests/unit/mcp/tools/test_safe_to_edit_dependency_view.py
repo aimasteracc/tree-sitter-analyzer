@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from tree_sitter_analyzer.mcp.tools.utils import safe_to_edit_helpers
 from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
     FileDependencyView,
@@ -112,6 +114,120 @@ def test_build_file_dependency_view_finds_typescript_imports(tmp_path: Path) -> 
     assert view.dependencies_of("src/main.ts") == ["src/dep.ts", "src/legacy.ts"]
 
 
+def test_live_node_imports_include_static_dynamic_imports(tmp_path: Path) -> None:
+    target = _write(
+        tmp_path,
+        "src/main.ts",
+        (
+            'const quoted = import("./quoted.js");\n'
+            "const template = import(`./template.js`);\n"
+            'const options = import("./options.js", '
+            '{ with: { type: "json" } });\n'
+            "const unknown = import(`./${name}.js`);\n"
+        ),
+    )
+    _write(tmp_path, "src/quoted.ts", "export const quoted = true;\n")
+    _write(tmp_path, "src/template.ts", "export const template = true;\n")
+    _write(tmp_path, "src/options.ts", "export const options = true;\n")
+
+    view = build_file_dependency_view(str(target), str(tmp_path))
+
+    assert view.dependencies_of("src/main.ts") == [
+        "src/options.ts",
+        "src/quoted.ts",
+        "src/template.ts",
+    ]
+
+
+@pytest.mark.parametrize("suffix", ["?worker", "#fragment"])
+def test_live_node_import_strips_query_and_fragment(
+    tmp_path: Path, suffix: str
+) -> None:
+    target = _write(
+        tmp_path,
+        "src/main.ts",
+        f'import worker from "./worker.js{suffix}";\n',
+    )
+    _write(tmp_path, "src/worker.ts", "export default true;\n")
+
+    view = build_file_dependency_view(str(target), str(tmp_path))
+
+    assert view.dependencies_of("src/main.ts") == ["src/worker.ts"]
+
+
+@pytest.mark.parametrize(
+    ("source_suffix", "emitted_suffix"),
+    [(".mjs", ".mjs"), (".cjs", ".cjs"), (".mts", ".mjs"), (".cts", ".cjs")],
+)
+def test_build_file_dependency_view_supports_node_module_extensions(
+    tmp_path: Path, source_suffix: str, emitted_suffix: str
+) -> None:
+    target = _write(
+        tmp_path,
+        f"src/main{source_suffix}",
+        f"import {{ dep }} from './dep{emitted_suffix}';\n",
+    )
+    _write(tmp_path, f"src/dep{source_suffix}", "export const dep = 1;\n")
+    _write(
+        tmp_path,
+        f"src/caller{source_suffix}",
+        f"import './main{emitted_suffix}';\n",
+    )
+
+    view = build_file_dependency_view(str(target), str(tmp_path))
+
+    assert view.dependencies_of(f"src/main{source_suffix}") == [
+        f"src/dep{source_suffix}"
+    ]
+    assert view.dependents_of(f"src/main{source_suffix}") == [
+        f"src/caller{source_suffix}"
+    ]
+
+
+def test_build_file_dependency_view_parses_side_effect_node_imports(
+    tmp_path: Path,
+) -> None:
+    target = _write(tmp_path, "src/main.mts", "import './setup.mjs';\n")
+    _write(tmp_path, "src/setup.mts", "export const ready = true;\n")
+
+    view = build_file_dependency_view(str(target), str(tmp_path))
+
+    assert view.dependencies_of("src/main.mts") == ["src/setup.mts"]
+
+
+def test_live_node_import_resolves_bounded_parent_traversal(tmp_path: Path) -> None:
+    target = _write(
+        tmp_path,
+        "src/pages/view.mts",
+        'import { util } from "../util.mjs";\n',
+    )
+    _write(tmp_path, "src/util.mts", "export const util = true;\n")
+
+    view = build_file_dependency_view(str(target), str(tmp_path))
+
+    assert view.dependencies_of("src/pages/view.mts") == ["src/util.mts"]
+
+
+@pytest.mark.parametrize(
+    "specifier",
+    ["../../escape.mjs", "./../../escape.mjs", "/escape.mjs", "..\\escape.mjs"],
+)
+def test_live_node_import_rejects_repository_escape(
+    tmp_path: Path, specifier: str
+) -> None:
+    _write(tmp_path.parent, "escape.mjs", "export const escaped = true;\n")
+
+    assert _resolve_import_spec(specifier, "src/main.mts", tmp_path) is None
+
+
+def test_live_typescript_js_specifier_does_not_resolve_to_jsx(
+    tmp_path: Path,
+) -> None:
+    _write(tmp_path, "src/dep.jsx", "export const dep = 1;\n")
+
+    assert _resolve_import_spec("./dep.js", "src/main.ts", tmp_path) is None
+
+
 def test_build_file_dependency_view_finds_java_imports(tmp_path: Path) -> None:
     target = _write(
         tmp_path,
@@ -194,6 +310,34 @@ def test_iter_dependency_source_files_skips_hidden_files(tmp_path: Path) -> None
     files = _iter_dependency_source_files(tmp_path)
 
     assert [path.name for path in files] == ["main.py"]
+
+
+def test_dynamic_import_plain_string_yields_spec() -> None:
+    assert _extract_import_specs('import("./dev.js");\n', ".js") == {"./dev.js"}
+
+
+def test_dynamic_import_with_options_object_yields_spec() -> None:
+    source = 'import("./dev.js", { with: { type: "json" } });\n'
+    assert _extract_import_specs(source, ".js") == {"./dev.js"}
+
+
+def test_dynamic_import_with_concatenated_suffix_yields_no_spec() -> None:
+    """A computed specifier must not be recorded by its literal prefix.
+
+    ``import("./dev.js" + suffix)`` selects a module that is unknowable
+    statically. Recording ``./dev.js`` invents an edge that is wrong AND
+    hides the real one, so the prefix must not be admitted at all.
+    """
+    assert _extract_import_specs('import("./dev.js" + suffix);\n', ".js") == set()
+
+
+def test_dynamic_import_template_literal_yields_spec() -> None:
+    assert _extract_import_specs("import(`./dev.js`);\n", ".js") == {"./dev.js"}
+
+
+def test_dynamic_import_template_literal_with_concat_yields_no_spec() -> None:
+    """The template-literal branch has the same computed-prefix hole."""
+    assert _extract_import_specs("import(`./dev.js` + suffix);\n", ".js") == set()
 
 
 def test_import_spec_helpers_cover_unsupported_and_unresolved_cases(

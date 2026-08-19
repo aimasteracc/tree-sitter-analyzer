@@ -49,7 +49,18 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v14: #1094 / RFC-0019 — symbols carry canonical extractor complexity.
 # v15: #1275 (dogfood F5) — ast_index.imports_json entries carry a line
 # field (dict entries instead of bare statement strings).
-_AST_CACHE_EXTRACTOR_VERSION = 15
+# v16: P1 causal envelopes project literal CommonJS/dynamic module calls.
+# v17: P1 causal envelopes project C/C++ preprocessor includes.
+# v18: P1 causal envelopes project static templates and Python dynamic imports.
+# v19: retain unresolved JS/TS module calls as fail-closed evidence.
+# v20: project JS/TS re-exports and aliased/reflection dynamic loads.
+# v21: project TypeScript path references and pre-discover Python aliases.
+# v22: project assignment aliases of Python dynamic-import loaders.
+# v23: seal ambiguous Python scopes and project static Java/CommonJS loads.
+# v24: project CommonJS aliases and C++20 imports for fail-closed reads.
+# v33-v37: invalidate computed/header loaders, then retained execution paths.
+# v38: loader projection fails closed by default instead of enumerating risks.
+_AST_CACHE_EXTRACTOR_VERSION = 38
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__

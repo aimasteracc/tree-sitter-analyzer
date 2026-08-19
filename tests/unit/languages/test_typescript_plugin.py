@@ -357,6 +357,13 @@ class TestTypeScriptPlugin:
         extractor = plugin.get_extractor()
         assert isinstance(extractor, TypeScriptElementExtractor)
 
+    @pytest.mark.parametrize("extension", [".mts", ".cts"])
+    def test_node_module_typescript_extensions_are_supported(
+        self, plugin: TypeScriptPlugin, extension: str
+    ) -> None:
+        assert extension in plugin.get_file_extensions()
+        assert plugin.is_applicable(f"src/module{extension}") is True
+
     def test_supported_queries(self, plugin):
         """Test supported queries"""
         queries = plugin.get_supported_queries()

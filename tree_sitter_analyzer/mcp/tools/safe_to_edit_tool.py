@@ -27,10 +27,12 @@ from .base_tool import BaseMCPTool, mirror_summary_line
 from .utils.parse_validity import is_file_parse_broken
 from .utils.safe_to_edit_helpers import (
     SafeToEditContext,
-    _snapshot_file_indexed,
     build_file_dependency_view,
     build_snapshot_file_dependency_view,
+    build_snapshot_syntax_causal_envelope,
     is_init_file,
+    snapshot_inventory,
+    snapshot_stale_edges,
 )
 from .utils.safe_to_edit_helpers import (
     build_safe_to_edit_result as _build_safe_to_edit_result,
@@ -274,7 +276,7 @@ class SafeToEditTool(BaseMCPTool):
         """RFC-0022 P0.4: build the risk envelope from the certified snapshot.
 
         The dependency view comes exclusively from the snapshot ``edges``
-        table (IMPORTS kind); the syntax gate, health score, and test
+        and ``ast_index`` tables; the syntax gate, health score, and test
         discovery still read the live source, but the after-read source
         recapture (in the consumer seam) certifies those bytes still match
         the snapshot generation before any result is emitted. Syntax errors
@@ -298,9 +300,9 @@ class SafeToEditTool(BaseMCPTool):
         # canonical_root (/private/var/folders/...) differ by symlink, which
         # would make to_relative fall back to the absolute path and miss every
         # ast_index/edges row (CLAUDE.md §2 resolution contract).
-        rel_path = _to_relative(os.path.realpath(resolved), reader_root).replace(
-            "\\", "/"
-        )
+        rel_path = _to_relative(os.path.realpath(resolved), reader_root)
+        if os.sep == "\\":
+            rel_path = rel_path.replace("\\", "/")
         # Codex P1 (#1299): a target outside the snapshot source inventory
         # (markdown/yaml, hidden, or excluded files) is not covered by the
         # before/after source recaptures. The gate runs BEFORE any
@@ -308,27 +310,47 @@ class SafeToEditTool(BaseMCPTool):
         # short-circuit into an available envelope — a missing target is
         # necessarily outside the inventory too, so its answer also comes
         # from the snapshot, never from live filesystem state (round-3/4).
-        if snapshot is not None and not _snapshot_file_indexed(conn, rel_path):
-            raise ValueError("FILE_NOT_INDEXED")
+        inventory = snapshot_inventory(conn) if snapshot is not None else None
+        if snapshot is not None:
+            if inventory is None or rel_path not in inventory:
+                raise ValueError("FILE_NOT_INDEXED")
         if not Path(resolved).exists():
             raise ValueError("FILE_NOT_FOUND")
 
         syntax_response = _syntax_error_response(resolved, file_path, edit_type)
         if syntax_response is not None:
+            if snapshot is not None:
+                syntax_response["causal_envelope"] = (
+                    build_snapshot_syntax_causal_envelope(
+                        conn,
+                        rel_path,
+                        file_path,
+                        inventory=inventory,
+                    )
+                )
             return syntax_response
 
+        graph = build_snapshot_file_dependency_view(
+            conn,
+            rel_path,
+            inventory=inventory,
+        )
         result = _build_safe_to_edit_result(
             SafeToEditContext(
                 file_path=file_path,
                 edit_type=edit_type,
                 resolved_path=resolved,
                 project_root=reader_root,
-                graph=build_snapshot_file_dependency_view(conn, rel_path),
+                graph=graph,
                 scorer=self._get_scorer(),
                 # Codex P1 (#1299): the certified route derives constraint
                 # facts from the snapshot connection and never touches the
                 # live .ast-cache (zero-write read).
                 snapshot_conn=conn if snapshot is not None else None,
+                certified_inventory=inventory,
+                stale_edges=tuple(
+                    snapshot_stale_edges(conn, rel_path, inventory=inventory)
+                ),
             )
         )
         # RFC-0022 P0.5: echo the adapter-owned wire owner version on the
@@ -389,12 +411,24 @@ def _syntax_error_response(
         "risk": "dangerous",
         "verdict": "ERROR",
         "signal": "syntax_error",
-        # Empty downstream / test lists — we couldn't compute them on a
-        # broken tree. ``has_tests=False`` keeps the schema valid.
+        # Empty live downstream/test hints — we cannot compute them from the
+        # broken tree. The certified route overwrites ``causal_envelope``
+        # with immutable snapshot facts before this response is emitted.
         "downstream_dependents": [],
         "dependencies": [],
         "test_files": [],
         "has_tests": False,
+        "causal_envelope": {
+            # ``None`` means unevaluated.  Empty lists would falsely certify
+            # that the live path evaluated these complete-set fields and found
+            # nothing, even though syntax failure prevented the walk.
+            "dependents": None,
+            "dependencies": None,
+            "exercising_tests": None,
+            "constraint_verdict": "unknown",
+            "verification_command": None,
+            "stale_edges": None,
+        },
         "pre_edit_checklist": [
             "Fix syntax errors so the file parses cleanly.",
             "Re-run safe_to_edit after the file parses.",

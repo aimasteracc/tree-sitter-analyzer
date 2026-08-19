@@ -6,6 +6,10 @@ from pathlib import Path, PureWindowsPath
 import pytest
 
 from tree_sitter_analyzer import project_graph
+from tree_sitter_analyzer.mcp.utils.edge_extractors import get_extractor
+from tree_sitter_analyzer.mcp.utils.edge_extractors.typescript import (
+    TypeScriptEdgeExtractor,
+)
 from tree_sitter_analyzer.project_graph import (
     BlastRadius,
     DependencyGraph,
@@ -208,6 +212,18 @@ class TestDependencyGraphResolvePaths:
         graph = DependencyGraph(str(proj))
         assert len(graph.edges()) == 1
 
+    @pytest.mark.parametrize("extension", [".mjs", ".cjs", ".mts", ".cts"])
+    def test_node_module_extensions_are_indexed(self, tmp_path, extension):
+        proj = tmp_path / "ts_module_proj"
+        proj.mkdir()
+        (proj / f"app{extension}").write_text('import { bar } from "./lib";\n')
+        (proj / f"lib{extension}").write_text("export function bar() {}\n")
+
+        graph = DependencyGraph(str(proj))
+
+        assert graph.nodes() == [f"app{extension}", f"lib{extension}"]
+        assert len(graph.edges()) == 1
+
     def test_go_resolve_from_fixture(self):
         graph = DependencyGraph(str(GO_PROJECT))
         nodes = graph.nodes()
@@ -269,6 +285,13 @@ class TestDependencyGraphResolvePaths:
         nodes = graph.nodes()
         assert all("node_modules" not in n for n in nodes), f"node_modules in {nodes}"
         assert all(".venv" not in n for n in nodes), f".venv in {nodes}"
+
+
+@pytest.mark.parametrize("extension", [".mjs", ".cjs", ".mts", ".cts"])
+def test_edge_extractor_registry_supports_node_module_extensions(
+    extension: str,
+) -> None:
+    assert isinstance(get_extractor(extension), TypeScriptEdgeExtractor)
 
 
 class TestCacheKeyFor:

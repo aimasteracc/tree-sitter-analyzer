@@ -20,6 +20,7 @@ from typing import Any
 
 from .callee_resolution import CalleeResolver
 from .constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
+from .constants import JS_TS_MODULE_EXTS
 from .core.parser import Parser, ParseResult
 from .function_extraction import SUPPORTED_LANGUAGES as _FUNC_EXTRACTION_LANGUAGES
 from .function_extraction import (
@@ -273,7 +274,7 @@ class CallGraph:
         if is_relative:
             source_dir = str(Path(source_rel).parent)
             candidate = str(Path(source_dir) / resolved_path)
-            for ext in ("", ".py", ".js", ".ts", ".jsx", ".tsx"):
+            for ext in ("", ".py", *JS_TS_MODULE_EXTS):
                 check = candidate + ext
                 if check in rel_to_abs:
                     return check
@@ -282,7 +283,7 @@ class CallGraph:
                     return idx_path
         else:
             candidate = resolved_path
-            for ext in ("", ".py", ".js", ".ts", ".jsx", ".tsx"):
+            for ext in ("", ".py", *JS_TS_MODULE_EXTS):
                 check = candidate + ext
                 if check in rel_to_abs:
                     return check

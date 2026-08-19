@@ -38,7 +38,7 @@ class TypeScriptPlugin(LanguagePlugin):
 
     def get_file_extensions(self) -> list[str]:
         """Return list of file extensions this plugin supports"""
-        return [".ts", ".tsx", ".d.ts"]
+        return [".ts", ".tsx", ".d.ts", ".mts", ".cts"]
 
     def create_extractor(self) -> ElementExtractor:
         """Create and return an element extractor for this language"""
