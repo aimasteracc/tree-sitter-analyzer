@@ -52,8 +52,8 @@ repos:
       - id: detect-secrets
         # The commit-SHA line exemption lives in .secrets.baseline's
         # ``filters_used`` (should_exclude_line), NOT as a file glob here and
-        # NOT as a CLI arg — see that file. It exempts one LINE SHAPE (a JSON
-        # key ending in "commit" holding a bare hex string), so every other
+        # NOT as a CLI arg — see that file. It exempts one LINE SHAPE (the JSON
+        # key exactly "commit" holding a bare hex SHA), so every other
         # line of every file is still scanned.
         args: ['--baseline', '.secrets.baseline']
         exclude: package.lock

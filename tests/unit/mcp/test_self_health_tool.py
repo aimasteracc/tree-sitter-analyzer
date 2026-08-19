@@ -9,7 +9,9 @@ nondeterministic property asserted is the relationship ``p50 <= p95``.
 
 from __future__ import annotations
 
+import os
 from typing import Any
+from unittest import mock
 
 import pytest
 
@@ -18,7 +20,11 @@ from tree_sitter_analyzer.latency import (
     TIER_WARM,
     get_latency_recorder,
 )
-from tree_sitter_analyzer.mcp.tools.self_health_tool import SelfHealthTool
+from tree_sitter_analyzer.mcp.tools.self_health_tool import (
+    SelfHealthTool,
+    _ast_index_report,
+    _engine_root_conflict,
+)
 
 MS = 1_000_000
 
@@ -76,22 +82,160 @@ async def test_empty_state_verdict_is_warn(tool: SelfHealthTool) -> None:
 
 
 @pytest.mark.asyncio
-async def test_unmeasured_ast_cache_hit_rate_is_null_not_zero(
+async def test_unmeasured_analysis_cache_hit_rate_is_null_not_zero(
     tool: SelfHealthTool,
 ) -> None:
     """``CacheService.get_stats()`` returns ``hit_rate == 0.0`` for zero
     requests. A 0.0 that means "unmeasured" is the belief-shaped output this
     whole surface exists to eliminate — it must surface as ``null``."""
     result = await _report(tool)
-    assert result["ast_cache"]["hit_rate"] is None
+    assert result["analysis_cache"]["hit_rate"] is None
 
 
 @pytest.mark.asyncio
-async def test_unmeasured_ast_cache_status_is_no_observations(
+async def test_unmeasured_analysis_cache_total_requests_is_null_not_zero(
+    tool: SelfHealthTool,
+) -> None:
+    # Reviewer P2-5: total_requests was the one field the "never a fabricated
+    # zero" rule was not applied to, so an unreadable cache DB was
+    # byte-identical to a genuinely idle one.
+    result = await _report(tool)
+    assert result["analysis_cache"]["total_requests"] is None
+
+
+@pytest.mark.asyncio
+async def test_idle_analysis_cache_reason_is_no_requests_yet(
+    tool: SelfHealthTool,
+) -> None:
+    # Reviewer P2-5: idle must be distinguishable from unreadable.
+    result = await _report(tool)
+    assert result["analysis_cache"]["reason"] == "NO_REQUESTS_YET"
+
+
+@pytest.mark.asyncio
+async def test_unreadable_analysis_cache_reason_names_the_failure(
+    tool: SelfHealthTool,
+) -> None:
+    # Reviewer P2-5: a locked/unreadable cache DB must not read as idle.
+    import tree_sitter_analyzer.core.analysis_engine as engine_module
+
+    with mock.patch.object(
+        engine_module, "get_analysis_engine", side_effect=RuntimeError("db locked")
+    ):
+        result = await _report(tool)
+    assert result["analysis_cache"]["reason"] == "CACHE_STATS_UNREADABLE:RuntimeError"
+
+
+@pytest.mark.asyncio
+async def test_unreadable_analysis_cache_status_is_unavailable(
+    tool: SelfHealthTool,
+) -> None:
+    import tree_sitter_analyzer.core.analysis_engine as engine_module
+
+    with mock.patch.object(
+        engine_module, "get_analysis_engine", side_effect=RuntimeError("db locked")
+    ):
+        result = await _report(tool)
+    assert result["analysis_cache"]["status"] == "UNAVAILABLE"
+
+
+@pytest.mark.asyncio
+async def test_unmeasured_analysis_cache_status_is_no_observations(
     tool: SelfHealthTool,
 ) -> None:
     result = await _report(tool)
-    assert result["ast_cache"]["status"] == "NO_OBSERVATIONS"
+    assert result["analysis_cache"]["status"] == "NO_OBSERVATIONS"
+
+
+@pytest.mark.asyncio
+async def test_report_has_no_field_named_ast_cache(tool: SelfHealthTool) -> None:
+    # Reviewer P2-1: the field named ``ast_cache`` actually published the
+    # in-process analysis cache and was provably insensitive to whether
+    # .ast-cache/index.db existed. The misleading name must not come back.
+    result = await _report(tool)
+    assert "ast_cache" not in result
+
+
+# --------------------------------------------------------------------------
+# ast_index — the REAL on-disk index, and it must react to it
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ast_index_absent_when_no_index_on_disk(
+    tool: SelfHealthTool,
+) -> None:
+    # Reviewer P2-1: tmp_path has no .ast-cache, so the honest answer is ABSENT.
+    result = await _report(tool)
+    assert result["ast_index"]["status"] == "ABSENT"
+
+
+@pytest.mark.asyncio
+async def test_ast_index_absent_reports_present_false(
+    tool: SelfHealthTool,
+) -> None:
+    result = await _report(tool)
+    assert result["ast_index"]["present"] is False
+
+
+@pytest.mark.asyncio
+async def test_ast_index_hit_rate_is_null_and_declared_uninstrumented(
+    tool: SelfHealthTool,
+) -> None:
+    """The on-disk index keeps no hit/miss counters. Rather than substituting
+    the in-process cache's rate — the P2-1 defect — say so explicitly."""
+    result = await _report(tool)
+    index = result["ast_index"]
+    assert (index["hit_rate"], index["hit_rate_status"]) == (
+        None,
+        "UNAVAILABLE_NOT_INSTRUMENTED",
+    )
+
+
+def test_ast_index_reacts_to_a_real_index_on_disk(tmp_path: Any) -> None:
+    """Reviewer P2-1 proof: the old field returned byte-identical values with
+    .ast-cache deleted and with a real index present. This one must change."""
+    import sqlite3
+
+    absent = _ast_index_report(str(tmp_path))
+    cache_dir = tmp_path / ".ast-cache"
+    cache_dir.mkdir()
+    connection = sqlite3.connect(str(cache_dir / "index.db"))
+    connection.execute("CREATE TABLE ast_index (file_path TEXT, mtime_ns INTEGER)")
+    connection.execute("INSERT INTO ast_index VALUES ('a.py', 1)")
+    connection.commit()
+    connection.close()
+    present = _ast_index_report(str(tmp_path))
+    assert (absent["status"], present["status"]) == ("ABSENT", "OK")
+
+
+def test_ast_index_counts_indexed_files(tmp_path: Any) -> None:
+    import sqlite3
+
+    cache_dir = tmp_path / ".ast-cache"
+    cache_dir.mkdir()
+    connection = sqlite3.connect(str(cache_dir / "index.db"))
+    connection.execute("CREATE TABLE ast_index (file_path TEXT, mtime_ns INTEGER)")
+    connection.executemany(
+        "INSERT INTO ast_index VALUES (?, 1)", [("a.py",), ("b.py",), ("c.py",)]
+    )
+    connection.commit()
+    connection.close()
+    assert _ast_index_report(str(tmp_path))["indexed_files"] == 3
+
+
+def test_present_but_empty_index_is_reported_empty_not_ok(tmp_path: Any) -> None:
+    """A schema-only index.db (this repo ships one at 200 KB with zero rows)
+    must not read as OK — an agent would take that for a warm index."""
+    import sqlite3
+
+    cache_dir = tmp_path / ".ast-cache"
+    cache_dir.mkdir()
+    connection = sqlite3.connect(str(cache_dir / "index.db"))
+    connection.execute("CREATE TABLE ast_index (file_path TEXT, mtime_ns INTEGER)")
+    connection.commit()
+    connection.close()
+    assert _ast_index_report(str(tmp_path))["status"] == "EMPTY"
 
 
 # --------------------------------------------------------------------------
@@ -293,12 +437,76 @@ async def test_cli_and_mcp_report_identical_payloads(tmp_path: Any) -> None:
     facade = build_health_facade(str(tmp_path))
     mcp_side = await facade.execute({"action": "self", "output_format": "json"})
 
-    # The facade call itself is instrumented, so it records one extra
-    # ``health/self`` observation. Compare everything except the live counters.
-    volatile = {"routes", "total_invocations", "summary_line", "agent_summary"}
-    assert {k: v for k, v in mcp_side.items() if k not in volatile} == {
-        k: v for k, v in cli_side.items() if k not in volatile
+    # Reviewer P3: excluding ``routes`` entirely meant this test would pass
+    # even if the facade returned ``routes: []`` unconditionally. Compare route
+    # *structure* with the nondeterministic timings normalised away, so parity
+    # is actually enforced.
+    def shape(payload: dict[str, Any]) -> list[tuple[Any, ...]]:
+        return sorted(
+            (row["tool"], row["action"], row["tier"], set(row))
+            for row in payload["routes"]
+        )
+
+    # The facade call is itself instrumented, so it records one extra
+    # ``health/self`` row; drop that one route from the comparison, not the key.
+    def without_self(payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            **payload,
+            "routes": [r for r in payload["routes"] if r["tool"] != "health"],
+        }
+
+    assert shape(without_self(mcp_side)) == shape(without_self(cli_side))
+
+    scalars = {"routes", "total_invocations", "summary_line", "agent_summary"}
+    assert {k: v for k, v in mcp_side.items() if k not in scalars} == {
+        k: v for k, v in cli_side.items() if k not in scalars
     }
+
+
+@pytest.mark.asyncio
+async def test_parity_test_would_fail_if_routes_were_dropped(tmp_path: Any) -> None:
+    """Guard on the guard: the route-shape comparison must actually be able to
+    detect an empty ``routes`` list (reviewer P3 — the previous version could
+    not, because it excluded the key)."""
+    get_latency_recorder().record("nav", "callers", 42 * MS, tier=TIER_WARM)
+    real = await SelfHealthTool(project_root=str(tmp_path)).execute(
+        {"output_format": "json"}
+    )
+    dropped = {**real, "routes": []}
+
+    def shape(payload: dict[str, Any]) -> list[tuple[Any, ...]]:
+        return sorted(
+            (row["tool"], row["action"], row["tier"], set(row))
+            for row in payload["routes"]
+        )
+
+    assert shape(real) != shape(dropped)
+
+
+# --------------------------------------------------------------------------
+# Mixed project-root spellings must not produce a contradictory payload
+# --------------------------------------------------------------------------
+
+
+def test_mixed_engine_roots_are_detected_as_ambiguous(tmp_path: Any) -> None:
+    # Reviewer P2-6: UnifiedAnalysisEngine keys its singleton on
+    # ``project_root or "default"`` with no normalisation, so '.' and the
+    # absolute path are different engines with different CacheServices. The
+    # report used to publish one engine's zeros while the other was busy.
+    from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
+
+    root = str(tmp_path)
+    get_analysis_engine(root)
+    get_analysis_engine(root + os.sep)
+    assert _engine_root_conflict(root) == "MULTIPLE_ENGINE_ROOTS"
+
+
+def test_single_engine_root_reports_no_conflict(tmp_path: Any) -> None:
+    """The detection must not fire on the normal single-root case."""
+    from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
+
+    get_analysis_engine(str(tmp_path))
+    assert _engine_root_conflict(str(tmp_path)) is None
 
 
 @pytest.mark.asyncio

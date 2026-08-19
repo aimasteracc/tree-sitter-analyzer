@@ -3,19 +3,40 @@
 
 Self-proprioception: the analyzer reporting how well it is sensing. Emits
 per-``(tool, action)`` p50/p95 latency **split by tier**, exact invocation
-counts, and the AST-cache hit rate.
+counts, the in-process **analysis-cache** hit rate, and the on-disk **AST
+index** state.
 
-Two honesty rules govern every field here:
+Two caches, two fields, deliberately not conflated:
+
+* ``analysis_cache`` — the in-process ``cachetools`` L1/L2/L3 LRU/TTL cache
+  held by :class:`UnifiedAnalysisEngine`. Has real hit/miss counters.
+* ``ast_index`` — the on-disk ``.ast-cache/index.db``. Reports presence, size
+  and indexed-file count; its ``hit_rate`` is ``null`` with
+  ``hit_rate_status: UNAVAILABLE_NOT_INSTRUMENTED`` because the on-disk index
+  keeps no hit/miss counters.
+
+The first cut of this tool published the *analysis* cache's numbers under the
+name ``ast_cache``. It was provably insensitive to the thing it named: with
+``.ast-cache/`` deleted and with a 200 KB ``index.db`` present, the field
+returned byte-identical values. A self-report that misnames what it senses is
+a false-negative generator, not a health check.
+
+Three honesty rules govern every field here:
 
 1. **Never report a fabricated zero.** An unmeasured percentile is ``null``
    and the surrounding status is ``NO_OBSERVATIONS``. ``CacheService.get_stats()``
    returns ``hit_rate == 0.0`` for zero requests — that 0.0 is translated to
    ``null`` before it reaches a caller, because a zero that means "unmeasured"
    is exactly the belief-shaped output this surface exists to eliminate
-   (CLAUDE.md §11).
+   (CLAUDE.md §11). ``total_requests`` obeys the same rule: it is ``null``,
+   never ``0``, when the cache could not be read.
 2. **Never let a derived label read as a measurement.** The report carries
    ``tier_definition`` verbatim so ``cold``/``warm`` cannot be mistaken for a
    cache probe, and ``percentile_method`` so the numbers can be reproduced.
+3. **Never emit a self-contradictory payload.** When two analysis engines are
+   live under different spellings of one project root, the cache block reports
+   ``status: AMBIGUOUS`` / ``reason: MULTIPLE_ENGINE_ROOTS`` rather than the
+   zeros of whichever engine happened to be addressed.
 
 Scope is the **current process** (``scope: "current_process"``). The recorder
 has no persistence layer by design, so a fresh single-shot CLI process
@@ -26,6 +47,8 @@ routes in-process to produce a durable baseline.
 
 from __future__ import annotations
 
+import os
+import sqlite3
 from typing import Any
 
 from ...latency import (
@@ -44,7 +67,8 @@ _DESCRIPTION = (
     "Self-proprioception: how fast and how well THIS analyzer process is "
     "answering (RFC-0025 Layer 5). Returns per-(tool, action) p50/p95 "
     "latency split by tier (cold / warm / cached), exact invocation counts, "
-    "and the AST-cache hit rate.\n\n"
+    "the in-process analysis-cache hit rate, and the on-disk AST-index state "
+    "(.ast-cache/index.db presence, size, indexed-file count).\n\n"
     "WHEN TO USE:\n"
     "- Before trusting any latency claim about this tool — this is the "
     "measurement, the README is the claim.\n"
@@ -61,7 +85,10 @@ _DESCRIPTION = (
     "HONESTY CONTRACT: an unmeasured percentile is `null` and the enclosing "
     "status is `NO_OBSERVATIONS` — never 0.0, never an estimate. `cold`/`warm` "
     "is a process-lifetime definition (see `tier_definition`), NOT a measured "
-    "cache probe.\n\n"
+    "cache probe. `analysis_cache` is the in-process LRU/TTL cache; "
+    "`ast_index` is the on-disk .ast-cache/index.db and its hit_rate is null "
+    "(`UNAVAILABLE_NOT_INSTRUMENTED`) because that index keeps no hit/miss "
+    "counters — the two are never substituted for each other.\n\n"
     "VERDICT INTEGRITY: agent_summary.verdict is INFO when observations exist "
     "and WARN when none do — no data must not read as a clean bill of health. "
     "Legal vocabulary: SAFE / CAUTION / REVIEW / UNSAFE / INFO / WARN / "
@@ -69,42 +96,141 @@ _DESCRIPTION = (
 )
 
 
-def _ast_cache_report(project_root: str | None) -> dict[str, Any]:
-    """Summarise AST-cache hit statistics for *project_root*.
+def _unmeasured_cache(status: str, reason: str | None) -> dict[str, Any]:
+    """Build an all-``None`` cache block.
 
-    Reads the engine's existing public ``get_cache_stats()``. Returns
-    ``status == NO_OBSERVATIONS`` with every rate/count ``None`` whenever the
-    cache has served zero requests. ``hit_rate`` is a fraction in ``[0, 1]``,
-    rounded to 4 places — the upstream ``get_stats()`` reports ``0.0`` for zero
-    requests, which is precisely the fabricated zero we translate away here.
+    ``total_requests`` is ``None``, not ``0``: a zero here would be
+    indistinguishable from a genuinely idle cache, which is the same
+    fabricated-zero failure this module exists to eliminate. ``reason``
+    distinguishes *unreadable* from *idle*.
     """
-    unmeasured: dict[str, Any] = {
-        "status": NO_OBSERVATIONS,
+    return {
+        "status": status,
+        "reason": reason,
         "hit_rate": None,
         "hits": None,
         "misses": None,
-        "total_requests": 0,
+        "total_requests": None,
     }
+
+
+def _engine_root_conflict(project_root: str | None) -> str | None:
+    """Detect two live analysis engines keyed on different spellings of one root.
+
+    ``UnifiedAnalysisEngine.__new__`` keys its singleton on
+    ``project_root or "default"`` with no normalisation, so ``'.'`` and the
+    absolute path are *different* engines with *different* ``CacheService``
+    instances. Reading the wrong one produces a self-contradictory payload:
+    ``NO_OBSERVATIONS`` over a demonstrably busy cache.
+
+    This only *detects* the disagreement and returns a stable reason code.
+    Normalising the singleton key is a documented foundational change
+    (CLAUDE.md §2 — it broke 164 tests on macOS when last attempted) and must
+    land as its own commit with a macOS gate, never bundled here.
+    """
+    try:
+        from ...core.analysis_engine import UnifiedAnalysisEngine
+
+        keys = list(UnifiedAnalysisEngine._instances)  # noqa: SLF001 — read-only
+    except Exception:  # noqa: BLE001 — a diagnostic must never raise
+        return None
+    if len(keys) < 2:
+        return None
+    mine = project_root or "default"
+    target = os.path.realpath(project_root) if project_root else os.path.realpath(".")
+    for key in keys:
+        if key == mine:
+            continue
+        other = os.path.realpath(".") if key == "default" else os.path.realpath(key)
+        if other == target:
+            return "MULTIPLE_ENGINE_ROOTS"
+    return None
+
+
+def _analysis_cache_report(project_root: str | None) -> dict[str, Any]:
+    """Summarise the **in-process analysis cache** (``CacheService``).
+
+    This is the ``cachetools`` L1/L2/L3 LRU/TTL cache held by
+    :class:`UnifiedAnalysisEngine` — parse/analysis results for the current
+    process. It is **NOT** the on-disk AST index; that is reported separately
+    by :func:`_ast_index_report`. The two were conflated in the first cut of
+    this tool: the field was named ``ast_cache`` while reading these numbers,
+    and it was provably insensitive to whether ``.ast-cache/index.db`` existed
+    at all.
+
+    ``hit_rate`` is a fraction in ``[0, 1]`` rounded to 4 places. Upstream
+    ``get_stats()`` reports ``0.0`` for zero requests; that fabricated zero is
+    translated to ``None`` here.
+    """
+    conflict = _engine_root_conflict(project_root)
+    if conflict is not None:
+        return _unmeasured_cache("AMBIGUOUS", conflict)
     try:
         from ...core.analysis_engine import get_analysis_engine
 
         stats = get_analysis_engine(project_root).get_cache_stats()
-    except Exception:  # noqa: BLE001 — a diagnostic must never raise
-        return unmeasured
+    except Exception as exc:  # noqa: BLE001 — a diagnostic must never raise
+        return _unmeasured_cache(
+            "UNAVAILABLE", f"CACHE_STATS_UNREADABLE:{type(exc).__name__}"
+        )
     if not stats:
-        return unmeasured
+        return _unmeasured_cache("UNAVAILABLE", "CACHE_NOT_INITIALIZED")
 
     total = int(stats.get("total_requests") or 0)
     if total <= 0:
-        return unmeasured
+        return _unmeasured_cache(NO_OBSERVATIONS, "NO_REQUESTS_YET")
     hits = int(stats.get("hits") or 0)
     return {
         "status": "OK",
+        "reason": None,
         "hit_rate": round(hits / total, 4),
         "hits": hits,
         "misses": int(stats.get("misses") or 0),
         "total_requests": total,
     }
+
+
+def _ast_index_report(project_root: str | None) -> dict[str, Any]:
+    """Report the real on-disk AST index (``.ast-cache/index.db``).
+
+    What is genuinely cheap here is *existence*, *size* and *indexed file
+    count* (one ``COUNT(*)`` on ``ast_index``). A hit rate is **not**
+    available: the on-disk index keeps no hit/miss counters, so rather than
+    substituting the in-process cache's rate — the exact mistake this block
+    replaces — ``hit_rate`` is ``None`` with an explicit reason.
+    """
+    root = project_root or "."
+    db_path = os.path.join(root, ".ast-cache", "index.db")
+    report: dict[str, Any] = {
+        "path": db_path,
+        "present": False,
+        "size_bytes": None,
+        "indexed_files": None,
+        "hit_rate": None,
+        "hit_rate_status": "UNAVAILABLE_NOT_INSTRUMENTED",
+    }
+    if not os.path.isfile(db_path):
+        report["status"] = "ABSENT"
+        return report
+    report["present"] = True
+    try:
+        report["size_bytes"] = os.path.getsize(db_path)
+        connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            row = connection.execute("SELECT COUNT(*) FROM ast_index").fetchone()
+        finally:
+            connection.close()
+        indexed = int(row[0]) if row else None
+        report["indexed_files"] = indexed
+        # "present but holding nothing" is a real and distinct state: this repo
+        # ships a 200 KB schema-only index.db with ast_index empty. Calling that
+        # OK would read as "warm" to an agent, which is the same false-negative
+        # class as the misnamed field this block replaced.
+        report["status"] = "EMPTY" if indexed == 0 else "OK"
+    except Exception as exc:  # noqa: BLE001 — a diagnostic must never raise
+        report["status"] = "UNREADABLE"
+        report["reason"] = f"INDEX_UNREADABLE:{type(exc).__name__}"
+    return report
 
 
 class SelfHealthTool(BaseMCPTool):
@@ -148,7 +274,8 @@ class SelfHealthTool(BaseMCPTool):
         """Build the self-health report. Identical payload on CLI and MCP."""
         output_format = arguments.get("output_format", "toon")
         snapshot = get_latency_recorder().snapshot()
-        ast_cache = _ast_cache_report(self.project_root)
+        analysis_cache = _analysis_cache_report(self.project_root)
+        ast_index = _ast_index_report(self.project_root)
 
         response: dict[str, Any] = {
             "success": True,
@@ -160,9 +287,10 @@ class SelfHealthTool(BaseMCPTool):
             "window": snapshot.window,
             "total_invocations": snapshot.total_invocations,
             "routes": [route.as_report_row() for route in snapshot.routes],
-            "ast_cache": ast_cache,
+            "analysis_cache": analysis_cache,
+            "ast_index": ast_index,
         }
-        summary_line = _build_summary_line(snapshot, ast_cache)
+        summary_line = _build_summary_line(snapshot, analysis_cache, ast_index)
         response["summary_line"] = summary_line
         response["agent_summary"] = {
             "summary_line": summary_line,
@@ -176,15 +304,22 @@ class SelfHealthTool(BaseMCPTool):
         return apply_toon_format_to_response(response, output_format)
 
 
-def _build_summary_line(snapshot: LatencySnapshot, ast_cache: dict[str, Any]) -> str:
+def _build_summary_line(
+    snapshot: LatencySnapshot,
+    analysis_cache: dict[str, Any],
+    ast_index: dict[str, Any],
+) -> str:
     """One-line headline. Renders ``n/a`` — never ``0.0`` — when unmeasured."""
-    hit_rate = ast_cache.get("hit_rate")
+    hit_rate = analysis_cache.get("hit_rate")
+    indexed = ast_index.get("indexed_files")
     return format_summary_line(
         "self_health",
         f"status={snapshot.status}",
         f"routes={len(snapshot.routes)}",
         f"invocations={snapshot.total_invocations}",
-        f"ast_cache_hit_rate={hit_rate if hit_rate is not None else 'n/a'}",
+        f"analysis_cache_hit_rate={hit_rate if hit_rate is not None else 'n/a'}",
+        f"ast_index={ast_index.get('status')}",
+        f"indexed_files={indexed if indexed is not None else 'n/a'}",
     )
 
 

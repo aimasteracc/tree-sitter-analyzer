@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import platform
 import subprocess
@@ -133,9 +134,62 @@ async def _drive_routes(project_root: str, warm_repeats: int) -> list[dict[str, 
     return log
 
 
-async def _collect(project_root: str, warm_repeats: int) -> dict[str, Any]:
+def _sha256_file(path: Path) -> str:
+    """Hash a file's bytes, or ``"unknown"`` if it cannot be read."""
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return "unknown"
+
+
+def _git_dirty_lines() -> tuple[str, ...]:
+    """Return porcelain status lines. Empty tuple means a clean tree.
+
+    The collector contract for ``no1-006b-macos-e0.json`` gates on exactly this
+    (``--untracked-files=all``), and skipping it here already cost us: the first
+    committed artifact recorded a commit that contained neither ``latency.py``
+    nor this script, because both were untracked when it ran. So the recorded
+    ``reproduction_command`` was impossible to execute at the stated provenance.
+    """
+    raw = _git("status", "--porcelain=v1", "--untracked-files=all")
+    if raw in ("", "unknown"):
+        return ()
+    return tuple(line for line in raw.splitlines() if line.strip())
+
+
+def _ast_index_matches(observed: dict[str, Any], required: str) -> bool:
+    """Gate the run on a declared on-disk AST-index state."""
+    if required == "any":
+        return True
+    status = observed.get("status")
+    if required == "absent":
+        return status == "ABSENT"
+    if required == "present":
+        return bool(observed.get("present"))
+    # populated: present AND holding at least one indexed file
+    return bool(observed.get("present")) and bool(observed.get("indexed_files"))
+
+
+def _ast_index_state(project_root: str) -> dict[str, Any]:
+    """Observed on-disk AST-index state, recorded as a first-class field.
+
+    The cold column depends on this and nothing in the artifact used to say so:
+    the same host at the same commit produced ``edit/safe`` cold p50 of
+    18014.645 / 14065.642 / 4104.113 ms minutes apart, purely because the
+    on-disk index differed. Warm numbers were stable throughout.
+    """
+    from tree_sitter_analyzer.mcp.tools.self_health_tool import _ast_index_report
+
+    return _ast_index_report(project_root)
+
+
+async def _collect(
+    project_root: str, warm_repeats: int, *, allow_dirty: bool
+) -> dict[str, Any]:
     """Drive the routes and assemble the baseline artifact."""
     started = datetime.now(timezone.utc)
+    ast_index_before = _ast_index_state(project_root)
+    dirty = _git_dirty_lines()
     get_latency_recorder().reset()
     print("Driving routes (cold + warm)...", file=sys.stderr)
     route_log = await _drive_routes(project_root, warm_repeats)
@@ -153,10 +207,46 @@ async def _collect(project_root: str, warm_repeats: int) -> dict[str, Any]:
             "control, no repeat-host cross-check. Magnitudes are load-bearing; "
             "individual digits are not."
         ),
+        "cold_column_status": "INDICATIVE_SINGLE_OBSERVATION",
+        "cold_column_caveat": (
+            "Every cold row is ONE observation and depends on the on-disk "
+            "AST-index state recorded in preconditions.ast_index_before. "
+            "Measured spread on one host at one commit: edit/safe cold p50 "
+            "18014.645 / 14065.642 / 4104.113 ms (3.4x) purely from that state. "
+            "Treat cold as indicative of magnitude only; do NOT use it in any "
+            "cross-run or cross-commit comparison. Warm rows were stable "
+            "(3845 / 3394 / 3624 ms) and are the comparable column."
+        ),
+        "preconditions": {
+            "ast_index_before": ast_index_before,
+            "declared_via": "--require-ast-index",
+            "git_dirty": bool(dirty),
+            "git_dirty_entry_count": len(dirty),
+            "git_dirty_allowed_by_flag": allow_dirty,
+            "provenance_valid": not dirty,
+            "provenance_note": (
+                "provenance_valid is false when the working tree was dirty: the "
+                "recorded commit then does NOT describe the measured code, and "
+                "reproduction_command cannot reproduce these numbers."
+            ),
+        },
         "measured_axis": _system_axis(),
         "collection_started_at_utc": started.isoformat(),
         "collection_finished_at_utc": finished.isoformat(),
         "warm_repeats": warm_repeats,
+        "integrity": {
+            "script_sha256": _sha256_file(Path(__file__).resolve()),
+            "recorder_module_sha256": _sha256_file(
+                REPO_ROOT / "tree_sitter_analyzer" / "latency.py"
+            ),
+            "tool_module_sha256": _sha256_file(
+                REPO_ROOT
+                / "tree_sitter_analyzer"
+                / "mcp"
+                / "tools"
+                / "self_health_tool.py"
+            ),
+        },
         "source": {
             "commit": _git("rev-parse", "HEAD"),
             "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
@@ -202,11 +292,57 @@ def main() -> int:
         action="store_true",
         help="Print the artifact to stdout instead of writing to docs/baselines/",
     )
+    parser.add_argument(
+        "--require-ast-index",
+        choices=("any", "absent", "present", "populated"),
+        default="any",
+        help=(
+            "Declare the on-disk AST-index state the cold column is measured "
+            "from, and refuse to run if it does not match. The cold numbers are "
+            "meaningless without this, so 'any' is recorded in the artifact as "
+            "an undeclared (accidental) state. Default: any"
+        ),
+    )
+    parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help=(
+            "Write the artifact even though the working tree is dirty. The "
+            "recorded commit will NOT describe the measured code, so "
+            "provenance_valid is set false and the artifact is marked as "
+            "unreproducible. Refused without this flag."
+        ),
+    )
     args = parser.parse_args()
     if args.warm_repeats < 1:
         parser.error("--warm-repeats must be >= 1")
 
-    artifact = asyncio.run(_collect(str(REPO_ROOT), args.warm_repeats))
+    observed = _ast_index_state(str(REPO_ROOT))
+    if not _ast_index_matches(observed, args.require_ast_index):
+        print(
+            f"REFUSED: --require-ast-index={args.require_ast_index} but the "
+            f"on-disk index is status={observed.get('status')} "
+            f"indexed_files={observed.get('indexed_files')}. The cold column "
+            f"depends on this state; fix the state or relax the flag.",
+            file=sys.stderr,
+        )
+        return 2
+
+    dirty = _git_dirty_lines()
+    if dirty and not args.allow_dirty:
+        print(
+            f"REFUSED: working tree has {len(dirty)} uncommitted/untracked "
+            f"entries, so the commit recorded in the artifact would not describe "
+            f"the measured code (this exact mistake produced an artifact whose "
+            f"reproduction_command could not run). Commit first, or pass "
+            f"--allow-dirty to write a provenance_valid=false artifact.",
+            file=sys.stderr,
+        )
+        return 2
+
+    artifact = asyncio.run(
+        _collect(str(REPO_ROOT), args.warm_repeats, allow_dirty=args.allow_dirty)
+    )
     payload = json.dumps(artifact, indent=2, sort_keys=True) + "\n"
 
     if args.stdout:

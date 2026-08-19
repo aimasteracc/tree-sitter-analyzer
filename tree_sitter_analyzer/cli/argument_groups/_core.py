@@ -146,7 +146,8 @@ def _add_batch_options(parser: argparse.ArgumentParser) -> None:
         help=(
             "Self-proprioception (RFC-0025 Layer 5): per-(tool, action) p50/p95 "
             "latency by tier (cold/warm/cached), invocation counts, and the "
-            "AST-cache hit rate for THIS process. Scope is the current process, "
+            "in-process analysis-cache hit rate, and on-disk AST-index state "
+            "(.ast-cache/index.db). Scope is the current process, "
             "so a fresh CLI run honestly reports NO_OBSERVATIONS; use "
             "scripts/measure_self_health_baseline.py for real numbers."
         ),

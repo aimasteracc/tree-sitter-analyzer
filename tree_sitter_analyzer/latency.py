@@ -33,11 +33,21 @@ windowed even though percentiles are.
 lock — nanoseconds against routes measured in milliseconds-to-seconds. Set
 ``TSA_LATENCY_INSTRUMENTATION=0`` to opt out.
 
-**Tier is a definition, not a cache probe.** ``cold`` = the first observation
-of that ``(tool, action)`` in this process; ``warm`` = every later one;
-``cached`` is only ever set by a caller that explicitly knows it served from
-a cache. The report echoes :data:`TIER_DEFINITION` so nobody mistakes the
-derived label for a measured cache hit.
+**Tier is a definition, not a cache probe.** ``cold`` = the call *started*
+before any call on that ``(tool, action)`` had *completed*; ``warm`` = it
+started after one had; ``cached`` is only ever set by a caller that explicitly
+knows it served from a cache. The report echoes :data:`TIER_DEFINITION` so
+nobody mistakes the derived label for a measured cache hit.
+
+The tier is reserved at **entry** to :meth:`LatencyRecorder.measure`, not at
+exit. Classifying at exit classifies by *completion order*, and the MCP
+lowlevel server dispatches concurrently (``tg.start_soon``), so two
+simultaneous first-time calls on one route — both genuinely paying the cold
+cost — would be labelled one cold and one warm. That put a multi-second cold
+sample straight into the warm p95, contradicting this module's own contract
+that "a cold answer never pollutes a warm p95". Concurrent first calls are all
+cold, because none of them could benefit from state the others had not
+produced yet.
 
 **Thread-safety guarantee.** :meth:`LatencyRecorder.record`,
 :meth:`LatencyRecorder.snapshot` and :meth:`LatencyRecorder.reset` are safe
@@ -92,7 +102,9 @@ DEFAULT_WINDOW = 256
 #: to one of ``0`` / ``false`` / ``no`` / ``off`` to disable it.
 ENV_ENABLED = "TSA_LATENCY_INSTRUMENTATION"
 
-_FALSEY = frozenset({"0", "false", "no", "off"})
+#: An empty value counts as falsey too: ``TSA_LATENCY_INSTRUMENTATION=`` reads
+#: as "explicitly set to nothing", which no operator means as "on".
+_FALSEY = frozenset({"", "0", "false", "no", "off"})
 
 TIER_COLD = "cold"
 TIER_WARM = "warm"
@@ -110,8 +122,10 @@ _NO_ACTION = "-"
 PERCENTILE_METHOD = "nearest-rank (exact sample value, no interpolation)"
 
 TIER_DEFINITION = (
-    "cold = first observation of this (tool, action) in this process; "
-    "warm = every later observation in this process; "
+    "cold = the call STARTED before any call on this (tool, action) had "
+    "COMPLETED in this process, so it cannot have benefited from warm state — "
+    "concurrent first calls are therefore all cold, not one cold and one warm; "
+    "warm = the call started after at least one call on this route completed; "
     "cached = reported explicitly by a caching layer. "
     "cold/warm is a process-lifetime definition, NOT a measured cache probe."
 )
@@ -150,6 +164,11 @@ def _ns_to_ms(value: int | None) -> float | None:
     if value is None:
         return None
     return round(value / 1_000_000, 3)
+
+
+def _route_key(tool: str, action: str | None) -> tuple[str, str]:
+    """Normalise ``(tool, action)`` into the stable reservoir route key."""
+    return (str(tool), action if action else _NO_ACTION)
 
 
 @dataclass(frozen=True)
@@ -233,7 +252,11 @@ class LatencyRecorder:
         self._enabled = _env_enabled() if enabled is None else bool(enabled)
         self._lock = threading.Lock()
         self._routes: dict[tuple[str, str, str], _Reservoir] = {}
-        self._seen: set[tuple[str, str]] = set()
+        # Routes that have had at least one call *complete*. Keyed on
+        # completion, not on start, so a call that begins while the first call
+        # on its route is still in flight is correctly classified cold — it had
+        # no warm state to benefit from. See :data:`TIER_DEFINITION`.
+        self._completed: set[tuple[str, str]] = set()
 
     @property
     def enabled(self) -> bool:
@@ -253,18 +276,18 @@ class LatencyRecorder:
     ) -> None:
         """Record one observation. A no-op when instrumentation is disabled.
 
-        *tier* defaults to :data:`TIER_COLD` for the first observation of
-        ``(tool, action)`` in this process and :data:`TIER_WARM` thereafter.
-        Pass it explicitly (e.g. :data:`TIER_CACHED`) when the caller knows
-        better than the derivation.
+        *tier* defaults to :data:`TIER_COLD` until a call on this route has
+        completed, then :data:`TIER_WARM`. Pass it explicitly (e.g.
+        :data:`TIER_CACHED`, or the tier :meth:`measure` reserved at entry)
+        when the caller knows better than the derivation.
         """
         if not self._enabled:
             return
-        route = (str(tool), action if action else _NO_ACTION)
+        route = _route_key(tool, action)
         with self._lock:
             if tier is None:
-                tier = TIER_WARM if route in self._seen else TIER_COLD
-            self._seen.add(route)
+                tier = self._classify_locked(route)
+            self._completed.add(route)
             key = (route[0], route[1], str(tier))
             reservoir = self._routes.get(key)
             if reservoir is None:
@@ -272,15 +295,36 @@ class LatencyRecorder:
                 self._routes[key] = reservoir
             reservoir.add(int(elapsed_ns))
 
+    def _classify_locked(self, route: tuple[str, str]) -> str:
+        """Derive the tier for *route*. Caller must hold ``self._lock``."""
+        return TIER_WARM if route in self._completed else TIER_COLD
+
     @contextmanager
     def measure(
         self, tool: str, action: str | None, *, tier: str | None = None
     ) -> Iterator[None]:
         """Time the wrapped block and record it.
 
+        The tier is decided **at entry**, not at exit. Deciding it at exit
+        classifies by completion order, so under the MCP server's concurrent
+        dispatch (``tg.start_soon``) two simultaneous first-time calls on one
+        route — both genuinely paying the cold cost — would be labelled one
+        cold and one warm, putting a multi-second cold sample into the warm
+        p95. Entry-time classification makes both cold, which is the honest
+        answer: neither could benefit from state the other had not produced yet.
+
+        When instrumentation is disabled this is a true no-op — no
+        ``perf_counter_ns`` calls at all, not merely a discarded record.
+
         Records even when the body raises — a route that fails slowly is
         exactly the route you need represented in the p95.
         """
+        if not self._enabled:
+            yield
+            return
+        if tier is None:
+            with self._lock:
+                tier = self._classify_locked(_route_key(tool, action))
         started = time.perf_counter_ns()
         try:
             yield
@@ -314,10 +358,10 @@ class LatencyRecorder:
         )
 
     def reset(self) -> None:
-        """Drop every reservoir and forget which routes were seen."""
+        """Drop every reservoir and forget which routes have completed."""
         with self._lock:
             self._routes.clear()
-            self._seen.clear()
+            self._completed.clear()
 
 
 def _env_enabled() -> bool:

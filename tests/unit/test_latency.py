@@ -12,10 +12,14 @@ expected output. The only nondeterministic quantity we assert on is a
 
 from __future__ import annotations
 
+import os
 import threading
+import time
+from unittest import mock
 
 from tree_sitter_analyzer.latency import (
     DEFAULT_WINDOW,
+    ENV_ENABLED,
     NO_OBSERVATIONS,
     TIER_CACHED,
     TIER_COLD,
@@ -299,6 +303,86 @@ def test_routes_are_sorted_by_tool_action_tier() -> None:
     recorder.record("health", "file", 1 * MS)
     tools = [route.tool for route in recorder.snapshot().routes]
     assert tools == ["edit", "health", "nav"]
+
+
+def _run_two_concurrent_first_calls(recorder: LatencyRecorder) -> None:
+    """Hold two calls on one route inside ``measure()`` simultaneously."""
+    start = threading.Barrier(3)
+    release = threading.Event()
+
+    def call() -> None:
+        with recorder.measure("nav", "callers"):
+            start.wait(timeout=5)
+            release.wait(timeout=5)
+
+    threads = [threading.Thread(target=call) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    start.wait(timeout=5)  # both are now inside measure()
+    release.set()
+    for thread in threads:
+        thread.join(timeout=5)
+
+
+def test_two_concurrent_first_calls_are_both_cold() -> None:
+    # Reviewer P2-2: deciding the tier in record() (i.e. at exit) classifies by
+    # completion order, so under the MCP server's concurrent dispatch one of two
+    # simultaneous cold calls was labelled warm -- putting a multi-second cold
+    # sample into the warm p95, contradicting this module's own contract.
+    recorder = LatencyRecorder()
+    _run_two_concurrent_first_calls(recorder)
+    tiers = sorted(route.tier for route in recorder.snapshot().routes)
+    assert tiers == [TIER_COLD]
+
+
+def test_two_concurrent_first_calls_land_in_one_cold_reservoir() -> None:
+    # Reviewer P2-2: both concurrent cold calls counted, in the cold reservoir.
+    recorder = LatencyRecorder()
+    _run_two_concurrent_first_calls(recorder)
+    route = recorder.snapshot().routes[0]
+    assert (route.tier, route.count) == (TIER_COLD, 2)
+
+
+def test_call_starting_after_a_completed_call_is_warm() -> None:
+    """Entry-time classification must not make the sequential case cold."""
+    recorder = LatencyRecorder()
+    with recorder.measure("nav", "callers"):
+        pass
+    with recorder.measure("nav", "callers"):
+        pass
+    tiers = sorted(route.tier for route in recorder.snapshot().routes)
+    assert tiers == [TIER_COLD, TIER_WARM]
+
+
+def test_disabled_measure_does_not_call_perf_counter() -> None:
+    # Reviewer P3: measure() never consulted _enabled, so opting out still paid
+    # both perf_counter_ns calls. Disabled must be a true no-op.
+    recorder = LatencyRecorder(enabled=False)
+    calls = 0
+    real = time.perf_counter_ns
+
+    def counting() -> int:
+        nonlocal calls
+        calls += 1
+        return real()
+
+    with mock.patch.object(time, "perf_counter_ns", counting):
+        with recorder.measure("health", "file"):
+            pass
+    assert calls == 0
+
+
+def test_empty_env_value_disables_instrumentation() -> None:
+    # Reviewer P3: TSA_LATENCY_INSTRUMENTATION= (empty) evaluated to enabled.
+    with mock.patch.dict(os.environ, {ENV_ENABLED: ""}):
+        assert LatencyRecorder().enabled is False
+
+
+def test_unset_env_leaves_instrumentation_enabled() -> None:
+    """On by default — the opt-out must not become an opt-in."""
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop(ENV_ENABLED, None)
+        assert LatencyRecorder().enabled is True
 
 
 def test_concurrent_records_are_all_counted() -> None:

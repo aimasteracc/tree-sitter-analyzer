@@ -22,7 +22,7 @@ deps        ``analyze_dependencies`` (R5)                dependency analysis —
                                                          summary|cycles|blast|file_deps
 test_gap    ``codegraph_test_gap`` (CodeGraphTestGapTool) untested symbol discovery, complexity-ranked
 self        ``self_health``     (SelfHealthTool)         RFC-0025 Layer 5 self-proprioception: per-route
-                                                         p50/p95 latency by tier + AST-cache hit rate
+                                                         p50/p95 latency by tier + analysis-cache hit rate + AST-index state
 ==========  ===========================================  ===================================================
 
 R5 (PRD §3): ``deps`` maps to the single ``DependencyAnalysisTool`` whose
@@ -92,7 +92,8 @@ _HEALTH_DESCRIPTION = (
     "include_covered, output_format.\n"
     "- action=self — self-proprioception (RFC-0025 Layer 5): per-(tool, action) "
     "p50/p95 latency split by tier (cold/warm/cached), exact invocation counts, "
-    "and the AST-cache hit rate for THIS process. No params. Unmeasured values "
+    "the in-process analysis-cache hit rate, and the on-disk AST-index state "
+    "(.ast-cache/index.db) for THIS process. No params. Unmeasured values "
     "are `null` with status NO_OBSERVATIONS — never a fabricated 0.0.\n"
     "For UML diagrams, call/dependency graph visualizations, and similarity "
     "analysis, use the ``viz`` facade instead."
