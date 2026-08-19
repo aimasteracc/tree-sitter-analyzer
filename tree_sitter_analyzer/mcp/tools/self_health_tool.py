@@ -147,6 +147,38 @@ def _engine_root_conflict(project_root: str | None) -> str | None:
     return None
 
 
+def _per_root_cache_stats() -> list[dict[str, Any]]:
+    """Per-engine cache counters, so an AMBIGUOUS verdict still carries data."""
+    rows: list[dict[str, Any]] = []
+    try:
+        from ...core.analysis_engine import UnifiedAnalysisEngine
+
+        instances = dict(UnifiedAnalysisEngine._instances)  # noqa: SLF001
+    except Exception:  # noqa: BLE001 — a diagnostic must never raise
+        return rows
+    for key, engine in instances.items():
+        entry: dict[str, Any] = {"root_key": key}
+        try:
+            stats = engine.get_cache_stats()
+        except Exception as exc:  # noqa: BLE001
+            entry["reason"] = f"CACHE_STATS_UNREADABLE:{type(exc).__name__}"
+            rows.append(entry)
+            continue
+        if not stats:
+            entry["reason"] = "CACHE_NOT_INITIALIZED"
+            rows.append(entry)
+            continue
+        total = int(stats.get("total_requests") or 0)
+        entry["hits"] = int(stats.get("hits") or 0)
+        entry["misses"] = int(stats.get("misses") or 0)
+        entry["total_requests"] = total
+        entry["hit_rate"] = (
+            round(int(stats.get("hits") or 0) / total, 4) if total > 0 else None
+        )
+        rows.append(entry)
+    return sorted(rows, key=lambda row: str(row["root_key"]))
+
+
 def _analysis_cache_report(project_root: str | None) -> dict[str, Any]:
     """Summarise the **in-process analysis cache** (``CacheService``).
 
@@ -164,7 +196,12 @@ def _analysis_cache_report(project_root: str | None) -> dict[str, Any]:
     """
     conflict = _engine_root_conflict(project_root)
     if conflict is not None:
-        return _unmeasured_cache("AMBIGUOUS", conflict)
+        # Reporting only "AMBIGUOUS" would be honest but useless. Carry the
+        # per-root breakdown so the operator can see the real numbers behind
+        # the ambiguity instead of having to reproduce it.
+        ambiguous = _unmeasured_cache("AMBIGUOUS", conflict)
+        ambiguous["roots"] = _per_root_cache_stats()
+        return ambiguous
     try:
         from ...core.analysis_engine import get_analysis_engine
 
