@@ -60,28 +60,50 @@ Memory records should capture reusable lessons, not logs: benchmark surprises, C
 
 Any change touching one of these registries MUST update the corresponding `docs/CODEMAPS/*.md` in the **same commit**:
 
-| Registry file | Codemap |
+| Surface | Codemap |
 |---|---|
-| `tree_sitter_analyzer/mcp/_tool_registry.py` | `docs/CODEMAPS/mcp-tools.md` |
-| `tree_sitter_analyzer/cli/argument_groups/*.py` + `tree_sitter_analyzer/cli/argument_parser_builder.py` | `docs/CODEMAPS/cli.md` |
+| `tree_sitter_analyzer/mcp/_tool_registry.py` — the registered tool-name set | `docs/CODEMAPS/mcp-tools.md` |
+| `tree_sitter_analyzer/cli/**/*.py` — the whole `add_argument` flag set, including the `find-and-grep` / `list-files` / `search-content` console scripts | `docs/CODEMAPS/cli.md` |
 | `tree_sitter_analyzer/languages/<lang>_plugin/*` | `docs/CODEMAPS/languages.md` |
 | `tree_sitter_analyzer/formatters/*` | `docs/CODEMAPS/formatters.md` |
 
+The mandate is defined on the **surface set**, not on a file list: the gate compares
+the set of registered tool names and the set of CLI flags at `HEAD` against the
+staged index, and fires only when a set actually changed. Reordering, renames,
+comments and docstrings therefore do not trigger it, and a *removal* does.
+
 Enforced by:
 - `scripts/codemap-sync-check.sh` (pre-commit hook + Claude PreToolUse soft-nag)
-- `test_registered_mcp_tools_have_codemap_parity` in `tests/contracts/test_mcp_surface_metadata_contract.py`
+- `test_registered_mcp_tools_have_codemap_parity` in `tests/contracts/test_mcp_surface_metadata_contract.py` — the CI net for `mcp-tools.md`
+- `test_cli_codemap_flag_count_matches_the_real_parser` in `tests/contracts/test_agent_docs_contract.py` — the CI net for `cli.md`
+- `test_codemap_sync_gate_sees_every_registered_mcp_tool` / `..._sees_every_cli_flag` /
+  `..._watches_the_whole_cli_flag_surface` in the same file — the CI net for **the gate
+  itself**, asserting exact set equality against the authoritative runtime
+  enumerations plus zero unwatched flags
 
-"Self-enforcing" is only true while the hook's detectors still match the code they
-watch. Both had gone dead against the current shapes (the MCP detector still looked
-for the pre-facade `("name", SomeTool(` form; the CLI detector still watched
-`argument_parser_builder.py`, which holds zero `add_argument` calls). Verify with
-`bash scripts/codemap-sync-check.sh --self-check`, which fails when a detector
-matches nothing; `tests/integration/test_codemap_sync_hook.sh` runs it and builds
-its fixtures from the real files rather than imitations of them.
+"Self-enforcing" is a claim about the detectors, so it has to be measured, not
+asserted. Run `bash scripts/codemap-sync-check.sh --self-check`: it fails unless the
+gate's static extractor reproduces the authoritative enumerations *exactly* and no
+`add_argument` flag under `cli/**` falls outside the watch filter. A `count > 0`
+check is not sufficient — a tree whose only match is a stale docstring mention
+passes it while the detector is dead, and a loose lower bound on a deterministic
+count is what CLAUDE.md's exact-assertion rule forbids in the first place.
 
-Escape hatch for intentional rename/rebase: `SKIP_CODEMAP_SYNC=1 git commit ...`. The pytest test still runs in CI as the final safety net — bypass is local-only.
+Escape hatch: `SKIP_CODEMAP_SYNC=force git commit ...`, which bypasses **and** appends
+an audit line to `$GIT_DIR/codemap-sync-bypass.log`. The older `SKIP_CODEMAP_SYNC=1`
+now *fails* when it would have silenced a real violation, because pre-commit only
+surfaces output from failing hooks — so a warn-and-pass bypass was invisible and
+`export SKIP_CODEMAP_SYNC=1` disabled the gate for a whole session with zero signal.
+Bypass is local-only: the CI parity tests above still run.
 
-Why: previously the codemap drifted from 23 → 27 → 30 → 55 tools across 4 months with manual catch-up commits in between. The agent contract is now self-enforcing.
+Why: previously the codemap drifted from 23 → 27 → 30 → 55 tools across 4 months with
+manual catch-up commits in between. Then the gate itself died — the MCP detector was
+still matching the pre-facade `("name", SomeTool(` shape and the CLI detector was
+watching `argument_parser_builder.py`, which holds zero `add_argument` calls — and
+`cli.md` drifted to 295 against a real 324 while every test stayed green, because the
+hook's own test fixture was a synthetic copy of the *old* shape. Both the gate and its
+fixture were rebuilt against the real surface; the contract is self-enforcing for as
+long as `--self-check` and the CI nets above stay green, and no longer than that.
 
 ## GitFlow Branching Mandate
 

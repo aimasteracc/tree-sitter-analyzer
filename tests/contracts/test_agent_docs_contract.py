@@ -21,6 +21,8 @@ from tree_sitter_analyzer.cli_main import create_argument_parser
 from tree_sitter_analyzer.mcp.server import _create_tool_registry
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
 def test_agent_facing_docs_do_not_recommend_bare_pytest() -> None:
     """Agent docs should route pytest through uv for consistent environments."""
     bare_pytest_command = re.compile(r"^(?:\$\s+)?pytest(?:\s|$)")
@@ -130,3 +132,96 @@ def test_warning_prone_python_api_patterns_are_blocked() -> None:
                 violations.append(f"{rel} matches {pattern}; {replacement}")
 
     assert violations == []
+
+
+def _load_codemap_surface():
+    """Import scripts/codemap_surface.py, the gate's static surface extractor."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "codemap_surface", PROJECT_ROOT / "scripts" / "codemap_surface.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_codemap_sync_gate_sees_every_registered_mcp_tool() -> None:
+    """The gate's static extractor must see the registry exactly, not approximately.
+
+    A ``count > 0`` self-check is not a guarantee: a tree whose only match is a
+    stale docstring mention passes it while the detector is functionally dead.
+    Exact set equality is the guarantee.
+    """
+    cs = _load_codemap_surface()
+    static_names = cs.extract_mcp_names(
+        (PROJECT_ROOT / cs.MCP_REGISTRY).read_text(encoding="utf-8")
+    )
+    runtime_names = {name for name, _ in _create_tool_registry(str(PROJECT_ROOT))[0]}
+
+    assert static_names == runtime_names
+
+
+def test_codemap_sync_gate_sees_every_cli_flag() -> None:
+    """Every option string the real parser exposes must be visible to the gate.
+
+    argparse synthesises ``-h``/``--help`` with no defining source line, so those
+    are the only permitted difference.
+    """
+    cs = _load_codemap_surface()
+    static_flags: set[str] = set()
+    for path in sorted((PROJECT_ROOT / cs.CLI_PREFIX).rglob("*.py")):
+        static_flags |= cs.extract_cli_flags(path.read_text(encoding="utf-8"))
+    runtime_flags = {
+        s for a in create_argument_parser()._actions for s in a.option_strings
+    }
+
+    assert runtime_flags - static_flags == set(cs.ARGPARSE_IMPLICIT_FLAGS)
+
+
+def test_codemap_sync_gate_watches_the_whole_cli_flag_surface() -> None:
+    """Zero add_argument flags under cli/** may fall outside the watched filter.
+
+    Before the gate repair, 82 of 405 add_argument calls were unwatched: the
+    find-and-grep / list-files / search-content console scripts, all documented
+    entry points in docs/CODEMAPS/cli.md. Coverage, not count, is the invariant
+    that would have caught that.
+    """
+    cs = _load_codemap_surface()
+    watched_root = (PROJECT_ROOT / cs.CLI_PREFIX).resolve()
+    unwatched: list[str] = []
+    for path in sorted((PROJECT_ROOT / "tree_sitter_analyzer" / "cli").rglob("*.py")):
+        if path.resolve().is_relative_to(watched_root):
+            continue
+        if cs.extract_cli_flags(path.read_text(encoding="utf-8")):
+            unwatched.append(str(path.relative_to(PROJECT_ROOT)))
+
+    assert unwatched == []
+
+
+def test_cli_codemap_flag_count_matches_the_real_parser() -> None:
+    """docs/CODEMAPS/cli.md's flag count is the CI net for a CLI-side gate bypass.
+
+    AGENTS.md claims a CI safety net exists behind the local escape hatch. That was
+    true for mcp-tools.md and false for cli.md, which had no CI check at all, so a
+    CLI-side bypass was unrecoverable. This is that net. The codemap drifted to 295
+    against a real 324 while the gate was dead.
+    """
+    codemap = (PROJECT_ROOT / "docs" / "CODEMAPS" / "cli.md").read_text(
+        encoding="utf-8"
+    )
+    match = re.search(r"\((\d+) unique flags total", codemap)
+    assert match is not None, "docs/CODEMAPS/cli.md must state '(N unique flags total'"
+    documented = int(match.group(1))
+
+    actual = len(
+        {
+            s
+            for a in create_argument_parser()._actions
+            for s in a.option_strings
+            if s.startswith("--")
+        }
+    )
+
+    assert documented == actual
