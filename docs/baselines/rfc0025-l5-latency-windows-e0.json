@@ -1,8 +1,8 @@
 {
   "cold_column_caveat": "Every cold row is ONE observation and depends on the on-disk AST-index state recorded in preconditions.ast_index_before. Measured spread on one host at one commit: edit/safe cold p50 18014.645 / 14065.642 / 4104.113 ms (3.4x) purely from that state. Treat cold as indicative of magnitude only; do NOT use it in any cross-run or cross-commit comparison. Warm rows were stable (3845 / 3394 / 3624 ms) and are the comparable column.",
   "cold_column_status": "INDICATIVE_SINGLE_OBSERVATION",
-  "collection_finished_at_utc": "2026-08-19T11:07:21.237416+00:00",
-  "collection_started_at_utc": "2026-08-19T11:05:46.776276+00:00",
+  "collection_finished_at_utc": "2026-08-19T16:58:01.130982+00:00",
+  "collection_started_at_utc": "2026-08-19T16:57:13.092755+00:00",
   "environment": {
     "machine": "AMD64",
     "os": "Windows-11-10.0.26200-SP0",
@@ -24,11 +24,11 @@
     "ast_index_before": {
       "hit_rate": null,
       "hit_rate_status": "UNAVAILABLE_NOT_INSTRUMENTED",
-      "indexed_files": 0,
-      "path": "C:\\git-private\\tree-sitter-analyzer\\.claude\\worktrees\\agent-a3b9138364027faf7\\.ast-cache\\index.db",
-      "present": true,
-      "size_bytes": 200704,
-      "status": "EMPTY"
+      "indexed_files": null,
+      "path": "C:\\git-private\\tree-sitter-analyzer\\.claude\\worktrees\\agent-aaaaefeefac143c34\\.ast-cache\\index.db",
+      "present": false,
+      "size_bytes": null,
+      "status": "ABSENT"
     },
     "declared_via": "--require-ast-index",
     "git_dirty": false,
@@ -91,11 +91,11 @@
       "reason": "MULTIPLE_ENGINE_ROOTS",
       "roots": [
         {
-          "hit_rate": 0.8333,
-          "hits": 10,
+          "hit_rate": 0.7143,
+          "hits": 5,
           "misses": 2,
-          "root_key": "C:\\git-private\\tree-sitter-analyzer\\.claude\\worktrees\\agent-a3b9138364027faf7",
-          "total_requests": 12
+          "root_key": "C:\\git-private\\tree-sitter-analyzer\\.claude\\worktrees\\agent-aaaaefeefac143c34",
+          "total_requests": 7
         },
         {
           "hit_rate": null,
@@ -112,7 +112,7 @@
       "hit_rate": null,
       "hit_rate_status": "UNAVAILABLE_NOT_INSTRUMENTED",
       "indexed_files": 0,
-      "path": "C:\\git-private\\tree-sitter-analyzer\\.claude\\worktrees\\agent-a3b9138364027faf7\\.ast-cache\\index.db",
+      "path": "C:\\git-private\\tree-sitter-analyzer\\.claude\\worktrees\\agent-aaaaefeefac143c34\\.ast-cache\\index.db",
       "present": true,
       "size_bytes": 200704,
       "status": "EMPTY"
@@ -124,8 +124,8 @@
       {
         "action": "safe",
         "count": 1,
-        "p50_ms": 3339.257,
-        "p95_ms": 3339.257,
+        "p50_ms": 5448.967,
+        "p95_ms": 5448.967,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "edit"
@@ -133,8 +133,8 @@
       {
         "action": "safe",
         "count": 5,
-        "p50_ms": 3322.89,
-        "p95_ms": 3393.28,
+        "p50_ms": 45.745,
+        "p95_ms": 53.889,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "edit"
@@ -142,8 +142,8 @@
       {
         "action": "file",
         "count": 1,
-        "p50_ms": 50631.029,
-        "p95_ms": 50631.029,
+        "p50_ms": 11181.321,
+        "p95_ms": 11181.321,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "health"
@@ -151,8 +151,8 @@
       {
         "action": "file",
         "count": 5,
-        "p50_ms": 326.582,
-        "p95_ms": 329.444,
+        "p50_ms": 21.946,
+        "p95_ms": 30.142,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "health"
@@ -160,8 +160,8 @@
       {
         "action": "callers",
         "count": 1,
-        "p50_ms": 20425.442,
-        "p95_ms": 20425.442,
+        "p50_ms": 29649.275,
+        "p95_ms": 29649.275,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "nav"
@@ -169,8 +169,8 @@
       {
         "action": "callers",
         "count": 5,
-        "p50_ms": 17.183,
-        "p95_ms": 18.681,
+        "p50_ms": 35.016,
+        "p95_ms": 37.201,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "nav"
@@ -178,8 +178,8 @@
       {
         "action": "outline",
         "count": 1,
-        "p50_ms": 204.089,
-        "p95_ms": 204.089,
+        "p50_ms": 159.594,
+        "p95_ms": 159.594,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "structure"
@@ -187,8 +187,8 @@
       {
         "action": "outline",
         "count": 5,
-        "p50_ms": 2.722,
-        "p95_ms": 3.122,
+        "p50_ms": 3.458,
+        "p95_ms": 4.428,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "structure"
@@ -203,8 +203,8 @@
     "window": 256
   },
   "source": {
-    "branch": "feature/self-health-latency-instrumentation",
-    "commit": "7e870ed9c39a28025a0486f16a3e7293d8a1e13a"
+    "branch": "feature/l6-generation-keyed-answer-cache",
+    "commit": "fa541e07031b48fdb9f36873edc34e6e9288fcd7"
   },
   "warm_repeats": 5
 }
