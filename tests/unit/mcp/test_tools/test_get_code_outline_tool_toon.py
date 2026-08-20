@@ -263,10 +263,13 @@ class TestGetCodeOutlineToolToonStructure:
                     toon_text = result["toon_content"]
 
                     # 验证 TOON 格式包含关键字段
-                    assert "success:" in toon_text
+                    # #1321: envelope 现在是 disjoint 的 —— 顶层携带的标量
+                    # (success / language) 不会再重复编码进 toon_content。
+                    # 各字段在契约规定的位置断言。
+                    assert result["success"] is True
+                    assert result["language"] == "python"
                     assert "outline:" in toon_text
                     assert "file_path:" in toon_text
-                    assert "language: python" in toon_text
                     assert "total_lines:" in toon_text
 
     @pytest.mark.asyncio
