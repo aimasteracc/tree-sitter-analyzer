@@ -298,3 +298,82 @@ class TestCacheHitIsHonestlyMeasured:
         # Deriving the key costs a source-tree fingerprint, so a hit can never
         # legitimately be free. Zero here means the key work escaped the window.
         assert _warm_row(recorder).p50_ns > 0
+
+
+# --------------------------------------------------------------------------
+# The property whose failure would silently serve a wrong verdict
+# --------------------------------------------------------------------------
+
+
+class TestARealEditInvalidatesTheAnswer:
+    """A real edit to a real file must change the answer, not replay it.
+
+    Every other test here checks a fence in isolation. This one asserts the
+    thing an agent actually depends on: after it edits a file, the pre-edit gate
+    tells it the truth. If this ever goes red, the cache is serving stale
+    verdicts and the feature is worse than not existing.
+    """
+
+    @pytest.fixture
+    def project(self, tmp_path):
+        (tmp_path / "target.py").write_text(
+            "def thing():\n    return 1\n", encoding="utf-8"
+        )
+        (tmp_path / "other.py").write_text("x = 1\n", encoding="utf-8")
+        return tmp_path
+
+    @pytest.fixture
+    def facade(self, project):
+        from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+        return build_edit_facade(str(project))
+
+    @staticmethod
+    def _ask(facade):
+        return asyncio.run(
+            facade.execute(
+                {
+                    "action": "safe",
+                    "file_path": "target.py",
+                    "output_format": "json",
+                }
+            )
+        )
+
+    @staticmethod
+    def _add_importer(project, name: str) -> None:
+        (project / name).write_text(
+            "from target import thing\nx = thing()\n", encoding="utf-8"
+        )
+
+    def test_editing_a_file_in_place_forces_a_recompute(self, facade, project) -> None:
+        """An in-place edit leaves the file COUNT unchanged — the case the
+        directory-mtime keying this replaces got wrong."""
+        self._ask(facade)
+        self._add_importer(project, "other.py")
+        assert self._ask(facade)["provenance"]["served_from"] == "computed"
+
+    def test_editing_a_file_in_place_changes_the_downstream_count(
+        self, facade, project
+    ) -> None:
+        before = self._ask(facade)["downstream_count"]
+        self._add_importer(project, "other.py")
+        assert self._ask(facade)["downstream_count"] == before + 1
+
+    def test_adding_a_file_forces_a_recompute(self, facade, project) -> None:
+        self._ask(facade)
+        self._add_importer(project, "third.py")
+        assert self._ask(facade)["provenance"]["served_from"] == "computed"
+
+    def test_adding_a_file_changes_the_downstream_count(self, facade, project) -> None:
+        before = self._ask(facade)["downstream_count"]
+        self._add_importer(project, "third.py")
+        assert self._ask(facade)["downstream_count"] == before + 1
+
+    def test_a_repeat_after_the_edit_is_served_from_cache_again(
+        self, facade, project
+    ) -> None:
+        self._ask(facade)
+        self._add_importer(project, "other.py")
+        self._ask(facade)
+        assert self._ask(facade)["provenance"]["served_from"] == "cache"
