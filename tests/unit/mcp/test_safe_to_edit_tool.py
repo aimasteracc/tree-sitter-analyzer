@@ -490,7 +490,6 @@ async def test_edit_safe_explicit_read_existing_honors_compact_only(
         "extra_inputs",
     }
 
-
     assert result == {
         "format": "toon",
         "toon_content": "source_snapshots: []",
