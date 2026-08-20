@@ -174,13 +174,15 @@ async def main() -> None:
     envelope = json.loads(called.content[0].text)
     toon = envelope.get("toon_content")
     assert envelope.get("format") == "toon" and isinstance(toon, str)
-    # #1321: the TOON envelope is DISJOINT — a key the top level carries is not
+    # #1321: the TOON envelope is DISJOINT - a key the top level carries is not
     # re-encoded inside toon_content. ``index action=status`` on a fresh project
     # is entirely scalars/empty-dicts/agent_summary, so all of it is at the top
     # level and the blob is empty. These assertions previously grepped the blob
     # for values that were at the top level too, i.e. they were qualifying the
     # duplication. Reading each field from where the envelope contract puts it
     # is also a stricter check (exact equality, not substring).
+    # ASCII only in this file: test_probe_binds_observed_fixture_status reads it
+    # with locale-default encoding, which is cp932 on a Japanese Windows host.
     assert envelope.get("project_root") == str(project)
     assert envelope.get("indexed") is False
     assert envelope.get("total_files") == 0

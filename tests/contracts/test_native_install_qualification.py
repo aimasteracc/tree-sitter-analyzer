@@ -273,8 +273,14 @@ def test_provenance_validator_rejects_module_outside_fresh_venv(tmp_path: Path) 
 
 def test_probe_binds_observed_fixture_status_and_not_fake_notification() -> None:
     probe = (ROOT / "scripts" / "native_mcp_probe.py").read_text()
-    assert '"indexed: false" in toon and "total_files: 0" in toon' in probe
-    assert '"codegraph_status: index missing or empty" in toon' in probe
+    # #1321: the TOON envelope is disjoint, so these fields are no longer
+    # re-encoded inside ``toon_content`` — the probe reads them off the
+    # envelope instead. The binding this test guards (the probe asserts the
+    # OBSERVED fixture status, it does not fabricate one) is unchanged and is
+    # now stricter: exact equality rather than substring-in-blob.
+    assert 'envelope.get("indexed") is False' in probe
+    assert 'envelope.get("total_files") == 0' in probe
+    assert '"codegraph_status: index missing or empty"' in probe
     assert "notifications/initialized" not in probe
 
 
