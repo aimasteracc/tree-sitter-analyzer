@@ -226,21 +226,6 @@ class AnswerCache:
     def whole_cache_evictions(self) -> int:
         return self._whole_cache_evictions
 
-    def stats(self) -> dict[str, Any]:
-        """Counters for ``health action=self`` / diagnostics."""
-        with self._lock:
-            total = self._hits + self._misses
-            return {
-                "hits": self._hits,
-                "misses": self._misses,
-                "hit_rate": round(self._hits / total, 4) if total else None,
-                "entry_count": len(self._entries),
-                "total_bytes": self._total_bytes,
-                "budget_bytes": self._budget_bytes,
-                "evictions": self._evictions,
-                "whole_cache_evictions": self._whole_cache_evictions,
-            }
-
     # -- core --------------------------------------------------------------
 
     def clear(self) -> None:
