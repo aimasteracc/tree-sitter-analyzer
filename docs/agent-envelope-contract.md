@@ -98,6 +98,13 @@ TOON responses (`output_format: "toon"`, the MCP default) are **disjoint**
 Read a field from the top level when it is there, and parse `toon_content`
 for the rest; nothing is shipped twice.
 
+**`toon_content` can legitimately be `""`.** A response made entirely of
+scalars is carried entirely at the top level, so the blob has nothing left to
+encode — `index action=status` on an unindexed project is exactly this shape.
+Do NOT treat an empty blob as an error or as an empty result: read the
+top-level fields. A client that branches on `if format == "toon": parse(blob)`
+and ignores the siblings will see nothing on those routes.
+
 Passing `compact_only: true` trades that disjointness for minimality: the top
 level shrinks to the **control surface** — the only keys an agent may branch on
 without parsing the TOON blob — and `toon_content` becomes the *complete*
