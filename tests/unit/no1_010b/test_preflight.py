@@ -40,9 +40,9 @@ SELECTION_TASK_ID = "no1-010b/0004-test-selection-dispatch-version"
 DISPATCH_TASK_ID = "no1-010b/0001-bugfix-dispatch-unknown-route"
 
 
-@pytest.fixture(scope="module")
-def records() -> list[BenchmarkRecord]:
-    return load_corpus_records(str(CORPUS_PATH))
+@pytest.fixture(scope="session")
+def records(committed_records: list[BenchmarkRecord]) -> list[BenchmarkRecord]:
+    return committed_records
 
 
 @pytest.fixture
@@ -68,23 +68,6 @@ def _checks(root: Path, only: str | None = None) -> dict[str, str]:
         check.check: check.status
         for check in static_checks(records, root, corpus_path=corpus)
     }
-
-
-@pytest.fixture(scope="module")
-def committed_checks() -> dict[str, str]:
-    """Full preflight over the committed corpus, computed once per module.
-
-    Executing ten oracles is real work; doing it in module setup keeps it out of
-    the per-test call budget while still asserting on the real committed data.
-    """
-    return _checks(CORPUS_ROOT)
-
-
-@pytest.fixture(scope="module")
-def committed_baselines(
-    records: list[BenchmarkRecord],
-) -> list[tuple[bool, str]]:
-    return [run_oracle_baseline(item, CORPUS_ROOT) for item in records]
 
 
 # --- committed corpus shape ------------------------------------------------
@@ -155,11 +138,17 @@ def test_registered_verification_argv_is_self_contained(
 # --- B0 exit contract: oracle red baseline (RFC-0026 §3) -------------------
 
 
-def test_every_oracle_is_red_on_its_unmodified_fixture(
-    committed_baselines: list[tuple[bool, str]],
+def test_run_oracle_baseline_reports_red_for_a_registered_task(
+    records: list[BenchmarkRecord],
 ) -> None:
-    not_red = [detail for red, detail in committed_baselines if not red]
-    assert not_red == []
+    """Direct unit check of the baseline helper on one task.
+
+    The all-ten assertion lives in ``oracle_red_baseline`` below, which reuses
+    the single session-scoped preflight instead of re-spawning ten processes.
+    """
+    task = next(item for item in records if item.id == DISPATCH_TASK_ID)
+    red, _ = run_oracle_baseline(task, CORPUS_ROOT)
+    assert red is True
 
 
 def test_oracle_red_baseline_check_passes_on_the_committed_corpus(

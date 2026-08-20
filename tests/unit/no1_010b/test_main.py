@@ -16,12 +16,12 @@ CORPUS_ROOT = Path(__file__).resolve().parents[3] / "benchmarks" / "no1_010b"
 CORPUS = CORPUS_ROOT / "corpus.jsonl"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def written_report(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return tmp_path_factory.mktemp("no1_010b") / "report.json"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def run(written_report: Path) -> tuple[int, dict]:
     """One real entry-point run over the committed corpus, shared per module.
 

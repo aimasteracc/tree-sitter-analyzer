@@ -39,18 +39,7 @@ def _records() -> list:
     return load_corpus_records(str(CORPUS_PATH))
 
 
-@pytest.fixture(scope="module")
-def committed_preflight() -> PreflightResult:
-    """One real preflight over the committed corpus, shared by the module.
-
-    Preflight executes ten oracles as subprocesses; running it in module setup
-    keeps that real cost out of the unit-suite per-test call budget.
-    """
-    records = _records()
-    return run_preflight(records, CORPUS_ROOT, corpus_path=CORPUS_PATH)
-
-
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def report(committed_preflight: PreflightResult) -> dict:
     return build_report(
         records=_records(),
