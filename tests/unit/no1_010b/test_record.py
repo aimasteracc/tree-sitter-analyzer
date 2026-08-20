@@ -403,3 +403,21 @@ def test_to_task_request_projection() -> None:
     assert operation == "plan_change"
     assert request == {"task": "dispatch returns None for an unknown route"}
     assert "allowed_paths" not in request
+
+
+@pytest.mark.parametrize(
+    "repo",
+    [
+        "../../../tree_sitter_analyzer",
+        "C:/Windows",
+        "/etc",
+        "./fixtures/app",
+        "fixtures//app",
+        "fixtures\\app",
+    ],
+)
+def test_record_rejects_a_repo_that_escapes_the_corpus_root(repo: str) -> None:
+    """``repo`` is dereferenced by the runner (fixture lookup, worktree copy),
+    so it needs the same canonicalisation as every other path field."""
+    with pytest.raises(BenchmarkRecordError):
+        record_from_dict({**_valid_payload(), "repo": repo})

@@ -223,6 +223,10 @@ def record_from_dict(payload: dict[str, Any]) -> BenchmarkRecord:
     repo_commit = payload["repo_commit"]
     if not isinstance(repo, str) or not repo.strip():
         raise BenchmarkRecordError("repo must be a non-empty string")
+    # ``repo`` is dereferenced by the runner (fixture lookup, worktree copy), so
+    # it needs the same canonicalisation as every other path field: without it
+    # '../../..' or a drive-qualified path would resolve outside the corpus root.
+    repo = _canonical_rel_path(repo, "repo")
     if not isinstance(repo_commit, str) or not re.fullmatch(
         r"[0-9a-fA-F]{40}", repo_commit
     ):
