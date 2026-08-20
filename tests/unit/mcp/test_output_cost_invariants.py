@@ -1566,6 +1566,15 @@ _PHASE4_SAMPLE_RESPONSES: list[tuple[str, dict, bool]] = [
 #   health/file   1345    2233 (1.66x)   1331 (0.99x)
 #   nav/callers    556    1079 (1.94x)    598 (1.08x)
 #
+# The fixtures the parametrization below actually uses differ from that
+# incident table (see the comments on _FACADE_HEALTH_TARGET /
+# _FACADE_MISSING_SYMBOL — both were chosen so the invariant does not hinge on
+# host-dependent scores or AST-cache warmth). Their measurements, same date:
+#
+#   edit/safe    (latency.py)         json 6306  toon 6009  0.953x
+#   health/file  (health_scorer.py)   json 5668  toon 4249  0.750x
+#   nav/callers  (missing symbol)     json  636  toon  678  1.066x
+#
 # nav/callers stays above 1.0x because the ``{"format": "toon",
 # "toon_content": "..."}`` wrapper is a fixed ~70 B cost — on a NOT_FOUND
 # envelope that is entirely top-level scalars the blob is empty and the
@@ -1587,19 +1596,32 @@ def _wire_bytes(payload: dict) -> int:
 
 _FACADE_TARGET = "tree_sitter_analyzer/latency.py"
 
+# health/file uses a LARGER target on purpose. On the small target the margin
+# was 14 B out of 1345 (0.990x) — an enforced assertion that thin flips on any
+# host whose scores or path lengths differ. health_scorer.py has real smells, so
+# the bulk lands in the blob and the margin is 1419 B / 0.750x. The fixture is
+# chosen for robustness of the invariant, not to flatter the number.
+_FACADE_HEALTH_TARGET = "tree_sitter_analyzer/health_scorer.py"
+
+# nav/callers uses a symbol that CANNOT exist so the route is deterministic
+# regardless of AST-cache state. With a real symbol the payload grows once the
+# index is warm and the strict-xfail below could XPASS for an environmental
+# reason rather than a real improvement.
+_FACADE_MISSING_SYMBOL = "__tsa_symbol_that_does_not_exist__"
+
 # (route_id, facade_builder_name, arguments, toon_wins_at_this_size)
 _FACADE_ROUTES: list[tuple[str, str, dict, bool]] = [
     ("edit/safe", "edit_facade", {"action": "safe", "file_path": _FACADE_TARGET}, True),
     (
         "health/file",
         "health_facade",
-        {"action": "file", "file_path": _FACADE_TARGET},
+        {"action": "file", "file_path": _FACADE_HEALTH_TARGET},
         True,
     ),
     (
         "nav/callers",
         "nav_facade",
-        {"action": "callers", "function_name": "record_latency"},
+        {"action": "callers", "function_name": _FACADE_MISSING_SYMBOL},
         False,
     ),
 ]
@@ -1658,7 +1680,7 @@ def test_facade_toon_wire_not_larger_than_json(
             "plus newline escaping exceeds TOON's encoding saving at this "
             "size. The disjointness invariant IS enforced for this route "
             "(test_facade_toon_envelope_is_disjoint). Last measured 2026-08-20: "
-            "nav/callers 1.08x."
+            "nav/callers 1.066x (json 636 B, toon 678 B)."
         )
     assert tb <= jb, (
         f"{route_id}: default TOON wire {tb}B > JSON wire {jb}B "
