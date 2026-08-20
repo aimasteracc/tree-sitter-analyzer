@@ -297,6 +297,42 @@ def _copy_metadata_fields(
         toon_response[key] = value
 
 
+def _build_disjoint_toon_content(
+    result: dict[str, Any],
+    retained: frozenset[str] | set[str],
+) -> str:
+    """Encode the part of ``result`` the envelope does NOT already carry.
+
+    Issue #1321 — the other half of RFC-0012 Phase 2.  Phase 2 made the top
+    level drop what the blob carries; it never made the blob drop what the top
+    level carries.  So every key that survived :func:`_copy_metadata_fields`
+    was shipped **twice**: once as a top-level field and once inside
+    ``toon_content``.  For ``edit action=safe`` that meant the whole
+    ~2 KB ``agent_summary`` block (whitelisted via
+    :data:`TOON_DICT_PASSTHROUGH`) went out on the wire twice, and the default
+    TOON envelope cost 1.40x the plain-JSON one it is supposed to undercut.
+
+    ``retained`` is the set of keys guaranteed to reach the wire at the TOP
+    level of this envelope — every top-level key in the default path, and
+    :data:`TOON_CONTROL_SURFACE` under ``compact_only`` (the reduction drops
+    everything else, so everything else must stay recoverable in the blob).
+
+    Excluding the retained keys is loss-free: their values are in the very same
+    response one level up, which is where the envelope contract tells agents to
+    read them from.
+
+    Degenerate case: a scalar-only response (every key retained — e.g. a
+    ``nav action=callers`` NOT_FOUND envelope) leaves nothing for the blob, so
+    ``toon_content`` is empty.  That is the honest encoding: the whole payload
+    is at the top level, in plain JSON, readable without a TOON parser.  The
+    alternative — re-emitting the full payload into the blob — is precisely the
+    duplication this function exists to remove, and it nearly doubled those
+    responses (nav callers: 1079 B → 598 B once the fallback was dropped).
+    """
+    payload = {k: v for k, v in result.items() if k not in retained}
+    return format_as_toon(payload)
+
+
 DIFF_SNAPSHOT_PUBLISH_ERROR_CODES: tuple[str, ...] = (
     "DIFF_SNAPSHOT_SOURCE_CHANGED",
     "DIFF_SNAPSHOT_EXPIRED",
@@ -359,6 +395,11 @@ def apply_toon_format_to_response(
     callers can branch on ``success``/``verdict``/``error`` without parsing the
     TOON blob.
 
+    Issue #1321: the envelope is **disjoint** — ``toon_content`` encodes only
+    what the top level does NOT carry (see
+    :func:`_build_disjoint_toon_content`).  Nothing on the wire is paid for
+    twice.
+
     RFC-0012 Phase 1: when ``compact_only`` is True, the TOON response is
     further reduced to :data:`TOON_CONTROL_SURFACE` (plus ``toon_content``),
     dropping even the passthrough dicts.  Note: on the MCP server path the
@@ -394,25 +435,27 @@ def apply_toon_format_to_response(
         return result
 
     try:
-        # Format the full result as TOON (encodes the full payload once).
-        toon_content = format_as_toon(result)
-
-        toon_response = {
-            "format": "toon",
-            "toon_content": toon_content,
-        }
+        toon_response: dict[str, Any] = {"format": "toon"}
 
         # RFC-0012 Phase 2 — value-kind rule: copy only scalars and the small
         # passthrough dicts; strip all non-empty lists and non-passthrough
-        # non-empty dicts (they are already inside toon_content).
+        # non-empty dicts (the blob is their only copy). Runs BEFORE the blob is
+        # built so the blob knows which keys the top level already carries.
         _copy_metadata_fields(result, toon_response)
 
-        # RFC-0012 Phase 1: opt-in compaction strips the metadata that is
-        # already inside toon_content, leaving only the branchable control
-        # surface.
         if compact_only:
+            # RFC-0012 Phase 1: the reduction below keeps ONLY
+            # TOON_CONTROL_SURFACE at the top level, so those are the only
+            # keys the blob may omit — everything else must stay recoverable
+            # there (docs/agent-envelope-contract.md).
+            toon_response["toon_content"] = _build_disjoint_toon_content(
+                result, TOON_CONTROL_SURFACE
+            )
             return reduce_to_control_surface(toon_response)
 
+        toon_response["toon_content"] = _build_disjoint_toon_content(
+            result, set(toon_response)
+        )
         return toon_response
 
     except Exception as e:

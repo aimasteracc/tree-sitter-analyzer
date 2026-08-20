@@ -30,7 +30,7 @@ EMPTY_CLAIMS = (
 
 @pytest.fixture
 def schema():
-    return json.loads(SCHEMA_PATH.read_text())
+    return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
 @pytest.fixture
 def blocked_verdict():
@@ -205,7 +205,7 @@ def test_permissive_override_cannot_bypass_measurement_invariant(tmp_path, claim
 def test_e4_context_must_be_independently_bound(tmp_path, schema, claim_factory, manifest, field):
     claim = claim_factory("E4")
     synchronize_e4_artifact(claim, tmp_path)
-    evidence = json.loads((tmp_path / "evidence.json").read_text())
+    evidence = json.loads((tmp_path / "evidence.json").read_text(encoding="utf-8"))
     evidence[manifest][field] = [] if field == "repositories" else "wrong"
     (tmp_path / "evidence.json").write_bytes(canonical_json_bytes(evidence))
     claim["artifact"]["sha256"] = hashlib.sha256((tmp_path / "evidence.json").read_bytes()).hexdigest()
@@ -278,7 +278,7 @@ def test_nonfinite_measurement_fails_closed(tmp_path, schema, claim_factory, mea
 @pytest.mark.parametrize("readme", ("README.md", "README_ja.md", "README_zh.md"))
 def test_readme_claim_section_and_whole_document_coverage_are_current(readme):
     verdict = load_and_validate(ROOT / "benchmarks/codegraph_compare/claim_registry.json", schema_path=SCHEMA_PATH)
-    assert readme_claim_violations((ROOT / readme).read_text(), verdict) == ()
+    assert readme_claim_violations((ROOT / readme).read_text(encoding="utf-8"), verdict) == ()
 
 @pytest.mark.parametrize(("readme", "probe"), (
     ("README.md", "TSA processes hundreds of files."),
@@ -287,7 +287,7 @@ def test_readme_claim_section_and_whole_document_coverage_are_current(readme):
 ))
 def test_each_public_readme_scan_rejects_localized_unregistered_claim(readme, probe):
     verdict = load_and_validate(ROOT / "benchmarks/codegraph_compare/claim_registry.json", schema_path=SCHEMA_PATH)
-    text = probe + "\n" + (ROOT / readme).read_text()
+    text = probe + "\n" + (ROOT / readme).read_text(encoding="utf-8")
     assert readme_claim_violations(text, verdict) == ("README_UNREGISTERED_QUANTITATIVE_CLAIM:1",)
 
 def test_readme_generated_claim_drift_is_rejected(blocked_verdict, readme_fixture):
@@ -319,7 +319,7 @@ def test_mixed_e4_and_e3_registry_emits_nothing(tmp_path, schema, claim_factory)
     e4["artifact"]["path"] = "e4.json"
     e3 = claim_factory("E3")
     e3["claim_id"] = "fixture-e3"
-    evidence = json.loads((tmp_path / "evidence.json").read_text())
+    evidence = json.loads((tmp_path / "evidence.json").read_text(encoding="utf-8"))
     evidence["claim"]["claim_id"] = "fixture-e3"
     (tmp_path / "e3.json").write_bytes(canonical_json_bytes(evidence))
     e3["artifact"] = {"path": "e3.json", "sha256": hashlib.sha256((tmp_path / "e3.json").read_bytes()).hexdigest()}

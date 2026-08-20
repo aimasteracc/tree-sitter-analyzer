@@ -31,10 +31,10 @@ RFC = REPO / "rfcs/0024-default-dependency-split.md"
 PYPROJECT = REPO / "pyproject.toml"
 
 def baseline() -> dict:
-    return json.loads(BASELINE.read_text())
+    return json.loads(BASELINE.read_text(encoding="utf-8"))
 
 def schema() -> dict:
-    return json.loads(SCHEMA.read_text())
+    return json.loads(SCHEMA.read_text(encoding="utf-8"))
 
 def mutated(path: tuple[str, ...], value: object) -> dict:
     report=copy.deepcopy(baseline()); target=report
@@ -292,7 +292,7 @@ def test_schema_definitions_equal_collector_constants() -> None:
     assert [properties["cli_startup"]["properties"]["definition"]["const"],properties["mcp_startup"]["properties"]["definition"]["const"]] == [collector.CLI_STARTUP_DEFINITION,collector.MCP_STARTUP_DEFINITION]
 
 def test_collect_routes_receipt_through_schema_finalizer() -> None:
-    source=Path(collector.__file__).read_text()
+    source=Path(collector.__file__).read_text(encoding="utf-8")
     assert "finalize_receipt(report,output,repo,schema_blob); return report" in source
 
 def test_finalize_receipt_uses_bound_schema_blob_without_live_read(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -350,7 +350,7 @@ def test_collector_rejects_unbounded_repeat_count(tmp_path: Path, monkeypatch: p
     with pytest.raises(ValueError,match="between 3 and 20"): collector.collect(REPO,tmp_path/"receipt.json",21,collector.EXPECTED_SUBJECT_COMMIT)
 
 def test_rfc_generated_summary_equals_checked_in_receipt() -> None:
-    text=RFC.read_text()
+    text=RFC.read_text(encoding="utf-8")
     generated=text.split("<!-- BEGIN GENERATED RECEIPT SUMMARY -->\n",1)[1].split("\n<!-- END GENERATED RECEIPT SUMMARY -->",1)[0]
     assert generated == collector.render_receipt_summary(baseline())
 
@@ -369,12 +369,12 @@ def test_fresh_clone_can_resolve_and_checkout_collector_commit(tmp_path: Path) -
     assert subprocess.run(["git","rev-parse","HEAD"],cwd=worktree,check=True,capture_output=True,text=True).stdout.strip() == commit
 
 def test_rfc_requires_merge_commit_to_preserve_collector_ancestry() -> None:
-    reproduction=RFC.read_text().split("## Reproduction of the descriptive receipt",1)[1].split("```bash",1)[0]
+    reproduction=RFC.read_text(encoding="utf-8").split("## Reproduction of the descriptive receipt",1)[1].split("```bash",1)[0]
     assert [phrase in reproduction for phrase in ("merge-commit strategy","Squash","rebase merges are prohibited","gh pr merge 1250","--merge")] == [True,True,True,True,True]
 
 def test_rfc_reproduction_command_uses_external_interpreter() -> None:
     # NO1-006B review 2026-08-10: a repo-local ignored venv made the clean gate reject the documented command.
-    reproduction=RFC.read_text().split("## Reproduction of the descriptive receipt",1)[1].split("## Measured macOS E0 receipt",1)[0]
+    reproduction=RFC.read_text(encoding="utf-8").split("## Reproduction of the descriptive receipt",1)[1].split("## Measured macOS E0 receipt",1)[0]
     assert ".venv/bin/python" not in reproduction
     assert 'TOOL_VENV="$RUN_ROOT/collector-tool-venv"' in reproduction
     assert "--only-group no1-006b-collector-tool --no-emit-project" in reproduction
@@ -382,7 +382,7 @@ def test_rfc_reproduction_command_uses_external_interpreter() -> None:
     assert '"$TOOL_PYTHON" "$COLLECTOR/scripts/collect_no1_006b_baseline.py"' in reproduction
 
 def test_collector_tool_group_has_exact_independent_pins() -> None:
-    groups=tomllib.loads(PYPROJECT.read_text())["dependency-groups"]
+    groups=tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["dependency-groups"]
     assert groups[collector.TOOL_GROUP] == ["hatchling==1.31.0","jsonschema==4.25.1","packaging==25.0"]
 
 def active_tool_inventory(monkeypatch: pytest.MonkeyPatch, rows: list[dict[str,str]]) -> bytes:
@@ -484,7 +484,7 @@ def test_external_interpreter_probe_preserves_clean_ignored_gate(tmp_path: Path)
     commit=subprocess.run(["git","rev-parse","HEAD"],cwd=root,check=True,capture_output=True,text=True).stdout.strip()
     expected={"commit":commit,"script_sha256":collector.digest_bytes(collector.git(root,"show",f"{commit}:scripts/collect_no1_006b_baseline.py")),"schema_sha256":collector.digest_bytes(collector.git(root,"show",f"{commit}:schemas/no1-006b-baseline.schema.json")),"support_sha256":collector.digest_bytes(collector.git(root,"show",f"{commit}:scripts/no1_006b_baseline_support.py")),"tool_lock_sha256":collector.digest_bytes(collector.git(root,"show",f"{commit}:uv.lock")),"tool_export_sha256":"a"*64}
     status=subprocess.run(["git","status","--porcelain=v1","--untracked-files=all","--ignored"],cwd=root,check=True,capture_output=True,text=True).stdout
-    assert json.loads(result.stdout) == [expected,SCHEMA.read_text()]
+    assert json.loads(result.stdout) == [expected,SCHEMA.read_text(encoding="utf-8")]
     assert status == ""
 
 def test_verified_uv_resolves_and_attests_configured_binary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -507,7 +507,7 @@ def assert_secrets_baseline_preserves_reviewed_base(repo: Path) -> None:
     # PR #1250: rescanning additions must be a union, never delete accepted historical findings.
     subprocess.run(["git","merge-base","--is-ancestor",collector.EXPECTED_SUBJECT_COMMIT,"HEAD"],cwd=repo,check=True)
     reviewed=json.loads(subprocess.run(["git","show",f"{collector.EXPECTED_SUBJECT_COMMIT}:.secrets.baseline"],cwd=repo,check=True,capture_output=True).stdout)
-    current=json.loads((repo/".secrets.baseline").read_text())
+    current=json.loads((repo/".secrets.baseline").read_text(encoding="utf-8"))
     def signatures(data: dict) -> set: return {(filename,row["type"],row["hashed_secret"]) for filename,rows in data["results"].items() for row in rows}
     assert signatures(reviewed).issubset(signatures(current))
 

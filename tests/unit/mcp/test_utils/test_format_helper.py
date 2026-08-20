@@ -540,13 +540,14 @@ def test_final_oracle_toon_preserves_unsupported_filter_code() -> None:
         "toon", apply_toon_format_to_response
     )
 
+    # #1321: this envelope is scalar-only, so every field is carried at the top
+    # level and ``toon_content`` has nothing left to encode. The previous
+    # expectation duplicated all four fields into the blob — it was pinning the
+    # duplication, not the actionability. What #1252 actually requires is that
+    # ``error`` / ``error_code`` reach the caller, and they do.
     assert errors["DIFF_SNAPSHOT_UNSUPPORTED_FILTER"] == {
         "format": "toon",
-        "toon_content": (
-            "success: false\nverdict: ERROR\n"
-            "error_code: DIFF_SNAPSHOT_UNSUPPORTED_FILTER\n"
-            "error: DIFF_SNAPSHOT_UNSUPPORTED_FILTER"
-        ),
+        "toon_content": "",
         "success": False,
         "verdict": "ERROR",
         "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_FILTER",

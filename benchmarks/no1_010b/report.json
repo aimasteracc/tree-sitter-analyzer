@@ -1,0 +1,246 @@
+{
+  "schema": "no1-010b/report/2",
+  "rfc": "RFC-0026",
+  "phase": "B2",
+  "run_status": "REJECTED_AT_PREFLIGHT",
+  "arm_mode": "model_free",
+  "evidence_level": "E0",
+  "public_claim": null,
+  "public_claim_policy": "E0-E3 emit no public or competitive wording (RFC-0026 \u00a74). This report is internal evidence only and is not admitted to the claim registry.",
+  "provenance": {
+    "analyzer": {
+      "commit": "9c004fc8b4802c8ab58078395d23eaeec3d73286",
+      "version": "1.29.0",
+      "tree_state": "clean",
+      "corpus_present_at_commit": true,
+      "reproducible_at_commit": true
+    },
+    "corpus_path": "benchmarks/no1_010b/corpus.jsonl",
+    "corpus_sha256": "310c00a661df851d7eb3191507561c3d452a6103e571906d67855cf188f6e43b",
+    "fixture_tree_sha256": "f51055a82726490d52d95cdec7c529c078e43d1eeb4f641e0c47853353995c6b",
+    "oracle_digests": [
+      {
+        "oracle": "oracles/0001.py",
+        "oracle_sha256": "daa597f17ab8b189d2017ae806f4a75110d5ccf14bfed183936ad97839730671"
+      },
+      {
+        "oracle": "oracles/0002.py",
+        "oracle_sha256": "84f9243397661b6b6c843d3cf519ed855dbede397061bd8c514012eb9884d820"
+      },
+      {
+        "oracle": "oracles/0003.py",
+        "oracle_sha256": "8181fa461582ef4d5463e8b5d53ec84fc827c399f7d2a893bf1ef40aee0b75de"
+      },
+      {
+        "oracle": "oracles/0004.py",
+        "oracle_sha256": "e8f79a8364f05e23defa478c706e15c7c76b4f446f6aefaf86f18bec93ca20f1"
+      },
+      {
+        "oracle": "oracles/0005.py",
+        "oracle_sha256": "6e01c58c5387dad4f725faab59bf068408ed4ae76b5b44d776fef11a2d95ccff"
+      },
+      {
+        "oracle": "oracles/0006.py",
+        "oracle_sha256": "db01378d32007c17015ab31f1632fcfb7cd11e47329940d2360e131faf4a913a"
+      },
+      {
+        "oracle": "oracles/0007.py",
+        "oracle_sha256": "606b9a8a11c074f41dd187ac984fdf9b38f17868715ce6d47bc446b08e2c3319"
+      },
+      {
+        "oracle": "oracles/0008.py",
+        "oracle_sha256": "0fb72e200c88665598904c70d157243601fe3ae33daaed5fd71863f6fcb40112"
+      },
+      {
+        "oracle": "oracles/0009.py",
+        "oracle_sha256": "8686b1856cc25393048b54a56985e91df1415676a5f59ba1342975ff785006b0"
+      },
+      {
+        "oracle": "oracles/0010.py",
+        "oracle_sha256": "437cf9d0814a17ae2203c9eff8b763cbc3093349fb43c10ee5de3af961ba3fda"
+      }
+    ],
+    "digest_normalization": "CRLF collapsed to LF before hashing",
+    "python": "3.13.5",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "model_calls": 0,
+    "model_spend": "none - model-free run, no LLM was invoked",
+    "registration_registry": null
+  },
+  "corpus": {
+    "task_count": 10,
+    "per_class_counts": {
+      "bugfix": 4,
+      "refactor": 2,
+      "test_selection": 2,
+      "migration": 2
+    },
+    "per_repo_counts": {
+      "fixtures/dispatch_app": 4,
+      "fixtures/orders_service": 4,
+      "fixtures/config_loader": 2
+    },
+    "expected_terminals": {
+      "PASS/null": 9,
+      "FAIL/VERIFICATION_FAILED": 1
+    },
+    "task_ids": [
+      "no1-010b/0001-bugfix-dispatch-unknown-route",
+      "no1-010b/0002-bugfix-dispatch-trailing-slash",
+      "no1-010b/0003-refactor-extract-route-registry",
+      "no1-010b/0004-test-selection-dispatch-version",
+      "no1-010b/0005-bugfix-discount-ignored",
+      "no1-010b/0006-bugfix-cancel-unknown-order",
+      "no1-010b/0007-migration-drop-legacy-total",
+      "no1-010b/0008-test-selection-totals-clamp",
+      "no1-010b/0009-refactor-split-load",
+      "no1-010b/0010-migration-coerce-typed-values"
+    ]
+  },
+  "preflight": {
+    "status": "REJECTED",
+    "attempts_consumed": 0,
+    "static_checks": [
+      {
+        "check": "task_count_exact",
+        "status": "PASS",
+        "detail": "10 tasks (registered 10)"
+      },
+      {
+        "check": "per_class_counts_exact",
+        "status": "PASS",
+        "detail": "{'bugfix': 4, 'refactor': 2, 'migration': 2, 'test_selection': 2} (registered {'bugfix': 4, 'refactor': 2, 'migration': 2, 'test_selection': 2})"
+      },
+      {
+        "check": "expected_terminal_distribution_exact",
+        "status": "PASS",
+        "detail": "9 PASS / 1 FAIL (registered 9 PASS / 1 FAIL)"
+      },
+      {
+        "check": "oracle_files_present",
+        "status": "PASS",
+        "detail": "all registered oracles exist"
+      },
+      {
+        "check": "fixture_repos_present",
+        "status": "PASS",
+        "detail": "all pinned fixture repos exist beneath the corpus root"
+      },
+      {
+        "check": "affected_test_oracle_strict_subset",
+        "status": "PASS",
+        "detail": "every test_selection oracle is a strict subset of its suite"
+      },
+      {
+        "check": "manifest_digests_match",
+        "status": "PASS",
+        "detail": "corpus, fixture-tree and oracle digests match the recorded manifest"
+      },
+      {
+        "check": "oracle_red_baseline",
+        "status": "PASS",
+        "detail": "all 10 oracles declare FAIL on their unmodified fixture with the exact registered token"
+      }
+    ],
+    "failed_checks": [],
+    "gate_categories": {
+      "code_blocked": "model-free engineering work; needs no model spend and no external party",
+      "budget_blocked": "needs pre-authorized model spend (human decision)",
+      "external_party_blocked": "needs an independent human or an out-of-evaluator-control store; no model spend"
+    },
+    "unsatisfied_gates": [
+      {
+        "gate": "patch_verifier_runner",
+        "constraint": "RFC-0026 B1",
+        "category": "code_blocked",
+        "status": "NOT_SATISFIED",
+        "detail": "no patch application, isolated worktree, read-only candidate mount, write journal, stale-row projection comparison, or unsupported-relationship evidence check exists. B1 is entirely model-free: its exit artifact is 10/10 pre-registered terminal pairs plus the mutation suite, with no arms and no spend"
+      },
+      {
+        "gate": "fixture_commit_pinning",
+        "constraint": "RFC-0026 \u00a71",
+        "category": "code_blocked",
+        "status": "NOT_SATISFIED",
+        "detail": "['fixtures/config_loader', 'fixtures/dispatch_app', 'fixtures/orders_service'] carry the all-zero placeholder repo_commit, so the runner cannot check out a pinned commit and fail closed on drift; the committed manifest digests are a drift detector, not a commit pin"
+      },
+      {
+        "gate": "external_registration_anchor",
+        "constraint": "C14/C27",
+        "category": "external_party_blocked",
+        "status": "NOT_SATISFIED",
+        "detail": "pre-registration must be anchored in an append-only store outside evaluator control; a git-committed file (including this corpus manifest) cannot establish pre-execution ordering"
+      },
+      {
+        "gate": "independent_oracle_signature",
+        "constraint": "C59",
+        "category": "external_party_blocked",
+        "status": "NOT_SATISFIED",
+        "detail": "10 of 10 oracles carry no signature over (task_id, repo_commit, oracle_hash, expected_terminal) by a reviewer who authored neither the corpus nor the implementation under test"
+      },
+      {
+        "gate": "three_non_pooled_agent_arms",
+        "constraint": "C31 / RFC-0026 \u00a72",
+        "category": "budget_blocked",
+        "status": "NOT_SATISFIED",
+        "detail": "0 distinct arms registered; at least three non-pooled client/model arms are a mandatory B2 completion gate, and a baseline produced only from supplied reference patches does not satisfy NO1-010B"
+      },
+      {
+        "gate": "paired_control_arms",
+        "constraint": "C28/C37/C56",
+        "category": "budget_blocked",
+        "status": "NOT_SATISFIED",
+        "detail": "no paired cells registered; each evidence-enabled arm needs a pre-registered evidence-disabled control and a complete pair_id x task_id x repeat_index matrix"
+      }
+    ]
+  },
+  "arms": [],
+  "attempts_retained": 0,
+  "vcsr": {
+    "state": "NOT_PRODUCED",
+    "value": null,
+    "numerator": 0,
+    "denominator": 0,
+    "per_class": {},
+    "per_repo": {},
+    "per_arm": {}
+  },
+  "reliability": {
+    "metric": "successful_indexed_trials / all_trials",
+    "successful_indexed_trials": 0,
+    "all_trials": 0,
+    "ratio": null,
+    "threshold": 0.99,
+    "gate_status": "NOT_EVALUATED",
+    "failure_classes": {
+      "product": 0,
+      "infrastructure": 0
+    },
+    "failure_class_breakdown": {
+      "product": {},
+      "infrastructure": {}
+    },
+    "per_arm": {}
+  },
+  "paired_evidence_endpoint": {
+    "state": "NOT_EVALUATED",
+    "matrix_complete": false,
+    "n11": 0,
+    "n10": 0,
+    "n01": 0,
+    "n00": 0,
+    "paired_effect": null,
+    "p_value": null,
+    "minimum_effect": 0.05,
+    "alpha": 0.05,
+    "admission": "NOT_ADMITTED"
+  },
+  "b2_complete": false,
+  "b2_block_reasons": [
+    "patch_verifier_runner",
+    "fixture_commit_pinning",
+    "external_registration_anchor",
+    "independent_oracle_signature",
+    "three_non_pooled_agent_arms",
+    "paired_control_arms"
+  ]
+}
