@@ -179,6 +179,80 @@ the *relationship* `p95(repeat) < p95(first)` plus an exact pin on the recorded
 `served_from` value. Absolute millisecond ceilings are NOT asserted (they are
 machine-dependent); the relationship and the provenance value are.
 
+**Clarification (added when L6.1 landed — two premises above needed correcting):**
+
+1. *"Every certified answer already carries a provenance record with an index
+   generation stamp"* **does not hold on Windows.** The RFC-0022 oracle
+   (`index_source_snapshot.capture_current_source_snapshot`, which mints
+   `idxsrc-v3:`) short-circuits to `SOURCE_SCOPE_UNSUPPORTED` unless
+   `os.name == "posix"` and `/dev/fd` exists; `source_oracle._supports_nofollow`
+   likewise gates on `os.name != "nt"`. So on the platform the RFC-0025 L5
+   baseline was measured on, the stamp is structurally uncomputable, and keying
+   the cache off it would mean the cache never engages there. The implementation
+   therefore keys off `cache.fingerprint.compute_source_tree_digest` — a per-file
+   digest of `(relative path, mtime_ns, size)` over all 30 supported extensions,
+   plus a content hash for the 16 most-recently-modified files, with the
+   canonical project root folded in (`AnswerKey` has no `project_root` field, so
+   two projects in one process could otherwise collide). Cost ~30 ms at 2,382
+   files, scaling linearly; limits on `answer_cache_policy.current_generation`.
+
+   **It is deliberately NOT `compute_graph_fingerprint`.** That
+   `(file_count, max_mtime_ns)` pair is sound for invalidating a graph rebuilt
+   from content but not as an answer key. The first implementation used it and
+   was wrong in four ways, all found by adversarial review with executed
+   evidence: a plain `os.rename` changes neither component, so a cached
+   `edit action=safe` reported `verdict=CAUTION, downstream_count=1` for a path
+   that no longer existed — where the live code raises `File not found`, i.e. a
+   normal mid-refactor `git mv` turned a hard error into a false SAFE-ish
+   verdict; `GRAPH_SOURCE_EXTS` covers only 19 of 30 extensions, so for
+   `.cs .kt .lua .php .rb .scala .swift .swiftinterface .sh .bash .zsh` the
+   stamp was the *constant* `0:0` and nothing could ever invalidate; an
+   mtime-preserving replacement (`tar -x`, `cp -p`, `rsync --times`) was
+   invisible; and a single file with a future mtime pinned the maximum ahead of
+   the wall clock, blinding the entire tree until real time caught up. The
+   defence that the cache was "no weaker than the graph caches whose answers it
+   memoises" was **false as stated** — the target-file existence check is not
+   inside any graph cache; it ran live on every call before this change.
+
+   Timestamps also lack the resolution their units imply: measured on Windows, a
+   same-size rewrite (`x = 1` -> `x = 2`) left `st_mtime_ns` byte-identical in
+   **15 of 20** trials. Hence the content hash, and hence its selection by
+   *rank* rather than by a clock window — a window makes the digest depend on
+   `now`, so an unchanged tree digests differently as files age out of it and the
+   cache takes a spurious miss (observed once as a 4.8 s recompute inside a warm
+   reservoir that should have been all hits).
+2. **Rule 2 needs a second dimension.** "Freshness `stale`/`missing`/`unknown`"
+   is not the only way an answer can be uncertified: `edit action=safe` with
+   `access_mode=read_existing` returns RFC-0022 P0.4 `access_state="unknown"` /
+   `READ_EXISTING_AUTHORITY_UNCERTIFIED` wherever the oracle above cannot run,
+   with no `freshness` field at all. `is_certified` refuses non-certified
+   `access_state` as well, or a one-off "I could not certify this" would be
+   replayed as a persistent verdict.
+3. Admission to `CACHEABLE_ACTIONS` also requires that the route's cost dominate
+   the generation stamp. `structure action=outline` is audited pure but runs at
+   ~3 ms warm, so caching it would make it slower; it is excluded.
+4. **Only *global* components may take part in whole-cache eviction.** The key's
+   `producer_version` is route-scoped (it carries the route's `action_version`),
+   and putting it in the eviction prelude made `edit action=safe` and
+   `health action=file` evict each other on every switch — so the two
+   allowlisted routes could never be resident together and the hit rate was
+   **0% in the workflow this project's own skills prescribe per edit**
+   (`.claude/skills/tsa-edit-safety/SKILL.md:16`,
+   `tsa-edit-then-verify/SKILL.md:6`), with every call additionally paying the
+   generation stamp for nothing: a net regression. `producer_version` is now
+   encoded `"<global>:pvr1:<route>"` and only the global half is in the prelude.
+5. **The completion criterion above is insufficient on its own, because the
+   harness that measures it cannot see this class of bug.**
+   `scripts/measure_self_health_baseline.py` drives `for route: for repeat:`, so
+   all repeats of a route are grouped and any per-route cache state is constant
+   inside a measurement block. Finding 4 therefore produced a 0% real-workflow
+   hit rate while the harness reported a 62x speedup. The harness now also
+   drives the prescribed pair **alternating** and records `served_from` per call
+   (`interleaved_workflow` in the artifact), with a `CACHE_NOT_SERVING` verdict
+   when a repeat at an unchanged generation is not a hit. Judge L6.1 on those
+   rows. `p95(repeat) < p95(first)` is likewise not a fence — it passed at 1.01x
+   while nothing was being served — so the benchmark ratchets the *ratio*.
+
 #### L6.2 Declared query cost
 
 Before running an expensive route, a tool declares what it will cost, so a
@@ -593,13 +667,22 @@ and emits a calibration report with non-placeholder numbers.
 
 ## Acceptance criteria
 
-- [ ] L6.1 answer cache; `served_from` visible; whole-cache eviction on any
+- [x] L6.1 answer cache; `served_from` visible; whole-cache eviction on any
       key-component bump; bounded and LRU
-- [ ] L6.1 key includes `producer_version` and `extra_inputs`; a TSA/action
+- [x] L6.1 key includes `producer_version` and `extra_inputs`; a TSA/action
       version bump at an unchanged source generation misses the cache
-- [ ] L6.1 `CACHEABLE_ACTIONS` allowlist exists and a contract test asserts it
+- [x] L6.1 `CACHEABLE_ACTIONS` allowlist exists and a contract test asserts it
       is a subset of the side-effect-free actions
-- [ ] L6.1 benchmark pins the repeat-vs-first *relationship* (no absolute ceiling)
+- [x] L6.1 benchmark ratchets the repeat-vs-first *ratio* (no absolute ceiling);
+      a bare `p95(repeat) < p95(first)` is not a fence — it passed at 1.01x
+- [x] L6.1 the generation stamp sees a rename, a delete, an mtime-preserving
+      replacement, a future mtime, a same-size edit inside one filesystem tick,
+      and all 30 supported extensions; it fails closed when it can see nothing
+- [x] L6.1 whole-cache eviction keys on *global* components only, so the
+      allowlisted routes do not evict each other
+- [x] L6.1 the harness drives the prescribed route pair **interleaved** and
+      records `served_from` per call, so a 0% real-workflow hit rate cannot hide
+      behind a grouped-repeat speedup
 - [ ] L6.2 `QueryCost` returned by the three most expensive routes;
       `estimated_ms` is `None` until observed
 - [ ] L6.3 canonical full id always present; abbreviation unique within the

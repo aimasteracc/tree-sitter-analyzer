@@ -21,6 +21,7 @@ Both are stable across processes (no in-memory state).
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sqlite3
 from collections.abc import Iterable
@@ -233,3 +234,221 @@ def _walk_supported_source_paths(root: Path) -> Iterable[str]:
             ext = Path(fname).suffix.lower()
             if ext in EXT_TO_LANG:
                 yield (Path(dirpath) / fname).relative_to(root).as_posix()
+
+
+class SourceTreeDigest(NamedTuple):
+    """Order-independent digest of every supported source file's *identity*.
+
+    Why this exists alongside :class:`GraphFingerprint` (review P1-1 / P1-2):
+    ``(file_count, max_mtime_ns)`` is a sound invalidation signal for a graph
+    rebuilt from content, but it is NOT sound as a memoisation key for an
+    answer, because three ordinary operations leave both components unchanged:
+
+    * ``os.rename`` — changes no file's mtime and not the count, only the
+      *directory* mtime, which is never stat'd. A rename made a cached
+      ``edit action=safe`` report ``verdict=CAUTION, downstream_count=1`` for a
+      path that no longer existed, where the live code raises ``File not
+      found``. That is a normal mid-refactor ``git mv``.
+    * an mtime-preserving replacement (``tar -x``, ``cp -p``, ``rsync
+      --times``).
+    * any single file bearing a **future** mtime, which pins ``max_mtime_ns``
+      ahead of the wall clock and blinds the whole tree until time catches up.
+
+    This digest folds every file's ``(relative path, mtime_ns, size)`` into one
+    hash, so a rename changes the path set, a replacement changes the size, and
+    a future mtime is confined to its own record instead of dominating a
+    maximum.
+
+    It also defaults to the full :data:`EXT_TO_LANG` domain (30 extensions)
+    rather than ``GRAPH_SOURCE_EXTS`` (19). Under the narrower set a project
+    written in any of ``.cs .kt .lua .php .rb .scala .swift .swiftinterface
+    .sh .bash .zsh`` produced a *constant* stamp, so nothing could ever
+    invalidate it.
+
+    ``file_count == 0`` is a degenerate observation, not a valid state: a caller
+    keying a cache on this MUST fail closed rather than treat it as a stamp.
+
+    **Timestamp granularity.** ``mtime_ns`` has nanosecond *units* but not
+    nanosecond *resolution*: measured on Windows, rewriting a file with
+    same-size content left ``st_mtime_ns`` byte-identical in **15 of 20**
+    trials, and two back-to-back writes reported a delta of exactly 0 ns. So a
+    same-size edit — ``x = 1`` -> ``x = 2``, flipping a boolean, an equal-length
+    rename — is invisible to a ``(path, mtime, size)`` triple whenever both
+    writes land in one filesystem tick. That is an ordinary agent edit, not a
+    forgery, so :func:`compute_source_tree_digest` additionally folds in the
+    **content hash of the :data:`_CONTENT_HASHED_NEWEST` most-recently-modified
+    files**, whose timestamps are the ones that cannot be trusted. Old files
+    stay cheap; only the handful just touched are read.
+
+    ``unstable_file_count`` is non-zero when more files than
+    :data:`_MAX_SAME_TICK_FILES` share the single newest mtime — a fresh
+    checkout stamps every file identically, so there is no small "recently
+    touched" set to hash and doing it for all of them would cost more than the
+    answer being cached. The digest then declares itself untrustworthy and the
+    caller fails closed.
+    """
+
+    file_count: int
+    digest: str
+    unstable_file_count: int = 0
+
+    def is_empty(self) -> bool:
+        """Return True when no supported source file was observed."""
+        return self.file_count == 0
+
+    def is_trustworthy(self) -> bool:
+        """Return True when this digest may be used as a cache key.
+
+        False when nothing was observed, or when too many recently-modified
+        files had to be left un-hashed to bound the cost.
+        """
+        return not self.is_empty() and self.unstable_file_count == 0
+
+
+def _collect_one_directory(
+    path: str,
+    prefix_length: int,
+    exts: tuple[str, ...],
+    stack: list[str],
+    records: list[tuple[str, int, int]],
+) -> None:
+    """Append one ``scandir`` level's file records; push subdirs onto ``stack``.
+
+    Mirrors :func:`_process_entry`'s exclusion rules exactly, so this digest and
+    the graph fingerprint describe the same tree.
+    """
+    try:
+        with os.scandir(path) as entries:
+            for entry in entries:
+                _collect_one_entry(entry, prefix_length, exts, stack, records)
+    except OSError:  # nosec B112 — directory vanished mid-walk
+        pass
+
+
+def _collect_one_entry(
+    entry: os.DirEntry[str],
+    prefix_length: int,
+    exts: tuple[str, ...],
+    stack: list[str],
+    records: list[tuple[str, int, int]],
+) -> None:
+    """Sort one entry into the recurse stack or the record list.
+
+    The relative path is a slice, not ``os.path.relpath``: the walk starts at
+    ``root`` so every ``entry.path`` is already prefixed by it, and relpath's
+    parsing cost per file dominated the whole digest (53 ms -> 25 ms on a
+    2,382-file tree).
+    """
+    try:
+        if entry.is_dir(follow_symlinks=False):
+            if entry.name not in _EXCLUDE_DIRS and not entry.name.startswith("."):
+                stack.append(entry.path)
+            return
+        if entry.name.startswith(".") or not entry.name.endswith(exts):
+            return
+        stat = entry.stat()
+        relative = entry.path[prefix_length:].replace(os.sep, "/")
+        records.append((relative, stat.st_mtime_ns, stat.st_size))
+    except OSError:  # nosec B110 — file vanished / unreadable mid-walk
+        pass
+
+
+#: How many of the most-recently-modified files also contribute a content hash.
+#:
+#: Deliberately a *rank* and not a time window. A window (``now - mtime < W``)
+#: makes the digest depend on the clock: a file's record silently changes shape
+#: as it ages out of the window, so an unchanged tree produces two different
+#: digests moments apart and the cache takes a spurious miss. Measured: one
+#: 4.8 s recompute inside a warm reservoir that should have been all hits.
+#:
+#: A rank is a pure function of the tree, so an unchanged tree always digests
+#: identically, and the just-edited file — the only one at real risk of a
+#: same-tick double write — is by construction in the set.
+_CONTENT_HASHED_NEWEST = 16
+
+#: Cost/soundness bound. If more files than this share the single newest mtime,
+#: we cannot tell which of them is the risky one (a fresh checkout stamps every
+#: file identically), and hashing them all would cost more than the answer being
+#: cached. The digest then declares itself untrustworthy and the caller fails
+#: closed.
+_MAX_SAME_TICK_FILES = _CONTENT_HASHED_NEWEST
+
+#: Never read more than this from one file when hashing content. A prefix is
+#: enough to separate two same-size edits in practice, and it bounds the cost of
+#: a multi-megabyte generated source file.
+_CONTENT_HASH_PREFIX_BYTES = 65536
+
+
+def _content_digest(path: str) -> str:
+    """Hash a bounded prefix of ``path``, or a marker when unreadable."""
+    try:
+        with open(path, "rb") as handle:
+            return hashlib.sha256(handle.read(_CONTENT_HASH_PREFIX_BYTES)).hexdigest()
+    except OSError:
+        return "unreadable"
+
+
+def _hash_newest_records(
+    root: str, records: list[tuple[str, int, int]]
+) -> tuple[int, dict[str, str]]:
+    """Return ``(unstable_count, {relpath: content_digest})`` for the newest files.
+
+    Ranked by ``(mtime_ns, path)`` descending, so the selection depends only on
+    the tree and never on the wall clock.
+    """
+    if not records:
+        return 0, {}
+    by_recency = sorted(
+        records, key=lambda record: (record[1], record[0]), reverse=True
+    )
+    newest_mtime = by_recency[0][1]
+    same_tick = sum(1 for record in by_recency if record[1] == newest_mtime)
+    if same_tick > _MAX_SAME_TICK_FILES:
+        return same_tick, {}
+    contents = {
+        relative: _content_digest(os.path.join(root, relative))
+        for relative, _mtime_ns, _size in by_recency[:_CONTENT_HASHED_NEWEST]
+    }
+    return 0, contents
+
+
+def compute_source_tree_digest(
+    project_root: str,
+    *,
+    extensions: Iterable[str] | None = None,
+) -> SourceTreeDigest:
+    """Digest ``(relative path, mtime_ns, size)`` for every supported source file.
+
+    Records are sorted before hashing, so the digest does not depend on
+    ``os.scandir`` ordering and is stable across processes and platforms.
+
+    The :data:`_CONTENT_HASHED_NEWEST` most-recently-modified files additionally
+    contribute a content hash, because a timestamp cannot distinguish two
+    same-size writes inside one filesystem tick (see :class:`SourceTreeDigest`).
+    The selection is by *rank*, not by a clock window, so an unchanged tree
+    always digests identically.
+    """
+    exts = tuple(extensions) if extensions else tuple(EXT_TO_LANG)
+    root = os.path.realpath(project_root)
+    prefix_length = len(root) + 1
+    records: list[tuple[str, int, int]] = []
+    stack: list[str] = [root]
+    while stack:
+        _collect_one_directory(stack.pop(), prefix_length, exts, stack, records)
+
+    records.sort()
+    unstable, contents = _hash_newest_records(root, records)
+
+    hasher = hashlib.sha256()
+    for relative, mtime_ns, size in records:
+        hasher.update(os.fsencode(relative))
+        hasher.update(f"\0{mtime_ns}\0{size}".encode("ascii"))
+        content = contents.get(relative)
+        if content is not None:
+            hasher.update(f"\0{content}".encode("ascii"))
+        hasher.update(b"\n")
+    return SourceTreeDigest(
+        file_count=len(records),
+        digest=hasher.hexdigest(),
+        unstable_file_count=unstable,
+    )

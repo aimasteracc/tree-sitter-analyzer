@@ -141,6 +141,7 @@ never forwards it to its inner tool returns the default envelope, which after
 | `pr_url` | Echo of the PR a review-tool call targeted. |
 | `pr_number` | Echo of the PR number, same rationale. |
 | `deprecation` | Legacy-name shim migration warning — the shim's only in-band signal, injected after `toon_content` is built, so it must survive. |
+| `provenance` | RFC-0027 L6.1 answer-cache visibility: `served_from` is exactly `"cache"` or `"computed"`, plus every key component. Attached after `toon_content` is built, so it is not recoverable from the blob — and a cache that lies about freshness is worse than no cache. |
 <!-- drift:control-surface:end -->
 
 Everything else at the top level of a TOON response is dropped under
