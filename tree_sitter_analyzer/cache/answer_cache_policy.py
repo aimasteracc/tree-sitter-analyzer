@@ -7,12 +7,19 @@ write, no index mutation, no lease acquisition and no ledger append. Otherwise a
 cache hit returns the previous answer **without performing the requested side
 effect**.
 
-The RFC requires that the allowlist "may never be editable by hand alone", so
 :func:`audited_pure_actions` derives the pure set **mechanically** from each
-inner tool's own MCP ``annotations`` (``readOnlyHint`` / ``destructiveHint``) —
-a declaration every tool already maintains for the MCP protocol, independently
-of this module. ``CACHEABLE_ACTIONS`` must be a subset of it, and a bespoke
-route (which declares no annotations) is never pure: it fails closed.
+inner tool's own MCP ``annotations`` (``readOnlyHint`` / ``destructiveHint``) — a
+declaration every tool already maintains for the MCP protocol, independently of
+this module — and a contract test asserts ``CACHEABLE_ACTIONS`` is a subset of
+it. A bespoke route (which declares no annotations) is never pure: it fails
+closed.
+
+**What that fence does and does not do.** It blocks the soundness-relevant
+class: no mutating, index-lifecycle, ledger-append or lease-acquiring route can
+be added, because their own annotations exclude them. It is NOT a review gate on
+*additions* — the audit currently marks ~53 routes pure while this allowlist
+holds 2, so those 51 could be added without any test failing. Adding one is a
+judgement about cost (see below), not about safety.
 """
 
 from __future__ import annotations
@@ -20,16 +27,22 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from pathlib import Path
 from typing import Any
 
-from .fingerprint import compute_graph_fingerprint
+from .fingerprint import compute_source_tree_digest
 
 #: Routes whose answers may be memoised.
 #:
 #: Admission requires BOTH of:
 #:
 #: * the route is in :func:`audited_pure_actions` (rule 1, contract-tested), and
-#: * its cost dominates the ~20 ms generation stamp a lookup must pay.
+#: * its cost dominates the ~25 ms generation stamp a lookup must pay.
+#:
+#: Both entries must ALSO be measured together, interleaved, not just repeated:
+#: these two are the pair this project's own skills prescribe per edit, and a
+#: route-scoped component in the eviction prelude once made them evict each
+#: other for a 0% hit rate that a grouped-repeat harness could not see.
 #:
 #: The second criterion has teeth. ``structure action=outline`` is audited pure
 #: but runs at 2.9 ms warm, so caching it would make it *slower*; it is
@@ -57,12 +70,11 @@ _PATH_ARG_KEYS: frozenset[str] = frozenset({"file_path", "path", "file", "target
 #: Facade control key that selects the route and is never part of the answer.
 _CONTROL_KEYS: frozenset[str] = frozenset({"action"})
 
-#: Declared non-source inputs. Only the constraint config: it is the one
-#: non-source file whose content changes a verdict.
-_CONSTRAINT_CONFIG_PATHS: tuple[str, ...] = (
-    "architectural-constraints.yml",
-    os.path.join(".tree-sitter-analyzer", "constraints.yml"),
-)
+#: Declared non-source inputs: only the constraint config, the one non-source
+#: file whose content changes a verdict. The path list is NOT duplicated here —
+#: :func:`extra_inputs_digest` calls the constraints package's own resolver, so
+#: the resolution order cannot drift. Hand-copying it is the exact drift class
+#: ``fingerprint.py`` documents as having served stale ``.mjs``/``.cjs`` answers.
 
 
 # --------------------------------------------------------------------------
@@ -162,39 +174,58 @@ def normalize_args(arguments: dict[str, Any], project_root: str) -> str:
     return json.dumps(normalized, sort_keys=True, separators=(",", ":"), default=str)
 
 
-def current_generation(project_root: str) -> str:
-    """Return the live source-tree generation stamp for ``project_root``.
+def current_generation(project_root: str) -> str | None:
+    """Return the live source-tree generation stamp, or ``None`` to fail closed.
 
-    Built on :func:`compute_graph_fingerprint` — the project's existing
-    invalidation primitive for its graph caches — because it is the only cheap
-    stamp available on **every** platform. The RFC-0022 oracle
+    Built on :func:`compute_source_tree_digest` rather than the RFC-0022 oracle
     (``index_source_snapshot.capture_current_source_snapshot``, which mints
-    ``idxsrc-v3:``) is POSIX-only: it returns ``SOURCE_SCOPE_UNSUPPORTED``
+    ``idxsrc-v3:``): that oracle short-circuits to ``SOURCE_SCOPE_UNSUPPORTED``
     unless ``os.name == "posix"`` and ``/dev/fd`` exists, so on Windows — where
-    the committed L5 baseline was measured, and where the primary user runs —
-    it can never produce a stamp. Keying off it would mean the cache never
+    the committed L5 baseline was measured and where the primary user runs — it
+    can never produce a stamp, and keying off it would mean the cache never
     engages on the platform that needs it.
 
-    What this stamp detects: any file added, removed, or modified in place
-    (``file_count`` + ``max_mtime_ns``). What it does NOT detect: a content
-    change that leaves both the file count and the maximum mtime unchanged
-    (an mtime rollback, or a clock skew that moves an mtime backwards). That is
-    exactly the residual risk the project already accepts for
-    ``DependencyGraph`` / ``CallGraph`` invalidation, so the answer cache is no
-    weaker than the graph caches whose answers it memoises.
+    **This is deliberately NOT** ``compute_graph_fingerprint``. That function's
+    ``(file_count, max_mtime_ns)`` pair is sound for invalidating a graph
+    rebuilt from content, but as an answer key it is blind to a plain
+    ``os.rename`` — which made a cached ``edit action=safe`` report
+    ``verdict=CAUTION`` for a path that no longer existed, where the live code
+    raises ``File not found``. The earlier claim that this was "no weaker than
+    the graph caches whose answers it memoises" was **wrong**: the target-file
+    existence check is not inside any graph cache: it ran live on every call.
+    See :class:`SourceTreeDigest` for the full list of cases and why a per-file
+    digest over ``(path, mtime_ns, size)`` covers them.
+
+    What it detects: add, remove, rename, in-place edit, size-changing
+    replacement at a preserved mtime, and — via the content hash of
+    recently-touched files — a **same-size** edit inside one filesystem
+    timestamp tick, across all 30 supported extensions. That last case is not
+    exotic: on Windows a same-size rewrite left ``mtime_ns`` unchanged in 15 of
+    20 measured trials, so without it an ordinary ``x = 1`` -> ``x = 2`` edit
+    would have been served a stale verdict most of the time.
+
+    Returns ``None`` in two fail-closed cases:
+
+    * no supported source file was observed. That is not a stamp — under the
+      previous narrower extension set it was a *constant* for whole classes of
+      project (``.rb``, ``.kt``, ``.php``, ...), so every answer was cached
+      forever.
+    * too many files were modified too recently to hash within the cost bound
+      (a fresh checkout). Caching is simply skipped until the tree settles.
 
     The canonical project root is folded in because :class:`AnswerKey` has no
     ``project_root`` field: without it, two projects analysed in one process
-    (``server.set_project_path``) could collide on an identical fingerprint.
+    (``server.set_project_path``) could collide on an identical digest.
 
-    Cost on this repository: ~20 ms for 2,342 source files. It scales linearly
-    with the file count, so at the RFC-0025 100k-file target it would no longer
-    be negligible — a bound is future work, tracked with the persistence
-    question.
+    Cost on this repository: ~25 ms for 2,342 source files, and it scales
+    linearly, so at the RFC-0025 100k-file target it stops being negligible — a
+    bound is future work, tracked with the persistence question.
     """
-    fingerprint = compute_graph_fingerprint(project_root)
+    tree = compute_source_tree_digest(project_root)
+    if not tree.is_trustworthy():
+        return None
     root_digest = _digest("root", os.path.realpath(project_root))
-    return f"gfp1:{root_digest}:{fingerprint.file_count}:{fingerprint.max_mtime_ns}"
+    return f"std1:{root_digest}:{tree.file_count}:{tree.digest}"
 
 
 def resolver_rules_digest() -> str:
@@ -228,48 +259,84 @@ def resolver_rules_digest() -> str:
     return _digest("rr", *parts)
 
 
-def producer_version(tool: str, action: str) -> str:
-    """Digest of everything that can change the answer at a fixed source tree.
+def global_producer_version() -> str:
+    """Digest of the producer inputs that are the same for **every** route.
 
-    Components: the TSA package version, the answer-cache schema version, the
-    route's ``action_version`` from the single ``wire_owner`` registry, and the
-    resolver-rule digest. A bump in any of them must miss the cache — otherwise
-    an upgrade replays the previous release's verdict under the new schema.
+    Split out from :func:`producer_version` because only this part may take part
+    in :attr:`AnswerKey.prelude`, whose change evicts the *whole* cache. When
+    the route-scoped ``action_version`` was in the prelude, ``edit action=safe``
+    and ``health action=file`` evicted each other on every switch, so the two
+    allowlisted routes could never be resident together and the hit rate was
+    **0%** in the workflow this project's own skills prescribe
+    (``.claude/skills/tsa-edit-safety/SKILL.md:16``,
+    ``tsa-edit-then-verify/SKILL.md:6``) — every call paid the generation
+    fingerprint for nothing.
     """
     import tree_sitter_analyzer
 
-    from ..wire_owner import ACTION_VERSIONS
     from .answer_cache import ANSWER_CACHE_SCHEMA_VERSION
 
     return _digest(
-        "pv1",
+        "pvg1",
         str(getattr(tree_sitter_analyzer, "__version__", "unknown")),
         ANSWER_CACHE_SCHEMA_VERSION,
-        f"{tool}.{action}",
-        ACTION_VERSIONS.get((tool, action), "unversioned"),
         resolver_rules_digest(),
     )
+
+
+def producer_version(tool: str, action: str) -> str:
+    """Digest of everything that can change the answer at a fixed source tree.
+
+    Encoded as ``"<global>:pvr1:<route>"``. The global half is the package
+    version, the answer-cache schema version and the resolver-rule digest; the
+    route half is the route identity plus its ``action_version`` from the single
+    ``wire_owner`` registry. A bump in EITHER half must miss the cache —
+    otherwise an upgrade replays the previous release's verdict under the new
+    schema — but only the global half may evict other routes, so the two halves
+    are recoverable from the string via
+    :attr:`AnswerKey.global_producer_version`.
+    """
+    from ..wire_owner import ACTION_VERSIONS
+
+    route = _digest(
+        "pvr1",
+        f"{tool}.{action}",
+        ACTION_VERSIONS.get((tool, action), "unversioned"),
+    )
+    return f"{global_producer_version()}:{route}"
 
 
 def extra_inputs_digest(project_root: str) -> str:
     """Digest the declared non-source inputs — the constraint config.
 
-    ``architectural-constraints.yml`` (or ``.tree-sitter-analyzer/constraints.yml``)
-    is the one non-source file whose content changes a verdict, so an edit to it
-    must miss the cache. An absent config digests to a stable "absent" marker,
-    which means *creating* the file also bumps the digest.
+    The constraint config is the one non-source file whose content changes a
+    verdict, so an edit to it must miss the cache. An absent config digests to a
+    stable "absent" marker, which means *creating* the file also bumps it.
+
+    Discovery is delegated to ``constraints.parser._find_config_file`` — the
+    single source of truth for the resolution order — rather than re-listing the
+    candidate paths here, so the two cannot drift apart.
     """
-    parts: list[str] = []
-    for relative in _CONSTRAINT_CONFIG_PATHS:
-        candidate = os.path.join(project_root, relative)
-        try:
-            with open(candidate, "rb") as handle:
-                raw = handle.read()
-        except OSError:
-            parts.extend((relative, "absent"))
-            continue
-        parts.extend((relative, hashlib.sha256(raw).hexdigest()))
-    return _digest("xi1", *parts)
+    from ..constraints.parser import _find_config_file
+
+    try:
+        config_path = _find_config_file(Path(project_root))
+    except OSError:
+        config_path = None
+    if config_path is None:
+        return _digest("xi1", "constraints", "absent")
+    try:
+        raw = config_path.read_bytes()
+    except OSError:
+        # Present but unreadable: fail closed on a distinct marker rather than
+        # colliding with "absent", which would let a permissions flip go unseen.
+        return _digest("xi1", "constraints", "unreadable", str(config_path))
+    return _digest(
+        "xi1",
+        "constraints",
+        config_path.name,
+        hashlib.sha256(raw).hexdigest(),
+    )
 
 
 def build_answer_key(
@@ -292,11 +359,17 @@ def build_answer_key(
     if not project_root:
         return None
     try:
+        generation = current_generation(project_root)
+        if generation is None:
+            # Nothing observable to key on — fail closed and compute. Treating
+            # this as a stamp is what made every answer permanently cacheable
+            # for the 11 extensions outside GRAPH_SOURCE_EXTS.
+            return None
         return AnswerKey(
             tool=tool,
             action=action,
             normalized_args=normalize_args(arguments, project_root),
-            generation=current_generation(project_root),
+            generation=generation,
             producer_version=producer_version(tool, action),
             extra_inputs=extra_inputs_digest(project_root),
         )

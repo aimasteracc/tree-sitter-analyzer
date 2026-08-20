@@ -14,6 +14,8 @@ performing the requested side effect**.
 from __future__ import annotations
 
 import asyncio
+import os
+import time
 
 import pytest
 
@@ -129,6 +131,20 @@ class TestGeneration:
         (tmp_path / "b.py").write_text("y = 2\n", encoding="utf-8")
         assert current_generation(str(tmp_path)) != before
 
+    def test_a_same_size_edit_bumps_the_generation(self, tmp_path) -> None:
+        """The dangerous everyday case, and the reason recent files are hashed.
+
+        ``x = 1`` -> ``x = 2`` changes neither the path, the count nor the size,
+        and on Windows it left ``mtime_ns`` unchanged in 15 of 20 measured
+        trials — so a ``(path, mtime, size)`` digest alone served a stale verdict
+        most of the time.
+        """
+        target = tmp_path / "a.py"
+        target.write_text("x = 1\n", encoding="utf-8")
+        before = current_generation(str(tmp_path))
+        target.write_text("x = 2\n", encoding="utf-8")
+        assert current_generation(str(tmp_path)) != before
+
     def test_two_distinct_project_roots_never_share_a_generation(
         self, tmp_path
     ) -> None:
@@ -138,7 +154,143 @@ class TestGeneration:
         right = tmp_path / "right"
         for root in (left, right):
             root.mkdir()
+            (root / "a.py").write_text("x = 1\n", encoding="utf-8")
         assert current_generation(str(left)) != current_generation(str(right))
+
+
+class TestGenerationSeesTheCasesAMaxMtimeStampCannot:
+    """Review P1-1 / P1-2: the failures of a ``(file_count, max_mtime_ns)`` stamp.
+
+    Each case below leaves BOTH the file count and the maximum mtime unchanged,
+    so the previous stamp could not see any of them. They are not exotic: a
+    rename is what an agent does mid-refactor, and it made the cache answer
+    ``verdict=CAUTION, downstream_count=1`` for a path that no longer exists —
+    where the live code raises ``File not found``.
+    """
+
+    def test_renaming_a_file_bumps_the_generation(self, tmp_path) -> None:
+        """``os.rename`` changes no file's mtime and not the count — only the
+        directory's mtime, which a max-mtime stamp never stats."""
+        (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+        (tmp_path / "keep.py").write_text("y = 2\n", encoding="utf-8")
+        before = current_generation(str(tmp_path))
+        (tmp_path / "a.py").rename(tmp_path / "b.py")
+        assert current_generation(str(tmp_path)) != before
+
+    def test_deleting_a_file_bumps_the_generation(self, tmp_path) -> None:
+        (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+        (tmp_path / "b.py").write_text("y = 2\n", encoding="utf-8")
+        before = current_generation(str(tmp_path))
+        (tmp_path / "a.py").unlink()
+        assert current_generation(str(tmp_path)) != before
+
+    def test_a_size_changing_replacement_at_a_pinned_mtime_bumps_it(
+        self, tmp_path
+    ) -> None:
+        """``tar -x`` / ``cp -p`` / ``rsync --times`` restore the old mtime."""
+        target = tmp_path / "a.py"
+        target.write_text("x = 1\n", encoding="utf-8")
+        stat = target.stat()
+        before = current_generation(str(tmp_path))
+        target.write_text("x = 1\nadded = True\n", encoding="utf-8")
+        os.utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        assert target.stat().st_mtime_ns == stat.st_mtime_ns
+        assert current_generation(str(tmp_path)) != before
+
+    def test_a_file_with_a_future_mtime_does_not_blind_the_tree(self, tmp_path) -> None:
+        """A single future mtime pins ``max_mtime_ns`` ahead of the wall clock,
+        so every later real edit is invisible until time catches up.
+
+        The edit below rewrites an EXISTING file, so the file count is
+        unchanged and cannot rescue the stamp — this isolates the max-mtime
+        blindness rather than accidentally testing the count.
+        """
+        (tmp_path / "future.py").write_text("x = 1\n", encoding="utf-8")
+        edited = tmp_path / "edited.py"
+        edited.write_text("y = 1\n", encoding="utf-8")
+        future_ns = time.time_ns() + 10 * 365 * 24 * 3600 * 1_000_000_000
+        os.utime(tmp_path / "future.py", ns=(future_ns, future_ns))
+        before = current_generation(str(tmp_path))
+        edited.write_text("y = 2\n", encoding="utf-8")
+        assert current_generation(str(tmp_path)) != before
+
+    @pytest.mark.parametrize("extension", [".rb", ".kt", ".php", ".cs", ".swift"])
+    def test_a_language_outside_graph_source_exts_still_gets_a_generation(
+        self, tmp_path, extension
+    ) -> None:
+        """``GRAPH_SOURCE_EXTS`` covers 19 of the 30 supported extensions. For
+        the other 11 the old stamp was the constant ``0:0`` for the whole
+        process, so nothing could ever invalidate."""
+        (tmp_path / f"a{extension}").write_text("x = 1\n", encoding="utf-8")
+        before = current_generation(str(tmp_path))
+        assert before is not None
+        (tmp_path / f"b{extension}").write_text("y = 2\n", encoding="utf-8")
+        assert current_generation(str(tmp_path)) != before
+
+
+class TestGenerationFailsClosedWhenItCanSeeNothing:
+    """Review P1-2: an empty fingerprint must yield NO key, not a constant one.
+
+    ``GraphFingerprint.is_empty()`` existed for exactly this state and had zero
+    callers.
+    """
+
+    def test_a_tree_with_no_supported_source_file_has_no_generation(
+        self, tmp_path
+    ) -> None:
+        (tmp_path / "README.md").write_text("# docs\n", encoding="utf-8")
+        assert current_generation(str(tmp_path)) is None
+
+    def test_an_empty_tree_has_no_generation(self, tmp_path) -> None:
+        assert current_generation(str(tmp_path)) is None
+
+    def test_no_generation_means_no_answer_key(self, tmp_path) -> None:
+        (tmp_path / "README.md").write_text("# docs\n", encoding="utf-8")
+        assert (
+            build_answer_key("edit", "safe", {"file_path": "a.py"}, str(tmp_path))
+            is None
+        )
+
+    @staticmethod
+    def _checkout_like(tmp_path, count: int) -> None:
+        """Write ``count`` files all bearing the SAME mtime, as a checkout does."""
+        stamp_ns = 1_700_000_000_000_000_000
+        for index in range(count):
+            path = tmp_path / f"m{index}.py"
+            path.write_text(f"x = {index}\n", encoding="utf-8")
+            os.utime(path, ns=(stamp_ns, stamp_ns))
+
+    def test_a_freshly_checked_out_tree_has_no_generation(self, tmp_path) -> None:
+        """A checkout stamps every file with one mtime, so there is no small
+        "recently touched" set to hash and no way to tell which file is at risk.
+        Hashing them all would cost more than the answer being cached, so the
+        digest declares itself untrustworthy and caching is skipped."""
+        self._checkout_like(tmp_path, 20)
+        assert current_generation(str(tmp_path)) is None
+
+    def test_the_cost_bound_reports_the_same_tick_file_count(self, tmp_path) -> None:
+        from tree_sitter_analyzer.cache.fingerprint import compute_source_tree_digest
+
+        self._checkout_like(tmp_path, 20)
+        digest = compute_source_tree_digest(str(tmp_path))
+        assert digest.unstable_file_count == 20
+        assert digest.is_trustworthy() is False
+
+    def test_a_tree_under_the_bound_is_trustworthy(self, tmp_path) -> None:
+        from tree_sitter_analyzer.cache.fingerprint import compute_source_tree_digest
+
+        self._checkout_like(tmp_path, 5)
+        digest = compute_source_tree_digest(str(tmp_path))
+        assert digest.unstable_file_count == 0
+        assert digest.is_trustworthy() is True
+
+    def test_a_tree_under_the_bound_still_invalidates_on_an_edit(
+        self, tmp_path
+    ) -> None:
+        self._checkout_like(tmp_path, 5)
+        before = current_generation(str(tmp_path))
+        (tmp_path / "m0.py").write_text("x = 999\n", encoding="utf-8")
+        assert current_generation(str(tmp_path)) != before
 
 
 class TestProducerVersion:
@@ -176,6 +328,7 @@ class TestBuildAnswerKey:
         assert build_answer_key("edit", "safe", {"file_path": "a.py"}, None) is None
 
     def test_key_carries_the_route_it_was_built_for(self, tmp_path) -> None:
+        (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
         key = build_answer_key("edit", "safe", {"file_path": "a.py"}, str(tmp_path))
         assert key is not None
         assert (key.tool, key.action) == ("edit", "safe")
@@ -304,19 +457,40 @@ class TestCacheHitIsHonestlyMeasured:
         # One cold row (the compute) and one warm row (the hit), 1 sample each.
         assert _warm_row(recorder).count == 1
 
-    def test_the_measured_cost_of_a_hit_is_not_zero(self, edit_facade) -> None:
+    def test_the_measured_hit_cost_includes_the_key_derivation(
+        self, edit_facade, tmp_path
+    ) -> None:
+        """Review P2-1: ``p50_ns > 0`` did not guard anything.
+
+        The reviewer moved ``build_answer_key`` back OUTSIDE
+        ``recorder.measure`` and both measurement tests still passed — the
+        sub-microsecond dict lookup and ``deepcopy`` left inside the window
+        satisfy ``> 0``, so the assertion could not tell the bug from the fix.
+
+        The real invariant is a RELATIONSHIP between two measured quantities:
+        the recorded warm cost must be at least the same order as a separately
+        timed ``build_answer_key``, because that derivation is the dominant
+        cost of serving a hit. No wall-clock ceiling is asserted.
+        """
         recorder = _reset_recorder()
         _run_edit_safe(edit_facade)
         second = _run_edit_safe(edit_facade)
         assert second["provenance"]["served_from"] == "cache"
-        # Deriving the key costs a source-tree fingerprint, so a hit can never
-        # legitimately be free. Zero here means the key work escaped the window.
-        # The invariant is "serving a hit is not free", NOT a bound on how long
-        # it takes: an exact nanosecond pin would measure the host, and a
-        # ceiling would be the hand-waved kind CLAUDE.md forbids.
-        assert (
-            _warm_row(recorder).p50_ns > 0
-        )  # ratchet: nondeterministic wall-clock duration
+
+        # Time the key derivation on its own, same root, best of several.
+        samples = []
+        for _ in range(5):
+            started = time.perf_counter_ns()
+            build_answer_key("edit", "safe", {"file_path": "target.py"}, str(tmp_path))
+            samples.append(time.perf_counter_ns() - started)
+        key_ns = sorted(samples)[len(samples) // 2]
+
+        measured_ns = _warm_row(recorder).p50_ns
+        print(f"measured_value: warm_p50_ns={measured_ns} key_derivation_ns={key_ns}")
+        # Half of the standalone derivation is a generous floor for scheduling
+        # noise while still being orders of magnitude above the ~1us that the
+        # reverted (key-outside-window) wiring records.
+        assert measured_ns >= key_ns / 2
 
 
 # --------------------------------------------------------------------------
@@ -378,3 +552,129 @@ class TestARealEditInvalidatesTheAnswer:
         self._add_importer(tmp_path, "other.py")
         self._ask(edit_facade)
         assert self._ask(edit_facade)["provenance"]["served_from"] == "cache"
+
+    def test_renaming_the_target_away_is_not_answered_from_cache(
+        self, edit_facade, tmp_path
+    ) -> None:
+        """Review P1-1, the sharpest case: the cached answer said
+        ``success=True, verdict=CAUTION, downstream_count=1`` for a path that
+        no longer existed, where the live code raises ``File not found``.
+        ``git mv`` then a safety check on the old path is a normal refactor.
+        """
+        self._ask(edit_facade)
+        (tmp_path / "target.py").rename(tmp_path / "renamed.py")
+        assert not (tmp_path / "target.py").exists()
+        with pytest.raises(ValueError, match="File not found"):
+            self._ask(edit_facade)
+
+
+class TestTheAllowlistedRoutesDoNotEvictEachOther:
+    """Review P1-3: ``producer_version`` was route-scoped AND inside ``prelude``,
+    whose change evicts the WHOLE cache — so the two allowlisted routes could
+    never be resident together and the hit rate was 0% in the prescribed
+    workflow (``.claude/skills/tsa-edit-safety/SKILL.md:16``,
+    ``tsa-edit-then-verify/SKILL.md:6``). Every call then paid the generation
+    fingerprint for nothing: a net regression.
+
+    Driven through the real ``AnswerCache`` with real keys from
+    ``build_answer_key`` rather than through both facades, because
+    ``health action=file`` cannot be executed against a ``tmp_path`` root at
+    all: ``health_scorer.score_dependencies`` builds a ``DependencyGraph`` for a
+    *different* project root and walks it, which hangs (>500 s). That is
+    pre-existing and unrelated — it is the same
+    ``compute_graph_fingerprint`` <- ``project_graph._cache_key_for`` stack that
+    fails identically on the base commit in ``test_file_health_tool.py`` and the
+    ``test_toon_compact_only`` boundary tests. The interleaved *measurement*
+    runs against the real repo, where that route works.
+    """
+
+    @pytest.fixture
+    def keys(self, tmp_path):
+        (tmp_path / "target.py").write_text(
+            "def thing():\n    return 1\n", encoding="utf-8"
+        )
+        args = {"file_path": "target.py"}
+        edit_key = build_answer_key("edit", "safe", args, str(tmp_path))
+        health_key = build_answer_key("health", "file", args, str(tmp_path))
+        assert edit_key is not None
+        assert health_key is not None
+        return edit_key, health_key
+
+    @staticmethod
+    def _answer(verdict):
+        return {"success": True, "verdict": verdict}
+
+    def test_the_two_routes_share_one_eviction_prelude(self, keys) -> None:
+        """The property the whole fix rests on: the prelude is global."""
+        edit_key, health_key = keys
+        assert edit_key.prelude == health_key.prelude
+
+    def test_the_two_routes_are_still_distinct_keys(self, keys) -> None:
+        edit_key, health_key = keys
+        assert edit_key != health_key
+
+    def test_switching_route_does_not_evict_the_whole_cache(self, keys) -> None:
+        from tree_sitter_analyzer.cache.answer_cache import AnswerCache
+
+        edit_key, health_key = keys
+        cache = AnswerCache()
+        cache.store(edit_key, self._answer("SAFE"))
+        cache.store(health_key, self._answer("INFO"))
+        assert cache.whole_cache_evictions == 0
+
+    def test_both_routes_are_resident_at_the_same_generation(self, keys) -> None:
+        from tree_sitter_analyzer.cache.answer_cache import AnswerCache
+
+        edit_key, health_key = keys
+        cache = AnswerCache()
+        cache.store(edit_key, self._answer("SAFE"))
+        cache.store(health_key, self._answer("INFO"))
+        assert cache.entry_count == 2
+
+    def test_the_prescribed_interleaved_loop_hits_on_every_repeat(self, keys) -> None:
+        """The documented pair, three rounds, no edits: 2 misses then 4 hits.
+
+        Before the fix this was 0 hits / 5 misses / 4 whole-cache evictions.
+        """
+        from tree_sitter_analyzer.cache.answer_cache import AnswerCache
+
+        edit_key, health_key = keys
+        cache = AnswerCache()
+        served = []
+        for _ in range(3):
+            for key, verdict in ((edit_key, "SAFE"), (health_key, "INFO")):
+                if cache.lookup(key) is not None:
+                    served.append("cache")
+                    continue
+                cache.store(key, self._answer(verdict))
+                served.append("computed")
+        assert served == ["computed", "computed", "cache", "cache", "cache", "cache"]
+
+    def test_the_interleaved_loop_never_evicts_the_whole_cache(self, keys) -> None:
+        from tree_sitter_analyzer.cache.answer_cache import AnswerCache
+
+        edit_key, health_key = keys
+        cache = AnswerCache()
+        for _ in range(3):
+            for key, verdict in ((edit_key, "SAFE"), (health_key, "INFO")):
+                if cache.lookup(key) is None:
+                    cache.store(key, self._answer(verdict))
+        assert cache.whole_cache_evictions == 0
+
+    def test_an_action_version_bump_still_misses_without_evicting_the_sibling(
+        self, keys
+    ) -> None:
+        """Route identity must still key the entry — just not the prelude."""
+        import dataclasses
+
+        from tree_sitter_analyzer.cache.answer_cache import AnswerCache
+
+        edit_key, health_key = keys
+        cache = AnswerCache()
+        cache.store(edit_key, self._answer("SAFE"))
+        cache.store(health_key, self._answer("INFO"))
+        bumped = dataclasses.replace(
+            edit_key, producer_version=f"{edit_key.global_producer_version}:pvr1:NEW"
+        )
+        assert cache.lookup(bumped) is None
+        assert cache.lookup(health_key) is not None

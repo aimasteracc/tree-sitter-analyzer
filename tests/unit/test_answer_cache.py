@@ -13,11 +13,14 @@ from __future__ import annotations
 import pytest
 
 from tree_sitter_analyzer.cache.answer_cache import (
+    CERTIFIED_FRESHNESS,
+    NON_CERTIFIED_FRESHNESS,
     AnswerCache,
     AnswerKey,
     get_answer_cache,
     reset_answer_cache,
 )
+from tree_sitter_analyzer.task.freshness import FRESHNESS_STATES
 
 # --------------------------------------------------------------------------
 # helpers
@@ -214,6 +217,32 @@ class TestCertificationGate:
         # the legacy (uncertified-by-design) path — nothing can be stale.
         cache = AnswerCache()
         assert cache.store(_key(), _certified(access_state="not_applicable")) is True
+
+
+class TestFreshnessDenylistIsDerivedFromTheClosedDomain:
+    """Review P2-2: on a function whose failure mode is a PERMANENT lie, the
+    denylist must be the complement of an explicit allowlist over RFC-0022's
+    closed ``FRESHNESS_STATES``. A hand-listed denylist would let a sixth state
+    become silently cacheable.
+    """
+
+    def test_the_two_sets_partition_the_domain(self) -> None:
+        assert CERTIFIED_FRESHNESS | NON_CERTIFIED_FRESHNESS == set(FRESHNESS_STATES)
+
+    def test_the_two_sets_are_disjoint(self) -> None:
+        assert CERTIFIED_FRESHNESS & NON_CERTIFIED_FRESHNESS == set()
+
+    def test_only_fresh_and_not_applicable_are_certified(self) -> None:
+        assert CERTIFIED_FRESHNESS == {"fresh", "not_applicable"}
+
+    def test_every_other_declared_state_is_refused(self) -> None:
+        assert NON_CERTIFIED_FRESHNESS == {"stale", "missing", "unknown"}
+
+    def test_a_new_freshness_state_would_be_refused_not_cached(self) -> None:
+        """The ratchet: adding a state to FRESHNESS_STATES without deciding it
+        is certified must make it non-certified, never cacheable by default."""
+        hypothetical = set(FRESHNESS_STATES) | {"degraded"}
+        assert (hypothetical - CERTIFIED_FRESHNESS) >= {"degraded"}
 
 
 # --------------------------------------------------------------------------

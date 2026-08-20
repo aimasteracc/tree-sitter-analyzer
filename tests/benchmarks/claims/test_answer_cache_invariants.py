@@ -48,14 +48,25 @@ def edit_facade():
     reset_answer_cache()
 
 
+#: Floor on ``p95(first) / p95(repeat)``. Measured on this repo: **~63-70x**
+#: (grouped 3371.6 -> 54.3 ms; interleaved 3967.3 -> 58.2 ms). The floor is set
+#: far below that because its job is NOT to certify a speed — it is to fail when
+#: the cache stops *serving*. ``p95_repeat < p95_first`` alone passed at 1.01x
+#: while the real-workflow hit rate was 0%, so a bare inequality is not a fence.
+#: Raise this only with a fresh measurement recorded alongside.
+_MIN_SPEEDUP_RATIO = 5.0
+
+
 class TestRepeatIsCheaperThanFirst:
-    def test_p95_repeat_is_strictly_below_p95_first(
+    def test_the_repeat_speedup_ratio_clears_its_ratchet(
         self, edit_facade, edit_safe_args
     ) -> None:
-        """The relationship, measured over independent cache generations.
+        """A ratchet on the RATIO, not a bare inequality.
 
-        Each "first" sample runs against an empty cache (the cache is reset),
-        so the two reservoirs are comparable: first = compute, repeat = serve.
+        Each "first" sample runs against an empty cache, so the two reservoirs
+        are comparable: first = compute, repeat = serve. No absolute millisecond
+        ceiling is asserted — the ratio is machine-independent, and a slow host
+        slows both halves.
         """
         first_ns: list[int] = []
         repeat_ns: list[int] = []
@@ -66,11 +77,58 @@ class TestRepeatIsCheaperThanFirst:
 
         p95_first = percentile_ns(first_ns, 95)
         p95_repeat = percentile_ns(repeat_ns, 95)
+        ratio = p95_first / max(p95_repeat, 1)
         print(
             f"measured_value: p95_first_ms={p95_first / 1e6:.3f} "
-            f"p95_repeat_ms={p95_repeat / 1e6:.3f}"
+            f"p95_repeat_ms={p95_repeat / 1e6:.3f} ratio={ratio:.1f}x"
         )
-        assert p95_repeat < p95_first
+        assert ratio >= _MIN_SPEEDUP_RATIO
+
+
+class TestTheInterleavedWorkflowActuallyHits:
+    """The case a grouped-repeat harness cannot see (review P1-3).
+
+    ``edit action=safe`` + ``health action=file`` is the pair this project's own
+    skills prescribe per edit. A route-scoped component in the eviction prelude
+    made them evict each other, so the real-workflow hit rate was **0%** while
+    the grouped benchmark reported a 62x speedup. These assert ``served_from``
+    directly, so the failure mode is visible as data rather than as a timing.
+    """
+
+    @pytest.fixture
+    def pair(self):
+        from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+        from tree_sitter_analyzer.mcp.tools.health_facade import build_health_facade
+
+        reset_answer_cache()
+        yield (
+            (build_edit_facade("."), {"action": "safe", "file_path": _TARGET}),
+            (build_health_facade("."), {"action": "file", "file_path": _TARGET}),
+        )
+        reset_answer_cache()
+
+    @staticmethod
+    def _served(facade, args):
+        result = asyncio.run(facade.execute({**args, "output_format": "json"}))
+        return (result.get("provenance") or {}).get("served_from")
+
+    def test_alternating_the_prescribed_pair_serves_every_repeat_from_cache(
+        self, pair
+    ) -> None:
+        (edit, edit_args), (health, health_args) = pair
+        observed = []
+        for _ in range(3):
+            observed.append(self._served(edit, edit_args))
+            observed.append(self._served(health, health_args))
+        print(f"measured_value: interleaved_served_from={observed}")
+        assert observed == [
+            "computed",
+            "computed",
+            "cache",
+            "cache",
+            "cache",
+            "cache",
+        ]
 
 
 class TestProvenanceDoesNotBreakCompaction:

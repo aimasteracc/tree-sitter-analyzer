@@ -48,6 +48,8 @@ from collections import OrderedDict
 from dataclasses import dataclass, fields
 from typing import Any
 
+from ..task.freshness import FRESHNESS_STATES
+
 #: Bumped whenever the *shape* of a cached payload or the key derivation
 #: changes. Folded into ``producer_version`` so a bump misses every entry.
 ANSWER_CACHE_SCHEMA_VERSION = "answer-cache/v1"
@@ -55,11 +57,21 @@ ANSWER_CACHE_SCHEMA_VERSION = "answer-cache/v1"
 #: Default budget, mirroring the RFC-0022 P0.1 registry's boundedness style.
 DEFAULT_BUDGET_MB = 128
 
-#: Freshness values that are, by definition, not a certified answer. Drawn from
-#: RFC-0022's ``FRESHNESS_STATES`` (``fresh|stale|missing|not_applicable|unknown``);
+#: Separator between the global and route halves of ``producer_version``.
+_ROUTE_VERSION_TAG = "pvr1"
+
+#: The ONLY freshness values that may be cached. ``fresh`` is self-explanatory;
 #: ``not_applicable`` is cacheable because it means no graph evidence was used,
 #: so there is nothing that could have gone stale.
-NON_CERTIFIED_FRESHNESS: frozenset[str] = frozenset({"stale", "missing", "unknown"})
+CERTIFIED_FRESHNESS: frozenset[str] = frozenset({"fresh", "not_applicable"})
+
+#: Everything else in RFC-0022's closed ``FRESHNESS_STATES`` domain. **Derived,
+#: never hand-listed**: this function's failure mode is a *permanent* lie, so a
+#: sixth freshness state must default to "refuse", not to "cacheable". A
+#: hand-written denylist would silently admit it.
+NON_CERTIFIED_FRESHNESS: frozenset[str] = frozenset(
+    FRESHNESS_STATES - CERTIFIED_FRESHNESS
+)
 
 #: RFC-0022 P0.4 ``access_state`` values that mean capability access was NOT
 #: certified. The same soundness rule as ``freshness`` applies in the capability
@@ -100,9 +112,27 @@ class AnswerKey:
     extra_inputs: str
 
     @property
+    def global_producer_version(self) -> str:
+        """The route-INDEPENDENT half of :attr:`producer_version`.
+
+        ``producer_version`` is encoded ``"<global>:pvr1:<route>"``. Only the
+        global half may participate in :attr:`prelude`: when the route half was
+        included, the two allowlisted routes evicted each other on every switch
+        and the cache hit rate was 0% in the prescribed interleaved workflow.
+        """
+        return self.producer_version.split(f":{_ROUTE_VERSION_TAG}:", 1)[0]
+
+    @property
     def prelude(self) -> tuple[str, str, str]:
-        """The three components whose bump evicts the **whole** cache."""
-        return (self.generation, self.producer_version, self.extra_inputs)
+        """The components whose bump evicts the **whole** cache.
+
+        Strictly global: a route-scoped component here would make one route's
+        arrival wipe every other route's entries. Route identity is already
+        carried by :attr:`tool` / :attr:`action` / the route half of
+        :attr:`producer_version`, so it still affects *this* entry's identity
+        without evicting anyone else's.
+        """
+        return (self.generation, self.global_producer_version, self.extra_inputs)
 
 
 @dataclass(frozen=True)
@@ -331,6 +361,7 @@ def reset_answer_cache() -> None:
 
 __all__ = [
     "ANSWER_CACHE_SCHEMA_VERSION",
+    "CERTIFIED_FRESHNESS",
     "DEFAULT_BUDGET_MB",
     "NON_CERTIFIED_ACCESS_STATE",
     "NON_CERTIFIED_FRESHNESS",
@@ -344,4 +375,9 @@ __all__ = [
 
 # Keep the RFC-pinned component count honest at import time rather than only in
 # a test: a field silently added or dropped changes the soundness argument.
-assert len(fields(AnswerKey)) == 6, "AnswerKey must carry exactly six components"
+# A bare ``assert`` would be stripped under ``python -O`` — i.e. it would vanish
+# in exactly the deployment that strips asserts — so this raises explicitly.
+if len(fields(AnswerKey)) != 6:  # pragma: no cover - import-time invariant
+    raise RuntimeError(
+        f"AnswerKey must carry exactly six components, found {len(fields(AnswerKey))}"
+    )
