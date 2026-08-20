@@ -206,6 +206,32 @@ def edit_facade():
     return build_edit_facade(".")
 
 
+def _reset_recorder():
+    """Return an emptied latency recorder.
+
+    The recorder is process-global and is NOT in ``conftest``'s singleton reset
+    list, so a test that reads it must empty it itself rather than reason about
+    what other tests in the same xdist worker recorded.
+    """
+    from tree_sitter_analyzer.latency import get_latency_recorder
+
+    recorder = get_latency_recorder()
+    recorder.reset()
+    return recorder
+
+
+def _warm_row(recorder):
+    """Return the single ``(edit, safe, warm)`` row, asserting it is unique."""
+    rows = [
+        route
+        for route in recorder.snapshot().routes
+        if (route.tool, route.action, route.tier) == ("edit", "safe", "warm")
+    ]
+    assert len(rows) == 1
+    assert rows[0].p50_ns is not None
+    return rows[0]
+
+
 class TestServedFromIsVisible:
     def test_first_call_is_served_from_computed(self, edit_facade) -> None:
         first = _run_edit_safe(edit_facade)
@@ -258,27 +284,17 @@ class TestCacheHitIsHonestlyMeasured:
     def test_a_cache_hit_adds_exactly_one_latency_observation(
         self, edit_facade
     ) -> None:
-        from tree_sitter_analyzer.latency import get_latency_recorder
-
+        recorder = _reset_recorder()
         _run_edit_safe(edit_facade)
-        recorder = get_latency_recorder()
-        before = recorder.snapshot().total_invocations
         _run_edit_safe(edit_facade)
-        assert recorder.snapshot().total_invocations == before + 1
+        # One cold row (the compute) and one warm row (the hit), 1 sample each.
+        assert _warm_row(recorder).count == 1
 
     def test_the_measured_cost_of_a_hit_is_not_zero(self, edit_facade) -> None:
-        from tree_sitter_analyzer.latency import get_latency_recorder
-
-        recorder = get_latency_recorder()
-        recorder.reset()
+        recorder = _reset_recorder()
         _run_edit_safe(edit_facade)
         second = _run_edit_safe(edit_facade)
         assert second["provenance"]["served_from"] == "cache"
-        warm = [
-            route
-            for route in recorder.snapshot().routes
-            if (route.tool, route.action, route.tier) == ("edit", "safe", "warm")
-        ]
-        assert len(warm) == 1
-        assert warm[0].p50_ns is not None
-        assert warm[0].p50_ns > 0
+        # Deriving the key costs a source-tree fingerprint, so a hit can never
+        # legitimately be free. Zero here means the key work escaped the window.
+        assert _warm_row(recorder).p50_ns > 0

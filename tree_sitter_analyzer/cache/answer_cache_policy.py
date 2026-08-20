@@ -263,7 +263,8 @@ def extra_inputs_digest(project_root: str) -> str:
     for relative in _CONSTRAINT_CONFIG_PATHS:
         candidate = os.path.join(project_root, relative)
         try:
-            raw = open(candidate, "rb").read()  # noqa: SIM115
+            with open(candidate, "rb") as handle:
+                raw = handle.read()
         except OSError:
             parts.extend((relative, "absent"))
             continue
