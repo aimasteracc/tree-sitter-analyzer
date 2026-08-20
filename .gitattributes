@@ -10,6 +10,13 @@
 *.toml text eol=lf
 *.txt text eol=lf
 *.json text eol=lf
+# ``*.jsonl`` and ``*.ini`` were missing, so ``* text=auto`` gave them CRLF in
+# a Windows working tree while the blob stayed LF. Any tool that hashes
+# working-tree bytes then produced a digest that disagreed with the committed
+# artifact (NO1-010B corpus provenance). Digests additionally normalise CRLF so
+# they cannot depend on checkout configuration at all.
+*.jsonl text eol=lf
+*.ini text eol=lf
 *.js text eol=lf
 *.ts text eol=lf
 *.html text eol=lf

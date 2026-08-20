@@ -621,10 +621,6 @@ exclude = [
     # Fixture files are deliberate sample code for testing extractors —
     # their import order, dead names, etc. are part of the test surface.
     "tests/fixtures/",
-    # NO1-010B benchmark fixtures are pre-registered corpus DATA (RFC-0026 §1):
-    # each carries a deliberate defect and is pinned by content hash, so an
-    # autofix here would silently invalidate the registration.
-    "benchmarks/no1_010b/fixtures/",
 ]
 
 [tool.ruff.lint]

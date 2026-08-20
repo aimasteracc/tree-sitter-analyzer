@@ -5,8 +5,8 @@ RFC-0026 §3 declared-result protocol. Red on the unmodified fixture: ``load``
 returns ``retries`` as the raw string because ``coerce`` is not wired in, so the
 declared result is ``FAIL`` carrying the registered reason token.
 
-Deliberately self-contained: the registered ``oracle_hash`` must cover the
-whole assertion, so this file imports no shared oracle helper.
+Deliberately self-contained: the registered oracle digest must cover the whole
+assertion, so this file imports no shared oracle helper.
 """
 
 from __future__ import annotations
@@ -14,14 +14,18 @@ from __future__ import annotations
 import os
 import sys
 
+# The fixture import is at module scope and uncaught on purpose: §3 keeps
+# ORACLE_LOAD_ERROR and ORACLE_EXECUTION_ERROR distinct, and §5 requires each
+# to be forced independently, so a broken fixture must fail during load.
+sys.path.insert(0, os.getcwd())
+
+from src.config import load  # noqa: E402
+
 REASON = "retries-not-coerced"
 
 
 def check() -> bool:
     """Return whether ``load`` coerces ``retries`` to a typed integer."""
-    sys.path.insert(0, os.getcwd())
-    from src.config import load
-
     settings = load({"host": "db", "retries": "3"})
     retries = settings["retries"]
     return (
@@ -36,7 +40,7 @@ def main() -> int:
     try:
         held = check()
     except Exception as exc:
-        # A crash is an infrastructure failure, never a behavioral verdict.
+        # A runtime crash after load is an execution error, never a verdict.
         print(f"oracle could not decide: {exc!r}", file=sys.stderr)
         return 1
     print(f"NO1_010B_ORACLE_REASON: {REASON}")

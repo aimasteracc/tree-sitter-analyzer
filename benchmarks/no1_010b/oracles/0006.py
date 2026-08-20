@@ -9,8 +9,8 @@ reason token.
 This is the one seed task whose registered reference patch is deliberately
 wrong; its pre-registered terminal pair is ``FAIL / VERIFICATION_FAILED``.
 
-Deliberately self-contained: the registered ``oracle_hash`` must cover the
-whole assertion, so this file imports no shared oracle helper.
+Deliberately self-contained: the registered oracle digest must cover the whole
+assertion, so this file imports no shared oracle helper.
 """
 
 from __future__ import annotations
@@ -18,14 +18,18 @@ from __future__ import annotations
 import os
 import sys
 
+# The fixture import is at module scope and uncaught on purpose: §3 keeps
+# ORACLE_LOAD_ERROR and ORACLE_EXECUTION_ERROR distinct, and §5 requires each
+# to be forced independently, so a broken fixture must fail during load.
+sys.path.insert(0, os.getcwd())
+
+from src.orders import cancel  # noqa: E402
+
 REASON = "cancel-raises-keyerror"
 
 
 def check() -> bool:
     """Return whether cancelling an unplaced order reports ``False``."""
-    sys.path.insert(0, os.getcwd())
-    from src.orders import cancel
-
     try:
         return cancel("oracle-0006-never-placed") is False
     except KeyError:
@@ -36,7 +40,7 @@ def main() -> int:
     try:
         held = check()
     except Exception as exc:
-        # A crash is an infrastructure failure, never a behavioral verdict.
+        # A runtime crash after load is an execution error, never a verdict.
         print(f"oracle could not decide: {exc!r}", file=sys.stderr)
         return 1
     print(f"NO1_010B_ORACLE_REASON: {REASON}")

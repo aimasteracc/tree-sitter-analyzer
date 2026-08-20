@@ -2,76 +2,103 @@
 
 Last run: 2026-08-16 (P0.4 strace adapter-route certification merged, #1297)
 
-## NO1-010B first VCSR measurement attempt (2026-08-20) — E0, internal only
+## NO1-010B first VCSR measurement attempt (2026-08-20) - E0, internal only
 
-**Result: VCSR is `NOT_PRODUCED`. There is no first VCSR number, and RFC-0026
-says there cannot be one from a model-free run.** Recorded here with full
-provenance so the absence is auditable, not re-discovered.
+**Result: VCSR is `NOT_PRODUCED`. There is no first VCSR number.** Recorded here
+with full provenance so the absence is auditable rather than re-discovered.
 
 - **Artifact:** `benchmarks/no1_010b/report.json`
-  (`schema = no1-010b/report/1`, `run_status = REJECTED_AT_PREFLIGHT`).
+  (`schema = no1-010b/report/2`, `run_status = REJECTED_AT_PREFLIGHT`).
 - **Reproduce:**
   `uv run python -m tree_sitter_analyzer.no1_010b --corpus benchmarks/no1_010b/corpus.jsonl --report benchmarks/no1_010b/report.json`
-- **Provenance:** analyzer commit `9137b39b` (`origin/develop`), analyzer
-  version `1.29.0`, Python 3.13.5, Windows-11-10.0.26200-SP0,
-  corpus sha256 `2957546f9b42a1b19bc15d7e567381b0c39fd14456800ae65732b05f2d2bdb8c`,
-  per-oracle sha256 in the report. **Model calls: 0. Model spend: none.**
+- **Provenance:** analyzer version `1.29.0`, Python 3.13.5,
+  Windows-11-10.0.26200-SP0, corpus sha256
+  `310c00a661df851d7eb3191507561c3d452a6103e571906d67855cf188f6e43b`,
+  fixture-tree sha256
+  `accc83d149d4adb9773c237280473a283b01991e305573d4e0176aac18ac1fad`.
+  The report additionally emits `analyzer.tree_state`,
+  `analyzer.corpus_present_at_commit` and `analyzer.reproducible_at_commit`, so a
+  digest attested against a dirty tree or against a commit that does not contain
+  the corpus is visible rather than implied. Digests normalise CRLF to LF, so
+  they are identical on a Windows and a Linux checkout.
+  **Model calls: 0. Model spend: none.**
 - **Measured VCSR:** `state = NOT_PRODUCED`, `value = null`,
   numerator/denominator `0/0`, per-class/per-repo/per-arm all empty.
-  `0/0` is deliberately not reported as `0%` — no attempt reached a verdict, so
+  `0/0` is deliberately not reported as `0%` - no attempt reached a verdict, so
   the endpoint has no value and a `0.0` would be a fabricated measurement.
 - **Reliability metric** (`successful_indexed_trials / all_trials`):
   `0 / 0`, ratio `null`, threshold `0.99`, `gate_status = NOT_EVALUATED`;
   failure classes `product = 0`, `infrastructure = 0` (zero retained attempts).
-- **B2 status: BLOCKED — did not complete.** Per C39 a run that does not meet
-  the 99% reliability gate per arm and overall cannot advance to baseline; this
-  run never reached the gate because preflight rejected it with **0 attempts
-  consumed** (RFC-0026 §4).
+- **B2 status: BLOCKED - did not complete.** Per C39 a run that does not meet the
+  99% reliability gate per arm and overall cannot advance to baseline; this run
+  never reached the gate because preflight rejected it with **0 attempts
+  consumed** (RFC-0026 section 4).
 
-### Why a model-free VCSR is undefined, not merely unmeasured
+### Two different kinds of block - do not conflate them
 
-The block is at the **spec** level, not the implementation level. RFC-0026 §2
-channel 1 designates the supplied-patch route as "the validation channel, **not
-the agent measurement**", and channel 2 states that at least three distinct,
-non-pooled client/model arms are "a **mandatory B2 completion gate** — a VCSR
-baseline produced only from supplied reference patches does not satisfy
-NO1-010B". Criterion 5 is additionally `UNKNOWN` for any supplied patch without
-a provenance transcript. So even a perfectly executed model-free reference run
-would not be a VCSR baseline. **Producing the first VCSR number requires a
-human budget decision authorizing model spend** (ROADMAP: model spend and
-independent-judge gates are human-controlled; NO1-008A is a precondition and
-NO1-003C is NO-GO).
+An earlier draft of this record said "the block is at the spec level, not the
+implementation level". **That was wrong and it teaches the wrong lesson.** The
+gates split into three categories, and the report now emits the category with
+each gate:
 
-### Gates the report records as `NOT_SATISFIED`
-
-| Gate | Constraint | Why |
+| Category | Meaning | Gates |
 |---|---|---|
-| `patch_verifier_runner` | RFC-0026 B1 | no patch application, isolated worktree, read-only candidate mount, write journal, stale-row projection comparison, or unsupported-relationship evidence check exists |
-| `oracle_red_baseline` | C42/C43 | `oracle.py` returns `UNKNOWN/SANDBOX_FAILURE` for every parsed declaration by design; only B1's trusted wrapper behind a kernel-enforced sandbox may authorize a verdict |
-| `fixture_commit_pinning` | RFC-0026 §1 | in-tree fixtures carry the RFC's all-zero placeholder `repo_commit`, so drift cannot fail closed |
-| `external_registration_anchor` | C14/C27 | a git-committed file is explicitly insufficient for pre-execution ordering |
-| `independent_oracle_signature` | C59 | no reviewer signature over `(task_id, repo_commit, oracle_hash, expected_terminal)` exists |
-| `three_non_pooled_agent_arms` | C31 / §2 | mandatory B2 gate; needs authorized model spend |
-| `paired_control_arms` | C28/C37/C56 | needs evidence-enabled/disabled arm pairs and a complete matrix |
+| `code_blocked` | model-free engineering; needs **no** budget and no external party | `patch_verifier_runner`, `fixture_commit_pinning` |
+| `external_party_blocked` | needs an independent human or an out-of-evaluator-control store; no model spend | `external_registration_anchor` (C14/C27), `independent_oracle_signature` (C59) |
+| `budget_blocked` | needs pre-authorized model spend (human decision) | `three_non_pooled_agent_arms` (C31), `paired_control_arms` (C28/C37/C56) |
 
-### What did land (B0 exit artifact, now real committed data)
+**B1 is entirely model-free and is the open path.** Its exit artifact is 10/10
+pre-registered terminal pairs matched plus the mutation suite forcing every
+reason code - no arms, no spend, no external party. It is blocked only by
+unwritten code: patch application, isolated worktree, read-only candidate mount,
+write journal, stale-row projection comparison, unsupported-relationship
+evidence check. **Schedule B1; it does not need a budget decision.**
+
+The narrow claim that *does* hold: **no model-free run can produce a B2
+baseline.** RFC-0026 section 2 designates the supplied-patch route as "the
+validation channel, **not the agent measurement**", and makes three non-pooled
+client/model arms a mandatory B2 completion gate - "a VCSR baseline produced
+only from supplied reference patches does not satisfy NO1-010B". That is a
+budget decision, and it gates **B2 only**, not B1.
+
+### What landed (B0 partially - registration pieces are still missing)
+
+Landed:
 
 - **10-task seed corpus** at `benchmarks/no1_010b/corpus.jsonl`, loaded by the
   existing strict `load_corpus_records`: 4 bugfix / 2 refactor / 2 migration /
   2 test_selection, 9 `PASS/null` + 1 `FAIL/VERIFICATION_FAILED`, across 3
-  pinned fixture repos (dispatch_app 4, orders_service 4, config_loader 2).
-- **10 self-contained oracles** (`benchmarks/no1_010b/oracles/`), each verified
-  red on its unmodified fixture with the exact registered
-  `oracle_baseline_reason` token; each fixture suite is green
-  (3 / 4 / 3 tests).
-- **Internal-only entry point** `python -m tree_sitter_analyzer.no1_010b`
-  (no MCP facade, no CLI flag, no console script, no codemap surface), guarded
-  by `tests/contracts/test_no1_010b_internal_only_contract.py`.
-- **Claim policy:** E0. No public wording emitted, no README touched, no badge,
-  nothing admitted to the claim registry.
-- **Not landed (B1 scope, deliberately):** reference/mutation patches. The
-  mutation suite that forces every reason code belongs to B1 per §5, and
-  shipping patches that no sandboxed verifier can score would be theatre.
+  fixture repos (dispatch_app 4, orders_service 4, config_loader 2).
+- **10 self-contained oracles**, each **executed by preflight** on its
+  unmodified fixture and required to declare `FAIL` with the exact registered
+  `oracle_baseline_reason` token (RFC-0026 section 3). Fixture imports are at
+  module scope and uncaught, so `ORACLE_LOAD_ERROR` stays reachable and distinct
+  from `ORACLE_EXECUTION_ERROR`.
+- **`verification_argv` is `["uv", "run", "pytest", ...]`.** A bare `python`
+  resolves off PATH and cannot find pytest; because section 3 scores an ordinary
+  nonzero verification exit as the *product* verdict `VERIFICATION_FAILED`, an
+  unpinned interpreter would have reported product failures at 100% reliability -
+  a silently wrong VCSR.
+- **`benchmarks/no1_010b/manifest.json`** pins the corpus, fixture-tree and
+  oracle digests, and preflight **recompares** them. This is an in-repository
+  drift detector, **not** the C14/C27 external anchor.
+- **Internal-only entry point** `uv run python -m tree_sitter_analyzer.no1_010b`
+  (no MCP facade, no CLI flag, no console script, no codemap surface), guarded by
+  `tests/contracts/test_no1_010b_internal_only_contract.py`.
+- **Claim policy:** E0. No public wording, no README touched, no badge, nothing
+  admitted to the claim registry.
+
+Still missing for B0 per RFC-0026 section Phases:
+
+- the **registration registry** (append-only, outside evaluator control);
+- the **independent oracle signature** over
+  `(task_id, repo_commit, oracle_hash, expected_terminal)` (C59);
+- real `repo_commit` pins - the fixtures carry the RFC's all-zero placeholder, so
+  the runner cannot check out a pinned commit and fail closed on drift.
+
+Deliberately not landed: reference/mutation patches. The mutation suite that
+forces every reason code is B1 scope per section 5, and shipping patches that no
+sandboxed verifier can score would be theatre.
 
 ## NO1-010A completion record (2026-08-16)
 
@@ -267,7 +294,7 @@ Active roadmap: [`rfcs/ROADMAP-no1-agent-trust.md`](rfcs/ROADMAP-no1-agent-trust
 - [x] **NO1-007A:** draft RFC for understand / plan_change / assess_change completed; Phase A internal implementation is gated by read-only snapshot Phase 0, while only public ninth-facade registration is gated by the menu experiment
 - [x] **NO1-007B:** RFC-0023 edge evidence/confidence/freshness draft with strict schema, closed golden fixtures, and an E0 denial corpus for a future semantic validator
 - [x] **NO1-010A:** three-task prototype (`understand`/`plan_change`/`assess_change`) implemented as the RFC-0022 Phase A internal-only router + harness; explicit internal-only status, exact contract tests, real CLI smoke (see completion record above)
-- [ ] **NO1-010B:** RFC-0026 change-outcome benchmark — B0 landed (committed 10-task corpus + oracles + internal `python -m` entry point); B1 patch verifier and B2 VCSR baseline are BLOCKED, and the first VCSR number needs a human model-spend decision (see the 2026-08-20 measurement record above)
+- [ ] **NO1-010B:** RFC-0026 change-outcome benchmark — **B0 partially landed** (committed 10-task corpus + oracles + executed red-baseline preflight + digest manifest + internal `python -m` entry point; still missing the append-only registration registry, the C59 independent oracle signatures, and real `repo_commit` pins). **B1 is the open path and is entirely model-free — schedule it, it needs no budget.** Only B2 needs a human model-spend decision (three non-pooled arms). See the 2026-08-20 measurement record above for the gate categories
 - [ ] **NO1-009A:** qualify a second indexed competitor at install/conformance only after NO1-003A; keep an unavailable arm `NOT_EVALUATED`, and require a separately frozen RFC-0021 v2 experiment before comparative inclusion
 
 Execution policy: at most two L2 agents concurrently; implementation agents use

@@ -1,7 +1,6 @@
 """Suite pinning the currently-correct settings loading."""
 
 import pytest
-
 from src.config import coerce, load
 
 

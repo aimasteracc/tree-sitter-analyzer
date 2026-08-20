@@ -6,8 +6,8 @@ no ``/version`` route, so the declared result is ``FAIL`` carrying the
 registered reason token. The selected-test criterion is scored separately
 against the pre-registered affected-test oracle in the corpus record.
 
-Deliberately self-contained: the registered ``oracle_hash`` must cover the
-whole assertion, so this file imports no shared oracle helper.
+Deliberately self-contained: the registered oracle digest must cover the whole
+assertion, so this file imports no shared oracle helper.
 """
 
 from __future__ import annotations
@@ -15,14 +15,18 @@ from __future__ import annotations
 import os
 import sys
 
+# The fixture import is at module scope and uncaught on purpose: §3 keeps
+# ORACLE_LOAD_ERROR and ORACLE_EXECUTION_ERROR distinct, and §5 requires each
+# to be forced independently, so a broken fixture must fail during load.
+sys.path.insert(0, os.getcwd())
+
+from src.dispatch import dispatch  # noqa: E402
+
 REASON = "version-route-missing"
 
 
 def check() -> bool:
     """Return whether ``/version`` answers with the pinned version body."""
-    sys.path.insert(0, os.getcwd())
-    from src.dispatch import dispatch
-
     response = dispatch("/version")
     return (
         getattr(response, "status", None) == 200
@@ -34,7 +38,7 @@ def main() -> int:
     try:
         held = check()
     except Exception as exc:
-        # A crash is an infrastructure failure, never a behavioral verdict.
+        # A runtime crash after load is an execution error, never a verdict.
         print(f"oracle could not decide: {exc!r}", file=sys.stderr)
         return 1
     print(f"NO1_010B_ORACLE_REASON: {REASON}")
