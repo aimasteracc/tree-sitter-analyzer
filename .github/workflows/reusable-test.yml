@@ -135,15 +135,18 @@ jobs:
         if [ "$test_status" -eq 0 ]; then
           exit 0
         fi
-        if [ "$RUNNER_OS" != "Windows" ]; then
-          exit "$test_status"
-        fi
+        # No platform gate. The fail-closed decision lives in the classifier,
+        # which exits non-zero unless EVERY failure was a per-test wall-clock
+        # budget overrun - so an assertion failure still exits with the original
+        # status on every OS. Gating on Windows meant the mitigation did not run
+        # on the platform that needed it most: of six budget overruns observed on
+        # 2026-08-19/20, five were macos-latest 3.11 and one was windows 3.12.
         if ! uv run python scripts/classify_windows_pytest_failure.py \
           pytest-output.txt --nodeids-output windows-budget-retry.txt; then
           exit "$test_status"
         fi
         mapfile -t retry_nodeids < windows-budget-retry.txt
-        echo "Windows runner degradation suspected; retrying budget-only failures once."
+        echo "Runner degradation suspected ($RUNNER_OS); retrying budget-only failures once."
         uv run pytest "${retry_nodeids[@]}" -n auto -q --tb=short --maxfail=200
       shell: bash
 
@@ -261,15 +264,18 @@ jobs:
         if [ "$test_status" -eq 0 ]; then
           exit 0
         fi
-        if [ "$RUNNER_OS" != "Windows" ]; then
-          exit "$test_status"
-        fi
+        # No platform gate. The fail-closed decision lives in the classifier,
+        # which exits non-zero unless EVERY failure was a per-test wall-clock
+        # budget overrun - so an assertion failure still exits with the original
+        # status on every OS. Gating on Windows meant the mitigation did not run
+        # on the platform that needed it most: of six budget overruns observed on
+        # 2026-08-19/20, five were macos-latest 3.11 and one was windows 3.12.
         if ! uv run python scripts/classify_windows_pytest_failure.py \
           pytest-output.txt --nodeids-output windows-budget-retry.txt; then
           exit "$test_status"
         fi
         mapfile -t retry_nodeids < windows-budget-retry.txt
-        echo "Windows runner degradation suspected; retrying budget-only failures once."
+        echo "Runner degradation suspected ($RUNNER_OS); retrying budget-only failures once."
         uv run pytest "${retry_nodeids[@]}" -n auto -q --tb=short --maxfail=200
       shell: bash
 
