@@ -86,9 +86,41 @@ class TestApplyToonCompactOnly:
             dict(_METADATA_HEAVY), "toon", compact_only=True
         )
         assert set(compact) <= TOON_CONTROL_SURFACE
-        assert compact["toon_content"] == legacy["toon_content"]
-        # the headline win: compact is smaller than the duplicating legacy shape
+        # the headline win: compact is smaller than the default shape
         assert len(json.dumps(compact)) < len(json.dumps(legacy))
+
+    def test_compact_only_blob_keeps_what_the_reduction_dropped(self) -> None:
+        """#1321: the reduction is only safe because the blob still has them.
+
+        This assertion previously read ``compact["toon_content"] ==
+        legacy["toon_content"]`` — true only because BOTH blobs were the full
+        payload, i.e. it was pinning the duplication. What actually matters is
+        recoverability: every key compaction removes from the top level must
+        still be in the compact blob.
+        """
+        compact = apply_toon_format_to_response(
+            dict(_METADATA_HEAVY), "toon", compact_only=True
+        )
+        blob = compact["toon_content"]
+        for dropped in ("agent_summary", "queue_ledger", "grade", "metrics"):
+            assert f"{dropped}:" in blob, (
+                f"{dropped} was dropped from the top level AND is missing from "
+                f"the compact blob — it is unrecoverable"
+            )
+
+    def test_default_blob_omits_what_the_top_level_carries(self) -> None:
+        """#1321: the default envelope is disjoint — no key is shipped twice.
+
+        ``agent_summary`` is in TOON_DICT_PASSTHROUGH so it stays at the top
+        level; therefore it must NOT also be inside ``toon_content``. That
+        double-shipping is what made ``edit action=safe`` cost 1.40x JSON.
+        """
+        legacy = apply_toon_format_to_response(dict(_METADATA_HEAVY), "toon")
+        blob = legacy["toon_content"]
+        assert "agent_summary" in legacy
+        assert "agent_summary:" not in blob
+        assert "grade:" not in blob  # retained scalar
+        assert "queue_ledger:" in blob  # stripped dict — blob is its only copy
 
     def test_compact_only_keeps_p04_access_fields_on_control_surface(self) -> None:
         compact = apply_toon_format_to_response(
@@ -103,15 +135,14 @@ class TestApplyToonCompactOnly:
             compact_only=True,
         )
 
+        # #1321: every field here IS the control surface, so compaction keeps
+        # all of them at the top level and the blob has nothing left to encode.
+        # The previous expectation re-listed all five inside toon_content —
+        # that was the duplication, not the contract. The contract asserted
+        # here (P0.4 access fields survive compaction) is unchanged.
         assert compact == {
             "format": "toon",
-            "toon_content": (
-                "success: true\n"
-                "verdict: WARN\n"
-                "access_mode: read_existing\n"
-                "access_state: unknown\n"
-                "access_reason: READ_EXISTING_AUTHORITY_UNCERTIFIED"
-            ),
+            "toon_content": "",
             "success": True,
             "verdict": "WARN",
             "access_mode": "read_existing",

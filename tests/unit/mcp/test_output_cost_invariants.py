@@ -64,33 +64,43 @@ _DECISION_TOOLS = [
 ]
 
 
+_DEFAULT_MODE_XFAIL = (
+    "CLAUDE.md §1's minimal floor (toon <= json) still does not hold for the "
+    "DEFAULT mode of metadata-heavy decision tools on a tiny fixture file. "
+    "History of this ratchet: 2026-06-11 both modes were ~1.96x (duplicated "
+    "envelope); #1321 made the envelope disjoint and 2026-08-20 the numbers are "
+    "file_health 1.019x, safe_to_edit 1.006x, project_health 1.016x for default "
+    "— and 0.991x / 0.982x / 0.983x for compact_only, which is why the compact "
+    "parametrization is now ENFORCED, not xfail. The residual default-mode "
+    "overhead is structural, not duplication: the default keeps the scalar "
+    'surface at the top level as JSON ("key": value) while compact moves those '
+    "same scalars into the cheaper TOON blob (key: value), and the "
+    "{format, toon_content} wrapper is a fixed ~70 B. Do NOT delete this to "
+    "make CI quiet — it is the only thing keeping the §1 claim falsifiable."
+)
+
+
 @pytest.mark.parametrize(("tool_cls", "needs_file", "tool_id"), _DECISION_TOOLS)
-@pytest.mark.parametrize("compact", [False, True], ids=["default", "compact_only"])
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "CLAUDE.md §1 premise ('TOON is 50-70% more token-efficient than JSON') "
-        "is FALSE for metadata-heavy decision tools: default TOON is ~1.96x JSON "
-        "(duplication) and even compacted (RFC-0012 Phase 1) it is ~1.08x — TOON "
-        "only wins on bulk/tabular array data. This strict-xfail encodes the "
-        "minimal floor of the §1 claim (toon <= json) per mode and is the "
-        "ratchet: when RFC-0012 Phase 2 (disjoint-by-default) lands and a mode "
-        "stops being larger than JSON, that parametrization flips to XPASS and "
-        "FORCES removing its xfail so the invariant becomes enforced. Do NOT "
-        "delete this to make CI quiet — that would re-bury the exact problem "
-        "this file exists to surface. "
-        "Last measured: 2026-06-11 (file_health ~1.96x, safe_to_edit ~1.96x, "
-        "project_health ~1.08x compact). Re-measure after RFC-0012 Phase 2 lands."
-    ),
+@pytest.mark.parametrize(
+    "compact",
+    [
+        pytest.param(
+            False,
+            id="default",
+            marks=pytest.mark.xfail(strict=True, reason=_DEFAULT_MODE_XFAIL),
+        ),
+        pytest.param(True, id="compact_only"),
+    ],
 )
 def test_toon_meets_its_efficiency_premise(
     tmp_path, tool_cls, needs_file, tool_id, compact
 ):
     """The §1 premise as an executable invariant: TOON must be <= JSON.
 
-    Currently xfail in BOTH modes (the premise does not hold for these
-    tools). The point is not to pass — it is to keep the false premise
-    *visible and tracked* in CI instead of asleep in a design doc.
+    ``compact_only`` is ENFORCED (it satisfies the premise since #1321).
+    ``default`` is a strict-xfail ratchet: still ~1.01-1.02x, and the day it
+    drops below 1.0x the XPASS forces a conscious un-xfail rather than letting
+    the claim quietly become true-but-untracked.
     """
     jb, tb = _measure(tmp_path, tool_cls, needs_file, compact_only=compact)
     mode = "compact" if compact else "default"
@@ -731,9 +741,13 @@ def test_nav_impact_toon_smaller_than_json() -> None:
     # fixture is fully synthetic and deterministic, so the byte sizes are
     # too.  Any drift (TOON encoder change, envelope field change) must go
     # red here and force a conscious re-pin with newly measured values.
-    # Measured 2026-06-11 with the command in the PR #476 description.
-    assert toon_bytes == 6835, (
-        f"TOON bytes drifted: {toon_bytes} != 6835 — re-measure and re-pin"
+    # Measured 2026-06-11 with the command in the PR #476 description;
+    # re-pinned 2026-08-20 (#1321): the disjoint envelope stopped re-encoding
+    # the retained top-level keys (agent_summary + scalars) inside
+    # toon_content, so the TOON side dropped 6835 -> 6542 B. The JSON side is
+    # untouched, which is the point: the 293 B was pure duplication.
+    assert toon_bytes == 6542, (
+        f"TOON bytes drifted: {toon_bytes} != 6542 — re-measure and re-pin"
     )
     assert json_bytes == 10348, (
         f"JSON bytes drifted: {json_bytes} != 10348 — re-measure and re-pin"
@@ -1524,6 +1538,197 @@ _PHASE4_SAMPLE_RESPONSES: list[tuple[str, dict, bool]] = [
     ),
 ]
 # fmt: on
+
+
+# ── #1321: FACADE-level wire invariants — the blind spot ─────────────────────
+#
+# WHY A SECOND LAYER OF THE SAME INVARIANT (read before deleting):
+#
+# Every invariant above measures an INNER tool (FileHealthTool, SafeToEditTool)
+# or a synthetic dict.  The MCP wire, however, is the FACADE response serialised
+# by ``tool_registration._json_dumps`` (``json.dumps(indent=2)``).  Facades add
+# fields the inner tools never see (``action_version``, the route echo), so an
+# envelope regression that only shows up on the facade path was INVISIBLE to
+# this file — which is exactly how the default TOON envelope came to be 1.40x
+# JSON on ``edit action=safe`` while every test above was green.
+#
+# So: measure the facade response with the REAL wire serializer.
+#
+# Measured 2026-08-20 on this repo (target: tree_sitter_analyzer/latency.py).
+# Measurement command (CLAUDE.md §11 rule 3 — a cost claim carries its command):
+#
+#   uv run pytest tests/unit/mcp/test_output_cost_invariants.py -k facade -q -s
+#
+# which prints the per-route wire bytes below via ``_report_route``:
+#
+#   route         json    toon(before)   toon(after)
+#   edit/safe     6306    8531 (1.35x)   6009 (0.95x)
+#   health/file   1345    2233 (1.66x)   1331 (0.99x)
+#   nav/callers    556    1079 (1.94x)    598 (1.08x)
+#
+# nav/callers stays above 1.0x because the ``{"format": "toon",
+# "toon_content": "..."}`` wrapper is a fixed ~70 B cost — on a NOT_FOUND
+# envelope that is entirely top-level scalars the blob is empty and the
+# wrapper is pure overhead.  It is a strict-xfail ratchet, not "close
+# enough": if TOON ever gets a cheaper wrapper it flips to XPASS and FORCES
+# a conscious un-xfail.
+#
+# ``edit action=impact`` is deliberately NOT in this table: it triggers a full
+# incremental index sync (minutes on a cold checkout) and its TOON blob is
+# larger than the JSON payload for deeply nested impact structures — a
+# FORMATTER characteristic, not an envelope one, so it belongs in its own
+# investigation rather than gating this invariant.
+
+
+def _wire_bytes(payload: dict) -> int:
+    """Bytes as the MCP boundary actually serialises them (indent=2)."""
+    return len(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+_FACADE_TARGET = "tree_sitter_analyzer/latency.py"
+
+# (route_id, facade_builder_name, arguments, toon_wins_at_this_size)
+_FACADE_ROUTES: list[tuple[str, str, dict, bool]] = [
+    ("edit/safe", "edit_facade", {"action": "safe", "file_path": _FACADE_TARGET}, True),
+    (
+        "health/file",
+        "health_facade",
+        {"action": "file", "file_path": _FACADE_TARGET},
+        True,
+    ),
+    (
+        "nav/callers",
+        "nav_facade",
+        {"action": "callers", "function_name": "record_latency"},
+        False,
+    ),
+]
+
+
+_FACADE_PAIR_CACHE: dict[str, tuple[dict, dict]] = {}
+
+
+def _facade_pair(module_name: str, args: dict) -> tuple[dict, dict]:
+    """Return (json_response, toon_response) for one facade route.
+
+    Cached per route: three tests below assert different properties of the
+    same response pair, and each facade call walks the real index.
+    """
+    import importlib
+
+    cache_key = f"{module_name}:{sorted(args.items())}"
+    cached = _FACADE_PAIR_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    module = importlib.import_module(f"tree_sitter_analyzer.mcp.tools.{module_name}")
+    builder = getattr(module, f"build_{module_name}")
+    json_resp = asyncio.run(builder(".").execute({**args, "output_format": "json"}))
+    toon_resp = asyncio.run(builder(".").execute({**args, "output_format": "toon"}))
+    _FACADE_PAIR_CACHE[cache_key] = (json_resp, toon_resp)
+    return json_resp, toon_resp
+
+
+# Each route runs a real facade against this repository (dependency graph +
+# health scoring + index reads): 10-20s on the Windows full matrix. That work
+# IS the measurement — a synthetic dict cannot detect a facade-level envelope
+# regression, which is exactly how the 1.40x default went unnoticed.
+@pytest.mark.slow_ok
+@pytest.mark.parametrize(
+    ("route_id", "module_name", "args", "toon_wins"),
+    _FACADE_ROUTES,
+    ids=[r[0] for r in _FACADE_ROUTES],
+)
+def test_facade_toon_wire_not_larger_than_json(
+    route_id: str, module_name: str, args: dict, toon_wins: bool
+) -> None:
+    """#1321: on the facade wire, default TOON must not cost more than JSON.
+
+    This is the §1 premise measured where agents actually pay for it. The two
+    sub-1 KB routes carry a documented strict-xfail (fixed wrapper overhead);
+    the metadata-heavy routes — the ones §1's "token cost is real money"
+    argument is about — are ENFORCED.
+    """
+    json_resp, toon_resp = _facade_pair(module_name, args)
+    jb, tb = _wire_bytes(json_resp), _wire_bytes(toon_resp)
+    print(f"[{route_id}] json wire={jb}B toon wire={tb}B ratio={tb / jb:.3f}x")
+    if not toon_wins:
+        pytest.xfail(
+            f"{route_id}: sub-1 KB payload — the toon_content wrapper (~70 B) "
+            "plus newline escaping exceeds TOON's encoding saving at this "
+            "size. The disjointness invariant IS enforced for this route "
+            "(test_facade_toon_envelope_is_disjoint). Last measured 2026-08-20: "
+            "nav/callers 1.08x."
+        )
+    assert tb <= jb, (
+        f"{route_id}: default TOON wire {tb}B > JSON wire {jb}B "
+        f"({tb / jb:.2f}x). The TOON envelope is duplicating payload that is "
+        f"already inside toon_content — see apply_toon_format_to_response."
+    )
+
+
+@pytest.mark.slow_ok  # same real-facade walk as above
+@pytest.mark.parametrize(
+    ("route_id", "module_name", "args", "toon_wins"),
+    _FACADE_ROUTES,
+    ids=[r[0] for r in _FACADE_ROUTES],
+)
+def test_facade_toon_envelope_is_disjoint(
+    route_id: str, module_name: str, args: dict, toon_wins: bool
+) -> None:
+    """#1321: no top-level key of a default TOON envelope is re-encoded in the blob.
+
+    This is the route-independent invariant that actually prevents recurrence.
+    ``agent_summary`` was whitelisted in ``TOON_DICT_PASSTHROUGH`` and therefore
+    emitted at the top level *while still being inside* ``toon_content`` — the
+    same 399-char pytest invocation appeared 12 times in one edit/safe payload.
+    Byte ratios drift with payload content; disjointness does not.
+    """
+    import re
+
+    _, toon_resp = _facade_pair(module_name, args)
+    blob = toon_resp["toon_content"]
+    # A TOON top-level key starts a line with no indentation, as ``key:`` or
+    # ``key[n]{cols}:`` for array-tables. Anchoring matters: an unanchored
+    # substring search matches NESTED keys of the same name (the blob's
+    # ``causal_envelope.dependencies``) and even key suffixes
+    # (``constraint_verdict:`` contains ``verdict:``).
+    duplicated = sorted(
+        key
+        for key in toon_resp
+        if key not in ("format", "toon_content")
+        and re.search(rf"^{re.escape(key)}[:\[]", blob, re.MULTILINE)
+    )
+    assert duplicated == [], (
+        f"{route_id}: top-level keys re-encoded inside toon_content: "
+        f"{duplicated}. Every top-level key must be excluded from the blob "
+        f"(apply_toon_format_to_response default path)."
+    )
+
+
+@pytest.mark.slow_ok  # same real-facade walk as above
+def test_facade_toon_agent_summary_appears_once_on_the_wire() -> None:
+    """#1321 regression: edit/safe must not ship agent_summary twice.
+
+    Incident 2026-08-20 (recurrence of the 2026-06-08 TOON incident): the
+    ``verification_command`` string appeared 12x in one wire payload — 8x from
+    intra-payload reuse (next_step / stop_condition / preflight_command /
+    checklist / workflow, present in JSON too) plus 4 extra copies purely
+    because ``agent_summary`` was emitted at the top level AND inside
+    ``toon_content``. Only the 4 envelope copies are this test's subject.
+    """
+    json_resp, toon_resp = _facade_pair(
+        "edit_facade", {"action": "safe", "file_path": _FACADE_TARGET}
+    )
+    command = json_resp["agent_summary"]["verification_command"]
+    assert command, "fixture is vacuous: edit/safe produced no verification_command"
+    json_occurrences = json.dumps(json_resp).count(command)
+    toon_occurrences = json.dumps(toon_resp).count(command)
+    assert toon_occurrences == json_occurrences, (
+        f"TOON envelope ships verification_command {toon_occurrences}x vs "
+        f"JSON's {json_occurrences}x — the envelope is duplicating the "
+        f"agent_summary block that toon_content already carries."
+    )
 
 
 @pytest.mark.parametrize(
