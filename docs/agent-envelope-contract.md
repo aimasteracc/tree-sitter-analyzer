@@ -92,23 +92,41 @@ count + cap, interpolated `next_step` — is the contract.
 
 ## Control surface (`compact_only`, RFC-0012)
 
-TOON responses (`output_format: "toon"`, the MCP default) put the full payload
-in `toon_content` and keep scalar metadata alongside it. Passing
-`compact_only: true` strips even that metadata down to the **control
-surface** — the only keys an agent may branch on without parsing the TOON
-blob. Source of truth: `TOON_CONTROL_SURFACE` in
+TOON responses (`output_format: "toon"`, the MCP default) are **disjoint**
+(#1321): the top level carries the branchable scalar metadata, and
+`toon_content` carries **everything the top level does not** — never both.
+Read a field from the top level when it is there, and parse `toon_content`
+for the rest; nothing is shipped twice.
+
+**`toon_content` can legitimately be `""`.** A response made entirely of
+scalars is carried entirely at the top level, so the blob has nothing left to
+encode — `index action=status` on an unindexed project is exactly this shape.
+Do NOT treat an empty blob as an error or as an empty result: read the
+top-level fields. A client that branches on `if format == "toon": parse(blob)`
+and ignores the siblings will see nothing on those routes.
+
+Passing `compact_only: true` trades that disjointness for minimality: the top
+level shrinks to the **control surface** — the only keys an agent may branch on
+without parsing the TOON blob — and `toon_content` becomes the *complete*
+payload so every dropped key stays recoverable. Source of truth:
+`TOON_CONTROL_SURFACE` in
 [`tree_sitter_analyzer/mcp/utils/format_helper.py`](../tree_sitter_analyzer/mcp/utils/format_helper.py);
 the reduction (`reduce_to_control_surface`) is idempotent and is re-applied at
 the MCP boundary
 ([`tree_sitter_analyzer/mcp/server_utils/tool_registration.py`](../tree_sitter_analyzer/mcp/server_utils/tool_registration.py))
-*after* canonical-envelope normalization re-adds `summary_line`.
+*after* canonical-envelope normalization re-adds `summary_line`. That
+re-application only runs on an envelope the tool had **already** reduced —
+reducing a default (disjoint) envelope would delete keys that `toon_content`
+no longer carries. So a tool that accepts `compact_only` at the facade but
+never forwards it to its inner tool returns the default envelope, which after
+#1321 is already smaller than the old compacted one.
 
 <!-- drift:control-surface:start -->
 | Field | Why it survives compaction |
 |---|---|
 | `success` | The one mandatory branch: did the call work at all. |
 | `format` | `"toon"` marker — tells the client the payload is in `toon_content`. |
-| `toon_content` | The full TOON-encoded payload (everything stripped from the top level is recoverable here). |
+| `toon_content` | The TOON-encoded payload. Under `compact_only` it is the *complete* payload, so everything the reduction dropped is recoverable here. |
 | `verdict` | Canonical branching verdict (table above). |
 | `error` | Failure description on `success: false`. |
 | `error_type` | Machine-stable error category for programmatic handling. |
@@ -125,8 +143,8 @@ the MCP boundary
 | `deprecation` | Legacy-name shim migration warning — the shim's only in-band signal, injected after `toon_content` is built, so it must survive. |
 <!-- drift:control-surface:end -->
 
-Everything else in a TOON response is duplicated metadata and is dropped
-under `compact_only`; parse `toon_content` when you need the full payload.
+Everything else at the top level of a TOON response is dropped under
+`compact_only`; parse `toon_content` when you need it.
 
 ## Worked examples (paste-real)
 

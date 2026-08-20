@@ -849,17 +849,13 @@ _ACCESS_EVIDENCE: dict[str, Any] = {
     "access_reason": "READ_EXISTING_AUTHORITY_UNCERTIFIED",
     "source_snapshots": [],
 }
-_ACCESS_EVIDENCE_TOON = (
-    "success: true\n"
-    "verdict: WARN\n"
-    "access_mode: read_existing\n"
-    "access_state: unknown\n"
-    "access_reason: READ_EXISTING_AUTHORITY_UNCERTIFIED\n"
-    "source_snapshots: []\n"
-    "output_format: toon\n"
-    # RFC-0022 P0.5: wire owner echo in the TOON control surface.
-    "action_version: nav.context/v1"
-)
+# #1321: the TOON envelope is disjoint. This access-evidence payload is
+# entirely scalars plus one empty list, so the envelope carries all of it at the
+# top level (asserted via _ACCESS_EVIDENCE below, plus action_version /
+# output_format) and ``toon_content`` has nothing left to encode. The previous
+# value re-listed every field a second time — that was the duplication, not the
+# RFC-0022 P0.4/P0.5 contract, which is unchanged.
+_ACCESS_EVIDENCE_TOON = ""
 
 
 def test_context_forwards_explicit_read_existing_capability() -> None:

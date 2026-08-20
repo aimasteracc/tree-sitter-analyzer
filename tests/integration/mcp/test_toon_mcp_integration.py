@@ -351,9 +351,15 @@ class TestApplyToonFormatToResponse:
 
         toon_content = response["toon_content"]
 
-        # TOON content should contain the data
-        assert "success: true" in toon_content
-        assert "count: 2" in toon_content
+        # #1321: the envelope is disjoint — ``success`` and ``count`` are
+        # scalars the top level carries, so they are NOT re-encoded in the
+        # blob. "toon_content contains all original data" now means: the blob
+        # holds the bulk, and the scalars are one level up. Nothing is lost,
+        # and nothing is paid for twice.
+        assert response["success"] is True
+        assert response["count"] == 2
+        assert "success:" not in toon_content
+        assert "count:" not in toon_content
         assert "method1" in toon_content
         assert "method2" in toon_content
 

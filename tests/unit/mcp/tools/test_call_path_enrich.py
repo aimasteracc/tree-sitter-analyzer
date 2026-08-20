@@ -470,5 +470,9 @@ def test_tool_toon_format_carries_bodies(tmp_path):
     toon = result["toon_content"]
     # Bodies and deterrent survive TOON serialization.
     assert "source_bodies" in toon
-    assert "next_step" in toon
     assert "GAMMA_BODY_MARKER" in toon
+    # #1321: ``next_step`` is a top-level scalar, so the disjoint envelope no
+    # longer re-encodes it inside the blob. The deterrent still reaches the
+    # caller — asserted where the envelope contract puts it.
+    assert "next_step" not in toon
+    assert result["next_step"]
