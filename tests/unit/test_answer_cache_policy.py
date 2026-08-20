@@ -596,8 +596,10 @@ class TestTheAllowlistedRoutesDoNotEvictEachOther:
         args = {"file_path": "target.py"}
         edit_key = build_answer_key("edit", "safe", args, str(tmp_path))
         health_key = build_answer_key("health", "file", args, str(tmp_path))
-        assert edit_key is not None
-        assert health_key is not None
+        if edit_key is None or health_key is None:  # pragma: no cover - setup guard
+            raise AssertionError(
+                "both allowlisted routes must yield a key for this fixture's tree"
+            )
         return edit_key, health_key
 
     @staticmethod
