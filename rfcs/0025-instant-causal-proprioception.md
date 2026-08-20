@@ -82,6 +82,36 @@ file edit reflects in the causality index in **< 50 ms median** after save
 (measured by a new `tests/benchmarks/test_causality_latency.py`), with zero
 agent-visible re-index waits.
 
+**Implementation status (partial — the derivation landed, the watcher did not):**
+
+`tree_sitter_analyzer/mcp/tools/utils/dependents_index.py` implements the
+`dependents` row of the table above for the `edit.safe` pre-edit gate, derived
+from `ast_index.imports_json` rather than precomputed into a new reverse-edge
+table. A second dependents store was rejected deliberately: the AST cache
+already holds the import projection, and a parallel materialised reverse index
+is a second source of truth that has to be invalidated in lockstep — the drift
+class this project keeps paying for. The tree is still enumerated per call
+(`os.scandir`, no reads) because completeness requires accounting for files the
+index has never seen; only files whose `(mtime_ns, file_size)` do not match
+their row are read.
+
+**What is NOT in this increment:** the file watcher, the budget/eviction policy
+(`WATCH_INDEX_BUDGET_MB`, `WATCH_INDEX_ROWS`), and therefore the `< 50 ms`
+criterion above, which is a *post-save propagation* measurement that only a
+watch loop can satisfy. Without the watcher the per-call floor is the
+enumeration itself — measured at ~55 ms of `os.scandir` over 2,383 files on
+this repository, plus ~40 ms to read the index inventory. A watcher would
+replace both with an in-memory inventory kept current by events, removing that
+~95 ms floor and closing the mtime-preserving-replacement hole documented in
+the module. It is a separate change with its own budget and eviction policy and
+is not attempted here.
+
+Measured effect of this increment on the dependents derivation alone, 27
+targets on this repository (windows, E0, 2026-08-20): p50 830 ms -> 142 ms
+(5.9x), p95 894 ms -> 267 ms. It also removed 1,554 reported dependents that a
+filesystem-confirmed resolver says do not import the target, and added 3 that
+the previous scan missed; see the PR body for the full table.
+
 ### Layer 2 — Edit-time causal envelope (reflexes)
 
 `edit.safe` (and the read_existing certified path from #1299) grows a

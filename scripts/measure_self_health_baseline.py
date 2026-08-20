@@ -57,7 +57,9 @@ WARM_REPEATS = 5
 
 BASELINE_DIR = REPO_ROOT / "docs" / "baselines"
 ROADMAP_ID = "RFC-0025-L5"
-SCHEMA_VERSION = 1
+#: 2 adds ``cold_key_workflow`` (RFC-0025 L1): the edit-then-check row that
+#: neither the grouped nor the interleaved phase could express.
+SCHEMA_VERSION = 2
 
 #: Representative routes. Deliberately small and deliberately spread across
 #: the cost spectrum measured on this repo: a cheap single-file structural
@@ -91,6 +93,14 @@ INTERLEAVED_ROUTES: tuple[tuple[str, str, dict[str, Any]], ...] = (
 #: Rounds of the interleaved pair. Round 1 is cold for both; every later round
 #: is a repeat at an unchanged generation and must hit.
 INTERLEAVED_ROUNDS = 4
+
+#: The file the cold-key phase edits. It is the same target the routes above
+#: use, so the cold-key row is directly comparable with the warm rows.
+COLD_KEY_TARGET = "tree_sitter_analyzer/latency.py"
+
+#: Rounds of edit-then-check. Every round bumps the generation, so every round
+#: is a cache miss by construction.
+COLD_KEY_ROUNDS = 3
 
 _FACADE_BUILDERS = {
     "structure": "structure_facade.build_structure_facade",
@@ -278,6 +288,91 @@ def _ast_index_state(project_root: str) -> dict[str, Any]:
     return _ast_index_report(project_root)
 
 
+async def _drive_cold_key(project_root: str, rounds: int) -> dict[str, Any]:
+    """Edit a file, then call ``edit action=safe`` — the number the loop pays.
+
+    Neither phase above measures this. ``routes_driven`` and
+    ``interleaved_workflow`` both repeat a question at an **unchanged**
+    generation, which is exactly the case the L6.1 answer cache already made
+    cheap. The real edit loop is edit -> check -> edit -> check, and every edit
+    bumps the generation, so every check in it is a first call at a new key.
+    That is the latency an agent actually experiences and the one that decides
+    whether the gate gets used at all.
+
+    Each round appends a comment to :data:`COLD_KEY_TARGET`, so the source-tree
+    digest changes and the answer cannot be served from cache. ``served_from``
+    is recorded to prove that; a ``"cache"`` value here would mean the edit was
+    invisible to the key, which is a correctness bug, not a fast result. The
+    original bytes are restored in a ``finally`` block and the restore is
+    verified, because a half-restored file would silently invalidate the
+    provenance of the whole artifact.
+    """
+    facade = _build_facade("edit", project_root)
+    target = REPO_ROOT / COLD_KEY_TARGET
+    original = target.read_bytes()
+    row: dict[str, Any] = {
+        "target": COLD_KEY_TARGET,
+        "rounds": rounds,
+        "elapsed_ms": [],
+        "served_from": [],
+        "dependents_basis": [],
+        "errors": [],
+    }
+    try:
+        # One priming call so the measured rounds isolate the generation bump
+        # rather than first-import cost.
+        await facade.execute({"action": "safe", "file_path": COLD_KEY_TARGET})
+        for index in range(rounds):
+            probe = f"\n# rfc0025-l1 cold-key probe {index}\n".encode()
+            target.write_bytes(original + probe)
+            started = time.perf_counter_ns()
+            try:
+                result = await facade.execute(
+                    {"action": "safe", "file_path": COLD_KEY_TARGET}
+                )
+            except Exception as exc:  # noqa: BLE001 — record, never abort
+                row["errors"].append(f"{type(exc).__name__}: {exc}")
+                continue
+            elapsed_ms = (time.perf_counter_ns() - started) / 1_000_000.0
+            row["elapsed_ms"].append(round(elapsed_ms, 3))
+            provenance = result.get("provenance") if isinstance(result, dict) else None
+            row["served_from"].append(
+                provenance.get("served_from") if isinstance(provenance, dict) else None
+            )
+            row["dependents_basis"].append(
+                result.get("dependents_basis") if isinstance(result, dict) else None
+            )
+    finally:
+        target.write_bytes(original)
+        row["restored"] = target.read_bytes() == original
+
+    samples = row["elapsed_ms"]
+    row["p50_ms"] = _percentile(samples, 0.50) if samples else None
+    row["p95_ms"] = _percentile(samples, 0.95) if samples else None
+    served = row["served_from"]
+    # A hit here means the edit did not reach the cache key.
+    row["verdict"] = (
+        "OK"
+        if row["restored"] and served and all(s == "computed" for s in served)
+        else "COLD_KEY_NOT_COLD"
+        if served and any(s == "cache" for s in served)
+        else "COLD_KEY_NOT_MEASURED"
+    )
+    print(
+        f"  cold-key: {len(samples)}/{rounds} measured, p50="
+        f"{row['p50_ms']} ms ({row['verdict']})",
+        file=sys.stderr,
+    )
+    return row
+
+
+def _percentile(samples: list[float], quantile: float) -> float:
+    """Nearest-rank percentile — an exact sample value, no interpolation."""
+    ordered = sorted(samples)
+    index = min(len(ordered) - 1, int(quantile * len(ordered)))
+    return ordered[index]
+
+
 async def _collect(
     project_root: str, warm_repeats: int, *, allow_dirty: bool
 ) -> dict[str, Any]:
@@ -300,6 +395,8 @@ async def _collect(
     )
     print("Driving the prescribed pair interleaved...", file=sys.stderr)
     interleaved = await _drive_interleaved(project_root, INTERLEAVED_ROUNDS)
+    print("Driving the cold-key edit->check loop...", file=sys.stderr)
+    cold_key = await _drive_cold_key(project_root, COLD_KEY_ROUNDS)
     finished = datetime.now(timezone.utc)
 
     return {
@@ -374,6 +471,17 @@ async def _collect(
             "a 0% real-workflow cache hit rate behind a 62x grouped-repeat "
             "speedup (RFC-0027 L6.1 review P1-3). Judge the answer cache on "
             "these rows, not on the warm column above."
+        ),
+        "cold_key_workflow": cold_key,
+        "cold_key_workflow_note": (
+            "edit-then-check: the file is modified and edit action=safe is "
+            "called immediately, so every observation is a FIRST call at a new "
+            "generation. Both phases above repeat a question at an unchanged "
+            "generation, which the L6.1 answer cache already made cheap; this "
+            "is the row the real edit loop pays and the one RFC-0025 L1 exists "
+            "to move. served_from must be 'computed' on every round — a 'cache' "
+            "value would mean the edit did not reach the key. dependents_basis "
+            "records whether the L1 derived path or the fallback scan answered."
         ),
         "reproduction_command": (
             "uv run python scripts/measure_self_health_baseline.py"
