@@ -19,8 +19,34 @@ runs:
       if: inputs.os == 'ubuntu-latest'
       run: |
         echo "Installing fd and ripgrep on Linux..."
-        sudo apt-get update
-        sudo apt-get install -y fd-find ripgrep
+
+        # archive.ubuntu.com intermittently stalls without ever failing, which
+        # burned the entire 20-minute job timeout before a single test ran and
+        # cancelled every ubuntu axis (observed 5/5 attempts on 2026-08-19, and
+        # on develop's own run in the same window). A bare `apt-get update` has
+        # no wall-clock bound of its own, so bound it here.
+        #
+        # Deliberately NOT done: raising the job timeout or continue-on-error.
+        # Both would hide the hang instead of surviving it. This fails loudly
+        # after a bounded number of bounded attempts.
+        apt_with_timeout() {
+          local what="$1"; shift
+          local attempt
+          for attempt in 1 2 3; do
+            if timeout 180 "$@"; then
+              return 0
+            fi
+            echo "::warning::${what} attempt ${attempt}/3 timed out or failed; retrying"
+            sleep $(( attempt * 5 ))
+          done
+          echo "::error::${what} failed after 3 bounded attempts"
+          return 1
+        }
+
+        # -o Acquire::Retries makes apt itself retry a stalled mirror connection,
+        # and the timeouts stop a single hung socket from consuming the attempt.
+        apt_with_timeout "apt-get update" sudo apt-get update           -o Acquire::Retries=3           -o Acquire::http::Timeout=30           -o Acquire::https::Timeout=30
+        apt_with_timeout "apt-get install" sudo apt-get install -y fd-find ripgrep
 
         # Create symlink for fd command (Ubuntu packages it as fdfind)
         sudo ln -sf /usr/bin/fdfind /usr/bin/fd
