@@ -9,15 +9,15 @@
   "public_claim_policy": "E0-E3 emit no public or competitive wording (RFC-0026 \u00a74). This report is internal evidence only and is not admitted to the claim registry.",
   "provenance": {
     "analyzer": {
-      "commit": "6245eda4cead824cc62c7d6d8abe393e7eed4191",
+      "commit": "9c004fc8b4802c8ab58078395d23eaeec3d73286",
       "version": "1.29.0",
-      "tree_state": "dirty",
+      "tree_state": "clean",
       "corpus_present_at_commit": true,
-      "reproducible_at_commit": false
+      "reproducible_at_commit": true
     },
     "corpus_path": "benchmarks/no1_010b/corpus.jsonl",
     "corpus_sha256": "310c00a661df851d7eb3191507561c3d452a6103e571906d67855cf188f6e43b",
-    "fixture_tree_sha256": "accc83d149d4adb9773c237280473a283b01991e305573d4e0176aac18ac1fad",
+    "fixture_tree_sha256": "f51055a82726490d52d95cdec7c529c078e43d1eeb4f641e0c47853353995c6b",
     "oracle_digests": [
       {
         "oracle": "oracles/0001.py",
