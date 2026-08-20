@@ -1,8 +1,8 @@
 {
   "cold_column_caveat": "Every cold row is ONE observation and depends on the on-disk AST-index state recorded in preconditions.ast_index_before. Measured spread on one host at one commit: edit/safe cold p50 18014.645 / 14065.642 / 4104.113 ms (3.4x) purely from that state. Treat cold as indicative of magnitude only; do NOT use it in any cross-run or cross-commit comparison. Warm rows were stable (3845 / 3394 / 3624 ms) and are the comparable column.",
   "cold_column_status": "INDICATIVE_SINGLE_OBSERVATION",
-  "collection_finished_at_utc": "2026-08-20T05:19:39.447083+00:00",
-  "collection_started_at_utc": "2026-08-20T05:18:43.788542+00:00",
+  "collection_finished_at_utc": "2026-08-20T06:50:06.484349+00:00",
+  "collection_started_at_utc": "2026-08-20T06:49:20.448796+00:00",
   "environment": {
     "machine": "AMD64",
     "os": "Windows-11-10.0.26200-SP0",
@@ -29,10 +29,10 @@
       "edit.safe": {
         "action": "safe",
         "elapsed_ms": [
-          4168.11,
-          45.736,
-          37.689,
-          60.649
+          3453.468,
+          52.732,
+          50.456,
+          68.978
         ],
         "errors": [],
         "params": {
@@ -49,10 +49,10 @@
       "health.file": {
         "action": "file",
         "elapsed_ms": [
-          493.116,
-          38.577,
-          41.636,
-          39.493
+          482.115,
+          51.319,
+          61.093,
+          51.501
         ],
         "errors": [],
         "params": {
@@ -175,8 +175,8 @@
       {
         "action": "safe",
         "count": 1,
-        "p50_ms": 4259.698,
-        "p95_ms": 4259.698,
+        "p50_ms": 3331.91,
+        "p95_ms": 3331.91,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "edit"
@@ -184,8 +184,8 @@
       {
         "action": "safe",
         "count": 5,
-        "p50_ms": 44.384,
-        "p95_ms": 51.512,
+        "p50_ms": 47.218,
+        "p95_ms": 60.32,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "edit"
@@ -193,8 +193,8 @@
       {
         "action": "file",
         "count": 1,
-        "p50_ms": 16656.678,
-        "p95_ms": 16656.678,
+        "p50_ms": 11757.68,
+        "p95_ms": 11757.68,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "health"
@@ -202,8 +202,8 @@
       {
         "action": "file",
         "count": 5,
-        "p50_ms": 44.048,
-        "p95_ms": 47.979,
+        "p50_ms": 49.742,
+        "p95_ms": 58.421,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "health"
@@ -211,8 +211,8 @@
       {
         "action": "callers",
         "count": 1,
-        "p50_ms": 27500.063,
-        "p95_ms": 27500.063,
+        "p50_ms": 24915.379,
+        "p95_ms": 24915.379,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "nav"
@@ -220,8 +220,8 @@
       {
         "action": "callers",
         "count": 5,
-        "p50_ms": 23.617,
-        "p95_ms": 28.863,
+        "p50_ms": 20.51,
+        "p95_ms": 23.327,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "nav"
@@ -229,8 +229,8 @@
       {
         "action": "outline",
         "count": 1,
-        "p50_ms": 484.774,
-        "p95_ms": 484.774,
+        "p50_ms": 178.526,
+        "p95_ms": 178.526,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "structure"
@@ -238,8 +238,8 @@
       {
         "action": "outline",
         "count": 5,
-        "p50_ms": 4.65,
-        "p95_ms": 5.597,
+        "p50_ms": 3.188,
+        "p95_ms": 3.613,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "structure"
@@ -255,7 +255,7 @@
   },
   "source": {
     "branch": "feature/l6-generation-keyed-answer-cache",
-    "commit": "28c29e95e7bff46bd8189db30c01b27c2ba9ad28"
+    "commit": "80c84776c570f928f55118ef9d89f4bc305423ce"
   },
   "warm_repeats": 5
 }
