@@ -35,6 +35,21 @@ from tree_sitter_analyzer.source_oracle_git import GitEpoch, oracle_generation
 
 _BUDGET = 64 * 1024 * 1024
 
+# Every test taking the ``git_repo`` fixture pays real `git` subprocess cost:
+# 7 spawns to build the fixture repo, then ``_assert_equal_payloads`` drives
+# BOTH capture backends (frozen + zero-write) over that repo. That is
+# git-integration cost, not unit-perf signal, so the conftest per-test
+# wall-clock budget cannot say anything useful about it — on a shared runner
+# the same test measured 5.07s and 6.06s against a 5.0s ceiling
+# (CI develop runs 32246819262 and 32256066101, macos-latest 3.11).
+#
+# 7 of these were already exempted one-at-a-time as each happened to trip the
+# budget on some runner; 35 more were still unmarked and equally exposed. The
+# marker now follows the cost driver (the fixture) instead of whichever test
+# lost the scheduling lottery. The 10 tests in this file that do NOT take
+# ``git_repo`` are pure-logic helpers and stay fully budgeted.
+GIT_CAPTURE_COST = pytest.mark.slow_ok
+
 
 @pytest.fixture()
 def git_repo(tmp_path) -> str:
@@ -107,12 +122,14 @@ def test_clean_repo_payloads_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_dirty_payloads_match(git_repo: str) -> None:
     Path(git_repo, "base.py").write_text("value = 2\nline2\n", encoding="utf-8")
     _assert_equal_payloads(git_repo, "diff", 1)
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_untracked_text_and_dirty_payloads_match(git_repo: str) -> None:
     Path(git_repo, "base.py").write_text("value = 3\n", encoding="utf-8")
     Path(git_repo, "new.py").write_text("brand = 'new'\n", encoding="utf-8")
@@ -123,12 +140,14 @@ def test_untracked_text_and_dirty_payloads_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_deleted_payloads_match(git_repo: str) -> None:
     Path(git_repo, "keep.py").unlink()
     _assert_equal_payloads(git_repo, "diff", 1)
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_untracked_executable_payloads_match(git_repo: str) -> None:
     script = Path(git_repo, "run.sh")
     script.write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
@@ -137,30 +156,35 @@ def test_untracked_executable_payloads_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_untracked_no_newline_payloads_match(git_repo: str) -> None:
     Path(git_repo, "nonl.txt").write_bytes(b"no-newline")
     _assert_equal_payloads(git_repo, "diff", 1)
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_untracked_binary_payloads_match(git_repo: str) -> None:
     Path(git_repo, "bin.dat").write_bytes(b"\x00\x01\x02\x03binary\x00")
     _assert_equal_payloads(git_repo, "diff", 1)
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_untracked_symlink_payloads_match(git_repo: str) -> None:
     os.symlink("base.py", os.path.join(git_repo, "link.py"))
     _assert_equal_payloads(git_repo, "diff", 1)
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_exact_worktree_rename_payloads_match(git_repo: str) -> None:
     os.rename(os.path.join(git_repo, "base.py"), os.path.join(git_repo, "moved.py"))
     _assert_equal_payloads(git_repo, "diff", 1)
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_rename_plus_dirty_payloads_match(git_repo: str) -> None:
     os.rename(os.path.join(git_repo, "base.py"), os.path.join(git_repo, "moved.py"))
     Path(git_repo, "keep.py").write_text("keep = 2\n", encoding="utf-8")
@@ -168,6 +192,7 @@ def test_rename_plus_dirty_payloads_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_staged_add_payloads_match(git_repo: str) -> None:
     Path(git_repo, "staged.py").write_text("s = 1\n", encoding="utf-8")
     subprocess.run(["git", "-C", git_repo, "add", "staged.py"], check=True)
@@ -177,6 +202,7 @@ def test_staged_add_payloads_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_staged_rename_payloads_match(git_repo: str) -> None:
     Path(git_repo, "base.py").write_text("value = 9\n", encoding="utf-8")
     subprocess.run(["git", "-C", git_repo, "add", "base.py"], check=True)
@@ -185,6 +211,7 @@ def test_staged_rename_payloads_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_double_dirty_payloads_match(git_repo: str) -> None:
     Path(git_repo, "base.py").write_text("value = 5\n", encoding="utf-8")
     subprocess.run(["git", "-C", git_repo, "add", "base.py"], check=True)
@@ -193,6 +220,7 @@ def test_double_dirty_payloads_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_modified_worktree_move_surfaces_delete_plus_add(git_repo: str) -> None:
     """Documented divergence: an inexact move is D+A, never a fake R."""
     Path(git_repo, "base.py").write_text("value = 1\n", encoding="utf-8")
@@ -220,6 +248,7 @@ def test_modified_worktree_move_surfaces_delete_plus_add(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_conversion_guard_fails_closed_on_autocrlf(git_repo: str) -> None:
     subprocess.run(
         ["git", "-C", git_repo, "config", "core.autocrlf", "true"], check=True
@@ -230,6 +259,7 @@ def test_conversion_guard_fails_closed_on_autocrlf(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_conversion_guard_passes_without_crlf(git_repo: str) -> None:
     subprocess.run(
         ["git", "-C", git_repo, "config", "core.autocrlf", "true"], check=True
@@ -239,6 +269,7 @@ def test_conversion_guard_passes_without_crlf(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_conversion_guard_fails_closed_on_eol_attribute(git_repo: str) -> None:
     Path(git_repo, ".gitattributes").write_text(
         "base.py text eol=crlf\n", encoding="utf-8"
@@ -249,6 +280,7 @@ def test_conversion_guard_fails_closed_on_eol_attribute(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_capture_never_materializes_temporary_index(
     git_repo: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -306,6 +338,7 @@ def test_capture_never_materializes_temporary_index(
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_no_index_patch_accepts_exit_one(git_repo: str) -> None:
     Path(git_repo, "brand-new.py").write_text("x = 1\n", encoding="utf-8")
     patch = _no_index_new_file_patch(
@@ -318,6 +351,7 @@ def test_no_index_patch_accepts_exit_one(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_patch_section_paths_splits_and_unquotes(git_repo: str) -> None:
     # Git C-quotes the whole a/ path (including the prefix) when needed.
     raw = (
@@ -342,6 +376,7 @@ def test_git_quote_path_matches_git_style() -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_pair_exact_renames_pairs_identical_content(git_repo: str) -> None:
     oid = subprocess.run(
         ["git", "-C", git_repo, "hash-object", "--stdin"],
@@ -365,6 +400,7 @@ def test_pair_exact_renames_pairs_identical_content(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_pair_exact_renames_keeps_modified_moves_unpaired(git_repo: str) -> None:
     oid = subprocess.run(
         ["git", "-C", git_repo, "hash-object", "--stdin"],
@@ -534,6 +570,7 @@ def test_registry_scoped_snapshots_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_intent_to_add_payloads_match(git_repo: str) -> None:
     """``git add -N`` paths carry real worktree bytes, not the placeholder."""
     Path(git_repo, "ita.py").write_text("new content\n", encoding="utf-8")
@@ -542,6 +579,7 @@ def test_intent_to_add_payloads_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_quoted_header_paths_match(git_repo: str) -> None:
     """A path needing C quoting round-trips through the section parser."""
     tab_path = Path(git_repo, "tab\tname.py")
@@ -553,6 +591,7 @@ def test_quoted_header_paths_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_space_paths_sections_do_not_collide(git_repo: str) -> None:
     """Unquoted space-containing headers keep distinct section keys."""
     Path(git_repo, "a b.py").write_text("two\n", encoding="utf-8")
@@ -564,6 +603,7 @@ def test_space_paths_sections_do_not_collide(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_exact_rename_with_mode_change_payloads_match(git_repo: str) -> None:
     """R100 sections carry old/new mode lines when the mode changed."""
     script = Path(git_repo, "m.sh")
@@ -577,6 +617,7 @@ def test_exact_rename_with_mode_change_payloads_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_ambiguous_identical_moves_stay_delete_add(git_repo: str) -> None:
     """Ambiguous exact-rename candidates are not paired by guessing."""
     Path(git_repo, "x.py").write_text("same\n", encoding="utf-8")
@@ -602,6 +643,7 @@ def test_ambiguous_identical_moves_stay_delete_add(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_filemode_false_untracked_exec_payloads_match(git_repo: str) -> None:
     subprocess.run(
         ["git", "-C", git_repo, "config", "core.filemode", "false"], check=True
@@ -613,6 +655,7 @@ def test_filemode_false_untracked_exec_payloads_match(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_working_tree_encoding_fails_closed_without_crlf(git_repo: str) -> None:
     Path(git_repo, ".gitattributes").write_text(
         "*.txt working-tree-encoding=UTF-16LE\n", encoding="utf-8"
@@ -635,6 +678,7 @@ def test_working_tree_encoding_fails_closed_without_crlf(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_ident_attribute_fails_closed(git_repo: str) -> None:
     Path(git_repo, ".gitattributes").write_text("*.c ident\n", encoding="utf-8")
     Path(git_repo, "main.c").write_text("$Id$\n", encoding="utf-8")
@@ -655,6 +699,7 @@ def test_ident_attribute_fails_closed(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_untracked_diff_attribute_binary_matches(git_repo: str) -> None:
     """``*.dat binary`` marks an untracked NUL-free file binary."""
     Path(git_repo, ".gitattributes").write_text("*.dat binary\n", encoding="utf-8")
@@ -664,6 +709,7 @@ def test_untracked_diff_attribute_binary_matches(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_skip_worktree_entry_matches(git_repo: str) -> None:
     Path(git_repo, "sw.py").write_text("hidden\n", encoding="utf-8")
     subprocess.run(["git", "-C", git_repo, "add", "."], check=True)
@@ -788,6 +834,7 @@ def test_workspace_mode_unsafe_metadata_fails_closed() -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_readonly_rows_rejects_malformed_output(git_repo: str) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly_capture as module
 
@@ -803,6 +850,7 @@ def test_readonly_rows_rejects_malformed_output(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_readonly_binaries_rejects_malformed_output(git_repo: str) -> None:
     import tree_sitter_analyzer.diff_snapshot_readonly_capture as module
 
@@ -818,6 +866,7 @@ def test_readonly_binaries_rejects_malformed_output(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_gitlink_probe_safe_classifies_boundaries(
     git_repo: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -857,6 +906,7 @@ def test_gitlink_probe_safe_classifies_boundaries(
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_gitlink_probe_failure_frames_dirty_without_entering(
     git_repo: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -900,6 +950,7 @@ def test_gitlink_probe_failure_frames_dirty_without_entering(
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_capture_requires_epoch(git_repo: str) -> None:
     from tree_sitter_analyzer.diff_snapshot_readonly_capture import (
         capture_payload_readonly,
@@ -912,6 +963,7 @@ def test_capture_requires_epoch(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_capture_missing_manifest_entry_fails_closed(git_repo: str) -> None:
     """A dirty path absent from the manifest is a source-change failure."""
     Path(git_repo, "base.py").write_text("value = 2\n", encoding="utf-8")
@@ -929,6 +981,7 @@ def test_capture_missing_manifest_entry_fails_closed(git_repo: str) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_capture_special_file_fails_closed(
     git_repo: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -963,6 +1016,7 @@ def test_capture_special_file_fails_closed(
 
 
 @POSIX_SNAPSHOT_TEST
+@GIT_CAPTURE_COST
 def test_capture_binary_attr_malformed_fails_closed(git_repo: str) -> None:
     """Malformed check-attr output for untracked paths fails closed."""
     import tree_sitter_analyzer.diff_snapshot_readonly_capture as module
