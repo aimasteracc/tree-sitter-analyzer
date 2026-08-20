@@ -191,7 +191,7 @@ def _run_edit_safe(facade, **extra):
         facade.execute(
             {
                 "action": "safe",
-                "file_path": "tree_sitter_analyzer/latency.py",
+                "file_path": "target.py",
                 "output_format": "json",
                 **extra,
             }
@@ -200,10 +200,23 @@ def _run_edit_safe(facade, **extra):
 
 
 @pytest.fixture
-def edit_facade():
+def edit_facade(tmp_path):
+    """A facade bound to an ISOLATED project, not the live repo root.
+
+    These tests must not run against ``"."``. The generation stamp covers the
+    whole source tree, so under ``pytest -n auto`` another worker writing
+    anywhere in the repo bumps it between two calls — the cache then correctly
+    reports ``computed`` and a "second call is a hit" assertion goes red for a
+    reason that has nothing to do with the cache. That is exactly how the first
+    version of these tests flaked: 3 failures under xdist, 0 when serial.
+    """
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
-    return build_edit_facade(".")
+    (tmp_path / "target.py").write_text(
+        "def thing():\n    return 1\n", encoding="utf-8"
+    )
+    (tmp_path / "other.py").write_text("x = 1\n", encoding="utf-8")
+    return build_edit_facade(str(tmp_path))
 
 
 def _reset_recorder():
@@ -228,7 +241,8 @@ def _warm_row(recorder):
         if (route.tool, route.action, route.tier) == ("edit", "safe", "warm")
     ]
     assert len(rows) == 1
-    assert rows[0].p50_ns is not None
+    if rows[0].p50_ns is None:  # pragma: no cover - a recorded row has a p50
+        raise AssertionError("the recorded (edit, safe, warm) row carried no p50")
     return rows[0]
 
 
@@ -297,7 +311,12 @@ class TestCacheHitIsHonestlyMeasured:
         assert second["provenance"]["served_from"] == "cache"
         # Deriving the key costs a source-tree fingerprint, so a hit can never
         # legitimately be free. Zero here means the key work escaped the window.
-        assert _warm_row(recorder).p50_ns > 0
+        # The invariant is "serving a hit is not free", NOT a bound on how long
+        # it takes: an exact nanosecond pin would measure the host, and a
+        # ceiling would be the hand-waved kind CLAUDE.md forbids.
+        assert (
+            _warm_row(recorder).p50_ns > 0
+        )  # ratchet: nondeterministic wall-clock duration
 
 
 # --------------------------------------------------------------------------
@@ -314,31 +333,9 @@ class TestARealEditInvalidatesTheAnswer:
     verdicts and the feature is worse than not existing.
     """
 
-    @pytest.fixture
-    def project(self, tmp_path):
-        (tmp_path / "target.py").write_text(
-            "def thing():\n    return 1\n", encoding="utf-8"
-        )
-        (tmp_path / "other.py").write_text("x = 1\n", encoding="utf-8")
-        return tmp_path
-
-    @pytest.fixture
-    def facade(self, project):
-        from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
-
-        return build_edit_facade(str(project))
-
     @staticmethod
     def _ask(facade):
-        return asyncio.run(
-            facade.execute(
-                {
-                    "action": "safe",
-                    "file_path": "target.py",
-                    "output_format": "json",
-                }
-            )
-        )
+        return _run_edit_safe(facade)
 
     @staticmethod
     def _add_importer(project, name: str) -> None:
@@ -346,34 +343,38 @@ class TestARealEditInvalidatesTheAnswer:
             "from target import thing\nx = thing()\n", encoding="utf-8"
         )
 
-    def test_editing_a_file_in_place_forces_a_recompute(self, facade, project) -> None:
+    def test_editing_a_file_in_place_forces_a_recompute(
+        self, edit_facade, tmp_path
+    ) -> None:
         """An in-place edit leaves the file COUNT unchanged — the case the
         directory-mtime keying this replaces got wrong."""
-        self._ask(facade)
-        self._add_importer(project, "other.py")
-        assert self._ask(facade)["provenance"]["served_from"] == "computed"
+        self._ask(edit_facade)
+        self._add_importer(tmp_path, "other.py")
+        assert self._ask(edit_facade)["provenance"]["served_from"] == "computed"
 
     def test_editing_a_file_in_place_changes_the_downstream_count(
-        self, facade, project
+        self, edit_facade, tmp_path
     ) -> None:
-        before = self._ask(facade)["downstream_count"]
-        self._add_importer(project, "other.py")
-        assert self._ask(facade)["downstream_count"] == before + 1
+        before = self._ask(edit_facade)["downstream_count"]
+        self._add_importer(tmp_path, "other.py")
+        assert self._ask(edit_facade)["downstream_count"] == before + 1
 
-    def test_adding_a_file_forces_a_recompute(self, facade, project) -> None:
-        self._ask(facade)
-        self._add_importer(project, "third.py")
-        assert self._ask(facade)["provenance"]["served_from"] == "computed"
+    def test_adding_a_file_forces_a_recompute(self, edit_facade, tmp_path) -> None:
+        self._ask(edit_facade)
+        self._add_importer(tmp_path, "third.py")
+        assert self._ask(edit_facade)["provenance"]["served_from"] == "computed"
 
-    def test_adding_a_file_changes_the_downstream_count(self, facade, project) -> None:
-        before = self._ask(facade)["downstream_count"]
-        self._add_importer(project, "third.py")
-        assert self._ask(facade)["downstream_count"] == before + 1
+    def test_adding_a_file_changes_the_downstream_count(
+        self, edit_facade, tmp_path
+    ) -> None:
+        before = self._ask(edit_facade)["downstream_count"]
+        self._add_importer(tmp_path, "third.py")
+        assert self._ask(edit_facade)["downstream_count"] == before + 1
 
     def test_a_repeat_after_the_edit_is_served_from_cache_again(
-        self, facade, project
+        self, edit_facade, tmp_path
     ) -> None:
-        self._ask(facade)
-        self._add_importer(project, "other.py")
-        self._ask(facade)
-        assert self._ask(facade)["provenance"]["served_from"] == "cache"
+        self._ask(edit_facade)
+        self._add_importer(tmp_path, "other.py")
+        self._ask(edit_facade)
+        assert self._ask(edit_facade)["provenance"]["served_from"] == "cache"

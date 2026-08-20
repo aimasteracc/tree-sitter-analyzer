@@ -109,16 +109,39 @@ class TestProvenanceDoesNotBreakCompaction:
         assert compact_bytes < default_bytes
 
 
-class TestServedFromIsPinned:
-    def test_first_call_records_exactly_computed(
-        self, edit_facade, edit_safe_args
-    ) -> None:
-        result = asyncio.run(edit_facade.execute(dict(edit_safe_args)))
-        assert result["provenance"]["served_from"] == "computed"
+@pytest.fixture
+def isolated_facade(tmp_path):
+    """A facade on an isolated project, for the provenance pins only.
 
-    def test_repeat_call_records_exactly_cache(
-        self, edit_facade, edit_safe_args
-    ) -> None:
-        asyncio.run(edit_facade.execute(dict(edit_safe_args)))
-        result = asyncio.run(edit_facade.execute(dict(edit_safe_args)))
-        assert result["provenance"]["served_from"] == "cache"
+    The two tests below assert a cache HIT, so they must not run against the
+    live repo root: the generation stamp covers the whole tree, so anything else
+    writing into the repo between the two calls correctly invalidates the entry
+    and the pin would go red for a reason unrelated to the cache. The p95
+    measurement above deliberately keeps the real repo — that is where the 3.4 s
+    it is measuring comes from.
+    """
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    (tmp_path / "target.py").write_text(
+        "def thing():\n    return 1\n", encoding="utf-8"
+    )
+    reset_answer_cache()
+    yield build_edit_facade(str(tmp_path))
+    reset_answer_cache()
+
+
+class TestServedFromIsPinned:
+    @staticmethod
+    def _ask(facade):
+        return asyncio.run(
+            facade.execute(
+                {"action": "safe", "file_path": "target.py", "output_format": "json"}
+            )
+        )
+
+    def test_first_call_records_exactly_computed(self, isolated_facade) -> None:
+        assert self._ask(isolated_facade)["provenance"]["served_from"] == "computed"
+
+    def test_repeat_call_records_exactly_cache(self, isolated_facade) -> None:
+        self._ask(isolated_facade)
+        assert self._ask(isolated_facade)["provenance"]["served_from"] == "cache"
