@@ -1,14 +1,14 @@
 {
   "cold_column_caveat": "Every cold row is ONE observation and depends on the on-disk AST-index state recorded in preconditions.ast_index_before. Measured spread on one host at one commit: edit/safe cold p50 18014.645 / 14065.642 / 4104.113 ms (3.4x) purely from that state. Treat cold as indicative of magnitude only; do NOT use it in any cross-run or cross-commit comparison. Warm rows were stable (3845 / 3394 / 3624 ms) and are the comparable column.",
   "cold_column_status": "INDICATIVE_SINGLE_OBSERVATION",
-  "collection_finished_at_utc": "2026-08-19T16:58:01.130982+00:00",
-  "collection_started_at_utc": "2026-08-19T16:57:13.092755+00:00",
+  "collection_finished_at_utc": "2026-08-20T04:24:42.667351+00:00",
+  "collection_started_at_utc": "2026-08-20T04:22:35.140447+00:00",
   "environment": {
     "machine": "AMD64",
-    "os": "Windows-11-10.0.26200-SP0",
+    "os": "Windows-10-10.0.26200-SP0",
     "python": {
       "implementation": "CPython",
-      "version": "3.13.5"
+      "version": "3.11.13"
     },
     "system": "windows"
   },
@@ -16,9 +16,60 @@
   "evidence_level_note": "Single un-isolated host: no CPU pinning, no thermal or power control, no repeat-host cross-check. Magnitudes are load-bearing; individual digits are not.",
   "integrity": {
     "recorder_module_sha256": "b6ac5dd6106da6d207528a7f756735b3ee5bc9883c1c18b863fc3a77991660a6",
-    "script_sha256": "fdb983a92968979ab3daa01a4e187ea22568a0a224dc773b2a20c5556d9308de",
+    "script_sha256": "f418419e83e4ca744f292647c02a86e25fb3eef37e372b4a2052061d105e7f36",
     "tool_module_sha256": "ae63a3bea8939e4ab28ec851203925fb7a01493b68367e3f1b8ef2da21a813db"
   },
+  "interleaved_workflow": {
+    "cache_hits": 6,
+    "expected_cache_hits": 6,
+    "hit_rate": 0.75,
+    "observations": 8,
+    "rounds": 4,
+    "routes": {
+      "edit.safe": {
+        "action": "safe",
+        "elapsed_ms": [
+          5273.029,
+          59.411,
+          56.627,
+          60.398
+        ],
+        "errors": [],
+        "params": {
+          "file_path": "tree_sitter_analyzer/latency.py"
+        },
+        "served_from": [
+          "computed",
+          "cache",
+          "cache",
+          "cache"
+        ],
+        "tool": "edit"
+      },
+      "health.file": {
+        "action": "file",
+        "elapsed_ms": [
+          591.199,
+          62.986,
+          67.586,
+          59.606
+        ],
+        "errors": [],
+        "params": {
+          "file_path": "tree_sitter_analyzer/latency.py"
+        },
+        "served_from": [
+          "computed",
+          "cache",
+          "cache",
+          "cache"
+        ],
+        "tool": "health"
+      }
+    },
+    "verdict": "OK"
+  },
+  "interleaved_workflow_note": "The prescribed pre-edit pair (edit action=safe + health action=file) driven ALTERNATING rather than grouped. routes_driven above groups all repeats of one route together, which holds any per-route cache state constant inside a block; that structure hid a 0% real-workflow cache hit rate behind a 62x grouped-repeat speedup (RFC-0027 L6.1 review P1-3). Judge the answer cache on these rows, not on the warm column above.",
   "measured_axis": "windows",
   "preconditions": {
     "ast_index_before": {
@@ -124,8 +175,8 @@
       {
         "action": "safe",
         "count": 1,
-        "p50_ms": 5448.967,
-        "p95_ms": 5448.967,
+        "p50_ms": 5902.674,
+        "p95_ms": 5902.674,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "edit"
@@ -133,8 +184,8 @@
       {
         "action": "safe",
         "count": 5,
-        "p50_ms": 45.745,
-        "p95_ms": 53.889,
+        "p50_ms": 64.239,
+        "p95_ms": 76.003,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "edit"
@@ -142,8 +193,8 @@
       {
         "action": "file",
         "count": 1,
-        "p50_ms": 11181.321,
-        "p95_ms": 11181.321,
+        "p50_ms": 67248.622,
+        "p95_ms": 67248.622,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "health"
@@ -151,8 +202,8 @@
       {
         "action": "file",
         "count": 5,
-        "p50_ms": 21.946,
-        "p95_ms": 30.142,
+        "p50_ms": 67.095,
+        "p95_ms": 68.402,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "health"
@@ -160,8 +211,8 @@
       {
         "action": "callers",
         "count": 1,
-        "p50_ms": 29649.275,
-        "p95_ms": 29649.275,
+        "p50_ms": 44927.294,
+        "p95_ms": 44927.294,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "nav"
@@ -169,8 +220,8 @@
       {
         "action": "callers",
         "count": 5,
-        "p50_ms": 35.016,
-        "p95_ms": 37.201,
+        "p50_ms": 34.802,
+        "p95_ms": 40.934,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "nav"
@@ -178,8 +229,8 @@
       {
         "action": "outline",
         "count": 1,
-        "p50_ms": 159.594,
-        "p95_ms": 159.594,
+        "p50_ms": 766.501,
+        "p95_ms": 766.501,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "structure"
@@ -187,8 +238,8 @@
       {
         "action": "outline",
         "count": 5,
-        "p50_ms": 3.458,
-        "p95_ms": 4.428,
+        "p50_ms": 9.046,
+        "p95_ms": 9.998,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "structure"
@@ -204,7 +255,7 @@
   },
   "source": {
     "branch": "feature/l6-generation-keyed-answer-cache",
-    "commit": "fa541e07031b48fdb9f36873edc34e6e9288fcd7"
+    "commit": "e7f9fd4f39488194316e39d7ed3d418d3064fbe8"
   },
   "warm_repeats": 5
 }
