@@ -14,6 +14,7 @@ performing the requested side effect**.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
 
@@ -397,6 +398,56 @@ def _warm_row(recorder):
     if rows[0].p50_ns is None:  # pragma: no cover - a recorded row has a p50
         raise AssertionError("the recorded (edit, safe, warm) row carried no p50")
     return rows[0]
+
+
+class TestProvenanceSurvivesTheDisjointToonEnvelope:
+    """#1322 made the TOON blob disjoint from the top level. That changed exactly
+    the partition rule 5 relies on, so this pins the outcome on the **default
+    TOON path** — the one an MCP agent actually gets.
+
+    A cache hit that is invisible is worse than no cache, so "present, exactly
+    once, correct value, not in the blob" is asserted rather than assumed.
+    """
+
+    @staticmethod
+    def _toon(facade, **extra):
+        return asyncio.run(
+            facade.execute(
+                {
+                    "action": "safe",
+                    "file_path": "target.py",
+                    "output_format": "toon",
+                    **extra,
+                }
+            )
+        )
+
+    def test_served_from_is_computed_on_the_first_default_toon_call(
+        self, edit_facade
+    ) -> None:
+        assert self._toon(edit_facade)["provenance"]["served_from"] == "computed"
+
+    def test_served_from_is_cache_on_the_repeat_default_toon_call(
+        self, edit_facade
+    ) -> None:
+        self._toon(edit_facade)
+        assert self._toon(edit_facade)["provenance"]["served_from"] == "cache"
+
+    def test_served_from_occurs_exactly_once_on_the_wire(self, edit_facade) -> None:
+        """Not twice: the whole point of #1322 is that nothing is paid for
+        twice, and `provenance` must not reintroduce a duplicated key."""
+        wire = json.dumps(self._toon(edit_facade))
+        assert wire.count("served_from") == 1
+
+    def test_provenance_is_not_inside_the_disjoint_blob(self, edit_facade) -> None:
+        """It is attached after the inner built `toon_content`, so the disjoint
+        computation cannot see it — it lives at the top level only."""
+        blob = self._toon(edit_facade)["toon_content"]
+        assert "served_from" not in blob
+
+    def test_the_compact_surface_still_carries_it(self, edit_facade) -> None:
+        compact = self._toon(edit_facade, compact_only=True)
+        assert compact["provenance"]["served_from"] == "computed"
 
 
 class TestServedFromIsVisible:
