@@ -264,3 +264,45 @@ NO1-006A completed at `refs/heads/develop` commit `c91b026a9a11d044f1f67fda9e060
 4. Only after NO1-003D, NO1-008A, human budget, signed attestation, and judge gates pass, execute NO1-003C as a bounded E0 canary; retain failures and do not relabel it E1.
 5. Qualify NO1-009A only at the second competitor's install/conformance boundary; adding it to comparisons requires a separately reviewed RFC-0021 v2 experiment.
 6. Proceed with NO1-006B/010A/012A only through their ledger prerequisites and exact native/contract qualification gates; E0–E3 cannot emit public leadership wording.
+
+## 11. Recorded wants — evidenced, unscheduled
+
+Moved here from a draft of [RFC-0029](0029-does-this-test-constrain-this-code.md)
+so they are not frozen inside an RFC that is not about them (`README.md`: a
+merged RFC is immutable except for status and clarifications). Evidence is
+preserved verbatim from the 2026-08-19/20 session; both are **E0** and neither
+has a scheduled wave yet. Their priority should be measured against what
+RFC-0029 actually removes once it ships, rather than guessed now.
+
+### 11.1 Finding clustering across a session
+
+Five line-ending defects were found in one day — `ImportGraph`
+normpath-vs-POSIX cache keys, a corpus digest on an unpinned `*.jsonl`,
+`detect-secrets` rewriting 67 paths to backslashes, repeated CRLF commit churn,
+and a CI retry path that could never fire — each reported separately, hours
+apart, by a different reviewer. The class was named on the fifth. Clustering
+would have compressed five point fixes into one invariant.
+
+Substrate: `decision_journal.py` exists and is reachable from a CLI flag.
+Measured 2026-08-19: `.ast-cache/decision_journal.db` **does exist** (created
+11:03, gitignored, so per-checkout) and its `decision` table holds **0 rows**.
+The conclusion "the substrate has never been used" is correct; the earlier
+evidence for it ("the database does not exist") was wrong, and "exists with 0
+rows" is the stronger evidence — a file that was created and never written to is
+proof of a wired-but-unused path, whereas a missing file is also consistent with
+the feature never having been reachable.
+
+### 11.2 Belief provenance
+
+Three false beliefs were held with confidence and propagated in one day:
+
+1. that 23 `mypy` errors were technical debt — they are a Windows host artifact
+   (`mypy --platform linux` is clean), and three agents were instructed to
+   preserve a debt that did not exist;
+2. that an 1880-line module was pre-existing — it was introduced by the PR under
+   review;
+3. that a benchmark block was spec-level — false for two of seven gates.
+
+RFC-0027 L9 records *predictions*; nothing records *beliefs* or where they came
+from. A belief that is never written down cannot be falsified later, which is the
+same failure mode CLAUDE.md §11 names for non-functional claims.
