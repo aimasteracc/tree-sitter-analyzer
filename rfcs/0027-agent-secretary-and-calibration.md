@@ -179,6 +179,34 @@ the *relationship* `p95(repeat) < p95(first)` plus an exact pin on the recorded
 `served_from` value. Absolute millisecond ceilings are NOT asserted (they are
 machine-dependent); the relationship and the provenance value are.
 
+**Clarification (added when L6.1 landed — two premises above needed correcting):**
+
+1. *"Every certified answer already carries a provenance record with an index
+   generation stamp"* **does not hold on Windows.** The RFC-0022 oracle
+   (`index_source_snapshot.capture_current_source_snapshot`, which mints
+   `idxsrc-v3:`) short-circuits to `SOURCE_SCOPE_UNSUPPORTED` unless
+   `os.name == "posix"` and `/dev/fd` exists; `source_oracle._supports_nofollow`
+   likewise gates on `os.name != "nt"`. So on the platform the RFC-0025 L5
+   baseline was measured on, the stamp is structurally uncomputable, and keying
+   the cache off it would mean the cache never engages there. The implementation
+   therefore keys off `cache.fingerprint.compute_graph_fingerprint` — the
+   project's existing invalidation primitive for its graph caches — with the
+   canonical project root folded in (`AnswerKey` has no `project_root` field, so
+   two projects in one process could otherwise collide). Its limits are
+   documented on `answer_cache_policy.current_generation`: it misses a content
+   change that leaves both the file count and the maximum mtime unchanged, and
+   it costs ~20 ms per call at 2,342 files, scaling linearly.
+2. **Rule 2 needs a second dimension.** "Freshness `stale`/`missing`/`unknown`"
+   is not the only way an answer can be uncertified: `edit action=safe` with
+   `access_mode=read_existing` returns RFC-0022 P0.4 `access_state="unknown"` /
+   `READ_EXISTING_AUTHORITY_UNCERTIFIED` wherever the oracle above cannot run,
+   with no `freshness` field at all. `is_certified` refuses non-certified
+   `access_state` as well, or a one-off "I could not certify this" would be
+   replayed as a persistent verdict.
+3. Admission to `CACHEABLE_ACTIONS` also requires that the route's cost dominate
+   the generation stamp. `structure action=outline` is audited pure but runs at
+   ~3 ms warm, so caching it would make it slower; it is excluded.
+
 #### L6.2 Declared query cost
 
 Before running an expensive route, a tool declares what it will cost, so a
@@ -593,13 +621,13 @@ and emits a calibration report with non-placeholder numbers.
 
 ## Acceptance criteria
 
-- [ ] L6.1 answer cache; `served_from` visible; whole-cache eviction on any
+- [x] L6.1 answer cache; `served_from` visible; whole-cache eviction on any
       key-component bump; bounded and LRU
-- [ ] L6.1 key includes `producer_version` and `extra_inputs`; a TSA/action
+- [x] L6.1 key includes `producer_version` and `extra_inputs`; a TSA/action
       version bump at an unchanged source generation misses the cache
-- [ ] L6.1 `CACHEABLE_ACTIONS` allowlist exists and a contract test asserts it
+- [x] L6.1 `CACHEABLE_ACTIONS` allowlist exists and a contract test asserts it
       is a subset of the side-effect-free actions
-- [ ] L6.1 benchmark pins the repeat-vs-first *relationship* (no absolute ceiling)
+- [x] L6.1 benchmark pins the repeat-vs-first *relationship* (no absolute ceiling)
 - [ ] L6.2 `QueryCost` returned by the three most expensive routes;
       `estimated_ms` is `None` until observed
 - [ ] L6.3 canonical full id always present; abbreviation unique within the
