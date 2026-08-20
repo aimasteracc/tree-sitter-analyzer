@@ -1556,3 +1556,49 @@ def test_collect_final_stats_source_scope_unsupported_is_operational(tmp_path):
         result["manifest_certification_failed"],
         result["certification_errors"],
     ) == ("SOURCE_SCOPE_UNSUPPORTED", False, 0)
+
+
+def test_manifest_warning_carries_an_actionable_next_step() -> None:
+    """A WARN that names no action is a WARN an agent reads past.
+
+    Dogfood, 2026-08-20: --full-index returned verdict=WARN,
+    scope_complete=False and manifest_warning=INDEX_MANIFEST_CERTIFICATION_FAILED
+    with exit code 1 -- all correct -- but agent_summary.next_step was absent.
+    Every other route used in that session (--callers, --test-map,
+    --safe-to-edit, --self-health) carries a next_step, so that is the field an
+    agent is trained to read. The one output meaning 'do not trust graph
+    queries from this run' was the only one with nothing there, and the agent
+    ran --callers immediately afterwards.
+    """
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+        manifest_warning_next_step,
+    )
+
+    step = manifest_warning_next_step("INDEX_MANIFEST_CERTIFICATION_FAILED")
+
+    assert step is not None
+    lowered = step.lower()
+    assert "re-index" in lowered
+    assert "not certified" in lowered
+    assert "--callers" in step
+
+
+def test_a_certified_run_reports_no_remedial_next_step() -> None:
+    """The remedial step must be absent when nothing needs remedying."""
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+        manifest_warning_next_step,
+    )
+
+    assert manifest_warning_next_step(None) is None
+
+
+def test_an_unrecognised_warning_still_gets_a_next_step() -> None:
+    """A new warning code must not silently fall back to no guidance."""
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+        manifest_warning_next_step,
+    )
+
+    step = manifest_warning_next_step("SOME_FUTURE_CODE")
+
+    assert step is not None
+    assert "SOME_FUTURE_CODE" in step

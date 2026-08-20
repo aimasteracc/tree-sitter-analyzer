@@ -190,6 +190,64 @@ def _candidate_snapshot_report(
     return report
 
 
+_MANIFEST_WARNING_NEXT_STEPS: dict[str, str] = {
+    "INDEX_MANIFEST_CERTIFICATION_FAILED": (
+        "This index run is not certified: the snapshot manifest could not "
+        "be stamped, so the call-graph marker was revoked. Do NOT trust "
+        "--callers, --callees, --change-impact or any graph query from this "
+        "run. Re-index (--full-index) and confirm verdict is INFO before "
+        "relying on graph answers."
+    ),
+    "CALL_GRAPH_INCOMPLETE": (
+        "The call graph is incomplete for this run, so graph answers may be "
+        "missing edges and are not certified. Do NOT trust --callers or "
+        "--callees from it. Re-index (--full-index) and confirm verdict is "
+        "INFO."
+    ),
+    "INDEX_RUN_INCOMPLETE": (
+        "The index run did not complete, so its rows are not certified. Do "
+        "NOT trust --callers or --callees from it. Re-index (--full-index) "
+        "and confirm verdict is INFO."
+    ),
+    "CALL_GRAPH_MARKER_CERTIFICATION_FAILED": (
+        "The call-graph marker is not certified for this run. Do NOT trust "
+        "--callers or --callees from it. Re-index (--full-index) and "
+        "confirm verdict is INFO."
+    ),
+    "INDEX_CANDIDATE_SNAPSHOT_CHANGED": (
+        "The source tree changed while indexing, so this run is not "
+        "certified against a stable snapshot. Do NOT trust --callers from "
+        "it. Re-index (--full-index) with the tree quiescent."
+    ),
+    "SOURCE_SCOPE_UNSUPPORTED": (
+        "The source-generation oracle is unsupported on this platform, so "
+        "this run carries no certified source scope. Index rows are usable; "
+        "treat the scope as unknown rather than complete, and do not read "
+        "--callers completeness as certified."
+    ),
+}
+
+
+def manifest_warning_next_step(manifest_warning: str | None) -> str | None:
+    """Return the remedial action for a manifest warning, or ``None``.
+
+    ``None`` in, ``None`` out: a certified run has nothing to remedy and must
+    not carry a remedial instruction. An unrecognised code still returns a
+    step naming the code, because a new warning falling back to silence is
+    exactly how the gap this function closes was created.
+    """
+    if manifest_warning is None:
+        return None
+    known = _MANIFEST_WARNING_NEXT_STEPS.get(manifest_warning)
+    if known is not None:
+        return known
+    return (
+        f"This index run reported {manifest_warning} and is not certified. "
+        "Do NOT trust --callers, --callees or --change-impact from it. "
+        "Re-index (--full-index) and confirm verdict is INFO."
+    )
+
+
 class CodeGraphFullIndexTool(BaseMCPTool):
     """MCP Tool for one-shot complete project intelligence indexing."""
 
@@ -594,6 +652,12 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "agent_summary": {
                     "verdict": top_verdict,
                     "summary_line": summary_line,
+                    # A WARN that names no action is a WARN an agent reads past.
+                    # Every other route carries next_step, so that is the field
+                    # a caller is trained to read; leaving it empty made the one
+                    # signal meaning "do not trust graph queries from this run"
+                    # the only one with nothing in it. Dogfood 2026-08-20.
+                    "next_step": manifest_warning_next_step(manifest_warning),
                 },
                 "mode": mode,
                 "elapsed_seconds": elapsed,
