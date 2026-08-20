@@ -1,14 +1,14 @@
 {
   "cold_column_caveat": "Every cold row is ONE observation and depends on the on-disk AST-index state recorded in preconditions.ast_index_before. Measured spread on one host at one commit: edit/safe cold p50 18014.645 / 14065.642 / 4104.113 ms (3.4x) purely from that state. Treat cold as indicative of magnitude only; do NOT use it in any cross-run or cross-commit comparison. Warm rows were stable (3845 / 3394 / 3624 ms) and are the comparable column.",
   "cold_column_status": "INDICATIVE_SINGLE_OBSERVATION",
-  "collection_finished_at_utc": "2026-08-20T04:24:42.667351+00:00",
-  "collection_started_at_utc": "2026-08-20T04:22:35.140447+00:00",
+  "collection_finished_at_utc": "2026-08-20T05:19:39.447083+00:00",
+  "collection_started_at_utc": "2026-08-20T05:18:43.788542+00:00",
   "environment": {
     "machine": "AMD64",
-    "os": "Windows-10-10.0.26200-SP0",
+    "os": "Windows-11-10.0.26200-SP0",
     "python": {
       "implementation": "CPython",
-      "version": "3.11.13"
+      "version": "3.13.5"
     },
     "system": "windows"
   },
@@ -29,10 +29,10 @@
       "edit.safe": {
         "action": "safe",
         "elapsed_ms": [
-          5273.029,
-          59.411,
-          56.627,
-          60.398
+          4168.11,
+          45.736,
+          37.689,
+          60.649
         ],
         "errors": [],
         "params": {
@@ -49,10 +49,10 @@
       "health.file": {
         "action": "file",
         "elapsed_ms": [
-          591.199,
-          62.986,
-          67.586,
-          59.606
+          493.116,
+          38.577,
+          41.636,
+          39.493
         ],
         "errors": [],
         "params": {
@@ -175,8 +175,8 @@
       {
         "action": "safe",
         "count": 1,
-        "p50_ms": 5902.674,
-        "p95_ms": 5902.674,
+        "p50_ms": 4259.698,
+        "p95_ms": 4259.698,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "edit"
@@ -184,8 +184,8 @@
       {
         "action": "safe",
         "count": 5,
-        "p50_ms": 64.239,
-        "p95_ms": 76.003,
+        "p50_ms": 44.384,
+        "p95_ms": 51.512,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "edit"
@@ -193,8 +193,8 @@
       {
         "action": "file",
         "count": 1,
-        "p50_ms": 67248.622,
-        "p95_ms": 67248.622,
+        "p50_ms": 16656.678,
+        "p95_ms": 16656.678,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "health"
@@ -202,8 +202,8 @@
       {
         "action": "file",
         "count": 5,
-        "p50_ms": 67.095,
-        "p95_ms": 68.402,
+        "p50_ms": 44.048,
+        "p95_ms": 47.979,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "health"
@@ -211,8 +211,8 @@
       {
         "action": "callers",
         "count": 1,
-        "p50_ms": 44927.294,
-        "p95_ms": 44927.294,
+        "p50_ms": 27500.063,
+        "p95_ms": 27500.063,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "nav"
@@ -220,8 +220,8 @@
       {
         "action": "callers",
         "count": 5,
-        "p50_ms": 34.802,
-        "p95_ms": 40.934,
+        "p50_ms": 23.617,
+        "p95_ms": 28.863,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "nav"
@@ -229,8 +229,8 @@
       {
         "action": "outline",
         "count": 1,
-        "p50_ms": 766.501,
-        "p95_ms": 766.501,
+        "p50_ms": 484.774,
+        "p95_ms": 484.774,
         "samples_in_window": 1,
         "tier": "cold",
         "tool": "structure"
@@ -238,8 +238,8 @@
       {
         "action": "outline",
         "count": 5,
-        "p50_ms": 9.046,
-        "p95_ms": 9.998,
+        "p50_ms": 4.65,
+        "p95_ms": 5.597,
         "samples_in_window": 5,
         "tier": "warm",
         "tool": "structure"
@@ -255,7 +255,7 @@
   },
   "source": {
     "branch": "feature/l6-generation-keyed-answer-cache",
-    "commit": "e7f9fd4f39488194316e39d7ed3d418d3064fbe8"
+    "commit": "28c29e95e7bff46bd8189db30c01b27c2ba9ad28"
   },
   "warm_repeats": 5
 }
