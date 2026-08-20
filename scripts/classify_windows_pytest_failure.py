@@ -38,8 +38,15 @@ def main() -> int:
     parser.add_argument("--nodeids-output", type=Path, required=True)
     args = parser.parse_args()
     result = classify(args.log.read_text(encoding="utf-8", errors="replace"))
+    # newline="" is load-bearing, not style. reusable-test.yml reads this file
+    # with `mapfile -t`, which strips only the trailing newline. Without this,
+    # Windows writes CRLF, mapfile leaves the carriage return attached to every
+    # nodeid, pytest matches nothing, and the retry exits 5 - so the budget
+    # retry could never succeed on the one platform it exists for.
     args.nodeids_output.write_text(
-        "".join(f"{nodeid}\n" for nodeid in result["nodeids"]), encoding="utf-8"
+        "".join(f"{nodeid}\n" for nodeid in result["nodeids"]),
+        encoding="utf-8",
+        newline="",
     )
     print(json.dumps(result, sort_keys=True))
     return 0 if result["retry_eligible"] else 1

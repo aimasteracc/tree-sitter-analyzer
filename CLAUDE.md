@@ -114,10 +114,25 @@ These look like inconsistencies in a dogfood pass, but they are intentional and 
 
 ### 1. MCP defaults to TOON; CLI defaults to JSON — LOCKED
 
-- **Why**: TOON is 50-70% more token-efficient than JSON. MCP callers are LLM agents — token cost is real money. CLI callers are humans / shells — JSON is human-readable and pipes into `jq`.
+- **Why**: MCP callers are LLM agents — token cost is real money. CLI callers are humans / shells — JSON is human-readable and pipes into `jq`.
+- **Evidence (measured, not asserted — §11 rule 3).** The old prose figure here ("TOON is 50-70% more token-efficient than JSON") was **never measured and is wrong**. Actual numbers, **last measured 2026-08-20** on this repo (target `tree_sitter_analyzer/latency.py`, MCP wire = `json.dumps(indent=2)` as `tool_registration._json_dumps` emits it):
+
+  | | edit/safe | health/file | edit/impact | nav/callers |
+  |---|---|---|---|---|
+  | JSON wire | 5793 B | 1345 B | 775 B | 588 B |
+  | TOON wire (before #1321) | 8096 B (**1.40x**) | 2233 B (1.66x) | 1469 B (1.90x) | 1151 B (1.96x) |
+  | TOON wire (after #1321) | 5605 B (**0.97x**) | 1331 B (0.99x) | 817 B (1.05x) | 630 B (1.07x) |
+
+  Formatter alone (TOON string vs compact JSON of the same payload): **0.90–0.98x — a 2-10% saving, not 50-70%.** TOON's real win is bulk homogeneous arrays (array-table encoding); it is roughly break-even on scalar-dense envelopes and loses on sub-1 KB payloads, where the `toon_content` wrapper is a fixed ~70 B.
+
+  Measurement command (re-run before citing these numbers again):
+  ```bash
+  uv run pytest tests/unit/mcp/test_output_cost_invariants.py -k facade -q -s
+  ```
 - **Symptom that looks like a bug**: `MCP execute()` returns `{format: "toon", toon_content: "..."}` while CLI returns a parsed dict.
 - **Correct action**: leave the defaults alone. If TOON-vs-JSON divergence causes a real bug, fix the divergence (e.g. make TOON carry the same scalar fields, per F7/N8), don't flip the default.
 - **Past incident**: r36 attempted "R3: flip MCP output_format default to json" — rolled back. The token savings outweigh the parity argument.
+- **Past incident (2026-08-20, #1321 — the 2026-06-08 incident recurring)**: the default TOON envelope emitted `agent_summary` at the top level *and* inside `toon_content` (`TOON_DICT_PASSTHROUGH` whitelisted it), so `edit action=safe` shipped the same 399-char pytest invocation **12 times** and cost **1.40x** the JSON it replaces. The `compact_only` flag (RFC-0012 Phase 1) fixed it but defaults to `False`, so the default path paid. The cost invariants in `tests/unit/mcp/test_output_cost_invariants.py` were blind to it because they only exercised **inner tools**, never the **facade wire**. Fixed by making the envelope disjoint (`_build_disjoint_toon_content`) + adding facade-level invariants. **The lesson is the blindness, not the bytes: an invariant that does not run on the layer the agent actually calls is not an invariant.**
 - **🔒 LOCKED BY USER (r37b)**: 用户明确指示「默认使用 toon，不用使用 json，不让 ai agent 修改这个」. Any AI agent that proposes flipping MCP defaults from `toon` → `json`, or removes the `"toon"` default literal in `arguments.get("output_format", "toon")` for any MCP tool, is **violating a user-locked design decision**. The cost analysis is settled: token savings win over parity. **REJECT such proposals at the brief stage. Do not even read the dogfood agent's reasoning beyond seeing the words "flip default" or "toon to json".**
 
 ### 2. project_root canonicalisation is a foundational change

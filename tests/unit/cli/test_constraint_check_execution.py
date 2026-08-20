@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -496,3 +498,77 @@ def test_explicit_config_evidence_rejects_directory(tmp_path):
 
     with pytest.raises(OSError, match="^constraint file is not a regular file$"):
         owner.explicit_config_evidence(tmp_path, float("inf"))
+
+
+def _ctime_variant(info, delta):
+    return SimpleNamespace(
+        st_dev=info.st_dev,
+        st_ino=info.st_ino,
+        st_mode=info.st_mode,
+        st_size=info.st_size,
+        st_mtime_ns=info.st_mtime_ns,
+        st_ctime_ns=info.st_ctime_ns + delta,
+        st_file_attributes=getattr(info, "st_file_attributes", 0),
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason=(
+        "tracked: CI run 32256066101 (windows 3.12). st_ctime is creation time only "
+        "on Windows; the POSIX half of this contract is asserted by "
+        "test_identity_honors_inode_change_time_on_posix, so neither platform is "
+        "left unasserted."
+    ),
+)
+def test_identity_ignores_creation_time_on_windows(tmp_path):
+    # CI develop 32256066101 (windows-latest, 3.12): os.stat(path) and
+    # os.fstat(fd) disagree on st_ctime_ns for ~9% of freshly created files,
+    # so projecting it made unmutated configs read as CONSTRAINT_CONFIG_CHANGED.
+    import tree_sitter_analyzer.cli.commands.constraint_check_execution as owner
+
+    config = tmp_path / "rules.yml"
+    config.write_bytes(b"version: 1\n")
+    info = config.stat()
+
+    assert owner._identity(_ctime_variant(info, 1)) == owner._identity(info)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "tracked: CI run 32256066101 (windows 3.12). POSIX-only half of the ctime "
+        "contract: st_ctime is inode change time here and must stay projected. The "
+        "Windows half is asserted by test_identity_ignores_creation_time_on_windows."
+    ),
+)
+def test_identity_honors_inode_change_time_on_posix(tmp_path):
+    # The Windows carve-out above must not weaken POSIX, where st_ctime is the
+    # inode change time and therefore a real mutation signal.
+    import tree_sitter_analyzer.cli.commands.constraint_check_execution as owner
+
+    config = tmp_path / "rules.yml"
+    config.write_bytes(b"version: 1\n")
+    info = config.stat()
+
+    assert owner._identity(_ctime_variant(info, 1)) != owner._identity(info)
+
+
+def test_identity_is_stable_across_path_stat_and_handle_fstat(tmp_path):
+    # CI develop 32256066101: the line-39/line-54 checks compare a path stat
+    # against a handle fstat, so every projected field must agree across both
+    # APIs for an untouched file. 300 trials because the Windows divergence
+    # reproduced in only ~9% of them.
+    import tree_sitter_analyzer.cli.commands.constraint_check_execution as owner
+
+    mismatches = []
+    for index in range(300):
+        config = tmp_path / f"rules{index}.yml"
+        config.write_bytes(b"version: 1\n")
+        path_identity = owner._identity(config.stat(follow_symlinks=False))
+        with config.open("rb", buffering=0) as stream:
+            handle_identity = owner._identity(os.fstat(stream.fileno()))
+        if path_identity != handle_identity:
+            mismatches.append((index, path_identity, handle_identity))
+
+    assert mismatches == []

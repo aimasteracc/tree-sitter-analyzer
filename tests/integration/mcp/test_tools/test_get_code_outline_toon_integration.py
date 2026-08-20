@@ -129,7 +129,9 @@ class TestGetCodeOutlineToonIntegrationPython:
                 toon_text = result.get("toon_content", "")
             assert toon_text, f"no TOON payload in {list(result.keys())}"
             # 验证 TOON 格式关键字段
-            assert "success:" in toon_text
+            # #1321: envelope 是 disjoint 的 —— 顶层携带的 ``success`` 标量
+            # 不再重复编码进 toon_content；outline 内的字段仍在 blob 中。
+            assert result["success"] is True
             assert "outline:" in toon_text
             assert "file_path:" in toon_text
             assert "language: python" in toon_text
@@ -208,7 +210,8 @@ class TestGetCodeOutlineToonIntegrationJava:
             )
 
             toon_text = _payload_text(result)
-            assert "success:" in toon_text
+            # #1321: ``success`` 在顶层，不再重复进 blob。
+            assert result["success"] is True
             assert "outline:" in toon_text
             assert "language: java" in toon_text
         finally:
@@ -251,9 +254,13 @@ class TestGetCodeOutlineToonIntegrationJava:
             )
 
             toon_text = _payload_text(result)
-            # TOON 格式应以 "success: true" 开头，而非 JSON 的 "{"
+            # TOON blob 不是 JSON —— 不以 "{" 开头。
             assert not toon_text.strip().startswith("{")
-            assert "success:" in toon_text
+            # #1321: default_format 是 toon 这一断言看 envelope 的 format 标记，
+            # 不再靠 blob 里重复的 ``success`` 标量。
+            assert result["format"] == "toon"
+            assert result["success"] is True
+            assert "outline:" in toon_text
         finally:
             Path(temp_path).unlink(missing_ok=True)
 

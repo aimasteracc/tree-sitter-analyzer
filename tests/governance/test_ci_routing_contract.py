@@ -134,15 +134,37 @@ def test_slow_suite_runs_once_per_reusable_test_matrix() -> None:
     assert text.count(slow_marker) == 2
 
 
-def test_windows_budget_retry_is_bounded_and_budget_only() -> None:
-    """Windows may retry measured runner stalls, never functional failures."""
-    workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
-    text = workflow.read_text(encoding="utf-8")
+def test_budget_retry_is_bounded_and_budget_only() -> None:
+    """A retry may only follow a measured runner stall, never a real failure.
 
-    assert text.count('if [ "$RUNNER_OS" != "Windows" ]; then') == 2
-    assert text.count("scripts/classify_windows_pytest_failure.py") == 2
-    assert text.count('uv run pytest "${retry_nodeids[@]}" -n auto') == 2
-    assert text.count("retrying budget-only failures once") == 2
+    The platform gate this test used to pin (RUNNER_OS != Windows) was removed
+    deliberately: it decided *who got the mitigation*, not whether a functional
+    failure could be retried. The fence is the classifier, which exits non-zero
+    unless EVERY failure was a per-test wall-clock budget overrun. These
+    assertions therefore pin the fence rather than the scope. Five of six budget
+    overruns observed on 2026-08-19/20 were macOS, where the gate meant no
+    mitigation ran at all.
+    """
+    workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
+    lines = workflow.read_text(encoding="utf-8").splitlines()
+
+    classifier = "scripts/classify_windows_pytest_failure.py"
+    sites = [i for i, line in enumerate(lines) if classifier in line]
+    assert len(sites) == 2
+
+    # Each call is guarded, and a non-zero verdict aborts before any retry.
+    for i in sites:
+        assert lines[i].lstrip().startswith("if !")
+        window = " ".join(lines[i : i + 4])
+        assert 'exit "$test_status"' in window
+
+    # The retry is scoped to the classifier node ids, never a blanket re-run.
+    joined = " ".join(lines)
+    assert joined.count('uv run pytest "${retry_nodeids[@]}" -n auto') == 2
+    assert joined.count("retrying budget-only failures once") == 2
+
+    # And it never runs on a green suite.
+    assert joined.count('if [ "$test_status" -eq 0 ]; then') == 2
 
 
 def test_default_gate_has_a_real_five_minute_ci_deadline() -> None:

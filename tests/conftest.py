@@ -382,6 +382,15 @@ def _reset_all_singletons():
             "FileOutputManagerFactory",
             lambda cls: cls._instances.clear() if hasattr(cls, "_instances") else None,
         ),
+        # RFC-0027 L6.1: the answer cache is process-local, so an entry stored
+        # by one test would be served to the next. A leaked verdict is worse
+        # than a leaked engine — it makes an unrelated test pass on a stale
+        # answer.
+        (
+            "tree_sitter_analyzer.cache.answer_cache",
+            "reset_answer_cache",
+            lambda fn: fn(),
+        ),
     ]
 
     for module_path, attr_name, reset_fn in _RESETS:

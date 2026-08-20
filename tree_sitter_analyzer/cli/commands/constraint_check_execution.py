@@ -4,12 +4,31 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 import time
 from pathlib import Path
 
 EXPLICIT_CONFIG_BYTE_LIMIT = 1024 * 1024
 ExplicitConfigIdentity = tuple[int, int, int, int, int, int, int]
 ExplicitConfigEvidence = tuple[bytes, ExplicitConfigIdentity]
+
+# ``st_ctime`` means different things per platform, and only one of them is a
+# mutation signal:
+#   POSIX   -> inode change time. Bumped by every metadata/content mutation, so
+#              it genuinely strengthens the TOCTOU identity.
+#   Windows -> file *creation* time. Never bumped by mutating a file, so it adds
+#              zero detection power (replacement is already covered by
+#              st_dev/st_ino), and `os.stat(path)` and `os.fstat(fd)` do not
+#              agree on it: the directory entry and the handle are populated
+#              from different sources during creation. Measured 2026-08-19 on
+#              Windows 11 / CPython 3.13: creating a file then comparing
+#              path-stat to handle-fstat disagreed on st_ctime_ns in 27 of 300
+#              trials (9%) with every other field identical.
+# Including it on Windows therefore made ``explicit_config_evidence`` fail
+# closed on files nobody touched, so `--constraint-file --read-only` reported
+# CONSTRAINT_CONFIG_CHANGED at random (~9% per read). Project it only where it
+# carries information.
+_CTIME_IS_MUTATION_SIGNAL = sys.platform != "win32"
 
 
 def _identity(info: os.stat_result) -> ExplicitConfigIdentity:
@@ -20,7 +39,7 @@ def _identity(info: os.stat_result) -> ExplicitConfigIdentity:
         int(info.st_mode),
         int(info.st_size),
         int(info.st_mtime_ns),
-        int(info.st_ctime_ns),
+        int(info.st_ctime_ns) if _CTIME_IS_MUTATION_SIGNAL else 0,
         int(getattr(info, "st_file_attributes", 0)),
     )
 

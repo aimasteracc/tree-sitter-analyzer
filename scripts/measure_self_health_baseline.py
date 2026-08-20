@@ -38,6 +38,7 @@ import json
 import platform
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -68,6 +69,28 @@ ROUTES: tuple[tuple[str, str, dict[str, Any]], ...] = (
     ("nav", "callers", {"symbol": "percentile_ns"}),
     ("edit", "safe", {"file_path": "tree_sitter_analyzer/latency.py"}),
 )
+
+#: The interleaved pair this project's own skills prescribe **per edit**
+#: (``.claude/skills/tsa-edit-safety/SKILL.md:16`` — "edit action=safe +
+#: edit action=impact + health action=file"; ``tsa-edit-then-verify/SKILL.md:6``
+#: — "edit action=safe + baseline health action=file").
+#:
+#: Why this exists (RFC-0027 L6.1 review, P1-3): :data:`ROUTES` above is driven
+#: as ``for route: for repeat:`` — every repeat of a route is grouped, so any
+#: per-route cache state stays constant inside a measurement block. A
+#: route-scoped component in the answer cache's eviction prelude therefore
+#: produced a **0% hit rate in the real workflow while this harness measured a
+#: 62x speedup**, and the harness could not see it. Measuring the routes
+#: alternating is the only way the published number describes the workflow the
+#: agent actually runs.
+INTERLEAVED_ROUTES: tuple[tuple[str, str, dict[str, Any]], ...] = (
+    ("edit", "safe", {"file_path": "tree_sitter_analyzer/latency.py"}),
+    ("health", "file", {"file_path": "tree_sitter_analyzer/latency.py"}),
+)
+
+#: Rounds of the interleaved pair. Round 1 is cold for both; every later round
+#: is a repeat at an unchanged generation and must hit.
+INTERLEAVED_ROUNDS = 4
 
 _FACADE_BUILDERS = {
     "structure": "structure_facade.build_structure_facade",
@@ -134,6 +157,78 @@ async def _drive_routes(project_root: str, warm_repeats: int) -> list[dict[str, 
     return log
 
 
+async def _drive_interleaved(project_root: str, rounds: int) -> dict[str, Any]:
+    """Drive the prescribed route pair **alternating**, and report served_from.
+
+    This is the number that describes the documented workflow. It is kept
+    separate from :func:`_drive_routes` (and from the latency reservoirs) so the
+    grouped-repeat rows above stay comparable with earlier artifacts, while the
+    interleaved rows record what an agent actually experiences.
+
+    ``served_from`` is read straight off the response, so a 0% hit rate is
+    visible as data rather than having to be inferred from a timing that a
+    grouped harness would have flattered.
+    """
+    # Start from an empty answer cache: the grouped phase above already warmed
+    # both routes, so without this every round would be a hit and the block
+    # would not show its own cold->warm transition.
+    from tree_sitter_analyzer.cache.answer_cache import reset_answer_cache
+
+    reset_answer_cache()
+
+    facades = {
+        name: _build_facade(name, project_root)
+        for name, _action, _params in INTERLEAVED_ROUTES
+    }
+    per_route: dict[str, dict[str, Any]] = {}
+    for facade_name, action, params in INTERLEAVED_ROUTES:
+        per_route[f"{facade_name}.{action}"] = {
+            "tool": facade_name,
+            "action": action,
+            "params": params,
+            "served_from": [],
+            "elapsed_ms": [],
+            "errors": [],
+        }
+
+    for _round in range(rounds):
+        for facade_name, action, params in INTERLEAVED_ROUTES:
+            row = per_route[f"{facade_name}.{action}"]
+            started = time.perf_counter_ns()
+            try:
+                result = await facades[facade_name].execute(
+                    {"action": action, **params}
+                )
+            except Exception as exc:  # noqa: BLE001 — record, never abort
+                row["errors"].append(f"{type(exc).__name__}: {exc}")
+                continue
+            elapsed_ms = (time.perf_counter_ns() - started) / 1_000_000.0
+            provenance = result.get("provenance") if isinstance(result, dict) else None
+            served = (
+                provenance.get("served_from") if isinstance(provenance, dict) else None
+            )
+            row["served_from"].append(served)
+            row["elapsed_ms"].append(round(elapsed_ms, 3))
+
+    summary: dict[str, Any] = {"rounds": rounds, "routes": per_route}
+    served_all = [served for row in per_route.values() for served in row["served_from"]]
+    cache_hits = sum(1 for served in served_all if served == "cache")
+    summary["observations"] = len(served_all)
+    summary["cache_hits"] = cache_hits
+    summary["hit_rate"] = round(cache_hits / len(served_all), 4) if served_all else None
+    # Rounds after the first are repeats at an unchanged generation, so every
+    # one of them must be a hit. Anything less is the P1-3 class of bug.
+    expected_hits = len(INTERLEAVED_ROUTES) * (rounds - 1)
+    summary["expected_cache_hits"] = expected_hits
+    summary["verdict"] = "OK" if cache_hits == expected_hits else "CACHE_NOT_SERVING"
+    print(
+        f"  interleaved: {cache_hits}/{expected_hits} expected hits "
+        f"({summary['verdict']})",
+        file=sys.stderr,
+    )
+    return summary
+
+
 def _sha256_file(path: Path) -> str:
     """Hash a file's bytes, or ``"unknown"`` if it cannot be read."""
     try:
@@ -193,9 +288,18 @@ async def _collect(
     get_latency_recorder().reset()
     print("Driving routes (cold + warm)...", file=sys.stderr)
     route_log = await _drive_routes(project_root, warm_repeats)
+    # Snapshot the latency report BEFORE the interleaved phase. That phase
+    # deliberately empties the answer cache, so its first call recomputes — and
+    # because the route has already completed once, that expensive sample lands
+    # in the *warm* reservoir and drags the grouped p95 to the cold value. It
+    # did exactly that once (edit.safe warm p95 == the interleaved first call,
+    # 5320.7 ms), which is the same class of self-flattering/self-maligning
+    # instrumentation error as timing a cache hit outside the measured window.
     report = await SelfHealthTool(project_root=project_root).execute(
         {"output_format": "json"}
     )
+    print("Driving the prescribed pair interleaved...", file=sys.stderr)
+    interleaved = await _drive_interleaved(project_root, INTERLEAVED_ROUNDS)
     finished = datetime.now(timezone.utc)
 
     return {
@@ -261,6 +365,16 @@ async def _collect(
             },
         },
         "routes_driven": route_log,
+        "interleaved_workflow": interleaved,
+        "interleaved_workflow_note": (
+            "The prescribed pre-edit pair (edit action=safe + health "
+            "action=file) driven ALTERNATING rather than grouped. routes_driven "
+            "above groups all repeats of one route together, which holds any "
+            "per-route cache state constant inside a block; that structure hid "
+            "a 0% real-workflow cache hit rate behind a 62x grouped-repeat "
+            "speedup (RFC-0027 L6.1 review P1-3). Judge the answer cache on "
+            "these rows, not on the warm column above."
+        ),
         "reproduction_command": (
             "uv run python scripts/measure_self_health_baseline.py"
         ),

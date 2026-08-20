@@ -463,19 +463,36 @@ async def test_edit_safe_explicit_read_existing_honors_compact_only(
         }
         return
 
+    # #1321/#1322: the compact envelope is disjoint — the blob omits exactly the
+    # control-surface keys (which compaction guarantees at the top level) and
+    # keeps everything the reduction drops, so ``source_snapshots`` is
+    # recoverable there. The previous expectation listed all seven
+    # control-surface fields in BOTH places; that was the duplication, not the
+    # contract. The RFC-0022 P0.4/P0.5 surface asserted here is unchanged.
+    #
+    # RFC-0027 L6.1: the answer cache attaches its visibility block AFTER the
+    # inner built ``toon_content``, so the disjoint computation cannot see it —
+    # ``provenance`` therefore lives at the top level only, exactly once, and is
+    # NOT recoverable from the blob. That is asserted directly in
+    # ``test_provenance_survives_the_disjoint_toon_envelope`` below;
+    # ``served_from`` is pinned exactly here, while the key components are
+    # digests over this tmp_path so only their presence is pinned — their
+    # derivation is pinned in ``tests/unit/test_answer_cache_policy.py``.
+    provenance = result.pop("provenance")
+    assert provenance["served_from"] == "computed"
+    assert set(provenance) == {
+        "served_from",
+        "tool",
+        "action",
+        "normalized_args",
+        "generation",
+        "producer_version",
+        "extra_inputs",
+    }
+
     assert result == {
         "format": "toon",
-        "toon_content": (
-            "success: true\n"
-            "verdict: WARN\n"
-            "access_mode: read_existing\n"
-            "access_state: unknown\n"
-            "access_reason: READ_EXISTING_AUTHORITY_UNCERTIFIED\n"
-            "source_snapshots: []\n"
-            "output_format: toon\n"
-            # RFC-0022 P0.5: wire owner echo in the TOON control surface.
-            "action_version: edit.safe/v1"
-        ),
+        "toon_content": "source_snapshots: []",
         "success": True,
         "verdict": "WARN",
         "access_mode": "read_existing",

@@ -58,8 +58,27 @@ import difflib
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from ...cache.answer_cache import get_answer_cache
+from ...cache.answer_cache_policy import build_answer_key, provenance_block
 from ...latency import get_latency_recorder
 from .base_tool import BaseMCPTool
+
+
+def _with_provenance(result: Any, key: Any, served_from: str) -> Any:
+    """Attach the RFC-0027 L6.1 rule-5 visibility block to ``result``.
+
+    ``served_from`` is exactly ``"cache"`` or ``"computed"``. A cache that lies
+    about freshness is worse than no cache, so this is attached to a miss as
+    well as a hit — an agent must never have to infer which it got.
+
+    A non-dict result (an F5 bespoke exit code) is returned untouched; those
+    routes are not on the allowlist, so this is defence in depth.
+    """
+    if not isinstance(result, dict):
+        return result
+    result["provenance"] = provenance_block(key, served_from)
+    return result
+
 
 # A bespoke route may return ``dict`` (normal envelope) or ``int`` (exit code
 # when suppress_output=True, mirroring search_content / find_and_grep).
@@ -374,8 +393,33 @@ class FacadeTool(BaseMCPTool):
         if action in self.action_map:
             inner = self.action_map[action]
             projected = self._project_args(inner, arguments)
+            # RFC-0027 L6.1: the answer cache sits on the same seam as the
+            # latency recorder, for the same reason — the facade is the public
+            # (tool, action) surface, so a key built here describes exactly the
+            # question the caller asked. Only allowlisted read-only routes are
+            # eligible; for every other action ``build_answer_key`` returns
+            # ``None`` on an allowlist lookup and the path below is unchanged.
+            #
+            # The whole cache path — key derivation, lookup, store — is INSIDE
+            # the measured window. Deriving the key costs a source-tree
+            # fingerprint (~20 ms on this repo), and the first version of this
+            # code built it outside the recorder: the baseline then reported a
+            # cache hit as 0.0 ms, i.e. the instrumentation lied about the cost
+            # the caller actually waits for. A measurement that flatters the
+            # change is worse than no measurement.
             with recorder.measure(self.facade_name, action):
-                return await inner.execute(projected)
+                key = build_answer_key(
+                    self.facade_name, action, projected, self.project_root
+                )
+                if key is None:
+                    return await inner.execute(projected)
+                cache = get_answer_cache()
+                cached = cache.lookup(key)
+                if cached is not None:
+                    return _with_provenance(cached.payload, key, "cache")
+                result = await inner.execute(projected)
+                cache.store(key, result)
+                return _with_provenance(result, key, "computed")
 
         available = self._available_actions()
         valid = ", ".join(available) if available else "(none registered)"

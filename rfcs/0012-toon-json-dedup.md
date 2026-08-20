@@ -248,6 +248,19 @@ returns the JSON result if TOON encoding raises. `compact_only` never drops
 - [x] CLI↔MCP parity test green (`--compact-toon` → `compact_only`).
 - [x] Docs/CODEMAPS + README updated (CLI flag count 272→273).
 - [x] (Phase 2) disjoint-by-default via value-kind rule — `_copy_metadata_fields` strips all non-empty list/dict values except `TOON_DICT_PASSTHROUGH`; `TOON_LARGE_STRING_FIELDS` covers known large strings. Cost invariants in `test_output_cost_invariants.py` verify TOON < JSON for nav impact responses.
+- [x] (Phase 2, completed by #1321) disjointness made **bidirectional**. Phase 2
+      as shipped only stripped the *top level* of what the blob carried; it
+      never stripped the *blob* of what the top level carried, so every key that
+      survived `_copy_metadata_fields` — including the ~2 KB `agent_summary`
+      passthrough — was still on the wire twice. `_build_disjoint_toon_content`
+      closes it in both modes: the default envelope's blob omits every retained
+      top-level key, and the `compact_only` blob omits exactly
+      `TOON_CONTROL_SURFACE` (the keys the reduction guarantees at the top
+      level), so nothing is duplicated and nothing is unrecoverable. The
+      boundary re-reduction is now gated on the tool having already compacted,
+      because reducing a disjoint envelope would delete rather than dedupe.
+      Facade-level invariants added (`test_facade_toon_*`): the layer the
+      1.40x regression actually lived on had no cost coverage at all.
 
 ## What this RFC does NOT do (deferred)
 

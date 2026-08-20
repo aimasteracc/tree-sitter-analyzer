@@ -453,3 +453,73 @@ def test_readme_counts_match_registry() -> None:
             )
 
     assert failures == [], "README ↔ registry drift:\n  " + "\n  ".join(failures)
+
+
+def test_encoding_ratchet_is_present_and_pre_commit_wired() -> None:
+    """The locale-dependent-text-IO ratchet must stay wired into pre-commit.
+
+    Why: a test that reads text without ``encoding=`` inherits the runner's
+    locale. It is green on GitHub's UTF-8 runners and raises
+    ``UnicodeDecodeError`` on a cp932/latin-1 developer box -- and the decode
+    error lands on the line that was supposed to assert, so it MASKS the real
+    check rather than reporting it. Measured 2026-08-19 against CI-green
+    develop: 6 failures in tests/unit/test_claim_registry.py and 5 in
+    tests/contracts/ were nothing but this. CI structurally cannot see the
+    class, so only a commit-time gate can hold the line.
+    """
+    script = PROJECT_ROOT / "scripts" / "check_test_encoding.py"
+    config = PROJECT_ROOT / ".pre-commit-config.yaml"
+    assert script.exists(), (
+        "scripts/check_test_encoding.py must exist -- it is the only gate that "
+        "sees locale-dependent test I/O, because UTF-8 CI runners never trip it."
+    )
+    config_text = config.read_text(encoding="utf-8")
+    assert "check_test_encoding.py" in config_text, (
+        ".pre-commit-config.yaml must wire scripts/check_test_encoding.py into a "
+        "`repo: local` hook, or the ratchet is a script nobody runs."
+    )
+
+
+def test_real_git_capture_tests_stay_budget_exempt() -> None:
+    """Budget exemption in the capture suite must follow the cost driver.
+
+    Why: tests/unit/test_diff_snapshot_readonly_capture.py holds tests that
+    drive real ``git`` subprocesses -- 7 spawns to build the fixture repo, then
+    BOTH capture backends per assertion. The conftest 5.0s per-test wall-clock
+    budget cannot grade that on a shared runner: the same test measured 5.07s
+    and 6.06s in CI runs 32246819262 and 32256066101 (macos-latest 3.11).
+
+    7 of them had been exempted one at a time, each as it happened to lose the
+    scheduling lottery, which left 39 equally exposed and kept the macOS axis
+    one slow runner away from red. The exemption now follows the ``git_repo``
+    fixture. This guard fails the moment a new git-backed test is added without
+    it -- deterministically, on every platform -- instead of surfacing weeks
+    later as a flake on one axis.
+
+    Tests that do NOT take ``git_repo`` are pure-logic helpers and MUST stay
+    budgeted, so the budget keeps its signal where it can still detect a real
+    regression.
+    """
+    source = (
+        PROJECT_ROOT / "tests" / "unit" / "test_diff_snapshot_readonly_capture.py"
+    ).read_text(encoding="utf-8")
+    missing: list[str] = []
+    over_marked: list[str] = []
+    for node in ast.parse(source).body:
+        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("test_"):
+            continue
+        takes_git_repo = "git_repo" in {arg.arg for arg in node.args.args}
+        decorators = [ast.unparse(deco) for deco in node.decorator_list]
+        exempt = any(
+            "slow_ok" in deco or "GIT_CAPTURE_COST" in deco for deco in decorators
+        )
+        if takes_git_repo and not exempt:
+            missing.append(node.name)
+        elif exempt and not takes_git_repo:
+            over_marked.append(node.name)
+
+    assert (missing, over_marked) == ([], []), (
+        "Budget exemption must track the git_repo fixture exactly.\n"
+        f"  git-backed but still budgeted (add @GIT_CAPTURE_COST): {missing}\n"
+        f"  exempt without paying git cost (drop the marker): {over_marked}"
+    )

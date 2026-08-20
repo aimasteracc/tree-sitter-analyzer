@@ -2608,7 +2608,14 @@ def test_frozen_snapshot_rejects_git_magic_scope_with_toon() -> None:
     )
 
     assert result["format"] == "toon"
-    assert "DIFF_SNAPSHOT_UNSUPPORTED_SCOPE" in result["toon_content"]
+    # #1321: this rejection envelope is scalar-only, so the disjoint TOON
+    # envelope carries every field at the top level and ``toon_content`` has
+    # nothing left to encode. The old assertion looked in the blob only because
+    # the blob was then a duplicate of the top level. #1252's requirement — the
+    # rejection stays actionable for the caller — is asserted directly.
+    assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_SCOPE"
+    assert result["error"] == "DIFF_SNAPSHOT_UNSUPPORTED_SCOPE"
+    assert result["toon_content"] == ""
 
 
 def test_scope_matches_compatibility_wrapper_uses_filesystem_bytes() -> None:
