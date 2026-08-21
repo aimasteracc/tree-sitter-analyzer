@@ -346,3 +346,123 @@ def test_import_spec_helpers_cover_unsupported_and_unresolved_cases(
     assert _extract_import_specs("package main\n", ".go") == set()
     assert _resolve_import_spec("..parent", "pkg/main.py", tmp_path) is None
     assert _resolve_import_spec("missing.module", "pkg/main.py", tmp_path) is None
+
+
+# ---------------------------------------------------------------------------
+# L1 fail-open bug tests (2026-08-21)
+# When project_root is a relative path ("." or ".."), to_relative falls back
+# to the absolute path, so safe_dependents looks up the wrong key in
+# FileDependencyView._dependents and returns []. Both bugs are proven below.
+# ---------------------------------------------------------------------------
+
+
+def test_to_relative_with_unresolved_root_falls_back_to_absolute_path(
+    tmp_path: Path,
+) -> None:
+    # Issue 2026-08-21: to_relative(abs_path, ".") raises ValueError (abs path
+    # cannot be made relative to a relative root) and falls back to abs_path.
+    # The fix applies os.path.realpath to both sides in _collect_safe_to_edit_facts.
+    import os
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _normalize_relative_path,
+        to_relative,
+    )
+
+    abs_target = str(tmp_path / "pkg" / "main.py")
+    abs_root = str(tmp_path)
+
+    # With both sides absolute: correct relative path
+    good = _normalize_relative_path(to_relative(abs_target, abs_root))
+    assert good == "pkg/main.py"
+
+    # With relative root ".": falls back to absolute path (the bug)
+    bad = _normalize_relative_path(to_relative(abs_target, "."))
+    assert bad != "pkg/main.py"
+
+    # With realpath on both sides: resolves correctly regardless of input form
+    fixed = _normalize_relative_path(
+        to_relative(os.path.realpath(abs_target), os.path.realpath(abs_root))
+    )
+    assert fixed == "pkg/main.py"
+
+
+def test_safe_dependents_returns_empty_for_absolute_path_key(tmp_path: Path) -> None:
+    # Issue 2026-08-21: when rel_path is the absolute path of the target
+    # (because project_root was not realpath'd), safe_dependents returns []
+    # even though FileDependencyView._dependents has the correct relative key.
+    abs_target = str(tmp_path / "pkg" / "main.py")
+
+    view = FileDependencyView(
+        rel_path="pkg/main.py",
+        dependencies=set(),
+        dependents={"app/caller.py"},
+    )
+
+    # Correct key finds the dependents
+    assert safe_dependents(view, "pkg/main.py") == ["app/caller.py"]
+
+    # Absolute path key misses (the fail-open)
+    abs_key = abs_target.replace("\\", "/")
+    assert safe_dependents(view, abs_key) == []
+
+
+def test_uncertified_dependents_escalate_safe_verdict_to_caution(
+    tmp_path: Path,
+) -> None:
+    # Issue 2026-08-21: when FileDependencyView.dependents_answer.certified=False
+    # and the base verdict would be SAFE, _format_safe_to_edit_result must
+    # escalate to CAUTION so agents do not proceed on a false-safe signal.
+
+    from tree_sitter_analyzer.health_scorer import HealthScore
+    from tree_sitter_analyzer.mcp.tools.utils.dependents_index import DependentsAnswer
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        SafeToEditContext,
+        SafeToEditFacts,
+        _format_safe_to_edit_result,
+    )
+
+    target = tmp_path / "pkg" / "leaf.py"
+    target.parent.mkdir()
+    target.write_text("VALUE = 1\n", encoding="utf-8")
+
+    uncertified_answer = DependentsAnswer(
+        dependents=frozenset(),
+        basis="index",
+        certified=False,
+        certification_reason="CALL_GRAPH_INCOMPLETE",
+        scanned_files=10,
+        delta_files=0,
+        unestablished=(),
+    )
+    view = FileDependencyView(
+        rel_path="pkg/leaf.py",
+        dependencies=set(),
+        dependents=set(),
+        dependents_answer=uncertified_answer,
+    )
+    health = HealthScore(file_path=str(target), total=85.0, dimensions={})
+    facts = SafeToEditFacts(
+        dependents=[],
+        dependencies=[],
+        health=health,
+        test_files=[],
+        has_tests=False,
+        risk="low",
+        risk_factors=[],
+        pre_edit_checklist=[],
+    )
+    context = SafeToEditContext(
+        file_path="pkg/leaf.py",
+        edit_type="edit",
+        resolved_path=str(target),
+        project_root=str(tmp_path),
+        graph=view,
+        scorer=None,  # type: ignore[arg-type]  # scorer only used in _collect_facts
+    )
+
+    result = _format_safe_to_edit_result(context, facts)
+
+    assert result["verdict"] == "CAUTION"
+    factor_names = [f["factor"] for f in result["risk_factors"]]
+    assert "uncertified_dependents" in factor_names

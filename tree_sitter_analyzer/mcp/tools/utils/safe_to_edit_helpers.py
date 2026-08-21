@@ -59,10 +59,16 @@ class FileDependencyView:
         rel_path: str,
         dependencies: set[str],
         dependents: set[str],
+        dependents_answer: Any | None = None,
     ) -> None:
         self._nodes = {rel_path, *dependencies, *dependents}
         self._deps = {rel_path: dependencies}
         self._dependents = {rel_path: dependents}
+        #: The RFC-0025 L1 ``DependentsAnswer`` this view's dependents came
+        #: from, or ``None`` for hand-built views. Carries how completely the
+        #: set was established so the response can say so rather than
+        #: presenting a fallback as the derived answer.
+        self.dependents_answer = dependents_answer
 
     def has_node(self, file_rel: str) -> bool:
         """Return True if *file_rel* is a node in this view (O(1) set lookup)."""
@@ -126,14 +132,19 @@ def build_safe_to_edit_result(context: SafeToEditContext) -> dict[str, Any]:
 
 def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
     """Collect graph, health, test, and risk facts for a file."""
-    # Canonicalize before relativising: on macOS the security validator's
-    # abspath (/var/folders/...) and a canonical project_root
-    # (/private/var/folders/...) differ by symlink, which would make
-    # to_relative fall back to the absolute path and miss every graph node
-    # (CLAUDE.md §2 resolution contract) — downstream facts would silently
-    # undercount on macOS while Linux CI saw them.
+    # Canonicalize both sides before relativising. On macOS the security
+    # validator's abspath (/var/folders/...) differs from a canonical root
+    # (/private/var/folders/...) by symlink. On any platform, a relative
+    # project_root ("." or "..") causes Path(abs).relative_to(rel) to raise
+    # ValueError, so to_relative falls back to the absolute path — the returned
+    # key then misses every node in FileDependencyView._dependents, which is
+    # keyed by resolved-relative paths (build_file_dependency_view §L1).
+    # (CLAUDE.md §2 resolution contract)
     rel_path = _normalize_relative_path(
-        to_relative(os.path.realpath(context.resolved_path), context.project_root)
+        to_relative(
+            os.path.realpath(context.resolved_path),
+            os.path.realpath(context.project_root),
+        )
     )
     dependents = safe_dependents(context.graph, rel_path)
     dependencies = safe_dependencies(context.graph, rel_path)
@@ -241,7 +252,10 @@ def _format_safe_to_edit_result(
     # violation referencing this file forces UNSAFE; warn-only forces
     # CAUTION. The base_verdict (derived from risk_level) is the floor.
     certified_rel_path = _normalize_relative_path(
-        to_relative(os.path.realpath(context.resolved_path), context.project_root)
+        to_relative(
+            os.path.realpath(context.resolved_path),
+            os.path.realpath(context.project_root),
+        )
     )
     if context.snapshot_conn is not None:
         # Codex P1 (#1299): the certified read_existing route runs the
@@ -281,11 +295,30 @@ def _format_safe_to_edit_result(
     verdict = _max_verdict(
         _max_verdict(base_verdict, constraint_verdict), fixture_verdict
     )
+    # Fail-closed: an uncertified dependents set cannot support a SAFE verdict.
+    # The set was derived from the index but completeness was not certified —
+    # there may be additional dependents outside the index scope. Escalate so
+    # agents do not proceed on a false-safe signal.
+    _da = getattr(context.graph, "dependents_answer", None)
+    _escalated_uncertified = _da is not None and not _da.certified and verdict == "SAFE"
+    if _escalated_uncertified:
+        verdict = "CAUTION"
     risk_factors = list(facts.risk_factors)
     if violations:
         risk_factors.extend(constraint_risk_factor(row) for row in violations)
     if fixture_fact.is_fixture:
         risk_factors.append(_fixture_risk_factor(fixture_fact, context.file_path))
+    if _escalated_uncertified:
+        risk_factors.append(
+            {
+                "factor": "uncertified_dependents",
+                "detail": (
+                    f"Dependents not fully established "
+                    f"({_da.certification_reason}); cannot confirm SAFE"  # type: ignore[union-attr]
+                ),
+                "severity": "caution",
+            }
+        )
     # #1027: build the recommendation from the FINAL (possibly escalated)
     # verdict, never the un-escalated ``risk``. A constraint/fixture
     # promotion that lifts SAFE→UNSAFE must lift the recommendation too,
@@ -353,6 +386,39 @@ def _format_safe_to_edit_result(
         "pre_edit_checklist": facts.pre_edit_checklist,
         "agent_workflow": workflow,
         "causal_envelope": causal_envelope,
+        **_dependents_basis_fields(context.graph),
+    }
+
+
+def _dependents_basis_fields(graph: Any) -> dict[str, Any]:
+    """Report how the dependents set was established (RFC-0025 L1).
+
+    A stale or unusable index must not be read as authoritative, and a
+    fall-back must not be presented as the derived answer. ``dependents_basis``
+    says which path produced the set; ``dependents_certified`` and
+    ``dependents_certification_reason`` say whether it can be trusted as
+    complete.
+
+    These are deliberately **flat scalars** rather than a nested block: a
+    dict-valued key is a "bulk" value that TOON formatting strips, so the label
+    would vanish on exactly the surface (MCP) whose callers most need it.
+
+    ``dependents_basis="unavailable"`` is the hand-built or snapshot-certified
+    view, which reports its completeness through ``causal_envelope`` instead.
+    """
+    answer = getattr(graph, "dependents_answer", None)
+    if answer is None:
+        return {
+            "dependents_basis": "unavailable",
+            "dependents_certified": False,
+            "dependents_certification_reason": "NOT_DERIVED",
+            "dependents_delta_files": 0,
+        }
+    return {
+        "dependents_basis": answer.basis,
+        "dependents_certified": answer.certified,
+        "dependents_certification_reason": answer.certification_reason,
+        "dependents_delta_files": answer.delta_files,
     }
 
 
@@ -716,18 +782,21 @@ def build_file_dependency_view(
     ``safe_to_edit`` is latency-sensitive. A whole-project tree-sitter
     dependency graph is useful, but cold-building it for every MCP process
     makes the common pre-edit check too slow. This view keeps the same lookup
-    contract while limiting work to the target file plus a pruned text scan for
-    obvious importers.
+    contract while limiting work to the target file plus an incremental
+    dependents derivation (RFC-0025 L1, :mod:`dependents_index`).
     """
+    from .dependents_index import resolve_dependents
+
     root = Path(project_root).resolve()
     target = Path(resolved_path).resolve()
     rel_path = _normalize_relative_path(to_relative(str(target), str(root)))
     dependencies = _target_dependencies(target, rel_path, root)
-    dependents = _target_dependents(target, rel_path, root)
+    answer = resolve_dependents(rel_path, root)
     return FileDependencyView(
         rel_path=rel_path,
         dependencies=dependencies,
-        dependents=dependents,
+        dependents=set(answer.dependents),
+        dependents_answer=answer,
     )
 
 
@@ -746,6 +815,28 @@ def _target_dependencies(target: Path, rel_path: str, root: Path) -> set[str]:
 
 
 def _target_dependents(target: Path, rel_path: str, root: Path) -> set[str]:
+    """Return who imports *rel_path*, derived from the persisted AST index.
+
+    RFC-0025 Layer 1. Delegates to :mod:`dependents_index`, which reads
+    ``ast_index.imports_json`` and re-reads only the files the index cannot
+    vouch for. Falls back to :func:`_target_dependents_by_scan` — the previous
+    whole-tree read — when no usable index is present. The import is deferred
+    because ``dependents_index`` reuses this module's resolvers.
+    """
+    from .dependents_index import resolve_dependents
+
+    return set(resolve_dependents(rel_path, root).dependents)
+
+
+def _target_dependents_by_scan(target: Path, rel_path: str, root: Path) -> set[str]:
+    """Return dependents by reading every source file in the tree.
+
+    Kept as the fail-closed fallback for when the index cannot establish the
+    set: this is a superset of the derived answer (measured on this repository:
+    821 reported, 39 genuine), and returning a superset is the safe direction
+    for a pre-edit gate. It is not the primary path because it costs ~1 s per
+    call and 95% of what it reports is a prose match, not an import.
+    """
     needles = _import_needles_for_target(rel_path)
     if not needles:
         return set()
