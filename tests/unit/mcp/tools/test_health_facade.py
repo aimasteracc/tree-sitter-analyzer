@@ -72,6 +72,7 @@ _ALL_ACTIONS = frozenset(
         "deps",
         "test_gap",  # RFC-0003 pre-req: wired from orphaned CodeGraphTestGapTool
         "self",  # RFC-0025 Layer 5: self-proprioception (latency p50/p95 by tier)
+        "refactor_queue",  # RFC-0027 §L8: the priority formula, now in code
     }
 )
 
@@ -166,11 +167,12 @@ def test_health_facade_builds_and_has_all_actions() -> None:
 
 
 def test_health_facade_total_action_count() -> None:
-    """13 actions total — uml/graph/similarity moved to viz; test_gap wired
-    (RFC-0003); self wired (RFC-0025 Layer 5)."""
+    """14 actions total — uml/graph/similarity moved to viz; test_gap wired
+    (RFC-0003); self wired (RFC-0025 Layer 5); refactor_queue wired
+    (RFC-0027 §L8)."""
     facade = build_health_facade(project_root=None)
     total = len(facade.action_map) + len(facade.bespoke_map)
-    assert total == 13
+    assert total == 14
 
 
 def test_health_facade_does_not_contain_viz_actions() -> None:

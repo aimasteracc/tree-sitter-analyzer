@@ -16,7 +16,13 @@ skills         ``list_agent_skills``                       enumerate agent skill
 workflow       ``get_agent_workflow``                      suggested agent workflow
 journal        ``decision_journal``                        read/write decision log
 doc_sync       ``doc_sync``                               sync docs to code state
+card           ``get_project_summary``                     "what is this project?"
 =============  ==========================================  ==========================
+
+RFC-0027 §L7: ``card`` wires the previously unreachable
+``GetProjectSummaryTool`` — built, tested, and registered nowhere. It is the
+project card: purpose, top languages, entry points, and per-module
+descriptions, derived from facts TSA already computes (no LLM client).
 
 Index lifecycle actions (``status`` / ``build`` / ``full`` / ``auto`` /
 ``sync`` / ``cache``) have been extracted to the dedicated ``index`` facade
@@ -74,6 +80,12 @@ _PROJECT_DESCRIPTION = (
     "Params: format.\n"
     "- action=workflow — recommended agent workflow for the current task type. "
     "Params: task_type, format.\n"
+    "- action=card — the project card (RFC-0027 §L7): purpose from the README, "
+    "top code languages, entry points, key config files, and per-module "
+    "descriptions of the top-level structure. Persistent — built once into "
+    ".tree-sitter-cache/project-index.json and recalled instantly. Best first "
+    "call on an unfamiliar repo when you want the *what*, not the file list. "
+    "Params: force_refresh, include_notes.\n"
     "\n"
     "DECISION + DOC (may write):\n"
     "- action=journal — persistent architectural decision journal. "
@@ -104,6 +116,7 @@ def build_project_facade(project_root: str | None = None) -> FacadeTool:
     from .codegraph_metrics_tool import CodeGraphMetricsTool
     from .decision_journal_tool import DecisionJournalTool
     from .doc_sync_tool import DocSyncTool
+    from .get_project_summary_tool import GetProjectSummaryTool
     from .list_files_tool import ListFilesTool
     from .parser_readiness_tool import ParserReadinessTool
     from .project_overview_tool import ProjectOverviewTool
@@ -121,6 +134,8 @@ def build_project_facade(project_root: str | None = None) -> FacadeTool:
             "metrics": CodeGraphMetricsTool(project_root),
             "skills": AgentSkillsTool(project_root),
             "workflow": AgentWorkflowTool(project_root),
+            # RFC-0027 §L7: the project card, wired from the orphaned tool.
+            "card": GetProjectSummaryTool(project_root),
             # -- decision + doc (may write) ---------------------------------
             "journal": DecisionJournalTool(project_root),
             "doc_sync": DocSyncTool(project_root),

@@ -124,6 +124,12 @@ LEGACY_TOOL_MAP: dict[str, tuple[str, str]] = {
     "get_agent_workflow": ("project", "workflow"),
     "decision_journal": ("project", "journal"),
     "doc_sync": ("project", "doc_sync"),
+    # RFC-0027 §L7: ``get_project_summary`` was a real v1.x tool name that
+    # survived the facade cutover with no route — built, tested, reachable
+    # from nothing, and emitted as a ``next_step`` that resolved nowhere.
+    # It is a legacy name like any other now that ``project action=card``
+    # exists (RFC-0028 §3.1's "wire" disposition).
+    "get_project_summary": ("project", "card"),
     # -- index -------------------------------------------------------------
     "codegraph_status": ("index", "status"),
     "ast_cache": ("index", "cache"),
@@ -178,4 +184,11 @@ NEW_ACTION_PARITY: dict[str, tuple[str, str, str]] = {
     "viz_knowledge": ("viz", "knowledge", "--knowledge-graph-export"),
     # RFC-0025 Layer 5: self-proprioception is new; never a v1.x tool.
     "health_self": ("health", "self", "--self-health"),
+    # RFC-0027 §L8: plan_rename is a NEW action name. The inner tool's v1.x
+    # identity was ``codegraph_refactor``, which named a preview-OR-apply
+    # capability; deliberately not re-shimmed, because the registered surface
+    # is preview-only and a legacy alias would imply the apply half exists.
+    "edit_plan_rename": ("edit", "plan_rename", "--plan-rename"),
+    # RFC-0027 §L8: the refactor queue is new; it only ever lived in a skill.
+    "health_refactor_queue": ("health", "refactor_queue", "--refactor-queue"),
 }

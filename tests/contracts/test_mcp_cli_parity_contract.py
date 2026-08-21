@@ -33,6 +33,65 @@ SKIPPED_SCAN_DIRS = {
 }
 
 
+#: RFC-0027's Three-Surface table for the three §L7/§L8 capabilities this
+#: repo shipped: ``{capability: (cli_flag, facade, action)}``. Each row needs a
+#: parity test, and this is it — a route without a flag (or a flag without a
+#: route) is a capability only half the callers can reach.
+_RFC0027_THREE_SURFACE: dict[str, tuple[str, str, str]] = {
+    "project card": ("--project-card", "project", "card"),
+    "minimal rename set": ("--plan-rename", "edit", "plan_rename"),
+    "refactor queue": ("--refactor-queue", "health", "refactor_queue"),
+}
+
+
+@pytest.mark.parametrize(("capability", "row"), sorted(_RFC0027_THREE_SURFACE.items()))
+def test_rfc0027_capability_has_both_surfaces(
+    capability: str, row: tuple[str, str, str]
+) -> None:
+    """Each RFC-0027 §L7/§L8 row is reachable from BOTH the CLI and MCP."""
+    cli_flag, facade_name, action = row
+
+    parser = create_argument_parser()
+    flags = {
+        option
+        for parser_action in parser._actions
+        for option in parser_action.option_strings
+    }
+    assert cli_flag in flags, f"{capability}: CLI flag {cli_flag} is missing"
+
+    _tools, lookup = _create_tool_registry(str(PROJECT_ROOT))
+    facade = lookup[facade_name]
+    declared = set(facade.action_map) | set(facade.bespoke_map)
+    assert action in declared, (
+        f"{capability}: {facade_name} action={action} is not registered"
+    )
+
+
+@pytest.mark.parametrize(("capability", "row"), sorted(_RFC0027_THREE_SURFACE.items()))
+def test_rfc0027_capability_route_is_declared_in_facade_map(
+    capability: str, row: tuple[str, str, str]
+) -> None:
+    """The (facade, action) ↔ CLI-flag link lives in facade_map, not folklore."""
+    from tree_sitter_analyzer.mcp.facade_map import (
+        LEGACY_TOOL_MAP,
+        NEW_ACTION_PARITY,
+    )
+
+    cli_flag, facade_name, action = row
+    declared_routes = set(LEGACY_TOOL_MAP.values()) | {
+        (f, a) for f, a, _flag in NEW_ACTION_PARITY.values()
+    }
+    assert (facade_name, action) in declared_routes, (
+        f"{capability}: ({facade_name}, {action}) is in no facade_map table"
+    )
+
+    new_action_flags = {flag for _f, _a, flag in NEW_ACTION_PARITY.values()}
+    legacy_flag_owned = (facade_name, action) in set(LEGACY_TOOL_MAP.values())
+    assert cli_flag in new_action_flags or legacy_flag_owned, (
+        f"{capability}: {cli_flag} is not the declared CLI twin"
+    )
+
+
 def test_registered_mcp_tools_have_cli_parity() -> None:
     """Every registered MCP tool must have a documented CLI access path."""
     parser = create_argument_parser()
@@ -121,6 +180,9 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "decision_journal": ("main", "--decision-journal"),
         "doc_sync": ("main", "--doc-sync"),
         "codegraph_test_gap": ("main", "--test-gap"),
+        # RFC-0027 §L7: get_project_summary had no route and no flag — it was
+        # the orphan RFC-0028 §3.1 named. Both now exist.
+        "get_project_summary": ("main", "--project-card"),
     }
 
     # ------------------------------------------------------------------
@@ -330,6 +392,8 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("health", "deps"): "DependencyAnalysisTool",
         ("health", "test_gap"): "CodeGraphTestGapTool",
         ("health", "self"): "SelfHealthTool",
+        # RFC-0027 §L8: the refactor-priority formula, moved out of a skill.
+        ("health", "refactor_queue"): "RefactorQueueTool",
         ("edit", "safe"): "SafeToEditTool",
         ("edit", "guard"): "ModificationGuardTool",
         ("edit", "impact"): "ChangeImpactTool",
@@ -342,6 +406,9 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("edit", "classify"): "SemanticClassifyTool",
         ("edit", "ast_diff"): "ASTDiffTool",
         ("edit", "release_snapshot"): "<bespoke>",
+        # RFC-0027 §L8: _PlanRenameViaFacade subclasses CodeGraphRefactorTool
+        # and pins mode="preview"; apply-like args are rejected, not forwarded.
+        ("edit", "plan_rename"): "_PlanRenameViaFacade",
         ("project", "overview"): "ProjectOverviewTool",
         ("project", "files"): "ListFilesTool",
         ("project", "smart"): "SmartContextTool",
@@ -352,6 +419,8 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("project", "workflow"): "AgentWorkflowTool",
         ("project", "journal"): "DecisionJournalTool",
         ("project", "doc_sync"): "DocSyncTool",
+        # RFC-0027 §L7: the project card, wired from the orphaned tool.
+        ("project", "card"): "GetProjectSummaryTool",
         ("index", "status"): "CodeGraphStatusTool",
         ("index", "cache"): "ASTCacheTool",
         ("index", "build"): "BuildProjectIndexTool",

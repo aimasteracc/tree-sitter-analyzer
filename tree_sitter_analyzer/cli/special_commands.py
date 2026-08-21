@@ -54,6 +54,7 @@ def handle_special_commands(
         lambda: _handle_knowledge_graph_index(args, context),
         lambda: _handle_affected(args, context),
         lambda: _handle_nav_actions_lazy(args, context),
+        lambda: _handle_capability_actions_lazy(args, context),
         lambda: _handle_watch_health(args, context),
         lambda: _handle_mcp_commands(args, context),
         lambda: _validate_partial_read_options(args, context.output_error),
@@ -690,6 +691,19 @@ def _handle_nav_actions_lazy(
     from tree_sitter_analyzer.cli.nav_special_commands import handle_nav_actions
 
     return handle_nav_actions(args, context)
+
+
+def _handle_capability_actions_lazy(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Delegate the RFC-0027 §L7/§L8 flags to ``capability_commands``.
+
+    Lazy import for the same reason as the nav delegator above.
+    """
+    from tree_sitter_analyzer.cli.capability_commands import handle_capability_actions
+
+    return handle_capability_actions(args, context)
 
 
 def _handle_watch_health(

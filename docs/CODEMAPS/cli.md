@@ -68,9 +68,12 @@ Categories of CLI surface:
 - `--safe-to-edit` — edit risk verdict
 - `--file-health` — per-file score
 - `--symbol-lineage NAME` — symbol history
+- `--refactor-queue [--refactor-queue-top-n N]` — top-N prioritized refactor queue (RFC-0027 §L8): files ranked by `(1 - health/100) * log(1 + churn_30d) * (dead_ratio + 0.1)`, the formula that previously lived only in `.claude/skills/tsa-refactor-queue/SKILL.md`. Each row carries grade, weakest dimension, 30-day churn, dead-symbol count and a concrete action (`split` / `delete dead` / `extract`). Reports `CHURN_UNAVAILABLE` rather than a queue of zeros when `.ast-cache/index.db` has no churn. MCP twin: `health action=refactor_queue`
+- `--plan-rename SYMBOL --plan-rename-to NEW_NAME` — minimal edit set for a project-wide rename (RFC-0027 §L8): every definition and reference site an AST-aware rename would touch, plus `files_affected`. **PREVIEW ONLY** — it never writes, and `mode`/`dry_run`/`apply`/`write`/`force` are rejected with `PLAN_RENAME_IS_PREVIEW_ONLY` rather than honoured. MCP twin: `edit action=plan_rename`
 - `--self-health` — self-proprioception (RFC-0025 Layer 5): per-`(tool, action)` p50/p95 latency by tier (cold/warm/cached), invocation counts, in-process analysis-cache hit rate, and on-disk AST-index state (`.ast-cache/index.db` presence/size/indexed-file count; its hit rate is `null` — that index keeps no hit/miss counters). Scope is the **current process**; a fresh CLI run reports `NO_OBSERVATIONS` (never a fabricated `0.0`). MCP twin: `health action=self`. Durable numbers: `scripts/measure_self_health_baseline.py` → `docs/baselines/rfc0025-l5-latency-<axis>-e0.json`
 
 ### Discovery
+- `--project-card` — the project card (RFC-0027 §L7): purpose from the README, top code languages, entry points, key config files, and per-module descriptions of the top-level structure. Persistent — built once into `.tree-sitter-cache/project-index.json` and recalled instantly. MCP twin: `project action=card`
 - `list-files` subcommand — fd wrapper
 - `search-content` subcommand — ripgrep wrapper
 - `find-and-grep` subcommand — combined pipeline
@@ -163,7 +166,7 @@ boundary.
 
 ## See Also
 
-- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (325 unique flags total — this codemap is intentionally categorical, not exhaustive)
+- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (330 unique flags total — this codemap is intentionally categorical, not exhaustive)
 - [`docs/CODEMAPS/mcp-tools.md`](./mcp-tools.md) — MCP-side counterpart
 - [`tests/unit/cli/test_mcp_commands.py`](../../tests/unit/cli/test_mcp_commands.py) — Parity contract tests
 - [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks a change to the CLI **flag surface** (any `cli/**/*.py`, compared as a set) without a `cli.md` update

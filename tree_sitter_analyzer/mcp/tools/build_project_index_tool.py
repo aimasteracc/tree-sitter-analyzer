@@ -241,7 +241,13 @@ class BuildProjectIndexTool(BaseMCPTool):
             f"build_project_index built files={files_scanned} "
             f"languages={languages_count} duration_ms={build_duration_ms}"
         )
-        next_step = "get_project_summary to retrieve this index in future sessions"
+        # RFC-0028 §3.1 item 2: this used to name ``get_project_summary`` — a
+        # token that matched a tool name and resolved to no registered route.
+        # It now names the route that exists (RFC-0027 §L7).
+        next_step = (
+            "project action=card to retrieve this index in future sessions "
+            "(CLI: --project-card)"
+        )
         response: dict[str, Any] = {
             "success": True,
             "status": "built",

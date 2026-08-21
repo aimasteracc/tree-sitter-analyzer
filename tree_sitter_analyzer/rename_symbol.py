@@ -119,9 +119,9 @@ def _sites_from_defn(defn: Any, old_name: str, project_root: str) -> list[Rename
     if not os.path.isfile(fpath):
         return []
     try:
-        with open(fpath) as f:
+        with open(fpath, encoding="utf-8") as f:
             lines = f.readlines()
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return []
     line_idx = defn.line - 1
     if 0 <= line_idx < len(lines):
@@ -148,9 +148,9 @@ def _sites_from_ref(ref: Any, old_name: str, project_root: str) -> list[RenameSi
     if not os.path.isfile(fpath):
         return []
     try:
-        with open(fpath) as f:
+        with open(fpath, encoding="utf-8") as f:
             lines = f.readlines()
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return []
     if ref.line <= 0:
         return [
@@ -233,9 +233,9 @@ def _apply_rename_to_file(
 ) -> bool:
     abs_path = file_path if os.path.isabs(file_path) else file_path
     try:
-        with open(abs_path) as f:
+        with open(abs_path, encoding="utf-8") as f:
             content = f.read()
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return False
 
     lines = content.split("\n")
@@ -262,7 +262,7 @@ def _apply_rename_to_file(
 
     new_content = "\n".join(lines)
     try:
-        with open(abs_path, "w") as f:
+        with open(abs_path, "w", encoding="utf-8") as f:
             f.write(new_content)
         return True
     except OSError:
@@ -272,9 +272,9 @@ def _apply_rename_to_file(
 def _read_backup(abs_path: str) -> str | None:
     """Read file content for rollback backup; return None on OSError."""
     try:
-        with open(abs_path) as f:
+        with open(abs_path, encoding="utf-8") as f:
             return f.read()
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return None
 
 
@@ -282,7 +282,7 @@ def _rollback_file(fpath: str, orig_content: str, root: str) -> None:
     """Restore a single file to its original content during rollback."""
     abs_path = fpath if os.path.isabs(fpath) else os.path.join(root, fpath)
     try:
-        with open(abs_path, "w") as f:
+        with open(abs_path, "w", encoding="utf-8") as f:
             f.write(orig_content)
     except OSError:
         pass

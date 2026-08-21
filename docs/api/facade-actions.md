@@ -3,7 +3,7 @@
 > **AUTO-GENERATED — do not edit by hand.** Regenerate with `uv run python scripts/generate_facade_actions_doc.py`.
 > Drift-gated by `tests/unit/docs/test_facade_actions_doc_drift.py` (regenerates in-memory and diffs).
 
-The MCP server exposes **8 facade tools** routing **75 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
+The MCP server exposes **8 facade tools** routing **78 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
 
 Reading the tables:
 
@@ -59,7 +59,7 @@ Reading the tables:
 | `signatures` | `file_path`*, `language`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
 | `sitemap` | `directory`, `language`, `max_files`, `max_symbols`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-sitemap` |
 
-## `health` — 13 actions
+## `health` — 14 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
@@ -72,12 +72,13 @@ Reading the tables:
 | `overview` | `max_coupled_files`, `max_dead`, `max_entry_points`, `max_hubs`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-overview` |
 | `patterns` | `file_path`*, `categories`, `output_format`, `severity_threshold` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--code-patterns` |
 | `project` | `compact_only`, `max_files`, `min_grade`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--project-health` |
+| `refactor_queue` | `output_format`, `top_n` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--refactor-queue` |
 | `routes` | `file_path`, `framework`, `mode`, `output_format`, `url_pattern` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--detect-routes` |
 | `scale` | `file_path`, `file_paths`, `include_complexity`, `include_details`, `include_guidance`, `language`, `metrics_only`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--metrics-only` |
 | `self` | `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--self-health` |
 | `test_gap` | `coverage_json`, `file_path`, `include_covered`, `language`, `max_files`, `max_gaps`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--test-gap` |
 
-## `edit` — 9 actions
+## `edit` — 10 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
@@ -86,15 +87,17 @@ Reading the tables:
 | `constraints` | `access_mode`, `diff_snapshot_id`, `output_format`, `path_filter`, `persist`, `scope_paths`, `severity_min`, `snapshot_id`, `source_generation` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--check-constraints` |
 | `guard` | `modification_type`*, `symbol`*, `file_path` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--modification-guard` |
 | `impact` | `access_mode`, `agent_summary_only`, `capture_diff_snapshot`, `compact_only`, `include_tests`, `mode`, `output_format`, `pr_url`, `resource_profile`, `scope_mode`, `scope_paths` — `capture_diff_snapshot` is an explicit legacy producer available only to same-process POSIX consumers and is forbidden whenever `access_mode` is present | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--change-impact` |
+| `plan_rename` | `new_name`*, `symbol`*, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--plan-rename` |
 | `pr` | `include_call_graph`, `mode`, `output_format`, `pr_url` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--pr-review` |
 | `refactor` | `file_path`*, `include_extractions`, `include_skeleton`, `language`, `max_suggestions`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--refactor` |
 | `release_snapshot` | `diff_snapshot_id`*, `route_lease_id`*, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
 | `safe` | `file_path`*, `access_mode`, `compact_only`, `edit_type`, `output_format`, `snapshot_id`, `source_generation` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--safe-to-edit` |
 
-## `project` — 10 actions
+## `project` — 11 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
+| `card` | `force_refresh`, `format`, `include_notes`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--project-card` |
 | `doc_sync` | `doc_patterns`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--doc-sync` |
 | `files` | `absolute`, `changed_before`, `changed_within`, `count_only`, `depth`, `exclude`, `extensions`, `follow_symlinks`, `full_path_match`, `glob`, `hidden`, `limit`, `min_depth`, `no_ignore`, `one_file_system`, `output_file`, `output_format`, `path`, `pattern`, `prune`, `roots`, `show_errors`, `size`, `strip_cwd_prefix`, `suppress_output`, `threads`, `types` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `list-files` (console script) |
 | `journal` | `alternatives`, `id`, `limit`, `mode`, `new_id`, `output_format`, `path_scope`, `query`, `rationale`, `related_symbols`, `scope_paths`, `tags`, `title`, `verdict`, `verdict_filter` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--decision-journal` |

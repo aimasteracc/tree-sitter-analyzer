@@ -29,6 +29,13 @@ logger = setup_logger(__name__)
 class CodeGraphRefactorTool(BaseMCPTool):
     """MCP Tool for AST-aware symbol renaming (CodeGraph parity)."""
 
+    #: When set, ``mode`` is taken from here and the caller's value is ignored
+    #: entirely. RFC-0027 §L8's ``edit action=plan_rename`` binding sets it to
+    #: ``"preview"`` so a planning surface cannot be talked into writing. It is
+    #: a class attribute rather than an injected argument so the pin survives
+    #: the strict-parameter guard and shows up in the subclass definition.
+    FORCED_MODE: str | None = None
+
     def __init__(self, project_root: str | None = None) -> None:
         self._cache: Any = None
         super().__init__(project_root)
@@ -113,7 +120,7 @@ class CodeGraphRefactorTool(BaseMCPTool):
         self.validate_arguments(arguments)
         symbol = arguments["symbol"].strip()
         new_name = arguments["new_name"].strip()
-        mode = arguments.get("mode", "preview")
+        mode = self.FORCED_MODE or arguments.get("mode", "preview")
         output_format = arguments.get("output_format", "toon")
         dry_run = mode == "preview"
 

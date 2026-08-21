@@ -557,18 +557,29 @@ class TestSkillContentSync:
         server does not register. Agents following these instructions fail on
         their first call (issue #437).
 
-        The authoritative legacy set is LEGACY_TOOL_MAP keys from facade_map.py
-        plus get_project_summary (was never in LEGACY_TOOL_MAP but appeared
-        in skills). Canonical call form: ``edit action=safe`` not ``safe_to_edit()``.
+        The authoritative legacy set is LEGACY_TOOL_MAP keys from facade_map.py.
+        Canonical call form: ``edit action=safe`` not ``safe_to_edit()``.
         """
         import re
 
         from tree_sitter_analyzer.mcp.facade_map import LEGACY_TOOL_MAP
 
         # Authoritative: every legacy v1.x name, derived dynamically so the
-        # scan can never rot behind facade_map. get_project_summary appeared
-        # in skills but was never in LEGACY_TOOL_MAP — keep it explicitly.
-        legacy_call_names = sorted(set(LEGACY_TOOL_MAP) | {"get_project_summary"})
+        # scan can never rot behind facade_map.
+        #
+        # RFC-0027 §L7 / RFC-0028 §3.1: this set used to be
+        # ``set(LEGACY_TOOL_MAP) | {"get_project_summary"}``. The hardcoded
+        # union existed only because ``get_project_summary`` routed NOWHERE —
+        # the assertion pinned an orphan as expected state. It is now
+        # ``("project", "card")`` in LEGACY_TOOL_MAP, so the dynamic
+        # derivation covers it and the special case is deleted rather than
+        # preserved. If this ever needs a manual union again, that is the
+        # signal that a capability lost its route.
+        legacy_call_names = sorted(LEGACY_TOOL_MAP)
+        assert "get_project_summary" in legacy_call_names, (
+            "get_project_summary must be reachable via LEGACY_TOOL_MAP "
+            "(project action=card) — not re-added here as a hardcoded orphan."
+        )
 
         repo = self._repo_root()
         scan_bases = [

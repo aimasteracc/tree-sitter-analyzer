@@ -74,6 +74,39 @@ def _add_mcp_health_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Project portrait: language distribution, file counts, health summary",
     )
+    # RFC-0027 §L7: CLI parity for project action=card.
+    parser.add_argument(
+        "--project-card",
+        action="store_true",
+        dest="project_card",
+        help=(
+            "Project card: purpose from the README, top code languages, entry "
+            "points, key config files, and per-module descriptions of the "
+            "top-level structure. Persistent — built once, recalled instantly. "
+            "CLI parity for: project action=card."
+        ),
+    )
+    # RFC-0027 §L8: CLI parity for health action=refactor_queue.
+    parser.add_argument(
+        "--refactor-queue",
+        action="store_true",
+        dest="refactor_queue",
+        help=(
+            "Top-N prioritized refactor queue ranked by "
+            "(1 - health/100) * log(1 + churn_30d) * (dead_ratio + 0.1). "
+            "Each row carries grade, weakest dimension, churn, dead symbols "
+            "and a concrete action. Reports CHURN_UNAVAILABLE rather than a "
+            "queue of zeros when the AST index has no churn. "
+            "CLI parity for: health action=refactor_queue."
+        ),
+    )
+    parser.add_argument(
+        "--refactor-queue-top-n",
+        type=int,
+        default=5,
+        metavar="N",
+        help="Number of rows for --refactor-queue (default: 5, max: 50).",
+    )
     parser.add_argument(
         "--safe-to-edit",
         action="store_true",
@@ -206,6 +239,23 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         "--refactor",
         action="store_true",
         help="Refactoring suggestions: extraction plans with line ranges",
+    )
+    # RFC-0027 §L8: CLI parity for edit action=plan_rename. Preview-only —
+    # there is deliberately no --apply companion flag.
+    parser.add_argument(
+        "--plan-rename",
+        metavar="SYMBOL",
+        help=(
+            "Minimal edit set for renaming SYMBOL project-wide: every "
+            "definition and reference site an AST-aware rename would touch. "
+            "PREVIEW ONLY — never writes. Requires --plan-rename-to. "
+            "CLI parity for: edit action=plan_rename."
+        ),
+    )
+    parser.add_argument(
+        "--plan-rename-to",
+        metavar="NEW_NAME",
+        help="The proposed new name for --plan-rename.",
     )
     parser.add_argument(
         "--outline",

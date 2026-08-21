@@ -89,7 +89,10 @@ def test_facade_actions_surface_pins() -> None:
         "viz",
     ]
     total_actions = sum(len(rows) for rows in rows_by_facade.values())
-    assert total_actions == 75
+    # 75 -> 78: RFC-0027 §L7/§L8 wired project/card, edit/plan_rename and
+    # health/refactor_queue — three capabilities that were built and tested
+    # but registered nowhere.
+    assert total_actions == 78
 
     gaps = sorted(
         (facade, row.action)
