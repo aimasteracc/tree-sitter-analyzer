@@ -132,14 +132,19 @@ def build_safe_to_edit_result(context: SafeToEditContext) -> dict[str, Any]:
 
 def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
     """Collect graph, health, test, and risk facts for a file."""
-    # Canonicalize before relativising: on macOS the security validator's
-    # abspath (/var/folders/...) and a canonical project_root
-    # (/private/var/folders/...) differ by symlink, which would make
-    # to_relative fall back to the absolute path and miss every graph node
-    # (CLAUDE.md §2 resolution contract) — downstream facts would silently
-    # undercount on macOS while Linux CI saw them.
+    # Canonicalize both sides before relativising. On macOS the security
+    # validator's abspath (/var/folders/...) differs from a canonical root
+    # (/private/var/folders/...) by symlink. On any platform, a relative
+    # project_root ("." or "..") causes Path(abs).relative_to(rel) to raise
+    # ValueError, so to_relative falls back to the absolute path — the returned
+    # key then misses every node in FileDependencyView._dependents, which is
+    # keyed by resolved-relative paths (build_file_dependency_view §L1).
+    # (CLAUDE.md §2 resolution contract)
     rel_path = _normalize_relative_path(
-        to_relative(os.path.realpath(context.resolved_path), context.project_root)
+        to_relative(
+            os.path.realpath(context.resolved_path),
+            os.path.realpath(context.project_root),
+        )
     )
     dependents = safe_dependents(context.graph, rel_path)
     dependencies = safe_dependencies(context.graph, rel_path)
@@ -247,7 +252,10 @@ def _format_safe_to_edit_result(
     # violation referencing this file forces UNSAFE; warn-only forces
     # CAUTION. The base_verdict (derived from risk_level) is the floor.
     certified_rel_path = _normalize_relative_path(
-        to_relative(os.path.realpath(context.resolved_path), context.project_root)
+        to_relative(
+            os.path.realpath(context.resolved_path),
+            os.path.realpath(context.project_root),
+        )
     )
     if context.snapshot_conn is not None:
         # Codex P1 (#1299): the certified read_existing route runs the
@@ -287,11 +295,30 @@ def _format_safe_to_edit_result(
     verdict = _max_verdict(
         _max_verdict(base_verdict, constraint_verdict), fixture_verdict
     )
+    # Fail-closed: an uncertified dependents set cannot support a SAFE verdict.
+    # The set was derived from the index but completeness was not certified —
+    # there may be additional dependents outside the index scope. Escalate so
+    # agents do not proceed on a false-safe signal.
+    _da = getattr(context.graph, "dependents_answer", None)
+    _escalated_uncertified = _da is not None and not _da.certified and verdict == "SAFE"
+    if _escalated_uncertified:
+        verdict = "CAUTION"
     risk_factors = list(facts.risk_factors)
     if violations:
         risk_factors.extend(constraint_risk_factor(row) for row in violations)
     if fixture_fact.is_fixture:
         risk_factors.append(_fixture_risk_factor(fixture_fact, context.file_path))
+    if _escalated_uncertified:
+        risk_factors.append(
+            {
+                "factor": "uncertified_dependents",
+                "detail": (
+                    f"Dependents not fully established "
+                    f"({_da.certification_reason}); cannot confirm SAFE"  # type: ignore[union-attr]
+                ),
+                "severity": "caution",
+            }
+        )
     # #1027: build the recommendation from the FINAL (possibly escalated)
     # verdict, never the un-escalated ``risk``. A constraint/fixture
     # promotion that lifts SAFE→UNSAFE must lift the recommendation too,
