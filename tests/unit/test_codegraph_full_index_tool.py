@@ -346,6 +346,80 @@ class TestExecute:
 
         assert (result["success"], result["verdict"]) == (False, "WARN")
 
+    async def test_manifest_warning_next_step_reaches_the_caller(self, tool_with_root):
+        """The remedial step must be in the response, not just derivable.
+
+        The first version of this change was covered only by unit tests on the
+        helper. Reverting the wiring that puts its result into agent_summary
+        left those three tests green -- the helper worked and its output
+        reached nobody, which is the exact defect class RFC-0029 corpus item 4
+        names. This test drives the real response assembly instead.
+        """
+        clean_phase = {"status": "ok", "processed": 1}
+        with (
+            patch.object(tool_with_root, "_phase_ast_cache", return_value=clean_phase),
+            patch.object(
+                tool_with_root, "_phase_incremental_sync", return_value=clean_phase
+            ),
+            patch.object(
+                tool_with_root, "_phase_fts5_stats", return_value={"status": "ok"}
+            ),
+            patch.object(
+                tool_with_root, "_phase_call_edge_stats", return_value={"status": "ok"}
+            ),
+            patch.object(
+                tool_with_root,
+                "_collect_final_stats",
+                return_value={
+                    "_manifest_certified": False,
+                    "manifest_certification_failed": True,
+                    "manifest_warning": "INDEX_MANIFEST_CERTIFICATION_FAILED",
+                },
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {
+                    "mode": "incremental",
+                    "resolve_synapse": False,
+                    "output_format": "json",
+                }
+            )
+
+        step = result["agent_summary"]["next_step"]
+        assert step is not None
+        assert "--callers" in step
+        assert "re-index" in step.lower()
+
+    async def test_a_certified_run_carries_no_remedial_next_step(self, tool_with_root):
+        """A clean run must not tell the caller to remedy anything."""
+        clean_phase = {"status": "ok", "processed": 1}
+        with (
+            patch.object(tool_with_root, "_phase_ast_cache", return_value=clean_phase),
+            patch.object(
+                tool_with_root, "_phase_incremental_sync", return_value=clean_phase
+            ),
+            patch.object(
+                tool_with_root, "_phase_fts5_stats", return_value={"status": "ok"}
+            ),
+            patch.object(
+                tool_with_root, "_phase_call_edge_stats", return_value={"status": "ok"}
+            ),
+            patch.object(
+                tool_with_root,
+                "_collect_final_stats",
+                return_value={"_manifest_certified": True},
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {
+                    "mode": "incremental",
+                    "resolve_synapse": False,
+                    "output_format": "json",
+                }
+            )
+
+        assert result["agent_summary"]["next_step"] is None
+
     async def test_synapse_phase_inherits_ast_backfill_failure(self, tool_with_root):
         result = tool_with_root._phase_synapse({"status": "ok", "backfill_errors": 1})
 
@@ -1556,3 +1630,49 @@ def test_collect_final_stats_source_scope_unsupported_is_operational(tmp_path):
         result["manifest_certification_failed"],
         result["certification_errors"],
     ) == ("SOURCE_SCOPE_UNSUPPORTED", False, 0)
+
+
+def test_manifest_warning_carries_an_actionable_next_step() -> None:
+    """A WARN that names no action is a WARN an agent reads past.
+
+    Dogfood, 2026-08-20: --full-index returned verdict=WARN,
+    scope_complete=False and manifest_warning=INDEX_MANIFEST_CERTIFICATION_FAILED
+    with exit code 1 -- all correct -- but agent_summary.next_step was absent.
+    Every other route used in that session (--callers, --test-map,
+    --safe-to-edit, --self-health) carries a next_step, so that is the field an
+    agent is trained to read. The one output meaning 'do not trust graph
+    queries from this run' was the only one with nothing there, and the agent
+    ran --callers immediately afterwards.
+    """
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+        manifest_warning_next_step,
+    )
+
+    step = manifest_warning_next_step("INDEX_MANIFEST_CERTIFICATION_FAILED")
+
+    assert step is not None
+    lowered = step.lower()
+    assert "re-index" in lowered
+    assert "not certified" in lowered
+    assert "--callers" in step
+
+
+def test_a_certified_run_reports_no_remedial_next_step() -> None:
+    """The remedial step must be absent when nothing needs remedying."""
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+        manifest_warning_next_step,
+    )
+
+    assert manifest_warning_next_step(None) is None
+
+
+def test_an_unrecognised_warning_still_gets_a_next_step() -> None:
+    """A new warning code must not silently fall back to no guidance."""
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+        manifest_warning_next_step,
+    )
+
+    step = manifest_warning_next_step("SOME_FUTURE_CODE")
+
+    assert step is not None
+    assert "SOME_FUTURE_CODE" in step

@@ -1,5 +1,83 @@
 # Loop State — tree-sitter-analyzer
 
+## Dogfood round 1 — using TSA to build TSA (2026-08-20)
+
+Per CLAUDE.md section 11.4: a dogfood round must invoke the tools and look at
+the output, not run the suite. Task under dogfood: preparing RFC-0025 L1 (the
+standing index). Every timing below is wall-clock from the caller's seat,
+including interpreter start, because that is what the caller actually waits.
+
+### What the tool did well
+
+- `--self-health` on a cold process reported `ast_index: EMPTY`,
+  `NO_OBSERVATIONS`, `verdict: WARN` and *"no latency claim about it is
+  supportable"*. **It told me not to trust it before I asked it anything.**
+- `--callers _target_dependents` (3.4 s) returned 3 callers **with each source
+  body inlined**, and said so in `next_step`: "answer directly, no Read
+  needed". That removed tool calls rather than adding them.
+- `--test-map` (8.0 s) named the exact test file and function count.
+- `--safe-to-edit` on the L1 target returned `CAUTION`, health grade **D**,
+  **10 downstream files**, `edit_strategy: focused_edit_with_tests`, and the
+  precise 10-file pre-edit pytest command. I did not know the target was
+  grade D with 10 dependents; that changed how I approached the edit.
+
+### What failed, and what was changed as a result
+
+1. **`--full-index` WARN carried no `next_step`.** The run exited 1 with
+   `verdict: WARN`, `scope_complete: False`,
+   `manifest_warning: INDEX_MANIFEST_CERTIFICATION_FAILED` - all correct, and
+   the code fail-closes properly (it revokes the call-graph marker in a
+   separate committed transaction so direct readers cannot trust the run).
+   But `agent_summary.next_step` was **absent**, while every other route used
+   in this round carries one. The one output meaning *"do not trust graph
+   queries from this run"* was the only one with nothing in the field a caller
+   is trained to read - **so I ran `--callers` immediately afterwards.**
+   **Fixed in this commit**: `manifest_warning_next_step()` maps every known
+   warning code to a remedial action naming the affected flags, and an
+   unrecognised code still gets a step naming the code, because falling back
+   to silence is how the gap was created.
+2. **The prescribed pre-edit verification is not deterministic.** Running the
+   exact 10-file command `--safe-to-edit` gave me twice produced different
+   failure sets (546 passed / 1 failed, then 545 passed / 2 failed with a
+   different name). A gate whose output varies run to run cannot be used as a
+   pass/fail signal. Deterministic only with
+   `--override-ini="addopts="` (pytest.ini defaults to
+   `--numprocesses=4 --dist=worksteal --reruns=1`). Feeds task #10.
+3. **The swallowed cause is not visible.** The certification failure logs with
+   `exc_info=True`, but nothing reached stderr, so the reason is unavailable to
+   the caller. `exc_info` to a logger nobody reads is not visibility. Not
+   fixed here - filed.
+4. **Cost from the caller's seat**: `--self-health` 7.1 s to answer "what is
+   your state"; `--full-index` 106 s (68,767 FTS symbols); `--callers` 3.4 s;
+   `--test-map` 8.0 s. And `--safe-to-edit` took ~7.7 s on **both** calls,
+   because L6.1's cache is process-local and each CLI invocation is a new
+   process - **the cache does nothing from the CLI.** Documented in #1320,
+   now confirmed from the caller's seat.
+
+### What I got wrong, recorded because it is the same class
+
+- I reported `--safe-to-edit --format json` as emitting non-JSON. It emits
+  8,183 bytes of valid JSON; **my probe merged `2>&1` so uv warnings polluted
+  the stream.** Measurement error attributed to the thing measured - the exact
+  class of error caught in three agent reports this week.
+- I read `fts_indexed_symbols: 68767` and treated the run as success while
+  `verdict: WARN` and **exit code 1** were both right there. I piped through
+  `tail -3` and never checked `$?`.
+- I guessed two flag shapes wrong (`--search-content --query`) out of six
+  invocations. 325 flags is past the point where shape is guessable.
+- I made a structural edit with a naive text anchor, inserting module-level
+  code into a class body and breaking 24 tests - **after** `--safe-to-edit`
+  had told me the file was CAUTION with a prescribed pre-edit command that I
+  did not run. Reverted and redone at module level.
+
+### Loop rule established
+
+A dogfood round records three columns, not two: what helped, what failed, and
+**what I went around**. The third is the one that cannot be recovered later,
+because an agent that routes around a slow or confusing tool does not report
+it - it just uses the other answer. RFC-0028 section 2 exists for this and is
+currently an empty proxy; until it is populated, the record is manual.
+
 Last run: 2026-08-16 (P0.4 strace adapter-route certification merged, #1297)
 
 ## NO1-010B first VCSR measurement attempt (2026-08-20) - E0, internal only
