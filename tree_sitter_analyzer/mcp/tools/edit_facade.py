@@ -15,7 +15,20 @@ constraints   ``check_constraints``           Constraint violations in the proje
 pr            ``codegraph_pr_review``         AI review of a PR diff via CodeGraph
 classify      ``semantic_classify``           Semantic change classification (file git-diff or code strings)
 ast_diff      ``ast_diff``                    Structural diff of two AST snapshots
+plan_rename   ``codegraph_refactor``          Minimal rename edit set, PREVIEW ONLY
 ============  ==============================  ================================
+
+RFC-0027 §L8: ``plan_rename`` wires the previously unreachable
+``CodeGraphRefactorTool`` — a true minimal rename edit set with 15 passing
+tests and no surface. The inner tool supports **both** preview and apply. A
+surface named for *planning* must not be able to write, so the binding pins
+``mode="preview"`` internally and **rejects** every apply-like argument
+(:data:`_APPLY_LIKE_PARAMS`) with the stable error
+``PLAN_RENAME_IS_PREVIEW_ONLY`` rather than forwarding it. The mode is not a
+caller-supplied parameter at this surface at all — even ``mode="preview"`` is
+rejected, because accepting it would advertise a parameter that is honoured and
+invite ``mode="apply"`` next. Applying a rename is deliberately NOT exposed
+here; that stays off the registered surface until a write-intent route exists.
 
 Annotation honesty (spec §6 / review §8 F-extra-3):
     This facade spans READ-ONLY actions (``safe``, ``impact``, ``classify``,
@@ -41,6 +54,17 @@ from typing import Any
 from .edit_facade_schema import _EDIT_ANNOTATIONS, _EDIT_DESCRIPTION
 from .edit_facade_snapshot_routes import release_snapshot
 from .facade_tool import FacadeTool
+
+#: Arguments that would (or would appear to) turn ``plan_rename`` into a write.
+#: ``mode`` is the live hole: the inner tool declares it, so the facade's
+#: schema projection would forward ``mode="apply"`` straight through.
+_APPLY_LIKE_PARAMS: frozenset[str] = frozenset(
+    {"mode", "dry_run", "apply", "write", "force"}
+)
+
+#: The inner tool's hint advertises a route this surface does not expose.
+_APPLY_HINT = "Use mode=apply to execute."
+_PREVIEW_HINT = "plan_rename never writes; apply is not exposed on this surface."
 
 
 def build_edit_facade(project_root: str | None = None) -> FacadeTool:
@@ -72,6 +96,51 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
             args.setdefault("mode", "pr")
             return await super().execute(args)
 
+    from .codegraph_refactor_tool import CodeGraphRefactorTool
+
+    class _PlanRenameViaFacade(CodeGraphRefactorTool):
+        """Facade ``action=plan_rename`` pins ``mode="preview"``.
+
+        Two independent guards, because one is a policy and the other is a
+        property:
+
+        * the facade **rejects** every apply-like argument before dispatch (see
+          ``_StrictEditFacade``), so nothing reaches here to honour; and
+        * ``FORCED_MODE`` makes the inner ignore ``mode`` entirely, so even a
+          future refactor that loosens the facade guard cannot make this route
+          write.
+        """
+
+        FORCED_MODE = "preview"
+
+        def get_tool_schema(self) -> dict[str, Any]:
+            """Drop ``mode`` from the advertised schema.
+
+            The inner tool declares ``mode: preview|apply``. Leaving it in the
+            schema would document a parameter this route rejects — and the
+            generated ``docs/api/facade-actions.md`` reads exactly this schema,
+            so the lie would ship into the reference an agent consults.
+            """
+            schema = super().get_tool_schema()
+            properties = {
+                key: value
+                for key, value in schema.get("properties", {}).items()
+                if key not in _APPLY_LIKE_PARAMS
+            }
+            return {**schema, "properties": properties}
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            result = await super().execute(dict(arguments))
+            # The inner tool's own hint ends "Use mode=apply to execute." — a
+            # next_step naming a route that does not exist on this surface
+            # (RFC-0028 §3.1 item 2). Rewrite it on BOTH the JSON key and the
+            # TOON body, or the two surfaces disagree about what is callable.
+            for key in ("hint", "toon_content"):
+                value = result.get(key)
+                if isinstance(value, str) and _APPLY_HINT in value:
+                    result[key] = value.replace(_APPLY_HINT, _PREVIEW_HINT)
+            return result
+
     from .constraint_check_tool import ConstraintCheckTool
     from .modification_guard_tool import ModificationGuardTool
     from .refactoring_suggestions_tool import RefactoringSuggestionsTool
@@ -90,6 +159,16 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
                 }
                 if set(arguments) - allowed:
                     raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
+            if action == "plan_rename":
+                # RFC-0027 §L8: reject, never forward. The mode is not a
+                # caller-supplied parameter at this surface.
+                smuggled = _APPLY_LIKE_PARAMS & set(arguments)
+                if smuggled:
+                    raise ValueError(
+                        "PLAN_RENAME_IS_PREVIEW_ONLY: "
+                        f"{sorted(smuggled)} not accepted; plan_rename never "
+                        "writes. Apply is not exposed on this surface."
+                    )
             if action in ("classify", "ast_diff") and arguments.get("diff_snapshot_id"):
                 allowed = {
                     "action",
@@ -117,6 +196,8 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
             "pr": _PRReviewViaFacade(project_root),
             "classify": SemanticClassifyTool(project_root),
             "ast_diff": ASTDiffTool(project_root),
+            # RFC-0027 §L8: minimal rename edit set, preview-only.
+            "plan_rename": _PlanRenameViaFacade(project_root),
         },
         bespoke_map={"release_snapshot": release_snapshot},
         description=_EDIT_DESCRIPTION,

@@ -23,6 +23,7 @@ deps        ``analyze_dependencies`` (R5)                dependency analysis —
 test_gap    ``codegraph_test_gap`` (CodeGraphTestGapTool) untested symbol discovery, complexity-ranked
 self        ``self_health``     (SelfHealthTool)         RFC-0025 Layer 5 self-proprioception: per-route
                                                          p50/p95 latency by tier + analysis-cache hit rate + AST-index state
+refactor_queue ``refactor_queue`` (RefactorQueueTool)     RFC-0027 §L8 top-N prioritized refactor queue
 ==========  ===========================================  ===================================================
 
 R5 (PRD §3): ``deps`` maps to the single ``DependencyAnalysisTool`` whose
@@ -95,6 +96,12 @@ _HEALTH_DESCRIPTION = (
     "the in-process analysis-cache hit rate, and the on-disk AST-index state "
     "(.ast-cache/index.db) for THIS process. No params. Unmeasured values "
     "are `null` with status NO_OBSERVATIONS — never a fabricated 0.0.\n"
+    "- action=refactor_queue — top-N prioritized refactor queue (RFC-0027 §L8): "
+    "files ranked by (1 - health/100) * log(1 + churn_30d) * (dead_ratio + 0.1), "
+    "each row carrying grade, weakest dimension, 30-day churn, dead-symbol "
+    "count and a concrete action (split / delete dead / extract). Returns "
+    "CHURN_UNAVAILABLE rather than a queue of zeros when the AST index has no "
+    "churn to read. Params: top_n.\n"
     "For UML diagrams, call/dependency graph visualizations, and similarity "
     "analysis, use the ``viz`` facade instead."
 )
@@ -120,6 +127,7 @@ def build_health_facade(project_root: str | None = None) -> FacadeTool:
     from .file_health_tool import FileHealthTool
     from .import_graph_tool import CodeGraphImportGraphTool
     from .project_health_tool import ProjectHealthTool
+    from .refactor_queue_tool import RefactorQueueTool
     from .route_detector_tool import RouteDetectorTool
     from .self_health_tool import SelfHealthTool
     from .test_gap_tool import CodeGraphTestGapTool
@@ -145,6 +153,10 @@ def build_health_facade(project_root: str | None = None) -> FacadeTool:
             "test_gap": CodeGraphTestGapTool(project_root),
             # RFC-0025 Layer 5: self-proprioception (latency p50/p95 by tier)
             "self": SelfHealthTool(project_root),
+            # RFC-0027 §L8: the refactor-priority formula, now in code.
+            # Read-only (three signal reads, zero writes) so the facade-wide
+            # readOnlyHint=True above stays honest.
+            "refactor_queue": RefactorQueueTool(project_root),
         },
         bespoke_map={},  # no F5 bespoke routes needed for health
         description=_HEALTH_DESCRIPTION,

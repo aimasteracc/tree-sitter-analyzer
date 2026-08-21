@@ -688,14 +688,15 @@ and emits a calibration report with non-placeholder numbers.
 - [ ] L6.3 canonical full id always present; abbreviation unique within the
       project index; `SYMBOL_ID_AMBIGUOUS` fail-closed on an ambiguous
       abbreviation; uniqueness contract test on the largest fixture corpus
-- [ ] L7 `project action=card` wired; the orphan-pinning assertion in
+- [x] L7 `project action=card` wired; the orphan-pinning assertion in
       `tests/unit/cli/test_install_skills.py:571` is corrected, not preserved
 - [ ] L7 `tour` deterministic (byte-identical at equal generation)
 - [ ] L7 `start_here` excludes untested files
-- [ ] L8 `edit action=plan_rename` registered on both surfaces, pinned to
+- [x] L8 `edit action=plan_rename` registered on both surfaces, pinned to
       preview; apply-like arguments rejected; contract test proves zero
       filesystem writes on adversarial input
-- [ ] L8 refactor-queue formula in code with exact-value tests
+- [x] L8 refactor-queue formula in code with exact-value tests
+      (`tree_sitter_analyzer/refactor_queue.py`)
 - [ ] L8 `modification_guard` and `who_should_test` use the resolved-graph
       signal; `unknown` where the graph is silent
 - [ ] L8 `acyclic` constraint kind

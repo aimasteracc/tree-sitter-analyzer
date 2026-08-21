@@ -75,7 +75,7 @@ def test_edit_facade_schema_includes_action_and_required() -> None:
     props = schema["properties"]
     assert "action" in props
     assert "action" in schema.get("required", [])
-    # action enum must list all 8 actions.
+    # action enum must list every action the facade exposes.
     enum_vals = set(props["action"].get("enum", []))
     expected = {
         "safe",
@@ -87,6 +87,8 @@ def test_edit_facade_schema_includes_action_and_required() -> None:
         "classify",
         "ast_diff",
         "release_snapshot",
+        # RFC-0027 §L8: preview-only minimal rename edit set.
+        "plan_rename",
     }
     assert expected == enum_vals
 

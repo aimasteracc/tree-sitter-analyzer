@@ -178,6 +178,9 @@ def test_edit_facade_all_actions_present() -> None:
         "classify",
         "ast_diff",
         "release_snapshot",
+        # RFC-0027 §L8: preview-only minimal rename edit set, wired from the
+        # previously orphaned CodeGraphRefactorTool.
+        "plan_rename",
     }
     registered = set(facade.action_map) | set(facade.bespoke_map)
     assert expected == registered
@@ -292,7 +295,7 @@ def test_release_snapshot_is_the_only_bespoke_route() -> None:
 
     facade = build_edit_facade(project_root=None)
     assert set(facade.bespoke_map) == {"release_snapshot"}
-    assert len(facade.action_map) == 8
+    assert len(facade.action_map) == 9
 
 
 # ---------------------------------------------------------------------------
@@ -468,3 +471,162 @@ def test_scope_paths_is_rejected_outside_impact_and_constraints() -> None:
     assert result["error"] == (
         "parameter 'scope_paths' applies only to action(s): constraints, impact"
     )
+
+
+# ---------------------------------------------------------------------------
+# 13. RFC-0027 §L8 — ``plan_rename`` is preview-only, and provably so
+# ---------------------------------------------------------------------------
+
+#: Arguments a caller might use to smuggle an apply through a planning surface.
+#: ``mode="preview"`` is in the list on purpose: accepting it would advertise
+#: that the parameter is honoured, and the next caller would try ``"apply"``.
+_APPLY_LIKE_ARGS: tuple[tuple[str, Any], ...] = (
+    ("mode", "apply"),
+    ("mode", "preview"),
+    ("dry_run", False),
+    ("apply", True),
+    ("write", True),
+    ("force", True),
+)
+
+_AST_CACHE_DIR = ".ast-cache"
+
+
+def _plan_rename_project(tmp_path: Any) -> Any:
+    """A tiny two-file python project with a symbol worth renaming."""
+    (tmp_path / "mod.py").write_text("def target():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "caller.py").write_text(
+        "from mod import target\n\n\ndef go():\n    return target()\n",
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+def _snapshot(root: Any) -> dict[str, tuple[int, bytes]]:
+    """Every file under ``root`` as ``{relative_posix_path: (mtime_ns, bytes)}``."""
+    return {
+        p.relative_to(root).as_posix(): (p.stat().st_mtime_ns, p.read_bytes())
+        for p in sorted(root.rglob("*"))
+        if p.is_file()
+    }
+
+
+@pytest.mark.parametrize(("key", "value"), _APPLY_LIKE_ARGS)
+def test_plan_rename_rejects_apply_like_arguments(key: str, value: Any) -> None:
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    facade = build_edit_facade(project_root=None)
+    with pytest.raises(ValueError, match="PLAN_RENAME_IS_PREVIEW_ONLY"):
+        asyncio.run(
+            facade.execute(
+                {
+                    "action": "plan_rename",
+                    "symbol": "target",
+                    "new_name": "renamed",
+                    key: value,
+                }
+            )
+        )
+
+
+def test_plan_rename_pins_dry_run_true_on_the_engine(tmp_path: Any) -> None:
+    """The binding pins preview internally — ``rename_symbol(dry_run=True)``."""
+    from unittest.mock import patch
+
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    class _EmptyResult:
+        errors: list[str] = []
+        sites: list[Any] = []
+        sites_renamed = 0
+
+        def to_dict(self) -> dict[str, Any]:
+            return {"symbol": "target", "new_name": "renamed", "dry_run": True}
+
+    root = _plan_rename_project(tmp_path)
+    facade = build_edit_facade(project_root=str(root))
+    inner = facade.action_map["plan_rename"]
+    assert inner.FORCED_MODE == "preview"
+    with (
+        patch.object(inner, "_get_cache", return_value=object()),
+        patch(
+            "tree_sitter_analyzer.mcp.tools.codegraph_refactor_tool.rename_symbol",
+            return_value=_EmptyResult(),
+        ) as mock_rename,
+    ):
+        asyncio.run(
+            facade.execute(
+                {
+                    "action": "plan_rename",
+                    "symbol": "target",
+                    "new_name": "renamed",
+                    "output_format": "json",
+                }
+            )
+        )
+    assert mock_rename.call_args.kwargs["dry_run"] is True
+
+
+@pytest.mark.parametrize(("key", "value"), _APPLY_LIKE_ARGS)
+def test_plan_rename_adversarial_input_writes_nothing_at_all(
+    tmp_path: Any, key: str, value: Any
+) -> None:
+    """Zero filesystem writes on adversarial input — bytes AND mtime_ns pinned.
+
+    The rejection happens at the facade boundary, before any work, so *every*
+    path under the project is unchanged — not just the source files.
+    """
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    root = _plan_rename_project(tmp_path)
+    facade = build_edit_facade(project_root=str(root))
+    before = _snapshot(root)
+
+    with pytest.raises(ValueError, match="PLAN_RENAME_IS_PREVIEW_ONLY"):
+        asyncio.run(
+            facade.execute(
+                {
+                    "action": "plan_rename",
+                    "symbol": "target",
+                    "new_name": "renamed",
+                    "output_format": "json",
+                    key: value,
+                }
+            )
+        )
+
+    assert _snapshot(root) == before
+
+
+def test_plan_rename_preview_leaves_every_pre_existing_file_untouched(
+    tmp_path: Any,
+) -> None:
+    """A real (unmocked) preview call mutates no file that existed before it.
+
+    The only paths it may *add* are under ``.ast-cache/`` — analysis
+    infrastructure the auto-index guard builds, never caller source. That
+    boundary is asserted rather than assumed: a rename that leaked into
+    ``mod.py`` would show up as a changed pre-existing entry, and a stray
+    artefact anywhere else would show up as an unexpected new path.
+    """
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    root = _plan_rename_project(tmp_path)
+    facade = build_edit_facade(project_root=str(root))
+    before = _snapshot(root)
+
+    asyncio.run(
+        facade.execute(
+            {
+                "action": "plan_rename",
+                "symbol": "target",
+                "new_name": "renamed",
+                "output_format": "json",
+            }
+        )
+    )
+
+    after = _snapshot(root)
+    assert {k: v for k, v in after.items() if k in before} == before
+    added = sorted(set(after) - set(before))
+    assert [p for p in added if not p.startswith(f"{_AST_CACHE_DIR}/")] == []

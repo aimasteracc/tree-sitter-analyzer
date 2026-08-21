@@ -48,7 +48,7 @@ from tree_sitter_analyzer.mcp.tools.project_facade import build_project_facade
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Expected action set (10 actions — index lifecycle extracted to index facade)
+# Expected action set (11 actions — index lifecycle extracted to index facade)
 # ---------------------------------------------------------------------------
 
 _ALL_ACTIONS = {
@@ -62,6 +62,9 @@ _ALL_ACTIONS = {
     "workflow",
     "journal",
     "doc_sync",
+    # RFC-0027 §L7: the project card — wired from the previously orphaned
+    # GetProjectSummaryTool.
+    "card",
 }
 
 
@@ -76,7 +79,7 @@ def test_build_project_facade_returns_facade_tool() -> None:
     assert facade.facade_name == "project"
 
 
-def test_all_10_actions_registered() -> None:
+def test_all_actions_registered() -> None:
     facade = build_project_facade(project_root=None)
     registered = set(facade.action_map) | set(facade.bespoke_map)
     assert registered == _ALL_ACTIONS, (
@@ -88,7 +91,7 @@ def test_all_actions_in_action_map_not_bespoke() -> None:
     """All project facade actions are normal delegates (no bespoke routes)."""
     facade = build_project_facade(project_root=None)
     assert len(facade.bespoke_map) == 0
-    assert len(facade.action_map) == 10
+    assert len(facade.action_map) == 11
 
 
 def test_index_actions_not_in_project_facade() -> None:
