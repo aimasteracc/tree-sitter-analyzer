@@ -743,6 +743,18 @@ def _score_deps_fallback(file_path: str) -> float:
         return 50.0
 
 
+# DependencyGraph._build() does an unbounded os.walk + per-file import parse.
+# On a large foreign project root this can exceed 500 s. Cap it so that
+# health action=file always returns within a predictable wall-clock budget.
+_DEP_GRAPH_TIMEOUT_S: float = 10.0
+
+
+def _build_dep_graph(project_root_str: str) -> Any:
+    from .project_graph import DependencyGraph
+
+    return DependencyGraph(project_root_str)
+
+
 def score_dependencies(file_path: str) -> float:
     """Score based on real dependency graph (fan-out + fan-in).
 
@@ -751,17 +763,26 @@ def score_dependencies(file_path: str) -> float:
     empty graph result, and the fan-out/fan-in branches below would map
     ``0`` dependencies to a perfect 100 — a false green. A neutral score
     avoids rewarding "no dependencies we could even detect".
+
+    ``DependencyGraph`` construction is time-boxed to ``_DEP_GRAPH_TIMEOUT_S``
+    so that large foreign project roots do not cause an indefinite hang.
     """
     language = _EXT_TO_LANG.get(Path(file_path).suffix.lower())
     if language is not None and language not in _DEPENDENCY_ANALYZABLE_LANGS:
         return _NEUTRAL_DEP_SCORE
     try:
-        from .project_graph import DependencyGraph
+        import concurrent.futures
 
         path = Path(file_path).resolve()
         project_root = find_project_root(path)
 
-        graph = DependencyGraph(str(project_root))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(_build_dep_graph, str(project_root))
+            try:
+                graph = fut.result(timeout=_DEP_GRAPH_TIMEOUT_S)
+            except concurrent.futures.TimeoutError:
+                return _score_deps_fallback(file_path)
+
         rel = str(path.relative_to(project_root)).replace("\\", "/")
 
         fan_out = len(graph.dependencies_of(rel))
