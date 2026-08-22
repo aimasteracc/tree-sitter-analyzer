@@ -85,7 +85,7 @@ _PROJECT_DESCRIPTION = (
     "descriptions of the top-level structure. Persistent — built once into "
     ".tree-sitter-cache/project-index.json and recalled instantly. Best first "
     "call on an unfamiliar repo when you want the *what*, not the file list. "
-    "Params: force_refresh, include_notes.\n"
+    "Params: force_refresh, include_notes, output_format.\n"
     "\n"
     "DECISION + DOC (may write):\n"
     "- action=journal — persistent architectural decision journal. "
