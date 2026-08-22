@@ -89,11 +89,21 @@ class MutationProbeTool(BaseMCPTool):
                 raise ValueError(
                     f"'{required}' is required and must be a non-empty string"
                 )
-        loc = arguments["code_location"]
+        node_id: str = arguments["test_node_id"]
+        if node_id.startswith("-"):
+            raise ValueError(
+                f"test_node_id must not start with '-' (got {node_id!r}); "
+                "supply a pytest node id like 'tests/unit/foo.py::test_bar'"
+            )
+        loc: str = arguments["code_location"]
         if ":" not in loc:
             raise ValueError(
                 f"code_location must be 'file.py:N' (line number); got {loc!r}"
             )
+        # Defense-in-depth: reject traversal sequences at the MCP boundary.
+        file_part = loc[: loc.rfind(":")]
+        if ".." in file_part.replace("\\", "/").split("/"):
+            raise ValueError(f"code_location file part must not contain '..': {loc!r}")
         timeout = arguments.get("timeout", 60.0)
         if not isinstance(timeout, (int, float)) or float(timeout) <= 0:
             raise ValueError("timeout must be a positive number")

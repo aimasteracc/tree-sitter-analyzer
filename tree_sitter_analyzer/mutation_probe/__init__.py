@@ -15,6 +15,7 @@ Public API
 
 from __future__ import annotations
 
+import hashlib
 import os
 import time
 from pathlib import Path
@@ -132,6 +133,14 @@ def probe(
     project_root_abs = os.path.abspath(project_root)
     abs_file = os.path.normpath(os.path.join(project_root_abs, file_part))
 
+    # Boundary check: reject paths that escape the project root (traversal guard).
+    boundary = project_root_abs + os.sep
+    if abs_file != project_root_abs and not abs_file.startswith(boundary):
+        return _unknown(
+            "FILE_NOT_FOUND",
+            f"path escapes project root: {file_part!r}",
+        )
+
     if not os.path.isfile(abs_file):
         return _unknown(
             "FILE_NOT_FOUND",
@@ -140,6 +149,7 @@ def probe(
 
     with open(abs_file, "rb") as fh:
         original_bytes = fh.read()
+    pre_digest = hashlib.sha256(original_bytes).hexdigest()
 
     # Apply mutation (in memory, never written to disk).
     mutation_result = apply_mutation(original_bytes, lineno)
@@ -198,7 +208,19 @@ def probe(
     )
 
     wall_total_ms = (time.perf_counter() - wall_start) * 1000.0
-    overhead_ms = wall_total_ms - b_ms - m_ms
+    overhead_ms = max(wall_total_ms - b_ms - m_ms, 0.0)
+
+    # Verify working tree was not modified during the probe (RFC-0029 §design).
+    post_bytes = Path(abs_file).read_bytes()
+    if hashlib.sha256(post_bytes).hexdigest() != pre_digest:
+        return _unknown(
+            "WORKING_TREE_MODIFIED",
+            mutation_result.description,
+            baseline_failure="NONE",
+            baseline_ms=b_ms,
+            mutated_ms=m_ms,
+            overhead_ms=overhead_ms,
+        )
 
     if is_timeout(m_out):
         return _unknown(

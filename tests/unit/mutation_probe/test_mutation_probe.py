@@ -408,7 +408,7 @@ def test_plan_6_valid_node_yields_definitive_verdict() -> None:
 @pytest.mark.timeout(120)
 def test_plan_7_working_tree_unmodified() -> None:
     target = _FIXTURE_DIR / "hoist_target.py"
-    before_digest = hashlib.md5(target.read_bytes()).hexdigest()
+    before_digest = hashlib.sha256(target.read_bytes()).hexdigest()
 
     probe(
         test_node_id=_nid("_probe_hoist.py", "test_compute_returns_42"),
@@ -416,7 +416,7 @@ def test_plan_7_working_tree_unmodified() -> None:
         project_root=_PROJECT_ROOT,
     )
 
-    after_digest = hashlib.md5(target.read_bytes()).hexdigest()
+    after_digest = hashlib.sha256(target.read_bytes()).hexdigest()
     assert before_digest == after_digest
 
 

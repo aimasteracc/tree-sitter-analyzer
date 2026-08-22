@@ -125,13 +125,16 @@ def run_test(
 
 
 def _pytest_args(node_id: str) -> list[str]:
+    # "--" separates pytest options from file/node-id args so a node_id that
+    # begins with "-" cannot be misinterpreted as a pytest flag (HIGH #2).
     return [
-        node_id,
         "--override-ini=addopts=--strict-markers --timeout=60",
         "-p",
         "no:cacheprovider",
         "--tb=short",
         "-q",
+        "--",
+        node_id,
     ]
 
 
