@@ -216,3 +216,39 @@ def _add_batch_search_options(parser: argparse.ArgumentParser) -> None:
             "full per-query shape."
         ),
     )
+
+
+def _add_mutation_probe_options(parser: argparse.ArgumentParser) -> None:
+    """``--mutation-probe`` family (RFC-0029 CLI-MCP parity).
+
+    On-demand query: does this test constrain this code? Applies one AST
+    mutation at a target line and checks whether the named test goes red.
+    """
+    parser.add_argument(
+        "--mutation-probe",
+        metavar="TEST_NODE_ID",
+        help=(
+            "Check whether a test constrains specific code. Supply the pytest "
+            "node id (e.g. 'tests/unit/test_foo.py::test_bar'). "
+            "Requires --mutation-probe-to."
+        ),
+    )
+    parser.add_argument(
+        "--mutation-probe-to",
+        metavar="CODE_LOCATION",
+        help=(
+            "Code location for --mutation-probe, as FILE:LINENO relative to "
+            "the project root (e.g. 'src/foo.py:42'). The mutation is applied "
+            "at the AST node containing that line."
+        ),
+    )
+    parser.add_argument(
+        "--mutation-probe-timeout",
+        metavar="SECONDS",
+        type=float,
+        default=60.0,
+        help=(
+            "Per-run timeout in seconds for --mutation-probe "
+            "(baseline + mutated run each get this limit; default: 60)."
+        ),
+    )

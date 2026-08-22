@@ -15,7 +15,8 @@ constraints   ``check_constraints``           Constraint violations in the proje
 pr            ``codegraph_pr_review``         AI review of a PR diff via CodeGraph
 classify      ``semantic_classify``           Semantic change classification (file git-diff or code strings)
 ast_diff      ``ast_diff``                    Structural diff of two AST snapshots
-plan_rename   ``codegraph_refactor``          Minimal rename edit set, PREVIEW ONLY
+plan_rename      ``codegraph_refactor``       Minimal rename edit set, PREVIEW ONLY
+mutation_probe   ``MutationProbeTool``        Does this test constrain this code? (RFC-0029)
 ============  ==============================  ================================
 
 RFC-0027 §L8: ``plan_rename`` wires the previously unreachable
@@ -143,6 +144,7 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
 
     from .constraint_check_tool import ConstraintCheckTool
     from .modification_guard_tool import ModificationGuardTool
+    from .mutation_probe_tool import MutationProbeTool
     from .refactoring_suggestions_tool import RefactoringSuggestionsTool
     from .safe_to_edit_tool import SafeToEditTool
     from .semantic_classify_tool import SemanticClassifyTool
@@ -198,6 +200,8 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
             "ast_diff": ASTDiffTool(project_root),
             # RFC-0027 §L8: minimal rename edit set, preview-only.
             "plan_rename": _PlanRenameViaFacade(project_root),
+            # RFC-0029: mutation probe — does this test constrain this code?
+            "mutation_probe": MutationProbeTool(project_root),
         },
         bespoke_map={"release_snapshot": release_snapshot},
         description=_EDIT_DESCRIPTION,
