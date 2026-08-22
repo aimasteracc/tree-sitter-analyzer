@@ -60,8 +60,18 @@ EXT_TO_LANG: dict[str, str] = {
     ".mjs": "javascript",
     ".mts": "typescript",
     ".php": "php",
+    ".php3": "php",
+    ".php4": "php",
+    ".php5": "php",
+    ".php7": "php",
+    ".phps": "php",
+    ".phtml": "php",
     ".py": "python",
     ".rb": "ruby",
+    ".rake": "ruby",
+    ".gemspec": "ruby",
+    ".ru": "ruby",
+    ".rbw": "ruby",
     ".rs": "rust",
     # .sc (Scala scripts / Ammonite) intentionally NOT wired — ambiguous
     # with SuperCollider; the plugin still accepts it via an explicit

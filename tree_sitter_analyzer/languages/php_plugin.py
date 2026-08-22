@@ -422,7 +422,7 @@ class PHPPlugin(LanguagePlugin):
         Returns:
             List of file extensions
         """
-        return [".php"]
+        return [".php", ".phtml", ".php3", ".php4", ".php5", ".php7", ".phps"]
 
     def get_tree_sitter_language(self) -> tree_sitter.Language:
         """
