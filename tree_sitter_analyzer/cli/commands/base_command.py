@@ -147,19 +147,6 @@ class BaseCommand(ABC):
             print(json.dumps(envelope, ensure_ascii=False))
             return
 
-        if output_format == "toon":
-            try:
-                from ...formatters.toon_formatter import ToonFormatter
-
-                use_tabs = getattr(self.args, "toon_use_tabs", False)
-                print(ToonFormatter(use_tabs=use_tabs).format(envelope))
-                return
-            except Exception:
-                # If TOON formatter unavailable, fall back to JSON so the
-                # caller still gets a parseable envelope.
-                print(json.dumps(envelope, ensure_ascii=False))
-                return
-
         # Text mode — emit to stderr like every other error.
         output_error(error_message)
 

@@ -42,31 +42,6 @@ class TestVerdictSafetyNetJSON:
         out = apply_toon_format_to_response([], "json")  # type: ignore[arg-type]
         assert out == []
 
-
-class TestVerdictSafetyNetTOON:
-    """TOON callers must also see the default verdict."""
-
-    def test_success_without_verdict_gets_info_in_toon(self):
-        out = apply_toon_format_to_response({"success": True}, "toon")
-        assert out["verdict"] == "INFO"
-        assert out["format"] == "toon"
-
-    def test_explicit_verdict_survives_toon_compaction(self):
-        out = apply_toon_format_to_response(
-            {"success": True, "verdict": "REVIEW", "data": [1, 2]}, "toon"
-        )
-        assert out["verdict"] == "REVIEW"
-
-
-class TestVerdictSafetyNetIdempotence:
-    """Repeated calls must converge — important when wrapper helpers
-    re-format an already-formatted response."""
-
-    def test_double_application_stays_info(self):
-        first = apply_toon_format_to_response({"success": True}, "json")
-        second = apply_toon_format_to_response(first, "json")
-        assert second["verdict"] == "INFO"
-
     def test_does_not_overwrite_existing_value(self):
         first = apply_toon_format_to_response(
             {"success": True, "verdict": "CAUTION"}, "json"

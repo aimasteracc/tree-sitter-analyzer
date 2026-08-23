@@ -176,19 +176,6 @@ class TestCodeGraphSymbolSearchExecution:
         result = await tool.execute({"query": "get_user", "output_format": "json"})
         assert "no Read needed" in result["next_step"]
 
-    async def test_search_body_survives_toon(self, indexed_project):
-        """P2: inlined body survives TOON serialization (MCP default)."""
-        tool = CodeGraphSymbolSearchTool(str(indexed_project))
-        result = await tool.execute({"query": "get_user", "output_format": "toon"})
-        assert result.get("format") == "toon"
-        assert "def get_user" in result["toon_content"]
-
-    async def test_toon_output_format(self, indexed_project):
-        tool = CodeGraphSymbolSearchTool(str(indexed_project))
-        result = await tool.execute({"query": "UserService", "output_format": "toon"})
-        assert result["success"] is True
-        assert "toon_content" in result
-
     async def test_data_source_field(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "UserService", "output_format": "json"})

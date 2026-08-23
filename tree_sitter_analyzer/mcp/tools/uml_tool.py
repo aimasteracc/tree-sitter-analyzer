@@ -146,8 +146,8 @@ class CodeGraphUMLTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                     "description": "Output format: toon (default) or json",
                 },
             },
@@ -184,10 +184,10 @@ class CodeGraphUMLTool(BaseMCPTool):
         if not self.project_root:
             return apply_toon_format_to_response(
                 build_error(error="Project root not set."),
-                arguments.get("output_format", "toon"),
+                arguments.get("output_format", "json"),
             )
 
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         diagram_type = arguments.get("diagram", "class")
         exporter = CodeGraphVisualizationHub(self.project_root).uml_exporter()
         if exporter is None:

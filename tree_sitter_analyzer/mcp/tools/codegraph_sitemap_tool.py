@@ -121,9 +121,9 @@ class CodeGraphSitemapTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -165,7 +165,7 @@ class CodeGraphSitemapTool(BaseMCPTool):
         directory = arguments.get("directory")
         max_files = int(arguments.get("max_files", 200))
         max_symbols = arguments.get("max_symbols", DEFAULT_MAX_SYMBOLS)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         cache = self._get_cache()
 

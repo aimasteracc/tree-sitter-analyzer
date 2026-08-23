@@ -91,11 +91,6 @@ class TestToolDefinition:
         assert set(mode["enum"]) == {"full", "incremental"}
         assert mode["default"] == "incremental"
 
-    def test_schema_output_format_default_toon(self, tool):
-        assert (
-            tool.get_tool_schema()["properties"]["output_format"]["default"] == "toon"
-        )
-
     def test_annotations_destructive(self, tool):
         hints = tool.get_tool_definition()["annotations"]
         assert hints["readOnlyHint"] is False
@@ -193,11 +188,6 @@ class TestExecute:
         assert result["success"] is True
         assert result["candidate_snapshot"]["selected"] == 0
         assert result["candidate_snapshot"]["selection_reconciled"] is True
-
-    async def test_toon_format_default(self, tool_with_root):
-        result = await tool_with_root.execute({"mode": "incremental"})
-        assert result["format"] == "toon"
-        assert "toon_content" in result
 
     async def test_verdict_is_warn_when_incremental_sync_has_errors(
         self, tool_with_root
@@ -442,46 +432,6 @@ class TestExecute:
         )
 
         assert result["resolved_edges"] == 0
-
-    async def test_default_toon_surfaces_truncation_metadata(self, tool_with_root):
-        incremental_phase = {
-            "status": "error",
-            "errors": 21,
-            "error_details": [{"file": "src/00.swift", "status": "error"}],
-            "error_details_total": 21,
-            "error_details_listed": 20,
-            "error_details_cap": 20,
-            "error_details_truncated": True,
-        }
-        with (
-            patch.object(
-                tool_with_root,
-                "_phase_ast_cache",
-                return_value={"status": "ok", "errors": 0},
-            ),
-            patch.object(
-                tool_with_root,
-                "_phase_incremental_sync",
-                return_value=incremental_phase,
-            ),
-            patch.object(
-                tool_with_root,
-                "_phase_fts5_stats",
-                return_value={"status": "ok"},
-            ),
-            patch.object(
-                tool_with_root,
-                "_phase_call_edge_stats",
-                return_value={"status": "ok"},
-            ),
-            patch.object(tool_with_root, "_collect_final_stats", return_value={}),
-        ):
-            result = await tool_with_root.execute(
-                {"mode": "incremental", "resolve_synapse": False}
-            )
-
-        assert result["format"] == "toon"
-        assert "error_details_truncated: true" in result["toon_content"]
 
     async def test_scope_options_are_forwarded_to_incremental_phase(
         self, tool_with_root

@@ -30,7 +30,7 @@ from tree_sitter_analyzer.task.router import (
     plan_change,
     understand,
 )
-from tree_sitter_analyzer.task.serializers import parity_roundtrip
+from tree_sitter_analyzer.task.serializers import decode_json, serialize_json
 
 # --- Real-wire fixtures (copied shapes from the live adapters) ---------------
 
@@ -382,7 +382,7 @@ def test_understand_projects_real_nav_wire() -> None:
     # The outcome now carries an actionable summary + next step.
     assert outcome.next_step is None  # nothing to do after a clean understand
     assert outcome.agent_summary["verdict"] == "INFO"  # type: ignore[index]
-    parity_roundtrip(outcome)
+    assert decode_json(serialize_json(outcome)) == outcome
 
 
 def test_plan_change_diff_projects_real_wire_end_to_end() -> None:
@@ -423,4 +423,4 @@ def test_plan_change_diff_projects_real_wire_end_to_end() -> None:
         == "Review the planned change across 2 file(s): src/app.py, src/gone.py."
     )
     assert outcome.agent_summary["verdict"] == "UNSAFE"  # type: ignore[index]
-    parity_roundtrip(outcome)
+    assert decode_json(serialize_json(outcome)) == outcome

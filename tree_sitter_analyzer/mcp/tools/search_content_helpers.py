@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 from ..utils.format_helper import (
-    attach_toon_content_to_response,
     format_for_file_output,
 )
 
@@ -172,8 +171,8 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
         },
         "output_file": {
             "type": "string",
@@ -368,8 +367,6 @@ def _handle_file_output(
             }
             if "agent_summary" in result:
                 minimal["agent_summary"] = result["agent_summary"]
-            if output_format == "toon":
-                return attach_toon_content_to_response(minimal)
             return minimal
 
         result["output_file"] = output_file

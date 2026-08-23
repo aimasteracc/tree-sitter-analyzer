@@ -46,10 +46,7 @@ def _output_format(args: Any) -> str:
 
 def _print(result: dict[str, Any], output_format: str) -> None:
     """Write the MCP tool response to stdout in the requested shape."""
-    if output_format == "toon":
-        print(result.get("toon_content", ""))
-    else:
-        print(json.dumps(result, indent=2, default=str))
+    print(json.dumps(result, indent=2, default=str))
 
 
 def _exit_code_for(result: dict[str, Any]) -> int:

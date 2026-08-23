@@ -94,9 +94,9 @@ class CodeGraphDependencyMatrixTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format (default: toon)",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "required": ["mode"],
@@ -116,7 +116,7 @@ class CodeGraphDependencyMatrixTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         mode = arguments.get("mode", "summary")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         dm = self._get_matrix()
 
         if mode == "summary":

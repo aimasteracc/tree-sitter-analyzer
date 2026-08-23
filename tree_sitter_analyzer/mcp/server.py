@@ -377,7 +377,7 @@ class TreeSitterAnalyzerMCPServer:
         _fmt = arguments.get("format", "text")
         _out_file = arguments.get("output_file")
         _suppress = arguments.get("suppress_output", False)
-        _out_fmt = arguments.get("output_format", "toon")
+        _out_fmt = arguments.get("output_format", "json")
         _allow_trunc = arguments.get("allow_truncate", False)
         _fail_fast = arguments.get("fail_fast", False)
         full_args = {

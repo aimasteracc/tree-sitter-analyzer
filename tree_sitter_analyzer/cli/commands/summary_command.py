@@ -19,14 +19,6 @@ from ...constants import (
 from ...output_manager import output_data, output_json, output_section
 from .base_command import BaseCommand
 
-# TOON formatter for CLI output
-try:
-    from ...formatters.toon_formatter import ToonFormatter
-
-    _toon_available = True
-except ImportError:
-    _toon_available = False
-
 if TYPE_CHECKING:
     from ...models import AnalysisResult
 
@@ -78,7 +70,7 @@ class SummaryCommand(BaseCommand):
         r37z) and the toon/json/text fan-out (added in r36 and r37) all
         stay testable in isolation.
         """
-        if self.args.output_format not in ("json", "toon"):
+        if self.args.output_format != "json":
             output_section("Summary Results")
 
         requested_types = self._requested_summary_types()
@@ -242,11 +234,6 @@ class SummaryCommand(BaseCommand):
         """Dispatch to json / toon / text emitter based on ``output_format``."""
         if self.args.output_format == "json":
             output_json(summary_data)
-            return
-        if self.args.output_format == "toon" and _toon_available:
-            use_tabs = getattr(self.args, "toon_use_tabs", False)
-            formatter = ToonFormatter(use_tabs=use_tabs)
-            print(formatter.format(summary_data))
             return
         self._output_text_format(summary_data, requested_types)
 

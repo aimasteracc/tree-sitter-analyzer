@@ -29,9 +29,9 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
+            "enum": ["json"],
             "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-            "default": "toon",
+            "default": "json",
         },
     },
     "additionalProperties": False,
@@ -70,7 +70,7 @@ class ParserReadinessTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate optional language, include flag, and output format."""
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         if output_format not in {"json", "toon"}:
             raise ValueError("output_format must be 'json' or 'toon'")
 
@@ -106,7 +106,7 @@ class ParserReadinessTool(BaseMCPTool):
             language=arguments.get("language"),
             include_supported=arguments.get("include_supported", False),
         )
-        if arguments.get("output_format", "toon") == "toon":
+        if arguments.get("output_format", "json") == "toon":
             return _build_toon_response(result)
         # Strip ``toon_content`` from the JSON path — it duplicates the
         # structured fields and wastes ~350 bytes per call. Callers asking

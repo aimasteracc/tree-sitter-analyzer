@@ -43,7 +43,7 @@ class _YamlFormatter:
 class OutputManager:
     """Manages different types of output for CLI"""
 
-    SUPPORTED_FORMATS = ["json", "yaml", "csv", "table", "toon"]
+    SUPPORTED_FORMATS = ["json", "yaml", "csv", "table"]
 
     def __init__(
         self,
@@ -72,12 +72,6 @@ class OutputManager:
         # keeps the original "yaml is optional" behaviour while letting
         # the class be defined unconditionally.
         formatters: dict[str, Any] = {"json": _JsonFormatter()}
-        try:
-            from .formatters.toon_formatter import ToonFormatter
-
-            formatters["toon"] = ToonFormatter()
-        except ImportError:
-            pass
         try:
             import yaml as _yaml_probe  # noqa: F401
 
@@ -138,22 +132,6 @@ class OutputManager:
         # Legacy compatibility: if json_output flag is set, force JSON
         if self.json_output:
             fmt = "json"
-
-        # Check if data is already TOON-formatted from MCP tool
-        # MCP tools return dict with "format": "toon" and "toon_content" when TOON is requested
-        if (
-            isinstance(data, dict)
-            and data.get("format") == "toon"
-            and "toon_content" in data
-        ):
-            if fmt == "toon":
-                # Already TOON formatted - just print the toon_content
-                print(data["toon_content"])
-                return
-            elif fmt == "json":
-                # User wants JSON but got TOON response - output as JSON
-                print(json.dumps(data, indent=2, ensure_ascii=False))
-                return
 
         # Try using registered formatter
         formatter = self._formatter_registry.get(fmt)

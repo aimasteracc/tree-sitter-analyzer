@@ -131,8 +131,8 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
                 },
             },
@@ -169,7 +169,7 @@ class CodeGraphVisualizeTool(BaseMCPTool):
         max_edges = arguments.get("max_edges", _MAX_EDGES_DEFAULT)
         direction = arguments.get("direction", "TD")
         visualization_format = arguments.get("visualization_format", "mermaid")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         cg = self.get_call_graph()
         if cg is None:

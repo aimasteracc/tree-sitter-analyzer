@@ -57,8 +57,8 @@ TOOL_SCHEMA: dict[str, Any] = {
         # Token-efficient toon format by default
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
         },
         "output_file": {
             "type": "string",
@@ -394,7 +394,7 @@ def handle_query_output(
 
     output_file = arguments.get("output_file")
     suppress_output = arguments.get("suppress_output", False)
-    output_format = arguments.get("output_format", "toon")
+    output_format = arguments.get("output_format", "json")
 
     if output_file:
         _save_query_output(

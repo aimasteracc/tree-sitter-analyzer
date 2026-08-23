@@ -85,7 +85,7 @@ class TestCodeGraphCallToolDefinition:
     def test_get_tool_schema_defaults(self, tool):
         schema = tool.get_tool_schema()
         assert schema["properties"]["mode"]["default"] == "summary"
-        assert schema["properties"]["output_format"]["default"] == "toon"
+        assert schema["properties"]["output_format"]["default"] == "json"
         assert schema["properties"]["depth"]["default"] == 5
 
     def test_get_tool_schema_no_additional_props(self, tool):

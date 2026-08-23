@@ -452,27 +452,3 @@ def test_tool_dead_end_inlines_endpoints_and_deterrent(tmp_path):
     assert "next_step" in result
     assert "No static path" in result["next_step"]
     assert "no Read needed" in result["next_step"]
-
-
-def test_tool_toon_format_carries_bodies(tmp_path):
-    cache = _build_cache(tmp_path)
-    result = _run_tool(
-        tmp_path,
-        cache,
-        {
-            "source_function": "alpha",
-            "target_function": "gamma",
-            "direction": "forward",
-            "output_format": "toon",
-        },
-    )
-    assert result.get("format") == "toon"
-    toon = result["toon_content"]
-    # Bodies and deterrent survive TOON serialization.
-    assert "source_bodies" in toon
-    assert "GAMMA_BODY_MARKER" in toon
-    # #1321: ``next_step`` is a top-level scalar, so the disjoint envelope no
-    # longer re-encodes it inside the blob. The deterrent still reaches the
-    # caller — asserted where the envelope contract puts it.
-    assert "next_step" not in toon
-    assert result["next_step"]

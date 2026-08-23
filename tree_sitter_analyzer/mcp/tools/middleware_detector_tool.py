@@ -70,9 +70,9 @@ class MiddlewareDetectorTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "required": [],
@@ -88,7 +88,7 @@ class MiddlewareDetectorTool(BaseMCPTool):
         mode = arguments.get("mode", "all")
         url_prefix = arguments.get("url_prefix", "")
         framework_filter = arguments.get("framework", "all")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         detector = self._get_detector()
 
         if mode == "summary":

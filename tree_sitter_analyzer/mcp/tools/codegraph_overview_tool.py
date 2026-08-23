@@ -112,9 +112,9 @@ class CodeGraphOverviewTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -130,7 +130,7 @@ class CodeGraphOverviewTool(BaseMCPTool):
         max_hubs = arguments.get("max_hubs", 20)
         max_dead = arguments.get("max_dead", 20)
         max_coupled_files = arguments.get("max_coupled_files", 15)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         graph = self.get_call_graph()
         graph.build()

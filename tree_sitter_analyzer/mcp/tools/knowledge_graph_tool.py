@@ -97,8 +97,8 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -119,7 +119,7 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         if not self.project_root:
             return apply_toon_format_to_response(
                 build_error(error="project_root not set"),
@@ -276,8 +276,8 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -301,7 +301,7 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         if not self.project_root:
             return apply_toon_format_to_response(
                 build_error(error="project_root not set"),

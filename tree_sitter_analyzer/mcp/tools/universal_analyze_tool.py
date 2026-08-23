@@ -230,7 +230,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
         file_path = arguments["file_path"]
         language = arguments.get("language")
         analysis_type = arguments.get("analysis_type", "basic")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         resolved = self.resolve_and_validate_file_path(file_path)
         if language:

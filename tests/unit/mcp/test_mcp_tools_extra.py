@@ -123,22 +123,6 @@ def standalone_function():
         assert "success" in result
 
     @pytest.mark.asyncio
-    async def test_execute_with_output_format_toon(self, query_tool, temp_python_file):
-        """Test execute with TOON output format."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = await query_tool.execute(
-                {
-                    "file_path": temp_python_file,
-                    "query_key": "functions",
-                    "output_format": "toon",
-                    "output_file": f"{tmpdir}/output",
-                }
-            )
-            # TOON format returns minimal response with format and toon_content
-            assert result["format"] == "toon"
-            assert "toon_content" in result
-
-    @pytest.mark.asyncio
     async def test_execute_with_suppress_output(self, query_tool, temp_python_file):
         """Test execute with suppress_output."""
         result = await query_tool.execute(
@@ -267,20 +251,6 @@ from pathlib import Path
                     "file_path": "nonexistent_file_that_does_not_exist.py",
                 }
             )
-
-    @pytest.mark.asyncio
-    async def test_execute_with_output_format_toon(
-        self, analyze_scale_tool, temp_python_file
-    ):
-        """Test execute with TOON output format."""
-        result = await analyze_scale_tool.execute(
-            {
-                "file_path": temp_python_file,
-                "output_format": "toon",
-            }
-        )
-        # TOON format returns content key with analysis data
-        assert "content" in result or "file_path" in result or result is not None
 
 
 class TestReadPartialToolCoverage:
@@ -447,21 +417,6 @@ def function_two(): pass
         assert "success" in result or "table" in result or "content" in result
 
     @pytest.mark.asyncio
-    async def test_execute_toon_format(
-        self, analyze_code_structure_tool, temp_python_file
-    ):
-        """Test execute with TOON format."""
-        result = await analyze_code_structure_tool.execute(
-            {
-                "file_path": temp_python_file,
-                "output_format": "toon",
-            }
-        )
-        # TOON format returns dict with 'format' and 'toon_content' keys
-        assert "format" in result and result["format"] == "toon"
-        assert "toon_content" in result
-
-    @pytest.mark.asyncio
     async def test_execute_nonexistent_file(self, analyze_code_structure_tool):
         """Test execute with nonexistent file raises ValueError."""
         with pytest.raises(ValueError, match="Invalid"):
@@ -490,14 +445,6 @@ class TestOutputManagerCoverage:
         manager = OutputManager(json_output=True, output_format="toon")
         # json_output should override output_format
         assert manager.output_format == "json"
-
-    def test_init_with_toon_format(self):
-        """Test initialization with toon format."""
-        from tree_sitter_analyzer.output_manager import OutputManager
-
-        manager = OutputManager(output_format="toon")
-        assert manager.output_format == "toon"
-        assert "toon" in manager._formatter_registry
 
     def test_info_quiet(self, capsys):
         """Test info message when quiet."""
@@ -528,15 +475,6 @@ class TestOutputManagerCoverage:
         manager.data({"key": "value"})
         captured = capsys.readouterr()
         assert '"key"' in captured.out
-
-    def test_data_toon(self, capsys):
-        """Test data output in TOON format."""
-        from tree_sitter_analyzer.output_manager import OutputManager
-
-        manager = OutputManager(output_format="toon")
-        manager.data({"key": "value"})
-        captured = capsys.readouterr()
-        assert "key:" in captured.out
 
     def test_data_string(self, capsys):
         """Test data output with string data."""

@@ -38,7 +38,7 @@ from .task.models import (
     PlanChangeRequest,
     UnderstandRequest,
 )
-from .task.serializers import serialize_json, serialize_toon
+from .task.serializers import serialize_json
 
 Operation = Literal["understand", "plan_change", "assess_change"]
 
@@ -208,8 +208,6 @@ async def run_operation(
         outcome = await plan_change(request, executor)
     else:
         outcome = await assess_change(request, executor)
-    if output_format == "toon":
-        return serialize_toon(outcome)
     return serialize_json(outcome)
 
 

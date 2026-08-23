@@ -68,8 +68,8 @@ class CodeGraphStatusTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                     "description": "Output format (default: toon)",
                 },
             },
@@ -86,7 +86,7 @@ class CodeGraphStatusTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         # Status is unconditionally read-only.  JSON Schema defaults are not
         # injected by every direct caller, so omission must be handled here.
         include_access_evidence = "access_mode" in arguments

@@ -13,7 +13,7 @@ async def release_snapshot(arguments: dict[str, Any]) -> dict[str, Any]:
 
     snapshot_id = arguments.get("diff_snapshot_id")
     lease_id = arguments.get("route_lease_id")
-    output_format = arguments.get("output_format", "toon")
+    output_format = arguments.get("output_format", "json")
     if not isinstance(snapshot_id, str) or not isinstance(lease_id, str):
         raise ValueError("diff_snapshot_id and route_lease_id are required")
     error = REGISTRY.release_route_lease(snapshot_id, lease_id)

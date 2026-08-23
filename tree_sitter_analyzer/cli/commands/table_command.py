@@ -17,7 +17,6 @@ from .table_command_helpers import (
     StructureConverters,
     build_structure_format,
     collect_structure_elements,
-    convert_to_toon_format,
     get_default_package_name,
     process_parameters,
     resolve_structure_package_name,
@@ -117,9 +116,7 @@ class TableCommand(BaseCommand):
                 or getattr(self.args, "output_format", None)
                 or ""
             ).lower()
-        if output_format == "toon" and table_type != "toon":
-            table_type = "toon"
-        elif output_format == "json" and table_type != "json":
+        if output_format == "json" and table_type != "json":
             table_type = "json"
 
         if (
@@ -150,14 +147,6 @@ class TableCommand(BaseCommand):
                 table_type,
                 user_table_request,
                 table_was_user_specified,
-            )
-        if table_type == "toon":
-            return self._format_as_toon(
-                analysis_result,
-                effective_table=table_type,
-                requested_table=(
-                    user_table_request if table_was_user_specified else None
-                ),
             )
         from ...formatters.formatter_registry import FormatterRegistry
 
@@ -202,38 +191,6 @@ class TableCommand(BaseCommand):
             # agent_summary.
             _attach_table_envelope(formatted_data, analysis_result)
         return json.dumps(formatted_data, indent=2, ensure_ascii=False)
-
-    # Format data for output: _format_as_toon
-    def _format_as_toon(
-        self,
-        analysis_result: Any,
-        effective_table: str | None = None,
-        requested_table: str | None = None,
-    ) -> str:
-        """Format analysis result as TOON.
-
-        K11: when ``--table`` is silently overridden by ``--format=toon``
-        the structure carries ``effective_table`` / ``requested_table``
-        so programmatic callers can detect the override symmetrically
-        to the JSON path.
-        """
-        from ...formatters.toon_formatter import ToonFormatter
-
-        use_tabs = getattr(self.args, "toon_use_tabs", False)
-        formatter = ToonFormatter(use_tabs=use_tabs)
-
-        # Convert to structure format for TOON
-        structure_data = self._convert_to_toon_format(analysis_result)
-        if effective_table is not None and isinstance(structure_data, dict):
-            structure_data["effective_table"] = effective_table
-            if requested_table is not None:
-                structure_data["requested_table"] = requested_table
-        return formatter.format(structure_data)
-
-    # Format data for output: _convert_to_toon_format
-    def _convert_to_toon_format(self, analysis_result: Any) -> dict[str, Any]:
-        """Convert AnalysisResult to TOON-friendly format with position info."""
-        return convert_to_toon_format(analysis_result)
 
     # Format data for output: _convert_to_formatter_format
     def _convert_to_formatter_format(self, analysis_result: Any) -> dict[str, Any]:

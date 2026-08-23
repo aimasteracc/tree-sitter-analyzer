@@ -98,9 +98,9 @@ class CodeGraphSimilarityTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format (default: toon)",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -130,7 +130,7 @@ class CodeGraphSimilarityTool(BaseMCPTool):
         use_cache = arguments.get("use_cache", True)
         include_bodies = arguments.get("include_bodies", False)
         path_filter = arguments.get("path_filter", "") or ""
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         try:
             result = analyze_code_similarity(

@@ -52,11 +52,6 @@ class TestToolDefinition:
         assert set(mode["enum"]) == {"status", "warm", "reset"}
         assert mode["default"] == "status"
 
-    def test_schema_output_format_default_toon(self, tool):
-        assert (
-            tool.get_tool_schema()["properties"]["output_format"]["default"] == "toon"
-        )
-
     def test_annotations_not_readonly(self, tool):
         hints = tool.get_tool_definition()["annotations"]
         assert hints["readOnlyHint"] is False
@@ -99,11 +94,6 @@ class TestExecute:
         )
         assert result["success"] is True
         assert "indexed" in result
-
-    async def test_toon_format_default(self, tool_with_root):
-        result = await tool_with_root.execute({"mode": "status"})
-        assert result["format"] == "toon"
-        assert "toon_content" in result
 
     async def test_reset_mode_runs_without_error(self, tool_with_root):
         result = await tool_with_root.execute(

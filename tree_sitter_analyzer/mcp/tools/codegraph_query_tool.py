@@ -200,8 +200,8 @@ class CodeGraphQueryTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                     "description": "Output format (default: toon)",
                 },
             },
@@ -219,7 +219,7 @@ class CodeGraphQueryTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         query = str(arguments["query"]).strip()
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         max_symbols = min(int(arguments.get("max_symbols", 20) or 20), _MAX_SYMBOLS_CAP)
         max_files = min(int(arguments.get("max_files", 8) or 8), _MAX_FILES_CAP)
         include_code = bool(arguments.get("include_code", True))

@@ -18,14 +18,6 @@ from ...constants import (
 from ...output_manager import output_data, output_json, output_section
 from .base_command import BaseCommand
 
-# TOON formatter for CLI output
-try:
-    from ...formatters.toon_formatter import ToonFormatter
-
-    _toon_available = True
-except ImportError:
-    _toon_available = False
-
 if TYPE_CHECKING:
     from ...models import AnalysisResult
 
@@ -43,7 +35,7 @@ class StructureCommand(BaseCommand):
 
     def _output_structure_analysis(self, analysis_result: "AnalysisResult") -> None:
         """Output structure analysis results with appropriate header."""
-        if self.args.output_format not in ("json", "toon"):
+        if self.args.output_format != "json":
             output_section("Structure Analysis Results")
 
         # Convert to legacy structure format expected by tests
@@ -51,10 +43,6 @@ class StructureCommand(BaseCommand):
 
         if self.args.output_format == "json":
             output_json(structure_dict)
-        elif self.args.output_format == "toon" and _toon_available:
-            use_tabs = getattr(self.args, "toon_use_tabs", False)
-            formatter = ToonFormatter(use_tabs=use_tabs)
-            print(formatter.format(structure_dict))
         else:
             self._output_text_format(structure_dict)
 

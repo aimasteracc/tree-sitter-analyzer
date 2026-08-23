@@ -83,7 +83,7 @@ class HyphaeSubscribeTool(BaseMCPTool):
         self.validate_arguments(arguments)
         selector = arguments["selector"]
         min_interval = float(arguments.get("min_interval", 2.0))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         # RFC-0001: capture session + loop at subscribe time (the only moment
         # request_context is populated and the event loop is running).
@@ -143,7 +143,7 @@ class HyphaeUnsubscribeTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         session_id = arguments.get("sub_id") or _capture_session_id()
         selector = arguments.get("selector")
 

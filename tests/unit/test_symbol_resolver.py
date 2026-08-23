@@ -291,11 +291,6 @@ class TestCodeGraphSymbolResolveExecution:
         assert result["definition_count"] == 0
         assert "hint" in result
 
-    async def test_toon_format(self, indexed_project):
-        tool = CodeGraphSymbolResolveTool(str(indexed_project))
-        result = await tool.execute({"symbol": "UserService", "output_format": "toon"})
-        assert "toon_content" in result
-
     async def test_empty_cache_error(self, tmp_path):
         project = tmp_path / "empty"
         project.mkdir()

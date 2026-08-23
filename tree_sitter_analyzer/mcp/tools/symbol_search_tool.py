@@ -115,9 +115,9 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "required": ["query"],
@@ -143,7 +143,7 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         # hits are plenty to judge relevance; callers raise ``limit`` for a
         # wider sweep.
         limit = arguments.get("limit", DEFAULT_SYMBOL_SEARCH_LIMIT)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         cache = self._get_cache()
 
         raw_results = self._search(cache, query, language, kind, limit)

@@ -61,7 +61,7 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
+            "enum": ["json"],
             "default": "json",
             "description": "Response format.",
         },

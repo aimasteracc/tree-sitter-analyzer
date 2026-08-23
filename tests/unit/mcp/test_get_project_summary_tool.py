@@ -82,34 +82,6 @@ class TestGetProjectSummaryToolExecution:
     """Tests for execute() — core test class."""
 
     @pytest.mark.asyncio
-    async def test_returns_toon_format_by_default(
-        self, tool: GetProjectSummaryTool
-    ) -> None:
-        """Test that default call returns format='toon' and a summary string."""
-        result = await tool.execute({})
-        assert result["format"] == "toon"
-        assert "summary" in result
-        assert isinstance(result["summary"], str)
-
-    @pytest.mark.asyncio
-    async def test_toon_format_contains_project_name(
-        self, tool: GetProjectSummaryTool, project_dir: Path
-    ) -> None:
-        """Test that the toon summary contains the project name."""
-        result = await tool.execute({"format": "toon"})
-        # The project name is derived from the directory name
-        assert project_dir.name in result["summary"]
-
-    @pytest.mark.asyncio
-    async def test_toon_format_contains_purpose(
-        self, tool: GetProjectSummaryTool
-    ) -> None:
-        """Test that the toon summary includes a purpose line when README is present."""
-        result = await tool.execute({"format": "toon"})
-        # The README contains "A great tool for doing things." — shown as "what:"
-        assert "what:" in result["summary"] or "A great tool" in result["summary"]
-
-    @pytest.mark.asyncio
     async def test_json_format_option(self, tool: GetProjectSummaryTool) -> None:
         """Test that format='json' returns a structured dictionary."""
         result = await tool.execute({"format": "json"})
@@ -193,20 +165,6 @@ class TestGetProjectSummaryToolExecution:
         assert result["is_fresh"] is True
         # index_age_hours should be near zero since we just built it
         assert result["index_age_hours"] < 1.0
-
-    @pytest.mark.asyncio
-    async def test_custom_notes_included_in_toon_format(
-        self, tool: GetProjectSummaryTool, project_dir: Path
-    ) -> None:
-        """Test that custom_notes appear in the toon output when include_notes=True."""
-        # Build index with custom notes
-        manager = ProjectIndexManager(str(project_dir))
-        index = manager.build()
-        index.custom_notes = "This is a monorepo."
-        manager.save(index)
-
-        result = await tool.execute({"include_notes": True})
-        assert "This is a monorepo." in result["summary"]
 
     @pytest.mark.asyncio
     async def test_python_language_detected(self, tool: GetProjectSummaryTool) -> None:

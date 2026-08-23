@@ -127,9 +127,9 @@ class ProjectHealthTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
                 "compact_only": {
                     "type": "boolean",
@@ -155,7 +155,7 @@ class ProjectHealthTool(BaseMCPTool):
         root = self.project_root
         min_grade = arguments.get("min_grade", "D")
         max_files = _normalize_max_files(arguments.get("max_files", 20))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         compact_only = bool(arguments.get("compact_only", False))
 
         scorer = HealthScorer()

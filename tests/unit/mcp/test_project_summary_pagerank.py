@@ -22,9 +22,6 @@ from pathlib import Path
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools.get_project_summary_tool import (
-    GetProjectSummaryTool,
-)
 from tree_sitter_analyzer.mcp.utils.project_index import (
     ProjectIndexManager,
 )
@@ -343,60 +340,6 @@ class TestPageRank:
 # ---------------------------------------------------------------------------
 
 
-class TestSummaryToonFormat:
-    """render_toon produces the correct TOON structure."""
-
-    def test_contains_project_name(self, simple_project: Path) -> None:
-        manager = ProjectIndexManager(project_root=str(simple_project))
-        index = manager.build(simple_project)
-        toon = manager.render_toon(index)
-        assert "project:" in toon
-
-    def test_contains_scale_line(self, simple_project: Path) -> None:
-        manager = ProjectIndexManager(project_root=str(simple_project))
-        index = manager.build(simple_project)
-        toon = manager.render_toon(index)
-        assert "scale:" in toon
-
-    def test_critical_section_present_when_data_available(
-        self, java_project: Path
-    ) -> None:
-        manager = ProjectIndexManager(project_root=str(java_project))
-        index = manager.build(java_project)
-        toon = manager.render_toon(index)
-        if index.critical_nodes:
-            assert "critical:" in toon
-
-    def test_no_entry_na_line(self, simple_project: Path) -> None:
-        """entry: n/a must not appear — omit the line instead."""
-        manager = ProjectIndexManager(project_root=str(simple_project))
-        index = manager.build(simple_project)
-        toon = manager.render_toon(index)
-        assert "entry:    n/a" not in toon
-        assert "entry: n/a" not in toon
-
-    def test_notes_appear_when_set(self, simple_project: Path) -> None:
-        manager = ProjectIndexManager(project_root=str(simple_project))
-        index = manager.build(simple_project)
-        index.custom_notes = "Custom note here"
-        toon = manager.render_toon(index)
-        assert "Custom note here" in toon
-
-    def test_notes_omitted_when_empty(self, simple_project: Path) -> None:
-        manager = ProjectIndexManager(project_root=str(simple_project))
-        index = manager.build(simple_project)
-        index.custom_notes = ""
-        toon = manager.render_toon(index)
-        assert "notes:" not in toon
-
-    def test_output_under_30_lines(self, simple_project: Path) -> None:
-        manager = ProjectIndexManager(project_root=str(simple_project))
-        index = manager.build(simple_project)
-        toon = manager.render_toon(index)
-        lines = [ln for ln in toon.splitlines() if ln.strip()]
-        assert len(lines) <= 30, f"Too many lines: {len(lines)}"
-
-
 # ---------------------------------------------------------------------------
 # 7. Incremental update
 # ---------------------------------------------------------------------------
@@ -444,96 +387,6 @@ class TestIncrementalUpdate:
         time.sleep(0.05)
         index2 = manager.build(simple_project, force_refresh=True)
         assert index2.updated_at > index1.updated_at
-
-
-# ---------------------------------------------------------------------------
-# 8. get_project_summary reads summary.toon
-# ---------------------------------------------------------------------------
-
-
-class TestGetProjectSummaryReadsToon:
-    """get_project_summary reads pre-built summary.toon, no recomputation."""
-
-    def test_reads_existing_toon(self, simple_project: Path) -> None:
-        cache = simple_project / ".tree-sitter-cache"
-        cache.mkdir(exist_ok=True)
-        toon_path = cache / "summary.toon"
-        toon_path.write_text("project:  myproject\nscale:    5 files — python 100%\n")
-
-        tool = GetProjectSummaryTool(project_root=str(simple_project))
-        import asyncio
-
-        result = asyncio.run(tool.execute({"format": "toon"}))
-        assert "myproject" in str(result)
-
-    def test_builds_if_toon_missing(self, simple_project: Path) -> None:
-        """If summary.toon doesn't exist, builds it on demand."""
-        cache = simple_project / ".tree-sitter-cache"
-        cache.mkdir(exist_ok=True)
-
-        tool = GetProjectSummaryTool(project_root=str(simple_project))
-        import asyncio
-
-        result = asyncio.run(tool.execute({"format": "toon"}))
-        assert result is not None
-        toon_path = cache / "summary.toon"
-        assert toon_path.exists()
-
-
-# ===========================================================================
-# v2 TDD: First-Party Filtering
-# ===========================================================================
-
-
-@pytest.fixture
-def java_project_with_noise(tmp_path: Path) -> Path:
-    """Java project with pom.xml groupId + stdlib/third-party imports."""
-    # pom.xml declares groupId
-    (tmp_path / "pom.xml").write_text(
-        "<project>\n"
-        "  <groupId>com.example</groupId>\n"
-        "  <artifactId>myapp</artifactId>\n"
-        "</project>"
-    )
-    (tmp_path / "README.md").write_text("# MyApp\n\nA Java app.\n")
-
-    src = tmp_path / "src" / "main" / "java" / "com" / "example"
-    src.mkdir(parents=True)
-
-    # BeanFactory — core interface (first-party, no imports)
-    (src / "BeanFactory.java").write_text(
-        "package com.example;\n"
-        "public interface BeanFactory {\n"
-        "    Object getBean(String name);\n"
-        "}\n"
-    )
-
-    # Service — imports first-party + stdlib + third-party
-    (src / "UserService.java").write_text(
-        "package com.example;\n"
-        "import com.example.BeanFactory;\n"  # first-party → edge
-        "import java.util.List;\n"  # stdlib → SKIP
-        "import java.util.Map;\n"  # stdlib → SKIP
-        "import javax.annotation.Nullable;\n"  # annotation → SKIP
-        "import org.junit.jupiter.api.Test;\n"  # test fw → SKIP
-        "import lombok.Data;\n"  # annotation proc → SKIP
-        "public class UserService implements BeanFactory {\n"
-        "    public Object getBean(String name) { return null; }\n"
-        "}\n"
-    )
-
-    # Controller — imports first-party only
-    (src / "UserController.java").write_text(
-        "package com.example;\n"
-        "import com.example.UserService;\n"  # first-party → edge
-        "import com.example.BeanFactory;\n"  # first-party → edge
-        "import java.util.Optional;\n"  # stdlib → SKIP
-        "public class UserController {\n"
-        "    private UserService service;\n"
-        "}\n"
-    )
-
-    return tmp_path
 
 
 @pytest.fixture

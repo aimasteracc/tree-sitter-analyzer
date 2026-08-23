@@ -100,9 +100,9 @@ class ClassHierarchyTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format (default: toon)",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             # Wave 1b (audit structure-01, review nit): ``mode`` is resolved at
@@ -173,7 +173,7 @@ class ClassHierarchyTool(BaseMCPTool):
         mode = self._normalize_mode(self._resolve_mode(arguments))
         class_name = arguments.get("class_name", "")
         max_depth = int(arguments.get("max_depth", 10))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         if is_index_rebuilding(self.project_root):
             rebuild_next_step = rebuild_in_progress_next_step()

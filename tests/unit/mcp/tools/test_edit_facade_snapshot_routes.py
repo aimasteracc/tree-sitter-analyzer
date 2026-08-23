@@ -309,7 +309,7 @@ async def test_edit_read_existing_arguments_survive_exact_projection(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("action", ["safe"])
-@pytest.mark.parametrize("output_format", ["json", "toon"])
+@pytest.mark.parametrize("output_format", ["json"])
 async def test_edit_read_existing_returns_exact_access_evidence(
     tmp_path: Path, action: str, output_format: str
 ) -> None:
@@ -360,14 +360,11 @@ async def test_edit_read_existing_returns_exact_access_evidence(
             "source_snapshots": [],
             "output_format": output_format,
         }
-    assert (result.get("format"), "toon_content" in result) == (
-        ("toon", True) if output_format == "toon" else (None, False)
-    )
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("action", ["ast_diff", "classify", "constraints"])
-@pytest.mark.parametrize("output_format", ["json", "toon"])
+@pytest.mark.parametrize("output_format", ["json"])
 async def test_edit_snapshot_consumers_read_existing_are_platform_aware(
     tmp_path: Path, action: str, output_format: str
 ) -> None:
@@ -419,7 +416,7 @@ async def test_edit_snapshot_consumers_read_existing_are_platform_aware(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("output_format", ["json", "toon"])
+@pytest.mark.parametrize("output_format", ["json"])
 async def test_edit_impact_read_existing_gate_is_platform_aware(
     tmp_path: Path, output_format: str
 ) -> None:
@@ -574,7 +571,7 @@ async def test_edit_impact_read_existing_producer_publishes_snapshot(
             "constraints",
             "output_format",
             "yaml",
-            "output_format must be one of ['json', 'toon']",
+            "output_format must be one of ['json']",
         ),
     ],
 )

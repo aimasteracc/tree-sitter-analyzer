@@ -156,7 +156,7 @@ class ChangeImpactTool(BaseMCPTool):
         """Analyze git diff + dependency graph for change impact."""
         pr_url = arguments.get("pr_url", "") or ""
         mode = "pr" if pr_url else arguments.get("mode", "diff")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         compact_only = bool(arguments.get("compact_only", False))
         if read_access.validate_read_existing_access(arguments):
             # RFC-0022 P0.4: an unavailable adapter must still validate its

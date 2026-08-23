@@ -147,9 +147,9 @@ class DependencyAnalysisTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -173,7 +173,7 @@ class DependencyAnalysisTool(BaseMCPTool):
         # ``mode`` in the result is the canonical one ``summary`` —
         # matching the CLI's existing alias behaviour.
         mode = self._normalize_mode(arguments.get("mode", "summary"))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         # Cache hit fast-path: ``self._graph`` is built lazily on the first
         # call (2-5s on medium repos) and reused for the rest of the process
         # lifetime — subsequent calls finish in single-digit ms.

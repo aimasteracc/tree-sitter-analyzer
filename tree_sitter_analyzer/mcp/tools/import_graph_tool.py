@@ -91,9 +91,9 @@ class CodeGraphImportGraphTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             # #575: mode is NOT required — it has a default and is inferred from
@@ -135,7 +135,7 @@ class CodeGraphImportGraphTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         mode = self._effective_mode(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         graph = self._get_graph()
 
         if mode == "summary":

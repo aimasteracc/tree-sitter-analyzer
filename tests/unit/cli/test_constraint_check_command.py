@@ -201,13 +201,6 @@ class TestViolationsDDL:
 
 
 class TestFormatResponse:
-    def test_returns_value_from_apply_toon(self):
-        payload = {"success": True, "verdict": "SAFE"}
-        sentinel = {"toon_content": "ok", "success": True}
-        with patch(_APPLY_TOON, return_value=sentinel):
-            result = _format_response(payload, "toon")
-        assert result is sentinel
-
     def test_passes_payload_and_format_to_helper(self):
         payload = {"success": True}
         captured: list = []
@@ -257,28 +250,13 @@ class TestResolveOutputFormat:
         mock_fn.assert_called_once_with(args)
         assert result == "json"
 
-    def test_returns_toon_when_resolver_says_toon(self):
-        args = SimpleNamespace()
-        with patch(_RESOLVE_FMT, return_value="toon"):
-            result = _resolve_output_format(args)
-        assert result == "toon"
-
 
 class TestPrintResult:
-    def test_toon_prints_toon_content(self, capsys):
-        _print_result({"toon_content": "## Verdict\nSAFE"}, "toon")
-        out = capsys.readouterr().out
-        assert "## Verdict" in out
-
     def test_json_prints_json(self, capsys):
         _print_result({"success": True, "verdict": "SAFE"}, "json")
         out = capsys.readouterr().out
         parsed = json.loads(out)
         assert parsed["verdict"] == "SAFE"
-
-    def test_toon_missing_key_prints_empty_string(self, capsys):
-        _print_result({}, "toon")
-        assert capsys.readouterr().out.strip() == ""
 
     def test_json_output_is_indented(self, capsys):
         _print_result({"k": "v"}, "json")

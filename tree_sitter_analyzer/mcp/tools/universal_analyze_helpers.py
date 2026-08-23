@@ -134,9 +134,9 @@ TOOL_SCHEMA: dict[str, Any] = {
         # Token-efficient toon format by default
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
+            "enum": ["json"],
             "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
-            "default": "toon",
+            "default": "json",
         },
     },
     # file_path is the only required field

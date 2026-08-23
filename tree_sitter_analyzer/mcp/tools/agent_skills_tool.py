@@ -20,9 +20,9 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
+            "enum": ["json"],
             "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-            "default": "toon",
+            "default": "json",
         },
     },
     "additionalProperties": False,
@@ -75,7 +75,7 @@ class AgentSkillsTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate output format and optional skills root."""
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         if output_format not in {"json", "toon"}:
             raise ValueError("output_format must be 'json' or 'toon'")
 
@@ -98,7 +98,7 @@ class AgentSkillsTool(BaseMCPTool):
             project_root=str(self.project_root),
             skills_root=skills_root,
         )
-        if arguments.get("output_format", "toon") == "toon":
+        if arguments.get("output_format", "json") == "toon":
             return _build_toon_response(result)
         # Strip ``toon_content`` from the JSON path — it duplicates the
         # structured fields (~1.8 KB per call) and confuses agents that

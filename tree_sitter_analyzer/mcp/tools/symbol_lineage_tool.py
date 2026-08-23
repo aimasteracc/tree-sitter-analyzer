@@ -45,8 +45,8 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
         },
         "file_paths": {
             "type": "array",
@@ -331,7 +331,7 @@ class SymbolLineageTool(BaseMCPTool):
         started = time.perf_counter()
         symbol = arguments["symbol"].strip()
         max_depth = int(arguments.get("max_depth", 3))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         self._validate_project_root()
         file_paths = arguments.get("file_paths") or []
         scope_files = _normalize_scope_file_paths(str(self.project_root), file_paths)

@@ -79,11 +79,6 @@ class TestExecuteNoCache:
         assert result["success"] is True
         assert result["cache"]["status"] == "empty"
 
-    async def test_toon_format_default(self, tool):
-        result = await tool.execute({})
-        assert result["format"] == "toon"
-        assert "toon_content" in result
-
     async def test_sections_included_field(self, tool_with_root):
         with patch(
             "tree_sitter_analyzer.mcp.tools.codegraph_metrics_tool.ensure_indexed",

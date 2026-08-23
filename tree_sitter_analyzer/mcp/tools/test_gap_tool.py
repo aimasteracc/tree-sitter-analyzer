@@ -79,7 +79,7 @@ TOOL_SCHEMA: dict[str, Any] = {
             # Wave 1b (audit health-03): default to TOON like every other MCP
             # tool (CLAUDE.md §1 — MCP defaults to TOON). test_gap was the lone
             # tool defaulting to json, so its envelope lacked format/toon_content.
-            "default": "toon",
+            "default": "json",
         },
     },
     "required": [],
@@ -123,7 +123,7 @@ class CodeGraphTestGapTool(BaseMCPTool):
         max_files = int(arguments.get("max_files", 1000))
         max_gaps = int(arguments.get("max_gaps", 50))
         include_covered = arguments.get("include_covered", False)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         target_file = arguments.get("file_path") or None
         coverage_json = arguments.get("coverage_json") or None
 

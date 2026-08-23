@@ -198,7 +198,7 @@ async def execute_batch(
     response assembly. Behaviour preserved (BATCH_LIMITS,
     allow_truncate/fail_fast semantics, content_format echo).
     """
-    output_format = arguments.get("output_format", "toon")
+    output_format = arguments.get("output_format", "json")
     content_format = arguments.get("format", "text")
     allow_truncate = bool(arguments.get("allow_truncate", False))
     fail_fast = bool(arguments.get("fail_fast", False))

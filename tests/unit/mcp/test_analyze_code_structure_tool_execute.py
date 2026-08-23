@@ -399,52 +399,6 @@ class TestAnalyzeCodeStructureToolExecute:
             assert "table_output" in result
 
     @pytest.mark.asyncio
-    async def test_execute_with_output_format_toon(self, tool, tmp_path):
-        """Test execute with output_format='toon'."""
-        test_file = tmp_path / "test.py"
-        test_file.write_text("class MyClass:\n    pass\n")
-
-        mock_analysis_result = MagicMock()
-        mock_analysis_result.elements = []
-        mock_analysis_result.success = True
-        mock_analysis_result.line_count = 2
-        mock_analysis_result.language = "python"
-        mock_analysis_result.file_path = str(test_file)
-        mock_analysis_result.package = None
-        mock_analysis_result.annotations = []
-
-        with (
-            patch.object(
-                tool, "resolve_and_validate_file_path", return_value=str(test_file)
-            ),
-            patch("pathlib.Path.exists", return_value=True),
-            patch.object(
-                tool.analysis_engine,
-                "analyze",
-                new_callable=AsyncMock,
-                return_value=mock_analysis_result,
-            ),
-            patch(
-                "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.FormatterRegistry.get_formatter_for_language",
-                return_value=MagicMock(
-                    format_structure=MagicMock(return_value="mocked_table_output")
-                ),
-            ),
-            patch(
-                "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.FormatterRegistry"
-            ) as mock_registry,
-        ):
-            mock_registry.is_format_supported.return_value = True
-            mock_registry.get_formatter.return_value.format.return_value = "Test output"
-
-            arguments = {"file_path": str(test_file), "output_format": "toon"}
-            result = await tool.execute(arguments)
-
-            assert result["success"] is True
-            # Toon format should have toon_content
-            assert "toon_content" in result
-
-    @pytest.mark.asyncio
     async def test_execute_analysis_failure(self, tool):
         """Test execute handles analysis engine failure."""
         with (

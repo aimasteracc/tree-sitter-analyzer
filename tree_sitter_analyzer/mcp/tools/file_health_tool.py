@@ -65,9 +65,9 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
+            "enum": ["json"],
             "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-            "default": "toon",
+            "default": "json",
         },
         "compact_only": {
             "type": "boolean",
@@ -174,7 +174,7 @@ class FileHealthTool(BaseMCPTool):
         """
         self.validate_arguments(arguments)
         file_path = arguments["file_path"]
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         compact_only = bool(arguments.get("compact_only", False))
         language = arguments.get("language")
 

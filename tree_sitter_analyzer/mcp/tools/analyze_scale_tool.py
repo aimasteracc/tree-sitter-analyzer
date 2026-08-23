@@ -129,7 +129,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         language = arguments.get("language")
         include_details = arguments.get("include_details", False)
         include_guidance = arguments.get("include_guidance", True)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         resolved = self.resolve_and_validate_file_path(file_path)
         logger.info("Analyzing file: %s (resolved to: %s)", file_path, resolved)
@@ -326,7 +326,7 @@ class AnalyzeScaleTool(BaseMCPTool):
 
     async def _execute_metrics_batch(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute batch metrics computation for multiple files."""
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         metrics_only = bool(arguments.get("metrics_only", False))
         file_paths = arguments.get("file_paths")
 

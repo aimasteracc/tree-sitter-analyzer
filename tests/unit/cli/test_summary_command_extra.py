@@ -258,45 +258,6 @@ class TestSummaryCommandCoverage:
         assert "methods" in data["summary"]
         assert data["summary"]["methods"][0]["name"] == "run"
 
-    @patch(
-        "tree_sitter_analyzer.cli.commands.summary_command._toon_available",
-        True,
-    )
-    @patch("tree_sitter_analyzer.cli.commands.summary_command.ToonFormatter")
-    @patch("tree_sitter_analyzer.cli.commands.summary_command.output_section")
-    def test_toon_output_with_elements(self, mock_output_section, mock_toon_cls):
-        """Test toon output path covering lines 132-135"""
-        self.command.args.output_format = "toon"
-        self.command.args.summary = "classes"
-        self.command.args.toon_use_tabs = True
-
-        mock_formatter = MagicMock()
-        mock_formatter.format.return_value = "toon output"
-        mock_toon_cls.return_value = mock_formatter
-
-        class_elem = MagicMock()
-        class_elem.type = ELEMENT_TYPE_CLASS
-        class_elem.name = "Svc"
-        class_elem.start_line = 1
-        class_elem.end_line = 20
-        class_elem.visibility = "public"
-        class_elem.modifiers = []
-
-        mock_result = MagicMock()
-        mock_result.file_path = "svc.py"
-        mock_result.language = "python"
-        mock_result.elements = [class_elem]
-
-        with patch(
-            "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type"
-        ) as mock_check:
-            mock_check.side_effect = lambda e, t: e.type == t
-            with patch("builtins.print") as mock_print:
-                self.command._output_summary_analysis(mock_result)
-
-        mock_toon_cls.assert_called_once_with(use_tabs=True)
-        mock_print.assert_called_once_with("toon output")
-
 
 def asyncio_run(coro):
     import asyncio

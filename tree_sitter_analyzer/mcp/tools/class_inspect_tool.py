@@ -254,9 +254,9 @@ class ClassInspectTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format (default: toon)",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "required": ["class_name"],
@@ -502,7 +502,7 @@ class ClassInspectTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         class_name: str = arguments["class_name"]
-        output_format: str = arguments.get("output_format", "toon")
+        output_format: str = arguments.get("output_format", "json")
 
         cache = self._get_cache()
         hierarchy = ClassHierarchy(cache)

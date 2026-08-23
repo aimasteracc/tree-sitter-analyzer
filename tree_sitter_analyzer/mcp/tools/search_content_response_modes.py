@@ -124,8 +124,6 @@ def respond_count_only(
     normalize_envelope(result, total_count=int(total_matches))
     if cache and cache_key:
         cache.set(cache_key, result)
-    if output_format == "toon":
-        return attach_toon(result)
     return result
 
 
@@ -176,8 +174,6 @@ def respond_grouped(
     if suppressed:
         return normalize_envelope(suppressed)
 
-    if output_format == "toon":
-        return attach_toon(result)
     return result
 
 
@@ -233,8 +229,6 @@ def respond_summary(
     if suppressed:
         return normalize_envelope(suppressed)
 
-    if output_format == "toon":
-        return attach_toon(result)
     return result
 
 
