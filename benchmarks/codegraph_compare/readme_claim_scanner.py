@@ -32,13 +32,12 @@ _SAFE_SPANS = (
     re.compile(r"13 言語は `?pipeline_registered|13 种语言为 `?pipeline_registered"),
     re.compile(r"5 言語 gap|5 语言 gap"),
     re.compile(r"1 ワークフロー|一个工作流"),
-    # Re-pinned 2026-08-20: 325 -> 330 for the RFC-0027 §L7/§L8 capability
-    # flags (--project-card, --plan-rename, --plan-rename-to,
-    # --refactor-queue, --refactor-queue-top-n).
+    # Re-pinned 2026-08-24: 330 -> 333 for the RFC-0029 mutation-probe CLI
+    # flags (--mutation-probe, --mutation-probe-to, --mutation-probe-timeout).
     # Deliberately an exact count, not \d+ — the registry must force a
     # conscious re-pin when the CLI surface changes.
-    re.compile(r"\b330 CLI flags\b", re.IGNORECASE),
-    re.compile(r"330 の CLI フラグ|330 个 CLI flag", re.IGNORECASE),
+    re.compile(r"\b333 CLI flags\b", re.IGNORECASE),
+    re.compile(r"333 の CLI フラグ|333 个 CLI flag", re.IGNORECASE),
     re.compile(r"\b(?:FTS5|BM25)\b"),
     re.compile(r"\bE[0-4]\b"),
     re.compile(r"\bE2E\b", re.IGNORECASE),
