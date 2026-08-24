@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.27,<1.32"]
+requires = ["hatchling>=1.27,<1.33"]
 build-backend = "hatchling.build"
 
 [project]
@@ -189,7 +189,7 @@ dev = [
     "hypothesis>=6.0.0",
     "black>=24.0.0",
     "ruff>=0.5.0",
-    "mypy==2.3.0",
+    "mypy==2.3.1",
     "isort>=8.0.1",
     "types-psutil>=5.9.0",
     "memory-profiler>=0.61.0",
@@ -261,7 +261,7 @@ full = [
     "pytest-timeout>=2.4.0",
     "black>=24.0.0",
     "ruff>=0.5.0",
-    "mypy==2.3.0",
+    "mypy==2.3.1",
     "isort>=8.0.1",
     "types-psutil>=5.9.0",
     "memory-profiler>=0.61.0",
@@ -297,7 +297,7 @@ all = [
     "pytest-timeout>=2.4.0",
     "black>=24.0.0",
     "ruff>=0.5.0",
-    "mypy==2.3.0",
+    "mypy==2.3.1",
     "isort>=8.0.1",
     "types-psutil>=5.9.0",
     "memory-profiler>=0.61.0",
@@ -693,8 +693,8 @@ required-version = ">=0.11.0"
 # Exact, independently exportable toolchain for the NO1-006B collector.
 # These packages are not part of the measured subject runtime closure.
 no1-006b-collector-tool = [
-    "hatchling==1.31.0",
-    "jsonschema==4.25.1",
+    "hatchling==1.32.0",
+    "jsonschema==4.26.0",
     "packaging==25.0",
 ]
 dev = [
@@ -717,7 +717,7 @@ dev = [
     "types-jsonschema",
     "types-PyYAML",
     "types-cachetools",
-    "mypy==2.3.0",
+    "mypy==2.3.1",
     "hypothesis>=6.0.0",
     "pytest-xdist>=3.8.0",
     "pytest-timeout>=2.4.0",
