@@ -3,7 +3,7 @@
 > **AUTO-GENERATED — do not edit by hand.** Regenerate with `uv run python scripts/generate_facade_actions_doc.py`.
 > Drift-gated by `tests/unit/docs/test_facade_actions_doc_drift.py` (regenerates in-memory and diffs).
 
-The MCP server exposes **8 facade tools** routing **78 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
+The MCP server exposes **8 facade tools** routing **79 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
 
 Reading the tables:
 
@@ -78,7 +78,7 @@ Reading the tables:
 | `self` | `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--self-health` |
 | `test_gap` | `coverage_json`, `file_path`, `include_covered`, `language`, `max_files`, `max_gaps`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--test-gap` |
 
-## `edit` — 10 actions
+## `edit` — 11 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
@@ -87,6 +87,7 @@ Reading the tables:
 | `constraints` | `access_mode`, `diff_snapshot_id`, `output_format`, `path_filter`, `persist`, `scope_paths`, `severity_min`, `snapshot_id`, `source_generation` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--check-constraints` |
 | `guard` | `modification_type`*, `symbol`*, `file_path` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--modification-guard` |
 | `impact` | `access_mode`, `agent_summary_only`, `capture_diff_snapshot`, `compact_only`, `include_tests`, `mode`, `output_format`, `pr_url`, `resource_profile`, `scope_mode`, `scope_paths` — `capture_diff_snapshot` is an explicit legacy producer available only to same-process POSIX consumers and is forbidden whenever `access_mode` is present | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--change-impact` |
+| `mutation_probe` | `code_location`*, `test_node_id`*, `output_format`, `timeout` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--mutation-probe` |
 | `plan_rename` | `new_name`*, `symbol`*, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--plan-rename` |
 | `pr` | `include_call_graph`, `mode`, `output_format`, `pr_url` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--pr-review` |
 | `refactor` | `file_path`*, `include_extractions`, `include_skeleton`, `language`, `max_suggestions`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--refactor` |

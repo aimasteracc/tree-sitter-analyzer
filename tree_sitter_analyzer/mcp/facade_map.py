@@ -191,4 +191,6 @@ NEW_ACTION_PARITY: dict[str, tuple[str, str, str]] = {
     "edit_plan_rename": ("edit", "plan_rename", "--plan-rename"),
     # RFC-0027 §L8: the refactor queue is new; it only ever lived in a skill.
     "health_refactor_queue": ("health", "refactor_queue", "--refactor-queue"),
+    # RFC-0029: mutation probe is new; it was never a registered v1.x tool.
+    "edit_mutation_probe": ("edit", "mutation_probe", "--mutation-probe"),
 }

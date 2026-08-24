@@ -295,7 +295,7 @@ def test_release_snapshot_is_the_only_bespoke_route() -> None:
 
     facade = build_edit_facade(project_root=None)
     assert set(facade.bespoke_map) == {"release_snapshot"}
-    assert len(facade.action_map) == 9
+    assert len(facade.action_map) == 10
 
 
 # ---------------------------------------------------------------------------
