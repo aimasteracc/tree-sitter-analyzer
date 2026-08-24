@@ -205,7 +205,7 @@ class TestDescribeDir:
 
 
 class TestNoBugSilentDrop:
-    """Regression: dirs with no description must still appear in summary.toon."""
+    """Regression: dirs with no description must still appear in the index."""
 
     def test_large_dir_without_description_appears(self, tmp_path: Path) -> None:
         """A dir with 1000 files but no __init__.py / README must appear."""
@@ -218,9 +218,9 @@ class TestNoBugSilentDrop:
         cache_dir.mkdir()
         manager = ProjectIndexManager(project_root=str(tmp_path))
         index = manager.build(tmp_path)
-        toon = manager.render_toon(index)
+        names = [e["name"] for e in index.top_level_structure]
 
-        assert "spring-framework" in toon
+        assert "spring-framework" in names
 
     def test_context_dir_appears_under_context_section(
         self, multi_module_project: Path
@@ -229,17 +229,17 @@ class TestNoBugSilentDrop:
         cache_dir.mkdir(exist_ok=True)
         manager = ProjectIndexManager(project_root=str(multi_module_project))
         index = manager.build(multi_module_project)
-        toon = manager.render_toon(index)
+        names = [e["name"] for e in index.top_level_structure]
 
-        assert "spring-petclinic" in toon
+        assert "spring-petclinic" in names
 
     def test_all_top_level_dirs_present(self, multi_module_project: Path) -> None:
         manager = ProjectIndexManager(project_root=str(multi_module_project))
         index = manager.build(multi_module_project)
-        toon = manager.render_toon(index)
+        names = [e["name"] for e in index.top_level_structure]
 
         for d in ["src", "spring-petclinic", "my-analyzer"]:
-            assert d in toon, f"Expected '{d}' in toon output"
+            assert d in names, f"Expected '{d}' in top_level_structure names"
 
 
 # ---------------------------------------------------------------------------

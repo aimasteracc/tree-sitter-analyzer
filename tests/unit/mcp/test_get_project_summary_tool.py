@@ -71,10 +71,9 @@ class TestGetProjectSummaryToolDefinition:
         assert "WHEN NOT TO USE" in defn["description"]
 
     def test_format_property_enum(self, tool: GetProjectSummaryTool) -> None:
-        """Test that the format property has toon and json options."""
+        """Test that the format property has json option."""
         defn = tool.get_tool_definition()
         fmt_prop = defn["inputSchema"]["properties"]["format"]
-        assert "toon" in fmt_prop["enum"]
         assert "json" in fmt_prop["enum"]
 
 

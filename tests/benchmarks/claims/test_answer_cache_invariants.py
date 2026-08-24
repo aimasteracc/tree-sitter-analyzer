@@ -207,24 +207,24 @@ class TestProvenanceDoesNotBreakCompaction:
     dependents and test list, which are not this test's business.
     """
 
-    def test_compact_toon_stays_strictly_smaller_than_default_toon(
+    def test_compact_json_stays_strictly_smaller_than_default_json(
         self, edit_facade
     ) -> None:
         import json
 
         base = {"action": "safe", "file_path": _TARGET}
-        default = asyncio.run(edit_facade.execute({**base, "output_format": "toon"}))
+        default = asyncio.run(edit_facade.execute({**base, "output_format": "json"}))
         reset_answer_cache()
         compact = asyncio.run(
-            edit_facade.execute({**base, "output_format": "toon", "compact_only": True})
+            edit_facade.execute({**base, "output_format": "json", "compact_only": True})
         )
         assert "provenance" in default
         assert "provenance" in compact
         default_bytes = len(json.dumps(default))
         compact_bytes = len(json.dumps(compact))
         print(
-            f"measured_value: default_toon_bytes={default_bytes} "
-            f"compact_toon_bytes={compact_bytes}"
+            f"measured_value: default_json_bytes={default_bytes} "
+            f"compact_json_bytes={compact_bytes}"
         )
         assert compact_bytes < default_bytes
 

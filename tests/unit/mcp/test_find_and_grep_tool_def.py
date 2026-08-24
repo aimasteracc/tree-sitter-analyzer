@@ -173,8 +173,8 @@ class TestGetToolDefinition:
         definition = tool.get_tool_definition()
         schema = definition["inputSchema"]
         properties = schema.get("properties", {})
-        assert properties["output_format"]["enum"] == ["json", "toon"]
-        assert properties["output_format"]["default"] == "toon"
+        assert properties["output_format"]["enum"] == ["json"]
+        assert properties["output_format"]["default"] == "json"
 
 
 class TestValidateRoots:
