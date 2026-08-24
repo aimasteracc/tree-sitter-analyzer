@@ -398,7 +398,7 @@ def valid_passed_report() -> dict[str, object]:
                 "name": "index",
                 "arguments": {"action": "status"},
                 "is_error": False,
-                "default_format": "toon",
+                "default_format": "json",
                 "verdict": "WARN",
                 "project_root": "/tmp/project",
                 "indexed": False,

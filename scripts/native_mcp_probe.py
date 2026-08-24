@@ -172,15 +172,6 @@ async def main() -> None:
     assert getattr(called, "isError", getattr(called, "is_error", None)) is False
     assert len(called.content) == 1 and called.content[0].type == "text"
     envelope = json.loads(called.content[0].text)
-    toon = envelope.get("toon_content")
-    assert envelope.get("format") == "toon" and isinstance(toon, str)
-    # #1321: the TOON envelope is DISJOINT - a key the top level carries is not
-    # re-encoded inside toon_content. ``index action=status`` on a fresh project
-    # is entirely scalars/empty-dicts/agent_summary, so all of it is at the top
-    # level and the blob is empty. These assertions previously grepped the blob
-    # for values that were at the top level too, i.e. they were qualifying the
-    # duplication. Reading each field from where the envelope contract puts it
-    # is also a stricter check (exact equality, not substring).
     # ASCII only in this file: test_probe_binds_observed_fixture_status reads it
     # with locale-default encoding, which is cp932 on a Japanese Windows host.
     assert envelope.get("project_root") == str(project)
@@ -189,7 +180,6 @@ async def main() -> None:
     assert envelope.get("agent_summary", {}).get("summary_line") == (
         "codegraph_status: index missing or empty"
     )
-    assert toon == ""
     assert envelope.get("success") is True and envelope.get("verdict") == "WARN"
     server_info = getattr(
         initialized, "serverInfo", getattr(initialized, "server_info", None)
@@ -214,7 +204,7 @@ async def main() -> None:
                 "name": "index",
                 "arguments": {"action": "status"},
                 "is_error": False,
-                "default_format": "toon",
+                "default_format": "json",
                 "verdict": "WARN",
                 "project_root": str(project),
                 "indexed": False,
