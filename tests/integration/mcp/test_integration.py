@@ -434,7 +434,7 @@ module.exports = { Calculator, createCalculator };
 
         read_schema = self.server.read_partial_tool.get_tool_schema()
         assert read_schema["properties"]["start_line"]["minimum"] == 1
-        assert read_schema["properties"]["output_format"]["enum"] == ["json", "toon"]
+        assert read_schema["properties"]["output_format"]["enum"] == ["json"]
 
         structure_schema = self.server.table_format_tool.get_tool_schema()
         assert structure_schema["properties"]["format_type"]["default"] == "full"
