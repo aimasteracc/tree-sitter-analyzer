@@ -409,6 +409,8 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         # RFC-0027 §L8: _PlanRenameViaFacade subclasses CodeGraphRefactorTool
         # and pins mode="preview"; apply-like args are rejected, not forwarded.
         ("edit", "plan_rename"): "_PlanRenameViaFacade",
+        # RFC-0029: mutation probe — does this test constrain this code?
+        ("edit", "mutation_probe"): "MutationProbeTool",
         ("project", "overview"): "ProjectOverviewTool",
         ("project", "files"): "ListFilesTool",
         ("project", "smart"): "SmartContextTool",

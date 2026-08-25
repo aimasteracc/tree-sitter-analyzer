@@ -181,6 +181,8 @@ def test_edit_facade_all_actions_present() -> None:
         # RFC-0027 §L8: preview-only minimal rename edit set, wired from the
         # previously orphaned CodeGraphRefactorTool.
         "plan_rename",
+        # RFC-0029: does this test constrain this code?
+        "mutation_probe",
     }
     registered = set(facade.action_map) | set(facade.bespoke_map)
     assert expected == registered
@@ -295,7 +297,7 @@ def test_release_snapshot_is_the_only_bespoke_route() -> None:
 
     facade = build_edit_facade(project_root=None)
     assert set(facade.bespoke_map) == {"release_snapshot"}
-    assert len(facade.action_map) == 9
+    assert len(facade.action_map) == 10
 
 
 # ---------------------------------------------------------------------------

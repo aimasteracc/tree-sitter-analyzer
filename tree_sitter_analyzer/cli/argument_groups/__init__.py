@@ -9,6 +9,7 @@ from ._advanced import (
     _add_decision_journal_options,
     _add_environment_probe_options,
     _add_modification_guard_options,
+    _add_mutation_probe_options,
     _add_trace_impact_options,
 )
 from ._agents import (
@@ -60,6 +61,7 @@ __all__ = [
     "_add_mcp_health_options",
     "_add_mcp_index_management_options",
     "_add_modification_guard_options",
+    "_add_mutation_probe_options",
     "_add_output_options",
     "_add_partial_read_options",
     "_add_project_and_logging_options",

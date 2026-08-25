@@ -89,6 +89,8 @@ def test_edit_facade_schema_includes_action_and_required() -> None:
         "release_snapshot",
         # RFC-0027 §L8: preview-only minimal rename edit set.
         "plan_rename",
+        # RFC-0029: mutation probe — does this test constrain this code?
+        "mutation_probe",
     }
     assert expected == enum_vals
 

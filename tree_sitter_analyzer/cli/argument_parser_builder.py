@@ -34,6 +34,7 @@ from .argument_groups import (
     _add_mcp_health_options,
     _add_mcp_index_management_options,
     _add_modification_guard_options,
+    _add_mutation_probe_options,
     _add_output_options,
     _add_partial_read_options,
     _add_project_and_logging_options,
@@ -63,6 +64,7 @@ __all__ = [
     "_add_mcp_health_options",
     "_add_mcp_index_management_options",
     "_add_modification_guard_options",
+    "_add_mutation_probe_options",
     "_add_output_options",
     "_add_partial_read_options",
     "_add_project_and_logging_options",
@@ -146,6 +148,8 @@ def _add_mcp_equivalent_options(parser: argparse.ArgumentParser) -> None:
     # PL-C sprint additions
     _add_mcp_index_management_options(parser)
     _add_clean_state_options(parser)
+    # RFC-0029: mutation probe CLI parity
+    _add_mutation_probe_options(parser)
 
 
 def create_argument_parser() -> argparse.ArgumentParser:
