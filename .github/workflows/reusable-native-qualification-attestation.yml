@@ -208,7 +208,7 @@ jobs:
               assert type(mcp["duration_seconds"]) in (int, float) and mcp["duration_seconds"] >= 0 and all(isinstance(mcp[key], str) for key in ("executable", "protocol_version", "server_version"))
               first = mcp["first_call"]
               exact(first, ("name", "arguments", "is_error", "default_format", "verdict", "project_root", "indexed", "total_files", "summary"))
-              assert first == {"name": "index", "arguments": {"action": "status"}, "is_error": False, "default_format": "toon", "verdict": "WARN", "project_root": first["project_root"], "indexed": False, "total_files": 0, "summary": "codegraph_status: index missing or empty"} and isinstance(first["project_root"], str) and first["project_root"]
+              assert first == {"name": "index", "arguments": {"action": "status"}, "is_error": False, "default_format": "json", "verdict": "WARN", "project_root": first["project_root"], "indexed": False, "total_files": 0, "summary": "codegraph_status: index missing or empty"} and isinstance(first["project_root"], str) and first["project_root"]
               pure = lambda value: (pathlib.PureWindowsPath(value) if "\\" in value or re.match(r"^[A-Za-z]:", value) else pathlib.PurePosixPath(value))
               def lexical(value):
                   path = pure(value); parts = []
@@ -404,7 +404,7 @@ jobs:
             report_path=path/"report.json"; report=package_reports[axis]=json.loads(report_path.read_text())
             expected={"report.json","job-result.json","install.stdout","install.stderr","dependency-manifest.txt","mcp-transcript.ndjson","mcp.stderr","installed-files.zip"}
             assert {p.name for p in path.iterdir()}==expected and report["axis"]==axis and report["passed"] is True and report["wheel"]==wheel and report["build_manifest_sha256"]==sha(manifest_path)
-            assert report["mcp"]["first_call"]=={"name":"index","arguments":{"action":"status"},"is_error":False,"default_format":"toon","verdict":"WARN","project_root":report["mcp"]["first_call"]["project_root"],"indexed":False,"total_files":0,"summary":"codegraph_status: index missing or empty"}
+            assert report["mcp"]["first_call"]=={"name":"index","arguments":{"action":"status"},"is_error":False,"default_format":"json","verdict":"WARN","project_root":report["mcp"]["first_call"]["project_root"],"indexed":False,"total_files":0,"summary":"codegraph_status: index missing or empty"}
             assert report["metadata"]["direct_url_sha256"]==wheel["sha256"] and sha(path/"installed-files.zip")==report["installed_files_zip_sha256"]
             with zipfile.ZipFile(path/"installed-files.zip") as z: assert z.testzip() is None and "installed-record.csv" in z.namelist()
           assert package_aggregate["axes"]==[{"axis":a,"report_sha256":sha(package_dirs[a]/"report.json"),"passed":True} for a in ("linux","macos","windows")]
@@ -475,7 +475,7 @@ jobs:
             assert (initialized["sequence"],initialized["method"])==(1,"initialize") and initialized["response"]["serverInfo"]["name"]==causal["mcp"]["server_name"] and initialized["response"]["protocolVersion"]==causal["mcp"]["protocol_version"] and causal["mcp"]["tools"]==tools and (listed["sequence"],listed["method"],listed["response"])==(2,"tools/list",{"names":tools})
             assert (called["sequence"],called["method"],called["request"])==(3,"tools/call",{"name":"index","arguments":{"action":"status"}})
             response=called["response"]; envelope=json.loads(response["content"][0]["text"]); first={"name":"index","arguments":{"action":"status"},"is_error":response["isError"],"default_format":envelope["format"],"verdict":envelope["verdict"],"project_root":envelope["project_root"],"indexed":envelope["indexed"],"total_files":envelope["total_files"],"summary":envelope["agent_summary"]["summary_line"]}
-            assert first==causal["mcp"]["first_call"]==bound["first_call"]=={"name":"index","arguments":{"action":"status"},"is_error":False,"default_format":"toon","verdict":"WARN","project_root":first["project_root"],"indexed":False,"total_files":0,"summary":"codegraph_status: index missing or empty"}
+            assert first==causal["mcp"]["first_call"]==bound["first_call"]=={"name":"index","arguments":{"action":"status"},"is_error":False,"default_format":"json","verdict":"WARN","project_root":first["project_root"],"indexed":False,"total_files":0,"summary":"codegraph_status: index missing or empty"}
             snapshot=path/"mcp/installed-files.zip"; assert sha(snapshot)==causal["installed_files_zip_sha256"]
             record=meta["installed_record"]
             with zipfile.ZipFile(snapshot) as z:

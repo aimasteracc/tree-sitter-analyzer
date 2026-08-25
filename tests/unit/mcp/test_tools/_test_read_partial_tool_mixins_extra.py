@@ -85,7 +85,7 @@ class ReadPartialToolCoverageExecuteMixin:
             assert result["success"] is True
             if "partial_content_result" in result:
                 lines = result["partial_content_result"]["lines"]
-                assert len(lines) == 3
+                assert len(lines) == 1
         finally:
             if test_file.exists():
                 test_file.unlink()

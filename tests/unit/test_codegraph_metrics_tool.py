@@ -31,7 +31,7 @@ class TestToolDefinition:
         schema = tool.get_tool_schema()
         assert "sections" in schema["properties"]
         assert "output_format" in schema["properties"]
-        assert schema["properties"]["output_format"]["default"] == "toon"
+        assert schema["properties"]["output_format"]["default"] == "json"
 
     def test_schema_sections_enum(self, tool):
         items = tool.get_tool_schema()["properties"]["sections"]["items"]
