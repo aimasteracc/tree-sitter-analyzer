@@ -9,7 +9,6 @@ classes, modules, and framework-specific patterns.
 
 from typing import Any
 
-from ._javascript_formatter_compact_mixin import JavaScriptTableFormatterCompactMixin
 from ._javascript_formatter_full_mixin import JavaScriptTableFormatterFullMixin
 from ._javascript_formatter_rows_mixin import JavaScriptTableFormatterRowsMixin
 from ._javascript_formatter_type_mixin import JavaScriptTableFormatterTypeMixin
@@ -28,7 +27,6 @@ def _format_json(data: dict[str, Any]) -> str:
 
 class JavaScriptTableFormatter(
     JavaScriptTableFormatterFullMixin,
-    JavaScriptTableFormatterCompactMixin,
     JavaScriptTableFormatterRowsMixin,
     JavaScriptTableFormatterTypeMixin,
     BaseTableFormatter,
@@ -48,7 +46,7 @@ class JavaScriptTableFormatter(
         if not format_type:
             return self.format_structure(data)
 
-        supported_formats = ["full", "compact", "csv", "json"]
+        supported_formats = ["full", "json"]
         if format_type not in supported_formats:
             raise ValueError(
                 f"Unsupported format type: {format_type}. Supported formats: {supported_formats}"

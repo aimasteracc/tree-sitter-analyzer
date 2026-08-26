@@ -9,12 +9,9 @@ generics, decorators, and modern JavaScript features with type annotations.
 
 from typing import Any
 
-from ._typescript_formatter_compact import format_typescript_compact_table
-from ._typescript_formatter_csv import format_typescript_csv
 from ._typescript_formatter_full import format_typescript_full_table
 from ._typescript_formatter_helpers import (
     create_compact_signature,
-    create_csv_signature,
     create_full_signature,
     format_method_row,
     format_typescript_modifiers,
@@ -37,15 +34,12 @@ class TypeScriptTableFormatter(BaseTableFormatter):
         """Full table format for TypeScript - matches golden master format"""
         return format_typescript_full_table(self, data)
 
-    # Format data for output: _format_compact_table
+    # Format data for output: _format_compact_table (removed)
     def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format for TypeScript - matches golden master format"""
-        return format_typescript_compact_table(self, data)
-
-    # Format data for output: _format_csv
-    def _format_csv(self, data: dict[str, Any]) -> str:
-        """CSV format for TypeScript - matches golden master format"""
-        return format_typescript_csv(self, data)
+        """Compact table format for TypeScript (removed)"""
+        raise NotImplementedError(
+            "Compact format removed; use 'full' or 'signatures' instead"
+        )
 
     # Format data for output: _format_signatures_table
     def _format_signatures_table(self, data: dict[str, Any]) -> str:
@@ -76,10 +70,6 @@ class TypeScriptTableFormatter(BaseTableFormatter):
     def _create_compact_signature(self, method: dict[str, Any]) -> str:
         """Create compact method signature"""
         return create_compact_signature(method)
-
-    def _create_csv_signature(self, method: dict[str, Any]) -> str:
-        """Create CSV method signature with full parameter details"""
-        return create_csv_signature(method)
 
     # Format data for output: _format_modifiers
     def _format_modifiers(self, element: dict[str, Any]) -> str:

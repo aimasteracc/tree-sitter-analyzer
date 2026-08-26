@@ -6,7 +6,6 @@ Java-specific table formatter.
 from typing import Any
 
 from ._java_formatter_class_mixin import JavaTableFormatterClassMixin
-from ._java_formatter_compact_mixin import JavaTableFormatterCompactMixin
 from ._java_formatter_full_mixin import JavaTableFormatterFullMixin
 from ._java_formatter_signatures_mixin import JavaTableFormatterSignaturesMixin
 from .base_formatter import BaseTableFormatter
@@ -25,7 +24,6 @@ def _format_json(data: dict[str, Any]) -> str:
 class JavaTableFormatter(
     JavaTableFormatterFullMixin,
     JavaTableFormatterClassMixin,
-    JavaTableFormatterCompactMixin,
     JavaTableFormatterSignaturesMixin,
     BaseTableFormatter,
 ):

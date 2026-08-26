@@ -24,26 +24,10 @@ class _JsonFormatter:
         return json.dumps(data, indent=2, ensure_ascii=False)
 
 
-class _YamlFormatter:
-    """YAML formatter — defers the ``yaml`` import to ``format()``.
-
-    Registered only when ``import yaml`` succeeds (probed at registry
-    construction time); the deferred import inside ``format`` keeps the
-    class body importable even on Python builds without PyYAML.
-    """
-
-    def format(self, data: Any) -> str:
-        if isinstance(data, str):
-            return data
-        import yaml
-
-        return str(yaml.dump(data, default_flow_style=False, allow_unicode=True))
-
-
 class OutputManager:
     """Manages different types of output for CLI"""
 
-    SUPPORTED_FORMATS = ["json", "yaml", "csv", "table"]
+    SUPPORTED_FORMATS = ["json"]
 
     def __init__(
         self,
@@ -71,14 +55,7 @@ class OutputManager:
         # ``yaml`` lazily already, so deferring the import to ``format()``
         # keeps the original "yaml is optional" behaviour while letting
         # the class be defined unconditionally.
-        formatters: dict[str, Any] = {"json": _JsonFormatter()}
-        try:
-            import yaml as _yaml_probe  # noqa: F401
-
-            formatters["yaml"] = _YamlFormatter()
-        except ImportError:
-            pass
-        return formatters
+        return {"json": _JsonFormatter()}
 
     def info(self, message: str) -> None:
         """Output informational message to stderr so stdout remains machine-readable JSON."""

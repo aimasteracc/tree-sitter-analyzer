@@ -12,7 +12,6 @@ from ._markdown_formatter_rendering import (
     calculate_document_complexity,
     format_advanced_text,
     format_compact_output,
-    format_csv_output,
     format_json_output,
 )
 
@@ -25,6 +24,5 @@ __all__ = [
     "compute_robust_counts_from_file",
     "format_advanced_text",
     "format_compact_output",
-    "format_csv_output",
     "format_json_output",
 ]
