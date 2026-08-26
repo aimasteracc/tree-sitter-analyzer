@@ -449,6 +449,10 @@ def test_lock_recheck_discards_stale_marker_before_warmup(
 def test_successful_warmup_without_current_marker_remains_uncertified(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
+    import logging
+
+    caplog.set_level(logging.WARNING)
+
     class Cache:
         def get_stats(self) -> dict[str, int]:
             return {"total_files": 0}
