@@ -47,9 +47,14 @@ def apply_output_format_to_response(
     output_format: str = "json",
 ) -> dict[str, Any]:
     """Normalize every MCP response to the canonical JSON response shape."""
-    if result.get("success") is True and "verdict" not in result:
-        return {**result, "verdict": "INFO"}
-    return result
+    # Always stamp the response with the output format for backward
+    # compatibility with consumers (e.g. the native-qualification
+    # attestation workflow) that read ``envelope["format"]``.
+    out = dict(result)
+    out.setdefault("format", "json")
+    if out.get("success") is True and "verdict" not in out:
+        out["verdict"] = "INFO"
+    return out
 
 
 def format_for_file_output(
