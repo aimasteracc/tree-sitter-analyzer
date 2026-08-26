@@ -21,7 +21,7 @@ _NON_CODE_LANGUAGES: frozenset[str] = frozenset(
 )
 
 
-# Column width for directory name (including trailing slash) in TOON rendering.
+# Column width for directory names in the structured summary.
 _DIR_COL: int = 26
 
 
@@ -183,17 +183,9 @@ class GetProjectSummaryTool(BaseMCPTool):
                     "type": "string",
                     "enum": ["json"],
                     "description": (
-                        "Output format. 'toon' (default) returns a concise "
-                        "TOON-style structured text summary with semantic "
-                        "directory descriptions — chosen as the default "
-                        "because get_project_summary is the first-hop "
-                        "orientation tool and TOON cuts the response by "
-                        "roughly 70% on a typical project index. Pass "
-                        "'json' explicitly when you need the structured "
-                        "object (file_count, language_distribution, "
-                        "critical_nodes, top_level_structure, ...) for "
-                        "downstream code. Both values echo back in the "
-                        "``format`` and ``output_format`` keys (F12)."
+                        "Output format: JSON. The response contains the "
+                        "structured project index and echoes ``format`` and "
+                        "``output_format`` for downstream callers."
                     ),
                     "default": "json",
                 },
@@ -251,7 +243,7 @@ class GetProjectSummaryTool(BaseMCPTool):
         """Load (or build) the project index and return a summary.
 
         r37ba (dogfood): tool flagged this at 141 lines / nesting depth 7.
-        Split into TOON-path + JSON-path helpers; each is now ~30 lines.
+        The response is assembled through the JSON path.
         Behaviour preserved (incl. F12 / H10 / r37x envelope contracts).
         """
         force_refresh: bool = bool(arguments.get("force_refresh", False))
@@ -281,7 +273,7 @@ class GetProjectSummaryTool(BaseMCPTool):
         summary_line, next_step = _build_project_summary_line(idx, project_root)
 
         # H10: echo the resolved output_format on the JSON path so JSON
-        # and TOON callers see the same envelope shape.
+        # and JSON callers see the same envelope shape.
         result: dict[str, Any] = {
             "success": True,
             "format": "json",
@@ -317,8 +309,8 @@ def _build_project_summary_line(
     """Build the (summary_line, next_step) tuple for get_project_summary.
 
     Pattern: "<project_name> <lang> <pct>%  critical: <top3 names>"
-    Falls back gracefully when ``idx`` is None (e.g. TOON cache hit
-    before the index loader has been invoked).
+    Falls back gracefully when ``idx`` is None before the index loader
+    has been invoked.
     """
     resolved = Path(project_root).resolve()
     project_name = resolved.name or resolved.parent.name or "project"

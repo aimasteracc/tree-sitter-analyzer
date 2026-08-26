@@ -58,17 +58,8 @@ TOOL_SCHEMA: dict[str, Any] = {
         "output_format": {
             "type": "string",
             "enum": ["json"],
-            "description": "Output format: 'toon' (default) or 'json'",
+            "description": "Output format: JSON",
             "default": "json",
-        },
-        "compact_only": {
-            "type": "boolean",
-            "default": False,
-            "description": (
-                "RFC-0012: with output_format=toon, return only the control "
-                "surface alongside toon_content, dropping metadata already "
-                "encoded in the blob."
-            ),
         },
         **index_capability_schema_properties(),
     },
@@ -189,20 +180,18 @@ class SafeToEditTool(BaseMCPTool):
                 arguments, resolved, conn, snapshot=snapshot
             ),
             action_version=EDIT_SAFE_ACTION_VERSION,
-            compact_only=bool(arguments.get("compact_only", False)),
         )
         if read_existing_result is not None:
             return read_existing_result
 
         edit_type = arguments.get("edit_type", "refactor")
         output_format = arguments.get("output_format", "json")
-        compact_only = bool(arguments.get("compact_only", False))
 
         # Conditional check
         if not Path(resolved).exists():
             raise ValueError(f"File not found: {file_path}")
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
         # M3 (round-26 dogfood): if tree-sitter reports any ERROR node we
         # cannot trust the dependency graph or the health scorer — both
@@ -215,8 +204,8 @@ class SafeToEditTool(BaseMCPTool):
         syntax_response = _syntax_error_response(resolved, file_path, edit_type)
         if syntax_response is not None:
             syntax_response["output_format"] = output_format
-            return apply_toon_format_to_response(
-                syntax_response, output_format, compact_only=compact_only
+            return apply_output_format_to_response(
+                syntax_response, output_format
             )
 
         result = _build_safe_to_edit_result(
@@ -262,8 +251,8 @@ class SafeToEditTool(BaseMCPTool):
         # now propagates it into ``agent_summary``.
         result = mirror_summary_line(result)
 
-        return apply_toon_format_to_response(
-            result, output_format, compact_only=compact_only
+        return apply_output_format_to_response(
+            result, output_format
         )
 
     def _read_existing_payload(

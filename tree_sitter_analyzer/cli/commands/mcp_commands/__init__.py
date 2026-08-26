@@ -325,12 +325,10 @@ def _emit_builder_error(
 ) -> int:
     """Emit a structured error envelope for a build_tool_args failure (#1003).
 
-    Mirrors the ``--format json``/``toon`` vs human split used elsewhere: a
-    JSON/TOON caller gets the canonical ``_build_error_envelope`` shape on
-    stdout; a plain caller gets a clear stderr message. Always exit 1 — never
+    Emits the canonical JSON error envelope on stdout. Always exit 1 — never
     a raw traceback.
     """
-    if output_format in {"json", "toon"}:
+    if output_format == "json":
         envelope = _build_error_envelope(spec.flag_name, spec.label, exc)
         output_json_fn(envelope)
     else:

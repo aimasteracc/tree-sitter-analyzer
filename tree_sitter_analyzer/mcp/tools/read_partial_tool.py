@@ -13,7 +13,7 @@ from ...file_handler import read_file_partial
 from ...utils import setup_logger
 from ..utils.error_sanitizer import safe_error_message
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
 from .batch_executor import execute_batch
 from .read_partial_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
@@ -379,7 +379,7 @@ class ReadPartialTool(BaseMCPTool):
             output_file,
         )
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     # Validate file path and range parameters
     # Returns error dict if validation fails, None if OK

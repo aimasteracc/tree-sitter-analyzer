@@ -99,7 +99,7 @@ class CodeGraphSimilarityTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": "Output format (default: toon)",
+                    "description": "Output format: JSON.",
                     "default": "json",
                 },
             },
@@ -193,6 +193,6 @@ class CodeGraphSimilarityTool(BaseMCPTool):
             "groups": [_group_to_dict(g) for g in result.groups],
         }
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)

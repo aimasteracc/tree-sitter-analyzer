@@ -13,7 +13,7 @@ from ...pr_url import (
 )
 from ...source_oracle import SourceOracleError
 from ...wire_owner import EDIT_IMPACT_ACTION_VERSION
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool, mirror_summary_line
 from .change_impact_frozen import build_frozen_scope_result, scope_matches_raw
 from .change_impact_support import (
@@ -147,7 +147,7 @@ class ChangeImpactTool(BaseMCPTool):
                 "verdict": "ERROR",
                 "error_code": code,
                 "error": code,
-                "output_format": result.get("output_format", "toon"),
+                "output_format": result.get("output_format", "json"),
             }
         result.update({key: value for key, value in frozen.items() if key != "success"})
         return result
@@ -157,7 +157,6 @@ class ChangeImpactTool(BaseMCPTool):
         pr_url = arguments.get("pr_url", "") or ""
         mode = "pr" if pr_url else arguments.get("mode", "diff")
         output_format = arguments.get("output_format", "json")
-        compact_only = bool(arguments.get("compact_only", False))
         if read_access.validate_read_existing_access(arguments):
             # RFC-0022 P0.4: an unavailable adapter must still validate its
             # complete action schema before returning classified success.
@@ -168,7 +167,6 @@ class ChangeImpactTool(BaseMCPTool):
                 unavailable = read_access.format_read_existing_unavailable(
                     arguments,
                     reason=read_access.DIFF_SNAPSHOT_READ_EXISTING_UNSUPPORTED,
-                    compact_only=compact_only,
                     action_version=EDIT_IMPACT_ACTION_VERSION,
                 )
                 if unavailable is not None:
@@ -177,13 +175,11 @@ class ChangeImpactTool(BaseMCPTool):
                 arguments,
                 mode=mode,
                 output_format=output_format,
-                compact_only=compact_only,
             )
         unavailable = read_access.read_existing_gate(
             self,
             arguments,
             reason=read_access.DIFF_SNAPSHOT_READ_EXISTING_UNSUPPORTED,
-            compact_only=compact_only,
             action_version=EDIT_IMPACT_ACTION_VERSION,
         )
         if unavailable is not None:
@@ -201,7 +197,7 @@ class ChangeImpactTool(BaseMCPTool):
         if capture_diff_snapshot:
 
             def snapshot_error(code: str) -> dict[str, Any]:
-                return apply_toon_format_to_response(
+                return apply_output_format_to_response(
                     {
                         "success": False,
                         "verdict": "ERROR",
@@ -210,7 +206,6 @@ class ChangeImpactTool(BaseMCPTool):
                         "output_format": output_format,
                     },
                     output_format,
-                    compact_only=compact_only,
                 )
 
             if mode not in ("diff", "staged"):
@@ -247,7 +242,6 @@ class ChangeImpactTool(BaseMCPTool):
                     scope_mode=scope_mode,
                     output_format=output_format,
                     agent_summary_only=agent_summary_only,
-                    compact_only=compact_only,
                 )
                 if not result.get("success"):
                     REGISTRY.close_lease(
@@ -277,7 +271,6 @@ class ChangeImpactTool(BaseMCPTool):
                 agent_summary_only,
                 scope_mode=scope_mode,
                 resource_profile=resource_profile,
-                compact_only=compact_only,
             )
 
         changed_files = _get_changed_files(mode, self.project_root, scope_paths)
@@ -315,8 +308,8 @@ class ChangeImpactTool(BaseMCPTool):
             # agent_summary so direct callers (tests, hive-mind workers)
             # see the same envelope shape as MCP-routed callers.
             result = mirror_summary_line(result)
-            return apply_toon_format_to_response(
-                result, output_format, compact_only=compact_only
+            return apply_output_format_to_response(
+                result, output_format
             )
 
         diff_stat = _get_diff_stat(mode, self.project_root, scope_paths)
@@ -361,8 +354,8 @@ class ChangeImpactTool(BaseMCPTool):
         # agent_summary so direct callers see the same envelope shape as
         # MCP-routed callers.
         result = mirror_summary_line(result)
-        return apply_toon_format_to_response(
-            result, output_format, compact_only=compact_only
+        return apply_output_format_to_response(
+            result, output_format
         )
 
     async def _execute_read_existing(
@@ -371,7 +364,6 @@ class ChangeImpactTool(BaseMCPTool):
         *,
         mode: str,
         output_format: str,
-        compact_only: bool,
     ) -> dict[str, Any]:
         """P0.4 producer route: atomically capture and publish in memory.
 
@@ -389,7 +381,7 @@ class ChangeImpactTool(BaseMCPTool):
                 for path in (arguments.get("scope_paths") or [])
             ]
         except (SourceOracleError, ValueError) as exc:
-            return self._read_existing_error(str(exc), output_format, compact_only)
+            return self._read_existing_error(str(exc), output_format)
         from ...diff_snapshot_registry import REGISTRY
 
         frozen = REGISTRY.create(self.project_root, mode, scope_paths, readonly=True)
@@ -397,7 +389,6 @@ class ChangeImpactTool(BaseMCPTool):
             return self._read_existing_error(
                 str(frozen.get("error_code", "DIFF_SNAPSHOT_CAPTURE_ERROR")),
                 output_format,
-                compact_only,
             )
         frozen_consumer, error = REGISTRY.acquire(
             str(frozen["diff_snapshot_id"]), self.project_root
@@ -406,7 +397,7 @@ class ChangeImpactTool(BaseMCPTool):
             REGISTRY.close_lease(
                 str(frozen["diff_snapshot_id"]), str(frozen["route_lease_id"])
             )
-            return self._read_existing_error(error, output_format, compact_only)
+            return self._read_existing_error(error, output_format)
         assert frozen_consumer is not None
         try:
             result = self._execute_frozen_snapshot(
@@ -417,7 +408,6 @@ class ChangeImpactTool(BaseMCPTool):
                 scope_mode=arguments.get("scope_mode", "report"),
                 output_format=output_format,
                 agent_summary_only=bool(arguments.get("agent_summary_only", False)),
-                compact_only=compact_only,
                 read_existing=True,
             )
             if not result.get("success"):
@@ -435,7 +425,7 @@ class ChangeImpactTool(BaseMCPTool):
             frozen_consumer.release()
 
     def _read_existing_error(
-        self, code: str, output_format: str, compact_only: bool
+        self, code: str, output_format: str
     ) -> dict[str, Any]:
         """Classify one read-existing producer failure with access evidence."""
         state = (
@@ -443,7 +433,7 @@ class ChangeImpactTool(BaseMCPTool):
             if code in {"MISSING_INDEX", "MISSING_PROJECT_ROOT"}
             else "unknown"
         )
-        return apply_toon_format_to_response(
+        return apply_output_format_to_response(
             {
                 "success": False,
                 "verdict": "ERROR",
@@ -457,7 +447,6 @@ class ChangeImpactTool(BaseMCPTool):
                 "action_version": EDIT_IMPACT_ACTION_VERSION,
             },
             output_format,
-            compact_only=compact_only,
         )
 
     def _execute_frozen_snapshot(
@@ -470,7 +459,6 @@ class ChangeImpactTool(BaseMCPTool):
         scope_mode: str,
         output_format: str,
         agent_summary_only: bool,
-        compact_only: bool,
         read_existing: bool = False,
     ) -> dict[str, Any]:
         """Build strict impact solely from the captured snapshot records.
@@ -490,7 +478,7 @@ class ChangeImpactTool(BaseMCPTool):
             path_to_wire(path) for path in consumer.snapshot.assessed_scope_paths
         ]
         if error:
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 {
                     "success": False,
                     "verdict": "ERROR",
@@ -499,7 +487,6 @@ class ChangeImpactTool(BaseMCPTool):
                     "output_format": output_format,
                 },
                 output_format,
-                compact_only=compact_only,
             )
         response_frozen = dict(frozen)
         response_frozen["changed_records"] = records
@@ -546,13 +533,13 @@ class ChangeImpactTool(BaseMCPTool):
         result["output_format"] = output_format
         _canonicalize_change_impact_verdict(result)
         result = mirror_summary_line(result)
-        formatted = apply_toon_format_to_response(
-            result, output_format, compact_only=compact_only
+        formatted = apply_output_format_to_response(
+            result, output_format
         )
         # Keep this as the final operation before the snapshot is exposed.
         publish_error = REGISTRY.validate_publish(consumer)
         if publish_error:
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 {
                     "success": False,
                     "verdict": "ERROR",
@@ -561,7 +548,6 @@ class ChangeImpactTool(BaseMCPTool):
                     "output_format": output_format,
                 },
                 output_format,
-                compact_only=compact_only,
             )
         return formatted
 
@@ -575,14 +561,13 @@ class ChangeImpactTool(BaseMCPTool):
         *,
         scope_mode: str = "report",
         resource_profile: str = "default",
-        compact_only: bool = False,
     ) -> dict[str, Any]:
         """Analyze a GitHub PR's diff via gh CLI.
 
         r37em (dogfood): 95→~25 lines. Pre-flight envelopes moved to
         ``_pr_invalid_url_envelope`` / ``_pr_gh_unavailable_envelope``;
         shared postprocessing (PR fields → queue ledger → scope validation
-        → summary-only → mirror → TOON) collapsed into ``_finalize_pr_result``.
+        → summary-only → mirror → JSON) collapsed into ``_finalize_pr_result``.
         """
         parsed = parse_pr_url(pr_url)
         if parsed is None:
@@ -613,7 +598,6 @@ class ChangeImpactTool(BaseMCPTool):
                 agent_summary_only=agent_summary_only,
                 output_format=output_format,
                 scope_mode=scope_mode,
-                compact_only=compact_only,
             )
 
         diff_stat = fetch_pr_diff_stat(parsed)
@@ -638,7 +622,6 @@ class ChangeImpactTool(BaseMCPTool):
             agent_summary_only=agent_summary_only,
             output_format=output_format,
             scope_mode=scope_mode,
-            compact_only=compact_only,
         )
 
     @staticmethod

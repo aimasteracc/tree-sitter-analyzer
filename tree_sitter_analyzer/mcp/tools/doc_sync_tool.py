@@ -50,7 +50,7 @@ class DocSyncTool(BaseMCPTool):
                     "type": "string",
                     "enum": ["json"],
                     "default": "json",
-                    "description": "Output format (default: toon for token efficiency).",
+                    "description": "Output format: JSON.",
                 },
             },
             "required": [],

@@ -10,7 +10,7 @@ TSA は tree-sitter でコードベースをインデックスし、コール �
 
 **なぜ違うのか：**
 * **クロスランゲージ正確性がモート（堀）。** 言語ファミリ ゲートが、名前のみを根拠にしたクロスランゲージ束縛を防ぎます。
-* **エージェントネイティブ。** **8 MCP ツール**が TOON 出力と verdict エンベロープを提供し、CLI とキュレーション済みワークフローからも利用できます。
+* **エージェントネイティブ。** **8 MCP ツール**が構造化 JSON 出力と verdict エンベロープを提供し、CLI とキュレーション済みワークフローからも利用できます。
 * **広くかつ正確に分類。** 13 言語は `pipeline_registered`（パイプライン登録済み、非 E2E: Python · Go · Rust · Java · JS · TS · C · C++ · C# · Swift · Kotlin · Ruby · PHP）です。これは登録・配線の証拠であり、クロスファイル呼び出し解決の検証を意味しません。
 
 > v1.x からの移行は [docs/MIGRATION.md](docs/MIGRATION.md) を参照。
@@ -100,7 +100,7 @@ uvx --from tree-sitter-analyzer miswire-audit .
 
 ## なぜ Tree-sitter Analyzer か
 
-* **トークンを意識した出力。** MCP 応答はデフォルトで **TOON** を使用します。ペイロードの挙動は [output-cost invariants](tests/unit/mcp/test_output_cost_invariants.py) で保護され、既知の decision-tool 制約は [RFC-0018](rfcs/0018-response-envelope-normalization-and-adaptive-toon.md) で追跡されています。
+* **構造化出力。** MCP 応答は標準 JSON エンベロープを使用します。ペイロードの挙動はレスポンス契約テストで保護されています。
 * **Verdict エンベロープ。** すべての応答に `verdict: SAFE | CAUTION | UNSAFE | INFO | REVIEW | WARN | ERROR | NOT_FOUND` が付き、オーケストレーターは結果に応じて分岐できます。
 * **プロジェクト健全性 A-F グレーディング。** サイズ、複雑度、カバレッジ、重複、依存、構造、git ホットスポットを組み合わせて評価します。
 * **キュレーション済みワークフロー（Skills）。** 「シンボル検索」「コール チェーン追跡」「健全性評価」「リファクター前の安全チェック」「PR レビュー」などのツール サブセットを提供します。
@@ -131,7 +131,7 @@ uvx --from tree-sitter-analyzer miswire-audit .
 | **BM25 ランク付き検索** | 全検索ツール | 全結果に min-max 正規化した relevance_score; DSL で sort(by='confidence') |
 | **セマンティック検索 (BM25 事前フィルタ)** | `search` action=chain (`semantic()` DSL) | コサイン再ランク前に字句フィルタリング |
 | **プロジェクト A-F 健全性グレーディング** | `health` action=project | サイズ、複雑度、依存、カバレッジ、重複、構造、git ホットスポットを統合 |
-| **TOON 出力** | 全ツール、デフォルト `output_format: "toon"` | コンパクトな表形式エンコーディング; decision tool は RFC-0018 で追跡 |
+| **JSON 出力** | 全ツール、デフォルト `output_format: "json"` | 標準の構造化レスポンス エンベロープ |
 | **Verdict エンベロープ** | 全ツール | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
 | **Safe-to-edit ゲート** | `edit` action=safe / action=guard | 高リスク編集前に拒否 |
 | **アーキテクチャ制約 DSL** | `edit` action=constraints | 「モジュール A は B に依存禁止」→ 強制 |
@@ -158,7 +158,7 @@ TSA は `.claude/skills/tsa-*/` 下にキュレーション済みワークフロ
 
 各 skill は `allowed-tools` ツール サブセット + 手順レシピ + 決定面スキーマを同梱し、エージェントは 8 個のツールから毎回選別する必要がありません。
 
-### 333 の CLI フラグ
+### 331 の CLI フラグ
 
 CodeGraph の CLI の厳密な上位互換。主なもの:
 
@@ -198,7 +198,7 @@ tree-sitter-analyzer --safe-to-edit <file>        # リスク時に拒否
                                           ↓
        nav (navigate) / structure (explore) / nav (callers) / ...
                                           ↓
-                            TOON 圧縮エンベロープ
+                            JSON レスポンス エンベロープ
                             (verdict + agent_summary + データ)
                                           ↓
                                MCP クライアント / CLI 消費者
@@ -296,7 +296,7 @@ Lua はインデックス受け入れ済みで call dispatch と resolver slot �
 
 基本的に設定不要。デフォルトでエージェントに接続して忘れて構わない:
 
-* **出力形式**: TOON。`output_format: "json"` で呼び出し毎にオーバーライド可。
+* **出力形式**: JSON。明示的に `output_format: "json"` を指定できます。
 * **プロジェクト ルート**: `TREE_SITTER_PROJECT_ROOT` (env, MCP) または `--project-root` (CLI)。
 * **キャッシュ場所**: `<project>/.ast-cache/`。安全に削除可 — 自動再構築される。
 * **任意**: `TREE_SITTER_OUTPUT_PATH` 大出力の書き込み先。

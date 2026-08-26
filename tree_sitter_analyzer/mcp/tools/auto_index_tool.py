@@ -23,7 +23,7 @@ from ..utils.auto_index_guard import (
     is_indexed,
     mark_dirty,
 )
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_error, build_response
 from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool
@@ -79,7 +79,7 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": "Output format (default: toon)",
+                    "description": "Output format: JSON.",
                     "default": "json",
                 },
             },
@@ -115,7 +115,7 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
                 indexed=False,
                 reason="project_root not set",
             )
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
         # #1004: ``indexed`` must reflect whether the ON-DISK cache actually
         # holds rows, not whether THIS process happened to warm it. The old
@@ -145,7 +145,7 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
             built_marker=built_marker,
             cache_stats=cache_stats,
         )
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _warm(self, max_files: int, output_format: str) -> dict[str, Any]:
         # The two failure branches below historically returned a
@@ -160,7 +160,7 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
                 success=False,
                 reason="project_root not set",
             )
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
         cache = ensure_indexed(self.project_root, max_files=max_files)
         if cache is None:
@@ -169,7 +169,7 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
                 success=False,
                 reason="auto-index failed",
             )
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
         stats = cache.get_stats()
         result = build_response(
@@ -183,7 +183,7 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
             total_symbols=stats.get("total_symbols", 0),
             fts5_available=stats.get("fts5_available", False),
         )
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _reset(self, output_format: str) -> dict[str, Any]:
         if self.project_root:
@@ -193,4 +193,4 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
             project_root=self.project_root,
             action="reset",
         )
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)

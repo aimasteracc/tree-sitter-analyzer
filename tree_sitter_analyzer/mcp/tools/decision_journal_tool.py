@@ -26,7 +26,7 @@ from ...decision_journal import (
     DecisionRecord,
     JournalValidationError,
 )
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
 
@@ -233,7 +233,7 @@ class DecisionJournalTool(BaseMCPTool):
         except JournalValidationError as exc:
             return self._error_envelope(mode, str(exc), output_format)
 
-        return apply_toon_format_to_response(payload, output_format)
+        return apply_output_format_to_response(payload, output_format)
 
     async def _dispatch_mode(
         self,
@@ -409,6 +409,6 @@ class DecisionJournalTool(BaseMCPTool):
                 "next_step": "Fix the input and retry.",
             },
         }
-        return apply_toon_format_to_response(
+        return apply_output_format_to_response(
             mirror_summary_line(envelope), output_format
         )

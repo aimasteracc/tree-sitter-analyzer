@@ -116,7 +116,7 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+                    "description": "Output format: JSON",
                     "default": "json",
                 },
             },
@@ -205,9 +205,9 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         if kind != "any":
             result["kind_filter"] = kind
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _search(
         self,

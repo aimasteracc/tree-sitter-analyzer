@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 
 
 async def release_snapshot(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -26,4 +26,4 @@ async def release_snapshot(arguments: dict[str, Any]) -> dict[str, Any]:
     }
     if error is not None:
         result.update(error=error, error_code=error)
-    return apply_toon_format_to_response(result, output_format)
+    return apply_output_format_to_response(result, output_format)

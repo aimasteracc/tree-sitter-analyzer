@@ -198,7 +198,7 @@ async def run_operation(
     project_root: str | None = None,
     output_format: str = "json",
 ) -> str:
-    """Execute one task outcome and serialize it (JSON or TOON)."""
+    """Execute one task outcome and serialize it as JSON."""
     from .task.router import assess_change, plan_change, understand
 
     executor = McpPrimitiveExecutor(project_root)
@@ -356,9 +356,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--format",
-        choices=("json", "toon"),
+        choices=("json",),
         default="json",
-        help="Output format (harness-local; no default is flipped).",
+        help="Output format (JSON only).",
     )
     parser.add_argument(
         "--request-json",

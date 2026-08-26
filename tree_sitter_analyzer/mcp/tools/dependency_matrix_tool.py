@@ -95,7 +95,7 @@ class CodeGraphDependencyMatrixTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": "Output format (default: toon)",
+                    "description": "Output format: JSON.",
                     "default": "json",
                 },
             },
@@ -200,6 +200,6 @@ class CodeGraphDependencyMatrixTool(BaseMCPTool):
                 "verdict": "ERROR",
             }
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)

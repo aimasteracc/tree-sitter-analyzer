@@ -81,7 +81,7 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+                    "description": "Output format: JSON",
                     "default": "json",
                 },
                 "include_activation": {
@@ -126,9 +126,9 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     "next_step": rebuild_next_step,
                 },
             )
-            from ..utils.format_helper import apply_toon_format_to_response
+            from ..utils.format_helper import apply_output_format_to_response
 
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
         cache = self._try_get_cache()
         call_graph_built = (
@@ -234,9 +234,9 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             "next_step": as_next_step,
         }
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _inline_callee_bodies(
         self,

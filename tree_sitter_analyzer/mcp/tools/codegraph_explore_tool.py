@@ -38,7 +38,7 @@ from functools import partial
 from typing import Any
 
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from . import _codegraph_explore_helpers as _h
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
@@ -114,7 +114,7 @@ _EXPLORE_SCHEMA: dict[str, Any] = {
             "type": "string",
             "enum": ["json"],
             "default": "json",
-            "description": "Output format (default: toon)",
+            "description": "Output format: JSON.",
         },
     },
     # Wave 1b (audit structure-06): not strictly required — ``query`` may arrive
@@ -263,7 +263,7 @@ def _warn_response(
         stats=stats,
         hint=hint,
     )
-    return apply_toon_format_to_response(result, output_format)
+    return apply_output_format_to_response(result, output_format)
 
 
 def _resolve_error_resp(
@@ -280,7 +280,7 @@ def _resolve_error_resp(
         relationship_map={},
         stats=s,
     )
-    return apply_toon_format_to_response(result, output_format)
+    return apply_output_format_to_response(result, output_format)
 
 
 def _handle_no_resolved(
@@ -294,7 +294,7 @@ def _handle_no_resolved(
             query, concept_entries, query_terms=nterms
         )
         result = build_response(verdict="INFO", **payload)
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
     s = _make_stats(nterms, 0, 0, 0)
     result = build_response(
         verdict="NOT_FOUND",
@@ -308,7 +308,7 @@ def _handle_no_resolved(
         # agent_summary.next_step (agents read next_step, not hint).
         next_step=_HINT_NOT_FOUND,
     )
-    return apply_toon_format_to_response(result, output_format)
+    return apply_output_format_to_response(result, output_format)
 
 
 def _init_call_graph(project_root: str, cache: Any) -> Any:
@@ -598,7 +598,7 @@ class CodeGraphExploreTool(BaseMCPTool):
             fields["hint"] = hint
 
         result = build_response(verdict=verdict, **fields)
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _source_path(self, file_path: str) -> str:
         if os.path.isabs(file_path) or not self.project_root:

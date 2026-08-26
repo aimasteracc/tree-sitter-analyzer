@@ -10,7 +10,7 @@ TSA 使用 tree-sitter 索引代码库，向 AI 编程 agent 提供调用图、�
 
 **为什么不同：**
 * **跨语言正确性是护城河。** 语言族门控可阻止仅基于名称的跨语言绑定。
-* **为 agent 原生设计。** **8 个 MCP 工具**提供 TOON 输出与 verdict 信封，也可通过 CLI 和精选工作流使用。
+* **为 agent 原生设计。** **8 个 MCP 工具**提供结构化 JSON 输出与 verdict 信封，也可通过 CLI 和精选工作流使用。
 * **广度与正确性兼备。** 13 种语言为 `pipeline_registered`（管线注册态，非 E2E：Python · Go · Rust · Java · JS · TS · C · C++ · C# · Swift · Kotlin · Ruby · PHP）。这只是注册与接线证据，不代表跨文件调用解析已经验证。
 
 > 从 v1.x 升级？见 [docs/MIGRATION.md](docs/MIGRATION.md)。
@@ -100,7 +100,7 @@ uvx --from tree-sitter-analyzer miswire-audit .
 
 ## 为什么选择 Tree-sitter Analyzer
 
-* **关注 token 的输出。** MCP 响应默认使用 **TOON**；载荷行为由 [output-cost invariants](tests/unit/mcp/test_output_cost_invariants.py) 保护，已知的 decision-tool 限制由 [RFC-0018](rfcs/0018-response-envelope-normalization-and-adaptive-toon.md) 跟踪。
+* **结构化输出。** MCP 响应使用标准 JSON 信封；载荷行为由响应契约测试保护。
 * **结论信封（verdict envelope）。** 每个响应都带 `verdict: SAFE | CAUTION | UNSAFE | INFO | REVIEW | WARN | ERROR | NOT_FOUND`，orchestrator 可直接按结果分支。
 * **项目级 A-F 健康评级。** 综合体积、复杂度、覆盖率、重复度、依赖、结构与 git 热点进行评估。
 * **精选工作流（Skills）。** 为“查找符号”“追踪调用链”“评估健康”“重构前安全检查”“PR 评审”等场景提供预包装的工具子集。
@@ -131,7 +131,7 @@ uvx --from tree-sitter-analyzer miswire-audit .
 | **BM25 排名搜索** | 所有搜索工具 | 每项结果提供 min-max 标准化 relevance_score；DSL 支持 sort(by='confidence') |
 | **语义搜索（BM25 预过滤）** | `search` action=chain（`semantic()` DSL） | 在余弦重排前进行词法预过滤 |
 | **项目 A-F 健康评级** | `health` action=project | 综合体积、复杂度、依赖、覆盖率、重复、结构与 git 热点 |
-| **TOON 输出** | 所有工具，默认 `output_format: "toon"` | 紧凑的表格式编码；decision tool 由 RFC-0018 跟踪 |
+| **JSON 输出** | 所有工具，默认 `output_format: "json"` | 标准结构化响应信封 |
 | **Verdict 信封** | 所有工具 | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
 | **Safe-to-edit 闸门** | `edit` action=safe / action=guard | 高风险编辑前拒绝 |
 | **架构约束 DSL** | `edit` action=constraints | "模块 A 不能依赖 B" → 强制执行 |
@@ -158,7 +158,7 @@ TSA 在 `.claude/skills/tsa-*/` 下提供精选工作流：
 
 每个 skill 都带 `allowed-tools` 工具子集 + 操作流程 + 决策面 schema，agent 不必在 8 个工具间反复挑选。
 
-### 333 个 CLI flag
+### 331 个 CLI flag
 
 CodeGraph CLI 的严格超集。亮点：
 
@@ -198,7 +198,7 @@ tree-sitter-analyzer --safe-to-edit <file>        # 风险时拒绝
                                     ↓
    nav (navigate) / structure (explore) / nav (callers) / ...
                                     ↓
-                       TOON 压缩信封
+                       JSON 响应信封
                        (verdict + agent_summary + 数据)
                                     ↓
                        MCP 客户端 / CLI 消费者
@@ -296,7 +296,7 @@ Lua 已获索引准入，并具备 call dispatch 与 resolver slot，但 import 
 
 基本零配置。默认值就让你接入 agent 即可忘记：
 
-* **输出格式**：TOON。可通过 `output_format: "json"` 单次覆盖。
+* **输出格式**：JSON。可显式指定 `output_format: "json"`。
 * **项目根目录**：`TREE_SITTER_PROJECT_ROOT`（env，MCP）或 `--project-root`（CLI）。
 * **缓存位置**：`<project>/.ast-cache/`。可安全删除 — 会自动重建。
 * **可选**：`TREE_SITTER_OUTPUT_PATH` 用于大输出写入目标。

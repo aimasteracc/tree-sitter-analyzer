@@ -67,7 +67,7 @@ class SummaryCommand(BaseCommand):
         ``_build_summary_payload``, ``_attach_summary_envelope``,
         ``_emit_summary``) own the per-section work. ``--summary`` now
         composes from those pieces so the canonical envelope (added in
-        r37z) and the toon/json/text fan-out (added in r36 and r37) all
+        r37z) and the JSON/text output paths all
         stay testable in isolation.
         """
         if self.args.output_format != "json":
@@ -231,7 +231,7 @@ class SummaryCommand(BaseCommand):
     def _emit_summary(
         self, summary_data: dict[str, Any], requested_types: list[str]
     ) -> None:
-        """Dispatch to json / toon / text emitter based on ``output_format``."""
+        """Dispatch to the JSON or text emitter based on ``output_format``."""
         if self.args.output_format == "json":
             output_json(summary_data)
             return

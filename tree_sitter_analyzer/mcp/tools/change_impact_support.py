@@ -13,7 +13,7 @@ from typing import Any
 
 from ...git_path_codec import path_from_wire
 from ...read_existing_access import validate_read_existing_paths
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import _canonicalize_verdict, mirror_summary_line
 from .utils.change_impact_response import (
     apply_scope_validation,
@@ -259,15 +259,6 @@ TOOL_SCHEMA: dict[str, Any] = {
                 "without capture remains Windows-supported."
             ),
         },
-        "compact_only": {
-            "type": "boolean",
-            "default": False,
-            "description": (
-                "RFC-0012: with output_format=toon, return only the control "
-                "surface alongside toon_content, dropping metadata already "
-                "encoded in the blob."
-            ),
-        },
     },
     "additionalProperties": False,
 }
@@ -279,7 +270,7 @@ def _pr_invalid_url_envelope(pr_url: str, output_format: str) -> dict[str, Any]:
     r37em (dogfood): lifted from ``_execute_pr_analysis`` to keep the
     main body focused on the happy path.
     """
-    return apply_toon_format_to_response(
+    return apply_output_format_to_response(
         {
             "success": False,
             "error": f"Invalid GitHub PR URL: {pr_url}",
@@ -292,7 +283,7 @@ def _pr_invalid_url_envelope(pr_url: str, output_format: str) -> dict[str, Any]:
 
 def _pr_gh_unavailable_envelope(parsed: Any, output_format: str) -> dict[str, Any]:
     """Pre-flight failure envelope when ``gh`` CLI is missing or unauthenticated."""
-    return apply_toon_format_to_response(
+    return apply_output_format_to_response(
         {
             "success": False,
             "error": "gh CLI not available or not authenticated",
@@ -324,7 +315,6 @@ def _finalize_pr_result(
     agent_summary_only: bool,
     output_format: str,
     scope_mode: str = "report",
-    compact_only: bool = False,
 ) -> dict[str, Any]:
     """Attach shared PR metadata, queue/scope controls, summary, and format."""
     result["pr_url"] = parsed.url
@@ -348,6 +338,6 @@ def _finalize_pr_result(
     result["action_version"] = EDIT_IMPACT_ACTION_VERSION
     _canonicalize_change_impact_verdict(result)
     result = mirror_summary_line(result)
-    return apply_toon_format_to_response(
-        result, output_format, compact_only=compact_only
+    return apply_output_format_to_response(
+        result, output_format
     )

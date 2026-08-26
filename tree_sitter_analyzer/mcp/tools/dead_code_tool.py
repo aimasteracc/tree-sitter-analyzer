@@ -97,7 +97,7 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": "Output format (default: toon)",
+                    "description": "Output format: JSON.",
                     "default": "json",
                 },
             },
@@ -272,9 +272,9 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
                 if key not in keep:
                     response.pop(key, None)
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
 
 def _under_path(file_path: str, path: str) -> bool:

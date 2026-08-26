@@ -592,7 +592,7 @@ def _trace_impact_base_envelope(
         # (``usage_count`` counts it). The former ``"results": usages`` was an
         # exact duplicate of the SAME list object — it doubled the largest
         # field of the JSON response returned to the agent (trace emits a raw
-        # JSON dict; it does not apply TOON) for zero added signal. Dropped;
+        # JSON dict for zero added signal. Dropped;
         # consumers read ``usages``. (``results`` remains the cross-tool key
         # for *search* tools, which is unaffected — trace does not route
         # through search_envelope.)

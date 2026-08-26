@@ -47,7 +47,7 @@ G3 — rebind propagation
     ``_on_project_root_changed`` hook.
 
 The facade never re-wraps the inner's response: ``verdict`` / ``agent_summary``
-/ ``toon_content`` stay verbatim so the centralised envelope in
+stay verbatim so the centralised envelope in
 ``base_tool.py`` and the MCP dispatch normaliser remain the single source of
 truth.
 """
@@ -121,7 +121,7 @@ _CORE_FACADE_PARAMS: dict[str, dict[str, Any]] = {
     "query": {"type": "string", "description": "Search query/pattern."},
     "language": {"type": "string", "description": "Language hint (usually auto)."},
     "limit": {"type": "integer", "description": "Max results."},
-    "output_format": {"type": "string", "description": "Output format (toon|json)."},
+    "output_format": {"type": "string", "enum": ["json"], "description": "Output format: JSON."},
 }
 
 

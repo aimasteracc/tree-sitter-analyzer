@@ -45,9 +45,9 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "description": "Output format (default: toon for MCP callers).",
-            "default": "toon",
+            "enum": ["json"],
+            "description": "Output format: JSON.",
+            "default": "json",
         },
     },
     "required": ["test_node_id", "code_location"],
@@ -117,7 +117,6 @@ class MutationProbeTool(BaseMCPTool):
         test_node_id: str = arguments["test_node_id"]
         code_location: str = arguments["code_location"]
         timeout: float = float(arguments.get("timeout", 60.0))
-        output_format: str = arguments.get("output_format", "toon")
         project_root = self.project_root or "."
 
         result = probe(
@@ -147,10 +146,6 @@ class MutationProbeTool(BaseMCPTool):
             },
         }
 
-        if output_format == "toon":
-            from ..utils.format_helper import apply_toon_format_to_response
-
-            return apply_toon_format_to_response(response, output_format)
         return response
 
 

@@ -22,8 +22,7 @@ For the project overview and install-and-go instructions, see the
 
 | Doc | What it covers |
 |---|---|
-| [toon-format-guide.md](toon-format-guide.md) | TOON — the token-efficient default for MCP output |
-| [format_specifications.md](format_specifications.md) | Canonical output schema |
+| [format_specifications.md](format_specifications.md) | Canonical JSON output schema |
 | [format-testing-guide.md](format-testing-guide.md) | How output formats are tested |
 | [sql-format-guide.md](sql-format-guide.md) | SQL analysis output |
 

@@ -227,7 +227,7 @@ def read_existing_unavailable(
     arguments: dict[str, Any],
     *,
     reason: str = READ_EXISTING_AUTHORITY_UNCERTIFIED,
-    default_output_format: str = "toon",
+    default_output_format: str = "json",
     action_version: str | None = None,
 ) -> dict[str, Any] | None:
     """Return the raw classified-unavailable envelope for an explicit request."""
@@ -253,8 +253,7 @@ def format_read_existing_unavailable(
     arguments: dict[str, Any],
     *,
     reason: str = READ_EXISTING_AUTHORITY_UNCERTIFIED,
-    default_output_format: str = "toon",
-    compact_only: bool = False,
+    default_output_format: str = "json",
     action_version: str | None = None,
 ) -> dict[str, Any] | None:
     """Format one unavailable classification through the normal tool boundary."""
@@ -266,20 +265,18 @@ def format_read_existing_unavailable(
     )
     if result is None:
         return None
-    from .mcp.utils.format_helper import apply_toon_format_to_response
+    from .mcp.utils.format_helper import apply_output_format_to_response
 
-    return apply_toon_format_to_response(
+    return apply_output_format_to_response(
         result,
         result["output_format"],
-        compact_only=compact_only,
     )
 
 
 def format_read_existing_failure(
     code: str,
     *,
-    output_format: str = "toon",
-    compact_only: bool = False,
+    output_format: str = "json",
     action_version: str | None = None,
     source_snapshots: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
@@ -293,7 +290,7 @@ def format_read_existing_failure(
     when the failure happened AFTER acquisition (Codex P2 #1299); failures
     before acquisition keep the empty list.
     """
-    from .mcp.utils.format_helper import apply_toon_format_to_response
+    from .mcp.utils.format_helper import apply_output_format_to_response
 
     failure: dict[str, Any] = {
         "success": False,
@@ -304,9 +301,7 @@ def format_read_existing_failure(
         "output_format": output_format,
     }
     attach_read_existing_evidence(failure, records=source_snapshots)
-    return apply_toon_format_to_response(
-        failure, output_format, compact_only=compact_only
-    )
+    return apply_output_format_to_response(failure, output_format)
 
 
 def read_existing_gate(
@@ -314,7 +309,6 @@ def read_existing_gate(
     arguments: dict[str, Any],
     *,
     reason: str,
-    compact_only: bool = False,
     action_version: str | None = None,
 ) -> dict[str, Any] | None:
     """Validate and classify an explicit route before any adapter backend work."""
@@ -324,7 +318,6 @@ def read_existing_gate(
     return format_read_existing_unavailable(
         arguments,
         reason=reason,
-        compact_only=compact_only,
         action_version=action_version,
     )
 
@@ -429,8 +422,7 @@ def read_existing_index_consumer(
     *,
     reader: Any,
     action_version: str,
-    compact_only: bool = False,
-    default_output_format: str = "toon",
+    default_output_format: str = "json",
 ) -> dict[str, Any] | None:
     """Run one explicit read_existing route against the certified index snapshot.
 
@@ -451,12 +443,11 @@ def read_existing_index_consumer(
     if not read_existing_platform_supported():
         return format_read_existing_unavailable(
             arguments,
-            compact_only=compact_only,
             default_output_format=default_output_format,
             action_version=action_version,
         )
     from .index_snapshot import read_existing_index_scope
-    from .mcp.utils.format_helper import apply_toon_format_to_response
+    from .mcp.utils.format_helper import apply_output_format_to_response
 
     # Codex P2 (#1299): keep the acquired capability identity so failures
     # that happen AFTER acquisition still cite the snapshot that was read
@@ -502,8 +493,8 @@ def read_existing_index_consumer(
                     }
                 ],
             )
-            return apply_toon_format_to_response(
-                result, output_format, compact_only=compact_only
+            return apply_output_format_to_response(
+                result, output_format
             )
     except (
         ValueError,
@@ -521,7 +512,6 @@ def read_existing_index_consumer(
         return format_read_existing_failure(
             _stable_consumer_code(exc),
             output_format=output_format,
-            compact_only=compact_only,
             action_version=action_version,
             source_snapshots=(
                 [

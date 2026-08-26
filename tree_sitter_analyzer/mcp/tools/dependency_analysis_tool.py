@@ -148,7 +148,7 @@ class DependencyAnalysisTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+                    "description": "Output format: JSON",
                     "default": "json",
                 },
             },
@@ -216,9 +216,9 @@ class DependencyAnalysisTool(BaseMCPTool):
         if self._cache_invalidated_reason is not None:
             result["cache_invalidated_reason"] = self._cache_invalidated_reason
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _resolve_file(self, file_path: str, graph: DependencyGraph) -> str:
         """Resolve file_path to a project-relative path that exists in the graph."""

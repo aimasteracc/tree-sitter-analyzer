@@ -21,7 +21,7 @@ TOOL_SCHEMA: dict[str, Any] = {
         "output_format": {
             "type": "string",
             "enum": ["json"],
-            "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+            "description": "Output format: JSON",
             "default": "json",
         },
     },
@@ -56,10 +56,8 @@ class AgentWorkflowTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate output format and optional target path."""
-        output_format = arguments.get("output_format", "json")
-        if output_format not in {"json", "toon"}:
-            raise ValueError("output_format must be 'json' or 'toon'")
-
+        if arguments.get("output_format", "json") != "json":
+            raise ValueError("output_format must be 'json'")
         target_path = arguments.get("target_path")
         if target_path is not None and not isinstance(target_path, str):
             raise ValueError("target_path must be a string")
@@ -79,32 +77,10 @@ class AgentWorkflowTool(BaseMCPTool):
             project_root=str(self.project_root),
             target_path=target_path,
         )
-        # F1 (round-37f7): canonicalize verdict across BOTH surfaces.
-        # The CLI builder stamps ``"n/a"`` because workflow planning has
-        # no analysis result to gate on. ``"n/a"`` is outside the shared
-        # legal vocabulary; we map it to ``"INFO"`` here so MCP callers
-        # see the canonical token. We patch at the tool boundary (not
-        # inside ``cli/agent_workflow.py``) to keep the CLI's free-form
-        # planning output stable while only the MCP envelope is
-        # normalised.
         _canonicalize_workflow_verdict(result)
-        # Blocked results (success=False) lack the full workflow envelope
-        # that _build_toon_response expects.  Return them directly so TOON
-        # callers don't get a KeyError; include format and toon_content for
-        # parity with the normal TOON shape.
         if not result.get("success", True):
-            if arguments.get("output_format", "json") == "toon":
-                result["format"] = "toon"
-                result["toon_content"] = (
-                    f"blocked: {result.get('error', 'invalid target_path')}"
-                )
             return result
-        if arguments.get("output_format", "json") == "toon":
-            return _build_toon_response(result)
-        # Strip ``toon_content`` from the JSON path — wastes ~2 KB per
-        # call and duplicates fields already in the JSON envelope.
-        result.pop("toon_content", None)
-        return result
+        return _build_json_response(result)
 
     def _validate_target_path(self, target_path: str | None) -> None:
         """Keep optional workflow targets inside the configured project boundary."""
@@ -119,16 +95,7 @@ class AgentWorkflowTool(BaseMCPTool):
 
 
 def _canonicalize_workflow_verdict(result: dict[str, Any]) -> None:
-    """Rewrite both verdict surfaces in-place to the canonical vocabulary.
-
-    F1 (round-37f7): the CLI workflow builder stamps ``verdict="n/a"``
-    because workflow planning has no safety judgement to make.
-    ``"n/a"`` is outside :data:`base_tool._LEGAL_VERDICTS` so we
-    normalise it to ``"INFO"`` at the MCP boundary. We mutate in
-    place because the builder dict already has the right shape —
-    replacing the dict would risk dropping fields the TOON renderer
-    pulls back out below.
-    """
+    """Rewrite both verdict surfaces in-place to the canonical vocabulary."""
     agent_summary = result.get("agent_summary")
     if isinstance(agent_summary, dict):
         existing = agent_summary.get("verdict")
@@ -139,11 +106,11 @@ def _canonicalize_workflow_verdict(result: dict[str, Any]) -> None:
         result["verdict"] = _canonicalize_verdict(top_value)
 
 
-def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
-    """Return a compact MCP response when callers request TOON output."""
+def _build_json_response(result: dict[str, Any]) -> dict[str, Any]:
+    """Return the structured JSON workflow envelope."""
     response: dict[str, Any] = {
         "success": result["success"],
-        "format": "toon",
+        "format": "json",
         "workflow": result["workflow"],
         "workflow_mode": result["workflow_mode"],
         "project_root": result["project_root"],
@@ -156,14 +123,10 @@ def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
         "routing": result["routing"],
         "queue_boundary_commands": result["queue_boundary_commands"],
         "sprint_contract": result["sprint_contract"],
-        "toon_content": result["toon_content"],
     }
-    # G8: mirror summary_line to the TOON envelope as well so both
-    # output formats expose the canonical headline.
     summary_line = result.get("summary_line")
     if isinstance(summary_line, str) and summary_line:
         response["summary_line"] = summary_line
-    # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
     agent_summary = result.get("agent_summary")
     if isinstance(agent_summary, dict) and isinstance(
         agent_summary.get("verdict"), str

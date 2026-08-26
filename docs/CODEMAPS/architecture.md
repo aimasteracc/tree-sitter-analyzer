@@ -59,8 +59,8 @@ stdout / stderr / file_output_factory
 Every path is validated against `TREE_SITTER_PROJECT_ROOT` by `security/validator.py`.
 **No tool ever reads outside the project root.** `ProjectBoundaryManager` is the single source of truth.
 
-### Token optimization
-- **TOON** is the default MCP output format — 50-70% fewer tokens than JSON (see `CLAUDE.md` §1).
+### Response format
+- **JSON** is the only MCP and CLI response format. There is no alternate compact wire encoding.
 - AST results are stored in **SQLite** via `ast_cache.py` (content-hash keyed).
 - `incremental_sync.py` reindexes only changed files (mtime + SHA-256).
 - `indexing_snapshot.py` freezes one ordered project scope for both full-index
@@ -85,7 +85,7 @@ contract violation.**
 | Surface | Module | Notes |
 |---|---|---|
 | `tree-sitter-analyzer` CLI | `cli_main.py` → `cli/` | Human-facing, JSON default |
-| `tree-sitter-analyzer-mcp` MCP stdio server | `mcp/server.py` | AI-agent-facing, TOON default |
+| `tree-sitter-analyzer-mcp` MCP stdio server | `mcp/server.py` | AI-agent-facing, JSON output |
 | `miswire-audit` | `miswire_audit.py` | Run-on-your-repo cross-language correctness demo |
 | `list-files` / `search-content` / `find-and-grep` | `cli/commands/*_cli.py` | fd / ripgrep / fd+rg standalone utilities |
 | Python API (no console script) | `api.py` | Embeddable library entry |
@@ -117,8 +117,7 @@ has no winner or dominance/unlock authority.
 
 ## Critical Invariants (do NOT change without reading [`CLAUDE.md`](../../CLAUDE.md))
 
-1. **MCP default `output_format` = `"toon"`** — locked. Flipping to JSON loses 50-70% token savings.
-2. **CLI default `output_format` = `"json"`** — locked. Humans pipe into `jq`.
+1. **MCP and CLI `output_format` = `"json"`** — locked. One response contract serves agents, humans, and `jq`.
 3. **`project_root` resolution must NOT be naively re-canonicalised in `BaseMCPTool.__init__`** — `SecurityValidator`, `PathResolver`, and the test fixtures already agree on a `Path.resolve()` (realpath) resolution; the macOS `/var → /private/var` symlink means a mismatched re-canonicalisation diverges. r36's attempt broke 164 tests on macOS (rolled back).
 4. **CLI diagnostic output → stderr; payload → stdout** — never mix.
 5. **markdown files** are NOT scored by `project_health` — use `markdown_health` for that.

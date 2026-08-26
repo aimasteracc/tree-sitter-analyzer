@@ -17,7 +17,7 @@ from ...index_source_scope import SourceScopeDescriptor
 from ...languages.lang_extension_map import EXT_TO_LANG
 from ...source_oracle import SourceOracleError
 from ...wire_owner import EDIT_CONSTRAINTS_ACTION_VERSION
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 
 _CONFIG_CANDIDATES = (
     "architectural-constraints.yml",
@@ -356,7 +356,7 @@ def execute_frozen(tool: Any, arguments: dict[str, Any]) -> dict[str, Any]:
             source_generation=diff.source_generation,
             assessed_scope_paths=frozen_scope,
         )
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
     except (OSError, RuntimeError, SourceOracleError, sqlite3.DatabaseError) as exc:
         return fail("CONSTRAINT_CAPTURE_UNKNOWN", detail=str(exc))
     finally:

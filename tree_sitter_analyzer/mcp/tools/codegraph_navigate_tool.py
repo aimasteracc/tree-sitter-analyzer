@@ -23,7 +23,7 @@ from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -233,7 +233,7 @@ class CodeGraphNavigateTool(BaseMCPTool):
             "next_step": next_step,
         }
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _inline_definition_bodies(self, result: dict[str, Any]) -> None:
         """P2: attach a verbatim source body to each definition record.

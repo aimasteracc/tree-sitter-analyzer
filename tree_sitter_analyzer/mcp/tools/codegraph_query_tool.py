@@ -17,7 +17,7 @@ from typing import Any
 
 from ...codegraph_query_backend import CodeGraphQueryBackend
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from . import _codegraph_explore_helpers as _h
 from . import _codegraph_query_concepts as _concepts
 from . import _codegraph_query_filters as _filters
@@ -202,7 +202,7 @@ class CodeGraphQueryTool(BaseMCPTool):
                     "type": "string",
                     "enum": ["json"],
                     "default": "json",
-                    "description": "Output format (default: toon)",
+                    "description": "Output format: JSON",
                 },
             },
             "required": ["query"],
@@ -247,7 +247,7 @@ class CodeGraphQueryTool(BaseMCPTool):
                     ),
                 },
             )
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
         state = _QueryState(
             compact=compact,
@@ -326,7 +326,7 @@ class CodeGraphQueryTool(BaseMCPTool):
                 "next_step": next_step,
             },
         )
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _apply_step(
         self,

@@ -12,7 +12,7 @@ TSA indexa tu base de código con tree-sitter y sirve gráficos de llamadas corr
 
 **¿Por qué es diferente:**
 * **La corrección entre lenguajes es nuestra ventaja.** Un índice basado solo en nombres conecta Python `sorted()` con un Swift `func sorted`. TSA no lo hace. ~390× menos conexiones incorrectas en gráficos de llamadas entre lenguajes que las alternativas ([auditoría reproducible](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)).
-* **Diseñado nativo para agentes.** 8 herramientas MCP, salida TOON (~mitad del tamaño de JSON en respuestas masivas/tabulares), sobres de veredicto y 13 Skills curadas — diseñado para Claude Code, Cursor y cualquier cliente MCP.
+* **Diseñado nativo para agentes.** 8 herramientas MCP, salida JSON estructurada y sobres de veredicto, con 13 Skills curadas — diseñado para Claude Code, Cursor y cualquier cliente MCP.
 * **Amplio y correctamente clasificado.** 13 lenguajes con indexación completa de gráficos de llamadas (Python · Go · Rust · Java · JS · TS · C · C++ · C# · Swift · Kotlin · Ruby · PHP), 8 más indexados por símbolos o accesibles vía CLI.
 
 > **Prueba:** en HuggingFace `tokenizers` (Rust+Python+JS+TS), un resolutor basado solo en nombres conecta incorrectamente **1,259** bordes de llamada — TSA: **0**. Ejecútalo en tu repositorio en segundos: `uvx --from tree-sitter-analyzer miswire-audit .`
@@ -106,7 +106,7 @@ Imprime cuántos bordes de llamada un índice de código basado solo en nombres 
 
 ## ¿Por qué Tree-sitter Analyzer
 
-* **Eficiente en tokens para salida masiva.** Cada respuesta MCP usa **TOON**, una variante tabular de JSON que reduce las cargas **masivas/tabulares** a aproximadamente la mitad comparado con JSON puro ([invariante medido](tests/unit/mcp/test_output_cost_invariants.py)). Nota: las respuestas pequeñas y cargadas de metadatos de *herramientas de decisión* son actualmente ~iguales o más grandes que JSON con el cableado actual de sobres — rastreado por un invariante strict-xfail y se está corrigiendo en [RFC-0018](rfcs/0018-response-envelope-normalization-and-adaptive-toon.md).
+* **Salida estructurada.** Cada respuesta MCP usa sobres JSON estándar con veredictos y resúmenes para agentes.
 * **Sobres de veredicto.** Cada respuesta lleva `verdict: SAFE | CAUTION | UNSAFE | INFO | REVIEW | WARN | ERROR | NOT_FOUND`, para que los orquestadores bifurquen según los resultados sin volver a preguntar.
 * **Clasificación de salud del proyecto (A–F).** Pocas herramientas de intel. de código exponen una calificación de calidad del proyecto completo — TSA clasifica por tamaño / complejidad / cobertura / duplicación / dependencias / estructura / puntos calientes de git en una sola llamada.
 * **13 flujos de trabajo curados (Skills).** Subconjuntos de herramientas preconfigurados para "encontrar símbolo", "rastrear cadena de llamadas", "calificar salud", "seguro para editar antes de refactorizar", "revisión de PR", etc.
@@ -137,7 +137,7 @@ Imprime cuántos bordes de llamada un índice de código basado solo en nombres 
 | **Búsqueda de símbolos clasificada por BM25** | todas las herramientas de búsqueda | relevance_score en cada resultado (normalizado min-máx: mejor=1.0, peor=0.0); sort(by='confidence') en DSL |
 | **Búsqueda semántica (pre-filtrada por BM25)** | `search` action=chain (`semantic()` DSL) | El prefiltro BM25 reduce 40k símbolos a ~400 antes de reordenar por coseno |
 | **Clasificación de salud del proyecto A–F** | `health` action=project | 7 dimensiones (tamaño/complejidad/deps/cobertura/duplicación/estructura/punto-caliente-git), poco común entre herramientas de intel. de código |
-| **Salida TOON** | cada herramienta, `output_format: "toon"` (predeterminado) | ~50 % de ahorro de tokens en salida masiva/tabular (herramientas de decisión rastreadas por RFC-0018) |
+| **Salida JSON** | cada herramienta, `output_format: "json"` (predeterminado) | sobres de respuesta estructurados estándar |
 | **Sobres de veredicto** | cada herramienta | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
 | **Control de seguridad para editar** | `edit` action=safe / action=guard | rechaza ediciones de alto riesgo antes de que ocurran |
 | **DSL de restricciones arquitectónicas** | `edit` action=constraints | "el módulo A no puede importar B" → aplicado |
@@ -246,16 +246,16 @@ El ~4% restante `unknown` está dominado por despacho dinámico genuinamente irr
 ### Dónde TSA lidera
 
 - **Velocidad de construcción del índice.** Eliminar un paso redundante de actualización de bordes post-índice redujo un índice django en frío (~2 950 archivos) de **181 s → 97 s (−46 %)**; la ganancia crece con el tamaño del repo. La re-indexación de archivos sin cambios es una búsqueda de hash de contenido.
-- **Superset estricto del CLI.** Cada herramienta MCP tiene un equivalente CLI (el CLI de CodeGraph es más delgado); los predeterminados *comportamentales* (clasificación, límites, truncamiento) se mantienen en sincronía entre las dos superficies. El formato de salida es la única divergencia intencional — MCP predetermina TOON (eficiente en tokens para agentes), el CLI a JSON (amigable para humanos/`jq`).
+- **Superset estricto del CLI.** Cada herramienta MCP tiene un equivalente CLI (el CLI de CodeGraph es más delgado); los predeterminados *comportamentales* (clasificación, límites, truncamiento) se mantienen en sincronía entre las dos superficies. Ambas superficies usan JSON estructurado (amigable para agentes, humanos y `jq`).
 - **Expresividad en una sola llamada.** Un DSL de cadena estilo jQuery — `search('X').callees(depth=2).explore(include_code=true).answer(compact=true)` — devuelve el subgrafo completo de un flujo + fuente en una sola llamada, con `true`/`false` estilo JS para que los agentes lo escriban naturalmente.
-- **La salida es estructurada + consciente de tokens.** TOON predeterminado para MCP (~mitad del tamaño de JSON en salida masiva/tabular; conexión de herramientas de decisión corregida en RFC-0018), pistas de truncamiento por llamada, despriorización consistente de archivos de prueba en cada camino de clasificación.
+- **La salida es estructurada y consistente.** JSON estándar en cada respuesta, pistas de truncamiento por llamada y despriorización consistente de archivos de prueba en cada camino de clasificación.
 - **Amplitud.** Puntuación de salud, control de seguridad para editar / impacto de cambios, 13 Skills curadas y amplia cobertura de lenguajes.
 
 ### Sobre el costo de tokens — y un benchmark que corregimos
 
 > **Corrección (2026-06).** Una versión anterior de esta sección afirmaba que TSA superaba a CodeGraph en costo de tokens de agente (una tabla de "−11 % mediana"). Ese benchmark tenía un error en el arnés: el servidor MCP del brazo TSA se iniciaba sin una raíz de proyecto explícita y analizaba *el propio código fuente de tree-sitter-analyzer* en lugar del repo objetivo, por lo que sus números carecían de sentido. El error está corregido (el arnés ahora pasa `--project-root`), la afirmación inflada se retira y la imagen honesta está abajo.
 
-El costo de tokens fue el único eje donde CodeGraph lideraba. La divulgación progresiva de [RFC-0006](rfcs/0006-context-progressive-disclosure.md) cierra la mayoría de la brecha en la fuente: `nav context` ahora devuelve un **predeterminado ajustado** — puntos de entrada + una lista compacta `related_symbols` + bloques de código — y mueve el gráfico plano de nodos/bordes detrás de un opt-in `include_graph=true`. Medido en este repo (4 consultas representativas, TOON):
+La divulgación progresiva de [RFC-0006](rfcs/0006-context-progressive-disclosure.md) reduce la carga de contexto en la fuente: `nav context` devuelve un **predeterminado ajustado** — puntos de entrada + una lista compacta `related_symbols` + bloques de código — y mueve el gráfico plano de nodos/bordes detrás de un opt-in `include_graph=true`. Todas las respuestas se serializan como JSON.
 
 | carga de contexto | caracteres |
 |---|---|
@@ -303,7 +303,7 @@ Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
                                          ↓
         nav (navigate) / structure (explore) / nav (callers) / ...
                                          ↓
-                            TOON-encoded envelope
+                            JSON response envelope
                             (compact for tabular output;
                              verdict + agent_summary + data)
                                          ↓
@@ -438,7 +438,7 @@ CodeGraph soporta un conjunto similar. **Dart, Vue, Svelte, Lua** aún no se han
 
 Casi nada. Los valores predeterminados están diseñados para que puedas conectarlo a tu agente y olvidarlo:
 
-* **Formato de salida**: TOON. Anula por llamada con `output_format: "json"`.
+* **Formato de salida**: JSON. Puede especificarse explícitamente con `output_format: "json"`.
 * **Raíz del proyecto**: `TREE_SITTER_PROJECT_ROOT` (var de entorno, MCP) o `--project-root` (CLI).
 * **Ubicación de caché**: `<project>/.ast-cache/`. Seguro para eliminar — se reconstruye automáticamente.
 * **Opcional**: `TREE_SITTER_OUTPUT_PATH` para destino de escritura de salida grande.

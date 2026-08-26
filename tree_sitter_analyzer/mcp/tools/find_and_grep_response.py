@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..utils.format_helper import (
-    apply_toon_format_to_response,
+    apply_output_format_to_response,
 )
 from . import fd_rg_utils
 from .find_and_grep_agent_summary import (
@@ -153,7 +153,7 @@ class FindAndGrepRespondMixin:
         if suppressed:
             return normalize_envelope(suppressed)
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
 
 def _attach_total_count_metadata(

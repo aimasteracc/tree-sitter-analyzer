@@ -131,11 +131,10 @@ TOOL_SCHEMA: dict[str, Any] = {
             "description": "Include available query information",
             "default": False,
         },
-        # Token-efficient toon format by default
         "output_format": {
             "type": "string",
             "enum": ["json"],
-            "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
+            "description": "Output format: JSON",
             "default": "json",
         },
     },

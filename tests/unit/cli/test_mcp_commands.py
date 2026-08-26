@@ -68,7 +68,6 @@ def _args(**overrides: Any) -> Namespace:
             {
                 "file_path": "target.py",
                 "output_format": "json",
-                "compact_only": False,
             },
         ),
         (
@@ -87,7 +86,6 @@ def _args(**overrides: Any) -> Namespace:
                 "min_grade": "C",
                 "max_files": 30,
                 "output_format": "json",
-                "compact_only": False,
             },
         ),
         (
@@ -102,7 +100,6 @@ def _args(**overrides: Any) -> Namespace:
                 "file_path": "target.py",
                 "edit_type": "refactor",
                 "output_format": "json",
-                "compact_only": False,
             },
         ),
         (
@@ -119,7 +116,6 @@ def _args(**overrides: Any) -> Namespace:
                 # dispatcher emits the trimmed surface.
                 "agent_summary_only": True,
                 "scope_mode": "report",
-                "compact_only": False,
                 "resource_profile": "default",
             },
         ),
@@ -182,7 +178,7 @@ def test_mcp_cli_commands_delegate_to_matching_tool(
 
         async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
             seen["arguments"] = arguments
-            return {"success": True, "tool": tool_attr, "toon_content": "compact"}
+            return {"success": True, "tool": tool_attr}
 
     monkeypatch.setattr(mcp_commands, tool_attr, FakeTool)
 
@@ -198,7 +194,7 @@ def test_mcp_cli_commands_delegate_to_matching_tool(
 
     assert result == 0
     assert errors == []
-    assert output == [{"success": True, "tool": tool_attr, "toon_content": "compact"}]
+    assert output == [{"success": True, "tool": tool_attr}]
     assert seen == {
         "project_root": "/repo",
         "arguments": expected_tool_args,
@@ -232,7 +228,6 @@ def test_safe_to_edit_cli_forwards_requested_edit_type(monkeypatch) -> None:
             "file_path": "target.py",
             "edit_type": "rename",
             "output_format": "json",
-            "compact_only": False,
         },
     }
 
@@ -264,7 +259,6 @@ def test_project_health_cli_forwards_requested_max_files(monkeypatch) -> None:
             "min_grade": "C",
             "max_files": 7,
             "output_format": "json",
-            "compact_only": False,
         },
     }
 
@@ -411,31 +405,6 @@ def test_project_scoped_dependency_modes_do_not_require_file_path(
     }
 
 
-def test_mcp_cli_toon_output_prints_tool_toon_content(monkeypatch, capsys) -> None:
-    class FakeProjectOverviewTool:
-        def __init__(self, project_root: str | None = None) -> None:
-            pass
-
-        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-            return {"success": True, "toon_content": "project:compact"}
-
-    monkeypatch.setattr(mcp_commands, "ProjectOverviewTool", FakeProjectOverviewTool)
-
-    output: list[dict[str, Any]] = []
-    errors: list[str] = []
-
-    result = mcp_commands.handle_mcp_commands(
-        _args(overview=True),
-        output.append,
-        errors.append,
-        lambda: "toon",
-    )
-
-    assert result == 0
-    assert errors == []
-    assert output == []
-    assert capsys.readouterr().out == "project:compact\n"
-
 
 def test_change_impact_cli_does_not_require_file_path(monkeypatch) -> None:
     seen: dict[str, Any] = {}
@@ -480,7 +449,6 @@ def test_change_impact_cli_does_not_require_file_path(monkeypatch) -> None:
             # --change-impact-full is passed.
             "agent_summary_only": True,
             "scope_mode": "report",
-            "compact_only": False,
             "resource_profile": "default",
         },
     }
@@ -527,7 +495,6 @@ def test_change_impact_cli_forwards_scope_paths(monkeypatch) -> None:
             # v1.12 default flip: trimmed surface unless --change-impact-full.
             "agent_summary_only": True,
             "scope_mode": "report",
-            "compact_only": False,
             "resource_profile": "default",
         },
     }
@@ -622,7 +589,6 @@ def test_change_impact_cli_forwards_agent_summary_only(monkeypatch) -> None:
             "scope_paths": [],
             "agent_summary_only": True,
             "scope_mode": "report",
-            "compact_only": False,
             "resource_profile": "default",
         },
     }
@@ -664,7 +630,6 @@ def test_change_impact_cli_forwards_mode_and_test_discovery_toggle(monkeypatch) 
             # v1.12 default flip: trimmed surface unless --change-impact-full.
             "agent_summary_only": True,
             "scope_mode": "report",
-            "compact_only": False,
             "resource_profile": "default",
         },
     }
@@ -707,7 +672,6 @@ def test_change_impact_cli_forwards_change_impact_full(monkeypatch) -> None:
             "scope_paths": [],
             "agent_summary_only": False,
             "scope_mode": "report",
-            "compact_only": False,
             "resource_profile": "default",
         },
     }
@@ -876,7 +840,7 @@ def test_callers_cli_delegates_to_callers_tool(monkeypatch) -> None:
 
         async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
             seen["arguments"] = arguments
-            return {"success": True, "toon_content": "callers result"}
+            return {"success": True}
 
     monkeypatch.setattr(mcp_commands, "CodeGraphCallersTool", FakeCallersTool)
 
@@ -908,7 +872,7 @@ def test_callees_cli_delegates_to_callees_tool(monkeypatch) -> None:
 
         async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
             seen["arguments"] = arguments
-            return {"success": True, "toon_content": "callees result"}
+            return {"success": True}
 
     monkeypatch.setattr(mcp_commands, "CodeGraphCalleesTool", FakeCalleesTool)
 
@@ -940,7 +904,7 @@ def test_symbol_resolve_cli_delegates_to_resolve_tool(monkeypatch) -> None:
 
         async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
             seen["arguments"] = arguments
-            return {"success": True, "toon_content": "resolve result"}
+            return {"success": True}
 
     monkeypatch.setattr(mcp_commands, "CodeGraphSymbolResolveTool", FakeResolveTool)
 
@@ -962,30 +926,6 @@ def test_symbol_resolve_cli_delegates_to_resolve_tool(monkeypatch) -> None:
     }
 
 
-def test_compact_toon_cli_flag_forwards_compact_only(monkeypatch) -> None:
-    """RFC-0012 CLI parity: --compact-toon reaches the MCP compact_only arg."""
-    seen: dict[str, Any] = {}
-
-    class FakeFileHealthTool:
-        def __init__(self, project_root: str | None = None) -> None:
-            seen["project_root"] = project_root
-
-        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-            seen["arguments"] = arguments
-            return {"success": True}
-
-    monkeypatch.setattr(mcp_commands, "FileHealthTool", FakeFileHealthTool)
-
-    result = mcp_commands.handle_mcp_commands(
-        _args(file_health=True, compact_toon=True),
-        lambda payload: None,
-        lambda error: None,
-        lambda: "toon",
-    )
-
-    assert result == 0
-    assert seen["arguments"]["compact_only"] is True
-
 
 @pytest.mark.parametrize(
     ("flag_overrides", "tool_attr", "expected_tool_args"),
@@ -1002,7 +942,6 @@ def test_compact_toon_cli_flag_forwards_compact_only(monkeypatch) -> None:
                 "file_path": "target.py",
                 "edit_type": "refactor",
                 "output_format": "json",
-                "compact_only": False,
                 "access_mode": "read_existing",
                 "snapshot_id": "idxsnap_01",
                 "source_generation": "gen_01",
@@ -1022,7 +961,6 @@ def test_compact_toon_cli_flag_forwards_compact_only(monkeypatch) -> None:
                 "scope_paths": [],
                 "agent_summary_only": True,
                 "scope_mode": "report",
-                "compact_only": False,
                 "resource_profile": "default",
                 "access_mode": "read_existing",
             },
@@ -1112,7 +1050,7 @@ def test_read_existing_controls_forwarded_to_tool(
 
         async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
             seen["arguments"] = arguments
-            return {"success": True, "tool": tool_attr, "toon_content": "compact"}
+            return {"success": True, "tool": tool_attr}
 
     monkeypatch.setattr(mcp_commands, tool_attr, FakeTool)
 
@@ -1128,7 +1066,7 @@ def test_read_existing_controls_forwarded_to_tool(
 
     assert result == 0
     assert errors == []
-    assert output == [{"success": True, "tool": tool_attr, "toon_content": "compact"}]
+    assert output == [{"success": True, "tool": tool_attr}]
     assert seen == {
         "project_root": "/repo",
         "arguments": expected_tool_args,
@@ -1160,7 +1098,7 @@ def test_read_existing_controls_absent_are_not_forwarded(
 
         async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
             seen["arguments"] = arguments
-            return {"success": True, "toon_content": "compact"}
+            return {"success": True}
 
     monkeypatch.setattr(mcp_commands, tool_attr, FakeTool)
 

@@ -54,7 +54,6 @@ TOOL_SCHEMA: dict[str, Any] = {
             "enum": ["json", "summary"],
             "default": "json",
         },
-        # Token-efficient toon format by default
         "output_format": {
             "type": "string",
             "enum": ["json"],
@@ -302,7 +301,7 @@ def validate_query_arguments(arguments: dict[str, Any]) -> bool:
     _validate_string_arg(arguments, "language")
     _validate_string_arg(arguments, "filter")
     _validate_string_arg(arguments, "result_format", allowed=["json", "summary"])
-    _validate_string_arg(arguments, "output_format", allowed=["json", "toon"])
+    _validate_string_arg(arguments, "output_format", allowed=["json", "json"])
     _validate_string_arg(arguments, "output_file", non_empty=True)
     if "suppress_output" in arguments and not isinstance(
         arguments["suppress_output"], bool
@@ -390,7 +389,7 @@ def handle_query_output(
     file_output_manager: Any,
 ) -> dict[str, Any]:
     """Handle file output and suppress logic for query results."""
-    from ..utils.format_helper import apply_toon_format_to_response as _apply_toon
+    from ..utils.format_helper import apply_output_format_to_response
 
     output_file = arguments.get("output_file")
     suppress_output = arguments.get("suppress_output", False)
@@ -404,4 +403,4 @@ def handle_query_output(
     if suppress_output and output_file:
         return _build_suppress_envelope(formatted, file_path, language, query)
 
-    return _apply_toon(formatted, output_format)
+    return apply_output_format_to_response(formatted, output_format)

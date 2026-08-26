@@ -219,9 +219,9 @@ class ProjectOverviewTool(BaseMCPTool):
         scan = _scan_project(root, max_depth)
         result = _build_result(root, scan, include_health)
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
 
 def _load_gitignore_patterns(root: Path) -> pathspec.PathSpec | None:

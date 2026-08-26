@@ -20,7 +20,7 @@ from typing import Any
 from ...rename_symbol import rename_symbol
 from ...utils import setup_logger
 from ..utils.auto_index_guard import ensure_indexed
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -90,7 +90,7 @@ class CodeGraphRefactorTool(BaseMCPTool):
                     "type": "string",
                     "enum": ["json"],
                     "default": "json",
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+                    "description": "Output format: JSON",
                 },
             },
             "required": ["symbol", "new_name"],
@@ -126,7 +126,7 @@ class CodeGraphRefactorTool(BaseMCPTool):
 
         cache = self._get_cache()
         if cache is None:
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 {
                     "success": False,
                     "error": (
@@ -172,4 +172,4 @@ class CodeGraphRefactorTool(BaseMCPTool):
                 f"{result.sites_renamed} sites renamed."
             )
 
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)

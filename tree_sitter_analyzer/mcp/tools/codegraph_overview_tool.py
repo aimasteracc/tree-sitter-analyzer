@@ -113,7 +113,7 @@ class CodeGraphOverviewTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+                    "description": "Output format: JSON",
                     "default": "json",
                 },
             },
@@ -195,9 +195,9 @@ class CodeGraphOverviewTool(BaseMCPTool):
             "module_coupling": coupling,
         }
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
 
 def _find_entry_points(graph: CallGraph, limit: int) -> list[dict[str, Any]]:

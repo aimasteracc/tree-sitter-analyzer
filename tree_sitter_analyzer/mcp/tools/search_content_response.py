@@ -28,8 +28,8 @@ RECOUNT_BUDGET_MS = 500
 # deeper sweeps.
 DEFAULT_CONTENT_LISTED_CAP = 50
 
-ToonFormatter = Callable[[dict[str, Any]], dict[str, Any]]
-ToonApplier = Callable[[dict[str, Any], str], dict[str, Any]]
+ResponseFormatter = Callable[[dict[str, Any]], dict[str, Any]]
+ResponseApplier = Callable[[dict[str, Any], str], dict[str, Any]]
 
 
 def determine_requested_format(arguments: dict[str, Any]) -> str:
@@ -108,8 +108,8 @@ async def format_search_response(
     cache: Any,
     file_output_manager: Any,
     fd_rg_utils: Any,
-    attach_toon: ToonFormatter,
-    apply_toon: ToonApplier,
+    attach_response: ResponseFormatter,
+    apply_response: ResponseApplier,
     rg_args: dict[str, Any] | None = None,
     roots: list[str] | None = None,
     files: list[str] | None = None,
@@ -128,13 +128,13 @@ async def format_search_response(
             arguments,
             cache,
             fd_rg_utils,
-            attach_toon,
+            attach_response,
         )
     if arguments.get("files_with_matches", False):
         # rg -l output is plain text (one file path per line), NOT JSON.
         # Bypass parse_rg_json_lines_to_matches which would return [].
         return _respond_files_with_matches(
-            out, elapsed_ms, cache_key, arguments, cache, output_format, apply_toon
+            out, elapsed_ms, cache_key, arguments, cache, output_format, apply_response
         )
 
     matches, truncated = _parse_limited_matches(arguments, out, fd_rg_utils)
@@ -161,8 +161,8 @@ async def format_search_response(
         cache,
         file_output_manager,
         fd_rg_utils,
-        attach_toon,
-        apply_toon,
+        attach_response,
+        apply_response,
         real_total=real_total,
         total_count_known=total_count_known,
     )
@@ -272,8 +272,8 @@ def _format_match_response(
     cache: Any,
     file_output_manager: Any,
     fd_rg_utils: Any,
-    attach_toon: ToonFormatter,
-    apply_toon: ToonApplier,
+    attach_response: ResponseFormatter,
+    apply_response: ResponseApplier,
     real_total: int | None = None,
     total_count_known: bool = True,
 ) -> dict[str, Any]:
@@ -289,7 +289,7 @@ def _format_match_response(
             cache,
             file_output_manager,
             fd_rg_utils,
-            attach_toon,
+            attach_response,
             real_total=real_total,
             total_count_known=total_count_known,
         )
@@ -304,7 +304,7 @@ def _format_match_response(
             cache,
             file_output_manager,
             fd_rg_utils,
-            attach_toon,
+            attach_response,
             real_total=real_total,
             total_count_known=total_count_known,
         )
@@ -318,7 +318,7 @@ def _format_match_response(
         cache,
         file_output_manager,
         fd_rg_utils,
-        apply_toon,
+        apply_response,
         real_total=real_total,
         total_count_known=total_count_known,
     )
@@ -331,7 +331,7 @@ def _respond_files_with_matches(
     arguments: dict[str, Any],
     cache: Any,
     output_format: str,
-    apply_toon: ToonApplier,
+    apply_response: ResponseApplier,
 ) -> dict[str, Any]:
     """Parse rg --files-with-matches plain-text output into a file list.
 
@@ -357,7 +357,7 @@ def _respond_files_with_matches(
     }
     if cache is not None and cache_key:
         cache.set(cache_key, result)
-    return apply_toon(result, output_format)
+    return apply_response(result, output_format)
 
 
 def apply_limits(

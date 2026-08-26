@@ -281,9 +281,7 @@ class SelfHealthTool(BaseMCPTool):
                     "type": "string",
                     "enum": ["json"],
                     "description": (
-                        "Output format: 'toon' (default, token-efficient) or "
-                        "'json'. The MCP-toon / CLI-json split is a locked "
-                        "design decision (CLAUDE.md §1)."
+                        "Output format: JSON (the only supported response format)."
                     ),
                     "default": "json",
                 },
@@ -336,9 +334,9 @@ class SelfHealthTool(BaseMCPTool):
         }
         mirror_summary_line(response)
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
 
 def _build_summary_line(

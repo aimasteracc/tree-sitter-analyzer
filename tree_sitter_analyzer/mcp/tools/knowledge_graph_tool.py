@@ -23,7 +23,7 @@ from ...knowledge_graph.exporters import (
 )
 from ...knowledge_graph.html_viewer import to_html_viewer
 from ...knowledge_graph.stores import LadybugUnavailableError
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
 
@@ -121,7 +121,7 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
         self.validate_arguments(arguments)
         output_format = arguments.get("output_format", "json")
         if not self.project_root:
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 build_error(error="project_root not set"),
                 output_format,
             )
@@ -140,7 +140,7 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
                 sqlite_index=_sqlite_index_status(str(self.project_root)),
                 ladybug_store=ladybug_store.status(),
             )
-            return apply_toon_format_to_response(response, output_format)
+            return apply_output_format_to_response(response, output_format)
 
         sync_report = self._prepare_index(
             mode=mode,
@@ -169,7 +169,7 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
                 writes={},
                 skipped_write_reason="no indexed file changes",
             )
-            return apply_toon_format_to_response(response, output_format)
+            return apply_output_format_to_response(response, output_format)
 
         snapshot = KnowledgeGraphBuilder(str(self.project_root)).build(
             include_docs=bool(arguments.get("include_docs", True)),
@@ -184,7 +184,7 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
                 response = build_error(error=str(exc))
                 response["backend"] = backend
                 response["sqlite_index"] = _sqlite_index_status(str(self.project_root))
-                return apply_toon_format_to_response(response, output_format)
+                return apply_output_format_to_response(response, output_format)
 
         response = build_response(
             verdict="INFO",
@@ -196,7 +196,7 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
             writes=writes,
             ladybug_invalidated=ladybug_invalidated,
         )
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
     def _prepare_index(self, *, mode: str, max_files: int) -> dict[str, Any]:
         from ...ast_cache import ASTCache
@@ -303,7 +303,7 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
         self.validate_arguments(arguments)
         output_format = arguments.get("output_format", "json")
         if not self.project_root:
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 build_error(error="project_root not set"),
                 output_format,
             )
@@ -378,7 +378,7 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
                     max_edges=int(arguments.get("max_edges", 50_000)),
                 ),
             )
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
 
 def _compact_sync_report(report: dict[str, Any]) -> dict[str, Any]:

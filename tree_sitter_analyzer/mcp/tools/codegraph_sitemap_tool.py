@@ -24,7 +24,7 @@ from collections import defaultdict
 from typing import Any
 
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_response
 from ._validators import _validate_positive_int, invalid_enum_error
 from .base_tool import BaseMCPTool
@@ -122,7 +122,7 @@ class CodeGraphSitemapTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+                    "description": "Output format: JSON",
                     "default": "json",
                 },
             },
@@ -223,7 +223,7 @@ class CodeGraphSitemapTool(BaseMCPTool):
             **extra,
         )
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _load_indexed_files(
         self,

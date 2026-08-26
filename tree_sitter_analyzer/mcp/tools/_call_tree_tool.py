@@ -16,7 +16,7 @@ Both tools reuse the existing single-hop call-graph machinery:
 The nested DFS, depth cap, global node cap, and cycle guard live in the pure
 ``_call_tree.build_call_tree`` helper. These tools only adapt the storage layer
 into the storage-agnostic ``expand`` callback and wrap the result in the
-standard response envelope (with TOON support and a deterrent ``next_step``).
+standard JSON response envelope (with a deterrent ``next_step``).
 """
 
 from __future__ import annotations
@@ -138,7 +138,7 @@ class _CallTreeBase(CodeGraphRelationToolMixin, BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+                    "description": "Output format: JSON",
                     "default": "json",
                 },
             },
@@ -220,9 +220,9 @@ class _CallTreeBase(CodeGraphRelationToolMixin, BaseMCPTool):
         )
         result["next_step"] = deterrent
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
 
 def _dedup_nodes(

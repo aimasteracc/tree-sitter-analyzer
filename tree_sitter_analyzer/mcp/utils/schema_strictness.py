@@ -34,10 +34,9 @@ import difflib
 from typing import Any
 
 #: Universal envelope-control params accepted at every tool boundary even when
-#: an individual tool's schema omits them (#651). ``output_format`` selects the
-#: TOON-vs-JSON envelope and is honoured by every formatting tool; tools with a
-#: single output shape accept-and-ignore it rather than hard-erroring, so an
-#: agent can set it uniformly across all calls without a tool-specific failure.
+#: an individual tool's schema omits them (#651). ``output_format`` selects
+#: the JSON response envelope; tools with a single output shape accept and
+#: ignore it rather than hard-erroring, so an agent can set it uniformly.
 _UNIVERSAL_ENVELOPE_PARAMS: frozenset[str] = frozenset({"output_format"})
 
 

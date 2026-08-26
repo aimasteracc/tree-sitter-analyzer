@@ -84,7 +84,7 @@ class RouteDetectorTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+                    "description": "Output format: JSON",
                     "default": "json",
                 },
             },
@@ -137,9 +137,9 @@ class RouteDetectorTool(BaseMCPTool):
             raise ValueError(f"Unknown mode: {mode}")
 
         _attach_route_summary(result, mode)
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     @staticmethod
     def _build_summary_response(detector: Any) -> dict[str, Any]:
@@ -409,6 +409,6 @@ def _validation_error_envelope(
     if file_path is not None:
         response["file_path"] = file_path
 
-    from ..utils.format_helper import apply_toon_format_to_response
+    from ..utils.format_helper import apply_output_format_to_response
 
-    return apply_toon_format_to_response(response, output_format)
+    return apply_output_format_to_response(response, output_format)

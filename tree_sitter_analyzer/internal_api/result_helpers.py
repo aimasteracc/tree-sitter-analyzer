@@ -40,7 +40,7 @@ def normalize_parameters(value: Any) -> Any:
 
     SQL plugin stores parameters as ``list[SQLParameter]`` (dataclasses).
     JSON cannot serialize dataclass instances; convert them to plain dicts
-    so all output formats (JSON, TOON, text) stay consistent. Non-list and
+    so structured JSON and text output stay consistent. Non-list and
     non-dataclass values are returned unchanged.
     """
     if isinstance(value, list):

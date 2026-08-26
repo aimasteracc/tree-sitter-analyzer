@@ -213,7 +213,7 @@ class CodeGraphContextTool(BaseMCPTool):
                     "type": "string",
                     "enum": ["json"],
                     "description": (
-                        "Output format: 'toon' (default, token-efficient) or 'json'"
+                        "Output format: JSON"
                     ),
                     "default": "json",
                 },
@@ -298,9 +298,9 @@ class CodeGraphContextTool(BaseMCPTool):
             elapsed_ms=int((time.perf_counter() - started) * 1000),
         )
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     async def _execute_read_existing(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """RFC-0022 P0.4: serve context from the certified index snapshot.

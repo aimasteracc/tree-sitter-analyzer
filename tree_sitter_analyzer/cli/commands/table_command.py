@@ -70,7 +70,7 @@ class TableCommand(BaseCommand):
 
         r37d8 (dogfood): 113 lines → ~20 lines of phase dispatch.
         Sub-helpers: ``_resolve_table_type`` (--table vs --format precedence
-        + K11 override warning), ``_render_table_output`` (json/toon/text
+        + K11 override warning), ``_render_table_output`` (JSON/table/text
         fan-out). ``effective_table`` / ``requested_table`` (K11) and the
         r37ab canonical envelope are preserved.
         """
@@ -98,7 +98,7 @@ class TableCommand(BaseCommand):
         """Pick the effective table view, honouring ``--format`` overrides.
 
         Returns ``(table_type, user_table_request, table_was_user_specified)``.
-        K11 / DOG-3: ``--format=json|toon`` wins over ``--table=...`` when the
+        K11 / DOG-3: ``--format=json`` wins over ``--table=...`` when the
         user explicitly passed the flag (checked via ``sys.argv`` so the
         argparse default ``json`` doesn't silently break ``--table=full``).
         A stderr warning is emitted symmetric to DOG-3's TOON warning when
@@ -121,7 +121,7 @@ class TableCommand(BaseCommand):
 
         if (
             table_was_user_specified
-            and output_format in ("json", "toon")
+            and output_format == "json"
             and user_table_request != table_type
         ):
             print(
@@ -139,7 +139,7 @@ class TableCommand(BaseCommand):
         user_table_request: str,
         table_was_user_specified: bool,
     ) -> str:
-        """Render the table output string per ``table_type`` (json/toon/text)."""
+        """Render the table output string per ``table_type`` (JSON/table/text)."""
         if table_type == "json":
             return self._render_table_json(
                 analysis_result,
@@ -364,7 +364,7 @@ class TableCommand(BaseCommand):
             "javadoc": javadoc,
         }
         # Propagate receiver_type as parent_class for fields too — without it
-        # multi-class files collide (User::$id vs AdminUser::$id) in CSV/TOON
+        # multi-class files collide (User::$id vs AdminUser::$id) in CSV/table
         # output (#535, Codex P2).
         receiver_type = getattr(element, "receiver_type", None)
         if receiver_type:
@@ -376,7 +376,7 @@ class TableCommand(BaseCommand):
         """Convert import element to table format.
 
         Produces the K2 canonical import shape so JSON output matches the
-        TOON ``_toon_import`` projection key-for-key. ``raw_text`` is kept
+        table projection key-for-key. ``raw_text`` is kept
         as a backward-compat alias for downstream language formatters
         (python/php/csharp/ruby/go) that still read it directly.
         """

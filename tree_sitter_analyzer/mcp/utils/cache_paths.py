@@ -3,7 +3,7 @@
 M13 (round-26 dogfood): a previous session left an orphan source file
 (``.tree-sitter-cache/fresh_dog.py``) inside the cache directory. The
 directory is meant for *tool-owned metadata only* (the persistent
-project index, file-hash snapshot, critical-node list, TOON summary).
+project index, file-hash snapshot, critical-node list, JSON summary).
 Arbitrary source files have no business living there — they confuse
 ``project-overview``, blow up dependency analysis, and pollute search
 indexes that scan everything under the project root.
@@ -22,7 +22,7 @@ The allowlist is intentionally narrow — current tool needs only:
 
 * ``project-index.json`` / ``file_hashes.json`` / ``critical_nodes.json``
   (top-level metadata files)
-* ``summary.toon`` (compressed project digest)
+* ``summary.json`` (project digest)
 * anything under ``index/`` or ``metrics/`` subdirectories
 * any ``.db`` file (SQLite caches like ``critical_nodes.db``)
 
@@ -48,7 +48,7 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         "project-index.json",  # ProjectIndexManager persistent index
         "file_hashes.json",  # incremental rebuild fingerprint
         "critical_nodes.json",  # ModificationGuardTool node list
-        "summary.toon",  # compressed digest for agent contexts
+        "summary.json",  # project digest for agent contexts
     }
 )
 
@@ -59,7 +59,6 @@ _ALLOWED_EXTENSIONS: frozenset[str] = frozenset(
     {
         ".db",  # SQLite caches
         ".json",  # metadata files (in subdirs)
-        ".toon",  # compressed digests (in subdirs)
     }
 )
 
@@ -142,6 +141,6 @@ def assert_cache_path(path: Path | str, project_root: Path | str) -> Path:
             f"Path {resolved} is not in the {CACHE_DIR_NAME} allowlist. "
             "Cache directory accepts only tool-owned metadata "
             "(project-index.json, file_hashes.json, critical_nodes.json, "
-            "summary.toon, *.db, or files under index/ or metrics/)."
+            "summary.json, *.db, or files under index/ or metrics/)."
         )
     return resolved

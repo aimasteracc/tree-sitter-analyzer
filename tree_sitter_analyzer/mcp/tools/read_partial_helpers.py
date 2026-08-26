@@ -573,8 +573,7 @@ def prepare_partial_save_content(
     """Prepare extracted content for file output based on ``content_format``.
 
     ``raw`` returns the body untouched. ``json`` wraps body + range
-    metadata and emits either a TOON blob (when ``output_format=='toon'``)
-    or pretty-printed JSON. Any other format falls back to the already-
+    metadata and emits a pretty-printed JSON blob. Any other format falls back to the already-
     rendered ``result['partial_content_result']`` string.
     """
     if content_format == "raw":

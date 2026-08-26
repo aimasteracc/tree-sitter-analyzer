@@ -105,7 +105,7 @@ class BaseCommand(ABC):
 
         Matches the MCP ``ToolResponse`` shape: ``success=False``,
         ``error_type='validation'``, top-level ``summary_line`` mirrored
-        in ``agent_summary``, and ``verdict='ERROR'``. JSON/TOON go to
+        in ``agent_summary``, and ``verdict='ERROR'``. JSON goes to
         stdout so callers can ``json.loads(stdout)``; text mode falls
         back to ``output_error`` (stderr).
         """

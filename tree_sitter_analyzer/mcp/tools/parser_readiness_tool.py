@@ -30,7 +30,7 @@ TOOL_SCHEMA: dict[str, Any] = {
         "output_format": {
             "type": "string",
             "enum": ["json"],
-            "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+            "description": "Output format: JSON",
             "default": "json",
         },
     },
@@ -71,8 +71,8 @@ class ParserReadinessTool(BaseMCPTool):
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate optional language, include flag, and output format."""
         output_format = arguments.get("output_format", "json")
-        if output_format not in {"json", "toon"}:
-            raise ValueError("output_format must be 'json' or 'toon'")
+        if output_format != "json":
+            raise ValueError("output_format must be 'json'")
 
         language = arguments.get("language")
         if language is not None and not isinstance(language, str):
@@ -106,36 +106,29 @@ class ParserReadinessTool(BaseMCPTool):
             language=arguments.get("language"),
             include_supported=arguments.get("include_supported", False),
         )
-        if arguments.get("output_format", "json") == "toon":
-            return _build_toon_response(result)
-        # Strip ``toon_content`` from the JSON path — it duplicates the
-        # structured fields and wastes ~350 bytes per call. Callers asking
-        # for JSON want JSON, not a TOON-formatted dump alongside it.
-        result.pop("toon_content", None)
-        return result
+        return _build_json_response(result)
 
 
-def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
-    """Return a compact MCP response when callers request TOON output."""
+def _build_json_response(result: dict[str, Any]) -> dict[str, Any]:
+    """Return the structured JSON MCP response."""
     response = {
         "success": result["success"],
         "verdict": result.get("verdict", "INFO"),
-        "format": "toon",
+        "format": "json",
         "advisor": result["advisor"],
         "project_root": result["project_root"],
         "requested_language": result["requested_language"],
         "agent_summary": result["agent_summary"],
         "recommendations": result["recommendations"],
-        "toon_content": result["toon_content"],
     }
-    # G7: mirror summary_line so the TOON envelope also carries the
+    # G7: mirror summary_line so the JSON envelope also carries the
     # top-level one-liner (JSON path passes the full ``result`` dict
     # which already has it).
     summary_line = result.get("summary_line")
     if isinstance(summary_line, str) and summary_line:
         response["summary_line"] = summary_line
     # N4: mirror ``verdict`` to the top-level envelope so direct callers
-    # see the same shape on TOON output as on JSON output. Source of
+    # see the same shape on JSON output as on JSON output. Source of
     # truth is the agent_summary surface, populated in
     # :func:`_build_agent_summary`.
     verdict = result.get("verdict")

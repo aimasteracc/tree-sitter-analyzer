@@ -82,11 +82,6 @@ class ToolResponse(TypedDict, total=False):
     """Optional sub-mode label for tools that expose multiple modes
     (e.g. detect_routes has summary/all/lookup/prefix/file)."""
 
-    toon_content: str
-    """When the caller asked for TOON output (``output_format='toon'``),
-    the TOON-encoded body lands here. The same payload data should be
-    present at top level for ``output_format='json'`` callers."""
-
 
 def validate_tool_response(payload: Any, tool_name: str = "<unknown>") -> None:
     """Raise ``AssertionError`` if ``payload`` doesn't honour the

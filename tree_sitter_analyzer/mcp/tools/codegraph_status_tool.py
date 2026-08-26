@@ -70,7 +70,7 @@ class CodeGraphStatusTool(BaseMCPTool):
                     "type": "string",
                     "enum": ["json"],
                     "default": "json",
-                    "description": "Output format (default: toon)",
+                    "description": "Output format: JSON.",
                 },
             },
             "additionalProperties": False,
@@ -115,9 +115,9 @@ class CodeGraphStatusTool(BaseMCPTool):
             reason=result.get("oracle_reason"),
         )
         enriched = {**result, **evidence}
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(enriched, output_format)
+        return apply_output_format_to_response(enriched, output_format)
 
     def _execute_read_existing(
         self,

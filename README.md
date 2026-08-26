@@ -10,7 +10,7 @@ TSA indexes your codebase with tree-sitter and serves correct call graphs, symbo
 
 **Why it's different:**
 * **Cross-language correctness is the moat.** Language-family gates prevent name-only cross-language bindings.
-* **Built agent-native.** 8 MCP tools provide TOON output and verdict envelopes, with CLI access and curated workflows.
+* **Built agent-native.** 8 MCP tools provide structured JSON output and verdict envelopes, with CLI access and curated workflows.
 * **Broad and correctly classified.** The [generated support-depth inventory](#supported-languages) distinguishes pipeline evidence from unverified cross-file behavior.
 
 > Upgrading from v1.x? See [docs/MIGRATION.md](docs/MIGRATION.md).
@@ -111,7 +111,7 @@ It reports possible cross-language name collisions so you can inspect resolver b
 
 ## Why Tree-sitter Analyzer
 
-* **Token-aware output.** MCP responses default to **TOON**; payload behavior is guarded by [output-cost invariants](tests/unit/mcp/test_output_cost_invariants.py), including known decision-tool limitations tracked in [RFC-0018](rfcs/0018-response-envelope-normalization-and-adaptive-toon.md).
+* **Structured output.** MCP responses use standard JSON envelopes; payload behavior is guarded by response contract tests.
 * **Verdict envelopes.** Every response carries `verdict: SAFE | CAUTION | UNSAFE | INFO | REVIEW | WARN | ERROR | NOT_FOUND`, so orchestrators branch on outcomes without re-prompting.
 * **Project health grading (A–F).** TSA grades projects across size, complexity, coverage, duplication, dependencies, structure, and git hotspots.
 * **Curated workflows (Skills).** Pre-baked tool subsets for "find symbol", "trace call chain", "assess health", "safe-to-edit before refactor", "PR review", etc.
@@ -142,7 +142,7 @@ It reports possible cross-language name collisions so you can inspect resolver b
 | **BM25-ranked symbol search** | all search tools | min-max normalized relevance_score on every result; sort(by='confidence') in DSL |
 | **Semantic search (BM25 pre-filtered)** | `search` action=chain (`semantic()` DSL) | lexical pre-filter before cosine rerank |
 | **Project A–F health grading** | `health` action=project | combines size, complexity, dependencies, coverage, duplication, structure, and git hotspots |
-| **TOON output** | every tool, `output_format: "toon"` (default) | compact tabular encoding; decision tools tracked by RFC-0018 |
+| **JSON output** | every tool, `output_format: "json"` (default) | standard structured response envelopes |
 | **Verdict envelopes** | every tool | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
 | **Safe-to-edit gate** | `edit` action=safe / action=guard | refuses high-risk edits before they happen |
 | **Architectural constraint DSL** | `edit` action=constraints | "module A cannot import B" → enforced |
@@ -169,7 +169,7 @@ TSA ships curated workflows under `.claude/skills/tsa-*/`:
 
 Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
 
-### 333 CLI flags
+### 331 CLI flags
 
 Superset of CodeGraph's CLI surface. Highlights:
 
@@ -226,9 +226,8 @@ Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
                                          ↓
         nav (navigate) / structure (explore) / nav (callers) / ...
                                          ↓
-                            TOON-encoded envelope
-                            (compact for tabular output;
-                             verdict + agent_summary + data)
+                            JSON response envelope
+                            (verdict + agent_summary + data)
                                          ↓
                               MCP client / CLI consumer
 ```
@@ -353,7 +352,7 @@ Generated from runtime registries; see [`docs/CODEMAPS/languages.md`](docs/CODEM
 
 Mostly nothing. The defaults are designed so you can hook it into your agent and forget:
 
-* **Output format**: TOON. Override per-call with `output_format: "json"`.
+* **Output format**: JSON. The `output_format: "json"` parameter is retained for explicitness.
 * **Project root**: `TREE_SITTER_PROJECT_ROOT` (env var, MCP) or `--project-root` (CLI).
 * **Cache location**: `<project>/.ast-cache/`. Safe to delete — auto-rebuilds.
 * **Optional**: `TREE_SITTER_OUTPUT_PATH` for large-output write target.

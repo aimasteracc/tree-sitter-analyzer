@@ -6,8 +6,7 @@
 out to the unchanged inner tools; the 66 legacy names still work for one
 deprecation cycle via the legacy-name shim
 ([`mcp/legacy_shim.py`](../../tree_sitter_analyzer/mcp/legacy_shim.py)).
-All tools default to **TOON output** (locked — see `CLAUDE.md`).
-Response-envelope semantics (verdict alphabet, truncation fields, `compact_only` control surface) are specified in the [Agent Envelope Contract](../agent-envelope-contract.md).
+All tools return **JSON output** (locked — see `CLAUDE.md`). Response-envelope semantics (verdict alphabet and truncation fields) are specified in the [Agent Envelope Contract](../agent-envelope-contract.md).
 
 ## Facade Surface (public, eager — the only 8 tools clients see)
 
@@ -120,7 +119,7 @@ legacy MCP name is now reached via its facade (`old_name` →
    - Tool envelope contract: `tests/unit/mcp/tools/test_tool_response_contract.py`
    - CLI equivalence: `tests/unit/cli/test_mcp_commands.py`
    - Agent contracts: `tests/contracts/test_mcp_cli_parity_contract.py`
-5. Default to `output_format="toon"` — never flip to JSON (see `CLAUDE.md`).
+5. Use `output_format="json"`; do not add alternate response encodings.
 
 ## Tool Response Envelope (canonical)
 

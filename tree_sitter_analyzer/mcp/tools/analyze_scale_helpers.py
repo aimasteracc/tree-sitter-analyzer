@@ -594,10 +594,10 @@ def create_json_file_analysis(
     file_path: str,
     file_metrics: dict[str, Any],
     include_guidance: bool,
-    output_format: str = "toon",
+    output_format: str = "json",
 ) -> dict[str, Any]:
     """Create analysis for non-source files (JSON, YAML, etc.)."""
-    from ..utils.format_helper import apply_toon_format_to_response as _apply_toon
+    from ..utils.format_helper import apply_output_format_to_response
 
     total_lines = file_metrics["total_lines"]
     # J5 (round-22): single-space join via helper.
@@ -614,7 +614,7 @@ def create_json_file_analysis(
         "success": True,
         # Issue 2: echo dispatch mode + output_format on JSON-file path too.
         # F12: keep ``format`` as a back-compat alias of ``output_format`` so
-        # JSON callers see the same key the TOON envelope already exposes.
+        # JSON callers see the same key the JSON envelope already exposes.
         "mode": "single",
         "output_format": output_format,
         "format": output_format,
@@ -663,7 +663,7 @@ def create_json_file_analysis(
             "analysis_focus": "Data structure and configuration values",
         }
 
-    return _apply_toon(result, output_format)
+    return apply_output_format_to_response(result, output_format)
 
 
 # Assemble metrics, structure, and guidance into result
@@ -996,7 +996,7 @@ def assemble_batch_response(
     output_format: str,
     metrics_only: bool,
 ) -> dict[str, Any]:
-    """Compose the canonical batch envelope (raw — caller applies TOON format)."""
+    """Compose the canonical batch envelope (raw — caller applies JSON format)."""
     errors = [x for x in per_file if "error" in x]
     ok = [x for x in per_file if "error" not in x]
     n_ok = len(ok)

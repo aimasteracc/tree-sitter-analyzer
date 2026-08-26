@@ -1,90 +1,34 @@
 #!/usr/bin/env python3
-"""
-Format Helper for MCP Tools
-
-Provides utility functions for formatting MCP tool output in different formats
-(JSON, TOON) with consistent behavior across all tools.
-"""
+"""JSON formatting helpers shared by MCP tools."""
 
 import json
 from collections.abc import Callable
 from typing import Any
 
-from ...utils import setup_logger
 
-logger = setup_logger(__name__)
-
-
-#: RFC-0012: the minimal scalar control surface an agent branches on WITHOUT
-#: parsing the ``toon_content`` blob. Everything else in a TOON response is
-#: recoverable from ``toon_content``, so under ``compact_only`` we keep only
-#: these keys alongside the blob and drop the duplicated metadata.
-#:
-#: ``summary_line`` is included deliberately: the MCP boundary's
-#: ``ensure_canonical_success_envelope`` re-populates it on every success
-#: anyway (so dropping it is futile), it is a single cheap scalar, and it is
-#: the highest-value one-line triage signal.
-def reduce_to_control_surface(result: dict[str, Any]) -> dict[str, Any]:
-    """Passthrough — TOON removed."""
-    return result
-
-
-def format_output(data: dict[str, Any], output_format: str = "json") -> str:
-    """
-    Format data according to the specified output format.
-
-    Args:
-        data: Dictionary data to format
-        output_format: Output format ('json' or 'toon')
-
-    Returns:
-        Formatted string representation of the data
-    """
-    return format_as_json(data)
-
-
-def format_as_json(data: dict[str, Any]) -> str:
-    """
-    Format data as JSON string.
-
-    Args:
-        data: Dictionary data to format
-
-    Returns:
-        JSON formatted string
-    """
+def format_as_json(data: Any) -> str:
+    """Serialize data as readable UTF-8 JSON."""
     return json.dumps(data, indent=2, ensure_ascii=False)
 
 
-def format_as_toon(data: dict[str, Any]) -> str:
-    """Passthrough — TOON removed. Returns JSON."""
+def format_output(data: dict[str, Any], output_format: str = "json") -> str:
+    """Serialize a tool payload as JSON; the format argument is compatibility-only."""
+    del output_format
     return format_as_json(data)
 
 
-def _get_formatter_for_toon() -> Any:
-    """Passthrough — TOON removed. Returns JsonFormatter."""
-    return JsonFormatter()
-
-
-def get_formatter(output_format: str = "json") -> Any:
-    """
-    Get a formatter instance for the specified format.
-
-    Args:
-        output_format: Output format ('json' or 'toon')
-
-    Returns:
-        Formatter instance with format() method
-    """
-    return JsonFormatter()
-
-
 class JsonFormatter:
-    """Simple JSON formatter implementing the format() interface."""
+    """Simple JSON formatter implementing the shared formatter interface."""
 
     def format(self, data: Any) -> str:
-        """Format data as JSON string."""
-        return json.dumps(data, indent=2, ensure_ascii=False)
+        """Serialize data as readable UTF-8 JSON."""
+        return format_as_json(data)
+
+
+def get_formatter(output_format: str = "json") -> JsonFormatter:
+    """Return the sole supported JSON formatter."""
+    del output_format
+    return JsonFormatter()
 
 
 def apply_output_format(
@@ -92,45 +36,29 @@ def apply_output_format(
     output_format: str = "json",
     return_formatted_string: bool = False,
 ) -> dict[str, Any] | str:
-    """
-    Apply output format to a result dictionary.
-
-    This function can either:
-    1. Return the original dict (for MCP protocol compatibility)
-    2. Return a formatted string (for file output or direct display)
-
-    Args:
-        result: Result dictionary from MCP tool execution
-        output_format: Output format ('json' or 'toon')
-        return_formatted_string: If True, return formatted string instead of dict
-
-    Returns:
-        Either the original dict or a formatted string
-    """
+    """Return a response dict or its JSON representation."""
     if return_formatted_string:
         return format_output(result, output_format)
-    else:
-        # For MCP protocol, we return the dict as-is
-        # The format is applied when saving to file or displaying
-        return result
+    return result
+
+
+def apply_output_format_to_response(
+    result: dict[str, Any],
+    output_format: str = "json",
+) -> dict[str, Any]:
+    """Normalize every MCP response to the canonical JSON response shape."""
+    del output_format
+    if result.get("success") is True and "verdict" not in result:
+        return {**result, "verdict": "INFO"}
+    return result
 
 
 def format_for_file_output(
     data: dict[str, Any], output_format: str = "json"
 ) -> tuple[str, str]:
-    """
-    Format data for file output and return content with appropriate extension.
-
-    Args:
-        data: Dictionary data to format
-        output_format: Output format ('json' or 'toon')
-
-    Returns:
-        Tuple of (formatted_content, file_extension)
-    """
-    content = format_as_json(data)
-    extension = ".json"
-    return content, extension
+    """Return JSON file content and the fixed ``.json`` extension."""
+    del output_format
+    return format_as_json(data), ".json"
 
 
 DIFF_SNAPSHOT_PUBLISH_ERROR_CODES: tuple[str, ...] = (
@@ -161,7 +89,7 @@ def preformat_diff_snapshot_publish_errors(
     output_format: str,
     formatter: Callable[[dict[str, Any], str], dict[str, Any]],
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
-    """Format every stable final-validation failure before validation runs."""
+    """Build all stable snapshot-validation failure envelopes."""
 
     def envelope(code: str) -> dict[str, Any]:
         return formatter(
@@ -174,25 +102,7 @@ def preformat_diff_snapshot_publish_errors(
             output_format,
         )
 
-    errors = {code: envelope(code) for code in DIFF_SNAPSHOT_PUBLISH_ERROR_CODES}
-    return errors, envelope("DIFF_SNAPSHOT_VALIDATION_ERROR")
-
-
-def apply_toon_format_to_response(
-    result: dict[str, Any],
-    output_format: str = "json",
-    *,
-    compact_only: bool = False,
-) -> dict[str, Any]:
-    """Passthrough — TOON removed. Injects verdict=INFO on success responses."""
-    is_dict = isinstance(result, dict)
-    is_success = is_dict and result.get("success") is True
-    no_verdict = is_dict and "verdict" not in result
-    if is_dict and is_success and no_verdict:
-        result = {**result, "verdict": "INFO"}
-    return result
-
-
-def attach_toon_content_to_response(result: dict[str, Any]) -> dict[str, Any]:
-    """Passthrough — TOON removed."""
-    return result
+    return (
+        {code: envelope(code) for code in DIFF_SNAPSHOT_PUBLISH_ERROR_CODES},
+        envelope("DIFF_SNAPSHOT_VALIDATION_ERROR"),
+    )

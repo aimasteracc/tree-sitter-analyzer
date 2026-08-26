@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import Any
 
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
+from ..utils.format_helper import (
+    apply_output_format_to_response,
+    format_for_file_output,
+)
 from . import fd_rg_utils
 
 logger = logging.getLogger(__name__)
@@ -149,7 +152,6 @@ TOOL_SCHEMA: dict[str, Any] = {
                 "Set to true when debugging 'why did we miss this file'."
             ),
         },
-        # Token-efficient toon format by default
         "output_format": {
             "type": "string",
             "enum": ["json"],
@@ -323,7 +325,7 @@ def _respond_count_only(
 
     output_format = context.arguments.get("output_format", "json")
     normalize_envelope(result)
-    return apply_toon_format_to_response(result, output_format)
+    return apply_output_format_to_response(result, output_format)
 
 
 def _attach_total_count_metadata(
@@ -428,7 +430,7 @@ def _respond_detailed(
 
     output_format = context.arguments.get("output_format", "json")
     normalize_envelope(final_result)
-    return apply_toon_format_to_response(final_result, output_format)
+    return apply_output_format_to_response(final_result, output_format)
 
 
 def _save_count_output(

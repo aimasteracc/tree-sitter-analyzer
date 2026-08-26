@@ -12,7 +12,7 @@ Each map under ~1k tokens — load only the one(s) you need.
 | [mcp-tools.md](./mcp-tools.md) | 8 facade tools + set_project_path registered in `mcp/_tool_registry.py` |
 | [cli.md](./cli.md) | CLI flags / commands / `tree-sitter-analyzer` entry points |
 | [languages.md](./languages.md) | 22 language plugins + grammar coverage |
-| [formatters.md](./formatters.md) | Output formats (TOON / JSON / table / CSV / YAML) |
+| [formatters.md](./formatters.md) | JSON output and language-specific table/CSV helpers |
 | [security.md](./security.md) | Boundary enforcement · project root resolution · path validation |
 
 ## When to Regenerate

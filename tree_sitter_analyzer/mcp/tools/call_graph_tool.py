@@ -370,7 +370,7 @@ class CodeGraphCallTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+                    "description": "Output format: JSON",
                     "default": "json",
                 },
             },
@@ -447,9 +447,9 @@ class CodeGraphCallTool(BaseMCPTool):
         # Finding 6: ensure direct execute() callers see non-empty envelope.
         _attach_call_graph_envelope(result)
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     @staticmethod
     def _build_all_functions_response(graph: Any) -> dict[str, Any]:

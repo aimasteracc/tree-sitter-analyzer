@@ -101,7 +101,7 @@ class ClassHierarchyTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": "Output format (default: toon)",
+                    "description": "Output format: JSON",
                     "default": "json",
                 },
             },
@@ -192,9 +192,9 @@ class ClassHierarchyTool(BaseMCPTool):
                     "next_step": rebuild_next_step,
                 },
             }
-            from ..utils.format_helper import apply_toon_format_to_response
+            from ..utils.format_helper import apply_output_format_to_response
 
-            return apply_toon_format_to_response(rebuild_response, output_format)
+            return apply_output_format_to_response(rebuild_response, output_format)
 
         hierarchy = self._get_hierarchy()
         hierarchy.build()
@@ -369,8 +369,8 @@ class ClassHierarchyTool(BaseMCPTool):
                 },
             }
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
         return mirror_summary_line(
-            apply_toon_format_to_response(response, output_format)
+            apply_output_format_to_response(response, output_format)
         )

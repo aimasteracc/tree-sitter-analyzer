@@ -149,31 +149,11 @@ class UnreachableCodeTool(BaseMCPTool):
         response = self._build_project_response(results, output_format)
         return response
 
-    @staticmethod
-    def _format_block_line(block: Any) -> str:
-        """Format a single unreachable block as a TOON line."""
-        return (
-            f"- L{block.start_line}-{block.end_line} in "
-            f"`{block.function_name}`: {block.reason} "
-            f"[{block.severity}]"
-        )
 
     def _build_file_response(
         self, result: UnreachableCodeResult, output_format: str
     ) -> dict[str, Any]:
         return result.to_dict()
-
-    def _format_file_blocks_toon(self, r: UnreachableCodeResult) -> list[str]:
-        """Format a single file's unreachable blocks as TOON lines."""
-        if not r.unreachable_blocks:
-            return []
-        lines = [f"### {r.file_path} ({r.language})"]
-        for block in r.unreachable_blocks:
-            lines.append(
-                f"- L{block.start_line}-{block.end_line} in "
-                f"`{block.function_name}`: {block.reason}"
-            )
-        return lines
 
     def _build_project_response(
         self, results: list[UnreachableCodeResult], output_format: str

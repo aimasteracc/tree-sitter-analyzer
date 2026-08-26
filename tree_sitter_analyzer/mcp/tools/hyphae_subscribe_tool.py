@@ -19,7 +19,7 @@ from typing import Any
 
 from tree_sitter_analyzer.registry.singleton_registry import get_subscription_registry
 
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 
@@ -110,7 +110,7 @@ class HyphaeSubscribeTool(BaseMCPTool):
                 "Unsubscribe via search action=unsubscribe."
             ),
         )
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
 
 class HyphaeUnsubscribeTool(BaseMCPTool):
@@ -163,7 +163,7 @@ class HyphaeUnsubscribeTool(BaseMCPTool):
             selector=selector,
             message="Unsubscribed.",
         )
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
 
 # ---------------------------------------------------------------------------

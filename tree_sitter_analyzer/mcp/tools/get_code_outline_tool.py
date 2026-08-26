@@ -29,7 +29,7 @@ from ...core.analysis_engine import (
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
 from ..utils import get_performance_monitor
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import (
     BaseMCPTool,
     detect_language_mismatch,
@@ -141,8 +141,7 @@ class GetCodeOutlineTool(BaseMCPTool):
                     "type": "string",
                     "enum": ["json"],
                     "description": (
-                        "Output format: 'toon' for compact TOON format (50-70% token savings), "
-                        "or 'json' for standard JSON. Default 'toon'."
+                        "Output format: JSON (the only supported response format)."
                     ),
                     "default": "json",
                 },
@@ -194,7 +193,7 @@ class GetCodeOutlineTool(BaseMCPTool):
         # 验证 output_format
         if "output_format" in arguments:
             output_format = arguments["output_format"]
-            if output_format not in ("json", "toon"):
+            if output_format not in ("json", "json"):
                 return False  # 无效格式返回 False
 
         # 验证 listed_cap
@@ -321,7 +320,7 @@ class GetCodeOutlineTool(BaseMCPTool):
         guard), ``_run_outline_analysis`` (analysis engine call),
         ``_assemble_outline_response`` (canonical dict + field hoisting),
         ``_attach_outline_summary`` (summary_line + agent_summary).
-        TOON default LOCKED — output_format default stays ``toon``.
+        JSON-only output is the stable response contract.
         Issue #513 leg 3: listed_cap caps classes + top_level_functions on the
         MCP path; honest-truncation fields added to response.
         """
@@ -353,7 +352,7 @@ class GetCodeOutlineTool(BaseMCPTool):
             )
             self._attach_outline_summary(result, file_path)
             self._attach_input_diagnostics(result, resolved["resolved_path"])
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
         except Exception as e:
             self.logger.error(f"Error in get_code_outline: {e}")
@@ -626,7 +625,7 @@ class GetCodeOutlineTool(BaseMCPTool):
                 "\n\n"
                 "This is the outline-first workflow: understand the architecture, then use "
                 "extract_code_section to fetch only the specific code you need. "
-                "TOON format (default) delivers 54-56% token savings vs JSON. "
+                "JSON format (default) delivers 54-56% token savings vs JSON. "
                 "\n\n"
                 "WHEN TO USE:\n"
                 "- After check_code_scale shows a file is > 200 lines — get the map before diving in\n"

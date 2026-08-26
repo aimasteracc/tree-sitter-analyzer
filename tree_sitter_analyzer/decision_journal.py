@@ -100,7 +100,7 @@ class DecisionRecord:
     superseded_by: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a plain dict suitable for JSON / TOON envelopes.
+        """Return a plain dict suitable for JSON response envelopes.
 
         ``asdict()`` preserves tuple types for tuple-typed fields, but JSON
         serialisers and the canonical envelope contract expect Python

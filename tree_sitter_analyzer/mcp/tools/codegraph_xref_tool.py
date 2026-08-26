@@ -19,7 +19,7 @@ from typing import Any
 
 from ...utils import setup_logger
 from ...xref import XRefEngine
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 
@@ -189,4 +189,4 @@ class CodeGraphXRefTool(BaseMCPTool):
             verdict = "INFO" if has_data else "NOT_FOUND"
             result = build_response(verdict=verdict, mode="symbol", **xref_dict)
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)

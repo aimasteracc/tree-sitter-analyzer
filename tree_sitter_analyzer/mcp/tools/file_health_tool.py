@@ -66,17 +66,8 @@ TOOL_SCHEMA: dict[str, Any] = {
         "output_format": {
             "type": "string",
             "enum": ["json"],
-            "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+            "description": "Output format: JSON",
             "default": "json",
-        },
-        "compact_only": {
-            "type": "boolean",
-            "default": False,
-            "description": (
-                "RFC-0012: with output_format=toon, return only the control "
-                "surface (success/verdict/summary_line/error) alongside "
-                "toon_content, dropping metadata already encoded in the blob."
-            ),
         },
     },
     "required": ["file_path"],
@@ -175,44 +166,42 @@ class FileHealthTool(BaseMCPTool):
         self.validate_arguments(arguments)
         file_path = arguments["file_path"]
         output_format = arguments.get("output_format", "json")
-        compact_only = bool(arguments.get("compact_only", False))
         language = arguments.get("language")
 
         resolved = self.resolve_and_validate_file_path(file_path)
         if not Path(resolved).exists():
             raise ValueError(f"File not found: {file_path}")
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
         early = self._check_early_exit_paths(
             resolved, file_path, language, output_format
         )
         if early is not None:
-            return apply_toon_format_to_response(
-                early, output_format, compact_only=compact_only
+            return apply_output_format_to_response(
+                early, output_format
             )
 
         language = self._resolve_language_for_health(resolved, language)
         analysis = extract_elements(resolved, self.project_root)
 
         if _looks_binary(resolved, language, analysis):
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 _binary_file_response(file_path, resolved),
                 output_format,
-                compact_only=compact_only,
             )
 
         # M3: tree-sitter is permissive — short-circuit on parse errors so
         # the agent doesn't see ``grade=A`` on broken syntax.
         syntax_response = _syntax_error_response(resolved, file_path, language)
         if syntax_response is not None:
-            return apply_toon_format_to_response(
-                syntax_response, output_format, compact_only=compact_only
+            return apply_output_format_to_response(
+                syntax_response, output_format
             )
 
         result = self._score_and_echo_metrics(resolved, file_path, language, analysis)
-        return apply_toon_format_to_response(
-            result, output_format, compact_only=compact_only
+        return apply_output_format_to_response(
+            result, output_format
         )
 
     def _check_early_exit_paths(

@@ -7,28 +7,24 @@ Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/f
 
 | Format | Module | Default for | Use case |
 |---|---|---|---|
-| `toon` | `formatters/toon_formatter.py` (+ `formatters/toon_encoder.py` engine) | **MCP** | LLM agents — 50-70% fewer tokens than JSON (see `CLAUDE.md` §1; enforced by `tests/unit/mcp/test_output_cost_invariants.py`) |
-| `json` | `formatters/json_formatter.py` | **CLI** | `jq` piping, programmatic ingestion |
+| `json` | `formatters/json_formatter.py` | **MCP + CLI** | Canonical structured response format; `jq`-friendly programmatic ingestion |
 | `table` | `formatters/table_formatter.py` (canonical, re-exports `LegacyTableFormatter`) + `tree_sitter_analyzer/default_table_formatter.py` + `legacy_table_formatter.py` | `--table` flag | Terminal viewing with box-drawing chars |
 | `csv` | via `tree_sitter_analyzer/_legacy_table_formatter_csv.py` | `--table csv` | Spreadsheet ingestion |
 | `signatures` | `formatters/_java_formatter_signatures_mixin.py` (Java); `formatters/_python_formatter_signatures_table.py` (Python); `formatters/_typescript_formatter_signatures_table.py` (TypeScript); `default_table_formatter.py` (fallback) | `--table signatures` | Lightweight method-directory for large files — ~25-80% of full tokens; agent-first, then `--partial-read` for bodies |
 | `yaml` | `formatters/yaml_formatter.py` | explicit `--format yaml` | Human-readable structured |
 
-## Why TOON for MCP, JSON for CLI?
+## Why JSON for MCP and CLI?
 
 **Locked design decision** (see `CLAUDE.md`):
 
-| | TOON | JSON |
-|---|---|---|
-| Token cost | -50-70% | baseline |
-| Loss | none | none |
-| `jq` friendliness | no | yes |
-| Human readability | medium | high |
+| | JSON |
+|---|---|
+| Interoperability | standard |
+| Loss | none |
+| `jq` friendliness | yes |
+| Human readability | high |
 
-→ MCP callers are LLM agents → token cost is real money → TOON wins.
-→ CLI callers are humans / shells → `jq` & readability win → JSON wins.
-
-**Do NOT propose flipping MCP default from `toon` to `json`** — the cost analysis is settled.
+→ MCP and CLI callers share one canonical, machine-readable JSON contract.
 
 ## Formatter Interfaces
 
@@ -118,40 +114,24 @@ carriage return is **stripped** because Python 3.10 emits it unquoted, yielding
 an unreadable CSV. Used by `CsvFormatter`, `format_html_csv`, and
 `format_csv_output`.
 
-## TOON Format
+## JSON Format
 
-TOON (Token-Oriented Object Notation) emits indentation-aware key:value lines without
-JSON's punctuation overhead. Example:
+JSON emits a standard structured object with stable field names and nested response data.
 
+<!-- Legacy compact-format implementation removed; historical references belong in changelog/postmortems only. -->
+
+JSON example:
+
+```json
+{
+  "file": "src/foo.py",
+  "language": "python",
+  "classes": [{"name": "Foo", "line": 12, "end_line": 80}]
+}
 ```
-file: src/foo.py
-language: python
-classes:
-  - name: Foo
-    line: 12
-    end_line: 80
-    methods:
-      - name: bar
-        line: 14
-```
 
-Same data in JSON costs noticeably more tokens for typical AST outputs (the
-50-70% TOON saving cited above; the exact ratio is pinned by `tests/unit/mcp/test_output_cost_invariants.py`).
-
-Serialization helpers: `formatters/toon_formatter.py:_emit_*` (extracted in r37dm dogfood).
-
-### TOON Encoder/Decoder internals
-
-| Module | Role |
-|---|---|
-| `formatters/toon_encoder.py` | `ToonEncoder` — iterative encoder; `encode_value` for scalars |
-| `formatters/_toon_encoder_string_helpers.py` | `needs_quotes`, `escape_string` — quoting rules |
-| `formatters/_toon_encoder_table_helpers.py` | Array-table encoding: `union_schema`, `encode_array_table_lines` |
-| `formatters/_toon_encoder_task_helpers.py` | Stack-based task dispatch helpers |
-| `formatters/toon_decoder.py` | `decode_toon(token)` — inverse of `encode_value` for scalar tokens (issue #1058); `ToonDecodeError` |
-
-The decoder is intentionally **scalar-only** (PR1 scope): it handles `null`, `true`/`false`, numbers, quoted strings, and bare words.
-Full dict/list/table parsing is deferred to RFC-0018.
+The JSON serializer is the sole wire-format implementation. Language-specific
+formatters remain available for explicit terminal table/CSV views.
 
 ## Format Stability Contract
 
@@ -187,8 +167,7 @@ extracted from the monolithic `legacy_table_formatter.py`:
 
 ## See Also
 
-- [`docs/toon-format-guide.md`](../toon-format-guide.md)
 - [`docs/format_specifications.md`](../format_specifications.md)
 - [`docs/format-testing-guide.md`](../format-testing-guide.md)
-- [`CLAUDE.md` § "Deliberate design decisions"](../../CLAUDE.md) — TOON default rationale
+- [`CLAUDE.md` § "Deliberate design decisions"](../../CLAUDE.md) — JSON contract rationale
 - [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks new `formatters/*.py` without a `formatters.md` update

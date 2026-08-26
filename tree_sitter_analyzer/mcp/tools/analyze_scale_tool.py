@@ -14,7 +14,7 @@ from typing import Any, cast
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .analyze_scale_helpers import (
     BATCH_CONCURRENCY,
     TOOL_SCHEMA,
@@ -233,7 +233,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                 est_tokens,
             )
 
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
     def _resolve_language(self, resolved: str, language: str | None) -> str:
         """Detect language from file extension or argument override."""
@@ -337,7 +337,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         response = assemble_batch_response(
             per_file, file_paths_list, output_format, metrics_only
         )
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
     async def _scatter_batch_metrics(
         self, file_paths: list[str]
@@ -366,7 +366,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         file_path: str,
         file_metrics: dict[str, Any],
         include_guidance: bool,
-        output_format: str = "toon",
+        output_format: str = "json",
     ) -> dict[str, Any]:
         """Create analysis for non-source files (JSON, YAML, etc.)."""
         return create_json_file_analysis(

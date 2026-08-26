@@ -135,8 +135,8 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
             # The inner tool's own hint ends "Use mode=apply to execute." — a
             # next_step naming a route that does not exist on this surface
             # (RFC-0028 §3.1 item 2). Rewrite it on BOTH the JSON key and the
-            # TOON body, or the two surfaces disagree about what is callable.
-            for key in ("hint", "toon_content"):
+            # legacy alternate body, or the two surfaces disagree about what is callable.
+            for key in ("hint",):
                 value = result.get(key)
                 if isinstance(value, str) and _APPLY_HINT in value:
                     result[key] = value.replace(_APPLY_HINT, _PREVIEW_HINT)

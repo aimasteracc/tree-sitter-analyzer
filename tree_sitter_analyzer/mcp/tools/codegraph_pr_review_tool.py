@@ -754,9 +754,9 @@ class CodeGraphPRReviewTool(BaseMCPTool):
     def _format_response(
         self, response: dict[str, Any], output_format: str
     ) -> dict[str, Any]:
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
 
 def _compute_verdict(overall_risk: str, api_changes: int, affected_funcs: int) -> str:

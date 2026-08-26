@@ -168,9 +168,7 @@ class RefactorQueueTool(BaseMCPTool):
                     "enum": ["json"],
                     "default": "json",
                     "description": (
-                        "Output format: 'toon' (default, token-efficient) or "
-                        "'json'. The MCP-toon / CLI-json split is a locked "
-                        "design decision (CLAUDE.md §1)."
+                        "Output format: JSON (the only supported response format)."
                     ),
                 },
             },
@@ -278,7 +276,7 @@ class RefactorQueueTool(BaseMCPTool):
 
     def _unavailable(self, output_format: str) -> dict[str, Any]:
         """No churn signal → an explicit status, never a queue of zeros."""
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
         summary_line = format_summary_line(
             "refactor_queue", f"status={CHURN_UNAVAILABLE}", "candidates=0"
@@ -288,7 +286,7 @@ class RefactorQueueTool(BaseMCPTool):
             "queue cannot be ranked. Run `index action=build` (CLI: "
             "--build-project-index) on a repo with git history, then retry."
         )
-        return apply_toon_format_to_response(
+        return apply_output_format_to_response(
             {
                 "success": True,
                 "verdict": "WARN",
@@ -313,7 +311,7 @@ class RefactorQueueTool(BaseMCPTool):
         top_n: int,
         output_format: str,
     ) -> dict[str, Any]:
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
         head = queue[0]["file_path"] if queue else "n/a"
         summary_line = format_summary_line(
@@ -329,7 +327,7 @@ class RefactorQueueTool(BaseMCPTool):
             if queue
             else "No churny file scored above zero — nothing to queue."
         )
-        return apply_toon_format_to_response(
+        return apply_output_format_to_response(
             {
                 "success": True,
                 "verdict": "INFO",

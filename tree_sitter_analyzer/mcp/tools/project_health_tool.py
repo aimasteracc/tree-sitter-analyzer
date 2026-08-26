@@ -128,17 +128,8 @@ class ProjectHealthTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+                    "description": "Output format: JSON",
                     "default": "json",
-                },
-                "compact_only": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": (
-                        "RFC-0012: with output_format=toon, return only the "
-                        "control surface alongside toon_content, dropping "
-                        "metadata already encoded in the blob."
-                    ),
                 },
             },
             "additionalProperties": False,
@@ -156,7 +147,6 @@ class ProjectHealthTool(BaseMCPTool):
         min_grade = arguments.get("min_grade", "D")
         max_files = _normalize_max_files(arguments.get("max_files", 20))
         output_format = arguments.get("output_format", "json")
-        compact_only = bool(arguments.get("compact_only", False))
 
         scorer = HealthScorer()
         # F9: measure the scan so the response carries an honest
@@ -175,10 +165,10 @@ class ProjectHealthTool(BaseMCPTool):
             walk_stats=walk_stats,
         )
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(
-            result, output_format, compact_only=compact_only
+        return apply_output_format_to_response(
+            result, output_format
         )
 
 

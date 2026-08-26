@@ -4,7 +4,7 @@
 These three commands all wrap MCP tools (``codegraph_autoindex``,
 ``codegraph_full_index``, ``codegraph_metrics``). They live in a single
 module because they share the same execution shape — instantiate tool,
-build a kwargs dict, ``await tool.execute(...)``, print JSON or TOON.
+build a kwargs dict, ``await tool.execute(...)``, and print JSON.
 
 Keeping them out of :mod:`tree_sitter_analyzer.cli.commands.mcp_commands`
 avoids growing the already-large MCP_COMMAND_SPECS table and matches the
@@ -36,12 +36,12 @@ def _project_root(args: Any) -> str:
 def _output_format(args: Any) -> str:
     """Map argparse-visible output format to MCP tool format.
 
-    Delegates to :func:`tree_sitter_analyzer.cli.output_format.resolve_mcp_tool_format`
+    Delegates to :func:`tree_sitter_analyzer.cli.output_format.resolve_output_format`
     so the args→tool-format mapping has one source of truth (r37an).
     """
-    from tree_sitter_analyzer.cli.output_format import resolve_mcp_tool_format
+    from tree_sitter_analyzer.cli.output_format import resolve_output_format
 
-    return resolve_mcp_tool_format(args)
+    return resolve_output_format(args)
 
 
 def _print(result: dict[str, Any], output_format: str) -> None:

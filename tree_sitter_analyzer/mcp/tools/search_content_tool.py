@@ -13,10 +13,7 @@ from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import (
-    apply_toon_format_to_response,
-    attach_toon_content_to_response,
-)
+from ..utils.format_helper import apply_output_format_to_response
 from ..utils.gitignore_detector import get_default_detector
 from ..utils.search_cache import get_default_cache
 from . import fd_rg_utils
@@ -278,8 +275,8 @@ class SearchContentTool(BaseMCPTool):
             cache=self.cache,
             file_output_manager=self.file_output_manager,
             fd_rg_utils=fd_rg_utils,
-            attach_toon=attach_toon_content_to_response,
-            apply_toon=apply_toon_format_to_response,
+            attach_response=lambda result: result,
+            apply_response=apply_output_format_to_response,
             rg_args=rg_args,
             roots=roots,
             files=files,

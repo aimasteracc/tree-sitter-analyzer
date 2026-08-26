@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
 from .read_partial_helpers import build_batch_agent_summary
 
@@ -415,7 +415,7 @@ def _build_batch_response(
     *,
     fail_fast: bool,
 ) -> dict[str, Any]:
-    """Compose the canonical batch envelope + apply TOON formatting.
+    """Compose the canonical batch JSON envelope.
 
     Success preserved exactly: ``ok_sections > 0 AND (no errors OR fail_fast
     disabled)``. fail_fast=True with any error sinks ``success`` to False
@@ -436,4 +436,4 @@ def _build_batch_response(
         ),
         "results": results,
     }
-    return apply_toon_format_to_response(response, output_format)
+    return apply_output_format_to_response(response, output_format)

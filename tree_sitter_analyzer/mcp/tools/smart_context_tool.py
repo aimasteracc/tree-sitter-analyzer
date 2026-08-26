@@ -128,7 +128,7 @@ class SmartContextTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": "Output format: 'toon' (default) or 'json'",
+                    "description": "Output format: JSON",
                     "default": "json",
                 },
             },
@@ -150,7 +150,7 @@ class SmartContextTool(BaseMCPTool):
         self.validate_arguments(arguments)
         file_path = arguments["file_path"]
         output_format = arguments.get("output_format", "json")
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
         # #754: smart_context blends file_health + risk signals but called
         # HealthScorer.score_file directly, bypassing the shared syntax gate the
@@ -165,14 +165,14 @@ class SmartContextTool(BaseMCPTool):
             result = _build_syntax_error_result(
                 resolved, language, self.project_root, output_format
             )
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
         profile = self._build_profile(file_path)
         result = _build_smart_context_result(profile)
         # Echo the requested output_format so agents can audit envelope
         # parity across tools without consulting the call site.
         result["output_format"] = output_format
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     # _build_profile: implementation
     def _build_profile(self, file_path: str) -> SmartContextProfile:
