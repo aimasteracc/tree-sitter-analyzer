@@ -59,7 +59,10 @@ def test_benchmark_package_declares_internal_only_status() -> None:
 
 def test_module_route_is_the_only_entry_point() -> None:
     """No console script may expose the benchmark to end users."""
-    import tomllib
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10; tomllib landed in 3.11.
+        import tomli as tomllib
 
     pyproject = tomllib.loads(
         (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
