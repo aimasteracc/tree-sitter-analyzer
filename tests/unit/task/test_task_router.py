@@ -27,7 +27,7 @@ from tree_sitter_analyzer.task.router import (
     plan_change,
     understand,
 )
-from tree_sitter_analyzer.task.serializers import serialize_json, serialize_toon
+from tree_sitter_analyzer.task.serializers import serialize_json
 
 INDEX_OK = {
     "success": True,
@@ -600,11 +600,11 @@ def test_task_text_never_appears_in_frozen_model() -> None:
     executor = FakeExecutor()
     outcome = _run(understand(UnderstandRequest(task=secret_task), executor))
     assert outcome.request.task == "TASK_TEXT_OMITTED"
-    for text in (serialize_json(outcome), serialize_toon(outcome)):
-        assert "SECRET_TOKEN" not in text
-        assert "abc123" not in text
-        assert "key.pem" not in text
-        assert "explain the" not in text
+    text = serialize_json(outcome)
+    assert "SECRET_TOKEN" not in text
+    assert "abc123" not in text
+    assert "key.pem" not in text
+    assert "explain the" not in text
     for record in outcome.provenance:
         assert "SECRET_TOKEN" not in record["request_hash"]
 
@@ -619,9 +619,9 @@ def test_executor_exception_is_redacted_failure() -> None:
     outcome = _run(understand(UnderstandRequest(task="x"), executor))
     # Index failed -> unknown; nav not called -> unknown: all unknown.
     assert outcome.status == "unknown"
-    for text in (serialize_json(outcome), serialize_toon(outcome)):
-        assert "secret traceback" not in text
-        assert "/home/me" not in text
+    text = serialize_json(outcome)
+    assert "secret traceback" not in text
+    assert "/home/me" not in text
 
 
 def test_only_pinned_actions_are_ever_called() -> None:
@@ -781,19 +781,13 @@ def test_diff_impact_access_unavailable_stops_route() -> None:
 
 
 def test_serialized_wire_roundtrips_router_outcome() -> None:
-    from tree_sitter_analyzer.task.serializers import (
-        decode_json,
-        decode_toon,
-        parity_roundtrip,
-    )
+    from tree_sitter_analyzer.task.serializers import decode_json
 
     executor = FakeExecutor()
     outcome = _run(
         assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
     )
-    parity_roundtrip(outcome)
     assert decode_json(serialize_json(outcome)) == outcome
-    assert decode_toon(serialize_toon(outcome)) == outcome
     wire = json.loads(serialize_json(outcome))
     assert wire["schema"] == "task-outcome/v1"
     assert wire["operation"] == "assess_change"
@@ -1255,8 +1249,7 @@ def test_release_snapshot_raising_degrades_cleanup_to_failed() -> None:
     assert outcome.verdict == "ERROR"
     assert outcome.consumed.cleanup_status == "failed"
     assert outcome.consumed.cleanup_error_code == "DIFF_SNAPSHOT_CLEANUP_FAILED"
-    for text in (serialize_json(outcome), serialize_toon(outcome)):
-        assert "cleanup boom" not in text
+    assert "cleanup boom" not in serialize_json(outcome)
 
 
 def test_safe_without_action_version_mints_no_evidence() -> None:

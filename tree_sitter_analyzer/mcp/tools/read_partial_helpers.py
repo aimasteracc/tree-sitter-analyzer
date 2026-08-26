@@ -5,8 +5,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..utils.format_helper import format_for_file_output
-
 # Schema for a single line-range section within a request item.
 # Extracted to reduce nesting depth in TOOL_SCHEMA (sections.items is 5 dict-levels deep).
 _SECTION_ITEM_SCHEMA: dict[str, Any] = {
@@ -55,8 +53,8 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
         },
         "output_file": {
             "type": "string",
@@ -575,8 +573,7 @@ def prepare_partial_save_content(
     """Prepare extracted content for file output based on ``content_format``.
 
     ``raw`` returns the body untouched. ``json`` wraps body + range
-    metadata and emits either a TOON blob (when ``output_format=='toon'``)
-    or pretty-printed JSON. Any other format falls back to the already-
+    metadata and emits a pretty-printed JSON blob. Any other format falls back to the already-
     rendered ``result['partial_content_result']`` string.
     """
     if content_format == "raw":
@@ -588,9 +585,6 @@ def prepare_partial_save_content(
             "content": content,
             "content_length": len(content),
         }
-        if output_format == "toon":
-            content_to_save, _ = format_for_file_output(result_data, "toon")
-            return content_to_save
         return json.dumps(result_data, indent=2, ensure_ascii=False)
     return str(result.get("partial_content_result", content))
 

@@ -209,17 +209,6 @@ class TestExecuteFull:
 
 class TestExecuteOutputFormat:
     @pytest.mark.asyncio
-    async def test_toon_format(self, tool):
-        mock_graph = MagicMock()
-        mock_graph.build.side_effect = Exception("no project")
-        with patch.object(tool, "get_call_graph", return_value=mock_graph):
-            result = await tool.execute(
-                {"symbol": "foo", "mode": "hierarchy", "output_format": "toon"}
-            )
-        assert result["format"] == "toon"
-        assert "toon_content" in result
-
-    @pytest.mark.asyncio
     async def test_json_format(self, tool):
         mock_graph = MagicMock()
         mock_graph.build.side_effect = Exception("no project")
@@ -308,12 +297,3 @@ class TestDefinitionBodyInlining:
         assert bodied, "definition must carry an inlined body"
         assert "FOUND_MARKER" in bodied[0]["body"]["content"]
         assert "no Read needed" in result["next_step"]
-
-    @pytest.mark.asyncio
-    async def test_definition_body_survives_toon(self, indexed):
-        tool = CodeGraphNavigateTool(indexed)
-        result = await tool.execute(
-            {"symbol": "_find", "mode": "definition", "output_format": "toon"}
-        )
-        assert result.get("format") == "toon"
-        assert "FOUND_MARKER" in result["toon_content"]

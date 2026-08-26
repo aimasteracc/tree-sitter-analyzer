@@ -139,7 +139,6 @@ def _build_result(
     verdict = agent_summary.get("verdict")
     if isinstance(verdict, str) and verdict:
         result["verdict"] = verdict
-    result["toon_content"] = _build_toon_content(result)
     return result
 
 
@@ -310,71 +309,3 @@ def _summary_verification_command(first: dict[str, Any] | None) -> str:
     if first:
         return first["verification_command"]
     return "uv run tree-sitter-analyzer parser-readiness --format json"
-
-
-def _build_toon_content(result: dict[str, Any]) -> str:
-    summary = result["agent_summary"]
-    status_distribution = result.get("status_distribution", {})
-    lines = [
-        "advisor: parser readiness",
-        f"risk: {summary['risk']}",
-        f"reported_language_count: {summary['reported_language_count']}",
-        f"candidate_count: {summary['candidate_count']}",
-        "status_distribution: "
-        + ", ".join(
-            f"{key}={status_distribution[key]}" for key in sorted(status_distribution)
-        ),
-        f"top_priority_languages: {', '.join(result.get('high_priority_languages', []))}",
-        f"next_step: {summary['next_step']}",
-        f"verification_command: {summary['verification_command']}",
-        "readiness:",
-    ]
-    lines.extend(_toon_readiness_lines(result["readiness"]))
-    lines.append("recommendations:")
-    lines.extend(_toon_recommendation_lines(result["recommendations"]))
-    return "\n".join(lines)
-
-
-def _toon_readiness_lines(records: list[dict[str, Any]]) -> list[str]:
-    return [_toon_readiness_line(record) for record in records[:5]]
-
-
-def _toon_readiness_line(record: dict[str, Any]) -> str:
-    signals = record["signals"]
-    project_url = _readiness_url(signals)
-    parts = [
-        f"status={record['status']}",
-        f"score={record['score']}",
-        f"parser={record['parser_package'] or '-'}",
-        f"pkg_version={signals.get('parser_package_version') or '-'}",
-        f"req_spec={signals.get('parser_required_spec') or '-'}",
-        f"abi={signals.get('upstream_parser_abi') or '-'}",
-        f"grammar={signals.get('upstream_grammar_json') or '-'}",
-        f"scanner={signals.get('upstream_external_scanner') or '-'}",
-        f"maintenance={signals.get('upstream_maintenance') or '-'}",
-    ]
-    if project_url:
-        parts.append(f"url={project_url}")
-    return f"  - {record['language']}: " + " ".join(parts)
-
-
-def _first_project_url(project_urls: dict[str, str]) -> str:
-    if not project_urls:
-        return ""
-    return next(iter(project_urls.values()))
-
-
-def _readiness_url(signals: dict[str, Any]) -> str:
-    maintenance_urls = signals.get("parser_maintenance_urls", {})
-    if maintenance_urls:
-        return maintenance_urls.get("releases") or maintenance_urls.get(
-            "repository", ""
-        )
-    return _first_project_url(signals.get("parser_project_urls", {}))
-
-
-def _toon_recommendation_lines(recommendations: list[dict[str, Any]]) -> list[str]:
-    return [
-        f"  - {item['language']}: status={item['status']} score={item['score']} next={item['next_step']}"
-        for item in recommendations
-    ]

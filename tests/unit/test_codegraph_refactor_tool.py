@@ -32,10 +32,6 @@ class TestToolDefinition:
         assert set(mode["enum"]) == {"preview", "apply"}
         assert mode["default"] == "preview"
 
-    def test_schema_output_format_default_toon(self, tool):
-        fmt = tool.get_tool_schema()["properties"]["output_format"]
-        assert fmt["default"] == "toon"
-
     def test_no_annotations_destructive_false(self, tool):
         defn = tool.get_tool_definition()
         # refactor tool explicitly does NOT have readOnlyHint in the dict
@@ -102,10 +98,3 @@ class TestExecutePreview:
             or result.get("preview") is True
             or "sites" in result
         )
-
-    async def test_toon_format_default(self, tool_with_root):
-        result = await tool_with_root.execute(
-            {"symbol": "nonexistent_fn", "new_name": "renamed_fn"}
-        )
-        assert result["format"] == "toon"
-        assert "toon_content" in result

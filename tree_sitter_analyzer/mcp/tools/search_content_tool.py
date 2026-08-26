@@ -13,10 +13,7 @@ from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import (
-    apply_toon_format_to_response,
-    attach_toon_content_to_response,
-)
+from ..utils.format_helper import apply_output_format_to_response
 from ..utils.gitignore_detector import get_default_detector
 from ..utils.search_cache import get_default_cache
 from . import fd_rg_utils
@@ -232,7 +229,7 @@ class SearchContentTool(BaseMCPTool):
             return file_root_envelope
 
         self.validate_arguments(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         roots, files = self._resolve_inputs(arguments)
 
@@ -246,8 +243,6 @@ class SearchContentTool(BaseMCPTool):
         requested_format = determine_requested_format(arguments)
         fts_result = _try_fts5_fast_path(arguments, self.project_root, requested_format)
         if fts_result is not None:
-            if output_format == "toon" and isinstance(fts_result, dict):
-                return apply_toon_format_to_response(fts_result, output_format)
             return fts_result
 
         if not fd_rg_utils.check_external_command("rg"):
@@ -280,8 +275,8 @@ class SearchContentTool(BaseMCPTool):
             cache=self.cache,
             file_output_manager=self.file_output_manager,
             fd_rg_utils=fd_rg_utils,
-            attach_toon=attach_toon_content_to_response,
-            apply_toon=apply_toon_format_to_response,
+            attach_response=lambda result: result,
+            apply_response=apply_output_format_to_response,
             rg_args=rg_args,
             roots=roots,
             files=files,

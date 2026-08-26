@@ -6,7 +6,7 @@ These tests verify 6 invariants that every concrete MCP tool must satisfy:
   3. set_project_path("/tmp") does not raise.
   4. The "inputSchema" has "properties" and "required" keys.
   5. tool definition "name" is consistent with tool class identity.
-  6. The output_format property defaults to "toon" (MCP-is-toon design decision).
+  6. The output_format property defaults to "json".
 
 These tests replace per-tool boilerplate that was copy-pasted across dozens of
 test files. Any new BaseMCPTool subclass should be added to the parametrize list.
@@ -124,11 +124,10 @@ class TestBaseMCPToolContract:
         )
 
     @pytest.mark.parametrize("tool", TOOLS, ids=_tool_id)
-    def test_output_format_defaults_to_toon(self, tool: object) -> None:
-        """Invariant 6: output_format property defaults to 'toon' (MCP token-efficiency design).
+    def test_output_format_defaults_to_json(self, tool: object) -> None:
+        """Invariant 6: output_format property defaults to 'json'.
 
-        See CLAUDE.md section 1: 'MCP defaults to TOON — LOCKED'. Any tool that
-        exposes an output_format parameter MUST declare 'toon' as its default.
+        TOON has been removed; all MCP tools now default to JSON output.
         """
         defn = tool.get_tool_definition()
         schema = defn.get("inputSchema", {})
@@ -137,9 +136,8 @@ class TestBaseMCPToolContract:
             pytest.skip(f"{_tool_id(tool)}: does not expose output_format parameter")
         of_schema = props["output_format"]
         default = of_schema.get("default")
-        assert default == "toon", (
-            f"{_tool_id(tool)}: output_format.default must be 'toon', got {default!r}. "
-            "See CLAUDE.md §1: MCP defaults to TOON — LOCKED."
+        assert default == "json", (
+            f"{_tool_id(tool)}: output_format.default must be 'json', got {default!r}."
         )
 
 

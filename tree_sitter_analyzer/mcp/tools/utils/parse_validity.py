@@ -284,7 +284,7 @@ def syntax_error_envelope(
     file_path: str,
     *,
     tool: str,
-    output_format: str = "toon",
+    output_format: str = "json",
 ) -> dict[str, Any]:
     """Build the canonical short-circuit envelope for a syntax error.
 
@@ -316,8 +316,7 @@ def syntax_error_envelope(
             "risk": "high",
         },
     }
-    # Round-trip ``output_format`` so envelope auditors can see what the
-    # caller requested even though syntax errors don't depend on it.
+    # Preserve the explicit JSON response selection for envelope auditors.
     if tool:
         payload["tool"] = tool
     if output_format:

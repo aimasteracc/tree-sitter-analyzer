@@ -139,9 +139,9 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
+            "enum": ["json"],
             "description": "Output format",
-            "default": "toon",
+            "default": "json",
         },
     },
     "additionalProperties": False,
@@ -210,7 +210,7 @@ class ProjectOverviewTool(BaseMCPTool):
 
         include_health = arguments.get("include_health", False)
         max_depth = arguments.get("max_depth", 5)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         root = Path(self.project_root).resolve()
         if not root.is_dir():
@@ -219,9 +219,9 @@ class ProjectOverviewTool(BaseMCPTool):
         scan = _scan_project(root, max_depth)
         result = _build_result(root, scan, include_health)
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
 
 def _load_gitignore_patterns(root: Path) -> pathspec.PathSpec | None:

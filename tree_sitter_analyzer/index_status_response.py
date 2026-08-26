@@ -9,7 +9,7 @@ from typing import Any
 from . import index_lag, index_snapshot
 from .index_snapshot import ACTION_VERSION
 from .mcp.tools._response_builder import build_response
-from .mcp.utils.format_helper import apply_toon_format_to_response
+from .mcp.utils.format_helper import apply_output_format_to_response
 from .read_existing_access import classify_index_access
 
 _DB_STORAGE_KEYS = (
@@ -59,7 +59,7 @@ def build_index_status_response(
                     reason="MISSING_PROJECT_ROOT",
                 )
             )
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     with index_snapshot.lease_existing_snapshot(project_root) as snapshot:
         access_snapshot_id = snapshot.snapshot_id
@@ -172,7 +172,7 @@ def build_index_status_response(
                 reason=snapshot.reason,
             )
         )
-    return apply_toon_format_to_response(result, output_format)
+    return apply_output_format_to_response(result, output_format)
 
 
 def _storage_fields(stats: dict[str, Any] | None) -> dict[str, int]:

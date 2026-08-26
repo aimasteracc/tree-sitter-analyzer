@@ -39,7 +39,7 @@ from ..utils.error_sanitizer import (
     bounded_safe_error_message,
     sanitize_error_detail,
 )
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -310,9 +310,9 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format (default: toon)",
-                    "default": "toon",
+                    "enum": ["json"],
+                    "description": "Output format: JSON.",
+                    "default": "json",
                 },
                 "exclude_patterns": {
                     "type": "array",
@@ -366,13 +366,13 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         if not self.project_root:
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 {
                     "success": False,
                     "verdict": "ERROR",
                     "error": "project_root not set. Call set_project_path first.",
                 },
-                arguments.get("output_format", "toon"),
+                arguments.get("output_format", "json"),
             )
 
         # Resolve a configured symlink exactly once at the operation boundary.
@@ -382,7 +382,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         max_files = arguments["max_files"]
         resolve_synapse = arguments.get("resolve_synapse", True)
         include_activation = bool(arguments.get("include_activation", False))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         extra_patterns: list[str] = list(arguments.get("exclude_patterns", None) or [])
         no_default_excludes: bool = bool(arguments.get("no_default_excludes", False))
         exclude_patterns = _resolve_exclude_patterns(
@@ -411,7 +411,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 str(self.project_root),
                 prefix="Candidate discovery failed: ",
             )
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 {
                     "success": False,
                     "verdict": "ERROR",
@@ -525,7 +525,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
 
                 release_index_candidate_snapshot(candidate_snapshot, result)
                 candidate_released = True
-                return apply_toon_format_to_response(result, output_format)
+                return apply_output_format_to_response(result, output_format)
 
             incremental_phase = self._phase_incremental_sync(
                 max_files,
@@ -587,7 +587,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
 
                     release_index_candidate_snapshot(candidate_snapshot, result)
                     candidate_released = True
-                    return apply_toon_format_to_response(result, output_format)
+                    return apply_output_format_to_response(result, output_format)
             phases["fts5"] = self._phase_fts5_stats(_cache=shared_cache)
 
             if resolve_synapse:
@@ -672,7 +672,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
 
             release_index_candidate_snapshot(candidate_snapshot, result)
             candidate_released = True
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
         finally:
             _safe_close_cache(shared_cache)
             if not candidate_released:

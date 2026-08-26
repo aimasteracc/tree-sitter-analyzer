@@ -61,7 +61,7 @@ class TestSearchContentFormatAlias:
         )
         assert args.output_format == "json"
 
-    @pytest.mark.parametrize("fmt", ["json", "text", "toon"])
+    @pytest.mark.parametrize("fmt", ["json", "text"])
     def test_format_alias_all_choices(self, fmt: str) -> None:
         parser = build_search_content_parser()
         args = parser.parse_args(["--roots", "root1", "--query", "x", "--format", fmt])
@@ -85,7 +85,7 @@ class TestFindAndGrepFormatAlias:
         )
         assert args.output_format == "json"
 
-    @pytest.mark.parametrize("fmt", ["json", "text", "toon"])
+    @pytest.mark.parametrize("fmt", ["json", "text"])
     def test_format_alias_all_choices(self, fmt: str) -> None:
         parser = build_find_and_grep_parser()
         args = parser.parse_args(["--roots", "root1", "--query", "x", "--format", fmt])
@@ -105,7 +105,7 @@ class TestListFilesFormatAlias:
         args = parser.parse_args(["root1", "--format", "json"])
         assert args.output_format == "json"
 
-    @pytest.mark.parametrize("fmt", ["json", "text", "toon"])
+    @pytest.mark.parametrize("fmt", ["json", "text"])
     def test_format_alias_all_choices(self, fmt: str) -> None:
         parser = build_list_files_parser()
         args = parser.parse_args(["root1", "--format", fmt])

@@ -68,9 +68,9 @@ class CodeGraphStatusTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
-                    "description": "Output format (default: toon)",
+                    "enum": ["json"],
+                    "default": "json",
+                    "description": "Output format: JSON.",
                 },
             },
             "additionalProperties": False,
@@ -86,7 +86,7 @@ class CodeGraphStatusTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         # Status is unconditionally read-only.  JSON Schema defaults are not
         # injected by every direct caller, so omission must be handled here.
         include_access_evidence = "access_mode" in arguments
@@ -115,9 +115,9 @@ class CodeGraphStatusTool(BaseMCPTool):
             reason=result.get("oracle_reason"),
         )
         enriched = {**result, **evidence}
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(enriched, output_format)
+        return apply_output_format_to_response(enriched, output_format)
 
     def _execute_read_existing(
         self,

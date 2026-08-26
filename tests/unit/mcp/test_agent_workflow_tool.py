@@ -136,68 +136,6 @@ async def test_agent_workflow_tool_returns_full_json_pack(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_agent_workflow_tool_defaults_to_compact_toon(tmp_path):
-    """TOON output keeps the MCP response compact but still actionable."""
-    result = await AgentWorkflowTool(str(tmp_path)).execute({})
-
-    assert result["format"] == "toon"
-    assert result["workflow"] == "SMART agent workflow pack"
-    assert result["workflow_mode"] == "SMART-SET-MAP-ANALYZE-RETRIEVE-TRACE"
-    assert "steps" not in result
-    assert result["current_phase"] == "set"
-    assert result["current_step"]["step"] == "set"
-    assert result["recommended_commands"] == [
-        "uv run tree-sitter-analyzer overview --format json",
-        "uv run tree-sitter-analyzer agent-skills --format json",
-        "uv run tree-sitter-analyzer parser-readiness --format json",
-    ]
-    assert result["agent_summary"]["current_phase"] == "set"
-    assert result["agent_summary"]["step_count"] == 5
-    assert "agent-skills --format json" in result["toon_content"]
-    assert "parser-readiness --format json" in result["toon_content"]
-    assert "current_phase: set" in result["toon_content"]
-    assert "recommended_commands:" in result["toon_content"]
-    assert "handoffs:" in result["toon_content"]
-    for route in agent_workflow.PHASE_ROUTING:
-        assert (
-            f"  - {route['from']} -> {route['to']} when {route['condition']}"
-            in result["toon_content"]
-        )
-    assert "queue_boundary" in result["toon_content"]
-    assert "transition_signal:" in result["toon_content"]
-    assert result["sprint_contract"]["scope"] == "project_surface_discovery"
-    assert "evaluator_checks: queue_boundary" in result["toon_content"]
-
-
-@pytest.mark.asyncio
-async def test_agent_workflow_toon_surfaces_queue_ledger_command(tmp_path):
-    """Targeted TOON output should expose the scoped queue-ledger command."""
-    target = tmp_path / "src" / "service.py"
-    target.parent.mkdir()
-    target.write_text("def run():\n    return 1\n", encoding="utf-8")
-
-    result = await AgentWorkflowTool(str(tmp_path)).execute(
-        {"target_path": "src/service.py", "output_format": "toon"}
-    )
-
-    assert result["agent_summary"]["queue_ledger_command"] == (
-        "uv run tree-sitter-analyzer change-impact "
-        "--change-impact-scope src/service.py --agent-summary-only --format json"
-    )
-    assert (
-        "queue_ledger: uv run tree-sitter-analyzer change-impact"
-        in result["toon_content"]
-    )
-    assert "handoffs:" in result["toon_content"]
-    for route in agent_workflow.PHASE_ROUTING:
-        assert (
-            f"  - {route['from']} -> {route['to']} when {route['condition']}"
-            in result["toon_content"]
-        )
-    assert result["sprint_contract"]["phase_goal"].startswith("Understand file shape")
-
-
-@pytest.mark.asyncio
 async def test_agent_workflow_tool_rejects_external_absolute_target(tmp_path):
     """MCP callers cannot generate workflow commands for outside paths."""
     tool = AgentWorkflowTool(str(tmp_path))
@@ -490,7 +428,7 @@ async def test_agent_workflow_tool_envelope_holds_for_both_formats(tmp_path):
     tool = AgentWorkflowTool(str(tmp_path))
 
     for target_path in (None, "src/service.py"):
-        for output_format in ("json", "toon"):
+        for output_format in ("json",):
             args: dict[str, object] = {"output_format": output_format}
             if target_path is not None:
                 args["target_path"] = target_path

@@ -321,42 +321,6 @@ class TestExecuteOutputModes:
                         assert result["agent_summary"]["mode"] == "summary"
                         assert result["agent_summary"]["file_count"] == 1
 
-    @pytest.mark.asyncio
-    async def test_execute_with_toon_format(self, tool, sample_project_structure):
-        """Test execute with toon output format."""
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.get_missing_commands",
-            return_value=[],
-        ):
-            with patch(
-                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture",
-                new_callable=AsyncMock,
-            ) as mock_run:
-                mock_run.side_effect = [
-                    (0, b"/path/to/file1.py\n", b""),
-                    (0, b'{"path": "file1.py"}\n', b""),
-                ]
-
-                with patch(
-                    "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
-                    return_value=[{"path": "file1.py", "line": 1}],
-                ):
-                    with patch(
-                        "tree_sitter_analyzer.mcp.tools.find_and_grep_response.apply_toon_format_to_response"
-                    ) as mock_toon:
-                        mock_toon.return_value = {"toon": "formatted"}
-
-                        arguments = {
-                            "roots": [str(sample_project_structure)],
-                            "query": "test",
-                            "output_format": "toon",
-                        }
-
-                        result = await tool.execute(arguments)
-
-                        assert mock_toon.called
-                        assert result == {"toon": "formatted"}
-
 
 class TestExecuteOptionsAndFeatures:
     """Tests for execute method with various option flags."""
@@ -395,7 +359,6 @@ class TestExecuteOptionsAndFeatures:
                         result = await tool.execute(arguments)
 
                         assert result["success"] is True
-                        assert "toon_content" in result
 
     @pytest.mark.asyncio
     async def test_execute_with_suppress_output(self, tool, sample_project_structure):
@@ -432,7 +395,6 @@ class TestExecuteOptionsAndFeatures:
                         result = await tool.execute(arguments)
 
                         assert result["success"] is True
-                        assert "toon_content" in result
 
     @pytest.mark.asyncio
     async def test_execute_with_optimize_paths(self, tool, sample_project_structure):
@@ -467,7 +429,6 @@ class TestExecuteOptionsAndFeatures:
                         result = await tool.execute(arguments)
 
                         assert result["success"] is True
-                        assert "toon_content" in result
 
     @pytest.mark.asyncio
     async def test_execute_with_gitignore_detection(

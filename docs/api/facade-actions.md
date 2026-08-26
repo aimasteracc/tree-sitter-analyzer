@@ -65,13 +65,13 @@ Reading the tables:
 | --- | --- | --- | --- |
 | `dead` | `include_test_files`, `max_dead`, `max_imports`, `max_variables`, `mode`, `output_format`, `path` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--dead-code` |
 | `deps` | `file_path`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--dependencies` |
-| `file` | `file_path`*, `compact_only`, `language`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--file-health` |
+| `file` | `file_path`*, `language`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--file-health` |
 | `heatmap` | `directory`, `file_path`, `function_name` (`symbol` aliases `function_name`), `language`, `max_files`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-complexity-heatmap` |
 | `imports` | `file_path`, `max_depth`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--import-graph` |
 | `matrix` | `mode`*, `file_path`, `output_format`, `threshold`, `top_k` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--dependency-matrix` |
 | `overview` | `max_coupled_files`, `max_dead`, `max_entry_points`, `max_hubs`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-overview` |
 | `patterns` | `file_path`*, `categories`, `output_format`, `severity_threshold` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--code-patterns` |
-| `project` | `compact_only`, `max_files`, `min_grade`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--project-health` |
+| `project` | `max_files`, `min_grade`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--project-health` |
 | `refactor_queue` | `output_format`, `top_n` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--refactor-queue` |
 | `routes` | `file_path`, `framework`, `mode`, `output_format`, `url_pattern` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--detect-routes` |
 | `scale` | `file_path`, `file_paths`, `include_complexity`, `include_details`, `include_guidance`, `language`, `metrics_only`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--metrics-only` |
@@ -86,13 +86,13 @@ Reading the tables:
 | `classify` | `access_mode`, `diff_snapshot_id`, `file_path`, `hunk_cap`, `include_ast_nodes`, `language`, `mode`, `new_ref`, `new_source`, `old_ref`, `old_source`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--semantic-classify` |
 | `constraints` | `access_mode`, `diff_snapshot_id`, `output_format`, `path_filter`, `persist`, `scope_paths`, `severity_min`, `snapshot_id`, `source_generation` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--check-constraints` |
 | `guard` | `modification_type`*, `symbol`*, `file_path` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--modification-guard` |
-| `impact` | `access_mode`, `agent_summary_only`, `capture_diff_snapshot`, `compact_only`, `include_tests`, `mode`, `output_format`, `pr_url`, `resource_profile`, `scope_mode`, `scope_paths` — `capture_diff_snapshot` is an explicit legacy producer available only to same-process POSIX consumers and is forbidden whenever `access_mode` is present | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--change-impact` |
+| `impact` | `access_mode`, `agent_summary_only`, `capture_diff_snapshot`, `include_tests`, `mode`, `output_format`, `pr_url`, `resource_profile`, `scope_mode`, `scope_paths` — `capture_diff_snapshot` is an explicit legacy producer available only to same-process POSIX consumers and is forbidden whenever `access_mode` is present | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--change-impact` |
 | `mutation_probe` | `code_location`*, `test_node_id`*, `output_format`, `timeout` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--mutation-probe` |
 | `plan_rename` | `new_name`*, `symbol`*, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--plan-rename` |
 | `pr` | `include_call_graph`, `mode`, `output_format`, `pr_url` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--pr-review` |
 | `refactor` | `file_path`*, `include_extractions`, `include_skeleton`, `language`, `max_suggestions`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--refactor` |
 | `release_snapshot` | `diff_snapshot_id`*, `route_lease_id`*, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
-| `safe` | `file_path`*, `access_mode`, `compact_only`, `edit_type`, `output_format`, `snapshot_id`, `source_generation` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--safe-to-edit` |
+| `safe` | `file_path`*, `access_mode`, `edit_type`, `output_format`, `snapshot_id`, `source_generation` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--safe-to-edit` |
 
 ## `project` — 11 actions
 

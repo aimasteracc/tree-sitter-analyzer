@@ -140,7 +140,6 @@ def build_agent_workflow_pack(
     agent_summary_dict = result["agent_summary"]
     if isinstance(agent_summary_dict, dict):
         agent_summary_dict["verdict"] = result["verdict"]
-    result["toon_content"] = _build_toon_content(result)
     return result
 
 
@@ -449,42 +448,3 @@ def _shell_safe_path(path: str | None) -> str:
         return path
     escaped = path.replace('"', '\\"').replace("$", "\\$").replace("`", "\\`")
     return '"' + escaped + '"'
-
-
-def _build_toon_content(result: dict[str, Any]) -> str:
-    """Build a compact text representation for --format toon."""
-    sprint_contract = result["sprint_contract"]
-    evaluator_checks = ", ".join(
-        check["name"] for check in sprint_contract["evaluator_checks"]
-    )
-    lines = [
-        "workflow: SMART agent workflow pack",
-        f"workflow_mode: {result['workflow_mode']}",
-        f"project_root: {result['project_root']}",
-        f"target_path: {result.get('target_path') or ''}",
-        f"current_phase: {result['current_phase']}",
-        f"next_phase: {result['agent_summary']['next_phase']}",
-        f"transition_signal: {result['agent_summary']['transition_signal']}",
-        f"next_step: {result['agent_summary']['next_step']}",
-        f"sprint_contract_mode: {sprint_contract['mode']}",
-        f"evaluator_checks: {evaluator_checks}",
-        "recommended_commands:",
-        *[f"  - {command}" for command in result["recommended_commands"]],
-        "steps:",
-    ]
-    for step in result["steps"]:
-        lines.append(
-            f"  - {step['step']}: {step['goal']} | first_cli={step['cli_commands'][0]}"
-        )
-    lines.append("handoffs:")
-    for step in result["steps"]:
-        handoff = step["handoff"]
-        lines.append(
-            f"  - {step['step']} -> {handoff['to']} when {handoff['condition']} "
-            f"via {handoff['transition_command']}"
-        )
-    queue_ledger_command = result["agent_summary"].get("queue_ledger_command")
-    if queue_ledger_command:
-        lines.append(f"queue_ledger: {queue_ledger_command}")
-    lines.append(f"queue_boundary: {result['queue_boundary_commands'][-1]}")
-    return "\n".join(lines)

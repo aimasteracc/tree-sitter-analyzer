@@ -107,9 +107,9 @@ def _project_root(args: Any) -> str:
 
 def _output_format(args: Any) -> str:
     """Resolve the output shape — text or JSON envelope."""
-    from tree_sitter_analyzer.cli.output_format import resolve_mcp_tool_format
+    from tree_sitter_analyzer.cli.output_format import resolve_output_format
 
-    return resolve_mcp_tool_format(args)
+    return resolve_output_format(args)
 
 
 def _collect_forward_impact(

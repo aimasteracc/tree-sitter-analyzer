@@ -163,7 +163,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         max_suggestions = arguments.get("max_suggestions", 10)
         include_extractions = arguments.get("include_extractions", True)
         include_skeleton = arguments.get("include_skeleton", False)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         resolved = self.resolve_and_validate_file_path(file_path)
         if not resolved:
@@ -195,9 +195,9 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         )
         self._echo_detected_language(resolved, result)
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _check_language_mismatch(
         self,

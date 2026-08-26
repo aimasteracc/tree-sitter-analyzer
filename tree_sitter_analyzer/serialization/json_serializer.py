@@ -21,10 +21,8 @@ class JSONSerializer:
         """Return ``json.dumps(data)`` without indentation.
 
         Compact (no indent) to match the minimal representation baseline
-        for the size invariant: ``toon_bytes <= json_bytes``.  The CLI
-        uses ``indent=2`` in some paths; compact JSON is a *lower* bound
-        on JSON size, so using it here is conservative (makes the
-        invariant harder to satisfy, not easier).
+        for response-size measurements. The CLI uses ``indent=2`` in some paths;
+        compact JSON is a lower bound on the pretty-printed wire size.
         """
         return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
 

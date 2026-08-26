@@ -3,17 +3,14 @@
 Unit tests for format_helper.py
 
 Tests the format helper utility functions for MCP tool output formatting.
+After TOON removal, only JSON formatting helpers remain.
 """
-
-from unittest.mock import MagicMock, patch
 
 from tree_sitter_analyzer.mcp.utils.format_helper import (
     JsonFormatter,
     apply_output_format,
-    apply_toon_format_to_response,
-    attach_toon_content_to_response,
+    apply_output_format_to_response,
     format_as_json,
-    format_as_toon,
     format_for_file_output,
     format_output,
     get_formatter,
@@ -31,12 +28,6 @@ class TestFormatOutput:
         assert isinstance(result, str)
         assert '"key": "value"' in result
         assert '"number": 42' in result
-
-    def test_format_output_toon(self):
-        """Test format_output with TOON format."""
-        data = {"key": "value", "number": 42}
-        result = format_output(data, "toon")
-        assert isinstance(result, str)
 
     def test_format_output_default_format(self):
         """Test format_output with default format (JSON)."""
@@ -99,46 +90,6 @@ class TestFormatAsJson:
         assert "Line2" in result
 
 
-class TestFormatAsToon:
-    """Tests for format_as_toon function."""
-
-    @patch("tree_sitter_analyzer.formatters.toon_formatter.ToonFormatter")
-    def test_format_as_toon_success(self, mock_formatter_class):
-        """Test format_as_toon with successful TOON formatting."""
-        mock_formatter = MagicMock()
-        mock_formatter.format.return_value = "toon:formatted:content"
-        mock_formatter_class.return_value = mock_formatter
-
-        data = {"key": "value"}
-        result = format_as_toon(data)
-
-        assert result == "toon:formatted:content"
-        mock_formatter_class.assert_called_once()
-        mock_formatter.format.assert_called_once_with(data)
-
-    @patch("tree_sitter_analyzer.formatters.toon_formatter.ToonFormatter")
-    def test_format_as_toon_import_error_fallback(self, mock_formatter_class):
-        """Test format_as_toon falls back to JSON on ImportError."""
-        mock_formatter_class.side_effect = ImportError("ToonFormatter not found")
-
-        data = {"key": "value"}
-        result = format_as_toon(data)
-
-        assert '"key": "value"' in result
-
-    @patch("tree_sitter_analyzer.formatters.toon_formatter.ToonFormatter")
-    def test_format_as_toon_exception_fallback(self, mock_formatter_class):
-        """Test format_as_toon falls back to JSON on general exception."""
-        mock_formatter = MagicMock()
-        mock_formatter.format.side_effect = Exception("Formatting failed")
-        mock_formatter_class.return_value = mock_formatter
-
-        data = {"key": "value"}
-        result = format_as_toon(data)
-
-        assert '"key": "value"' in result
-
-
 class TestGetFormatter:
     """Tests for get_formatter function."""
 
@@ -150,26 +101,6 @@ class TestGetFormatter:
     def test_get_formatter_default(self):
         """Test get_formatter returns JsonFormatter for default format."""
         formatter = get_formatter()
-        assert isinstance(formatter, JsonFormatter)
-
-    @patch("tree_sitter_analyzer.formatters.toon_formatter.ToonFormatter")
-    def test_get_formatter_toon(self, mock_formatter_class):
-        """Test get_formatter returns ToonFormatter for TOON format."""
-        mock_formatter = MagicMock()
-        mock_formatter_class.return_value = mock_formatter
-
-        formatter = get_formatter("toon")
-
-        assert formatter == mock_formatter
-        mock_formatter_class.assert_called_once()
-
-    @patch("tree_sitter_analyzer.formatters.toon_formatter.ToonFormatter")
-    def test_get_formatter_toon_import_error(self, mock_formatter_class):
-        """Test get_formatter falls back to JsonFormatter on ImportError."""
-        mock_formatter_class.side_effect = ImportError("ToonFormatter not found")
-
-        formatter = get_formatter("toon")
-
         assert isinstance(formatter, JsonFormatter)
 
 
@@ -218,12 +149,6 @@ class TestApplyOutputFormat:
         assert isinstance(result, str)
         assert '"key": "value"' in result
 
-    def test_apply_output_format_return_string_toon(self):
-        """Test apply_output_format returns TOON string when requested."""
-        result_dict = {"key": "value"}
-        result = apply_output_format(result_dict, "toon", True)
-        assert isinstance(result, str)
-
     def test_apply_output_format_default_params(self):
         """Test apply_output_format with default parameters."""
         result_dict = {"key": "value"}
@@ -243,13 +168,6 @@ class TestFormatForFileOutput:
         assert '"key": "value"' in content
         assert extension == ".json"
 
-    def test_format_for_file_output_toon(self):
-        """Test format_for_file_output with TOON format."""
-        data = {"key": "value"}
-        content, extension = format_for_file_output(data, "toon")
-        assert isinstance(content, str)
-        assert extension == ".toon"
-
     def test_format_for_file_output_default_format(self):
         """Test format_for_file_output with default format (JSON)."""
         data = {"key": "value"}
@@ -259,191 +177,39 @@ class TestFormatForFileOutput:
         assert extension == ".json"
 
 
-class TestApplyToonFormatToResponse:
-    """Tests for apply_toon_format_to_response function."""
+class TestApplyOutputFormatToResponse:
+    """Tests for apply_output_format_to_response function."""
 
-    def test_apply_toon_format_json_unchanged(self):
-        """Test apply_toon_format_to_response returns original for JSON format."""
+    def test_json_unchanged(self):
+        """Test apply_output_format_to_response returns original for JSON format."""
         result = {"key": "value", "number": 42}
-        response = apply_toon_format_to_response(result, "json")
+        response = apply_output_format_to_response(result, "json")
         assert response == result
         assert "toon_content" not in response
 
-    def test_apply_toon_format_toon_with_results(self):
-        """Redundant ``results`` payload is dropped; RFC-0012 Phase 2 also strips
-        non-empty dict fields (``metadata``) — they are already inside toon_content.
-        Only scalars and TOON_DICT_PASSTHROUGH dicts survive at top level."""
-        result = {
-            "results": [{"id": 1}, {"id": 2}],
-            "metadata": {"total": 2},
-        }
-        response = apply_toon_format_to_response(result, "toon")
-        assert "results" not in response
-        # Phase 2: metadata is a non-empty dict, not in TOON_DICT_PASSTHROUGH → stripped
-        assert "metadata" not in response
-        # But it IS encoded inside toon_content (full payload was encoded first)
-        assert "metadata" in response["toon_content"]
-        assert response["format"] == "toon"
-        assert "toon_content" in response
-        assert isinstance(response["toon_content"], str)
+    def test_success_gets_default_verdict(self):
+        """Test successful responses without verdict get INFO."""
+        result = {"success": True}
+        response = apply_output_format_to_response(result, "json")
+        assert response["verdict"] == "INFO"
 
-    def test_apply_toon_format_toon_with_matches(self):
-        """``matches`` is bulk data and is removed; ``query`` is metadata and stays."""
-        result = {
-            "matches": [{"line": 1}, {"line": 2}],
-            "query": "test",
-        }
-        response = apply_toon_format_to_response(result, "toon")
-        assert "matches" not in response
-        assert response.get("query") == "test"
-        assert response["format"] == "toon"
-        assert "toon_content" in response
+    def test_explicit_verdict_preserved(self):
+        """Test explicit verdict is preserved."""
+        result = {"success": True, "verdict": "CAUTION"}
+        response = apply_output_format_to_response(result, "json")
+        assert response["verdict"] == "CAUTION"
 
-    def test_apply_toon_format_toon_with_content(self):
-        """``content`` is bulk data and is removed; ``file_path`` stays as metadata."""
-        result = {
-            "content": "file content here",
-            "file_path": "/path/to/file.txt",
-        }
-        response = apply_toon_format_to_response(result, "toon")
-        assert "content" not in response
-        assert response.get("file_path") == "/path/to/file.txt"
-        assert response["format"] == "toon"
-        assert "toon_content" in response
+    def test_failure_no_verdict(self):
+        """Test failure responses don't get auto-verdict."""
+        result = {"success": False, "error": "boom"}
+        response = apply_output_format_to_response(result, "json")
+        assert "verdict" not in response
 
-    def test_apply_toon_format_toon_with_multiple_redundant_fields(self):
-        """RFC-0012 Phase 2: all bulk list/dict fields and large-string fields
-        are stripped; scalars survive.  ``metadata`` (non-empty dict, not in
-        TOON_DICT_PASSTHROUGH) is now stripped too — it was pinning old behaviour."""
-        result = {
-            "results": [{"id": 1}],
-            "matches": [{"line": 1}],
-            "content": "content",
-            "data": {"key": "value"},
-            "items": [1, 2, 3],
-            "files": ["/path1", "/path2"],
-            "lines": ["line1", "line2"],
-            "table_output": "table",
-            "metadata": {"count": 10},
-            "status": "success",
-        }
-        response = apply_toon_format_to_response(result, "toon")
-        # Bulk list fields stripped by value-kind rule
-        assert "results" not in response
-        assert "matches" not in response
-        assert "data" not in response
-        assert "items" not in response
-        assert "files" not in response
-        assert "lines" not in response
-        # Large-string fields stripped by TOON_LARGE_STRING_FIELDS
-        assert "content" not in response
-        assert "table_output" not in response
-        # Phase 2: metadata (non-empty dict, not in passthrough) is now stripped too
-        assert "metadata" not in response
-        # Scalar metadata survives
-        assert response.get("status") == "success"
-        assert response["format"] == "toon"
-        assert "toon_content" in response
-        assert isinstance(response["toon_content"], str)
-
-    def test_apply_toon_format_toon_no_field_duplication(self):
-        """Bulk-data field (``results``) is stripped; all other small
-        metadata fields are preserved so callers can read
-        ``status``/``error`` without parsing TOON."""
-        result = {
-            "results": [{"id": 1}],
-            "query": "test",
-            "file_path": "/path/to/file.txt",
-            "language": "python",
-            "line_count": 100,
-            "duration_ms": 50,
-            "status": "success",
-            "error": None,
-        }
-        response = apply_toon_format_to_response(result, "toon")
-        assert "results" not in response
-        assert response.get("query") == "test"
-        assert response.get("file_path") == "/path/to/file.txt"
-        assert response.get("language") == "python"
-        assert response.get("line_count") == 100
-        assert response.get("duration_ms") == 50
-        assert response.get("status") == "success"
-        assert response.get("error") is None
-        assert response["format"] == "toon"
-        assert "toon_content" in response
-        assert isinstance(response["toon_content"], str)
-
-    @patch("tree_sitter_analyzer.mcp.utils.format_helper.format_as_toon")
-    def test_apply_toon_format_exception_fallback(self, mock_format_as_toon):
-        """Test apply_toon_format_to_response falls back on exception."""
-        mock_format_as_toon.side_effect = Exception("Formatting failed")
-        result = {"key": "value"}
-        response = apply_toon_format_to_response(result, "toon")
-        assert response == result
-
-
-class TestAttachToonContentToResponse:
-    """Tests for attach_toon_content_to_response function."""
-
-    def test_attach_toon_content_success(self):
-        """Test attach_toon_content_to_response adds TOON content."""
-        result = {"key": "value", "number": 42}
-        response = attach_toon_content_to_response(result)
-        assert "key" in response
-        assert response["key"] == "value"
-        assert "number" in response
-        assert response["number"] == 42
-        assert "format" in response
-        assert response["format"] == "toon"
-        assert "toon_content" in response
-        assert isinstance(response["toon_content"], str)
-
-    def test_attach_toon_content_preserves_original(self):
-        """Test attach_toon_content_to_response preserves all original fields."""
-        result = {
-            "results": [{"id": 1}, {"id": 2}],
-            "matches": [{"line": 1}],
-            "content": "file content",
-            "metadata": {"total": 2},
-            "status": "success",
-        }
-        response = attach_toon_content_to_response(result)
-        # All original fields should be preserved
-        assert "results" in response
-        assert response["results"] == [{"id": 1}, {"id": 2}]
-        assert "matches" in response
-        assert response["matches"] == [{"line": 1}]
-        assert "content" in response
-        assert response["content"] == "file content"
-        assert "metadata" in response
-        assert response["metadata"] == {"total": 2}
-        assert "status" in response
-        assert response["status"] == "success"
-        # TOON fields should be added
-        assert "format" in response
-        assert response["format"] == "toon"
-        assert "toon_content" in response
-
-    def test_attach_toon_content_does_not_modify_original(self):
-        """Test attach_toon_content_to_response does not modify original dict."""
-        result = {"key": "value"}
-        original_result = result.copy()
-        response = attach_toon_content_to_response(result)
-        assert "format" not in result
-        assert "toon_content" not in result
-        assert result == original_result
-        assert "format" in response
-        assert "toon_content" in response
-
-    @patch("tree_sitter_analyzer.mcp.utils.format_helper.format_as_toon")
-    def test_attach_toon_content_exception_fallback(self, mock_format_as_toon):
-        """Test attach_toon_content_to_response falls back on exception."""
-        mock_format_as_toon.side_effect = Exception("Formatting failed")
-        result = {"key": "value"}
-        response = attach_toon_content_to_response(result)
-        assert response == result
-        assert "format" not in response
-        assert "toon_content" not in response
+    def test_idempotent(self):
+        """Test double application stays INFO."""
+        first = apply_output_format_to_response({"success": True}, "json")
+        second = apply_output_format_to_response(first, "json")
+        assert second["verdict"] == "INFO"
 
 
 class TestIntegration:
@@ -467,29 +233,6 @@ class TestIntegration:
         assert ext == ".json"
         assert '"results"' in content
 
-    def test_format_workflow_toon(self):
-        """Test complete formatting workflow for TOON."""
-        data = {"results": [{"id": 1}], "metadata": {"total": 1}}
-
-        # Step 1: Format as TOON string
-        toon_string = format_output(data, "toon")
-        assert isinstance(toon_string, str)
-
-        # Step 2: Apply TOON format — bulk data and non-passthrough dicts dropped
-        # RFC-0012 Phase 2: metadata (non-empty dict, not in TOON_DICT_PASSTHROUGH)
-        # is now stripped (it is already encoded inside toon_content).
-        toon_response = apply_toon_format_to_response(data, "toon")
-        assert "results" not in toon_response
-        assert "metadata" not in toon_response
-        assert "metadata" in toon_response["toon_content"]  # encoded in the blob
-        assert "toon_content" in toon_response
-        assert "format" in toon_response
-
-        # Step 3: Format for file output
-        content, ext = format_for_file_output(data, "toon")
-        assert ext == ".toon"
-        assert isinstance(content, str)
-
     def test_get_formatter_and_format(self):
         """Test getting formatter and using it to format data."""
         data = {"key": "value", "number": 42}
@@ -499,55 +242,13 @@ class TestIntegration:
         json_result = json_formatter.format(data)
         assert '"key": "value"' in json_result
 
-        # Get TOON formatter (will use JsonFormatter as fallback in test)
-        toon_formatter = get_formatter("toon")
-        toon_result = toon_formatter.format(data)
-        assert isinstance(toon_result, str)
 
-    def test_attach_vs_apply_toon_difference(self):
-        """Test difference between attach and apply TOON functions.
-
-        RFC-0012 Phase 2: apply strips all non-passthrough non-empty dicts/lists;
-        attach preserves everything (it just adds toon_content alongside).
-        """
-        data = {
-            "results": [{"id": 1}],
-            "metadata": {"total": 1},
-            "status": "success",
-        }
-
-        # apply_toon_format_to_response: value-kind rule strips lists and dicts
-        applied = apply_toon_format_to_response(data, "toon")
-        assert "results" not in applied
-        # Phase 2: metadata (non-empty dict, not in TOON_DICT_PASSTHROUGH) stripped
-        assert "metadata" not in applied
-        assert applied.get("status") == "success"
-        assert "format" in applied
-        assert "toon_content" in applied
-
-        # attach_toon_content_to_response preserves all fields
-        attached = attach_toon_content_to_response(data)
-        assert "results" in attached
-        assert attached["results"] == [{"id": 1}]
-        assert "metadata" in attached
-        assert "status" in attached
-        assert "toon_content" in attached
-
-
-def test_final_oracle_toon_preserves_unsupported_filter_code() -> None:
-    # PR #1252 review thread 3751415923: final oracle errors stay actionable.
+def test_final_oracle_snapshot_publish_errors() -> None:
     errors, _generic = preformat_diff_snapshot_publish_errors(
-        "toon", apply_toon_format_to_response
+        "json", apply_output_format_to_response
     )
 
-    # #1321: this envelope is scalar-only, so every field is carried at the top
-    # level and ``toon_content`` has nothing left to encode. The previous
-    # expectation duplicated all four fields into the blob — it was pinning the
-    # duplication, not the actionability. What #1252 actually requires is that
-    # ``error`` / ``error_code`` reach the caller, and they do.
     assert errors["DIFF_SNAPSHOT_UNSUPPORTED_FILTER"] == {
-        "format": "toon",
-        "toon_content": "",
         "success": False,
         "verdict": "ERROR",
         "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_FILTER",

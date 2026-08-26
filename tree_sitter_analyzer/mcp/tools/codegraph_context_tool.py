@@ -211,11 +211,11 @@ class CodeGraphContextTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": (
-                        "Output format: 'toon' (default, token-efficient) or 'json'"
+                        "Output format: JSON"
                     ),
-                    "default": "toon",
+                    "default": "json",
                 },
                 "include_graph": {
                     "type": "boolean",
@@ -250,7 +250,7 @@ class CodeGraphContextTool(BaseMCPTool):
         task = str(arguments["task"]).strip()
         max_nodes = _bounded_int(arguments.get("max_nodes", 30), 1, 100)
         max_code_blocks = _bounded_int(arguments.get("max_code_blocks", 5), 0, 25)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         # RFC-0006: progressive disclosure. Default lean (no nodes/edges in
         # response); full graph available via include_graph=true. Coerce
         # JS-style string booleans so include_graph="false"/"0" stays lean.
@@ -298,9 +298,9 @@ class CodeGraphContextTool(BaseMCPTool):
             elapsed_ms=int((time.perf_counter() - started) * 1000),
         )
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     async def _execute_read_existing(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """RFC-0022 P0.4: serve context from the certified index snapshot.

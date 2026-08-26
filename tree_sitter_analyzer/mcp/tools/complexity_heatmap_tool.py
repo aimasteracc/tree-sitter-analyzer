@@ -25,7 +25,7 @@ from ...complexity_heatmap import (
     analyze_project_heatmap,
 )
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_error, build_response
 from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool
@@ -117,9 +117,9 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "enum": ["json"],
+                    "description": "Output format: JSON",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -138,7 +138,7 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         mode = arguments.get("mode", "project")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         if not self.project_root:
             raise ValueError("Project root not set. Call set_project_path first.")
@@ -150,7 +150,7 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
         else:
             result = self._execute_function(arguments)
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _execute_project(self, arguments: dict[str, Any]) -> dict[str, Any]:
         assert self.project_root is not None, "project_root required"

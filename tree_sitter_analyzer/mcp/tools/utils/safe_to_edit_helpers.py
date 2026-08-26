@@ -400,7 +400,7 @@ def _dependents_basis_fields(graph: Any) -> dict[str, Any]:
     complete.
 
     These are deliberately **flat scalars** rather than a nested block: a
-    dict-valued key is a "bulk" value that TOON formatting strips, so the label
+    dict-valued key is a "bulk" value that compact output strips, so the label
     would vanish on exactly the surface (MCP) whose callers most need it.
 
     ``dependents_basis="unavailable"`` is the hand-built or snapshot-certified

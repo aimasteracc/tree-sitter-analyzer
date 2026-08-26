@@ -66,9 +66,7 @@ def _build_trace_impact_tool_args(args: Any, output_format: str) -> dict[str, An
     """Build tool args for --trace-impact, omitting empty optional keys.
 
     The TraceImpactTool schema does not accept ``output_format``, so the
-    dispatcher must not forward it here — callers receive JSON envelopes
-    by default and can post-process to TOON via the ``toon_content`` field
-    if the tool produces one.
+    dispatcher must not forward it here — callers receive JSON envelopes.
     """
     tool_args: dict[str, Any] = {
         "symbol": getattr(args, "trace_impact_symbol", "") or "",
@@ -104,7 +102,6 @@ def _build_safe_to_edit_tool_args(args: Any, output_format: str) -> dict[str, An
             "file_path": file_path,
             "edit_type": getattr(args, "edit_type", "refactor") or "refactor",
             "output_format": output_format,
-            "compact_only": bool(getattr(args, "compact_toon", False)),
         },
         controls=frozenset({"access_mode", "snapshot_id", "source_generation"}),
     )
@@ -250,7 +247,6 @@ def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, A
         "scope_paths": getattr(args, "change_impact_scope", None) or [],
         "scope_mode": getattr(args, "change_impact_scope_mode", "report") or "report",
         "agent_summary_only": not bool(getattr(args, "change_impact_full", False)),
-        "compact_only": bool(getattr(args, "compact_toon", False)),
     }
     # Always pass resource_profile explicitly so the MCP tool's fallback default
     # ("local_low_impact" for MCP callers) never silently overrides the CLI path.

@@ -503,7 +503,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         truncated = unique_function_count > _MAX_TEST_MAP
         capped = test_funcs_sorted[:_MAX_TEST_MAP]
 
-        output_format: str = args.get("output_format", "toon")
+        output_format: str = args.get("output_format", "json")
 
         result: dict = {
             "success": True,
@@ -523,9 +523,9 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             },
         }
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     async def _co_change_route(args: dict[str, Any]) -> Any:
         """RFC-0014 Phase C: git-history co-change coupling.
@@ -584,11 +584,11 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             max_results,
         )
 
-        output_format: str = args.get("output_format", "toon")
+        output_format: str = args.get("output_format", "json")
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(co_result, output_format)
+        return apply_output_format_to_response(co_result, output_format)
 
     facade = FacadeTool(
         facade_name="nav",

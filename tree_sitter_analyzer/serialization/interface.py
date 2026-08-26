@@ -1,8 +1,7 @@
 """Serializer Protocol for MCP tool responses.
 
-Phase 4: Serialization Unification — thin wrapper around existing
-JSON and TOON code paths. The Protocol defines only what the
-invariant tests need: serialize() → str and byte_size() → int.
+Serialization interface for the canonical JSON response path. The Protocol
+keeps serialization and byte-size measurement explicit for contract tests.
 """
 
 from __future__ import annotations
@@ -13,8 +12,7 @@ from typing import Protocol
 class Serializer(Protocol):
     """Minimal serialization protocol for MCP tool response dicts.
 
-    Implementations must be thin wrappers — they must NOT change what
-    serializer is selected by default in MCP tools or CLI tools.
+    Implementations must preserve the canonical JSON response contract.
     """
 
     def serialize(self, data: dict) -> str:

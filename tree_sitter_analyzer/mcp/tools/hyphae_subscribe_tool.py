@@ -19,7 +19,7 @@ from typing import Any
 
 from tree_sitter_analyzer.registry.singleton_registry import get_subscription_registry
 
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 
@@ -83,7 +83,7 @@ class HyphaeSubscribeTool(BaseMCPTool):
         self.validate_arguments(arguments)
         selector = arguments["selector"]
         min_interval = float(arguments.get("min_interval", 2.0))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         # RFC-0001: capture session + loop at subscribe time (the only moment
         # request_context is populated and the event loop is running).
@@ -110,7 +110,7 @@ class HyphaeSubscribeTool(BaseMCPTool):
                 "Unsubscribe via search action=unsubscribe."
             ),
         )
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
 
 class HyphaeUnsubscribeTool(BaseMCPTool):
@@ -143,7 +143,7 @@ class HyphaeUnsubscribeTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         session_id = arguments.get("sub_id") or _capture_session_id()
         selector = arguments.get("selector")
 
@@ -163,7 +163,7 @@ class HyphaeUnsubscribeTool(BaseMCPTool):
             selector=selector,
             message="Unsubscribed.",
         )
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
 
 # ---------------------------------------------------------------------------

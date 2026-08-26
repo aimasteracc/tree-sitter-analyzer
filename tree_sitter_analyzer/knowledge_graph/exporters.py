@@ -92,7 +92,7 @@ def to_graphology(
 
 
 def summarize(snapshot: KnowledgeGraphSnapshot) -> dict[str, Any]:
-    """Compact summary for TOON/MCP agents."""
+    """Compact summary for MCP agents."""
     return {
         "schema": "tsa.knowledge_graph.v1",
         "stats": snapshot.stats,

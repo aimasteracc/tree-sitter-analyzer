@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_error, build_response
 from ._validators import _validate_positive_int
 from .base_tool import BaseMCPTool
@@ -146,9 +146,9 @@ class CodeGraphUMLTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
-                    "description": "Output format: toon (default) or json",
+                    "enum": ["json"],
+                    "default": "json",
+                    "description": "Output format: JSON",
                 },
             },
             "required": [],
@@ -182,16 +182,16 @@ class CodeGraphUMLTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
         if not self.project_root:
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 build_error(error="Project root not set."),
-                arguments.get("output_format", "toon"),
+                arguments.get("output_format", "json"),
             )
 
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         diagram_type = arguments.get("diagram", "class")
         exporter = CodeGraphVisualizationHub(self.project_root).uml_exporter()
         if exporter is None:
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 build_error(error="Project root not set."),
                 output_format,
             )
@@ -246,4 +246,4 @@ class CodeGraphUMLTool(BaseMCPTool):
                 "NOT_FOUND" if not_found else ("INFO" if diagram.edges else "NOT_FOUND")
             )
         response = build_response(verdict=verdict, **diagram.to_dict())
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)

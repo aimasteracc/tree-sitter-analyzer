@@ -254,9 +254,9 @@ class ClassInspectTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format (default: toon)",
-                    "default": "toon",
+                    "enum": ["json"],
+                    "description": "Output format: JSON.",
+                    "default": "json",
                 },
             },
             "required": ["class_name"],
@@ -502,7 +502,7 @@ class ClassInspectTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         class_name: str = arguments["class_name"]
-        output_format: str = arguments.get("output_format", "toon")
+        output_format: str = arguments.get("output_format", "json")
 
         cache = self._get_cache()
         hierarchy = ClassHierarchy(cache)
@@ -520,9 +520,9 @@ class ClassInspectTool(BaseMCPTool):
                 "fields": [],
                 "extends": [],
             }
-            from ..utils.format_helper import apply_toon_format_to_response
+            from ..utils.format_helper import apply_output_format_to_response
 
-            return apply_toon_format_to_response(not_found, output_format)
+            return apply_output_format_to_response(not_found, output_format)
 
         # Collect class metadata (parents, file, line range)
         class_info = self._collect_class_info(cache, class_name)
@@ -595,6 +595,6 @@ class ClassInspectTool(BaseMCPTool):
                 "reason": inherited_result.get("reason", "unknown"),
             }
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)

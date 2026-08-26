@@ -26,7 +26,6 @@ from ...unreachable_code import (
     analyze_project_unreachable,
 )
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -78,8 +77,8 @@ class UnreachableCodeTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                     "description": "Output format",
                 },
             },
@@ -101,7 +100,7 @@ class UnreachableCodeTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
         mode = arguments.get("mode", "file")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         if mode == "file":
             return self._execute_file_mode(arguments, output_format)
@@ -150,55 +149,11 @@ class UnreachableCodeTool(BaseMCPTool):
         response = self._build_project_response(results, output_format)
         return response
 
-    @staticmethod
-    def _format_block_line(block: Any) -> str:
-        """Format a single unreachable block as a TOON line."""
-        return (
-            f"- L{block.start_line}-{block.end_line} in "
-            f"`{block.function_name}`: {block.reason} "
-            f"[{block.severity}]"
-        )
 
     def _build_file_response(
         self, result: UnreachableCodeResult, output_format: str
     ) -> dict[str, Any]:
-        if output_format == "toon":
-            lines = []
-            lines.append(f"## Unreachable Code: {result.file_path}")
-            lines.append(f"Language: {result.language}")
-            lines.append(f"Functions analyzed: {result.functions_analyzed}")
-            lines.append(f"Unreachable blocks: {len(result.unreachable_blocks)}")
-
-            if result.unreachable_blocks:
-                lines.append("")
-                lines.extend(
-                    self._format_block_line(b) for b in result.unreachable_blocks
-                )
-            else:
-                lines.append("")
-                lines.append("No unreachable code detected.")
-
-            if result.errors:
-                lines.append(f"\nParse errors: {result.errors}")
-
-            return apply_toon_format_to_response(
-                {"content": "\n".join(lines)},
-                output_format="toon",
-            )
-
         return result.to_dict()
-
-    def _format_file_blocks_toon(self, r: UnreachableCodeResult) -> list[str]:
-        """Format a single file's unreachable blocks as TOON lines."""
-        if not r.unreachable_blocks:
-            return []
-        lines = [f"### {r.file_path} ({r.language})"]
-        for block in r.unreachable_blocks:
-            lines.append(
-                f"- L{block.start_line}-{block.end_line} in "
-                f"`{block.function_name}`: {block.reason}"
-            )
-        return lines
 
     def _build_project_response(
         self, results: list[UnreachableCodeResult], output_format: str
@@ -206,23 +161,6 @@ class UnreachableCodeTool(BaseMCPTool):
         total_blocks = sum(len(r.unreachable_blocks) for r in results)
         total_functions = sum(r.functions_analyzed for r in results)
         files_with_issues = sum(1 for r in results if r.unreachable_blocks)
-
-        if output_format == "toon":
-            lines: list[str] = []
-            lines.append("## Unreachable Code: Project Scan")
-            lines.append(f"Files with issues: {files_with_issues}")
-            lines.append(f"Functions analyzed: {total_functions}")
-            lines.append(f"Total unreachable blocks: {total_blocks}")
-
-            if results:
-                lines.append("")
-                for r in results:
-                    lines.extend(self._format_file_blocks_toon(r))
-
-            return apply_toon_format_to_response(
-                {"content": "\n".join(lines)},
-                output_format="toon",
-            )
 
         return {
             "files_with_issues": files_with_issues,

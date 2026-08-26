@@ -29,8 +29,8 @@ def _resolved_case_sensitive(arguments: dict[str, Any]) -> bool:
     return arguments.get("case") == "sensitive"
 
 
-ToonFormatter = Callable[[dict[str, Any]], dict[str, Any]]
-ToonApplier = Callable[[dict[str, Any], str], dict[str, Any]]
+ResponseFormatter = Callable[[dict[str, Any]], dict[str, Any]]
+ResponseApplier = Callable[[dict[str, Any], str], dict[str, Any]]
 
 
 def create_count_only_cache_key(
@@ -93,7 +93,7 @@ def respond_count_only(
     arguments: dict[str, Any],
     cache: Any,
     fd_rg_utils: Any,
-    attach_toon: ToonFormatter,
+    attach_response: ResponseFormatter,
 ) -> dict[str, Any]:
     """Return per-file match counts."""
     file_counts = fd_rg_utils.parse_rg_count_output(out)
@@ -124,8 +124,6 @@ def respond_count_only(
     normalize_envelope(result, total_count=int(total_matches))
     if cache and cache_key:
         cache.set(cache_key, result)
-    if output_format == "toon":
-        return attach_toon(result)
     return result
 
 
@@ -139,7 +137,7 @@ def respond_grouped(
     cache: Any,
     file_output_manager: Any,
     fd_rg_utils: Any,
-    attach_toon: ToonFormatter,
+    attach_response: ResponseFormatter,
     real_total: int | None = None,
     total_count_known: bool = True,
 ) -> dict[str, Any]:
@@ -176,8 +174,6 @@ def respond_grouped(
     if suppressed:
         return normalize_envelope(suppressed)
 
-    if output_format == "toon":
-        return attach_toon(result)
     return result
 
 
@@ -191,7 +187,7 @@ def respond_summary(
     cache: Any,
     file_output_manager: Any,
     fd_rg_utils: Any,
-    attach_toon: ToonFormatter,
+    attach_response: ResponseFormatter,
     real_total: int | None = None,
     total_count_known: bool = True,
 ) -> dict[str, Any]:
@@ -233,8 +229,6 @@ def respond_summary(
     if suppressed:
         return normalize_envelope(suppressed)
 
-    if output_format == "toon":
-        return attach_toon(result)
     return result
 
 
@@ -248,7 +242,7 @@ def respond_full(
     cache: Any,
     file_output_manager: Any,
     fd_rg_utils: Any,
-    apply_toon: ToonApplier,
+    apply_response: ResponseApplier,
     real_total: int | None = None,
     total_count_known: bool = True,
 ) -> dict[str, Any]:
@@ -312,7 +306,7 @@ def respond_full(
     if suppressed:
         return normalize_envelope(suppressed)
 
-    return apply_toon(result, output_format)
+    return apply_response(result, output_format)
 
 
 def _attach_total_count_metadata(

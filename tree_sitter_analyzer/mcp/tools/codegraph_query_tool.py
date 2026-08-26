@@ -17,7 +17,7 @@ from typing import Any
 
 from ...codegraph_query_backend import CodeGraphQueryBackend
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from . import _codegraph_explore_helpers as _h
 from . import _codegraph_query_concepts as _concepts
 from . import _codegraph_query_filters as _filters
@@ -200,9 +200,9 @@ class CodeGraphQueryTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
-                    "description": "Output format (default: toon)",
+                    "enum": ["json"],
+                    "default": "json",
+                    "description": "Output format: JSON",
                 },
             },
             "required": ["query"],
@@ -219,7 +219,7 @@ class CodeGraphQueryTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         query = str(arguments["query"]).strip()
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         max_symbols = min(int(arguments.get("max_symbols", 20) or 20), _MAX_SYMBOLS_CAP)
         max_files = min(int(arguments.get("max_files", 8) or 8), _MAX_FILES_CAP)
         include_code = bool(arguments.get("include_code", True))
@@ -247,7 +247,7 @@ class CodeGraphQueryTool(BaseMCPTool):
                     ),
                 },
             )
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
         state = _QueryState(
             compact=compact,
@@ -326,7 +326,7 @@ class CodeGraphQueryTool(BaseMCPTool):
                 "next_step": next_step,
             },
         )
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _apply_step(
         self,

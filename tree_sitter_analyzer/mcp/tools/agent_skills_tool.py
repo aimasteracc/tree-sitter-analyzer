@@ -20,9 +20,9 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-            "default": "toon",
+            "enum": ["json"],
+            "description": "Output format: JSON",
+            "default": "json",
         },
     },
     "additionalProperties": False,
@@ -75,9 +75,9 @@ class AgentSkillsTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate output format and optional skills root."""
-        output_format = arguments.get("output_format", "toon")
-        if output_format not in {"json", "toon"}:
-            raise ValueError("output_format must be 'json' or 'toon'")
+        output_format = arguments.get("output_format", "json")
+        if output_format != "json":
+            raise ValueError("output_format must be 'json'")
 
         skills_root = arguments.get("skills_root")
         if skills_root is not None and not isinstance(skills_root, str):
@@ -98,18 +98,7 @@ class AgentSkillsTool(BaseMCPTool):
             project_root=str(self.project_root),
             skills_root=skills_root,
         )
-        if arguments.get("output_format", "toon") == "toon":
-            return _build_toon_response(result)
-        # Strip ``toon_content`` from the JSON path — it duplicates the
-        # structured fields (~1.8 KB per call) and confuses agents that
-        # expect a clean JSON envelope.
-        result.pop("toon_content", None)
-        # M2 (round-26 dogfood): ``result`` already contains the full
-        # ``skills: list[dict]`` from ``build_agent_skills_inventory`` —
-        # the JSON path is correct. The TOON path (``_build_toon_response``)
-        # used to drop ``skills`` so MCP consumers saw only ``skill_count``.
-        # Keep the JSON path as-is; the TOON path is fixed below.
-        return result
+        return _build_json_response(result)
 
     def _validate_skills_root(self, skills_root: str | None) -> None:
         """Keep custom skills roots inside the configured project boundary."""
@@ -126,27 +115,11 @@ class AgentSkillsTool(BaseMCPTool):
             raise ValueError(f"Invalid skills_root: {error}")
 
 
-def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
-    """Return a compact MCP response when callers request TOON output.
-
-    M2 (round-26 dogfood): the previous shape dropped the ``skills``
-    list and only emitted ``skill_count``. CLI callers got the full
-    inventory; MCP consumers couldn't see what skills exist. The list
-    is small (13 entries on this project, ~25-30 fields each), and
-    ``toon_content`` already encodes a compact text rendering for
-    token-sensitive consumers — so we surface the structured list
-    alongside the metadata. Agents that want the lean version still
-    read ``toon_content``; agents that need to branch on a specific
-    skill's metadata can walk ``skills`` directly.
-
-    N5 (round-29 dogfood): also surface top-level ``summary_line`` and
-    ``verdict`` on the TOON path so the canonical envelope contract
-    holds regardless of output_format. The CLI/JSON path already
-    populates both in ``build_agent_skills_inventory``.
-    """
+def _build_json_response(result: dict[str, Any]) -> dict[str, Any]:
+    """Return the structured JSON MCP response."""
     response: dict[str, Any] = {
         "success": result["success"],
-        "format": "toon",
+        "format": "json",
         "inventory": result["inventory"],
         "skills_root": result["skills_root"],
         "skills_root_exists": result["skills_root_exists"],
@@ -155,7 +128,6 @@ def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
         "agent_summary": result["agent_summary"],
         "gaps": result["gaps"],
         "validation": result["validation"],
-        "toon_content": result["toon_content"],
     }
     summary_line = result.get("summary_line")
     if isinstance(summary_line, str) and summary_line:

@@ -377,10 +377,10 @@ def _violations_ddl() -> str:
 
 
 def _format_response(payload: dict[str, Any], output_format: str) -> dict[str, Any]:
-    """Apply TOON formatting when requested, identical to MCP tool helper."""
-    from ...mcp.utils.format_helper import apply_toon_format_to_response
+    """Normalize the command payload through the JSON response helper."""
+    from ...mcp.utils.format_helper import apply_output_format_to_response
 
-    return apply_toon_format_to_response(payload, output_format)
+    return apply_output_format_to_response(payload, output_format)
 
 
 def _config_changed_envelope(rule_count: int, output_format: str) -> dict[str, Any]:
@@ -410,22 +410,19 @@ def _failure_envelope(message: str, output_format: str) -> dict[str, Any]:
 
 
 def _resolve_output_format(args: Any) -> str:
-    """Return ``json`` or ``toon`` based on argparse-visible format flags.
+    """Return the canonical JSON output format.
 
-    Delegates to :func:`tree_sitter_analyzer.cli.output_format.resolve_mcp_tool_format`
-    so the args→tool-format mapping has one source of truth (r37an).
+    Delegates to :func:`tree_sitter_analyzer.cli.output_format.resolve_output_format`
+    so the args-to-tool-format mapping has one source of truth.
     """
-    from tree_sitter_analyzer.cli.output_format import resolve_mcp_tool_format
+    from tree_sitter_analyzer.cli.output_format import resolve_output_format
 
-    return resolve_mcp_tool_format(args)
+    return resolve_output_format(args)
 
 
 def _print_result(result: dict[str, Any], output_format: str) -> None:
     """Write the response to stdout in the requested format."""
-    if output_format == "toon":
-        print(result.get("toon_content", ""))
-    else:
-        print(json.dumps(result, indent=2, default=str))
+    print(json.dumps(result, indent=2, default=str))
 
 
 def _exit_code_for(result: dict[str, Any]) -> int:

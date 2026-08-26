@@ -106,9 +106,9 @@ class CodeGraphCallPathTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "enum": ["json"],
+                    "description": "Output format: JSON",
+                    "default": "json",
                 },
             },
             "required": ["source_function", "target_function"],
@@ -132,7 +132,7 @@ class CodeGraphCallPathTool(BaseMCPTool):
         max_depth = int(arguments.get("max_depth", 10))
         max_paths = int(arguments.get("max_paths", 5))
         direction = arguments.get("direction", "bidirectional")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         finder = self._get_finder()
         result = finder.find_path(
@@ -171,9 +171,9 @@ class CodeGraphCallPathTool(BaseMCPTool):
             target_file,
         )
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result_dict, output_format)
+        return apply_output_format_to_response(result_dict, output_format)
 
     def _enrich_with_bodies(
         self,

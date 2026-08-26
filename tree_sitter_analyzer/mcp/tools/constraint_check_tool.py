@@ -29,7 +29,7 @@ from ...read_existing_access import (
 )
 from ...source_oracle import SourceOracleError
 from ...wire_owner import EDIT_CONSTRAINTS_ACTION_VERSION
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
 from .constraint_check_live import (
     config_changed_response as _config_changed_response,
@@ -121,17 +121,13 @@ class ConstraintCheckTool(BaseMCPTool):
                 action_version=EDIT_CONSTRAINTS_ACTION_VERSION,
             )
             if unavailable is not None:
-                return apply_toon_format_to_response(
+                return apply_output_format_to_response(
                     unavailable, unavailable["output_format"]
                 )
 
         if arguments.get("diff_snapshot_id") is not None:
-            # Codex P2 (#1297): attach the read-existing evidence to the raw
-            # JSON response BEFORE the requested format is applied, so TOON
-            # output carries access_mode/access_state/access_reason/
-            # source_snapshots inside toon_content exactly like JSON does.
-            # The frozen route always runs on JSON; the requested format is
-            # applied once, after evidence attachment.
+            # Codex P2 (#1297): attach read-existing evidence to the raw JSON
+            # response before returning the canonical response envelope.
             if read_existing:
                 frozen_arguments = {**arguments, "output_format": "json"}
             else:
@@ -162,7 +158,7 @@ class ConstraintCheckTool(BaseMCPTool):
                 read_access.attach_read_existing_evidence(result, records=records)
             if read_existing:
                 requested = arguments.get("output_format", "json")
-                return apply_toon_format_to_response(result, requested)
+                return apply_output_format_to_response(result, requested)
             return result
 
         path_filter = arguments.get("path_filter", "") or ""
@@ -181,7 +177,7 @@ class ConstraintCheckTool(BaseMCPTool):
             else:
                 constraints = load_constraints(self.project_root)
         except ConstraintParseError as exc:
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 {
                     "success": False,
                     "verdict": "CAUTION",
@@ -213,7 +209,7 @@ class ConstraintCheckTool(BaseMCPTool):
             )
             if changed is not None:
                 return changed
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 {
                     "success": True,
                     "verdict": "SAFE",
@@ -227,7 +223,7 @@ class ConstraintCheckTool(BaseMCPTool):
 
         db_path = Path(self.project_root) / ".ast-cache" / "index.db"
         if persist and not db_path.is_file():
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 {
                     "success": True,
                     "verdict": "SAFE",
@@ -293,7 +289,7 @@ class ConstraintCheckTool(BaseMCPTool):
                 return changed
 
         verdict = self._compute_verdict(filtered_rows)
-        return apply_toon_format_to_response(
+        return apply_output_format_to_response(
             {
                 "success": True,
                 "verdict": verdict,
@@ -320,7 +316,7 @@ class ConstraintCheckTool(BaseMCPTool):
     def _snapshot_error(
         code: str, output_format: str, detail: str | None = None
     ) -> dict[str, Any]:
-        return apply_toon_format_to_response(
+        return apply_output_format_to_response(
             {
                 "success": False,
                 "verdict": "ERROR",

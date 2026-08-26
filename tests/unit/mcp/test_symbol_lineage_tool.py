@@ -139,12 +139,6 @@ class TestExecute:
         )
         assert result["verdict"] in ("INFO", "REVIEW", "CAUTION")
 
-    def test_toon_format_includes_content(self, tool, tmp_path):
-        _write_py(tmp_path, "pkg/__init__.py", "x = 1\n")
-        result = asyncio.run(tool.execute({"symbol": "x", "output_format": "toon"}))
-        assert result["success"] is True
-        assert "toon_content" in result
-
     def test_no_project_root_raises(self, tmp_path):
         t = SymbolLineageTool(project_root=None)
         with pytest.raises(ValueError, match="Project root"):

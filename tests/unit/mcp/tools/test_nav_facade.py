@@ -882,11 +882,6 @@ def test_context_forwards_explicit_read_existing_capability() -> None:
     ("output_format", "format_fields"),
     [
         pytest.param("json", {}, id="json"),
-        pytest.param(
-            "toon",
-            {"format": "toon", "toon_content": _ACCESS_EVIDENCE_TOON},
-            id="toon",
-        ),
     ],
 )
 def test_context_read_existing_returns_exact_access_evidence_without_backend(

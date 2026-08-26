@@ -160,8 +160,8 @@ def normalize_args(arguments: dict[str, Any], project_root: str) -> str:
 
     Keys sorted (so call-site ordering is irrelevant), the facade's ``action``
     control key dropped (it is already a key component), and path-shaped values
-    made project-relative. ``output_format`` is *kept*: TOON and JSON are
-    genuinely different answers.
+    made project-relative. ``output_format`` is normalized to JSON because
+    JSON is the sole supported response encoding.
     """
     normalized: dict[str, Any] = {}
     for key, value in arguments.items():

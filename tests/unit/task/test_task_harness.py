@@ -200,7 +200,7 @@ def test_cli_main_plan_change_diff_branch(monkeypatch, capsys) -> None:
                 "--scope-path",
                 "src/",
                 "--format",
-                "toon",
+                "json",
             ]
         )
         == 0
@@ -218,24 +218,6 @@ def test_request_from_dict_explicit_budget_dict() -> None:
             "understand",
             {"task": "x", "budget": {"profile": "compact", "max_primitive_calls": 10}},
         )
-
-
-def test_run_operation_toon_branch(monkeypatch) -> None:
-    import tree_sitter_analyzer.task_harness as harness
-
-    class FakeExecutor:
-        async def call(self, facade, action, arguments):
-            return {"success": True}
-
-    monkeypatch.setattr(harness, "McpPrimitiveExecutor", lambda root: FakeExecutor())
-    request = request_from_dict("understand", {"task": "x"})
-    serialized = asyncio.run(
-        harness.run_operation(
-            "understand", request, project_root=".", output_format="toon"
-        )
-    )
-    assert serialized.startswith('"')
-    assert '"schema": "task-outcome/v1"' in serialized
 
 
 def test_request_from_dict_unknown_operation_rejected() -> None:

@@ -113,7 +113,7 @@ async def execute_symbol_search(
     r37bc (dogfood): tool flagged this at 108 lines. Split into argument
     validation + file collection + scatter + assembly. Behaviour
     preserved (max_files=500, batch_size=50, exact/wildcard/fuzzy
-    matching, toon formatting).
+    matching and JSON formatting).
     G1: FTS5 BM25 ranked fast-path tried first for plain symbol names >= 2 chars.
     """
     symbol, output_format, language, symbol_type = _parse_symbol_search_args(arguments)
@@ -151,7 +151,7 @@ def _parse_symbol_search_args(
     symbol = arguments.get("symbol", "").strip()
     if not symbol:
         raise ValueError("symbol must be a non-empty string")
-    output_format = arguments.get("output_format", "toon")
+    output_format = arguments.get("output_format", "json")
     language = arguments.get("language")
     symbol_type = arguments.get("symbol_type")
     return symbol, output_format, language, symbol_type
@@ -334,9 +334,9 @@ def _assemble_symbol_search_response(
     if ranked:
         response["ranked"] = True
         response["ranking_method"] = ranking_method
-    from ..utils.format_helper import apply_toon_format_to_response
+    from ..utils.format_helper import apply_output_format_to_response
 
-    return apply_toon_format_to_response(response, output_format)
+    return apply_output_format_to_response(response, output_format)
 
 
 def _build_match_fn(symbol: str) -> Any:
@@ -416,7 +416,7 @@ def _parse_find_references_args(arguments: dict[str, Any]) -> tuple[str, str]:
     symbol = arguments.get("symbol", "").strip()
     if not symbol:
         raise ValueError("symbol must be a non-empty string")
-    output_format = arguments.get("output_format", "toon")
+    output_format = arguments.get("output_format", "json")
     return symbol, output_format
 
 
@@ -593,6 +593,6 @@ def _assemble_find_references_response(
         "callers_count": len(caller_refs),
         "smart_workflow_hint": hint,
     }
-    from ..utils.format_helper import apply_toon_format_to_response
+    from ..utils.format_helper import apply_output_format_to_response
 
-    return apply_toon_format_to_response(response, output_format)
+    return apply_output_format_to_response(response, output_format)

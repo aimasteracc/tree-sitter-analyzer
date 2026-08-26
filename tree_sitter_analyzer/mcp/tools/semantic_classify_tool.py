@@ -20,7 +20,7 @@ from ...semantic_change_classifier import SemanticChangeClassifier
 from ...utils import setup_logger
 from ...wire_owner import EDIT_CLASSIFY_ACTION_VERSION
 from ..utils.format_helper import (
-    apply_toon_format_to_response,
+    apply_output_format_to_response,
     preformat_diff_snapshot_publish_errors,
 )
 from .base_tool import BaseMCPTool
@@ -153,9 +153,9 @@ class SemanticClassifyTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format",
-                    "default": "toon",
+                    "default": "json",
                 },
                 # #528 — byte-budget params (opt-in, never required)
                 "include_ast_nodes": {
@@ -258,11 +258,8 @@ class SemanticClassifyTool(BaseMCPTool):
             )
             if unavailable is not None:
                 return unavailable
-        # Codex P2 (#1297): attach the read-existing evidence to the raw JSON
-        # response BEFORE the requested format is applied, so TOON output
-        # carries access_mode/access_state/access_reason/source_snapshots
-        # inside toon_content exactly like JSON does.  The impl always runs
-        # on JSON; the requested format is applied once afterwards.
+        # Codex P2 (#1297): attach read-existing evidence to the raw JSON
+        # response before returning the canonical response envelope.
         if read_existing:
             result = await self._execute_impl({**arguments, "output_format": "json"})
         else:
@@ -280,13 +277,13 @@ class SemanticClassifyTool(BaseMCPTool):
                     }
                 )
             read_access.attach_read_existing_evidence(result, records=acquired)
-            requested = arguments.get("output_format", "toon")
-            return apply_toon_format_to_response(result, requested)
+            requested = arguments.get("output_format", "json")
+            return apply_output_format_to_response(result, requested)
         return result
 
     async def _execute_impl(self, arguments: dict[str, Any]) -> dict[str, Any]:
         mode = self._resolve_mode(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         differ = self._get_differ()
         snapshot_id = arguments.get("diff_snapshot_id")
         consumer = None
@@ -297,7 +294,7 @@ class SemanticClassifyTool(BaseMCPTool):
 
                 consumer, error = REGISTRY.acquire(str(snapshot_id), self.project_root)
                 if error:
-                    return apply_toon_format_to_response(
+                    return apply_output_format_to_response(
                         {
                             "success": False,
                             "verdict": "ERROR",
@@ -310,7 +307,7 @@ class SemanticClassifyTool(BaseMCPTool):
                 assert consumer is not None
 
                 def snapshot_error(code: str, verdict: str = "ERROR") -> dict[str, Any]:
-                    return apply_toon_format_to_response(
+                    return apply_output_format_to_response(
                         {
                             "success": False,
                             "verdict": verdict,
@@ -454,11 +451,11 @@ class SemanticClassifyTool(BaseMCPTool):
                 response["source_generation"] = getattr(
                     consumer.snapshot, "source_generation", ""
                 )
-            formatted = apply_toon_format_to_response(response, output_format)
+            formatted = apply_output_format_to_response(response, output_format)
             if consumer is not None:
                 publish_errors, publish_fallback = (
                     preformat_diff_snapshot_publish_errors(
-                        output_format, apply_toon_format_to_response
+                        output_format, apply_output_format_to_response
                     )
                 )
                 error = REGISTRY.validate_publish(consumer)

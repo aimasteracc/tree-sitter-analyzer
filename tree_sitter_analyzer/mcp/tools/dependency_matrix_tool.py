@@ -94,9 +94,9 @@ class CodeGraphDependencyMatrixTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format (default: toon)",
-                    "default": "toon",
+                    "enum": ["json"],
+                    "description": "Output format: JSON.",
+                    "default": "json",
                 },
             },
             "required": ["mode"],
@@ -116,7 +116,7 @@ class CodeGraphDependencyMatrixTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         mode = arguments.get("mode", "summary")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         dm = self._get_matrix()
 
         if mode == "summary":
@@ -200,6 +200,6 @@ class CodeGraphDependencyMatrixTool(BaseMCPTool):
                 "verdict": "ERROR",
             }
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)

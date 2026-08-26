@@ -122,8 +122,8 @@ class TestGetToolDefinitionTestMixin:
         properties = schema.get("properties", {})
         assert "output_format" in properties
         assert properties["output_format"]["type"] == "string"
-        assert properties["output_format"]["enum"] == ["json", "toon"]
-        assert properties["output_format"]["default"] == "toon"
+        assert properties["output_format"]["enum"] == ["json"]
+        assert properties["output_format"]["default"] == "json"
 
     def test_output_file_property(self, tool):
         definition = tool.get_tool_definition()
@@ -252,9 +252,7 @@ class TestValidateArgumentsTestMixin:
             "query_key": "methods",
             "output_format": "invalid",
         }
-        with pytest.raises(
-            ValueError, match="output_format must be one of: json, toon"
-        ):
+        with pytest.raises(ValueError, match="output_format must be one of: json"):
             tool.validate_arguments(arguments)
 
     def test_validate_invalid_output_file_type(self, tool):
@@ -340,11 +338,11 @@ class TestValidateArgumentsAdditionalTestMixin:
         }
         assert tool.validate_arguments(arguments) is True
 
-    def test_validate_output_format_toon_valid(self, tool):
+    def test_validate_output_format_json_valid(self, tool):
         arguments = {
             "file_path": "test.py",
             "query_key": "methods",
-            "output_format": "toon",
+            "output_format": "json",
         }
         assert tool.validate_arguments(arguments) is True
 
@@ -427,7 +425,7 @@ class TestValidateArgumentsCoverageBoostTestMixin:
             "language": "python",
             "filter": "name=foo",
             "result_format": "json",
-            "output_format": "toon",
+            "output_format": "json",
             "output_file": "out.txt",
             "suppress_output": True,
         }

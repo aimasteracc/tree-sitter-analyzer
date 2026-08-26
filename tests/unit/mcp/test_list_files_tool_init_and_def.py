@@ -220,8 +220,8 @@ class TestGetToolDefinition:
         properties = schema.get("properties", {})
         assert "output_format" in properties
         assert properties["output_format"]["type"] == "string"
-        assert properties["output_format"]["enum"] == ["json", "toon"]
-        assert properties["output_format"]["default"] == "toon"
+        assert properties["output_format"]["enum"] == ["json"]
+        assert properties["output_format"]["default"] == "json"
 
 
 class TestValidateRoots:

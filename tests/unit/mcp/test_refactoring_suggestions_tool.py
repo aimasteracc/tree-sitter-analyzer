@@ -219,12 +219,6 @@ class TestRefactoringSuggestionsTool:
         if with_plans:
             assert "skeleton" in with_plans[0]["precise_plan"]["extractions"][0]
 
-    def test_output_format_toon(self, tool):
-        result = _run(
-            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "toon"})
-        )
-        assert result.get("format") == "toon"
-
     def test_long_function_has_precise_plan(self, tool):
         result = _run(
             tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})

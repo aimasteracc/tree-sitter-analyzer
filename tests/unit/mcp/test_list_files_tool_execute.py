@@ -186,42 +186,6 @@ class TestExecute:
                         assert "results" not in result
 
     @pytest.mark.asyncio
-    async def test_execute_with_output_format_toon(
-        self, tool, sample_project_structure
-    ):
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.list_files_tool.fd_rg_utils.check_external_command",
-            return_value=True,
-        ):
-            with patch(
-                "tree_sitter_analyzer.mcp.tools.list_files_tool.fd_rg_utils.run_command_capture",
-                new_callable=AsyncMock,
-            ) as mock_run:
-                mock_run.return_value = (
-                    0,
-                    b"/path/to/file1.py\n/path/to/file2.py\n",
-                    b"",
-                )
-
-                with patch(
-                    "tree_sitter_analyzer.mcp.tools.list_files_tool.get_default_detector"
-                ):
-                    with patch(
-                        "tree_sitter_analyzer.mcp.tools.list_files_helpers.apply_toon_format_to_response"
-                    ) as mock_toon:
-                        mock_toon.return_value = {"toon": "formatted"}
-
-                        arguments = {
-                            "roots": [str(sample_project_structure)],
-                            "output_format": "toon",
-                        }
-
-                        result = await tool.execute(arguments)
-
-                        assert mock_toon.called
-                        assert result == {"toon": "formatted"}
-
-    @pytest.mark.asyncio
     async def test_execute_fd_command_failure(self, tool, sample_project_structure):
         with patch(
             "tree_sitter_analyzer.mcp.tools.list_files_tool.fd_rg_utils.check_external_command",
@@ -381,4 +345,3 @@ class TestExecute:
                     assert result["truncated"] is True
                     assert result["agent_summary"]["risk"] == "high"
                     assert result["agent_summary"]["suggested_tool"] == "list_files"
-                    assert "toon_content" in result

@@ -71,7 +71,6 @@ class TestExecuteTestMixin:
 
             assert result["success"] is True
             assert result["count"] == len(mock_query_results)
-            assert "toon_content" in result
             assert result["file_path"] == str(sample_python_file)
             assert result["language"] == "python"
             assert result["query"] == "methods"
@@ -190,32 +189,6 @@ class TestExecuteTestMixin:
                 assert result["success"] is True
                 assert "output_file_path" in result
                 assert "results" not in result
-
-    @pytest.mark.asyncio
-    async def test_execute_with_toon_format(
-        self, tool, sample_python_file, mock_query_results
-    ):
-        with patch.object(
-            tool.query_service, "execute_query", new_callable=AsyncMock
-        ) as mock_query:
-            mock_query.return_value = mock_query_results
-
-            with patch(
-                "tree_sitter_analyzer.mcp.utils.format_helper.apply_toon_format_to_response"
-            ) as mock_toon:
-                mock_toon.return_value = {"toon": "formatted"}
-
-                arguments = {
-                    "file_path": str(sample_python_file),
-                    "query_key": "methods",
-                    "language": "python",
-                    "output_format": "toon",
-                }
-
-                result = await tool.execute(arguments)
-
-                assert mock_toon.called
-                assert result == {"toon": "formatted"}
 
     @pytest.mark.asyncio
     async def test_execute_exception_handling(self, tool, sample_python_file):
@@ -585,32 +558,6 @@ class TestExecuteCoverageBoostTestMixin:
                 assert result["output_file_path"] == "/output/results.json"
                 assert result["file_saved"] is True
                 assert "results" not in result
-
-    @pytest.mark.asyncio
-    async def test_execute_file_output_with_toon_format(
-        self, tool, sample_python_file, mock_query_results
-    ):
-        with patch.object(
-            tool.query_service, "execute_query", new_callable=AsyncMock
-        ) as mock_query:
-            mock_query.return_value = mock_query_results
-
-            with patch.object(tool.file_output_manager, "save_to_file") as mock_save:
-                mock_save.return_value = "/output/toon_results.txt"
-
-                arguments = {
-                    "file_path": str(sample_python_file),
-                    "query_key": "methods",
-                    "language": "python",
-                    "output_file": "toon_results",
-                    "output_format": "toon",
-                }
-
-                result = await tool.execute(arguments)
-
-                assert result["success"] is True
-                assert result["file_saved"] is True
-                assert result["output_file_path"] == "/output/toon_results.txt"
 
     @pytest.mark.asyncio
     async def test_execute_empty_arguments_dict_triggers_error(self, tool):

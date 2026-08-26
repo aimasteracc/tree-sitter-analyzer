@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import Any
 
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
+from ..utils.format_helper import (
+    apply_output_format_to_response,
+    format_for_file_output,
+)
 from . import fd_rg_utils
 
 logger = logging.getLogger(__name__)
@@ -149,11 +152,10 @@ TOOL_SCHEMA: dict[str, Any] = {
                 "Set to true when debugging 'why did we miss this file'."
             ),
         },
-        # Token-efficient toon format by default
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
         },
         "output_file": {
             "type": "string",
@@ -321,9 +323,9 @@ def _respond_count_only(
         return normalize_envelope(file_response)
     result.update(file_response)
 
-    output_format = context.arguments.get("output_format", "toon")
+    output_format = context.arguments.get("output_format", "json")
     normalize_envelope(result)
-    return apply_toon_format_to_response(result, output_format)
+    return apply_output_format_to_response(result, output_format)
 
 
 def _attach_total_count_metadata(
@@ -426,9 +428,9 @@ def _respond_detailed(
         return normalize_envelope(file_response)
     final_result.update(file_response)
 
-    output_format = context.arguments.get("output_format", "toon")
+    output_format = context.arguments.get("output_format", "json")
     normalize_envelope(final_result)
-    return apply_toon_format_to_response(final_result, output_format)
+    return apply_output_format_to_response(final_result, output_format)
 
 
 def _save_count_output(
@@ -490,7 +492,7 @@ def _save_to_file(
 ) -> str | None:
     """Save content to output file via FileOutputManager."""
     try:
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         formatted, _ = format_for_file_output(content, output_format)
         manager = FileOutputManager(project_root)
         return manager.save_to_file(content=formatted, base_name=output_file)

@@ -559,7 +559,7 @@ class TestFindTestFilesPythonPublicSymbolReferences:
             source = root / "src" / "format_helper.py"
             source.parent.mkdir(parents=True)
             source.write_text(
-                "def apply_toon_format_to_response(data):\n"
+                "def apply_output_format_to_response(data):\n"
                 "    return data\n\n"
                 "def _private_helper():\n"
                 "    return None\n",
@@ -569,9 +569,9 @@ class TestFindTestFilesPythonPublicSymbolReferences:
             exact_test = root / "tests" / "test_output_cost_invariants.py"
             exact_test.parent.mkdir(parents=True)
             exact_test.write_text(
-                "from src.format_helper import apply_toon_format_to_response\n\n"
+                "from src.format_helper import apply_output_format_to_response\n\n"
                 "def test_budget():\n"
-                "    assert apply_toon_format_to_response({}) == {}\n",
+                "    assert apply_output_format_to_response({}) == {}\n",
                 encoding="utf-8",
             )
             private_only = root / "tests" / "test_private_only.py"
@@ -592,7 +592,7 @@ class TestFindTestFilesPythonPublicSymbolReferences:
             source = root / "src" / "format_helper.py"
             source.parent.mkdir(parents=True)
             source.write_text(
-                "def apply_toon_format_to_response(data):\n    return data\n",
+                "def apply_output_format_to_response(data):\n    return data\n",
                 encoding="utf-8",
             )
 
@@ -601,12 +601,12 @@ class TestFindTestFilesPythonPublicSymbolReferences:
             readable.parent.mkdir(parents=True)
             readable.write_text(
                 "def test_budget():\n"
-                "    assert apply_toon_format_to_response({}) == {}\n",
+                "    assert apply_output_format_to_response({}) == {}\n",
                 encoding="utf-8",
             )
             unreadable.write_text(
                 "def test_unreadable():\n"
-                "    assert apply_toon_format_to_response({}) == {}\n",
+                "    assert apply_output_format_to_response({}) == {}\n",
                 encoding="utf-8",
             )
 
@@ -632,14 +632,14 @@ class TestFindTestFilesPythonPublicSymbolReferences:
             source = root / "src" / "format_helper.py"
             source.parent.mkdir(parents=True)
             source.write_text(
-                "def apply_toon_format_to_response(data):\n    return data\n",
+                "def apply_output_format_to_response(data):\n    return data\n",
                 encoding="utf-8",
             )
             test = root / "tests" / "test_output_cost_invariants.py"
             test.parent.mkdir(parents=True)
             test.write_text(
                 "def test_budget():\n"
-                "    assert apply_toon_format_to_response({}) == {}\n",
+                "    assert apply_output_format_to_response({}) == {}\n",
                 encoding="utf-8",
             )
 

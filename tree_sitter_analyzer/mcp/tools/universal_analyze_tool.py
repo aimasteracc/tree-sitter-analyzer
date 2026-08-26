@@ -23,7 +23,7 @@ from ...utils import setup_logger
 from ..utils.error_handler import handle_mcp_errors
 from ..utils.error_sanitizer import safe_error_message
 from ..utils.file_metrics import compute_file_metrics
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .analyze_code_structure_helpers import convert_analysis_result_to_structure_dict
 from .base_tool import (
     BaseMCPTool,
@@ -230,7 +230,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
         file_path = arguments["file_path"]
         language = arguments.get("language")
         analysis_type = arguments.get("analysis_type", "basic")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         resolved = self.resolve_and_validate_file_path(file_path)
         if language:
@@ -305,9 +305,8 @@ class UniversalAnalyzeTool(BaseMCPTool):
 
         Picks the Java-specific advanced path or the generic universal
         path based on ``language``. Honours ``include_queries=True`` by
-        attaching ``available_queries``. TOON default is preserved —
-        ``output_format`` defaults to ``toon`` upstream and is passed
-        through unchanged.
+        attaching ``available_queries``. JSON is the sole supported
+        response format and is passed through unchanged.
 
         r37e2 (dogfood): lifted from ``execute`` to flatten nesting
         from depth 6 to 3 (try → with → if branch → kwargs).
@@ -326,7 +325,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
                 result["available_queries"] = await self._get_available_queries(
                     language
                 )
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
     async def _analyze_advanced(
         self,

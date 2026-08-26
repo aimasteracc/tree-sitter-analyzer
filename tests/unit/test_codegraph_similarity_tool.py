@@ -35,11 +35,6 @@ class TestToolDefinition:
         assert set(mode["enum"]) == {"all", "structural", "textual"}
         assert mode["default"] == "all"
 
-    def test_schema_output_format_default_toon(self, tool):
-        assert (
-            tool.get_tool_schema()["properties"]["output_format"]["default"] == "toon"
-        )
-
 
 @pytest.fixture
 def tool_with_clones(tmp_path):
@@ -71,11 +66,6 @@ class TestExecute:
     async def test_runs_on_project(self, tool_with_root):
         result = await tool_with_root.execute({"output_format": "json"})
         assert result["success"] is True
-
-    async def test_toon_format_default(self, tool_with_root):
-        result = await tool_with_root.execute({})
-        assert result["format"] == "toon"
-        assert "toon_content" in result
 
 
 class TestIncludeBodiesSchema:

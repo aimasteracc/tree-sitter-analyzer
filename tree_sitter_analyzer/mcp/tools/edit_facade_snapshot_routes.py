@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 
 
 async def release_snapshot(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -13,7 +13,7 @@ async def release_snapshot(arguments: dict[str, Any]) -> dict[str, Any]:
 
     snapshot_id = arguments.get("diff_snapshot_id")
     lease_id = arguments.get("route_lease_id")
-    output_format = arguments.get("output_format", "toon")
+    output_format = arguments.get("output_format", "json")
     if not isinstance(snapshot_id, str) or not isinstance(lease_id, str):
         raise ValueError("diff_snapshot_id and route_lease_id are required")
     error = REGISTRY.release_route_lease(snapshot_id, lease_id)
@@ -26,4 +26,4 @@ async def release_snapshot(arguments: dict[str, Any]) -> dict[str, Any]:
     }
     if error is not None:
         result.update(error=error, error_code=error)
-    return apply_toon_format_to_response(result, output_format)
+    return apply_output_format_to_response(result, output_format)

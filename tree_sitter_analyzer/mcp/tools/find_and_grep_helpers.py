@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..utils.format_helper import (
-    attach_toon_content_to_response,
     format_for_file_output,
 )
 from .find_and_grep_agent_summary import build_agent_summary_from_meta
@@ -114,8 +113,8 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
         },
         "output_file": {
             "type": "string",
@@ -233,7 +232,7 @@ def build_empty_response(
         "results": [],
         "count": 0,
         "meta": meta,
-        "output_format": arguments.get("output_format", "toon"),
+        "output_format": arguments.get("output_format", "json"),
         "agent_summary": build_agent_summary_from_meta(
             arguments,
             mode="empty",
@@ -282,8 +281,6 @@ def build_count_only_response(context: FindAndGrepCountOnlyContext) -> dict[str,
         ),
     }
     normalize_envelope(result, total_count=int(total_matches))
-    if context.output_format == "toon":
-        return attach_toon_content_to_response(result)
     return result
 
 
@@ -326,7 +323,7 @@ def _handle_file_output(
     matches: list[dict[str, Any]] | None,
 ) -> dict[str, Any] | None:
     """Handle saving results to a file."""
-    output_format = arguments.get("output_format", "toon")
+    output_format = arguments.get("output_format", "json")
 
     try:
         # Build content for file output

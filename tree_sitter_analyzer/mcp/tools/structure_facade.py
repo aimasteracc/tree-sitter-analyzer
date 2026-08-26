@@ -136,7 +136,7 @@ def build_structure_facade(project_root: str | None = None) -> FacadeTool:
         forward: dict[str, Any] = {
             "file_path": args["file_path"],
             "format_type": "signatures",
-            "output_format": args.get("output_format", "toon"),
+            "output_format": args.get("output_format", "json"),
         }
         if "language" in args:
             forward["language"] = args["language"]
@@ -197,7 +197,7 @@ def build_structure_facade(project_root: str | None = None) -> FacadeTool:
             "format": args.get("format", "text"),
             "output_file": args.get("output_file"),
             "suppress_output": args.get("suppress_output", False),
-            "output_format": args.get("output_format", "toon"),
+            "output_format": args.get("output_format", "json"),
             "allow_truncate": args.get("allow_truncate", False),
             "fail_fast": args.get("fail_fast", False),
         }

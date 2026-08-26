@@ -36,9 +36,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output-format",
         "--format",
         dest="output_format",
-        choices=["json", "text", "toon"],
+        choices=["json", "text"],
         default="json",
-        help="Output format: 'json' (default), 'text', or 'toon' (50-70%% token reduction). Alias: --format",
+        help="Output format: 'json' (default) or 'text'. Alias: --format",
     )
     parser.add_argument(
         "--quiet",
@@ -109,9 +109,7 @@ async def _run(args: argparse.Namespace) -> int:
             else:
                 payload[payload_key] = val
 
-    # Pass output_format to MCP tool to ensure consistent formatting
-    # CLI uses "json" as default, MCP tool uses "toon" as default
-    # We need to explicitly pass the CLI's output_format to override MCP default
+    # Pass the JSON/text selection to the underlying tool.
     payload["output_format"] = args.output_format
 
     try:

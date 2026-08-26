@@ -19,7 +19,7 @@ from typing import Any
 
 from ...utils import setup_logger
 from ...xref import XRefEngine
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 
@@ -107,8 +107,8 @@ class CodeGraphXRefTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                     "description": "Output format",
                 },
             },
@@ -130,7 +130,7 @@ class CodeGraphXRefTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         mode = arguments.get("mode", "symbol")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         cache = self._get_cache()
         engine = XRefEngine(cache)
 
@@ -189,4 +189,4 @@ class CodeGraphXRefTool(BaseMCPTool):
             verdict = "INFO" if has_data else "NOT_FOUND"
             result = build_response(verdict=verdict, mode="symbol", **xref_dict)
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)

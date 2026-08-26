@@ -4,8 +4,8 @@ Many TSA tools want a machine-readable view of two kinds of project rules
 that previously lived as prose in ``CLAUDE.md`` § "Deliberate design
 decisions":
 
-* ``intentional_design`` — locked design decisions (e.g. "MCP defaults to
-  TOON; do not flip to JSON"). When an edit touches one of these files /
+* ``intentional_design`` — locked design decisions (for example, the
+  canonical JSON response contract). When an edit touches one of these files /
   symbols, downstream verdict tools (``safe_to_edit`` etc.) should escalate
   the verdict per the rule's ``action_when_touched``.
 * ``fixture_allowlist`` — files that are referenced from ``tests/`` as

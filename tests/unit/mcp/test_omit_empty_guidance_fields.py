@@ -87,21 +87,6 @@ async def test_no_empty_guidance_fields_json(handler, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_no_empty_guidance_fields_toon(handler, tmp_path):
-    """TOON wire: the empty command fields are absent from toon_content too.
-
-    The fields are encoded into ``toon_content`` during execute(), so a
-    top-level-only strip would leave them in the TOON blob. This asserts
-    the strip happens BEFORE encoding (at the build site).
-    """
-    body, _ = await _call(handler, _healthy_file(tmp_path), "toon")
-    toon = body.get("toon_content")
-    assert isinstance(toon, str) and toon, "toon mode must carry toon_content"
-    leaked = [k for k in _EMPTY_GUIDANCE_KEYS if f"{k}:" in toon]
-    assert leaked == [], f"empty guidance fields leaked into toon_content: {leaked}"
-
-
-@pytest.mark.asyncio
 async def test_no_empty_guidance_fields_empty_file(handler, tmp_path):
     """The empty-file terminal response also drops the empty command fields."""
     src = tmp_path / "empty.py"

@@ -9,7 +9,6 @@ except ImportError:
     Tool = Any
 
 from ...utils import setup_logger
-from ..utils.format_helper import TOON_CONTROL_SURFACE, reduce_to_control_surface
 from ..utils.schema_strictness import enforce_strict_params
 from .error_recovery import (
     build_agent_friendly_error,
@@ -62,8 +61,6 @@ def register_tools(server: Any, server_instance: Any) -> None:
             logger.info(f"MCP tool call: {name} with args: {list(arguments.keys())}")
             server_instance.validate_file_path_security(arguments)
             result = await _dispatch_tool(server_instance, name, arguments)
-            # Recorded BEFORE the canonical hooks below (they mutate in place).
-            tool_compacted = _is_control_surface_envelope(result)
             # Central envelope normalization: tools that return their own
             # ``{success: False, ...}`` dicts (find_and_grep, refactoring_suggestions,
             # read_partial, query, search_content) get the canonical
@@ -79,33 +76,10 @@ def register_tools(server: Any, server_instance: Any) -> None:
                 # that build an agent_summary but never set summary_line
                 # (FileHealth, ProjectHealth, RefactoringSuggestions, ...).
                 # Idempotent — tools that already set ``summary_line`` keep
-                # their value. Applies to TOON responses too because TOON
-                # mode keeps ``agent_summary``/``summary_line`` as metadata
-                # alongside the ``toon_content`` blob.
+                # their value.
                 result = ensure_canonical_success_envelope(
                     name, result, arguments=arguments
                 )
-            # RFC-0012 Phase 1: the compact reduction MUST run here, AFTER the
-            # canonical envelope normalization above (which re-adds
-            # summary_line/agent_summary). Keyed on the caller's
-            # ``compact_only`` request and only touching TOON responses; it is
-            # idempotent, so a tool's execute may also have reduced already.
-            #
-            # Issue #1321 — ``tool_compacted`` gate: this re-application only
-            # undoes what the canonical hooks just re-added, so it may only run
-            # on an envelope the TOOL had already reduced. A DEFAULT TOON
-            # envelope is disjoint (its top-level keys are NOT inside
-            # toon_content), so reducing one here would silently DESTROY data
-            # — e.g. the honest-truncation ``truncated`` flag on tools that
-            # accept ``compact_only`` at the facade but never forward it to an
-            # inner tool that does not declare it (nav callers/callees).
-            if (
-                isinstance(result, dict)
-                and tool_compacted
-                and arguments.get("compact_only")
-                and result.get("format") == "toon"
-            ):
-                result = reduce_to_control_surface(result)
             return [
                 TextContent(
                     type="text",
@@ -152,20 +126,6 @@ async def _dispatch_tool(
     if is_legacy_name(name):
         return await dispatch_legacy(server_instance, name, arguments)
     raise ValueError(f"Unknown tool: {name}")
-
-
-def _is_control_surface_envelope(result: Any) -> bool:
-    """True when a tool already reduced its TOON response to the control surface.
-
-    Issue #1321: distinguishes "the tool honoured ``compact_only`` and the
-    canonical hooks are about to re-add metadata I should strip again" from
-    "this is a default, disjoint envelope I must not touch".
-    """
-    return (
-        isinstance(result, dict)
-        and result.get("format") == "toon"
-        and not set(result) - TOON_CONTROL_SURFACE
-    )
 
 
 def _json_dumps(obj: Any) -> str:

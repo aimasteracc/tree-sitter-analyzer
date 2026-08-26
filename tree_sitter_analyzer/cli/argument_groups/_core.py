@@ -19,36 +19,22 @@ def _add_output_options(parser: argparse.ArgumentParser) -> None:
     """Add output formatting options."""
     parser.add_argument(
         "--output-format",
-        choices=["json", "text", "toon"],
+        choices=["json", "text"],
         default="json",
-        help="Specify output format: 'json' (default), 'text', or 'toon' (50-70%% token reduction)",
+        help="Specify output format: 'json' (default) or 'text'",
     )
     parser.add_argument(
         "--format",
-        choices=["json", "toon"],
-        help="Alias for --output-format (json or toon)",
-    )
-    parser.add_argument(
-        "--toon-use-tabs",
-        action="store_true",
-        help="Use tab delimiters instead of commas in TOON format (further compression)",
-    )
-    parser.add_argument(
-        "--compact-toon",
-        action="store_true",
-        help=(
-            "RFC-0012: with TOON output on the MCP decision tools, return only "
-            "the control surface alongside toon_content (drops metadata already "
-            "encoded in the blob). Mirrors the MCP 'compact_only' parameter."
-        ),
+        choices=["json"],
+        help="Alias for --output-format (json)",
     )
     parser.add_argument(
         "--table",
-        choices=["full", "compact", "csv", "json", "toon", "signatures"],
+        choices=["full", "compact", "csv", "json", "signatures"],
         help=(
             "Output in table format. "
             "'signatures' = lightweight method-directory (~25%% of full tokens); "
-            "toon = 50-70%% token reduction"
+            "json = machine-readable structured output"
         ),
     )
     parser.add_argument(

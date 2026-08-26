@@ -125,7 +125,6 @@ def build_agent_skills_inventory(
     verdict_value: Any = raw_agent_summary.get("verdict")
     if isinstance(verdict_value, str) and verdict_value:
         result["verdict"] = verdict_value
-    result["toon_content"] = _build_toon_content(result)
     return result
 
 
@@ -495,36 +494,6 @@ def _top_actionable_skills(skills: list[dict[str, Any]]) -> list[str]:
     """Return highest-actionability skills by score."""
     ranked = sorted(skills, key=lambda item: item["actionability_score"], reverse=True)
     return [skill["name"] for skill in ranked[:ACTIONABILITY_PREVIEW_LIMIT]]
-
-
-def _build_toon_content(result: dict[str, Any]) -> str:
-    """Build a compact text representation for --format toon."""
-    summary = result["agent_summary"]
-    lines = [
-        "inventory: project agent skills",
-        f"skills_root: {result['skills_root']}",
-        f"skill_count: {result['skill_count']}",
-        f"risk: {summary['risk']}",
-        f"validation_status: {summary['validation_status']}",
-        f"blocking_gap_count: {summary['blocking_gap_count']}",
-        f"caution_gap_count: {summary['caution_gap_count']}",
-        f"missing_completion_count: {summary['missing_completion_count']}",
-        f"ready_for_use_count: {summary['ready_for_use_count']}",
-        f"readiness_ratio: {summary['readiness_ratio']}",
-        "skills:",
-    ]
-    for skill in result["skills"]:
-        gaps = ",".join(skill["gaps"]) if skill["gaps"] else "none"
-        lines.append(
-            "  - "
-            + skill["name"]
-            + f" | actionability={skill['actionability']} ({skill['actionability_score']})"
-            + f" | ready={str(skill['ready_for_use']).lower()} | path={skill['skill_path']} gaps={gaps}"
-        )
-    lines.append("top_actionable_skills: " + ", ".join(summary["actionable_skills"]))
-    lines.append(f"next_step: {summary['next_step']}")
-    lines.append(f"next_fix: {summary['next_fix']}")
-    return "\n".join(lines)
 
 
 def _display_optional_path(path: Path, project_path: Path) -> str | None:

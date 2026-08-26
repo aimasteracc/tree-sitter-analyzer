@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool, mirror_summary_line
 from .security_scanner import detect_security_issues
 from .utils.anti_patterns import (
@@ -70,8 +70,8 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
         },
     },
     "required": ["file_path"],
@@ -126,7 +126,7 @@ class CodePatternsTool(BaseMCPTool):
         file_path = arguments["file_path"]
         categories = arguments.get("categories", ["all"])
         severity_threshold = arguments.get("severity_threshold", "info")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         resolved = self.resolve_and_validate_file_path(file_path)
         if not Path(resolved).is_file():
@@ -160,7 +160,7 @@ class CodePatternsTool(BaseMCPTool):
         )
         # M10: mirror agent_summary.verdict to top level.
         response = mirror_summary_line(response)
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
     def _collect_patterns(
         self,
@@ -513,7 +513,7 @@ def _empty_file_response(
 
     Returns ``None`` when the caller should continue with normal scanning;
     otherwise returns a fully-formatted n/a envelope (already passed
-    through the TOON formatter).
+    through the JSON formatter).
 
     Empty / whitespace-only files have no signal for any of the smell,
     security, or anti-pattern detectors. Reporting ``verdict=SAFE`` on
@@ -574,7 +574,7 @@ def _empty_file_response(
             "verdict": "N/A",
         },
     }
-    return apply_toon_format_to_response(response, output_format)
+    return apply_output_format_to_response(response, output_format)
 
 
 def _syntax_error_response(
@@ -628,4 +628,4 @@ def _syntax_error_response(
             "risk": "high",
         },
     }
-    return apply_toon_format_to_response(response, output_format)
+    return apply_output_format_to_response(response, output_format)

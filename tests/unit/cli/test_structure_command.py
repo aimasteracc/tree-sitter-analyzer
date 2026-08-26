@@ -356,34 +356,6 @@ class TestStructureCommandOutputStructureAnalysis:
             command._output_structure_analysis(analysis_result)
             mock_json.assert_called_once()
 
-    def test_output_structure_analysis_toon(self, command):
-        """Test _output_structure_analysis with TOON format."""
-        analysis_result = MagicMock(
-            file_path="test.py",
-            language="python",
-            line_count=10,
-            elements=[],
-            node_count=0,
-            success=True,
-            analysis_time=0.1,
-        )
-        command.args.output_format = "toon"
-        with patch(
-            "tree_sitter_analyzer.cli.commands.structure_command.ToonFormatter"
-        ) as mock_formatter_class:
-            mock_formatter = MagicMock()
-            mock_formatter.format.return_value = "formatted_output"
-            mock_formatter_class.return_value = mock_formatter
-            with patch("builtins.print") as mock_print:
-                command._output_structure_analysis(analysis_result)
-                # formatter.format is called once, and print is called once:
-                # (section header is skipped for toon/json to keep output clean)
-                mock_formatter_class.assert_called_once_with(use_tabs=False)
-                mock_formatter.format.assert_called_once()
-                assert mock_print.call_count == 1
-                # The print call contains the formatted output
-                assert mock_print.call_args_list[0][0][0] == "formatted_output"
-
 
 class TestStructureCommandOutputTextFormat:
     """Tests for StructureCommand._output_text_format method."""

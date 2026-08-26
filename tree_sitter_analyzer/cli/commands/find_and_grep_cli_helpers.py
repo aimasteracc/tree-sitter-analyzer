@@ -17,9 +17,9 @@ def add_output_options(parser: argparse.ArgumentParser) -> None:
         "--output-format",
         "--format",
         dest="output_format",
-        choices=["json", "text", "toon"],
+        choices=["json", "text"],
         default="json",
-        help="Output format: 'json' (default), 'text', or 'toon' (50-70%% token reduction). Alias: --format",
+        help="Output format: 'json' (default) or 'text'. Alias: --format",
     )
     parser.add_argument(
         "--quiet",

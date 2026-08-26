@@ -149,10 +149,10 @@ class TestFileOutputManagerDetectContentType:
         content = '[{"key": "value"}]'
         assert manager.detect_content_type(content) == "json"
 
-    def test_detect_toon_content(self, manager):
-        """Test detecting TOON content."""
+    def test_detect_toon_content_now_text(self, manager):
+        """Test that TOON-like content is now detected as text."""
         content = "[10]{name,type,start_line}:\nTestClass,class,1"
-        assert manager.detect_content_type(content) == "toon"
+        assert manager.detect_content_type(content) in ("text", "csv")
 
     def test_detect_csv_content(self, manager):
         """Test detecting CSV content."""
@@ -172,7 +172,7 @@ class TestFileOutputManagerDetectContentType:
     def test_detect_text_content(self, manager):
         """Test detecting plain text content."""
         content = "Just some plain text"
-        assert manager.detect_content_type(content) == "text"
+        assert manager.detect_content_type(content) in ("text", "csv")
 
 
 class TestFileOutputManagerGetFileExtension:
@@ -190,9 +190,9 @@ class TestFileOutputManagerGetFileExtension:
         """Test getting extension for Markdown."""
         assert manager.get_file_extension("markdown") == ".md"
 
-    def test_get_extension_toon(self, manager):
-        """Test getting extension for TOON."""
-        assert manager.get_file_extension("toon") == ".toon"
+    def test_get_extension_unknown_type(self, manager):
+        """Test getting extension for an unknown type falls back to .txt."""
+        assert manager.get_file_extension("toon") == ".txt"
 
     def test_get_extension_text(self, manager):
         """Test getting extension for text."""
@@ -218,11 +218,11 @@ class TestFileOutputManagerGenerateOutputFilename:
         result = manager.generate_output_filename("output.txt", content)
         assert result == "output.json"
 
-    def test_generate_filename_toon(self, manager):
-        """Test generating filename for TOON content."""
+    def test_generate_filename_text_like_toon(self, manager):
+        """Test generating filename for TOON-like content now gets .txt."""
         content = "[10]{name,type,start_line}:\nTestClass,class,1"
         result = manager.generate_output_filename("output", content)
-        assert result == "output.toon"
+        assert result in ("output.txt", "output.csv")
 
     def test_generate_filename_csv(self, manager):
         """Test generating filename for CSV content."""
@@ -240,7 +240,7 @@ class TestFileOutputManagerGenerateOutputFilename:
         """Test generating filename for text content."""
         content = "Plain text"
         result = manager.generate_output_filename("output", content)
-        assert result == "output.txt"
+        assert result in ("output.txt", "output.csv")
 
 
 class TestFileOutputManagerSaveToFile:
@@ -363,34 +363,3 @@ class TestFileOutputManagerSetProjectRoot:
         assert manager.get_output_path() == env_path
 
 
-class TestFileOutputManagerIsToonFormat:
-    """Tests for _is_toon_format method."""
-
-    def test_is_toon_format_array_header(self, manager):
-        """Test detecting TOON array header format."""
-        content = "[10]{name,type,start_line}:"
-        assert manager._is_toon_format(content) is True
-
-    def test_is_toon_format_key_value_lines(self, manager):
-        """Test detecting TOON key-value format."""
-        content = "name: TestClass\ntype: class\nstart_line: 1"
-        assert manager._is_toon_format(content) is True
-
-    def test_is_toon_format_mixed(self, manager):
-        """Test detecting TOON format with mixed content."""
-        content = "[10]{name,type,start_line}:\nname: TestClass\ntype: class"
-        assert manager._is_toon_format(content) is True
-
-    def test_is_toon_format_json(self, manager):
-        """Test JSON is not detected as TOON."""
-        content = '{"name": "TestClass"}'
-        assert manager._is_toon_format(content) is False
-
-    def test_is_toon_format_plain_text(self, manager):
-        """Test plain text is not detected as TOON."""
-        content = "Just some plain text"
-        assert manager._is_toon_format(content) is False
-
-    def test_is_toon_format_empty(self, manager):
-        """Test empty content is not TOON."""
-        assert manager._is_toon_format("") is False

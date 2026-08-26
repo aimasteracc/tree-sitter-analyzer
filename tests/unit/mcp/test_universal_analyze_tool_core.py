@@ -114,7 +114,7 @@ class TestUniversalAnalyzeToolGetToolDefinition:
         assert "output_format" in schema["properties"]
         assert schema["properties"]["output_format"]["type"] == "string"
         assert "enum" in schema["properties"]["output_format"]
-        assert set(schema["properties"]["output_format"]["enum"]) == {"json", "toon"}
+        assert set(schema["properties"]["output_format"]["enum"]) == {"json"}
 
 
 class TestUniversalAnalyzeToolValidateArguments:

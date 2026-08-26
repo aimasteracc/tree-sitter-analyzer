@@ -152,7 +152,7 @@ class FindAndGrepTool(FindAndGrepRespondMixin, BaseMCPTool):
             return missing_response
 
         self.validate_arguments(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         roots = self._validate_roots(arguments["roots"])
 
         files, fd_elapsed_ms, truncated_fd = await self._run_fd(arguments, roots)

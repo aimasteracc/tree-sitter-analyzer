@@ -116,7 +116,7 @@ class TestAnalyzeCodeStructureToolGetToolDefinition:
         schema = tool.get_tool_definition()["inputSchema"]
         assert "output_format" in schema["properties"]
         assert schema["properties"]["output_format"]["type"] == "string"
-        assert set(schema["properties"]["output_format"]["enum"]) == {"json", "toon"}
+        assert set(schema["properties"]["output_format"]["enum"]) == {"json"}
 
 
 class TestAnalyzeCodeStructureToolValidateArguments:

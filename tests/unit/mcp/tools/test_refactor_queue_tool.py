@@ -59,12 +59,6 @@ class TestSchema:
         schema = tool.get_tool_schema()
         assert schema["properties"]["top_n"]["default"] == 5
 
-    def test_output_format_default_is_toon(self) -> None:
-        # CLAUDE.md §1 — locked: MCP defaults to TOON.
-        tool = RefactorQueueTool(project_root=".")
-        schema = tool.get_tool_schema()
-        assert schema["properties"]["output_format"]["default"] == "toon"
-
     def test_declares_read_only_hint(self) -> None:
         tool = RefactorQueueTool(project_root=".")
         assert tool.get_tool_definition()["annotations"]["readOnlyHint"] is True

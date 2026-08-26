@@ -48,9 +48,9 @@ class DocSyncTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["toon", "json"],
-                    "default": "toon",
-                    "description": "Output format (default: toon for token efficiency).",
+                    "enum": ["json"],
+                    "default": "json",
+                    "description": "Output format: JSON.",
                 },
             },
             "required": [],
@@ -65,7 +65,6 @@ class DocSyncTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         project_root = str(self.project_root)
         doc_patterns = arguments.get("doc_patterns") or None
-        output_format = arguments.get("output_format", "toon")
 
         result = run_doc_sync(project_root, doc_patterns=doc_patterns)
 
@@ -100,32 +99,4 @@ class DocSyncTool(BaseMCPTool):
             "agent_summary": agent_summary,
         }
 
-        if output_format == "toon":
-            return {
-                "format": "toon",
-                "toon_content": self._to_toon(result),
-                "success": result.get("success", True),
-                "verdict": verdict,
-                "agent_summary": agent_summary,
-            }
         return envelope
-
-    @staticmethod
-    def _to_toon(result: dict[str, Any]) -> str:
-        lines: list[str] = []
-        lines.append("doc_sync:")
-        lines.append(f"  success: {result['success']}")
-        lines.append(f"  docs_scanned: {result['docs_scanned']}")
-        lines.append(f"  total_refs_checked: {result['total_refs_checked']}")
-        lines.append(f"  stale_count: {result['stale_count']}")
-        stale = result.get("stale_refs", [])
-        if stale:
-            lines.append("  stale_refs:")
-            for s in stale:
-                lines.append(f"    - doc_file: {s['doc_file']}")
-                lines.append(f"      line: {s['line']}")
-                lines.append(f"      missing_path: {s['path']}")
-                lines.append(f"      reason: {s['reason']}")
-        else:
-            lines.append("  stale_refs: []")
-        return "\n".join(lines)

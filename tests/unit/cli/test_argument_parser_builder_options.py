@@ -199,23 +199,17 @@ class TestAddOutputOptions:
         args = parser.parse_args(["--output-format", "text"])
         assert args.output_format == "text"
 
-    def test_output_format_toon(self):
+    def test_output_format_json(self):
         parser = self._make_parser()
         _add_output_options(parser)
-        args = parser.parse_args(["--output-format", "toon"])
-        assert args.output_format == "toon"
+        args = parser.parse_args(["--output-format", "json"])
+        assert args.output_format == "json"
 
-    def test_format_alias(self):
+    def test_format_alias_json(self):
         parser = self._make_parser()
         _add_output_options(parser)
-        args = parser.parse_args(["--format", "toon"])
-        assert args.format == "toon"
-
-    def test_toon_use_tabs(self):
-        parser = self._make_parser()
-        _add_output_options(parser)
-        args = parser.parse_args(["--toon-use-tabs"])
-        assert args.toon_use_tabs is True
+        args = parser.parse_args(["--format", "json"])
+        assert args.format == "json"
 
     def test_table_full(self):
         parser = self._make_parser()

@@ -25,7 +25,7 @@ from tree_sitter_analyzer.cache.fingerprint import (
 from ...project_graph import BlastRadius, DependencyGraph
 from ...utils import setup_logger
 from ...utils.test_detection import is_test_file as _is_test_file
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
 from .query_symbol_search import execute_find_references
 
@@ -45,8 +45,8 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
         },
         "file_paths": {
             "type": "array",
@@ -331,7 +331,7 @@ class SymbolLineageTool(BaseMCPTool):
         started = time.perf_counter()
         symbol = arguments["symbol"].strip()
         max_depth = int(arguments.get("max_depth", 3))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         self._validate_project_root()
         file_paths = arguments.get("file_paths") or []
         scope_files = _normalize_scope_file_paths(str(self.project_root), file_paths)
@@ -349,7 +349,7 @@ class SymbolLineageTool(BaseMCPTool):
         cache_key = (symbol, max_depth, tuple(sorted(scope_files)))
         cached_response = self._try_cached_lineage(cache_key, started)
         if cached_response is not None:
-            return apply_toon_format_to_response(cached_response, output_format)
+            return apply_output_format_to_response(cached_response, output_format)
 
         definitions, references = await self._collect_definitions_and_refs(symbol)
         if scope_files:
@@ -676,7 +676,7 @@ class SymbolLineageTool(BaseMCPTool):
         started: float,
         output_format: str,
     ) -> dict[str, Any]:
-        """Cache a deep copy, stamp elapsed/from_cache, apply TOON formatting."""
+        """Cache a deep copy, stamp elapsed/from_cache, and return JSON."""
         self._symbol_cache[cache_key] = copy.deepcopy(response)
         # #568: record the index signature AFTER this call's own index
         # reads/writes so creating the index here doesn't evict the next
@@ -689,7 +689,7 @@ class SymbolLineageTool(BaseMCPTool):
             response["cache_age_s"] = round(time.time() - self._dep_graph_built_at, 3)
         if self._cache_invalidated_reason is not None:
             response["cache_invalidated_reason"] = self._cache_invalidated_reason
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
 
 # H12: element_type values that mean "this hit IS the symbol's definition

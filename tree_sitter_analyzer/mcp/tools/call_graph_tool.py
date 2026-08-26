@@ -369,9 +369,9 @@ class CodeGraphCallTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "enum": ["json"],
+                    "description": "Output format: JSON",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -411,7 +411,7 @@ class CodeGraphCallTool(BaseMCPTool):
         self.validate_arguments(arguments)
         started = time.perf_counter()
         mode = arguments.get("mode", "summary")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         # Cache hit fast-path: first call builds graph (2-5s on medium
         # repos); subsequent calls finish in ~tens of ms.
         graph = self._get_call_graph()
@@ -447,9 +447,9 @@ class CodeGraphCallTool(BaseMCPTool):
         # Finding 6: ensure direct execute() callers see non-empty envelope.
         _attach_call_graph_envelope(result)
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     @staticmethod
     def _build_all_functions_response(graph: Any) -> dict[str, Any]:

@@ -61,7 +61,7 @@ class AnalysisSession:
 
         Args:
             input_files: 输入文件路径列表
-            output_format: 输出格式 (toon/json/csv/compact/full)
+            output_format: 输出格式 (json/csv/compact/full)
             git_commit: Git commit hash（可选）
             tools_used: 使用的工具列表（可选）
             token_count_before: 分析前 token 数量（可选）
@@ -105,7 +105,7 @@ class AnalysisSession:
         if not input_files:
             raise ValueError("input_files cannot be empty")
 
-        valid_formats = ["toon", "json", "csv", "compact", "full"]
+        valid_formats = ["json", "csv", "compact", "full"]
         if output_format not in valid_formats:
             raise ValueError(
                 f"Invalid output_format: {output_format}. "

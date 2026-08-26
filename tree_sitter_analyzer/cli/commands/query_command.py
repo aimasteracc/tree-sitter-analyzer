@@ -11,14 +11,6 @@ from ...core.query_service import QueryService
 from ...output_manager import output_data, output_error, output_info, output_json
 from .base_command import BaseCommand
 
-# TOON formatter for CLI output
-try:
-    from ...formatters.toon_formatter import ToonFormatter
-
-    _toon_available = True
-except ImportError:
-    _toon_available = False
-
 
 class QueryCommand(BaseCommand):
     """Command for executing queries."""
@@ -65,7 +57,7 @@ class QueryCommand(BaseCommand):
         r37d7 (dogfood): 107 lines → ~20 lines of phase dispatch.
         Sub-helpers: ``_resolve_query`` (key vs. string, security checks),
         ``_build_query_envelope`` (r37ac canonical envelope) and
-        ``_emit_query_results`` (json / toon / text fan-out).
+        ``_emit_query_results`` (JSON / text fan-out).
         """
         query_resolution = self._resolve_query(language)
         if isinstance(query_resolution, int):
@@ -165,14 +157,9 @@ class QueryCommand(BaseCommand):
         envelope: dict[str, Any],
         results: list[dict[str, Any]] | None,
     ) -> None:
-        """Output ``envelope`` via json / toon / text per ``--output-format``."""
+        """Output ``envelope`` via JSON or text per ``--output-format``."""
         if self.args.output_format == "json":
             output_json(envelope)
-            return
-        if self.args.output_format == "toon" and _toon_available:
-            use_tabs = getattr(self.args, "toon_use_tabs", False)
-            formatter = ToonFormatter(use_tabs=use_tabs)
-            print(formatter.format(envelope))
             return
         if not results:
             output_info("\nINFO: No results found matching the query.")

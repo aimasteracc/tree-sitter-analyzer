@@ -275,7 +275,7 @@ class TestMainFunction:
     def test_main_format_alias(self, mock_exit, mock_handle_special, mock_parser):
         """Test that --format is aliased to --output-format."""
         args = argparse.Namespace(
-            format="toon",
+            format="json",
             output_format="json",
             quiet=False,
             file_path=None,
@@ -298,7 +298,7 @@ class TestMainFunction:
 
         main()
 
-        assert args.output_format == "toon"
+        assert args.output_format == "json"
 
     @patch("tree_sitter_analyzer.cli_main.create_argument_parser")
     @patch("tree_sitter_analyzer.cli_main.handle_special_commands")
@@ -406,14 +406,14 @@ class TestArgumentValidation:
     def test_output_format_choices(self):
         """Test that --output-format accepts valid choices."""
         parser = create_argument_parser()
-        for fmt in ["json", "text", "toon"]:
+        for fmt in ["json", "text"]:
             args = parser.parse_args(["--output-format", fmt, "test.py"])
             assert args.output_format == fmt
 
     def test_table_format_choices(self):
         """Test that --table accepts valid choices."""
         parser = create_argument_parser()
-        for table_fmt in ["full", "compact", "csv", "json", "toon"]:
+        for table_fmt in ["full", "compact", "csv", "json"]:
             args = parser.parse_args(["--table", table_fmt, "test.py"])
             assert args.table == table_fmt
 

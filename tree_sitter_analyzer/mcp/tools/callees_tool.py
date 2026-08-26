@@ -80,9 +80,9 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "enum": ["json"],
+                    "description": "Output format: JSON",
+                    "default": "json",
                 },
                 "include_activation": {
                     "type": "boolean",
@@ -108,7 +108,7 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
 
         func_name = arguments["function_name"]
         file_path = arguments.get("file_path")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         include_activation = bool(arguments.get("include_activation", False))
         listed_cap = int(arguments.get("limit", 50))
 
@@ -126,9 +126,9 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     "next_step": rebuild_next_step,
                 },
             )
-            from ..utils.format_helper import apply_toon_format_to_response
+            from ..utils.format_helper import apply_output_format_to_response
 
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
         cache = self._try_get_cache()
         call_graph_built = (
@@ -234,9 +234,9 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             "next_step": as_next_step,
         }
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _inline_callee_bodies(
         self,

@@ -84,8 +84,9 @@ class ReadPartialToolBatchExtraFileErrorMixin:
             mock_stat.return_value.st_size = 10 * 1024 * 1024
             result = await tool._execute_batch(args)
         if "results" in result:
+            errors = result["results"][0].get("errors", [])
             assert any(
-                "Too large" in e["error"] for e in result["results"][0]["errors"]
+                "too large" in e["error"].lower() for e in errors
             )
         else:
             assert "error" in result or isinstance(result, dict)

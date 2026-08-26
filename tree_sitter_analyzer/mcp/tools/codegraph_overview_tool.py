@@ -112,9 +112,9 @@ class CodeGraphOverviewTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "enum": ["json"],
+                    "description": "Output format: JSON",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -130,7 +130,7 @@ class CodeGraphOverviewTool(BaseMCPTool):
         max_hubs = arguments.get("max_hubs", 20)
         max_dead = arguments.get("max_dead", 20)
         max_coupled_files = arguments.get("max_coupled_files", 15)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         graph = self.get_call_graph()
         graph.build()
@@ -195,9 +195,9 @@ class CodeGraphOverviewTool(BaseMCPTool):
             "module_coupling": coupling,
         }
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
 
 def _find_entry_points(graph: CallGraph, limit: int) -> list[dict[str, Any]]:

@@ -141,8 +141,8 @@ class TestCreateArgumentParserMixin:
     def test_parser_has_format_argument(self):
         """Test that parser has --format argument."""
         parser = create_argument_parser()
-        args = parser.parse_args(["--format", "toon", "test.py"])
-        assert args.format == "toon"
+        args = parser.parse_args(["--format", "json", "test.py"])
+        assert args.format == "json"
 
     def test_parser_has_table_argument(self):
         """Test that parser has --table argument."""

@@ -23,7 +23,7 @@ from ..utils.error_sanitizer import (
     bounded_safe_error_message,
     sanitize_error_detail,
 )
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_error, build_response
 from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool
@@ -85,9 +85,9 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format (default: toon)",
-                    "default": "toon",
+                    "enum": ["json"],
+                    "description": "Output format: JSON.",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -104,11 +104,11 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
         mode = arguments.get("mode", "sync")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         if not self.project_root:
             result = build_error(error="project_root not set")
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
         if mode == "sync":
             return self._sync(arguments["max_files"], output_format)
@@ -138,7 +138,7 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
         cache = self._ensure_cache(output_format, max_files=max_files)
         if cache is None:
             result = build_error(error="Failed to initialize AST cache")
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
         try:
             sync = IncrementalSync(cache)
@@ -154,7 +154,7 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
                 error=error,
                 error_truncated=truncated,
             )
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
         finally:
             _safe_close_cache(cache)
 
@@ -185,13 +185,13 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
             mode="sync",
             **payload,
         )
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _changes(self, output_format: str) -> dict[str, Any]:
         cache = self._ensure_cache(output_format)
         if cache is None:
             result = build_error(error="Failed to initialize AST cache")
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
         try:
             sync = IncrementalSync(cache)
@@ -206,7 +206,7 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
                 error=error,
                 error_truncated=truncated,
             )
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
         finally:
             _safe_close_cache(cache)
 
@@ -225,7 +225,7 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
             modified=changes.get("modified", []),
             deleted=changes.get("deleted", []),
         )
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _status(self, output_format: str) -> dict[str, Any]:
         from ...ast_cache import ASTCache
@@ -257,6 +257,6 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
                 pending_changes=pending_changes,
                 up_to_date=up_to_date,
             )
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
         finally:
             _safe_close_cache(cache)
