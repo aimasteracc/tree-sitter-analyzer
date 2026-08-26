@@ -106,9 +106,9 @@ class CodeGraphCallPathTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "required": ["source_function", "target_function"],
@@ -132,7 +132,7 @@ class CodeGraphCallPathTool(BaseMCPTool):
         max_depth = int(arguments.get("max_depth", 10))
         max_paths = int(arguments.get("max_paths", 5))
         direction = arguments.get("direction", "bidirectional")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         finder = self._get_finder()
         result = finder.find_path(

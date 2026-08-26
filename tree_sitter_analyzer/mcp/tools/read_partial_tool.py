@@ -276,7 +276,7 @@ class ReadPartialTool(BaseMCPTool):
         output_file = arguments.get("output_file")
         suppress_output = arguments.get("suppress_output", False)
         content_format = arguments.get("format", "text")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         err = self._validate_resolve(
             file_path, start_line, end_line, start_column, end_column

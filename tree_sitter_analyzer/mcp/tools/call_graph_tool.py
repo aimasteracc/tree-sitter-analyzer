@@ -369,9 +369,9 @@ class CodeGraphCallTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -411,7 +411,7 @@ class CodeGraphCallTool(BaseMCPTool):
         self.validate_arguments(arguments)
         started = time.perf_counter()
         mode = arguments.get("mode", "summary")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         # Cache hit fast-path: first call builds graph (2-5s on medium
         # repos); subsequent calls finish in ~tens of ms.
         graph = self._get_call_graph()

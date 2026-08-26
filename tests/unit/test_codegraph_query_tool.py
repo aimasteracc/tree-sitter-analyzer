@@ -43,11 +43,6 @@ class TestToolDefinition:
     def test_schema_requires_query(self, tool):
         assert "query" in tool.get_tool_schema()["required"]
 
-    def test_schema_output_format_default_toon(self, tool):
-        assert (
-            tool.get_tool_schema()["properties"]["output_format"]["default"] == "toon"
-        )
-
 
 class TestValidation:
     def test_requires_query(self, tool):
@@ -97,11 +92,6 @@ class TestParseChain:
 
 @pytest.mark.asyncio
 class TestExecute:
-    async def test_toon_format_default(self, tool_with_root):
-        result = await tool_with_root.execute({"query": "search('handle_request')"})
-        assert result["format"] == "toon"
-        assert "toon_content" in result
-
     async def test_json_format(self, tool_with_root):
         result = await tool_with_root.execute(
             {"query": "search('handle_request')", "output_format": "json"}

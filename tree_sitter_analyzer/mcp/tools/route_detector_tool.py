@@ -83,9 +83,9 @@ class RouteDetectorTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -110,7 +110,7 @@ class RouteDetectorTool(BaseMCPTool):
         """
         self.validate_arguments(arguments)
         mode = arguments.get("mode", "summary")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         framework_filter = arguments.get("framework", "all")
         detector = self._get_detector()
 

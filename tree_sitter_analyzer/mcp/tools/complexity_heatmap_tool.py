@@ -117,9 +117,9 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -138,7 +138,7 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         mode = arguments.get("mode", "project")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         if not self.project_root:
             raise ValueError("Project root not set. Call set_project_path first.")

@@ -152,9 +152,8 @@ def _effective_output_format(args: Any) -> str:
 
 
 def _tool_output_format(args: Any) -> str:
-    """Return the json/toon output format accepted by MCP-equivalent tools."""
-    fmt = _effective_output_format(args)
-    return "toon" if fmt in {"toon", "text"} else "json"
+    """Return the json output format accepted by MCP-equivalent tools."""
+    return "json"
 
 
 def _print_result(
@@ -162,19 +161,8 @@ def _print_result(
     args: Any,
     output_json: OutputJsonFn,
 ) -> None:
-    """Print tool output in the requested visible format.
-
-    r37aq (dogfood): replaced inline ``print(result.get("toon_content", ""))``
-    with the shared ``output_toon`` helper. ``--code-patterns`` flagged
-    the inline ``print`` as ``AP003``; the helper is the canonical TOON
-    output channel (matches ``cli/commands/mcp_commands.py``).
-    """
-    if _effective_output_format(args) == "toon":
-        from tree_sitter_analyzer.output_manager import output_toon
-
-        output_toon(result.get("toon_content", ""))
-    else:
-        output_json(result)
+    """Print tool output as JSON."""
+    output_json(result)
 
 
 def _run_mcp_tool_sync(

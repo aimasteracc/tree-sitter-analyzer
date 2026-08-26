@@ -143,9 +143,9 @@ class ASTDiffTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
                 # Issue #552 — opt-in full node body (default: compact summaries only)
                 "include_node_bodies": {
@@ -269,7 +269,7 @@ class ASTDiffTool(BaseMCPTool):
             )
             if unavailable is not None:
                 return apply_toon_format_to_response(
-                    unavailable, arguments.get("output_format", "toon")
+                    unavailable, arguments.get("output_format", "json")
                 )
         # Codex P2 (#1297): attach the read-existing evidence to the raw JSON
         # response BEFORE the requested format is applied, so TOON output
@@ -293,13 +293,13 @@ class ASTDiffTool(BaseMCPTool):
                     }
                 )
             read_access.attach_read_existing_evidence(result, records=acquired)
-            requested = arguments.get("output_format", "toon")
+            requested = arguments.get("output_format", "json")
             return apply_toon_format_to_response(result, requested)
         return result
 
     async def _execute_impl(self, arguments: dict[str, Any]) -> dict[str, Any]:
         mode = self._resolve_mode(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         include_node_bodies = bool(arguments.get("include_node_bodies", False))
         differ = self._get_differ()
         snapshot_id = arguments.get("diff_snapshot_id")

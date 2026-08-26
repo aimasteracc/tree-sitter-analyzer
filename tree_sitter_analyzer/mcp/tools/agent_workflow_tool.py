@@ -20,9 +20,9 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
+            "enum": ["json"],
             "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-            "default": "toon",
+            "default": "json",
         },
     },
     "additionalProperties": False,
@@ -56,7 +56,7 @@ class AgentWorkflowTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate output format and optional target path."""
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         if output_format not in {"json", "toon"}:
             raise ValueError("output_format must be 'json' or 'toon'")
 
@@ -93,13 +93,13 @@ class AgentWorkflowTool(BaseMCPTool):
         # callers don't get a KeyError; include format and toon_content for
         # parity with the normal TOON shape.
         if not result.get("success", True):
-            if arguments.get("output_format", "toon") == "toon":
+            if arguments.get("output_format", "json") == "toon":
                 result["format"] = "toon"
                 result["toon_content"] = (
                     f"blocked: {result.get('error', 'invalid target_path')}"
                 )
             return result
-        if arguments.get("output_format", "toon") == "toon":
+        if arguments.get("output_format", "json") == "toon":
             return _build_toon_response(result)
         # Strip ``toon_content`` from the JSON path — wastes ~2 KB per
         # call and duplicates fields already in the JSON envelope.

@@ -70,8 +70,8 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
         },
     },
     "required": ["file_path"],
@@ -126,7 +126,7 @@ class CodePatternsTool(BaseMCPTool):
         file_path = arguments["file_path"]
         categories = arguments.get("categories", ["all"])
         severity_threshold = arguments.get("severity_threshold", "info")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         resolved = self.resolve_and_validate_file_path(file_path)
         if not Path(resolved).is_file():

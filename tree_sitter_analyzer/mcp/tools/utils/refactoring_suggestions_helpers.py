@@ -230,9 +230,9 @@ def get_refactoring_tool_schema() -> dict[str, Any]:
             },
             "output_format": {
                 "type": "string",
-                "enum": ["json", "toon"],
+                "enum": ["json"],
                 "description": "'toon' (default) saves ~60% tokens vs 'json'",
-                "default": "toon",
+                "default": "json",
             },
         },
         "required": ["file_path"],

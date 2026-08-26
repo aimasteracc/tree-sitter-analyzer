@@ -220,24 +220,6 @@ def test_request_from_dict_explicit_budget_dict() -> None:
         )
 
 
-def test_run_operation_toon_branch(monkeypatch) -> None:
-    import tree_sitter_analyzer.task_harness as harness
-
-    class FakeExecutor:
-        async def call(self, facade, action, arguments):
-            return {"success": True}
-
-    monkeypatch.setattr(harness, "McpPrimitiveExecutor", lambda root: FakeExecutor())
-    request = request_from_dict("understand", {"task": "x"})
-    serialized = asyncio.run(
-        harness.run_operation(
-            "understand", request, project_root=".", output_format="toon"
-        )
-    )
-    assert serialized.startswith('"')
-    assert '"schema": "task-outcome/v1"' in serialized
-
-
 def test_request_from_dict_unknown_operation_rejected() -> None:
     with pytest.raises(ValueError, match="unknown operation"):
         request_from_dict("mystery", {"task": "x"})  # type: ignore[arg-type]

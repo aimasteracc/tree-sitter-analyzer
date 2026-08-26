@@ -41,8 +41,8 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
             "description": "Output format: 'toon' (default, token-efficient) or 'json'",
         },
     },
@@ -104,7 +104,7 @@ class CodeGraphSymbolResolveTool(BaseMCPTool):
 
         symbol = arguments["symbol"]
         mode = arguments.get("mode", "resolve")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         cache = self._get_cache()
         conn = cache.get_conn()

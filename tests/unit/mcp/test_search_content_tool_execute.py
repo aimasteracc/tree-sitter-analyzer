@@ -145,8 +145,7 @@ class TestExecute:
                         result = await tool.execute(arguments)
 
                         assert result["success"] is True
-                        # In toon format, summary_only may not be in response
-                        assert "toon_content" in result
+                        assert result["agent_summary"]["mode"] == "summary"
 
     @pytest.mark.asyncio
     async def test_execute_group_by_file_mode(self, tool, sample_project_structure):
@@ -253,39 +252,6 @@ class TestExecute:
                         assert result["agent_summary"]["suppress_output"] is True
                         # Results should not be in response when suppressed
                         assert "results" not in result
-
-    @pytest.mark.asyncio
-    async def test_execute_with_toon_format(self, tool, sample_project_structure):
-        """Test execute with toon output format."""
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
-            return_value=True,
-        ):
-            with patch(
-                "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
-                new_callable=AsyncMock,
-            ) as mock_run:
-                mock_run.return_value = (0, b'{"path": "file1.py"}\n', b"")
-
-                with patch(
-                    "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
-                    return_value=[{"path": "file1.py"}],
-                ):
-                    with patch(
-                        "tree_sitter_analyzer.mcp.tools.search_content_tool.apply_toon_format_to_response"
-                    ) as mock_toon:
-                        mock_toon.return_value = {"toon": "formatted"}
-
-                        arguments = {
-                            "roots": [str(sample_project_structure)],
-                            "query": "test",
-                            "output_format": "toon",
-                        }
-
-                        result = await tool.execute(arguments)
-
-                        assert mock_toon.called
-                        assert result == {"toon": "formatted"}
 
     @pytest.mark.asyncio
     async def test_execute_rg_failure(self, tool, sample_project_structure):

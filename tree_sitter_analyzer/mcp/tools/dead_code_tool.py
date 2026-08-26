@@ -96,9 +96,9 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format (default: toon)",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -125,7 +125,7 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
         max_dead = arguments.get("max_dead", 50)
         max_imports = arguments.get("max_imports", 50)
         max_variables = arguments.get("max_variables", 50)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         path = arguments.get("path") or None
 
         try:

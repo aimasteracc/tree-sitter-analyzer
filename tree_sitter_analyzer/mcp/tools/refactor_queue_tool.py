@@ -165,8 +165,8 @@ class RefactorQueueTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                     "description": (
                         "Output format: 'toon' (default, token-efficient) or "
                         "'json'. The MCP-toon / CLI-json split is a locked "
@@ -204,7 +204,7 @@ class RefactorQueueTool(BaseMCPTool):
             raise ValueError("Project root not set. Call set_project_path first.")
 
         top_n = int(arguments.get("top_n", _DEFAULT_TOP_N))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         root = Path(self.project_root)
 
         churn = _churn_by_file(root)

@@ -6,7 +6,6 @@ from typing import Any
 
 from ..utils.format_helper import (
     apply_toon_format_to_response,
-    attach_toon_content_to_response,
 )
 from . import fd_rg_utils
 from .find_and_grep_agent_summary import (
@@ -38,7 +37,7 @@ class FindAndGrepRespondMixin:
         if arguments.get("summary_only", False):
             grouped["summary"] = fd_rg_utils.summarize_search_results(matches)
         grouped["meta"] = meta
-        grouped["output_format"] = arguments.get("output_format", "toon")
+        grouped["output_format"] = arguments.get("output_format", "json")
         grouped["agent_summary"] = build_agent_summary_from_meta(
             arguments,
             mode="group_by_file",
@@ -61,9 +60,6 @@ class FindAndGrepRespondMixin:
         if suppressed:
             return normalize_envelope(suppressed)
 
-        output_format = arguments.get("output_format", "toon")
-        if output_format == "toon":
-            return attach_toon_content_to_response(grouped)
         return grouped
 
     def _respond_summary(
@@ -85,7 +81,7 @@ class FindAndGrepRespondMixin:
             "results": [],
             "summary": fd_rg_utils.summarize_search_results(matches),
             "meta": meta,
-            "output_format": arguments.get("output_format", "toon"),
+            "output_format": arguments.get("output_format", "json"),
             "agent_summary": build_agent_summary_from_meta(
                 arguments,
                 mode="summary",

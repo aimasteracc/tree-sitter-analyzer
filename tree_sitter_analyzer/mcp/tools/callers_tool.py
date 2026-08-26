@@ -80,9 +80,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
                 "include_activation": {
                     "type": "boolean",
@@ -108,7 +108,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
 
         func_name = arguments["function_name"]
         file_path = arguments.get("file_path")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         include_activation = bool(arguments.get("include_activation", False))
         listed_cap = int(arguments.get("limit", 50))
 

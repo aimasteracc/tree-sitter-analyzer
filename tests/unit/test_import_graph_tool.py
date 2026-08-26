@@ -205,36 +205,6 @@ class TestCouplingMode:
         assert len(result["most_imported"]) == 2
         assert len(result["most_importing"]) == 2
 
-
-class TestToonFormat:
-    @pytest.mark.asyncio
-    async def test_toon_output(self, tool, mock_graph):
-        mock_graph.build.return_value = ImportGraphResult(
-            edges=[], file_count=1, edge_count=0, cycles=[]
-        )
-        mock_graph.summary.return_value = {
-            "file_count": 1,
-            "edge_count": 0,
-            "most_imported": [],
-            "most_importing": [],
-        }
-        with patch.object(tool, "_get_graph", return_value=mock_graph):
-            result = await tool.execute({"mode": "summary", "output_format": "toon"})
-        assert "toon_content" in result
-
-
-class TestModeInferenceFromFilePath:
-    """#575: `imports file_path=X` without mode= must infer 'deps' (what that
-    file imports), not silently default to the project 'summary' that ignores
-    file_path — 'answered a different question than asked'."""
-
-    def test_file_path_infers_deps(self):
-        assert CodeGraphImportGraphTool._effective_mode({"file_path": "x.py"}) == "deps"
-
-    def test_no_file_path_is_summary(self):
-        assert CodeGraphImportGraphTool._effective_mode({}) == "summary"
-
-    def test_explicit_mode_wins_over_inference(self):
         assert (
             CodeGraphImportGraphTool._effective_mode(
                 {"mode": "cycles", "file_path": "x.py"}

@@ -78,21 +78,11 @@ class TestExitCodeFor:
 
 
 class TestPrint:
-    def test_toon_format_prints_toon_content(self, capsys):
-        _print({"toon_content": "## Result\nsome content"}, "toon")
-        out = capsys.readouterr().out
-        assert "## Result" in out
-
     def test_json_format_prints_json(self, capsys):
         _print({"key": "value", "success": True}, "json")
         out = capsys.readouterr().out
         parsed = json.loads(out)
         assert parsed["key"] == "value"
-
-    def test_toon_format_missing_key_prints_empty(self, capsys):
-        _print({}, "toon")
-        out = capsys.readouterr().out
-        assert out.strip() == ""
 
 
 # ---------------------------------------------------------------------------

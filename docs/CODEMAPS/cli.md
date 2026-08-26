@@ -8,13 +8,12 @@ Five console-script entry points + flag-based dispatch through `cli_main.py`.
 | Command | Module | Default format |
 |---|---|---|
 | `tree-sitter-analyzer` | `cli_main.py` | `json` |
-| `tree-sitter-analyzer-mcp` | `mcp/server.py` (stdio) | `toon` |
+| `tree-sitter-analyzer-mcp` | `mcp/server.py` (stdio) | `json` |
 | `find-and-grep` | `cli/commands/find_and_grep_cli.py` | `json` |
 | `list-files` | `cli/commands/list_files_cli.py` | `json` |
 | `search-content` | `cli/commands/search_content_cli.py` | `json` |
 
-Default format divergence is **intentional** (see `CLAUDE.md`): CLI users pipe into `jq`,
-MCP callers are LLM agents and benefit from TOON's token savings.
+All output formats are JSON. TOON has been removed.
 
 ## Command Modules
 
@@ -126,19 +125,18 @@ Categories of CLI surface:
 
 ## Output Format Selection
 
-`--format toon|json` (global machine-readable envelope alias):
+`--format json` (global machine-readable envelope):
 
-| Format | Default for | Token cost | Notes |
-|---|---|---|---|
-| `toon` | MCP | -73% vs JSON | LLM-optimized, lossless |
-| `json` | CLI | baseline | jq-pipe friendly |
-| `text` | `--output-format text` | n/a | human-readable output for legacy text paths |
-| `table` | `--table` flag | n/a | Box-drawing chars, terminal only |
-| `csv` | `--table csv` | n/a | spreadsheet ingestion |
+| Format | Default for | Notes |
+|---|---|---|
+| `json` | All outputs | jq-pipe friendly, human-readable |
+| `text` | `--output-format text` | human-readable output for legacy text paths |
+| `table` | `--table` flag | Box-drawing chars, terminal only |
+| `csv` | `--table csv` | spreadsheet ingestion |
 
 `--format` is intentionally narrower than `--output-format` and `--table`:
-use `--format json|toon` for agent envelopes, `--output-format text` for the
-remaining human-readable text paths, and `--table csv|full|compact|json|toon`
+use `--format json` for agent envelopes, `--output-format text` for the
+remaining human-readable text paths, and `--table csv|full|compact|json`
 for table rendering. There is no global `--format yaml` mode.
 
 ## File Output

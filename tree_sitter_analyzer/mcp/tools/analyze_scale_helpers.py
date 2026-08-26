@@ -845,8 +845,8 @@ TOOL_SCHEMA: dict[str, Any] = {
         "include_guidance": {"type": "boolean", "default": True},
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
         },
     },
     "additionalProperties": False,

@@ -153,9 +153,9 @@ class SemanticClassifyTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format",
-                    "default": "toon",
+                    "default": "json",
                 },
                 # #528 — byte-budget params (opt-in, never required)
                 "include_ast_nodes": {
@@ -280,13 +280,13 @@ class SemanticClassifyTool(BaseMCPTool):
                     }
                 )
             read_access.attach_read_existing_evidence(result, records=acquired)
-            requested = arguments.get("output_format", "toon")
+            requested = arguments.get("output_format", "json")
             return apply_toon_format_to_response(result, requested)
         return result
 
     async def _execute_impl(self, arguments: dict[str, Any]) -> dict[str, Any]:
         mode = self._resolve_mode(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         differ = self._get_differ()
         snapshot_id = arguments.get("diff_snapshot_id")
         consumer = None

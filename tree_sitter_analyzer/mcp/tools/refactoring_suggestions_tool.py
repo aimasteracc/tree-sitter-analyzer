@@ -163,7 +163,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         max_suggestions = arguments.get("max_suggestions", 10)
         include_extractions = arguments.get("include_extractions", True)
         include_skeleton = arguments.get("include_skeleton", False)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         resolved = self.resolve_and_validate_file_path(file_path)
         if not resolved:

@@ -86,9 +86,9 @@ class HyphaeSelectTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default) or 'json'.",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "required": ["selector"],
@@ -105,7 +105,7 @@ class HyphaeSelectTool(BaseMCPTool):
         selector = str(arguments["selector"]).strip()
         max_results = int(arguments.get("max_results", 100) or 100)
         max_results = max(1, min(max_results, 1000))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         # #540 leg 3: every response echoes the selector capped — the
         # syntax-error branch is the one a 16KB garbage selector actually

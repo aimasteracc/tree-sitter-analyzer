@@ -127,9 +127,9 @@ class SmartContextTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "required": ["file_path"],
@@ -149,7 +149,7 @@ class SmartContextTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
         file_path = arguments["file_path"]
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         from ..utils.format_helper import apply_toon_format_to_response
 
         # #754: smart_context blends file_health + risk signals but called

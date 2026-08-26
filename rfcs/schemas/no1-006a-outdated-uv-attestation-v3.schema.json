@@ -462,7 +462,7 @@
           }
         },
         "default_format": {
-          "const": "toon"
+          "const": "json"
         },
         "indexed": {
           "const": false

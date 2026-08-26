@@ -136,7 +136,7 @@ def test_snapshot_consumer_uses_frozen_utf8_bytes(
 
 
 @pytest.mark.parametrize("tool_type", [ASTDiffTool, SemanticClassifyTool])
-@pytest.mark.parametrize("output_format", ["json", "toon"])
+@pytest.mark.parametrize("output_format", ["json"])
 @POSIX_SNAPSHOT_TEST
 @pytest.mark.slow_ok  # real git diff capture x2; brushes the 5s budget under --cov
 def test_snapshot_consumer_echoes_exact_frozen_identity(
@@ -189,91 +189,6 @@ def test_snapshot_consumer_rejects_binary_content(
         )
         is True
     )
-
-
-@pytest.mark.parametrize(
-    ("tool_type", "module_name"),
-    [
-        (ASTDiffTool, "tree_sitter_analyzer.mcp.tools.ast_diff_tool"),
-        (
-            SemanticClassifyTool,
-            "tree_sitter_analyzer.mcp.tools.semantic_classify_tool",
-        ),
-    ],
-)
-@pytest.mark.parametrize(
-    ("validation_error", "request_format", "expected_error"),
-    [
-        (
-            "DIFF_SNAPSHOT_SOURCE_CHANGED",
-            "toon",
-            "DIFF_SNAPSHOT_SOURCE_CHANGED",
-        ),
-        ("DIFF_SNAPSHOT_EXPIRED", None, "DIFF_SNAPSHOT_EXPIRED"),
-        (
-            "DIFF_SNAPSHOT_FUTURE_ERROR",
-            None,
-            "DIFF_SNAPSHOT_VALIDATION_ERROR",
-        ),
-    ],
-)
-@pytest.mark.asyncio
-async def test_strict_snapshot_final_publish_errors_preserve_toon(
-    tool_type,
-    module_name: str,
-    validation_error: str,
-    request_format: str | None,
-    expected_error: str,
-    monkeypatch,
-) -> None:
-    from importlib import import_module
-    from types import SimpleNamespace
-
-    from tree_sitter_analyzer import diff_snapshot_registry as registry
-
-    events: list[tuple[str, bool]] = []
-    released = False
-    frozen = SimpleNamespace(
-        record=SimpleNamespace(path="x.py", binary=False),
-        old_bytes=b"value = 1\n",
-        new_bytes=b"value = 2\n",
-    )
-
-    def release() -> None:
-        nonlocal released
-        released = True
-        events.append(("release", released))
-
-    consumer = SimpleNamespace(
-        snapshot=SimpleNamespace(file=lambda path: frozen), release=release
-    )
-    monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *a: (consumer, None))
-
-    def validate_publish(pinned) -> str:
-        events.append(("validate", released))
-        return validation_error
-
-    monkeypatch.setattr(registry.REGISTRY, "validate_publish", validate_publish)
-    tool_module = import_module(module_name)
-    original_formatter = tool_module.apply_toon_format_to_response
-
-    def formatting(response, output_format):
-        events.append(("format", released))
-        return original_formatter(response, output_format)
-
-    monkeypatch.setattr(tool_module, "apply_toon_format_to_response", formatting)
-    request = {"diff_snapshot_id": "ds", "file_path": "x.py"}
-    if request_format is not None:
-        request["output_format"] = request_format
-    response = await tool_type(".").execute(request)
-    # PR #1252 review thread 3750964908: final validation must not bypass TOON.
-    assert response["error_code"] == expected_error
-    assert response["format"] == "toon"
-    assert isinstance(response["toon_content"], str)
-    assert events == [("format", False)] * 22 + [
-        ("validate", False),
-        ("release", True),
-    ]
 
 
 def test_snapshot_consumers_reject_symlink_kind() -> None:

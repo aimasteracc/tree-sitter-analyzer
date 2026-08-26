@@ -57,9 +57,9 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
+            "enum": ["json"],
             "description": "Output format: 'toon' (default) or 'json'",
-            "default": "toon",
+            "default": "json",
         },
         "compact_only": {
             "type": "boolean",
@@ -174,7 +174,7 @@ class SafeToEditTool(BaseMCPTool):
             # contract.
             failure = format_read_existing_failure(
                 "MISSING_PROJECT_ROOT",
-                output_format=arguments.get("output_format", "toon"),
+                output_format=arguments.get("output_format", "json"),
                 action_version=EDIT_SAFE_ACTION_VERSION,
             )
             return failure
@@ -195,7 +195,7 @@ class SafeToEditTool(BaseMCPTool):
             return read_existing_result
 
         edit_type = arguments.get("edit_type", "refactor")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         compact_only = bool(arguments.get("compact_only", False))
 
         # Conditional check

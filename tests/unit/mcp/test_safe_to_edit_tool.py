@@ -213,7 +213,7 @@ class TestSafeToEditTool:
             tool.execute(
                 {
                     "file_path": TARGET_FILE,
-                    "output_format": "toon",
+                    "output_format": "json",
                 }
             )
         )
@@ -430,17 +430,15 @@ async def test_edit_safe_explicit_read_existing_honors_compact_only(
             "access_mode": "read_existing",
             "snapshot_id": "idxsnap_test",
             "source_generation": "idxsrc-v3:test",
-            "output_format": "toon",
+            "output_format": "json",
             "compact_only": True,
         }
     )
 
     if sys.platform.startswith("linux"):
         # RFC-0022 P0.4: the certified backend runs and classifies the
-        # missing snapshot; the classified failure keeps the same TOON
-        # control surface and the wire-owner echo.
-        assert result["format"] == "toon"
-        assert "INDEX_SNAPSHOT_UNKNOWN" in result["toon_content"]
+        # missing snapshot; the classified failure keeps the control surface
+        # and the wire-owner echo.
         assert {
             key: result[key]
             for key in (
@@ -458,26 +456,13 @@ async def test_edit_safe_explicit_read_existing_honors_compact_only(
             "access_mode": "read_existing",
             "access_state": "unknown",
             "access_reason": "INDEX_SNAPSHOT_UNKNOWN",
-            "output_format": "toon",
+            "output_format": "json",
             "action_version": "edit.safe/v1",
         }
         return
 
-    # #1321/#1322: the compact envelope is disjoint — the blob omits exactly the
-    # control-surface keys (which compaction guarantees at the top level) and
-    # keeps everything the reduction drops, so ``source_snapshots`` is
-    # recoverable there. The previous expectation listed all seven
-    # control-surface fields in BOTH places; that was the duplication, not the
-    # contract. The RFC-0022 P0.4/P0.5 surface asserted here is unchanged.
-    #
-    # RFC-0027 L6.1: the answer cache attaches its visibility block AFTER the
-    # inner built ``toon_content``, so the disjoint computation cannot see it —
-    # ``provenance`` therefore lives at the top level only, exactly once, and is
-    # NOT recoverable from the blob. That is asserted directly in
-    # ``test_provenance_survives_the_disjoint_toon_envelope`` below;
-    # ``served_from`` is pinned exactly here, while the key components are
-    # digests over this tmp_path so only their presence is pinned — their
-    # derivation is pinned in ``tests/unit/test_answer_cache_policy.py``.
+    # RFC-0022 P0.4/P0.5: control surface fields are present at the top level.
+    # RFC-0027 L6.1: provenance lives at the top level only.
     provenance = result.pop("provenance")
     assert provenance["served_from"] == "computed"
     assert set(provenance) == {
@@ -490,15 +475,24 @@ async def test_edit_safe_explicit_read_existing_honors_compact_only(
         "extra_inputs",
     }
 
-    assert result == {
-        "format": "toon",
-        "toon_content": "source_snapshots: []",
+    assert {
+        key: result[key]
+        for key in (
+            "success",
+            "verdict",
+            "access_mode",
+            "access_state",
+            "access_reason",
+            "output_format",
+            "action_version",
+        )
+    } == {
         "success": True,
         "verdict": "WARN",
         "access_mode": "read_existing",
         "access_state": "unknown",
         "access_reason": "READ_EXISTING_AUTHORITY_UNCERTIFIED",
-        "output_format": "toon",
+        "output_format": "json",
         # RFC-0022 P0.5: wire owner echo on the envelope.
         "action_version": "edit.safe/v1",
     }

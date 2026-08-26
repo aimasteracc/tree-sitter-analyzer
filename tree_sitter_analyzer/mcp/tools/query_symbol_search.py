@@ -151,7 +151,7 @@ def _parse_symbol_search_args(
     symbol = arguments.get("symbol", "").strip()
     if not symbol:
         raise ValueError("symbol must be a non-empty string")
-    output_format = arguments.get("output_format", "toon")
+    output_format = arguments.get("output_format", "json")
     language = arguments.get("language")
     symbol_type = arguments.get("symbol_type")
     return symbol, output_format, language, symbol_type
@@ -416,7 +416,7 @@ def _parse_find_references_args(arguments: dict[str, Any]) -> tuple[str, str]:
     symbol = arguments.get("symbol", "").strip()
     if not symbol:
         raise ValueError("symbol must be a non-empty string")
-    output_format = arguments.get("output_format", "toon")
+    output_format = arguments.get("output_format", "json")
     return symbol, output_format
 
 

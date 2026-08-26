@@ -509,59 +509,6 @@ async def test_nav_facade_co_change_requires_symbol_or_file_path() -> None:
     assert "required" in result.get("error", "").lower()
 
 
-@pytest.mark.asyncio
-async def test_nav_facade_co_change_output_format_toon() -> None:
-    """output_format=toon -> toon_content key present (TOON wrapper applied)."""
-    commits = [(_sha(i), ["src/target.py", "src/peer.py"]) for i in range(5)]
-    git_log_out = _make_git_log(commits)
-    head_sha = "cc" * 20
-
-    with patch(
-        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
-    ) as mock_run_git:
-        mock_run_git.side_effect = [
-            (0, head_sha),
-            (0, git_log_out),
-        ]
-        _CO_CHANGE_CACHE.clear()
-        facade = build_nav_facade(project_root=None)
-        result = await facade.execute(
-            {
-                "action": "co_change",
-                "file_path": "src/target.py",
-                "output_format": "toon",
-            }
-        )
-
-    assert "toon_content" in result
-    assert result.get("format") == "toon"
-    assert result["success"] is True
-
-
-@pytest.mark.asyncio
-async def test_nav_facade_co_change_default_output_format_is_toon() -> None:
-    """MCP house rule: default output_format for co_change is toon -- LOCKED sec.1."""
-    commits = [(_sha(i), ["src/target.py", "src/peer.py"]) for i in range(5)]
-    git_log_out = _make_git_log(commits)
-    head_sha = "dd" * 20
-
-    with patch(
-        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
-    ) as mock_run_git:
-        mock_run_git.side_effect = [
-            (0, head_sha),
-            (0, git_log_out),
-        ]
-        _CO_CHANGE_CACHE.clear()
-        facade = build_nav_facade(project_root=None)
-        result = await facade.execute(
-            {"action": "co_change", "file_path": "src/target.py"}
-        )
-
-    assert "toon_content" in result
-    assert result.get("format") == "toon"
-
-
 # ---------------------------------------------------------------------------
 # 11. Schema / action enum includes co_change
 # ---------------------------------------------------------------------------
@@ -1199,51 +1146,6 @@ def test_cli_co_change_json_output_format() -> None:
 # ---------------------------------------------------------------------------
 # 27. CLI output format: TOON output path
 # ---------------------------------------------------------------------------
-
-
-def test_cli_co_change_toon_output_format() -> None:
-    """--co-change with output_format=toon must extract and print toon_content."""
-    import argparse
-    import asyncio
-    from unittest.mock import AsyncMock, MagicMock
-    from unittest.mock import patch as _patch
-
-    from tree_sitter_analyzer.cli.nav_special_commands import handle_nav_actions
-    from tree_sitter_analyzer.cli.special_commands import SpecialCommandContext
-
-    ctx = SpecialCommandContext(
-        asyncio_run=asyncio.run,
-        output_json=lambda data: None,
-        output_error=lambda msg: None,
-        output_info=lambda msg: None,
-        output_list=lambda msg: None,
-        query_loader=None,
-    )
-
-    args = argparse.Namespace(
-        co_change="src/target.py",
-        test_map=None,
-        co_change_max_commits=500,
-        project_root="/fake/repo",
-        output_format="toon",
-    )
-
-    fake_result = {
-        "success": True,
-        "target": "src/target.py",
-        "toon_content": "Target: src/target.py\nPeers: []\n",
-        "format": "toon",
-    }
-
-    with _patch(
-        "tree_sitter_analyzer.mcp.tools.nav_facade.build_nav_facade"
-    ) as mock_build:
-        mock_facade = mock_build.return_value
-        mock_facade.execute = AsyncMock(return_value=fake_result)
-        with _patch("sys.stdout", new_callable=MagicMock):
-            rc = handle_nav_actions(args, ctx)
-
-    assert rc == 0
 
 
 # ---------------------------------------------------------------------------

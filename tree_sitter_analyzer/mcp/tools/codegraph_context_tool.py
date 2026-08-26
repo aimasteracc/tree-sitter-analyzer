@@ -211,11 +211,11 @@ class CodeGraphContextTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": (
                         "Output format: 'toon' (default, token-efficient) or 'json'"
                     ),
-                    "default": "toon",
+                    "default": "json",
                 },
                 "include_graph": {
                     "type": "boolean",
@@ -250,7 +250,7 @@ class CodeGraphContextTool(BaseMCPTool):
         task = str(arguments["task"]).strip()
         max_nodes = _bounded_int(arguments.get("max_nodes", 30), 1, 100)
         max_code_blocks = _bounded_int(arguments.get("max_code_blocks", 5), 0, 25)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         # RFC-0006: progressive disclosure. Default lean (no nodes/edges in
         # response); full graph available via include_graph=true. Coerce
         # JS-style string booleans so include_graph="false"/"0" stays lean.

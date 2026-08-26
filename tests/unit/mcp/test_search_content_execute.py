@@ -128,7 +128,7 @@ class TestExecute:
                         result = await tool.execute(arguments)
 
                         assert result["success"] is True
-                        assert "toon_content" in result
+                        assert result["agent_summary"]["mode"] == "summary"
 
     @pytest.mark.asyncio
     async def test_execute_group_by_file_mode(self, tool, sample_project_structure):

@@ -137,9 +137,9 @@ class _CallTreeBase(CodeGraphRelationToolMixin, BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "required": ["symbol"],
@@ -192,7 +192,7 @@ class _CallTreeBase(CodeGraphRelationToolMixin, BaseMCPTool):
         file_path = arguments.get("file_path")
         max_depth = int(arguments.get("max_depth", _call_tree.DEFAULT_MAX_DEPTH))
         max_nodes = int(arguments.get("max_nodes", _call_tree.DEFAULT_MAX_NODES))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         expand = self._make_expander()
         tree = _call_tree.build_call_tree(

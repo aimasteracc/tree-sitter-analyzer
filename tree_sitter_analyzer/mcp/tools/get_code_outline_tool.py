@@ -139,12 +139,12 @@ class GetCodeOutlineTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": (
                         "Output format: 'toon' for compact TOON format (50-70% token savings), "
                         "or 'json' for standard JSON. Default 'toon'."
                     ),
-                    "default": "toon",
+                    "default": "json",
                 },
                 "listed_cap": {
                     "type": "integer",
@@ -332,7 +332,7 @@ class GetCodeOutlineTool(BaseMCPTool):
             language = arguments.get("language")
             include_fields = arguments.get("include_fields", False)
             include_imports = arguments.get("include_imports", False)
-            output_format = arguments.get("output_format", "toon")
+            output_format = arguments.get("output_format", "json")
             listed_cap = int(arguments.get("listed_cap") or DEFAULT_OUTLINE_CLASSES_CAP)
 
             resolved = self._resolve_outline_request(file_path, language, output_format)

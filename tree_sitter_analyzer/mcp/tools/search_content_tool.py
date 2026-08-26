@@ -232,7 +232,7 @@ class SearchContentTool(BaseMCPTool):
             return file_root_envelope
 
         self.validate_arguments(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         roots, files = self._resolve_inputs(arguments)
 
@@ -246,8 +246,6 @@ class SearchContentTool(BaseMCPTool):
         requested_format = determine_requested_format(arguments)
         fts_result = _try_fts5_fast_path(arguments, self.project_root, requested_format)
         if fts_result is not None:
-            if output_format == "toon" and isinstance(fts_result, dict):
-                return apply_toon_format_to_response(fts_result, output_format)
             return fts_result
 
         if not fd_rg_utils.check_external_command("rg"):

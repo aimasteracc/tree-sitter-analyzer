@@ -123,55 +123,16 @@ class TestFormatBlockLine:
 
 
 class TestBuildFileResponse:
-    def test_toon_format_no_blocks(self, tool: UnreachableCodeTool) -> None:
-        result = _make_result(blocks=[])
-        resp = tool._build_file_response(result, "toon")
-        assert "content" in resp or "toon_content" in resp
-
-    def test_toon_format_with_blocks(self, tool: UnreachableCodeTool) -> None:
-        block = _make_block()
-        result = _make_result(blocks=[block])
-        resp = tool._build_file_response(result, "toon")
-        content = resp.get("content") or resp.get("toon_content", "")
-        assert "L10-12" in content
-
-    def test_toon_format_with_errors(self, tool: UnreachableCodeTool) -> None:
-        result = _make_result(errors=["parse error at line 5"])
-        resp = tool._build_file_response(result, "toon")
-        content = resp.get("content") or resp.get("toon_content", "")
-        assert "Parse errors" in content
-
     def test_json_format_returns_dict(self, tool: UnreachableCodeTool) -> None:
         result = _make_result()
         resp = tool._build_file_response(result, "json")
         assert isinstance(resp, dict)
         assert "file_path" in resp
 
-    def test_toon_says_no_unreachable_when_empty(
-        self, tool: UnreachableCodeTool
-    ) -> None:
-        result = _make_result(blocks=[])
-        resp = tool._build_file_response(result, "toon")
-        content = resp.get("content") or resp.get("toon_content", "")
-        assert "No unreachable code detected" in content
-
 
 # ---------------------------------------------------------------------------
 # _format_file_blocks_toon
 # ---------------------------------------------------------------------------
-
-
-class TestFormatFileBlocksToon:
-    def test_returns_empty_for_no_blocks(self, tool: UnreachableCodeTool) -> None:
-        result = _make_result(blocks=[])
-        assert tool._format_file_blocks_toon(result) == []
-
-    def test_returns_header_and_block_lines(self, tool: UnreachableCodeTool) -> None:
-        block = _make_block(start=5, end=7, fn="do_thing")
-        result = _make_result(file_path="src/bar.py", language="python", blocks=[block])
-        lines = tool._format_file_blocks_toon(result)
-        assert any("src/bar.py" in line for line in lines)
-        assert any("L5-7" in line for line in lines)
 
 
 # ---------------------------------------------------------------------------
@@ -180,19 +141,6 @@ class TestFormatFileBlocksToon:
 
 
 class TestBuildProjectResponse:
-    def test_toon_format_empty_results(self, tool: UnreachableCodeTool) -> None:
-        resp = tool._build_project_response([], "toon")
-        content = resp.get("content") or resp.get("toon_content", "")
-        assert "Project Scan" in content
-
-    def test_toon_format_with_results(self, tool: UnreachableCodeTool) -> None:
-        block = _make_block()
-        r1 = _make_result(blocks=[block])
-        r2 = _make_result(file_path="src/clean.py", blocks=[])
-        resp = tool._build_project_response([r1, r2], "toon")
-        content = resp.get("content") or resp.get("toon_content", "")
-        assert "Files with issues: 1" in content
-
     def test_json_format_returns_counts(self, tool: UnreachableCodeTool) -> None:
         block = _make_block()
         r = _make_result(blocks=[block], functions_analyzed=3)
@@ -245,21 +193,6 @@ class TestExecute:
     ) -> None:
         with pytest.raises(ValueError, match="file_path is required"):
             await tool.execute({"mode": "file", "file_path": ""})
-
-    @pytest.mark.asyncio
-    async def test_file_mode_success_toon(self, tmp_path: Any) -> None:
-        f = tmp_path / "x.py"
-        f.write_text("def foo():\n    return 1\n    y = 2\n")
-        t = UnreachableCodeTool(project_root=str(tmp_path))
-        fake_result = _make_result(file_path=str(f))
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.unreachable_code_tool.analyze_file_unreachable",
-            return_value=fake_result,
-        ):
-            resp = await t.execute(
-                {"mode": "file", "file_path": str(f), "output_format": "toon"}
-            )
-        assert "error" not in resp
 
     @pytest.mark.asyncio
     async def test_file_mode_analysis_error_returns_error(self, tmp_path: Any) -> None:

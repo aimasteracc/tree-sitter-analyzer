@@ -46,7 +46,7 @@ class TestToolSchema:
 
     def test_schema_has_output_format_with_enum(self):
         prop = TOOL_SCHEMA["properties"]["output_format"]
-        assert set(prop["enum"]) == {"json", "toon"}
+        assert set(prop["enum"]) == {"json"}
 
     def test_schema_has_sort_with_enum(self):
         prop = TOOL_SCHEMA["properties"]["sort"]
@@ -380,11 +380,6 @@ class TestBuildCountOnlyResponse:
         result = build_count_only_response(ctx)
         assert "agent_summary" in result
         assert result["agent_summary"]["mode"] == "count_only"
-
-    def test_count_only_toon_format(self):
-        ctx = self._make_context(output_format="toon")
-        result = build_count_only_response(ctx)
-        assert "toon_content" in result or result.get("success") is True
 
     def test_count_only_json_format_no_toon(self):
         ctx = self._make_context(output_format="json")

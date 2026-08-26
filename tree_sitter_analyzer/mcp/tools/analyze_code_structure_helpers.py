@@ -177,8 +177,8 @@ TOOL_SCHEMA: dict[str, Any] = {
         "language": {"type": "string"},
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
             "description": "Response envelope format (json or toon).",
         },
         "output_file": {

@@ -59,18 +59,6 @@ class TestProjectOverviewExecute:
         assert result["agent_summary"]["top_language"] == "python"
         assert "project_health" in result["tool_routing"]
 
-    def test_execute_toon_format(self, tmp_path) -> None:
-        _write(tmp_path, "app.py", "x = 1\n")
-
-        tool = ProjectOverviewTool(project_root=str(tmp_path))
-        result = _run(
-            tool.execute(
-                {"include_health": False, "max_depth": 5, "output_format": "toon"}
-            )
-        )
-
-        assert "toon_content" in result
-
     def test_execute_no_project_root_raises(self) -> None:
         tool = ProjectOverviewTool()
         with pytest.raises(ValueError, match="Project root not set"):

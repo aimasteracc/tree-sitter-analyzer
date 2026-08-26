@@ -310,9 +310,9 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format (default: toon)",
-                    "default": "toon",
+                    "default": "json",
                 },
                 "exclude_patterns": {
                     "type": "array",
@@ -372,7 +372,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                     "verdict": "ERROR",
                     "error": "project_root not set. Call set_project_path first.",
                 },
-                arguments.get("output_format", "toon"),
+                arguments.get("output_format", "json"),
             )
 
         # Resolve a configured symlink exactly once at the operation boundary.
@@ -382,7 +382,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         max_files = arguments["max_files"]
         resolve_synapse = arguments.get("resolve_synapse", True)
         include_activation = bool(arguments.get("include_activation", False))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         extra_patterns: list[str] = list(arguments.get("exclude_patterns", None) or [])
         no_default_excludes: bool = bool(arguments.get("no_default_excludes", False))
         exclude_patterns = _resolve_exclude_patterns(

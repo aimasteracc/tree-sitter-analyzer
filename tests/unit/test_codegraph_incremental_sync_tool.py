@@ -35,11 +35,6 @@ class TestToolDefinition:
         mode = tool.get_tool_schema()["properties"]["mode"]
         assert set(mode["enum"]) == {"sync", "changes", "status"}
 
-    def test_schema_output_format_default_toon(self, tool):
-        assert (
-            tool.get_tool_schema()["properties"]["output_format"]["default"] == "toon"
-        )
-
     def test_annotations_destructive(self, tool):
         hints = tool.get_tool_definition()["annotations"]
         assert hints["destructiveHint"] is True
@@ -92,11 +87,6 @@ class TestExecute:
             {"mode": "changes", "output_format": "json"}
         )
         assert result["success"] is True
-
-    async def test_toon_format_default(self, tool_with_root):
-        result = await tool_with_root.execute({"mode": "status"})
-        assert result["format"] == "toon"
-        assert "toon_content" in result
 
 
 class TestCacheLifecycle:

@@ -195,8 +195,8 @@ class DecisionJournalTool(BaseMCPTool):
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100},
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -225,7 +225,7 @@ class DecisionJournalTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
         mode = arguments.get("mode", "search")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         journal = self._get_journal()
 
         try:

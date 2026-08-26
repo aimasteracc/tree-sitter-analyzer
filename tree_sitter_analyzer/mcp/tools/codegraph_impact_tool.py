@@ -436,9 +436,9 @@ class CodeGraphImpactTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "default": "json",
                 },
                 "include_tests": {
                     "type": "boolean",
@@ -480,7 +480,7 @@ class CodeGraphImpactTool(BaseMCPTool):
         func_name = arguments.get("function_name")
         file_path = arguments.get("file_path")
         depth = arguments.get("depth", 5)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         include_tests: bool = bool(arguments.get("include_tests", False))
 
         graph = self.get_call_graph()

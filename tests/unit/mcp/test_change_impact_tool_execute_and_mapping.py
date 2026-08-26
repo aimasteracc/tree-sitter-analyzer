@@ -1631,49 +1631,6 @@ def test_execute_strict_scope_mode_mutes_out_of_scope(monkeypatch):
     assert result["agent_summary"]["queue_ledger"]["out_of_scope_muted"] is True
 
 
-def test_execute_strict_scope_mode_does_not_leak_into_toon(monkeypatch):
-    """#8: under TOON output, strict mode must NOT serialize an out-of-scope
-    filename anywhere in the response (the mute has to survive serialization)."""
-
-    def fake_changed(mode, project_root, scope_paths=None):
-        if scope_paths:
-            return ["src/a.py"]
-        return ["src/a.py", "docs/secret_noise.md"]
-
-    monkeypatch.setattr(tool_module, "_get_changed_files", fake_changed)
-    monkeypatch.setattr(
-        tool_module,
-        "_get_diff_stat",
-        lambda mode, project_root, scope_paths=None: "src/a.py | 2 +-",
-    )
-    monkeypatch.setattr(tool_module, "_scope_paths_invalid", lambda root, paths: [])
-
-    def fail_graph(project_root):
-        raise RuntimeError("no graph")
-
-    monkeypatch.setattr(change_impact_tool, "DependencyGraph", fail_graph)
-
-    tool = tool_module.ChangeImpactTool(project_root="/repo")
-    result = asyncio.run(
-        tool.execute(
-            {
-                "output_format": "toon",
-                "scope_paths": ["src/"],
-                "scope_mode": "strict",
-            }
-        )
-    )
-
-    # Whatever the TOON envelope shape, the muted filename must appear nowhere.
-    import json as _json
-
-    blob = _json.dumps(result)
-    assert "secret_noise.md" not in blob
-    # RFC-0012 Phase 2: queue_ledger (non-empty dict) is stripped from the TOON
-    # top level — its contents are inside toon_content. Check the toon_content:
-    assert "out_of_scope_changed_count" in result["toon_content"]
-
-
 def test_execute_default_scope_mode_lists_out_of_scope(monkeypatch):
     """Default scope_mode=report keeps today's behavior: out-of-scope dirty
     files are listed (not muted) — byte-parity guard for #8."""
@@ -2551,17 +2508,6 @@ def test_strict_summary_only_preserves_snapshot_surface(tmp_path, monkeypatch) -
     )
 
 
-def test_strict_early_error_uses_requested_toon_formatter() -> None:
-    # PR #1252 review thread 3746878603.
-    result = asyncio.run(
-        tool_module.ChangeImpactTool(".").execute(
-            {"capture_diff_snapshot": True, "mode": "branch", "output_format": "toon"}
-        )
-    )
-    assert result["format"] == "toon"
-    assert isinstance(result["toon_content"], str)
-
-
 def test_strict_scope_response_projects_changed_records(tmp_path, monkeypatch) -> None:
     # PR #1252 review thread 3746940429.
     from tree_sitter_analyzer import diff_snapshot_registry as registry
@@ -2593,29 +2539,6 @@ def test_strict_scope_response_projects_changed_records(tmp_path, monkeypatch) -
     registry.close_route_lease(
         str(result["diff_snapshot_id"]), str(result["route_lease_id"])
     )
-
-
-def test_frozen_snapshot_rejects_git_magic_scope_with_toon() -> None:
-    # PR #1252 review thread 3747224326.
-    result = asyncio.run(
-        tool_module.ChangeImpactTool(".").execute(
-            {
-                "capture_diff_snapshot": True,
-                "scope_paths": [":(glob)src/*.py"],
-                "output_format": "toon",
-            }
-        )
-    )
-
-    assert result["format"] == "toon"
-    # #1321: this rejection envelope is scalar-only, so the disjoint TOON
-    # envelope carries every field at the top level and ``toon_content`` has
-    # nothing left to encode. The old assertion looked in the blob only because
-    # the blob was then a duplicate of the top level. #1252's requirement — the
-    # rejection stays actionable for the caller — is asserted directly.
-    assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_SCOPE"
-    assert result["error"] == "DIFF_SNAPSHOT_UNSUPPORTED_SCOPE"
-    assert result["toon_content"] == ""
 
 
 def test_scope_matches_compatibility_wrapper_uses_filesystem_bytes() -> None:

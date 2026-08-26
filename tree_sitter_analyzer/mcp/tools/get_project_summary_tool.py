@@ -113,48 +113,6 @@ def _emit_structure_block(index: ProjectIndex, lines: list[str]) -> None:
         _append_subdir_lines(name, subdirs, descs, lines)
 
 
-def _format_toon(index: ProjectIndex, age_hours: float, is_fresh: bool) -> str:
-    """Render project summary as TOON-style structured text.
-
-    r37eo (dogfood): 90 → ~10 lines of orchestration. Header / structure /
-    sub-dir helpers (``_emit_header_block`` / ``_emit_structure_block`` /
-    ``_append_subdir_lines``) own each block; ``_top_code_languages`` does
-    the noise filtering once.
-    """
-    lines: list[str] = []
-    _emit_header_block(index, lines)
-    lines.append("")  # blank separator before structure
-    _emit_structure_block(index, lines)
-    return "\n".join(lines)
-
-
-def _toon_envelope(
-    resolved_fmt: str,
-    text: str,
-    summary_line: str,
-    next_step: str,
-) -> dict[str, Any]:
-    """Construct the canonical TOON-path envelope.
-
-    r37ba: extracted from ``execute``'s two TOON return statements so the
-    20-line dict literal stops appearing twice. F12 / H10 / r37x contracts
-    preserved.
-    """
-    return {
-        "success": True,
-        "format": resolved_fmt,
-        "output_format": resolved_fmt,
-        "summary": text,
-        "summary_line": summary_line,
-        "verdict": "INFO",  # r37x: top-level verdict mirror
-        "agent_summary": {
-            "summary_line": summary_line,
-            "next_step": next_step,
-            "verdict": "INFO",  # T4 (round-37f): canonical envelope contract
-        },
-    }
-
-
 def _make_quick_start(index: ProjectIndex) -> str:
     """Generate a one-line orientation sentence (≤100 chars)."""
     # Dominant language
@@ -223,7 +181,7 @@ class GetProjectSummaryTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["toon", "json"],
+                    "enum": ["json"],
                     "description": (
                         "Output format. 'toon' (default) returns a concise "
                         "TOON-style structured text summary with semantic "
@@ -237,11 +195,11 @@ class GetProjectSummaryTool(BaseMCPTool):
                         "downstream code. Both values echo back in the "
                         "``format`` and ``output_format`` keys (F12)."
                     ),
-                    "default": "toon",
+                    "default": "json",
                 },
                 "format": {
                     "type": "string",
-                    "enum": ["toon", "json"],
+                    "enum": ["json"],
                     "description": (
                         "Deprecated alias for ``output_format`` — kept for "
                         "backward compatibility with pre-1.12.1 callers. "
@@ -298,81 +256,10 @@ class GetProjectSummaryTool(BaseMCPTool):
         """
         force_refresh: bool = bool(arguments.get("force_refresh", False))
         include_notes: bool = bool(arguments.get("include_notes", True))
-        # Prefer ``output_format`` (standardised across all 23 MCP tools in
-        # v1.12.0+); fall back to legacy ``format`` for pre-1.12.1 callers.
-        output_format: str = str(
-            arguments.get("output_format", arguments.get("format", "toon"))
-        )
-
         project_root = self.project_root or "."
         manager = ProjectIndexManager(project_root)
 
-        if output_format in ("toon", "compact"):
-            return self._execute_toon(
-                manager, project_root, force_refresh, include_notes
-            )
         return self._execute_json(manager, project_root, force_refresh, include_notes)
-
-    def _execute_toon(
-        self,
-        manager: ProjectIndexManager,
-        project_root: str,
-        force_refresh: bool,
-        include_notes: bool,
-    ) -> dict[str, Any]:
-        """TOON path — return the pre-rendered summary.toon when possible.
-
-        H10/F12: keeps ``"toon"`` as the resolved value even when the
-        caller passed the legacy ``"compact"`` alias.
-        """
-        resolved_fmt = "toon"
-        toon_path = Path(project_root) / manager.TOON_FILE
-
-        if not force_refresh and toon_path.exists():
-            try:
-                text = toon_path.read_text(encoding="utf-8")
-                text = self._append_custom_notes_if_needed(text, manager, include_notes)
-                summary_line, next_step = _build_project_summary_line(
-                    manager.load(), project_root
-                )
-                return _toon_envelope(resolved_fmt, text, summary_line, next_step)
-            except OSError:
-                pass  # fall through to rebuild
-
-        index: ProjectIndex = manager.build(force_refresh=force_refresh)
-        text = self._read_or_render_toon(manager, project_root, index, include_notes)
-        summary_line, next_step = _build_project_summary_line(index, project_root)
-        return _toon_envelope(resolved_fmt, text, summary_line, next_step)
-
-    @staticmethod
-    def _append_custom_notes_if_needed(
-        text: str,
-        manager: ProjectIndexManager,
-        include_notes: bool,
-    ) -> str:
-        """Append ``custom_notes`` to the TOON text when the index has them."""
-        if not include_notes:
-            return text
-        idx_for_notes = manager.load()
-        if not idx_for_notes:
-            return text
-        notes = idx_for_notes.custom_notes
-        if notes and notes not in text:
-            return text + f"\nnotes:    {notes}"
-        return text
-
-    @staticmethod
-    def _read_or_render_toon(
-        manager: ProjectIndexManager,
-        project_root: str,
-        index: ProjectIndex,
-        include_notes: bool,  # noqa: ARG004 — kept for future tightening, unused symmetry with TOON path above
-    ) -> str:
-        """Return TOON text — read pre-rendered file when present, else render now."""
-        toon_path = Path(project_root) / manager.TOON_FILE
-        if toon_path.exists():
-            return toon_path.read_text(encoding="utf-8")
-        return manager.render_toon(index)
 
     def _execute_json(
         self,

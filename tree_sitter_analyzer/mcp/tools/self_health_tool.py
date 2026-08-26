@@ -279,13 +279,13 @@ class SelfHealthTool(BaseMCPTool):
             "properties": {
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": (
                         "Output format: 'toon' (default, token-efficient) or "
                         "'json'. The MCP-toon / CLI-json split is a locked "
                         "design decision (CLAUDE.md §1)."
                     ),
-                    "default": "toon",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -309,7 +309,7 @@ class SelfHealthTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Build the self-health report. Identical payload on CLI and MCP."""
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         snapshot = get_latency_recorder().snapshot()
         analysis_cache = _analysis_cache_report(self.project_root)
         ast_index = _ast_index_report(self.project_root)

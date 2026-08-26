@@ -728,10 +728,3 @@ async def test_next_step_names_the_env_var_when_instrumentation_is_disabled(
             {"output_format": "json"}
         )
     assert "TSA_LATENCY_INSTRUMENTATION" in result["agent_summary"]["next_step"]
-
-
-@pytest.mark.asyncio
-async def test_mcp_default_output_format_is_toon(tmp_path: Any) -> None:
-    """CLAUDE.md §1 (locked): MCP defaults to TOON."""
-    result = await SelfHealthTool(project_root=str(tmp_path)).execute({})
-    assert result["format"] == "toon"

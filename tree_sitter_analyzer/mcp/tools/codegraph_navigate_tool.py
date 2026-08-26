@@ -151,8 +151,8 @@ class CodeGraphNavigateTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                     "description": "Output format",
                 },
             },
@@ -172,7 +172,7 @@ class CodeGraphNavigateTool(BaseMCPTool):
         mode = arguments.get("mode", "full")
         file_path = arguments.get("file_path")
         depth = min(arguments.get("depth", 2), 5)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         result: dict[str, Any] = {
             "success": True,

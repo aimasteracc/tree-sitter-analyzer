@@ -107,8 +107,8 @@ class CodeGraphXRefTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                     "description": "Output format",
                 },
             },
@@ -130,7 +130,7 @@ class CodeGraphXRefTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         mode = arguments.get("mode", "symbol")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         cache = self._get_cache()
         engine = XRefEngine(cache)
 

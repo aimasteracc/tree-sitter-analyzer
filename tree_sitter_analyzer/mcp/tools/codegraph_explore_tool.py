@@ -112,8 +112,8 @@ _EXPLORE_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
             "description": "Output format (default: toon)",
         },
     },
@@ -480,7 +480,7 @@ class CodeGraphExploreTool(BaseMCPTool):
         max_files = min(int(max_files_raw), _MAX_FILES_CAP)
         max_symbols = min(int(max_syms_raw), _MAX_SYMBOLS_CAP)
         include_code = bool(arguments.get("includeCode", True))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         # --- WARN: project_root unset --------------------------------
         if not self.project_root:

@@ -15,14 +15,6 @@ from ...mcp.tools.read_partial_helpers import (
 from ...output_manager import output_data, output_json, output_section
 from .base_command import BaseCommand
 
-# TOON formatter for CLI output
-try:
-    from ...formatters.toon_formatter import ToonFormatter
-
-    _toon_available = True
-except ImportError:
-    _toon_available = False
-
 if TYPE_CHECKING:
     pass
 
@@ -230,11 +222,6 @@ class PartialReadCommand(BaseCommand):
         output_format = getattr(self.args, "output_format", "text")
         if output_format == "json":
             output_json(result_data)
-            return
-        if output_format == "toon" and _toon_available:
-            use_tabs = getattr(self.args, "toon_use_tabs", False)
-            formatter = ToonFormatter(use_tabs=use_tabs)
-            print(formatter.format(result_data))
             return
         # Human-readable format with header.
         range_info = f"Line {self.args.start_line}"

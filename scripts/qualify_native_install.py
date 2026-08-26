@@ -402,7 +402,7 @@ def aggregate(args: argparse.Namespace) -> int:
             "name": "index",
             "arguments": {"action": "status"},
             "is_error": False,
-            "default_format": "toon",
+            "default_format": "json",
             "verdict": "WARN",
             "project_root": first.get("project_root"),
             "indexed": False,

@@ -88,8 +88,8 @@ class CodeGraphRefactorTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
                 },
             },
@@ -121,7 +121,7 @@ class CodeGraphRefactorTool(BaseMCPTool):
         symbol = arguments["symbol"].strip()
         new_name = arguments["new_name"].strip()
         mode = self.FORCED_MODE or arguments.get("mode", "preview")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         dry_run = mode == "preview"
 
         cache = self._get_cache()
