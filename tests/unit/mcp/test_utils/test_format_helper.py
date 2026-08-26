@@ -205,11 +205,6 @@ class TestApplyOutputFormatToResponse:
         response = apply_output_format_to_response(result, "json")
         assert "verdict" not in response
 
-    def test_non_dict_input_passthrough(self):
-        """Test non-dict inputs are passed through unchanged."""
-        out = apply_output_format_to_response([], "json")  # type: ignore[arg-type]
-        assert out == []
-
     def test_idempotent(self):
         """Test double application stays INFO."""
         first = apply_output_format_to_response({"success": True}, "json")

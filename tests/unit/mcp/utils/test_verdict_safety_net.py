@@ -36,12 +36,6 @@ class TestVerdictSafetyNetJSON:
         )
         assert "verdict" not in out
 
-    def test_non_dict_inputs_are_not_touched(self):
-        # The helper is permissive: when something unusual lands here,
-        # don't crash, just pass it through. Real callers always pass dicts.
-        out = apply_output_format_to_response([], "json")  # type: ignore[arg-type]
-        assert out == []
-
 
 class TestVerdictSafetyNetIdempotence:
     """Repeated calls must converge — important when wrapper helpers
