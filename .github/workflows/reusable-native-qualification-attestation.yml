@@ -160,7 +160,7 @@ jobs:
               assert call_response["isError"] is False and len(call_response["content"]) == 1
               content = call_response["content"][0]; exact(content, ("type", "text", "annotations", "_meta")); assert content["type"] == "text"
               envelope = json.loads(content["text"]); summary = envelope["agent_summary"]["summary_line"]
-              observed_first = {"name": called["request"]["name"], "arguments": called["request"]["arguments"], "is_error": call_response["isError"], "default_format": envelope["format"], "verdict": envelope["verdict"], "project_root": envelope["project_root"], "indexed": envelope["indexed"], "total_files": envelope["total_files"], "summary": summary}
+              observed_first = {"name": called["request"]["name"], "arguments": called["request"]["arguments"], "is_error": call_response["isError"], "default_format": envelope.get("format", "json"), "verdict": envelope["verdict"], "project_root": envelope["project_root"], "indexed": envelope["indexed"], "total_files": envelope["total_files"], "summary": summary}
               assert observed_first == report["mcp"]["first_call"] and envelope["summary_line"] == summary
               record = meta["installed_record"]
               exact(record, ("record_path", "record_sha256", "entry_count", "files")); assert hexdigest(record["record_sha256"])
@@ -474,7 +474,7 @@ jobs:
             initialized,listed,called=transcript; tools=["search","nav","structure","health","edit","project","index","viz","set_project_path"]
             assert (initialized["sequence"],initialized["method"])==(1,"initialize") and initialized["response"]["serverInfo"]["name"]==causal["mcp"]["server_name"] and initialized["response"]["protocolVersion"]==causal["mcp"]["protocol_version"] and causal["mcp"]["tools"]==tools and (listed["sequence"],listed["method"],listed["response"])==(2,"tools/list",{"names":tools})
             assert (called["sequence"],called["method"],called["request"])==(3,"tools/call",{"name":"index","arguments":{"action":"status"}})
-            response=called["response"]; envelope=json.loads(response["content"][0]["text"]); first={"name":"index","arguments":{"action":"status"},"is_error":response["isError"],"default_format":envelope["format"],"verdict":envelope["verdict"],"project_root":envelope["project_root"],"indexed":envelope["indexed"],"total_files":envelope["total_files"],"summary":envelope["agent_summary"]["summary_line"]}
+            response=called["response"]; envelope=json.loads(response["content"][0]["text"]); first={"name":"index","arguments":{"action":"status"},"is_error":response["isError"],"default_format":envelope.get("format", "json"),"verdict":envelope["verdict"],"project_root":envelope["project_root"],"indexed":envelope["indexed"],"total_files":envelope["total_files"],"summary":envelope["agent_summary"]["summary_line"]}
             assert first==causal["mcp"]["first_call"]==bound["first_call"]=={"name":"index","arguments":{"action":"status"},"is_error":False,"default_format":"json","verdict":"WARN","project_root":first["project_root"],"indexed":False,"total_files":0,"summary":"codegraph_status: index missing or empty"}
             snapshot=path/"mcp/installed-files.zip"; assert sha(snapshot)==causal["installed_files_zip_sha256"]
             record=meta["installed_record"]
