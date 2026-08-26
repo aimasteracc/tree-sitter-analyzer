@@ -43,11 +43,10 @@ def apply_output_format(
 
 
 def apply_output_format_to_response(
-    result: dict[str, Any],
+    result: Any,  # noqa: ARG001 — intentionally permissive for legacy callers
     output_format: str = "json",
-) -> dict[str, Any]:
+) -> Any:
     """Normalize every MCP response to the canonical JSON response shape."""
-    del output_format
     if not isinstance(result, dict):
         return result
     if result.get("success") is True and "verdict" not in result:
