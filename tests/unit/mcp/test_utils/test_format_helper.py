@@ -184,7 +184,7 @@ class TestApplyOutputFormatToResponse:
         """Test apply_output_format_to_response returns original for JSON format."""
         result = {"key": "value", "number": 42}
         response = apply_output_format_to_response(result, "json")
-        assert response == result
+        assert response == {**result, "format": "json"}
         assert "toon_content" not in response
 
     def test_success_gets_default_verdict(self):
@@ -250,6 +250,7 @@ def test_final_oracle_snapshot_publish_errors() -> None:
 
     assert errors["DIFF_SNAPSHOT_UNSUPPORTED_FILTER"] == {
         "success": False,
+        "format": "json",
         "verdict": "ERROR",
         "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_FILTER",
         "error": "DIFF_SNAPSHOT_UNSUPPORTED_FILTER",
