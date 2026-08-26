@@ -1,12 +1,10 @@
 """Tests for the verdict-injection safety net in apply_output_format_to_response.
 
-Background — pain pass 4 audit: 6 utility tools (check_code_scale,
-extract_code_section, query_code, list_files, search_content,
-find_and_grep) shipped without verdict and the universal helper
-``apply_output_format_to_response`` is the single bottleneck every tool
-calls before returning. Injecting a default ``INFO`` here catches every
-future tool that forgets to set verdict, without forcing 36 separate
-patches.
+Background — pain pass 4 audit: 6 utility tools shipped without verdict
+and the universal helper ``apply_output_format_to_response`` is the single
+bottleneck every tool calls before returning. Injecting a default ``INFO``
+here catches every future tool that forgets to set verdict, without forcing
+36 separate patches.
 """
 
 from __future__ import annotations
@@ -33,7 +31,9 @@ class TestVerdictSafetyNetJSON:
         # Failures use the explicit error envelope; we don't auto-assign
         # a verdict because the agent shouldn't branch on it. The tool
         # (or the validator) handles failures separately.
-        out = apply_output_format_to_response({"success": False, "error": "boom"}, "json")
+        out = apply_output_format_to_response(
+            {"success": False, "error": "boom"}, "json"
+        )
         assert "verdict" not in out
 
     def test_non_dict_inputs_are_not_touched(self):
@@ -41,6 +41,16 @@ class TestVerdictSafetyNetJSON:
         # don't crash, just pass it through. Real callers always pass dicts.
         out = apply_output_format_to_response([], "json")  # type: ignore[arg-type]
         assert out == []
+
+
+class TestVerdictSafetyNetIdempotence:
+    """Repeated calls must converge — important when wrapper helpers
+    re-format an already-formatted response."""
+
+    def test_double_application_stays_info(self):
+        first = apply_output_format_to_response({"success": True}, "json")
+        second = apply_output_format_to_response(first, "json")
+        assert second["verdict"] == "INFO"
 
     def test_does_not_overwrite_existing_value(self):
         first = apply_output_format_to_response(

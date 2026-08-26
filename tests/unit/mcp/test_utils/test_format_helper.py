@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Unit tests for format_helper.py — JSON output paths only (TOON removed)."""
+"""
+Unit tests for format_helper.py
+
+Tests the format helper utility functions for MCP tool output formatting.
+After TOON removal, only JSON formatting helpers remain.
+"""
 
 from tree_sitter_analyzer.mcp.utils.format_helper import (
     JsonFormatter,
     apply_output_format,
     apply_output_format_to_response,
-    attach_toon_content_to_response,
     format_as_json,
     format_for_file_output,
     format_output,
@@ -15,7 +19,10 @@ from tree_sitter_analyzer.mcp.utils.format_helper import (
 
 
 class TestFormatOutput:
+    """Tests for format_output function."""
+
     def test_format_output_json(self):
+        """Test format_output with JSON format."""
         data = {"key": "value", "number": 42}
         result = format_output(data, "json")
         assert isinstance(result, str)
@@ -23,104 +30,232 @@ class TestFormatOutput:
         assert '"number": 42' in result
 
     def test_format_output_default_format(self):
+        """Test format_output with default format (JSON)."""
         data = {"key": "value"}
         result = format_output(data)
         assert isinstance(result, str)
         assert '"key": "value"' in result
 
     def test_format_output_empty_dict(self):
-        result = format_output({}, "json")
+        """Test format_output with empty dictionary."""
+        data = {}
+        result = format_output(data, "json")
         assert result == "{}"
 
     def test_format_output_nested_dict(self):
+        """Test format_output with nested dictionary."""
         data = {"outer": {"inner": {"deep": "value"}}}
         result = format_output(data, "json")
         assert '"outer"' in result
+        assert '"inner"' in result
         assert '"deep": "value"' in result
 
 
 class TestFormatAsJson:
+    """Tests for format_as_json function."""
+
     def test_format_as_json_simple(self):
-        result = format_as_json({"key": "value"})
+        """Test format_as_json with simple dictionary."""
+        data = {"key": "value"}
+        result = format_as_json(data)
         assert result == '{\n  "key": "value"\n}'
 
     def test_format_as_json_with_numbers(self):
-        result = format_as_json({"int": 42, "float": 3.14})
+        """Test format_as_json with numbers."""
+        data = {"int": 42, "float": 3.14}
+        result = format_as_json(data)
         assert '"int": 42' in result
         assert '"float": 3.14' in result
 
+    def test_format_as_json_with_lists(self):
+        """Test format_as_json with lists."""
+        data = {"items": [1, 2, 3]}
+        result = format_as_json(data)
+        assert '"items": [' in result
+        assert "1," in result
+        assert "2," in result
+        assert "3" in result
+
     def test_format_as_json_with_unicode(self):
-        result = format_as_json({"text": "日本語テスト"})
+        """Test format_as_json with Unicode characters."""
+        data = {"text": "日本語テスト"}
+        result = format_as_json(data)
         assert "日本語テスト" in result
+
+    def test_format_as_json_with_special_chars(self):
+        """Test format_as_json with special characters."""
+        data = {"text": "Line1\nLine2\tTab"}
+        result = format_as_json(data)
+        assert "Line1" in result
+        assert "Line2" in result
 
 
 class TestGetFormatter:
+    """Tests for get_formatter function."""
+
     def test_get_formatter_json(self):
-        assert isinstance(get_formatter("json"), JsonFormatter)
+        """Test get_formatter returns JsonFormatter for JSON format."""
+        formatter = get_formatter("json")
+        assert isinstance(formatter, JsonFormatter)
 
     def test_get_formatter_default(self):
-        assert isinstance(get_formatter(), JsonFormatter)
+        """Test get_formatter returns JsonFormatter for default format."""
+        formatter = get_formatter()
+        assert isinstance(formatter, JsonFormatter)
 
 
 class TestJsonFormatter:
-    def test_format_dict(self):
-        result = JsonFormatter().format({"key": "value", "n": 42})
-        assert '"key": "value"' in result
-        assert '"n": 42' in result
+    """Tests for JsonFormatter class."""
 
-    def test_format_list(self):
-        result = JsonFormatter().format([1, 2, 3])
+    def test_json_formatter_format(self):
+        """Test JsonFormatter.format method."""
+        formatter = JsonFormatter()
+        data = {"key": "value", "number": 42}
+        result = formatter.format(data)
+        assert isinstance(result, str)
+        assert '"key": "value"' in result
+        assert '"number": 42' in result
+
+    def test_json_formatter_format_nested(self):
+        """Test JsonFormatter.format with nested data."""
+        formatter = JsonFormatter()
+        data = {"outer": {"inner": "value"}}
+        result = formatter.format(data)
+        assert '"outer"' in result
+        assert '"inner": "value"' in result
+
+    def test_json_formatter_format_list(self):
+        """Test JsonFormatter.format with list data."""
+        formatter = JsonFormatter()
+        data = [1, 2, 3]
+        result = formatter.format(data)
         assert result == "[\n  1,\n  2,\n  3\n]"
 
 
 class TestApplyOutputFormat:
-    def test_return_dict(self):
-        d = {"key": "value"}
-        assert apply_output_format(d, "json", False) == d
+    """Tests for apply_output_format function."""
 
-    def test_return_json_string(self):
-        result = apply_output_format({"key": "value"}, "json", True)
+    def test_apply_output_format_return_dict(self):
+        """Test apply_output_format returns dict when return_formatted_string=False."""
+        result_dict = {"key": "value", "number": 42}
+        result = apply_output_format(result_dict, "json", False)
+        assert result == result_dict
+        assert isinstance(result, dict)
+
+    def test_apply_output_format_return_string_json(self):
+        """Test apply_output_format returns JSON string when requested."""
+        result_dict = {"key": "value", "number": 42}
+        result = apply_output_format(result_dict, "json", True)
         assert isinstance(result, str)
         assert '"key": "value"' in result
 
-    def test_default_params(self):
-        d = {"key": "value"}
-        assert apply_output_format(d) == d
+    def test_apply_output_format_default_params(self):
+        """Test apply_output_format with default parameters."""
+        result_dict = {"key": "value"}
+        result = apply_output_format(result_dict)
+        assert result == result_dict
+        assert isinstance(result, dict)
 
 
 class TestFormatForFileOutput:
-    def test_json_extension(self):
-        content, ext = format_for_file_output({"key": "value"}, "json")
-        assert ext == ".json"
-        assert '"key": "value"' in content
+    """Tests for format_for_file_output function."""
 
-    def test_default_is_json(self):
-        content, ext = format_for_file_output({"key": "value"})
-        assert ext == ".json"
+    def test_format_for_file_output_json(self):
+        """Test format_for_file_output with JSON format."""
+        data = {"key": "value", "number": 42}
+        content, extension = format_for_file_output(data, "json")
         assert isinstance(content, str)
+        assert '"key": "value"' in content
+        assert extension == ".json"
+
+    def test_format_for_file_output_default_format(self):
+        """Test format_for_file_output with default format (JSON)."""
+        data = {"key": "value"}
+        content, extension = format_for_file_output(data)
+        assert isinstance(content, str)
+        assert '"key": "value"' in content
+        assert extension == ".json"
 
 
-class TestApplyToonFormatToResponse:
-    def test_json_format_passthrough(self):
+class TestApplyOutputFormatToResponse:
+    """Tests for apply_output_format_to_response function."""
+
+    def test_json_unchanged(self):
+        """Test apply_output_format_to_response returns original for JSON format."""
         result = {"key": "value", "number": 42}
         response = apply_output_format_to_response(result, "json")
         assert response == result
         assert "toon_content" not in response
 
+    def test_success_gets_default_verdict(self):
+        """Test successful responses without verdict get INFO."""
+        result = {"success": True}
+        response = apply_output_format_to_response(result, "json")
+        assert response["verdict"] == "INFO"
 
-class TestAttachToonContentToResponse:
-    def test_passthrough(self):
-        result = {"key": "value"}
-        response = attach_toon_content_to_response(result)
-        assert "key" in response
-        assert response["key"] == "value"
+    def test_explicit_verdict_preserved(self):
+        """Test explicit verdict is preserved."""
+        result = {"success": True, "verdict": "CAUTION"}
+        response = apply_output_format_to_response(result, "json")
+        assert response["verdict"] == "CAUTION"
+
+    def test_failure_no_verdict(self):
+        """Test failure responses don't get auto-verdict."""
+        result = {"success": False, "error": "boom"}
+        response = apply_output_format_to_response(result, "json")
+        assert "verdict" not in response
+
+    def test_non_dict_input_passthrough(self):
+        """Test non-dict inputs are passed through unchanged."""
+        out = apply_output_format_to_response([], "json")  # type: ignore[arg-type]
+        assert out == []
+
+    def test_idempotent(self):
+        """Test double application stays INFO."""
+        first = apply_output_format_to_response({"success": True}, "json")
+        second = apply_output_format_to_response(first, "json")
+        assert second["verdict"] == "INFO"
 
 
-def test_preformat_diff_snapshot_publish_errors_json() -> None:
+class TestIntegration:
+    """Integration tests for format_helper module."""
+
+    def test_format_workflow_json(self):
+        """Test complete formatting workflow for JSON."""
+        data = {"results": [{"id": 1}], "metadata": {"total": 1}}
+
+        # Step 1: Format as JSON string
+        json_string = format_output(data, "json")
+        assert isinstance(json_string, str)
+        assert '"results"' in json_string
+
+        # Step 2: Apply output format (return dict for MCP)
+        mcp_result = apply_output_format(data, "json", False)
+        assert mcp_result == data
+
+        # Step 3: Format for file output
+        content, ext = format_for_file_output(data, "json")
+        assert ext == ".json"
+        assert '"results"' in content
+
+    def test_get_formatter_and_format(self):
+        """Test getting formatter and using it to format data."""
+        data = {"key": "value", "number": 42}
+
+        # Get JSON formatter
+        json_formatter = get_formatter("json")
+        json_result = json_formatter.format(data)
+        assert '"key": "value"' in json_result
+
+
+def test_final_oracle_snapshot_publish_errors() -> None:
     errors, _generic = preformat_diff_snapshot_publish_errors(
         "json", apply_output_format_to_response
     )
-    assert "DIFF_SNAPSHOT_UNSUPPORTED_FILTER" in errors
-    err = errors["DIFF_SNAPSHOT_UNSUPPORTED_FILTER"]
-    assert err["success"] is False
-    assert err["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_FILTER"
+
+    assert errors["DIFF_SNAPSHOT_UNSUPPORTED_FILTER"] == {
+        "success": False,
+        "verdict": "ERROR",
+        "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_FILTER",
+        "error": "DIFF_SNAPSHOT_UNSUPPORTED_FILTER",
+    }

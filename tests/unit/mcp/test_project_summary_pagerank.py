@@ -407,6 +407,57 @@ def gradle_project(tmp_path: Path) -> Path:
     return tmp_path
 
 
+@pytest.fixture
+def java_project_with_noise(tmp_path: Path) -> Path:
+    """Java project with pom.xml groupId + stdlib/third-party imports."""
+    # pom.xml declares groupId
+    (tmp_path / "pom.xml").write_text(
+        "<project>\n"
+        "  <groupId>com.example</groupId>\n"
+        "  <artifactId>myapp</artifactId>\n"
+        "</project>"
+    )
+    (tmp_path / "README.md").write_text("# MyApp\n\nA Java app.\n")
+
+    src = tmp_path / "src" / "main" / "java" / "com" / "example"
+    src.mkdir(parents=True)
+
+    # BeanFactory -- core interface (first-party, no imports)
+    (src / "BeanFactory.java").write_text(
+        "package com.example;\n"
+        "public interface BeanFactory {\n"
+        "    Object getBean(String name);\n"
+        "}\n"
+    )
+
+    # Service -- imports first-party + stdlib + third-party
+    (src / "UserService.java").write_text(
+        "package com.example;\n"
+        "import com.example.BeanFactory;\n"  # first-party -> edge
+        "import java.util.List;\n"  # stdlib -> SKIP
+        "import java.util.Map;\n"  # stdlib -> SKIP
+        "import javax.annotation.Nullable;\n"  # annotation -> SKIP
+        "import org.junit.jupiter.api.Test;\n"  # test fw -> SKIP
+        "import lombok.Data;\n"  # annotation proc -> SKIP
+        "public class UserService implements BeanFactory {\n"
+        "    public Object getBean(String name) { return null; }\n"
+        "}\n"
+    )
+
+    # Controller -- imports first-party only
+    (src / "UserController.java").write_text(
+        "package com.example;\n"
+        "import com.example.UserService;\n"  # first-party -> edge
+        "import com.example.BeanFactory;\n"  # first-party -> edge
+        "import java.util.Optional;\n"  # stdlib -> SKIP
+        "public class UserController {\n"
+        "    private UserService service;\n"
+        "}\n"
+    )
+
+    return tmp_path
+
+
 # ---------------------------------------------------------------------------
 # 9. Root package detection
 # ---------------------------------------------------------------------------
