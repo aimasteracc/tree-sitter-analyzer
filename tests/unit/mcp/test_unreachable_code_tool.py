@@ -101,23 +101,6 @@ class TestValidateArguments:
 
 
 # ---------------------------------------------------------------------------
-# _format_block_line (static helper)
-# ---------------------------------------------------------------------------
-
-
-class TestFormatBlockLine:
-    def test_formats_correctly(self, tool: UnreachableCodeTool) -> None:
-        block = _make_block(
-            start=10, end=12, fn="process", reason="after return", severity="warning"
-        )
-        line = tool._format_block_line(block)
-        assert "L10-12" in line
-        assert "process" in line
-        assert "after return" in line
-        assert "[warning]" in line
-
-
-# ---------------------------------------------------------------------------
 # _build_file_response
 # ---------------------------------------------------------------------------
 

@@ -195,15 +195,15 @@ class TestCLIOutputFormatIntegration:
         )
         assert args.output_format == "text"
 
-    def test_cli_supports_toon_output(self):
-        """Test CLI supports TOON output."""
+    def test_cli_supports_json_output(self):
+        """Test CLI supports JSON output."""
         args = create_argument_parser().parse_args(
-            ["--output-format", "toon", "test.py"]
+            ["--output-format", "json", "test.py"]
         )
-        assert args.output_format == "toon"
+        assert args.output_format == "json"
 
     def test_cli_format_alias(self):
         """Test CLI format alias."""
-        args = create_argument_parser().parse_args(["--format", "toon", "test.py"])
+        args = create_argument_parser().parse_args(["--format", "json", "test.py"])
         # --format is aliased to --output-format
-        assert args.format == "toon"
+        assert args.format == "json"

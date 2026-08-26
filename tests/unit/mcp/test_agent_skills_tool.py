@@ -128,22 +128,18 @@ async def test_agent_skills_tool_supports_custom_relative_root(tmp_path):
     )
 
     result = await AgentSkillsTool(str(tmp_path)).execute(
-        {"skills_root": "docs/skills", "output_format": "toon"}
+        {"skills_root": "docs/skills", "output_format": "json"}
     )
 
-    assert result["format"] == "toon"
+    assert result["format"] == "json"
     assert result["skills_root"] == "docs/skills"
-    # M2 (round-26): MCP consumers can now see the full skills list, not
-    # just the count. The TOON envelope keeps ``toon_content`` for compact
-    # rendering AND exposes the structured ``skills`` list alongside.
+    # MCP consumers can now see the full skills list, not
+    # just the count.
     assert "skills" in result
     assert isinstance(result["skills"], list)
     assert len(result["skills"]) == result["skill_count"]
     assert result["agent_summary"]["ready_for_use_count"] == 0
     assert result["validation"]["status"] == "caution"
-    assert "toon_content" in result
-    assert "validation_status: caution" in result["toon_content"]
-    assert "local" in result["toon_content"]
 
 
 @pytest.mark.asyncio
@@ -430,7 +426,7 @@ async def test_agent_skills_tool_envelope_contract_holds(tmp_path):
     )
     tool = AgentSkillsTool(str(tmp_path))
 
-    for output_format in ("json", "toon"):
+    for output_format in ("json",):
         result = await tool.execute({"output_format": output_format})
         assert result["success"] is True, (
             f"format={output_format} returned success=False"

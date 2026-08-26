@@ -18,7 +18,7 @@ from tree_sitter_analyzer.cli.commands.constraint_check_command import (
 )
 
 _APPLY_TOON = (
-    "tree_sitter_analyzer.mcp.utils.format_helper.apply_toon_format_to_response"
+    "tree_sitter_analyzer.mcp.utils.format_helper.apply_output_format_to_response"
 )
 _COMMAND = "tree_sitter_analyzer.cli.commands.constraint_check_command"
 _EVALUATE = _COMMAND + ".evaluate"

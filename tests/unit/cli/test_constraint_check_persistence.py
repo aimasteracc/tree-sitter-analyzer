@@ -20,7 +20,7 @@ from tree_sitter_analyzer.cli.commands.constraint_check_command import (
 
 # Module-level patch targets
 _APPLY_TOON = (
-    "tree_sitter_analyzer.mcp.utils.format_helper.apply_toon_format_to_response"
+    "tree_sitter_analyzer.mcp.utils.format_helper.apply_output_format_to_response"
 )
 _RESOLVE_FMT = "tree_sitter_analyzer.cli.output_format.resolve_mcp_tool_format"
 _LOAD_CONSTRAINTS = (

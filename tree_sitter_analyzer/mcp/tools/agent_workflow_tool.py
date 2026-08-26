@@ -115,6 +115,7 @@ def _build_json_response(result: dict[str, Any]) -> dict[str, Any]:
         "workflow_mode": result["workflow_mode"],
         "project_root": result["project_root"],
         "target_path": result["target_path"],
+        "steps": result["steps"],
         "agent_summary": result["agent_summary"],
         "current_phase": result["current_phase"],
         "phase_order": result["phase_order"],

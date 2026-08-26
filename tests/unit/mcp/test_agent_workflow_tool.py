@@ -428,7 +428,7 @@ async def test_agent_workflow_tool_envelope_holds_for_both_formats(tmp_path):
     tool = AgentWorkflowTool(str(tmp_path))
 
     for target_path in (None, "src/service.py"):
-        for output_format in ("json", "toon"):
+        for output_format in ("json",):
             args: dict[str, object] = {"output_format": output_format}
             if target_path is not None:
                 args["target_path"] = target_path

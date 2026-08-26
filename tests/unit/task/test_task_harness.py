@@ -200,7 +200,7 @@ def test_cli_main_plan_change_diff_branch(monkeypatch, capsys) -> None:
                 "--scope-path",
                 "src/",
                 "--format",
-                "toon",
+                "json",
             ]
         )
         == 0

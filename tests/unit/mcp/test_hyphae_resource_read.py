@@ -102,7 +102,7 @@ class TestHyphaeResourceReadBoundary:
             new=AsyncMock(return_value=fake_result),
         ):
             result = await handlers["read_resource"](
-                "tsa://hyphae/%23apply_toon_format_to_response"
+                "tsa://hyphae/%23apply_output_format_to_response"
             )
 
         # Must be a list (or iterable) of ReadResourceContents — NOT a raw dict

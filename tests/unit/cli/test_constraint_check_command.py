@@ -27,9 +27,9 @@ from tree_sitter_analyzer.cli.commands.constraint_check_command import (
 
 # Module-level patch targets
 _APPLY_TOON = (
-    "tree_sitter_analyzer.mcp.utils.format_helper.apply_toon_format_to_response"
+    "tree_sitter_analyzer.mcp.utils.format_helper.apply_output_format_to_response"
 )
-_RESOLVE_FMT = "tree_sitter_analyzer.cli.output_format.resolve_mcp_tool_format"
+_RESOLVE_FMT = "tree_sitter_analyzer.cli.output_format.resolve_output_format"
 _LOAD_CONSTRAINTS = (
     "tree_sitter_analyzer.cli.commands.constraint_check_command.load_constraints"
 )
@@ -243,7 +243,7 @@ class TestFailureEnvelope:
 
 
 class TestResolveOutputFormat:
-    def test_delegates_to_resolve_mcp_tool_format(self):
+    def test_delegates_to_resolve_output_format(self):
         args = SimpleNamespace(format="json")
         with patch(_RESOLVE_FMT, return_value="json") as mock_fn:
             result = _resolve_output_format(args)

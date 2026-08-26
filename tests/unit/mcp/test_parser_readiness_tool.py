@@ -531,7 +531,7 @@ swift = ["tree-sitter-swift>=0.7.2"]
     )
     tool = ParserReadinessTool(str(tmp_path))
 
-    for output_format in ("json", "toon"):
+    for output_format in ("json",):
         result = await tool.execute(
             {"language": "swift", "output_format": output_format}
         )

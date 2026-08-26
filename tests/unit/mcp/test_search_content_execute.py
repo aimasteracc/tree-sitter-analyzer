@@ -233,7 +233,7 @@ class TestExecute:
                         assert "results" not in result
 
     @pytest.mark.asyncio
-    async def test_execute_with_toon_format(self, tool, sample_project_structure):
+    async def test_execute_with_json_format(self, tool, sample_project_structure):
         with patch(
             "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
             return_value=True,
@@ -249,20 +249,20 @@ class TestExecute:
                     return_value=[{"path": "file1.py"}],
                 ):
                     with patch(
-                        "tree_sitter_analyzer.mcp.tools.search_content_tool.apply_toon_format_to_response"
-                    ) as mock_toon:
-                        mock_toon.return_value = {"toon": "formatted"}
+                        "tree_sitter_analyzer.mcp.tools.search_content_tool.apply_output_format_to_response"
+                    ) as mock_fmt:
+                        mock_fmt.return_value = {"json": "formatted"}
 
                         arguments = {
                             "roots": [str(sample_project_structure)],
                             "query": "test",
-                            "output_format": "toon",
+                            "output_format": "json",
                         }
 
                         result = await tool.execute(arguments)
 
-                        assert mock_toon.called
-                        assert result == {"toon": "formatted"}
+                        assert mock_fmt.called
+                        assert result == {"json": "formatted"}
 
     @pytest.mark.asyncio
     async def test_execute_rg_failure(self, tool, sample_project_structure):

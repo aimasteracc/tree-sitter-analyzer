@@ -30,13 +30,13 @@ class TestAnalysisSessionCreation:
     def test_session_creation_with_minimal_params(self):
         """创建最小参数的 session"""
         session = AnalysisSession(
-            input_files=["/path/to/file.py"], output_format="toon"
+            input_files=["/path/to/file.py"], output_format="json"
         )
 
         assert session.session_id is not None
         assert session.timestamp is not None
         assert session.input_files == ["/path/to/file.py"]
-        assert session.output_format == "toon"
+        assert session.output_format == "json"
         assert session.tools_used == []
         assert session.git_commit is None
 
@@ -61,7 +61,7 @@ class TestAnalysisSessionCreation:
     def test_session_id_uniqueness_with_rapid_creation(self):
         """快速连续创建 session，ID 应该唯一（uuid4 保证）"""
         sessions = [
-            AnalysisSession(input_files=[f"/file{i}.py"], output_format="toon")
+            AnalysisSession(input_files=[f"/file{i}.py"], output_format="json")
             for i in range(10)
         ]
 
@@ -89,7 +89,7 @@ class TestAnalysisSessionCreation:
         """Token 节省百分比计算正确"""
         session = AnalysisSession(
             input_files=["/file.py"],
-            output_format="toon",
+            output_format="json",
             token_count_before=1000,
             token_count_after=540,
         )
@@ -99,7 +99,7 @@ class TestAnalysisSessionCreation:
 
     def test_token_savings_when_counts_not_provided(self):
         """Token counts 未提供时，savings_pct 应为 None"""
-        session = AnalysisSession(input_files=["/file.py"], output_format="toon")
+        session = AnalysisSession(input_files=["/file.py"], output_format="json")
 
         assert session.token_count_before is None
         assert session.token_count_after is None
@@ -121,7 +121,7 @@ class TestFileHashCalculation:
     def test_file_hash_calculation_sha256(self, mock_exists, mock_file, mock_stat):
         """计算文件 SHA256 hash"""
         session = AnalysisSession(
-            input_files=["/path/to/file.py"], output_format="toon"
+            input_files=["/path/to/file.py"], output_format="json"
         )
 
         # SHA256("file content") = 固定值
@@ -134,7 +134,7 @@ class TestFileHashCalculation:
     def test_file_hash_missing_file(self, mock_exists):
         """文件不存在时，hash 应为 None"""
         session = AnalysisSession(
-            input_files=["/nonexistent/file.py"], output_format="toon"
+            input_files=["/nonexistent/file.py"], output_format="json"
         )
 
         assert session.file_hashes["/nonexistent/file.py"] is None
@@ -145,7 +145,7 @@ class TestFileHashCalculation:
     def test_multiple_files_hash_calculation(self, mock_exists, mock_file, mock_stat):
         """多个文件的 hash 计算"""
         session = AnalysisSession(
-            input_files=["/file1.py", "/file2.py"], output_format="toon"
+            input_files=["/file1.py", "/file2.py"], output_format="json"
         )
 
         assert len(session.file_hashes) == 2
@@ -181,7 +181,7 @@ class TestSessionSerialization:
 
     def test_to_dict_serializable_to_json(self):
         """to_dict() 返回的数据应该可以序列化为 JSON"""
-        session = AnalysisSession(input_files=["/file.py"], output_format="toon")
+        session = AnalysisSession(input_files=["/file.py"], output_format="json")
 
         data = session.to_dict()
         json_str = json.dumps(data)  # 不应抛出异常
@@ -200,7 +200,7 @@ class TestSessionPersistence:
         self, mock_file, mock_exists, mock_mkdir
     ):
         """Session 目录不存在时自动创建（修复 P1 gap）"""
-        session = AnalysisSession(input_files=["/file.py"], output_format="toon")
+        session = AnalysisSession(input_files=["/file.py"], output_format="json")
 
         with patch("pathlib.Path.home") as mock_home:
             mock_home.return_value = Path("/mock/home")
@@ -216,7 +216,7 @@ class TestSessionPersistence:
         self, mock_file, mock_exists, mock_mkdir
     ):
         """Session 目录存在时不重复创建"""
-        session = AnalysisSession(input_files=["/file.py"], output_format="toon")
+        session = AnalysisSession(input_files=["/file.py"], output_format="json")
 
         with patch("pathlib.Path.home") as mock_home:
             mock_home.return_value = Path("/mock/home")
@@ -229,7 +229,7 @@ class TestSessionPersistence:
     @patch("pathlib.Path.exists", return_value=True)
     def test_save_writes_json_to_correct_path(self, mock_exists, mock_file):
         """保存的 JSON 文件路径正确"""
-        session = AnalysisSession(input_files=["/file.py"], output_format="toon")
+        session = AnalysisSession(input_files=["/file.py"], output_format="json")
 
         with patch("pathlib.Path.home") as mock_home:
             mock_home.return_value = Path("/mock/home")
@@ -269,7 +269,7 @@ class TestSessionValidation:
     def test_empty_input_files_raises_error(self):
         """input_files 为空应该抛出异常"""
         with pytest.raises(ValueError, match="input_files cannot be empty"):
-            AnalysisSession(input_files=[], output_format="toon")
+            AnalysisSession(input_files=[], output_format="json")
 
     def test_invalid_output_format_raises_error(self):
         """无效的 output_format 应该抛出异常"""
@@ -278,7 +278,7 @@ class TestSessionValidation:
 
     def test_valid_output_formats(self):
         """有效的 output_format 应该被接受"""
-        valid_formats = ["toon", "json", "csv", "compact", "full"]
+        valid_formats = ["json", "csv", "compact", "full"]
 
         for fmt in valid_formats:
             session = AnalysisSession(input_files=["/file.py"], output_format=fmt)
@@ -288,7 +288,7 @@ class TestSessionValidation:
         """负数 token count 应该抛出异常"""
         with pytest.raises(ValueError, match="Token counts cannot be negative"):
             AnalysisSession(
-                input_files=["/file.py"], output_format="toon", token_count_before=-100
+                input_files=["/file.py"], output_format="json", token_count_before=-100
             )
 
     def test_token_count_after_greater_than_before_warning(self):
@@ -296,7 +296,7 @@ class TestSessionValidation:
         # 这个不抛出异常，但应该在 log 中警告
         session = AnalysisSession(
             input_files=["/file.py"],
-            output_format="toon",
+            output_format="json",
             token_count_before=100,
             token_count_after=200,
         )
@@ -320,7 +320,7 @@ class TestGitIntegration:
         mock_run.return_value = MagicMock(stdout="abc123def456\n", returncode=0)
 
         session = AnalysisSession(
-            input_files=["/file.py"], output_format="toon", auto_detect_git_commit=True
+            input_files=["/file.py"], output_format="json", auto_detect_git_commit=True
         )
 
         assert session.git_commit == "abc123def456"
@@ -332,7 +332,7 @@ class TestGitIntegration:
         mock_run.return_value = MagicMock(stderr="not a git repository", returncode=128)
 
         session = AnalysisSession(
-            input_files=["/file.py"], output_format="toon", auto_detect_git_commit=True
+            input_files=["/file.py"], output_format="json", auto_detect_git_commit=True
         )
 
         assert session.git_commit is None
@@ -346,7 +346,7 @@ class TestGitIntegration:
 
             session = AnalysisSession(
                 input_files=["/file.py"],
-                output_format="toon",
+                output_format="json",
                 git_commit="manual_commit",
                 auto_detect_git_commit=True,
             )
@@ -361,7 +361,7 @@ class TestSessionRetention:
 
     def test_default_retention_90_days(self):
         """默认保留策略应为 90 天"""
-        _ = AnalysisSession(input_files=["/file.py"], output_format="toon")
+        _ = AnalysisSession(input_files=["/file.py"], output_format="json")
 
         # 这个属性在类级别定义
         assert AnalysisSession.DEFAULT_RETENTION_DAYS == 90
@@ -379,7 +379,7 @@ class TestSessionMetadataFields:
 
     def test_timestamp_format_iso8601(self):
         """Timestamp 应为 ISO 8601 格式"""
-        session = AnalysisSession(input_files=["/file.py"], output_format="toon")
+        session = AnalysisSession(input_files=["/file.py"], output_format="json")
 
         # 应该能解析为 datetime (handle 'Z' suffix for UTC)
         timestamp_str = session.timestamp.replace("Z", "+00:00")
@@ -390,7 +390,7 @@ class TestSessionMetadataFields:
         """tools_used 应保持调用顺序"""
         tools = ["tool_a", "tool_b", "tool_c"]
         session = AnalysisSession(
-            input_files=["/file.py"], output_format="toon", tools_used=tools
+            input_files=["/file.py"], output_format="json", tools_used=tools
         )
 
         assert session.tools_used == tools
@@ -398,7 +398,7 @@ class TestSessionMetadataFields:
     def test_multiple_input_files_preserved(self):
         """多个 input files 应该完整保存"""
         files = ["/file1.py", "/file2.py", "/dir/file3.py"]
-        session = AnalysisSession(input_files=files, output_format="toon")
+        session = AnalysisSession(input_files=files, output_format="json")
 
         assert session.input_files == files
         assert len(session.file_hashes) == 3

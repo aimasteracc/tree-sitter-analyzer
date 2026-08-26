@@ -1622,7 +1622,7 @@ def test_cli_co_change_routes_symbol_vs_path():
             query_loader=None,
         )
 
-    for target in ["src/handler.py", "apply_toon_format_to_response"]:
+    for target in ["src/handler.py", "apply_output_format_to_response"]:
         args = argparse.Namespace(
             co_change=target,
             test_map=None,
@@ -1641,5 +1641,5 @@ def test_cli_co_change_routes_symbol_vs_path():
 
     assert captured[0].get("file_path") == "src/handler.py"
     assert "symbol" not in captured[0]
-    assert captured[1].get("symbol") == "apply_toon_format_to_response"
+    assert captured[1].get("symbol") == "apply_output_format_to_response"
     assert "file_path" not in captured[1]

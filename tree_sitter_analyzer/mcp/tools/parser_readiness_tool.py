@@ -112,15 +112,27 @@ class ParserReadinessTool(BaseMCPTool):
 def _build_json_response(result: dict[str, Any]) -> dict[str, Any]:
     """Return the structured JSON MCP response."""
     response = {
-        "success": result["success"],
+        "success": result.get("success", False),
         "verdict": result.get("verdict", "INFO"),
         "format": "json",
-        "advisor": result["advisor"],
-        "project_root": result["project_root"],
-        "requested_language": result["requested_language"],
-        "agent_summary": result["agent_summary"],
-        "recommendations": result["recommendations"],
+        "advisor": result.get("advisor", "parser readiness"),
+        "project_root": result.get("project_root", ""),
+        "requested_language": result.get("requested_language"),
+        "readiness": result.get("readiness", []),
+        "status_distribution": result.get("status_distribution", {}),
+        "high_priority_languages": result.get("high_priority_languages", []),
+        "implemented_languages": result.get("implemented_languages", []),
+        "agent_summary": result.get("agent_summary", {}),
+        "recommendations": result.get("recommendations", []),
     }
+    # Mirror error fields for failure envelopes so callers can inspect
+    # error type and message without parsing agent_summary.
+    error_type = result.get("error_type")
+    if error_type:
+        response["error_type"] = error_type
+    error = result.get("error")
+    if error:
+        response["error"] = error
     # G7: mirror summary_line so the JSON envelope also carries the
     # top-level one-liner (JSON path passes the full ``result`` dict
     # which already has it).

@@ -4,7 +4,7 @@
 from tree_sitter_analyzer.mcp.utils.format_helper import (
     JsonFormatter,
     apply_output_format,
-    apply_toon_format_to_response,
+    apply_output_format_to_response,
     attach_toon_content_to_response,
     format_as_json,
     format_for_file_output,
@@ -103,7 +103,7 @@ class TestFormatForFileOutput:
 class TestApplyToonFormatToResponse:
     def test_json_format_passthrough(self):
         result = {"key": "value", "number": 42}
-        response = apply_toon_format_to_response(result, "json")
+        response = apply_output_format_to_response(result, "json")
         assert response == result
         assert "toon_content" not in response
 
@@ -118,7 +118,7 @@ class TestAttachToonContentToResponse:
 
 def test_preformat_diff_snapshot_publish_errors_json() -> None:
     errors, _generic = preformat_diff_snapshot_publish_errors(
-        "json", apply_toon_format_to_response
+        "json", apply_output_format_to_response
     )
     assert "DIFF_SNAPSHOT_UNSUPPORTED_FILTER" in errors
     err = errors["DIFF_SNAPSHOT_UNSUPPORTED_FILTER"]
