@@ -16,8 +16,6 @@ import pytest
 
 from tree_sitter_analyzer.default_table_formatter import DefaultTableFormatter
 from tree_sitter_analyzer.formatters.formatter_registry import (
-    CompactFormatter,
-    CsvFormatter,
     FormatterRegistry,
     FullFormatter,
     IFormatter,
@@ -335,36 +333,6 @@ class TestBuiltinFormatters:
         parsed = json.loads(result)
         assert parsed == []
 
-    def test_csv_formatter(self):
-        """Test CsvFormatter"""
-        formatter = CsvFormatter()
-        assert formatter.get_format_name() == "csv"
-
-        result = formatter.format(self.test_elements)
-        lines = result.split("\n")
-
-        # Check header
-        assert (
-            "Type,Name,Start Line,End Line,Language,Visibility,Parameters,Return Type,Modifiers"
-            in lines[0]
-        )
-
-        # Check data rows
-        assert len(lines) == 4  # header + 3 data rows
-        assert "function,test_function,1,5,python,public" in lines[1]
-        assert "class,TestClass,10,20,python,public" in lines[2]
-        assert "variable,test_var,25,25,python,private" in lines[3]
-
-    def test_csv_formatter_empty_list(self):
-        """Test CsvFormatter with empty list"""
-        formatter = CsvFormatter()
-        result = formatter.format([])
-
-        # Should only contain header
-        lines = result.split("\n")
-        assert len(lines) == 1
-        assert "Type,Name,Start Line,End Line" in lines[0]
-
     def test_full_formatter(self):
         """Test FullFormatter"""
         formatter = FullFormatter()
@@ -389,55 +357,6 @@ class TestBuiltinFormatters:
         result = formatter.format([])
 
         assert result == "No elements found."
-
-    def test_compact_formatter(self):
-        """Test CompactFormatter"""
-        formatter = CompactFormatter()
-        assert formatter.get_format_name() == "compact"
-
-        result = formatter.format(self.test_elements)
-
-        # Check structure
-        assert "CODE ELEMENTS" in result
-        assert "+ test_function (function) [1-5]" in result
-        assert "+ TestClass (class) [10-20]" in result
-        assert "- test_var (variable) [25-25]" in result
-
-    def test_compact_formatter_visibility_symbols(self):
-        """Test CompactFormatter visibility symbols"""
-        formatter = CompactFormatter()
-
-        elements = [
-            Function(name="public_func", start_line=1, end_line=1, visibility="public"),
-            Function(
-                name="private_func", start_line=2, end_line=2, visibility="private"
-            ),
-            Function(
-                name="protected_func", start_line=3, end_line=3, visibility="protected"
-            ),
-            Function(
-                name="package_func", start_line=4, end_line=4, visibility="package"
-            ),
-            Function(
-                name="unknown_func", start_line=5, end_line=5, visibility="unknown"
-            ),
-        ]
-
-        result = formatter.format(elements)
-
-        assert "+ public_func" in result
-        assert "- private_func" in result
-        assert "# protected_func" in result
-        assert "~ package_func" in result
-        assert "? unknown_func" in result
-
-    def test_compact_formatter_empty_list(self):
-        """Test CompactFormatter with empty list"""
-        formatter = CompactFormatter()
-        result = formatter.format([])
-
-        assert result == "No elements found."
-
 
 class TestFormatterWithHtmlElements:
     """Test formatters with HTML/CSS elements"""
@@ -485,16 +404,6 @@ class TestFormatterWithHtmlElements:
         assert style_data["selector"] == ".container"
         assert style_data["element_class"] == "layout"
 
-    def test_csv_formatter_with_html_elements(self):
-        """Test CsvFormatter with HTML elements"""
-        formatter = CsvFormatter()
-        result = formatter.format(self.html_elements)
-
-        lines = result.split("\n")
-        assert len(lines) == 3  # header + 2 data rows
-        assert "html_element,div,1,5,html" in lines[1]
-        assert "css_rule,.container,10,15,css" in lines[2]
-
     def test_full_formatter_with_html_elements(self):
         """Test FullFormatter with HTML elements"""
         formatter = FullFormatter()
@@ -504,15 +413,6 @@ class TestFormatterWithHtmlElements:
         assert "CSS_RULES (1)" in result
         assert "div" in result
         assert ".container" in result
-
-    def test_compact_formatter_with_html_elements(self):
-        """Test CompactFormatter with HTML elements"""
-        formatter = CompactFormatter()
-        result = formatter.format(self.html_elements)
-
-        assert "? div (html_element) [1-5]" in result
-        assert "? .container (css_rule) [10-15]" in result
-
 
 class TestFormatterRegistryIntegration:
     """Test FormatterRegistry integration with built-in formatters"""
@@ -531,22 +431,16 @@ class TestFormatterRegistryIntegration:
         available_formats = FormatterRegistry.get_available_formats()
 
         assert "json" in available_formats
-        assert "csv" in available_formats
         assert "full" in available_formats
-        assert "compact" in available_formats
 
     def test_get_builtin_formatters(self):
         """Test getting built-in formatter instances"""
         json_formatter = FormatterRegistry.get_formatter("json")
-        csv_formatter = FormatterRegistry.get_formatter("csv")
         full_formatter = FormatterRegistry.get_formatter("full")
-        compact_formatter = FormatterRegistry.get_formatter("compact")
 
         assert isinstance(json_formatter, JsonFormatter)
-        # CSV, Full, and Compact formatters are built-in formatters
-        assert isinstance(csv_formatter, CsvFormatter)
+        # Full formatter is a built-in formatter
         assert isinstance(full_formatter, FullFormatter)
-        assert isinstance(compact_formatter, CompactFormatter)
 
     def test_formatter_instances_are_new(self):
         """Test that each get_formatter call returns a new instance"""
@@ -605,9 +499,7 @@ print(type(formatter).__name__)
         FormatterRegistry.clear_registry()
         for formatter_class in (
             JsonFormatter,
-            CsvFormatter,
             FullFormatter,
-            CompactFormatter,
         ):
             FormatterRegistry.register_formatter(formatter_class)
 
@@ -630,9 +522,7 @@ print(type(formatter).__name__)
             formatter_class.__module__
             for formatter_class in (
                 JsonFormatter,
-                CsvFormatter,
                 FullFormatter,
-                CompactFormatter,
             )
         } == {expected_module}
         assert type(pickle.loads(pickle.dumps(JsonFormatter()))) is JsonFormatter
@@ -734,16 +624,8 @@ class TestFormatterErrorHandling:
         parsed = json.loads(result)
         assert len(parsed) == 1
 
-        csv_formatter = CsvFormatter()
-        result = csv_formatter.format([malformed])
-        assert "malformed" in result
-
         full_formatter = FullFormatter()
         result = full_formatter.format([malformed])
-        assert "malformed" in result
-
-        compact_formatter = CompactFormatter()
-        result = compact_formatter.format([malformed])
         assert "malformed" in result
 
     def test_formatter_with_none_values(self):
@@ -776,7 +658,3 @@ class TestFormatterErrorHandling:
         result = json_formatter.format([element])
         parsed = json.loads(result)
         assert parsed[0]["name"] == "テスト関数"
-
-        csv_formatter = CsvFormatter()
-        result = csv_formatter.format([element])
-        assert "テスト関数" in result

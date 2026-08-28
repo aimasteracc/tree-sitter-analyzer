@@ -106,8 +106,6 @@ class TypeScriptTableFormatter(BaseTableFormatter):
         """Format advanced analysis output for TypeScript"""
         if output_format == "json":
             return self._format_json(analysis_result)
-        elif output_format == "csv":
-            return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Legacy table formatter boost2 — compact signatures, abbreviate, visibility, compact table."""
 
+import tree_sitter_analyzer.formatters  # noqa: F401
 from tree_sitter_analyzer.legacy_table_formatter import LegacyTableFormatter
 
 
@@ -145,90 +146,3 @@ class TestGetVisibilitySymbol:
         assert formatter._get_visibility_symbol("PUBLIC") == "+"
 
 
-# ============================================================================
-# _format_compact_table edge cases (lines 633-665)
-# ============================================================================
-
-
-class TestCompactTableEdgeCases:
-    """Tests for _format_compact_table edge cases."""
-
-    def test_classes_is_none(self) -> None:
-        """Bug #778 fixed: classes=None must not produce '# Unknown'."""
-        formatter = LegacyTableFormatter(format_type="compact")
-        data = {"classes": None, "methods": [], "fields": []}
-        result = formatter.format_structure(data)
-        assert "# Unknown" not in result
-
-    def test_with_package_name(self) -> None:
-        """Lines 645-646, 658-659: with package name."""
-        formatter = LegacyTableFormatter(format_type="compact")
-        data = {
-            "classes": [{"name": "Test"}],
-            "package": {"name": "com.example"},
-            "methods": [
-                {
-                    "name": "run",
-                    "parameters": [],
-                    "return_type": "void",
-                    "visibility": "public",
-                    "line_range": {"start": 1, "end": 5},
-                },
-            ],
-            "fields": [],
-        }
-        result = formatter.format_structure(data)
-        assert "# com.example.Test" in result
-        assert "| Package | com.example |" in result
-
-    def test_classes_empty_list(self) -> None:
-        # Bug #778 fixed: empty classes list must not produce '# Unknown'.
-        formatter = LegacyTableFormatter(format_type="compact")
-        data = {"classes": [], "methods": [], "fields": []}
-        result = formatter.format_structure(data)
-        assert "# Unknown" not in result
-
-    def test_compact_with_methods(self) -> None:
-        """Compact table with methods (hits _format_compact_method_row)."""
-        formatter = LegacyTableFormatter(format_type="compact")
-        data = {
-            "classes": [{"name": "Demo"}],
-            "methods": [
-                {
-                    "name": "foo",
-                    "parameters": [{"type": "String", "name": "x"}],
-                    "return_type": "boolean",
-                    "visibility": "public",
-                    "line_range": {"start": 5, "end": 10},
-                    "complexity_score": 3,
-                },
-            ],
-            "fields": [],
-        }
-        result = formatter.format_structure(data)
-        assert "foo" in result
-        assert "3" in result
-
-    def test_compact_with_fields(self) -> None:
-        """Compact table with fields."""
-        formatter = LegacyTableFormatter(format_type="compact")
-        data = {
-            "classes": [{"name": "Demo"}],
-            "methods": [],
-            "fields": [
-                {
-                    "name": "x",
-                    "type": "int",
-                    "visibility": "private",
-                    "line_range": {"start": 3},
-                },
-            ],
-        }
-        result = formatter.format_structure(data)
-        assert "## Fields" in result
-        assert "x" in result
-
-
-# ============================================================================
-# _format_csv (lines 705-813)
-# ============================================================================

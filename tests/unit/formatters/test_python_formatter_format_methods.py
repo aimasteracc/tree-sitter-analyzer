@@ -24,8 +24,10 @@ class TestPythonFormatterFormatSummary:
             "variables": [],
             "statistics": {"method_count": 0, "field_count": 0},
         }
-        result = formatter.format_summary(data)
-        assert "## Info" in result
+        # Compact table format was intentionally removed; format_summary()
+        # still delegates to _format_compact_table(), which now raises.
+        with pytest.raises(NotImplementedError):
+            formatter.format_summary(data)
 
 
 class TestPythonFormatterFormatAdvanced:
@@ -257,13 +259,19 @@ class TestPythonFormatterFullTable:
 
 
 class TestPythonFormatterCompactTable:
-    """Test _format_compact_table"""
+    """Compact table format was intentionally removed (PR #1339).
+
+    _format_compact_table now raises NotImplementedError unconditionally;
+    the previous per-scenario rendering tests (basic/methods/classes/
+    none-class) no longer apply and are consolidated into this single
+    regression check.
+    """
 
     @pytest.fixture
     def formatter(self):
         return PythonTableFormatter()
 
-    def test_compact_table_basic(self, formatter):
+    def test_compact_table_raises_not_implemented(self, formatter):
         data = {
             "file_path": "test.py",
             "classes": [],
@@ -271,66 +279,8 @@ class TestPythonFormatterCompactTable:
             "variables": [],
             "statistics": {"method_count": 0, "field_count": 0},
         }
-        result = formatter._format_compact_table(data)
-        assert "test" in result
-        assert "## Info" in result
-
-    def test_compact_table_with_methods(self, formatter):
-        data = {
-            "file_path": "test.py",
-            "classes": [],
-            "functions": [],
-            "methods": [
-                {
-                    "name": "func",
-                    "visibility": "public",
-                    "line_range": {"start": 1, "end": 2},
-                    "parameters": [],
-                    "return_type": "None",
-                    "complexity_score": 0,
-                    "docstring": "",
-                },
-            ],
-            "variables": [],
-            "statistics": {"method_count": 1, "field_count": 0},
-        }
-        result = formatter._format_compact_table(data)
-        assert "## Methods" in result
-        assert "func" in result
-
-    def test_compact_table_with_classes(self, formatter):
-        data = {
-            "file_path": "test.py",
-            "classes": [
-                {"name": "X", "type": "class", "line_range": {"start": 1, "end": 5}}
-            ],
-            "functions": [],
-            "methods": [],
-            "variables": [],
-            "statistics": {"method_count": 0, "field_count": 0},
-        }
-        result = formatter._format_compact_table(data)
-        assert "## Classes" in result
-        assert "X" in result
-
-    def test_compact_table_with_none_class(self, formatter):
-        data = {
-            "file_path": "test.py",
-            "classes": [
-                None,
-                {
-                    "name": "Valid",
-                    "type": "class",
-                    "line_range": {"start": 1, "end": 5},
-                },
-            ],
-            "functions": [],
-            "methods": [],
-            "variables": [],
-            "statistics": {"method_count": 0, "field_count": 0},
-        }
-        result = formatter._format_compact_table(data)
-        assert "Valid" in result
+        with pytest.raises(NotImplementedError):
+            formatter._format_compact_table(data)
 
 
 class TestPythonFormatterCreateCompactSignature:
@@ -377,7 +327,12 @@ class TestPythonFormatterFormatTableMethod:
     def test_format_table_restores_format_type(self, formatter):
         data = {"file_path": "app.py", "classes": [], "functions": [], "variables": []}
         original = formatter.format_type
-        formatter.format_table(data, "compact")
+        # "compact" is no longer a supported format_type (removed in PR #1339),
+        # so format_structure raises ValueError; the point of this test is
+        # that format_table() restores format_type via try/finally even when
+        # the underlying formatting call fails.
+        with pytest.raises(ValueError):
+            formatter.format_table(data, "compact")
         assert formatter.format_type == original
 
 

@@ -73,6 +73,16 @@ _FORMATTER_CLASSES: list[tuple[str, type[BaseTableFormatter]]] = [
 _IDS = [name for name, _ in _FORMATTER_CLASSES]
 _CLASSES = [cls for _, cls in _FORMATTER_CLASSES]
 
+# format_summary() delegates to BaseTableFormatter._format_compact_table(), whose
+# default implementation now raises NotImplementedError (compact format removed;
+# see base_formatter.py). These formatters never overrode it with a real
+# implementation, so their format_summary() raises instead of returning a string.
+_COMPACT_REMOVED_FORMATTERS = {
+    "JavaTableFormatter",
+    "JavaScriptTableFormatter",
+    "TypeScriptTableFormatter",
+}
+
 
 def _make_formatter(cls: type[BaseTableFormatter]) -> BaseTableFormatter:
     try:
@@ -122,8 +132,12 @@ class TestBaseFormatterContract:
         self, formatter_cls: type[BaseTableFormatter]
     ) -> None:
         fmt = _make_formatter(formatter_cls)
-        result = fmt.format_summary(_MINIMAL_SUMMARY_DATA)
-        assert isinstance(result, str)
+        if formatter_cls.__name__ in _COMPACT_REMOVED_FORMATTERS:
+            with pytest.raises(NotImplementedError):
+                fmt.format_summary(_MINIMAL_SUMMARY_DATA)
+        else:
+            result = fmt.format_summary(_MINIMAL_SUMMARY_DATA)
+            assert isinstance(result, str)
 
     def test_class_name_matches_module(
         self, formatter_cls: type[BaseTableFormatter]

@@ -3,17 +3,13 @@
 Tests for HTML Formatter (basic)
 
 Tests for HTML-specific formatters including HtmlFormatter, HtmlJsonFormatter,
-HtmlCompactFormatter, registration, edge cases, coverage gaps, table formatting,
-dict conversion, and CSV formatter coverage.
+registration, edge cases, coverage gaps, table formatting, and dict conversion.
 """
 
 import json
 
 from tests.unit.formatters import _test_html_formatter_mixin as _html_mixins
-from tree_sitter_analyzer.formatters.formatter_registry import IFormatter
 from tree_sitter_analyzer.formatters.html_formatter import (
-    HtmlCompactFormatter,
-    HtmlCsvFormatter,
     HtmlFormatter,
     HtmlJsonFormatter,
 )
@@ -28,12 +24,6 @@ class TestHtmlFormatter(_html_mixins.TestHtmlFormatterMixin):
 
 class TestHtmlJsonFormatter(_html_mixins.TestHtmlJsonFormatterMixin):
     """Test HtmlJsonFormatter functionality"""
-
-    __test__ = True
-
-
-class TestHtmlCompactFormatter(_html_mixins.TestHtmlCompactFormatterMixin):
-    """Test HtmlCompactFormatter functionality"""
 
     __test__ = True
 
@@ -67,12 +57,6 @@ class TestHtmlFormatterEdgeCases:
         result = json_formatter.format([malformed])
         data = json.loads(result)
         assert len(data["html_analysis"]["markup_elements"]) == 1
-
-        compact_formatter = HtmlCompactFormatter()
-        result = compact_formatter.format([malformed])
-        # Compact formatter uses table format, check that it doesn't crash
-        assert "## Summary" in result
-        assert "| **Total** | **1** |" in result
 
     def test_formatter_with_none_values(self):
         """Test formatters with None values"""
@@ -262,12 +246,6 @@ class TestHtmlFormatterCoverageGap:
         output = self.formatter.format_advanced(result, output_format="text")
         assert "# HTML Structure Analysis" in output
 
-    def test_format_analysis_result_compact(self):
-        """format_analysis_result with compact table_type (lines 120-122)"""
-        ar = self._make_result([self.markup])
-        output = self.formatter.format_analysis_result(ar, table_type="compact")
-        assert "## Summary" in output
-
     def test_format_analysis_result_json(self):
         """format_analysis_result with json table_type (lines 123-125)"""
         ar = self._make_result([self.markup])
@@ -275,13 +253,6 @@ class TestHtmlFormatterCoverageGap:
         data = json.loads(output)
         assert "html_analysis" in data
         assert len(data["html_analysis"]["markup_elements"]) == 1
-
-    def test_format_analysis_result_csv(self):
-        """format_analysis_result with csv table_type (lines 126-128)"""
-        ar = self._make_result([self.markup])
-        output = self.formatter.format_analysis_result(ar, table_type="csv")
-        assert "Name" in output
-        assert "div" in output
 
     def test_format_analysis_result_full_default(self):
         """format_analysis_result with full table_type goes to else (line 129-131)"""
@@ -356,13 +327,6 @@ class TestHtmlFormatTable:
         assert "div" in output
         assert "Structure Elements" in output
 
-    def test_format_table_compact(self):
-        """format_table with compact output"""
-        result = {"elements": [self.markup]}
-        output = self.formatter.format_table(result, table_type="compact")
-        assert "## Summary" in output
-        assert "div" in output
-
     def test_format_table_json(self):
         """format_table with json output"""
         result = {"elements": [self.markup]}
@@ -407,227 +371,3 @@ class TestHtmlFormatDictConversion:
         elements = [{"element_type": "tag", "tag_name": "p", "attributes": {}}]
         output = self.formatter.format(elements)
         assert "p" in output
-
-
-class TestHtmlCsvFormatterCoverage:
-    """Tests for HtmlCsvFormatter.format() - entire class uncovered"""
-
-    def setup_method(self):
-        self.formatter = HtmlCsvFormatter()
-
-    def test_get_format_name(self):
-        assert self.formatter.get_format_name() == "html_csv"
-
-    def test_format_markup_element(self):
-        """CSV format with MarkupElement (lines 600-624)"""
-        elem = MarkupElement(
-            name="div",
-            start_line=1,
-            end_line=5,
-            tag_name="div",
-            attributes={"class": "container", "id": "main"},
-            element_class="structure",
-            language="html",
-        )
-        result = self.formatter.format([elem])
-        assert "div" in result
-        assert "structure" in result
-        assert "class=container" in result
-        assert "1" in result
-        assert "5" in result
-
-    def test_format_markup_element_empty_attributes(self):
-        """CSV format MarkupElement with empty attributes (line 622)"""
-        elem = MarkupElement(
-            name="br",
-            start_line=1,
-            end_line=1,
-            tag_name="br",
-            attributes={},
-            element_class="inline",
-            language="html",
-        )
-        result = self.formatter.format([elem])
-        assert "br" in result
-
-    def test_format_markup_element_none_attributes(self):
-        """CSV format MarkupElement with None attributes"""
-        elem = MarkupElement(
-            name="div",
-            start_line=1,
-            end_line=1,
-            tag_name="div",
-            attributes=None,
-            element_class="structure",
-            language="html",
-        )
-        result = self.formatter.format([elem])
-        assert isinstance(result, str)
-
-    def test_format_markup_attribute_boolean_value(self):
-        """CSV format with boolean attribute value (line 621)"""
-        elem = MarkupElement(
-            name="input",
-            start_line=1,
-            end_line=1,
-            tag_name="input",
-            attributes={"disabled": True, "readonly": False},
-            element_class="form",
-            language="html",
-        )
-        result = self.formatter.format([elem])
-        assert "disabled" in result
-        assert "readonly" in result
-
-    def test_format_markup_attribute_empty_string(self):
-        """CSV format with empty string attribute value (line 618-621)"""
-        elem = MarkupElement(
-            name="div",
-            start_line=1,
-            end_line=1,
-            tag_name="div",
-            attributes={"hidden": ""},
-            element_class="structure",
-            language="html",
-        )
-        result = self.formatter.format([elem])
-        assert "hidden" in result
-
-    def test_format_style_element(self):
-        """CSV format with StyleElement (lines 625-638)"""
-        elem = StyleElement(
-            name="body_style",
-            start_line=1,
-            end_line=3,
-            selector="body",
-            properties={"margin": "0", "padding": "0"},
-            element_class="layout",
-            language="css",
-        )
-        result = self.formatter.format([elem])
-        assert "body" in result
-        assert "layout" in result
-        assert "margin:0" in result
-        assert "padding:0" in result
-
-    def test_format_style_element_empty_properties(self):
-        """CSV format StyleElement with empty properties (line 633-636)"""
-        elem = StyleElement(
-            name="empty_style",
-            start_line=1,
-            end_line=1,
-            selector="*",
-            properties={},
-            element_class="reset",
-            language="css",
-        )
-        result = self.formatter.format([elem])
-        assert "*" in result
-
-    def test_format_dict_element(self):
-        """CSV format with dict element (lines 639-649)"""
-        elem = {
-            "name": "test_div",
-            "tag_name": "div",
-            "element_class": "structure",
-            "start_line": 3,
-            "end_line": 7,
-            "attributes": {"class": "test"},
-            "children_count": 2,
-            "language": "html",
-        }
-        result = self.formatter.format([elem])
-        assert "test_div" in result
-        assert "div" in result
-        assert "3" in result
-
-    def test_format_dict_with_selector(self):
-        """CSV format dict with selector instead of tag_name (line 641)"""
-        elem = {
-            "name": "test_rule",
-            "selector": "h1",
-            "element_class": "typography",
-            "start_line": 1,
-            "end_line": 1,
-            "properties": {"font-size": "2rem"},
-            "children_count": 0,
-            "language": "css",
-        }
-        result = self.formatter.format([elem])
-        assert "test_rule" in result
-        assert "h1" in result
-
-    def test_format_unknown_object_type(self):
-        """CSV format with unknown object using getattr (lines 651-658)"""
-
-        class UnknownElement:
-            pass
-
-        elem = UnknownElement()
-        elem.name = "unknown"
-        elem.tag_name = "custom"
-        elem.element_class = "special"
-        elem.start_line = 10
-        elem.end_line = 20
-        elem.language = "xml"
-
-        result = self.formatter.format([elem])
-        assert "unknown" in result
-        assert "custom" in result
-
-    def test_format_unknown_object_no_tag_name(self):
-        """CSV format unknown object with selector but no tag_name (line 652)"""
-
-        class UnknownElement:
-            pass
-
-        elem = UnknownElement()
-        elem.name = "styled"
-        elem.selector = ".main"
-        elem.element_class = "layout"
-        elem.start_line = 1
-        elem.end_line = 1
-        elem.language = "css"
-
-        result = self.formatter.format([elem])
-        assert "styled" in result
-        assert ".main" in result
-
-    def test_format_multiple_elements(self):
-        """CSV format with multiple element types"""
-        markup = MarkupElement(
-            name="div",
-            start_line=1,
-            end_line=1,
-            tag_name="div",
-            attributes={"class": "box"},
-            element_class="structure",
-            language="html",
-        )
-        style = StyleElement(
-            name="div_rule",
-            start_line=1,
-            end_line=1,
-            selector=".box",
-            properties={"color": "red"},
-            element_class="style",
-            language="css",
-        )
-        d = {
-            "name": "inline",
-            "tag_name": "span",
-            "element_class": "inline",
-            "start_line": 5,
-            "end_line": 5,
-            "attributes": {},
-            "children_count": 1,
-            "language": "html",
-        }
-        result = self.formatter.format([markup, style, d])
-        assert "div" in result
-        assert ".box" in result
-        assert "span" in result
-
-    def test_is_i_formatter(self):
-        """HtmlCsvFormatter is an IFormatter"""
-        assert isinstance(self.formatter, IFormatter)

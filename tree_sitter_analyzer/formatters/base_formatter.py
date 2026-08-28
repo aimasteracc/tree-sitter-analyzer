@@ -194,6 +194,23 @@ class BaseTableFormatter(BaseFormatter):
 
         return first_line.replace("|", "\\|").replace("\n", " ")
 
+    def _clean_csv_text(self, text: str) -> str:
+        """Collapse newlines/control chars so a doc string fits one table cell.
+
+        Despite the name (kept for compatibility with existing callers),
+        this is used by every table row renderer, not just CSV output.
+        """
+        if not text:
+            return ""
+
+        cleaned = text.replace("\0", "")
+        cleaned = cleaned.replace("\r\n", " ")
+        cleaned = cleaned.replace("\r", " ")
+        cleaned = cleaned.replace("\n", " ")
+        cleaned = " ".join(cleaned.split())
+        return cleaned
+
     # Public aliases used by companion formatter helper modules
     convert_visibility = _convert_visibility
     extract_doc_summary = _extract_doc_summary
+    clean_csv_text = _clean_csv_text

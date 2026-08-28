@@ -77,12 +77,16 @@ class JavaScriptTableFormatter(
         """Format summary output for JavaScript"""
         return self._format_compact_table(analysis_result)
 
+    def _format_compact_table(self, data: dict[str, Any]) -> str:
+        """Compact table format for JavaScript (removed)"""
+        raise NotImplementedError(
+            "Compact format removed; use 'full' or 'signatures' instead"
+        )
+
     def format_advanced(
         self, analysis_result: dict[str, Any], output_format: str = "json"
     ) -> str:
         """Format advanced analysis output for JavaScript"""
         if output_format == "json":
             return self._format_json(analysis_result)
-        if output_format == "csv":
-            return self._format_csv(analysis_result)
         return self._format_full_table(analysis_result)

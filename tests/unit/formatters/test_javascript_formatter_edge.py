@@ -415,20 +415,6 @@ class TestJavaScriptTableFormatterEdgeCases:
         result = formatter.format(data, "json")
         assert isinstance(result, str)
 
-    def test_format_with_csv_special_characters(self, formatter):
-        """Test CSV formatting with special CSV characters"""
-        csv_special = 'name,with"quotes,and\nnewlines'
-        data = {
-            "file_path": "csv_special.js",
-            "functions": [{"name": csv_special, "parameters": []}],
-            "statistics": {"function_count": 1},
-        }
-
-        result = formatter.format(data, "csv")
-        assert isinstance(result, str)
-        # CSV should escape special characters
-        assert '"' in result or "," in result
-
     def test_format_with_markdown_special_characters(self, formatter):
         """Test formatting with Markdown special characters"""
         markdown_special = "# Header | Table | *Bold* | `Code` | [Link](url)"
