@@ -155,19 +155,19 @@ class TestFileOutputManagerDetectContentType:
         assert manager.detect_content_type(content) in ("text", "csv")
 
     def test_detect_csv_content(self, manager):
-        """Test detecting CSV content."""
+        """Test detecting CSV content (now returns text since csv format removed)."""
         content = "name,type,start_line\nTestClass,class,1"
-        assert manager.detect_content_type(content) == "csv"
+        assert manager.detect_content_type(content) == "text"
 
     def test_detect_markdown_content(self, manager):
-        """Test detecting Markdown content."""
+        """Test detecting Markdown content (now returns text since markdown format removed)."""
         content = "# Header\nSome content"
-        assert manager.detect_content_type(content) == "markdown"
+        assert manager.detect_content_type(content) == "text"
 
     def test_detect_markdown_table_content(self, manager):
-        """Test detecting Markdown table content."""
+        """Test detecting Markdown table content (now returns text since markdown format removed)."""
         content = "| Name | Type |\n|-------|------|\n| Test  | Class |"
-        assert manager.detect_content_type(content) == "markdown"
+        assert manager.detect_content_type(content) == "text"
 
     def test_detect_text_content(self, manager):
         """Test detecting plain text content."""
@@ -183,12 +183,12 @@ class TestFileOutputManagerGetFileExtension:
         assert manager.get_file_extension("json") == ".json"
 
     def test_get_extension_csv(self, manager):
-        """Test getting extension for CSV."""
-        assert manager.get_file_extension("csv") == ".csv"
+        """Test getting extension for CSV (now falls back to .txt since csv removed)."""
+        assert manager.get_file_extension("csv") == ".txt"
 
     def test_get_extension_markdown(self, manager):
-        """Test getting extension for Markdown."""
-        assert manager.get_file_extension("markdown") == ".md"
+        """Test getting extension for Markdown (now falls back to .txt since markdown removed)."""
+        assert manager.get_file_extension("markdown") == ".txt"
 
     def test_get_extension_unknown_type(self, manager):
         """Test getting extension for an unknown type falls back to .txt."""
@@ -225,16 +225,16 @@ class TestFileOutputManagerGenerateOutputFilename:
         assert result in ("output.txt", "output.csv")
 
     def test_generate_filename_csv(self, manager):
-        """Test generating filename for CSV content."""
+        """Test generating filename for CSV content (now .txt since csv removed)."""
         content = "name,type,start_line\nTestClass,class,1"
         result = manager.generate_output_filename("output", content)
-        assert result == "output.csv"
+        assert result == "output.txt"
 
     def test_generate_filename_markdown(self, manager):
-        """Test generating filename for Markdown content."""
+        """Test generating filename for Markdown content (now .txt since markdown removed)."""
         content = "# Header\nContent"
         result = manager.generate_output_filename("output", content)
-        assert result == "output.md"
+        assert result == "output.txt"
 
     def test_generate_filename_text(self, manager):
         """Test generating filename for text content."""

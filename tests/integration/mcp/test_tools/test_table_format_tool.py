@@ -231,7 +231,7 @@ public class TestClass {
         )
         arguments = {
             "file_path": self.test_file_path,
-            "format_type": "compact",
+            "format_type": "full",
             "language": "java",
             "output_format": "json",  # Use JSON format for test assertions
         }
@@ -239,7 +239,7 @@ public class TestClass {
         result = await self.tool.execute(arguments)
 
         assert result["language"] == "java"
-        assert result["format_type"] == "compact"
+        assert result["format_type"] == "full"
 
     @pytest.mark.asyncio
     async def test_execute_structure_analysis_failure(self, mocker) -> None:
@@ -323,7 +323,7 @@ public class TestClass {
         )
 
         # Test different formats - now using real LegacyTableFormatter
-        for format_type in ["full", "compact", "csv"]:
+        for format_type in ["full"]:
             arguments = {
                 "file_path": self.test_file_path,
                 "format_type": format_type,
@@ -334,18 +334,11 @@ public class TestClass {
             assert result["format_type"] == format_type
             # Check that output is generated (actual format content from LegacyTableFormatter)
             assert len(result["table_output"]) > 0
-            # For CSV format, check for proper header
-            if format_type == "csv":
-                assert (
-                    "Type,Name,Signature,Visibility,Lines,Complexity,Doc"
-                    in result["table_output"]
-                )
-            else:
-                # Check for either class name or file name in output
-                assert (
-                    "test" in result["table_output"].lower()
-                    or "TestClass" in result["table_output"]
-                )
+            # Check for either class name or file name in output
+            assert (
+                "test" in result["table_output"].lower()
+                or "TestClass" in result["table_output"]
+            )
 
     @pytest.mark.asyncio
     async def test_execute_with_file_output(self, mocker) -> None:

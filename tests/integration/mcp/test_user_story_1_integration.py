@@ -548,7 +548,7 @@ if __name__ == '__main__':
         # Test without output_file first to verify basic functionality (use JSON format)
         structure_args = {
             "file_path": self.test_files["py_large"],
-            "format_type": "compact",  # Use compact format for large files
+            "format_type": "full",  # Use full format (compact removed)
             "output_format": "json",
         }
 
@@ -563,7 +563,8 @@ if __name__ == '__main__':
         table_output = structure_result["table_output"]
         # Content pin (not byte-length: the temp-file stem appears in the
         # header line, so byte length varies per run)
-        assert table_output.count("\n") == 38
+        # Note: was 38 with compact format; full format produces more lines
+        assert table_output.count("\n") == 70
         assert "ProcessorInterface" in table_output  # Adjust based on actual content
 
     @pytest.mark.asyncio
@@ -647,7 +648,7 @@ if __name__ == '__main__':
             structure_result = await self.table_tool.execute(
                 {
                     "file_path": file_path,
-                    "format_type": "compact",
+                    "format_type": "full",
                     "output_format": "json",
                 }
             )

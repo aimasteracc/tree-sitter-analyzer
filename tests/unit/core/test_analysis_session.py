@@ -277,8 +277,8 @@ class TestSessionValidation:
             AnalysisSession(input_files=["/file.py"], output_format="invalid_format")
 
     def test_valid_output_formats(self):
-        """有效的 output_format 应该被接受"""
-        valid_formats = ["json", "csv", "compact", "full"]
+        """有効的 output_format 应该被接受"""
+        valid_formats = ["json", "full"]
 
         for fmt in valid_formats:
             session = AnalysisSession(input_files=["/file.py"], output_format=fmt)

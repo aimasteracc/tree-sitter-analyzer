@@ -45,14 +45,14 @@ class TestFileOutputManagerBackwardCompatibility:
 
             # Test content type detection
             assert manager.detect_content_type('{"key": "value"}') == "json"
-            assert manager.detect_content_type("col1,col2\nval1,val2") == "csv"
-            assert manager.detect_content_type("# Header\nContent") == "markdown"
+            assert manager.detect_content_type("col1,col2\nval1,val2") == "text"
+            assert manager.detect_content_type("# Header\nContent") == "text"
             assert manager.detect_content_type("plain text") == "text"
 
             # Test file extension mapping
             assert manager.get_file_extension("json") == ".json"
-            assert manager.get_file_extension("csv") == ".csv"
-            assert manager.get_file_extension("markdown") == ".md"
+            assert manager.get_file_extension("csv") == ".txt"
+            assert manager.get_file_extension("markdown") == ".txt"
             assert manager.get_file_extension("text") == ".txt"
 
             # Test filename generation

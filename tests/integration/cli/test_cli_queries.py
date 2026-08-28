@@ -127,51 +127,6 @@ class TestCLITableOption:
         assert method_count == 2, f"Expected 2 methods in table, got {method_count}"
         assert field_count == 1, f"Expected 1 field in table, got {field_count}"
 
-    def test_table_option_compact(self, monkeypatch, sample_java_file):
-        """Test --table option with compact format"""
-        sample_dir = str(Path(sample_java_file).parent)
-
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            [
-                "cli",
-                sample_java_file,
-                "--table",
-                "compact",
-                "--project-root",
-                sample_dir,
-            ],
-        )
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-
-        with contextlib.suppress(SystemExit):
-            main()
-
-        output = mock_stdout.getvalue()
-        assert "Methods" in output
-        assert "Fields" in output
-
-    def test_table_option_csv(self, monkeypatch, sample_java_file):
-        """Test --table option with CSV format"""
-        sample_dir = str(Path(sample_java_file).parent)
-
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            ["cli", sample_java_file, "--table", "csv", "--project-root", sample_dir],
-        )
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-
-        with contextlib.suppress(SystemExit):
-            main()
-
-        output = mock_stdout.getvalue()
-        assert "Type,Name" in output
-        assert "Field,field1" in output
-
     def test_table_option_analysis_failure(self, monkeypatch, sample_java_file):
         """Test --table option when analysis fails"""
         sample_dir = str(Path(sample_java_file).parent)
