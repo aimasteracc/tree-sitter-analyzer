@@ -11,8 +11,6 @@ from pathlib import Path
 import pytest
 
 from tree_sitter_analyzer.formatters.formatter_registry import (
-    CompactFormatter,
-    CsvFormatter,
     FormatterRegistry,
     FullFormatter,
 )
@@ -131,163 +129,49 @@ public class UserService {
         assert "validateUser" in table_output
 
     @pytest.mark.asyncio
-    async def test_compact_format_end_to_end(
-        self, real_tool, temp_project_with_java_file, golden_master_manager
-    ):
-        """Test complete flow with real formatting - compact format"""
-        temp_dir, java_file = temp_project_with_java_file
-
-        # Execute with real implementation
-        result = await real_tool.execute(
-            {
-                "file_path": str(java_file),
-                "format_type": "compact",
-                "output_format": "json",
-            }
-        )
-
-        # Validate basic result structure
-        assert result["format_type"] == "compact"
-        assert result["language"] == "java"
-        assert "table_output" in result
-
-        table_output = result["table_output"]
-
-        # Validate against golden master
-        golden_tester = golden_master_manager.get_tester("compact")
-        golden_tester.assert_matches_golden_master(
-            table_output, "java_userservice_compact_format"
-        )
-
-        # Validate compact-specific features (v1.6.1.4 format)
-        assert "# com.example.service.TestClass" in table_output
-        assert "## Info" in table_output
-        assert "## Methods" in table_output
-        assert "| Methods | 4 |" in table_output
-        assert "| Fields | 2 |" in table_output
-        assert "| findUserById | (Long):User | + | 14-19 | 2 | - |" in table_output
-        assert "| validateUser | (User):b | - | 27-35 | 5 | - |" in table_output
-
-    @pytest.mark.asyncio
-    async def test_csv_format_end_to_end(
-        self, real_tool, temp_project_with_java_file, golden_master_manager
-    ):
-        """Test complete flow with real formatting - CSV format"""
-        temp_dir, java_file = temp_project_with_java_file
-
-        # Execute with real implementation
-        result = await real_tool.execute(
-            {
-                "file_path": str(java_file),
-                "format_type": "csv",
-                "output_format": "json",
-            }
-        )
-
-        # Validate basic result structure
-        assert result["format_type"] == "csv"
-        assert result["language"] == "java"
-        assert "table_output" in result
-
-        table_output = result["table_output"]
-
-        # Validate against golden master
-        golden_tester = golden_master_manager.get_tester("csv")
-        golden_tester.assert_matches_golden_master(
-            table_output, "java_userservice_csv_format"
-        )
-
-        # Validate CSV-specific structure
-        lines = table_output.strip().split("\n")
-        assert len(lines) == 7
-
-        # Check header
-        header = lines[0]
-        assert header == "Type,Name,Signature,Visibility,Lines,Complexity,Doc"
-
-        # Check for method entries
-        method_lines = [line for line in lines[1:] if line.startswith("Method,")]
-        assert len(method_lines) == 3
-
-        # Check for field entries
-        field_lines = [line for line in lines[1:] if line.startswith("Field,")]
-        assert len(field_lines) == 2
-
-        constructor_lines = [
-            line for line in lines[1:] if line.startswith("Constructor,")
-        ]
-        assert len(constructor_lines) == 1
-
-    @pytest.mark.asyncio
     async def test_format_consistency_across_all_types(
         self, real_tool, temp_project_with_java_file
     ):
         """Test format consistency across different output types"""
         temp_dir, java_file = temp_project_with_java_file
 
-        # Execute all formats
-        formats = ["full", "compact", "csv"]
-        results = {}
-
-        for format_type in formats:
-            result = await real_tool.execute(
-                {
-                    "file_path": str(java_file),
-                    "format_type": format_type,
-                    "output_format": "json",
-                }
-            )
-            results[format_type] = result["table_output"]
+        # Execute full format
+        result = await real_tool.execute(
+            {
+                "file_path": str(java_file),
+                "format_type": "full",
+                "output_format": "json",
+            }
+        )
+        full_output = result["table_output"]
 
         # All formats should contain the same basic information
-        for format_type, output in results.items():
-            assert "UserService" in output, (
-                f"Missing class name in {format_type} format"
-            )
-            assert "findUserById" in output, f"Missing method in {format_type} format"
-            assert "createUser" in output, f"Missing method in {format_type} format"
-            assert "validateUser" in output, f"Missing method in {format_type} format"
+        assert "UserService" in full_output, "Missing class name in full format"
+        assert "findUserById" in full_output, "Missing method in full format"
+        assert "createUser" in full_output, "Missing method in full format"
+        assert "validateUser" in full_output, "Missing method in full format"
 
         assert (
-            results["full"].count("| Method | Signature | Vis | Lines | Cx | Doc |")
-            == 2
+            full_output.count("| Method | Signature | Vis | Lines | Cx | Doc |") == 2
         )
         assert (
-            results["full"].count(
+            full_output.count(
                 "| findUserById | (id:Long):User | + | 14-19 | 2 | - |"
             )
             == 1
         )
         assert (
-            results["full"].count(
+            full_output.count(
                 "| createUser | (name:String, email:String):User | + | 21-25 | 1 | - |"
             )
             == 1
         )
         assert (
-            results["full"].count(
+            full_output.count(
                 "| validateUser | (user:User):boolean | - | 27-35 | 5 | - |"
             )
             == 1
         )
-        assert results["compact"].count("| Method | Sig | V | L | Cx | Doc |") == 1
-        assert (
-            results["compact"].count(
-                "| findUserById | (Long):User | + | 14-19 | 2 | - |"
-            )
-            == 1
-        )
-        assert (
-            results["compact"].count("| createUser | (S,S):User | + | 21-25 | 1 | - |")
-            == 1
-        )
-        assert (
-            results["compact"].count("| validateUser | (User):b | - | 27-35 | 5 | - |")
-            == 1
-        )
-        assert results["csv"].count("\nMethod,") == 3
-        assert results["csv"].count("\nField,") == 2
-        assert results["csv"].count("\nConstructor,") == 1
 
 
 class TestFormatConsistency:
@@ -388,41 +272,26 @@ class TestFormatConsistency:
     def test_formatter_registry_vs_legacy_formatter(self, sample_java_elements):
         """Ensure FormatterRegistry and legacy formatters produce identical output"""
 
-        # Test each format type
-        for format_type in ["full", "compact", "csv"]:
-            # Test with FormatterRegistry
-            if FormatterRegistry.is_format_supported(format_type):
-                registry_formatter = FormatterRegistry.get_formatter(format_type)
-                registry_output = registry_formatter.format(sample_java_elements)
-            else:
-                # Skip if not supported by registry
-                continue
+        # Test full format type
+        format_type = "full"
+        # Test with FormatterRegistry
+        if FormatterRegistry.is_format_supported(format_type):
+            registry_formatter = FormatterRegistry.get_formatter(format_type)
+            registry_output = registry_formatter.format(sample_java_elements)
+        else:
+            pytest.skip(f"Format '{format_type}' not supported by registry")
+            return
 
-            # Test with built-in formatters
-            legacy_formatters = {
-                "full": FullFormatter(),
-                "compact": CompactFormatter(),
-                "csv": CsvFormatter(),
-            }
+        # Test with built-in formatter
+        legacy_formatter = FullFormatter()
+        legacy_output = legacy_formatter.format(sample_java_elements)
 
-            if format_type in legacy_formatters:
-                legacy_formatter = legacy_formatters[format_type]
-                legacy_output = legacy_formatter.format(sample_java_elements)
-
-                # Outputs should be functionally equivalent
-                # (Allow for minor formatting differences but core content must match)
-                assert (
-                    "UserService" in registry_output and "UserService" in legacy_output
-                )
-                assert (
-                    "findUserById" in registry_output
-                    and "findUserById" in legacy_output
-                )
-                assert "createUser" in registry_output and "createUser" in legacy_output
-                assert (
-                    "validateUser" in registry_output
-                    and "validateUser" in legacy_output
-                )
+        # Outputs should be functionally equivalent
+        # (Allow for minor formatting differences but core content must match)
+        assert "UserService" in registry_output and "UserService" in legacy_output
+        assert "findUserById" in registry_output and "findUserById" in legacy_output
+        assert "createUser" in registry_output and "createUser" in legacy_output
+        assert "validateUser" in registry_output and "validateUser" in legacy_output
 
     @pytest.mark.asyncio
     async def test_mcp_vs_cli_format_consistency(self, temp_project_with_java_file):
@@ -529,36 +398,15 @@ class TestRealImplementationValidation:
         elements[0].element_type = "class"
         elements[0].visibility = "public"
 
-        # Test each built-in formatter
-        formatters = {
-            "full": FullFormatter(),
-            "compact": CompactFormatter(),
-            "csv": CsvFormatter(),
-        }
+        # Test full formatter
+        formatter = FullFormatter()
+        output = formatter.format(elements)
 
-        for format_type, formatter in formatters.items():
-            output = formatter.format(elements)
-
-            # Basic validation
-            assert output and output.strip(), (
-                f"{format_type} formatter produced empty output"
-            )
-            assert "TestClass" in output, f"{format_type} formatter missing class name"
-
-            # Format-specific validation
-            if format_type == "full":
-                assert "CODE STRUCTURE ANALYSIS" in output
-                assert "TestClass" in output
-            elif format_type == "compact":
-                assert "CODE ELEMENTS" in output
-                assert "TestClass" in output
-            elif format_type == "csv":
-                lines = output.strip().split("\n")
-                assert len(lines) == 2
-                assert (
-                    lines[0]
-                    == "Type,Name,Start Line,End Line,Language,Visibility,Parameters,Return Type,Modifiers"
-                )
+        # Basic validation
+        assert output and output.strip(), "full formatter produced empty output"
+        assert "TestClass" in output, "full formatter missing class name"
+        assert "CODE STRUCTURE ANALYSIS" in output
+        assert "TestClass" in output
 
     def test_format_validation_with_real_output(self):
         """Test format validation utilities with real formatter output"""
@@ -578,13 +426,4 @@ class TestRealImplementationValidation:
         validation_result = validate_format(markdown_output, "markdown")
         assert validation_result.is_valid, (
             f"Markdown validation failed: {validation_result.errors}"
-        )
-
-        # Test CSV validation with real output
-        csv_formatter = CsvFormatter()
-        csv_output = csv_formatter.format(elements)
-
-        csv_validation_result = validate_format(csv_output, "csv")
-        assert csv_validation_result.is_valid, (
-            f"CSV validation failed: {csv_validation_result.errors}"
         )

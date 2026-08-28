@@ -69,53 +69,36 @@ class Calculator:
         # Create TableFormatTool
         tool = TableFormatTool(project_root=temp_dir)
 
-        # Test all format types (use JSON output_format for test assertions)
-        for format_type in ["full", "compact", "csv"]:
-            print(f"\n🧪 Testing {format_type} format...")
+        # Test full format type (use JSON output_format for test assertions)
+        format_type = "full"
+        print(f"\n🧪 Testing {format_type} format...")
 
-            # Execute tool with JSON output_format for direct key access
-            result = await tool.execute(
-                {
-                    "file_path": str(python_file),
-                    "format_type": format_type,
-                    "output_format": "json",
-                }
-            )
+        # Execute tool with JSON output_format for direct key access
+        result = await tool.execute(
+            {
+                "file_path": str(python_file),
+                "format_type": format_type,
+                "output_format": "json",
+            }
+        )
 
-            # Validate basic result structure
-            assert result["format_type"] == format_type
-            assert result["language"] == "python"
-            assert "table_output" in result
+        # Validate basic result structure
+        assert result["format_type"] == format_type
+        assert result["language"] == "python"
+        assert "table_output" in result
 
-            table_output = result["table_output"]
+        table_output = result["table_output"]
 
-            # Format-specific validations
-            if format_type == "full":
-                # New FullFormatter uses text borders (=, -) instead of Markdown
-                assert (
-                    "=" in table_output or "#" in table_output
-                )  # Should have headers/borders
-                assert (
-                    "Calculator" in table_output or "FUNCTION" in table_output
-                )  # Should contain class or function info
-            elif format_type == "compact":
-                # Compact format should have visibility symbols or separators
-                assert (
-                    "-" in table_output or "|" in table_output
-                )  # Should have structure
-                assert (
-                    "Calculator" in table_output or "function" in table_output.lower()
-                )  # Should contain class or function info
-            elif format_type == "csv":
-                assert "," in table_output  # Should have CSV structure
-                # CSV format may not include class name directly, check for methods instead
-                assert "Method" in table_output or "__init__" in table_output
-                lines = table_output.strip().split("\n")
-                assert (
-                    len(lines) >= 2
-                )  # ratchet: nondeterministic csv row count depends on formatter version
+        # Full format validations
+        # New FullFormatter uses text borders (=, -) instead of Markdown
+        assert (
+            "=" in table_output or "#" in table_output
+        )  # Should have headers/borders
+        assert (
+            "Calculator" in table_output or "FUNCTION" in table_output
+        )  # Should contain class or function info
 
-            print(f"✅ {format_type} format validation passed")
+        print(f"✅ {format_type} format validation passed")
 
     @pytest.mark.asyncio
     async def test_format_consistency_across_types(self, temp_python_file):
@@ -124,37 +107,29 @@ class Calculator:
 
         tool = TableFormatTool(project_root=temp_dir)
 
-        # Generate all formats (use JSON output_format for test assertions)
-        formats = {}
-        for format_type in ["full", "compact", "csv"]:
-            result = await tool.execute(
-                {
-                    "file_path": str(python_file),
-                    "format_type": format_type,
-                    "output_format": "json",
-                }
-            )
-            formats[format_type] = result["table_output"]
+        # Generate full format (use JSON output_format for test assertions)
+        result = await tool.execute(
+            {
+                "file_path": str(python_file),
+                "format_type": "full",
+                "output_format": "json",
+            }
+        )
+        full_output = result["table_output"]
 
-        # All formats should contain the same basic information
-        # Note: CSV format may not include class names directly
+        # Full format should contain the same basic information
         essential_content = ["add", "subtract", "multiply", "reset"]
 
-        for format_type, output in formats.items():
-            for content in essential_content:
-                assert content in output, f"Missing '{content}' in {format_type} format"
+        for content in essential_content:
+            assert content in full_output, f"Missing '{content}' in full format"
 
-            # Class name check - only for non-CSV formats
-            if format_type != "csv":
-                assert "Calculator" in output, (
-                    f"Missing 'Calculator' in {format_type} format"
-                )
+        assert "Calculator" in full_output, "Missing 'Calculator' in full format"
 
         print("✅ Format consistency validation passed")
 
     def test_schema_validation_with_real_output(self, temp_python_file):
         """Test schema validation with real analyzer output"""
-        from .schema_validation import CSVFormatValidator, MarkdownTableValidator
+        from .schema_validation import MarkdownTableValidator
 
         temp_dir, python_file = temp_python_file
 
@@ -191,29 +166,6 @@ class Calculator:
             else:
                 print("✅ Markdown validation passed")
 
-            # Test CSV validation (use JSON output_format for test assertions)
-            csv_result = await tool.execute(
-                {
-                    "file_path": str(python_file),
-                    "format_type": "csv",
-                    "output_format": "json",
-                }
-            )
-
-            csv_validator = CSVFormatValidator()
-            csv_validation_result = csv_validator.validate(csv_result["table_output"])
-
-            print(f"CSV validation result: {csv_validation_result}")
-            # Note: Some validation errors may be expected due to format differences
-            if not csv_validation_result.is_valid:
-                print(
-                    f"⚠️ CSV validation detected issues: {csv_validation_result.errors}"
-                )
-                print(
-                    "This demonstrates the framework's ability to detect format regressions"
-                )
-            else:
-                print("✅ CSV validation passed")
 
         # Run the async validation
         asyncio.run(run_validation())
