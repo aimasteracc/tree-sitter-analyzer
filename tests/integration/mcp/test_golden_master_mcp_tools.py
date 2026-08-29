@@ -322,29 +322,31 @@ class TestIntentAliasInvariance:
     """
 
     @pytest.mark.asyncio
+    @pytest.mark.requires_ripgrep
     async def test_locate_usage_search_invariance(
         self, mcp_server, temp_test_file
     ):
-        """locate_usage 和 search action=symbol 必须返回相同结果"""
-        # search_content は廃止済み。locate_usage は search (action=symbol) にルーティング。
-        result_alias = await mcp_server.call_tool(
-            "locate_usage",
-            arguments={
-                "action": "symbol",
-                "symbol": "example_function",
-                "output_format": "json",
-            },
-        )
+        """locate_usage 和 search action=batch 必须返回相同结果"""
+        # search_content は廃止済み。locate_usage は search (action=batch) で代替検証。
+        batch_args = {
+            "action": "batch",
+            "queries": [
+                {
+                    "pattern": "example_function",
+                    "roots": [str(temp_test_file.parent)],
+                    "label": "q1",
+                },
+                {
+                    "pattern": "ExampleClass",
+                    "roots": [str(temp_test_file.parent)],
+                    "label": "q2",
+                },
+            ],
+            "output_format": "json",
+        }
 
-        # 使用原始名称调用 (search action=symbol)
-        result_original = await mcp_server.call_tool(
-            "search",
-            arguments={
-                "action": "symbol",
-                "symbol": "example_function",
-                "output_format": "json",
-            },
-        )
+        result_alias = await mcp_server.call_tool("locate_usage", arguments=batch_args)
+        result_original = await mcp_server.call_tool("search", arguments=batch_args)
 
         # 必须完全相同（语义上）
         matches, diff = SemanticComparator.compare_tool_responses(
@@ -352,7 +354,7 @@ class TestIntentAliasInvariance:
         )
 
         assert matches, (
-            f"Intent alias 'locate_usage' 与 'search action=symbol' 返回不同结果:\n{diff}\n\n"
+            f"Intent alias 'locate_usage' 与 'search action=batch' 返回不同结果:\n{diff}\n\n"
             f"Alias result: {json.dumps(result_alias, indent=2, ensure_ascii=False)}\n\n"
             f"Original result: {json.dumps(result_original, indent=2, ensure_ascii=False)}"
         )
@@ -485,39 +487,33 @@ class TestIntentAliasInvariance:
         )
 
     @pytest.mark.asyncio
+    @pytest.mark.requires_ripgrep
     async def test_multiple_aliases_same_tool_invariance(
         self, mcp_server, temp_test_file
     ):
         """测试同一工具的多个 alias 返回相同结果 (find_usage 和 locate_usage)"""
-        result_alias1 = await mcp_server.call_tool(
-            "locate_usage",
-            arguments={
-                "action": "symbol",
-                "roots": [str(temp_test_file.parent)],
-                "query": "example_function",
-                "output_format": "json",
-            },
-        )
+        batch_args = {
+            "action": "batch",
+            "queries": [
+                {
+                    "pattern": "example_function",
+                    "roots": [str(temp_test_file.parent)],
+                    "label": "q1",
+                },
+                {
+                    "pattern": "ExampleClass",
+                    "roots": [str(temp_test_file.parent)],
+                    "label": "q2",
+                },
+            ],
+            "output_format": "json",
+        }
 
-        result_alias2 = await mcp_server.call_tool(
-            "find_usage",
-            arguments={
-                "action": "symbol",
-                "roots": [str(temp_test_file.parent)],
-                "query": "example_function",
-                "output_format": "json",
-            },
-        )
+        result_alias1 = await mcp_server.call_tool("locate_usage", arguments=batch_args)
+        result_alias2 = await mcp_server.call_tool("find_usage", arguments=batch_args)
 
-        # search_content は廃止済み。search action=symbol との比較に変更。
-        result_original = await mcp_server.call_tool(
-            "search",
-            arguments={
-                "action": "symbol",
-                "symbol": "example_function",
-                "output_format": "json",
-            },
-        )
+        # search action=batch との比較
+        result_original = await mcp_server.call_tool("search", arguments=batch_args)
 
         # 两个 alias 都应该和原始工具返回相同结果
         matches1, diff1 = SemanticComparator.compare_tool_responses(
@@ -527,8 +523,8 @@ class TestIntentAliasInvariance:
             result_alias2, result_original
         )
 
-        assert matches1, f"locate_usage 与 search action=symbol 不匹配:\n{diff1}"
-        assert matches2, f"find_usage 与 search action=symbol 不匹配:\n{diff2}"
+        assert matches1, f"locate_usage 与 search action=batch 不匹配:\n{diff1}"
+        assert matches2, f"find_usage 与 search action=batch 不匹配:\n{diff2}"
 
         # 两个 alias 之间也应该完全相同
         matches_aliases, diff_aliases = SemanticComparator.compare_tool_responses(

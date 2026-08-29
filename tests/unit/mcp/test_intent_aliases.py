@@ -44,12 +44,12 @@ class TestIntentAliasResolution:
         assert result == "list_files"
 
     def test_resolve_find_impacted_code_to_query(self):
-        """find_impacted_code 应该解析为 query (query_code で代替)"""
+        """find_impacted_code 应该解析为 query_code"""
         resolver = IntentAliasResolver()
 
         result = resolver.resolve("find_impacted_code")
 
-        assert result == "query"
+        assert result == "query_code"
 
     def test_resolve_extract_structure_to_analyze_code_structure(self):
         """extract_structure 应该解析为 analyze_code_structure"""
@@ -116,7 +116,7 @@ class TestBackwardCompatibility:
         original_tools = [
             "list_files",
             "search",
-            "query",
+            "query_code",
             "analyze_code_structure",
             "get_code_outline",
         ]

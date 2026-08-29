@@ -32,8 +32,7 @@ FACADE_WIRE_CASES = [
         "search",
         {
             "action": "symbol",
-            "symbol": "MCP_INFO",
-            "roots": ["tree_sitter_analyzer/mcp"],
+            "query": "MCP_INFO",
             "output_format": "json",
         },
     ),
