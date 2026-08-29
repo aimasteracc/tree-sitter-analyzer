@@ -330,7 +330,7 @@ Use incremental approach:
 
 Use discovery tools:
 1. `list_files` with broad pattern
-2. `find_and_grep` with content search
+2. CC Grep tool for content search (`find_and_grep` は廃止済み)
 3. Check file extension and directory
 
 ### "Results are too verbose"

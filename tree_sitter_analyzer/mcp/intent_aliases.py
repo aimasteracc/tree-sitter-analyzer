@@ -6,7 +6,7 @@ Intent-based tool名を実装ベースの tool名に変換するシステム。
 AI エージェントが「何をしたいか」（意図）でツールを呼び出せるようにする。
 
 例:
-- "locate_usage" → "search_content" (使用箇所を探す意図)
+- "locate_usage" → "search" (使用箇所を探す意図; action=symbol を推奨)
 - "map_structure" → "list_files" (プロジェクト構造を把握する意図)
 - "extract_structure" → "analyze_code_structure" (コード構造を抽出する意図)
 
@@ -15,18 +15,21 @@ Features:
 - Backward compatibility (元の tool名も引き続き使用可能)
 - Multiple aliases (複数の alias が同じ tool を指せる)
 - Case-sensitive (大文字小文字を区別)
+
+Note: search_content (SearchContentTool) および find_and_grep (FindAndGrepTool) は
+廃止済み。テキストグレップには CC 組み込みの Grep tool を使用すること。
 """
 
 # Intent Alias マッピング: 意図ベースの名前 → 実装ベースの tool名
 INTENT_ALIASES: dict[str, str] = {
-    # Search & Find 系
-    "locate_usage": "search_content",  # 使用箇所を特定する
-    "find_usage": "search_content",  # 使用箇所を見つける（locate_usage の代替）
+    # Search & Find 系 (search action=symbol を使用)
+    "locate_usage": "search",  # 使用箇所を特定する (search action=symbol)
+    "find_usage": "search",  # 使用箇所を見つける（locate_usage の代替）
     # File Discovery 系
     "map_structure": "list_files",  # プロジェクト構造をマッピングする
     "discover_files": "list_files",  # ファイルを発見する（map_structure の代替）
-    # Impact Analysis 系
-    "find_impacted_code": "find_and_grep",  # 影響を受けるコードを見つける
+    # Impact Analysis 系 (query_code で代替)
+    "find_impacted_code": "query_code",  # 影響を受けるコードを見つける (query_code)
     # Structure Extraction 系
     "extract_structure": "analyze_code_structure",  # コード構造を抽出する
     # Navigation 系
@@ -40,7 +43,7 @@ class IntentAliasResolver:
 
     Usage:
         resolver = IntentAliasResolver()
-        tool_name = resolver.resolve("locate_usage")  # → "search_content"
+        tool_name = resolver.resolve("locate_usage")  # → "search"
     """
 
     def __init__(self, aliases: dict[str, str] | None = None) -> None:

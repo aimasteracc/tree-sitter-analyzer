@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-残り5ツールのエラーハンドリングテスト
+残り4ツールのエラーハンドリングテスト
 
-このテストスイートは、以下の5つのツールのエラーハンドリングを検証します：
+このテストスイートは、以下の4つのツールのエラーハンドリングを検証します：
 - check_code_scale (AnalyzeScaleTool)
 - analyze_code_structure (TableFormatTool)
 - query_code (QueryTool)
-- find_and_grep (FindAndGrepTool)
 - set_project_path (MCPサーバー内実装)
 """
 
@@ -20,7 +19,6 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
     AnalyzeCodeStructureTool as TableFormatTool,
 )
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
-from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
 from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 from tree_sitter_analyzer.mcp.utils.error_handler import AnalysisError
 
@@ -77,11 +75,6 @@ public class Example {
     def query_tool(self, temp_project):
         """QueryTool インスタンス"""
         return QueryTool(temp_project)
-
-    @pytest.fixture
-    def find_grep_tool(self, temp_project):
-        """FindAndGrepTool インスタンス"""
-        return FindAndGrepTool(temp_project)
 
     @pytest.fixture
     def mcp_server(self, temp_project):
@@ -167,38 +160,6 @@ public class Example {
         assert "success" in result
         assert result.get("matches", []) == [] or result.get("count", 0) == 0
 
-    @pytest.mark.requires_fd
-    @pytest.mark.requires_ripgrep
-    @pytest.mark.asyncio
-    async def test_find_and_grep_error_handling(self, find_grep_tool):
-        """find_and_grep ツールのエラーハンドリングテスト"""
-
-        # 存在しないディレクトリ - AnalysisError を期待
-        try:
-            await find_grep_tool.execute(
-                {"roots": ["nonexistent_directory/"], "query": "test"}
-            )
-            assert False, "Expected AnalysisError for nonexistent directory"
-        except AnalysisError as e:
-            assert "Invalid root" in str(e) or "does not exist" in str(e)
-
-        # 必須パラメータ不足（query）
-        try:
-            await find_grep_tool.execute({"roots": ["src/"]})
-            assert False, "Expected error for missing query"
-        except (AnalysisError, ValueError) as e:
-            assert "query" in str(e) or "required" in str(e)
-
-        # 必須パラメータ不足（roots） — in v1.13.0+ roots may default
-        # to the project root, so callers without roots are valid.
-        # Accept either: explicit error OR successful default-root run.
-        try:
-            result = await find_grep_tool.execute({"query": "test"})
-            # No error — verify the tool returned something sensible.
-            assert isinstance(result, dict)
-        except (AnalysisError, ValueError) as e:
-            assert "roots" in str(e) or "required" in str(e)
-
     @pytest.mark.asyncio
     async def test_set_project_path_error_handling(self, mcp_server):
         """set_project_path ツールのエラーハンドリングテスト"""
@@ -246,7 +207,6 @@ public class Example {
             AnalyzeScaleTool(temp_project),
             TableFormatTool(temp_project),
             QueryTool(temp_project),
-            FindAndGrepTool(temp_project),
         ]
 
         for tool in tools:

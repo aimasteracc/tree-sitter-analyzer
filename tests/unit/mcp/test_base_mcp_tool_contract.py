@@ -22,11 +22,9 @@ from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
 from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import ClassHierarchyTool
 from tree_sitter_analyzer.mcp.tools.code_patterns_tool import CodePatternsTool
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
-from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
 from tree_sitter_analyzer.mcp.tools.import_graph_tool import CodeGraphImportGraphTool
 from tree_sitter_analyzer.mcp.tools.project_health_tool import ProjectHealthTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 from tree_sitter_analyzer.mcp.tools.smart_context_tool import SmartContextTool
 from tree_sitter_analyzer.mcp.tools.symbol_search_tool import CodeGraphSymbolSearchTool
 
@@ -35,12 +33,10 @@ def _make_tools() -> list[object]:
     """Return one instantiated instance of each tool under contract."""
     return [
         CodeGraphCallersTool(),
-        SearchContentTool(),
         ReadPartialTool(),
         ClassHierarchyTool(),
         ChangeImpactTool(),
         ProjectHealthTool(),
-        FindAndGrepTool(),
         CodeGraphSymbolSearchTool(),
         CodePatternsTool(),
         CodeGraphImportGraphTool(),

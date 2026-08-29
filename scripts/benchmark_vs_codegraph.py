@@ -129,7 +129,7 @@ def benchmark_search_symbol(query_text: str, expected: list[str]) -> BenchmarkRe
         else []
     )
 
-    # Step 2: search_content (1 tool call)
+    # Step 2: CC Grep tool (1 tool call) — search_content は廃止済み
     result.tool_calls += 1
 
     # Step 3: find_references for key symbols (1-3 tool calls)

@@ -3,7 +3,7 @@
 > **AUTO-GENERATED — do not edit by hand.** Regenerate with `uv run python scripts/generate_facade_actions_doc.py`.
 > Drift-gated by `tests/unit/docs/test_facade_actions_doc_drift.py` (regenerates in-memory and diffs).
 
-The MCP server exposes **8 facade tools** routing **79 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
+The MCP server exposes **8 facade tools** routing **77 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
 
 Reading the tables:
 
@@ -12,14 +12,12 @@ Reading the tables:
 - **CLI twin** — the CLI flag (or console script) covering the same capability, from the CLI-parity contract. 5 actions have no authoritative CLI mapping and show — (honest gap, not an omission).
 - *Bespoke routes* (closures with hand-rolled arg handling, e.g. `nav action=test_map`) have their params pinned in the generator with source provenance; the generator fails if the live route set drifts from those pins.
 
-## `search` — 9 actions
+## `search` — 7 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
 | `batch` | `queries`* | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--batch-search` |
 | `chain` | `query`*, `compact`, `include_code`, `max_files`, `max_symbols`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-query` |
-| `content` | `query`*, `case`, `context`, `context_after`, `context_before`, `count_only_matches`, `enable_parallel`, `encoding`, `exclude_globs`, `exclude_types`, `extensions`, `file_types`, `files`, `files_with_matches`, `fixed_strings`, `follow_symlinks`, `group_by_file`, `hidden`, `include_globs`, `include_stats`, `invert_match`, `max_count`, `max_depth`, `max_filesize`, `multiline`, `no_ignore`, `only_matching`, `optimize_paths`, `output_file`, `output_format`, `pcre2`, `roots`, `sort`, `summary_only`, `suppress_output`, `timeout_ms`, `total_only`, `word` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `search-content` (console script) |
-| `grep` | `query`*, `roots`*, `case`, `changed_before`, `changed_within`, `context_after`, `context_before`, `count_only_matches`, `depth`, `encoding`, `exclude`, `exclude_globs`, `extensions`, `file_limit`, `fixed_strings`, `follow_symlinks`, `full_path_match`, `glob`, `group_by_file`, `hidden`, `include_globs`, `max_count`, `max_filesize`, `multiline`, `no_ignore`, `optimize_paths`, `output_file`, `output_format`, `pattern`, `size`, `sort`, `summary_only`, `suppress_output`, `timeout_ms`, `total_only`, `types`, `word` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `find-and-grep` (console script) |
 | `query` | `file_path`, `filter`, `find_references`, `language`, `max_count`, `output_file`, `output_format`, `query_key`, `query_string`, `result_format`, `suppress_output`, `symbol`, `symbol_type` — requires `file_path` or `symbol`; file-scoped queries take exactly one of `query_key`/`query_string` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--query-key` |
 | `select` | `selector`*, `max_results`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
 | `subscribe` | `selector`*, `min_interval`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |

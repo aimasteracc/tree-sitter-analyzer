@@ -59,8 +59,6 @@ LEGACY_TOOL_MAP: dict[str, tuple[str, str]] = {
     # -- search ------------------------------------------------------------
     "codegraph_symbol_search": ("search", "symbol"),
     "query_code": ("search", "query"),  # F3: tree-sitter .scm DSL (NOT symbol)
-    "search_content": ("search", "content"),
-    "find_and_grep": ("search", "grep"),
     "batch_search": ("search", "batch"),
     "codegraph_query": ("search", "chain"),
     # -- nav ---------------------------------------------------------------

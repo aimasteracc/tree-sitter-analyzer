@@ -10,7 +10,9 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
 )
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
+
+# NOTE: SearchContentTool (search_content) is deprecated and removed.
+# Text search is now done via CC built-in Grep tool.
 
 
 async def run_performance_under_load(enterprise_project: str) -> None:
@@ -18,7 +20,6 @@ async def run_performance_under_load(enterprise_project: str) -> None:
     tools = [
         AnalyzeScaleTool(enterprise_project),
         TableFormatTool(enterprise_project),
-        SearchContentTool(enterprise_project),
         ListFilesTool(enterprise_project),
     ]
     concurrent_tasks = _build_performance_tasks(enterprise_project, tools)
@@ -51,14 +52,6 @@ def _performance_task_for_tool(tool: Any, enterprise_project: str) -> Any | None
         return tool.execute({"file_path": readme_path})
     if isinstance(tool, TableFormatTool):
         return tool.execute({"file_path": readme_path, "format_type": "compact"})
-    if isinstance(tool, SearchContentTool):
-        return tool.execute(
-            {
-                "roots": [enterprise_project],
-                "query": "test",
-                "max_count": 3,
-            }
-        )
     if isinstance(tool, ListFilesTool):
         return tool.execute({"roots": [enterprise_project], "limit": 5})
     return None

@@ -53,7 +53,7 @@ _TOOL_DESCRIPTION: str = (
     "- Reading an entire small file end-to-end — the built-in "
     "Read tool is simpler\n"
     "- Searching for a pattern when you don't know the line "
-    "numbers — use ``search_content`` / ``find_and_grep``\n"
+    "numbers — use CC Grep tool\n"
     "- Getting a structural overview (classes, methods, "
     "imports) — use ``get_code_outline`` /"
     " ``analyze_code_structure``"
@@ -492,7 +492,7 @@ class ReadPartialTool(BaseMCPTool):
         if end_line and end_line > start_line and not (out_of_range or partial_range):
             result["next_steps"] = [
                 "query_code to find related elements in this file",
-                "search_content to find callers or usages of this code",
+                "Use CC Grep tool to find callers or usages of this code",
             ]
 
         if not suppress_output or not output_file:

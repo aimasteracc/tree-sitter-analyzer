@@ -69,7 +69,7 @@ def build_checklist(
             f"{downstream_count} downstream file(s) - verify imports still resolve"
         )
     if edit_type == "rename":
-        raw.append("After rename: run find_and_grep(old_name) to find all references")
+        raw.append("After rename: use CC Grep tool with old_name to find all references")
     if edit_type == "refactor":
         raw.append("Keep public API signatures unchanged during refactor")
     if health_grade in ("D", "F") and file_path:
@@ -193,7 +193,7 @@ def _add_edit_type_factor(
         factors.append(
             {
                 "factor": "rename_risk",
-                "detail": "Rename requires updating all importers - use find_and_grep first",
+                "detail": "Rename requires updating all importers - use CC Grep tool first",
                 "severity": "caution",
             }
         )

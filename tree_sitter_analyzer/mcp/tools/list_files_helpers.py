@@ -618,7 +618,7 @@ def _build_list_files_next_steps(
         )
     if count == 0:
         steps.append(
-            "search_content(query=...) to grep across the project when text is known."
+            "Use CC Grep tool to grep across the project when text is known."
         )
         steps.append("Broaden roots or relax filters if you expected matches.")
         return steps
@@ -635,7 +635,7 @@ def _build_list_files_next_steps(
         )
     else:
         steps.append(
-            "find_and_grep(query=<text>, pattern=<glob>) to grep inside these files."
+            "Use CC Grep tool with a glob pattern to grep inside these files."
         )
         steps.append(
             "smart_context to focus on the most relevant subset before reading."
@@ -659,7 +659,7 @@ def _summary_next_step(
     if truncated or count >= limit:
         return "Narrow list_files with pattern, extensions, depth, or exclude filters."
     if count == 0:
-        return "Broaden roots or pattern, or use search_content when looking for text."
+        return "Broaden roots or pattern, or use CC Grep tool when looking for text."
     if count_only:
         return "Run list_files without count_only for a focused file list."
     return "Open the most relevant files with smart_context or read_partial."
@@ -671,7 +671,8 @@ def _summary_suggested_tool(
     if truncated or count >= limit:
         return "list_files"
     if count == 0:
-        return "search_content"
+        # search_content は廃止済み。テキスト検索には CC 組み込みの Grep tool を使用。
+        return "list_files"
     if count_only:
         return "list_files"
     return "smart_context"

@@ -27,13 +27,13 @@ from tree_sitter_analyzer.mcp.intent_aliases import (
 class TestIntentAliasResolution:
     """测试 Intent Alias 解析逻辑"""
 
-    def test_resolve_locate_usage_to_search_content(self):
-        """locate_usage 应该解析为 search_content"""
+    def test_resolve_locate_usage_to_search(self):
+        """locate_usage 应该解析为 search (search action=symbol)"""
         resolver = IntentAliasResolver()
 
         result = resolver.resolve("locate_usage")
 
-        assert result == "search_content"
+        assert result == "search"
 
     def test_resolve_map_structure_to_list_files(self):
         """map_structure 应该解析为 list_files"""
@@ -43,13 +43,13 @@ class TestIntentAliasResolution:
 
         assert result == "list_files"
 
-    def test_resolve_find_impacted_code_to_find_and_grep(self):
-        """find_impacted_code 应该解析为 find_and_grep"""
+    def test_resolve_find_impacted_code_to_query(self):
+        """find_impacted_code 应该解析为 query_code"""
         resolver = IntentAliasResolver()
 
         result = resolver.resolve("find_impacted_code")
 
-        assert result == "find_and_grep"
+        assert result == "query_code"
 
     def test_resolve_extract_structure_to_analyze_code_structure(self):
         """extract_structure 应该解析为 analyze_code_structure"""
@@ -75,33 +75,48 @@ class TestIntentAliasResolution:
 
         assert result == "list_files"
 
-    def test_resolve_find_usage_to_search_content(self):
-        """find_usage 应该解析为 search_content (multiple aliases)"""
+    def test_resolve_find_usage_to_search(self):
+        """find_usage 应该解析为 search (search action=symbol, locate_usage の代替)"""
         resolver = IntentAliasResolver()
 
         result = resolver.resolve("find_usage")
 
-        assert result == "search_content"
+        assert result == "search"
 
 
 class TestBackwardCompatibility:
-    """测试向后兼容性 - 原始工具名仍然有效"""
+    """测试向后兼容性 - 対象 tool名仍然有効"""
 
     def test_original_tool_name_returns_itself(self):
-        """原始工具名应该返回自己（不变）"""
+        """INTENT_ALIASES の value に含まれる tool名はそのまま返す"""
         resolver = IntentAliasResolver()
 
-        result = resolver.resolve("search_content")
+        # "search" は locate_usage / find_usage の解決先として登録済み
+        result = resolver.resolve("search")
 
-        assert result == "search_content"
+        assert result == "search"
+
+    def test_search_content_is_no_longer_valid(self):
+        """search_content は廃止済み - ValueError を返すこと"""
+        resolver = IntentAliasResolver()
+
+        with pytest.raises(ValueError, match="Unknown tool or alias"):
+            resolver.resolve("search_content")
+
+    def test_find_and_grep_is_no_longer_valid(self):
+        """find_and_grep は廃止済み - ValueError を返すこと"""
+        resolver = IntentAliasResolver()
+
+        with pytest.raises(ValueError, match="Unknown tool or alias"):
+            resolver.resolve("find_and_grep")
 
     def test_all_original_tool_names_pass_through(self):
-        """所有原始工具名都应该 pass through"""
+        """所有原始工具名都应该 pass through (現在有効なもののみ)"""
         resolver = IntentAliasResolver()
         original_tools = [
             "list_files",
-            "search_content",
-            "find_and_grep",
+            "search",
+            "query_code",
             "analyze_code_structure",
             "get_code_outline",
         ]
@@ -144,7 +159,7 @@ class TestCaseSensitivity:
         resolver = IntentAliasResolver()
 
         # 小写应该工作
-        assert resolver.resolve("locate_usage") == "search_content"
+        assert resolver.resolve("locate_usage") == "search"
 
         # 大写应该失败
         with pytest.raises(ValueError):
@@ -154,12 +169,12 @@ class TestCaseSensitivity:
         """原始工具名应该区分大小写"""
         resolver = IntentAliasResolver()
 
-        # 小写应该工作
-        assert resolver.resolve("search_content") == "search_content"
+        # 現在有効な tool名 (小写应该工作)
+        assert resolver.resolve("search") == "search"
 
         # 大写应该失败
         with pytest.raises(ValueError):
-            resolver.resolve("SEARCH_CONTENT")
+            resolver.resolve("SEARCH")
 
 
 class TestAliasMetadata:
@@ -172,7 +187,7 @@ class TestAliasMetadata:
         assert isinstance(aliases, dict)
         assert aliases
         assert "locate_usage" in aliases
-        assert aliases["locate_usage"] == "search_content"
+        assert aliases["locate_usage"] == "search"
 
     def test_is_valid_alias_for_known_alias(self):
         """is_valid_alias 对已知 alias 返回 True"""
@@ -180,9 +195,14 @@ class TestAliasMetadata:
         assert is_valid_alias("map_structure") is True
 
     def test_is_valid_alias_for_original_tool(self):
-        """is_valid_alias 对原始工具名返回 True"""
-        assert is_valid_alias("search_content") is True
+        """is_valid_alias 对原始工具名返回 True (現在有効なもの)"""
+        assert is_valid_alias("search") is True
         assert is_valid_alias("list_files") is True
+
+    def test_is_valid_alias_deprecated_tools(self):
+        """search_content と find_and_grep は廃止済み - False を返すこと"""
+        assert is_valid_alias("search_content") is False
+        assert is_valid_alias("find_and_grep") is False
 
     def test_is_valid_alias_for_unknown_name(self):
         """is_valid_alias 对未知名称返回 False"""
@@ -197,13 +217,18 @@ class TestHelperFunction:
         """get_tool_name_from_alias 应该解析 alias"""
         result = get_tool_name_from_alias("locate_usage")
 
-        assert result == "search_content"
+        assert result == "search"
 
     def test_get_tool_name_from_alias_with_original(self):
-        """get_tool_name_from_alias 对原始名称返回自身"""
-        result = get_tool_name_from_alias("search_content")
+        """get_tool_name_from_alias 对原始名称返回自身 (現在有効なもの)"""
+        result = get_tool_name_from_alias("search")
 
-        assert result == "search_content"
+        assert result == "search"
+
+    def test_get_tool_name_from_alias_deprecated(self):
+        """search_content は廃止済み - ValueError を返すこと"""
+        with pytest.raises(ValueError):
+            get_tool_name_from_alias("search_content")
 
     def test_get_tool_name_from_alias_with_invalid(self):
         """get_tool_name_from_alias 对无效名称抛出错误"""

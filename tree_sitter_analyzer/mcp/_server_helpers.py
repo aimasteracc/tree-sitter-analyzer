@@ -72,7 +72,6 @@ The 8 tools: nav, search, structure, health, edit, project, index, viz.
 | Who calls X / what X calls (single hop) | nav action=callers / action=callees |
 | Go-to-definition + references for a symbol | nav action=navigate |
 | Find a symbol, class, function, or method | search action=symbol |
-| Text/content search | search action=content |
 | Class/file structure, overview, signatures | structure |
 | Is the index ready / how big? | index action=status |
 | Edge-kind breakdown of the graph | index action=status (edges_by_kind) |
@@ -167,13 +166,11 @@ def attach_tool_aliases(
     from .tools.analyze_scale_tool import AnalyzeScaleTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.file_health_tool import FileHealthTool
-    from .tools.find_and_grep_tool import FindAndGrepTool
     from .tools.list_files_tool import ListFilesTool
     from .tools.parser_readiness_tool import ParserReadinessTool
     from .tools.project_overview_tool import ProjectOverviewTool
     from .tools.query_tool import QueryTool
     from .tools.read_partial_tool import ReadPartialTool
-    from .tools.search_content_tool import SearchContentTool
 
     target.analyze_scale_tool = AnalyzeScaleTool(project_root)
     target.analyze_code_structure_tool = AnalyzeCodeStructureTool(project_root)
@@ -182,8 +179,6 @@ def attach_tool_aliases(
     target.read_partial_tool = ReadPartialTool(project_root)
     target.query_tool = QueryTool(project_root)
     target.list_files_tool = ListFilesTool(project_root)
-    target.search_content_tool = SearchContentTool(project_root)
-    target.find_and_grep_tool = FindAndGrepTool(project_root)
     target.agent_skills_tool = AgentSkillsTool(project_root)
     target.agent_workflow_tool = AgentWorkflowTool(project_root)
     target.parser_readiness_tool = ParserReadinessTool(project_root)
@@ -197,8 +192,6 @@ def attach_tool_aliases(
         target.read_partial_tool,
         target.query_tool,
         target.list_files_tool,
-        target.search_content_tool,
-        target.find_and_grep_tool,
         target.agent_skills_tool,
         target.agent_workflow_tool,
         target.parser_readiness_tool,

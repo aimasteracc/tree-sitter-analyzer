@@ -930,20 +930,20 @@ def test_find_test_files_avoids_discarded_full_suite_affinity_scan(monkeypatch):
 def test_find_test_files_preserves_direct_variants_at_best_outer_affinity():
     """Nested source modules retain all direct variants at the best outer rank."""
     mapping = change_impact_tool._find_test_files(
-        ["tree_sitter_analyzer/cli/commands/find_and_grep_cli.py"],
+        ["tree_sitter_analyzer/cli/commands/list_files_cli.py"],
         {
-            "tests/unit/cli/test_find_and_grep_cli.py",
-            "tests/unit/cli/test_find_and_grep_cli_main.py",
-            "tests/unit/cli/test_find_and_grep_cli_parser.py",
-            "tests/unit/cli/test_find_and_grep_cli_run.py",
+            "tests/unit/cli/test_list_files_cli.py",
+            "tests/unit/cli/test_list_files_cli_main.py",
+            "tests/unit/cli/test_list_files_cli_parser.py",
+            "tests/unit/cli/test_list_files_cli_run.py",
         },
     )
 
-    assert mapping["tree_sitter_analyzer/cli/commands/find_and_grep_cli.py"] == [
-        "tests/unit/cli/test_find_and_grep_cli.py",
-        "tests/unit/cli/test_find_and_grep_cli_main.py",
-        "tests/unit/cli/test_find_and_grep_cli_parser.py",
-        "tests/unit/cli/test_find_and_grep_cli_run.py",
+    assert mapping["tree_sitter_analyzer/cli/commands/list_files_cli.py"] == [
+        "tests/unit/cli/test_list_files_cli.py",
+        "tests/unit/cli/test_list_files_cli_main.py",
+        "tests/unit/cli/test_list_files_cli_parser.py",
+        "tests/unit/cli/test_list_files_cli_run.py",
     ]
 
 
@@ -1325,59 +1325,57 @@ def test_find_test_files_maps_refactoring_plan_builder_to_family_tests():
     ]
 
 
-def test_find_test_files_maps_extracted_search_content_modules_to_family_tests():
-    """Search content helper modules should stay on targeted search tests."""
+def test_find_test_files_maps_extracted_query_helpers_to_family_tests():
+    """Query helper modules should stay on targeted query tests."""
     mapping = change_impact_tool._find_test_files(
         [
-            "tree_sitter_analyzer/mcp/tools/search_content_agent_summary.py",
-            "tree_sitter_analyzer/mcp/tools/search_content_response_modes.py",
-            "tree_sitter_analyzer/mcp/tools/search_content_validation.py",
+            "tree_sitter_analyzer/mcp/tools/query_agent_summary.py",
+            "tree_sitter_analyzer/mcp/tools/query_response_modes.py",
+            "tree_sitter_analyzer/mcp/tools/query_validation.py",
         ],
         {
-            "tests/unit/mcp/test_search_content_tool.py",
-            "tests/unit/mcp/test_mcp_search_content_p1.py",
-            "tests/unit/mcp/test_mcp_search_content_p2.py",
+            "tests/unit/mcp/test_query_tool.py",
+            "tests/unit/mcp/test_mcp_query_p1.py",
+            "tests/unit/mcp/test_mcp_query_p2.py",
             "tests/unit/mcp/test_change_impact_tool.py",
         },
     )
 
     expected = [
-        "tests/unit/mcp/test_mcp_search_content_p1.py",
-        "tests/unit/mcp/test_mcp_search_content_p2.py",
-        "tests/unit/mcp/test_search_content_tool.py",
+        "tests/unit/mcp/test_query_tool.py",
     ]
     assert (
-        mapping["tree_sitter_analyzer/mcp/tools/search_content_agent_summary.py"]
+        mapping["tree_sitter_analyzer/mcp/tools/query_agent_summary.py"]
         == expected
     )
     assert (
-        mapping["tree_sitter_analyzer/mcp/tools/search_content_response_modes.py"]
+        mapping["tree_sitter_analyzer/mcp/tools/query_response_modes.py"]
         == expected
     )
     assert (
-        mapping["tree_sitter_analyzer/mcp/tools/search_content_validation.py"]
+        mapping["tree_sitter_analyzer/mcp/tools/query_validation.py"]
         == expected
     )
 
 
-def test_find_test_files_maps_find_and_grep_execution_to_family_tests():
-    """Execution helper modules should stay on targeted find_and_grep tests."""
+def test_find_test_files_maps_list_files_execution_to_family_tests():
+    """Execution helper modules should stay on targeted list_files tests."""
     mapping = change_impact_tool._find_test_files(
-        ["tree_sitter_analyzer/mcp/tools/find_and_grep_execution.py"],
+        ["tree_sitter_analyzer/mcp/tools/list_files_execution.py"],
         {
-            "tests/unit/core/test_find_and_grep_tool_file_output.py",
-            "tests/unit/mcp/test_find_and_grep_tool.py",
-            "tests/unit/mcp/test_mcp_find_and_grep_p1.py",
-            "tests/unit/mcp/test_mcp_find_and_grep_p2.py",
+            "tests/unit/core/test_list_files_tool_file_output.py",
+            "tests/unit/mcp/test_list_files_tool.py",
+            "tests/unit/mcp/test_mcp_list_files_p1.py",
+            "tests/unit/mcp/test_mcp_list_files_p2.py",
             "tests/unit/mcp/test_change_impact_tool.py",
         },
     )
 
-    assert mapping["tree_sitter_analyzer/mcp/tools/find_and_grep_execution.py"] == [
-        "tests/unit/core/test_find_and_grep_tool_file_output.py",
-        "tests/unit/mcp/test_find_and_grep_tool.py",
-        "tests/unit/mcp/test_mcp_find_and_grep_p1.py",
-        "tests/unit/mcp/test_mcp_find_and_grep_p2.py",
+    assert mapping["tree_sitter_analyzer/mcp/tools/list_files_execution.py"] == [
+        "tests/unit/core/test_list_files_tool_file_output.py",
+        "tests/unit/mcp/test_list_files_tool.py",
+        "tests/unit/mcp/test_mcp_list_files_p1.py",
+        "tests/unit/mcp/test_mcp_list_files_p2.py",
     ]
 
 

@@ -31,10 +31,8 @@ FACADE_WIRE_CASES = [
     (
         "search",
         {
-            "action": "grep",
+            "action": "symbol",
             "query": "MCP_INFO",
-            "roots": ["tree_sitter_analyzer/mcp"],
-            "include_globs": ["__init__.py"],
             "output_format": "json",
         },
     ),

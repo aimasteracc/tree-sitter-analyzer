@@ -451,7 +451,9 @@ def test_successful_warmup_without_current_marker_remains_uncertified(
 ) -> None:
     import logging
 
-    caplog.set_level(logging.WARNING)
+    caplog.set_level(
+        logging.WARNING, logger="tree_sitter_analyzer.mcp.utils.auto_index_guard"
+    )
 
     class Cache:
         def get_stats(self) -> dict[str, int]:

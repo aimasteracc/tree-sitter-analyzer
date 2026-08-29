@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """``search`` facade — PoC for the FacadeTool framework (P0 geode layer).
 
-Folds five search capabilities behind one ``action`` parameter:
+Folds three search capabilities behind one ``action`` parameter:
 
 ==========  ====================================  ==================================
 action      inner / route                         engine
 ==========  ====================================  ==================================
 symbol      ``codegraph_symbol_search``           BM25 FTS5 symbol lookup
 query       ``query_code`` (QueryTool)            tree-sitter ``.scm`` query DSL  (F3)
-content     ``search_content`` (BESPOKE, F5)      ripgrep text search (dict|int)
-grep        ``find_and_grep``                     fd + ripgrep (dict|int)
 batch       ``batch_search``                      multi-query batch
 ==========  ====================================  ==================================
 
@@ -17,14 +15,6 @@ F3 (PRD §0): ``query`` (tree-sitter ``.scm`` DSL) and ``symbol`` (BM25 FTS)
 are DISTINCT actions with zero shared params and different engines — they must
 NOT be merged. Folding ``query_code`` into ``symbol`` would silently delete the
 tree-sitter query capability.
-
-F5: ``content`` is registered as a *bespoke* route because
-``search_content.execute`` returns ``dict | int`` (a bare int exit code when
-``suppress_output=True``). The bespoke handler tolerates the union return and
-owns its own arg handling (no inner-schema projection). ``grep``
-(``find_and_grep``) has the same union return but is routed via the normal
-``action_map`` — the FacadeTool forwards its result verbatim, so an int return
-flows through unchanged.
 
 This facade is registered ALONGSIDE the legacy tools during Wave C cutover; at
 P0 it coexists with the existing 62 tools and changes none of their behaviour.
@@ -56,10 +46,6 @@ _SEARCH_DESCRIPTION = (
     "Params: query, language, kind, limit.\n"
     "- action=query — tree-sitter .scm query DSL (semantic AST match, NOT the "
     "same as symbol). Params: query_key, query_string, filter, file_path.\n"
-    "- action=content — ripgrep text/regex search across files. "
-    "Params: query, roots, include_globs, ...\n"
-    "- action=grep — two-stage fd (file discovery) + ripgrep search. "
-    "Params: query, roots, ...\n"
     "- action=batch — run multiple ripgrep searches in one call. "
     "Params: queries (required array of 2-10 items; each item requires "
     "`pattern` and may include roots/include_globs/exclude_globs/max_results/label), "
@@ -93,29 +79,16 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
     """
     from .batch_search_tool import BatchSearchTool
     from .codegraph_query_tool import CodeGraphQueryTool
-    from .find_and_grep_tool import FindAndGrepTool
     from .hyphae_select_tool import HyphaeSelectTool
     from .hyphae_subscribe_tool import HyphaeSubscribeTool, HyphaeUnsubscribeTool
     from .query_tool import QueryTool
-    from .search_content_tool import SearchContentTool
     from .symbol_search_tool import SYMBOL_SEARCH_KINDS, CodeGraphSymbolSearchTool
-
-    # Inner instance used by the bespoke ``content`` route. It is held so the
-    # facade can rebind it on project-root changes (G3) just like action_map
-    # instances; we therefore also place it in action_map handling via the
-    # bespoke closure that closes over the live instance.
-    content_tool = SearchContentTool(project_root)
-
-    async def _content_route(args: dict[str, Any]) -> Any:
-        """F5 bespoke route: search_content returns dict|int — forward verbatim."""
-        return await content_tool.execute(args)
 
     facade = FacadeTool(
         facade_name="search",
         action_map={
             "symbol": CodeGraphSymbolSearchTool(project_root),  # BM25 FTS
             "query": QueryTool(project_root),  # F3: tree-sitter .scm DSL
-            "grep": FindAndGrepTool(project_root),  # fd + ripgrep (dict|int)
             "batch": BatchSearchTool(project_root),  # multi-query batch
             # jQuery-style graph chain DSL (search().explore().callees()...),
             # folded here from the standalone ``codegraph_query`` tool so the
@@ -130,9 +103,6 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
             # → re-reads tsa://hyphae/{selector} for the new set.
             "subscribe": HyphaeSubscribeTool(project_root),
             "unsubscribe": HyphaeUnsubscribeTool(project_root),
-        },
-        bespoke_map={
-            "content": _content_route,  # F5: search_content (dict|int)
         },
         description=_SEARCH_DESCRIPTION,
         annotations=_SEARCH_ANNOTATIONS,
@@ -150,8 +120,4 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
         },
     )
 
-    # G3: make the bespoke ``content`` tool rebind with the facade. The
-    # FacadeTool only auto-rebinds ``action_map`` instances; register the
-    # bespoke inner so set_project_path reaches it too.
-    facade.register_bespoke_inner(content_tool)
     return facade

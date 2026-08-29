@@ -25,8 +25,8 @@ Two public entry points:
 * :func:`build_agent_friendly_error` — called when a tool raises an exception
   inside ``handle_call_tool``. Converts the exception into the envelope.
 * :func:`ensure_canonical_error_envelope` — called when a tool *returns* a
-  ``{success: False, ...}`` dict (find_and_grep, refactoring_suggestions,
-  read_partial, query, search_content). Augments it with missing canonical
+  ``{success: False, ...}`` dict (refactoring_suggestions,
+  read_partial, query). Augments it with missing canonical
   keys without dropping any tool-specific fields it already set.
 
 The previous fields (``error_category``, ``recovery_hint``, ``suggested_tool``)
@@ -548,9 +548,9 @@ def ensure_canonical_error_envelope(
 ) -> dict[str, Any]:
     """Augment a tool's existing ``{success: False, ...}`` dict in place.
 
-    Tools that already return their own error dict (find_and_grep,
-    refactoring_suggestions, read_partial, query, search_content) flow
-    through here so we don't lose their tool-specific fields (returncode,
+    Tools that already return their own error dict (refactoring_suggestions,
+    read_partial, query) flow through here so we don't lose their
+    tool-specific fields (returncode,
     available_keys, suggestions, etc.) while still getting the canonical
     envelope keys (``error_type``, ``agent_summary``, ``summary_line``).
     """

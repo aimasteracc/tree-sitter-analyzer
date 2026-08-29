@@ -12,9 +12,8 @@ Deprecation visibility is **dual-channel** (PRD G2):
    stdout.)
 2. **response envelope** — a ``deprecation`` field injected into the (dict)
    response so the calling *agent* sees it inline and can migrate. Non-dict
-   returns (the ``search_content`` / ``find_and_grep`` ``int`` exit-code path)
-   are forwarded verbatim — there is nowhere to attach the field, and the stderr
-   channel still fires.
+   returns are forwarded verbatim — there is nowhere to attach the ``deprecation``
+   field, and the stderr channel still fires.
 
 The crosswalk lives in ``facade_map.LEGACY_TOOL_MAP`` (single source of truth,
 shared with the parity contracts). ``set_project_path`` is NOT shimmed — it is a

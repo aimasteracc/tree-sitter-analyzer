@@ -61,28 +61,41 @@ class ExampleClass:
 
     @pytest.mark.asyncio
     @pytest.mark.requires_ripgrep
-    async def test_locate_usage_alias_calls_search_content(
+    async def test_locate_usage_alias_calls_search(
         self, server, temp_python_file
     ):
-        """locate_usage alias 应该调用 search_content 工具并返回正确格式"""
-        # Use alias name
+        """locate_usage alias 应该调用 search 工具并返回正确格式
+        (search_content は廃止済み; locate_usage は search action=batch にルーティング)"""
+        # Use alias name with batch action (works with unindexed temp dirs)
         result = await server.call_tool(
             "locate_usage",
             arguments={
-                "roots": [str(temp_python_file.parent)],
-                "query": "example_function",
+                "action": "batch",
+                "queries": [
+                    {
+                        "pattern": "example_function",
+                        "roots": [str(temp_python_file.parent)],
+                        "label": "find_function",
+                    },
+                    {
+                        "pattern": "ExampleClass",
+                        "roots": [str(temp_python_file.parent)],
+                        "label": "find_class",
+                    },
+                ],
                 "output_format": "json",
             },
         )
 
-        # Should succeed and return results in tool's native format
+        # Should succeed and return batch results
         assert result["success"] is True
-        assert "count" in result
-        assert "results" in result
-        assert result["count"]
+        assert "queries" in result
+        assert "total_matches" in result
         # Verify the search actually found our function
-        found = any("example_function" in str(r) for r in result["results"])
-        assert found, f"Should find 'example_function' in results: {result['results']}"
+        all_matches = str(result["queries"])
+        assert "example_function" in all_matches, (
+            f"Should find 'example_function' in batch results: {result['queries']}"
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.requires_ripgrep
@@ -128,35 +141,9 @@ class ExampleClass:
         assert "example_function" in result_str
         assert "ExampleClass" in result_str
 
-    @pytest.mark.asyncio
-    @pytest.mark.requires_ripgrep
-    async def test_original_tool_name_still_works(self, server, temp_python_file):
-        """原始工具名应该仍然有效（向后兼容）"""
-        # Call with original name
-        result_original = await server.call_tool(
-            "search_content",
-            arguments={
-                "roots": [str(temp_python_file.parent)],
-                "query": "example_function",
-                "output_format": "json",
-            },
-        )
-
-        # Call with alias
-        result_alias = await server.call_tool(
-            "locate_usage",
-            arguments={
-                "roots": [str(temp_python_file.parent)],
-                "query": "example_function",
-                "output_format": "json",
-            },
-        )
-
-        # Results should be identical (both return same tool's response)
-        assert result_original["success"] == result_alias["success"]
-        assert result_original["count"] == result_alias["count"]
-        # Results content should match
-        assert result_original["results"] == result_alias["results"]
+    # test_original_tool_name_still_works は廃止済み:
+    # search_content は削除されたため、直接呼び出すと ValueError になる。
+    # locate_usage は現在 search (action=symbol) にルーティングされる。
 
 
 class TestIntentAliasErrorHandling:
@@ -170,11 +157,17 @@ class TestIntentAliasErrorHandling:
 
     @pytest.mark.asyncio
     async def test_alias_with_invalid_params_raises_error(self, server):
-        """Alias + 无效参数应该返回错误"""
-        # Schema validation now raises ValueError before AnalysisError
-        # is ever constructed; accept either form.
-        with pytest.raises((AnalysisError, ValueError)):
-            await server.call_tool("locate_usage", arguments={"invalid_param": "value"})
+        """Alias + 无效参数应该返回错误 (missing action → facade returns error dict)"""
+        # Without action the search facade returns an error dict (success=False),
+        # not a raised exception.  Accept either a raised error or an error dict.
+        try:
+            result = await server.call_tool(
+                "locate_usage", arguments={"invalid_param": "value"}
+            )
+            # Facade returned an error dict instead of raising.
+            assert result.get("success") is False or "error" in result
+        except (AnalysisError, ValueError):
+            pass  # raised form is also acceptable
 
 
 class TestMultipleAliasesForSameTool:
@@ -224,36 +217,39 @@ class TestMultipleAliasesForSameTool:
         assert result1["results"] == result2["results"]
 
     @pytest.mark.asyncio
+    @pytest.mark.requires_ripgrep
     async def test_locate_usage_and_find_usage_same_result(self, server, temp_dir):
         """locate_usage 和 find_usage 应该返回相同结果"""
         # Create a test file with searchable content
         test_file = temp_dir / "test.py"
         test_file.write_text("def search_target():\n    pass")
 
+        batch_args = {
+            "action": "batch",
+            "queries": [
+                {
+                    "pattern": "search_target",
+                    "roots": [str(temp_dir)],
+                    "label": "q1",
+                },
+                {
+                    "pattern": "def ",
+                    "roots": [str(temp_dir)],
+                    "label": "q2",
+                },
+            ],
+            "output_format": "json",
+        }
+
         # Call with first alias
-        result1 = await server.call_tool(
-            "locate_usage",
-            arguments={
-                "roots": [str(temp_dir)],
-                "query": "search_target",
-                "output_format": "json",
-            },
-        )
+        result1 = await server.call_tool("locate_usage", arguments=batch_args)
 
         # Call with second alias
-        result2 = await server.call_tool(
-            "find_usage",
-            arguments={
-                "roots": [str(temp_dir)],
-                "query": "search_target",
-                "output_format": "json",
-            },
-        )
+        result2 = await server.call_tool("find_usage", arguments=batch_args)
 
         # Results should be identical (both map to same tool)
         assert result1["success"] == result2["success"]
-        assert result1["count"] == result2["count"]
-        assert result1["results"] == result2["results"]
+        assert result1["total_matches"] == result2["total_matches"]
 
 
 @pytest.mark.requires_ripgrep
@@ -277,27 +273,42 @@ class TestAliasWithAllToolParameters:
             yield tmpdir_path
 
     @pytest.mark.asyncio
-    async def test_locate_usage_supports_all_search_content_params(
+    async def test_locate_usage_supports_search_params(
         self, server, temp_dir_with_files
     ):
-        """locate_usage 应该支持 search_content 的所有参数"""
+        """locate_usage 应该支持 search ツールのパラメータ
+        (search_content は廃止済み; locate_usage は search action=batch にルーティング)"""
         result = await server.call_tool(
             "locate_usage",
             arguments={
-                "roots": [str(temp_dir_with_files)],
-                "query": "target",
-                "include_globs": ["*.py"],
-                "case": "sensitive",
+                "action": "batch",
+                "queries": [
+                    {
+                        "pattern": "target",
+                        "roots": [str(temp_dir_with_files)],
+                        "include_globs": ["*.py"],
+                        "label": "find_target",
+                    },
+                    {
+                        "pattern": "helper",
+                        "roots": [str(temp_dir_with_files)],
+                        "include_globs": ["*.py"],
+                        "label": "find_helper",
+                    },
+                ],
                 "output_format": "json",
             },
         )
 
         # Should succeed and respect all parameters
         assert result["success"] is True
-        assert "count" in result
-        assert "results" in result
-        # Should find matches (target appears in multiple files)
-        assert result["count"]
+        assert "queries" in result
+        # Verify the target pattern found matches (target appears in multiple files)
+        target_q = next(
+            (q for q in result["queries"] if q["label"] == "find_target"), None
+        )
+        assert target_q is not None
+        assert target_q["matches"]  # non-empty: ripgrep found "target" in temp files
 
     @pytest.mark.asyncio
     async def test_map_structure_supports_all_list_files_params(

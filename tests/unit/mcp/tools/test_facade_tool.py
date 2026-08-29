@@ -293,7 +293,7 @@ def test_bespoke_route_bypasses_inner_execute() -> None:
 
 
 def test_bespoke_handles_int_return() -> None:
-    """F5: search_content/find_and_grep can return a bare int (exit code) when
+    """F5: a bespoke handler can return a bare int (exit code) when
     suppress_output=True. The facade must tolerate the union return type."""
 
     async def _bespoke(args: dict[str, Any]) -> int:
@@ -509,15 +509,13 @@ def test_search_facade_builds_and_routes() -> None:
 
     facade = build_search_facade(project_root=None)
     assert facade.facade_name == "search"
-    # All five folds present.
-    for action in ("symbol", "query", "content", "grep", "batch"):
+    # All remaining actions present (content and grep removed by PR).
+    for action in ("symbol", "query", "batch", "chain", "select", "subscribe", "unsubscribe"):
         assert action in facade.action_map or action in facade.bespoke_map
     # F3: query (.scm DSL) and symbol (BM25) are DISTINCT actions.
     assert "query" in facade.action_map
     assert "symbol" in facade.action_map
     assert facade.action_map["query"] is not facade.action_map["symbol"]
-    # F5: content is a bespoke route (dict|int return).
-    assert "content" in facade.bespoke_map
 
 
 def test_search_facade_batch_description_documents_query_item_shape() -> None:

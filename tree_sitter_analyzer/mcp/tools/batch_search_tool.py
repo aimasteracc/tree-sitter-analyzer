@@ -79,7 +79,7 @@ class BatchSearchTool(BaseMCPTool):
             "name": "batch_search",
             "description": (
                 "Execute multiple ripgrep searches simultaneously in parallel — significantly "
-                "faster than calling search_content multiple times sequentially.\n\n"
+                "faster than calling CC Grep tool multiple times sequentially.\n\n"
                 "WHEN TO USE:\n"
                 "- When you need to search for 3 or more different patterns at once (e.g., find "
                 "all usages of Class A, Class B, and Class C in one operation)\n"
@@ -87,9 +87,9 @@ class BatchSearchTool(BaseMCPTool):
                 "- When refactoring and need to verify several symbol usages at once\n"
                 "\n"
                 "WHEN NOT TO USE:\n"
-                "- For a single search — use search_content instead (no parallel overhead)\n"
-                "- For two searches — the overhead is not worth it; use search_content twice\n"
-                "- Do not use this as a substitute for find_and_grep when you need file-type "
+                "- For a single search — use CC Grep tool instead (no parallel overhead)\n"
+                "- For two searches — the overhead is not worth it; use CC Grep tool twice\n"
+                "- Do not use this as a substitute for CC Glob + Grep when you need file-type "
                 "filtering first\n"
                 "\n"
                 "IMPORTANT: Each query in the batch runs independently. Results are returned "
@@ -119,7 +119,7 @@ class BatchSearchTool(BaseMCPTool):
             # that match on that substring still pass.
             raise ValueError(
                 "queries must be at least 2 queries; "
-                "use search_content for a single search"
+                "use CC Grep tool for a single search"
             )
         if len(queries) > 10:
             raise ValueError("queries must be at most 10 queries per batch")
@@ -187,8 +187,8 @@ class BatchSearchTool(BaseMCPTool):
         ``ValueError``. The MCP server boundary then converts that
         into the canonical ``{success: false, error_type: validation,
         agent_summary.verdict='ERROR', summary_line}`` envelope —
-        matching every other search tool (``search_content``,
-        ``list_files``, ``find_and_grep``).
+        matching every other search tool (``list_files``,
+        ``batch_search``).
         """
         self.validate_arguments(arguments)
 
@@ -241,7 +241,7 @@ class BatchSearchTool(BaseMCPTool):
             f"total_matches={total_matches} truncated={truncated_count}"
         )
         next_step = (
-            "search_content per pattern for paging into match details"
+            "Use CC Grep tool per pattern for paging into match details"
             if total_matches > 0
             else "Refine patterns or broaden roots — no matches found"
         )
