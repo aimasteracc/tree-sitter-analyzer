@@ -542,7 +542,6 @@ class TestBuildToolRouting:
         assert "structure_table" in routing
         assert "read_lines" in routing
         assert "find_symbol" in routing
-        assert "search_text" in routing
         assert "find_files" in routing
 
 

@@ -330,6 +330,7 @@ class TestIntentAliasInvariance:
         result_alias = await mcp_server.call_tool(
             "locate_usage",
             arguments={
+                "action": "symbol",
                 "symbol": "example_function",
                 "output_format": "json",
             },
@@ -455,8 +456,8 @@ class TestIntentAliasInvariance:
     async def test_find_impacted_code_query_invariance(
         self, mcp_server, temp_test_file
     ):
-        """find_impacted_code 和 query action=query 必须返回相同结果"""
-        # find_and_grep は廃止済み。find_impacted_code は query にルーティング。
+        """find_impacted_code 和 query_code 必须返回相同结果"""
+        # find_and_grep は廃止済み。find_impacted_code は query_code にルーティング。
         result_alias = await mcp_server.call_tool(
             "find_impacted_code",
             arguments={
@@ -467,7 +468,7 @@ class TestIntentAliasInvariance:
         )
 
         result_original = await mcp_server.call_tool(
-            "query",
+            "query_code",
             arguments={
                 "file_path": str(temp_test_file),
                 "query_string": "example",
@@ -480,7 +481,7 @@ class TestIntentAliasInvariance:
         )
 
         assert matches, (
-            f"Intent alias 'find_impacted_code' 与 'query action=query' 返回不同结果:\n{diff}"
+            f"Intent alias 'find_impacted_code' 与 'query_code' 返回不同结果:\n{diff}"
         )
 
     @pytest.mark.asyncio
@@ -491,6 +492,7 @@ class TestIntentAliasInvariance:
         result_alias1 = await mcp_server.call_tool(
             "locate_usage",
             arguments={
+                "action": "symbol",
                 "roots": [str(temp_test_file.parent)],
                 "query": "example_function",
                 "output_format": "json",
@@ -500,6 +502,7 @@ class TestIntentAliasInvariance:
         result_alias2 = await mcp_server.call_tool(
             "find_usage",
             arguments={
+                "action": "symbol",
                 "roots": [str(temp_test_file.parent)],
                 "query": "example_function",
                 "output_format": "json",

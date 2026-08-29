@@ -1342,8 +1342,6 @@ def test_find_test_files_maps_extracted_query_helpers_to_family_tests():
     )
 
     expected = [
-        "tests/unit/mcp/test_mcp_query_p1.py",
-        "tests/unit/mcp/test_mcp_query_p2.py",
         "tests/unit/mcp/test_query_tool.py",
     ]
     assert (

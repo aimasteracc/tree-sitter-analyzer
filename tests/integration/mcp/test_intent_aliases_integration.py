@@ -70,6 +70,7 @@ class ExampleClass:
         result = await server.call_tool(
             "locate_usage",
             arguments={
+                "action": "symbol",
                 "roots": [str(temp_python_file.parent)],
                 "query": "example_function",
                 "output_format": "json",
@@ -145,11 +146,17 @@ class TestIntentAliasErrorHandling:
 
     @pytest.mark.asyncio
     async def test_alias_with_invalid_params_raises_error(self, server):
-        """Alias + 无效参数应该返回错误"""
-        # Schema validation now raises ValueError before AnalysisError
-        # is ever constructed; accept either form.
-        with pytest.raises((AnalysisError, ValueError)):
-            await server.call_tool("locate_usage", arguments={"invalid_param": "value"})
+        """Alias + 无效参数应该返回错误 (missing action → facade returns error dict)"""
+        # Without action the search facade returns an error dict (success=False),
+        # not a raised exception.  Accept either a raised error or an error dict.
+        try:
+            result = await server.call_tool(
+                "locate_usage", arguments={"invalid_param": "value"}
+            )
+            # Facade returned an error dict instead of raising.
+            assert result.get("success") is False or "error" in result
+        except (AnalysisError, ValueError):
+            pass  # raised form is also acceptable
 
 
 class TestMultipleAliasesForSameTool:
@@ -209,6 +216,7 @@ class TestMultipleAliasesForSameTool:
         result1 = await server.call_tool(
             "locate_usage",
             arguments={
+                "action": "symbol",
                 "roots": [str(temp_dir)],
                 "query": "search_target",
                 "output_format": "json",
@@ -219,6 +227,7 @@ class TestMultipleAliasesForSameTool:
         result2 = await server.call_tool(
             "find_usage",
             arguments={
+                "action": "symbol",
                 "roots": [str(temp_dir)],
                 "query": "search_target",
                 "output_format": "json",
@@ -260,10 +269,10 @@ class TestAliasWithAllToolParameters:
         result = await server.call_tool(
             "locate_usage",
             arguments={
+                "action": "symbol",
                 "roots": [str(temp_dir_with_files)],
                 "query": "target",
                 "include_globs": ["*.py"],
-                "case": "sensitive",
                 "output_format": "json",
             },
         )

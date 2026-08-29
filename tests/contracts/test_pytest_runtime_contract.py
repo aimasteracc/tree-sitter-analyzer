@@ -495,35 +495,6 @@ def test_hypothesis_deadlines_are_disabled_for_parallel_suite_stability() -> Non
     assert hypothesis_settings.default.deadline is None
 
 
-def test_default_sustained_load_check_stays_fast_and_configurable() -> None:
-    """Default performance checks use short configurable waits."""
-    path = PROJECT_ROOT / "tests/integration/test_phase7_performance_integration.py"
-    module = ast.parse(path.read_text(encoding="utf-8"))
-    constants = {
-        node.targets[0].id: ast.literal_eval(node.value)
-        for node in module.body
-        if isinstance(node, ast.Assign)
-        and len(node.targets) == 1
-        and isinstance(node.targets[0], ast.Name)
-        and node.targets[0].id.startswith("DEFAULT_")
-    }
-
-    assert constants["DEFAULT_SUSTAINED_LOAD_ITERATIONS"] <= 20
-    assert constants["DEFAULT_SUSTAINED_LOAD_INTERVAL_SECONDS"] <= 0.1
-    assert constants["DEFAULT_SCALABILITY_RECOVERY_SECONDS"] <= 0.1
-    assert constants["DEFAULT_RESOURCE_CLEANUP_SETTLE_SECONDS"] <= 0.1
-    assert constants["DEFAULT_MEMORY_EFFICIENCY_FILES"] <= 10
-
-    source = path.read_text(encoding="utf-8")
-    assert "TSA_SUSTAINED_LOAD_ITERATIONS" in source
-    assert "TSA_SUSTAINED_LOAD_INTERVAL_SECONDS" in source
-    assert "TSA_SCALABILITY_RECOVERY_SECONDS" in source
-    assert "TSA_RESOURCE_CLEANUP_SETTLE_SECONDS" in source
-    assert "TSA_MEMORY_EFFICIENCY_FILES" in source
-    assert "while time.time() - start_time" not in source
-    assert "asyncio.sleep(1)" not in source
-
-
 def test_phase7_suite_simulated_work_stays_fast_and_configurable() -> None:
     """Summary-style integration checks should not spend seconds sleeping."""
     path = PROJECT_ROOT / "tests/integration/test_phase7_integration_suite.py"

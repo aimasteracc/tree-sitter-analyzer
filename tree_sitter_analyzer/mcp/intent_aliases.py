@@ -29,7 +29,7 @@ INTENT_ALIASES: dict[str, str] = {
     "map_structure": "list_files",  # プロジェクト構造をマッピングする
     "discover_files": "list_files",  # ファイルを発見する（map_structure の代替）
     # Impact Analysis 系 (query_code で代替)
-    "find_impacted_code": "query",  # 影響を受けるコードを見つける (query_code)
+    "find_impacted_code": "query_code",  # 影響を受けるコードを見つける (query_code)
     # Structure Extraction 系
     "extract_structure": "analyze_code_structure",  # コード構造を抽出する
     # Navigation 系

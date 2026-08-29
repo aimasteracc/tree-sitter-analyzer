@@ -92,7 +92,8 @@ def test_facade_actions_surface_pins() -> None:
     # 75 -> 78: RFC-0027 §L7/§L8 wired project/card, edit/plan_rename and
     # health/refactor_queue — three capabilities that were built and tested
     # but registered nowhere.
-    assert total_actions == 79
+    # 79 -> 77: PR removed search action=content and search action=grep.
+    assert total_actions == 77
 
     gaps = sorted(
         (facade, row.action)
