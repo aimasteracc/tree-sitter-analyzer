@@ -123,53 +123,5 @@
       },
       "output_file": "list_files_core.json"
     }
-  ],
-  "find_and_grep": [
-    {
-      "id": "python_classes",
-      "params": {
-        "roots": ["."],
-        "pattern": "*.py",
-        "glob": true,
-        "query": "class ",
-        "case": "smart",
-        "context_before": 1,
-        "context_after": 1
-      },
-      "output_file": "find_and_grep_python_classes.json"
-    },
-    {
-      "id": "java_public_classes",
-      "params": {
-        "roots": ["examples/"],
-        "pattern": "*.java",
-        "glob": true,
-        "query": "public class",
-        "case": "smart"
-      },
-      "output_file": "find_and_grep_java_public_classes.json"
-    }
-  ],
-  "search_content": [
-    {
-      "id": "python_init_methods",
-      "params": {
-        "roots": ["tree_sitter_analyzer/"],
-        "query": "def __init__",
-        "include_globs": ["*.py"],
-        "case": "smart"
-      },
-      "output_file": "search_content_python_init.json"
-    },
-    {
-      "id": "java_constructors",
-      "params": {
-        "roots": ["examples/"],
-        "query": "public.*\\(",
-        "include_globs": ["*.java"],
-        "case": "smart"
-      },
-      "output_file": "search_content_java_constructors.json"
-    }
   ]
 }

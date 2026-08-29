@@ -58,12 +58,7 @@ class TestServerInit:
             == "check_code_scale"
         )
         assert server.list_files_tool.get_tool_definition()["name"] == "list_files"
-        assert (
-            server.search_content_tool.get_tool_definition()["name"] == "search_content"
-        )
-        assert (
-            server.find_and_grep_tool.get_tool_definition()["name"] == "find_and_grep"
-        )
+        # search_content_tool (SearchContentTool) と find_and_grep_tool (FindAndGrepTool) は廃止済み
 
     def test_initialization_creates_resources(self, tmp_path):
         """Test that initialization creates resources"""
@@ -404,15 +399,8 @@ class TestToolDefinitions:
         definition = server.list_files_tool.get_tool_definition()
         assert definition["name"] == "list_files"
 
-    def test_search_content_tool_definition(self, server):
-        """Test search content tool has definition"""
-        definition = server.search_content_tool.get_tool_definition()
-        assert definition["name"] == "search_content"
-
-    def test_find_and_grep_tool_definition(self, server):
-        """Test find and grep tool has definition"""
-        definition = server.find_and_grep_tool.get_tool_definition()
-        assert definition["name"] == "find_and_grep"
+    # test_search_content_tool_definition と test_find_and_grep_tool_definition は
+    # 廃止済み (SearchContentTool / FindAndGrepTool が削除されたため)
 
     def test_agent_skills_tool_definition(self, server):
         """Test agent skills tool has definition"""

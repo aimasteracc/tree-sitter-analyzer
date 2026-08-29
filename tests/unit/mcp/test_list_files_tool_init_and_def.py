@@ -375,7 +375,7 @@ class TestAgentSummary:
             no_ignore=False,
         )
         assert summary["risk"] == "low"
-        assert summary["suggested_tool"] == "search_content"
+        assert summary["suggested_tool"] == "list_files"  # search_content は廃止済み
         assert summary["next_step"].startswith("Broaden roots")
 
     def test_agent_summary_for_limit_hit(self):

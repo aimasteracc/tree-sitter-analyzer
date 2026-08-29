@@ -75,7 +75,7 @@ async def _run_with_mock_result(result: Any) -> int:
     "leaks (real _validate_roots runs on the 'root1' fixture, raises "
     "ValueError → except branch returns rc=1 for every test) — flake "
     "is order-dependent across all OSes. Same root cause as "
-    "test_find_and_grep_cli::TestH1FindAndGrepExitCode. Tracked "
+    "Tracked "
     "separately as a test-isolation rewrite.",
 )
 class TestH1ListFilesExitCode:

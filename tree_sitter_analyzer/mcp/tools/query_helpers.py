@@ -99,7 +99,7 @@ def _query_risk_and_step(
     if count == 0:
         return (
             "low",
-            "Try a broader query_key, or use search_content to find the symbol by text.",
+            "Try a broader query_key, or use CC Grep tool to find the symbol by text.",
         )
     if truncated:
         return (
@@ -262,7 +262,7 @@ def build_next_steps(
     if named and query_used in _query_types:
         names = [r["name"] for r in named[:3]]
         steps.append(
-            f"search_content(query='{'|'.join(names)}') to find callers of these elements"
+            f"Use CC Grep tool with pattern '{'|'.join(names)}' to find callers of these elements"
         )
 
     return steps[:3]

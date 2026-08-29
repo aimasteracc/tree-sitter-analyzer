@@ -322,26 +322,25 @@ class TestIntentAliasInvariance:
     """
 
     @pytest.mark.asyncio
-    async def test_locate_usage_search_content_invariance(
+    async def test_locate_usage_search_invariance(
         self, mcp_server, temp_test_file
     ):
-        """locate_usage 和 search_content 必须返回相同结果"""
-        # 使用 alias 调用
+        """locate_usage 和 search action=symbol 必须返回相同结果"""
+        # search_content は廃止済み。locate_usage は search (action=symbol) にルーティング。
         result_alias = await mcp_server.call_tool(
             "locate_usage",
             arguments={
-                "roots": [str(temp_test_file.parent)],
-                "query": "example_function",
+                "symbol": "example_function",
                 "output_format": "json",
             },
         )
 
-        # 使用原始名称调用
+        # 使用原始名称调用 (search action=symbol)
         result_original = await mcp_server.call_tool(
-            "search_content",
+            "search",
             arguments={
-                "roots": [str(temp_test_file.parent)],
-                "query": "example_function",
+                "action": "symbol",
+                "symbol": "example_function",
                 "output_format": "json",
             },
         )
@@ -352,7 +351,7 @@ class TestIntentAliasInvariance:
         )
 
         assert matches, (
-            f"Intent alias 'locate_usage' 与原始工具 'search_content' 返回不同结果:\n{diff}\n\n"
+            f"Intent alias 'locate_usage' 与 'search action=symbol' 返回不同结果:\n{diff}\n\n"
             f"Alias result: {json.dumps(result_alias, indent=2, ensure_ascii=False)}\n\n"
             f"Original result: {json.dumps(result_original, indent=2, ensure_ascii=False)}"
         )
@@ -453,26 +452,25 @@ class TestIntentAliasInvariance:
         )
 
     @pytest.mark.asyncio
-    async def test_find_impacted_code_find_and_grep_invariance(
+    async def test_find_impacted_code_query_invariance(
         self, mcp_server, temp_test_file
     ):
-        """find_impacted_code 和 find_and_grep 必须返回相同结果"""
+        """find_impacted_code 和 query action=query 必须返回相同结果"""
+        # find_and_grep は廃止済み。find_impacted_code は query にルーティング。
         result_alias = await mcp_server.call_tool(
             "find_impacted_code",
             arguments={
-                "roots": [str(temp_test_file.parent)],
-                "pattern": "*.py",
-                "query": "example",  # find_and_grep 使用 "query" 参数，不是 "search_pattern"
+                "file_path": str(temp_test_file),
+                "query_string": "example",
                 "output_format": "json",
             },
         )
 
         result_original = await mcp_server.call_tool(
-            "find_and_grep",
+            "query",
             arguments={
-                "roots": [str(temp_test_file.parent)],
-                "pattern": "*.py",
-                "query": "example",  # find_and_grep 使用 "query" 参数，不是 "search_pattern"
+                "file_path": str(temp_test_file),
+                "query_string": "example",
                 "output_format": "json",
             },
         )
@@ -482,7 +480,7 @@ class TestIntentAliasInvariance:
         )
 
         assert matches, (
-            f"Intent alias 'find_impacted_code' 与原始工具 'find_and_grep' 返回不同结果:\n{diff}"
+            f"Intent alias 'find_impacted_code' 与 'query action=query' 返回不同结果:\n{diff}"
         )
 
     @pytest.mark.asyncio
@@ -508,11 +506,12 @@ class TestIntentAliasInvariance:
             },
         )
 
+        # search_content は廃止済み。search action=symbol との比較に変更。
         result_original = await mcp_server.call_tool(
-            "search_content",
+            "search",
             arguments={
-                "roots": [str(temp_test_file.parent)],
-                "query": "example_function",
+                "action": "symbol",
+                "symbol": "example_function",
                 "output_format": "json",
             },
         )
@@ -525,8 +524,8 @@ class TestIntentAliasInvariance:
             result_alias2, result_original
         )
 
-        assert matches1, f"locate_usage 与 search_content 不匹配:\n{diff1}"
-        assert matches2, f"find_usage 与 search_content 不匹配:\n{diff2}"
+        assert matches1, f"locate_usage 与 search action=symbol 不匹配:\n{diff1}"
+        assert matches2, f"find_usage 与 search action=symbol 不匹配:\n{diff2}"
 
         # 两个 alias 之间也应该完全相同
         matches_aliases, diff_aliases = SemanticComparator.compare_tool_responses(
@@ -554,14 +553,6 @@ class TestIncompleteModificationDetection:
         required_fields = {"success"}
 
         tools_to_test = [
-            (
-                "search_content",
-                {
-                    "roots": [str(temp_test_file.parent)],
-                    "query": "example",
-                    "output_format": "json",
-                },
-            ),
             (
                 "list_files",
                 {

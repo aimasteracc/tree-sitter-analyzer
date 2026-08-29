@@ -385,7 +385,7 @@ def _summary_next_step(
     if content_format == "json":
         return "Use line metadata to choose the next exact range or query_code target."
     return (
-        "Inspect the content, then use query_code or search_content for related code."
+        "Inspect the content, then use query_code or CC Grep tool for related code."
     )
 
 
@@ -399,7 +399,8 @@ def _summary_suggested_tool(
         return "extract_code_section"
     if lines_extracted <= 25:
         return "query_code"
-    return "search_content"
+    # search_content は廃止済み。テキスト検索には CC 組み込みの Grep tool を使用。
+    return "query_code"
 
 
 def _summary_stop_condition(
@@ -455,7 +456,7 @@ def _batch_next_step(risk: str, truncated: bool, error_count: int) -> str:
         return "Fix invalid batch entries, then rerun only failed sections."
     if risk == "medium":
         return "Inspect the highest-value sections first, then narrow follow-up reads."
-    return "Use the extracted sections to continue with query_code or search_content."
+    return "Use the extracted sections to continue with query_code or CC Grep tool."
 
 
 def _batch_stop_condition(risk: str) -> str:

@@ -31,7 +31,7 @@ class TestBuildMatchFn:
     def test_wildcard_prefix(self):
         fn = _build_match_fn("*Tool")
         assert fn("QueryTool")
-        assert fn("SearchContentTool")
+        assert fn("AnalyzerTool")
         assert fn("query_tool")  # case-insensitive
         assert not fn("ToolFactory")  # doesn't end with Tool
 
@@ -114,7 +114,7 @@ class QueryTool:
     pass
 
 
-class SearchContentTool:
+class AnalyzerTool:
     pass
 
 

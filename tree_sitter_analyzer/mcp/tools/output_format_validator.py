@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Output format parameter validation for search_content tool.
+Output format parameter validation for search tools.
 
 Ensures mutual exclusion of output format parameters to prevent conflicts
 and provides multilingual error messages with token efficiency guidance.
+
+Note: search_content (SearchContentTool) is deprecated. Use CC Grep tool instead.
 """
 
 from typing import Any

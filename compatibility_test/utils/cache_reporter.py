@@ -78,21 +78,7 @@ class CacheReporter:
             if "hit_rate" in ae_stats:
                 summary["cache_hit_rates"]["analysis_engine"] = ae_stats["hit_rate"]
 
-        # Search Content キャッシュ
-        if "search_content" in cache_stats and not cache_stats["search_content"].get(
-            "error"
-        ):
-            sc_stats = cache_stats["search_content"]
-            summary["total_cache_systems"] += 1
-
-            if sc_stats.get("size", 0) > 0:
-                summary["active_caches"] += 1
-                summary["total_cached_items"] += sc_stats.get("size", 0)
-
-            if "hit_rate_percent" in sc_stats:
-                summary["cache_hit_rates"]["search_content"] = sc_stats[
-                    "hit_rate_percent"
-                ]
+        # Search Content キャッシュは廃止済み (SearchContentTool 削除)
 
         # 潜在的な問題を特定
         if summary["active_caches"] > 0:
@@ -112,7 +98,7 @@ class CacheReporter:
         """詳細情報を生成"""
         details = {
             "analysis_engine_cache": {},
-            "search_content_cache": {},
+            # search_content_cache は廃止済み (SearchContentTool 削除)
             "cache_configurations": {},
         }
 
@@ -134,24 +120,7 @@ class CacheReporter:
             else:
                 details["analysis_engine_cache"]["error"] = ae_stats["error"]
 
-        # Search Content の詳細
-        if "search_content" in cache_stats:
-            sc_stats = cache_stats["search_content"]
-            if not sc_stats.get("error"):
-                details["search_content_cache"] = {
-                    "type": "LRU + TTL キャッシュ",
-                    "current_size": sc_stats.get("size", 0),
-                    "max_size": sc_stats.get("max_size", 0),
-                    "ttl_seconds": sc_stats.get("ttl_seconds", 0),
-                    "hits": sc_stats.get("hits", 0),
-                    "misses": sc_stats.get("misses", 0),
-                    "hit_rate_percent": sc_stats.get("hit_rate_percent", 0),
-                    "evictions": sc_stats.get("evictions", 0),
-                    "expired_entries": sc_stats.get("expired_entries", 0),
-                    "storage": "メモリ内 (プロセス終了時に消失)",
-                }
-            else:
-                details["search_content_cache"]["error"] = sc_stats["error"]
+        # search_content キャッシュは廃止済み (SearchContentTool 削除)
 
         # キャッシュ設定情報
         details["cache_configurations"] = {
@@ -160,11 +129,6 @@ class CacheReporter:
                 "l1_default_size": 100,
                 "l2_default_size": 1000,
                 "l3_default_size": 10000,
-            },
-            "search_content": {
-                "default_ttl": "3600秒 (1時間)",
-                "default_max_size": 1000,
-                "eviction_policy": "LRU (Least Recently Used)",
             },
         }
 
@@ -187,12 +151,7 @@ class CacheReporter:
             ):
                 active_caches += 1
 
-        if "search_content" in cache_stats and not cache_stats["search_content"].get(
-            "error"
-        ):
-            sc_stats = cache_stats["search_content"]
-            if sc_stats.get("size", 0) > 0:
-                active_caches += 1
+        # search_content キャッシュは廃止済み
 
         if active_caches > 0:
             recommendations.append(
@@ -202,8 +161,8 @@ class CacheReporter:
                 "💡 --no-cache-clear オプションを使用せず、デフォルトのキャッシュクリア機能を有効にしてください。"
             )
 
-        # ヒット率の確認
-        for cache_name in ["analysis_engine", "search_content"]:
+        # ヒット率の確認 (search_content は廃止済み)
+        for cache_name in ["analysis_engine"]:
             if cache_name in cache_stats and not cache_stats[cache_name].get("error"):
                 stats = cache_stats[cache_name]
                 hit_rate_key = (
@@ -267,26 +226,7 @@ class CacheReporter:
                     f"Analysis Engineのヒット率が高い ({hit_rate:.1%})"
                 )
 
-        # Search Content キャッシュの影響
-        if "search_content" in cache_stats and not cache_stats["search_content"].get(
-            "error"
-        ):
-            sc_stats = cache_stats["search_content"]
-            size = sc_stats.get("size", 0)
-            hit_rate = sc_stats.get("hit_rate_percent", 0) / 100.0
-
-            max_risk_score += 0.6
-            if size > 0:
-                risk_score += 0.3
-                impact_analysis["risk_factors"].append(
-                    f"Search Contentに{size}個のキャッシュエントリが存在"
-                )
-
-            if hit_rate > 0.3:  # 30%以上
-                risk_score += 0.3
-                impact_analysis["risk_factors"].append(
-                    f"Search Contentのヒット率が高い ({hit_rate:.1%})"
-                )
+        # Search Content キャッシュは廃止済み (SearchContentTool 削除)
 
         # リスクレベルの決定
         if max_risk_score > 0:
@@ -387,22 +327,7 @@ class CacheReporter:
             md_lines.append(f"- **エラー**: {ae_cache['error']}")
             md_lines.append("")
 
-        md_lines.extend(["#### Search Content キャッシュ", ""])
-
-        sc_cache = report["details"]["search_content_cache"]
-        if "error" not in sc_cache:
-            md_lines.extend(
-                [
-                    f"- **タイプ**: {sc_cache.get('type', 'N/A')}",
-                    f"- **現在のサイズ**: {sc_cache.get('current_size', 0)}",
-                    f"- **最大サイズ**: {sc_cache.get('max_size', 0)}",
-                    f"- **TTL**: {sc_cache.get('ttl_seconds', 0)}秒",
-                    f"- **ヒット数**: {sc_cache.get('hits', 0)}",
-                    f"- **ミス数**: {sc_cache.get('misses', 0)}",
-                    f"- **エビクション数**: {sc_cache.get('evictions', 0)}",
-                    "",
-                ]
-            )
+        # Search Content キャッシュは廃止済み (SearchContentTool 削除)
         else:
             md_lines.append(f"- **エラー**: {sc_cache['error']}")
             md_lines.append("")

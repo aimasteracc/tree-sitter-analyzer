@@ -677,13 +677,11 @@ def _build_tool_routing() -> dict[str, str]:
         "read_lines": (
             "structure action=read file_path='...' start_line=1 end_line=100"
         ),
-        # Symbol + text search (8-facade names — Wave C2 surface)
+        # Symbol + text search (facade names — Wave C2 surface)
         "find_symbol": (
             "search action=symbol query='...'  # wildcards: *Service, fuzzy: ~analyz"
         ),
-        "search_text": ("search action=content query='...' total_only=true  # ~10 tok"),
         "find_files": "project action=files path='.' extensions=['py']",
-        "find_and_grep": "search action=grep query='...' roots=['.']",
         # Deep analysis
         "deps": "health action=deps mode='summary'",
         "call_graph": "nav action=callers scope=graph",

@@ -293,7 +293,7 @@ def test_bespoke_route_bypasses_inner_execute() -> None:
 
 
 def test_bespoke_handles_int_return() -> None:
-    """F5: search_content/find_and_grep can return a bare int (exit code) when
+    """F5: a bespoke handler can return a bare int (exit code) when
     suppress_output=True. The facade must tolerate the union return type."""
 
     async def _bespoke(args: dict[str, Any]) -> int:

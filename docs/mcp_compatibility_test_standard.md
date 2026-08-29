@@ -143,8 +143,8 @@ tree-sitter-analyzer/
 4. `extract_code_section`
 5. `set_project_path`
 6. `list_files`
-7. `find_and_grep`
-8. `search_content`
+~~7. `find_and_grep`~~ *(廃止済み)*
+~~8. `search_content`~~ *(廃止済み)*
 
 ### 4.2. テストケースの定義
 
@@ -231,7 +231,7 @@ tree-sitter-analyzer/
 
 テストの透明性を高めるため、テスト実行前後のキャッシュ状態を記録し、分析レポートに含めることを推奨します。
 
-- `compatibility_test/utils/cache_reporter.py` は、各キャッシュシステム（`UnifiedAnalysisEngine` および `SearchContentTool`）の統計情報（ヒット率、アイテム数など）を取得し、レポートを生成する機能を提供します。
+- `compatibility_test/utils/cache_reporter.py` は、各キャッシュシステム（`UnifiedAnalysisEngine`）の統計情報（ヒット率、アイテム数など）を取得し、レポートを生成する機能を提供します。（`SearchContentTool` は廃止済み）
 - テスト結果に予期せぬ一致や不一致が見られた場合、このキャッシュレポートを参照することで、キャッシュが影響しているかどうかを判断する手がかりとなります。
 
 #### 4.4.3. キャッシュ管理の重要性
@@ -304,7 +304,7 @@ diff <(jq -S . compatibility_test/results/vA/output.json) <(jq -S . compatibilit
 
 | ツール | テストケースID | 変更内容 |
 | :--- | :--- | :--- |
-| `find_and_grep` | `python_class` | `meta`情報に`execution_time`が追加 |
+| ~~`find_and_grep`~~ | *(廃止済み)* | — |
 
 ### 2.3. バグ/意図しない変更
 

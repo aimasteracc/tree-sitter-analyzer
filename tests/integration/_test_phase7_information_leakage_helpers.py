@@ -4,8 +4,11 @@ from collections.abc import Iterable
 from typing import Any
 
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
+from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
+
+# NOTE: SearchContentTool (search_content) is deprecated and removed.
+# Text search is now done via CC built-in Grep tool.
 
 SENSITIVE_ERROR_FRAGMENTS = [
     "passwd",
@@ -54,9 +57,9 @@ def create_information_leakage_test_cases(
             "description": "Windows system file access",
         },
         {
-            "tool": SearchContentTool(secure_test_project),
-            "params": {"roots": ["/etc"], "query": "password"},
-            "description": "System directory search",
+            "tool": ListFilesTool(secure_test_project),
+            "params": {"roots": ["/etc"]},
+            "description": "System directory listing",
         },
     ]
 

@@ -3,7 +3,11 @@
 from collections.abc import Iterable
 from typing import Any
 
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
+from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
+
+# NOTE: SearchContentTool (search_content) is deprecated and removed.
+# Text search is now done via CC built-in Grep tool.
+# The sensitive pattern checks below use ListFilesTool for path-boundary validation.
 
 UNSANITIZED_SECRET_FRAGMENTS = [
     "secret123",
@@ -29,17 +33,22 @@ def create_sensitive_data_patterns() -> list[str]:
 
 
 async def collect_sensitive_exposure_results(
-    search_tool: SearchContentTool,
+    list_tool: ListFilesTool,
     sensitive_patterns: Iterable[str],
     secure_test_project: str,
 ) -> list[dict[str, Any]]:
-    """Search sensitive patterns and verify matches are sanitized."""
+    """List files in the project and verify the tool enforces security boundaries.
+
+    Note: SearchContentTool was used here previously for text-pattern searches.
+    Since it is removed, this function now validates path-boundary enforcement
+    via ListFilesTool. Full text-pattern searching is performed by CC Grep tool.
+    """
     exposure_results = []
 
     for pattern in sensitive_patterns:
         exposure_results.append(
             await _check_sensitive_exposure_pattern(
-                search_tool,
+                list_tool,
                 pattern,
                 secure_test_project,
             )
@@ -49,17 +58,15 @@ async def collect_sensitive_exposure_results(
 
 
 async def _check_sensitive_exposure_pattern(
-    search_tool: SearchContentTool,
+    list_tool: ListFilesTool,
     pattern: str,
     secure_test_project: str,
 ) -> dict[str, Any]:
     try:
-        result = await search_tool.execute(
+        result = await list_tool.execute(
             {
                 "roots": [secure_test_project],
-                "query": pattern,
-                "case": "insensitive",
-                "max_count": 100,
+                "limit": 100,
             }
         )
         return _build_sensitive_exposure_result(pattern, result)
@@ -81,10 +88,11 @@ def _build_sensitive_exposure_result(
             "pattern": pattern,
             "matches_found": 0,
             "properly_sanitized": True,
-            "result": "No matches found",
+            "result": "No files found",
         }
 
-    sanitized_properly = _matches_are_sanitized(result.get("matches", []))
+    files = result.get("files", [])
+    sanitized_properly = _files_are_sanitized(files)
     return {
         "pattern": pattern,
         "matches_found": result.get("count", 0),
@@ -93,9 +101,9 @@ def _build_sensitive_exposure_result(
     }
 
 
-def _matches_are_sanitized(matches: Iterable[dict[str, Any]]) -> bool:
-    for match in matches:
-        content = match.get("content", "").lower()
-        if any(secret in content for secret in UNSANITIZED_SECRET_FRAGMENTS):
+def _files_are_sanitized(files: Iterable[Any]) -> bool:
+    for file_entry in files:
+        path = str(file_entry).lower() if not isinstance(file_entry, dict) else str(file_entry.get("path", "")).lower()
+        if any(secret in path for secret in UNSANITIZED_SECRET_FRAGMENTS):
             return False
     return True

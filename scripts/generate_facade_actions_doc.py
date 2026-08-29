@@ -129,15 +129,7 @@ BESPOKE_ROUTE_SPECS: dict[tuple[str, str], dict[str, Any]] = {
         ),
         "source": "nav_facade.py::_co_change_route",
     },
-    ("search", "content"): {
-        # _content_route forwards args verbatim to SearchContentTool.execute,
-        # so the inner's strict schema is the authoritative param contract.
-        "schema_from": (
-            "tree_sitter_analyzer.mcp.tools.search_content_tool",
-            "SearchContentTool",
-        ),
-        "source": "search_facade.py::_content_route",
-    },
+    # ("search", "content"): SearchContentTool は廃止済み。CC Grep tool を使用すること。
     ("structure", "read"): {
         "params": (
             "single: `file_path`* + `start_line`* [+ `end_line`, `start_column`, "

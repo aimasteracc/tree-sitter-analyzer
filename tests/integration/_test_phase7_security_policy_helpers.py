@@ -7,11 +7,12 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
     AnalyzeCodeStructureTool as TableFormatTool,
 )
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
-from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
 from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
+
+# NOTE: FindAndGrepTool (find_and_grep) and SearchContentTool (search_content)
+# are deprecated and removed. Text search is now done via CC built-in Grep tool.
 
 
 def create_security_policy_test_cases() -> list[dict[str, Any]]:
@@ -125,9 +126,6 @@ async def _execute_security_policy_case(
 
     if isinstance(tool, ListFilesTool):
         return await tool.execute({"roots": [test_data]})
-
-    if isinstance(tool, SearchContentTool | FindAndGrepTool):
-        return await tool.execute({"roots": [test_data], "query": "test"})
 
     raise TypeError(
         f"Unsupported tool for policy consistency test: {tool.__class__.__name__}"

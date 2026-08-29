@@ -361,7 +361,7 @@ class TestBuildNextStepsTestMixin:
             },
         ]
         steps = tool._build_next_steps(results, "test.py", "methods")
-        assert any("search_content" in s for s in steps)
+        assert any("Grep" in s or "grep" in s for s in steps)
 
     def test_named_results_with_function_query_suggests_search(self, tool):
         results = [
@@ -374,7 +374,7 @@ class TestBuildNextStepsTestMixin:
             },
         ]
         steps = tool._build_next_steps(results, "test.py", "functions")
-        assert any("search_content" in s for s in steps)
+        assert any("Grep" in s or "grep" in s for s in steps)
 
     def test_unnamed_results_no_search_suggestion(self, tool):
         results = [
@@ -386,6 +386,7 @@ class TestBuildNextStepsTestMixin:
             },
         ]
         steps = tool._build_next_steps(results, "test.py", "methods")
+        # search_content is deprecated; CC Grep guidance should not reference it
         assert not any("search_content" in s for s in steps)
 
     def test_non_method_function_query_no_search(self, tool):

@@ -61,15 +61,7 @@ def _load_mcp_tool_class(tool_name: str) -> type[Any]:
 
         return ListFilesTool
 
-    if tool_name == "find_and_grep":
-        from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
-
-        return FindAndGrepTool
-
-    if tool_name == "search_content":
-        from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
-
-        return SearchContentTool
+    # find_and_grep (FindAndGrepTool) と search_content (SearchContentTool) は廃止済み
 
     raise ValueError(f"未知のツール名: {tool_name}")
 

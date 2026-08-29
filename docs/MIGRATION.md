@@ -81,8 +81,8 @@ The table below is the canonical mapping maintained in
 |---|---|
 | `codegraph_symbol_search` | `search` `action=symbol` |
 | `query_code` | `search` `action=query` (tree-sitter .scm DSL — distinct from symbol search) |
-| `search_content` | `search` `action=content` |
-| `find_and_grep` | `search` `action=grep` |
+| `search_content` | **廃止済み** — CC 組み込み Grep tool を使用 |
+| `find_and_grep` | **廃止済み** — CC 組み込み Glob + Grep tool を使用 |
 | `batch_search` | `search` `action=batch` |
 | `codegraph_query` | `search` `action=chain` |
 

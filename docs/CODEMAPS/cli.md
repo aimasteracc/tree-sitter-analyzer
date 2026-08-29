@@ -9,9 +9,9 @@ Five console-script entry points + flag-based dispatch through `cli_main.py`.
 |---|---|---|
 | `tree-sitter-analyzer` | `cli_main.py` | `json` |
 | `tree-sitter-analyzer-mcp` | `mcp/server.py` (stdio) | `json` |
-| `find-and-grep` | `cli/commands/find_and_grep_cli.py` | `json` |
+| ~~`find-and-grep`~~ | *(廃止済み)* | — |
 | `list-files` | `cli/commands/list_files_cli.py` | `json` |
-| `search-content` | `cli/commands/search_content_cli.py` | `json` |
+| ~~`search-content`~~ | *(廃止済み)* | — |
 
 All output formats are JSON. TOON has been removed.
 
@@ -27,9 +27,9 @@ cli/commands/
 ├── structure_command.py        ← --table full
 ├── summary_command.py          ← --summary
 ├── table_command.py            ← table rendering helpers
-├── find_and_grep_cli.py        ← fd + ripgrep subcommands
+├── find_and_grep_cli.py        ← fd + ripgrep subcommands (廃止済み)
 ├── list_files_cli.py           ← `list-files` subcommand
-├── search_content_cli.py       ← `search-content` subcommand
+├── search_content_cli.py       ← `search-content` subcommand (廃止済み)
 ├── mcp_commands/               ← MCP-equivalent CLI flags (parity contract; package)
 └── codegraph_index_commands.py ← cache commands: autoindex / full-index / incremental-sync / metrics / knowledge graph index
 ```
@@ -75,8 +75,8 @@ Categories of CLI surface:
 ### Discovery
 - `--project-card` — the project card (RFC-0027 §L7): purpose from the README, top code languages, entry points, key config files, and per-module descriptions of the top-level structure. Persistent — built once into `.tree-sitter-cache/project-index.json` and recalled instantly. MCP twin: `project action=card`
 - `list-files` subcommand — fd wrapper
-- `search-content` subcommand — ripgrep wrapper
-- `find-and-grep` subcommand — combined pipeline
+- ~~`search-content` subcommand~~ — *(廃止済み: CC Grep tool を使用)*
+- ~~`find-and-grep` subcommand~~ — *(廃止済み: CC Glob + Grep tool を使用)*
 - `--detect-routes` — framework route detection
 
 ### Cache & Index

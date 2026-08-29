@@ -62,8 +62,8 @@ def register_tools(server: Any, server_instance: Any) -> None:
             server_instance.validate_file_path_security(arguments)
             result = await _dispatch_tool(server_instance, name, arguments)
             # Central envelope normalization: tools that return their own
-            # ``{success: False, ...}`` dicts (find_and_grep, refactoring_suggestions,
-            # read_partial, query, search_content) get the canonical
+            # ``{success: False, ...}`` dicts (refactoring_suggestions,
+            # read_partial, query) get the canonical
             # ``agent_summary``/``summary_line``/``error_type`` keys added here
             # — without losing any tool-specific fields they already set.
             if isinstance(result, dict) and result.get("success") is False:

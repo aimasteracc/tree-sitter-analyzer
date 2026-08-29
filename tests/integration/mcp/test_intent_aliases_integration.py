@@ -61,10 +61,11 @@ class ExampleClass:
 
     @pytest.mark.asyncio
     @pytest.mark.requires_ripgrep
-    async def test_locate_usage_alias_calls_search_content(
+    async def test_locate_usage_alias_calls_search(
         self, server, temp_python_file
     ):
-        """locate_usage alias 应该调用 search_content 工具并返回正确格式"""
+        """locate_usage alias 应该调用 search 工具并返回正确格式
+        (search_content は廃止済み; locate_usage は search action=symbol にルーティング)"""
         # Use alias name
         result = await server.call_tool(
             "locate_usage",
@@ -128,35 +129,9 @@ class ExampleClass:
         assert "example_function" in result_str
         assert "ExampleClass" in result_str
 
-    @pytest.mark.asyncio
-    @pytest.mark.requires_ripgrep
-    async def test_original_tool_name_still_works(self, server, temp_python_file):
-        """原始工具名应该仍然有效（向后兼容）"""
-        # Call with original name
-        result_original = await server.call_tool(
-            "search_content",
-            arguments={
-                "roots": [str(temp_python_file.parent)],
-                "query": "example_function",
-                "output_format": "json",
-            },
-        )
-
-        # Call with alias
-        result_alias = await server.call_tool(
-            "locate_usage",
-            arguments={
-                "roots": [str(temp_python_file.parent)],
-                "query": "example_function",
-                "output_format": "json",
-            },
-        )
-
-        # Results should be identical (both return same tool's response)
-        assert result_original["success"] == result_alias["success"]
-        assert result_original["count"] == result_alias["count"]
-        # Results content should match
-        assert result_original["results"] == result_alias["results"]
+    # test_original_tool_name_still_works は廃止済み:
+    # search_content は削除されたため、直接呼び出すと ValueError になる。
+    # locate_usage は現在 search (action=symbol) にルーティングされる。
 
 
 class TestIntentAliasErrorHandling:
@@ -277,10 +252,11 @@ class TestAliasWithAllToolParameters:
             yield tmpdir_path
 
     @pytest.mark.asyncio
-    async def test_locate_usage_supports_all_search_content_params(
+    async def test_locate_usage_supports_search_params(
         self, server, temp_dir_with_files
     ):
-        """locate_usage 应该支持 search_content 的所有参数"""
+        """locate_usage 应该支持 search ツールのパラメータ
+        (search_content は廃止済み; locate_usage は search にルーティング)"""
         result = await server.call_tool(
             "locate_usage",
             arguments={

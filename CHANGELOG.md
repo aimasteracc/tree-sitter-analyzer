@@ -1,5 +1,27 @@
 # Changelog
 
+## [Unreleased] - search_content / find_and_grep 廃止
+
+### Removed
+
+- **`search_content` (SearchContentTool)**: 廃止・削除。テキストグレップには CC 組み込みの Grep tool を使用すること。
+- **`find_and_grep` (FindAndGrepTool)**: 廃止・削除。ファイル絞り込み + テキスト検索には CC 組み込みの Glob tool + Grep tool (2ステップ) を使用すること。
+- **Intent aliases の更新**:
+  - `locate_usage` / `find_usage` → `"search"` (search action=symbol) にルーティング変更
+  - `find_impacted_code` → `"query"` (query_code) にルーティング変更
+
+### Migration
+
+```
+旧: search_content(query="class Foo")
+新: CC 組み込み Grep tool で "class Foo" を検索
+
+旧: find_and_grep(pattern="*.py", query="class Foo")
+新: CC 組み込み Glob tool で *.py を取得 → Grep tool で "class Foo" を検索
+```
+
+---
+
 ## [1.29.0] - 2026-07-04
 
 Install-friction reduction release. This release makes TSA significantly easier to set up for first-time users and adds a diagnostic command for troubleshooting.

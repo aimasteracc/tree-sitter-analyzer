@@ -69,7 +69,7 @@ def normalize_envelope(
     # ``result["verdict"]`` to equal ``result["agent_summary"]["verdict"]``
     # (not None) whenever the agent_summary carries a verdict. Doing it
     # in the central normalizer fixes the four search/navigation drifters
-    # (search_content, query, find_and_grep, list_files) in one shot.
+    # (query, list_files, batch_search) in one shot.
     if "verdict" not in result or result.get("verdict") is None:
         agent_summary = result.get("agent_summary")
         if isinstance(agent_summary, dict) and isinstance(

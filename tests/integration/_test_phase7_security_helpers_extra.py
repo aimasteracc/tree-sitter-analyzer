@@ -6,7 +6,11 @@ from collections.abc import Iterable
 from typing import Any
 
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
+from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
+
+# NOTE: SearchContentTool (search_content) is deprecated and removed.
+# Text search is now done via CC built-in Grep tool.
+# The "normal query" checks below now use ListFilesTool instead.
 
 PATH_TRAVERSAL_CHECKS = [
     "../../../etc/passwd",
@@ -25,21 +29,21 @@ async def collect_comprehensive_security_checks(
 ) -> list[dict[str, Any]]:
     """Run the mixed checks used by the comprehensive security test."""
     scale_tool = AnalyzeScaleTool(secure_test_project)
-    search_tool = SearchContentTool(secure_test_project)
+    list_tool = ListFilesTool(secure_test_project)
 
     security_checks = []
     security_checks.extend(
         await _collect_path_traversal_checks(scale_tool, PATH_TRAVERSAL_CHECKS)
     )
     security_checks.extend(
-        await _collect_normal_query_checks(
-            search_tool,
+        await _collect_normal_listing_checks(
+            list_tool,
             NORMAL_QUERY_CHECKS,
             secure_test_project,
         )
     )
     security_checks.append(
-        await _collect_normal_search_check(search_tool, secure_test_project)
+        await _collect_normal_listing_check(list_tool, secure_test_project)
     )
 
     return security_checks
@@ -63,7 +67,7 @@ def assert_comprehensive_security_checks(
     _assert_path_traversal_protection(security_checks)
     _assert_relevant_security_score(security_checks, security_score)
 
-    print("✅ All security integration tests passed!")
+    print("All security integration tests passed!")
 
 
 def _print_comprehensive_security_summary(
@@ -97,7 +101,7 @@ def _assert_path_traversal_protection(
         assert path_traversal_score >= 0.80, (
             f"Path traversal protection too low: {path_traversal_score:.2%}"
         )
-        print(f"✅ Path traversal protection: {path_traversal_score:.2%}")
+        print(f"Path traversal protection: {path_traversal_score:.2%}")
 
 
 def _assert_relevant_security_score(
@@ -151,28 +155,26 @@ async def _collect_path_traversal_check(
         }
 
 
-async def _collect_normal_query_checks(
-    search_tool: SearchContentTool,
+async def _collect_normal_listing_checks(
+    list_tool: ListFilesTool,
     queries: Iterable[str],
     secure_test_project: str,
 ) -> list[dict[str, Any]]:
     return [
-        await _collect_normal_query_check(search_tool, query, secure_test_project)
+        await _collect_normal_listing_check(list_tool, secure_test_project, query)
         for query in queries
     ]
 
 
-async def _collect_normal_query_check(
-    search_tool: SearchContentTool,
-    query: str,
+async def _collect_normal_listing_check(
+    list_tool: ListFilesTool,
     secure_test_project: str,
+    query: str = "normal",
 ) -> dict[str, Any]:
     try:
         start_time = time.time()
         await asyncio.wait_for(
-            search_tool.execute(
-                {"roots": [secure_test_project], "query": query, "max_count": 5}
-            ),
+            list_tool.execute({"roots": [secure_test_project], "limit": 5}),
             timeout=10.0,
         )
         execution_time = time.time() - start_time
@@ -195,32 +197,4 @@ async def _collect_normal_query_check(
             "attack": query[:20] + "...",
             "blocked": True,
             "result": f"Exception: {type(exc).__name__}",
-        }
-
-
-async def _collect_normal_search_check(
-    search_tool: SearchContentTool,
-    secure_test_project: str,
-) -> dict[str, Any]:
-    try:
-        await search_tool.execute(
-            {
-                "roots": [secure_test_project],
-                "query": "test",
-                "case": "insensitive",
-                "max_count": 10,
-            }
-        )
-        return {
-            "check": "normal_search",
-            "attack": "test search",
-            "blocked": False,
-            "result": "Normal search completed",
-        }
-    except Exception as exc:
-        return {
-            "check": "normal_search",
-            "attack": "test search",
-            "blocked": True,
-            "result": f"Unexpected exception: {type(exc).__name__}",
         }

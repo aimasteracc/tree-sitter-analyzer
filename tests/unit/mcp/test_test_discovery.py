@@ -386,18 +386,18 @@ class TestFindTestFilesPython:
             results = find_test_files(str(source), tmp)
             assert "tests/unit/mcp/test_refactoring_suggestions_tool.py" in results
 
-    def test_finds_python_family_tests_for_stacked_search_content_helpers(self):
-        """Stacked helper suffixes should peel back to the search_content family."""
+    def test_finds_python_family_tests_for_stacked_query_helpers(self):
+        """Stacked helper suffixes should peel back to the query_code family."""
         helper_names = (
-            "search_content_agent_summary.py",
-            "search_content_response_modes.py",
-            "search_content_validation.py",
+            "query_agent_summary.py",
+            "query_response_modes.py",
+            "query_validation.py",
         )
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            test = root / "tests" / "unit" / "mcp" / "test_search_content_tool.py"
+            test = root / "tests" / "unit" / "mcp" / "test_query_tool.py"
             test.parent.mkdir(parents=True)
-            test.write_text("def test_search_content(): pass")
+            test.write_text("def test_query_tool(): pass")
 
             for helper_name in helper_names:
                 source = root / "tree_sitter_analyzer" / "mcp" / "tools" / helper_name
@@ -405,10 +405,10 @@ class TestFindTestFilesPython:
                 source.write_text("def helper(): pass")
 
                 results = find_test_files(str(source), tmp)
-                assert "tests/unit/mcp/test_search_content_tool.py" in results
+                assert "tests/unit/mcp/test_query_tool.py" in results
 
-    def test_finds_python_family_tests_for_find_and_grep_execution_helper(self):
-        """Execution helper modules should peel back to the find_and_grep family."""
+    def test_finds_python_family_tests_for_list_files_execution_helper(self):
+        """Execution helper modules should peel back to the list_files family."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = (
@@ -416,17 +416,17 @@ class TestFindTestFilesPython:
                 / "tree_sitter_analyzer"
                 / "mcp"
                 / "tools"
-                / "find_and_grep_execution.py"
+                / "list_files_execution.py"
             )
             source.parent.mkdir(parents=True)
             source.write_text("def helper(): pass")
 
-            test = root / "tests" / "unit" / "mcp" / "test_find_and_grep_tool.py"
+            test = root / "tests" / "unit" / "mcp" / "test_list_files_tool.py"
             test.parent.mkdir(parents=True)
-            test.write_text("def test_find_and_grep(): pass")
+            test.write_text("def test_list_files(): pass")
 
             results = find_test_files(str(source), tmp)
-            assert "tests/unit/mcp/test_find_and_grep_tool.py" in results
+            assert "tests/unit/mcp/test_list_files_tool.py" in results
 
     def test_finds_python_family_tests_for_sources_helper(self):
         """r37q dogfood: ``parser_readiness_sources.py`` must inherit

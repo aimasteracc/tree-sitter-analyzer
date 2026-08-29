@@ -109,8 +109,7 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "extract_code_section": ("main", "--partial-read"),
         "query_code": ("main", "--query-key"),
         "list_files": ("script", "list-files"),
-        "search_content": ("script", "search-content"),
-        "find_and_grep": ("script", "find-and-grep"),
+        # "search_content" と "find_and_grep" は廃止済み
         "list_agent_skills": ("main", "--agent-skills"),
         "get_agent_workflow": ("main", "--agent-workflow"),
         "advise_parser_readiness": ("main", "--parser-readiness"),
@@ -346,13 +345,13 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
     expected_inner: dict[tuple[str, str], str] = {
         ("search", "symbol"): "CodeGraphSymbolSearchTool",
         ("search", "query"): "QueryTool",
-        ("search", "grep"): "FindAndGrepTool",
+        # ("search", "grep"): "FindAndGrepTool",  # 廃止済み
         ("search", "batch"): "BatchSearchTool",
         ("search", "chain"): "CodeGraphQueryTool",
         ("search", "select"): "HyphaeSelectTool",
         ("search", "subscribe"): "HyphaeSubscribeTool",
         ("search", "unsubscribe"): "HyphaeUnsubscribeTool",
-        ("search", "content"): "<bespoke>",
+        # ("search", "content"): "<bespoke>",  # 廃止済み (SearchContentTool)
         ("nav", "navigate"): "CodeGraphNavigateTool",
         ("nav", "call_path"): "CodeGraphCallPathTool",
         ("nav", "xref"): "CodeGraphXRefTool",

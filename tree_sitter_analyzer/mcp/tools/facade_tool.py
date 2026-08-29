@@ -24,9 +24,7 @@ F5 — bespoke routing
     Three production routes bypass ``registry[name].execute()``:
     ``analyze_code_structure`` -> ``table_format_tool``,
     ``extract_code_section`` -> ``handle_extract_code_section`` (batch
-    reshaping), and ``search_content`` / ``find_and_grep`` whose
-    ``execute`` returns ``dict | int`` (bare int = exit code when
-    ``suppress_output=True``). These register as ``bespoke_map`` callables;
+    reshaping). These register as ``bespoke_map`` callables;
     the facade forwards the cleaned args (control keys stripped) but does
     NOT project them to an inner schema — the bespoke callable owns its own
     arg handling — and tolerates a non-dict return.
@@ -81,7 +79,7 @@ def _with_provenance(result: Any, key: Any, served_from: str) -> Any:
 
 
 # A bespoke route may return ``dict`` (normal envelope) or ``int`` (exit code
-# when suppress_output=True, mirroring search_content / find_and_grep).
+# when suppress_output=True).
 BespokeHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 
 # Facade control keys that are never forwarded to an inner tool unless the

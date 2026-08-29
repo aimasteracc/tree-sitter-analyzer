@@ -3,7 +3,7 @@
 
 Issue #513 leg 3: GetCodeOutlineTool must cap large responses by default so
 MCP agents stay within context-window budgets, following the honest-truncation
-pattern from DF-13 (callers) and DF-1 (search_content).
+pattern from DF-13 (callers) and DF-1 (read_partial).
 
 Cap design:
   DEFAULT_OUTLINE_CLASSES_CAP = 50  — max classes listed in MCP default

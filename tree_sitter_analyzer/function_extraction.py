@@ -470,8 +470,8 @@ def _collect_fixture_types(
 
     A pytest test parameter is named after a fixture function; if that fixture
     returns ``ClassName(...)``, the test's parameter has that type. This is the
-    dominant test pattern (``def tool(): return SearchContentTool()`` +
-    ``def test(self, tool): tool.execute()`` → tool: SearchContentTool). Static,
+    dominant test pattern (``def tool(): return SomeTool()`` +
+    ``def test(self, tool): tool.execute()`` → tool: SomeTool). Static,
     no runtime. Python only.
     """
     if language != "python":

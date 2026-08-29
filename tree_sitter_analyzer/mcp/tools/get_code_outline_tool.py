@@ -635,7 +635,7 @@ class GetCodeOutlineTool(BaseMCPTool):
                 "\n"
                 "WHEN NOT TO USE:\n"
                 "- When you need the actual code content (method bodies) — use extract_code_section\n"
-                "- When you're searching for specific text patterns — use search_content instead\n"
+                "- When you're searching for specific text patterns — use CC Grep tool instead\n"
                 "- Files < 100 lines — just Read them directly, an outline adds no value\n"
                 "\n"
                 "IMPORTANT: get_code_outline = navigation map (structure without content). "

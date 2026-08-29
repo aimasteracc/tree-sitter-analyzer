@@ -25,9 +25,9 @@ tree_sitter_analyzer/cli/agent_skills_metadata.py
 tree_sitter_analyzer/cli/agent_skills_validation.py
 tree_sitter_analyzer/cli/argument_validator.py
 tree_sitter_analyzer/cli/commands/advanced_command_helpers.py
-tree_sitter_analyzer/cli/commands/find_and_grep_cli_helpers.py
+# tree_sitter_analyzer/cli/commands/find_and_grep_cli_helpers.py  # 廃止済み
 tree_sitter_analyzer/cli/commands/mcp_command_helpers.py
-tree_sitter_analyzer/cli/commands/search_content_cli_helpers.py
+# tree_sitter_analyzer/cli/commands/search_content_cli_helpers.py  # 廃止済み
 tree_sitter_analyzer/cli/commands/sql_platform_helpers.py
 tree_sitter_analyzer/cli/commands/table_command_helpers.py
 tree_sitter_analyzer/cli/parser_readiness_package.py
@@ -180,16 +180,16 @@ tree_sitter_analyzer/mcp/server_utils/prompt_registration.py
 tree_sitter_analyzer/mcp/server_utils/resource_registration.py
 tree_sitter_analyzer/mcp/server_utils/smart_prompts.py
 tree_sitter_analyzer/mcp/server_utils/tool_registration.py
-tree_sitter_analyzer/mcp/tools/find_and_grep_agent_summary.py
-tree_sitter_analyzer/mcp/tools/find_and_grep_execution.py
-tree_sitter_analyzer/mcp/tools/find_and_grep_response.py
+# tree_sitter_analyzer/mcp/tools/find_and_grep_agent_summary.py  # 廃止済み
+# tree_sitter_analyzer/mcp/tools/find_and_grep_execution.py  # 廃止済み
+# tree_sitter_analyzer/mcp/tools/find_and_grep_response.py  # 廃止済み
 tree_sitter_analyzer/mcp/tools/list_files_helpers.py
 tree_sitter_analyzer/mcp/tools/query_helpers.py
 tree_sitter_analyzer/mcp/tools/route_detector_tool.py
-tree_sitter_analyzer/mcp/tools/search_content_agent_summary.py
-tree_sitter_analyzer/mcp/tools/search_content_helpers.py
-tree_sitter_analyzer/mcp/tools/search_content_response.py
-tree_sitter_analyzer/mcp/tools/search_content_response_modes.py
+# tree_sitter_analyzer/mcp/tools/search_content_agent_summary.py  # 廃止済み
+# tree_sitter_analyzer/mcp/tools/search_content_helpers.py  # 廃止済み
+# tree_sitter_analyzer/mcp/tools/search_content_response.py  # 廃止済み
+# tree_sitter_analyzer/mcp/tools/search_content_response_modes.py  # 廃止済み
 tree_sitter_analyzer/mcp/tools/universal_analyze_helpers.py
 tree_sitter_analyzer/mcp/tools/utils/change_impact_analysis.py
 tree_sitter_analyzer/mcp/tools/utils/change_impact_git.py

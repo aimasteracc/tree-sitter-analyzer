@@ -242,10 +242,9 @@ def _map_step() -> dict[str, Any]:
         "step": "map",
         "step_index": 1,
         "goal": "Find candidate files before reading code.",
-        "mcp_tools": ["list_files", "find_and_grep", "search_content"],
+        "mcp_tools": ["list_files"],
         "cli_commands": [
             "uv run list-files . --types f",
-            'uv run find-and-grep --roots . --query "TODO|FIXME" --output-format json',
         ],
         "stop_condition": "A small set of relevant files is identified.",
     }

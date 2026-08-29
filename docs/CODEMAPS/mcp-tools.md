@@ -39,9 +39,9 @@ legacy MCP name is now reached via its facade (`old_name` →
 | `extract_code_section` | `--partial-read --start-line N --end-line M` | Token-efficient line range |
 | `query_code` | `--query-key methods --filter "public=true"` | tree-sitter query DSL |
 | `list_files` | `list-files` subcommand (fd) | Discovery |
-| `search_content` | `search-content` subcommand (ripgrep) | Regex search |
-| `find_and_grep` | `find-and-grep` subcommand (fd+rg pipeline) | Combined find+grep |
-| `batch_search` | `--batch-search` / `--batch-search-queries-json` | Multiple ripgrep searches in parallel (faster than sequential search_content) |
+| ~~`search_content`~~ | *(廃止済み)* | CC Grep tool を使用 |
+| ~~`find_and_grep`~~ | *(廃止済み)* | CC Glob + Grep tool を使用 |
+| `batch_search` | `--batch-search` / `--batch-search-queries-json` | Multiple ripgrep searches in parallel |
 | `check_tools` | `--check-tools` | Verify fd + ripgrep are installed (and report versions) |
 | `list_agent_skills` | `--list-skills` | Curated skill index for AI agents |
 | `get_agent_workflow` | `--smart-context` | SMART workflow (Set→Map→Analyze→Retrieve→Trace) |
