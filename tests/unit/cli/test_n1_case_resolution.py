@@ -19,8 +19,6 @@ from __future__ import annotations
 
 import io
 
-import pytest
-
 from tree_sitter_analyzer.cli.commands._case_resolution import (
     case_to_sensitive_bool,
     collect_case_args,
