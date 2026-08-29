@@ -327,11 +327,6 @@ class CacheReporter:
             md_lines.append(f"- **エラー**: {ae_cache['error']}")
             md_lines.append("")
 
-        # Search Content キャッシュは廃止済み (SearchContentTool 削除)
-        else:
-            md_lines.append(f"- **エラー**: {sc_cache['error']}")
-            md_lines.append("")
-
         return "\n".join(md_lines)
 
 
