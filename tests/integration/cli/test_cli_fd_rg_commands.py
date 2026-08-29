@@ -47,19 +47,3 @@ def test_list_files_cli_basic(monkeypatch, tmp_path):
     assert '"success": true' in out.lower()
 
 
-@pytest.mark.skip(
-    reason="search_content (SearchContentTool) is deprecated and removed. "
-    "Text search is now done via CC built-in Grep tool."
-)
-@pytest.mark.unit
-def test_search_content_cli_total_only(monkeypatch, tmp_path):
-    pass  # deprecated — search_content_cli module deleted
-
-
-@pytest.mark.skip(
-    reason="find_and_grep (FindAndGrepTool) is deprecated and removed. "
-    "Use CC Glob + Grep tools instead."
-)
-@pytest.mark.unit
-def test_find_and_grep_cli_count_only(monkeypatch, tmp_path):
-    pass  # deprecated — find_and_grep_cli module deleted
