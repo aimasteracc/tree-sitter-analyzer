@@ -54,7 +54,7 @@ def _create_task_for_tool(tool, i: int, project_root: str):
         return tool.execute(
             {
                 "file_path": str(python_files[i % len(python_files)]),
-                "format_type": "compact",
+                "format_type": "full",
             }
         )
     if isinstance(tool, SearchContentTool):
