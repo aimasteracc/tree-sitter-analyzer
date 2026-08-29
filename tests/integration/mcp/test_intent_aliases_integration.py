@@ -303,9 +303,12 @@ class TestAliasWithAllToolParameters:
         # Should succeed and respect all parameters
         assert result["success"] is True
         assert "queries" in result
-        assert "total_matches" in result
-        # Should find matches (target appears in multiple files)
-        assert result["total_matches"] > 0
+        # Verify the target pattern found matches (target appears in multiple files)
+        target_q = next(
+            (q for q in result["queries"] if q["label"] == "find_target"), None
+        )
+        assert target_q is not None
+        assert target_q["matches"]  # non-empty: ripgrep found "target" in temp files
 
     @pytest.mark.asyncio
     async def test_map_structure_supports_all_list_files_params(
