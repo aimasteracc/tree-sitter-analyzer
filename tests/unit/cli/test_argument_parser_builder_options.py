@@ -217,18 +217,6 @@ class TestAddOutputOptions:
         args = parser.parse_args(["--table", "full"])
         assert args.table == "full"
 
-    def test_table_compact(self):
-        parser = self._make_parser()
-        _add_output_options(parser)
-        args = parser.parse_args(["--table", "compact"])
-        assert args.table == "compact"
-
-    def test_table_csv(self):
-        parser = self._make_parser()
-        _add_output_options(parser)
-        args = parser.parse_args(["--table", "csv"])
-        assert args.table == "csv"
-
     def test_include_javadoc(self):
         parser = self._make_parser()
         _add_output_options(parser)

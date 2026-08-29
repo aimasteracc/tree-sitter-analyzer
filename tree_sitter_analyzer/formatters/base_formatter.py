@@ -3,12 +3,8 @@
 Base formatter for language-specific formatting.
 """
 
-import csv
-import io
 from abc import ABC, abstractmethod
 from typing import Any
-
-from ._csv_safety import csv_safe_row
 
 
 class BaseFormatter(ABC):
@@ -116,10 +112,6 @@ class BaseTableFormatter(BaseFormatter):
         """Format structure data in table format"""
         if self.format_type == "full":
             result = self._format_full_table(structure_data)
-        elif self.format_type == "compact":
-            result = self._format_compact_table(structure_data)
-        elif self.format_type == "csv":
-            result = self._format_csv(structure_data)
         elif self.format_type == "signatures":
             # Lightweight directory mode: name →returnType(Np) L-L per method.
             # Delegates to the mixin if available; raises with the sorted list of
@@ -134,10 +126,6 @@ class BaseTableFormatter(BaseFormatter):
         else:
             raise ValueError(f"Unsupported format type: {self.format_type}")
 
-        # Finally convert to platform-specific newline code
-        if self.format_type == "csv":
-            return result
-
         return self._convert_to_platform_newlines(result)
 
     @abstractmethod
@@ -147,73 +135,10 @@ class BaseTableFormatter(BaseFormatter):
 
     @abstractmethod
     def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format (language-specific implementation)"""
-        pass
-
-    def _format_csv(self, data: dict[str, Any]) -> str:
-        """CSV format (common implementation).
-
-        r37dk (dogfood): flattened nesting 6 → 3 by extracting per-row
-        builders (``_csv_field_row`` / ``_csv_method_row``).
-
-        Data rows are sanitized with ``csv_safe_row``: Python 3.10's
-        ``csv.writer`` raises ``_csv.Error: need to escape, but no escapechar
-        set`` on a NULL byte and emits a bare ``\\r`` unquoted (producing an
-        unreadable CSV). The previous ``escapechar="\\"`` silenced the NULL
-        error but doubled literal backslashes in ordinary fields (Windows
-        paths, regex), a format regression. Stripping the unrepresentable
-        controls instead leaves the dialect — and backslashes — untouched.
-        """
-        output = io.StringIO()
-        writer = csv.writer(output, lineterminator="\n")
-
-        writer.writerow(
-            ["Type", "Name", "Signature", "Visibility", "Lines", "Complexity", "Doc"]
+        """Compact table format (language-specific implementation — retained for subclass compatibility)"""
+        raise NotImplementedError(
+            "Compact format removed; use 'full' or 'signatures' instead"
         )
-        for field in data.get("fields", []):
-            writer.writerow(csv_safe_row(self._csv_field_row(field)))
-        for method in data.get("methods", []):
-            writer.writerow(csv_safe_row(self._csv_method_row(method)))
-
-        csv_content = output.getvalue()
-        csv_content = csv_content.replace("\r\n", "\n").replace("\r", "\n")
-        csv_content = csv_content.rstrip("\n")
-        output.close()
-        return csv_content
-
-    def _csv_field_row(self, field: dict[str, Any]) -> list[Any]:
-        """Build the CSV row for one ``field`` entry."""
-        name = str(field.get("name", ""))
-        ftype = str(field.get("type", ""))
-        signature = f"{name}:{ftype}"
-        line_range = field.get("line_range", {})
-        lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-        javadoc = str(field.get("javadoc", ""))
-        return [
-            "Field",
-            self._clean_csv_text(name),
-            self._clean_csv_text(signature),
-            self._clean_csv_text(str(field.get("visibility", ""))),
-            lines_str,
-            "",
-            self._clean_csv_text(self._extract_doc_summary(javadoc)),
-        ]
-
-    def _csv_method_row(self, method: dict[str, Any]) -> list[Any]:
-        """Build the CSV row for one ``method`` entry."""
-        row_type = "Constructor" if method.get("is_constructor", False) else "Method"
-        line_range = method.get("line_range", {})
-        lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-        javadoc = str(method.get("javadoc", ""))
-        return [
-            row_type,
-            self._clean_csv_text(str(method.get("name", ""))),
-            self._clean_csv_text(self._create_full_signature(method)),
-            self._clean_csv_text(str(method.get("visibility", ""))),
-            lines_str,
-            method.get("complexity_score", 0),
-            self._clean_csv_text(self._extract_doc_summary(javadoc)),
-        ]
 
     # Common helper methods
     def _create_full_signature(self, method: dict[str, Any]) -> str:
@@ -270,18 +195,19 @@ class BaseTableFormatter(BaseFormatter):
         return first_line.replace("|", "\\|").replace("\n", " ")
 
     def _clean_csv_text(self, text: str) -> str:
-        """Text cleaning for CSV format"""
+        """Collapse newlines/control chars so a doc string fits one table cell.
+
+        Despite the name (kept for compatibility with existing callers),
+        this is used by every table row renderer, not just CSV output.
+        """
         if not text:
             return ""
 
-        # Remove null bytes and normalize whitespace
         cleaned = text.replace("\0", "")
         cleaned = cleaned.replace("\r\n", " ")
         cleaned = cleaned.replace("\r", " ")
         cleaned = cleaned.replace("\n", " ")
         cleaned = " ".join(cleaned.split())
-        cleaned = cleaned.replace('"', '""')
-
         return cleaned
 
     # Public aliases used by companion formatter helper modules

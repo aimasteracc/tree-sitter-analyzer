@@ -30,11 +30,11 @@ def _add_output_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--table",
-        choices=["full", "compact", "csv", "json", "signatures"],
+        choices=["full", "signatures"],
         help=(
             "Output in table format. "
-            "'signatures' = lightweight method-directory (~25%% of full tokens); "
-            "json = machine-readable structured output"
+            "'full' = all columns (default); "
+            "'signatures' = lightweight method-directory (~25%% of full tokens)"
         ),
     )
     parser.add_argument(

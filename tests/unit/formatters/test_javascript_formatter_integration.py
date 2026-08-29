@@ -77,20 +77,14 @@ class TestJavaScriptFormatterIntegration:
             },
         }
 
-        # Test all format types
+        # Test surviving format types (csv/compact removed; see PR #1339)
         full_result = formatter.format(real_data, "full")
-        compact_result = formatter.format(real_data, "compact")
-        csv_result = formatter.format(real_data, "csv")
         json_result = formatter.format(real_data, "json")
 
         # Verify all formats work
         assert isinstance(full_result, str)
         # Normalize CRLF→LF so byte pins hold on Windows (5b-B; Codex P1)
         assert len(full_result.replace("\r\n", "\n")) == 217
-        assert isinstance(compact_result, str)
-        assert len(compact_result.replace("\r\n", "\n")) == 110
-        assert isinstance(csv_result, str)
-        assert len(csv_result.replace("\r\n", "\n")) == 51
         assert isinstance(json_result, str)
         assert len(json_result.replace("\r\n", "\n")) == 2058
 

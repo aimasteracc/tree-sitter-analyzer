@@ -1,12 +1,9 @@
 """Generic element formatters registered by :mod:`formatter_registry`."""
 
-import csv
-import io
 import json
 from typing import Any
 
 from ..models import CodeElement
-from ._csv_safety import csv_safe_row
 from ._formatter_interface import IFormatter
 
 
@@ -46,55 +43,6 @@ class JsonFormatter(IFormatter):
         """Format elements as JSON."""
         result = [self._element_to_dict(element) for element in elements]
         return json.dumps(result, indent=2, ensure_ascii=False)
-
-
-class CsvFormatter(IFormatter):
-    """CSV formatter for CodeElement lists."""
-
-    @staticmethod
-    def get_format_name() -> str:
-        """Return the registry key."""
-        return "csv"
-
-    def format(self, elements: list[CodeElement]) -> str:
-        """Format elements as CSV."""
-        output = io.StringIO()
-        writer = csv.writer(output, lineterminator="\n")
-        writer.writerow(
-            [
-                "Type",
-                "Name",
-                "Start Line",
-                "End Line",
-                "Language",
-                "Visibility",
-                "Parameters",
-                "Return Type",
-                "Modifiers",
-            ]
-        )
-        for element in elements:
-            writer.writerow(_csv_element_row(element))
-        csv_content = output.getvalue()
-        output.close()
-        return csv_content.rstrip("\n")
-
-
-def _csv_element_row(element: CodeElement) -> list[Any]:
-    """Return one control-character-safe generic CSV row."""
-    return csv_safe_row(
-        [
-            getattr(element, "element_type", "unknown"),
-            element.name,
-            element.start_line,
-            element.end_line,
-            element.language,
-            getattr(element, "visibility", ""),
-            str(getattr(element, "parameters", [])),
-            getattr(element, "return_type", ""),
-            str(getattr(element, "modifiers", [])),
-        ]
-    )
 
 
 def _append_full_element_lines(lines: list[str], element: CodeElement) -> None:
@@ -138,31 +86,4 @@ class FullFormatter(IFormatter):
         return "\n".join(lines)
 
 
-class CompactFormatter(IFormatter):
-    """Compact formatter for CodeElement lists."""
 
-    @staticmethod
-    def get_format_name() -> str:
-        """Return the registry key."""
-        return "compact"
-
-    def format(self, elements: list[CodeElement]) -> str:
-        """Format elements in compact form."""
-        if not elements:
-            return "No elements found."
-
-        lines = ["CODE ELEMENTS", "-" * 20]
-        for element in elements:
-            visibility = getattr(element, "visibility", "")
-            lines.append(
-                f"{self._get_visibility_symbol(visibility)} {element.name} "
-                f"({getattr(element, 'element_type', 'unknown')}) "
-                f"[{element.start_line}-{element.end_line}]"
-            )
-        return "\n".join(lines)
-
-    @staticmethod
-    def _get_visibility_symbol(visibility: str) -> str:
-        """Return the compact visibility marker."""
-        mapping = {"public": "+", "private": "-", "protected": "#", "package": "~"}
-        return mapping.get(visibility, "?")

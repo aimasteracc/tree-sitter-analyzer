@@ -413,7 +413,7 @@ class TestArgumentValidation:
     def test_table_format_choices(self):
         """Test that --table accepts valid choices."""
         parser = create_argument_parser()
-        for table_fmt in ["full", "compact", "csv", "json"]:
+        for table_fmt in ["full", "signatures"]:
             args = parser.parse_args(["--table", table_fmt, "test.py"])
             assert args.table == table_fmt
 

@@ -105,7 +105,7 @@ class AnalysisSession:
         if not input_files:
             raise ValueError("input_files cannot be empty")
 
-        valid_formats = ["json", "csv", "compact", "full"]
+        valid_formats = ["json", "full"]
         if output_format not in valid_formats:
             raise ValueError(
                 f"Invalid output_format: {output_format}. "

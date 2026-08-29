@@ -12,8 +12,6 @@ import logging
 from typing import Any
 
 from ._builtin_formatters import (
-    CompactFormatter,
-    CsvFormatter,
     FullFormatter,
     JsonFormatter,
 )
@@ -26,7 +24,7 @@ from ._language_formatter_registration import (
 logger = logging.getLogger(__name__)
 
 # Keep the historical public identity after moving implementations behind the facade.
-for _formatter_class in (JsonFormatter, CsvFormatter, FullFormatter, CompactFormatter):
+for _formatter_class in (JsonFormatter, FullFormatter):
     _formatter_class.__module__ = __name__
 
 
@@ -303,12 +301,7 @@ class FormatterRegistry:
 
 def register_builtin_formatters() -> None:
     """Register generic and language-specific built-in formatters."""
-    for formatter_class in (
-        JsonFormatter,
-        CsvFormatter,
-        FullFormatter,
-        CompactFormatter,
-    ):
+    for formatter_class in (JsonFormatter, FullFormatter):
         FormatterRegistry.register_formatter(formatter_class)
     register_language_formatters(FormatterRegistry, logger)
 

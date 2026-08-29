@@ -12,8 +12,6 @@ from typing import Any
 from ..models import CodeElement, MarkupElement, StyleElement
 from ._formatter_interface import IFormatter
 from ._html_classification_helpers import classify_html_elements
-from ._html_compact_formatter_helpers import format_compact_html
-from ._html_csv_formatter_helpers import format_html_csv
 from ._html_formatter_helpers import (
     element_to_dict,
     format_element_tree,
@@ -105,17 +103,11 @@ class HtmlFormatter(BaseFormatter, IFormatter):
         else:
             elements = []
 
-        if table_type == "compact":
-            formatter: IFormatter = HtmlCompactFormatter()
-            return formatter.format(elements)
-        elif table_type == "json":
-            formatter = HtmlJsonFormatter()
-            return formatter.format(elements)
-        elif table_type == "csv":
-            formatter = HtmlCsvFormatter()
+        if table_type == "json":
+            formatter: IFormatter = HtmlJsonFormatter()
             return formatter.format(elements)
         else:
-            # Default to full format (including "html" and "full")
+            # Default to full format
             return self.format(elements)
 
     def format_table(
@@ -123,16 +115,12 @@ class HtmlFormatter(BaseFormatter, IFormatter):
     ) -> str:
         """Format table output"""
         elements = analysis_result.get("elements", [])
-        file_path = analysis_result.get("file_path", "")
 
-        if table_type == "compact":
-            compact_formatter = HtmlCompactFormatter()
-            return compact_formatter.format(elements, file_path=file_path)
-        elif table_type == "json":
+        if table_type == "json":
             json_formatter = HtmlJsonFormatter()
             return json_formatter.format(elements)
         else:
-            # Default to full format (including "html" and "full")
+            # Default to full format
             return self.format(elements)
 
     def _format_markup_elements(self, elements: list[MarkupElement]) -> list[str]:
@@ -242,30 +230,6 @@ class HtmlJsonFormatter(IFormatter):
             "end_line": element.end_line,
             "language": element.language,
         }
-
-
-class HtmlCompactFormatter(IFormatter):
-    """Compact formatter for HTML elements"""
-
-    @staticmethod
-    def get_format_name() -> str:
-        return "html_compact"
-
-    def format(self, elements: list[CodeElement], file_path: str = "") -> str:
-        """Format HTML elements in compact table format"""
-        return format_compact_html(elements, file_path)
-
-
-class HtmlCsvFormatter(IFormatter):
-    """CSV formatter for HTML elements"""
-
-    @staticmethod
-    def get_format_name() -> str:
-        return "html_csv"
-
-    def format(self, elements: list[CodeElement]) -> str:
-        """Format HTML elements as CSV"""
-        return format_html_csv(elements)
 
 
 # HTML formatters are registered via formatter_registry.py

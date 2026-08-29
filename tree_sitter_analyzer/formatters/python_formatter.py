@@ -9,7 +9,6 @@ context managers, and framework-specific patterns.
 
 from typing import Any
 
-from ._python_formatter_compact import format_python_compact_table
 from ._python_formatter_conversion import (
     convert_analysis_result_to_python_format,
     convert_class_element_for_python,
@@ -71,8 +70,6 @@ class PythonTableFormatter(BaseTableFormatter):
         """Format advanced analysis output for Python"""
         if output_format == "json":
             return self._format_json(analysis_result)
-        elif output_format == "csv":
-            return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)
 
@@ -130,8 +127,10 @@ class PythonTableFormatter(BaseTableFormatter):
         return format_python_full_table(self, data)
 
     def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format for Python"""
-        return format_python_compact_table(self, data)
+        """Compact table format for Python (removed)"""
+        raise NotImplementedError(
+            "Compact format removed; use 'full' or 'signatures' instead"
+        )
 
     def _format_signatures_table(self, data: dict[str, Any]) -> str:
         """Signatures (lightweight method-directory) format for Python.

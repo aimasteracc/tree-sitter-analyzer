@@ -10,12 +10,8 @@ from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
 from tree_sitter_analyzer.formatters.formatter_registry import (
-    CompactFormatter,
     FormatterRegistry,
     FullFormatter,
-)
-from tree_sitter_analyzer.formatters.formatter_registry import (
-    CsvFormatter as CSVFormatter,
 )
 from tree_sitter_analyzer.formatters.formatter_registry import (
     JsonFormatter as JSONFormatter,
@@ -26,7 +22,7 @@ from tree_sitter_analyzer.models import CodeElement
 class TestFormatProperties:
     """格式属性测试类。"""
 
-    @given(format_type=st.sampled_from(["full", "json", "compact", "csv"]))
+    @given(format_type=st.sampled_from(["full", "json"]))
     @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
     def test_valid_format_types(self, format_type: str) -> None:
         """测试有效格式类型的属性。
@@ -40,7 +36,7 @@ class TestFormatProperties:
         assert formatter is not None, f"Formatter for '{format_type}' not found"
         assert isinstance(formatter, object)
 
-    @given(format_type=st.sampled_from(["full", "compact", "csv", "json"]))
+    @given(format_type=st.sampled_from(["full", "json"]))
     @settings(max_examples=50)
     def test_format_type_case_insensitivity(self, format_type: str) -> None:
         """测试格式类型大小写不敏感的属性。
@@ -158,54 +154,6 @@ class TestFormatProperties:
         elements=st.lists(
             st.fixed_dictionaries(
                 {
-                    # Use simple alphanumeric names to avoid CSV escaping issues
-                    # with NULL bytes and other control characters
-                    "name": st.from_regex(
-                        r"[a-zA-Z][a-zA-Z0-9_]{0,19}", fullmatch=True
-                    ),
-                    "element_type": st.sampled_from(
-                        ["class", "function", "method", "variable"]
-                    ),
-                    "line_start": st.integers(min_value=1, max_value=1000),
-                    "line_end": st.integers(min_value=1, max_value=1000),
-                }
-            ),
-            min_size=1,
-            max_size=10,
-        )
-    )
-    @settings(max_examples=50)
-    def test_csv_format_validity(self, elements: list[dict[str, Any]]) -> None:
-        """测试CSV格式有效性的属性。
-
-        验证：CSV格式应该是有效的CSV。
-
-        Args:
-            elements: 元素列表
-        """
-        code_elements = [
-            CodeElement(
-                name=elem["name"],
-                element_type=elem.get("element_type", "class"),
-                start_line=elem.get("line_start", 1),
-                end_line=elem.get("line_end", 10),
-                language="python",
-            )
-            for elem in elements
-        ]
-        formatter = CSVFormatter()
-        result = formatter.format(code_elements)
-
-        assert isinstance(result, str)
-        assert len(result) > 0
-        # CSV应该包含换行符
-        if len(elements) > 0:
-            assert "\n" in result
-
-    @given(
-        elements=st.lists(
-            st.fixed_dictionaries(
-                {
                     "name": st.text(min_size=1, max_size=20),
                     "element_type": st.sampled_from(
                         ["class", "function", "method", "variable"]
@@ -217,7 +165,7 @@ class TestFormatProperties:
             min_size=1,
             max_size=10,
         ),
-        format_type=st.sampled_from(["json", "csv", "full", "compact"]),
+        format_type=st.sampled_from(["json", "full"]),
     )
     @settings(max_examples=30)
     def test_format_idempotency(
@@ -243,9 +191,7 @@ class TestFormatProperties:
         ]
         formatters = {
             "json": JSONFormatter,
-            "csv": CSVFormatter,
             "full": FullFormatter,
-            "compact": CompactFormatter,
         }
         formatter = formatters[format_type]()
         first = formatter.format(code_elements)
@@ -402,7 +348,7 @@ class FormatStatefulMachine(RuleBasedStateMachine):
         super().__init__()
         self.format_history: list[str] = []
 
-    @rule(format_type=st.sampled_from(["json", "full", "compact", "csv"]))
+    @rule(format_type=st.sampled_from(["json", "full"]))
     def format_elements(self, format_type: str) -> None:
         """格式化元素。
 

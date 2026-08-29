@@ -19,16 +19,6 @@ from ...utils import setup_logger
 logger = setup_logger(__name__)
 
 
-def _similar_comma_count(line: str, ref_count: int) -> bool:
-    """Return True if *line*'s comma count is within 1 of *ref_count*.
-
-    Extracted from FileOutputManager._detect_content_format so the
-    generator expression ``if abs(line.count(',') - ref_count) <= 1``
-    doesn't push string_start leaves to depth 21 inside the class method.
-    """
-    return abs(line.count(",") - ref_count) <= 1
-
-
 class FileOutputManager:
     """
     Manages file output for analysis results with automatic extension detection
@@ -129,7 +119,7 @@ class FileOutputManager:
             content: Content to analyze
 
         Returns:
-            Detected content type ('json', 'csv', 'markdown', or 'text')
+            Detected content type ('json' or 'text')
         """
         content_stripped = content.strip()
 
@@ -141,35 +131,6 @@ class FileOutputManager:
             except (json.JSONDecodeError, ValueError):
                 pass
 
-        # Check for CSV (simple heuristic)
-        lines = content_stripped.split("\n")
-        if len(lines) >= 2:
-            # Check if first few lines have consistent comma separation
-            first_line_commas = lines[0].count(",")
-            if first_line_commas > 0:
-                # Check if at least 2 more lines have similar comma counts
-                similar_comma_lines = sum(
-                    1
-                    for line in lines[1:4]
-                    if _similar_comma_count(line, first_line_commas)
-                )
-                if similar_comma_lines >= 1:
-                    return "csv"
-
-        # Check for Markdown (simple heuristic)
-        markdown_indicators = ["#", "##", "###", "|", "```", "*", "-", "+"]
-        if any(
-            content_stripped.startswith(indicator) for indicator in markdown_indicators
-        ):
-            return "markdown"
-
-        # Check for table format (pipe-separated)
-        if "|" in content and "\n" in content:
-            lines = content_stripped.split("\n")
-            pipe_lines = sum(1 for line in lines if "|" in line)
-            if pipe_lines >= 2:  # At least header and one data row
-                return "markdown"
-
         # Default to text
         return "text"
 
@@ -178,15 +139,13 @@ class FileOutputManager:
         Get file extension for content type.
 
         Args:
-            content_type: Content type ('json', 'csv', 'markdown', or 'text')
+            content_type: Content type ('json' or 'text')
 
         Returns:
             File extension including the dot
         """
         extension_map = {
             "json": ".json",
-            "csv": ".csv",
-            "markdown": ".md",
             "text": ".txt",
         }
         return extension_map.get(content_type, ".txt")

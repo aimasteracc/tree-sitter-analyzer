@@ -182,112 +182,12 @@ class TestBaseTableFormatter:
         result = formatter.format_structure({})
         assert "Full Table" in result
 
-    def test_format_structure_compact_table(self) -> None:
-        """Test format_structure with compact table format."""
-        formatter = ConcreteTableFormatter(format_type="compact")
-        result = formatter.format_structure({})
-        assert "Compact Table" in result
-
-    def test_format_structure_csv_format(self) -> None:
-        """Test format_structure with CSV format."""
-        formatter = ConcreteTableFormatter(format_type="csv")
-        data = {"fields": [], "methods": []}
-        result = formatter.format_structure(data)
-
-        # CSV should contain header
-        assert "Type,Name,Signature,Visibility,Lines,Complexity,Doc" in result
-
     def test_format_structure_invalid_format_type(self) -> None:
         """Test format_structure with invalid format type."""
         formatter = ConcreteTableFormatter(format_type="invalid")
 
         with pytest.raises(ValueError, match="Unsupported format type"):
             formatter.format_structure({})
-
-    def test_format_csv_with_empty_data(self) -> None:
-        """Test CSV formatting with empty data."""
-        formatter = ConcreteTableFormatter(format_type="csv")
-        data = {"fields": [], "methods": []}
-        result = formatter._format_csv(data)
-
-        # Should have header only
-        lines = result.split("\n")
-        assert len(lines) == 1
-        assert lines[0].startswith("Type,Name,Signature")
-
-    def test_format_csv_with_fields(self) -> None:
-        """Test CSV formatting with field data."""
-        formatter = ConcreteTableFormatter(format_type="csv")
-        data = {
-            "fields": [
-                {
-                    "name": "field1",
-                    "type": "String",
-                    "visibility": "private",
-                    "line_range": {"start": 10, "end": 10},
-                    "javadoc": "/** Field documentation */",
-                }
-            ],
-            "methods": [],
-        }
-        result = formatter._format_csv(data)
-
-        lines = result.split("\n")
-        assert len(lines) == 2  # Header + 1 field
-        assert "Field,field1" in lines[1]
-
-    def test_format_csv_with_methods(self) -> None:
-        """Test CSV formatting with method data."""
-        formatter = ConcreteTableFormatter(format_type="csv")
-        data = {
-            "fields": [],
-            "methods": [
-                {
-                    "name": "testMethod",
-                    "parameters": [
-                        {"name": "param1", "type": "int"},
-                        {"name": "param2", "type": "String"},
-                    ],
-                    "return_type": "void",
-                    "visibility": "public",
-                    "is_static": False,
-                    "is_constructor": False,
-                    "line_range": {"start": 20, "end": 30},
-                    "complexity_score": 5,
-                    "javadoc": "/** Method documentation */",
-                }
-            ],
-        }
-        result = formatter._format_csv(data)
-
-        lines = result.split("\n")
-        assert len(lines) == 2  # Header + 1 method
-        assert "Method,testMethod" in lines[1]
-        assert "5" in lines[1]  # complexity
-
-    def test_format_csv_with_constructor(self) -> None:
-        """Test CSV formatting with constructor."""
-        formatter = ConcreteTableFormatter(format_type="csv")
-        data = {
-            "fields": [],
-            "methods": [
-                {
-                    "name": "MyClass",
-                    "parameters": [],
-                    "return_type": "",
-                    "visibility": "public",
-                    "is_static": False,
-                    "is_constructor": True,
-                    "line_range": {"start": 5, "end": 10},
-                    "complexity_score": 1,
-                    "javadoc": "",
-                }
-            ],
-        }
-        result = formatter._format_csv(data)
-
-        lines = result.split("\n")
-        assert "Constructor,MyClass" in lines[1]
 
     def test_create_full_signature_simple(self) -> None:
         """Test creating full signature for simple method."""
@@ -434,47 +334,12 @@ class TestBaseTableFormatter:
         assert "\r" not in result
         assert result == "Line 1 Line 2 Line 3 Line 4"
 
-    def test_clean_csv_text_with_quotes(self) -> None:
-        """Test cleaning CSV text with quotes (escaping)."""
-        formatter = ConcreteTableFormatter()
-        text = 'Text with "quotes" inside'
-        result = formatter._clean_csv_text(text)
-        assert '""' in result  # Quotes should be escaped
-
     def test_clean_csv_text_with_multiple_spaces(self) -> None:
         """Test cleaning CSV text with multiple spaces."""
         formatter = ConcreteTableFormatter()
         text = "Text    with    multiple    spaces"
         result = formatter._clean_csv_text(text)
         assert result == "Text with multiple spaces"
-
-    def test_csv_format_no_trailing_newline(self) -> None:
-        """Test CSV format doesn't have trailing newline."""
-        formatter = ConcreteTableFormatter(format_type="csv")
-        data = {"fields": [], "methods": []}
-        result = formatter._format_csv(data)
-        assert not result.endswith("\n")
-
-    def test_csv_format_normalized_newlines(self) -> None:
-        """Test CSV format has normalized newlines."""
-        formatter = ConcreteTableFormatter(format_type="csv")
-        data = {
-            "fields": [
-                {
-                    "name": "field1",
-                    "type": "String",
-                    "visibility": "private",
-                    "line_range": {"start": 1, "end": 1},
-                    "javadoc": "",
-                }
-            ],
-            "methods": [],
-        }
-        result = formatter._format_csv(data)
-
-        # Should not contain \r\n or \r
-        assert "\r\n" not in result
-        assert "\r" not in result
 
     def test_format_structure_applies_platform_newlines_for_non_csv(self) -> None:
         """Test format_structure applies platform newlines for non-CSV formats."""
@@ -487,54 +352,9 @@ class TestBaseTableFormatter:
             # Should call conversion for non-CSV
             mock_convert.assert_called_once()
 
-    def test_format_structure_no_platform_newlines_for_csv(self) -> None:
-        """Test format_structure doesn't apply platform newlines for CSV."""
-        formatter = ConcreteTableFormatter(format_type="csv")
-        data = {"fields": [], "methods": []}
-
-        result = formatter.format_structure(data)
-
-        # CSV format should return as-is without platform newline conversion
-        # (CSV has its own newline handling)
-        assert "Type,Name,Signature" in result
-
 
 class TestBaseTableFormatterEdgeCases:
     """Test edge cases for BaseTableFormatter."""
-
-    def test_format_csv_with_missing_fields_in_data(self) -> None:
-        """Test CSV formatting with missing fields in data."""
-        formatter = ConcreteTableFormatter(format_type="csv")
-        data = {
-            "fields": [
-                {
-                    "name": "field1"
-                    # Missing type, visibility, etc.
-                }
-            ],
-            "methods": [],
-        }
-        result = formatter._format_csv(data)
-
-        # Should not raise, use defaults
-        assert "field1" in result
-
-    def test_format_csv_with_missing_method_fields(self) -> None:
-        """Test CSV formatting with missing method fields."""
-        formatter = ConcreteTableFormatter(format_type="csv")
-        data = {
-            "fields": [],
-            "methods": [
-                {
-                    "name": "method1"
-                    # Missing parameters, return_type, etc.
-                }
-            ],
-        }
-        result = formatter._format_csv(data)
-
-        # Should not raise, use defaults
-        assert "method1" in result
 
     def test_create_full_signature_empty_parameters(self) -> None:
         """Test creating signature with empty parameters list."""
@@ -549,26 +369,6 @@ class TestBaseTableFormatterEdgeCases:
         method = {"parameters": []}
         signature = formatter._create_full_signature(method)
         assert "void" in signature
-
-    def test_format_csv_line_range_missing_keys(self) -> None:
-        """Test CSV formatting with incomplete line_range."""
-        formatter = ConcreteTableFormatter(format_type="csv")
-        data = {
-            "fields": [
-                {
-                    "name": "field1",
-                    "type": "int",
-                    "visibility": "private",
-                    "line_range": {},  # Empty line_range
-                    "javadoc": "",
-                }
-            ],
-            "methods": [],
-        }
-        result = formatter._format_csv(data)
-
-        # Should handle gracefully with defaults (0-0)
-        assert "0-0" in result
 
     def test_cannot_instantiate_base_table_formatter_without_abstract_methods(
         self,

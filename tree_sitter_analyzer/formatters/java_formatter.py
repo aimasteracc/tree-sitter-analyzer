@@ -6,7 +6,6 @@ Java-specific table formatter.
 from typing import Any
 
 from ._java_formatter_class_mixin import JavaTableFormatterClassMixin
-from ._java_formatter_compact_mixin import JavaTableFormatterCompactMixin
 from ._java_formatter_full_mixin import JavaTableFormatterFullMixin
 from ._java_formatter_signatures_mixin import JavaTableFormatterSignaturesMixin
 from .base_formatter import BaseTableFormatter
@@ -25,7 +24,6 @@ def _format_json(data: dict[str, Any]) -> str:
 class JavaTableFormatter(
     JavaTableFormatterFullMixin,
     JavaTableFormatterClassMixin,
-    JavaTableFormatterCompactMixin,
     JavaTableFormatterSignaturesMixin,
     BaseTableFormatter,
 ):
@@ -51,12 +49,16 @@ class JavaTableFormatter(
         """Format summary output for Java"""
         return self._format_compact_table(analysis_result)
 
+    def _format_compact_table(self, data: dict[str, Any]) -> str:
+        """Compact table format for Java (removed)"""
+        raise NotImplementedError(
+            "Compact format removed; use 'full' or 'signatures' instead"
+        )
+
     def format_advanced(
         self, analysis_result: dict[str, Any], output_format: str = "json"
     ) -> str:
         """Format advanced analysis output for Java"""
         if output_format == "json":
             return self._format_json(analysis_result)
-        if output_format == "csv":
-            return self._format_csv(analysis_result)
         return self._format_full_table(analysis_result)
