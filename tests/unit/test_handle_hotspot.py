@@ -388,4 +388,4 @@ def test_show_alias_diff_populates_gap_summary():
     assert "alias_gap_summary" in r
     # One file ("a.py") has alias_ca (10) > ca_raw (3) → gap count = 1
     assert r["alias_gap_summary"]["files_with_alias_gap"] == 1
-    assert r["alias_gap_summary"]["total_files"] >= 1
+    assert r["alias_gap_summary"]["total_files"] == 1
