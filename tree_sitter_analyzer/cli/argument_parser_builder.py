@@ -32,6 +32,7 @@ from .argument_groups import (
     _add_mcp_change_options,
     _add_mcp_constraints_options,
     _add_mcp_health_options,
+    _add_mcp_hotspot_options,
     _add_mcp_index_management_options,
     _add_modification_guard_options,
     _add_mutation_probe_options,
@@ -62,6 +63,7 @@ __all__ = [
     "_add_mcp_constraints_options",
     "_add_mcp_equivalent_options",
     "_add_mcp_health_options",
+    "_add_mcp_hotspot_options",
     "_add_mcp_index_management_options",
     "_add_modification_guard_options",
     "_add_mutation_probe_options",
@@ -136,6 +138,7 @@ def _add_mcp_equivalent_options(parser: argparse.ArgumentParser) -> None:
     _add_agent_skills_options(parser)
     _add_agent_workflow_options(parser)
     _add_mcp_health_options(parser)
+    _add_mcp_hotspot_options(parser)
     _add_mcp_change_options(parser)
     _add_mcp_analysis_options(parser)
     _add_mcp_constraints_options(parser)

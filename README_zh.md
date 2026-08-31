@@ -1,4 +1,4 @@
-﻿# 🌳 Tree-sitter Analyzer
+# 🌳 Tree-sitter Analyzer
 
 **[English](README.md)** | **[日本語](README_ja.md)** | **简体中文**
 
@@ -158,7 +158,7 @@ TSA 在 `.claude/skills/tsa-*/` 下提供精选工作流：
 
 每个 skill 都带 `allowed-tools` 工具子集 + 操作流程 + 决策面 schema，agent 不必在 8 个工具间反复挑选。
 
-### 331 个 CLI flag
+### 338 个 CLI flag
 
 CodeGraph CLI 的严格超集。亮点：
 
