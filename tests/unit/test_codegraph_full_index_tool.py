@@ -1483,7 +1483,6 @@ async def test_grammar_only_errors_yield_success_true(tool_with_root):
             }
         ],
     }
-    clean_phase = {"status": "ok", "processed": 0, "errors": 0}
     with (
         patch.object(tool_with_root, "_phase_ast_cache", return_value=grammar_error_phase),
         patch.object(
