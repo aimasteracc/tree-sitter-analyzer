@@ -36,7 +36,7 @@ jobs:
 
       - name: Validate package
         run: |
-          uv run --with twine twine check dist/*
+          uv run --with "twine>=6.0" twine check dist/*
           echo "✅ Twine validation passed" >> $GITHUB_STEP_SUMMARY
 
       - name: List artifacts
