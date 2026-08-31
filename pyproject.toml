@@ -469,6 +469,12 @@ ignore_missing_imports = true
 # stubs in this repo. We silence the four resulting noise codes
 # (attr-defined / no-any-return / no-untyped-def / unreachable) on
 # exactly the modules that need them, so real type errors (arg-type,
+# hotspot_analyzer uses a sys.version_info guard for tomllib/tomli that
+# produces an unused-ignore on whichever Python version mypy targets.
+[[tool.mypy.overrides]]
+module = ["tree_sitter_analyzer.hotspot_analyzer"]
+warn_unused_ignores = false
+
 # assignment, var-annotated, misc) still surface elsewhere — and on
 # clean modules these codes still fail builds. This restores pre-commit
 # mypy as a useful gate, eliminating the routine need for --no-verify.
@@ -709,11 +715,11 @@ dev = [
     "twine>=4.0.2",
     "black>=24.0.0",
     "isort>=8.0.1",
-    "bandit>=1.7.0",
+    "bandit>=1.9.4",
     "safety>=3.0.0,<3.9.0", # Pin to avoid typer compatibility issues
     "psutil>=5.9.8",
     "types-toml>=0.10.8.20240310",
-    "types-requests>=2.32.4.20250913",
+    "types-requests>=2.33.0.20260712",
     "types-jsonschema",
     "types-PyYAML",
     "types-cachetools",

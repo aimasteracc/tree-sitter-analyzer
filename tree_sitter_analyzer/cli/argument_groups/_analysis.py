@@ -120,6 +120,65 @@ def _add_mcp_health_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_mcp_hotspot_options(parser: argparse.ArgumentParser) -> None:
+    """Add --hotspot and related flags (RFC-0028)."""
+    parser.add_argument(
+        "--hotspot",
+        action="store_true",
+        dest="hotspot",
+        help=(
+            "Rank files by hotspot_score = Ca x MaxCC. "
+            "Identifies files that are both highly coupled (many dependents) "
+            "and structurally complex — the highest-value refactoring targets."
+        ),
+    )
+    parser.add_argument(
+        "--hotspot-top-n",
+        type=int,
+        default=20,
+        dest="hotspot_top_n",
+        metavar="N",
+        help="Limit ranking to top N files before pagination (default: 20, max: 200)",
+    )
+    parser.add_argument(
+        "--hotspot-show-alias-diff",
+        action="store_true",
+        dest="hotspot_show_alias_diff",
+        help="Include alias_gap_summary showing files where ca_alias > ca_raw",
+    )
+    parser.add_argument(
+        "--trace-from",
+        metavar="ENTRY_PATH",
+        dest="trace_from",
+        default=None,
+        help=(
+            "--hotspot: restrict scoring to files reachable via BFS from ENTRY_PATH. "
+            "Combine with --depth to control traversal depth (default: 3, max: 5)."
+        ),
+    )
+    parser.add_argument(
+        "--depth",
+        type=int,
+        default=3,
+        dest="depth",
+        help="BFS depth for --trace-from (default: 3, capped at 5)",
+    )
+    parser.add_argument(
+        "--page",
+        type=int,
+        default=1,
+        dest="page",
+        help="Pagination: 1-indexed page number (default: 1)",
+    )
+    parser.add_argument(
+        "--page-size",
+        type=int,
+        default=20,
+        dest="page_size",
+        help="Pagination: results per page (default: 20, max: 100)",
+    )
+
+
 def _add_mcp_change_options(parser: argparse.ArgumentParser) -> None:
     """Add change-impact MCP mirror flags."""
     parser.add_argument(

@@ -1,4 +1,4 @@
-﻿# 🌳 Tree-sitter Analyzer
+# 🌳 Tree-sitter Analyzer
 
 **[English](README.md)** | **日本語** | **[简体中文](README_zh.md)**
 
@@ -158,7 +158,7 @@ TSA は `.claude/skills/tsa-*/` 下にキュレーション済みワークフロ
 
 各 skill は `allowed-tools` ツール サブセット + 手順レシピ + 決定面スキーマを同梱し、エージェントは 8 個のツールから毎回選別する必要がありません。
 
-### 331 の CLI フラグ
+### 338 の CLI フラグ
 
 CodeGraph の CLI の厳密な上位互換。主なもの:
 
