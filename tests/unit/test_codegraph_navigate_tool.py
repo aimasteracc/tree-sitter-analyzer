@@ -186,6 +186,49 @@ class TestExecuteHierarchy:
         assert h["lists_truncated"] is True
         assert h["listed_cap"] == _MAX_LISTED
 
+    @pytest.mark.asyncio
+    async def test_hierarchy_not_found_hint_suggests_class_hierarchy(self, tool):
+        """Hierarchy mode NOT_FOUND: hint must redirect to --class-hierarchy."""
+        mock_graph = MagicMock()
+        mock_graph.build.side_effect = Exception("no graph")
+        with patch.object(tool, "get_call_graph", return_value=mock_graph):
+            result = await tool.execute(
+                {"symbol": "MyClass", "mode": "hierarchy", "output_format": "json"}
+            )
+        assert result["verdict"] == "NOT_FOUND"
+        assert "--class-hierarchy" in result["hint"]
+        assert "--class-hierarchy-class MyClass" in result["hint"]
+        assert "CALL graph" in result["hint"]
+
+    @pytest.mark.asyncio
+    async def test_hierarchy_not_found_agent_summary_mentions_class_hierarchy(self, tool):
+        """agent_summary.next_step for hierarchy NOT_FOUND must reference --class-hierarchy."""
+        mock_graph = MagicMock()
+        mock_graph.build.side_effect = Exception("no graph")
+        with patch.object(tool, "get_call_graph", return_value=mock_graph):
+            result = await tool.execute(
+                {"symbol": "MyClass", "mode": "hierarchy", "output_format": "json"}
+            )
+        next_step = result["agent_summary"]["next_step"]
+        assert "--class-hierarchy" in next_step
+        assert "MyClass" in next_step
+
+    @pytest.mark.asyncio
+    async def test_non_hierarchy_not_found_uses_generic_hint(self, tool):
+        """Full mode NOT_FOUND: hint must NOT inject class-hierarchy suggestion."""
+        mock_graph = MagicMock()
+        mock_graph.build.side_effect = Exception("no graph")
+        with (
+            patch.object(tool, "get_cache", return_value=None),
+            patch.object(tool, "get_call_graph", return_value=mock_graph),
+        ):
+            result = await tool.execute(
+                {"symbol": "unknown_fn", "mode": "full", "output_format": "json"}
+            )
+        assert result["verdict"] == "NOT_FOUND"
+        hint = result.get("hint", "")
+        assert "--class-hierarchy" not in hint
+
 
 class TestExecuteFull:
     @pytest.mark.asyncio
