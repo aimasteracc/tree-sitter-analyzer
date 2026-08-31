@@ -372,3 +372,79 @@ def test_detect_source_dir_heuristic_skips_non_source(tmp_path):
 
 def test_detect_source_dir_none_when_empty(tmp_path):
     assert _detect_source_dir(str(tmp_path)) is None
+
+
+# ── build_ca_raw_map ──────────────────────────────────────────────────────────
+
+def test_build_ca_raw_map_no_result():
+    """When dm._result is None, returns an empty dict."""
+    from tree_sitter_analyzer.hotspot_analyzer import build_ca_raw_map
+    dm = MagicMock()
+    dm._result = None
+    result = build_ca_raw_map(dm)
+    assert result == {}
+
+
+def test_build_ca_raw_map_with_module_stats():
+    """Returns {file: afferent_coupling} from dm._result.module_stats."""
+    from tree_sitter_analyzer.hotspot_analyzer import build_ca_raw_map
+    dm = MagicMock()
+    stat1 = MagicMock()
+    stat1.file = "pkg/foo.py"
+    stat1.afferent_coupling = 7
+    stat2 = MagicMock()
+    stat2.file = "pkg/bar.py"
+    stat2.afferent_coupling = 3
+    dm._result.module_stats = [stat1, stat2]
+    result = build_ca_raw_map(dm)
+    assert result == {"pkg/foo.py": 7, "pkg/bar.py": 3}
+
+
+# ── build_heatmap_map ─────────────────────────────────────────────────────────
+
+def test_build_heatmap_map_normalizes_backslash():
+    """Backslash paths in FileHeatmap.file are normalized to forward slash."""
+    from tree_sitter_analyzer.hotspot_analyzer import build_heatmap_map
+
+    @dataclass
+    class _FH:
+        file: str
+        language: str = "python"
+        functions: list = field(default_factory=list)
+        total_complexity: int = 0
+        avg_complexity: float = 0.0
+        max_complexity: int = 0
+
+    hm = _FH(file="pkg\\foo.py")
+    result = build_heatmap_map([hm])  # type: ignore[arg-type]
+    assert "pkg/foo.py" in result
+    assert result["pkg/foo.py"] is hm
+
+
+# ── build_test_focus: no-functions branch ─────────────────────────────────────
+
+def test_build_test_focus_no_functions():
+    """FakeHeatmap with empty functions list → TestFocus with function='(no functions)'."""
+    hm = FakeHeatmap("a.py", max_complexity=0, functions=[])
+    tf = build_test_focus(hm, "OK")
+    assert tf.function == "(no functions)"
+    assert tf.cc == 0
+    assert "(low impact" in tf.suggestion
+
+
+# ── build_import_edges_from_source ────────────────────────────────────────────
+
+def test_build_import_edges_from_source_basic(tmp_path):
+    """Import edges are built correctly from Python source files."""
+    from tree_sitter_analyzer.hotspot_analyzer import build_import_edges_from_source
+
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "utils.py").write_text("def helper(): pass\n")
+    (tmp_path / "pkg" / "main.py").write_text("from pkg.utils import helper\n")
+
+    scan = ["pkg/utils.py", "pkg/main.py"]
+    edges = build_import_edges_from_source(str(tmp_path), scan)
+    assert "pkg/main.py" in edges
+    assert "pkg/utils.py" in edges["pkg/main.py"]
+    # utils.py imports nothing in the scan set
+    assert edges.get("pkg/utils.py", {}) == {}
