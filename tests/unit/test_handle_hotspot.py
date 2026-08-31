@@ -6,6 +6,7 @@ gap summary. Each test asserts a real behavioral contract — no coverage stuffi
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from unittest.mock import MagicMock, patch
 
@@ -389,3 +390,144 @@ def test_show_alias_diff_populates_gap_summary():
     # One file ("a.py") has alias_ca (10) > ca_raw (3) → gap count = 1
     assert r["alias_gap_summary"]["files_with_alias_gap"] == 1
     assert r["alias_gap_summary"]["total_files"] == 1
+
+
+# ── _ensure_tsa_config ────────────────────────────────────────────────────────
+
+def test_ensure_tsa_config_skips_if_exists(tmp_path):
+    """Existing .tsa/config.json is not overwritten by _ensure_tsa_config."""
+    from tree_sitter_analyzer.cli.capability_commands import _ensure_tsa_config
+
+    cfg_dir = tmp_path / ".tsa"
+    cfg_dir.mkdir()
+    cfg_path = cfg_dir / "config.json"
+    original = {"existing": True, "custom_key": 42}
+    cfg_path.write_text(json.dumps(original), encoding="utf-8")
+
+    _ensure_tsa_config(str(tmp_path))
+
+    written = json.loads(cfg_path.read_text(encoding="utf-8"))
+    assert written["existing"] is True
+    assert written["custom_key"] == 42
+
+
+def test_ensure_tsa_config_creates_if_missing(tmp_path):
+    """When no config exists, _ensure_tsa_config creates .tsa/config.json with defaults."""
+    from tree_sitter_analyzer.cli.capability_commands import _ensure_tsa_config
+
+    _ensure_tsa_config(str(tmp_path))
+
+    cfg_path = tmp_path / ".tsa" / "config.json"
+    assert cfg_path.exists()
+    config = json.loads(cfg_path.read_text(encoding="utf-8"))
+    assert config["severity_thresholds"] == {"critical": 400, "review": 100}
+    assert config["default_top_n"] == 20
+
+
+# ── _write_index_meta ─────────────────────────────────────────────────────────
+
+def test_write_index_meta_creates_file(tmp_path):
+    """_write_index_meta writes .tsa/index-meta.json with correct fields."""
+    from tree_sitter_analyzer.cli.capability_commands import _write_index_meta
+
+    _write_index_meta(str(tmp_path), files_indexed=42, languages=["python", "typescript"])
+
+    meta_path = tmp_path / ".tsa" / "index-meta.json"
+    assert meta_path.exists()
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert meta["files_indexed"] == 42
+    assert meta["languages"] == ["python", "typescript"]
+    assert "built_at" in meta
+    assert "tsa_version" in meta
+
+
+# ── top_n capping at 200 ──────────────────────────────────────────────────────
+
+def test_top_n_capped_at_200():
+    """top_n=300 is silently capped to 200; compute_scores receives top_n=200."""
+    ctx, captured = make_context()
+    MockDM, _ = make_dm_mock()
+    compute_spy = MagicMock(return_value=[])
+    with (
+        patch(_DM, MockDM),
+        patch(_ENSURE_CFG),
+        patch(_WRITE_META),
+        patch(_HEATMAPS, return_value=[]),
+        patch(_CA_RAW, return_value={"a.py": 1}),
+        patch(_ALIAS_CA, return_value={"a.py": 1}),
+        patch(_HEATMAP_MAP, return_value={}),
+        patch(_COMPUTE, compute_spy),
+    ):
+        rc = _handle_hotspot(make_args(hotspot_top_n=300), ctx, "json")
+    assert rc == 0
+    _, kwargs = compute_spy.call_args
+    assert kwargs["top_n"] == 200
+
+
+# ── Ca fallback source scanning ───────────────────────────────────────────────
+
+def test_ca_fallback_when_import_edges_empty(tmp_path):
+    """When dm._import_edges is empty, fallback source scanning is invoked and succeeds."""
+    ctx, captured = make_context()
+    MockDM = MagicMock()
+    dm = MockDM.return_value
+    dm.build.return_value = None
+    dm._import_edges = {}   # triggers import_edges rebuild branch
+    dm._result = None       # build_ca_raw_map returns {} → triggers ca_map branch too
+
+    with (
+        patch(_DM, MockDM),
+        patch(_ENSURE_CFG),
+        patch(_WRITE_META),
+        patch(_HEATMAPS, return_value=[]),
+        patch(_CA_RAW, return_value={}),
+        patch(
+            "tree_sitter_analyzer.complexity_heatmap._collect_source_files",
+            return_value=[],
+        ),
+        patch(
+            "tree_sitter_analyzer.hotspot_analyzer.build_ca_from_source_imports",
+            return_value={},
+        ),
+        patch(
+            "tree_sitter_analyzer.hotspot_analyzer.build_import_edges_from_source",
+            return_value={},
+        ),
+        patch(_ALIAS_CA, return_value={}),
+        patch(_HEATMAP_MAP, return_value={}),
+        patch(_COMPUTE, return_value=[]),
+    ):
+        rc = _handle_hotspot(make_args(project_root=str(tmp_path)), ctx, "json")
+    assert rc == 0
+    r = captured["result"]
+    assert r["success"] is True
+
+
+# ── Pagination beyond total pages ─────────────────────────────────────────────
+
+def test_page_beyond_total_returns_empty_results_success():
+    """Requesting page=999 with only one page of data returns success=True, results=[]."""
+    ctx, captured = make_context()
+    MockDM, _ = make_dm_mock()
+    review_entry = make_hotspot_entry(
+        file="src/mod.py", severity="REVIEW", score=150.0,
+        ca_raw=5, ca_alias=5, max_cc=30,
+    )
+    with (
+        patch(_DM, MockDM),
+        patch(_ENSURE_CFG),
+        patch(_WRITE_META),
+        patch(_HEATMAPS, return_value=[FakeHeatmap("src/mod.py", max_complexity=30)]),
+        patch(_CA_RAW, return_value={"src/mod.py": 5}),
+        patch(_ALIAS_CA, return_value={"src/mod.py": 5}),
+        patch(
+            _HEATMAP_MAP,
+            return_value={"src/mod.py": FakeHeatmap("src/mod.py", max_complexity=30)},
+        ),
+        patch(_COMPUTE, return_value=[review_entry]),
+    ):
+        rc = _handle_hotspot(make_args(page=999, page_size=20), ctx, "json")
+    assert rc == 0
+    r = captured["result"]
+    assert r["success"] is True
+    assert r["results"] == []

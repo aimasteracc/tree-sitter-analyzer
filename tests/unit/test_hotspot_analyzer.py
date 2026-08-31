@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from tree_sitter_analyzer.hotspot_analyzer import (
     _detect_source_dir,
@@ -448,3 +448,98 @@ def test_build_import_edges_from_source_basic(tmp_path):
     assert "pkg/utils.py" in edges["pkg/main.py"]
     # utils.py imports nothing in the scan set
     assert edges.get("pkg/utils.py", {}) == {}
+
+
+# ── heatmaps_from_project_analysis ────────────────────────────────────────────
+
+def test_heatmaps_from_project_analysis_empty_dir(tmp_path):
+    """Empty project directory yields no heatmaps."""
+    from tree_sitter_analyzer.hotspot_analyzer import heatmaps_from_project_analysis
+
+    result = heatmaps_from_project_analysis(str(tmp_path))
+    assert result == []
+
+
+def test_heatmaps_from_project_analysis_transforms_result(tmp_path):
+    """FileHeatmap objects are built correctly from analyze_project_heatmap output."""
+    from tree_sitter_analyzer.hotspot_analyzer import heatmaps_from_project_analysis
+
+    fake_result = {
+        "file_heatmaps": [
+            {
+                "file": "src/foo.py",
+                "language": "python",
+                "total_complexity": 15,
+                "avg_complexity": 7.5,
+                "max_complexity": 12,
+                "top_functions": [
+                    {"name": "parse", "line": 10, "complexity": 12},
+                    {"name": "load", "line": 40, "complexity": 3},
+                ],
+            }
+        ]
+    }
+    with patch(
+        "tree_sitter_analyzer.complexity_heatmap.analyze_project_heatmap",
+        return_value=fake_result,
+    ):
+        result = heatmaps_from_project_analysis(str(tmp_path))
+
+    assert len(result) == 1
+    fh = result[0]
+    assert fh.file == "src/foo.py"
+    assert fh.language == "python"
+    assert fh.max_complexity == 12
+    assert fh.total_complexity == 15
+    assert len(fh.functions) == 2
+    assert fh.functions[0].name == "parse"
+    assert fh.functions[0].complexity == 12
+
+
+# ── _detect_source_dir: setuptools and edge cases ─────────────────────────────
+
+def test_detect_source_dir_setuptools_packages(tmp_path):
+    """pyproject.toml with [tool.setuptools] packages is resolved when hatch is absent."""
+    (tmp_path / "mypkg").mkdir()
+    (tmp_path / "mypkg" / "__init__.py").write_text("")
+    # Only setuptools key — no hatch section
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.setuptools]\npackages = ["mypkg"]\n'
+    )
+    assert _detect_source_dir(str(tmp_path)) == "mypkg"
+
+
+def test_detect_source_dir_dot_prefix_dir_ignored(tmp_path):
+    """Directories starting with '.' are skipped by the heuristic fallback."""
+    (tmp_path / ".hidden").mkdir()
+    (tmp_path / ".hidden" / "__init__.py").write_text("")
+    (tmp_path / "mypkg").mkdir()
+    (tmp_path / "mypkg" / "__init__.py").write_text("")
+    # No pyproject.toml — heuristic must skip .hidden and pick mypkg
+    assert _detect_source_dir(str(tmp_path)) == "mypkg"
+
+
+# ── build_alias_ca_map: short-circuit on empty import_edges ──────────────────
+
+def test_build_alias_ca_map_empty_import_edges_returns_copy():
+    """When import_edges is empty, returns a new dict copy of ca_raw without rglob walk."""
+    from tree_sitter_analyzer.hotspot_analyzer import build_alias_ca_map
+
+    ca_raw = {"a.py": 5, "b.py": 3}
+    result = build_alias_ca_map(ca_raw, {}, project_root="/fake/path")
+    assert result == {"a.py": 5, "b.py": 3}
+    assert result is not ca_raw  # must be a distinct dict object
+
+
+# ── compute_scores: alias_ca_map overrides raw Ca ────────────────────────────
+
+def test_compute_scores_alias_ca_map_overrides_raw():
+    """When alias_ca_map is provided, ca_alias uses alias value and score reflects it."""
+    ca_map = {"a.py": 3}
+    alias_ca_map_arg = {"a.py": 8}
+    hm = FakeHeatmap("a.py", max_complexity=10, functions=[FakeFunc("f", 10)])
+    entries = compute_scores(ca_map, {"a.py": hm}, alias_ca_map=alias_ca_map_arg)
+    assert len(entries) == 1
+    assert entries[0].ca_raw == 3
+    assert entries[0].ca_alias == 8
+    assert entries[0].score == 80.0  # 8 * 10
