@@ -240,15 +240,19 @@ def _handle_hotspot(
         from tree_sitter_analyzer.subgraph_traverser import get_subgraph
         reachable = get_subgraph(dm, trace_from, depth)
         if reachable is None:
-            context.output_json(result_to_dict(HotspotResult(
-                success=False, error="entry_point_not_found",
-                error_category="data", recovery_hint="try_alternative",
-                message=(
-                    f"Entry point not found: {trace_from} — "
-                    "try '--trace-from src/' or check path with 'tsa health'"
-                ),
-            )))
-            return 1
+            # Isolated file: no imports, no importers — still a valid entry at hop 0
+            if trace_from in heatmap_map:
+                reachable = {trace_from: 0}
+            else:
+                context.output_json(result_to_dict(HotspotResult(
+                    success=False, error="entry_point_not_found",
+                    error_category="data", recovery_hint="try_alternative",
+                    message=(
+                        f"Entry point not found: {trace_from} — "
+                        "try '--trace-from src/' or check path with 'tsa health'"
+                    ),
+                )))
+                return 1
         subgraph_summary = SubgraphSummary(
             entry_point=trace_from,
             depth=depth,
@@ -267,12 +271,22 @@ def _handle_hotspot(
     )
     page_entries, meta = paginate(ranked, page, page_size)
 
+    n_critical = sum(1 for e in ranked if e.severity == "CRITICAL")
+    n_review = sum(1 for e in ranked if e.severity == "REVIEW")
+    verdict = "CRITICAL" if n_critical > 0 else ("REVIEW" if n_review > 0 else "OK")
+    summary_line = (
+        f"hotspot: top={min(top_n, len(ranked))} files "
+        f"CRITICAL={n_critical} REVIEW={n_review} OK={len(ranked)-n_critical-n_review}"
+    )
     result = HotspotResult(
         success=True,
         metadata=meta,
         threshold={"critical": 400, "review": 100},
         results=page_entries,
         subgraph_summary=subgraph_summary,
+        summary_line=summary_line,
+        verdict=verdict,
+        agent_summary={"summary_line": summary_line, "verdict": verdict},
     )
     if not ranked:
         result.message = "No files exceed CRITICAL or REVIEW threshold — codebase is in good shape"

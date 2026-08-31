@@ -116,7 +116,9 @@ def test_alias_resolution_python(tmp_path):
     }
     ca_raw = {"pkg/__init__.py": 1, "pkg/core.py": 1}
     alias_ca = build_alias_ca_map(ca_raw, import_edges, str(tmp_path))
-    assert alias_ca.get("pkg/core.py", 0) >= ca_raw.get("pkg/core.py", 0)
+    # main.py imports pkg/__init__.py (Ca=1), which re-exports pkg/core.py
+    # so alias Ca for core.py must be ca_raw + 1 extra caller via __init__
+    assert alias_ca.get("pkg/core.py", 0) == ca_raw.get("pkg/core.py", 0) + 1
 
 
 def test_alias_resolution_typescript(tmp_path):
@@ -133,7 +135,9 @@ def test_alias_resolution_typescript(tmp_path):
     }
     ca_raw = {"src/index.ts": 1, "src/utils.ts": 1}
     alias_ca = build_alias_ca_map(ca_raw, import_edges, str(tmp_path))
-    assert alias_ca.get("src/utils.ts", 0) >= ca_raw.get("src/utils.ts", 0)
+    # main.ts imports src/index.ts (Ca=1), which re-exports src/utils.ts
+    # so alias Ca for utils.ts must be ca_raw + 1 extra caller via index.ts
+    assert alias_ca.get("src/utils.ts", 0) == ca_raw.get("src/utils.ts", 0) + 1
 
 
 # ── P6: Error categories ──────────────────────────────────────────────────────

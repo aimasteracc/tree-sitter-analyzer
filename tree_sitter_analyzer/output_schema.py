@@ -65,6 +65,10 @@ class HotspotResult:
     error: str | None = None
     error_category: str | None = None  # "state"|"data"|"transient"|"configuration"
     recovery_hint: str | None = None   # "retry"|"try_alternative"|"fix_then_retry"|"fix_argument"
+    # Canonical CLI envelope (required by test_cli_envelope_contract.py)
+    summary_line: str | None = None
+    verdict: str | None = None
+    agent_summary: dict[str, Any] | None = None
 
 
 def paginate(
@@ -84,7 +88,7 @@ def paginate(
     start = (page - 1) * page_size
     end = start + page_size
     sliced = ranked[start:end]
-    truncated = (total % page_size) != 0 and page == total_pages and total > 0
+    truncated = page < total_pages
     meta = HotspotMetadata(
         files_analyzed=total,
         files_in_output=len(sliced),

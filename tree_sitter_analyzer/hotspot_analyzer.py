@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -66,11 +67,11 @@ def _detect_source_dir(project_root: str) -> str | None:
     # Try pyproject.toml (hatch, setuptools, flit)
     pyproject = root / "pyproject.toml"
     if pyproject.exists():
-        try:
-            import tomllib  # Python 3.11+
-        except ImportError:
+        if sys.version_info >= (3, 11):
+            import tomllib  # noqa: I001
+        else:
             try:
-                import tomli as tomllib  # noqa: PLC0415
+                import tomli as tomllib  # type: ignore[import-not-found,no-redef]  # noqa: PLC0415
             except ImportError:
                 tomllib = None
         if tomllib is not None:
@@ -393,7 +394,7 @@ def compute_scores(
             hops=hops,
         ))
 
-    entries.sort(key=lambda e: e.score, reverse=True)
+    entries.sort(key=lambda e: (-e.score, e.file))
     entries = entries[:max(0, top_n)]
     for i, e in enumerate(entries, 1):
         e.rank = i
@@ -486,10 +487,15 @@ def build_alias_ca_map(
             1 for src in import_edges if init_rel in import_edges[src]
         )
         for mod in re_exported:
-            # Candidate canonical paths
+            # Resolve relative to the package directory, not the project root
             for suffix in [f"{mod}.py", f"{mod}/__init__.py"]:
-                if (root / suffix).exists():
-                    alias_extra[suffix] = alias_extra.get(suffix, 0) + importers_of_init
+                candidate = init_path.parent / suffix
+                if candidate.exists():
+                    try:
+                        canonical = str(candidate.relative_to(root)).replace("\\", "/")
+                    except ValueError:
+                        continue
+                    alias_extra[canonical] = alias_extra.get(canonical, 0) + importers_of_init
                     break
 
     # Find all index.ts / index.js files
@@ -511,9 +517,15 @@ def build_alias_ca_map(
                 1 for src in import_edges if index_rel in import_edges[src]
             )
             for mod in re_exported:
+                # Resolve relative to the index file's package directory
                 for suffix in [f"{mod}.ts", f"{mod}.js", f"{mod}/index.ts"]:
-                    if (root / suffix).exists():
-                        alias_extra[suffix] = alias_extra.get(suffix, 0) + importers_of_index
+                    candidate = index_path.parent / suffix
+                    if candidate.exists():
+                        try:
+                            canonical = str(candidate.relative_to(root)).replace("\\", "/")
+                        except ValueError:
+                            continue
+                        alias_extra[canonical] = alias_extra.get(canonical, 0) + importers_of_index
                         break
 
     result = dict(ca_raw_map)
