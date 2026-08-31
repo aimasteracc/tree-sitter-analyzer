@@ -383,7 +383,7 @@ def test_rfc_reproduction_command_uses_external_interpreter() -> None:
 
 def test_collector_tool_group_has_exact_independent_pins() -> None:
     groups=tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["dependency-groups"]
-    assert groups[collector.TOOL_GROUP] == ["hatchling==1.31.0","jsonschema==4.25.1","packaging==25.0"]
+    assert groups[collector.TOOL_GROUP] == ["hatchling==1.32.0","jsonschema==4.26.0","packaging==25.0"]
 
 def active_tool_inventory(monkeypatch: pytest.MonkeyPatch, rows: list[dict[str,str]]) -> bytes:
     export=b"packaging==25.0 "+bytes([92])+b"\n    --hash=sha256:"+b"a"*64+b"\n"
