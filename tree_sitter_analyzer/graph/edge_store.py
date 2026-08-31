@@ -289,34 +289,43 @@ class EdgeStore:
         self._commit_if_owned()
 
     def upsert_edges(self, edges: list[Edge]) -> None:
-        for edge in edges:
-            cols = _edge_real_columns(edge)
-            self._conn.execute(
-                """INSERT OR REPLACE INTO edges
-                   (source_node_id, target_node_id, kind, line, provenance,
-                    metadata, caller_name, callee_name, file_path,
-                    caller_line, callee_full, callee_line, language,
-                    callee_resolution, callee_resolved_file, callee_symbol_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    edge.source_node_id,
-                    edge.target_node_id,
-                    edge.normalized_kind(),
-                    edge.line,
-                    edge.provenance,
-                    json.dumps(edge.metadata, ensure_ascii=False, sort_keys=True),
-                    cols["caller_name"],
-                    cols["callee_name"],
-                    cols["file_path"],
-                    cols["caller_line"],
-                    cols["callee_full"],
-                    cols["callee_line"],
-                    cols["language"],
-                    cols["callee_resolution"],
-                    cols["callee_resolved_file"],
-                    cols["callee_symbol_id"],
+        if not edges:
+            return
+        params = [
+            (
+                edge.source_node_id,
+                edge.target_node_id,
+                edge.normalized_kind(),
+                edge.line,
+                edge.provenance,
+                json.dumps(edge.metadata, ensure_ascii=False, sort_keys=True),
+                *(
+                    _edge_real_columns(edge)[col]
+                    for col in (
+                        "caller_name",
+                        "callee_name",
+                        "file_path",
+                        "caller_line",
+                        "callee_full",
+                        "callee_line",
+                        "language",
+                        "callee_resolution",
+                        "callee_resolved_file",
+                        "callee_symbol_id",
+                    )
                 ),
             )
+            for edge in edges
+        ]
+        self._conn.executemany(
+            """INSERT OR REPLACE INTO edges
+               (source_node_id, target_node_id, kind, line, provenance,
+                metadata, caller_name, callee_name, file_path,
+                caller_line, callee_full, callee_line, language,
+                callee_resolution, callee_resolved_file, callee_symbol_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            params,
+        )
         self._commit_if_owned()
 
     def _commit_if_owned(self) -> None:
