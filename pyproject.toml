@@ -725,6 +725,6 @@ dev = [
     "pytest-rerunfailures>=16.3",
     # Python 3.10 lacks tomllib; tests fall back via ``try/except ImportError``.
     "tomli>=2.0.0; python_version<'3.11'",
-    "mutmut>=3.6.0",
+    "mutmut>=3.7.0",
     "cryptography>=44.0.0",
 ]
