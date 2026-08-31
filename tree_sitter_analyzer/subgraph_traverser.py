@@ -39,7 +39,7 @@ def bfs_reachable(
 
 
 def get_subgraph(
-    dm: "DependencyMatrix",
+    dm: DependencyMatrix,
     entry_path: str,
     depth: int,
 ) -> dict[str, int] | None:

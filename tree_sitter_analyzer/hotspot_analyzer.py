@@ -1,24 +1,18 @@
 """Hotspot scorer: Ca x MaxCC ranking with alias-aware Ca."""
 from __future__ import annotations
 
-import os
 import re
-import sys
+from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from tree_sitter_analyzer.dependency_matrix import DependencyMatrix
     from tree_sitter_analyzer.complexity_heatmap import FileHeatmap
+    from tree_sitter_analyzer.dependency_matrix import DependencyMatrix
 
 from tree_sitter_analyzer.output_schema import (
-    AliasDiffSummary,
     HotspotEntry,
-    HotspotMetadata,
-    HotspotResult,
-    SubgraphSummary,
     TestFocus,
-    paginate,
 )
 
 SEVERITY_CRITICAL = 400
@@ -33,7 +27,7 @@ SUGGESTION_BY_SEVERITY = {
 
 # ── Ca helpers ────────────────────────────────────────────────────────────────
 
-def build_ca_raw_map(dm: "DependencyMatrix") -> dict[str, int]:
+def build_ca_raw_map(dm: DependencyMatrix) -> dict[str, int]:
     """Return {file: afferent_coupling} from DependencyMatrix module_stats.
 
     Reads dm._result.module_stats after dm.build() has been called.
@@ -46,7 +40,7 @@ def build_ca_raw_map(dm: "DependencyMatrix") -> dict[str, int]:
 
 # ── Heatmap helpers ───────────────────────────────────────────────────────────
 
-def build_heatmap_map(heatmap_files: list["FileHeatmap"]) -> dict[str, "FileHeatmap"]:
+def build_heatmap_map(heatmap_files: list[FileHeatmap]) -> dict[str, FileHeatmap]:
     """Return {file: FileHeatmap} for O(1) lookup (forward-slash normalized)."""
     return {fh.file.replace("\\", "/"): fh for fh in heatmap_files}
 
@@ -76,9 +70,9 @@ def _detect_source_dir(project_root: str) -> str | None:
             import tomllib  # Python 3.11+
         except ImportError:
             try:
-                import tomli as tomllib  # type: ignore[no-redef]
+                import tomli as tomllib  # noqa: PLC0415
             except ImportError:
-                tomllib = None  # type: ignore[assignment]
+                tomllib = None
         if tomllib is not None:
             try:
                 data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
@@ -121,7 +115,7 @@ def _detect_source_dir(project_root: str) -> str | None:
     return None
 
 
-def heatmaps_from_project_analysis(project_root: str, max_files: int = 200) -> list["FileHeatmap"]:
+def heatmaps_from_project_analysis(project_root: str, max_files: int = 200) -> list[FileHeatmap]:
     """Build FileHeatmap list using analyze_project_heatmap() result.
 
     Scopes to the main source package (via __init__.py detection) to avoid
@@ -130,6 +124,8 @@ def heatmaps_from_project_analysis(project_root: str, max_files: int = 200) -> l
     """
     from tree_sitter_analyzer.complexity_heatmap import (
         FileHeatmap as _FileHeatmap,
+    )
+    from tree_sitter_analyzer.complexity_heatmap import (
         FunctionComplexity,
         analyze_project_heatmap,
     )
@@ -335,7 +331,7 @@ def classify_severity(score: float) -> str:
     return "OK"
 
 
-def build_test_focus(file_heatmap: "FileHeatmap", severity: str) -> TestFocus:
+def build_test_focus(file_heatmap: FileHeatmap, severity: str) -> TestFocus:
     """Extract highest-CC function and attach severity-based suggestion."""
     funcs = sorted(file_heatmap.functions, key=lambda f: f.complexity, reverse=True)
     if funcs:
@@ -356,7 +352,7 @@ def build_test_focus(file_heatmap: "FileHeatmap", severity: str) -> TestFocus:
 
 def compute_scores(
     ca_map: dict[str, int],          # {file: ca_raw}
-    heatmap_map: dict[str, "FileHeatmap"],
+    heatmap_map: dict[str, FileHeatmap],
     alias_ca_map: dict[str, int] | None = None,  # {file: ca_alias} — None = P2
     reachable: dict[str, int] | None = None,      # {file: hops}  — None = global mode
     top_n: int = 20,
@@ -414,7 +410,7 @@ def _parse_python_reexports(init_path: Path) -> list[str]:
       from .subpkg.baz import X  -> adds "subpkg/baz"
     Dynamic imports and star imports are skipped.
     """
-    results = []
+    results: list[str] = []
     try:
         text = init_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -434,7 +430,7 @@ def _parse_ts_reexports(index_path: Path) -> list[str]:
 
     Parses: export { Foo } from './foo'  or  export * from './bar'
     """
-    results = []
+    results: list[str] = []
     try:
         text = index_path.read_text(encoding="utf-8", errors="replace")
     except OSError:

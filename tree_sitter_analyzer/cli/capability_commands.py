@@ -90,10 +90,9 @@ def _execute_facade(
 
 
 def _handle_hotspot(
-    args: Any, context: "SpecialCommandContext", output_format: str
+    args: Any, context: SpecialCommandContext, output_format: str
 ) -> int:
     import sys
-    from pathlib import Path
 
     from tree_sitter_analyzer.dependency_matrix import DependencyMatrix
     from tree_sitter_analyzer.hotspot_analyzer import (
@@ -212,8 +211,9 @@ def _handle_hotspot(
     # imports from tests/, scripts/, etc. are counted — not just heatmap files.
     # Also build import_edges for BFS (P5) and alias Ca (P3).
     if not ca_map or not dm._import_edges:
-        from tree_sitter_analyzer.complexity_heatmap import _collect_source_files
         import os as _os
+
+        from tree_sitter_analyzer.complexity_heatmap import _collect_source_files
         all_py = _collect_source_files(project_root, "python", None, 5000)
         _known_files = [
             _os.path.relpath(fp, project_root).replace("\\", "/")

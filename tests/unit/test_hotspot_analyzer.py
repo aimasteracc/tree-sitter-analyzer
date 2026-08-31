@@ -1,13 +1,8 @@
 """Unit tests for hotspot_analyzer.py and output_schema.py (pure functions only)."""
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass, field
-from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from tree_sitter_analyzer.hotspot_analyzer import (
     _detect_source_dir,
@@ -20,17 +15,17 @@ from tree_sitter_analyzer.hotspot_analyzer import (
 )
 from tree_sitter_analyzer.output_schema import (
     HotspotEntry,
-    HotspotMetadata,
-    TestFocus as _TestFocus,
     paginate,
     result_to_dict,
 )
+from tree_sitter_analyzer.output_schema import (
+    TestFocus as _TestFocus,
+)
+from tree_sitter_analyzer.subgraph_traverser import bfs_reachable
 
 # Alias to avoid pytest collecting TestFocus as a test class
 TestFocus = _TestFocus
 TestFocus.__test__ = False  # type: ignore[attr-defined]
-from tree_sitter_analyzer.subgraph_traverser import bfs_reachable
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -144,7 +139,7 @@ def test_alias_resolution_typescript(tmp_path):
 # ── P6: Error categories ──────────────────────────────────────────────────────
 
 def test_error_index_not_built():
-    from tree_sitter_analyzer.output_schema import HotspotResult, result_to_dict
+    from tree_sitter_analyzer.output_schema import HotspotResult
     r = HotspotResult(success=False, error="index_not_built",
                       error_category="state", recovery_hint="fix_then_retry",
                       message="Index not found")
@@ -155,7 +150,7 @@ def test_error_index_not_built():
 
 
 def test_error_entry_point_not_found():
-    from tree_sitter_analyzer.output_schema import HotspotResult, result_to_dict
+    from tree_sitter_analyzer.output_schema import HotspotResult
     r = HotspotResult(success=False, error="entry_point_not_found",
                       error_category="data", recovery_hint="try_alternative",
                       message="Not found")
@@ -165,7 +160,7 @@ def test_error_entry_point_not_found():
 
 
 def test_error_transient():
-    from tree_sitter_analyzer.output_schema import HotspotResult, result_to_dict
+    from tree_sitter_analyzer.output_schema import HotspotResult
     r = HotspotResult(success=False, error="parse_timeout",
                       error_category="transient", recovery_hint="retry",
                       message="Timeout")
@@ -175,7 +170,7 @@ def test_error_transient():
 
 
 def test_error_invalid_depth():
-    from tree_sitter_analyzer.output_schema import HotspotResult, result_to_dict
+    from tree_sitter_analyzer.output_schema import HotspotResult
     r = HotspotResult(success=False, error="invalid_argument",
                       error_category="configuration", recovery_hint="fix_argument",
                       message="Invalid value for --depth: must be 1-5")
@@ -225,7 +220,7 @@ def test_bfs_subgraph_smaller():
 
 
 def test_bfs_depth_cap(capsys):
-    from tree_sitter_analyzer.subgraph_traverser import get_subgraph, MAX_DEPTH_CAP
+    from tree_sitter_analyzer.subgraph_traverser import get_subgraph
     dm = MagicMock()
     dm._import_edges = {"main.py": {"a.py": 1}, "a.py": {}}
     result = get_subgraph(dm, "main.py", 10)
@@ -242,8 +237,8 @@ def test_hops_in_result():
     }
     reachable = {"main.py": 0, "a.py": 1}
     entries = compute_scores(ca_map, hm_map, reachable=reachable)
-    for e in entries:
-        assert e.hops is not None
+    hop_map = {e.file: e.hops for e in entries}
+    assert hop_map == {"main.py": 0, "a.py": 1}
 
 
 # ── top_n edge cases ──────────────────────────────────────────────────────────
