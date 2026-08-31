@@ -300,7 +300,7 @@ def _handle_hotspot(
         )
 
     # --- Write index-meta.json (P6) ---
-    if result.success:
+    if result.success:  # always True at this point; False branch is dead code
         langs = list({fh.language for fh in heatmap_files if fh.language})
         _write_index_meta(project_root, len(heatmap_files), sorted(langs))
 

@@ -543,3 +543,230 @@ def test_compute_scores_alias_ca_map_overrides_raw():
     assert entries[0].ca_raw == 3
     assert entries[0].ca_alias == 8
     assert entries[0].score == 80.0  # 8 * 10
+
+
+# ── _resolve_import_mod: bare-dot and empty-string edges ─────────────────────
+
+def test_resolve_import_mod_bare_dot_resolves_to_package_init():
+    """raw_mod='.' → empty mod after strip → resolves to pkg/__init__.py."""
+    file_set = {"pkg/__init__.py", "pkg/foo.py"}
+    result = _resolve_import_mod(".", "pkg/foo.py", file_set)
+    assert result == "pkg/__init__.py"
+
+
+def test_resolve_import_mod_empty_string_returns_none():
+    """raw_mod='' has no dots and no module path → returns None (line 200 branch)."""
+    file_set = {"a.py"}
+    assert _resolve_import_mod("", "main.py", file_set) is None
+
+
+# ── _iter_resolved_imports: dedup and pass-2 edge cases ──────────────────────
+
+def test_iter_resolved_imports_deduplicates_pass1():
+    """Same module imported on two lines — yielded exactly once (236->224 branch)."""
+    file_set = {"pkg/utils.py"}
+    text = "from pkg.utils import X\nfrom pkg.utils import Y\n"
+    results = list(_iter_resolved_imports(text, "main.py", file_set))
+    assert results == ["pkg/utils.py"]
+
+
+def test_iter_resolved_imports_pass2_skips_non_identifier_name():
+    """Pass-2 names that parse to empty string or non-identifier trigger continue (line 252)."""
+    file_set = {"pkg/__init__.py", "pkg/utils.py", "pkg/foo.py"}
+    # "(garbage)" after split("(")[0] → "" which is not an identifier
+    text = "from . import utils, (garbage)\n"
+    results = list(_iter_resolved_imports(text, "pkg/foo.py", file_set))
+    assert results == ["pkg/utils.py"]
+
+
+def test_iter_resolved_imports_pass2_skips_unresolvable():
+    """Pass-2 name not in file_set → resolved is None, not yielded (254->248 branch)."""
+    file_set = {"pkg/__init__.py", "pkg/utils.py"}
+    text = "from . import nonexistent_module\n"
+    results = list(_iter_resolved_imports(text, "pkg/foo.py", file_set))
+    assert results == []
+
+
+# ── build_import_edges_from_source: non-py skip and OSError ──────────────────
+
+def test_build_import_edges_skips_non_python_files(tmp_path):
+    """Non-.py files in scan list are skipped; result is empty (line 276 continue)."""
+    from tree_sitter_analyzer.hotspot_analyzer import build_import_edges_from_source
+
+    (tmp_path / "main.ts").write_text("import { Foo } from './utils'\n")
+    scan = ["main.ts"]
+    edges = build_import_edges_from_source(str(tmp_path), scan)
+    assert edges == {}
+
+
+def test_build_import_edges_oserror_on_read_is_skipped(tmp_path):
+    """File listed in scan but not on disk → OSError caught, file skipped (lines 279-280)."""
+    from tree_sitter_analyzer.hotspot_analyzer import build_import_edges_from_source
+
+    # nonexistent_file.py is listed but does not exist → read_text raises FileNotFoundError
+    edges = build_import_edges_from_source(str(tmp_path), ["nonexistent_file.py"])
+    assert edges == {}
+
+
+# ── build_ca_from_source_imports: non-py skip and OSError ────────────────────
+
+def test_ca_from_source_imports_skips_non_python_files(tmp_path):
+    """Non-.py files in scan list are skipped; ca result is empty (line 313 continue)."""
+    (tmp_path / "main.ts").write_text("import { Foo } from './utils'\n")
+    ca = build_ca_from_source_imports(str(tmp_path), ["main.ts"])
+    assert ca == {}
+
+
+def test_ca_from_source_imports_oserror_on_read_is_skipped(tmp_path):
+    """File not on disk → OSError caught, file skipped (lines 316-317)."""
+    ca = build_ca_from_source_imports(str(tmp_path), ["nonexistent_file.py"])
+    assert ca == {}
+
+
+# ── _detect_source_dir: malformed TOML and OSError on iterdir ────────────────
+
+def test_detect_source_dir_malformed_toml_falls_back_to_heuristic(tmp_path):
+    """pyproject.toml with invalid TOML → except Exception caught, heuristic used (100-101)."""
+    (tmp_path / "mypkg").mkdir()
+    (tmp_path / "mypkg" / "__init__.py").write_text("")
+    (tmp_path / "pyproject.toml").write_text("invalid = [unclosed bracket\n")
+    # TOML parse fails → falls back to heuristic → finds mypkg
+    assert _detect_source_dir(str(tmp_path)) == "mypkg"
+
+
+def test_detect_source_dir_oserror_on_iterdir_returns_none():
+    """Non-existent project_root → iterdir raises FileNotFoundError (OSError) → None (114-115)."""
+    assert _detect_source_dir("/nonexistent_tsa_test_dir_xyz/project") is None
+
+
+# ── _parse_python_reexports: OSError and false branches ──────────────────────
+
+def test_parse_python_reexports_oserror_returns_empty():
+    """Unreadable path → OSError caught → returns [] (lines 417-418)."""
+    from pathlib import Path
+
+    from tree_sitter_analyzer.hotspot_analyzer import _parse_python_reexports
+
+    result = _parse_python_reexports(Path("/nonexistent/__init__.py"))
+    assert result == []
+
+
+def test_parse_python_reexports_skips_non_from_dot_lines(tmp_path):
+    """Lines without 'from .' prefix are skipped (branch 421->419)."""
+    from tree_sitter_analyzer.hotspot_analyzer import _parse_python_reexports
+
+    init = tmp_path / "__init__.py"
+    init.write_text("import os\nfrom pkg import Foo\nx = 1\n")
+    result = _parse_python_reexports(init)
+    assert result == []
+
+
+def test_parse_python_reexports_skips_star_imports(tmp_path):
+    """Star imports ('from .core import *') are skipped (branch 423->419)."""
+    from tree_sitter_analyzer.hotspot_analyzer import _parse_python_reexports
+
+    init = tmp_path / "__init__.py"
+    init.write_text("from .core import *\n")
+    result = _parse_python_reexports(init)
+    assert result == []
+
+
+# ── _parse_ts_reexports: OSError and false branch ────────────────────────────
+
+def test_parse_ts_reexports_oserror_returns_empty():
+    """Unreadable path → OSError caught → returns [] (lines 437-438)."""
+    from pathlib import Path
+
+    from tree_sitter_analyzer.hotspot_analyzer import _parse_ts_reexports
+
+    result = _parse_ts_reexports(Path("/nonexistent/index.ts"))
+    assert result == []
+
+
+def test_parse_ts_reexports_skips_non_export_lines(tmp_path):
+    """Lines with from clause but not starting with 'export' are skipped (branch 441->439)."""
+    from tree_sitter_analyzer.hotspot_analyzer import _parse_ts_reexports
+
+    index = tmp_path / "index.ts"
+    index.write_text("import { Foo } from './utils'\nconst x = 1\n")
+    result = _parse_ts_reexports(index)
+    assert result == []
+
+
+# ── build_alias_ca_map: known_files paths and missing module on disk ──────────
+
+def test_build_alias_ca_map_known_files_python_branch(tmp_path):
+    """known_files provided: uses list-based init discovery (line 472 True branch)."""
+    from tree_sitter_analyzer.hotspot_analyzer import build_alias_ca_map
+
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__init__.py").write_text("from .core import Foo\n")
+    (tmp_path / "pkg" / "core.py").write_text("class Foo: pass\n")
+
+    import_edges = {"main.py": {"pkg/__init__.py": 1}}
+    ca_raw = {"pkg/__init__.py": 1, "pkg/core.py": 0}
+    known_files = ["pkg/__init__.py", "pkg/core.py"]
+    alias_ca = build_alias_ca_map(ca_raw, import_edges, str(tmp_path), known_files=known_files)
+    # __init__.py has 1 importer, re-exports core → core gets +1
+    assert alias_ca["pkg/core.py"] == 1
+
+
+def test_build_alias_ca_map_reexport_module_not_on_disk(tmp_path):
+    """Re-exported module not on disk → suffix loop exhausted without match (491->489 branch)."""
+    from tree_sitter_analyzer.hotspot_analyzer import build_alias_ca_map
+
+    (tmp_path / "pkg").mkdir()
+    # __init__.py re-exports a module that doesn't exist on disk
+    (tmp_path / "pkg" / "__init__.py").write_text("from .ghost import Foo\n")
+
+    import_edges = {"main.py": {"pkg/__init__.py": 1}}
+    ca_raw = {"pkg/__init__.py": 1}
+    alias_ca = build_alias_ca_map(ca_raw, import_edges, str(tmp_path))
+    # ghost.py doesn't exist → no alias bump; ca_raw preserved as-is
+    assert alias_ca == {"pkg/__init__.py": 1}
+
+
+def test_build_alias_ca_map_known_files_typescript_branch(tmp_path):
+    """known_files provided: uses list-based index discovery (line 504 True branch)."""
+    from tree_sitter_analyzer.hotspot_analyzer import build_alias_ca_map
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "index.ts").write_text("export { Foo } from './utils'\n")
+    (tmp_path / "src" / "utils.ts").write_text("export class Foo {}\n")
+
+    import_edges = {"main.ts": {"src/index.ts": 1}}
+    ca_raw = {"src/index.ts": 1, "src/utils.ts": 0}
+    known_files = ["src/index.ts", "src/utils.ts"]
+    alias_ca = build_alias_ca_map(ca_raw, import_edges, str(tmp_path), known_files=known_files)
+    # index.ts has 1 importer, re-exports utils → utils gets +1
+    assert alias_ca["src/utils.ts"] == 1
+
+
+def test_build_alias_ca_map_ts_reexport_module_not_on_disk(tmp_path):
+    """TS re-exported module not on disk → suffix loop exhausted (521->519 branch)."""
+    from tree_sitter_analyzer.hotspot_analyzer import build_alias_ca_map
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "index.ts").write_text("export { Ghost } from './ghost'\n")
+
+    import_edges = {"main.ts": {"src/index.ts": 1}}
+    ca_raw = {"src/index.ts": 1}
+    alias_ca = build_alias_ca_map(ca_raw, import_edges, str(tmp_path))
+    # ghost.ts doesn't exist → no alias bump; ca_raw preserved
+    assert alias_ca == {"src/index.ts": 1}
+
+
+def test_build_alias_ca_map_first_suffix_missing_second_exists(tmp_path):
+    """First suffix (.ts) doesn't exist but second (.js) does → 523->521 branch taken."""
+    from tree_sitter_analyzer.hotspot_analyzer import build_alias_ca_map
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "index.ts").write_text("export { Foo } from './utils'\n")
+    # Only .js exists, not .ts
+    (tmp_path / "src" / "utils.js").write_text("export class Foo {}\n")
+
+    import_edges = {"main.ts": {"src/index.ts": 1}}
+    ca_raw = {"src/index.ts": 1, "src/utils.js": 0}
+    alias_ca = build_alias_ca_map(ca_raw, import_edges, str(tmp_path))
+    # Should find utils.js on second suffix attempt
+    assert alias_ca["src/utils.js"] == 1

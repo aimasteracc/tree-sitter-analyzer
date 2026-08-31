@@ -69,7 +69,7 @@ def _detect_source_dir(project_root: str) -> str | None:
     if pyproject.exists():
         if sys.version_info >= (3, 11):
             import tomllib  # noqa: I001
-        else:
+        else:  # pragma: no cover
             try:
                 import tomli as tomllib  # type: ignore[import-not-found,no-redef]  # noqa: PLC0415
             except ImportError:
@@ -480,7 +480,7 @@ def build_alias_ca_map(
         re_exported = _parse_python_reexports(init_path)
         try:
             init_rel = str(init_path.relative_to(root)).replace("\\", "/")
-        except ValueError:
+        except ValueError:  # pragma: no cover
             continue
         # Count how many files import via this __init__.py
         importers_of_init = sum(
@@ -493,7 +493,7 @@ def build_alias_ca_map(
                 if candidate.exists():
                     try:
                         canonical = str(candidate.relative_to(root)).replace("\\", "/")
-                    except ValueError:
+                    except ValueError:  # pragma: no cover
                         continue
                     alias_extra[canonical] = alias_extra.get(canonical, 0) + importers_of_init
                     break
@@ -511,7 +511,7 @@ def build_alias_ca_map(
             re_exported = _parse_ts_reexports(index_path)
             try:
                 index_rel = str(index_path.relative_to(root)).replace("\\", "/")
-            except ValueError:
+            except ValueError:  # pragma: no cover
                 continue
             importers_of_index = sum(
                 1 for src in import_edges if index_rel in import_edges[src]
@@ -523,7 +523,7 @@ def build_alias_ca_map(
                     if candidate.exists():
                         try:
                             canonical = str(candidate.relative_to(root)).replace("\\", "/")
-                        except ValueError:
+                        except ValueError:  # pragma: no cover
                             continue
                         alias_extra[canonical] = alias_extra.get(canonical, 0) + importers_of_index
                         break
