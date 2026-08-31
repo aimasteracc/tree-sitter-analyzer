@@ -237,9 +237,16 @@ class CodeGraphSitemapTool(BaseMCPTool):
                 causes.append(f"symbol list capped at max_symbols={max_symbols}")
             if files_truncated:
                 causes.append(f"file list capped at max_files={max_files}")
+            module_tip = (
+                " Use mode=module for a file-only view that fits ~10x more files in the "
+                "same token budget."
+                if mode != "module"
+                else ""
+            )
             extra["truncation_note"] = (
-                "Output truncated (" + "; ".join(causes) + "). Raise the relevant "
-                "limit, or narrow scope with the directory/language filters."
+                "Output truncated (" + "; ".join(causes) + "). "
+                "Options: raise max_files/max_symbols, narrow scope with "
+                "directory/language filters," + module_tip
             )
 
         result = build_response(
