@@ -23,6 +23,18 @@ from ..models import AnalysisResult, Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 from ..utils.tree_sitter_compat import count_nodes_iterative
+from ._java_element import (
+    extract_anonymous_class as _extract_anon_class_impl,
+)
+from ._java_element import (
+    extract_lambda_function as _extract_lambda_impl,
+)
+from ._java_element import (
+    extract_module_declaration as _extract_module_decl_impl,
+)
+from ._java_element import (
+    extract_static_initializer as _extract_static_init_impl,
+)
 from .java_helpers import (
     _extract_import_info,
     _extract_imports_fallback,
@@ -77,12 +89,6 @@ from .java_helpers import (
 )
 from .java_helpers import (
     parse_method_signature as _parse_method_sig_standalone,
-)
-from ._java_element import (
-    extract_anonymous_class as _extract_anon_class_impl,
-    extract_lambda_function as _extract_lambda_impl,
-    extract_module_declaration as _extract_module_decl_impl,
-    extract_static_initializer as _extract_static_init_impl,
 )
 
 

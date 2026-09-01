@@ -121,8 +121,8 @@ class TestCursorApiTraversal:
         """_JAVA_CONTAINER_NODES must have at least 23 entries (REQ-E-004)."""
         from tree_sitter_analyzer.languages._java_traversal import _JAVA_CONTAINER_NODES
 
-        assert len(_JAVA_CONTAINER_NODES) >= 23, (
-            f"Expected >= 23 container node types, got {len(_JAVA_CONTAINER_NODES)}"
+        assert len(_JAVA_CONTAINER_NODES) == 33, (
+            f"Expected exactly 33 container node types (REQ-E-004 + C-1 fix), got {len(_JAVA_CONTAINER_NODES)}"
         )
 
 
@@ -170,7 +170,7 @@ class Foo {
         tree, _ = _parse(self._SRC)
         lambda_nodes = _find_nodes_by_type(tree.root_node, "lambda_expression")
         # Third lambda is (x, y) -> x + y
-        assert len(lambda_nodes) >= 3, "Expected at least 3 lambdas in source"
+        assert len(lambda_nodes) == 3, "Expected exactly 3 lambdas in source"
 
         def _get_text(node):
             return node.text.decode("utf-8", errors="replace")
@@ -203,7 +203,9 @@ class InitDemo {
 
     def test_static_initializer_extracted(self):
         """static { } produces Function(name='<static_initializer>', is_static=True)."""
-        from tree_sitter_analyzer.languages._java_element import extract_static_initializer
+        from tree_sitter_analyzer.languages._java_element import (
+            extract_static_initializer,
+        )
 
         tree, _ = _parse(self._SRC)
         nodes = _find_nodes_by_type(tree.root_node, "static_initializer")
@@ -217,11 +219,13 @@ class InitDemo {
 
     def test_multiple_static_initializers(self):
         """Two static {} blocks yield two separate Function objects."""
-        from tree_sitter_analyzer.languages._java_element import extract_static_initializer
+        from tree_sitter_analyzer.languages._java_element import (
+            extract_static_initializer,
+        )
 
         tree, _ = _parse(self._SRC)
         nodes = _find_nodes_by_type(tree.root_node, "static_initializer")
-        assert len(nodes) >= 2, f"Expected >= 2 static_initializer nodes, got {len(nodes)}"
+        assert len(nodes) == 2, f"Expected exactly 2 static_initializer nodes, got {len(nodes)}"
         lines = self._SRC.splitlines()
         results = [extract_static_initializer(n, lines) for n in nodes]
         results = [r for r in results if r is not None]
@@ -237,8 +241,8 @@ class InitDemo {
         static_inits = [f for f in functions if f.name == "<static_initializer>"]
         # static_initializer is a direct child of class_body (a container),
         # so the Cursor API traversal WILL reach it.
-        assert len(static_inits) >= 1, (
-            "Expected at least one <static_initializer> Function from extract_functions"
+        assert len(static_inits) == 2, (
+            "Expected exactly 2 <static_initializer> Functions from extract_functions"
         )
 
 
@@ -310,7 +314,9 @@ record Range(int min, int max) {
 
     def test_compact_constructor_extracted(self):
         """compact_constructor_declaration yields Function(is_constructor=True)."""
-        from tree_sitter_analyzer.languages._java_element import extract_compact_constructor
+        from tree_sitter_analyzer.languages._java_element import (
+            extract_compact_constructor,
+        )
 
         tree, _ = _parse(self._SRC)
         nodes = _find_nodes_by_type(tree.root_node, "compact_constructor_declaration")
@@ -331,7 +337,7 @@ record Range(int min, int max) {
         ext, tree = _make_extractor(self._SRC)
         functions = ext.extract_functions(tree, self._SRC)
         ctors = [f for f in functions if f.is_constructor]
-        assert len(ctors) >= 1, "Expected at least one constructor Function"
+        assert len(ctors) == 1, "Expected exactly one constructor Function (compact constructor)"
         names = [f.name for f in ctors]
         assert "Range" in names
 
@@ -543,7 +549,10 @@ class TestModuleDeclarationExtraction:
 
     def test_module_declaration_language_field(self):
         """Returned Package has language='java'."""
-        from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor, JavaPlugin
+        from tree_sitter_analyzer.languages.java_plugin import (
+            JavaElementExtractor,
+            JavaPlugin,
+        )
 
         plugin = JavaPlugin()
         lang = plugin.get_tree_sitter_language()
