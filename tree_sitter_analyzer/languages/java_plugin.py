@@ -78,6 +78,12 @@ from .java_helpers import (
 from .java_helpers import (
     parse_method_signature as _parse_method_sig_standalone,
 )
+from ._java_element import (
+    extract_anonymous_class as _extract_anon_class_impl,
+    extract_lambda_function as _extract_lambda_impl,
+    extract_module_declaration as _extract_module_decl_impl,
+    extract_static_initializer as _extract_static_init_impl,
+)
 
 
 class JavaElementExtractor(ElementExtractor):
@@ -92,8 +98,8 @@ class JavaElementExtractor(ElementExtractor):
         self.imports: list[str] = []
 
         self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[int] = set()
-        self._element_cache: dict[tuple[int, str], Any] = {}
+        self._processed_nodes: set[tuple[int, int]] = set()
+        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
         self._file_encoding: str | None = None
         self._annotation_cache: dict[int, list[dict[str, Any]]] = {}
         self._signature_cache: dict[int, str] = {}
@@ -138,6 +144,10 @@ class JavaElementExtractor(ElementExtractor):
         extractors = {
             "method_declaration": self._extract_method_optimized,
             "constructor_declaration": self._extract_method_optimized,
+            # Modern Java (2026-09-01): new function-like node types.
+            "lambda_expression": self._extract_lambda_optimized,
+            "static_initializer": self._extract_static_initializer_optimized,
+            "compact_constructor_declaration": self._extract_method_optimized,
         }
 
         self._traverse_and_extract_iterative(
@@ -168,6 +178,12 @@ class JavaElementExtractor(ElementExtractor):
             # dropped from outlines — modern Java DTOs/annotations invisible.
             "record_declaration": self._extract_class_optimized,
             "annotation_type_declaration": self._extract_class_optimized,
+            # Modern Java (2026-09-01): anonymous class bodies.
+            # tree-sitter-java 0.23.5 represents them as class_body inside
+            # object_creation_expression (no distinct anonymous_class_body node).
+            # Both keys are kept for forward/backward grammar compatibility.
+            "class_body": self._extract_anonymous_class_optimized,
+            "anonymous_class_body": self._extract_anonymous_class_optimized,
         }
 
         self._traverse_and_extract_iterative(
@@ -416,6 +432,66 @@ class JavaElementExtractor(ElementExtractor):
 
     def _extract_class_name(self, node: tree_sitter.Node) -> str | None:
         return _extract_class_name_standalone(node, self._get_node_text_optimized)
+
+    # -----------------------------------------------------------------------
+    # Modern Java extractors (2026-09-01)
+    # -----------------------------------------------------------------------
+
+    def _extract_lambda_optimized(self, node: tree_sitter.Node) -> Function | None:
+        """Extract a lambda_expression as a Function."""
+        return _extract_lambda_impl(
+            node,
+            self._get_node_text_optimized,
+            self.content_lines,
+            log_debug_func=log_debug,
+            log_error_func=log_error,
+        )
+
+    def _extract_static_initializer_optimized(
+        self, node: tree_sitter.Node
+    ) -> Function | None:
+        """Extract a static_initializer as a Function."""
+        return _extract_static_init_impl(
+            node,
+            self.content_lines,
+            log_debug_func=log_debug,
+            log_error_func=log_error,
+        )
+
+    def _extract_anonymous_class_optimized(
+        self, node: tree_sitter.Node
+    ) -> Class | None:
+        """Extract an anonymous class body as a Class.
+
+        Handles two grammar representations:
+        - tree-sitter-java 0.23.5: ``class_body`` child of
+          ``object_creation_expression`` (no distinct anonymous_class_body type).
+        - Older grammars: ``anonymous_class_body`` node.
+
+        When the node type is ``class_body``, only fire when the parent is
+        ``object_creation_expression`` to avoid matching regular class bodies.
+        """
+        if node.type == "class_body":
+            if node.parent is None or node.parent.type != "object_creation_expression":
+                return None
+        return _extract_anon_class_impl(
+            node,
+            self._get_node_text_optimized,
+            self.content_lines,
+            self.current_package,
+            log_debug_func=log_debug,
+            log_error_func=log_error,
+        )
+
+    def _extract_module_declaration_optimized(
+        self, node: tree_sitter.Node
+    ) -> Package | None:
+        """Extract a module_declaration as a Package."""
+        return _extract_module_decl_impl(
+            node,
+            self._get_node_text_optimized,
+            log_debug_func=log_debug,
+        )
 
 
 class JavaPlugin(LanguagePlugin):

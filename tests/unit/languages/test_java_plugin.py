@@ -22,10 +22,69 @@ from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
 # ---------------------------------------------------------------------------
 
 
+def _make_traversable_root(children=None):
+    """Create a root Mock with a cursor-compatible interface.
+
+    The returned root's ``.walk()`` yields a Mock cursor whose ``goto_*``
+    methods return proper booleans so that ``java_traverse_and_extract``
+    terminates instead of looping infinitely.
+
+    Children are assigned distinct ``start_byte`` / ``end_byte`` values (if not
+    already set) so that the ``(start_byte, end_byte)`` cache-key scheme in
+    ``_java_traversal`` produces unique, deterministic keys.
+    """
+    children = list(children or [])
+    root = Mock()
+    root.children = children  # keep for code that accesses .children directly
+
+    # Assign unique byte ranges for cache-key stability (only when not yet set)
+    for i, child in enumerate(children):
+        if isinstance(child.start_byte, Mock):
+            child.start_byte = (i + 1) * 100
+        if isinstance(child.end_byte, Mock):
+            child.end_byte = (i + 1) * 100 + 50
+
+    nodes = [root] + children
+    state = [0]  # current cursor position index
+
+    cursor = Mock()
+    cursor.node = root  # initial position
+
+    def _goto_first_child():
+        """Descend to first child (only from root; children have no sub-children)."""
+        if cursor.node is root and children:
+            state[0] = 1
+            cursor.node = nodes[1]
+            return True
+        return False
+
+    def _goto_next_sibling():
+        """Move to the next child of root."""
+        if 0 < state[0] < len(nodes) - 1:
+            state[0] += 1
+            cursor.node = nodes[state[0]]
+            return True
+        return False
+
+    def _goto_parent():
+        """Climb back to root from any child."""
+        if cursor.node is not root:
+            state[0] = 0
+            cursor.node = root
+            return True
+        return False
+
+    cursor.goto_first_child = _goto_first_child
+    cursor.goto_next_sibling = _goto_next_sibling
+    cursor.goto_parent = _goto_parent
+
+    root.walk.return_value = cursor
+    return root
+
+
 def _mock_tree(children=None):
     tree = Mock()
-    root = Mock()
-    root.children = children or []
+    root = _make_traversable_root(children)
     tree.root_node = root
     tree.language = Mock()
     return tree
@@ -447,14 +506,13 @@ class TestJavaElementExtractorTraverse:
         return JavaElementExtractor()
 
     def test_traverse_extracts_method_and_class(self, extractor):
-        root = Mock()
         child1 = Mock()
         child1.type = "method_declaration"
         child1.children = []
         child2 = Mock()
         child2.type = "class_declaration"
         child2.children = []
-        root.children = [child1, child2]
+        root = _make_traversable_root([child1, child2])
 
         fn = Function(
             name="m", start_line=1, end_line=3, raw_text="void m(){}", language="java"
@@ -478,11 +536,12 @@ class TestJavaElementExtractorTraverse:
         assert isinstance(results[1], Class)
 
     def test_traverse_uses_element_cache(self, extractor):
-        root = Mock()
         child = Mock()
         child.type = "method_declaration"
         child.children = []
-        root.children = [child]
+        child.start_byte = 10
+        child.end_byte = 60
+        root = _make_traversable_root([child])
         cached = Function(
             name="cached_method",
             start_line=1,
@@ -490,7 +549,8 @@ class TestJavaElementExtractorTraverse:
             raw_text="void cached_method(){}",
             language="java",
         )
-        extractor._element_cache[(id(child), "method")] = cached
+        # Cache key format: ((start_byte, end_byte), element_type)
+        extractor._element_cache[((10, 60), "method")] = cached
         mock_fn = Mock()
         results = []
         extractor._traverse_and_extract_iterative(
@@ -501,12 +561,13 @@ class TestJavaElementExtractorTraverse:
         assert mock_fn.call_count == 0
 
     def test_traverse_field_batching_15_nodes(self, extractor):
-        root = Mock()
         nodes = [Mock() for _ in range(15)]
-        for n in nodes:
+        for i, n in enumerate(nodes):
             n.type = "field_declaration"
             n.children = []
-        root.children = nodes
+            n.start_byte = (i + 1) * 100
+            n.end_byte = (i + 1) * 100 + 50
+        root = _make_traversable_root(nodes)
 
         def _extract(node):
             return [
@@ -539,7 +600,8 @@ class TestJavaElementExtractorTraverse:
                 language="java",
             )
         ]
-        extractor._element_cache[(id(node), "field")] = cached
+        # Cache key format matches _java_traversal: ((start_byte, end_byte), "field")
+        extractor._element_cache[((0, 30), "field")] = cached
         mock_fn = Mock()
         results = []
         extractor._process_field_batch([node], {"field_declaration": mock_fn}, results)
@@ -717,17 +779,18 @@ class TestJavaPluginExtractElements:
 
     def test_extract_elements_exception_falls_back_to_empty(self, plugin):
         tree = _mock_tree()
-        methods = [
+        mock_ext = Mock()
+        for m in [
             "extract_functions",
             "extract_classes",
             "extract_variables",
             "extract_imports",
             "extract_packages",
             "extract_annotations",
-        ]
-        with patch.object(plugin, "extractor") as mock_ext:
-            for m in methods:
-                getattr(mock_ext, m).side_effect = Exception("err")
+        ]:
+            getattr(mock_ext, m).side_effect = Exception("err")
+        # Patch create_extractor — extract_elements calls this, not self.extractor
+        with patch.object(plugin, "create_extractor", return_value=mock_ext):
             result = plugin.extract_elements(tree, "public class Test {}")
         for key in {
             "functions",
@@ -741,14 +804,15 @@ class TestJavaPluginExtractElements:
 
     def test_extract_elements_with_mocked_return_values(self, plugin):
         tree = _mock_tree()
-        with (
-            patch.object(plugin.extractor, "extract_functions", return_value=[]),
-            patch.object(plugin.extractor, "extract_classes", return_value=[]),
-            patch.object(plugin.extractor, "extract_variables", return_value=[]),
-            patch.object(plugin.extractor, "extract_imports", return_value=[]),
-            patch.object(plugin.extractor, "extract_packages", return_value=[]),
-            patch.object(plugin.extractor, "extract_annotations", return_value=[]),
-        ):
+        mock_ext = Mock()
+        mock_ext.extract_functions.return_value = []
+        mock_ext.extract_classes.return_value = []
+        mock_ext.extract_variables.return_value = []
+        mock_ext.extract_imports.return_value = []
+        mock_ext.extract_packages.return_value = []
+        mock_ext.extract_annotations.return_value = []
+        # Patch create_extractor — extract_elements calls this, not self.extractor
+        with patch.object(plugin, "create_extractor", return_value=mock_ext):
             result = plugin.extract_elements(tree, "public class Test {}")
         assert "functions" in result
         assert "classes" in result
