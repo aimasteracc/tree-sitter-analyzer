@@ -50,6 +50,8 @@ def _add_environment_probe_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help=(
             "Rebuild the persistent project index from scratch and save it to disk. "
+            "NOTE: this index feeds --project-card / --overview, NOT --codegraph-sitemap. "
+            "To populate --codegraph-sitemap, run --ast-cache --ast-cache-mode index instead. "
             "For full options (per-root indexing, notes), call the MCP tool directly."
         ),
     )

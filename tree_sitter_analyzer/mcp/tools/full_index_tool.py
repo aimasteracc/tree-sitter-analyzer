@@ -190,6 +190,32 @@ def _candidate_snapshot_report(
     return report
 
 
+def _grammar_errors_only(phases: dict) -> bool:
+    """Return True when every file error in every phase is a missing optional grammar.
+
+    Missing optional grammars are configuration gaps (extras not installed),
+    not index failures. When all errors are of this type, the index is fully
+    functional for all installed languages and success should not be False.
+    Returns False if any error_details list is truncated (cannot verify all errors).
+    """
+    found_any_error = False
+    for phase_data in phases.values():
+        if not isinstance(phase_data, dict):
+            continue
+        total = int(phase_data.get("error_details_total", 0))
+        if total == 0:
+            continue
+        found_any_error = True
+        details = phase_data.get("error_details", [])
+        # If truncated we cannot confirm all errors are grammar-only.
+        if len(details) < total:
+            return False
+        for detail in details:
+            if "grammar not installed" not in str(detail.get("reason", "")):
+                return False
+    return found_any_error
+
+
 _MANIFEST_WARNING_NEXT_STEPS: dict[str, str] = {
     "INDEX_MANIFEST_CERTIFICATION_FAILED": (
         "This index run is not certified: the snapshot manifest could not "
@@ -610,6 +636,10 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 for p in phases.values()
                 if isinstance(p, dict)
             )
+            # Grammar-only errors: optional language extras not installed.
+            # The index is fully functional for all installed languages; do not
+            # report success=False for a missing pip extra.
+            grammar_only_errors = any_phase_error and _grammar_errors_only(phases)
             snapshot_report = _candidate_snapshot_report(
                 candidate_snapshot,
                 ast_phase,
@@ -643,10 +673,13 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             summary_line = f"codegraph_full_index: completed with {top_verdict.lower()}"
 
             result = {
-                "success": not any_phase_error
+                "success": (not any_phase_error or grammar_only_errors)
                 and not snapshot_warning
-                and incremental_phase.get("completeness") != "incomplete"
-                and (manifest_certified or operational_manifest_only),
+                and (
+                    incremental_phase.get("completeness") != "incomplete"
+                    or grammar_only_errors
+                )
+                and (manifest_certified or operational_manifest_only or grammar_only_errors),
                 "verdict": top_verdict,
                 "summary_line": summary_line,
                 "agent_summary": {

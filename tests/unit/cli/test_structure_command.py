@@ -498,6 +498,97 @@ class TestStructureCommandOutputTextFormat:
             assert any("testField" in call for call in calls)
 
 
+class TestBaseCommandValidateFileDirGuard:
+    """Tests for BaseCommand.validate_file directory guard (is_dir check)."""
+
+    def _make_command(self, path: str) -> StructureCommand:
+        args = Namespace(
+            file_path=path,
+            file=path,
+            query_key=None,
+            query_string=None,
+            advanced=False,
+            table=None,
+            structure=True,
+            summary=False,
+            output_format="text",
+            toon_use_tabs=False,
+            statistics=False,
+            output_file=None,
+            suppress_output=False,
+            format_type="full",
+            language=None,
+            include_details=True,
+            include_complexity=True,
+            include_guidance=False,
+            metrics_only=False,
+            output_format_param="json",
+            format_type_param="full",
+            language_param=None,
+            filter_expression=None,
+            filter=None,
+            result_format="json",
+            project_root=None,
+        )
+        return StructureCommand(args)
+
+    def test_directory_path_returns_false(self, tmp_path):
+        """Passing a directory to validate_file must return False (not PermissionError).
+
+        We patch SecurityValidator.validate_file_path to return (True, None) so the
+        is_dir guard is the only thing under test.
+        """
+        cmd = self._make_command(str(tmp_path))
+        with (
+            patch.object(
+                cmd.security_validator,
+                "validate_file_path",
+                return_value=(True, None),
+            ),
+            patch(
+                "tree_sitter_analyzer.cli.commands.base_command.output_error"
+            ) as mock_err,
+            patch("tree_sitter_analyzer.cli.commands.base_command.output_info"),
+        ):
+            result = cmd.validate_file()
+        assert result is False
+        error_msg = mock_err.call_args[0][0]
+        assert "directory" in error_msg.lower()
+
+    def test_directory_path_error_message_contains_path(self, tmp_path):
+        """Error message for directory input must include the offending path."""
+        cmd = self._make_command(str(tmp_path))
+        with (
+            patch.object(
+                cmd.security_validator,
+                "validate_file_path",
+                return_value=(True, None),
+            ),
+            patch(
+                "tree_sitter_analyzer.cli.commands.base_command.output_error"
+            ) as mock_err,
+            patch("tree_sitter_analyzer.cli.commands.base_command.output_info"),
+        ):
+            cmd.validate_file()
+        assert str(tmp_path) in mock_err.call_args[0][0]
+
+    def test_missing_file_still_returns_false(self, tmp_path):
+        """A non-existent file path (not a directory) must return False."""
+        missing = str(tmp_path / "no_such_file.py")
+        cmd = self._make_command(missing)
+        with (
+            patch.object(
+                cmd.security_validator,
+                "validate_file_path",
+                return_value=(True, None),
+            ),
+            patch("tree_sitter_analyzer.cli.commands.base_command.output_error"),
+            patch("tree_sitter_analyzer.cli.commands.base_command.output_info"),
+        ):
+            result = cmd.validate_file()
+        assert result is False
+
+
 class TestR37aaStructureCanonicalEnvelope:
     """r37aa (dogfood): CLI ``--structure`` was the third CLI surface
     (after --advanced r37y and --summary r37z) emitting all-None

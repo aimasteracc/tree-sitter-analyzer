@@ -179,6 +179,35 @@ class CodeGraphSitemapTool(BaseMCPTool):
         if files_truncated:
             raw_files = raw_files[:max_files]
 
+        # When the result is empty, distinguish "no index at all" from
+        # "filter matched nothing" so callers get an actionable hint.
+        if not raw_files:
+            total_rows = cache.get_conn().execute(
+                "SELECT COUNT(*) FROM ast_index"
+            ).fetchone()[0]
+            if total_rows == 0:
+                extra_hint: dict[str, Any] = {
+                    "index_hint": (
+                        "The AST index is empty. Run "
+                        "--ast-cache --ast-cache-mode index "
+                        "to build it, then retry --codegraph-sitemap. "
+                        "(Note: --build-project-index writes to a separate "
+                        "store and does NOT populate this index.)"
+                    )
+                }
+                return apply_output_format_to_response(
+                    build_response(
+                        verdict="NOT_FOUND",
+                        mode=mode,
+                        file_count=0,
+                        total_symbols=0,
+                        truncated=False,
+                        sitemap={},
+                        **extra_hint,
+                    ),
+                    output_format,
+                )
+
         # F3: api/flat modes can emit unbounded symbol lists. The hierarchical
         # full/module modes are not symbol-capped, but ALL modes are now
         # file-capped, so any mode can report truncated=true via files_truncated.
@@ -208,9 +237,16 @@ class CodeGraphSitemapTool(BaseMCPTool):
                 causes.append(f"symbol list capped at max_symbols={max_symbols}")
             if files_truncated:
                 causes.append(f"file list capped at max_files={max_files}")
+            module_tip = (
+                " Use mode=module for a file-only view that fits ~10x more files in the "
+                "same token budget."
+                if mode != "module"
+                else ""
+            )
             extra["truncation_note"] = (
-                "Output truncated (" + "; ".join(causes) + "). Raise the relevant "
-                "limit, or narrow scope with the directory/language filters."
+                "Output truncated (" + "; ".join(causes) + "). "
+                "Options: raise max_files/max_symbols, narrow scope with "
+                "directory/language filters," + module_tip
             )
 
         result = build_response(

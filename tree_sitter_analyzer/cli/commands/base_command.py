@@ -58,7 +58,15 @@ class BaseCommand(ABC):
 
         from pathlib import Path
 
-        if not Path(self.args.file_path).exists():
+        path = Path(self.args.file_path)
+        if path.is_dir():
+            output_error(f"Path is a directory, not a file: {self.args.file_path}")
+            output_info(
+                "Provide a single file path. "
+                "For project-level analysis use --overview or --project-card."
+            )
+            return False
+        if not path.is_file():
             output_error(f"File not found: {self.args.file_path}")
             output_info("Check the file path and try again.")
             return False

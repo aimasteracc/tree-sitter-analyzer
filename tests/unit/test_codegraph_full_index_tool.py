@@ -15,6 +15,7 @@ from tree_sitter_analyzer.incremental_sync import SyncResult
 from tree_sitter_analyzer.mcp.tools.full_index_tool import (
     CodeGraphFullIndexTool,
     _candidate_snapshot_report,
+    _grammar_errors_only,
     _resolve_exclude_patterns,
 )
 
@@ -1395,6 +1396,116 @@ def test_final_stats_stamp_failure_does_not_delete_later_manifest(tmp_path):
         result["scope_complete"],
         manifest[0],
     ) == ("INDEX_MANIFEST_CERTIFICATION_FAILED", True, 1, False, "index")
+
+
+class TestGrammarErrorsOnly:
+    """Unit tests for _grammar_errors_only helper."""
+
+    def test_all_grammar_errors_returns_true(self):
+        phases = {
+            "ast_cache": {
+                "error_details_total": 2,
+                "error_details": [
+                    {"reason": "Swift grammar not installed — pip install tree-sitter-analyzer[swift]"},
+                    {"reason": "LUA grammar not installed — pip install tree-sitter-analyzer[lua]"},
+                ],
+            }
+        }
+        assert _grammar_errors_only(phases) is True
+
+    def test_mixed_errors_returns_false(self):
+        phases = {
+            "ast_cache": {
+                "error_details_total": 2,
+                "error_details": [
+                    {"reason": "Swift grammar not installed — pip install tree-sitter-analyzer[swift]"},
+                    {"reason": "File read error: permission denied"},
+                ],
+            }
+        }
+        assert _grammar_errors_only(phases) is False
+
+    def test_no_errors_returns_false(self):
+        phases = {"ast_cache": {"error_details_total": 0, "error_details": []}}
+        assert _grammar_errors_only(phases) is False
+
+    def test_truncated_details_returns_false(self):
+        phases = {
+            "ast_cache": {
+                "error_details_total": 5,
+                "error_details": [
+                    {"reason": "Swift grammar not installed — pip install tree-sitter-analyzer[swift]"},
+                ],
+            }
+        }
+        assert _grammar_errors_only(phases) is False
+
+    def test_non_dict_phase_is_skipped(self):
+        phases = {
+            "fts5": "ok",  # non-dict phase value
+            "ast_cache": {
+                "error_details_total": 1,
+                "error_details": [
+                    {"reason": "Ruby grammar not installed — pip install tree-sitter-analyzer[ruby]"},
+                ],
+            },
+        }
+        assert _grammar_errors_only(phases) is True
+
+    def test_multiple_phases_all_grammar_errors(self):
+        phases = {
+            "ast_cache": {
+                "error_details_total": 1,
+                "error_details": [{"reason": "Swift grammar not installed — ..."}],
+            },
+            "incremental_sync": {
+                "error_details_total": 1,
+                "error_details": [{"reason": "LUA grammar not installed — ..."}],
+            },
+        }
+        assert _grammar_errors_only(phases) is True
+
+
+@pytest.mark.asyncio
+async def test_grammar_only_errors_yield_success_true(tool_with_root):
+    """When all errors are optional grammar packages, success must be True."""
+    grammar_error_phase = {
+        "status": "error",
+        "processed": 1,
+        "errors": 1,
+        "completeness": "incomplete",
+        "scope_complete": False,
+        "error_details_total": 1,
+        "error_details": [
+            {
+                "file": "sample.swift",
+                "reason": "Swift grammar not installed — pip install tree-sitter-analyzer[swift]",
+            }
+        ],
+    }
+    with (
+        patch.object(tool_with_root, "_phase_ast_cache", return_value=grammar_error_phase),
+        patch.object(
+            tool_with_root, "_phase_incremental_sync", return_value=grammar_error_phase
+        ),
+        patch.object(tool_with_root, "_phase_fts5_stats", return_value={"status": "ok"}),
+        patch.object(
+            tool_with_root,
+            "_phase_call_edge_stats",
+            return_value={"status": "ok"},
+        ),
+        patch.object(
+            tool_with_root,
+            "_collect_final_stats",
+            return_value={"scope_complete": False},
+        ),
+    ):
+        result = await tool_with_root.execute(
+            {"mode": "incremental", "resolve_synapse": False, "output_format": "json"}
+        )
+
+    assert result["success"] is True
+    assert result["verdict"] == "WARN"
 
 
 def test_collect_final_stats_returns_empty_on_cache_failure(tmp_path, monkeypatch):
