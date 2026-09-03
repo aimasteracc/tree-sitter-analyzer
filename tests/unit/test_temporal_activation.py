@@ -390,15 +390,18 @@ class TestEnvDisable:
             conn = sqlite3.connect(db_path)
             try:
                 try:
-                    cur = conn.execute("SELECT COUNT(*) FROM ast_symbol_activation")
-                    count = cur.fetchone()[0]
+                    # REQ-E-303: disabled writes 'disabled' placeholder rows to
+                    # avoid NULL-join gaps; subprocess.run must not be called.
+                    cur = conn.execute(
+                        "SELECT DISTINCT activation_state FROM ast_symbol_activation"
+                        " WHERE file_path = 'a.py'"
+                    )
+                    states = {row[0] for row in cur.fetchall()}
                 except sqlite3.OperationalError:
-                    # Table may not exist when feature is disabled —
-                    # equally acceptable: nothing was written.
-                    count = 0
+                    states = set()
             finally:
                 conn.close()
-            assert count == 0
+            assert states == {"disabled"}
             assert mock_subprocess.run.call_count == 0
 
 

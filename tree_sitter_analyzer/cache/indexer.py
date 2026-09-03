@@ -486,3 +486,11 @@ def post_index_backfill(
             stats["knowledge_graph"] = {"ladybug_stale_removed": True}
     except Exception:
         logger.debug("auto knowledge graph build failed", exc_info=True)
+    # REQ-C-306: flush 'pending' activation rows written by write_activation_for_file.
+    try:
+        from .write import _flush_pending_activations
+
+        flush_result = _flush_pending_activations(cache._get_conn(), cache.project_root)  # noqa: SLF001
+        stats["activation_flushed"] = flush_result.get("flushed", 0)
+    except Exception:
+        logger.debug("_flush_pending_activations failed in post_index_backfill", exc_info=True)

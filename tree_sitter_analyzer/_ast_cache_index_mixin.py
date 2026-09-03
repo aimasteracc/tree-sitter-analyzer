@@ -170,6 +170,13 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             _mark_call_graph_built_strict(self._get_conn())
         except sqlite3.OperationalError:
             logger.debug("single-file call-graph certification failed", exc_info=True)
+        # REQ-C-306: flush 'pending' activation rows written by write_activation_for_file.
+        try:
+            from .cache.write import _flush_pending_activations
+
+            _flush_pending_activations(self._get_conn(), self.project_root)
+        except Exception:
+            logger.debug("single-file _flush_pending_activations failed", exc_info=True)
 
     def _check_cache_or_read(
         self,

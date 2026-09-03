@@ -431,6 +431,14 @@ def insert_index_row(
         conn, rel_path, r["language"], symbols, imports_list, call_edges
     ):
         raise sqlite3.OperationalError("GRAPH_EDGE_WRITE_FAILED")
+    # REQ-E-401: stamp certified_at so _indexed_source_files_are_complete() works.
+    try:
+        conn.execute(
+            "UPDATE ast_index SET certified_at = ? WHERE file_path = ?",
+            (int(time.time()), rel_path),
+        )
+    except sqlite3.OperationalError:
+        pass  # certified_at column absent (pre-v14 DB) — safe degradation
     if include_activation:
         cache._write_activation_for_file(conn, rel_path, inserted_symbol_rows)  # noqa: SLF001
     else:
