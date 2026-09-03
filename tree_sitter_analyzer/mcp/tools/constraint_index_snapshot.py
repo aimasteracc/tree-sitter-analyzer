@@ -398,6 +398,11 @@ def evaluate_ordinary_snapshot(
             )
             with lease_existing_snapshot(project_root, **lease_kwargs) as index:
                 if index.snapshot_id is None or index.completeness != "complete":
+                    # Phase B-3: distinguish partial from missing/unknown.
+                    if index.completeness == "partial":
+                        raise ValueError(
+                            index.reason or "CONSTRAINT_INDEX_PARTIAL"
+                        )
                     raise ValueError(index.reason or "CONSTRAINT_INDEX_UNKNOWN")
                 acquire_kwargs = (
                     {"deadline": deadline}
@@ -416,6 +421,9 @@ def evaluate_ordinary_snapshot(
         authority = registry_authority()
     with authority as (index, conn):
         if index.completeness != "complete":
+            # Phase B-3: propagate partial completeness to callers distinctly.
+            if index.completeness == "partial":
+                raise ValueError(index.reason or "CONSTRAINT_INDEX_PARTIAL")
             raise ValueError(index.reason or "CONSTRAINT_INDEX_UNKNOWN")
         source_scope = getattr(index, "source_scope", None)
         if hasattr(index, "source_scope") and not ordinary_source_scope_is_full(

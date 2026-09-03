@@ -6,6 +6,7 @@ import fnmatch
 import json
 import os
 import sqlite3
+import time
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
@@ -127,6 +128,16 @@ def parse_and_write(
             indexed_at,
         ),
     )
+    # REQ-E-401: set certified_at so _indexed_source_files_are_complete() can
+    # detect a fully-certified index via COUNT(*) without an O(n) os.walk.
+    # Pre-v14 DBs that do not yet have the column are silently tolerated.
+    try:
+        conn.execute(
+            "UPDATE ast_index SET certified_at = ? WHERE file_path = ?",
+            (int(time.time()), rel_path),
+        )
+    except sqlite3.OperationalError:
+        pass  # certified_at column absent (pre-v14 DB) — safe degradation
     from . import write as _write
 
     inserted = _write.write_fts5_symbols(

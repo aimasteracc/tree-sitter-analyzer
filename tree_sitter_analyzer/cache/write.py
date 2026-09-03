@@ -285,7 +285,15 @@ def write_activation_for_file(
     inserted_symbol_rows: list[dict[str, Any]],
     project_root: str,
 ) -> None:
-    """Refresh ast_symbol_activation rows for a single file."""
+    """Write lazy-activation placeholder rows for a single file (REQ-E-301).
+
+    Instead of calling ``compute_symbol_activation`` synchronously (which
+    invokes ``subprocess.run`` for every indexed file), this function writes
+    a placeholder row with ``activation_state='pending'`` (or ``'disabled'``
+    when ``TSA_INDEX_ACTIVATION=0``).  The actual git log computation is
+    deferred to ``_flush_pending_activations``, which is called once after
+    ``_post_index_backfill`` (REQ-C-306).
+    """
     if not inserted_symbol_rows:
         try:
             conn.execute(
@@ -300,44 +308,135 @@ def write_activation_for_file(
     except Exception as exc:  # pragma: no cover
         logger.debug("git_activation import failed: %s", exc)
         return
-    if git_activation._activation_disabled():  # noqa: SLF001
-        return
-    try:
-        rows = git_activation.compute_symbol_activation(
-            file_path=os.path.join(project_root, rel_path),
-            symbols=inserted_symbol_rows,
-            repo_root=project_root,
-        )
-    except Exception as exc:  # pragma: no cover
-        logger.debug("compute_symbol_activation failed for %s: %s", rel_path, exc)
-        return
+    # REQ-E-303: write a row even when activation is disabled so the table
+    # always has an entry for every indexed symbol (avoids NULL-join gaps).
+    state = "disabled" if git_activation._activation_disabled() else "pending"  # noqa: SLF001
     try:
         conn.execute(
             "DELETE FROM ast_symbol_activation WHERE file_path = ?",
             (rel_path,),
         )
-        for r in rows:
+        for r in inserted_symbol_rows:
             conn.execute(
                 """INSERT OR REPLACE INTO ast_symbol_activation (
                     symbol_id, file_path,
                     last_modified_commit, last_modified_at,
                     mod_count_30d, mod_count_90d, mod_count_all,
-                    computed_at, git_state
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    int(r.symbol_id),
-                    rel_path,
-                    r.last_modified_commit,
-                    r.last_modified_at,
-                    int(r.mod_count_30d),
-                    int(r.mod_count_90d),
-                    int(r.mod_count_all),
-                    int(r.computed_at),
-                    r.git_state,
-                ),
+                    computed_at, git_state, activation_state
+                ) VALUES (?, ?, NULL, NULL, 0, 0, 0, 0, NULL, ?)""",
+                (int(r["id"]), rel_path, state),
             )
     except sqlite3.OperationalError as exc:
         logger.debug("activation write failed for %s: %s", rel_path, exc)
+
+
+def _flush_pending_activations(
+    conn: sqlite3.Connection,
+    project_root: str,
+    batch_size: int = 50,
+) -> dict[str, int]:
+    """Compute git activation for pending rows and mark them computed (REQ-E-304).
+
+    Fetches up to ``batch_size`` distinct file paths whose
+    ``activation_state = 'pending'``, calls ``compute_symbol_activation``
+    for each, and writes the results back.
+
+    Designed to be callable from a ``concurrent.futures.ThreadPoolExecutor``
+    without modification (returns a plain dict; no side-channel coupling).
+
+    Returns ``{"flushed": N, "errors": M}``.
+
+    Degradation contract (REQ-E-304(d)): if git computation fails for a file,
+    the rows are marked ``'computed'`` with zero counts rather than left
+    ``'pending'`` to avoid unbounded retry storms.
+    """
+    try:
+        from .. import git_activation
+    except Exception as exc:  # pragma: no cover
+        logger.debug("git_activation import failed in _flush_pending_activations: %s", exc)
+        return {"flushed": 0, "errors": 0}
+
+    try:
+        pending_paths = [
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT file_path FROM ast_symbol_activation"
+                " WHERE activation_state = 'pending'"
+                " LIMIT ?",
+                (batch_size,),
+            ).fetchall()
+        ]
+    except sqlite3.OperationalError:
+        # activation_state column absent (pre-v15 DB) — nothing to flush
+        return {"flushed": 0, "errors": 0}
+
+    flushed = 0
+    errors = 0
+    for rel_path in pending_paths:
+        try:
+            # Fetch symbols from DB so compute_symbol_activation gets real data
+            sym_rows = conn.execute(
+                "SELECT id, line, end_line FROM ast_symbol_rows WHERE file_path = ?",
+                (rel_path,),
+            ).fetchall()
+            symbols = [{"id": r[0], "line": r[1], "end_line": r[2]} for r in sym_rows]
+            activation_rows = git_activation.compute_symbol_activation(
+                os.path.join(project_root, rel_path),
+                symbols,
+                repo_root=project_root,
+            )
+            # Write computed values back
+            for r in activation_rows:
+                conn.execute(
+                    """UPDATE ast_symbol_activation
+                       SET last_modified_commit = ?,
+                           last_modified_at = ?,
+                           mod_count_30d = ?,
+                           mod_count_90d = ?,
+                           mod_count_all = ?,
+                           computed_at = ?,
+                           git_state = ?,
+                           activation_state = 'computed'
+                       WHERE file_path = ? AND symbol_id = ?""",
+                    (
+                        r.last_modified_commit,
+                        r.last_modified_at,
+                        int(r.mod_count_30d),
+                        int(r.mod_count_90d),
+                        int(r.mod_count_all),
+                        int(r.computed_at),
+                        r.git_state,
+                        rel_path,
+                        int(r.symbol_id),
+                    ),
+                )
+            # Files with no activation rows → mark computed with zero counts
+            conn.execute(
+                """UPDATE ast_symbol_activation
+                   SET activation_state = 'computed'
+                   WHERE file_path = ? AND activation_state = 'pending'""",
+                (rel_path,),
+            )
+            conn.commit()
+            flushed += 1
+        except Exception as exc:
+            logger.debug(
+                "_flush_pending_activations failed for %s: %s", rel_path, exc
+            )
+            # Degradation: mark as computed to prevent retry storms (REQ-E-304(d))
+            try:
+                conn.execute(
+                    """UPDATE ast_symbol_activation
+                       SET activation_state = 'computed'
+                       WHERE file_path = ? AND activation_state = 'pending'""",
+                    (rel_path,),
+                )
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
+            errors += 1
+
+    return {"flushed": flushed, "errors": errors}
 
 
 def write_imports_for_file(

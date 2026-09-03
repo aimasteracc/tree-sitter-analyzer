@@ -287,6 +287,15 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         # One cache owner serializes validation, destructive clear, and writes.
         # SQLite still arbitrates across processes; this lock closes the in-owner
         # thread window between the final source authorization and the clear.
+        #
+        # Phase B-4 (TBD-3) analysis: _index_lock is a writer-side serializer.
+        # WAL read-only snapshot connections (Phase B-1) operate on the reader
+        # side and are NOT affected by _index_lock.  Concurrent MCP readers can
+        # acquire WAL snapshots without waiting for a write to finish, giving the
+        # Phase B-2 parallelism improvement without relaxing this lock.
+        # cache/indexer.py parallel workers run INSIDE _index_lock's critical
+        # section (called via run_index_project), so WAL parallelism does not
+        # conflict with them.
         with self._index_lock:
             return _indexer.run_index_project(
                 self,
@@ -305,6 +314,18 @@ class ASTCacheIndexMixin(ASTCacheSurface):
     def _post_index_backfill(self, stats: dict[str, Any]) -> None:
         """Run graph backfills after project indexing."""
         _indexer.post_index_backfill(self, stats)
+        # REQ-C-306: flush pending activation rows produced by write_activation_for_file.
+        # Called synchronously here; ThreadPoolExecutor-based async scheduling is
+        # deferred to a future scheduler-integration phase.
+        try:
+            from .cache.write import _flush_pending_activations
+
+            _result = _flush_pending_activations(
+                self._get_conn(), self.project_root
+            )
+            logger.debug("_flush_pending_activations result: %s", _result)
+        except Exception as exc:  # pragma: no cover
+            logger.debug("_flush_pending_activations raised: %s", exc)
 
     @staticmethod
     def _completed_full_index_sweep(stats: dict[str, Any]) -> bool:
@@ -316,16 +337,25 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         )
 
     def _indexed_source_files_are_complete(self) -> bool:
-        """Return whether ast_index exactly covers the current source set."""
-        source_files = {
-            os.path.relpath(path, self.project_root).replace("\\", "/")
-            for path in _indexer._walk_source_files(self.project_root)
-        }
-        if not source_files:
+        """Return whether ast_index is fully certified (O(1) via COUNT queries).
+
+        REQ-E-401: Replaces the O(n) os.walk + full-table fetch with two
+        COUNT(*) queries against the certified_at column added by
+        apply_migration_v14.  Falls back to False when the column is absent
+        (pre-v14 DB) rather than degrading to the expensive legacy path.
+        """
+        try:
+            conn = self._get_conn()
+            (uncertified,) = conn.execute(
+                "SELECT COUNT(*) FROM ast_index WHERE certified_at IS NULL"
+            ).fetchone()
+            if uncertified > 0:
+                return False
+            (total,) = conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()
+            return total > 0
+        except sqlite3.OperationalError:
+            # certified_at column absent (apply_migration_v14 not yet applied) — safe fallback
             return False
-        rows = self._get_conn().execute("SELECT file_path FROM ast_index").fetchall()
-        indexed_files = {str(row["file_path"]).replace("\\", "/") for row in rows}
-        return indexed_files == source_files
 
     @staticmethod
     def _resolve_worker_count(workers: int | None, candidates: list[Any]) -> int:

@@ -41,9 +41,11 @@ _LAG_SKIP_DIRS = frozenset(
 
 
 def compute_qualitative_lag(project_root: str, cache_path: str) -> float | None:
-    """Compare newest bounded source mtime with cache mtime, never as evidence."""
-    if os.name != "posix" or not os.path.exists("/dev/fd"):
-        return None
+    """Compare newest bounded source mtime with cache mtime, never as evidence.
+
+    Phase B-4: POSIX gate removed.  POSIX systems use the fd-relative no-follow
+    walk; Windows and POSIX without /dev/fd use the os.scandir fallback.
+    """
     try:
         db_mtime = os.path.getmtime(cache_path)
     except OSError:
@@ -53,9 +55,61 @@ def compute_qualitative_lag(project_root: str, cache_path: str) -> float | None:
 
 
 def _newest_source_mtime(project_root: str) -> float | None:
-    """Stream a descriptor-relative, no-follow source scan within hard bounds."""
-    if os.name != "posix" or not os.path.exists("/dev/fd"):
-        return None
+    """Stream a bounded source scan. Routes to POSIX or scandir implementation."""
+    if os.name == "posix" and os.path.exists("/dev/fd"):
+        return _newest_source_mtime_posix(project_root)
+    return _newest_source_mtime_scandir(project_root)
+
+
+def _newest_source_mtime_scandir(project_root: str) -> float | None:
+    """Cross-platform os.scandir-based bounded source mtime walk (B-4 Windows parity)."""
+    deadline = time.monotonic() + _LAG_DEADLINE_SECONDS
+    newest: float | None = None
+    counters = {"entries": 0, "path_bytes": 0, "sources": 0}
+    stack: list[tuple[str, str]] = [(os.path.abspath(project_root), "")]
+
+    while stack:
+        if time.monotonic() > deadline:
+            return None
+        dirpath, prefix = stack.pop()
+        try:
+            entries = list(os.scandir(dirpath))
+        except OSError:
+            continue
+        for entry in entries:
+            name = entry.name
+            relative = f"{prefix}/{name}" if prefix else name
+            counters["entries"] += 1
+            counters["path_bytes"] += len(relative.encode("utf-8", "surrogatepass"))
+            if (
+                counters["entries"] > _LAG_ENTRY_CAP
+                or counters["path_bytes"] > _LAG_PATH_BYTE_CAP
+            ):
+                return None
+            try:
+                info = entry.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            if stat.S_ISDIR(info.st_mode):
+                if name in _LAG_SKIP_DIRS or name.startswith("."):
+                    continue
+                stack.append((entry.path, relative))
+                continue
+            if not stat.S_ISREG(info.st_mode) or not name.lower().endswith(
+                _LAG_SOURCE_EXTS
+            ):
+                continue
+            counters["sources"] += 1
+            if counters["sources"] > _LAG_WALK_FILE_CAP:
+                return None
+            modified = float(info.st_mtime)
+            if newest is None or modified > newest:
+                newest = modified
+    return newest
+
+
+def _newest_source_mtime_posix(project_root: str) -> float | None:
+    """Descriptor-relative, no-follow source scan within hard bounds (POSIX only)."""
     deadline = time.monotonic() + _LAG_DEADLINE_SECONDS
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     newest: float | None = None

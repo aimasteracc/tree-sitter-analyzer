@@ -368,6 +368,67 @@ def apply_migration_v11(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
         pass
 
 
+def apply_migration_v14(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
+    """Add ``certified_at`` column to ``ast_index`` (v14 — Partial Certification).
+
+    Adds a nullable ``certified_at INTEGER`` column to ``ast_index``.
+    NULL means the file has not been certified in the current sync epoch.
+    Non-NULL (Unix timestamp) means the file was indexed and certified.
+
+    Idempotent: checks ``PRAGMA table_info(ast_index)`` before ALTER.
+    Backward-compatible: NULL default for all existing rows (no data loss).
+    """
+    try:
+        cols = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(ast_index)").fetchall()
+        }
+        if "certified_at" not in cols:
+            conn.execute(
+                "ALTER TABLE ast_index ADD COLUMN certified_at INTEGER"
+            )
+        record_fn(
+            conn,
+            14,
+            "Add certified_at column to ast_index (partial certification model)",
+        )
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+
+def apply_migration_v15(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
+    """Add ``activation_state`` column to ``ast_symbol_activation`` (v15 — Lazy Activation).
+
+    Adds a nullable TEXT column with three allowed values:
+    - ``'pending'``  — placeholder row written; git computation is deferred.
+    - ``'computed'`` — git activation fully computed and stored.
+    - ``'disabled'`` — ``TSA_INDEX_ACTIVATION=0`` was set; no computation planned.
+
+    Idempotent: checks ``PRAGMA table_info(ast_symbol_activation)`` before ALTER.
+    Backward-compatible: existing rows receive NULL (treated as pre-lazy state).
+    """
+    try:
+        cols = {
+            row[1]
+            for row in conn.execute(
+                "PRAGMA table_info(ast_symbol_activation)"
+            ).fetchall()
+        }
+        if "activation_state" not in cols:
+            conn.execute(
+                "ALTER TABLE ast_symbol_activation ADD COLUMN activation_state TEXT"
+            )
+        record_fn(
+            conn,
+            15,
+            "Add activation_state column to ast_symbol_activation (lazy activation model)",
+        )
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+
 def apply_migration_v12(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
     """Rebuild ``ast_symbols_fts`` with porter stemming (v12 — #604).
 
@@ -555,6 +616,13 @@ EXPECTED_SCHEMA_VERSIONS: list[Any] = [
         13,
         "Authoritative index snapshot manifest",
         {"tables": ["ast_index_snapshot_manifest", "ast_symbol_projection_state"]},
+    ),
+    (
+        14,
+        "Add certified_at column to ast_index (partial certification model)",
+        {
+            "ast_index_columns": ["certified_at"],
+        },
     ),
 ]
 

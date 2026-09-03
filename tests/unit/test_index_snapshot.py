@@ -34,9 +34,13 @@ class TestNonPosixSnapshotContract:
         result = owner.read_existing_snapshot(str(tmp_path))
         assert result.reason == "MISSING_INDEX"
 
-    def test_non_posix_existing_index_is_explicitly_unsupported(
+    def test_non_posix_existing_index_uses_wal_path(
         self, tmp_path, monkeypatch
     ):
+        """Phase B-1: non-POSIX now routes to WAL path instead of returning
+        SECURE_FD_SNAPSHOT_UNSUPPORTED.  An empty (invalid) DB still results
+        in unknown completeness but with a different reason (CORRUPT_INDEX or
+        similar), confirming the WAL gate replaced the old hard gate."""
         import tree_sitter_analyzer.index_snapshot as owner
 
         cache_dir = tmp_path / ".ast-cache"
@@ -45,7 +49,8 @@ class TestNonPosixSnapshotContract:
         monkeypatch.setattr(owner.os, "name", "nt")
         result = owner.read_existing_snapshot(str(tmp_path))
         assert result.completeness == "unknown"
-        assert result.reason == "SECURE_FD_SNAPSHOT_UNSUPPORTED"
+        # The WAL path replaces the gate: SECURE_FD_SNAPSHOT_UNSUPPORTED must NOT appear.
+        assert result.reason != "SECURE_FD_SNAPSHOT_UNSUPPORTED"
 
 
 @requires_posix_snapshot
@@ -1020,3 +1025,188 @@ class TestReadExistingConsumerRevalidation:
                 published.snapshot_id, str(tmp_path), "gen-1"
             ):
                 pass
+
+
+class TestWalSnapshotPath:
+    """Phase B-1 回帰テスト: WAL read-only 接続によるスナップショット取得。"""
+
+    @pytest.fixture(autouse=True)
+    def _close_registry(self):
+        yield
+        from tree_sitter_analyzer.index_snapshot import REGISTRY
+
+        REGISTRY.close_all()
+
+    def test_wal_path_bypasses_posix_gate(self, tmp_path, monkeypatch):
+        """POSIX gate (SECURE_FD_SNAPSHOT_UNSUPPORTED) が返らなくなることを確認。"""
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        cache_dir = tmp_path / ".ast-cache"
+        cache_dir.mkdir()
+        # Empty file → WAL path will attempt connection and fail with CORRUPT_INDEX/similar
+        (cache_dir / "index.db").write_bytes(b"")
+        monkeypatch.setattr(owner.os, "name", "nt")
+        result = owner.read_existing_snapshot(str(tmp_path))
+        assert result.reason != "SECURE_FD_SNAPSHOT_UNSUPPORTED"
+
+    def test_capture_snapshot_on_windows_no_longer_unknown_unsupported(
+        self, tmp_path, monkeypatch
+    ):
+        """Windows 相当環境で SECURE_FD_SNAPSHOT_UNSUPPORTED が返らないことを確認。
+        Phase B-1 コア: /dev/fd ゲートが撤廃され WAL パスが使われる。"""
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        # 有効な SQLite DB を作成しておく (WAL 接続が成功するため)
+        source = tmp_path / "sample.py"
+        source.write_text("x = 1\n")
+        cache = ASTCache(str(tmp_path))
+        cache.index_file(str(source))
+        cache.close()
+
+        # 非 POSIX 環境をシミュレート
+        monkeypatch.setattr(owner.os, "name", "nt")
+        monkeypatch.setattr(owner.os.path, "exists", lambda path: path != "/dev/fd")
+
+        result = owner.read_existing_snapshot(str(tmp_path))
+        # WAL path では SECURE_FD_SNAPSHOT_UNSUPPORTED が返らない
+        assert result.reason != "SECURE_FD_SNAPSHOT_UNSUPPORTED"
+        # completeness は "unknown" または "partial" (manifest がないため)
+        assert result.completeness in ("unknown", "partial")
+
+    def test_wal_readonly_connection_consistent_view(self, tmp_path):
+        """WAL mode DB に concurrent write 中でも read-only 接続が一貫ビューを返す統合テスト。
+        Phase B-1 の WAL snapshot isolation を検証する。"""
+        import sqlite3
+        import threading
+
+        db_path = tmp_path / "test.db"
+
+        # WAL mode DB を作成
+        writer_conn = sqlite3.connect(str(db_path))
+        writer_conn.execute("PRAGMA journal_mode=WAL")
+        writer_conn.execute("CREATE TABLE t (v INTEGER)")
+        writer_conn.execute("INSERT INTO t VALUES (1)")
+        writer_conn.commit()
+
+        # read-only 接続で BEGIN (WAL reader slot)
+        uri = f"file:{db_path.as_uri().replace('file://', '')}?mode=ro"
+        reader_conn = sqlite3.connect(uri, uri=True, isolation_level=None)
+        reader_conn.execute("BEGIN")
+
+        snapshot_val = reader_conn.execute("SELECT v FROM t").fetchone()[0]
+
+        # concurrent writer が INSERT
+        writer_conn.execute("INSERT INTO t VALUES (2)")
+        writer_conn.commit()
+        writer_conn.close()
+
+        # reader は BEGIN 時点のビューを保持している (v=1 のみ)
+        val_after_write = reader_conn.execute("SELECT COUNT(*) FROM t").fetchone()[0]
+        reader_conn.close()
+
+        # WAL reader は BEGIN 時点の snapshot を見る → COUNT は 1
+        assert snapshot_val == 1
+        assert val_after_write == 1
+
+    def test_wal_snapshot_stat_mismatch_falls_back_to_concurrent_writer(
+        self, tmp_path, monkeypatch
+    ):
+        """stat mismatch (capture 中にファイルが入れ替わった場合) → CONCURRENT_WRITER。
+
+        AC-B1-2: _capture_wal_snapshot の pre_stat / post_stat 比較が機能することを確認。
+        os.stat の2回目の呼び出しで st_size / st_mtime_ns を変化させて swap をシミュレート。
+        """
+        import os as _real_os
+
+        import tree_sitter_analyzer.index_snapshot as owner
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        # 有効な SQLite DB を作成
+        source = tmp_path / "sample.py"
+        source.write_text("x = 1\n")
+        cache = ASTCache(str(tmp_path))
+        cache.index_file(str(source))
+        cache.close()
+
+        # WAL パスを強制
+        monkeypatch.setattr(owner.os, "name", "nt")
+        monkeypatch.setattr(owner.os.path, "exists", lambda path: path != "/dev/fd")
+
+        candidate_str = str(tmp_path / ".ast-cache" / "index.db")
+        stat_call_count = {"n": 0}
+        real_stat = _real_os.stat
+
+        def mock_stat_swap(path):
+            raw = real_stat(path)
+            if str(path) == candidate_str:
+                stat_call_count["n"] += 1
+                if stat_call_count["n"] == 2:
+                    # 2回目: ファイルが入れ替わったことをシミュレート
+                    class _SwappedStat:
+                        st_dev = raw.st_dev
+                        st_ino = raw.st_ino
+                        st_size = raw.st_size + 1024
+                        st_mtime_ns = raw.st_mtime_ns + 1_000_000_000
+
+                    return _SwappedStat()
+            return raw
+
+        monkeypatch.setattr(owner.os, "stat", mock_stat_swap)
+
+        result = owner.read_existing_snapshot(str(tmp_path))
+
+        assert result.completeness == "unknown"
+        assert result.reason == "CONCURRENT_WRITER"
+
+    def test_wal_snapshot_windows_inode_zero_still_detects_mismatch_via_size_mtime(
+        self, tmp_path, monkeypatch
+    ):
+        """Windows では st_ino=0 のため、size+mtime の 2 要素で swap を検出することを確認。
+
+        Windows CI 推奨テスト: st_ino=0 を返す mock でも CONCURRENT_WRITER が正しく
+        返ることを検証する。inode が常に 0 でも st_size または st_mtime_ns の差異で
+        anti-swap 検出が機能する。
+        """
+        import os as _real_os
+
+        import tree_sitter_analyzer.index_snapshot as owner
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        # 有効な SQLite DB を作成
+        source = tmp_path / "sample.py"
+        source.write_text("x = 1\n")
+        cache = ASTCache(str(tmp_path))
+        cache.index_file(str(source))
+        cache.close()
+
+        # WAL パスを強制 (Windows シミュレーション)
+        monkeypatch.setattr(owner.os, "name", "nt")
+        monkeypatch.setattr(owner.os.path, "exists", lambda path: path != "/dev/fd")
+
+        candidate_str = str(tmp_path / ".ast-cache" / "index.db")
+        stat_call_count = {"n": 0}
+        real_stat = _real_os.stat
+
+        def mock_stat_windows(path):
+            raw = real_stat(path)
+            if str(path) == candidate_str:
+                stat_call_count["n"] += 1
+                # Windows スタイル: st_ino は常に 0
+                # 2回目の呼び出しで st_size を変えて mismatch を発生させる
+                class _WindowsStat:
+                    st_dev = raw.st_dev
+                    st_ino = 0  # Windows では常に 0
+                    st_size = raw.st_size + (512 if stat_call_count["n"] == 2 else 0)
+                    st_mtime_ns = raw.st_mtime_ns
+
+                return _WindowsStat()
+            return raw
+
+        monkeypatch.setattr(owner.os, "stat", mock_stat_windows)
+
+        result = owner.read_existing_snapshot(str(tmp_path))
+
+        assert result.completeness == "unknown"
+        assert result.reason == "CONCURRENT_WRITER"

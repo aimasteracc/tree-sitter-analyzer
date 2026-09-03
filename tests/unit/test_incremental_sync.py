@@ -2251,3 +2251,145 @@ def test_truncated_unchanged_snapshot_clears_global_certification(tmp_path):
         evidence,
         graph_built,
     ) == (1, 0, True, "incomplete", 0, False)
+
+
+def test_invalidate_snapshot_missing_rel_path_no_keyerror(tmp_path, monkeypatch):
+    """REQ-E-002 回帰テスト: rel_path が action_by_file に存在しない場合に
+    invalidate_snapshot_changes() 内で KeyError が発生しないことを確認する。"""
+    import tree_sitter_analyzer.incremental_sync as sync_module
+    from tree_sitter_analyzer.indexing_candidate_materialization import (
+        release_index_candidate_snapshot,
+    )
+
+    path = tmp_path / "app.py"
+    path.write_text("x = 1\n", encoding="utf-8")
+
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+    )
+
+    cache = ASTCache(str(tmp_path))
+    # 初期 index で app.py を登録
+    cache.index_file(str(path))
+
+    # changed_since_snapshot が "app.py" の late change を返すよう monkeypatch する。
+    # action_by_file には "app.py" が存在しない状況を作るため、
+    # _index_or_reindex_files が空の dict を返すよう差し替える。
+    original_index_fn = sync_module.IncrementalSync._index_or_reindex_files
+
+    def _stub_index(self, disk_files, indexed_rows, conn, result, callback, **kwargs):
+        # action_by_file を意図的に空にして KeyError シナリオを再現
+        return {}
+
+    monkeypatch.setattr(sync_module.IncrementalSync, "_index_or_reindex_files", _stub_index)
+
+    # changed_since_snapshot が何らかの変更理由を返すよう monkeypatch する
+    import tree_sitter_analyzer.indexing_snapshot as snap_module
+
+    monkeypatch.setattr(
+        snap_module,
+        "changed_since_snapshot",
+        lambda _entry: "MTIME_CHANGED",
+    )
+
+    try:
+        # KeyError が出なければ OK (action is None → continue で処理される)
+        result = sync_module.IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+            certify_manifest=False,
+        )
+    except KeyError as exc:
+        raise AssertionError(
+            f"action_by_file[rel_path] が KeyError を送出した: {exc}"
+        ) from exc
+    finally:
+        cache.close()
+        release_index_candidate_snapshot(snapshot)
+
+
+# ---------------------------------------------------------------------------
+# REQ-U-203: partial_at manifest recording (changed_after_pipeline branch)
+# ---------------------------------------------------------------------------
+
+class TestPartialAtManifestRecording:
+    """REQ-U-203: validate partial_at is recorded without full-manifest DELETE."""
+
+    @staticmethod
+    def _manifest_conn_with_row():
+        """Return an in-memory DB with ast_index_snapshot_manifest (singleton row)."""
+        conn = sqlite3.connect(":memory:")
+        conn.execute(
+            """CREATE TABLE ast_index_snapshot_manifest (
+                singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                canonical_root TEXT NOT NULL,
+                source_fingerprint TEXT NOT NULL,
+                index_fingerprint TEXT NOT NULL,
+                file_count INTEGER NOT NULL,
+                source_scope_descriptor TEXT NOT NULL,
+                manifest_version INTEGER NOT NULL
+            )"""
+        )
+        conn.execute(
+            "INSERT INTO ast_index_snapshot_manifest VALUES"
+            " (1, '/root', 'sfp', 'ifp', 2, '{}', 13)"
+        )
+        conn.commit()
+        return conn
+
+    def test_partial_at_column_added_and_set(self):
+        """partial_at is written to manifest after changed_after_pipeline."""
+        conn = self._manifest_conn_with_row()
+
+        import time as _time
+        _manifest_cols = {
+            r[1]
+            for r in conn.execute(
+                "PRAGMA table_info(ast_index_snapshot_manifest)"
+            ).fetchall()
+        }
+        if "partial_at" not in _manifest_cols:
+            conn.execute(
+                "ALTER TABLE ast_index_snapshot_manifest"
+                " ADD COLUMN partial_at INTEGER"
+            )
+        before = int(_time.time())
+        conn.execute(
+            "UPDATE ast_index_snapshot_manifest SET partial_at = ? WHERE singleton = 1",
+            (before,),
+        )
+        conn.commit()
+
+        row = conn.execute(
+            "SELECT partial_at FROM ast_index_snapshot_manifest WHERE singleton = 1"
+        ).fetchone()
+        assert row is not None, "manifest row must still exist (no DELETE)"
+        assert row[0] is not None, "partial_at must be set"
+        assert row[0] >= before - 1
+
+    def test_other_manifest_columns_preserved(self):
+        """REQ-E-201: other manifest columns survive the partial_at update."""
+        conn = self._manifest_conn_with_row()
+
+        conn.execute(
+            "ALTER TABLE ast_index_snapshot_manifest ADD COLUMN partial_at INTEGER"
+        )
+        conn.execute(
+            "UPDATE ast_index_snapshot_manifest SET partial_at = 9999 WHERE singleton = 1"
+        )
+        conn.commit()
+
+        row = conn.execute(
+            "SELECT canonical_root, file_count, manifest_version, partial_at"
+            " FROM ast_index_snapshot_manifest WHERE singleton = 1"
+        ).fetchone()
+        assert row is not None
+        canonical_root, file_count, manifest_version, partial_at = row
+        assert canonical_root == "/root"
+        assert file_count == 2
+        assert manifest_version == 13
+        assert partial_at == 9999

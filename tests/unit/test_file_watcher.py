@@ -167,3 +167,48 @@ class TestNonSourceFiles:
         (project / "data.json").write_text("{}")
         result = watcher.trigger_sync()
         assert result["scanned"] == 2
+
+
+class TestSkipDirExclusion:
+    """REQ-E-001 回帰テスト: _LAG_SKIP_DIRS に含まれるディレクトリが
+    _take_snapshot / _detect_changes のスナップショットに含まれないことを確認する。"""
+
+    def test_take_snapshot_excludes_node_modules(self, cache, project):
+        """node_modules 内の .py ファイルが snapshot に含まれない (P4b 修正)。"""
+        nm = project / "node_modules"
+        nm.mkdir()
+        (nm / "some_lib.py").write_text("# node_modules file\n")
+
+        watcher = FileWatcherDaemon(cache, poll_interval=1.0, debounce=0.3)
+        watcher._take_snapshot()
+        with watcher._snapshot_lock:
+            snapshot_keys = set(watcher._snapshot.keys())
+
+        assert not any("node_modules" in k for k in snapshot_keys), (
+            "node_modules 内のファイルが snapshot に含まれている"
+        )
+        watcher.stop()
+
+    def test_detect_changes_excludes_skip_dirs(self, cache, project):
+        """_LAG_SKIP_DIRS の全ディレクトリが _detect_changes から除外される。"""
+        from tree_sitter_analyzer.index_lag import _LAG_SKIP_DIRS
+
+        skip_dir_names = list(_LAG_SKIP_DIRS)[:3]  # サンプルで3つ確認
+
+        for skip_dir in skip_dir_names:
+            d = project / skip_dir
+            d.mkdir(exist_ok=True)
+            (d / "hidden.py").write_text("# should be excluded\n")
+
+        watcher = FileWatcherDaemon(cache, poll_interval=1.0, debounce=0.3)
+        # 初期スナップショットを空にしておく
+        with watcher._snapshot_lock:
+            watcher._snapshot = {}
+
+        changed = watcher._detect_changes()
+        watcher.stop()
+
+        for skip_dir in skip_dir_names:
+            assert not any(skip_dir in p for p in changed), (
+                f"{skip_dir!r} 内のファイルが detect_changes に含まれている"
+            )
