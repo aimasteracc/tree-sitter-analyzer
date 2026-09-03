@@ -2279,8 +2279,6 @@ def test_invalidate_snapshot_missing_rel_path_no_keyerror(tmp_path, monkeypatch)
     # changed_since_snapshot が "app.py" の late change を返すよう monkeypatch する。
     # action_by_file には "app.py" が存在しない状況を作るため、
     # _index_or_reindex_files が空の dict を返すよう差し替える。
-    original_index_fn = sync_module.IncrementalSync._index_or_reindex_files
-
     def _stub_index(self, disk_files, indexed_rows, conn, result, callback, **kwargs):
         # action_by_file を意図的に空にして KeyError シナリオを再現
         return {}
@@ -2298,7 +2296,7 @@ def test_invalidate_snapshot_missing_rel_path_no_keyerror(tmp_path, monkeypatch)
 
     try:
         # KeyError が出なければ OK (action is None → continue で処理される)
-        result = sync_module.IncrementalSync(cache).sync(
+        sync_module.IncrementalSync(cache).sync(
             max_files=10,
             candidate_snapshot=snapshot,
             certify_manifest=False,

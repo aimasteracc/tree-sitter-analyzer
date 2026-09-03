@@ -36,9 +36,9 @@ from .index_snapshot_capability import (
 )
 from .index_snapshot_manifest import _read_bounded_manifest_impl
 from .index_snapshot_registry import (
+    _WAL_CONNECTION_OVERHEAD_BYTES,
     IndexSnapshot,
     IndexSnapshotRegistry,
-    _WAL_CONNECTION_OVERHEAD_BYTES,
 )
 from .index_snapshot_schema import index_fingerprint, validate_snapshot_schema
 from .index_snapshot_schema import (
@@ -190,7 +190,7 @@ def _capture_wal_snapshot(
         try:
             post_stat = os.stat(candidate)
         except OSError:
-            raise ValueError("CONCURRENT_WRITER")
+            raise ValueError("CONCURRENT_WRITER") from None
         post_id = (
             post_stat.st_dev,
             post_stat.st_ino,
@@ -292,7 +292,7 @@ def _capture_wal_snapshot(
         try:
             final_stat = os.stat(candidate)
         except OSError:
-            raise ValueError("CONCURRENT_WRITER")
+            raise ValueError("CONCURRENT_WRITER") from None
         final_id = (
             final_stat.st_dev,
             final_stat.st_ino,

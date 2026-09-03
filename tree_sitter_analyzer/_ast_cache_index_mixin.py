@@ -351,8 +351,8 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             ).fetchone()
             if uncertified > 0:
                 return False
-            (total,) = conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()
-            return total > 0
+            row = conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()
+            return int(row[0]) > 0
         except sqlite3.OperationalError:
             # certified_at column absent (apply_migration_v14 not yet applied) — safe fallback
             return False

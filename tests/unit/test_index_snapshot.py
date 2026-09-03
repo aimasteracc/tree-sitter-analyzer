@@ -1055,7 +1055,6 @@ class TestWalSnapshotPath:
         """Windows 相当環境で SECURE_FD_SNAPSHOT_UNSUPPORTED が返らないことを確認。
         Phase B-1 コア: /dev/fd ゲートが撤廃され WAL パスが使われる。"""
         import tree_sitter_analyzer.index_snapshot as owner
-
         from tree_sitter_analyzer.ast_cache import ASTCache
 
         # 有効な SQLite DB を作成しておく (WAL 接続が成功するため)
@@ -1079,7 +1078,6 @@ class TestWalSnapshotPath:
         """WAL mode DB に concurrent write 中でも read-only 接続が一貫ビューを返す統合テスト。
         Phase B-1 の WAL snapshot isolation を検証する。"""
         import sqlite3
-        import threading
 
         db_path = tmp_path / "test.db"
 

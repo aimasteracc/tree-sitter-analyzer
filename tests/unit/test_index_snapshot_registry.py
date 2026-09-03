@@ -497,7 +497,7 @@ class TestWalEntryRename:
     def test_wal_entry_class_exists(self):
         """_WalEntry is the canonical registry entry class."""
         from tree_sitter_analyzer.index_snapshot_registry import _WalEntry
-        assert _WalEntry is not None
+        assert isinstance(_WalEntry, type), "_WalEntry must be a class"
 
     def test_entry_class_absent_or_aliased(self):
         """_Entry is either absent or an alias for _WalEntry (no separate class)."""

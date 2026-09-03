@@ -24,8 +24,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from .ast_cache import _EXT_TO_LANG
-from .index_lag import _LAG_SKIP_DIRS
 from .incremental_sync import IncrementalSync
+from .index_lag import _LAG_SKIP_DIRS
 
 logger = logging.getLogger(__name__)
 
