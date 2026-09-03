@@ -99,8 +99,36 @@ class IndexSnapshot:
     source_scope: Any | None = None
 
 
+# Phase B-2: WAL reader-slot memory overhead charged per open connection.
+# Each sqlite3.Connection opened in WAL read-only mode holds approximately
+# 2 MB of process-local state (page cache, shm mapping, connection object).
+# This constant is used as the fixed charged_bytes for every _WalEntry so
+# that the capacity budget (max_charged_bytes) reflects actual memory cost
+# rather than physical DB size.
+_WAL_CONNECTION_OVERHEAD_BYTES = 2 * 1024 * 1024  # ~2 MB per WAL reader slot
+
+
 @dataclass(slots=True)
-class _Entry:
+class _WalEntry:
+    """Registry entry for one live WAL read-only snapshot capability.
+
+    Phase B-2 completed: renamed from ``_Entry``.  Each instance holds a
+    WAL read-only sqlite3.Connection opened against the live index DB.
+
+    Memory accounting:
+    - ``charged_bytes`` is fixed at ``_WAL_CONNECTION_OVERHEAD_BYTES`` (~2 MB)
+      regardless of DB physical size, reflecting actual WAL reader overhead.
+
+    TTL guarantee:
+    - ``expires_at`` is set to ``now + _TTL_SECONDS`` (35 s) at publish time.
+    - ``_purge`` evicts entries with ``expires_at <= now and readers == 0``,
+      ensuring WAL reader slots are released within 35 s of last reader release.
+
+    Lock discipline:
+    - ``_CAPTURE_LOCK`` in index_snapshot.py is NOT acquired on the WAL path;
+      multiple concurrent WAL readers are permitted without serialisation.
+      (See index_snapshot.py Phase B-1 note.)
+    """
     snapshot: IndexSnapshot
     connection: sqlite3.Connection
     charged_bytes: int
@@ -108,6 +136,9 @@ class _Entry:
     capture_deadline: float
     readers: int = 0
     io_lock: Any = field(default_factory=threading.RLock)
+
+
+# _Entry = _WalEntry  # deprecated alias; no external consumers found (grep confirmed)
 
 
 class IndexSnapshotRegistry:
@@ -128,7 +159,7 @@ class IndexSnapshotRegistry:
         self._ttl_seconds = ttl_seconds
         self._capture_deadline_seconds = capture_deadline_seconds
         self._lock = threading.RLock()
-        self._entries: dict[str, _Entry] = {}
+        self._entries: dict[str, _WalEntry] = {}
 
     def ensure_capacity(self, charged_bytes: int) -> None:
         with self._lock:
@@ -185,7 +216,7 @@ class IndexSnapshotRegistry:
                 snapshot.symbol_projection_exact,
                 snapshot.source_scope,
             )
-            self._entries[snapshot_id] = _Entry(
+            self._entries[snapshot_id] = _WalEntry(
                 published,
                 connection,
                 charged_bytes,

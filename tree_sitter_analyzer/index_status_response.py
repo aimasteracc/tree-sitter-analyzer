@@ -109,6 +109,16 @@ def build_index_status_response(
             "process-local audit tokens owned internally for future reader "
             "composition, not caller inputs."
         )
+    elif snapshot.completeness == "partial":
+        # Phase B-3: partial = some files certified (certified_at IS NOT NULL)
+        # but no full manifest.  Useful for incremental reads; not authoritative
+        # for project-wide graph queries.  RFC-0022 complete|partial|unknown.
+        hint = (
+            "Index is partially certified. Some files have been indexed and "
+            "certified but the full-index manifest is absent or incomplete. "
+            "Nav/search works for certified files; project-wide graph queries "
+            "require a complete index. Re-run full indexing to certify all files."
+        )
     elif snapshot.reason == "CONCURRENT_WRITER":
         hint = (
             "A full-index rebuild is in progress. Retry status after it finishes. "

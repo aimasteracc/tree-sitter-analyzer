@@ -116,6 +116,29 @@ class IncrementalSync:
         finally:
             self._cache._defer_single_file_backfill = previous_defer
 
+        # Phase B-3: Set certified_at for successfully processed files.
+        # Files that were indexed (new/updated/unchanged) receive a Unix epoch
+        # timestamp.  Error files retain NULL (or get it reset in the clear paths
+        # below).  This enables per-file partial certification tracking.
+        _certified_at_epoch = int(time.time())
+        _certified_paths = [
+            p
+            for p, a in action_by_file.items()
+            if a in ("new", "updated", "unchanged")
+        ]
+        if _certified_paths:
+            _placeholders = ",".join("?" * len(_certified_paths))
+            try:
+                conn.execute(
+                    f"UPDATE ast_index SET certified_at = ?"
+                    f" WHERE file_path IN ({_placeholders})",
+                    [_certified_at_epoch, *_certified_paths],
+                )
+            except Exception:
+                # certified_at column may not exist yet (pre-v14 DB).
+                # Ignore silently; the column is added by apply_migration_v14.
+                pass
+
         frozen_epoch = bool(
             candidate_snapshot is not None
             and all(
@@ -124,9 +147,9 @@ class IncrementalSync:
             )
         )
 
-        def invalidate_snapshot_changes() -> bool:
+        def invalidate_snapshot_changes() -> set[str]:
             if candidate_snapshot is None:
-                return False
+                return set()
             known_changed = set(result.changed_during_run_files)
             late_changes = [
                 (entry.rel_path, reason)
@@ -143,7 +166,7 @@ class IncrementalSync:
                     result.details.append(
                         {"file": rel_path, "status": "warning", "reason": reason}
                     )
-                return False
+                return set()
             for rel_path, reason in sorted(late_changes):
                 self._cache.invalidate(os.path.join(self._cache.project_root, rel_path))
                 for index in range(len(result.details) - 1, -1, -1):
@@ -154,11 +177,16 @@ class IncrementalSync:
                         result.errors -= 1
                     del result.details[index]
                     break
+                action = action_by_file.get(rel_path)
+                if action is None:
+                    # rel_path は action_by_file に存在しない (例: changed_files で
+                    # スキップ済みのパス)。カウンタ操作なしで次へ進む。
+                    continue
                 counter_name = {
                     "new": "new_files",
                     "updated": "updated_files",
                     "unchanged": "unchanged_files",
-                }[action_by_file[rel_path]]
+                }[action]
                 setattr(result, counter_name, getattr(result, counter_name) - 1)
                 if reason == _DISAPPEARED_REASON:
                     disappeared_paths.add(rel_path)
@@ -182,7 +210,7 @@ class IncrementalSync:
                 0,
                 candidate_snapshot.selected - result.changed_during_run,
             )
-            return bool(late_changes)
+            return {path for path, _reason in late_changes}
 
         if not frozen_epoch:
             invalidate_snapshot_changes()
@@ -195,6 +223,23 @@ class IncrementalSync:
             # Incomplete enumeration invalidates global certification even when
             # the selected prefix is unchanged.  Clear it before consulting the
             # call-graph marker so a certified SQL fast path cannot survive.
+            # Phase B-3 (Path 1): Reset certified_at for error files only.
+            # PASS files retain their certified_at (partial certification model).
+            _error_paths_1 = [
+                d["file"]
+                for d in result.details
+                if d.get("status") == "error" and d.get("file")
+            ]
+            if _error_paths_1:
+                _ph1 = ",".join("?" * len(_error_paths_1))
+                try:
+                    conn.execute(
+                        f"UPDATE ast_index SET certified_at = NULL"
+                        f" WHERE file_path IN ({_ph1})",
+                        _error_paths_1,
+                    )
+                except Exception:
+                    pass  # pre-v14 DB: column not yet added
             from .cache.callgraph_state import clear_call_graph_built_strict
 
             clear_call_graph_built_strict(conn)
@@ -217,8 +262,7 @@ class IncrementalSync:
                 self._cache, result
             )
 
-        changed_after_pipeline = invalidate_snapshot_changes()
-        if changed_after_pipeline:
+        if changed_paths := invalidate_snapshot_changes():
             # The pipeline ran against a generation that no longer exists.  A
             # later retry sees this explicit incomplete marker and repairs all
             # three stages; this run must never certify its pre-race results.
@@ -226,6 +270,44 @@ class IncrementalSync:
 
             backfill_complete = False
             clear_call_graph_built_strict(conn)
+            # REQ-E-202: record partial_at in the manifest without deleting it.
+            # The manifest singleton row retains its other columns (canonical_root
+            # etc.) for the next reader; only partial_at is updated to indicate
+            # that this pipeline generation was overtaken by source changes.
+            # REQ-E-201: full-manifest DELETE is intentionally avoided.
+            # TD-001: reset certified_at for changed paths so they are re-certified.
+            for rel_path in changed_paths:
+                try:
+                    conn.execute(
+                        "UPDATE ast_index SET certified_at = NULL WHERE file_path = ?",
+                        (rel_path,),
+                    )
+                except Exception:
+                    pass  # pre-v14 DB: certified_at column not yet added
+            try:
+                _manifest_cols = {
+                    r[1]
+                    for r in conn.execute(
+                        "PRAGMA table_info(ast_index_snapshot_manifest)"
+                    ).fetchall()
+                }
+                if "partial_at" not in _manifest_cols:
+                    conn.execute(
+                        "ALTER TABLE ast_index_snapshot_manifest"
+                        " ADD COLUMN partial_at INTEGER"
+                    )
+                # TD-002: UPSERT prevents silent no-op when manifest row is absent.
+                # Inserts a sentinel row if missing; updates partial_at only otherwise.
+                conn.execute(
+                    "INSERT INTO ast_index_snapshot_manifest "
+                    "(singleton, canonical_root, source_fingerprint, index_fingerprint, "
+                    "file_count, source_scope_descriptor, manifest_version, partial_at) "
+                    "VALUES (1, '', '', '', 0, '', 0, ?) "
+                    "ON CONFLICT(singleton) DO UPDATE SET partial_at = excluded.partial_at",
+                    (int(time.time()),),
+                )
+            except sqlite3.OperationalError:
+                pass
         indexed_paths = {
             str(row["file_path"])
             for row in conn.execute("SELECT file_path FROM ast_index").fetchall()
@@ -253,6 +335,24 @@ class IncrementalSync:
             and indexed_paths == certified_paths
         )
         if not operational_complete:
+            # Phase B-3 (Path 3): PASS files keep their certified_at.
+            # Only reset certified_at for files that had errors.
+            # Manifest (Layer 2) is fully purged; per-file Layer 1 state is preserved.
+            _error_paths_3 = [
+                d["file"]
+                for d in result.details
+                if d.get("status") == "error" and d.get("file")
+            ]
+            if _error_paths_3:
+                _ph3 = ",".join("?" * len(_error_paths_3))
+                try:
+                    conn.execute(
+                        f"UPDATE ast_index SET certified_at = NULL"
+                        f" WHERE file_path IN ({_ph3})",
+                        _error_paths_3,
+                    )
+                except Exception:
+                    pass  # pre-v14 DB: column not yet added
             from .cache.callgraph_state import clear_call_graph_built_strict
 
             clear_call_graph_built_strict(conn)

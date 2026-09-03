@@ -35,7 +35,11 @@ from .index_snapshot_capability import (
     require_memory_temp_store as _require_memory_temp_store,
 )
 from .index_snapshot_manifest import _read_bounded_manifest_impl
-from .index_snapshot_registry import IndexSnapshot, IndexSnapshotRegistry
+from .index_snapshot_registry import (
+    _WAL_CONNECTION_OVERHEAD_BYTES,
+    IndexSnapshot,
+    IndexSnapshotRegistry,
+)
 from .index_snapshot_schema import index_fingerprint, validate_snapshot_schema
 from .index_snapshot_schema import (
     stamp_full_index_manifest as stamp_full_index_manifest,
@@ -69,7 +73,10 @@ def _close_pinned_descriptor(fd: int) -> None:
 _MAX_SNAPSHOTS = 16
 _MAX_CHARGED_BYTES = 512 * 1024 * 1024
 _TTL_SECONDS = 35.0
-_SNAPSHOT_OVERHEAD_BYTES = 2 * 1024 * 1024
+# TD-003: alias for _WAL_CONNECTION_OVERHEAD_BYTES in index_snapshot_registry.py.
+# Both represent the same ~2 MB process-local overhead per open WAL connection.
+# (import direction: index_snapshot.py → index_snapshot_registry.py avoids circular import)
+_SNAPSHOT_OVERHEAD_BYTES = _WAL_CONNECTION_OVERHEAD_BYTES
 _CAPTURE_DEADLINE_SECONDS = 10.0
 _BACKUP_BYTE_BUDGET = _MAX_CHARGED_BYTES - _SNAPSHOT_OVERHEAD_BYTES
 _clock = time.monotonic
@@ -135,6 +142,208 @@ def _read_bounded_manifest(
     )
 
 
+def _capture_wal_snapshot(
+    canonical_root: str,
+    candidate: str,
+    *,
+    pin: bool = False,
+    deadline: float,
+) -> IndexSnapshot:
+    """WAL read-only snapshot path for non-POSIX or systems without /dev/fd.
+
+    Phase B-1 prototype. Replaces the SECURE_FD_SNAPSHOT_UNSUPPORTED gate with a
+    WAL read-only SQLite URI connection that provides snapshot isolation via BEGIN.
+    Multiple concurrent WAL readers are permitted; _CAPTURE_LOCK is not acquired.
+
+    Physical identity: verified via os.stat() before and after connecting.
+    FTS5 rank: symbol_projection_is_exact() is skipped (requires write access).
+    Tech-debt: [TBD-FTS5-WAL] — see tech-debt-log.md.
+    """
+    connection: sqlite3.Connection | None = None
+    try:
+        # Stat identity BEFORE open (anti-swap check step 1)
+        try:
+            pre_stat = os.stat(candidate)
+        except OSError:
+            return _unknown("MISSING_INDEX")
+        pre_id = (
+            pre_stat.st_dev,
+            pre_stat.st_ino,
+            pre_stat.st_size,
+            pre_stat.st_mtime_ns,
+        )
+
+        # Open WAL read-only connection.  mode=ro lets SQLite read the WAL
+        # transparently; BEGIN pins the current write generation as a reader.
+        uri = f"file:{quote(candidate, safe='/')}?mode=ro"
+        connection = sqlite3.connect(
+            uri, uri=True, timeout=0, isolation_level=None, check_same_thread=False
+        )
+        _require_memory_temp_store(connection)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only=ON")
+        connection.execute("PRAGMA busy_timeout=0")
+        # BEGIN acquires a WAL reader slot, pinning the current write generation.
+        connection.execute("BEGIN")
+
+        # Stat identity AFTER connecting (verify no swap between stat and open)
+        try:
+            post_stat = os.stat(candidate)
+        except OSError:
+            raise ValueError("CONCURRENT_WRITER") from None
+        post_id = (
+            post_stat.st_dev,
+            post_stat.st_ino,
+            post_stat.st_size,
+            post_stat.st_mtime_ns,
+        )
+        if pre_id != post_id:
+            raise ValueError("CONCURRENT_WRITER")
+
+        _require_capture_budget(deadline)
+        validate_snapshot_schema(connection, deadline=deadline)
+        from .cache.build_state import build_in_progress
+
+        if build_in_progress(connection):
+            raise ValueError("CONCURRENT_WRITER")
+
+        _require_capture_budget(deadline)
+        root = canonical_root
+        index = _index_fingerprint_with_deadline(connection, root, deadline)
+        _require_capture_budget(deadline)
+        recorded = recorded_source_rows(connection, deadline=deadline)
+        _require_capture_budget(deadline)
+        manifest = _read_bounded_manifest(connection, deadline)
+        if manifest is not None:
+            _validate_manifest_scalars(manifest)
+
+        current = None
+        source_scope = None
+        scope_reason: str | None = None
+        if manifest is None:
+            scope_reason = "SOURCE_SCOPE_DESCRIPTOR_MISSING"
+        else:
+            try:
+                source_scope = parse_source_scope_descriptor(
+                    manifest["source_scope_descriptor"]
+                )
+            except (TypeError, ValueError):
+                scope_reason = "SOURCE_SCOPE_DESCRIPTOR_INVALID"
+            else:
+                _require_capture_budget(deadline)
+                current = _capture_sources_with_deadline(root, source_scope, deadline)
+                if current.state == "unknown":
+                    raise ValueError(current.reason or "SOURCE_SCOPE_UNKNOWN")
+
+        count = len(recorded)
+        exact_sources = bool(
+            current and current.state == "exact" and recorded == current.rows
+        )
+        exact_manifest = bool(
+            manifest
+            and current
+            and manifest["canonical_root"] == root
+            and manifest["source_fingerprint"] == current.fingerprint
+            and manifest["index_fingerprint"] == index
+            and manifest["file_count"] == count
+            and manifest["manifest_version"] == 2
+        )
+        _require_capture_budget(deadline)
+        call_graph_complete = _exact_call_graph_marker(connection, deadline=deadline)
+        complete = exact_sources and exact_manifest and call_graph_complete
+
+        if complete:
+            reason: str | None = None
+        elif not call_graph_complete:
+            reason = "CALL_GRAPH_INCOMPLETE"
+        elif scope_reason is not None:
+            reason = scope_reason
+        elif not exact_sources:
+            reason = (
+                current.reason or "SOURCE_INDEX_MISMATCH"
+                if current
+                else "SOURCE_INDEX_MISMATCH"
+            )
+        else:
+            reason = "NO_EXACT_FULL_INDEX_MANIFEST"
+
+        # Phase B-1 NOTE: FTS5 rank=1 is a transactional write command.
+        # WAL read-only connections cannot execute it; symbol_projection_is_exact()
+        # is therefore skipped.  A complete index is still reported as complete
+        # (projection_exact=False) so that callers get useful results rather than
+        # SYMBOL_PROJECTION_INCOMPLETE on every non-POSIX host.
+        # Tech-debt: [TBD-FTS5-WAL] Revisit when WAL write-capable rank caching
+        # is added (e.g. run rank=1 on a brief write connection before snapshot).
+        projection_exact = False
+
+        if source_scope is not None and current is not None:
+            _require_capture_budget(deadline)
+            final_current = _capture_sources_with_deadline(root, source_scope, deadline)
+            if final_current.state != "exact":
+                raise ValueError(final_current.reason or "SOURCE_INDEX_MISMATCH")
+            if (
+                current.state != "exact"
+                or final_current.rows != current.rows
+                or final_current.fingerprint != current.fingerprint
+            ):
+                raise ValueError("CONCURRENT_SOURCE")
+
+        # Final stat identity check (anti-swap step 3)
+        try:
+            final_stat = os.stat(candidate)
+        except OSError:
+            raise ValueError("CONCURRENT_WRITER") from None
+        final_id = (
+            final_stat.st_dev,
+            final_stat.st_ino,
+            final_stat.st_size,
+            final_stat.st_mtime_ns,
+        )
+        if final_id != pre_id:
+            raise ValueError("CONCURRENT_WRITER")
+
+        # WAL connection overhead: no backup copy, so charge ~2 MB overhead only.
+        charged = _SNAPSHOT_OVERHEAD_BYTES
+        REGISTRY.ensure_capacity(charged)
+        _require_capture_budget(deadline)
+
+        snapshot = IndexSnapshot(
+            None,
+            current.fingerprint if current else None,
+            index,
+            current.generation if current else None,
+            "complete" if complete else "partial",
+            reason,
+            root,
+            count,
+            _physical_storage_identity(connection),
+            projection_exact,
+            source_scope,
+        )
+        published = REGISTRY.publish(snapshot, connection, charged, deadline, pin=pin)
+        connection = None  # ownership transferred to registry
+        return published
+    except FileNotFoundError as exc:
+        return _unknown(str(exc))
+    except sqlite3.DatabaseError as exc:
+        return _unknown(
+            "CONCURRENT_WRITER"
+            if any(x in str(exc).lower() for x in ("locked", "busy"))
+            else "CORRUPT_INDEX"
+        )
+    except (OSError, TimeoutError, TypeError, ValueError, RuntimeError) as exc:
+        reason = "INDEX_SNAPSHOT_DEADLINE" if _clock() >= deadline else str(exc)
+        if isinstance(exc, OSError) and getattr(exc, "errno", None) in (
+            errno.ELOOP,
+            errno.ENOTDIR,
+        ):
+            reason = "INDEX_PATH_SYMLINK"
+        return _unknown(reason or "INDEX_SNAPSHOT_FAILED")
+    finally:
+        if connection is not None:
+            connection.close()
+
+
 def _capture_existing_snapshot(
     project_root: str, *, pin: bool = False, deadline: float | None = None
 ) -> IndexSnapshot:
@@ -147,8 +356,14 @@ def _capture_existing_snapshot(
     candidate = os.path.join(canonical_root, ".ast-cache", "index.db")
     if not os.path.lexists(candidate):
         return _unknown("MISSING_INDEX")
+    # Phase B-1: Replace POSIX gate with WAL read-only fallback.
+    # Non-POSIX systems (Windows) and POSIX without /dev/fd use WAL path.
+    # POSIX with /dev/fd continues using the existing fd-pinned backup path.
     if os.name != "posix" or not os.path.exists("/dev/fd"):
-        return _unknown("SECURE_FD_SNAPSHOT_UNSUPPORTED")
+        wal_deadline = _clock() + _CAPTURE_DEADLINE_SECONDS if deadline is None else deadline
+        return _capture_wal_snapshot(
+            canonical_root, candidate, pin=pin, deadline=wal_deadline
+        )
     handles: tuple[int, int, int] | None = None
     connection: sqlite3.Connection | None = None
     evidence: sqlite3.Connection | None = None

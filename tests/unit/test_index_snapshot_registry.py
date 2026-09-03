@@ -485,3 +485,74 @@ class TestAuthoritativeSnapshotTransitions:
 
         assert result["completeness"] == "unknown"
         assert result["oracle_reason"] == "SNAPSHOT_READ_FAILED"
+
+
+# ---------------------------------------------------------------------------
+# REQ-U-105: _WalEntry rename + TTL + WAL overhead constant
+# ---------------------------------------------------------------------------
+
+class TestWalEntryRename:
+    """REQ-U-105: _WalEntry exists, _Entry is absent or aliased, TTL ≤ 35 s."""
+
+    def test_wal_entry_class_exists(self):
+        """_WalEntry is the canonical registry entry class."""
+        from tree_sitter_analyzer.index_snapshot_registry import _WalEntry
+        assert isinstance(_WalEntry, type), "_WalEntry must be a class"
+
+    def test_entry_class_absent_or_aliased(self):
+        """_Entry is either absent or an alias for _WalEntry (no separate class)."""
+        import tree_sitter_analyzer.index_snapshot_registry as reg
+        if hasattr(reg, "_Entry"):
+            assert reg._Entry is reg._WalEntry, "_Entry must alias _WalEntry"
+
+    def test_wal_connection_overhead_bytes_constant(self):
+        """_WAL_CONNECTION_OVERHEAD_BYTES is exactly 2 MB."""
+        from tree_sitter_analyzer.index_snapshot_registry import (
+            _WAL_CONNECTION_OVERHEAD_BYTES,
+        )
+        assert _WAL_CONNECTION_OVERHEAD_BYTES == 2 * 1024 * 1024
+
+    def test_published_entry_is_wal_entry_type(self, tmp_path):
+        """Registry entries use _WalEntry instances after publish."""
+        import sqlite3
+
+        import tree_sitter_analyzer.index_snapshot as owner
+        from tree_sitter_analyzer.index_snapshot_registry import _WalEntry
+
+        snapshot = _snapshot_fixture(tmp_path)
+        conn = sqlite3.connect(":memory:")
+        published = owner.REGISTRY.publish(snapshot, conn, 0)
+        entry = owner.REGISTRY._entries[published.snapshot_id]
+        assert isinstance(entry, _WalEntry)
+        owner.REGISTRY.close_all()
+
+    def test_ttl_at_most_35_seconds(self, tmp_path):
+        """Entries expire within 35 s: expires_at - creation_time ≤ 35."""
+        import sqlite3
+        import time
+
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        snapshot = _snapshot_fixture(tmp_path)
+        before = time.time()
+        conn = sqlite3.connect(":memory:")
+        published = owner.REGISTRY.publish(snapshot, conn, 0)
+        entry = owner.REGISTRY._entries[published.snapshot_id]
+        assert entry.expires_at - before <= 35.0 + 0.5  # 0.5 s clock tolerance
+        owner.REGISTRY.close_all()
+
+
+def _snapshot_fixture(tmp_path):
+    """Return a minimal IndexSnapshot for tmp_path."""
+    from tree_sitter_analyzer.index_snapshot import IndexSnapshot
+
+    return IndexSnapshot(
+        None,
+        "source",
+        "index",
+        "generation",
+        "complete",
+        None,
+        str(tmp_path.resolve()),
+        0,
+    )

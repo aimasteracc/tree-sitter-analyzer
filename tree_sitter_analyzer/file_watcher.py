@@ -25,6 +25,7 @@ from typing import Any
 
 from .ast_cache import _EXT_TO_LANG
 from .incremental_sync import IncrementalSync
+from .index_lag import _LAG_SKIP_DIRS
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +213,7 @@ class FileWatcherDaemon:
         project_root = self._cache.project_root
         for dirpath, dirnames, filenames in os.walk(project_root):
             dirnames[:] = [
-                d for d in dirnames if d not in _EXT_TO_LANG and not d.startswith(".")
+                d for d in dirnames if d not in _LAG_SKIP_DIRS and not d.startswith(".")
             ]
             for fname in filenames:
                 ext = os.path.splitext(fname)[1].lower()
@@ -232,7 +233,7 @@ class FileWatcherDaemon:
         project_root = self._cache.project_root
         for dirpath, dirnames, filenames in os.walk(project_root):
             dirnames[:] = [
-                d for d in dirnames if d not in _EXT_TO_LANG and not d.startswith(".")
+                d for d in dirnames if d not in _LAG_SKIP_DIRS and not d.startswith(".")
             ]
             for fname in filenames:
                 ext = os.path.splitext(fname)[1].lower()
