@@ -27,6 +27,9 @@ _BASE_TOKENS = frozenset({"HASH", "DOT", "STAR"})
 _COMBINATORS = {"GT": ">", "TILDE": "~"}
 
 
+_MAX_DEPTH_QUANTIFIER = 50
+
+
 class HyphaeSyntaxError(ValueError):
     """Raised when a Hyphae selector string is malformed."""
 
@@ -186,14 +189,14 @@ class _Parser:
             self._advance()  # {
             self._skip_ws()
             n_tok = self._expect("NUMBER")
-            depth_min = int(n_tok.value)
+            depth_min = min(int(n_tok.value), _MAX_DEPTH_QUANTIFIER)
             depth_max = depth_min  # default: exact match
             self._skip_ws()
             if self._peek().type == "COMMA":
                 self._advance()  # ,
                 self._skip_ws()
                 m_tok = self._expect("NUMBER")
-                depth_max = int(m_tok.value)
+                depth_max = min(int(m_tok.value), _MAX_DEPTH_QUANTIFIER)
             self._skip_ws()
             self._expect("RBRACE")
 

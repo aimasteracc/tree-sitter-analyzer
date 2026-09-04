@@ -298,42 +298,48 @@ WHERE hop >= ? AND hop <= ?
         if name == "hot":
             threshold = int(arg) if isinstance(arg, int) else 5
             try:
-                hot_ids = {
-                    r[0] for r in db.execute(
-                        "SELECT symbol_id FROM ast_symbol_activation "
-                        "WHERE mod_count_30d > ?",
+                hot_pairs = {
+                    (r[0], r[1]) for r in db.execute(
+                        "SELECT sr.name, sr.file_path "
+                        "FROM ast_symbol_rows sr "
+                        "JOIN ast_symbol_activation a ON a.symbol_id = sr.id "
+                        "WHERE a.mod_count_30d > ?",
                         (threshold,),
                     )
                 }
-                return [c for c in cands if c.get("id") in hot_ids]
+                return [c for c in cands if (c.get("name"), c.get("file")) in hot_pairs]
             except Exception:
                 return cands
 
         if name == "recently_modified":
             cutoff = int(time.time()) - 30 * 86400
             try:
-                recent_ids = {
-                    r[0] for r in db.execute(
-                        "SELECT symbol_id FROM ast_symbol_activation "
-                        "WHERE last_modified_at > ?",
+                recent_pairs = {
+                    (r[0], r[1]) for r in db.execute(
+                        "SELECT sr.name, sr.file_path "
+                        "FROM ast_symbol_rows sr "
+                        "JOIN ast_symbol_activation a ON a.symbol_id = sr.id "
+                        "WHERE a.last_modified_at > ?",
                         (cutoff,),
                     )
                 }
-                return [c for c in cands if c.get("id") in recent_ids]
+                return [c for c in cands if (c.get("name"), c.get("file")) in recent_pairs]
             except Exception:
                 return cands
 
         if name == "stale":
             cutoff = int(time.time()) - 180 * 86400
             try:
-                stale_ids = {
-                    r[0] for r in db.execute(
-                        "SELECT symbol_id FROM ast_symbol_activation "
-                        "WHERE last_modified_at < ? AND mod_count_30d = 0",
+                stale_pairs = {
+                    (r[0], r[1]) for r in db.execute(
+                        "SELECT sr.name, sr.file_path "
+                        "FROM ast_symbol_rows sr "
+                        "JOIN ast_symbol_activation a ON a.symbol_id = sr.id "
+                        "WHERE a.last_modified_at < ? AND a.mod_count_30d = 0",
                         (cutoff,),
                     )
                 }
-                return [c for c in cands if c.get("id") in stale_ids]
+                return [c for c in cands if (c.get("name"), c.get("file")) in stale_pairs]
             except Exception:
                 return cands
 
@@ -342,23 +348,24 @@ WHERE hop >= ? AND hop <= ?
             from collections import defaultdict as _dd
             try:
                 act_rows = db.execute(
-                    "SELECT symbol_id, file_path, mod_count_30d "
-                    "FROM ast_symbol_activation"
+                    "SELECT sr.name, a.file_path, COALESCE(a.mod_count_30d, 0) "
+                    "FROM ast_symbol_activation a "
+                    "JOIN ast_symbol_rows sr ON sr.id = a.symbol_id"
                 ).fetchall()
             except Exception:
                 return cands
 
-            by_file: dict[str, list[tuple[int, int]]] = _dd(list)
+            by_file: dict[str, list[tuple[str, int]]] = _dd(list)
             for r in act_rows:
                 by_file[r[1]].append((r[0], r[2] or 0))
 
-            hotspot_ids: set[int] = set()
-            for file_syms in by_file.values():
+            hotspot_pairs: set[tuple[str, str]] = set()
+            for file_path, file_syms in by_file.items():
                 sorted_syms = sorted(file_syms, key=lambda x: x[1], reverse=True)
                 cutoff_n = max(1, len(sorted_syms) // 10)
-                hotspot_ids.update(sym_id for sym_id, _ in sorted_syms[:cutoff_n])
+                hotspot_pairs.update((sym_name, file_path) for sym_name, _ in sorted_syms[:cutoff_n])
 
-            return [c for c in cands if c.get("id") in hotspot_ids]
+            return [c for c in cands if (c.get("name"), c.get("file")) in hotspot_pairs]
 
         return cands
 

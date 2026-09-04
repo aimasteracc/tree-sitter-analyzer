@@ -152,8 +152,9 @@ callers AS (
     LEFT   JOIN ast_symbol_activation a ON a.symbol_id = cs.id
     WHERE  e.kind = 'calls'
     AND    e.callee_name = t.name
-    AND    (e.callee_resolved_file = t.file_path OR e.callee_resolved_file IS NULL
-            OR e.callee_resolved_file = '')
+    AND    (e.callee_resolved_file = t.file_path
+            OR (e.file_path = t.file_path
+                AND (e.callee_resolved_file IS NULL OR e.callee_resolved_file = '')))
     ORDER  BY hot30 DESC
     LIMIT  :max_callers
 ),

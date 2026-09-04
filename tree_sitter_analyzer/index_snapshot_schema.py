@@ -21,7 +21,7 @@ from .index_source_snapshot import (
     recorded_source_rows,
 )
 
-SNAPSHOT_SCHEMA_VERSION = 13
+SNAPSHOT_SCHEMA_VERSION = 15
 SCHEMA_V13_INDEX_SNAPSHOT = """
 CREATE TABLE IF NOT EXISTS ast_index_snapshot_manifest (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),

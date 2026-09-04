@@ -34,13 +34,15 @@ import logging
 import sqlite3
 import struct
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 _EMBED_ERROR: str | None = None
 _NUMPY_AVAILABLE = False
 _VSS_AVAILABLE = False
+_UNIXCODER_CACHE: dict[str, Any] = {}
 
 try:
     import numpy as _np  # noqa: F401
@@ -125,9 +127,12 @@ def _embed_with_unixcoder(texts: list[str]) -> list[list[float]]:
     from transformers import AutoModel, AutoTokenizer  # type: ignore
 
     model_name = "microsoft/unixcoder-base"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)  # nosec B615 - hardcoded constant, not user input
-    model = AutoModel.from_pretrained(model_name)  # nosec B615 - hardcoded constant, not user input
-    model.eval()
+    if model_name not in _UNIXCODER_CACHE:
+        tokenizer = AutoTokenizer.from_pretrained(model_name)  # nosec B615 - hardcoded constant, not user input
+        model = AutoModel.from_pretrained(model_name)  # nosec B615 - hardcoded constant, not user input
+        model.eval()
+        _UNIXCODER_CACHE[model_name] = (tokenizer, model)
+    tokenizer, model = _UNIXCODER_CACHE[model_name]
     results = []
     with torch.no_grad():
         for text in texts:
