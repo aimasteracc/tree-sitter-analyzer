@@ -23,12 +23,6 @@ TOOLS = [
     "project",
     "index",
     "viz",
-    "get_project_schema",
-    "pulse",
-    "pulse_batch",
-    "tql_schema",
-    "tql_execute",
-    "semantic_neighbors",
     "set_project_path",
 ]
 
