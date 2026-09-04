@@ -223,13 +223,6 @@ class Evaluator:
         except Exception:
             return set()
 
-        if direction == "callee":
-            source_col = "caller_name"
-            target_col = "callee_symbol_id"
-        else:
-            source_col = "callee_symbol_id"
-            target_col = "source_node_id"
-
         if not seed_ids:
             return set()
 

@@ -127,7 +127,7 @@ def get_available_queries(language: str) -> list[str]:
 
 def is_language_supported(language: str) -> bool:
     try:
-        return language.lower() in [l.lower() for l in get_supported_languages()]
+        return language.lower() in [lang.lower() for lang in get_supported_languages()]
     except Exception as e:
         log_error(f"Failed to check language support for {language}: {e}")
         return False

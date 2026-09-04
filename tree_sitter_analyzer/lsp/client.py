@@ -72,7 +72,7 @@ class LspClient:
         self._pending: dict[int, asyncio.Future[Any]] = {}
         self._reader_task: asyncio.Task[None] | None = None
 
-    async def __aenter__(self) -> "LspClient":
+    async def __aenter__(self) -> LspClient:
         await self._start()
         return self
 
@@ -136,7 +136,7 @@ class LspClient:
             return await asyncio.wait_for(fut, timeout=_LSP_TIMEOUT)
         except asyncio.TimeoutError:
             self._pending.pop(req_id, None)
-            raise LspTimeoutError(f"LSP request '{method}' timed out after {_LSP_TIMEOUT}s")
+            raise LspTimeoutError(f"LSP request '{method}' timed out after {_LSP_TIMEOUT}s") from None
 
     def _notify(self, method: str, params: Any) -> None:
         self._send({"jsonrpc": "2.0", "method": method, "params": params})

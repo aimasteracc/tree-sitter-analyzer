@@ -30,7 +30,6 @@ Schema (appended to existing SQLite DB):
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
 import struct
@@ -122,12 +121,12 @@ def _decode_embedding(blob: bytes) -> list[float]:
 
 def _embed_with_unixcoder(texts: list[str]) -> list[list[float]]:
     """Embed texts using UniXcoder (local HuggingFace model)."""
-    from transformers import AutoModel, AutoTokenizer  # type: ignore
     import torch  # type: ignore
+    from transformers import AutoModel, AutoTokenizer  # type: ignore
 
     model_name = "microsoft/unixcoder-base"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModel.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)  # nosec B615 - hardcoded constant, not user input
+    model = AutoModel.from_pretrained(model_name)  # nosec B615 - hardcoded constant, not user input
     model.eval()
     results = []
     with torch.no_grad():

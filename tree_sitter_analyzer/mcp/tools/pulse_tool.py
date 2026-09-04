@@ -16,11 +16,10 @@ Token budget exceeded: fields are dropped in this order (lowest priority first):
 
 from __future__ import annotations
 
-import sqlite3
 from typing import Any
 
-from .base_tool import BaseMCPTool
 from ...api.serialization import COMPACT_LEGEND
+from .base_tool import BaseMCPTool
 
 
 class PulseTool(BaseMCPTool):

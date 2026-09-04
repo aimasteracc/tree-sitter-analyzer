@@ -54,8 +54,8 @@ def create_tool_registry(
     )
     from .tools.search_facade import build_search_facade
     from .tools.semantic_tool import build_semantic_neighbors_tool
-    from .tools.tql_tool import build_tql_execute_tool, build_tql_schema_tool
     from .tools.structure_facade import build_structure_facade
+    from .tools.tql_tool import build_tql_execute_tool, build_tql_schema_tool
     from .tools.viz_facade import build_viz_facade
 
     tool_instances: list[tuple[str, Any]] = [

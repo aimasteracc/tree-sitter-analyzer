@@ -11,10 +11,9 @@ learn the key mappings once without paying the legend cost on every call.
 
 from __future__ import annotations
 
-import dataclasses
 from typing import Any
 
-from .pulse import GitHeat, PulseResponse
+from .pulse import PulseResponse
 
 # Compact key legend for tool descriptions (embed once, read many times).
 COMPACT_LEGEND = (

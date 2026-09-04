@@ -19,7 +19,7 @@ import dataclasses
 import json
 import sqlite3
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 # Languages where call-graph extraction is not supported.
 _NO_CALL_GRAPH_LANGUAGES = frozenset({
@@ -41,8 +41,8 @@ class SymbolInfo:
     line: int
     end_line: int
     language: str
-    class_name: Optional[str] = None
-    docstring: Optional[str] = None  # first 200 chars
+    class_name: str | None = None
+    docstring: str | None = None  # first 200 chars
 
 
 @dataclass(frozen=True)
@@ -60,8 +60,8 @@ class CalleeRef:
     """A symbol called by the target."""
 
     name: str
-    file: Optional[str] = None
-    line: Optional[int] = None
+    file: str | None = None
+    line: int | None = None
     resolution: str = "unresolved"  # resolved|class_method|heuristic|unresolved
 
 
@@ -70,16 +70,16 @@ class ImportRef:
     """An import in the target's file."""
 
     module: str
-    file: Optional[str] = None
+    file: str | None = None
 
 
 @dataclass(frozen=True)
 class GitHeat:
     """Git modification statistics for the target symbol."""
 
-    commit: Optional[str] = None
-    commit_msg: Optional[str] = None
-    at: Optional[int] = None  # unix timestamp of last modification
+    commit: str | None = None
+    commit_msg: str | None = None
+    at: int | None = None  # unix timestamp of last modification
     mod_30d: int = 0
     mod_90d: int = 0
     mod_all: int = 0
@@ -109,7 +109,7 @@ class BranchContext:
     """Control-flow context in which a call was made."""
 
     kind: str
-    condition_text: Optional[str] = None
+    condition_text: str | None = None
     nesting_depth: int = 0
 
 
@@ -124,7 +124,7 @@ class PulseResponse:
     call_graph_reason: str = ""
     callers: tuple[CallerRef, ...] = field(default_factory=tuple)
     callees: tuple[CalleeRef, ...] = field(default_factory=tuple)
-    git_heat: Optional[GitHeat] = None
+    git_heat: GitHeat | None = None
     imports: tuple[ImportRef, ...] = field(default_factory=tuple)
     imported_by: tuple[str, ...] = field(default_factory=tuple)
     siblings: tuple[SiblingRef, ...] = field(default_factory=tuple)

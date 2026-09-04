@@ -114,7 +114,6 @@ class SemanticNeighborsTool(BaseMCPTool):
             find_semantic_neighbors,
         )
         from ...embeddings.pipeline import (
-            EmbeddingModelUnavailableError,
             _embed_with_openai,
             _embed_with_unixcoder,
         )
