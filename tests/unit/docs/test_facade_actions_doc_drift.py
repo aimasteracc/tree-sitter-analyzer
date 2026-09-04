@@ -93,7 +93,10 @@ def test_facade_actions_surface_pins() -> None:
     # health/refactor_queue — three capabilities that were built and tested
     # but registered nowhere.
     # 79 -> 77: PR removed search action=content and search action=grep.
-    assert total_actions == 77
+    # 77 -> 83: nervous-system PR wired pulse/pulse_batch (nav), schema
+    # (index), tql_schema/tql_execute/semantic (search) — 6 capabilities that
+    # were registered as new top-level tools instead of facade actions.
+    assert total_actions == 83
 
     gaps = sorted(
         (facade, row.action)

@@ -79,6 +79,9 @@ def test_nav_facade_all_actions_present() -> None:
         "test_map",
         # RFC-0014 Phase C: co_change
         "co_change",
+        # Nervous-system PR: re-wired from top-level pulse/pulse_batch tools.
+        "pulse",
+        "pulse_batch",
     }
     assert expected == all_actions
 
@@ -681,6 +684,9 @@ def test_nav_facade_schema_action_enum_complete() -> None:
         "test_map",
         # RFC-0014 Phase C: co_change
         "co_change",
+        # Nervous-system PR: re-wired from top-level pulse/pulse_batch tools.
+        "pulse",
+        "pulse_batch",
     }
     assert expected == enum
 
