@@ -279,6 +279,30 @@ def _insert_import_entry(
         return False
 
 
+def _fetch_commit_msgs(shas: list[str], repo_root: str) -> dict[str, str]:
+    """Return ``{sha: subject_line}`` for unique, non-None SHAs.
+
+    Calls ``git log -1 --pretty=%s`` once per unique SHA; caches to avoid
+    redundant subprocess invocations.  ``CalledProcessError`` or ``OSError``
+    produce an empty string, never an exception.
+    """
+    import subprocess
+
+    result: dict[str, str] = {}
+    for sha in dict.fromkeys(s for s in shas if s):
+        try:
+            out = subprocess.check_output(
+                ["git", "log", "-1", "--pretty=%s", sha],
+                cwd=repo_root,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            result[sha] = out.strip()[:120]
+        except (subprocess.CalledProcessError, OSError):
+            result[sha] = ""
+    return result
+
+
 def write_activation_for_file(
     conn: sqlite3.Connection,
     rel_path: str,
@@ -311,6 +335,9 @@ def write_activation_for_file(
     except Exception as exc:  # pragma: no cover
         logger.debug("compute_symbol_activation failed for %s: %s", rel_path, exc)
         return
+    # Build SHA→commit message cache once per file (deduplicates subprocess calls).
+    shas = [r.last_modified_commit for r in rows]
+    commit_msgs = _fetch_commit_msgs(shas, project_root)
     try:
         conn.execute(
             "DELETE FROM ast_symbol_activation WHERE file_path = ?",
@@ -322,8 +349,8 @@ def write_activation_for_file(
                     symbol_id, file_path,
                     last_modified_commit, last_modified_at,
                     mod_count_30d, mod_count_90d, mod_count_all,
-                    computed_at, git_state
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    computed_at, git_state, last_commit_msg
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     int(r.symbol_id),
                     rel_path,
@@ -334,6 +361,7 @@ def write_activation_for_file(
                     int(r.mod_count_all),
                     int(r.computed_at),
                     r.git_state,
+                    commit_msgs.get(r.last_modified_commit or "", ""),
                 ),
             )
     except sqlite3.OperationalError as exc:
@@ -416,21 +444,25 @@ def write_graph_edges_for_file(
         resolved_file = str(edge.get("callee_resolved_file") or "")
         target_file = resolved_file or rel_path
         target = symbol_node(target_file, callee_name, edge.get("callee_line"))
+        edge_metadata: dict[str, Any] = {
+            "language": language,
+            "caller_name": caller_name,
+            "caller_line": edge.get("caller_line", 0),
+            "callee_name": callee_name,
+            "callee_full": edge.get("callee_full", ""),
+            "callee_resolution": edge.get("callee_resolution", "unknown"),
+            "callee_resolved_file": resolved_file,
+        }
+        branch_ctx = edge.get("branch")
+        if branch_ctx is not None:
+            edge_metadata["branch"] = branch_ctx
         edges.append(
             Edge(
                 source,
                 target,
                 EdgeKind.CALLS,
                 edge.get("callee_line"),
-                metadata={
-                    "language": language,
-                    "caller_name": caller_name,
-                    "caller_line": edge.get("caller_line", 0),
-                    "callee_name": callee_name,
-                    "callee_full": edge.get("callee_full", ""),
-                    "callee_resolution": edge.get("callee_resolution", "unknown"),
-                    "callee_resolved_file": resolved_file,
-                },
+                metadata=edge_metadata,
             )
         )
 

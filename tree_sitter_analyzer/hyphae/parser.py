@@ -171,14 +171,33 @@ class _Parser:
     def _parse_pseudo(self) -> PseudoClass:
         colon = self._expect("COLON")
         name = colon.value
-        if self._peek().type != "LPAREN":
-            return PseudoClass(name=name, arg=None)
-        self._advance()  # (
-        self._skip_ws()
-        arg = self._parse_pseudo_arg()
-        self._skip_ws()
-        self._expect("RPAREN")
-        return PseudoClass(name=name, arg=arg)
+        arg = None
+        if self._peek().type == "LPAREN":
+            self._advance()  # (
+            self._skip_ws()
+            arg = self._parse_pseudo_arg()
+            self._skip_ws()
+            self._expect("RPAREN")
+
+        # --- DepthQuantifier {n,m} (new) ---
+        depth_min: int | None = None
+        depth_max: int | None = None
+        if self._peek().type == "LBRACE":
+            self._advance()  # {
+            self._skip_ws()
+            n_tok = self._expect("NUMBER")
+            depth_min = int(n_tok.value)
+            depth_max = depth_min  # default: exact match
+            self._skip_ws()
+            if self._peek().type == "COMMA":
+                self._advance()  # ,
+                self._skip_ws()
+                m_tok = self._expect("NUMBER")
+                depth_max = int(m_tok.value)
+            self._skip_ws()
+            self._expect("RBRACE")
+
+        return PseudoClass(name=name, arg=arg, depth_min=depth_min, depth_max=depth_max)
 
     def _parse_pseudo_arg(self) -> SelectorList | int | str:
         tok = self._peek()
