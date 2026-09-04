@@ -501,7 +501,7 @@ def query_pulse(
 def _estimate_tokens(value: Any) -> int:
     """Estimate the token count for a JSON-serialised value."""
     try:
-        import tiktoken
+        import tiktoken  # type: ignore
         enc = tiktoken.get_encoding("cl100k_base")
         return len(enc.encode(json.dumps(value, ensure_ascii=False, default=str)))
     except ImportError:

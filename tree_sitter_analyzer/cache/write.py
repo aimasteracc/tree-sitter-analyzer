@@ -336,7 +336,7 @@ def write_activation_for_file(
         logger.debug("compute_symbol_activation failed for %s: %s", rel_path, exc)
         return
     # Build SHA→commit message cache once per file (deduplicates subprocess calls).
-    shas = [r.last_modified_commit for r in rows]
+    shas = [r.last_modified_commit for r in rows if r.last_modified_commit]
     commit_msgs = _fetch_commit_msgs(shas, project_root)
     try:
         conn.execute(

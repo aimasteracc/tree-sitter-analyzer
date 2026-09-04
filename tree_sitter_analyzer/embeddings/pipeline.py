@@ -34,7 +34,7 @@ import logging
 import sqlite3
 import struct
 import time
-from typing import Any
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +175,7 @@ def run_pipeline(
         )
 
     # Resolve embed function.
-    embed_fn = None
+    embed_fn: Callable[..., list[list[float]]] | None = None
     model_name: str = ""
     if model in ("auto", "openai"):
         try:

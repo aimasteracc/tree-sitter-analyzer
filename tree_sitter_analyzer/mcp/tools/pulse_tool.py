@@ -88,7 +88,7 @@ class PulseTool(BaseMCPTool):
         }
 
     def get_tool_schema(self) -> dict[str, Any]:
-        return self.get_tool_definition()["inputSchema"]["properties"]
+        return self.get_tool_definition()["inputSchema"]["properties"]  # type: ignore[no-any-return]
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         if not arguments.get("file"):
@@ -202,7 +202,7 @@ class PulseBatchTool(BaseMCPTool):
         }
 
     def get_tool_schema(self) -> dict[str, Any]:
-        return self.get_tool_definition()["inputSchema"]["properties"]
+        return self.get_tool_definition()["inputSchema"]["properties"]  # type: ignore[no-any-return]
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         if not isinstance(arguments.get("targets"), list):
@@ -292,7 +292,7 @@ class GetProjectSchemaTool(BaseMCPTool):
         }
 
     def get_tool_schema(self) -> dict[str, Any]:
-        return self.get_tool_definition()["inputSchema"]["properties"]
+        return self.get_tool_definition()["inputSchema"]["properties"]  # type: ignore[no-any-return]
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         return True
