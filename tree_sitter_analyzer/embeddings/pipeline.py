@@ -121,7 +121,7 @@ def _decode_embedding(blob: bytes) -> list[float]:
     return list(struct.unpack(f"<{n}f", blob))
 
 
-def _embed_with_unixcoder(texts: list[str]) -> list[list[float]]:
+def _embed_with_unixcoder(texts: list[str]) -> list[list[float]]:  # pragma: no cover
     """Embed texts using UniXcoder (local HuggingFace model)."""
     import torch  # type: ignore
     from transformers import AutoModel, AutoTokenizer  # type: ignore
@@ -143,7 +143,7 @@ def _embed_with_unixcoder(texts: list[str]) -> list[list[float]]:
     return results
 
 
-def _embed_with_openai(texts: list[str], model: str = "text-embedding-3-small") -> list[list[float]]:
+def _embed_with_openai(texts: list[str], model: str = "text-embedding-3-small") -> list[list[float]]:  # pragma: no cover
     """Embed texts using OpenAI embeddings API."""
     from openai import OpenAI  # type: ignore
 

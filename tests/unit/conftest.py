@@ -2,9 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
+import sqlite3
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
+
+from tree_sitter_analyzer.cache.schema import (
+    SCHEMA_V1,
+    SCHEMA_SYMBOL_ROWS,
+    SCHEMA_V4_IMPORTS,
+    SCHEMA_V5_ACTIVATION,
+    SCHEMA_V6_VIOLATIONS,
+    SCHEMA_V14_COMMENTS,
+    SCHEMA_V15_LSP_CACHE,
+)
+from tree_sitter_analyzer.graph.edge_store import EDGE_STORE_SCHEMA
+from tree_sitter_analyzer.embeddings.pipeline import _SCHEMA_SYMBOL_VECTORS
 
 
 def _write(root: Path, rel: str, content: str) -> Path:
@@ -234,3 +249,91 @@ def multi_framework_project(
     (flask_project / "api.py").write_text(api.read_text())
     (flask_project / "routes.js").write_text(routes.read_text())
     return flask_project
+
+
+# ---------------------------------------------------------------------------
+# Step 1: ast_cache_conn — in-memory SQLite with full TSA schema
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def ast_cache_conn():
+    """Function-scoped in-memory SQLite connection with all TSA DDL applied.
+
+    DDL is applied in FK-safe order:
+      ast_index (no FK) → ast_symbol_rows → edges → ast_imports →
+      ast_symbol_activation → ast_constraint_violations →
+      ast_symbol_comments → lsp_resolution_cache → symbol_embeddings
+    """
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    # SCHEMA_V1 creates ast_index (no FK deps); required by query_pulse CTE.
+    conn.executescript(SCHEMA_V1)
+    # Core symbol table.
+    conn.executescript(SCHEMA_SYMBOL_ROWS)
+    # Unified edge store (no FK deps on ast_symbol_rows).
+    conn.executescript(EDGE_STORE_SCHEMA)
+    # Dependent tables (no FK on symbol_rows, but logical dependency).
+    conn.executescript(SCHEMA_V4_IMPORTS)
+    conn.executescript(SCHEMA_V5_ACTIVATION)
+    conn.executescript(SCHEMA_V6_VIOLATIONS)
+    # Tables that REFERENCE ast_symbol_rows(id).
+    conn.executescript(SCHEMA_V14_COMMENTS)
+    # Table that REFERENCES both ast_symbol_rows(id) and edges(id).
+    conn.executescript(SCHEMA_V15_LSP_CACHE)
+    # Embeddings table — REFERENCES ast_symbol_rows(id).
+    conn.executescript(_SCHEMA_SYMBOL_VECTORS)
+    conn.commit()
+    yield conn
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Step 8a: mock_embed_models — patches embed functions in pipeline + tool
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def mock_embed_models(monkeypatch):
+    """Patch _embed_with_openai and _embed_with_unixcoder in both modules.
+
+    Yields (mock_openai, mock_unixcoder) so tests can override return_value
+    or side_effect as needed.
+    """
+    mock_openai = MagicMock(return_value=[[0.1, 0.2, 0.3]])
+    mock_unixcoder = MagicMock(return_value=[[0.4, 0.5, 0.6]])
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.embeddings.pipeline._embed_with_openai",
+        mock_openai,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.embeddings.pipeline._embed_with_unixcoder",
+        mock_unixcoder,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.semantic_tool._embed_with_openai",
+        mock_openai,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.semantic_tool._embed_with_unixcoder",
+        mock_unixcoder,
+    )
+    yield (mock_openai, mock_unixcoder)
+
+
+# ---------------------------------------------------------------------------
+# Step 9a: fake_lsp_process — async subprocess double
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def fake_lsp_process():
+    """Fake LSP subprocess double with drivable stdout/stdin."""
+    reader = asyncio.StreamReader()
+    stdin_mock = MagicMock()
+    stdin_mock.write = MagicMock()
+
+    class _FakeLspProcess:
+        stdout = reader
+        stdin = stdin_mock
+        returncode = None  # simulate running process
+
+    return _FakeLspProcess()

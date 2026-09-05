@@ -111,3 +111,51 @@ def test_parse_not_pseudo() -> None:
 def test_parse_error_on_garbage() -> None:
     with pytest.raises(HyphaeSyntaxError):
         parse("> #orphan")
+
+
+# ===========================================================================
+# Step 10: DepthQuantifier parsing tests (hyphae/parser.py lines 185-201)
+# ===========================================================================
+
+def test_parse_depth_quantifier_exact() -> None:
+    """{2} sets depth_min == depth_max == 2."""
+    pc = parse(".method:calls(#x){2}").selectors[0].pseudo_classes[0]
+    assert pc.depth_min == 2
+    assert pc.depth_max == 2
+
+
+def test_parse_depth_quantifier_range() -> None:
+    """{1,3} sets depth_min=1 and depth_max=3."""
+    pc = parse(".method:calls(#x){1,3}").selectors[0].pseudo_classes[0]
+    assert pc.depth_min == 1
+    assert pc.depth_max == 3
+
+
+def test_parse_depth_quantifier_single_clamps_to_max() -> None:
+    """{100} clamps to _MAX_DEPTH_QUANTIFIER (50)."""
+    pc = parse(".method:calls(#x){100}").selectors[0].pseudo_classes[0]
+    assert pc.depth_min == 50
+    assert pc.depth_max == 50
+
+
+def test_parse_depth_quantifier_range_clamps_max() -> None:
+    """{1,200} clamps the upper bound to 50."""
+    pc = parse(".method:calls(#x){1,200}").selectors[0].pseudo_classes[0]
+    assert pc.depth_min == 1
+    assert pc.depth_max == 50
+
+
+def test_parse_depth_quantifier_range_on_callees() -> None:
+    """{2,4} works on :callees pseudo-class."""
+    pc = parse(".function:callees(#y){2,4}").selectors[0].pseudo_classes[0]
+    assert pc.depth_min == 2
+    assert pc.depth_max == 4
+
+
+def test_parse_depth_quantifier_on_in_pseudo() -> None:
+    """:in(src){1,2} — parser stores depth values on PseudoClass (evaluator ignores them)."""
+    pc = parse(".function:in(src){1,2}").selectors[0].pseudo_classes[0]
+    assert pc.name == "in"
+    # The parser stores depth quantifiers on any pseudo-class; values are set.
+    assert pc.depth_min == 1
+    assert pc.depth_max == 2
