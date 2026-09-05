@@ -453,7 +453,11 @@ def _check_added_ranges(added: dict[str, set[int]], source_label: str) -> int:
     if not all_violations:
         return 0
 
-    _CROSS = "\u274c" if sys.stdout.encoding and sys.stdout.encoding.lower().startswith("utf") else "FAIL"
+    _CROSS = (
+        "\u274c"
+        if sys.stdout.encoding and sys.stdout.encoding.lower().startswith("utf")
+        else "FAIL"
+    )
     print(
         f"{_CROSS} Found {len(all_violations)} new weak assertion(s) in the {source_label}:\n"
     )
@@ -568,7 +572,26 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         return 0
 
-    base_ref = args[0] if args else "origin/develop"
+    # 默认基线按 GitFlow 分支族选择：develop 族分支（feature/fix/chore 等）对比
+    # origin/develop；main 族分支（main/hotfix/release）必须对比 origin/main。
+    # 此前无条件用 origin/develop，在 main 族分支上会把 develop 领先的新增测试
+    # 误判为本地「新增行」，产生幻影弱断言（v1.29.2 热修中实测的误报根因）。
+    if args:
+        base_ref = args[0]
+    else:
+        branch_cmd = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+        current_branch = branch_cmd.stdout.strip() if branch_cmd.returncode == 0 else ""
+        is_main_lineage = current_branch in (
+            "main",
+            "master",
+        ) or current_branch.startswith(("hotfix/", "release/"))
+        base_ref = "origin/main" if is_main_lineage else "origin/develop"
 
     # Verify base ref exists
     check = subprocess.run(
