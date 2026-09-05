@@ -160,7 +160,8 @@ class TestCollectSourceFiles:
         (tmp_path / "readme.md").write_text("x", encoding="utf-8")
         (tmp_path / "data.txt").write_text("x", encoding="utf-8")
         files = _collect_source_files(tmp_path)
-        rels = {str(f.relative_to(tmp_path)) for f in files}
+        # 统一分隔符,Windows 上是反斜杠
+        rels = {str(f.relative_to(tmp_path)).replace("\\", "/") for f in files}
         assert rels == {"a.py", "sub/b.java"}
 
     def test_根自身位于点目录祖先下不被整体误伤(self, tmp_path):
