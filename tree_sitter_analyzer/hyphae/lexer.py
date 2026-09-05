@@ -28,6 +28,8 @@ _SINGLE = {
     "[": "LBRACKET",
     "]": "RBRACKET",
     "=": "EQ",
+    "{": "LBRACE",
+    "}": "RBRACE",
 }
 
 

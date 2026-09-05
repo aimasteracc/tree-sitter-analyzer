@@ -368,6 +368,33 @@ def apply_migration_v11(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
         pass
 
 
+SCHEMA_V14_COMMENTS = """
+CREATE TABLE IF NOT EXISTS ast_symbol_comments (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol_id INTEGER NOT NULL REFERENCES ast_symbol_rows(id) ON DELETE CASCADE,
+    line      INTEGER NOT NULL,
+    text      TEXT NOT NULL,
+    kind      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_comments_symbol ON ast_symbol_comments(symbol_id);
+"""
+
+SCHEMA_V15_LSP_CACHE = """
+CREATE TABLE IF NOT EXISTS lsp_resolution_cache (
+    symbol_id     INTEGER REFERENCES ast_symbol_rows(id),
+    edge_id       INTEGER REFERENCES edges(id),
+    resolved_type TEXT,
+    resolved_file TEXT,
+    resolved_line INTEGER,
+    lsp_server    TEXT NOT NULL,
+    cached_at     INTEGER NOT NULL,
+    PRIMARY KEY (edge_id, lsp_server)
+);
+CREATE INDEX IF NOT EXISTS idx_lsp_edge ON lsp_resolution_cache(edge_id);
+CREATE INDEX IF NOT EXISTS idx_lsp_sym  ON lsp_resolution_cache(symbol_id);
+"""
+
+
 def apply_migration_v12(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
     """Rebuild ``ast_symbols_fts`` with porter stemming (v12 — #604).
 
@@ -393,6 +420,39 @@ def apply_migration_v12(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
             "SELECT id, name, kind, file_path, language FROM ast_symbol_rows"
         )
         record_fn(conn, 12, "FTS5 porter stemming rebuild")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+
+def apply_migration_v14(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
+    """Create ``ast_symbol_comments`` table and add ``last_commit_msg`` column (v14 — Pulse MVP).
+
+    Idempotent: PRAGMA table_info detects existing columns before ALTER.
+    """
+    try:
+        conn.executescript(SCHEMA_V14_COMMENTS)
+        act_cols = {
+            r[1] for r in conn.execute("PRAGMA table_info(ast_symbol_activation)").fetchall()
+        }
+        if "last_commit_msg" not in act_cols:
+            conn.execute(
+                "ALTER TABLE ast_symbol_activation ADD COLUMN last_commit_msg TEXT"
+            )
+        record_fn(conn, 14, "Pulse MVP: ast_symbol_comments + last_commit_msg")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+
+def apply_migration_v15(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
+    """Create ``lsp_resolution_cache`` table (v15 — LSP Semantic Enrichment).
+
+    Idempotent via ``CREATE TABLE IF NOT EXISTS``.
+    """
+    try:
+        conn.executescript(SCHEMA_V15_LSP_CACHE)
+        record_fn(conn, 15, "LSP resolution cache")
         conn.commit()
     except sqlite3.OperationalError:
         pass
@@ -555,6 +615,21 @@ EXPECTED_SCHEMA_VERSIONS: list[Any] = [
         13,
         "Authoritative index snapshot manifest",
         {"tables": ["ast_index_snapshot_manifest", "ast_symbol_projection_state"]},
+    ),
+    (
+        14,
+        "Pulse MVP: ast_symbol_comments + last_commit_msg",
+        {
+            "tables": ["ast_symbol_comments"],
+            "ast_symbol_activation_columns": ["last_commit_msg"],
+        },
+    ),
+    (
+        15,
+        "LSP resolution cache",
+        {
+            "tables": ["lsp_resolution_cache"],
+        },
     ),
 ]
 

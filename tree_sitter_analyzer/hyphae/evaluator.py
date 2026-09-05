@@ -34,6 +34,7 @@ than silently passing candidates through.
 
 from __future__ import annotations
 
+import time
 from collections import defaultdict
 from typing import Any
 
@@ -200,12 +201,184 @@ class Evaluator:
             return [c for c in cands if (c.get("kind") or "function") == value]
         return []
 
+    # -- depth BFS (recursive CTE) ------------------------------------------
+
+    def _eval_depth_bfs(
+        self,
+        seed_ids: list[int],
+        direction: str,
+        depth_min: int,
+        depth_max: int,
+    ) -> set[int]:
+        """Return symbol IDs reachable from ``seed_ids`` within depth range.
+
+        ``direction`` is ``"callee"`` (forward) or ``"caller"`` (reverse).
+        Edges where callee_symbol_id IS NULL are skipped by the CTE condition.
+        """
+        conn = getattr(self._cache, "get_conn", None)
+        if conn is None:
+            return set()
+        try:
+            db = conn()
+        except Exception:
+            return set()
+
+        if not seed_ids:
+            return set()
+
+        placeholders = ",".join("?" * len(seed_ids))
+
+        if direction == "callee":
+            # Forward BFS: follow edges from seed symbols to their callees (INTEGER IDs).
+            # Recursive step joins ast_symbol_rows to convert callee_symbol_id back to
+            # caller_name for the next hop, staying entirely in the integer domain.
+            sql = f"""
+WITH RECURSIVE reachable(id, hop) AS (
+    SELECT e.callee_symbol_id, 1
+    FROM   edges e
+    JOIN   ast_symbol_rows sr ON sr.id IN ({placeholders})
+                              AND sr.name = e.caller_name
+    WHERE  e.kind = 'calls'
+    AND    e.callee_symbol_id IS NOT NULL
+    UNION ALL
+    SELECT e.callee_symbol_id, r.hop + 1
+    FROM   reachable r
+    JOIN   ast_symbol_rows sr2 ON sr2.id = r.id
+    JOIN   edges e ON e.caller_name = sr2.name
+                   AND e.kind = 'calls'
+                   AND e.callee_symbol_id IS NOT NULL
+    WHERE  r.hop < ?
+)
+SELECT DISTINCT id FROM reachable
+WHERE hop >= ? AND hop <= ?
+"""
+        else:
+            # Reverse BFS: find callers of seeds (and their callers, etc.)
+            # edges.caller_name is TEXT; convert to integer via ast_symbol_rows at each hop.
+            sql = f"""
+WITH RECURSIVE reachable(id, hop) AS (
+    SELECT sr2.id, 1
+    FROM   edges e
+    JOIN   ast_symbol_rows sr  ON sr.id IN ({placeholders})
+                              AND e.callee_symbol_id = sr.id
+    JOIN   ast_symbol_rows sr2 ON sr2.name = e.caller_name
+    WHERE  e.kind = 'calls'
+    UNION ALL
+    SELECT sr2.id, r.hop + 1
+    FROM   edges e
+    JOIN   reachable r          ON e.callee_symbol_id = r.id
+    JOIN   ast_symbol_rows sr2  ON sr2.name = e.caller_name
+    WHERE  r.hop < ?
+    AND    e.kind = 'calls'
+)
+SELECT DISTINCT id FROM reachable
+WHERE hop >= ? AND hop <= ?
+"""
+
+        try:
+            params = list(seed_ids) + [depth_max, depth_min, depth_max]
+            rows = db.execute(sql, params).fetchall()
+            return {int(r[0]) for r in rows}
+        except Exception:
+            return set()
+
+    # -- temporal pseudo-classes --------------------------------------------
+
+    def _filter_temporal(
+        self, cands: list[dict[str, Any]], name: str, arg: Any
+    ) -> list[dict[str, Any]]:
+        """Apply :hot/:hot(N)/:recently_modified/:stale/:hotspot filters."""
+        conn_fn = getattr(self._cache, "get_conn", None)
+        if conn_fn is None:
+            return cands
+        try:
+            db = conn_fn()
+        except Exception:
+            return cands
+
+        if name == "hot":
+            threshold = int(arg) if isinstance(arg, int) else 5
+            try:
+                hot_pairs = {
+                    (r[0], r[1]) for r in db.execute(
+                        "SELECT sr.name, sr.file_path "
+                        "FROM ast_symbol_rows sr "
+                        "JOIN ast_symbol_activation a ON a.symbol_id = sr.id "
+                        "WHERE a.mod_count_30d > ?",
+                        (threshold,),
+                    )
+                }
+                return [c for c in cands if (c.get("name"), c.get("file")) in hot_pairs]
+            except Exception:
+                return cands
+
+        if name == "recently_modified":
+            cutoff = int(time.time()) - 30 * 86400
+            try:
+                recent_pairs = {
+                    (r[0], r[1]) for r in db.execute(
+                        "SELECT sr.name, sr.file_path "
+                        "FROM ast_symbol_rows sr "
+                        "JOIN ast_symbol_activation a ON a.symbol_id = sr.id "
+                        "WHERE a.last_modified_at > ?",
+                        (cutoff,),
+                    )
+                }
+                return [c for c in cands if (c.get("name"), c.get("file")) in recent_pairs]
+            except Exception:
+                return cands
+
+        if name == "stale":
+            cutoff = int(time.time()) - 180 * 86400
+            try:
+                stale_pairs = {
+                    (r[0], r[1]) for r in db.execute(
+                        "SELECT sr.name, sr.file_path "
+                        "FROM ast_symbol_rows sr "
+                        "JOIN ast_symbol_activation a ON a.symbol_id = sr.id "
+                        "WHERE a.last_modified_at < ? AND a.mod_count_30d = 0",
+                        (cutoff,),
+                    )
+                }
+                return [c for c in cands if (c.get("name"), c.get("file")) in stale_pairs]
+            except Exception:
+                return cands
+
+        if name == "hotspot":
+            # Python-side top-10% per file rank (SQLite version-independent).
+            from collections import defaultdict as _dd
+            try:
+                act_rows = db.execute(
+                    "SELECT sr.name, a.file_path, COALESCE(a.mod_count_30d, 0) "
+                    "FROM ast_symbol_activation a "
+                    "JOIN ast_symbol_rows sr ON sr.id = a.symbol_id"
+                ).fetchall()
+            except Exception:
+                return cands
+
+            by_file: dict[str, list[tuple[str, int]]] = _dd(list)
+            for r in act_rows:
+                by_file[r[1]].append((r[0], r[2] or 0))
+
+            hotspot_pairs: set[tuple[str, str]] = set()
+            for file_path, file_syms in by_file.items():
+                sorted_syms = sorted(file_syms, key=lambda x: x[1], reverse=True)
+                cutoff_n = max(1, len(sorted_syms) // 10)
+                hotspot_pairs.update((sym_name, file_path) for sym_name, _ in sorted_syms[:cutoff_n])
+
+            return [c for c in cands if (c.get("name"), c.get("file")) in hotspot_pairs]
+
+        return cands
+
     # -- pseudo-classes ------------------------------------------------------
     def _apply_pseudo(
         self, cands: list[dict[str, Any]], pc: PseudoClass
     ) -> list[dict[str, Any]]:
         name = pc.name
         if name in _EDGE_PSEUDOS:
+            # Check for DepthQuantifier — use BFS CTE when depth_min is set.
+            if pc.depth_min is not None:
+                return self._filter_edge_depth(cands, pc)
             return self._filter_edge(cands, pc.arg, *_EDGE_PSEUDOS[name])
         if name == "imports":
             return self._filter_imports(cands, pc.arg)
@@ -222,7 +395,173 @@ class Evaluator:
             return [c for c in cands if (c.get("file") or "").startswith(pc.arg)]
         if name in _POSITION_PSEUDOS:
             return self._filter_position(cands, name, pc.arg)
+        # Temporal pseudo-classes (H-5).
+        if name in ("hot", "recently_modified", "stale", "hotspot"):
+            return self._filter_temporal(cands, name, pc.arg)
+        # :violates(rule_id) (H-6).
+        if name == "violates":
+            return self._filter_violates(cands, pc.arg)
+        # :reaches(#target){n,m} (H-7).
+        if name == "reaches":
+            return self._filter_reaches(cands, pc)
+        # :branch(kind) (H-8).
+        if name == "branch":
+            return self._filter_branch(cands, pc.arg)
         raise HyphaeSyntaxError(f"unknown pseudo-class ':{name}'")
+
+    def _filter_edge_depth(
+        self,
+        cands: list[dict[str, Any]],
+        pc: PseudoClass,
+    ) -> list[dict[str, Any]]:
+        """Apply depth-bounded BFS for :calls{n,m} and :called-by{n,m}."""
+        depth_min = pc.depth_min or 1
+        depth_max = pc.depth_max if pc.depth_max is not None else depth_min
+
+        # Resolve seed symbol IDs from the argument selector.
+        if not isinstance(pc.arg, SelectorList):
+            raise HyphaeSyntaxError("depth pseudo-class requires a selector argument")
+        names = self._target_names(pc.arg)
+
+        conn_fn = getattr(self._cache, "get_conn", None)
+        if conn_fn is None:
+            return cands
+        try:
+            db = conn_fn()
+        except Exception:
+            return cands
+
+        try:
+            seed_rows = db.execute(
+                "SELECT id FROM ast_symbol_rows WHERE name IN ({})".format(
+                    ",".join("?" * len(names))
+                ),
+                list(names),
+            ).fetchall()
+        except Exception:
+            return cands
+
+        seed_ids = [int(r[0]) for r in seed_rows]
+
+        # Direction: "calls(#X){n,m}" = find who calls X (reverse BFS from X).
+        # "callees"/"called-by" = find what X calls (forward BFS from X).
+        direction = "callee" if pc.name in ("called-by", "callees") else "caller"
+        reachable_ids = self._eval_depth_bfs(seed_ids, direction, depth_min, depth_max)
+
+        try:
+            id_rows = db.execute(
+                "SELECT id, name, file_path FROM ast_symbol_rows "
+                "WHERE id IN ({})".format(",".join("?" * len(reachable_ids))),
+                list(reachable_ids),
+            ).fetchall() if reachable_ids else []
+        except Exception:
+            return cands
+
+        reachable_nf: set[tuple[Any, Any]] = {(r[1], r[2]) for r in id_rows}
+        return [
+            c for c in cands
+            if (c.get("name"), c.get("file")) in reachable_nf
+        ]
+
+    def _filter_violates(
+        self,
+        cands: list[dict[str, Any]],
+        arg: Any,
+    ) -> list[dict[str, Any]]:
+        """Keep candidates that have a violation registered for ``rule_id``."""
+        rule_id = str(arg) if arg is not None else ""
+        conn_fn = getattr(self._cache, "get_conn", None)
+        if conn_fn is None:
+            return cands
+        try:
+            db = conn_fn()
+            violated = {
+                (r[0], r[1]) for r in db.execute(
+                    "SELECT caller_file, caller_name FROM ast_constraint_violations "
+                    "WHERE rule_id = ?",
+                    (rule_id,),
+                )
+            }
+            return [
+                c for c in cands
+                if (c.get("file"), c.get("name")) in violated
+            ]
+        except Exception:
+            return cands
+
+    def _filter_reaches(
+        self,
+        cands: list[dict[str, Any]],
+        pc: PseudoClass,
+    ) -> list[dict[str, Any]]:
+        """:reaches(#target){n,m} — candidates that can reach ``target`` in n-m hops."""
+        depth_min = pc.depth_min or 1
+        depth_max = pc.depth_max if pc.depth_max is not None else depth_min
+
+        if not isinstance(pc.arg, SelectorList):
+            raise HyphaeSyntaxError(":reaches requires a selector argument")
+        target_names = self._target_names(pc.arg)
+
+        conn_fn = getattr(self._cache, "get_conn", None)
+        if conn_fn is None:
+            return cands
+        try:
+            db = conn_fn()
+        except Exception:
+            return cands
+
+        try:
+            target_rows = db.execute(
+                "SELECT id FROM ast_symbol_rows WHERE name IN ({})".format(
+                    ",".join("?" * len(target_names))
+                ),
+                list(target_names),
+            ).fetchall() if target_names else []
+        except Exception:
+            return cands
+
+        target_ids = [int(r[0]) for r in target_rows]
+        # BFS in caller direction from target to find who can reach target.
+        reachable_ids = self._eval_depth_bfs(target_ids, "caller", depth_min, depth_max)
+
+        try:
+            id_rows = db.execute(
+                "SELECT id, name, file_path FROM ast_symbol_rows "
+                "WHERE id IN ({})".format(",".join("?" * len(reachable_ids))),
+                list(reachable_ids),
+            ).fetchall() if reachable_ids else []
+        except Exception:
+            return cands
+
+        reachable_nf: set[tuple[Any, Any]] = {(r[1], r[2]) for r in id_rows}
+        return [
+            c for c in cands
+            if (c.get("name"), c.get("file")) in reachable_nf
+        ]
+
+    def _filter_branch(
+        self,
+        cands: list[dict[str, Any]],
+        arg: Any,
+    ) -> list[dict[str, Any]]:
+        """:branch(kind) — keep candidates called inside the given branch kind."""
+        branch_kind = str(arg) if arg is not None else ""
+        conn_fn = getattr(self._cache, "get_conn", None)
+        if conn_fn is None:
+            return cands
+        try:
+            db = conn_fn()
+            matched = {
+                r[0] for r in db.execute(
+                    "SELECT callee_name FROM edges "
+                    "WHERE kind = 'calls' "
+                    "AND json_extract(metadata, '$.branch.kind') = ?",
+                    (branch_kind,),
+                )
+            }
+            return [c for c in cands if c.get("name") in matched]
+        except Exception:
+            return cands
 
     def _filter_edge(
         self,

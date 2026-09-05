@@ -151,6 +151,11 @@ from tree_sitter_analyzer.mcp.tools.project_health_tool import (
 from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
     ProjectOverviewTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.pulse_tool import (
+    GetProjectSchemaTool,  # noqa: F401
+    PulseBatchTool,  # noqa: F401
+    PulseTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
     RefactoringSuggestionsTool,  # noqa: F401
 )
@@ -162,6 +167,9 @@ from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import (
 )
 from tree_sitter_analyzer.mcp.tools.semantic_classify_tool import (
     SemanticClassifyTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.semantic_tool import (
+    SemanticNeighborsTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.smart_context_tool import (
     SmartContextTool,  # noqa: F401
@@ -177,6 +185,10 @@ from tree_sitter_analyzer.mcp.tools.symbol_search_tool import (
 )
 from tree_sitter_analyzer.mcp.tools.test_gap_tool import (
     CodeGraphTestGapTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.tql_tool import (
+    TqlExecuteTool,  # noqa: F401
+    TqlSchemaTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
     TraceImpactTool,  # noqa: F401
@@ -254,6 +266,15 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "BatchSearchTool",
         "DocSyncTool",
         "CodeGraphTestGapTool",
+        # Nervous-system PR: Pulse API / TQL / semantic — re-wired as facade
+        # actions (nav.pulse/pulse_batch, index.schema, search.tql_schema/
+        # tql_execute/semantic) with CLI parity in _specs_pulse.py.
+        "PulseTool",
+        "PulseBatchTool",
+        "GetProjectSchemaTool",
+        "TqlSchemaTool",
+        "TqlExecuteTool",
+        "SemanticNeighborsTool",
     }
 )
 

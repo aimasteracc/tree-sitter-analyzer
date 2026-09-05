@@ -5,6 +5,111 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, cast
 
+_COMMENT_NODE_TYPES: dict[str, frozenset[str]] = {
+    "python":     frozenset(["comment"]),
+    "javascript": frozenset(["comment", "block_comment"]),
+    "typescript": frozenset(["comment", "block_comment"]),
+    "java":       frozenset(["line_comment", "block_comment"]),
+    "go":         frozenset(["comment"]),
+    "c":          frozenset(["comment"]),
+    "cpp":        frozenset(["comment"]),
+    "rust":       frozenset(["line_comment", "block_comment"]),
+    "csharp":     frozenset(["comment", "multiline_comment"]),
+    "kotlin":     frozenset(["multiline_comment", "line_comment"]),
+    "ruby":       frozenset(["comment"]),
+    "php":        frozenset(["comment", "shell_comment"]),
+    "lua":        frozenset(["comment", "long_comment"]),
+    "swift":      frozenset(["comment", "multiline_comment"]),
+}
+
+_BRANCH_NODE_TYPES: dict[str, dict[str, tuple[str, ...]]] = {
+    "python": {
+        "if_statement":    ("if_true", "if_false"),
+        "try_statement":   ("try", "except", "finally"),
+        "for_statement":   ("loop",),
+        "while_statement": ("loop",),
+        "with_statement":  ("with",),
+    },
+    "javascript": {
+        "if_statement":    ("if_true", "if_false"),
+        "try_statement":   ("try", "catch", "finally"),
+        "for_statement":   ("loop",),
+        "while_statement": ("loop",),
+    },
+    "typescript": {
+        "if_statement":    ("if_true", "if_false"),
+        "try_statement":   ("try", "catch", "finally"),
+        "for_statement":   ("loop",),
+        "while_statement": ("loop",),
+    },
+    "java": {
+        "if_statement":            ("if_true", "if_false"),
+        "try_statement":           ("try", "catch", "finally"),
+        "enhanced_for_statement":  ("loop",),
+        "while_statement":         ("loop",),
+    },
+    "go": {
+        "if_statement":  ("if_true", "if_false"),
+        "for_statement": ("loop",),
+    },
+    "rust": {
+        "if_expression":    ("if_true", "if_false"),
+        "loop_expression":  ("loop",),
+        "for_expression":   ("loop",),
+        "while_expression": ("loop",),
+    },
+    "c": {
+        "if_statement":    ("if_true", "if_false"),
+        "for_statement":   ("loop",),
+        "while_statement": ("loop",),
+        "try_statement":   ("try",),
+    },
+    "cpp": {
+        "if_statement":    ("if_true", "if_false"),
+        "for_statement":   ("loop",),
+        "while_statement": ("loop",),
+        "try_statement":   ("try", "catch"),
+    },
+    "csharp": {
+        "if_statement":    ("if_true", "if_false"),
+        "try_statement":   ("try", "catch", "finally"),
+        "for_statement":   ("loop",),
+        "while_statement": ("loop",),
+    },
+    "kotlin": {
+        "if_expression":   ("if_true", "if_false"),
+        "try_expression":  ("try", "catch", "finally"),
+        "for_statement":   ("loop",),
+        "while_statement": ("loop",),
+    },
+    "ruby": {
+        "if":        ("if_true",),
+        "unless":    ("if_false",),
+        "while":     ("loop",),
+        "for":       ("loop",),
+        "begin":     ("try",),
+        "rescue":    ("except",),
+    },
+    "php": {
+        "if_statement":    ("if_true", "if_false"),
+        "try_statement":   ("try", "catch", "finally"),
+        "for_statement":   ("loop",),
+        "while_statement": ("loop",),
+    },
+    "lua": {
+        "if_statement":    ("if_true", "if_false"),
+        "for_statement":   ("loop",),
+        "while_statement": ("loop",),
+    },
+    "swift": {
+        "if_statement":    ("if_true", "if_false"),
+        "do_statement":    ("try",),
+        "catch_clause":    ("except",),
+        "for_in_statement": ("loop",),
+        "while_statement": ("loop",),
+    },
+}
+
 _CALL_NODE_TYPES = {
     "python": {"call"},
     "javascript": {"call_expression"},
@@ -336,6 +441,89 @@ _FUNC_NAME_DISPATCH["lua"] = _func_name_lua
 # ---------------------------------------------------------------------------
 
 
+def extract_comments_from_body(root_node: Any, language: str) -> list[dict[str, Any]]:
+    """Walk ``root_node`` and collect comment nodes for the given language.
+
+    Returns a list of ``{"line": int, "text": str, "kind": str}`` dicts where
+    ``text`` has leading comment markers stripped and is capped at 80 chars.
+    ``kind`` is ``"block"`` when the node type contains "block", else ``"inline"``.
+    """
+    comment_types = _COMMENT_NODE_TYPES.get(language, frozenset())
+    if not comment_types:
+        return []
+
+    results: list[dict[str, Any]] = []
+
+    def _walk(node: Any) -> None:
+        if not hasattr(node, "type"):
+            return
+        if node.type in comment_types:
+            raw = _node_text_value(node)
+            # Strip leading comment markers and surrounding whitespace.
+            cleaned = raw.strip()
+            for prefix in ("/**", "/*", "//", "#", "*", "///", "--"):
+                if cleaned.startswith(prefix):
+                    cleaned = cleaned[len(prefix):].strip()
+                    break
+            cleaned = cleaned.rstrip("*/").strip()
+            kind = "block" if "block" in node.type else "inline"
+            results.append({
+                "line": node.start_point[0] + 1,
+                "text": cleaned[:80],
+                "kind": kind,
+            })
+            return  # do not recurse into comment children
+        for child in getattr(node, "children", []):
+            _walk(child)
+
+    _walk(root_node)
+    return results
+
+
+def extract_branch_context(call_node: Any, language: str) -> dict[str, Any]:
+    """Walk up from ``call_node`` to find the nearest enclosing branch node.
+
+    Returns a dict suitable for embedding in edge metadata:
+    ``{"kind": str, "condition_text": str|None, "nesting_depth": int}``.
+    When no branch is found, ``kind`` is ``"unconditional"``.
+    """
+    branch_types = _BRANCH_NODE_TYPES.get(language, {})
+    if not branch_types:
+        return {"kind": "unconditional", "nesting_depth": 0, "condition_text": None}
+
+    node = getattr(call_node, "parent", None)
+    nesting_depth = 0
+    first_match: dict[str, Any] | None = None
+
+    while node is not None:
+        node_type = getattr(node, "type", "")
+        if node_type in branch_types:
+            if first_match is None:
+                kind = branch_types[node_type][0]
+                condition_node = (
+                    node.child_by_field_name("condition")
+                    if hasattr(node, "child_by_field_name")
+                    else None
+                )
+                condition_text: str | None = None
+                if condition_node is not None:
+                    condition_text = _node_text_value(condition_node)[:80]
+                first_match = {
+                    "kind": kind,
+                    "condition_text": condition_text,
+                    "nesting_depth": 0,
+                }
+            else:
+                nesting_depth += 1
+        node = getattr(node, "parent", None)
+
+    if first_match is None:
+        return {"kind": "unconditional", "nesting_depth": 0, "condition_text": None}
+
+    first_match["nesting_depth"] = nesting_depth
+    return first_match
+
+
 def walk_tree(node: Any, source: str, language: str) -> tuple[list[dict], list[dict]]:
     """Walk an AST and return function definitions plus call sites."""
     definitions: list[dict[str, Any]] = []
@@ -569,6 +757,8 @@ def _extract_recursive(
                 if (node.start_point[0] + 1) >= bind_line:
                     call_info["receiver_type"] = cls
                     call_info["full_name"] = f"{cls}.{call_info['name']}"
+            # Embed branch context in the call dict so edge metadata can carry it.
+            call_info["branch"] = extract_branch_context(node, language)
             calls.append(call_info)
 
     for child in node.children:

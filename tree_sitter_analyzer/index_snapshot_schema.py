@@ -21,7 +21,7 @@ from .index_source_snapshot import (
     recorded_source_rows,
 )
 
-SNAPSHOT_SCHEMA_VERSION = 13
+SNAPSHOT_SCHEMA_VERSION = 15
 SCHEMA_V13_INDEX_SNAPSHOT = """
 CREATE TABLE IF NOT EXISTS ast_index_snapshot_manifest (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -141,12 +141,18 @@ def validate_manifest_scalars(manifest: sqlite3.Row) -> None:
 
 
 def apply_snapshot_migration(conn: sqlite3.Connection, record_fn: Any) -> None:
-    """Install the owner-written full-index manifest table (schema v13)."""
+    """Install the owner-written full-index manifest table (schema v13).
+
+    Stamps the literal sequence position (13), matching every other
+    ``apply_migration_vN`` function. ``SNAPSHOT_SCHEMA_VERSION`` is a
+    separate, independently-bumped constant used only by
+    ``validate_snapshot_schema`` for reader-compatibility checks — reusing
+    it here would collide with later migrations' own version stamps
+    whenever the reader-compat constant advances past 13.
+    """
     try:
         conn.executescript(SCHEMA_V13_INDEX_SNAPSHOT)
-        record_fn(
-            conn, SNAPSHOT_SCHEMA_VERSION, "Authoritative index snapshot manifest"
-        )
+        record_fn(conn, 13, "Authoritative index snapshot manifest")
         conn.commit()
     except sqlite3.OperationalError:
         pass

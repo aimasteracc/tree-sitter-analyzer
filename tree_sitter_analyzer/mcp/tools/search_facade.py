@@ -66,7 +66,20 @@ _SEARCH_DESCRIPTION = (
     "- action=subscribe — RFC-0001 reactive push: subscribe to a Hyphae selector. "
     "Receive send_resource_updated when results change; re-read resource_uri. "
     "Returns { sub_id, resource_uri }. Params: selector (required), min_interval.\n"
-    "- action=unsubscribe — cancel a Hyphae subscription. Params: sub_id or selector."
+    "- action=unsubscribe — cancel a Hyphae subscription. Params: sub_id or selector.\n"
+    "- action=tql_schema — full TQL (extended Hyphae) DSL reference: temporal "
+    "pseudo-classes (:hot/:stale/:hotspot), depth quantifier {n,m}, :violates, "
+    ":reaches, :branch, plus all standard Hyphae pseudo-classes. Call once at "
+    "session start. Params: (none).\n"
+    "- action=tql_execute — execute a TQL (Temporal Query Language) selector: "
+    "Hyphae extended with DepthQuantifier {n,m} bounded BFS, temporal "
+    "pseudo-classes, reachability, architecture violations, and branch "
+    "context. Call action=tql_schema first for the grammar. "
+    "Params: selector (required), max_results.\n"
+    "- action=semantic — find symbols semantically similar to a natural-"
+    "language query via vector embeddings (requires numpy + embedding "
+    "pipeline). Params: query (required), top_k, min_similarity, language, "
+    "kind, use_combined_score."
 )
 
 
@@ -82,7 +95,9 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
     from .hyphae_select_tool import HyphaeSelectTool
     from .hyphae_subscribe_tool import HyphaeSubscribeTool, HyphaeUnsubscribeTool
     from .query_tool import QueryTool
+    from .semantic_tool import SemanticNeighborsTool
     from .symbol_search_tool import SYMBOL_SEARCH_KINDS, CodeGraphSymbolSearchTool
+    from .tql_tool import TqlExecuteTool, TqlSchemaTool
 
     facade = FacadeTool(
         facade_name="search",
@@ -103,6 +118,12 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
             # → re-reads tsa://hyphae/{selector} for the new set.
             "subscribe": HyphaeSubscribeTool(project_root),
             "unsubscribe": HyphaeUnsubscribeTool(project_root),
+            # TQL — extended Hyphae DSL with temporal + depth-quantifier
+            # pseudo-classes.
+            "tql_schema": TqlSchemaTool(project_root),
+            "tql_execute": TqlExecuteTool(project_root),
+            # Semantic search — vector similarity over indexed symbol embeddings.
+            "semantic": SemanticNeighborsTool(project_root),
         },
         description=_SEARCH_DESCRIPTION,
         annotations=_SEARCH_ANNOTATIONS,

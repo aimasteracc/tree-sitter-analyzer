@@ -32,11 +32,13 @@ _SAFE_SPANS = (
     re.compile(r"13 言語は `?pipeline_registered|13 种语言为 `?pipeline_registered"),
     re.compile(r"5 言語 gap|5 语言 gap"),
     re.compile(r"1 ワークフロー|一个工作流"),
-    # Re-pinned 2026-08-31: 331 -> 338 for --hotspot flags (+7).
+    # Re-pinned 2026-09-05: 338 -> 344 for the 6 new nervous-system facade
+    # actions' CLI twins (--pulse, --pulse-batch, --project-schema,
+    # --tql-schema, --tql, --semantic-neighbors).
     # Deliberately an exact count, not \d+ — the registry must force a
     # conscious re-pin when the CLI surface changes.
-    re.compile(r"\b338 CLI flags\b", re.IGNORECASE),
-    re.compile(r"338 の CLI フラグ|338 个 CLI flag", re.IGNORECASE),
+    re.compile(r"\b344 CLI flags\b", re.IGNORECASE),
+    re.compile(r"344 の CLI フラグ|344 个 CLI flag", re.IGNORECASE),
     re.compile(r"\b(?:FTS5|BM25)\b"),
     re.compile(r"\bE[0-4]\b"),
     re.compile(r"\bE2E\b", re.IGNORECASE),
