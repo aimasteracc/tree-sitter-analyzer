@@ -816,7 +816,10 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             except Exception:
                 # 空间回收失败不影响索引本身，只在结果里如实报告
                 maintenance_report = {"action": "error"}
-            cache.close()
+            # 注意：这里不能无条件 cache.close()——cache 可能是 execute()
+            # 通过 _cache= 注入的共享实例，后续阶段（增量同步、FTS 统计、
+            # 调用边统计）还要复用同一连接。生命周期统一由函数末尾的
+            # `if owns_cache: _safe_close_cache(cache)` 管理。
             return {
                 "status": (
                     "error"
