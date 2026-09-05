@@ -13,10 +13,7 @@ from __future__ import annotations
 import struct
 from unittest.mock import MagicMock
 
-import pytest
-
 from tree_sitter_analyzer.mcp.tools.semantic_tool import SemanticNeighborsTool
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -102,7 +99,7 @@ async def test_combined_score_reranking(mock_embed_models, ast_cache_conn):
     })
     assert result["success"] is True
     neighbors = result["neighbors"]
-    assert len(neighbors) >= 2
+    assert len(neighbors) == 2
     # Verify combined_score is present and sorted descending
     scores = [n["combined_score"] for n in neighbors]
     assert scores == sorted(scores, reverse=True)

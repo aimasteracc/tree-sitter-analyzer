@@ -7,18 +7,9 @@ Target coverage: ~55-65% of api/pulse.py.
 
 from __future__ import annotations
 
-import dataclasses
-
-import pytest
-
 from tree_sitter_analyzer.api.pulse import (
-    CallerRef,
-    CalleeRef,
     CommentRef,
-    GitHeat,
-    ImportRef,
     PulseResponse,
-    SiblingRef,
     SymbolInfo,
     apply_budget,
     query_pulse,

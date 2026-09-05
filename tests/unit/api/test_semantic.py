@@ -6,18 +6,16 @@ Target coverage: ~90%+ of api/semantic.py reachable lines.
 
 from __future__ import annotations
 
-import struct
 import sqlite3
+import struct
 
 import pytest
 
 from tree_sitter_analyzer.api.semantic import (
-    SemanticUnavailableError,
     combined_score,
     cosine_similarity,
     find_semantic_neighbors,
 )
-
 
 # ---------------------------------------------------------------------------
 # Private seed helpers

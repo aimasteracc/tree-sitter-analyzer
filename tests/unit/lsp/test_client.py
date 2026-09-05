@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -20,7 +19,6 @@ from tree_sitter_analyzer.lsp.client import (
     LspServerUnavailableError,
     cache_lsp_resolution,
 )
-
 
 # ---------------------------------------------------------------------------
 # _start() error paths

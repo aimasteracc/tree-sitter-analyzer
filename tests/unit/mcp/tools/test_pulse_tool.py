@@ -7,16 +7,13 @@ Target coverage: ~80-88% of pulse_tool.py.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from tree_sitter_analyzer.mcp.tools.pulse_tool import (
     GetProjectSchemaTool,
     PulseBatchTool,
     PulseTool,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -572,7 +572,7 @@ def test_eval_hit_cap_truncated():
 
 def test_filter_reaches(ast_cache_conn):
     """_filter_reaches: only candidates that can reach the target are kept."""
-    id_a = _seed_sym(ast_cache_conn, "A")
+    _seed_sym(ast_cache_conn, "A")
     id_b = _seed_sym(ast_cache_conn, "B")
     id_c = _seed_sym(ast_cache_conn, "C")
     _seed_edge(ast_cache_conn, "A", "B", callee_symbol_id=id_b)
@@ -581,7 +581,11 @@ def test_filter_reaches(ast_cache_conn):
     cache = FakeCacheWithConn([], [], [], ast_cache_conn)
     ev = Evaluator(cache)
 
-    from tree_sitter_analyzer.hyphae.ast import PseudoClass, SelectorList, SimpleSelector
+    from tree_sitter_analyzer.hyphae.ast import (
+        PseudoClass,
+        SelectorList,
+        SimpleSelector,
+    )
 
     # pc for :reaches(#C){1,1} — direct callers of C only (depth 1)
     target_sl = SelectorList((SimpleSelector(base=("name", "C")),))
@@ -607,7 +611,7 @@ def test_filter_edge_depth_via_selector(ast_cache_conn):
     Chain: A→B→C.  B calls C directly (depth 1); A calls C via B (depth 2).
     Expected: both A and B in results, C excluded.
     """
-    id_a = _seed_sym(ast_cache_conn, "A")
+    _seed_sym(ast_cache_conn, "A")
     id_b = _seed_sym(ast_cache_conn, "B")
     id_c = _seed_sym(ast_cache_conn, "C")
     _seed_edge(ast_cache_conn, "A", "B", callee_symbol_id=id_b)

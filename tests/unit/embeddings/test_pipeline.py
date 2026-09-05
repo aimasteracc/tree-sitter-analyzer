@@ -7,7 +7,6 @@ Target coverage: ~75-85% of pipeline.py reachable lines.
 
 from __future__ import annotations
 
-import sqlite3
 import struct
 import time
 
@@ -21,7 +20,6 @@ from tree_sitter_analyzer.embeddings.pipeline import (
     init_embeddings_db,
     run_pipeline,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helper
@@ -148,7 +146,7 @@ def test_run_pipeline_skips_already_indexed(mock_embed_models, ast_cache_conn):
     mock_openai.side_effect = None
 
     id_a = _seed_symbol(ast_cache_conn, "fn_d")
-    id_b = _seed_symbol(ast_cache_conn, "fn_e")
+    _seed_symbol(ast_cache_conn, "fn_e")
 
     # Pre-index fn_d manually
     blob = struct.pack("<2f", 0.1, 0.2)

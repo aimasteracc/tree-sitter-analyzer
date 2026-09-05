@@ -10,16 +10,16 @@ from unittest.mock import MagicMock
 import pytest
 
 from tree_sitter_analyzer.cache.schema import (
-    SCHEMA_V1,
     SCHEMA_SYMBOL_ROWS,
+    SCHEMA_V1,
     SCHEMA_V4_IMPORTS,
     SCHEMA_V5_ACTIVATION,
     SCHEMA_V6_VIOLATIONS,
     SCHEMA_V14_COMMENTS,
     SCHEMA_V15_LSP_CACHE,
 )
-from tree_sitter_analyzer.graph.edge_store import EDGE_STORE_SCHEMA
 from tree_sitter_analyzer.embeddings.pipeline import _SCHEMA_SYMBOL_VECTORS
+from tree_sitter_analyzer.graph.edge_store import EDGE_STORE_SCHEMA
 
 
 def _write(root: Path, rel: str, content: str) -> Path:

@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from tree_sitter_analyzer.mcp.tools.tql_tool import (
     TqlExecuteTool,
     TqlSchemaTool,
@@ -46,7 +44,7 @@ def test_cap_echo_one_over_boundary():
     """201 chars → truncated."""
     sel = "a" * 201
     result = _cap_echo(sel)
-    assert len(result) > 200  # includes the suffix
+    assert result == "a" * 200 + "... (201 chars total)"
     assert result != sel
 
 
