@@ -66,7 +66,7 @@ def violations_for_files(
 
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(str(db_path))
+        conn = sqlite3.connect(str(db_path), timeout=10)
         cursor = conn.execute(sql, files + files)
         rows: list[dict[str, Any]] = []
         for row in cursor:

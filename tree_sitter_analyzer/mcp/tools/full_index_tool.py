@@ -189,6 +189,26 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             indexed = result.get("indexed", 0)
             cached = result.get("cached", 0)
             errors = result.get("errors", 0)
+            # 重建完成后回收空闲页：maintenance 模块此前已实现并有测试，
+            # 但从未被任何调用方接线，导致长期增量的缓存库只增长不收缩。
+            # 回收自带阈值守卫（空闲页不足时跳过），失败不阻断索引结果。
+            maintenance_report: dict[str, Any] = {"action": "skipped"}
+            try:
+                from ...cache.maintenance import reclaim_storage_after_full_rebuild
+
+                reclaim = reclaim_storage_after_full_rebuild(
+                    cache.get_conn(), cache.db_path
+                )
+                # 用回收前后空闲页差值报告实际释放量；键缺失时按 0 处理
+                before_pages = int(reclaim.get("before", {}).get("db_free_pages", 0))
+                after_pages = int(reclaim.get("after", {}).get("db_free_pages", 0))
+                maintenance_report = {
+                    "action": reclaim.get("action"),
+                    "freed_pages": max(0, before_pages - after_pages),
+                }
+            except Exception:
+                # 空间回收失败不影响索引本身，只在结果里如实报告
+                maintenance_report = {"action": "error"}
             cache.close()
             return {
                 "status": "ok",
@@ -198,6 +218,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "errors": errors,
                 "mode_used": result.get("mode_used", "unknown"),
                 "activation_enabled": result.get("activation_enabled", False),
+                "maintenance": maintenance_report,
                 # Surface the backfill counts produced by _post_index_backfill so
                 # the synapse_resolution phase can report without re-running (A1).
                 "synapse_backfill": result.get("synapse_backfill"),

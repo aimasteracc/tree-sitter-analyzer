@@ -774,7 +774,18 @@ class ASTCache:
         """Return per-file import lists from the cache."""
         conn = self._get_conn()
         rows = conn.execute("SELECT file_path, imports_json FROM ast_index").fetchall()
-        return {row["file_path"]: json.loads(row["imports_json"]) for row in rows}
+        result: dict[str, Any] = {}
+        for row in rows:
+            # 兼容两种索引历史格式：旧构建把 import 写成纯字符串；
+            # #1281 之后的新构建写成 {"text": ..., "line": ...} 字典。
+            # 这里统一归一化为字符串，否则新格式索引被本版本读取时，
+            # call_graph 的 imp_text.split() 会直接崩溃（跨版本共用缓存场景）。
+            entries = [
+                entry.get("text", "") if isinstance(entry, dict) else entry
+                for entry in json.loads(row["imports_json"])
+            ]
+            result[row["file_path"]] = [entry for entry in entries if entry]
+        return result
 
     def get_symbols_by_kind(
         self, kind: str, limit: int = 50000

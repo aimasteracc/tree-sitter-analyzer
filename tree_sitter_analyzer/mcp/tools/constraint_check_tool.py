@@ -204,7 +204,7 @@ class ConstraintCheckTool(BaseMCPTool):
         legitimate cached state every time an agent ran the tool against
         a fresh repo.
         """
-        conn = sqlite3.connect(str(db_path))
+        conn = sqlite3.connect(str(db_path), timeout=10)
         try:
             conn.execute(self._violations_ddl())
             edge_count = self._count_edges(conn)
@@ -276,7 +276,7 @@ class ConstraintCheckTool(BaseMCPTool):
         which means re-using the same ``_compile_glob`` the evaluator
         uses.
         """
-        conn = sqlite3.connect(str(db_path))
+        conn = sqlite3.connect(str(db_path), timeout=10)
         try:
             conn.execute(self._violations_ddl())
             cursor = conn.execute(
