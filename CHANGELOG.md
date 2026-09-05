@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.29.3] - 2026-09-05
+
+Test-effectiveness hotfix round 2 — no runtime behavior changes.
+
+### Fixed
+
+- **semantic_change_classifier mutation survival 71 -> 10 (score 77.4% -> 96.3%)**. New `tests/unit/test_semantic_change_scenarios.py` (36 scenario tests) locks the full classification matrix, risk-threshold boundaries, dominant priority order, and exact summary strings.
+- **facade_tool mutation survival 65 -> 17 (score 70.3% -> 93.1%)**. New `tests/unit/mcp/tools/test_facade_tool_scenarios.py` (28 scenario tests) locks the error envelope key-by-key, typo self-heal suggestions, bespoke precedence, schema enum/params, and root-rebind propagation. Harness: facade test selection narrowed from the whole `tests/unit/mcp/` directory to facade-specific files — the directory-wide selection pulled in tests depending on repo files absent from the mutmut sandbox, failing the unmutated baseline.
+- **Weak-assertion ratchet false positives fixed**: plain mode now picks its diff base by GitFlow branch lineage (main/hotfix/release -> origin/main; feature-lineage -> origin/develop). The old unconditional origin/develop base flagged pre-existing main assertions as "new" on main-lineage branches.
+
+### Known issues (BLOCKED.md)
+
+- `_is_test_path` does not match bare relative paths like `tests/unit/a.py` (no leading slash) — suspected real bug, characterized not fixed (source frozen).
+- Remaining survivors: semantic 10 / facade 17, largely near-equivalent mutations.
+
+
 ## [1.29.2] - 2026-09-05
 
 Test-effectiveness hotfix: no runtime behavior changes.
