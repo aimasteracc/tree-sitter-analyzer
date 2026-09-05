@@ -28,6 +28,7 @@ MODULES: dict[str, tuple[str, list[str]]] = {
         [
             "tests/unit/test_ast_diff.py",
             "tests/unit/test_ast_diff_tool.py",
+            "tests/unit/test_ast_diff_scenarios.py",
         ],
     ),
     "semantic_change_classifier": (
@@ -62,6 +63,10 @@ PYPROJECT_TEMPLATE = """\
 # Do not edit — regenerated on each run.
 [tool.mutmut]
 source_paths = ["{source_path}"]
+# 被测模块的包内依赖（如 ast_diff 引用的 .core.parser、.project_graph）
+# 必须一并拷进 mutmut 沙盒，否则 mutants/ 里只有被测文件本身，
+# 导入链断裂、全部变异 not checked（2026-07 大重构后引入的回归）。
+also_copy = ["tree_sitter_analyzer"]
 pytest_add_cli_args_test_selection = {test_paths_toml}
 pytest_add_cli_args = ["-n", "0", "-x", "--timeout=30", "-q"]
 timeout_multiplier = 10.0
