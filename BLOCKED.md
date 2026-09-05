@@ -7,3 +7,10 @@
 2. ast_diff 剩余 64 个存活变异的逐个等价性论证未完成（目标 ≤20% 已达成，
    存活率 15.2%）；多为 errors="replace" 语义与字符串字面量类近等价变异，
    完整清单可由 `uv run mutmut results` 复现。
+
+# 追加（v1.29.3 轮次二）
+
+3. semantic_change_classifier 疑似真 bug：`_is_test_path` 对无前导斜杠的相对路径
+   （如 "tests/unit/a.py"）不命中（指示符是 "/tests/" 与 "\\tests\\"）——
+   实际调用方（ast_diff 的 old_file/new_file）常传这种相对路径。已按现状
+   特征锁定进 test_semantic_change_scenarios.py，修复需另立任务。
