@@ -182,7 +182,7 @@ imported_by AS (
     LIMIT  20
 ),
 git_heat AS (
-    SELECT a.last_modified_commit AS commit,
+    SELECT a.last_modified_commit AS last_commit,
            a.last_commit_msg      AS commit_msg,
            a.last_modified_at     AS at,
            a.mod_count_30d        AS mod_30d,
@@ -228,7 +228,7 @@ SELECT
     (SELECT json_group_array(json_object('module',module,'file',file))
      FROM file_imports) AS imports_json,
     (SELECT json_group_array(importer) FROM imported_by) AS imported_by_json,
-    (SELECT json_object('commit',commit,'commit_msg',commit_msg,'at',at,
+    (SELECT json_object('commit',last_commit,'commit_msg',commit_msg,'at',at,
                         'mod_30d',mod_30d,'mod_90d',mod_90d,'mod_all',mod_all,
                         'state',state)
      FROM git_heat) AS git_heat_json,

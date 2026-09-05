@@ -242,11 +242,12 @@ WITH RECURSIVE reachable(id, hop) AS (
     AND    e.callee_symbol_id IS NOT NULL
     UNION ALL
     SELECT e.callee_symbol_id, r.hop + 1
-    FROM   edges e
-    JOIN   ast_symbol_rows sr2 ON sr2.id = r.id AND sr2.name = e.caller_name
+    FROM   reachable r
+    JOIN   ast_symbol_rows sr2 ON sr2.id = r.id
+    JOIN   edges e ON e.caller_name = sr2.name
+                   AND e.kind = 'calls'
+                   AND e.callee_symbol_id IS NOT NULL
     WHERE  r.hop < ?
-    AND    e.kind = 'calls'
-    AND    e.callee_symbol_id IS NOT NULL
 )
 SELECT DISTINCT id FROM reachable
 WHERE hop >= ? AND hop <= ?

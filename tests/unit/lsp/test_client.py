@@ -68,19 +68,19 @@ async def test_reader_loop_happy_path(fake_lsp_process):
 # go_to_definition() — returns None for empty results
 # ---------------------------------------------------------------------------
 
-async def test_go_to_definition_returns_none_for_none():
+async def test_go_to_definition_returns_none_for_none(tmp_path):
     """_request returns None → go_to_definition returns None."""
-    client = LspClient("python", "/tmp")
+    client = LspClient("python", str(tmp_path))
     client._request = AsyncMock(return_value=None)
-    result = await client.go_to_definition("a.py", 0, 0)
+    result = await client.go_to_definition(str(tmp_path / "a.py"), 0, 0)
     assert result is None
 
 
-async def test_go_to_definition_returns_none_for_empty_list():
+async def test_go_to_definition_returns_none_for_empty_list(tmp_path):
     """_request returns [] → go_to_definition returns None."""
-    client = LspClient("python", "/tmp")
+    client = LspClient("python", str(tmp_path))
     client._request = AsyncMock(return_value=[])
-    result = await client.go_to_definition("a.py", 0, 0)
+    result = await client.go_to_definition(str(tmp_path / "a.py"), 0, 0)
     assert result is None
 
 
