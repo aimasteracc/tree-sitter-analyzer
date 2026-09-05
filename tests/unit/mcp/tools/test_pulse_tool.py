@@ -67,7 +67,7 @@ async def test_pulse_query_raises_returns_error(ast_cache_conn, monkeypatch):
     tool._get_cache = MagicMock(return_value=_make_fake_cache(ast_cache_conn))
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.pulse_tool.query_pulse",
+        "tree_sitter_analyzer.api.pulse.query_pulse",
         MagicMock(side_effect=RuntimeError("db error")),
     )
     result = await tool.execute({"file": "a.py", "symbol": "fn"})

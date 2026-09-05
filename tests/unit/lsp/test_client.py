@@ -85,14 +85,29 @@ async def test_go_to_definition_returns_none_for_empty_list():
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _seed_edge(conn) -> int:
+    """Insert a minimal edges row and return its rowid."""
+    cur = conn.execute(
+        "INSERT INTO edges (source_node_id, target_node_id, kind) VALUES (?, ?, ?)",
+        ("src::a.py::1", "tgt::b.py::1", "calls"),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+# ---------------------------------------------------------------------------
 # cache_lsp_resolution — DB insertion
 # ---------------------------------------------------------------------------
 
 def test_cache_lsp_resolution_insert_and_retrieve(ast_cache_conn):
     """cache_lsp_resolution inserts a row into lsp_resolution_cache."""
+    edge_id = _seed_edge(ast_cache_conn)
     cache_lsp_resolution(
         ast_cache_conn,
-        edge_id=1,
+        edge_id=edge_id,
         symbol_id=None,
         resolved_type="str",
         resolved_file="a.py",
@@ -107,10 +122,11 @@ def test_cache_lsp_resolution_insert_and_retrieve(ast_cache_conn):
 
 def test_cache_lsp_resolution_idempotent(ast_cache_conn):
     """INSERT OR REPLACE: calling twice for same (edge_id, lsp_server) gives 1 row."""
+    edge_id = _seed_edge(ast_cache_conn)
     for _ in range(2):
         cache_lsp_resolution(
             ast_cache_conn,
-            edge_id=42,
+            edge_id=edge_id,
             symbol_id=None,
             resolved_type="str",
             resolved_file="b.py",
@@ -118,6 +134,6 @@ def test_cache_lsp_resolution_idempotent(ast_cache_conn):
             lsp_server="pyright",
         )
     count = ast_cache_conn.execute(
-        "SELECT COUNT(*) FROM lsp_resolution_cache WHERE edge_id = 42"
+        "SELECT COUNT(*) FROM lsp_resolution_cache WHERE edge_id = ?", (edge_id,)
     ).fetchone()[0]
     assert count == 1

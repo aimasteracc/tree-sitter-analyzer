@@ -276,6 +276,9 @@ def ast_cache_conn():
     # Dependent tables (no FK on symbol_rows, but logical dependency).
     conn.executescript(SCHEMA_V4_IMPORTS)
     conn.executescript(SCHEMA_V5_ACTIVATION)
+    # last_commit_msg is added by apply_migration_v14 (not in base DDL);
+    # _PULSE_SQL references it, so add it here to avoid silent OperationalError.
+    conn.execute("ALTER TABLE ast_symbol_activation ADD COLUMN last_commit_msg TEXT")
     conn.executescript(SCHEMA_V6_VIOLATIONS)
     # Tables that REFERENCE ast_symbol_rows(id).
     conn.executescript(SCHEMA_V14_COMMENTS)
