@@ -202,7 +202,7 @@ class EdgeStore:
     ) -> None:
         self._owns_conn = isinstance(conn_or_db_path, str)
         if self._owns_conn:
-            self._conn = sqlite3.connect(str(conn_or_db_path))
+            self._conn = sqlite3.connect(str(conn_or_db_path), timeout=10)
             self._conn.row_factory = sqlite3.Row
         else:
             self._conn = cast(sqlite3.Connection, conn_or_db_path)
