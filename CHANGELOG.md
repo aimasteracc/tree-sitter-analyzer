@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.29.2] - 2026-09-05
+
+Test-effectiveness hotfix: no runtime behavior changes.
+
+### Fixed
+
+- **ast_diff.py mutation survival 238 -> 64 (kill rate 59.0% -> 84.8%).** New `tests/unit/test_ast_diff_scenarios.py` adds 65 scenario tests locking real semantics (classification matrix, signature/body/rename branches, encoding-contract on non-UTF-8 files, extension-based language detection order, exact stats/summary texts). 156 mutants killed in total.
+- **Mutation harness sandbox regression.** `scripts/run_mutation_baseline.py` mutmut sandbox broke after the 2026-07 restructure (ast_diff gained intra-package imports `.core.parser`/`.project_graph` not copied into `mutants/`); every baseline re-run since June failed silently as "not checked". Fixed with `also_copy = ["tree_sitter_analyzer"]`; baselines are reproducible again.
+
+### Docs
+
+- `tests/effectiveness/BASELINE.md` updated: ast_diff row + TOTAL (874 -> 700 surviving across 5 modules), with a dated methodology note.
+
+
 ## [1.29.1] - 2026-09-05
 
 Hotfix: index robustness and storage hygiene, from the 2026-09-05 agent dogfood audit.
