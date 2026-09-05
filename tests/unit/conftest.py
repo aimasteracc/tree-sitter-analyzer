@@ -309,14 +309,6 @@ def mock_embed_models(monkeypatch):
         "tree_sitter_analyzer.embeddings.pipeline._embed_with_unixcoder",
         mock_unixcoder,
     )
-    monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.semantic_tool._embed_with_openai",
-        mock_openai,
-    )
-    monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.semantic_tool._embed_with_unixcoder",
-        mock_unixcoder,
-    )
     yield (mock_openai, mock_unixcoder)
 
 
@@ -325,8 +317,12 @@ def mock_embed_models(monkeypatch):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def fake_lsp_process():
-    """Fake LSP subprocess double with drivable stdout/stdin."""
+async def fake_lsp_process():
+    """Fake LSP subprocess double with drivable stdout/stdin.
+
+    Async so asyncio.StreamReader() is created with a running event loop
+    (required on Python 3.13+ where get_running_loop() is used internally).
+    """
     reader = asyncio.StreamReader()
     stdin_mock = MagicMock()
     stdin_mock.write = MagicMock()
