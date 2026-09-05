@@ -36,12 +36,20 @@ MODULES: dict[str, tuple[str, list[str]]] = {
         [
             "tests/unit/test_semantic_change_classifier.py",
             "tests/unit/test_semantic_classify_tool.py",
+            "tests/unit/test_semantic_change_scenarios.py",
         ],
     ),
     "facade_tool": (
         "tree_sitter_analyzer/mcp/tools/facade_tool.py",
         [
-            "tests/unit/mcp/",
+            # 收窄到真正打 FacadeTool 的文件:整目录会拖进依赖
+            # examples/ 等沙盒外文件的用例,导致未变异基线即失败
+            "tests/unit/mcp/tools/test_facade_tool.py",
+            "tests/unit/mcp/tools/test_nav_facade.py",
+            "tests/unit/mcp/tools/test_edit_facade.py",
+            "tests/unit/mcp/tools/test_structure_facade.py",
+            "tests/unit/mcp/tools/test_health_facade.py",
+            "tests/unit/mcp/tools/test_facade_tool_scenarios.py",
         ],
     ),
     "query_symbol_search": (

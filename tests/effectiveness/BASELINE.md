@@ -17,14 +17,14 @@
 | Module | Total mutants | Killed | Survived | No-test | Score | Surviving = bugs suite misses |
 |---|---|---|---|---|---|---|
 | `ast_diff.py` | 422 | 358 | **64** | 0 | **84.8%** | 64 deliberate bugs the suite does not catch (2026-09-05 v1.29.2 hardening: was 238 surviving / 59.0% score; see dated note below) |
-| `semantic_change_classifier.py` | 314 | 243 | **71** | 0 | **77.4%** | 71 deliberate bugs the suite does not catch |
-| `mcp/tools/facade_tool.py` | 269 | 189 | **65** | 15 | **70.3%** | 65 deliberate bugs the suite does not catch |
+| `semantic_change_classifier.py` | 271 | 261 | **10** | 0 | **96.3%** | 10 deliberate bugs the suite does not catch (2026-09-05 v1.29.3 hardening: was 71 surviving / 77.4%) |
+| `mcp/tools/facade_tool.py` | 246 | 229 | **17** | 0 | **93.1%** | 17 deliberate bugs the suite does not catch (2026-09-05 v1.29.3 hardening: was 65 surviving / 70.3%; tests narrowed to facade-specific files fixing the sandbox baseline failure) |
 | `mcp/tools/query_symbol_search.py` | 767 | 285 | **360** | 122 | **37.2%** | 360 deliberate bugs the suite does not catch |
 | `formatters/toon_encoder.py` | 464 | 141 | **140** | 183 | **30.4%** | 140 deliberate bugs the suite does not catch |
-| **TOTAL (5 modules)** | **2 236** | **1 216** | **700** | 320 | **54.4%** | **700 surviving mutants = 700 deliberate bugs the current suite cannot catch** |
+| **TOTAL (5 modules)** | **2 170** | **1 274** | **591** | 320 | **58.7%** | **591 surviving mutants = 591 deliberate bugs the current suite cannot catch** |
 
-**Headline (RFC-0017 deliverable):** 700 surviving mutants across 5 core modules.
-The suite is ~2× the size of the source, yet 700 deliberate bugs escape it.
+**Headline (RFC-0017 deliverable):** 591 surviving mutants across 5 core modules.
+The suite is ~2× the size of the source, yet 591 deliberate bugs escape it.
 This is the quantified answer to "why does 2× test volume not catch bugs?":
 the suite tests *conformance* (does code match spec?), not *value* (is the spec correct/good?).
 
