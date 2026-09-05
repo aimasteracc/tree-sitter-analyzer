@@ -10,7 +10,4 @@
 
 # 追加（v1.29.3 轮次二）
 
-3. semantic_change_classifier 疑似真 bug：`_is_test_path` 对无前导斜杠的相对路径
-   （如 "tests/unit/a.py"）不命中（指示符是 "/tests/" 与 "\\tests\\"）——
-   实际调用方（ast_diff 的 old_file/new_file）常传这种相对路径。已按现状
-   特征锁定进 test_semantic_change_scenarios.py，修复需另立任务。
+3. [已修复 v1.29.4] _is_test_path 相对路径漏判——已修复并补齐正反用例。

@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.29.4] - 2026-09-05
+
+Test-effectiveness round 3 + two real bug fixes.
+
+### Fixed (runtime)
+
+- **`_is_test_path` missed bare relative paths** (`tests/unit/a.py` without a leading slash) — exactly the form `ast_diff` feeds, so test-file changes could be misclassified. Now normalized (backslashes too); `tests/`-prefixed paths match.
+- **`_scan_file_for_references` returned `(refs, defs)` while its docstring promised `(defs, refs)`** — the internal caller compensated with a flipped unpack (end-to-end was correct); return order fixed, caller synchronized, direct doc-following calls no longer get swapped lists.
+
+### Fixed (tests)
+
+- **query_symbol_search mutation survival 266 -> 90 (score ~37% -> 82.4%)** — 54 scenario tests: keyword-sweep categorization, matcher semantics, collector exclusion rules (#699, 500 cap), envelope exact values, reference classification/dedup, FTS fast-path precedence/passthrough, missing-attribute robustness.
+- semantic_change_classifier re-measured after the `_is_test_path` fix: 330 total / 12 surviving (96.4%).
+- BASELINE.md TOTAL: surviving 591 -> 323, score 74.3% (toon_encoder row historical — removed on develop).
+
+
 ## [1.29.3] - 2026-09-05
 
 Test-effectiveness hotfix round 2 — no runtime behavior changes.

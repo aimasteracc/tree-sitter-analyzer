@@ -55,7 +55,10 @@ MODULES: dict[str, tuple[str, list[str]]] = {
     "query_symbol_search": (
         "tree_sitter_analyzer/mcp/tools/query_symbol_search.py",
         [
-            "tests/unit/mcp/",
+            # 收窄:整目录会拖进依赖沙盒外文件的用例(见 facade_tool 注释)
+            "tests/unit/mcp/test_query_symbol_search.py",
+            "tests/unit/mcp/test_fts5_bm25_ranking.py",
+            "tests/unit/mcp/test_query_symbol_search_scenarios.py",
         ],
     ),
     "toon_encoder": (

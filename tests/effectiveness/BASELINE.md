@@ -17,14 +17,14 @@
 | Module | Total mutants | Killed | Survived | No-test | Score | Surviving = bugs suite misses |
 |---|---|---|---|---|---|---|
 | `ast_diff.py` | 422 | 358 | **64** | 0 | **84.8%** | 64 deliberate bugs the suite does not catch (2026-09-05 v1.29.2 hardening: was 238 surviving / 59.0% score; see dated note below) |
-| `semantic_change_classifier.py` | 271 | 261 | **10** | 0 | **96.3%** | 10 deliberate bugs the suite does not catch (2026-09-05 v1.29.3 hardening: was 71 surviving / 77.4%) |
+| `semantic_change_classifier.py` | 330 | 318 | **12** | 0 | **96.4%** | 12 deliberate bugs the suite does not catch (v1.29.3: 71→10; v1.29.4 module grew via `_is_test_path` fix) |
 | `mcp/tools/facade_tool.py` | 246 | 229 | **17** | 0 | **93.1%** | 17 deliberate bugs the suite does not catch (2026-09-05 v1.29.3 hardening: was 65 surviving / 70.3%; tests narrowed to facade-specific files fixing the sandbox baseline failure) |
-| `mcp/tools/query_symbol_search.py` | 767 | 285 | **360** | 122 | **37.2%** | 360 deliberate bugs the suite does not catch |
+| `mcp/tools/query_symbol_search.py` | 510 | 420 | **90** | 0 | **82.4%** | 90 deliberate bugs the suite does not catch (2026-09-05 v1.29.4 hardening: was 360 surviving / 37.2%; selection narrowed, denominator stabilized) |
 | `formatters/toon_encoder.py` | 464 | 141 | **140** | 183 | **30.4%** | 140 deliberate bugs the suite does not catch |
-| **TOTAL (5 modules)** | **2 170** | **1 274** | **591** | 320 | **58.7%** | **591 surviving mutants = 591 deliberate bugs the current suite cannot catch** |
+| **TOTAL (5 modules)** | **1 972** | **1 466** | **323** | 183 | **74.3%** | **323 surviving mutants = 323 deliberate bugs the current suite cannot catch** |
 
-**Headline (RFC-0017 deliverable):** 591 surviving mutants across 5 core modules.
-The suite is ~2× the size of the source, yet 591 deliberate bugs escape it.
+**Headline (RFC-0017 deliverable):** 323 surviving mutants across 5 core modules (was 874 at first measurement; toon_encoder rows are historical — module removed on develop).
+The suite is ~2× the size of the source, yet 323 deliberate bugs escape it.
 This is the quantified answer to "why does 2× test volume not catch bugs?":
 the suite tests *conformance* (does code match spec?), not *value* (is the spec correct/good?).
 

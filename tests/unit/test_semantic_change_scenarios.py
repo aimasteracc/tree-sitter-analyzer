@@ -76,8 +76,10 @@ class TestPathBranches:
     def test_测试路径大小写不敏感_反斜杠指示符也命中(self):
         assert _is_test_path("SRC/TESTS/A.PY") is True
         assert _is_test_path("src\\tests\\a.py") is True
-        # 现状锁定:无前导斜杠的相对 tests 路径不命中(疑似真 bug,BLOCKED.md)
-        assert _is_test_path("tests/unit/a.py") is False
+        # v1.29.4 修复:裸相对路径 tests/... 也命中(此前漏判,BLOCKED.md #3)
+        assert _is_test_path("tests/unit/a.py") is True
+        # 但子串伪装不误伤:目录名只是包含 tests 字样而已
+        assert _is_test_path("src/mytests/a.py") is False
         assert _is_test_path("src/__tests__/a.js") is True
         assert _is_test_path(None) is False
         assert _is_test_path("src/main.py") is False
