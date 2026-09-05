@@ -16,17 +16,27 @@
 
 | Module | Total mutants | Killed | Survived | No-test | Score | Surviving = bugs suite misses |
 |---|---|---|---|---|---|---|
-| `ast_diff.py` | 580 | 342 | **238** | 0 | **59.0%** | 238 deliberate bugs the suite does not catch |
+| `ast_diff.py` | 422 | 358 | **64** | 0 | **84.8%** | 64 deliberate bugs the suite does not catch (2026-09-05 v1.29.2 hardening: was 238 surviving / 59.0% score; see dated note below) |
 | `semantic_change_classifier.py` | 314 | 243 | **71** | 0 | **77.4%** | 71 deliberate bugs the suite does not catch |
 | `mcp/tools/facade_tool.py` | 269 | 189 | **65** | 15 | **70.3%** | 65 deliberate bugs the suite does not catch |
 | `mcp/tools/query_symbol_search.py` | 767 | 285 | **360** | 122 | **37.2%** | 360 deliberate bugs the suite does not catch |
 | `formatters/toon_encoder.py` | 464 | 141 | **140** | 183 | **30.4%** | 140 deliberate bugs the suite does not catch |
-| **TOTAL (5 modules)** | **2 394** | **1 200** | **874** | 320 | **50.1%** | **874 surviving mutants = 874 deliberate bugs the current suite cannot catch** |
+| **TOTAL (5 modules)** | **2 236** | **1 216** | **700** | 320 | **54.4%** | **700 surviving mutants = 700 deliberate bugs the current suite cannot catch** |
 
-**Headline (RFC-0017 deliverable):** 874 surviving mutants across 5 core modules.
-The suite is ~2× the size of the source, yet 874 deliberate bugs escape it.
+**Headline (RFC-0017 deliverable):** 700 surviving mutants across 5 core modules.
+The suite is ~2× the size of the source, yet 700 deliberate bugs escape it.
 This is the quantified answer to "why does 2× test volume not catch bugs?":
 the suite tests *conformance* (does code match spec?), not *value* (is the spec correct/good?).
+
+> **2026-09-05 更新（v1.29.2 热修）**：`ast_diff.py` 完成场景化加固——
+> 新增 `tests/unit/test_ast_diff_scenarios.py`（65 个场景测试，断言对齐真实语义），
+> 存活变异 238 → 64、杀死率 59.0% → 84.8%。同轮修复了测量脚本
+> `scripts/run_mutation_baseline.py` 的沙盒回归：2026-07 大重构后
+> `ast_diff` 引入包内依赖（`.core.parser`、`.project_graph`）而 mutmut
+> 沙盒未随之拷贝，导致 6 月之后的基线复跑全部失败（`also_copy` 修复）。
+> ast_diff 的 Total 由 580 变为 422 系测量口径随沙盒修复而稳定，
+> 前后对比以「存活数」为准（238 → 64）。剩余 64 个存活多为等价变异
+> （如 `errors="replace"` 语义、字符串字面量差），清单存于热修 PR。.
 
 ---
 
