@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.29.1] - 2026-09-05
+
+Hotfix: index robustness and storage hygiene, from the 2026-09-05 agent dogfood audit.
+
+### Fixed
+
+- **Cross-version index crash (`'dict' object has no attribute 'split'`).** An index written by a newer build (import entries recorded as `{text, line}` dicts since #1281) crashed `--dead-code`, `--codegraph-impact`, and call-graph builds on this build (`call_graph.py` expected plain strings). `ASTCache.get_imports()` now normalizes both shapes to strings. Verified red→green on the affected 289MB shared index: dead-code analysis recovered (1,928 transitive dead functions).
+- **Orphan maintenance module wired.** `cache/maintenance.py` (`reclaim_storage_after_full_rebuild`) was implemented and tested but never called by anything — index DBs could only grow. It now runs at the end of every full-index build (threshold-guarded; failures reported, never blocking), and the reclaim result is surfaced in the payload as `maintenance`.
+- **Unified SQLite busy timeouts.** 6 of 8 `sqlite3.connect` sites used the default timeout (immediate `database is locked` under multi-process contention). All sites now pass `timeout=10`, matching `ast_cache.py`'s main connection.
+
+### Docs
+
+- AGENTS.md: new 注释语言规范 section — all new/modified code comments and docstrings in Chinese (leader ruling 2026-09-05).
+
+
 ## [Unreleased] - search_content / find_and_grep 廃止
 
 ### Removed
