@@ -54,6 +54,12 @@ Memory records should capture reusable lessons, not logs: benchmark surprises, C
 - When adding or changing an MCP tool, update the CLI path in the same change and run a real CLI smoke test, for example `uv run python -m tree_sitter_analyzer <file> --smart-context --format json`.
 - This keeps MCP-only features from becoming invisible to users, CI, and future agents.
 
+## 注释语言规范（Comment Language Rule）
+
+- 今后所有新增或修改的代码注释、docstring 一律使用中文（领导 2026-09-05 裁决）。
+- 存量英文注释不做强制翻译；只在本次改动触碰到的行内顺手转换。
+- 提交信息（commit message）仍沿用仓库既有英文约定，不受本条约束。
+
 ## Codemap-sync mandate
 
 Any change touching one of these registries MUST update the corresponding `docs/CODEMAPS/*.md` in the **same commit**:
