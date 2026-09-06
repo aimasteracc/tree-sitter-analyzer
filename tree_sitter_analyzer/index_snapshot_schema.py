@@ -94,6 +94,23 @@ _REQUIRED_COLUMNS = {
     ),
 }
 _FINGERPRINT_DEADLINE_SECONDS = 5.0
+# 满载 CI（多个 xdist worker 抢核 + Windows Defender 对新文件实时扫描）上，
+# 即使小型项目的目录遍历也可能瞬时卡过 5 秒；允许环境调高，重试见
+# _capture_source_with_retry。慢机器与数据真变必须区分，否则 #1364 复现。
+_FINGERPRINT_DEADLINE_ENV = "TSA_FINGERPRINT_DEADLINE_SECONDS"
+
+
+def _fingerprint_deadline_seconds() -> float:
+    """读取（可配置的）单次源指纹遍历墙钟上限，下限 1 秒防误配。"""
+    raw = os.environ.get(_FINGERPRINT_DEADLINE_ENV, "")
+    if not raw:
+        return _FINGERPRINT_DEADLINE_SECONDS
+    try:
+        return max(1.0, float(raw))
+    except ValueError:
+        return _FINGERPRINT_DEADLINE_SECONDS
+
+
 _FINGERPRINT_ROW_BUDGET = 2_000_000
 _FINGERPRINT_BYTE_BUDGET = 512 * 1024 * 1024
 _FINGERPRINT_CELL_BYTE_BUDGET = 4 * 1024 * 1024
@@ -177,9 +194,25 @@ def stamp_full_index_manifest(
         else:
             from .portable_source_snapshot import capture_portable_source_snapshot
 
-            current = capture_portable_source_snapshot(
-                root, scope, deadline=time.monotonic() + _FINGERPRINT_DEADLINE_SECONDS
-            )
+            # 慢机瞬卡重试一次（#1364）：仅对 SOURCE_SCAN_DEADLINE 的 unknown
+            # 结果重试；真实的数据变化/不可读 scope 不重试，语义不变。
+            current = None
+            for attempt in (1, 2):
+                current = capture_portable_source_snapshot(
+                    root,
+                    scope,
+                    deadline=time.monotonic() + _fingerprint_deadline_seconds(),
+                )
+                if current.state == "exact":
+                    break
+                if (
+                    getattr(current, "reason", None) == "SOURCE_SCAN_DEADLINE"
+                    and attempt == 1
+                ):
+                    continue
+                break
+        # for 循环体至少执行一次,mypy 无法静态证明,此处显式断言
+        assert current is not None
         if current.state != "exact" or current.rows != recorded:
             raise sqlite3.OperationalError("SOURCE_CHANGED")
         conn.execute("DELETE FROM ast_index_snapshot_manifest")
