@@ -16,6 +16,7 @@
 ## Test Runtime Contract
 
 - The default local quick-gate command is `uv run pytest -q`.
+- Transition note: `main` inherits the curated quick-gate `pytest.ini` at the next release; until then bare `pytest -q` on `main` still runs the full suite. When validating on `main` before that sync, use the comprehensive command explicitly — one command must mean one thing, so the canonical full-suite path is always the explicit `tests/` form above.
 - The comprehensive local command is `uv run pytest tests/ -q --timeout=120 -m "not e2e and not network and not benchmark"`; the explicit marker override restores slow and full-language tests that the quick gate excludes.
 - Do not run either tier serially. Project pytest config enables four xdist workers with work stealing.
 - The quick gate must finish in under 5 minutes. The config enforces `--session-timeout=900` and `--timeout=30`. (Bumped from 300 in v1.13.1 — see `docs/POSTMORTEM_v1.13.md` § 9.)

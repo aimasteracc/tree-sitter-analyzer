@@ -372,8 +372,8 @@ Mostly nothing. The defaults are designed so you can hook it into your agent and
 ```bash
 uv run pytest -q                                # bounded local quick gate
 uv run pytest tests/ -q --timeout=120 -m "not e2e and not network and not benchmark"  # comprehensive local suite
-PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # one-worker mode for lower CPU load
-PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # two-worker balanced mode
+PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1                  # quick gate, one worker (lower CPU load)
+PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q --maxfail=1                  # quick gate, two workers (balanced)
 uv run pytest --lf --maxfail=1                  # rerun only failed tests from last run
 uv run python check_quality.py --new-code-only  # quality gate
 ```
@@ -398,7 +398,7 @@ uv run python check_quality.py --new-code-only  # quality gate
 git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
 cd tree-sitter-analyzer
 uv sync --extra all --extra mcp
-uv run pytest -q
+uv run pytest -q                                # quick gate (bounded)
 ```
 
 See **[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)** for the development guide.
