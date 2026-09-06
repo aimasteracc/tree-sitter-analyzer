@@ -357,7 +357,7 @@ from a digest-verified artifact; E0–E3 and blocked records cannot emit text.
 | NO1-010A | Three-task prototype | Product/API Lead | NO1-007A/B | MCP/CLI parity or explicit internal-only status; exact contract tests; real CLI smoke |
 | NO1-010B | Agent change-outcome benchmark RFC | Benchmark + Product | NO1-008B, NO1-010A | bugfix/refactor/migration/test-selection oracles; VCSR primary endpoint |
 | NO1-011A | Lightweight default install implementation | Runtime Lead | NO1-006B | compatibility preserved; fresh-install success and startup improve on all axes |
-| NO1-012A | Performance/SLO artifact pipeline | Runtime Lead | NO1-006A | byte-stable reports; P50/P95 by repo size; no benchmark-only pytest misuse |
+| NO1-012A | Performance/SLO artifact pipeline (TRUST-S1) | Runtime Lead | NO1-006A, TRUST-I1 | byte-stable reports; P50/P95 by repo size only after the trusted incremental loop passes; no benchmark-only pytest misuse |
 | NO1-013A | Three-client integration qualification | Community/GTM | NO1-010A | Claude Code, Cursor, Codex install/index/query/uninstall scenarios pass |
 
 ## 8. Dependency graph
@@ -374,7 +374,7 @@ NO1-002D ─ NO1-003B ─ NO1-003D (dispatcher; no model call)
 NO1-003D + NO1-008A ─ NO1-003C (bounded E0 canary; both are required)
 
 NO1-006A ─ NO1-006B ─ NO1-011A
-         └─ NO1-012A
+NO1-006A + TRUST-I1 ─ NO1-012A / TRUST-S1
 
 NO1-010A ─ NO1-010B
          └─ NO1-013A
@@ -389,7 +389,7 @@ NO1-010A ─ NO1-010B
 5. Run post-edit change-impact and its reported verification command.
 6. For Python changes, run focused coverage and the patch-coverage gate.
 7. Update codemaps in the same commit when a guarded registry changes.
-8. Preserve locked defaults: MCP TOON, CLI JSON, stderr diagnostics, project-root behavior.
+8. Preserve locked defaults: JSON for both MCP and CLI, stderr diagnostics, project-root behavior.
 9. Record failures and unfavorable benchmark results; never weaken a gate to create a headline.
 10. Produce a concise dogfood feedback record for project memory or the final handoff.
 
@@ -397,7 +397,7 @@ NO1-010A ─ NO1-010B
 
 NO1-006A completed at `refs/heads/develop` commit `c91b026a9a11d044f1f67fda9e060db45aebd7f3` in [workflow run `31288611024`, attempt `1`](https://github.com/aimasteracc/tree-sitter-analyzer/actions/runs/31288611024/attempts/1). One exact wheel (`sha256:c1cb3520542fd14dad60ddec55dfac6afbdaa424e7a4a39d875be1801d98f9e8`) passed native Linux, macOS, and Windows package-to-MCP-first-answer axes. Native Linux and macOS additionally proved real uv `0.10.9` detection, fail-closed behavior with mutable bootstrap disabled, and recovery through the content-bound uv `0.11.0`; Windows honestly records installer recovery as `NOT_APPLICABLE_NO_NATIVE_INSTALLER` with `passed=false` while preserving its real old `uv.exe` and package/MCP evidence. The no-checkout read-only job independently verified all axis bytes, identities, causal sidecars, exact package aggregate (`sha256:04cfdbb96643c7ea34f90707fdf9f3778513c763632c3946ce5532cba25635af`), exact outdated aggregate (`sha256:a110bfc1e423b9c1961f0d02cd2ab676c425b001c23d2449921add73e2860e45`), and deterministic run-bound sandboxes before the tiny OIDC job issued attestations for all three subjects. Pinned post-run verification records and durable evidence are preserved in [`rfcs/evidence/no1-006a/c91b026a9a11d044f1f67fda9e060db45aebd7f3-attempt-1/`](evidence/no1-006a/c91b026a9a11d044f1f67fda9e060db45aebd7f3-attempt-1/). This evidence proves the attested source ref and run identity, not a branch-protection snapshot. Automatic mutable bootstrap remains explicitly unqualified, and this completion does not upgrade canary, benchmark, comparison, cross-file E2E, or public-claim evidence.
 
-1. Begin NO1-006B dependency-split measurement and NO1-012A byte-stable SLO artifact work now that NO1-006A is complete; neither task upgrades canary, benchmark, comparison, cross-file E2E, or public-claim evidence.
+1. Prioritize TRUST-C1/T1, then TRUST-I1 under the 2026-09-07 execution gates. NO1-006B dependency-split baseline work may proceed independently. NO1-012A is the TRUST-S1 performance/SLO work package and waits for TRUST-I1; before that gate, only non-measurement report-schema infrastructure may proceed. None of these tasks upgrades canary, benchmark, comparison, cross-file E2E, or public-claim evidence.
 2. Establish and record a distinct reproducible RFC-0021 E1 install/smoke qualification, then complete NO1-008A's model-free seven-repository setup; any setup failure blocks every model-backed phase.
 3. Implement and independently review NO1-003D's production dispatcher without invoking a model.
 4. Only after NO1-003D, NO1-008A, human budget, signed attestation, and judge gates pass, execute NO1-003C as a bounded E0 canary; retain failures and do not relabel it E1.
