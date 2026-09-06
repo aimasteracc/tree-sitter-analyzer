@@ -241,11 +241,11 @@ class TestCodeGraphIncrementalSyncTool:
         result = await tool.execute(
             {"mode": "sync", "max_files": 10, "output_format": "json"}
         )
-        # PR #1253 review 3762603012: a live walk is operational, not authority.
+        # 2026-09-07：公开 sync 已传入真实候选证据，不再走无认证的旧遍历。
         assert (result["success"], result["verdict"], result["completeness"]) == (
-            False,
-            "WARN",
-            "incomplete",
+            True,
+            "INFO",
+            "complete",
         )
         assert result["mode"] == "sync"
 
