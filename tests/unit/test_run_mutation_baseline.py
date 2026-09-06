@@ -2,10 +2,78 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
 from scripts import run_mutation_baseline
+
+
+@pytest.mark.parametrize("failed_step", ["run", "results"])
+@pytest.mark.parametrize("returncode", [1, 7, -15])
+def test_main_propagates_mutmut_failure_and_restores_pyproject(
+    monkeypatch, tmp_path: Path, failed_step: str, returncode: int
+) -> None:
+    # 2026-09-07：外部变异命令失败曾被吞掉，入口必须失败且恢复原配置。
+    real_pyproject = tmp_path / "pyproject.toml"
+    original = b"[project]\r\nname = 'sample'\r\n"
+    real_pyproject.write_bytes(original)
+    monkeypatch.setattr(
+        run_mutation_baseline, "__file__", tmp_path / "scripts/runner.py"
+    )
+    monkeypatch.setattr(run_mutation_baseline.sys, "argv", ["runner", "ast_diff"])
+    monkeypatch.setattr(
+        run_mutation_baseline, "_resolve_mutmut_command", lambda: ["mutmut"]
+    )
+
+    def fake_run(cmd, **kwargs):
+        assert kwargs["cwd"] == tmp_path
+        assert "[tool.mutmut]" in real_pyproject.read_text(encoding="utf-8")
+        return subprocess.CompletedProcess(
+            cmd, returncode if cmd[-1] == failed_step else 0
+        )
+
+    mocked_run = Mock(side_effect=fake_run)
+    monkeypatch.setattr(run_mutation_baseline.subprocess, "run", mocked_run)
+
+    with pytest.raises(subprocess.CalledProcessError) as exc:
+        run_mutation_baseline.main()
+
+    assert exc.value.returncode == returncode
+    assert exc.value.cmd == ["mutmut", failed_step]
+    assert [call.args[0] for call in mocked_run.call_args_list] == (
+        [["mutmut", "run"]]
+        if failed_step == "run"
+        else [["mutmut", "run"], ["mutmut", "results"]]
+    )
+    assert real_pyproject.read_bytes() == original
+
+
+@pytest.mark.parametrize("failed_step", ["run", "results"])
+def test_run_module_restores_pyproject_when_process_cannot_start(
+    monkeypatch, tmp_path: Path, failed_step: str
+) -> None:
+    # 2026-09-07：进程启动异常也必须透传，不能遗留临时配置。
+    real_pyproject = tmp_path / "pyproject.toml"
+    original = b"[project]\nname = 'sample'\n"
+    real_pyproject.write_bytes(original)
+    monkeypatch.setattr(
+        run_mutation_baseline, "_resolve_mutmut_command", lambda: ["mutmut"]
+    )
+    error = OSError("cannot start mutmut")
+
+    def fake_run(cmd, **kwargs):
+        if cmd[-1] == failed_step:
+            raise error
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(run_mutation_baseline.subprocess, "run", fake_run)
+
+    with pytest.raises(OSError) as exc:
+        run_mutation_baseline.run_module("ast_diff", tmp_path)
+
+    assert exc.value is error
+    assert real_pyproject.read_bytes() == original
 
 
 def test_run_module_does_not_invoke_uv_while_pyproject_is_swapped(
