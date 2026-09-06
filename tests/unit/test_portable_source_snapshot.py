@@ -393,7 +393,8 @@ def test_capture_portable_source_snapshot_rejects_changed_inventory(
 ) -> None:
     first = frozenset({("first.py", "digest", "python")})
     second = frozenset({("second.py", "digest", "python")})
-    inventories = iter(((first, False), (second, False)))
+    # #1364 起捕获层对 UNSAFE 整体重试一次——供料需覆盖两轮四走
+    inventories = iter(((first, False), (second, False)) * 2)
     monkeypatch.setattr(
         portable, "_portable_inventory", lambda *_args: next(inventories)
     )
@@ -402,6 +403,7 @@ def test_capture_portable_source_snapshot_rejects_changed_inventory(
         str(tmp_path), make_source_scope_descriptor(), deadline=float("inf")
     )
 
+    # 两次尝试都双走不一致 → 仍如实返回 unsafe(重试不掩盖真实不稳定)
     assert (result.rows, result.state, result.reason) == (
         first,
         "unsafe",
