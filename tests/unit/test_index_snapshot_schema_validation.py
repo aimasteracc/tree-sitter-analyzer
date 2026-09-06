@@ -83,7 +83,10 @@ def test_stamp_rejects_new_source_and_preserves_old_manifest(tmp_path):
     stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     (tmp_path / "late.py").write_text("late = True\n")
 
-    with pytest.raises(sqlite3.OperationalError, match="^SOURCE_CHANGED$"):
+    # #1364 起错误消息携带诊断后缀(state/reason/行数),锚定前缀即可
+    with pytest.raises(
+        sqlite3.OperationalError, match=r"^SOURCE_CHANGED:state=[a-z]+:"
+    ):
         stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     count = (
         cache.get_conn()
