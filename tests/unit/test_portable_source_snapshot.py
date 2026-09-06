@@ -392,8 +392,8 @@ def test_capture_portable_source_snapshot_rejects_changed_inventory(
 ) -> None:
     first = frozenset({("first.py", "digest", "python")})
     second = frozenset({("second.py", "digest", "python")})
-    # #1364 起捕获层对 UNSAFE 整体重试一次——供料需覆盖两轮四走
-    inventories = iter(((first, False), (second, False)) * 2)
+    # #1364：已经观察到源不一致，不能用后续恰好一致的扫描替换该证据。
+    inventories = iter(((first, None), (second, None), (first, None), (first, None)))
     monkeypatch.setattr(
         portable, "_portable_inventory", lambda *_args: next(inventories)
     )
@@ -402,13 +402,32 @@ def test_capture_portable_source_snapshot_rejects_changed_inventory(
         str(tmp_path), make_source_scope_descriptor(), deadline=float("inf")
     )
 
-    # 两次尝试都双走不一致 → 仍如实返回 unsafe(重试不掩盖真实不稳定)
-    # #1364/#1373 起 reason 携带首个触发的检查名,锚定前缀
     assert (result.rows, result.state) == (first, "unsafe")
-    assert result.reason.startswith("SOURCE_SCOPE_UNSAFE")
+    assert result.reason == "SOURCE_SCOPE_UNSAFE:walk_mismatch"
     assert result.fingerprint is not None
     assert result.generation == "idxsrc-v3:" + result.fingerprint.removeprefix(
         "sha256:"
+    )
+
+
+def test_capture_deadline_failure_does_not_restart_expired_budget(
+    tmp_path, monkeypatch
+):
+    # #1364：调用者的截止时间是整次捕获的上限，不得隐藏超时后重试。
+    calls = []
+
+    def timed_out(*_args):
+        calls.append(1)
+        raise TimeoutError
+
+    monkeypatch.setattr(portable, "_portable_inventory", timed_out)
+    result = portable.capture_portable_source_snapshot(
+        str(tmp_path), make_source_scope_descriptor(), deadline=0.0
+    )
+    assert (result.state, result.reason, calls) == (
+        "unknown",
+        "SOURCE_SCAN_DEADLINE",
+        [1],
     )
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import re
 import sqlite3
@@ -94,9 +95,7 @@ _REQUIRED_COLUMNS = {
     ),
 }
 _FINGERPRINT_DEADLINE_SECONDS = 5.0
-# 满载 CI（多个 xdist worker 抢核 + Windows Defender 对新文件实时扫描）上，
-# 即使小型项目的目录遍历也可能瞬时卡过 5 秒；允许环境调高，重试见
-# _capture_source_with_retry。慢机器与数据真变必须区分，否则 #1364 复现。
+# 单次便携式扫描允许配置有限预算；超时不等同于源变化，也不能放行认证。
 _FINGERPRINT_DEADLINE_ENV = "TSA_FINGERPRINT_DEADLINE_SECONDS"
 
 
@@ -109,9 +108,12 @@ def _fingerprint_deadline_seconds() -> float:
     if not raw:
         return _FINGERPRINT_DEADLINE_SECONDS
     try:
-        return max(1.0, float(raw))
+        value = float(raw)
     except ValueError:
         return _FINGERPRINT_DEADLINE_SECONDS
+    if not math.isfinite(value):
+        return _FINGERPRINT_DEADLINE_SECONDS
+    return max(1.0, value)
 
 
 _FINGERPRINT_ROW_BUDGET = 2_000_000
@@ -197,28 +199,11 @@ def stamp_full_index_manifest(
         else:
             from .portable_source_snapshot import capture_portable_source_snapshot
 
-            # 慢机瞬卡重试一次（#1364）：仅对 SOURCE_SCAN_DEADLINE 的 unknown
-            # 结果重试；真实的数据变化/不可读 scope 不重试，语义不变。
-            current = None
-            for attempt in (1, 2):
-                current = capture_portable_source_snapshot(
-                    root,
-                    scope,
-                    deadline=time.monotonic() + _fingerprint_deadline_seconds(),
-                )
-                if current.state == "exact":
-                    break
-                # 瞬态失败重试一次(#1364):满载 CI 上目录遍历的超时与双走
-                # 不一致(UNSAFE)都是机器负载抖动;真实源变化/不可读不重试
-                if (
-                    getattr(current, "reason", None)
-                    in ("SOURCE_SCAN_DEADLINE", "SOURCE_SCOPE_UNSAFE")
-                    and attempt == 1
-                ):
-                    continue
-                break
-        # for 循环体至少执行一次,mypy 无法静态证明,此处显式断言
-        assert current is not None
+            current = capture_portable_source_snapshot(
+                root,
+                scope,
+                deadline=time.monotonic() + _fingerprint_deadline_seconds(),
+            )
         if current.state != "exact" or current.rows != recorded:
             # 携带具体原因(#1364 诊断):区分超时/不安全/行不一致三种死法
             raise sqlite3.OperationalError(

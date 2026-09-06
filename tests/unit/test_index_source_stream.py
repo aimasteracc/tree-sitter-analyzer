@@ -446,15 +446,9 @@ def test_in_place_rewrite_with_restored_mtime_is_unsafe(tmp_path, monkeypatch):
 
 
 class TestStaleSnapshotRecovery:
-    """#1364/#1373 家族:极新文件元数据沉降导致的「快照过期≠篡改」。
+    """#1364/#1373：后续路径稳定不能洗白一次读取的一致性检查失败。"""
 
-    walker 的 lstat 快照(size/mtime_ns)与读后 fstat 之间,新写入文件的
-    元数据可能仍在沉降——旧实现直接判 unclean,满载 windows 轴反复
-    误报 SOURCE_SCOPE_UNSAFE。修复:终检不洁时重取一次 lstat,与读后
-    状态一致则判 clean;真篡改(读取中途被改)重取仍不一致,维持 unsafe。
-    """
-
-    def test_过期快照_重取一致后判clean(self, tmp_path):
+    def test_读取不一致时不能用后续路径比较恢复clean(self, tmp_path):
         from tree_sitter_analyzer.index_source_stream import hash_source_at
         from tree_sitter_analyzer.portable_source_snapshot import _marker
 
@@ -467,8 +461,7 @@ class TestStaleSnapshotRecovery:
 
         def first_dirty_then_clean(a, b):
             calls.append(1)
-            # 第一次(walker 旧快照 vs after)不洁;重取(refreshed vs after)一致
-            # (ctime 未变由真实文件保证——测试只写了一次)
+            # 只有读取绑定的第一次比较有意义；后续路径比较不能证明摘要有效。
             return len(calls) > 1
 
         _marker_fn, digest, clean = hash_source_at(
@@ -481,9 +474,43 @@ class TestStaleSnapshotRecovery:
             _marker,
             first_dirty_then_clean,
         )
-        assert clean is True
-        assert digest != "<unsafe>"
-        assert len(calls) == 2  # 恢复分支确实重取并二次比对
+        assert clean is False
+        assert digest == "<unsafe>"
+        assert len(calls) == 1
+
+    @requires_posix_fd
+    def test_dir_fd读取不能退回当前目录的同名文件(self, tmp_path, monkeypatch):
+        # #1364：相对名称绑定目录描述符，不得以工作目录中的同名路径替换证据。
+        import tree_sitter_analyzer.index_source_stream as stream
+
+        project = tmp_path / "project"
+        project.mkdir()
+        target = project / "sample.py"
+        target.write_text("value = 1\n", encoding="utf-8")
+        (tmp_path / "sample.py").write_text("unrelated = 2\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        before = target.stat()
+        fd = os.open(project, os.O_RDONLY)
+        try:
+            with monkeypatch.context() as context:
+                context.setattr(
+                    stream.os,
+                    "lstat",
+                    lambda *_args, **_kwargs: pytest.fail("读取证据不得退回路径重查"),
+                )
+                _, digest, clean = stream.hash_source_at(
+                    fd,
+                    "sample.py",
+                    before,
+                    float("inf"),
+                    {"input": 0, "output": 0},
+                    100,
+                    lambda info: str(info.st_ino),
+                    lambda *_args: False,
+                )
+        finally:
+            os.close(fd)
+        assert (digest, clean) == ("<unsafe>", False)
 
     def test_持续不一致_维持unsafe(self, tmp_path):
         from tree_sitter_analyzer.index_source_stream import hash_source_at

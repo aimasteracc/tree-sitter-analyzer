@@ -67,27 +67,8 @@ def hash_source_at(
     finally:
         os.close(fd)
     clean = same_file_metadata(before, after)
-    if not clean:
-        # #1364/#1373 家族终章（诊断实锤 SOURCE_SCOPE_UNSAFE:hash_unclean）：
-        # Windows 上同一未动文件的句柄缓存与路径缓存可返回不同 mtime_ns，
-        # 「重取 lstat 对比读后 fstat」在缓存分裂面前永远对不上。改为
-        # 「安静判定」：间隔 20ms 连续两次新鲜 lstat 互相全等，且 ctime
-        # 相对 walker 快照未变 → 文件已安静，判 clean。防篡改不降级：
-        # POSIX 原地重写必动 ctime；Windows 的 ctime=创建时间不随写变化，
-        # 但重写使内容摘要改变，认证层的行比对（rows != recorded）仍会
-        # 拦截——纵深防御保留。
-        for _ in range(3):
-            time.sleep(0.02)
-            try:
-                r1 = os.lstat(name)
-                r2 = os.lstat(name)
-            except OSError:
-                break  # 无法重取时维持原判定
-            if same_file_metadata(r1, r2) and int(r1.st_ctime_ns) == int(
-                before.st_ctime_ns
-            ):
-                clean = True
-                break
+    # 摘要只对本次已打开的文件成立；读取绑定失败后，后续路径 stat 相等
+    # 不能证明已读字节来自同一版本，也不能替代目录描述符绑定的路径。
     return (
         metadata_marker(after),
         digest.hexdigest() if clean else "<unsafe>",
