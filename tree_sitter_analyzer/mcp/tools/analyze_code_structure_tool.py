@@ -388,7 +388,9 @@ def _validate_required_file_path(arguments: dict[str, Any]) -> None:
         raise ValueError("file_path cannot be empty")
 
 
-_VALID_FORMAT_TYPES = frozenset({"full", "compact", "csv", "signatures"})
+# 领导裁决(2026-09-06):compact/csv 判无用彻底删除(实现已随 d4fa151b 移除,
+# 本集合与其 CLI 菜单同步收口,终结 1d26baca 半回退造成的分层不一致)
+_VALID_FORMAT_TYPES = frozenset({"full", "signatures"})
 
 
 def _validate_format_type(arguments: dict[str, Any]) -> None:

@@ -30,9 +30,10 @@ def _add_output_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--table",
-        # 对齐 _VALID_FORMAT_TYPES(1d26baca 回退后含 compact/csv):
-        # 删格式的尝试已因 50 连爆被否决,CLI 选项必须与校验层一致
-        choices=["full", "compact", "csv", "signatures"],
+        # 领导裁决(2026-09-06):compact/csv 判无用,彻底删除。
+        # 实现层已在 d4fa151b 删除,此处菜单与校验层(同提交)同步收口,
+        # 终结「菜单承诺厨房做不出的菜」的三层分裂
+        choices=["full", "signatures"],
         help=(
             "Output in table format. "
             "'full' = all columns (default); "
