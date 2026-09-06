@@ -531,22 +531,17 @@ def test_hypothesis_deadlines_are_disabled_for_parallel_suite_stability() -> Non
     assert hypothesis_settings.default.deadline is None
 
 
-def test_phase7_suite_simulated_work_stays_fast_and_configurable() -> None:
-    """Summary-style integration checks should not spend seconds sleeping."""
-    path = PROJECT_ROOT / "tests/integration/test_phase7_integration_suite.py"
-    module = ast.parse(path.read_text(encoding="utf-8"))
-    constants = {
-        node.targets[0].id: ast.literal_eval(node.value)
-        for node in module.body
-        if isinstance(node, ast.Assign)
-        and len(node.targets) == 1
-        and isinstance(node.targets[0], ast.Name)
-    }
-
-    assert constants["DEFAULT_PHASE7_SUITE_SIMULATION_SECONDS"] <= 0.05
-
-    source = path.read_text(encoding="utf-8")
-    assert "TSA_PHASE7_SUITE_SIMULATION_SECONDS" in source
-    assert "asyncio.sleep(0.2)" not in source
-    assert "asyncio.sleep(0.15)" not in source
-    assert "asyncio.sleep(0.1)" not in source
+@pytest.mark.parametrize(
+    "retired_path",
+    [
+        "scripts/run_phase7_integration_tests.py",
+        "tests/integration/test_phase7_integration_suite.py",
+        "tests/unit/mcp/test_mcp_list_files_p1.py",
+    ],
+)
+def test_retired_simulation_and_duplicate_suites_stay_removed(
+    retired_path: str,
+) -> None:
+    """禁止恢复已退役的模拟认证套件、孤儿入口和重复收集聚合器。"""
+    # 2026-09-07 信任审计：sleep 冒充系统验证，23 个重导出函数被收集 46 次。
+    assert (PROJECT_ROOT / retired_path).exists() is False

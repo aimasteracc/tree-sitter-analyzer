@@ -16,6 +16,8 @@ from __future__ import annotations
 from typing import Any
 
 from ...incremental_sync import IncrementalSync
+from ...index_source_snapshot import make_source_scope_descriptor
+from ...indexing_candidate_materialization import release_index_candidate_snapshot
 from ...indexing_limits import normalize_index_max_files
 from ...utils import setup_logger
 from ..utils.auto_index_guard import ensure_indexed, is_indexed
@@ -27,6 +29,7 @@ from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_error, build_response
 from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool
+from .full_index_tool import CodeGraphFullIndexTool, _resolve_exclude_patterns
 
 logger = setup_logger(__name__)
 
@@ -141,8 +144,24 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
             return apply_output_format_to_response(result, output_format)
 
         try:
-            sync = IncrementalSync(cache)
-            sync_result = sync.sync(max_files=max_files)
+            # 与 full-index 的增量模式共享候选证据和范围，不能放宽引擎认证门槛。
+            exclude_patterns = _resolve_exclude_patterns([], False)
+            source_scope = make_source_scope_descriptor(
+                certification_max_files=max_files,
+            )
+            candidate_snapshot = CodeGraphFullIndexTool(
+                cache.project_root
+            )._build_candidate_snapshot(max_files, exclude_patterns)
+            try:
+                sync = IncrementalSync(cache)
+                sync_result = sync.sync(
+                    max_files=max_files,
+                    exclude_patterns=exclude_patterns,
+                    candidate_snapshot=candidate_snapshot,
+                    source_scope=source_scope,
+                )
+            finally:
+                release_index_candidate_snapshot(candidate_snapshot)
         except Exception as exc:
             logger.error("Incremental sync raised %s", type(exc).__name__)
             error, truncated = bounded_safe_error_message(
@@ -195,7 +214,9 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
 
         try:
             sync = IncrementalSync(cache)
-            changes = sync.get_changes()
+            changes = sync.get_changes(
+                exclude_patterns=_resolve_exclude_patterns([], False)
+            )
         except Exception as exc:
             error, truncated = bounded_safe_error_message(
                 exc,
@@ -236,7 +257,9 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
 
             try:
                 sync = IncrementalSync(cache)
-                changes = sync.get_changes()
+                changes = sync.get_changes(
+                    exclude_patterns=_resolve_exclude_patterns([], False)
+                )
                 pending_changes = (
                     len(changes.get("new", []))
                     + len(changes.get("modified", []))
