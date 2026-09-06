@@ -404,7 +404,12 @@ def test_manifest_boundary_delegates_connection_and_deadline(monkeypatch) -> Non
     assert observed == [(connection, 7.5)]
 
 
-def test_manifest_writer_uses_portable_source_certifier(tmp_path, monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "failure_reason", [None, "SOURCE_SCAN_DEADLINE", "SOURCE_SCOPE_UNSAFE:hash_unclean"]
+)
+def test_manifest_writer_uses_portable_source_certifier(
+    tmp_path, monkeypatch, failure_reason
+) -> None:
     # PR #1254 review 3769193895: Windows-built indexes must stamp authority.
     from types import SimpleNamespace
 
@@ -439,9 +444,28 @@ def test_manifest_writer_uses_portable_source_certifier(tmp_path, monkeypatch) -
         "capture_portable_source_snapshot",
         lambda root, scope, *, deadline: (
             observed.append((root, scope))
-            or SimpleNamespace(state="exact", rows=expected_rows)
+            or SimpleNamespace(
+                state="unknown" if failure_reason else "exact",
+                rows=expected_rows,
+                reason=failure_reason,
+            )
         ),
     )
+
+    if failure_reason:
+        # #1364：即使行集相同，失败的捕获也不得盖戳或隐藏地续借一次预算。
+        with pytest.raises(sqlite3.OperationalError, match="SOURCE_CHANGED"):
+            schema.stamp_full_index_manifest(conn, str(tmp_path))
+        assert len(observed) == 1
+        assert (
+            conn.execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest").fetchone()[
+                0
+            ]
+            == 0
+        )
+        assert not conn.in_transaction
+        conn.close()
+        return
 
     schema.stamp_full_index_manifest(conn, str(tmp_path))
 

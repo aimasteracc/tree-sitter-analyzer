@@ -134,13 +134,15 @@ def run_module(module_key: str, repo_root: Path) -> None:
                 capture_output=False,
             )
             print(f"\n=== mutmut run exit code: {result.returncode} ===")
+            result.check_returncode()
 
-            # Collect results
+            # 仅在变异运行成功后读取结果；读取失败同样必须向入口传播。
             print(f"\n=== Results for {module_key} ===")
-            subprocess.run(
+            result = subprocess.run(
                 [*mutmut_command, "results"],
                 cwd=repo_root,
             )
+            result.check_returncode()
         finally:
             shutil.copy2(backup, real_pyproject)
 
