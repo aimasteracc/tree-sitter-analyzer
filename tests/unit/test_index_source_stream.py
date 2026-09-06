@@ -443,3 +443,70 @@ def test_in_place_rewrite_with_restored_mtime_is_unsafe(tmp_path, monkeypatch):
         "<unsafe>",
         False,
     )
+
+
+class TestStaleSnapshotRecovery:
+    """#1364/#1373 家族:极新文件元数据沉降导致的「快照过期≠篡改」。
+
+    walker 的 lstat 快照(size/mtime_ns)与读后 fstat 之间,新写入文件的
+    元数据可能仍在沉降——旧实现直接判 unclean,满载 windows 轴反复
+    误报 SOURCE_SCOPE_UNSAFE。修复:终检不洁时重取一次 lstat,与读后
+    状态一致则判 clean;真篡改(读取中途被改)重取仍不一致,维持 unsafe。
+    """
+
+    def test_过期快照_重取一致后判clean(self, tmp_path):
+        from tree_sitter_analyzer.index_source_stream import hash_source_at
+        from tree_sitter_analyzer.portable_source_snapshot import _marker
+
+        target = tmp_path / "fresh.py"
+        target.write_text("value = 1\n", encoding="utf-8")
+        import os as _os
+
+        before = _os.lstat(target)
+        calls = []
+
+        def first_dirty_then_clean(a, b):
+            calls.append(1)
+            # 第一次(walker 旧快照 vs after)不洁;重取(refreshed vs after)一致
+            # (ctime 未变由真实文件保证——测试只写了一次)
+            return len(calls) > 1
+
+        _marker_fn, digest, clean = hash_source_at(
+            None,
+            str(target),
+            before,
+            float("inf"),
+            {"input": 0, "output": 0},
+            10 * 1024 * 1024,
+            _marker,
+            first_dirty_then_clean,
+        )
+        assert clean is True
+        assert digest != "<unsafe>"
+        assert len(calls) == 2  # 恢复分支确实重取并二次比对
+
+    def test_持续不一致_维持unsafe(self, tmp_path):
+        from tree_sitter_analyzer.index_source_stream import hash_source_at
+        from tree_sitter_analyzer.portable_source_snapshot import _marker
+
+        target = tmp_path / "hot.py"
+        target.write_text("a" * 100, encoding="utf-8")
+        import os as _os
+
+        before = _os.lstat(target)
+
+        def always_dirty(a, b):
+            return False
+
+        _marker_fn, digest, clean = hash_source_at(
+            None,
+            str(target),
+            before,
+            float("inf"),
+            {"input": 0, "output": 0},
+            10 * 1024 * 1024,
+            _marker,
+            always_dirty,
+        )
+        assert clean is False
+        assert digest == "<unsafe>"
