@@ -217,7 +217,13 @@ def stamp_full_index_manifest(
         # for 循环体至少执行一次,mypy 无法静态证明,此处显式断言
         assert current is not None
         if current.state != "exact" or current.rows != recorded:
-            raise sqlite3.OperationalError("SOURCE_CHANGED")
+            # 携带具体原因(#1364 诊断):区分超时/不安全/行不一致三种死法
+            raise sqlite3.OperationalError(
+                f"SOURCE_CHANGED:state={current.state}:"
+                f"reason={getattr(current, 'reason', None)}:"
+                f"rows_current={len(current.rows) if current.rows else 0}:"
+                f"rows_recorded={len(recorded)}"
+            )
         conn.execute("DELETE FROM ast_index_snapshot_manifest")
         conn.execute(
             "INSERT INTO ast_index_snapshot_manifest "
