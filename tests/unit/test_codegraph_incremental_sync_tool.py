@@ -101,7 +101,7 @@ class TestExecute:
 
 class TestCacheLifecycle:
     def test_sync_uses_limit_for_cold_cache_warmup(self, tool_with_root):
-        cache = MagicMock()
+        cache = MagicMock(project_root=tool_with_root.project_root)
         with (
             patch.object(tool_with_root, "_ensure_cache", return_value=cache) as ensure,
             patch.object(IncrementalSync, "sync", return_value=SyncResult()),
@@ -111,7 +111,7 @@ class TestCacheLifecycle:
         ensure.assert_called_once_with("json", max_files=7)
 
     def test_sync_closes_cache_after_success(self, tool_with_root):
-        cache = MagicMock()
+        cache = MagicMock(project_root=tool_with_root.project_root)
         with (
             patch.object(tool_with_root, "_ensure_cache", return_value=cache),
             patch.object(IncrementalSync, "sync", return_value=SyncResult()),
@@ -121,7 +121,7 @@ class TestCacheLifecycle:
         cache.close.assert_called_once_with()
 
     def test_sync_closes_cache_after_exception(self, tool_with_root):
-        cache = MagicMock()
+        cache = MagicMock(project_root=tool_with_root.project_root)
         with (
             patch.object(tool_with_root, "_ensure_cache", return_value=cache),
             patch.object(
@@ -135,7 +135,7 @@ class TestCacheLifecycle:
         cache.close.assert_called_once_with()
 
     def test_sync_closes_cache_after_sync_constructor_exception(self, tool_with_root):
-        cache = MagicMock()
+        cache = MagicMock(project_root=tool_with_root.project_root)
         with (
             patch.object(tool_with_root, "_ensure_cache", return_value=cache),
             patch(
@@ -176,7 +176,7 @@ def test_candidate_less_incremental_response_is_not_authoritative_success(
     tool_with_root,
 ):
     # PR #1253 review 3762603012: public sync has no frozen candidate evidence.
-    cache = MagicMock()
+    cache = MagicMock(project_root=tool_with_root.project_root)
     live_walk = SyncResult(scope_complete=False)
     with (
         patch.object(tool_with_root, "_ensure_cache", return_value=cache),
@@ -193,7 +193,7 @@ def test_candidate_less_incremental_response_is_not_authoritative_success(
 
 def test_parse_failure_makes_incremental_response_non_success(tool_with_root):
     # PR #1253 thread 3761514130: missing parsed rows are not MCP success.
-    cache = MagicMock()
+    cache = MagicMock(project_root=tool_with_root.project_root)
     parse_failure = SyncResult(errors=1, scope_complete=False)
     with (
         patch.object(tool_with_root, "_ensure_cache", return_value=cache),
@@ -212,7 +212,7 @@ def test_manifest_stamp_failure_makes_incremental_response_non_success(
     tool_with_root,
 ):
     # PR #1253 thread 3761514130: failed certification is not MCP success.
-    cache = MagicMock()
+    cache = MagicMock(project_root=tool_with_root.project_root)
     stamp_failure = SyncResult(
         scope_complete=False,
         manifest_certification_failed=True,
@@ -232,7 +232,7 @@ def test_manifest_stamp_failure_makes_incremental_response_non_success(
 
 def test_pipeline_warning_makes_incremental_response_non_success(tool_with_root):
     # PR #1253 review 3757240532: incomplete navigation is not an INFO success.
-    cache = MagicMock()
+    cache = MagicMock(project_root=tool_with_root.project_root)
     pipeline_failure = SyncResult(errors=1, backfill_errors=1)
     pipeline_failure.details.append(
         {

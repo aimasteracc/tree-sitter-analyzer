@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Tests for codegraph_full_index, codegraph_autoindex, and codegraph_incremental_sync MCP tools."""
 
+import os
+from pathlib import Path
+
 import pytest
 
 
@@ -268,6 +271,72 @@ class TestCodeGraphIncrementalSyncTool:
         tool = CodeGraphIncrementalSyncTool(project_root=project_root)
         result = await tool.execute({"mode": "status", "output_format": "json"})
         assert result["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_sync_uses_cache_authority_for_symlink_root(tmp_path):
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+    from tree_sitter_analyzer.mcp.tools.incremental_sync_tool import (
+        CodeGraphIncrementalSyncTool,
+    )
+
+    # #1385：真实目录别名不得与 cache 的规范根目录产生候选认证冲突。
+    root = tmp_path / "actual"
+    root.mkdir()
+    source = root / "leaf.py"
+    source.write_text("def leaf():\n    return 1\n", encoding="utf-8")
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(root, target_is_directory=True)
+    except OSError as exc:
+        if os.name == "nt" and getattr(exc, "winerror", None) == 1314:
+            pytest.skip("#1385：Windows 当前账号没有创建目录符号链接的权限")
+        raise
+    initial = await CodeGraphFullIndexTool(str(root)).execute({"max_files": 1})
+    assert initial["success"] is True
+    source.write_text("def leaf_v2():\n    return 2\n", encoding="utf-8")
+    tool = CodeGraphIncrementalSyncTool(str(alias))
+    result = await tool.execute({"mode": "sync", "max_files": 1})
+    assert result["success"] is True, result
+    assert (result["completeness"], result["updated_files"]) == ("complete", 1)
+    assert tool.project_root == str(alias)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["changes", "status"])
+@pytest.mark.parametrize("change", ["new", "modified", "deleted"])
+async def test_sync_preview_shares_exclusions(project_root, mode, change):
+    from tree_sitter_analyzer.mcp.tools.incremental_sync_tool import (
+        CodeGraphIncrementalSyncTool,
+    )
+
+    # #1385：被 sync 排除的语料不能让 changes/status 永远显示未同步。
+    root = Path(project_root)
+    corpus = root / "tests/golden/corpus_probe"
+    corpus.mkdir(parents=True)
+    (corpus / "excluded.py").write_text("def excluded():\n    pass\n", encoding="utf-8")
+    tool = CodeGraphIncrementalSyncTool(project_root)
+    synced = await tool.execute({"mode": "sync", "max_files": 1})
+    assert (synced["success"], synced["completeness"]) == (True, "complete")
+    clean = await tool.execute({"mode": mode})
+    assert clean["success"] is True
+    if mode == "changes":
+        assert (clean["new"], clean["modified"], clean["deleted"]) == ([], [], [])
+    else:
+        assert (clean["pending_changes"], clean["up_to_date"]) == (0, True)
+    source = root / ("new.py" if change == "new" else "src/main.py")
+    if change == "deleted":
+        source.unlink()
+    else:
+        source.write_text("def changed():\n    return 2\n", encoding="utf-8")
+    dirty = await tool.execute({"mode": mode})
+    assert dirty["success"] is True
+    if mode == "changes":
+        expected = {"new": [], "modified": [], "deleted": []}
+        expected[change] = [source.relative_to(root).as_posix()]
+        assert {key: dirty[key] for key in expected} == expected
+    else:
+        assert (dirty["pending_changes"], dirty["up_to_date"]) == (1, False)
 
 
 class TestIndexToolsRegistered:

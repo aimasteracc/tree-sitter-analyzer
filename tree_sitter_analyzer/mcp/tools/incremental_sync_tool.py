@@ -150,7 +150,7 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
                 certification_max_files=max_files,
             )
             candidate_snapshot = CodeGraphFullIndexTool(
-                str(self.project_root)
+                cache.project_root
             )._build_candidate_snapshot(max_files, exclude_patterns)
             try:
                 sync = IncrementalSync(cache)
@@ -214,7 +214,9 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
 
         try:
             sync = IncrementalSync(cache)
-            changes = sync.get_changes()
+            changes = sync.get_changes(
+                exclude_patterns=_resolve_exclude_patterns([], False)
+            )
         except Exception as exc:
             error, truncated = bounded_safe_error_message(
                 exc,
@@ -255,7 +257,9 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
 
             try:
                 sync = IncrementalSync(cache)
-                changes = sync.get_changes()
+                changes = sync.get_changes(
+                    exclude_patterns=_resolve_exclude_patterns([], False)
+                )
                 pending_changes = (
                     len(changes.get("new", []))
                     + len(changes.get("modified", []))
