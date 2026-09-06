@@ -588,6 +588,11 @@ def verify_test_isolation():
 # (file_watcher polling, real-process file_output, etc.).
 
 SLOW_TEST_BUDGET_S: float = 8.0 if sys.platform == "win32" else 5.0
+# CI 共享 runner 的墙钟方差约 1.6×（#1364 家族第三形态：macos 轴上同一测试
+# 两次以 5.41s/6.02s 刷过 5s 预算——本机快、CI 慢，不是回归）。GitHub Actions
+# 自带 CI=true；本地保持严格 5s 不变，CI 自动放宽到 8s 与 Windows 对齐。
+if os.environ.get("CI"):
+    SLOW_TEST_BUDGET_S *= 1.6
 
 
 @pytest.hookimpl(wrapper=True)
