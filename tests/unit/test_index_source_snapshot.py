@@ -139,7 +139,7 @@ class TestSnapshotFailureContracts:
 
         (tmp_path / "notes.txt").write_text("ignored")
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        assert (rows, unsafe) == (frozenset(), False)
+        assert rows == frozenset() and not unsafe
 
     def test_inventory_rejects_scope_root_escape(self, tmp_path):
         import tree_sitter_analyzer.index_source_snapshot as source
@@ -311,7 +311,7 @@ class TestSnapshotFailureContracts:
 
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
 
-        assert (rows, unsafe) == (frozenset(), True)
+        assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
     def test_inventory_rejects_non_directory_root(self, tmp_path, monkeypatch):
         # PR #1253: the pinned root must itself be a directory descriptor.
@@ -442,7 +442,7 @@ class TestSnapshotFailureContracts:
         monkeypatch.setattr(source.os, "open", swap_root)
         rows, unsafe = source._inventory(str(root), float("inf"), with_content=True)
 
-        assert (rows, unsafe) == (frozenset(), True)
+        assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
     @requires_posix_fd
     def test_capture_revalidates_each_leaf_after_final_inventory(
@@ -600,7 +600,7 @@ class TestSnapshotFailureContracts:
         monkeypatch.setattr(source.os, "open", swap_child)
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
 
-        assert (rows, unsafe) == (frozenset(), True)
+        assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
     @requires_posix_fd
     def test_inventory_rejects_declared_scope_swapped_for_ordinary_directory(
@@ -630,7 +630,7 @@ class TestSnapshotFailureContracts:
             str(tmp_path), float("inf"), scope, with_content=True
         )
 
-        assert (rows, unsafe) == (frozenset(), True)
+        assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
 
 def test_revalidate_source_rows_enforces_absolute_deadline(tmp_path):
