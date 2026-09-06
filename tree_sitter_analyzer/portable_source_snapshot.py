@@ -164,25 +164,36 @@ def capture_portable_source_snapshot(
 ) -> CurrentSourceSnapshot:
     """Capture two equal bounded inventories on Windows/pathname-only hosts."""
     root = os.path.abspath(project_root)
-    try:
-        first, unsafe_first = _portable_inventory(root, source_scope, deadline)
-        second, unsafe_second = _portable_inventory(root, source_scope, deadline)
-        fingerprint = inventory_fingerprint(first, deadline=deadline)
-    except TimeoutError:
-        return CurrentSourceSnapshot(
-            frozenset(), None, None, "unknown", "SOURCE_SCAN_DEADLINE"
-        )
-    except OverflowError:
-        return CurrentSourceSnapshot(
-            frozenset(), None, None, "unknown", "SOURCE_SCOPE_UNBOUNDED"
-        )
-    except OSError:
-        return CurrentSourceSnapshot(
-            frozenset(), None, None, "unknown", "SOURCE_SCOPE_UNREADABLE"
-        )
-    generation = "idxsrc-v3:" + fingerprint.removeprefix("sha256:")
-    if unsafe_first or unsafe_second or first != second:
-        return CurrentSourceSnapshot(
-            first, fingerprint, generation, "unsafe", "SOURCE_SCOPE_UNSAFE"
-        )
-    return CurrentSourceSnapshot(first, fingerprint, generation, "exact", None)
+    # #1364：满载 CI（多 worker 抢核 + Defender 实时扫描）上,双走不一致
+    # (UNSAFE)与超时一样是机器抖动而非数据真变——整体重试一次;真实
+    # 不稳定 scope 第二次仍会失败,语义不变。重试也顺带覆盖超时分支。
+    for attempt in (1, 2):
+        try:
+            first, unsafe_first = _portable_inventory(root, source_scope, deadline)
+            second, unsafe_second = _portable_inventory(root, source_scope, deadline)
+            fingerprint = inventory_fingerprint(first, deadline=deadline)
+        except TimeoutError:
+            if attempt == 1:
+                continue
+            return CurrentSourceSnapshot(
+                frozenset(), None, None, "unknown", "SOURCE_SCAN_DEADLINE"
+            )
+        except OverflowError:
+            return CurrentSourceSnapshot(
+                frozenset(), None, None, "unknown", "SOURCE_SCOPE_UNBOUNDED"
+            )
+        except OSError:
+            return CurrentSourceSnapshot(
+                frozenset(), None, None, "unknown", "SOURCE_SCOPE_UNREADABLE"
+            )
+        generation = "idxsrc-v3:" + fingerprint.removeprefix("sha256:")
+        if unsafe_first or unsafe_second or first != second:
+            if attempt == 1:
+                continue
+            return CurrentSourceSnapshot(
+                first, fingerprint, generation, "unsafe", "SOURCE_SCOPE_UNSAFE"
+            )
+        return CurrentSourceSnapshot(first, fingerprint, generation, "exact", None)
+    return CurrentSourceSnapshot(
+        frozenset(), None, None, "unknown", "SOURCE_SCAN_DEADLINE"
+    )
