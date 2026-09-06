@@ -67,6 +67,25 @@ def hash_source_at(
     finally:
         os.close(fd)
     clean = same_file_metadata(before, after)
+    if not clean:
+        # #1364/#1373 家族：极新文件的元数据（size/mtime_ns）在 walker 的
+        # lstat 快照与读后 fstat 之间仍在沉降（NTFS/Defender 延迟，满载
+        # CI 上窗口更大）——旧快照过期被误判为篡改。重取一次 lstat：仅当
+        # 「与读后状态一致」且「ctime 未变」（自 walker 观测以来没有真实
+        # 写入，只是惰性沉降）才判 clean。原地重写会更新 ctime（POSIX），
+        # 即使恢复 mtime/size 也会在此维持 unsafe——防篡改不降级；
+        # Windows 上 ctime=创建时间不随重写变化，但此时内容摘要已变，
+        # 认证层的行比对（rows != recorded）仍会拦截，纵深防御保留。
+        try:
+            refreshed = os.lstat(name)
+        except OSError:
+            refreshed = None  # 无法重取时维持原判定
+        if (
+            refreshed is not None
+            and same_file_metadata(refreshed, after)
+            and int(refreshed.st_ctime_ns) == int(before.st_ctime_ns)
+        ):
+            clean = True
     return (
         metadata_marker(after),
         digest.hexdigest() if clean else "<unsafe>",
