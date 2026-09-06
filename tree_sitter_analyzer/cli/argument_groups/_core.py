@@ -30,7 +30,9 @@ def _add_output_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--table",
-        choices=["full", "signatures"],
+        # 对齐 _VALID_FORMAT_TYPES(1d26baca 回退后含 compact/csv):
+        # 删格式的尝试已因 50 连爆被否决,CLI 选项必须与校验层一致
+        choices=["full", "compact", "csv", "signatures"],
         help=(
             "Output in table format. "
             "'full' = all columns (default); "
