@@ -208,8 +208,11 @@ def stamp_full_index_manifest(
                 )
                 if current.state == "exact":
                     break
+                # 瞬态失败重试一次(#1364):满载 CI 上目录遍历的超时与双走
+                # 不一致(UNSAFE)都是机器负载抖动;真实源变化/不可读不重试
                 if (
-                    getattr(current, "reason", None) == "SOURCE_SCAN_DEADLINE"
+                    getattr(current, "reason", None)
+                    in ("SOURCE_SCAN_DEADLINE", "SOURCE_SCOPE_UNSAFE")
                     and attempt == 1
                 ):
                     continue
