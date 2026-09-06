@@ -1344,28 +1344,20 @@ def test_find_test_files_maps_extracted_query_helpers_to_family_tests():
     expected = [
         "tests/unit/mcp/test_query_tool.py",
     ]
-    assert (
-        mapping["tree_sitter_analyzer/mcp/tools/query_agent_summary.py"]
-        == expected
-    )
-    assert (
-        mapping["tree_sitter_analyzer/mcp/tools/query_response_modes.py"]
-        == expected
-    )
-    assert (
-        mapping["tree_sitter_analyzer/mcp/tools/query_validation.py"]
-        == expected
-    )
+    assert mapping["tree_sitter_analyzer/mcp/tools/query_agent_summary.py"] == expected
+    assert mapping["tree_sitter_analyzer/mcp/tools/query_response_modes.py"] == expected
+    assert mapping["tree_sitter_analyzer/mcp/tools/query_validation.py"] == expected
 
 
 def test_find_test_files_maps_list_files_execution_to_family_tests():
-    """Execution helper modules should stay on targeted list_files tests."""
+    """执行辅助模块应映射到保留的 list_files 行为测试。"""
     mapping = change_impact_tool._find_test_files(
         ["tree_sitter_analyzer/mcp/tools/list_files_execution.py"],
         {
             "tests/unit/core/test_list_files_tool_file_output.py",
             "tests/unit/mcp/test_list_files_tool.py",
-            "tests/unit/mcp/test_mcp_list_files_p1.py",
+            "tests/unit/mcp/test_mcp_list_files_p1a_validation.py",
+            "tests/unit/mcp/test_mcp_list_files_p1b_fd_features.py",
             "tests/unit/mcp/test_mcp_list_files_p2.py",
             "tests/unit/mcp/test_change_impact_tool.py",
         },
@@ -1374,7 +1366,8 @@ def test_find_test_files_maps_list_files_execution_to_family_tests():
     assert mapping["tree_sitter_analyzer/mcp/tools/list_files_execution.py"] == [
         "tests/unit/core/test_list_files_tool_file_output.py",
         "tests/unit/mcp/test_list_files_tool.py",
-        "tests/unit/mcp/test_mcp_list_files_p1.py",
+        "tests/unit/mcp/test_mcp_list_files_p1a_validation.py",
+        "tests/unit/mcp/test_mcp_list_files_p1b_fd_features.py",
         "tests/unit/mcp/test_mcp_list_files_p2.py",
     ]
 
