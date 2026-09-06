@@ -61,24 +61,36 @@ def _portable_inventory(
     project_root: str,
     scope: SourceScopeDescriptor,
     deadline: float,
-) -> tuple[frozenset[tuple[str, str, str]], bool]:
-    """Hash one bounded pathname inventory without following directory links."""
+) -> tuple[frozenset[tuple[str, str, str]], str | None]:
+    """Hash one bounded pathname inventory without following directory links.
+
+    返回 (rows, unsafe_reason);unsafe_reason 为 None 表示安全,否则给出
+    具体触发的安全检查名(#1364/#1373 诊断:满载 CI 上的 unsafe 需要
+    区分是目录身份漂移、双走不一致还是哈希不洁)。
+    """
     project = Path(project_root)
     root_before = os.lstat(project)
     if not stat.S_ISDIR(root_before.st_mode) or _is_reparse(root_before):
-        return frozenset(), True
+        return frozenset(), "root_reparse_or_not_dir"
     rows: set[tuple[str, str, str]] = set()
     counters = {"entries": 0, "path_bytes": 0, "input": 0, "output": 0}
     supported = 0
-    unsafe = False
+    # #1364/#1373 诊断:记录首个触发的安全检查名,None=安全
+    unsafe_reason: str | None = None
+
+    def _flag(reason: str) -> None:
+        nonlocal unsafe_reason
+        if unsafe_reason is None:
+            unsafe_reason = reason
+
     for relative_root in scope.roots:
         base = _scope_root(project, relative_root)
         try:
             base_before = os.lstat(base)
         except OSError:
-            return frozenset(), True
+            return frozenset(), "scope_root_stat_failed"
         if not stat.S_ISDIR(base_before.st_mode) or _is_reparse(base_before):
-            return frozenset(), True
+            return frozenset(), "scope_root_reparse_or_not_dir"
         stack = [(base, base_before)]
         while stack:
             directory, discovered = stack.pop()
@@ -89,7 +101,7 @@ def _portable_inventory(
                     or _is_reparse(directory_before)
                     or _identity(directory_before) != _identity(discovered)
                 ):
-                    return frozenset(), True
+                    return frozenset(), "dir_identity_changed"
                 entries = os.scandir(directory)
                 with entries:
                     for entry in entries:
@@ -117,7 +129,7 @@ def _portable_inventory(
                             continue
                         if _is_reparse(before):
                             if language is not None:
-                                unsafe = True
+                                _flag("reparse_supported_file")
                             continue
                         if language is None or any(
                             fnmatch.fnmatch(relative, pattern)
@@ -125,7 +137,7 @@ def _portable_inventory(
                         ):
                             continue
                         if not stat.S_ISREG(before.st_mode):
-                            unsafe = True
+                            _flag("supported_not_regular")
                             continue
                         supported += 1
                         if supported > min(
@@ -143,17 +155,17 @@ def _portable_inventory(
                             _same,
                         )
                         if not clean:
-                            unsafe = True
+                            _flag("hash_unclean")
                         rows.add((relative, digest, language))
             except OSError:
-                return frozenset(), True
+                return frozenset(), "walk_oserror"
             if _identity(os.lstat(directory)) != _identity(directory_before):
-                unsafe = True
+                _flag("dir_identity_changed")
         if _identity(os.lstat(base)) != _identity(base_before):
-            unsafe = True
+            _flag("scope_root_identity_changed")
     if _identity(os.lstat(project)) != _identity(root_before):
-        unsafe = True
-    return frozenset(rows), unsafe
+        _flag("project_root_identity_changed")
+    return frozenset(rows), unsafe_reason
 
 
 def capture_portable_source_snapshot(
@@ -190,8 +202,16 @@ def capture_portable_source_snapshot(
         if unsafe_first or unsafe_second or first != second:
             if attempt == 1:
                 continue
+            # 诊断细节随行(#1364/#1373):指出首个触发的安全检查名;
+            # 双走不一致时优先报 walk_mismatch。既有断言以
+            # SOURCE_SCOPE_UNSAFE 开头匹配的不受影响。
+            detail = unsafe_first or unsafe_second or "walk_mismatch"
             return CurrentSourceSnapshot(
-                first, fingerprint, generation, "unsafe", "SOURCE_SCOPE_UNSAFE"
+                first,
+                fingerprint,
+                generation,
+                "unsafe",
+                f"SOURCE_SCOPE_UNSAFE:{detail}",
             )
         return CurrentSourceSnapshot(first, fingerprint, generation, "exact", None)
     return CurrentSourceSnapshot(
