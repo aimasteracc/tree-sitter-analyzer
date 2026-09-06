@@ -102,7 +102,10 @@ _FINGERPRINT_DEADLINE_ENV = "TSA_FINGERPRINT_DEADLINE_SECONDS"
 
 def _fingerprint_deadline_seconds() -> float:
     """读取（可配置的）单次源指纹遍历墙钟上限，下限 1 秒防误配。"""
-    raw = os.environ.get(_FINGERPRINT_DEADLINE_ENV, "")
+    # 测试会以 PortableOS 桩替换 os 模块强制走便携分支(无 environ);
+    # 防御式读取,桩环境下回落默认值
+    env = getattr(os, "environ", None)
+    raw = env.get(_FINGERPRINT_DEADLINE_ENV, "") if env else ""
     if not raw:
         return _FINGERPRINT_DEADLINE_SECONDS
     try:
