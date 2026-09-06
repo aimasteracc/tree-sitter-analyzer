@@ -42,6 +42,16 @@ def mutated(path: tuple[str, ...], value: object) -> dict:
     target[path[-1]]=value; report["canonical_payload_sha256"]=collector.canonical_hash(report)
     return report
 
+# #1373:windows 轴上这两个真跑 git clone 的契约反复触发 xdist worker 原生崩溃
+# (node down: Not properly terminated)。采集器证据平台无关,按 full_language
+# 只跑 Linux 覆盖轴的同一原则,限 POSIX 轴执行;windows 原生崩溃根因另案追踪。
+_NO1_POSIX_ONLY = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="tracked: #1373 windows xdist worker hard-crash around fresh-clone contract",
+)
+
+
+
 def test_checked_in_receipt_passes_schema_and_cross_field_validator() -> None:
     collector.validate_receipt(baseline(), schema())
 
@@ -141,6 +151,7 @@ def test_receipt_binds_exact_collector_and_schema_bytes() -> None:
     blobs=[subprocess.run(["git","show",f"{commit}:{path}"],cwd=REPO,check=True,capture_output=True).stdout for path in paths]
     assert [report["collector"][key] for key in ("script_sha256","schema_sha256","support_sha256")] == [collector.digest_bytes(blob) for blob in blobs]
 
+@_NO1_POSIX_ONLY
 def test_receipt_binds_exact_collector_tool_lock_and_export(tmp_path: Path) -> None:
     # PR #1250: the historical collector closure must be derived from its bound commit, never reviewed HEAD.
     report=baseline(); commit=report["collector"]["commit"]; command=report["commands"]["collector_tool_export"]
@@ -359,6 +370,7 @@ def test_collector_commit_is_ancestor_of_reviewed_head() -> None:
     result=subprocess.run(["git","merge-base","--is-ancestor",commit,"HEAD"],cwd=REPO)
     assert result.returncode == 0
 
+@_NO1_POSIX_ONLY
 def test_fresh_clone_can_resolve_and_checkout_collector_commit(tmp_path: Path) -> None:
     commit=baseline()["collector"]["commit"]
     bare=tmp_path/"reviewed.git"; clone=tmp_path/"clone"; worktree=tmp_path/"collector"
