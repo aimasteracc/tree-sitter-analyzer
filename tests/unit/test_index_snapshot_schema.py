@@ -465,3 +465,38 @@ def test_unsupported_table_xinfo_metadata_fails_closed(row: tuple[object, ...]) 
 
     with pytest.raises(RuntimeError, match="^INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA$"):
         schema._query_visible_columns(Connection(), "payload", float("inf"))
+
+
+class TestFingerprintDeadlineConfig:
+    """#1364：满载 CI 上的瞬时遍历卡顿不应被误判为「源被篡改」。
+
+    修复提供两道保险：截止时间可用环境变量调高（本组测试锁定旋钮语义），
+    以及 SOURCE_SCAN_DEADLINE 的 unknown 结果自动重试一次（集成层由
+    test_incremental_scope_change_prunes_newly_excluded_rows 覆盖）。
+    """
+
+    def test_环境变量覆盖生效且有下限(self, monkeypatch):
+        from tree_sitter_analyzer.index_snapshot_schema import (
+            _fingerprint_deadline_seconds,
+        )
+
+        monkeypatch.setenv("TSA_FINGERPRINT_DEADLINE_SECONDS", "30")
+        assert _fingerprint_deadline_seconds() == 30.0
+        monkeypatch.setenv("TSA_FINGERPRINT_DEADLINE_SECONDS", "0.1")
+        assert _fingerprint_deadline_seconds() == 1.0  # 下限保护
+
+    def test_误配回退默认5秒(self, monkeypatch):
+        from tree_sitter_analyzer.index_snapshot_schema import (
+            _fingerprint_deadline_seconds,
+        )
+
+        monkeypatch.setenv("TSA_FINGERPRINT_DEADLINE_SECONDS", "not-a-number")
+        assert _fingerprint_deadline_seconds() == 5.0
+
+    def test_未设置用默认值(self, monkeypatch):
+        from tree_sitter_analyzer.index_snapshot_schema import (
+            _fingerprint_deadline_seconds,
+        )
+
+        monkeypatch.delenv("TSA_FINGERPRINT_DEADLINE_SECONDS", raising=False)
+        assert _fingerprint_deadline_seconds() == 5.0
