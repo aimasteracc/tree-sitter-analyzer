@@ -53,3 +53,15 @@ def test_doc_declares_threshold_and_no_permanent_exception_policy() -> None:
     text = DOC.read_text(encoding="utf-8")
     assert "800" in text
     assert "No file has a permanent size exception" in text
+
+
+def test_benchmark_harness_modules_follow_project_size_cap() -> None:
+    """PR #1393 / #1376：迁移模块遵守 500 行硬上限，而非 800 行告警线。"""
+    paths = set(PROJECT_ROOT.glob("tests/unit/test_benchmark_harness*.py"))
+    paths.update(PROJECT_ROOT.glob("tests/unit/_benchmark_harness*.py"))
+    oversized = {
+        path.name: count
+        for path in sorted(paths)
+        if (count := len(path.read_text(encoding="utf-8").splitlines())) > 500
+    }
+    assert oversized == {}
