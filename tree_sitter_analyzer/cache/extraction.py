@@ -981,15 +981,17 @@ def _walk_for_symbols(
         return
     node_type = node.type
     name_node = node.child_by_field_name("name")
-    # C ``function_definition`` nodes carry their identifier under
-    # ``function_declarator`` (no ``name`` field), so recover it explicitly —
-    # otherwise ordinary C free functions never reach ``ast_symbol_rows`` and the
-    # synapse C resolver's project-ownership gate cannot shadow the libc tier.
+    # C and C++ ``function_definition`` nodes carry their identifier under
+    # ``function_declarator`` (no ``name`` field), so recover it explicitly.
+    # The gate was previously limited to ``language == "c"``, which left all
+    # 68+ recoverable C++ functions and methods absent from ast_symbol_rows,
+    # FTS, and symbol search. C++ shares the same declarator grammar shape, so
+    # extending to ``"cpp"`` applies the same walk without any other change.
     func_name: str | None = None
     if node_type in _FUNCTION_LIKE:
         if name_node is not None:
             func_name = _node_text(name_node, source)
-        elif node_type == "function_definition" and language == "c":
+        elif node_type == "function_definition" and language in ("c", "cpp"):
             func_name = _c_function_def_name(node, source)
     if func_name is not None:
         name = func_name
