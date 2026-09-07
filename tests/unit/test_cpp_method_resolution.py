@@ -9,8 +9,6 @@ external method tiers, and — MANDATORY — the no-cross-language-mis-wire moat
 
 from __future__ import annotations
 
-import pytest
-
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.synapse_resolver import ResolverContext, resolve_callee
 from tree_sitter_analyzer.synapse_resolver._context import build_resolver_context
@@ -622,23 +620,10 @@ class TestRealIndexIntegration:
         else:
             assert (sym, res, f) == (None, "unknown", "")
 
-    @pytest.mark.xfail(
-        reason=(
-            "Known production gap: the shared generic symbol walker "
-            "(_ast_extraction._walk_for_symbols) gates on "
-            "child_by_field_name('name'), which tree-sitter C++ "
-            "function_definition nodes do not expose (the identifier lives "
-            "under function_declarator), so ordinary C++ free functions are "
-            "absent from ast_symbol_rows and the local/single-global tiers "
-            "cannot fire. Root cause lives in the shared extractor, out of "
-            "this resolver's scope; this xfail is the regression target so the "
-            "tier flips to PASS once the walker recovers C++ symbols."
-        ),
-        strict=True,
-    )
     def test_local_free_function_resolves_on_real_index(self, tmp_path) -> None:
-        """When the extractor populates C++ symbols, an unqualified call to a
-        same-file free function (``helper``) must resolve ``local``."""
+        """C++ free functions now reach ast_symbol_rows (extractor v16+, declarator
+        walk extended to cpp), so an unqualified call to a same-file free function
+        (``helper``) resolves ``local``. xfail removed: the production gap is fixed."""
         _root, cpp_ctx = _index_and_build(tmp_path, {"service.cpp": _REAL_CPP})
         _sym, res, f = resolve_cpp_callee("helper", "helper", "service.cpp", cpp_ctx)
         assert res == "local"
