@@ -44,7 +44,10 @@ logger = logging.getLogger(__name__)
 # v16: C++ ``function_definition`` nodes now recover their name via
 #      ``_c_function_def_name`` (same declarator walk as C). Previously all
 #      C++ free functions and methods were absent from ast_symbol_rows.
-_AST_CACHE_EXTRACTOR_VERSION = 16
+# v17: Kotlin companion_object members now attributed to their enclosing class;
+#      Java record_declaration added to _CLASS_LIKE so record methods/ctors are
+#      classified method instead of function. Both change persisted symbol rows.
+_AST_CACHE_EXTRACTOR_VERSION = 17
 
 
 def check_cache_or_read(

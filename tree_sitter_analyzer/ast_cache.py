@@ -92,9 +92,11 @@ logger = logging.getLogger(__name__)
 #      ``function``; both change persisted rows, so re-indexing is required.
 # v16: C++ function_definition nodes recover names via _c_function_def_name;
 #      previously all C++ free functions and methods were absent from the index.
+# v17: Kotlin companion_object members attributed to enclosing class;
+#      Java record_declaration added to _CLASS_LIKE. Both change symbol rows.
 #      MUST stay equal to the copy in ``cache/indexer.py``
 #      (gated by test_extractor_version_matches_in_both_sites).
-_AST_CACHE_EXTRACTOR_VERSION = 16
+_AST_CACHE_EXTRACTOR_VERSION = 17
 
 
 class SchemaIntegrityError(RuntimeError):
