@@ -15,6 +15,49 @@ requires_posix_fd = requires_posix_snapshot
 
 
 class TestNonPosixSnapshotContract:
+    def test_unsupported_capture_preserves_ordinary_index_update_and_query(
+        self, tmp_path, monkeypatch
+    ):
+        """PR #1350：WAL 捕获未获资格时，普通创建、更新与图查询仍须可用。"""
+        import tree_sitter_analyzer.index_snapshot as owner
+        import tree_sitter_analyzer.index_snapshot_capability as capability
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        monkeypatch.setattr(capability, "_WAL_FD_COPY_SUPPORTED", False)
+        source = tmp_path / "app.py"
+        source.write_text(
+            "def helper(): return 1\ndef run(): return helper()\n", encoding="utf-8"
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            assert cache.index_file(str(source))["status"] == "indexed"
+            assert [
+                (edge["callee_name"], edge["callee_resolved_file"])
+                for edge in cache.query_callees("run", "app.py")
+            ] == [("helper", "app.py")]
+            snapshot = owner._capture_wal_snapshot(
+                str(tmp_path.resolve()),
+                str(tmp_path / ".ast-cache" / "index.db"),
+                deadline=owner._clock() + 10,
+            )
+            assert (snapshot.snapshot_id, snapshot.completeness, snapshot.reason) == (
+                None,
+                "unknown",
+                "WAL_PRIVATE_SNAPSHOT_UNSUPPORTED",
+            )
+            source.write_text(
+                "def updated(): return 42\ndef run(): return updated()\n",
+                encoding="utf-8",
+            )
+            assert cache.index_file(str(source))["status"] == "indexed"
+            assert [
+                (edge["callee_name"], edge["callee_resolved_file"])
+                for edge in cache.query_callees("run", "app.py")
+            ] == [("updated", "app.py")]
+            assert cache.query_callers("helper", "app.py") == []
+        finally:
+            cache.close()
+
     def test_missing_project_root_precedes_missing_index_classification(self, tmp_path):
         # PR #1253 review 3763600676: invalid configuration is not an empty cache.
         import tree_sitter_analyzer.index_snapshot as owner
@@ -1615,22 +1658,45 @@ class TestWalSnapshotPath:
         assert lock.acquire.call_count == 1
         lock.release.assert_not_called()
 
-    def test_wal_path_bypasses_posix_gate(self, tmp_path, monkeypatch):
-        """空文件不是有效索引，WAL 路径必须明确报告 CORRUPT_INDEX。"""
+    @pytest.mark.parametrize("deny_capture", [False, True])
+    def test_wal_path_requires_supported_capture(
+        self, tmp_path, monkeypatch, deny_capture
+    ):
+        """PR #1350：未获资格时不读库；支持的平台必须实际诊断损坏索引。"""
         import tree_sitter_analyzer.index_snapshot as owner
+        import tree_sitter_analyzer.index_snapshot_capability as capability
 
         cache_dir = tmp_path / ".ast-cache"
         cache_dir.mkdir()
         # 缺失 schema 表的 SQLite 错误由快照打开边界归类。
         (cache_dir / "index.db").write_bytes(b"")
+        if deny_capture:
+            monkeypatch.setattr(capability, "_WAL_FD_COPY_SUPPORTED", False)
+        supported = (
+            os.name == "posix"
+            and hasattr(os, "O_NOFOLLOW")
+            and capability._WAL_FD_COPY_SUPPORTED
+        )
+        if not supported:
+            monkeypatch.setattr(
+                capability,
+                "open_bound_database",
+                lambda *_a, **_k: pytest.fail("unsupported capture opened source"),
+            )
+            monkeypatch.setattr(
+                owner.sqlite3,
+                "connect",
+                lambda *_a, **_k: pytest.fail("unsupported capture opened SQLite"),
+            )
         result = owner._capture_wal_snapshot(
             str(tmp_path.resolve()),
             str(cache_dir / "index.db"),
             deadline=owner._clock() + 10,
         )
-        assert (result.completeness, result.reason) == (
+        assert (result.snapshot_id, result.completeness, result.reason) == (
+            None,
             "unknown",
-            "CORRUPT_INDEX",
+            "CORRUPT_INDEX" if supported else "WAL_PRIVATE_SNAPSHOT_UNSUPPORTED",
         )
 
     def test_capture_snapshot_on_windows_no_longer_unknown_unsupported(
@@ -1692,27 +1758,36 @@ class TestWalSnapshotPath:
         assert snapshot_val == 1
         assert val_after_write == 1
 
+    @pytest.mark.parametrize("deny_capture", [False, True])
     def test_wal_snapshot_stat_mismatch_falls_back_to_concurrent_writer(
-        self, tmp_path, monkeypatch
+        self, tmp_path, monkeypatch, deny_capture
     ):
-        """读取原始字节期间真实修改 mtime，必须拒绝该代快照。"""
+        """PR #1350：支持时验证真实身份漂移；未获资格时禁止尝试读取。"""
         import tree_sitter_analyzer.index_snapshot as owner
         import tree_sitter_analyzer.index_snapshot_capability as capability
         from tree_sitter_analyzer.ast_cache import ASTCache
 
-        # 有効な SQLite DB を作成
+        # 准备真实索引，平台资格只约束新增只读捕获，不约束普通索引创建。
         source = tmp_path / "sample.py"
         source.write_text("x = 1\n", encoding="utf-8")
         cache = ASTCache(str(tmp_path))
         cache.index_file(str(source))
         cache.close()
 
+        if deny_capture:
+            monkeypatch.setattr(capability, "_WAL_FD_COPY_SUPPORTED", False)
+        supported = (
+            os.name == "posix"
+            and hasattr(os, "O_NOFOLLOW")
+            and capability._WAL_FD_COPY_SUPPORTED
+        )
         db = tmp_path / ".ast-cache" / "index.db"
         before = db.stat()
         read = os.read
         changed = []
 
         def read_with_mtime_change(fd, size):
+            assert supported, "unsupported capture attempted source read"
             if not changed and os.fstat(fd).st_ino == before.st_ino:
                 changed.append(True)
                 os.utime(
@@ -1724,9 +1799,12 @@ class TestWalSnapshotPath:
         result = owner._capture_wal_snapshot(
             str(tmp_path.resolve()), str(db), deadline=owner._clock() + 10
         )
-        assert changed == [True]
-        assert result.completeness == "unknown"
-        assert result.reason == "CONCURRENT_WRITER"
+        assert changed == ([True] if supported else [])
+        assert (result.snapshot_id, result.completeness, result.reason) == (
+            None,
+            "unknown",
+            "CONCURRENT_WRITER" if supported else "WAL_PRIVATE_SNAPSHOT_UNSUPPORTED",
+        )
 
     def test_wal_without_descriptor_identity_support_never_opens_sqlite(
         self, tmp_path, monkeypatch

@@ -329,13 +329,7 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         )
 
     def _indexed_source_files_are_complete(self) -> bool:
-        """Return whether ast_index is fully certified (O(1) via COUNT queries).
-
-        REQ-E-401: Replaces the O(n) os.walk + full-table fetch with two
-        COUNT(*) queries against the certified_at column added by
-        apply_migration_v14.  Falls back to False when the column is absent
-        (pre-v14 DB) rather than degrading to the expensive legacy path.
-        """
+        """认证行还必须覆盖当前源码集合；没有 watcher 时不能用 SQL 证明范围完整。"""
         try:
             conn = self._get_conn()
             (uncertified,) = conn.execute(
@@ -343,11 +337,16 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             ).fetchone()
             if uncertified > 0:
                 return False
-            row = conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()
-            return int(row[0]) > 0
+            rows = conn.execute("SELECT file_path FROM ast_index").fetchall()
         except sqlite3.OperationalError:
-            # certified_at column absent (apply_migration_v14 not yet applied) — safe fallback
+            # 旧 schema 缺少认证列时保持拒绝，不把未知状态提升为完整。
             return False
+        source_files = {
+            os.path.relpath(path, self.project_root).replace("\\", "/")
+            for path in _indexer._walk_source_files(self.project_root)
+        }
+        indexed_files = {str(row[0]).replace("\\", "/") for row in rows}
+        return bool(source_files) and indexed_files == source_files
 
     @staticmethod
     def _resolve_worker_count(workers: int | None, candidates: list[Any]) -> int:

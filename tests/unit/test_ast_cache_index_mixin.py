@@ -37,19 +37,24 @@ def _make_mixin(conn: sqlite3.Connection):
 class TestIndexedSourceFilesAreComplete:
     """REQ-U-403: three correctness cases + fallback case."""
 
-    def test_empty_table_returns_false(self):
+    def test_empty_table_returns_false(self, tmp_path):
         """Case (a): ast_index is empty → False."""
         conn = _make_conn([])
         mixin = _make_mixin(conn)
+        mixin.project_root = str(tmp_path)
         assert mixin._indexed_source_files_are_complete() is False
 
-    def test_all_certified_returns_true(self):
-        """Case (b): every row has certified_at IS NOT NULL → True."""
+    def test_all_certified_returns_true(self, tmp_path):
+        """认证行与实际源码集合完全相等时才完整。"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src/a.py").write_text("a = 1\n", encoding="utf-8")
+        (tmp_path / "src/b.py").write_text("b = 2\n", encoding="utf-8")
         conn = _make_conn(
             [("src/a.py", 1000), ("src/b.py", 1001)],
             has_certified_at=True,
         )
         mixin = _make_mixin(conn)
+        mixin.project_root = str(tmp_path)
         assert mixin._indexed_source_files_are_complete() is True
 
     def test_one_uncertified_returns_false(self):

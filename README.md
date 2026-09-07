@@ -362,9 +362,9 @@ Mostly nothing. The defaults are designed so you can hook it into your agent and
 Ordinary file analysis, index creation/update, and legacy index-backed queries are
 separate from certified snapshot access. Their existing Windows operational paths
 do not require the new private WAL snapshot kernel. They may create or update the
-cache; they do not acquire a zero-write guarantee by using this feature.
+cache; certified read-only access has a separate contract.
 
-PR #1350 adds **POSIX-only private database/WAL evidence capture**, requiring
+The snapshot implementation adds **POSIX-only private database/WAL evidence capture**, requiring
 descriptor-relative operations, `O_NOFOLLOW`, a safe external temporary directory,
 and successful source/manifest/projection checks. It does **not** deliver Windows
 read-only snapshot parity or extend the existing qualification gate for explicit

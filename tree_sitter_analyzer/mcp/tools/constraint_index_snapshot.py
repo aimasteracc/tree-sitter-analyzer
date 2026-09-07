@@ -70,9 +70,10 @@ def _identity(path: Path, *, directory: bool) -> tuple[int, int, int, int, int]:
 
 
 def _open_database_fd(db_path: Path, expected: tuple[int, int, int, int, int]) -> int:
-    """Open the database read-only and bind the descriptor to its lstat identity."""
+    """按二进制只读打开数据库并核对身份，避免 Windows 文本模式截断数据库字节。"""
     flags = (
         os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
         | getattr(os, "O_NONBLOCK", 0)
         | getattr(os, "O_NOFOLLOW", 0)
         | getattr(os, "O_CLOEXEC", 0)
