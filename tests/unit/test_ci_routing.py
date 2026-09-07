@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from scripts.ci_route import load_routing_config, route_changed_files
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -78,8 +80,13 @@ def test_workflow_change_forces_full_suite() -> None:
     assert result["run_sql_platform_compat"] is True
 
 
-def test_regression_scope_is_narrow_when_only_api_changes() -> None:
-    result = route_changed_files(["tree_sitter_analyzer/api.py"], CONFIG)
+@pytest.mark.parametrize(
+    "path",
+    ["tree_sitter_analyzer/api/__init__.py", "tree_sitter_analyzer/api/semantic.py"],
+)
+def test_regression_scope_is_narrow_when_only_api_changes(path) -> None:
+    # PR #1352：API package 下的入口和子模块都必须触发原 API 回归路由。
+    result = route_changed_files([path], CONFIG)
 
     assert result["run_regression"] is True
     assert result["regression_scope"] == "api"
@@ -87,7 +94,10 @@ def test_regression_scope_is_narrow_when_only_api_changes() -> None:
 
 def test_multiple_regression_scopes_upgrade_to_all() -> None:
     result = route_changed_files(
-        ["tree_sitter_analyzer/api.py", "tree_sitter_analyzer/formatters/json.py"],
+        [
+            "tree_sitter_analyzer/api/__init__.py",
+            "tree_sitter_analyzer/formatters/json.py",
+        ],
         CONFIG,
     )
 

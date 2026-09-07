@@ -209,13 +209,14 @@ class TestExceptionPaths:
             assert result == []
 
     def test_is_language_supported_exception(self) -> None:
-        """Lines 378-380: is_language_supported exception."""
-        mock_engine = MagicMock()
-        mock_engine.is_language_supported.side_effect = RuntimeError("Bad check")
-
-        with patch("tree_sitter_analyzer.api.get_engine", return_value=mock_engine):
+        """PR #1352：使实际调用的语言列表入口失败，验证公开结果为 False。"""
+        with patch(
+            "tree_sitter_analyzer.api.get_supported_languages",
+            side_effect=RuntimeError("Bad check"),
+        ) as dependency:
             result = api.is_language_supported("python")
             assert result is False
+            dependency.assert_called_once_with()
 
     def test_detect_language_exception(self) -> None:
         """Lines 407-409: detect_language exception."""
@@ -230,13 +231,15 @@ class TestExceptionPaths:
             assert result == "unknown"
 
     def test_get_file_extensions_exception(self) -> None:
-        """Lines 441-443: get_file_extensions exception."""
+        """PR #1352：异常注入到被调用的方法，而不是仅被访问的 detector 属性。"""
         mock_engine = MagicMock()
-        mock_engine.language_detector.side_effect = RuntimeError("Bad")
+        dependency = mock_engine.language_detector.get_extensions_for_language
+        dependency.side_effect = RuntimeError("Bad extensions")
 
         with patch("tree_sitter_analyzer.api.get_engine", return_value=mock_engine):
             result = api.get_file_extensions("python")
             assert result == []
+            dependency.assert_called_once_with("python")
 
     def test_get_framework_info_exception(self) -> None:
         """Lines 537-539: get_framework_info exception."""
@@ -341,12 +344,25 @@ class TestValidateFile:
         result = api.validate_file("/nonexistent/file12345.py")
         assert result["exists"] is False
 
-    def test_validation_exception(self) -> None:
-        """Lines 500-501: top-level validation exception."""
-        with patch("pathlib.Path.is_file", side_effect=RuntimeError("Disk error")):
-            result = api.validate_file("/some/file.py")
-            assert result["valid"] is False
-            assert result["errors"]
+    def test_validation_exception(self, tmp_path) -> None:
+        """PR #1352：真实文件避免提前返回，直接验证公开 API 的异常转换分支。"""
+        source = tmp_path / "sample.py"
+        source.write_text("pass\n", encoding="utf-8")
+        with patch(
+            "tree_sitter_analyzer.api.mark_validation_readable",
+            side_effect=RuntimeError("Disk error"),
+        ) as dependency:
+            result = api.validate_file(source)
+            assert result == {
+                "valid": False,
+                "exists": True,
+                "readable": False,
+                "language": None,
+                "supported": False,
+                "size": 0,
+                "errors": ["Validation failed: Disk error"],
+            }
+            dependency.assert_called_once_with(source, result)
 
 
 # ============================================================================

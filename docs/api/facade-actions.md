@@ -3,7 +3,7 @@
 > **AUTO-GENERATED — do not edit by hand.** Regenerate with `uv run python scripts/generate_facade_actions_doc.py`.
 > Drift-gated by `tests/unit/docs/test_facade_actions_doc_drift.py` (regenerates in-memory and diffs).
 
-The MCP server exposes **8 facade tools** routing **77 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
+The MCP server exposes **8 facade tools** routing **83 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
 
 Reading the tables:
 
@@ -12,7 +12,7 @@ Reading the tables:
 - **CLI twin** — the CLI flag (or console script) covering the same capability, from the CLI-parity contract. 5 actions have no authoritative CLI mapping and show — (honest gap, not an omission).
 - *Bespoke routes* (closures with hand-rolled arg handling, e.g. `nav action=test_map`) have their params pinned in the generator with source provenance; the generator fails if the live route set drifts from those pins.
 
-## `search` — 7 actions
+## `search` — 10 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
@@ -20,11 +20,14 @@ Reading the tables:
 | `chain` | `query`*, `compact`, `include_code`, `max_files`, `max_symbols`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-query` |
 | `query` | `file_path`, `filter`, `find_references`, `language`, `max_count`, `output_file`, `output_format`, `query_key`, `query_string`, `result_format`, `suppress_output`, `symbol`, `symbol_type` — requires `file_path` or `symbol`; file-scoped queries take exactly one of `query_key`/`query_string` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--query-key` |
 | `select` | `selector`*, `max_results`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
+| `semantic` | `query`*, `kind`, `language`, `min_similarity`, `top_k`, `use_combined_score` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--semantic-neighbors` |
 | `subscribe` | `selector`*, `min_interval`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
 | `symbol` | `query`*, `kind`, `language`, `limit`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--symbol-search` |
+| `tql_execute` | `selector`*, `max_results` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--tql` |
+| `tql_schema` | (none) | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--tql-schema` |
 | `unsubscribe` | `output_format`, `selector`, `sub_id` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
 
-## `nav` — 14 actions
+## `nav` — 16 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
@@ -38,6 +41,8 @@ Reading the tables:
 | `impact` | `mode`*, `depth`, `file_path`, `function_name` (`symbol` aliases `function_name`), `function_names`, `include_tests`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-impact` |
 | `lineage` | `symbol`*, `file_paths`, `max_depth`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--symbol-lineage` |
 | `navigate` | `symbol`*, `depth`, `file_path`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-navigate` |
+| `pulse` | `file`*, `symbol`*, `format`, `max_callees`, `max_callers`, `max_comments`, `max_siblings`, `token_budget` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--pulse` |
+| `pulse_batch` | `targets`*, `format`, `max_symbols`, `token_budget_per_symbol` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--pulse-batch` |
 | `resolve` | `symbol`*, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--symbol-resolve` |
 | `test_map` | `symbol`* (or `function_name` as alias), `file_path`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--test-map` |
 | `trace` | `symbol`*, `case_sensitive`, `exclude_patterns`, `file_path`, `max_results`, `project_root`, `word_match` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--trace-impact` |
@@ -108,7 +113,7 @@ Reading the tables:
 | `tools` | (none) | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--check-tools` |
 | `workflow` | `output_format`, `target_path` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--agent-workflow` |
 
-## `index` — 7 actions
+## `index` — 8 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
@@ -117,6 +122,7 @@ Reading the tables:
 | `cache` | `backend`, `file_path`, `force`, `include_activation`, `language`, `limit`, `max_files`, `mode`, `poll_interval`, `query`, `symbol` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-cache` |
 | `full` | `exclude_patterns`, `include_activation`, `max_files`, `mode`, `no_default_excludes`, `output_format`, `resolve_synapse` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--full-index` |
 | `knowledge` | `backend`, `include_docs`, `max_edges`, `max_files`, `max_nodes`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--knowledge-graph-index` |
+| `schema` | (none) | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--project-schema` |
 | `status` | `access_mode`, `include_lag`, `output_format` — `access_mode` accepts only `read_existing` (default); it is rejected for every mutating index action | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-status` |
 | `sync` | `max_files`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--incremental-sync` |
 

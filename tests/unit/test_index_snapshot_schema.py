@@ -88,14 +88,29 @@ class TestSnapshotFailureContracts:
             schema.index_fingerprint(conn, str(tmp_path.resolve()))
         conn.close()
 
-    def test_snapshot_migration_ignores_unsupported_database(self):
+    def test_snapshot_migration_rejects_readonly_without_false_version(self):
+        """PR #1350/#1352：历史 v13 迁移同样不得吞掉 DDL 错误或遗留成功凭证。"""
+        from tree_sitter_analyzer.cache.schema import (
+            SCHEMA_VERSIONS_DDL,
+            record_schema_version,
+        )
         from tree_sitter_analyzer.index_snapshot_schema import apply_snapshot_migration
 
-        class Broken:
-            def executescript(self, _sql):
-                raise sqlite3.OperationalError("unsupported")
-
-        apply_snapshot_migration(Broken(), lambda *_args: None)
+        conn = sqlite3.connect(":memory:")
+        try:
+            conn.executescript(SCHEMA_VERSIONS_DDL)
+            conn.execute("PRAGMA query_only=ON")
+            with pytest.raises(sqlite3.OperationalError, match="readonly"):
+                apply_snapshot_migration(conn, record_schema_version)
+            assert conn.execute("SELECT * FROM ast_schema_version").fetchall() == []
+            assert (
+                conn.execute(
+                    "SELECT name FROM sqlite_master WHERE name='ast_index_snapshot_manifest'"
+                ).fetchall()
+                == []
+            )
+        finally:
+            conn.close()
 
     def test_index_fingerprint_deadline_is_enforced(self, monkeypatch):
         from types import SimpleNamespace

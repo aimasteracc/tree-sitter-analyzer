@@ -457,6 +457,13 @@ def run_index_project(
                     _clear_call_graph_built_strict(conn)
             else:
                 _clear_call_graph_built_strict(conn)
+        # activation 队列独立于图 marker；缓存周期也只处理一个有界批次。
+        if activation_enabled:
+            from .write import _flush_pending_activations
+
+            activation = _flush_pending_activations(conn, cache.project_root)
+            stats["activation_flushed"] = activation["flushed"]
+            stats["activation_errors"] = activation["errors"]
         if force:
             stats["db_maintenance"] = (
                 _ast_cache_mod._reclaim_storage_after_full_rebuild(conn, cache.db_path)

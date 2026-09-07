@@ -191,4 +191,13 @@ NEW_ACTION_PARITY: dict[str, tuple[str, str, str]] = {
     "health_refactor_queue": ("health", "refactor_queue", "--refactor-queue"),
     # RFC-0029: mutation probe is new; it was never a registered v1.x tool.
     "edit_mutation_probe": ("edit", "mutation_probe", "--mutation-probe"),
+    # Nervous-system PR: pulse/pulse_batch (nav), schema (index),
+    # tql_schema/tql_execute/semantic (search) were briefly registered as
+    # new top-level MCP tools; re-wired as facade actions with CLI parity.
+    "nav_pulse": ("nav", "pulse", "--pulse"),
+    "nav_pulse_batch": ("nav", "pulse_batch", "--pulse-batch"),
+    "index_schema": ("index", "schema", "--project-schema"),
+    "search_tql_schema": ("search", "tql_schema", "--tql-schema"),
+    "search_tql_execute": ("search", "tql_execute", "--tql"),
+    "search_semantic": ("search", "semantic", "--semantic-neighbors"),
 }

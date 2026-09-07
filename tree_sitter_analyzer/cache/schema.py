@@ -18,6 +18,30 @@ from collections.abc import Callable
 from typing import Any
 
 from ..index_snapshot_symbols import ensure_symbol_rows_backfilled
+from .schema_extensions import (
+    CURRENT_SCHEMA_VERSION as CURRENT_SCHEMA_VERSION,
+)
+from .schema_extensions import (
+    SCHEMA_V16_COMMENTS as SCHEMA_V16_COMMENTS,
+)
+from .schema_extensions import (
+    SCHEMA_V17_LSP_CACHE as SCHEMA_V17_LSP_CACHE,
+)
+from .schema_extensions import (
+    apply_migration_v14 as apply_migration_v14,
+)
+from .schema_extensions import (
+    apply_migration_v15 as apply_migration_v15,
+)
+from .schema_extensions import (
+    apply_migration_v16 as apply_migration_v16,
+)
+from .schema_extensions import (
+    apply_migration_v17 as apply_migration_v17,
+)
+from .schema_extensions import (
+    schema_update,
+)
 
 # ---------------------------------------------------------------------------
 # Schema DDL constants
@@ -368,66 +392,6 @@ def apply_migration_v11(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
         pass
 
 
-def apply_migration_v14(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
-    """Add ``certified_at`` column to ``ast_index`` (v14 — Partial Certification).
-
-    Adds a nullable ``certified_at INTEGER`` column to ``ast_index``.
-    NULL means the file has not been certified in the current sync epoch.
-    Non-NULL (Unix timestamp) means the file was indexed and certified.
-
-    Idempotent: checks ``PRAGMA table_info(ast_index)`` before ALTER.
-    Backward-compatible: NULL default for all existing rows (no data loss).
-    """
-    try:
-        cols = {
-            row[1] for row in conn.execute("PRAGMA table_info(ast_index)").fetchall()
-        }
-        if "certified_at" not in cols:
-            conn.execute("ALTER TABLE ast_index ADD COLUMN certified_at INTEGER")
-        record_fn(
-            conn,
-            14,
-            "Add certified_at column to ast_index (partial certification model)",
-        )
-        conn.commit()
-    except sqlite3.DatabaseError:
-        conn.rollback()
-        raise
-
-
-def apply_migration_v15(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
-    """Add ``activation_state`` column to ``ast_symbol_activation`` (v15 — Lazy Activation).
-
-    Adds a nullable TEXT column with three allowed values:
-    - ``'pending'``  — placeholder row written; git computation is deferred.
-    - ``'computed'`` — git activation fully computed and stored.
-    - ``'disabled'`` — ``TSA_INDEX_ACTIVATION=0`` was set; no computation planned.
-
-    Idempotent: checks ``PRAGMA table_info(ast_symbol_activation)`` before ALTER.
-    Backward-compatible: existing rows receive NULL (treated as pre-lazy state).
-    """
-    try:
-        cols = {
-            row[1]
-            for row in conn.execute(
-                "PRAGMA table_info(ast_symbol_activation)"
-            ).fetchall()
-        }
-        if "activation_state" not in cols:
-            conn.execute(
-                "ALTER TABLE ast_symbol_activation ADD COLUMN activation_state TEXT"
-            )
-        record_fn(
-            conn,
-            15,
-            "Add activation_state column to ast_symbol_activation (lazy activation model)",
-        )
-        conn.commit()
-    except sqlite3.DatabaseError:
-        conn.rollback()
-        raise
-
-
 def apply_migration_v12(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
     """Rebuild ``ast_symbols_fts`` with porter stemming (v12 — #604).
 
@@ -628,6 +592,43 @@ EXPECTED_SCHEMA_VERSIONS: list[Any] = [
         "Add activation_state column to ast_symbol_activation (lazy activation model)",
         {"ast_symbol_activation_columns": ["activation_state"]},
     ),
+    (
+        16,
+        "Pulse comments and commit messages; canonical layout repair",
+        {
+            "tables": ["ast_symbol_comments"],
+            "ast_symbol_comments_columns": ["id", "symbol_id", "line", "text", "kind"],
+            "ast_symbol_activation_columns": [
+                "symbol_id",
+                "file_path",
+                "last_modified_commit",
+                "last_modified_at",
+                "mod_count_30d",
+                "mod_count_90d",
+                "mod_count_all",
+                "computed_at",
+                "git_state",
+                "activation_state",
+                "last_commit_msg",
+            ],
+        },
+    ),
+    (
+        17,
+        "LSP resolution cache",
+        {
+            "tables": ["lsp_resolution_cache"],
+            "lsp_resolution_cache_columns": [
+                "symbol_id",
+                "edge_id",
+                "resolved_type",
+                "resolved_file",
+                "resolved_line",
+                "lsp_server",
+                "cached_at",
+            ],
+        },
+    ),
 ]
 
 # ---------------------------------------------------------------------------
@@ -775,6 +776,18 @@ def _ensure_exact_fts_schema(conn: sqlite3.Connection) -> None:
     )
 
 
+def _apply_extension_migrations(
+    conn: sqlite3.Connection,
+    migrations: list[tuple[int, Any]],
+    applied: set[int],
+) -> None:
+    """v13 及之后的升级在同一事务中完成，后续版本失败不能留下半次升级。"""
+    with schema_update(conn):
+        for version, migration_fn in migrations:
+            if version >= 13 and version not in applied:
+                migration_fn(conn, record_schema_version)
+
+
 def init_db(
     conn: sqlite3.Connection,
     fts5_available: bool | None,
@@ -782,6 +795,12 @@ def init_db(
     migrations: list[tuple[int, Any]],
 ) -> bool:
     """Apply schema DDL and migrations. Returns updated fts5_available flag."""
+    applied = already_applied_versions(conn)
+    if any(version < 1 or version > CURRENT_SCHEMA_VERSION for version in applied):
+        raise ValueError("INCOMPATIBLE_SCHEMA")
+    # 支持的既有缓存先做原子升级，失败时连 bootstrap 的可选 DDL 都不能残留。
+    if any(version >= 13 for version in applied):
+        _apply_extension_migrations(conn, migrations, applied)
     conn.executescript(SCHEMA_V1)
     # Establish the ordinary table before the externally backed FTS schema.
     conn.executescript(SCHEMA_SYMBOL_ROWS)
@@ -798,8 +817,9 @@ def init_db(
             fts5_available = False
     applied = already_applied_versions(conn)
     for version, migration_fn in migrations:
-        if version not in applied:
+        if version < 13 and version not in applied:
             migration_fn(conn, record_schema_version)
+    _apply_extension_migrations(conn, migrations, applied)
     # Migration exact-state fast paths must include FTS whenever this runtime
     # supports it; FTS-less SQLite keeps the ordinary-only projection legal.
     projection_complete = ensure_symbol_rows_backfilled(

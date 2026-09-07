@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sqlite3
+import time
+from collections import OrderedDict
 from typing import Any
 
 from ..index_symbol_projection import (
@@ -16,6 +19,9 @@ from ..index_symbol_projection import (
 )
 
 logger = logging.getLogger(__name__)
+_COMMIT_MSG_CACHE: OrderedDict[tuple[str, str], tuple[float, str | None]] = (
+    OrderedDict()
+)
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
@@ -26,6 +32,17 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
         ).fetchone()
         is not None
     )
+
+
+def _delete_symbol_comments(conn: sqlite3.Connection, rel_path: str) -> None:
+    """显式清除旧定义的注释；不能依赖所有 SQLite 调用方都启用外键级联。"""
+    if _table_exists(conn, "ast_symbol_comments"):
+        conn.execute(
+            "DELETE FROM ast_symbol_comments WHERE symbol_id IN "
+            "(SELECT id FROM ast_symbol_rows WHERE file_path=?) "
+            "OR NOT EXISTS (SELECT 1 FROM ast_symbol_rows s WHERE s.id=ast_symbol_comments.symbol_id)",
+            (rel_path,),
+        )
 
 
 def _delete_file_rows_if_table_present(
@@ -85,6 +102,7 @@ def discard_file_rows(
     _clear_symbol_resolver_context()
     if fts5_available:
         _delete_fts_rows(conn, rel_path)
+    _delete_symbol_comments(conn, rel_path)
     _delete_file_rows_if_table_present(conn, "ast_symbol_rows", rel_path)
     _delete_file_rows_if_table_present(conn, "ast_symbol_projection_state", rel_path)
     for table in ("ast_imports", "ast_symbol_activation"):
@@ -142,6 +160,7 @@ def write_fts5_symbols(
         _reset_incoming_edge_resolutions(conn, rel_path)
     if fts5_available:
         _delete_fts_rows(conn, rel_path)
+    _delete_symbol_comments(conn, rel_path)
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
     sym_list = symbols.get("symbols", [])
     if not sym_list:
@@ -197,6 +216,7 @@ def write_fts5_symbols_from_tuples(
         _reset_incoming_edge_resolutions(conn, rel_path)
     if fts5_available:
         _delete_fts_rows(conn, rel_path)
+    _delete_symbol_comments(conn, rel_path)
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
     if not symbol_rows:
         upsert_symbol_projection_state(conn, rel_path)
@@ -279,21 +299,70 @@ def _insert_import_entry(
         return False
 
 
+def _fetch_commit_msgs(shas: list[str], repo_root: str) -> dict[str, str]:
+    """有界批量读取不可变 SHA 的消息，跨文件缓存；缺失值不伪造为空串。"""
+    from ..git_readonly import run_git_readonly
+    from ..source_oracle import SourceOracleError
+
+    root = os.path.realpath(repo_root)
+    requested = list(
+        dict.fromkeys(s for s in shas if re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", s))
+    )
+    now = time.monotonic()
+    pending = [
+        s
+        for s in requested
+        if (root, s) not in _COMMIT_MSG_CACHE or _COMMIT_MSG_CACHE[(root, s)][0] < now
+    ]
+    deadline = now + 5.0
+    for offset in range(0, min(len(pending), 4096), 256):
+        batch = pending[offset : offset + 256]
+        found: dict[str, str] = {}
+        try:
+            raw = run_git_readonly(
+                root,
+                ["log", "--no-walk", "--stdin", "--format=%H%x00%s%x00"],
+                deadline=deadline,
+                limit=1024 * 1024,
+                input_=("\n".join(batch) + "\n").encode("ascii"),
+            )
+            fields = raw.decode("utf-8", errors="replace").split("\0")
+            for i in range(0, len(fields) - 1, 2):
+                sha = fields[i].strip()
+                if sha in batch:
+                    found[sha] = fields[i + 1][:120]
+        except (SourceOracleError, OSError) as exc:
+            logger.warning("COMMIT_MESSAGE_MISSING: %s", exc)
+        for sha in batch:
+            message = found.get(sha)
+            _COMMIT_MSG_CACHE[(root, sha)] = (
+                float("inf") if message is not None else now + 60,
+                message,
+            )
+            _COMMIT_MSG_CACHE.move_to_end((root, sha))
+        while len(_COMMIT_MSG_CACHE) > 4096:
+            _COMMIT_MSG_CACHE.popitem(last=False)
+        if time.monotonic() >= deadline:
+            break
+    result: dict[str, str] = {}
+    for sha in requested:
+        cached = _COMMIT_MSG_CACHE.get((root, sha))
+        if cached is not None and cached[1] is not None:
+            result[sha] = cached[1]
+    if len(result) != len(requested):
+        logger.warning(
+            "COMMIT_MESSAGE_MISSING: %d SHA(s)", len(requested) - len(result)
+        )
+    return result
+
+
 def write_activation_for_file(
     conn: sqlite3.Connection,
     rel_path: str,
     inserted_symbol_rows: list[dict[str, Any]],
     project_root: str,
 ) -> None:
-    """Write lazy-activation placeholder rows for a single file (REQ-E-301).
-
-    Instead of calling ``compute_symbol_activation`` synchronously (which
-    invokes ``subprocess.run`` for every indexed file), this function writes
-    a placeholder row with ``activation_state='pending'`` (or ``'disabled'``
-    when ``TSA_INDEX_ACTIVATION=0``).  The actual git log computation is
-    deferred to ``_flush_pending_activations``, which is called once after
-    ``_post_index_backfill`` (REQ-C-306).
-    """
+    """只写 pending/disabled 占位行，Git 与提交消息统一延迟到 flush。"""
     if not inserted_symbol_rows:
         try:
             conn.execute(
@@ -308,8 +377,7 @@ def write_activation_for_file(
     except Exception as exc:  # pragma: no cover
         logger.debug("git_activation import failed: %s", exc)
         return
-    # REQ-E-303: write a row even when activation is disabled so the table
-    # always has an entry for every indexed symbol (avoids NULL-join gaps).
+    # disabled 也保留显式占位，不能把缺行误当成完成计算。
     state = "disabled" if git_activation._activation_disabled() else "pending"  # noqa: SLF001
     try:
         conn.execute(
@@ -322,8 +390,8 @@ def write_activation_for_file(
                     symbol_id, file_path,
                     last_modified_commit, last_modified_at,
                     mod_count_30d, mod_count_90d, mod_count_all,
-                    computed_at, git_state, activation_state
-                ) VALUES (?, ?, NULL, NULL, 0, 0, 0, 0, NULL, ?)""",
+                    computed_at, git_state, activation_state, last_commit_msg
+                ) VALUES (?, ?, NULL, NULL, 0, 0, 0, 0, NULL, ?, NULL)""",
                 (int(r["id"]), rel_path, state),
             )
     except sqlite3.OperationalError as exc:
@@ -335,22 +403,16 @@ def _flush_pending_activations(
     project_root: str,
     batch_size: int = 50,
 ) -> dict[str, int]:
-    """Compute git activation for pending rows and mark them computed (REQ-E-304).
+    """有界刷新 pending：DB 故障回滚重试，消息缺失保留 pending，disabled 不动。
 
-    Fetches up to ``batch_size`` distinct file paths whose
-    ``activation_state = 'pending'``, calls ``compute_symbol_activation``
-    for each, and writes the results back.
-
-    Designed to be callable from a ``concurrent.futures.ThreadPoolExecutor``
-    without modification (returns a plain dict; no side-channel coupling).
-
-    Returns ``{"flushed": N, "errors": M}``.
-
-    Degradation contract (REQ-E-304(d)): if git computation fails for a file,
-    the rows are marked ``'computed'`` with zero counts rather than left
-    ``'pending'`` to avoid unbounded retry storms.
+    Git 计算异常保留 canonical 的 computed/零值降级，但不伪造有效 git_state。
+    提交消息通过共享 SHA 批次及负缓存读取；返回 flushed/errors 数量。
     """
     from .. import git_activation
+
+    if git_activation._activation_disabled():
+        # 暂停计算不等于完成；旧 pending 留给显式重新启用后的刷新。
+        return {"flushed": 0, "errors": 0}
 
     try:
         pending_paths = [
@@ -370,9 +432,12 @@ def _flush_pending_activations(
     errors = 0
     for rel_path in pending_paths:
         try:
-            # Fetch symbols from DB so compute_symbol_activation gets real data
+            # 同一快照内读身份并发布，另一连接重索引时由 SQLite 拒绝旧快照写回。
+            conn.execute("SAVEPOINT tsa_activation_flush")
             sym_rows = conn.execute(
-                "SELECT id, line, end_line FROM ast_symbol_rows WHERE file_path = ?",
+                "SELECT s.id, s.line, s.end_line FROM ast_symbol_rows s "
+                "JOIN ast_symbol_activation a ON a.symbol_id=s.id "
+                "WHERE s.file_path=? AND a.activation_state='pending'",
                 (rel_path,),
             ).fetchall()
             symbols = [{"id": r[0], "line": r[1], "end_line": r[2]} for r in sym_rows]
@@ -388,14 +453,26 @@ def _flush_pending_activations(
                     "git activation computation failed for %s: %s", rel_path, exc
                 )
                 conn.execute(
-                    "UPDATE ast_symbol_activation SET activation_state='computed' "
+                    "UPDATE ast_symbol_activation SET activation_state='computed', "
+                    "last_modified_commit=NULL,last_modified_at=NULL,last_commit_msg=NULL, "
+                    "mod_count_30d=0,mod_count_90d=0,mod_count_all=0,computed_at=0,git_state=NULL "
                     "WHERE file_path=? AND activation_state='pending'",
                     (rel_path,),
                 )
                 conn.commit()
                 errors += 1
                 continue
-            # Write computed values back
+            shas = [
+                r.last_modified_commit
+                for r in activation_rows
+                if r.last_modified_commit
+            ]
+            commit_msgs = _fetch_commit_msgs(shas, project_root)
+            if any(sha not in commit_msgs for sha in shas):
+                conn.execute("RELEASE SAVEPOINT tsa_activation_flush")
+                errors += 1
+                continue
+            # 消息与统计共同写入；不能先宣称 computed 再补消息。
             for r in activation_rows:
                 conn.execute(
                     """UPDATE ast_symbol_activation
@@ -405,9 +482,10 @@ def _flush_pending_activations(
                            mod_count_90d = ?,
                            mod_count_all = ?,
                            computed_at = ?,
-                           git_state = ?,
-                           activation_state = 'computed'
-                       WHERE file_path = ? AND symbol_id = ?""",
+                            git_state = ?,
+                            last_commit_msg = ?,
+                            activation_state = 'computed'
+                       WHERE file_path = ? AND symbol_id = ? AND activation_state='pending'""",
                     (
                         r.last_modified_commit,
                         r.last_modified_at,
@@ -416,11 +494,12 @@ def _flush_pending_activations(
                         int(r.mod_count_all),
                         int(r.computed_at),
                         r.git_state,
+                        commit_msgs.get(r.last_modified_commit or ""),
                         rel_path,
                         int(r.symbol_id),
                     ),
                 )
-            # Files with no activation rows → mark computed with zero counts
+            # 没有 Git 记录的占位行仍按 canonical 语义完成，不改 disabled。
             conn.execute(
                 """UPDATE ast_symbol_activation
                    SET activation_state = 'computed'
@@ -516,21 +595,25 @@ def write_graph_edges_for_file(
         resolved_file = str(edge.get("callee_resolved_file") or "")
         target_file = resolved_file or rel_path
         target = symbol_node(target_file, callee_name, edge.get("callee_line"))
+        edge_metadata: dict[str, Any] = {
+            "language": language,
+            "caller_name": caller_name,
+            "caller_line": edge.get("caller_line", 0),
+            "callee_name": callee_name,
+            "callee_full": edge.get("callee_full", ""),
+            "callee_resolution": edge.get("callee_resolution", "unknown"),
+            "callee_resolved_file": resolved_file,
+        }
+        branch_ctx = edge.get("branch")
+        if branch_ctx is not None:
+            edge_metadata["branch"] = branch_ctx
         edges.append(
             Edge(
                 source,
                 target,
                 EdgeKind.CALLS,
                 edge.get("callee_line"),
-                metadata={
-                    "language": language,
-                    "caller_name": caller_name,
-                    "caller_line": edge.get("caller_line", 0),
-                    "callee_name": callee_name,
-                    "callee_full": edge.get("callee_full", ""),
-                    "callee_resolution": edge.get("callee_resolution", "unknown"),
-                    "callee_resolved_file": resolved_file,
-                },
+                metadata=edge_metadata,
             )
         )
 
@@ -589,6 +672,25 @@ def write_graph_edges_for_file(
                 )
 
     try:
+        if "comments" in symbols and _table_exists(conn, "ast_symbol_comments"):
+            _delete_symbol_comments(conn, rel_path)
+            owners = conn.execute(
+                "SELECT id, line, end_line FROM ast_symbol_rows WHERE file_path=? "
+                "AND kind IN ('function','method','class') ORDER BY end_line-line, line DESC, id",
+                (rel_path,),
+            ).fetchall()
+            for comment in symbols["comments"]:
+                matches = [s for s in owners if s[1] <= comment["line"] <= s[2]]
+                if matches:
+                    conn.execute(
+                        "INSERT INTO ast_symbol_comments(symbol_id,line,text,kind) VALUES (?,?,?,?)",
+                        (
+                            matches[0][0],
+                            comment["line"],
+                            comment["text"],
+                            comment["kind"],
+                        ),
+                    )
         EdgeStore(conn, ensure_schema=False).replace_edges_for_file(
             rel_path, edges, preserve_calls=preserve_calls
         )

@@ -243,15 +243,15 @@ class TestWalkTree:
         defs, calls = _walk_tree(root, src, "go")
 
         assert {d["name"] for d in defs} == {"ServeHTTP", "handleHTTPRequest"}
-        assert calls == [
-            {
-                "name": "handleHTTPRequest",
-                "full_name": "engine.handleHTTPRequest",
-                "line": 6,
-                "col": 1,
-                "receiver": "engine",
-            }
-        ]
+        assert len(calls) == 1
+        call = calls[0]
+        assert call["name"] == "handleHTTPRequest"
+        assert call["full_name"] == "engine.handleHTTPRequest"
+        assert call["line"] == 6
+        assert call["col"] == 1
+        assert call["receiver"] == "engine"
+        # branch context is "unconditional" — the call is at the top level of ServeHTTP
+        assert call.get("branch", {}).get("kind") == "unconditional"
 
     def test_go_method_receiver_type_extracted(self):
         source = (

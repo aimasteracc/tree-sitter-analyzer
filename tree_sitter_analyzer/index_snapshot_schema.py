@@ -11,6 +11,7 @@ import struct
 import time
 from typing import Any
 
+from .cache.schema_extensions import CURRENT_SCHEMA_VERSION, schema_update
 from .index_snapshot_capability import strict_call_graph_marker
 from .index_source_snapshot import (
     SOURCE_SCOPE_DESCRIPTOR_BYTE_BUDGET,
@@ -22,7 +23,7 @@ from .index_source_snapshot import (
     recorded_source_rows,
 )
 
-SNAPSHOT_SCHEMA_VERSION = 15
+SNAPSHOT_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION
 SCHEMA_V13_INDEX_SNAPSHOT = """
 CREATE TABLE IF NOT EXISTS ast_index_snapshot_manifest (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -53,9 +54,37 @@ _REQUIRED_COLUMNS = {
             "symbols_json",
             "imports_json",
             "structure_json",
+            "certified_at",
         }
     ),
     "ast_imports": frozenset({"file_path", "language", "module_path", "local_name"}),
+    "ast_symbol_activation": frozenset(
+        {
+            "symbol_id",
+            "file_path",
+            "last_modified_commit",
+            "last_modified_at",
+            "mod_count_30d",
+            "mod_count_90d",
+            "mod_count_all",
+            "computed_at",
+            "git_state",
+            "activation_state",
+            "last_commit_msg",
+        }
+    ),
+    "ast_symbol_comments": frozenset({"id", "symbol_id", "line", "text", "kind"}),
+    "lsp_resolution_cache": frozenset(
+        {
+            "symbol_id",
+            "edge_id",
+            "resolved_type",
+            "resolved_file",
+            "resolved_line",
+            "lsp_server",
+            "cached_at",
+        }
+    ),
     "ast_symbol_projection_state": frozenset(
         {"file_path", "content_hash", "symbol_count", "projection_digest"}
     ),
@@ -164,12 +193,9 @@ def validate_manifest_scalars(manifest: sqlite3.Row) -> None:
 
 def apply_snapshot_migration(conn: sqlite3.Connection, record_fn: Any) -> None:
     """安装 v13 manifest 表；历史迁移编号不随读取器上限变化。"""
-    try:
-        conn.executescript(SCHEMA_V13_INDEX_SNAPSHOT)
+    with schema_update(conn):
+        conn.execute(SCHEMA_V13_INDEX_SNAPSHOT)
         record_fn(conn, 13, "Authoritative index snapshot manifest")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass
 
 
 def stamp_full_index_manifest(

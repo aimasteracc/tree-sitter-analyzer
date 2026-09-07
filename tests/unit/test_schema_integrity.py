@@ -21,6 +21,26 @@ from tree_sitter_analyzer.ast_cache import (
     SchemaIntegrityError,
 )
 
+
+def test_sqlite_upgrade_witnesses_are_not_posix_only():
+    """PR #1350/#1352：纯 SQLite 升级验收不能继承 POSIX skip，真实 fd 用例仍保留限制。"""
+    from tests.unit import test_index_snapshot_schema_validation as suite
+
+    assert getattr(suite, "pytestmark", []) == []
+    for name in (
+        "test_legacy_layout_upgrade_preserves_data_and_is_idempotent",
+        "test_entire_extension_upgrade_rolls_back_and_retries",
+        "test_future_schema_is_rejected_without_mutating_cache",
+        "test_snapshot_reader_matches_latest_real_migration",
+    ):
+        marks = getattr(getattr(suite, name), "pytestmark", [])
+        assert [mark.name for mark in marks if mark.name in ("skip", "skipif")] == []
+    assert [
+        mark.name
+        for mark in suite.test_read_existing_forces_memory_temp_store_before_fingerprint.pytestmark
+    ] == ["skipif"]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

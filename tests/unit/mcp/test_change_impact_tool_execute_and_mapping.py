@@ -16,8 +16,46 @@ from tree_sitter_analyzer.mcp.tools.utils import (
 )
 
 
-def test_execute_exposes_verification_fields_for_agents(monkeypatch):
-    """The MCP tool output must include the command agents should run next."""
+@pytest.mark.parametrize(
+    ("index_present", "expected_diagnostic"),
+    [
+        pytest.param(
+            False,
+            {"available": False, "reason": "ACTIVATION_INDEX_MISSING"},
+            id="missing-index",
+        ),
+        pytest.param(
+            True,
+            {
+                "available": False,
+                "reason": "ACTIVATION_ROWS_MISSING",
+                "files": ["README.md"],
+            },
+            id="empty-index",
+        ),
+    ],
+)
+def test_execute_exposes_verification_fields_for_agents(
+    monkeypatch, tmp_path, index_present, expected_diagnostic
+):
+    """PR #1352：摘要保留验证命令和真实索引诊断，不依赖共享 /repo 的可写性或残留。"""
+    (tmp_path / "README.md").write_text("# Example\n", encoding="utf-8")
+    db_path = tmp_path / ".ast-cache" / "index.db"
+    if index_present:
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        cache = ASTCache(str(tmp_path))
+        try:
+            assert (
+                cache.get_conn()
+                .execute("SELECT count(*) FROM ast_symbol_activation")
+                .fetchone()[0]
+                == 0
+            )
+        finally:
+            cache.close()
+    assert db_path.is_file() is index_present
+
     monkeypatch.setattr(
         tool_module,
         "_get_changed_files",
@@ -29,14 +67,18 @@ def test_execute_exposes_verification_fields_for_agents(monkeypatch):
         lambda mode, project_root, scope_paths=None: "README.md | 2 +-",
     )
 
-    def fail_graph(project_root):
-        raise RuntimeError("no graph")
+    # 隔离图分析和缓存补全，避免它们先创建索引；热度查询与摘要组装仍走真实实现。
+    monkeypatch.setattr(change_impact_tool, "_load_dependency_graph", lambda _: None)
+    monkeypatch.setattr(
+        change_impact_tool, "compute_call_graph_impact", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(change_impact_tool, "_ensure_ast_cache", lambda *args: None)
 
-    monkeypatch.setattr(change_impact_tool, "DependencyGraph", fail_graph)
-
-    tool = tool_module.ChangeImpactTool(project_root="/repo")
+    tool = tool_module.ChangeImpactTool(project_root=str(tmp_path))
     result = asyncio.run(tool.execute({"output_format": "json"}))
 
+    assert db_path.is_file() is index_present
+    assert result["activation_diagnostic"] == expected_diagnostic
     assert result["pytest_required"] is False
     assert result["pytest_command"] == ""
     assert result["test_required"] is False
@@ -60,6 +102,8 @@ def test_execute_exposes_verification_fields_for_agents(monkeypatch):
     # agent_summary surface too, so the post-hook can mirror it to the
     # top level. Pre-M5 both surfaces returned ``summary_line=None``.
     assert result["agent_summary"] == {
+        # PR #1350/#1352：缺失热度索引也要保留诊断，不能裁剪成完整无热点。
+        "activation_diagnostic": expected_diagnostic,
         "risk": "unknown",
         "scope": "workspace",
         "changed_count": 1,

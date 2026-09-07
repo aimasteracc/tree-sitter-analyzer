@@ -67,10 +67,13 @@ def _edge_for_call(
             caller_name = name
             caller_line = raw_start
     callee_name = call.get("name", "")
-    return {
+    edge = {
         "caller_name": caller_name,
         "caller_line": caller_line,
         "callee_name": callee_name,
         "callee_full": call.get("full_name", callee_name),
         "callee_line": call_line,
+        # walk_tree 为每个调用写入分支上下文（包括 unconditional），无需再次猜测缺失。
+        "branch": call["branch"],
     }
+    return edge

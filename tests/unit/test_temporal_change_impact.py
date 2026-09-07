@@ -34,6 +34,234 @@ from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+
+@pytest.mark.parametrize("state", ["pending", "disabled", None, "computed"])
+def test_changed_file_hot_zone_uses_only_computed_activation(tmp_path, state):
+    """PR #1350/#1352：真实改动文件的旧高次数不能覆盖 pending/disabled/未知状态，诊断不得丢失。"""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+        ChangeImpactRequest,
+        _attach_hot_zone_risk,
+    )
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+        build_agent_summary_only_response,
+    )
+
+    source = tmp_path / "changed.py"
+    source.write_text("def changed():\n    pass\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        source.write_text("def changed():\n    return 1\n", encoding="utf-8")
+        db = cache.get_conn()
+        db.execute(
+            "UPDATE ast_symbol_activation SET mod_count_30d=99,activation_state=?",
+            (state,),
+        )
+        db.commit()
+        request = ChangeImpactRequest("diff", ["changed.py"], "", str(tmp_path), False)
+        result = _attach_hot_zone_risk(
+            {
+                "success": True,
+                "verdict": "REVIEW",
+                "agent_summary": {"verdict": "REVIEW"},
+            },
+            request,
+        )
+        hot = [f for f in result["risk_factors"] if f["factor"] == "hot_zone"]
+        if state == "computed":
+            assert result["verdict"] == "CAUTION"
+            assert [f["mod_count_30d"] for f in hot] == [99]
+        else:
+            assert result["verdict"] == "REVIEW"
+            assert hot == []
+            diagnostic = result["activation_diagnostic"]
+            assert diagnostic["available"] is False
+            assert diagnostic["reason"] == "ACTIVATION_NOT_COMPUTED"
+            assert diagnostic["files"] == ["changed.py"]
+            assert (
+                build_agent_summary_only_response(result)["agent_summary"][
+                    "activation_diagnostic"
+                ]
+                == diagnostic
+            )
+    finally:
+        cache.close()
+
+
+def test_partial_heat_keeps_only_confirmed_hot_symbols(tmp_path):
+    """PR #1350/#1352：部分未知不能抹掉真实热点，但遗留高次数不能混进风险因子。"""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+        ChangeImpactRequest,
+        _attach_hot_zone_risk,
+    )
+
+    source = tmp_path / "changed.py"
+    source.write_text(
+        "def known():\n    pass\ndef stale():\n    pass\n", encoding="utf-8"
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        db = cache.get_conn()
+        db.execute(
+            "UPDATE ast_symbol_activation SET mod_count_30d=6,activation_state='computed'"
+        )
+        db.execute(
+            "UPDATE ast_symbol_activation SET mod_count_30d=99,activation_state='pending' WHERE symbol_id=(SELECT id FROM ast_symbol_rows WHERE name='stale')"
+        )
+        db.commit()
+        result = _attach_hot_zone_risk(
+            {"verdict": "REVIEW", "agent_summary": {"verdict": "REVIEW"}},
+            ChangeImpactRequest("diff", ["changed.py"], "", str(tmp_path), False),
+        )
+        assert result["verdict"] == "CAUTION"
+        assert [f["mod_count_30d"] for f in result["risk_factors"]] == [6]
+        assert result["activation_diagnostic"]["available"] is False
+    finally:
+        cache.close()
+
+
+@pytest.mark.parametrize(
+    "case,reason",
+    [
+        ("missing_db", "ACTIVATION_INDEX_MISSING"),
+        ("missing_table", "ACTIVATION_INDEX_UNAVAILABLE"),
+        ("missing_rows", "ACTIVATION_ROWS_MISSING"),
+    ],
+)
+def test_missing_activation_evidence_is_not_complete_no_hotspots(
+    tmp_path, case, reason
+):
+    """PR #1350/#1352：缺库、缺表、缺行均保留不可用原因，不创建数据库或声称完整无热点。"""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+        ChangeImpactRequest,
+        _attach_hot_zone_risk,
+    )
+
+    cache = None
+    try:
+        if case != "missing_db":
+            cache = ASTCache(str(tmp_path))
+            if case == "missing_table":
+                cache.get_conn().execute("DROP TABLE ast_symbol_activation")
+                cache.get_conn().commit()
+        request = ChangeImpactRequest("diff", ["changed.py"], "", str(tmp_path), False)
+        result = _attach_hot_zone_risk(
+            {"verdict": "REVIEW", "agent_summary": {}}, request
+        )
+        assert result["verdict"] == "REVIEW"
+        assert result["risk_factors"] == []
+        assert result["activation_diagnostic"]["available"] is False
+        assert result["activation_diagnostic"]["reason"] == reason
+        if case == "missing_db":
+            assert not (tmp_path / ".ast-cache").exists()
+    finally:
+        if cache is not None:
+            cache.close()
+
+
+@pytest.mark.parametrize(
+    "count,available", [(0, True), (-1, False), ("invalid", False)]
+)
+def test_computed_heat_distinguishes_cold_from_invalid_counts(
+    tmp_path, count, available
+):
+    """PR #1350/#1352：已计算的零热度与非法次数不同；无关文件的 pending 不污染改动范围。"""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+        ChangeImpactRequest,
+        _attach_hot_zone_risk,
+    )
+
+    source = tmp_path / "changed.py"
+    source.write_text("def changed():\n    pass\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        db = cache.get_conn()
+        db.execute(
+            "UPDATE ast_symbol_activation SET activation_state='computed',mod_count_30d=?",
+            (count,),
+        )
+        db.execute(
+            "INSERT INTO ast_symbol_activation(symbol_id,file_path,mod_count_30d,computed_at,activation_state) VALUES (999,'other.py',99,0,'pending')"
+        )
+        db.commit()
+        request = ChangeImpactRequest("diff", ["changed.py"], "", str(tmp_path), False)
+        result = _attach_hot_zone_risk(
+            {"verdict": "REVIEW", "agent_summary": {}}, request
+        )
+        assert result["verdict"] == "REVIEW"
+        assert result["risk_factors"] == []
+        assert result["activation_diagnostic"]["available"] is available
+        assert result["activation_diagnostic"]["reason"] == (
+            None if available else "ACTIVATION_NOT_COMPUTED"
+        )
+    finally:
+        cache.close()
+
+
+@pytest.mark.parametrize("summary_only", [False, True])
+@pytest.mark.parametrize("state", ["pending", "disabled"])
+async def test_change_impact_preserves_heat_diagnostic_in_public_views(
+    tmp_path, state, summary_only
+):
+    """PR #1350/#1352：真实 Git 改动与 SQL 旧统计经完整/精简入口后仍保持不可用说明，不误升风险。"""
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+
+    source = tmp_path / "changed.py"
+    source.write_text("def changed():\n    pass\n", encoding="utf-8")
+    for args in (
+        ["init", "--initial-branch=main"],
+        ["add", "changed.py"],
+        [
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-m",
+            "initial",
+        ],
+    ):
+        subprocess.run(
+            ["git", "-C", str(tmp_path), *args],
+            check=True,
+            capture_output=True,
+            timeout=15,
+        )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        cache.get_conn().execute(
+            "UPDATE ast_symbol_activation SET mod_count_30d=99,activation_state=?",
+            (state,),
+        )
+        cache.get_conn().commit()
+        source.write_text("def changed():\n    return 1\n", encoding="utf-8")
+        result = await ChangeImpactTool(str(tmp_path)).execute(
+            {
+                "mode": "diff",
+                "include_tests": False,
+                "agent_summary_only": summary_only,
+                "output_format": "json",
+            }
+        )
+        assert result["success"] is True
+        assert result["verdict"] == "REVIEW"
+        assert result["agent_summary"]["activation_diagnostic"] == {
+            "available": False,
+            "reason": "ACTIVATION_NOT_COMPUTED",
+            "files": ["changed.py"],
+        }
+        assert [
+            f for f in result.get("risk_factors", []) if f["factor"] == "hot_zone"
+        ] == []
+    finally:
+        cache.close()
+
+
 # ---------------------------------------------------------------------------
 # Fixture: a tiny git repo whose AST cache contains an activation row we
 # can pre-seed with arbitrary mod_count_30d for assertion purposes.
@@ -117,7 +345,8 @@ def _seed_hot_zone_row(
                 mod_count_90d INTEGER NOT NULL DEFAULT 0,
                 mod_count_all INTEGER NOT NULL DEFAULT 0,
                 computed_at INTEGER NOT NULL,
-                git_state TEXT NOT NULL DEFAULT 'tracked'
+                git_state TEXT NOT NULL DEFAULT 'tracked',
+                activation_state TEXT
             )
             """
         )
@@ -128,8 +357,8 @@ def _seed_hot_zone_row(
                 symbol_id, file_path,
                 last_modified_commit, last_modified_at,
                 mod_count_30d, mod_count_90d, mod_count_all,
-                computed_at, git_state
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                computed_at, git_state, activation_state
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'computed')
             """,
             (
                 symbol_id,

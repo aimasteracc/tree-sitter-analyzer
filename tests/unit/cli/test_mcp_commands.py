@@ -27,6 +27,157 @@ MCP_COMMAND_FLAGS = (
 )
 
 
+def test_pulse_cli_real_index_emits_json_success(tmp_path, monkeypatch, capsys):
+    # PR #1352：运行真实 CLI 解析/分发/工具/序列化，不 mock 任一业务层。
+    import json
+    import logging
+    import sys
+
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cli_main import main
+
+    source = tmp_path / "a.py"
+    source.write_text(
+        'def greet():\n    """Hello CLI."""\n    return 1\n', encoding="utf-8"
+    )
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    cache.close()
+    capsys.readouterr()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tsa",
+            "a.py",
+            "--project-root",
+            str(tmp_path),
+            "--pulse",
+            "greet",
+            "--format",
+            "json",
+        ],
+    )
+    # CLI 的日志配置属于进程级副作用；测试结束后必须还原，避免污染其他日志见证。
+    loggers = [
+        logging.getLogger(name)
+        for name in (
+            "",
+            "tree_sitter_analyzer",
+            "tree_sitter_analyzer.performance",
+            "tree_sitter_analyzer.plugins",
+            "tree_sitter_analyzer.plugins.manager",
+        )
+    ]
+    levels = [logger.level for logger in loggers]
+    try:
+        with pytest.raises(SystemExit) as exited:
+            main()
+    finally:
+        for logger, level in zip(loggers, levels, strict=True):
+            logger.setLevel(level)
+    assert exited.value.code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["success"] is True
+    assert payload["result"]["sym"]["n"] == "greet"
+    assert payload["result"]["sym"]["doc"] == "Hello CLI."
+    assert [logger.level for logger in loggers] == levels
+
+
+def test_batch_cli_project_sequence_keeps_results_and_warning_capture(
+    tmp_path, monkeypatch, capsys, caplog
+):
+    # PR #1352：真实 CLI 依次访问同名项目数据，CLI 后的 WARNING 见证不依赖默认级别。
+    import json
+    import logging
+    import sys
+
+    from tree_sitter_analyzer.api.pulse import query_pulse
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cli_main import main
+
+    roots = []
+    for label in ("first", "second"):
+        root = tmp_path / label
+        root.mkdir()
+        source = root / "a.py"
+        source.write_text(
+            f'def greet():\n    """{label} greet"""\n    pass\n\ndef other():\n    """{label} other"""\n    pass\n',
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(root))
+        cache.index_file(str(source))
+        cache.close()
+        roots.append(root)
+    targets = [{"file": "a.py", "symbol": name} for name in ("greet", "other")]
+    loggers = [
+        logging.getLogger(name)
+        for name in (
+            "",
+            "tree_sitter_analyzer",
+            "tree_sitter_analyzer.performance",
+            "tree_sitter_analyzer.plugins",
+            "tree_sitter_analyzer.plugins.manager",
+        )
+    ]
+    levels = [logger.level for logger in loggers]
+    try:
+        for root in (roots[0], roots[1], roots[0]):
+            capsys.readouterr()
+            monkeypatch.setattr(
+                sys,
+                "argv",
+                [
+                    "tsa",
+                    "--project-root",
+                    str(root),
+                    "--pulse-batch",
+                    json.dumps(targets),
+                    "--format",
+                    "json",
+                ],
+            )
+            with pytest.raises(SystemExit) as exited:
+                main()
+            assert exited.value.code == 0
+            payload = json.loads(capsys.readouterr().out)
+            assert payload["success"] is True
+            assert (
+                payload["count"],
+                payload["error_count"],
+                payload["truncated_count"],
+            ) == (2, 0, 0)
+            assert [r["sym"]["doc"] for r in payload["results"]] == [
+                f"{root.name} greet",
+                f"{root.name} other",
+            ]
+            cache = ASTCache(str(root))
+            try:
+                conn = cache.get_conn()
+                conn.execute(
+                    "INSERT OR REPLACE INTO ast_symbol_activation(symbol_id,file_path,last_modified_commit,computed_at) "
+                    "SELECT id,file_path,?,0 FROM ast_symbol_rows WHERE name='greet'",
+                    ("a" * 40,),
+                )
+                caplog.clear()
+                with caplog.at_level(
+                    logging.WARNING, logger="tree_sitter_analyzer.api.pulse"
+                ):
+                    assert (
+                        query_pulse(conn, "a.py", "greet").git_heat.commit_msg is None
+                    )
+                assert (
+                    "tree_sitter_analyzer.api.pulse",
+                    logging.WARNING,
+                    "COMMIT_MESSAGE_MISSING: a.py:greet",
+                ) in caplog.record_tuples
+            finally:
+                cache.close()
+    finally:
+        for logger, level in zip(loggers, levels, strict=True):
+            logger.setLevel(level)
+
+
 def _args(**overrides: Any) -> Namespace:
     defaults = dict.fromkeys(MCP_COMMAND_FLAGS, False)
     defaults["dependencies"] = None
@@ -403,7 +554,6 @@ def test_project_scoped_dependency_modes_do_not_require_file_path(
         "project_root": "/repo",
         "arguments": {"mode": expected_mode, "output_format": "json"},
     }
-
 
 
 def test_change_impact_cli_does_not_require_file_path(monkeypatch) -> None:
@@ -924,7 +1074,6 @@ def test_symbol_resolve_cli_delegates_to_resolve_tool(monkeypatch) -> None:
             "output_format": "json",
         },
     }
-
 
 
 @pytest.mark.parametrize(

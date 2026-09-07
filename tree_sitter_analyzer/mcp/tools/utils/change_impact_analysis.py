@@ -932,26 +932,21 @@ def _attach_hot_zone_risk(
     result: dict[str, Any],
     request: ChangeImpactRequest,
 ) -> dict[str, Any]:
-    """Decorate the change-impact result with temporal hot-zone risk factors.
+    """用已计算的改动文件热度追加风险因子，未完成或缺失证据单独保留诊断。
 
-    For each changed file we look up its symbols in
-    ``ast_symbol_activation``. Any symbol with ``mod_count_30d >=
-    _HOT_ZONE_THRESHOLD`` is treated as a "hot zone" — editing recently-
-    churning code is higher risk than a stable one-off change.
-
-    Two effects:
-      1. A risk_factors entry containing the substring ``hot zone`` is
-         appended (key is ``factor`` per existing schema; ``reason``
-         carries human-readable detail).
-      2. The verdict is promoted to ``CAUTION`` if it was looser (INFO /
-         REVIEW). Constraint violations may further escalate to UNSAFE
-         later via ``_attach_constraint_violations`` — that path wins.
+    只有可信次数达到阈值才按既有规则提升 CAUTION；pending、disabled 和未知
+    状态不能利用遗留次数升级风险，也不能被描述为已证明无热点。
     """
     if not request.changed_files or not request.project_root:
         result.setdefault("risk_factors", result.get("risk_factors", []))
         return result
 
-    hot_rows = _hot_zone_symbols_for_files(request.project_root, request.changed_files)
+    hot_rows, diagnostic = _hot_zone_symbols_for_files(
+        request.project_root, request.changed_files
+    )
+    result["activation_diagnostic"] = diagnostic
+    # 调用方始终提供 agent_summary；精简响应必须保留同一不可用原因。
+    result["agent_summary"]["activation_diagnostic"] = diagnostic
     existing_factors = list(result.get("risk_factors", []) or [])
     if not hot_rows:
         result["risk_factors"] = existing_factors
@@ -974,41 +969,63 @@ def _attach_hot_zone_risk(
 def _hot_zone_symbols_for_files(
     project_root: str,
     changed_files: list[str],
-) -> list[dict[str, Any]]:
-    """Return per-symbol activation rows above the hot-zone threshold.
-
-    Reads ``ast_symbol_activation`` from the project's cache DB; returns
-    [] on missing table / missing DB so the gate tool keeps working on
-    fresh repos. Each row carries ``symbol_id``, ``file_path``, and
-    ``mod_count_30d``.
-    """
-    if not changed_files:
-        return []
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """仅读取改动文件的已计算热度，同时区分正常无热点与不可用证据。"""
     db_path = Path(project_root) / ".ast-cache" / "index.db"
     if not db_path.is_file():
-        return []
+        return [], {"available": False, "reason": "ACTIVATION_INDEX_MISSING"}
 
     placeholders = ",".join(["?"] * len(changed_files))
-    # placeholders is constructed from `?` literals only — values flow through
-    # parameterized binds below, so the f-string is safe.
+    # 占位符只由问号组成，所有文件名仍经绑定参数传入。
     sql = (
-        "SELECT symbol_id, file_path, mod_count_30d "  # nosec B608
+        "SELECT symbol_id, file_path, mod_count_30d, activation_state "  # nosec B608
         "FROM ast_symbol_activation "
         f"WHERE file_path IN ({placeholders}) "
-        "AND mod_count_30d >= ? "
         "ORDER BY mod_count_30d DESC"
     )
     import sqlite3
 
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(str(db_path), timeout=10)
+        conn = sqlite3.connect(
+            db_path.resolve().as_uri() + "?mode=ro", uri=True, timeout=10
+        )
         conn.row_factory = sqlite3.Row
-        rows = conn.execute(sql, [*changed_files, _HOT_ZONE_THRESHOLD]).fetchall()
-        return [dict(r) for r in rows]
-    except sqlite3.OperationalError as exc:
+        rows = conn.execute(sql, changed_files).fetchall()
+        hot: list[dict[str, Any]] = []
+        unavailable: set[str] = set()
+        seen: set[str] = set()
+        for row in rows:
+            seen.add(row["file_path"])
+            count = row["mod_count_30d"]
+            if (
+                row["activation_state"] != "computed"
+                or type(count) is not int
+                or count < 0
+            ):
+                unavailable.add(row["file_path"])
+            elif count >= _HOT_ZONE_THRESHOLD:
+                hot.append(dict(row))
+        if unavailable:
+            return hot, {
+                "available": False,
+                "reason": "ACTIVATION_NOT_COMPUTED",
+                "files": sorted(unavailable | (set(changed_files) - seen)),
+            }
+        if missing := set(changed_files) - seen:
+            return hot, {
+                "available": False,
+                "reason": "ACTIVATION_ROWS_MISSING",
+                "files": sorted(missing),
+            }
+        return hot, {"available": True, "reason": None}
+    except sqlite3.DatabaseError as exc:
         logger.debug("hot zone lookup failed: %s", exc)
-        return []
+        return [], {
+            "available": False,
+            "reason": "ACTIVATION_INDEX_UNAVAILABLE",
+            "error": str(exc),
+        }
     finally:
         if conn is not None:
             try:

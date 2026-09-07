@@ -360,6 +360,62 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Detect anti-patterns, code smells, and security issues in a file",
     )
+    # Pulse API / TQL / semantic — nervous-system PR facade-action CLI parity.
+    parser.add_argument(
+        "--pulse",
+        metavar="SYMBOL",
+        type=str,
+        help=(
+            "1-query complete context for one symbol: callers, callees, git "
+            "heat, imports, siblings, comments. Requires a file path "
+            "positional argument. CLI parity for: nav action=pulse."
+        ),
+    )
+    parser.add_argument(
+        "--pulse-batch",
+        metavar="TARGETS_JSON",
+        type=str,
+        help=(
+            "action=pulse for multiple {file, symbol} targets in one call. "
+            "TARGETS_JSON is a JSON array of {file, symbol} objects. "
+            "CLI parity for: nav action=pulse_batch."
+        ),
+    )
+    parser.add_argument(
+        "--project-schema",
+        action="store_true",
+        help=(
+            "Index statistics: languages, symbol count, edge count, index "
+            "age, available pulse fields, Hyphae pseudo-classes. "
+            "CLI parity for: index action=schema."
+        ),
+    )
+    parser.add_argument(
+        "--tql-schema",
+        action="store_true",
+        help=(
+            "Full TQL (Temporal Query Language / extended Hyphae) DSL "
+            "reference. CLI parity for: search action=tql_schema."
+        ),
+    )
+    parser.add_argument(
+        "--tql",
+        metavar="SELECTOR",
+        type=str,
+        help=(
+            "Execute a TQL (extended Hyphae) selector over the indexed "
+            "symbol graph. CLI parity for: search action=tql_execute."
+        ),
+    )
+    parser.add_argument(
+        "--semantic-neighbors",
+        metavar="QUERY",
+        type=str,
+        help=(
+            "Find symbols semantically similar to a natural-language query "
+            "via vector embeddings. CLI parity for: search action=semantic."
+        ),
+    )
     parser.add_argument(
         "--call-graph",
         nargs="?",

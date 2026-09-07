@@ -9,31 +9,32 @@ match reality or CI fails). The threshold is 800 lines.
 | Lines | File | Note |
 |---:|---|---|
 | 2690 | `tests/unit/test_knowledge_graph.py` | |
-| 2594 | `tests/unit/mcp/test_change_impact_tool_execute_and_mapping.py` | |
-| 2253 | `tests/unit/test_incremental_sync.py` | |
+| 2631 | `tests/unit/mcp/test_change_impact_tool_execute_and_mapping.py` | |
+| 2521 | `tests/unit/test_incremental_sync.py` | |
 | 2192 | `tests/unit/languages/test_kotlin_plugin.py` | |
 | 2110 | `tests/unit/test_symbols_json_enrichment.py` | |
-| 2097 | `tests/unit/test_ast_extraction.py` | |
+| 2103 | `tests/unit/test_ast_extraction.py` | |
 | 2076 | `tests/unit/test_codegraph_context_tool.py` | |
 | 1894 | `tests/unit/task/test_edge_evidence.py` | |
 | 1878 | `tests/unit/test_uml_state.py` | |
-| 1739 | `tests/unit/test_codegraph_full_index_tool.py` | |
+| 1841 | `tests/unit/test_index_snapshot.py` | |
+| 1783 | `tests/unit/test_codegraph_full_index_tool.py` | |
 | 1693 | `tests/unit/task/test_task_router.py` | |
 | 1645 | `tests/unit/mcp/tools/test_co_change.py` | |
 | 1615 | `tests/unit/languages/test_cyclomatic_complexity.py` | |
+| 1585 | `tests/unit/languages/test_java_plugin.py` | |
 | 1575 | `tests/unit/test_uml_activity.py` | |
 | 1523 | `tests/unit/mcp/test_test_discovery.py` | |
 | 1403 | `tests/unit/core/test_engine.py` | |
 | 1357 | `tests/unit/test_codegraph_pr_review_tool.py` | |
 | 1348 | `tests/integration/formatters/test_data_manager.py` | |
-| 1319 | `tests/unit/mcp/tools/test_nav_facade.py` | |
-| 1120 | `tests/unit/cli/test_mcp_commands.py` | |
+| 1325 | `tests/unit/mcp/tools/test_nav_facade.py` | |
+| 1269 | `tests/unit/cli/test_mcp_commands.py` | |
 | 1078 | `tests/unit/mcp/tools/test_class_inspect_tool.py` | |
 | 1062 | `tests/unit/languages/test_java_regression.py` | |
 | 1059 | `tests/unit/test_diff_snapshot_readonly_capture.py` | |
 | 1045 | `tests/unit/languages/test_cpp_plugin.py` | |
 | 1036 | `tests/contracts/test_outdated_uv_qualification.py` | |
-| 1022 | `tests/unit/test_index_snapshot.py` | |
 | 996 | `tests/unit/test_call_graph_built_signal.py` | |
 | 990 | `tests/unit/languages/test_python_plugin.py` | |
 | 988 | `tests/unit/languages/test_php_plugin.py` | |
@@ -42,16 +43,15 @@ match reality or CI fails). The threshold is 800 lines.
 | 968 | `tests/unit/test_semantic_classify_tool.py` | |
 | 953 | `tests/unit/mcp/tools/test_edit_facade_snapshot_routes.py` | |
 | 941 | `tests/unit/test_index_source_snapshot.py` | |
+| 933 | `tests/unit/test_synapse_resolution.py` | |
 | 932 | `tests/unit/mcp/tools/test_nav_facade_test_map.py` | |
-| 905 | `tests/unit/test_synapse_resolution.py` | |
 | 901 | `tests/unit/languages/test_html_plugin_advanced.py` | |
 | 893 | `tests/unit/test_health_scorer.py` | |
 | 873 | `tests/unit/mcp/test_query_symbol_search_scenarios.py` | |
 | 866 | `tests/unit/languages/test_css_plugin.py` | |
+| 848 | `tests/unit/test_edge_store.py` | |
 | 847 | `tests/unit/test_ast_diff_scenarios.py` | |
-| 847 | `tests/unit/languages/test_java_plugin.py` | |
 | 833 | `tests/unit/test_codegraph_impact_tool.py` | |
-| 822 | `tests/unit/test_edge_store.py` | |
 | 822 | `tests/unit/cli/test_install_skills.py` | |
 | 821 | `tests/unit/test_wire_owner_contract.py` | |
 | 814 | `tests/unit/languages/test_java_formatter.py` | |
@@ -265,7 +265,24 @@ Shipping validation also integrates published develop `5ac5a68e` (#1398/#1399)
 and its refreshed dependency lock. The original migration baseline and nodeid
 maps remain unchanged. The Windows diagnostic retains Python 3.11/3.12/3.13,
 all five cases, the dynamic `$cases.Count` check, and twenty repetitions. This
-sync does not import the unmerged #1352 feature branch or change release versions.
+sync did not import the then-unmerged #1352 feature branch or change release versions.
+
+Subsequent integration uses published develop `8b4f21e7` (the #1352 merge), not
+a feature ref. All 34 upstream-added/modified test files remain byte-identical
+to that develop commit and in their original locations. The original safety
+332 and cache 248 nodeids, markers, fixture scopes and AST witnesses still
+match; the five Windows diagnostic nodeids still collect exactly. New schema17,
+Pulse, activation, embeddings and LSP tests are not folded into the old entries.
+
+The one permitted comprehensive local run retained its failure evidence:
+23866 passed, 22 failed, 165 skipped and one xfailed. Failures were associated
+with the long local checkout/socket path, a temporary-root name ending in
+`pytest`, `/private` path spelling, a missing optional Swift grammar and one
+whole-session descriptor-limit case. All 22 failed cases passed in focused
+fresh-process retries after environment correction (one cwd-sensitive Swift
+case was rerun separately). No test assertions, markers, worker count or timeout
+settings were weakened. This is not a claim of a green second comprehensive
+run; full-session descriptor accumulation remains a CI observation item.
 
 TSA uses its existing filename/stem family rules: complete Python named families
 are no longer cut to ten files, while symbol-only candidates remain bounded.

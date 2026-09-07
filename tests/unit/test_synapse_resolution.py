@@ -26,6 +26,34 @@ from tree_sitter_analyzer.callee_resolution import CalleeResolver
 _FIXTURE_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "synapse"
 
 
+def test_legacy_missing_caller_coordinate_cannot_resolve_ambiguous_self_call(tmp_path):
+    """PR #1352：旧边缺定义行且两个类有同名方法时，不得猜测 self 所属类。"""
+    from tree_sitter_analyzer.cache.synapse import resolve_call_edges_for_file
+
+    source = tmp_path / "a.py"
+    source.write_text(
+        "class First:\n    def run(self):\n        self.target()\n    def target(self):\n        pass\n"
+        "class Second:\n    def run(self):\n        self.target()\n    def target(self):\n        pass\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        db = cache.get_conn()
+        db.execute(
+            "UPDATE edges SET caller_line=0,callee_symbol_id=NULL,callee_resolution='unknown' WHERE kind='calls'"
+        )
+        resolve_call_edges_for_file(cache, db, "a.py")
+        assert [
+            tuple(r)
+            for r in db.execute(
+                "SELECT callee_symbol_id,callee_resolution FROM edges WHERE kind='calls' ORDER BY id"
+            )
+        ] == [(None, "unknown"), (None, "unknown")]
+    finally:
+        cache.close()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

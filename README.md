@@ -15,6 +15,40 @@ TSA indexes your codebase with tree-sitter and serves correct call graphs, symbo
 
 > Upgrading from v1.x? See [docs/MIGRATION.md](docs/MIGRATION.md).
 
+### Unreleased Nervous-System Boundaries
+
+TQL temporal selectors compare modification timestamps, not modification counts.
+The `tql_schema` action documents the window and the shared default for bare
+`:hot` and `:recently_modified`. Depth queries retain exact definition identity
+and fail explicitly when traversal limits are exceeded.
+
+Pulse requests return snapshot-bound context. SQL reads for identity,
+relationships, reverse-import context and optional cached LSP enrichment share
+a savepoint without ending a caller-owned transaction. This is not a SQL
+round-trip or latency guarantee.
+
+Pulse's Python reverse-import context uses the existing module resolver; this
+is not a claim of complete cross-language module resolution. Comment context
+requires an index rebuilt with comment extraction. Old indexes and languages
+without comment extraction return `COMMENTS_NOT_INDEXED`, rather than an empty
+success; explicitly omit comment context with the documented `max_comments`
+setting when it is not needed. Missing legacy commit-message projections become
+`pending` for lazy refresh; `disabled` activation is preserved. Legacy NULL
+activation states also become pending, without clearing old messages or counts.
+Enabled cached indexing cycles continue bounded activation refresh. Pulse exposes
+unavailable activation as `null`, while temporal queries reject incomplete
+activation evidence. Refresh reads real Git history through bounded batches;
+failed message reads retain pending work rather than claiming completion.
+
+Semantic queries require a known stored embedding model and a consistent
+dimension. Mixed or unknown models are errors, with no provider fallback.
+Offline tests use model doubles; they do not certify live-provider quality.
+
+Pulse batches retain successful entries but report failure if a target fails.
+TQL treats missing or unreadable indexes as errors, distinct from a ready index
+with no matches. Public request validation rejects invalid types and limits
+before opening the index or invoking an embedding provider.
+
 ---
 
 ## Get Started
@@ -169,7 +203,7 @@ TSA ships curated workflows under `.claude/skills/tsa-*/`:
 
 Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
 
-### 338 CLI flags
+### 344 CLI flags
 
 Superset of CodeGraph's CLI surface. Highlights:
 
