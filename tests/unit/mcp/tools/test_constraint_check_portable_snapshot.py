@@ -274,6 +274,19 @@ def test_portable_source_certifier_hashes_stable_supported_scope(
         make_source_scope_descriptor(),
         deadline=time.monotonic() + 5.0,
     )
+    if result.state != "exact":
+        import json
+
+        print(
+            json.dumps(
+                {
+                    "fields": fields,
+                    "comparisons": comparisons,
+                    "descriptors": descriptors,
+                },
+                indent=2,
+            )
+        )
 
     import hashlib
 
