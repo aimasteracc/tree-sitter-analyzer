@@ -129,3 +129,37 @@ class Person(val name: String) {
     greet = by_name["greet"]
     assert greet["kind"] == "method"
     assert greet["class"] == "Person"
+
+
+# ---------------------------------------------------------------------------
+# Java record_declaration (found during multi-language MECE check)
+# ---------------------------------------------------------------------------
+
+
+def test_java_record_methods_attributed_to_record() -> None:
+    """Java 16+ record methods must be classified kind=method, not function."""
+    import tree_sitter_java as _java
+    from tree_sitter import Language as _Lang
+    from tree_sitter import Parser as _Parser
+
+    from tree_sitter_analyzer.cache.extraction import _extract_symbols as _ex
+
+    src = """\
+public record Point(int x, int y) {
+    public double distance() {
+        return Math.sqrt(x * x + y * y);
+    }
+    public static Point origin() {
+        return new Point(0, 0);
+    }
+}
+"""
+    tree = _Parser(_Lang(_java.language())).parse(src.encode())
+    symbols = _ex(tree, src, "java")["symbols"]
+    by_name = {s["name"]: s for s in symbols}
+
+    assert by_name["Point"]["kind"] == "class"
+    assert by_name["distance"]["kind"] == "method"
+    assert by_name["distance"]["class"] == "Point"
+    assert by_name["origin"]["kind"] == "method"
+    assert by_name["origin"]["class"] == "Point"

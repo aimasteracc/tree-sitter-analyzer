@@ -184,6 +184,7 @@ _CLASS_LIKE = frozenset(
         "class_specifier",  # C++
         "type_spec",  # Go
         "annotation_type_declaration",  # Java
+        "record_declaration",  # Java 16+ records — methods/ctors classified as method
         "companion_object",  # Kotlin
         "module",  # Ruby
         "trait_item",  # Rust
