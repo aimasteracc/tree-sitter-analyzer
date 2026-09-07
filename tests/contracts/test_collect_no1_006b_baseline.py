@@ -42,16 +42,6 @@ def mutated(path: tuple[str, ...], value: object) -> dict:
     target[path[-1]]=value; report["canonical_payload_sha256"]=collector.canonical_hash(report)
     return report
 
-# #1373:windows 轴上这两个真跑 git clone 的契约反复触发 xdist worker 原生崩溃
-# (node down: Not properly terminated)。采集器证据平台无关,按 full_language
-# 只跑 Linux 覆盖轴的同一原则,限 POSIX 轴执行;windows 原生崩溃根因另案追踪。
-_NO1_POSIX_ONLY = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="tracked: #1373 windows xdist worker hard-crash around fresh-clone contract",
-)
-
-
-
 def test_checked_in_receipt_passes_schema_and_cross_field_validator() -> None:
     collector.validate_receipt(baseline(), schema())
 
@@ -151,22 +141,23 @@ def test_receipt_binds_exact_collector_and_schema_bytes() -> None:
     blobs=[subprocess.run(["git","show",f"{commit}:{path}"],cwd=REPO,check=True,capture_output=True).stdout for path in paths]
     assert [report["collector"][key] for key in ("script_sha256","schema_sha256","support_sha256")] == [collector.digest_bytes(blob) for blob in blobs]
 
-@_NO1_POSIX_ONLY
 def test_receipt_binds_exact_collector_tool_lock_and_export(tmp_path: Path) -> None:
-    # PR #1250: the historical collector closure must be derived from its bound commit, never reviewed HEAD.
+    # #1373 / PR #1250：导出只需绑定提交中的两个输入，不必检出整棵历史源码树。
     report=baseline(); commit=report["collector"]["commit"]; command=report["commands"]["collector_tool_export"]
     uv=Path(shutil.which(command[0]) or "missing").resolve(strict=True)
     uv_version=subprocess.run([str(uv),"--version"],check=True,capture_output=True,text=True).stdout.strip()
     assert uv_version.split()[:2] == report["environment"]["uv"]["version"].split()[:2]
     bound_command=[str(uv),*command[1:]]
     worktree=tmp_path/"collector"
-    subprocess.run(["git","worktree","add","-q","--detach",str(worktree),commit],cwd=REPO,check=True)
+    worktree.mkdir()
+    inputs={name:collector.git(REPO,"show",f"{commit}:{name}") for name in ("pyproject.toml","uv.lock")}
+    for name,content in inputs.items(): (worktree/name).write_bytes(content)
     try:
-        assert subprocess.run(["git","status","--porcelain=v1","--untracked-files=all","--ignored"],cwd=worktree,check=True,capture_output=True,text=True).stdout == ""
         exported=subprocess.run(bound_command,cwd=worktree,env=collector.clean_env(),check=True,capture_output=True).stdout
-        lock_blob=subprocess.run(["git","show",f"{commit}:uv.lock"],cwd=worktree,env=collector.clean_env(),check=True,capture_output=True).stdout
+        assert {path.name:path.read_bytes() for path in worktree.iterdir()} == inputs
+        lock_blob=inputs["uv.lock"]
     finally:
-        subprocess.run(["git","worktree","remove","--force",str(worktree)],cwd=REPO,check=True)
+        shutil.rmtree(worktree)
     assert [report["collector"]["tool_lock_sha256"],report["collector"]["tool_export_sha256"]] == [collector.digest_bytes(lock_blob),collector.digest_bytes(exported)]
     assert worktree.exists() is False
 
@@ -370,15 +361,18 @@ def test_collector_commit_is_ancestor_of_reviewed_head() -> None:
     result=subprocess.run(["git","merge-base","--is-ancestor",commit,"HEAD"],cwd=REPO)
     assert result.returncode == 0
 
-@_NO1_POSIX_ONLY
 def test_fresh_clone_can_resolve_and_checkout_collector_commit(tmp_path: Path) -> None:
+    # #1373：保留独立 Git 历史传输及真实脚本检出，移除重复传输与无关源码检出。
     commit=baseline()["collector"]["commit"]
-    bare=tmp_path/"reviewed.git"; clone=tmp_path/"clone"; worktree=tmp_path/"collector"
-    subprocess.run(["git","init","--bare","-q",str(bare)],check=True)
-    subprocess.run(["git","push","-q",str(bare),"HEAD:refs/heads/reviewed"],cwd=REPO,check=True)
-    subprocess.run(["git","clone","-q","--no-local","--no-tags","--single-branch","--branch","reviewed",str(bare),str(clone)],check=True)
-    subprocess.run(["git","worktree","add","-q","--detach",str(worktree),commit],cwd=clone,check=True)
+    clone=tmp_path/"clone"; worktree=tmp_path/"collector"
+    subprocess.run(["git","clone","-q","--no-local","--no-tags","--single-branch","--no-checkout",str(REPO),str(clone)],check=True)
+    subprocess.run(["git","worktree","add","-q","--detach","--no-checkout",str(worktree),commit],cwd=clone,check=True)
+    path="scripts/collect_no1_006b_baseline.py"
+    subprocess.run(["git","checkout",commit,"--",path],cwd=worktree,check=True)
     assert subprocess.run(["git","rev-parse","HEAD"],cwd=worktree,check=True,capture_output=True,text=True).stdout.strip() == commit
+    assert sorted(path.name for path in clone.iterdir()) == [".git"]
+    assert sorted(path.name for path in worktree.iterdir()) == [".git", "scripts"]
+    assert (worktree/path).read_bytes() == collector.git(REPO,"show",f"{commit}:{path}")
 
 def test_rfc_requires_merge_commit_to_preserve_collector_ancestry() -> None:
     reproduction=RFC.read_text(encoding="utf-8").split("## Reproduction of the descriptive receipt",1)[1].split("```bash",1)[0]

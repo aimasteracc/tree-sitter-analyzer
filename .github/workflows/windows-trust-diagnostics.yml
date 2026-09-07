@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11', '3.13']
+        python-version: ['3.11', '3.12', '3.13']
     env:
       PYTHONUTF8: '1'
       PYTHONIOENCODING: utf-8
@@ -51,6 +51,8 @@ jobs:
           $output = Join-Path $env:RUNNER_TEMP "tsa-trust-$env:PYTHON_VERSION"
           New-Item -ItemType Directory -Force -Path $output | Out-Null
           $cases = @(
+            'tests/contracts/test_collect_no1_006b_baseline.py::test_receipt_binds_exact_collector_tool_lock_and_export',
+            'tests/contracts/test_collect_no1_006b_baseline.py::test_fresh_clone_can_resolve_and_checkout_collector_commit',
             'tests/contracts/test_collect_no1_006b_baseline.py::test_secrets_baseline_union_contract_works_in_fresh_clone_without_remote',
             'tests/unit/mcp/tools/test_constraint_check_portable_snapshot.py::test_portable_source_certifier_hashes_stable_supported_scope',
             'tests/unit/test_ast_cache.py::test_force_rebuild_without_secure_materialization_keeps_legacy_data_plane'
@@ -77,7 +79,7 @@ jobs:
               $xmlError = $_.Exception.Message
               $code = 1
             }
-            if ($executed -ne 3 -or $skipped -ne 0) { $code = 1 }
+            if ($executed -ne $cases.Count -or $skipped -ne 0) { $code = 1 }
             if ($code -ne 0) { $failures++ }
             @{
               sha = $env:TARGET_SHA
