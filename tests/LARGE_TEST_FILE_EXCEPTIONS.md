@@ -22,7 +22,7 @@ match reality or CI fails). The threshold is 800 lines.
 | 1645 | `tests/unit/mcp/tools/test_co_change.py` | |
 | 1615 | `tests/unit/languages/test_cyclomatic_complexity.py` | |
 | 1575 | `tests/unit/test_uml_activity.py` | |
-| 1499 | `tests/unit/mcp/test_test_discovery.py` | |
+| 1523 | `tests/unit/mcp/test_test_discovery.py` | |
 | 1403 | `tests/unit/core/test_engine.py` | |
 | 1357 | `tests/unit/test_codegraph_pr_review_tool.py` | |
 | 1348 | `tests/integration/formatters/test_data_manager.py` | |
@@ -261,8 +261,16 @@ suites. Worker, timeout, marker and comprehensive-command settings are unchanged
 The Windows trust diagnostic workflow's concrete nodeid points to the new
 `test_ast_cache_force_rebuild.py` owner.
 
+Shipping validation also integrates published develop `5ac5a68e` (#1398/#1399)
+and its refreshed dependency lock. The original migration baseline and nodeid
+maps remain unchanged. The Windows diagnostic retains Python 3.11/3.12/3.13,
+all five cases, the dynamic `$cases.Count` check, and twenty repetitions. This
+sync does not import the unmerged #1352 feature branch or change release versions.
+
 TSA uses its existing filename/stem family rules: complete Python named families
 are no longer cut to ten files, while symbol-only candidates remain bounded.
+Non-Python recursive discovery keeps its original lazy ten-candidate stop;
+a separate iteration-count regression guards against exhausting its iterator.
 The repository's `cache/` implementation package maps to the `ast_cache` facade
 family through the existing stem mapper. No parallel parser or mapping engine
 was added. New policy/discovery contract cases are separate from the original

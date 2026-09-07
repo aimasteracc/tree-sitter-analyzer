@@ -125,6 +125,30 @@ class TestFindTestFilesPython:
 
         assert found == [f"tests/test_unrelated_{index:02}.py" for index in range(10)]
 
+    def test_non_python_candidates_stop_before_exhausting_the_iterator(
+        self, tmp_path, monkeypatch
+    ):
+        """#1376：完整 Python 族不能取消其他语言既有的惰性扫描边界。"""
+        from tree_sitter_analyzer.mcp.tools.utils.test_discovery import (
+            _find_recursive_test_candidates,
+        )
+
+        visited = []
+
+        def candidates(directory, pattern):
+            assert directory == tmp_path
+            assert pattern == "worker_test.go"
+            for index in range(15):
+                visited.append(index)
+                yield directory / f"package_{index:02}" / "worker_test.go"
+
+        monkeypatch.setattr(Path, "rglob", candidates)
+        found = []
+        _find_recursive_test_candidates(tmp_path, "worker_test.go", tmp_path, found)
+
+        assert visited == list(range(10))
+        assert found == [f"package_{index:02}/worker_test.go" for index in range(10)]
+
     def test_finds_python_test_in_unit_dir(self):
         """Finds tests/unit/module/test_file.py for file.py."""
         with tempfile.TemporaryDirectory() as tmp:

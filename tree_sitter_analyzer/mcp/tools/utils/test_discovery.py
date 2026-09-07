@@ -7,6 +7,7 @@ conventions (test_*.py, *Test.java, *_test.go, etc.).
 """
 
 import re
+from collections.abc import Iterator
 from pathlib import Path
 
 from .test_discovery_languages import find_language_specific_tests
@@ -189,11 +190,17 @@ def _find_recursive_test_candidates(
     root: Path,
     results: list[str],
 ) -> None:
-    """按稳定顺序收集完整文件名匹配，最终候选边界由调用者决定。"""
+    """Python 收集完整命名族，其他语言保留原有惰性候选上限。"""
     if not test_dir.is_dir():
         return
-    for candidate in sorted(test_dir.rglob(test_filename)):
+    candidates: Iterator[Path] = test_dir.rglob(test_filename)
+    python_family = test_filename.endswith(".py")
+    if python_family:
+        candidates = iter(sorted(candidates))
+    for candidate in candidates:
         _add_result(results, candidate, root)
+        if not python_family and len(results) >= 10:
+            break
 
 
 def _find_colocated_tests(
