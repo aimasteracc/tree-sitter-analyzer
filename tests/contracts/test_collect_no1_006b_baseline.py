@@ -362,14 +362,20 @@ def test_collector_commit_is_ancestor_of_reviewed_head() -> None:
     result=subprocess.run(["git","merge-base","--is-ancestor",commit,"HEAD"],cwd=REPO)
     assert result.returncode == 0
 
-def test_fresh_clone_can_resolve_and_checkout_collector_commit(tmp_path: Path) -> None:
+def test_fresh_clone_can_resolve_and_checkout_collector_commit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # #1373：保留独立 Git 历史传输及真实脚本检出，移除重复传输与无关源码检出。
+    # Windows 的默认 CRLF 检出策略不能改变本测试要验证的绑定字节。
+    monkeypatch.setenv("GIT_CONFIG_COUNT","2")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0","core.autocrlf")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0","true")
+    monkeypatch.setenv("GIT_CONFIG_KEY_1","core.eol")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_1","crlf")
     commit=baseline()["collector"]["commit"]
     clone=tmp_path/"clone"; worktree=tmp_path/"collector"
     subprocess.run(["git","clone","-q","--no-local","--no-tags","--single-branch","--no-checkout",str(REPO),str(clone)],check=True)
     subprocess.run(["git","worktree","add","-q","--detach","--no-checkout",str(worktree),commit],cwd=clone,check=True)
     path="scripts/collect_no1_006b_baseline.py"
-    subprocess.run(["git","checkout",commit,"--",path],cwd=worktree,check=True)
+    subprocess.run(["git","-c","core.autocrlf=false","-c","core.eol=lf","checkout",commit,"--",path],cwd=worktree,check=True)
     assert subprocess.run(["git","rev-parse","HEAD"],cwd=worktree,check=True,capture_output=True,text=True).stdout.strip() == commit
     assert sorted(path.name for path in clone.iterdir()) == [".git"]
     assert sorted(path.name for path in worktree.iterdir()) == [".git", "scripts"]
