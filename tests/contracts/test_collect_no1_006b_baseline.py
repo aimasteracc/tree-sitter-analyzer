@@ -150,7 +150,8 @@ def test_receipt_binds_exact_collector_tool_lock_and_export(tmp_path: Path) -> N
     bound_command=[str(uv),*command[1:]]
     worktree=tmp_path/"collector"
     worktree.mkdir()
-    inputs={name:collector.git(REPO,"show",f"{commit}:{name}") for name in ("pyproject.toml","uv.lock")}
+    # 采集器的受限进程读取器仅支持 POSIX；此处使用跨平台 Git 字节接口。
+    inputs={name:subprocess.run(["git","show",f"{commit}:{name}"],cwd=REPO,env=collector.clean_env(),check=True,capture_output=True,timeout=60).stdout for name in ("pyproject.toml","uv.lock")}
     for name,content in inputs.items(): (worktree/name).write_bytes(content)
     try:
         exported=subprocess.run(bound_command,cwd=worktree,env=collector.clean_env(),check=True,capture_output=True).stdout
@@ -372,7 +373,8 @@ def test_fresh_clone_can_resolve_and_checkout_collector_commit(tmp_path: Path) -
     assert subprocess.run(["git","rev-parse","HEAD"],cwd=worktree,check=True,capture_output=True,text=True).stdout.strip() == commit
     assert sorted(path.name for path in clone.iterdir()) == [".git"]
     assert sorted(path.name for path in worktree.iterdir()) == [".git", "scripts"]
-    assert (worktree/path).read_bytes() == collector.git(REPO,"show",f"{commit}:{path}")
+    expected=subprocess.run(["git","show",f"{commit}:{path}"],cwd=REPO,env=collector.clean_env(),check=True,capture_output=True,timeout=60).stdout
+    assert (worktree/path).read_bytes() == expected
 
 def test_rfc_requires_merge_commit_to_preserve_collector_ancestry() -> None:
     reproduction=RFC.read_text(encoding="utf-8").split("## Reproduction of the descriptive receipt",1)[1].split("```bash",1)[0]
