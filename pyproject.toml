@@ -171,7 +171,7 @@ all-languages = [
 # MCP server support
 mcp = [
     "mcp>=1.12.2",
-    "anyio>=4.0.0",
+    "anyio>=4.15.0",
     "httpx>=0.27.0,<1.0.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.2.1",
@@ -233,7 +233,7 @@ integration = [
     "tree-sitter-typescript>=0.20.0",
     "tree-sitter-markdown>=0.3.1",
     "mcp>=1.12.2",
-    "anyio>=4.0.0",
+    "anyio>=4.15.0",
 ]
 
 # Complete development environment
@@ -249,7 +249,7 @@ full = [
     "tree-sitter-markdown>=0.3.1",
     "tree-sitter-swift>=0.7.2",
     "mcp>=1.12.2",
-    "anyio>=4.0.0",
+    "anyio>=4.15.0",
     "httpx>=0.27.0,<1.0.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.2.1",
@@ -285,7 +285,7 @@ all = [
     "tree-sitter-css>=0.23.0,<0.25.0",
     "tree-sitter-sql>=0.3.11,<0.4.0",  # SQL language support for database schema analysis
     "mcp>=1.12.2",
-    "anyio>=4.0.0",
+    "anyio>=4.15.0",
     "httpx>=0.27.0,<1.0.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.2.1",
