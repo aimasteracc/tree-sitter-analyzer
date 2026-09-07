@@ -1,28 +1,7 @@
-"""Java AST traversal helpers."""
+"""Java AST 游标遍历辅助函数。"""
 
 from collections.abc import Callable
 from typing import Any
-
-_JAVA_CONTAINER_NODES = {
-    "program",
-    "class_body",
-    "interface_body",
-    "enum_body",
-    "enum_body_declarations",
-    "class_declaration",
-    "interface_declaration",
-    "enum_declaration",
-    # Theme-I (2026-06-10): descend into records and annotation types so
-    # their members (e.g. a record's methods) are reachable. A record's body
-    # is a plain ``class_body``; annotation types use ``annotation_type_body``.
-    "record_declaration",
-    "annotation_type_declaration",
-    "annotation_type_body",
-    "method_declaration",
-    "constructor_declaration",
-    "block",
-    "modifiers",
-}
 
 
 def java_traverse_and_extract(
@@ -30,35 +9,33 @@ def java_traverse_and_extract(
     extractors: dict[str, Any],
     results: list[Any],
     element_type: str,
-    processed_nodes: set[int],
-    element_cache: dict[tuple[int, str], Any],
+    processed_nodes: set[tuple[int, int]],
+    element_cache: dict[tuple[tuple[int, int], str], Any],
     *,
     log_warning_func: Callable[[str], None],
     log_debug_func: Callable[[str], None],
 ) -> None:
-    """Iterative node traversal and extraction with batch field processing."""
+    """用 TreeCursor 遍历所有 named 后代，并批量处理字段。
+
+    不按语法容器白名单剪枝，避免遗漏任意表达式或控制流中的声明。
+    缓存仍以字节范围为键，不依赖游标移动时临时 Node 对象的身份。
+    """
     if not root_node:
         return
 
-    target_node_types, max_depth = set(extractors.keys()), 50
-    node_stack: list[tuple[Any, int]]
-    field_batch: list[Any]
-    node_stack, field_batch = [(root_node, 0)], []
+    target_node_types = set(extractors.keys())
+    field_batch: list[Any] = []
     processed_count = 0
 
-    while node_stack:
-        current_node, depth = node_stack.pop()
+    cursor = root_node.walk()
+    reached_root = False
 
-        if depth > max_depth:
-            log_warning_func(f"Maximum traversal depth ({max_depth}) exceeded")
-            continue
-
+    while not reached_root:
+        current_node = cursor.node
         processed_count += 1
-        node_type = current_node.type
-        if _should_skip_node(depth, node_type, target_node_types):
-            continue
 
-        if node_type in target_node_types:
+        # Process matched target nodes
+        if current_node.type in target_node_types:
             _process_matched_node(
                 current_node,
                 extractors,
@@ -69,21 +46,29 @@ def java_traverse_and_extract(
                 field_batch,
             )
 
-        _push_children(node_stack, current_node, depth)
-        _flush_field_batch_if_ready(
-            field_batch, extractors, results, processed_nodes, element_cache
-        )
+        # PR #1350：只跳过匿名标点的内部，不截断任何 named 子树。
+        should_descend = current_node == root_node or current_node.is_named
+        if should_descend and cursor.goto_first_child():
+            continue
+
+        # Move to next sibling at the same level
+        if cursor.goto_next_sibling():
+            continue
+
+        # Backtrack: climb until we can move to a next sibling or exhaust the tree
+        retracing = True
+        while retracing:
+            if not cursor.goto_parent():
+                retracing = False
+                reached_root = True
+            elif cursor.node == root_node:
+                retracing = False
+                reached_root = True
+            elif cursor.goto_next_sibling():
+                retracing = False
 
     _flush_field_batch(field_batch, extractors, results, processed_nodes, element_cache)
-    log_debug_func(f"Iterative traversal processed {processed_count} nodes")
-
-
-def _should_skip_node(depth: int, node_type: str, target_node_types: set[str]) -> bool:
-    return (
-        depth > 0
-        and node_type not in target_node_types
-        and node_type not in _JAVA_CONTAINER_NODES
-    )
+    log_debug_func(f"Cursor traversal processed {processed_count} nodes")
 
 
 def _process_matched_node(
@@ -91,15 +76,15 @@ def _process_matched_node(
     extractors: dict[str, Any],
     results: list[Any],
     element_type: str,
-    processed_nodes: set[int],
-    element_cache: dict[tuple[int, str], Any],
+    processed_nodes: set[tuple[int, int]],
+    element_cache: dict[tuple[tuple[int, int], str], Any],
     field_batch: list[Any],
 ) -> None:
     if element_type == "field" and node.type == "field_declaration":
         field_batch.append(node)
         return
 
-    node_id = id(node)
+    node_id = (node.start_byte, node.end_byte)
     if node_id in processed_nodes:
         return
 
@@ -128,21 +113,12 @@ def _append_element(results: list[Any], element: Any) -> None:
     results.append(element)
 
 
-def _push_children(
-    node_stack: list[tuple[Any, int]], current_node: Any, depth: int
-) -> None:
-    if not current_node.children:
-        return
-    for child in reversed(current_node.children):
-        node_stack.append((child, depth + 1))
-
-
 def _flush_field_batch_if_ready(
     field_batch: list[Any],
     extractors: dict[str, Any],
     results: list[Any],
-    processed_nodes: set[int],
-    element_cache: dict[tuple[int, str], Any],
+    processed_nodes: set[tuple[int, int]],
+    element_cache: dict[tuple[tuple[int, int], str], Any],
 ) -> None:
     if len(field_batch) < 10:
         return
@@ -153,8 +129,8 @@ def _flush_field_batch(
     field_batch: list[Any],
     extractors: dict[str, Any],
     results: list[Any],
-    processed_nodes: set[int],
-    element_cache: dict[tuple[int, str], Any],
+    processed_nodes: set[tuple[int, int]],
+    element_cache: dict[tuple[tuple[int, int], str], Any],
 ) -> None:
     if not field_batch:
         return
@@ -168,8 +144,8 @@ def _process_field_batch(
     batch: list[Any],
     extractors: dict[str, Any],
     results: list[Any],
-    processed_nodes: set[int],
-    element_cache: dict[tuple[int, str], Any],
+    processed_nodes: set[tuple[int, int]],
+    element_cache: dict[tuple[tuple[int, int], str], Any],
 ) -> None:
     """Process field nodes with caching."""
     for node in batch:
@@ -180,10 +156,10 @@ def _process_field_node(
     node: Any,
     extractors: dict[str, Any],
     results: list[Any],
-    processed_nodes: set[int],
-    element_cache: dict[tuple[int, str], Any],
+    processed_nodes: set[tuple[int, int]],
+    element_cache: dict[tuple[tuple[int, int], str], Any],
 ) -> None:
-    node_id = id(node)
+    node_id = (node.start_byte, node.end_byte)
     if node_id in processed_nodes:
         return
 

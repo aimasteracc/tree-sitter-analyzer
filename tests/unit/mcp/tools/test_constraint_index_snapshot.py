@@ -97,6 +97,31 @@ def test_open_database_fd_rejects_descriptor_identity_mismatch(
         owner._open_database_fd(database, expected)
 
 
+def test_open_database_fd_preserves_binary_control_bytes(tmp_path, monkeypatch):
+    """PR #1350 / Windows job 101720195177：CRT 文本模式会把数据库中的 Ctrl-Z 当成 EOF。"""
+    database = tmp_path / "binary.db"
+    payload = b"SQLite format 3\x00\r\n\x1a\x00remaining bytes"
+    database.write_bytes(payload)
+    expected = owner._identity(database, directory=False)
+    native_binary = getattr(os, "O_BINARY", 0)
+    binary_flag = native_binary or 0x8000
+    real_open = os.open
+    flags_seen = []
+
+    def open_binary(path, flags):
+        flags_seen.append(flags & binary_flag)
+        return real_open(path, flags if native_binary else flags & ~binary_flag)
+
+    monkeypatch.setattr(owner.os, "O_BINARY", binary_flag, raising=False)
+    monkeypatch.setattr(owner, "_open", open_binary)
+    fd = owner._open_database_fd(database, expected)
+    try:
+        assert os.read(fd, len(payload) + 1) == payload
+    finally:
+        os.close(fd)
+    assert flags_seen == [binary_flag]
+
+
 def test_copy_pinned_database_writes_exact_advertised_bytes(tmp_path: Path) -> None:
     path = tmp_path / "bytes"
     path.write_bytes(b"abcdef")
@@ -491,3 +516,126 @@ def test_constraint_source_capture_selects_descriptor_oracle(monkeypatch) -> Non
         owner, "capture_current_source_snapshot", lambda *_a, **_k: expected
     )
     assert owner._capture_constraint_sources("/project", object(), 1.0) is expected
+
+
+@pytest.mark.parametrize("portable", [False, True])
+def test_real_partial_projection_rejects_constraint_evaluation(
+    tmp_path, monkeypatch, portable
+):
+    # PR #1350：普通便携副本与新增 WAL 资格门分别验证，未获资格不宣称检查过投影。
+    import tree_sitter_analyzer.index_snapshot as snapshot_owner
+    import tree_sitter_analyzer.index_snapshot_capability as capability
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_snapshot import REGISTRY, stamp_full_index_manifest
+    from tree_sitter_analyzer.mcp.tools.constraint_check_tool import ConstraintCheckTool
+
+    source = tmp_path / "app.py"
+    source.write_text("def answer(): return 42\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        conn = cache.get_conn()
+        conn.execute("DELETE FROM ast_symbol_rows")
+        stamp_full_index_manifest(conn, str(tmp_path))
+    finally:
+        cache.close()
+    monkeypatch.setattr(owner, "portable_snapshot_required", lambda: portable)
+    projection_calls = []
+    real_projection = owner.symbol_projection_is_exact
+
+    def check_projection(conn, **kwargs):
+        projection_calls.append(True)
+        return real_projection(conn, **kwargs)
+
+    monkeypatch.setattr(owner, "symbol_projection_is_exact", check_projection)
+    monkeypatch.setattr(snapshot_owner, "symbol_projection_is_exact", check_projection)
+    tool = ConstraintCheckTool(str(tmp_path))
+    monkeypatch.setattr(
+        tool,
+        "_evaluate_connection",
+        lambda *_a, **_k: pytest.fail("incomplete snapshot evaluated constraints"),
+    )
+    try:
+        wal_supported = (
+            os.name == "posix"
+            and hasattr(os, "O_NOFOLLOW")
+            and capability._WAL_FD_COPY_SUPPORTED
+        )
+        reason = (
+            "WAL_PRIVATE_SNAPSHOT_UNSUPPORTED"
+            if not portable and not wal_supported
+            else "SOURCE_SCOPE_UNSUPPORTED"
+            if not portable and not os.path.exists("/dev/fd")
+            else "SYMBOL_PROJECTION_INCOMPLETE"
+        )
+        with pytest.raises(ValueError, match=f"^{reason}$"):
+            owner.evaluate_ordinary_snapshot(
+                tool,
+                [],
+                path_filter="",
+                min_severity_rank=0,
+                scope_paths=None,
+                evaluator=None,
+                deadline=time.monotonic() + 10,
+            )
+        if not portable and not wal_supported:
+            assert projection_calls == []
+        else:
+            assert projection_calls == [True]
+    finally:
+        REGISTRY.close_all()
+
+
+def test_unsupported_read_existing_does_not_attempt_projection(tmp_path, monkeypatch):
+    """PR #1350：普通索引可用不赋予 WAL 资格，拒绝必须发生在读取和投影核验之前。"""
+    import tree_sitter_analyzer.index_snapshot_capability as capability
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.mcp.tools.constraint_check_tool import ConstraintCheckTool
+
+    source = tmp_path / "app.py"
+    source.write_text("def answer(): return 42\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        assert cache.index_file(str(source))["status"] == "indexed"
+        assert cache.get_stats()["total_files"] == 1
+    finally:
+        cache.close()
+    monkeypatch.setattr(capability, "_WAL_FD_COPY_SUPPORTED", False)
+    monkeypatch.setattr(owner, "portable_snapshot_required", lambda: False)
+    exists = os.path.exists
+    monkeypatch.setattr(
+        os.path, "exists", lambda path: False if path == "/dev/fd" else exists(path)
+    )
+    monkeypatch.setattr(
+        capability,
+        "open_bound_database",
+        lambda *_a, **_k: pytest.fail("unsupported capture opened source"),
+    )
+    with pytest.raises(ValueError, match="^WAL_PRIVATE_SNAPSHOT_UNSUPPORTED$"):
+        owner.evaluate_ordinary_snapshot(
+            ConstraintCheckTool(str(tmp_path)),
+            [],
+            path_filter="",
+            min_severity_rank=0,
+            scope_paths=None,
+            evaluator=None,
+            deadline=time.monotonic() + 10,
+        )
+
+
+def test_missing_registry_index_is_rejected_without_creation(tmp_path, monkeypatch):
+    # PR #1350：无索引不是部分索引，读取约束不能悄悄创建缓存。
+    from tree_sitter_analyzer.mcp.tools.constraint_check_tool import ConstraintCheckTool
+
+    monkeypatch.setattr(owner, "portable_snapshot_required", lambda: False)
+    with pytest.raises(ValueError, match="^MISSING_INDEX$"):
+        owner.evaluate_ordinary_snapshot(
+            ConstraintCheckTool(str(tmp_path)),
+            [],
+            path_filter="",
+            min_severity_rank=0,
+            scope_paths=None,
+            evaluator=None,
+            deadline=time.monotonic() + 10,
+        )
+    assert (tmp_path / ".ast-cache").exists() is False

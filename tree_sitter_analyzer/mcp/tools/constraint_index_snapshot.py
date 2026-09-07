@@ -70,9 +70,10 @@ def _identity(path: Path, *, directory: bool) -> tuple[int, int, int, int, int]:
 
 
 def _open_database_fd(db_path: Path, expected: tuple[int, int, int, int, int]) -> int:
-    """Open the database read-only and bind the descriptor to its lstat identity."""
+    """按二进制只读打开数据库并核对身份，避免 Windows 文本模式截断数据库字节。"""
     flags = (
         os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
         | getattr(os, "O_NONBLOCK", 0)
         | getattr(os, "O_NOFOLLOW", 0)
         | getattr(os, "O_CLOEXEC", 0)
@@ -398,6 +399,9 @@ def evaluate_ordinary_snapshot(
             )
             with lease_existing_snapshot(project_root, **lease_kwargs) as index:
                 if index.snapshot_id is None or index.completeness != "complete":
+                    # Phase B-3: distinguish partial from missing/unknown.
+                    if index.completeness == "partial":
+                        raise ValueError(index.reason or "CONSTRAINT_INDEX_PARTIAL")
                     raise ValueError(index.reason or "CONSTRAINT_INDEX_UNKNOWN")
                 acquire_kwargs = (
                     {"deadline": deadline}
@@ -416,7 +420,8 @@ def evaluate_ordinary_snapshot(
         authority = registry_authority()
     with authority as (index, conn):
         if index.completeness != "complete":
-            raise ValueError(index.reason or "CONSTRAINT_INDEX_UNKNOWN")
+            # 注册表路径已拒绝不完整状态；便携认证器仅返回 complete/partial。
+            raise ValueError(index.reason or "CONSTRAINT_INDEX_PARTIAL")
         source_scope = getattr(index, "source_scope", None)
         if hasattr(index, "source_scope") and not ordinary_source_scope_is_full(
             source_scope

@@ -7,6 +7,7 @@ All assertions pin CONCRETE values (specific names, counts, types, flags).
 
 from __future__ import annotations
 
+import inspect
 import os
 import tempfile
 from unittest.mock import Mock, patch
@@ -22,10 +23,69 @@ from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
 # ---------------------------------------------------------------------------
 
 
+def _make_traversable_root(children=None):
+    """Create a root Mock with a cursor-compatible interface.
+
+    The returned root's ``.walk()`` yields a Mock cursor whose ``goto_*``
+    methods return proper booleans so that ``java_traverse_and_extract``
+    terminates instead of looping infinitely.
+
+    Children are assigned distinct ``start_byte`` / ``end_byte`` values (if not
+    already set) so that the ``(start_byte, end_byte)`` cache-key scheme in
+    ``_java_traversal`` produces unique, deterministic keys.
+    """
+    children = list(children or [])
+    root = Mock()
+    root.children = children  # keep for code that accesses .children directly
+
+    # Assign unique byte ranges for cache-key stability (only when not yet set)
+    for i, child in enumerate(children):
+        if isinstance(child.start_byte, Mock):
+            child.start_byte = (i + 1) * 100
+        if isinstance(child.end_byte, Mock):
+            child.end_byte = (i + 1) * 100 + 50
+
+    nodes = [root] + children
+    state = [0]  # current cursor position index
+
+    cursor = Mock()
+    cursor.node = root  # initial position
+
+    def _goto_first_child():
+        """Descend to first child (only from root; children have no sub-children)."""
+        if cursor.node is root and children:
+            state[0] = 1
+            cursor.node = nodes[1]
+            return True
+        return False
+
+    def _goto_next_sibling():
+        """Move to the next child of root."""
+        if 0 < state[0] < len(nodes) - 1:
+            state[0] += 1
+            cursor.node = nodes[state[0]]
+            return True
+        return False
+
+    def _goto_parent():
+        """Climb back to root from any child."""
+        if cursor.node is not root:
+            state[0] = 0
+            cursor.node = root
+            return True
+        return False
+
+    cursor.goto_first_child = _goto_first_child
+    cursor.goto_next_sibling = _goto_next_sibling
+    cursor.goto_parent = _goto_parent
+
+    root.walk.return_value = cursor
+    return root
+
+
 def _mock_tree(children=None):
     tree = Mock()
-    root = Mock()
-    root.children = children or []
+    root = _make_traversable_root(children)
     tree.root_node = root
     tree.language = Mock()
     return tree
@@ -210,7 +270,7 @@ class TestNodeTextCaching:
         extractor._file_encoding = "utf-8"
 
         with patch(
-            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages._java_extractor_support.extract_text_slice",
             return_value="test text",
         ) as mock_extract:
             result1 = extractor._get_node_text_optimized(node)
@@ -231,7 +291,7 @@ class TestNodeTextCaching:
         extractor._file_encoding = "utf-8"
 
         with patch(
-            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages._java_extractor_support.extract_text_slice",
             side_effect=Exception("err"),
         ):
             result = extractor._get_node_text_optimized(node)
@@ -248,7 +308,7 @@ class TestNodeTextCaching:
         extractor._file_encoding = "utf-8"
 
         with patch(
-            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages._java_extractor_support.extract_text_slice",
             side_effect=UnicodeDecodeError("utf-8", b"", 0, 1, "test"),
         ):
             result = extractor._get_node_text_optimized(node)
@@ -263,11 +323,32 @@ class TestNodeTextCaching:
         extractor.content_lines = ["test content"]
 
         with patch(
-            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages._java_extractor_support.extract_text_slice",
             side_effect=Exception("err"),
         ):
             result = extractor._get_node_text_optimized(node)
         assert result == ""
+
+    @pytest.mark.parametrize(
+        ("line_count", "expected"),
+        [(3, "{\n    int value;\n}"), (2, "{\n    int value;")],
+    )
+    def test_multiline_decode_fallback_preserves_available_text(
+        self, extractor, line_count, expected
+    ):
+        """解码失败时保留首末列边界及内部行；截短内容不虚构缺失行。"""
+        source = "class Demo {\n    int value;\n} class Neighbor {}"
+        tree = _parse_java_treewalk(source)
+        node = tree.root_node.named_children[0].child_by_field_name("body")
+        extractor.content_lines = source.split("\n")[:line_count]
+
+        with patch(
+            "tree_sitter_analyzer.languages._java_extractor_support.extract_text_slice",
+            side_effect=UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid byte"),
+        ):
+            result = extractor._get_node_text_optimized(node)
+
+        assert result == expected
 
 
 # ---------------------------------------------------------------------------
@@ -447,14 +528,13 @@ class TestJavaElementExtractorTraverse:
         return JavaElementExtractor()
 
     def test_traverse_extracts_method_and_class(self, extractor):
-        root = Mock()
         child1 = Mock()
         child1.type = "method_declaration"
         child1.children = []
         child2 = Mock()
         child2.type = "class_declaration"
         child2.children = []
-        root.children = [child1, child2]
+        root = _make_traversable_root([child1, child2])
 
         fn = Function(
             name="m", start_line=1, end_line=3, raw_text="void m(){}", language="java"
@@ -478,11 +558,12 @@ class TestJavaElementExtractorTraverse:
         assert isinstance(results[1], Class)
 
     def test_traverse_uses_element_cache(self, extractor):
-        root = Mock()
         child = Mock()
         child.type = "method_declaration"
         child.children = []
-        root.children = [child]
+        child.start_byte = 10
+        child.end_byte = 60
+        root = _make_traversable_root([child])
         cached = Function(
             name="cached_method",
             start_line=1,
@@ -490,7 +571,8 @@ class TestJavaElementExtractorTraverse:
             raw_text="void cached_method(){}",
             language="java",
         )
-        extractor._element_cache[(id(child), "method")] = cached
+        # Cache key format: ((start_byte, end_byte), element_type)
+        extractor._element_cache[((10, 60), "method")] = cached
         mock_fn = Mock()
         results = []
         extractor._traverse_and_extract_iterative(
@@ -501,12 +583,13 @@ class TestJavaElementExtractorTraverse:
         assert mock_fn.call_count == 0
 
     def test_traverse_field_batching_15_nodes(self, extractor):
-        root = Mock()
         nodes = [Mock() for _ in range(15)]
-        for n in nodes:
+        for i, n in enumerate(nodes):
             n.type = "field_declaration"
             n.children = []
-        root.children = nodes
+            n.start_byte = (i + 1) * 100
+            n.end_byte = (i + 1) * 100 + 50
+        root = _make_traversable_root(nodes)
 
         def _extract(node):
             return [
@@ -539,7 +622,8 @@ class TestJavaElementExtractorTraverse:
                 language="java",
             )
         ]
-        extractor._element_cache[(id(node), "field")] = cached
+        # Cache key format matches _java_traversal: ((start_byte, end_byte), "field")
+        extractor._element_cache[((0, 30), "field")] = cached
         mock_fn = Mock()
         results = []
         extractor._process_field_batch([node], {"field_declaration": mock_fn}, results)
@@ -717,17 +801,18 @@ class TestJavaPluginExtractElements:
 
     def test_extract_elements_exception_falls_back_to_empty(self, plugin):
         tree = _mock_tree()
-        methods = [
+        mock_ext = Mock()
+        for m in [
             "extract_functions",
             "extract_classes",
             "extract_variables",
             "extract_imports",
             "extract_packages",
             "extract_annotations",
-        ]
-        with patch.object(plugin, "extractor") as mock_ext:
-            for m in methods:
-                getattr(mock_ext, m).side_effect = Exception("err")
+        ]:
+            getattr(mock_ext, m).side_effect = Exception("err")
+        # Patch create_extractor — extract_elements calls this, not self.extractor
+        with patch.object(plugin, "create_extractor", return_value=mock_ext):
             result = plugin.extract_elements(tree, "public class Test {}")
         for key in {
             "functions",
@@ -741,14 +826,15 @@ class TestJavaPluginExtractElements:
 
     def test_extract_elements_with_mocked_return_values(self, plugin):
         tree = _mock_tree()
-        with (
-            patch.object(plugin.extractor, "extract_functions", return_value=[]),
-            patch.object(plugin.extractor, "extract_classes", return_value=[]),
-            patch.object(plugin.extractor, "extract_variables", return_value=[]),
-            patch.object(plugin.extractor, "extract_imports", return_value=[]),
-            patch.object(plugin.extractor, "extract_packages", return_value=[]),
-            patch.object(plugin.extractor, "extract_annotations", return_value=[]),
-        ):
+        mock_ext = Mock()
+        mock_ext.extract_functions.return_value = []
+        mock_ext.extract_classes.return_value = []
+        mock_ext.extract_variables.return_value = []
+        mock_ext.extract_imports.return_value = []
+        mock_ext.extract_packages.return_value = []
+        mock_ext.extract_annotations.return_value = []
+        # Patch create_extractor — extract_elements calls this, not self.extractor
+        with patch.object(plugin, "create_extractor", return_value=mock_ext):
             result = plugin.extract_elements(tree, "public class Test {}")
         assert "functions" in result
         assert "classes" in result
@@ -845,3 +931,655 @@ class TestJavaPluginConsistency:
         assert e1 is not e2
         assert isinstance(e1, JavaElementExtractor)
         assert isinstance(e2, JavaElementExtractor)
+
+
+def _parse_java_treewalk(src):
+    """解析真实 Java 语法；核心 grammar 缺失必须失败。"""
+    import tree_sitter
+
+    language = JavaPlugin().get_tree_sitter_language()
+    if language is None:
+        pytest.fail("PR #1350：测试必需的 tree-sitter-java grammar 缺失或加载失败。")
+    parser = tree_sitter.Parser(language)
+    tree = parser.parse(src.encode())
+    assert tree.root_node.has_error is False
+    return tree
+
+
+def _java_treewalk_nodes(tree, node_type):
+    """用完整游标遍历定位独立提取器的输入节点。"""
+    cursor = tree.walk()
+    nodes = []
+    while True:
+        if cursor.node.type == node_type:
+            nodes.append(cursor.node)
+        if cursor.goto_first_child():
+            continue
+        while not cursor.goto_next_sibling():
+            if not cursor.goto_parent():
+                return nodes
+
+
+class TestCursorApiTraversal:
+    def test_no_direct_children_access(self):
+        from tree_sitter_analyzer.languages import _java_traversal
+
+        assert "reversed(" not in inspect.getsource(_java_traversal)
+
+    def test_named_descendants_inside_control_flow(self):
+        # PR #1350：控制流与任意表达式不能截断 named 后代遍历。
+        from tree_sitter_analyzer.languages._java_traversal import (
+            java_traverse_and_extract,
+        )
+
+        tree = _parse_java_treewalk(
+            "class Foo { void run() { if (ready) { stream.map(x -> x); } } }"
+        )
+        results = []
+        java_traverse_and_extract(
+            tree.root_node,
+            {"identifier": lambda n: n.text.decode()},
+            results,
+            "identifier",
+            set(),
+            {},
+            log_warning_func=Mock(),
+            log_debug_func=Mock(),
+        )
+        assert results == ["Foo", "run", "ready", "stream", "map", "x", "x"]
+
+    def test_subtree_traversal_does_not_visit_sibling_method(self):
+        from tree_sitter_analyzer.languages._java_traversal import (
+            java_traverse_and_extract,
+        )
+
+        tree = _parse_java_treewalk("class Foo { void first() {} void second() {} }")
+        root = _java_treewalk_nodes(tree, "method_declaration")[0]
+        results = []
+        java_traverse_and_extract(
+            root,
+            {"identifier": lambda n: n.text.decode()},
+            results,
+            "identifier",
+            set(),
+            {},
+            log_warning_func=Mock(),
+            log_debug_func=Mock(),
+        )
+        assert results == ["first"]
+
+
+class TestLambdaExtraction:
+    _SRC = """class Foo {
+        void run() {
+            Runnable r = () -> System.out.println("hello");
+            java.util.function.Function<String, Integer> f = s -> s.length();
+            java.util.function.BiFunction<Integer, Integer, Integer> add = (x, y) -> x + y;
+        }
+    }"""
+
+    def test_lambda_extracted_as_function(self):
+        from tree_sitter_analyzer.languages._java_modern import extract_lambda_function
+
+        nodes = _java_treewalk_nodes(
+            _parse_java_treewalk(self._SRC), "lambda_expression"
+        )
+        assert len(nodes) == 3
+        result = extract_lambda_function(
+            nodes[0], lambda n: n.text.decode(), self._SRC.splitlines()
+        )
+        assert (result.name, result.is_method, result.language) == (
+            "<lambda>",
+            True,
+            "java",
+        )
+
+    def test_lambda_parameters_extracted(self):
+        from tree_sitter_analyzer.languages._java_modern import extract_lambda_function
+
+        nodes = _java_treewalk_nodes(
+            _parse_java_treewalk(self._SRC), "lambda_expression"
+        )
+        assert len(nodes) == 3
+        result = extract_lambda_function(
+            nodes[2], lambda n: n.text.decode(), self._SRC.splitlines()
+        )
+        assert result.parameters == ["x", "y"]
+
+    @pytest.mark.parametrize(
+        ("declaration", "expected"),
+        [
+            ("()", []),
+            ("x", ["x"]),
+            ("(x)", ["x"]),
+            ("(x, y)", ["x", "y"]),
+            ("(String text, int count)", ["String text", "int count"]),
+            (
+                "(@Deprecated String text, final int count)",
+                ["@Deprecated String text", "final int count"],
+            ),
+            ("(var value)", ["var value"]),
+            (
+                "(java.util.Map<String, Integer> value)",
+                ["java.util.Map<String, Integer> value"],
+            ),
+            ("(String... values)", ["String... values"]),
+        ],
+    )
+    def test_public_lambda_parameter_forms(self, declaration, expected):
+        # PR #1350：保留完整参数文本，尤其不能把合法 varargs 误报成零参数。
+        src = f"class Demo {{ void run() {{ consume({declaration} -> work()); }} }}"
+        functions = JavaElementExtractor().extract_functions(
+            _parse_java_treewalk(src), src
+        )
+        assert [(f.name, f.parameters) for f in functions] == [
+            ("run", []),
+            ("<lambda>", expected),
+        ]
+
+    @pytest.mark.parametrize(
+        ("statement", "parameters"),
+        [
+            ("stream.map(x -> x);", [["x"]]),
+            ("consume(() -> work());", [[]]),
+            ("Object f = (x -> x);", [["x"]]),
+            ("Object f = flag ? x -> x : y -> y;", [["x"], ["y"]]),
+            ("consume((flag ? (x -> wrap(() -> x)) : (y -> y)));", [["x"], [], ["y"]]),
+            ("f = x -> x;", [["x"]]),
+            ("return x -> x;", [["x"]]),
+            ("consume((Runnable) () -> work());", [[]]),
+            ("boolean same = ((Runnable) (() -> work())) == other;", [[]]),
+            (
+                "Runnable[] tasks = new Runnable[]{() -> work(), () -> work()};",
+                [[], []],
+            ),
+            ("consume(new Runnable[]{() -> work()}[0]);", [[]]),
+            ("if (ready) consume(() -> work());", [[]]),
+            ("for (Runnable r : new Runnable[]{() -> work()}) consume(r);", [[]]),
+            ("Object f = switch (n) { default -> (Runnable) () -> work(); };", [[]]),
+        ],
+    )
+    def test_nested_expression_lambdas(self, statement, parameters):
+        # PR #1350：公开提取入口必须穿透所有表达式与控制流，且不重复。
+        src = f"class Foo {{ void run() {{ {statement} }} }}"
+        functions = JavaElementExtractor().extract_functions(
+            _parse_java_treewalk(src), src
+        )
+        assert [f.name for f in functions] == ["run"] + ["<lambda>"] * len(parameters)
+        assert [f.parameters for f in functions if f.name == "<lambda>"] == parameters
+
+
+class TestStaticInitializerExtraction:
+    _SRC = """class InitDemo {
+        static final int X;
+        static { X = 1; }
+        static { System.out.println("second static init"); }
+    }"""
+
+    def test_static_initializer_extracted(self):
+        from tree_sitter_analyzer.languages._java_modern import (
+            extract_static_initializer,
+        )
+
+        nodes = _java_treewalk_nodes(
+            _parse_java_treewalk(self._SRC), "static_initializer"
+        )
+        assert len(nodes) == 2
+        result = extract_static_initializer(nodes[0], self._SRC.splitlines())
+        assert (result.name, result.is_static, result.is_method) == (
+            "<static_initializer>",
+            True,
+            True,
+        )
+
+    def test_multiple_static_initializers(self):
+        from tree_sitter_analyzer.languages._java_modern import (
+            extract_static_initializer,
+        )
+
+        nodes = _java_treewalk_nodes(
+            _parse_java_treewalk(self._SRC), "static_initializer"
+        )
+        assert len(nodes) == 2
+        results = [extract_static_initializer(n, self._SRC.splitlines()) for n in nodes]
+        assert [r.start_line for r in results] == [3, 4]
+
+    def test_static_initializer_via_extract_functions(self):
+        functions = JavaElementExtractor().extract_functions(
+            _parse_java_treewalk(self._SRC), self._SRC
+        )
+        assert [f.name for f in functions] == [
+            "<static_initializer>",
+            "<static_initializer>",
+        ]
+
+
+class TestAnonymousClassExtraction:
+    def test_anonymous_class_extracted(self):
+        from tree_sitter_analyzer.languages._java_modern import extract_anonymous_class
+
+        src = "class Demo { void run() { Runnable r = new Runnable() { public void run() {} }; } }"
+        nodes = _java_treewalk_nodes(
+            _parse_java_treewalk(src), "object_creation_expression"
+        )
+        bodies = [c for n in nodes for c in n.children if c.type == "class_body"]
+        assert len(bodies) == 1
+        result = extract_anonymous_class(
+            bodies[0], lambda n: n.text.decode(), src.splitlines(), ""
+        )
+        assert (result.name, result.class_type, result.is_nested) == (
+            "<anonymous>",
+            "anonymous",
+            True,
+        )
+
+
+class TestCompactConstructorExtraction:
+    _SRC = """record Range(int min, int max) {
+        Range { if (min > max) throw new IllegalArgumentException("min > max"); }
+    }"""
+
+    def test_compact_constructor_extracted(self):
+        from tree_sitter_analyzer.languages._java_modern import (
+            extract_compact_constructor,
+        )
+
+        nodes = _java_treewalk_nodes(
+            _parse_java_treewalk(self._SRC), "compact_constructor_declaration"
+        )
+        assert len(nodes) == 1
+        result = extract_compact_constructor(
+            nodes[0], lambda n: n.text.decode(), self._SRC.splitlines()
+        )
+        assert (result.name, result.is_constructor) == ("Range", True)
+
+    def test_compact_constructor_via_extract_functions(self):
+        functions = JavaElementExtractor().extract_functions(
+            _parse_java_treewalk(self._SRC), self._SRC
+        )
+        assert [f.name for f in functions if f.is_constructor] == ["Range"]
+
+
+class TestSealedClassPermits:
+    def test_permits_clause_in_interfaces(self):
+        src = "sealed class Shape permits Circle, Rectangle {} final class Circle extends Shape {} final class Rectangle extends Shape {}"
+        classes = JavaElementExtractor().extract_classes(_parse_java_treewalk(src), src)
+        sealed = next(c for c in classes if c.name == "Shape")
+        assert sealed.interfaces == ["Circle", "Rectangle"]
+
+
+class TestGenericTypeExtraction:
+    _SRC = """import java.util.Map;
+        import java.util.List;
+        class GenericDemo {
+            public Map<String, List<Integer>> getMap() { return null; }
+            Map<String, Integer> simpleMap;
+        }"""
+
+    def test_nested_generic_type_complete_text(self):
+        functions = JavaElementExtractor().extract_functions(
+            _parse_java_treewalk(self._SRC), self._SRC
+        )
+        assert [(f.name, f.return_type) for f in functions] == [
+            ("getMap", "Map<String, List<Integer>>")
+        ]
+
+    def test_field_generic_type_complete_text(self):
+        variables = JavaElementExtractor().extract_variables(
+            _parse_java_treewalk(self._SRC), self._SRC
+        )
+        assert [(v.name, v.variable_type) for v in variables] == [
+            ("simpleMap", "Map<String, Integer>")
+        ]
+
+
+class TestJavadocAst:
+    _SRC = """class Documented {
+        /** Returns the answer. */
+        public int getAnswer() { return 42; }
+        public String noDoc() { return "x"; }
+    }"""
+
+    def test_javadoc_from_ast_sibling(self):
+        from tree_sitter_analyzer.languages._java_element_common import (
+            _extract_javadoc_from_node,
+        )
+
+        nodes = _java_treewalk_nodes(
+            _parse_java_treewalk(self._SRC), "method_declaration"
+        )
+        assert len(nodes) == 2
+        assert nodes[0].child_by_field_name("name").text == b"getAnswer"
+        doc = _extract_javadoc_from_node(nodes[0], lambda n: n.text.decode())
+        assert "Returns the answer" in doc
+
+    def test_javadoc_fallback_when_no_block_comment(self):
+        functions = JavaElementExtractor().extract_functions(
+            _parse_java_treewalk(self._SRC), self._SRC
+        )
+        assert next(f for f in functions if f.name == "noDoc").docstring is None
+
+
+class TestAnonymousClassViaExtractClasses:
+    _SRC = (
+        "public class Outer { Runnable r = new Runnable() { public void run() {} }; }"
+    )
+
+    def test_anonymous_class_via_extract_classes(self):
+        classes = JavaElementExtractor().extract_classes(
+            _parse_java_treewalk(self._SRC), self._SRC
+        )
+        assert [
+            (c.name, c.is_nested) for c in classes if c.class_type == "anonymous"
+        ] == [("<anonymous>", True)]
+
+    def test_regular_classes_not_affected(self):
+        classes = JavaElementExtractor().extract_classes(
+            _parse_java_treewalk(self._SRC), self._SRC
+        )
+        assert [(c.name, c.class_type) for c in classes if c.name == "Outer"] == [
+            ("Outer", "class")
+        ]
+
+
+class TestModuleDeclarationExtraction:
+    def test_module_declaration_extracted(self):
+        src = "module com.example { }"
+        packages = JavaElementExtractor().extract_packages(
+            _parse_java_treewalk(src), src
+        )
+        assert [p.name for p in packages] == ["com.example"]
+
+    def test_module_declaration_language_field(self):
+        src = "module com.example { }"
+        packages = JavaElementExtractor().extract_packages(
+            _parse_java_treewalk(src), src
+        )
+        assert [(p.name, p.language) for p in packages] == [("com.example", "java")]
+
+    def test_reused_extractor_does_not_reuse_module_name(self):
+        # PR #1350：等长模块名占据相同字节范围，不得复用上一份源码的文本缓存。
+        extractor = JavaElementExtractor()
+        names = []
+        for src in ("open module one.api {}", "open module two.api {}"):
+            packages = extractor.extract_packages(_parse_java_treewalk(src), src)
+            names.append([(p.name, p.language) for p in packages])
+        assert names == [[("one.api", "java")], [("two.api", "java")]]
+
+    def test_public_module_with_directives_is_not_a_package_list(self):
+        src = "open module app.core { requires java.base; exports app.api; uses app.Service; }"
+        elements = JavaPlugin().extract_elements(_parse_java_treewalk(src), src)
+        assert [(p.name, p.start_line, p.end_line) for p in elements["packages"]] == [
+            ("app.core", 1, 1)
+        ]
+        assert elements["functions"] == []
+        assert elements["classes"] == []
+
+    @pytest.mark.parametrize(
+        "source", ["module app.core {}", "open module app.core { exports app.api; }"]
+    )
+    def test_exported_package_helper_agrees_with_plugin(self, source):
+        # PR #1350：已导出的 standalone helper 与插件模块入口必须保持一致。
+        from tree_sitter_analyzer.languages.java_helpers import extract_java_packages
+
+        tree = _parse_java_treewalk(source)
+        standalone = extract_java_packages(tree, lambda node: node.text.decode("utf-8"))
+        plugin = JavaPlugin().extract_elements(tree, source)["packages"]
+        assert [(p.name, p.language, p.start_line, p.end_line) for p in standalone] == [
+            ("app.core", "java", 1, 1)
+        ]
+        assert [(p.name, p.language, p.start_line, p.end_line) for p in plugin] == [
+            ("app.core", "java", 1, 1)
+        ]
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [
+        ("int min, int max", ["int min", "int max"]),
+        (
+            "@Deprecated String value, int... rest",
+            ["@Deprecated String value", "int... rest"],
+        ),
+        ("", []),
+    ],
+)
+def test_public_record_compact_constructor_has_header_parameters(header, expected):
+    # PR #1350：紧凑构造器的隐式参数来自 record 头，不是空参数构造器。
+    src = f"public record Data({header}) {{ @Deprecated public Data {{ if (true) work(); }} }}"
+    elements = JavaPlugin().extract_elements(_parse_java_treewalk(src), src)
+    assert [(c.name, c.class_type) for c in elements["classes"]] == [("Data", "record")]
+    assert len(elements["functions"]) == 1
+    constructor = elements["functions"][0]
+    assert (
+        constructor.name,
+        constructor.is_constructor,
+        constructor.parameters,
+        constructor.visibility,
+        constructor.complexity_score,
+    ) == ("Data", True, expected, "public", 2)
+    assert [a["name"] for a in constructor.annotations] == ["Deprecated"]
+
+
+def test_public_annotation_ownership_does_not_bleed_to_neighbors():
+    # PR #1350：同一行的类、方法与参数注解应按 AST 所属节点归属。
+    src = '@interface Flag { String value() default "x"; } @Flag("demo") class Demo { @Deprecated void run(@Flag("arg") String arg) {} void plain() {} }'
+    elements = JavaPlugin().extract_elements(_parse_java_treewalk(src), src)
+    assert [
+        (c.name, c.class_type, [a["name"] for a in c.annotations])
+        for c in elements["classes"]
+    ] == [("Flag", "annotation", []), ("Demo", "class", ["Flag"])]
+    assert [
+        (f.name, [a["name"] for a in f.annotations]) for f in elements["functions"]
+    ] == [("run", ["Deprecated"]), ("plain", [])]
+
+
+def test_qualified_annotation_preserves_source_metadata():
+    """限定名注解没有直接 identifier 子节点时，仍保留原始文本和位置。"""
+    source = '\n@flags.Check(value = "demo") class Demo {}'
+    elements = JavaPlugin().extract_elements(_parse_java_treewalk(source), source)
+    assert [
+        (c.name, [(a["text"], a["line"], a["type"]) for a in c.annotations])
+        for c in elements["classes"]
+    ] == [("Demo", [('@flags.Check(value = "demo")', 2, "annotation")])]
+
+
+def test_recovered_annotation_without_name_is_not_attached():
+    """真实错误树的空注解名不能成为声明元数据。"""
+    import tree_sitter
+
+    source = "@() class Demo {}"
+    tree = tree_sitter.Parser(JavaPlugin().get_tree_sitter_language()).parse(
+        source.encode("utf-8")
+    )
+    assert tree.root_node.has_error is True
+    elements = JavaPlugin().extract_elements(tree, source)
+    assert [(c.name, c.annotations) for c in elements["classes"]] == [("Demo", [])]
+
+
+@pytest.mark.parametrize("src", ["module { }", "record { }", "@"])
+def test_public_malformed_java_does_not_invent_elements(src):
+    # PR #1350：使用真实错误树验证公开容错入口，不伪造 Node 异常。
+    import tree_sitter
+
+    parser = tree_sitter.Parser(JavaPlugin().get_tree_sitter_language())
+    tree = parser.parse(src.encode())
+    assert tree.root_node.has_error is True
+    assert JavaPlugin().extract_elements(tree, src) == {
+        "functions": [],
+        "classes": [],
+        "variables": [],
+        "imports": [],
+        "packages": [],
+        "annotations": [],
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("open module app.core { requires java.base; }", [("Package", "app.core")]),
+        ("record R(int value) { R {} }", [("Function", "R"), ("Class", "R")]),
+        ("@Deprecated class Demo {}", [("Class", "Demo")]),
+    ],
+)
+async def test_modern_java_through_analyze_file(tmp_path, source, expected):
+    # PR #1350：实际文件入口必须走同一提取链，不能只让测试兼容入口可用。
+    from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
+
+    path = tmp_path / "Example.java"
+    path.write_text(source, encoding="utf-8")
+    result = await JavaPlugin().analyze_file(
+        str(path), AnalysisRequest(file_path=str(path))
+    )
+    assert (result.success, result.language, result.source_code) == (
+        True,
+        "java",
+        source,
+    )
+    assert [
+        (type(element).__name__, element.name) for element in result.elements
+    ] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_type", [AttributeError, TypeError])
+@pytest.mark.parametrize(
+    ("source", "parent_type"),
+    [
+        ("class Demo { void run() { consume(x -> x); } }", "lambda_expression"),
+        ("record R(int value) { R {} }", "compact_constructor_declaration"),
+        ("module app.core {}", "module_declaration"),
+    ],
+)
+async def test_leaf_protocol_error_reaches_plugin_boundary(
+    tmp_path, monkeypatch, source, parent_type, error_type
+):
+    # PR #1350：树由真实 parser 生成；仅注入已绑定文本适配器的程序错误，不能静默少报元素。
+    from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
+
+    read_text = JavaElementExtractor._get_node_text_optimized
+
+    def broken_adapter(self, node):
+        if node.parent is not None and node.parent.type == parent_type:
+            raise error_type("broken node-text adapter")
+        return read_text(self, node)
+
+    monkeypatch.setattr(
+        JavaElementExtractor, "_get_node_text_optimized", broken_adapter
+    )
+    path = tmp_path / "Example.java"
+    path.write_text(source, encoding="utf-8")
+    result = await JavaPlugin().analyze_file(
+        str(path), AnalysisRequest(file_path=str(path))
+    )
+    assert (result.success, result.error_message, result.elements) == (
+        False,
+        "broken node-text adapter",
+        [],
+    )
+
+
+def test_exported_module_helper_propagates_adapter_protocol_error():
+    # PR #1350：保留导出入口，但不把适配器错误伪装成不存在模块。
+    from tree_sitter_analyzer.languages.java_helpers import extract_java_packages
+
+    tree = _parse_java_treewalk("module app.core {}")
+
+    def broken_adapter(node):
+        assert node.text == b"app.core"
+        raise TypeError("broken node-text adapter")
+
+    with pytest.raises(TypeError, match="^broken node-text adapter$"):
+        extract_java_packages(tree, broken_adapter)
+
+
+@pytest.mark.parametrize("source", ["open module {}", "module app. {}"])
+def test_recovered_module_name_is_not_published(source):
+    # PR #1350：grammar 真实恢复出的 MISSING identifier 不能成为模块名。
+    import tree_sitter
+
+    from tree_sitter_analyzer.languages.java_helpers import extract_java_packages
+
+    tree = tree_sitter.Parser(JavaPlugin().get_tree_sitter_language()).parse(
+        source.encode()
+    )
+    assert tree.root_node.has_error is True
+    assert JavaPlugin().extract_elements(tree, source)["packages"] == []
+    assert extract_java_packages(tree, lambda n: n.text.decode()) == []
+
+
+def test_recovered_lambda_parameters_are_not_reported_as_empty():
+    # PR #1350：真实参数 ERROR 不能被当成合法零参数 lambda。
+    import tree_sitter
+
+    src = "class Demo { void run() { consume((,) -> 1); } }"
+    tree = tree_sitter.Parser(JavaPlugin().get_tree_sitter_language()).parse(
+        src.encode()
+    )
+    assert tree.root_node.has_error is True
+    assert [f.name for f in JavaPlugin().extract_elements(tree, src)["functions"]] == [
+        "run"
+    ]
+
+
+@pytest.mark.parametrize("visibility", ["private", "protected", "public", ""])
+def test_nested_record_constructor_visibility(visibility):
+    src = (
+        f"class Outer {{ {visibility} record R(int value) {{ {visibility} R {{}} }} }}"
+    )
+    functions = JavaPlugin().extract_elements(_parse_java_treewalk(src), src)[
+        "functions"
+    ]
+    assert [(f.name, f.visibility, f.parameters) for f in functions] == [
+        ("R", visibility or "package", ["int value"])
+    ]
+
+
+@pytest.mark.parametrize(
+    ("comments", "expected"),
+    [
+        ("/** chosen */\n// intervening\n", "/** chosen */"),
+        ("/** stale */\n/* ordinary */\n", None),
+    ],
+)
+def test_javadoc_sibling_boundary(comments, expected):
+    src = f"class Demo {{ {comments} void run() {{}} }}"
+    functions = JavaPlugin().extract_elements(_parse_java_treewalk(src), src)[
+        "functions"
+    ]
+    assert [(f.name, f.docstring) for f in functions] == [("run", expected)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "class Demo {}",
+        "record R(int value) {}",
+        "class Outer {\n/** inner */ void run() {} }",
+    ],
+)
+async def test_javadoc_adapter_error_is_reported(tmp_path, monkeypatch, declaration):
+    # PR #1350：可选文档缺失与文本适配器程序错误不是同一种状态。
+    from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
+
+    getter = JavaElementExtractor._get_node_text_optimized
+
+    def fail_comment(self, node):
+        if node.type == "block_comment":
+            raise TypeError("javadoc adapter failed")
+        return getter(self, node)
+
+    monkeypatch.setattr(JavaElementExtractor, "_get_node_text_optimized", fail_comment)
+    path = tmp_path / "Example.java"
+    path.write_text("/** outer */\n" + declaration, encoding="utf-8")
+    result = await JavaPlugin().analyze_file(
+        str(path), AnalysisRequest(file_path=str(path))
+    )
+    assert (result.success, result.error_message, result.elements) == (
+        False,
+        "javadoc adapter failed",
+        [],
+    )

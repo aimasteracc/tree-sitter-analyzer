@@ -45,7 +45,7 @@ class TestSnapshotFailureContracts:
 
         conn = sqlite3.connect(":memory:")
         conn.execute("CREATE TABLE ast_schema_version(version INTEGER)")
-        conn.execute("INSERT INTO ast_schema_version VALUES(13)")
+        conn.execute("INSERT INTO ast_schema_version VALUES(15)")
         with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
             validate_snapshot_schema(conn)
         conn.close()
@@ -55,7 +55,7 @@ class TestSnapshotFailureContracts:
 
         conn = sqlite3.connect(":memory:")
         conn.execute("CREATE TABLE ast_schema_version(version INTEGER)")
-        conn.execute("INSERT INTO ast_schema_version VALUES(13)")
+        conn.execute("INSERT INTO ast_schema_version VALUES(15)")
         for table in (
             "ast_index",
             "ast_symbol_rows",

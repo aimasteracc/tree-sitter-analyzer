@@ -277,15 +277,22 @@ class TestSyncNewFile:
 
 
 def test_snapshot_mutation_during_backfill_is_invalidated(tmp_path):
-    # PR #1172: the final backfill must not certify a stale snapshot.
+    # PR #1172/#1350：真实 backfill 后的变化必须撤销认证，不发布未实现的 partial_at 历史。
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     snapshot = _snapshot(tmp_path, path)
     cache = ASTCache(str(tmp_path))
+    conn = cache.get_conn()
+    columns = [
+        tuple(row)
+        for row in conn.execute("PRAGMA table_info(ast_index_snapshot_manifest)")
+    ]
+    backfill = cache._run_synapse_backfill
 
     def backfill_then_mutate():
+        result = backfill()
         path.write_text("value = 200\n")
-        return {"resolved": 0, "errors": 0}
+        return result
 
     try:
         with patch.object(
@@ -300,6 +307,17 @@ def test_snapshot_mutation_during_backfill_is_invalidated(tmp_path):
             cache.lookup(str(path)),
             cache.call_graph_built(),
         )
+        assert [
+            tuple(row)
+            for row in conn.execute("PRAGMA table_info(ast_index_snapshot_manifest)")
+        ] == columns
+        assert (
+            conn.execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest").fetchone()[
+                0
+            ]
+            == 0
+        )
+        assert conn.in_transaction is False
     finally:
         cache.close()
 
@@ -2251,3 +2269,253 @@ def test_truncated_unchanged_snapshot_clears_global_certification(tmp_path):
         evidence,
         graph_built,
     ) == (1, 0, True, "incomplete", 0, False)
+
+
+@pytest.mark.parametrize("operation", ["cached", "update", "delete", "reset"])
+def test_real_file_certification_lifecycle(tmp_path, operation):
+    # PR #1350：从真实 index_file 行出发，验证缓存、替换、删除和重新认证的持久状态。
+    path = tmp_path / "app.py"
+    path.write_text("def original(): return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        with patch("time.time", return_value=1000):
+            assert cache.index_file(str(path))["status"] == "indexed"
+        conn = cache.get_conn()
+        assert [
+            tuple(r)
+            for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
+        ] == [("app.py", 1000)]
+        with patch("time.time", return_value=2000):
+            if operation == "update":
+                path.write_text("def replacement(): return 22\n", encoding="utf-8")
+                assert cache.index_file(str(path))["status"] == "indexed"
+            elif operation == "delete":
+                path.unlink()
+                result = IncrementalSync(cache).sync(
+                    max_files=10, candidate_snapshot=_snapshot(tmp_path)
+                )
+                assert result.deleted_files == 1
+            elif operation == "reset":
+                conn.execute("UPDATE ast_index SET certified_at=NULL")
+                conn.commit()
+                result = IncrementalSync(cache).sync(
+                    max_files=10, candidate_snapshot=_snapshot(tmp_path, path)
+                )
+                assert (result.unchanged_files, result.errors) == (1, 0)
+            else:
+                assert cache.index_file(str(path))["status"] == "cached"
+        expected = (
+            []
+            if operation == "delete"
+            else [("app.py", 1000 if operation == "cached" else 2000)]
+        )
+        assert [
+            tuple(r)
+            for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
+        ] == expected
+        assert [r[0] for r in conn.execute("SELECT name FROM ast_symbol_rows")] == (
+            []
+            if operation == "delete"
+            else ["replacement" if operation == "update" else "original"]
+        )
+        assert conn.in_transaction is False
+    finally:
+        cache.close()
+
+
+def test_certification_write_denial_cannot_report_complete(tmp_path):
+    # PR #1350：真实 SQLite 拒绝认证字段更新时，必须撤销全局认证并报告错误。
+    path = tmp_path / "app.py"
+    path.write_text("def original(): return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(path))
+        conn = cache.get_conn()
+        conn.execute("UPDATE ast_index SET certified_at=NULL")
+        conn.commit()
+        denied = []
+
+        def authorize(action, table, column, _database, _trigger):
+            if action == sqlite3.SQLITE_UPDATE and (table, column) == (
+                "ast_index",
+                "certified_at",
+            ):
+                denied.append((table, column))
+                return sqlite3.SQLITE_DENY
+            return sqlite3.SQLITE_OK
+
+        conn.set_authorizer(authorize)
+        try:
+            result = IncrementalSync(cache).sync(
+                max_files=10, candidate_snapshot=_snapshot(tmp_path, path)
+            )
+        finally:
+            conn.set_authorizer(None)
+        assert denied == [("ast_index", "certified_at")]
+        assert (
+            result.errors,
+            result.to_dict()["completeness"],
+            cache.call_graph_built(),
+        ) == (1, "incomplete", False)
+        assert [d["reason"] for d in result.details if d.get("status") == "error"] == [
+            "FILE_CERTIFICATION_FAILED"
+        ]
+        assert conn.execute("SELECT certified_at FROM ast_index").fetchone()[0] is None
+        assert (
+            conn.execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest").fetchone()[
+                0
+            ]
+            == 0
+        )
+        assert conn.in_transaction is False
+    finally:
+        cache.close()
+
+
+def test_failed_file_write_rolls_back_its_certification_only(tmp_path):
+    # PR #1350：在真实边写入处 ABORT，失败文件的行和认证必须消失，邻居仍可认证。
+    good, bad = tmp_path / "good.py", tmp_path / "bad.py"
+    good.write_text("def good(): return 1\n", encoding="utf-8")
+    bad.write_text("def old_bad(): return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(good))
+        cache.index_file(str(bad))
+        conn = cache.get_conn()
+        conn.execute(
+            "CREATE TRIGGER deny_bad_edges BEFORE INSERT ON edges WHEN NEW.file_path='bad.py' BEGIN SELECT RAISE(ABORT, 'edge write denied'); END"
+        )
+        conn.commit()
+        bad.write_text("def replacement_bad(): return good()\n", encoding="utf-8")
+        with patch("time.time", return_value=2000):
+            result = IncrementalSync(cache).sync(
+                max_files=10, candidate_snapshot=_snapshot(tmp_path, good, bad)
+            )
+        assert (
+            result.errors,
+            result.to_dict()["completeness"],
+            cache.call_graph_built(),
+        ) == (1, "incomplete", False)
+        assert [
+            (d["file"], d["error_type"], d["error_message"])
+            for d in result.details
+            if d["status"] == "error"
+        ] == [("bad.py", "IntegrityError", "edge write denied")]
+        assert [
+            tuple(r)
+            for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
+        ] == [("good.py", 2000)]
+        for table in ("ast_symbol_rows", "ast_symbol_projection_state", "edges"):
+            assert (
+                conn.execute(
+                    f"SELECT COUNT(*) FROM {table} WHERE file_path='bad.py'"
+                ).fetchone()[0]
+                == 0
+            )
+        assert conn.in_transaction is False
+    finally:
+        cache.close()
+
+
+def test_late_source_mutation_resets_certification_through_sync(tmp_path):
+    # PR #1350：公开 callback 中的真实源变化必须撤销该文件，而非只修改测试自造 SQL。
+    good, bad = tmp_path / "good.py", tmp_path / "bad.py"
+    good.write_text("def good(): return 1\n", encoding="utf-8")
+    bad.write_text("def original(): return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(good))
+        cache.index_file(str(bad))
+        bad.write_text("def updated(): return 22\n", encoding="utf-8")
+
+        def mutate(detail):
+            if detail["file"] == "bad.py" and detail["status"] == "indexed":
+                bad.write_text("def newer(): return 333\n", encoding="utf-8")
+
+        with patch("time.time", return_value=2000):
+            result = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=_snapshot(tmp_path, good, bad),
+                callback=mutate,
+            )
+        conn = cache.get_conn()
+        assert (
+            result.changed_during_run_files,
+            result.errors,
+            cache.call_graph_built(),
+        ) == (["bad.py"], 0, False)
+        assert result.to_dict()["completeness"] == "incomplete"
+        assert [
+            tuple(r)
+            for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
+        ] == [("good.py", 2000)]
+        assert (
+            conn.execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest").fetchone()[
+                0
+            ]
+            == 0
+        )
+        assert conn.in_transaction is False
+    finally:
+        cache.close()
+
+
+@pytest.mark.parametrize("truncated", [False, True])
+def test_failed_file_certification_reset_denial_rolls_back(tmp_path, truncated):
+    # PR #1350：真实文件写失败后，撤销 reset 权限必须报告失败，不能遗留未提交事务。
+    good, bad, unseen = (
+        tmp_path / name for name in ("a_good.py", "b_bad.py", "z_unseen.py")
+    )
+    good.write_text("def good(): return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        with patch("time.time", return_value=1000):
+            cache.index_file(str(good))
+        bad.write_text("def bad(): return 2\n", encoding="utf-8")
+        if truncated:
+            unseen.write_text("def unseen(): return 3\n", encoding="utf-8")
+        conn = cache.get_conn()
+        conn.execute(
+            "CREATE TEMP TRIGGER fail_bad_symbol BEFORE INSERT ON ast_symbol_rows WHEN NEW.file_path='b_bad.py' BEGIN SELECT abs(-9223372036854775808); END"
+        )
+        conn.commit()
+        updates = []
+
+        def authorize(action, table, column, _database, _trigger):
+            if action == sqlite3.SQLITE_UPDATE and (table, column) == (
+                "ast_index",
+                "certified_at",
+            ):
+                updates.append((table, column))
+                if len(updates) == 3:
+                    return sqlite3.SQLITE_DENY
+            return sqlite3.SQLITE_OK
+
+        snapshot = build_index_candidate_snapshot(
+            str(tmp_path),
+            max_files=2,
+            exclude_patterns=frozenset(),
+            walk_fn=lambda _: map(
+                str, [good, bad, unseen] if truncated else [good, bad]
+            ),
+            language_fn=_python_language,
+        )
+        conn.set_authorizer(authorize)
+        try:
+            with (
+                patch("time.time", return_value=2000),
+                pytest.raises(sqlite3.DatabaseError, match="not authorized"),
+            ):
+                IncrementalSync(cache).sync(max_files=2, candidate_snapshot=snapshot)
+        finally:
+            conn.set_authorizer(None)
+        assert len(updates) == 3
+        assert conn.in_transaction is False
+        assert [
+            tuple(r)
+            for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
+        ] == [("a_good.py", 1000 if truncated else 2000)]
+        # 完整扫描的 reset 位于提交之后；只回滚当前事务，不撤销已提交的正常邻居。
+        assert cache.call_graph_built() is False
+    finally:
+        cache.close()

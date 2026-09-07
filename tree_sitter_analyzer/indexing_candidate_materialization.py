@@ -33,7 +33,16 @@ class CandidateMaterializationError(RuntimeError):
 
 
 def secure_candidate_materialization_supported() -> bool:
-    """Whether this host can produce authoritative private frozen evidence."""
+    """Whether this host can produce authoritative private frozen evidence.
+
+    Phase B-4 (TBD): Currently returns False on non-POSIX systems (Windows).
+    A WAL connection-based frozen epoch implementation is planned but deferred
+    because the materialization path uses fd-relative no-follow file I/O
+    (O_NOFOLLOW) which has no direct Windows equivalent.  The WAL snapshot
+    path (Phase B-1) provides read-only consistency without materialization.
+    Until this is resolved, Windows hosts fall back to non-frozen evidence.
+    See: tech-debt-log.md [TBD-MATERIALIZE-WINDOWS].
+    """
     return os.name == "posix" and hasattr(os, "O_NOFOLLOW")
 
 

@@ -94,7 +94,10 @@ def parse_method_signature(
         if not method_name:
             return None
 
-        return_type = _first_child_text(node, _RETURN_TYPE_NODES, get_node_text)
+        # Use _get_type_node_text so that generic_type nodes such as
+        # ``Map<String, List<Integer>>`` are returned as complete strings
+        # rather than drilling into the first type_identifier child.
+        return_type = _get_type_node_text(node, _RETURN_TYPE_NODES, get_node_text)
         modifiers = extract_modifiers(node, get_node_text)
         return (
             method_name,
@@ -113,7 +116,9 @@ def parse_field_declaration(
 ) -> tuple[str, list[str], list[str]] | None:
     """Parse field declaration into (type, variable_names, modifiers)."""
     try:
-        field_type = _first_child_text(node, _FIELD_TYPE_NODES, get_node_text)
+        # Use _get_type_node_text to preserve generic type arguments
+        # (e.g. ``Map<String, Integer>`` instead of just ``Map``).
+        field_type = _get_type_node_text(node, _FIELD_TYPE_NODES, get_node_text)
         if not field_type:
             return None
 
@@ -160,6 +165,24 @@ def _first_child_text(
 ) -> str | None:
     for child in node.children:
         if child.type in child_types:
+            return get_node_text(child)
+    return None
+
+
+def _get_type_node_text(
+    node: Any,
+    type_node_set: frozenset[str],
+    get_node_text: Callable[..., str],
+) -> str | None:
+    """Return the full text of the first type-bearing child node.
+
+    Unlike a naive ``child.text`` call that might only capture the base
+    ``type_identifier``, this function calls ``get_node_text(child)`` on the
+    whole matched node so that complex generic types such as
+    ``Map<String, List<Integer>>`` are preserved intact.
+    """
+    for child in node.children:
+        if child.type in type_node_set:
             return get_node_text(child)
     return None
 

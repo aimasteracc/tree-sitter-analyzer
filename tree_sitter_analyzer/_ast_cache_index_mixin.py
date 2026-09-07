@@ -170,6 +170,10 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             _mark_call_graph_built_strict(self._get_conn())
         except sqlite3.OperationalError:
             logger.debug("single-file call-graph certification failed", exc_info=True)
+        # 可恢复的 git/SQLite 故障由 flush 统一回滚并报告；程序错误不能在此吞掉。
+        from .cache.write import _flush_pending_activations
+
+        _flush_pending_activations(self._get_conn(), self.project_root)
 
     def _check_cache_or_read(
         self,
@@ -287,6 +291,15 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         # One cache owner serializes validation, destructive clear, and writes.
         # SQLite still arbitrates across processes; this lock closes the in-owner
         # thread window between the final source authorization and the clear.
+        #
+        # Phase B-4 (TBD-3) analysis: _index_lock is a writer-side serializer.
+        # WAL read-only snapshot connections (Phase B-1) operate on the reader
+        # side and are NOT affected by _index_lock.  Concurrent MCP readers can
+        # acquire WAL snapshots without waiting for a write to finish, giving the
+        # Phase B-2 parallelism improvement without relaxing this lock.
+        # cache/indexer.py parallel workers run INSIDE _index_lock's critical
+        # section (called via run_index_project), so WAL parallelism does not
+        # conflict with them.
         with self._index_lock:
             return _indexer.run_index_project(
                 self,
@@ -316,16 +329,24 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         )
 
     def _indexed_source_files_are_complete(self) -> bool:
-        """Return whether ast_index exactly covers the current source set."""
+        """认证行还必须覆盖当前源码集合；没有 watcher 时不能用 SQL 证明范围完整。"""
+        try:
+            conn = self._get_conn()
+            (uncertified,) = conn.execute(
+                "SELECT COUNT(*) FROM ast_index WHERE certified_at IS NULL"
+            ).fetchone()
+            if uncertified > 0:
+                return False
+            rows = conn.execute("SELECT file_path FROM ast_index").fetchall()
+        except sqlite3.OperationalError:
+            # 旧 schema 缺少认证列时保持拒绝，不把未知状态提升为完整。
+            return False
         source_files = {
             os.path.relpath(path, self.project_root).replace("\\", "/")
             for path in _indexer._walk_source_files(self.project_root)
         }
-        if not source_files:
-            return False
-        rows = self._get_conn().execute("SELECT file_path FROM ast_index").fetchall()
-        indexed_files = {str(row["file_path"]).replace("\\", "/") for row in rows}
-        return indexed_files == source_files
+        indexed_files = {str(row[0]).replace("\\", "/") for row in rows}
+        return bool(source_files) and indexed_files == source_files
 
     @staticmethod
     def _resolve_worker_count(workers: int | None, candidates: list[Any]) -> int:

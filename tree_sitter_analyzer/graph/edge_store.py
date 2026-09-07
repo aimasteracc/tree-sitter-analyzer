@@ -291,32 +291,34 @@ class EdgeStore:
     def upsert_edges(self, edges: list[Edge]) -> None:
         if not edges:
             return
-        params = [
-            (
-                edge.source_node_id,
-                edge.target_node_id,
-                edge.normalized_kind(),
-                edge.line,
-                edge.provenance,
-                json.dumps(edge.metadata, ensure_ascii=False, sort_keys=True),
-                *(
-                    _edge_real_columns(edge)[col]
-                    for col in (
-                        "caller_name",
-                        "callee_name",
-                        "file_path",
-                        "caller_line",
-                        "callee_full",
-                        "callee_line",
-                        "language",
-                        "callee_resolution",
-                        "callee_resolved_file",
-                        "callee_symbol_id",
-                    )
-                ),
+        params = []
+        for edge in edges:
+            real_columns = _edge_real_columns(edge)
+            params.append(
+                (
+                    edge.source_node_id,
+                    edge.target_node_id,
+                    edge.normalized_kind(),
+                    edge.line,
+                    edge.provenance,
+                    json.dumps(edge.metadata, ensure_ascii=False, sort_keys=True),
+                    *(
+                        real_columns[col]
+                        for col in (
+                            "caller_name",
+                            "callee_name",
+                            "file_path",
+                            "caller_line",
+                            "callee_full",
+                            "callee_line",
+                            "language",
+                            "callee_resolution",
+                            "callee_resolved_file",
+                            "callee_symbol_id",
+                        )
+                    ),
+                )
             )
-            for edge in edges
-        ]
         self._conn.executemany(
             """INSERT OR REPLACE INTO edges
                (source_node_id, target_node_id, kind, line, provenance,

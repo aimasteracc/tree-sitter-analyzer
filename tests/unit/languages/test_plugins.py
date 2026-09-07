@@ -8,6 +8,8 @@ language plugins, and element extractors.
 
 import sys
 
+import tree_sitter
+
 # Add project root to path
 sys.path.insert(0, ".")
 
@@ -110,13 +112,10 @@ def test_java_extractor_initialization():
     assert extractor.imports == []
 
 
-def test_extract_functions_with_mock_tree(mocker):
-    """Test function extraction with mock tree"""
+def test_extract_functions_with_real_tree():
+    """PR #1350：真实游标必须终止并提取方法，不能用永真 MagicMock 模拟游标。"""
     extractor = JavaElementExtractor()
 
-    # Mock tree and source code
-    mock_tree = mocker.MagicMock()
-    mock_tree.language = None  # Simulate no language available
     source_code = """
     public class TestClass {
         public void testMethod() {
@@ -125,37 +124,44 @@ def test_extract_functions_with_mock_tree(mocker):
     }
     """
 
-    functions = extractor.extract_functions(mock_tree, source_code)
+    tree = tree_sitter.Parser(JavaPlugin().get_tree_sitter_language()).parse(
+        source_code.encode("utf-8")
+    )
+    assert tree.root_node.has_error is False
+    functions = extractor.extract_functions(tree, source_code)
+    assert [(f.name, f.return_type, f.is_public) for f in functions] == [
+        ("testMethod", "void", True)
+    ]
 
-    # Should return empty list when no language is available
-    assert isinstance(functions, list)
 
-
-def test_extract_classes_with_mock_tree(mocker):
-    """Test class extraction with mock tree"""
+def test_extract_classes_with_real_tree():
+    """PR #1350：类提取使用真实 grammar，校验名称和类型而非容器类型。"""
     extractor = JavaElementExtractor()
 
-    # Mock tree
-    mock_tree = mocker.MagicMock()
-    mock_tree.language = None
     source_code = "public class TestClass {}"
+    tree = tree_sitter.Parser(JavaPlugin().get_tree_sitter_language()).parse(
+        source_code.encode("utf-8")
+    )
+    assert tree.root_node.has_error is False
+    classes = extractor.extract_classes(tree, source_code)
+    assert [(c.name, c.class_type, c.visibility) for c in classes] == [
+        ("TestClass", "class", "public")
+    ]
 
-    classes = extractor.extract_classes(mock_tree, source_code)
 
-    assert isinstance(classes, list)
-
-
-def test_extract_variables_with_mock_tree(mocker):
-    """Test variable extraction with mock tree"""
+def test_extract_variables_with_real_tree():
+    """PR #1350：字段放在合法类体内，以真实节点验证类型与可见性。"""
     extractor = JavaElementExtractor()
 
-    mock_tree = mocker.MagicMock()
-    mock_tree.language = None
-    source_code = "private String testField;"
-
-    variables = extractor.extract_variables(mock_tree, source_code)
-
-    assert isinstance(variables, list)
+    source_code = "class TestClass { private String testField; }"
+    tree = tree_sitter.Parser(JavaPlugin().get_tree_sitter_language()).parse(
+        source_code.encode("utf-8")
+    )
+    assert tree.root_node.has_error is False
+    variables = extractor.extract_variables(tree, source_code)
+    assert [(v.name, v.variable_type, v.visibility) for v in variables] == [
+        ("testField", "String", "private")
+    ]
 
 
 def test_extract_imports_with_mock_tree(mocker):

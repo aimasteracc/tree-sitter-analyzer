@@ -46,6 +46,12 @@ from .cache.schema import (
     apply_migration_v12 as _apply_migration_v12,
 )
 from .cache.schema import (
+    apply_migration_v14 as _apply_migration_v14,
+)
+from .cache.schema import (
+    apply_migration_v15 as _apply_migration_v15,
+)
+from .cache.schema import (
     backfill_schema_version_row as _backfill_schema_version_row,
 )
 from .cache.schema import (
@@ -158,6 +164,8 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             (11, _apply_migration_v11),
             (12, _apply_migration_v12),
             (13, _apply_migration_v13),
+            (14, _apply_migration_v14),
+            (15, _apply_migration_v15),
         ]
         self._fts5_available = _schema_init_db(
             conn,

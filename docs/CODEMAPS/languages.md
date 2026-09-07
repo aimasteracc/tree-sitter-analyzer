@@ -43,7 +43,7 @@ Generated from runtime registries and reviewed classifications by `scripts/gener
 
 | Language | Plugin module | Extractor split | Notes |
 |---|---|---|---|
-| Java | `languages/java_plugin.py` | `_java_*_helpers.py` ×4 | Spring/JPA awareness; **fixture file — DO NOT refactor** (see CLAUDE.md memory rule) |
+| Java | `languages/java_plugin.py` | `java_helpers.py` public facade; `_java_element.py` declarations; `_java_modern.py` modern constructors; `_java_element_common.py` shared metadata/class builder; `_java_extractor_support.py` extractor state/text/traversal adapters; `_java_ast.py`, `_java_import.py`, `_java_traversal.py` | Cursor traversal with byte-range identity; extracts lambdas through calls/ternaries/parentheses, static initializers, anonymous classes, compact constructors, permits and modules (#1350). Constructor ownership is unique; modern and declaration helpers depend on common helpers, never on each other cyclically. |
 | Python | `python_plugin/` | submodules | Type annotations, decorators, async; module constants include chained and same-line assignments |
 | TypeScript | `typescript_plugin/` | submodules | Interfaces, types, TSX/JSX, `.mts`/`.cts`; enum kind/export parity and class-field decorators |
 | JavaScript | `javascript_plugin/` | submodules | ES6+, JSX; `languages/javascript_plugin/_function_helpers.py` handles class-field arrow methods (is_method, is_static, computed/string/number key names — #890/#892); `queries/javascript.py` VARIABLES + "variable" query include `field_definition` (#891) |

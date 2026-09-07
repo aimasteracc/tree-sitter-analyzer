@@ -214,6 +214,7 @@ class CodeGraphNavigateTool(BaseMCPTool):
                         f"No results for '{symbol}'. "
                         "'hierarchy' mode returns the CALL graph (callers/callees of functions). "
                         f"If '{symbol}' is a class, use --class-hierarchy "
+                        "--class-hierarchy-mode tree "
                         f"--class-hierarchy-class {symbol} for inheritance hierarchy. "
                         "Otherwise check spelling or build AST cache (ast_cache mode=index)."
                     )
@@ -229,7 +230,8 @@ class CodeGraphNavigateTool(BaseMCPTool):
             if mode == "hierarchy":
                 next_step = (
                     f"Symbol '{symbol}' not in the index or has no callers/callees. "
-                    f"For class inheritance: --class-hierarchy --class-hierarchy-class {symbol}. "
+                    "For class inheritance: --class-hierarchy --class-hierarchy-mode tree "
+                    f"--class-hierarchy-class {symbol}. "
                     "For call graph: check spelling or run index action=auto to rebuild."
                 )
             else:

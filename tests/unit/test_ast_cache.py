@@ -277,48 +277,36 @@ class TestIndexFile:
         finally:
             migrated.close()
 
-    def test_init_tolerates_extractor_version_migration_operational_error(
+    def test_init_reports_migration_metadata_failure_and_closes_connection(
         self, tmp_path, monkeypatch
     ):
-        class FlakyConnection:
-            def __init__(self):
-                self._conn = sqlite3.connect(":memory:")
-                self._conn.row_factory = sqlite3.Row
-
+        # PR #1350：使用真实 SQLite connection 的故障边界，不绕过 schema 校验器。
+        class FlakyConnection(sqlite3.Connection):
             def execute(self, sql, *args, **kwargs):
                 if "PRAGMA table_info(ast_index)" in sql:
                     raise sqlite3.OperationalError("metadata temporarily unavailable")
-                return self._conn.execute(sql, *args, **kwargs)
+                return super().execute(sql, *args, **kwargs)
 
-            def executescript(self, *args, **kwargs):
-                return self._conn.executescript(*args, **kwargs)
+        connect = sqlite3.connect
+        opened = []
 
-            def commit(self):
-                self._conn.commit()
+        def connect_with_failure(*args, **kwargs):
+            conn = connect(*args, **kwargs, factory=FlakyConnection)
+            opened.append(conn)
+            return conn
 
-            def set_progress_handler(self, callback, steps):
-                self._conn.set_progress_handler(callback, steps)
-
-            def close(self):
-                self._conn.close()
-
-        class FlakyASTCache(ASTCache):
-            def _get_conn(self):
-                conn = getattr(self._local, "conn", None)
-                if conn is None:
-                    conn = FlakyConnection()
-                    self._local.conn = conn
-                return conn
-
-        monkeypatch.setattr(
-            ASTCache, "_verify_schema_integrity", lambda self, conn: None
-        )
-
-        cache = FlakyASTCache(str(tmp_path), db_path=str(tmp_path / "flaky.db"))
+        monkeypatch.setattr(sqlite3, "connect", connect_with_failure)
         try:
-            assert cache.project_root == str(tmp_path)
+            with pytest.raises(
+                sqlite3.OperationalError, match="metadata temporarily unavailable"
+            ):
+                ASTCache(str(tmp_path), db_path=str(tmp_path / "flaky.db"))
+            assert len(opened) == 1
+            with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                opened[0].execute("SELECT 1")
         finally:
-            cache.close()
+            for conn in opened:
+                conn.close()
 
     def test_index_with_explicit_language(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
@@ -2574,6 +2562,55 @@ def test_single_file_edge_write_failure_is_index_error(tmp_path, monkeypatch):
         0,
         False,
     )
+
+
+@pytest.mark.parametrize("route", ["single", "project"])
+@pytest.mark.parametrize("fault", ["sql_error", "schema_changed"])
+def test_certification_write_fault_propagates_and_rolls_back(tmp_path, route, fault):
+    # PR #1350：真实 SQLite 更新错误不能被 pre-v14 兼容层吞掉并提交新行。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "sample.py"
+    source.write_text("def before():\n    return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        assert cache.index_file(str(source))["status"] == "indexed"
+        conn = cache.get_conn()
+        if fault == "sql_error":
+            conn.execute(
+                "CREATE TRIGGER reject_certification BEFORE UPDATE OF certified_at ON ast_index BEGIN SELECT abs(-9223372036854775808); END"
+            )
+            error = "integer overflow"
+        else:
+            conn.execute("ALTER TABLE ast_index DROP COLUMN certified_at")
+            error = "no such column: certified_at"
+        conn.commit()
+        before = tuple(conn.execute("SELECT * FROM ast_index").fetchone())
+        source.write_text("def after_change():\n    return 22\n", encoding="utf-8")
+        with pytest.raises(sqlite3.OperationalError, match=error):
+            if route == "single":
+                cache.index_file(str(source))
+            else:
+                cache.index_project(workers=0)
+        assert conn.in_transaction is False
+        assert tuple(conn.execute("SELECT * FROM ast_index").fetchone()) == before
+        assert [r[0] for r in conn.execute("SELECT name FROM ast_symbol_rows")] == [
+            "before"
+        ]
+        if fault == "sql_error":
+            conn.execute("DROP TRIGGER reject_certification")
+        else:
+            conn.execute("ALTER TABLE ast_index ADD COLUMN certified_at INTEGER")
+        conn.commit()
+        if route == "single":
+            assert cache.index_file(str(source))["status"] == "indexed"
+        else:
+            assert cache.index_project(workers=0)["indexed"] == 1
+        assert [r[0] for r in conn.execute("SELECT name FROM ast_symbol_rows")] == [
+            "after_change"
+        ]
+    finally:
+        cache.close()
 
 
 def test_project_edge_write_failure_rolls_back_batch(tmp_path, monkeypatch):
