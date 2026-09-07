@@ -330,11 +330,11 @@ class TestSavepointRollbackOnPartialWrite:
 
         original_write_imports = cache._write_imports_for_file
 
-        def _fail_after_ast_index(conn, rel_path, language, imports):
+        def _fail_after_ast_index(conn, rel_path, language, imports, symbols=None):
             if "flaky.py" in rel_path:
                 # Simulate failure AFTER ast_index INSERT but BEFORE conn.commit().
                 raise RuntimeError("simulated mid-write failure")
-            return original_write_imports(conn, rel_path, language, imports)
+            return original_write_imports(conn, rel_path, language, imports, symbols)
 
         sync = IncrementalSync(cache)
         with patch.object(
@@ -361,11 +361,11 @@ class TestSavepointRollbackOnPartialWrite:
         original_write_imports = cache._write_imports_for_file
         call_count = {"n": 0}
 
-        def _fail_once(conn, rel_path, language, imports):
+        def _fail_once(conn, rel_path, language, imports, symbols=None):
             if "fragile.py" in rel_path and call_count["n"] == 0:
                 call_count["n"] += 1
                 raise RuntimeError("first attempt fails")
-            return original_write_imports(conn, rel_path, language, imports)
+            return original_write_imports(conn, rel_path, language, imports, symbols)
 
         sync = IncrementalSync(cache)
         with patch.object(cache, "_write_imports_for_file", side_effect=_fail_once):

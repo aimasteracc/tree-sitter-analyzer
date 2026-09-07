@@ -30,6 +30,23 @@ class ImportEntry:
     line: int = 0
 
 
+def _strip_comments(text: str) -> str:
+    """Drop ``#`` comments line by line, preserving the rest of the statement.
+
+    A parenthesised import may carry a trailing comment on its opening line::
+
+        from typing import (  # noqa: F401
+            Any,
+            Dict,
+        )
+
+    Splitting the whole statement on the first ``#`` (the previous behaviour,
+    combined with ``re.DOTALL``) discarded every bound name after it. Stripping
+    per line keeps the continuation lines intact.
+    """
+    return "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+
+
 def _split_names_clause(clause: str) -> list[tuple[str, str]]:
     """Parse ``"a, b as c, *"`` into ``[(local_name, alias_of), ...]``."""
     clause = clause.strip()
@@ -80,7 +97,11 @@ def _parse_python_imports(
     ``import a.b as c`` -> 1 row with module_path='a.b', local_name='c'.
     """
     language = "python"
-    text = text.strip()
+    # Strip comments up front: ``import os  # noqa`` previously failed the
+    # ``_PY_IMPORT_RE`` character class outright (yielding no rows at all),
+    # and a trailing comment on a parenthesised ``from`` import truncated the
+    # name list. Doing it per line handles both.
+    text = _strip_comments(text).strip()
     if not text:
         return []
 
@@ -88,7 +109,7 @@ def _parse_python_imports(
     if m_from:
         dots = m_from.group(1) or ""
         module_tail = m_from.group(2) or ""
-        names_clause = (m_from.group(3) or "").split("#", 1)[0]
+        names_clause = m_from.group(3) or ""
         module_path = dots + module_tail
         is_relative = bool(dots)
         entries: list[ImportEntry] = []
@@ -123,7 +144,7 @@ def _parse_python_imports(
 
     m_imp = _PY_IMPORT_RE.match(text)
     if m_imp:
-        body = m_imp.group(1).split("#", 1)[0]
+        body = m_imp.group(1)
         entries = []
         for item, alias_of in _split_names_clause(body):
             if alias_of:

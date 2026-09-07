@@ -138,13 +138,13 @@ class TestReturnTypeAndParamsSerialized:
 class TestExtractorVersionBump:
     def test_extractor_version_matches_in_both_sites(self):
         # The two declarations must stay equal (they gate cache staleness).
-        # v14: #1094 — function symbols carry the extractor's canonical
-        # ``complexity``; the bump forces existing rows to re-index.
+        # v15: future imports are indexed and method-nested defs are classified
+        # ``function``; the bump forces existing rows to re-index.
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 14
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 14
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 15
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 15
 
 
 class TestBashVariableAssignmentScope:

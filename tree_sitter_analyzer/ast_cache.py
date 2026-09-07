@@ -87,9 +87,12 @@ logger = logging.getLogger(__name__)
 #      (``FOO=bar make``) and unwrap subscript only for assignment targets.
 # v14: #1094 / RFC-0019 — function symbols carry the extractor's canonical
 #      ``complexity`` so the cache-backed heatmap matches the extractor; the
-#      bump forces existing rows to re-index. MUST stay equal to the copy in
-#      ``_ast_cache_indexer.py`` (gated by test_extractor_version_matches_in_both_sites).
-_AST_CACHE_EXTRACTOR_VERSION = 14
+#      bump forces existing rows to re-index.
+# v15: future imports are indexed and method-nested defs are classified
+#      ``function``; both change persisted rows, so re-indexing is required.
+#      MUST stay equal to the copy in ``cache/indexer.py``
+#      (gated by test_extractor_version_matches_in_both_sites).
+_AST_CACHE_EXTRACTOR_VERSION = 15
 
 
 class SchemaIntegrityError(RuntimeError):
@@ -304,11 +307,12 @@ class ASTCache:
         rel_path: str,
         language: str,
         imports: list[str] | list[dict[str, Any]],
+        symbols: dict[str, Any] | None = None,
     ) -> None:
         """Refresh ``ast_imports`` rows for ``rel_path``."""
         from .cache import write as _write
 
-        _write.write_imports_for_file(conn, rel_path, language, imports)
+        _write.write_imports_for_file(conn, rel_path, language, imports, symbols)
 
     def _resolve_call_edges_for_file(
         self, conn: sqlite3.Connection, rel_path: str
