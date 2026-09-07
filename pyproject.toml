@@ -464,6 +464,18 @@ module = [
 ]
 ignore_missing_imports = true
 
+# 模型 SDK 与 tokenizer 为运行时按需导入的可选依赖，基础环境和 CI 不要求安装。
+# 仅允许这些 vendor 命名空间缺失；保留项目代码及已安装依赖的类型检查。
+# 不加行级 ignore，避免 pre-commit 与 CI 环境差异引发 unused-ignore 循环。
+[[tool.mypy.overrides]]
+module = [
+    "torch.*",
+    "transformers.*",
+    "openai.*",
+    "tiktoken.*",
+]
+ignore_missing_imports = true
+
 # AUDIT-INFRA-1: modules that operate directly on tree-sitter Node objects
 # inherit Any-typed returns and attributes because tree-sitter has no type
 # stubs in this repo. We silence the four resulting noise codes
