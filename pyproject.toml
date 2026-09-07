@@ -73,7 +73,7 @@ dependencies = [
     "tree-sitter-sql>=0.3.11",
     "tree-sitter-php>=0.24.1",
     "tree-sitter-ruby>=0.23.1",
-    "tree-sitter-yaml>=0.7.0",
+    "tree-sitter-yaml>=0.7.2",
     "tree-sitter-go>=0.20.0",
     "tree-sitter-rust>=0.20.0",
     "tree-sitter-kotlin>=1.1.0",
@@ -114,7 +114,7 @@ sql = ["tree-sitter-sql>=0.3.11,<0.4.0"]   # SQL language support for database s
 csharp = ["tree-sitter-c-sharp>=0.23.1"]  # C# language support for .NET applications
 php = ["tree-sitter-php>=0.23.0,<0.25.0"]  # PHP language support for web applications
 ruby = ["tree-sitter-ruby>=0.23.0,<0.25.0"]  # Ruby language support for Rails and scripting
-yaml = ["tree-sitter-yaml>=0.7.0"]  # YAML language support for configuration files
+yaml = ["tree-sitter-yaml>=0.7.2"]  # YAML language support for configuration files
 kotlin = [
     "tree-sitter-kotlin>=1.1.0",
 ]  # Kotlin language support for Android and JVM applications
@@ -162,7 +162,7 @@ all-languages = [
     "tree-sitter-c-sharp>=0.23.1",  # C# language support for .NET applications
     "tree-sitter-php>=0.23.0,<0.25.0",  # PHP language support for web applications
     "tree-sitter-ruby>=0.23.0,<0.25.0",  # Ruby language support for Rails and scripting
-    "tree-sitter-yaml>=0.7.0",  # YAML language support for configuration files
+    "tree-sitter-yaml>=0.7.2",  # YAML language support for configuration files
     "tree-sitter-bash>=0.23.0,<0.26.0",  # Bash/shell script support
     "tree-sitter-scala>=0.23.0,<0.27.0",  # Scala language support
     "tree-sitter-lua>=0.5.0",  # Lua language support for scripting and game development
