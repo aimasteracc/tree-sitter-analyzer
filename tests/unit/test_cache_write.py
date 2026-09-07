@@ -3,9 +3,125 @@
 from __future__ import annotations
 
 import sqlite3
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+
+
+def test_cached_project_cycle_drains_51_files_without_reparse(tmp_path, monkeypatch):
+    """PR #1350/#1352：两个启用周期分别处理 50/1 个真实文件；缓存周期不重做解析或图回填。"""
+    from unittest.mock import Mock
+
+    from tree_sitter_analyzer import git_activation
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache import extraction, indexer
+
+    for i in range(51):
+        (tmp_path / f"file_{i:02}.py").write_text(
+            f"def func_{i}():\n    return {i}\n", encoding="utf-8"
+        )
+    # 此处只验证真实文件的队列调度；真实 Git 消息刷新由 test_temporal_activation 覆盖。
+    monkeypatch.delenv("TSA_INDEX_ACTIVATION", raising=False)
+    compute = Mock(wraps=git_activation.compute_symbol_activation)
+    parse_file = Mock(wraps=extraction._worker_index_file)
+    backfill = Mock(wraps=indexer.post_index_backfill)
+    monkeypatch.setattr(git_activation, "compute_symbol_activation", compute)
+    monkeypatch.setattr(extraction, "_worker_index_file", parse_file)
+    monkeypatch.setattr(indexer, "post_index_backfill", backfill)
+    cache = ASTCache(str(tmp_path))
+    try:
+        first = cache.index_project(workers=0, include_activation=True)
+        assert (first["indexed"], first["errors"], first["activation_flushed"]) == (
+            51,
+            0,
+            50,
+        )
+        assert cache.call_graph_built() is True
+        db = cache.get_conn()
+        assert (
+            db.execute(
+                "SELECT count(*) FROM ast_symbol_activation WHERE activation_state='pending'"
+            ).fetchone()[0]
+            == 1
+        )
+        identities = [
+            tuple(r)
+            for r in db.execute(
+                "SELECT id,file_path,name FROM ast_symbol_rows ORDER BY id"
+            )
+        ]
+        assert (compute.call_count, parse_file.call_count, backfill.call_count) == (
+            50,
+            51,
+            1,
+        )
+        second = cache.index_project(workers=0, include_activation=True)
+        assert (
+            second["indexed"],
+            second["cached"],
+            second["errors"],
+            second.get("activation_flushed"),
+        ) == (0, 51, 0, 1)
+        assert (
+            db.execute(
+                "SELECT count(*) FROM ast_symbol_activation WHERE activation_state='pending'"
+            ).fetchone()[0]
+            == 0
+        )
+        assert (compute.call_count, parse_file.call_count, backfill.call_count) == (
+            51,
+            51,
+            1,
+        )
+        assert [
+            tuple(r)
+            for r in db.execute(
+                "SELECT id,file_path,name FROM ast_symbol_rows ORDER BY id"
+            )
+        ] == identities
+    finally:
+        cache.close()
+
+
+@pytest.mark.parametrize("with_backfill", [False, True])
+@pytest.mark.parametrize("disabled_by", ["argument", "environment"])
+def test_cached_cycle_respects_activation_disable(
+    tmp_path, monkeypatch, with_backfill, disabled_by
+):
+    """PR #1350/#1352：显式关闭或环境关闭时保留 pending，图回填是否需要不改变此约束。"""
+    from unittest.mock import Mock
+
+    from tree_sitter_analyzer import git_activation
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    (tmp_path / "a.py").write_text("def run():\n    pass\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project(workers=0, include_activation=True)
+        db = cache.get_conn()
+        db.execute("UPDATE ast_symbol_activation SET activation_state='pending'")
+        if with_backfill:
+            db.execute("DELETE FROM ast_call_graph_state")
+        db.commit()
+        compute = Mock(wraps=git_activation.compute_symbol_activation)
+        monkeypatch.setattr(git_activation, "compute_symbol_activation", compute)
+        monkeypatch.setenv(
+            "TSA_INDEX_ACTIVATION", "0" if disabled_by == "environment" else "1"
+        )
+        result = cache.index_project(
+            workers=0, include_activation=disabled_by != "argument"
+        )
+        assert (result["indexed"], result["cached"], result["errors"]) == (0, 1, 0)
+        compute.assert_not_called()
+        assert (
+            db.execute("SELECT activation_state FROM ast_symbol_activation").fetchone()[
+                0
+            ]
+            == "pending"
+        )
+    finally:
+        cache.close()
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -26,7 +142,8 @@ def _make_activation_conn():
             mod_count_all INTEGER NOT NULL DEFAULT 0,
             computed_at INTEGER NOT NULL DEFAULT 0,
             git_state TEXT,
-            activation_state TEXT
+            activation_state TEXT,
+            last_commit_msg TEXT
         )"""
     )
     conn.execute(
@@ -161,28 +278,34 @@ class TestFlushPendingActivations:
         )
         conn.commit()
 
-    def test_pending_transitions_to_computed(self):
-        """After flush, activation_state changes from 'pending' to 'computed'."""
+    def test_disabled_runtime_does_not_consume_preexisting_pending(self, monkeypatch):
+        """PR #1350/#1352：运行时禁用计算不得把旧 pending 冒充 computed 或改写原统计。"""
+        from tree_sitter_analyzer.cache.write import _flush_pending_activations
+
+        conn = _make_activation_conn()
+        try:
+            self._seed_pending(conn)
+            before = tuple(conn.iterdump())
+            monkeypatch.setenv("TSA_INDEX_ACTIVATION", "0")
+            assert _flush_pending_activations(conn, "/repo") == {
+                "flushed": 0,
+                "errors": 0,
+            }
+            assert tuple(conn.iterdump()) == before
+        finally:
+            conn.close()
+
+    def test_pending_transitions_to_computed(self, tmp_path):
+        """PR #1350/#1352：真实未跟踪文件完成零值计算，不能用非法假 SHA 伪造成功。"""
         from tree_sitter_analyzer.cache.write import _flush_pending_activations
 
         conn = _make_activation_conn()
         self._seed_pending(conn)
 
-        fake_row = MagicMock()
-        fake_row.symbol_id = 1
-        fake_row.last_modified_commit = "abc123"
-        fake_row.last_modified_at = 1000
-        fake_row.mod_count_30d = 5
-        fake_row.mod_count_90d = 10
-        fake_row.mod_count_all = 20
-        fake_row.computed_at = 9999
-        fake_row.git_state = "tracked"
-
-        with patch(
-            "tree_sitter_analyzer.git_activation.compute_symbol_activation",
-            return_value=[fake_row],
-        ):
-            result = _flush_pending_activations(conn, "/repo")
+        source = tmp_path / "src" / "c.py"
+        source.parent.mkdir()
+        source.write_text("def fn():\n    return 1\n", encoding="utf-8")
+        result = _flush_pending_activations(conn, str(tmp_path))
 
         assert result["flushed"] == 1
         assert result["errors"] == 0
@@ -309,7 +432,7 @@ class TestApplyMigrationV15:
 def test_real_migration_record_failure_can_retry_without_false_version(
     tmp_path, version, table, column, column_type, failure
 ):
-    # PR #1350：真实版本表写入失败不能公布成功版本；已完成的 DDL 必须支持安全重试。
+    # PR #1350/#1352：版本写入失败时连 DDL 一并回滚，重试才允许发布列和版本。
     from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.cache import schema
 
@@ -349,9 +472,14 @@ def test_real_migration_record_failure_can_retry_without_false_version(
             (r[1], r[2])
             for r in conn.execute(f"PRAGMA table_info({table})")
             if r[1] == column
-        ] == [(column, column_type)]
+        ] == []
         conn.execute("DROP TRIGGER deny_migration")
         migrate(conn, schema.record_schema_version)
+        assert [
+            (r[1], r[2])
+            for r in conn.execute(f"PRAGMA table_info({table})")
+            if r[1] == column
+        ] == [(column, column_type)]
         assert [
             r[0]
             for r in conn.execute(
@@ -570,7 +698,7 @@ def test_activation_driver_os_error_rolls_back_without_git_degradation(
 
 
 def test_post_index_flush_is_not_duplicated(tmp_path):
-    # PR #1350：入口委托一次真实 backfill 后，不应再扫描一次相同的 activation 队列。
+    # PR #1350/#1352：真实项目周期中图回填与激活各司其职，不能重复扫描激活队列。
     from tree_sitter_analyzer.ast_cache import ASTCache
 
     cache = ASTCache(str(tmp_path))
@@ -578,8 +706,7 @@ def test_post_index_flush_is_not_duplicated(tmp_path):
         statements = []
         conn = cache.get_conn()
         conn.set_trace_callback(statements.append)
-        stats = {}
-        cache._post_index_backfill(stats)
+        stats = cache.index_project(workers=0, include_activation=True)
         conn.set_trace_callback(None)
         assert (
             len(

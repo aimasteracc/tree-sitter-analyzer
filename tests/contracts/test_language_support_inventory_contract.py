@@ -459,8 +459,9 @@ def test_translated_readmes_reject_unregistered_quantitative_marketing(
             (
                 "Python 3.10 以上",
                 "8 MCP ツール",
-                # Re-pinned 2026-08-31: +7 for --hotspot flags.
-                "### 338 の CLI フラグ",
+                # Re-pinned 2026-09-05: +6 for --pulse/--pulse-batch/
+                # --project-schema/--tql-schema/--tql/--semantic-neighbors.
+                "### 344 の CLI フラグ",
                 "22 言語プラグイン",
                 "13 は `pipeline_registered`",
                 "3 は `index_admitted`",
@@ -472,8 +473,9 @@ def test_translated_readmes_reject_unregistered_quantitative_marketing(
             (
                 "需要 Python 3.10+",
                 "8 个 MCP 工具",
-                # Re-pinned 2026-08-31: +7 for --hotspot flags.
-                "### 338 个 CLI flag",
+                # Re-pinned 2026-09-05: +6 for --pulse/--pulse-batch/
+                # --project-schema/--tql-schema/--tql/--semantic-neighbors.
+                "### 344 个 CLI flag",
                 "22 个语言插件",
                 "13 个为 `pipeline_registered`",
                 "3 个为 `index_admitted`",

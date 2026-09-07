@@ -278,7 +278,14 @@ _NAV_DESCRIPTION = (
     "find implicit coupling that the call graph cannot see (config+code, "
     "schema+handler, proto+generated stub). Params: symbol or file_path (one "
     "required), max_commits (default 500), min_shared (default 3), "
-    "max_results (default 20), output_format."
+    "max_results (default 20), output_format.\n"
+    "- action=pulse — 1-query complete context for one symbol: callers, "
+    "callees, git heat, imports, siblings, comments. Params: file (required), "
+    "symbol (required), format (skeletal|compact|verbose), token_budget, "
+    "max_callers, max_callees, max_siblings, max_comments.\n"
+    "- action=pulse_batch — action=pulse for multiple {file, symbol} targets "
+    "in one call. Params: targets (required array of {file, symbol}), format "
+    "(skeletal|compact), token_budget_per_symbol, max_symbols."
 )
 
 
@@ -299,6 +306,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     from .codegraph_impact_tool import CodeGraphImpactTool
     from .codegraph_navigate_tool import CodeGraphNavigateTool
     from .codegraph_xref_tool import CodeGraphXRefTool
+    from .pulse_tool import PulseBatchTool, PulseTool
     from .symbol_lineage_tool import SymbolLineageTool
     from .symbol_resolve_tool import CodeGraphSymbolResolveTool
     from .trace_impact_tool import TraceImpactTool
@@ -605,6 +613,10 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             # callees/callers per node (the IndexShard dogfood loss root cause).
             "callee_tree": CodeGraphCalleeTreeTool(project_root),
             "caller_tree": CodeGraphCallerTreeTool(project_root),
+            # Pulse API — 1-query symbol context for AI agents, replacing
+            # 10-20 individual tool calls.
+            "pulse": PulseTool(project_root),
+            "pulse_batch": PulseBatchTool(project_root),
         },
         bespoke_map={
             # Composed one-call context (search + node + callers + callees).

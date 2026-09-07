@@ -10,6 +10,7 @@ Fix: pick the *innermost* (smallest line-range) containing function.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,102 @@ def _parse(source: str, language: str = "python"):
         f"parse failed: {result.error_message}"
     )
     return result.tree
+
+
+def test_unsupported_language_does_not_invent_comments_or_branch_metadata():
+    """PR #1352：真实 JSON 语法树没有本模块支持的注释和控制流，结果应明确为空及无条件。"""
+    from tree_sitter_analyzer.function_extraction import (
+        extract_branch_context,
+        extract_comments_from_body,
+    )
+
+    root = _parse('{"value": 1}', "json").root_node
+    assert extract_comments_from_body(root, "json") == []
+    assert extract_branch_context(root, "json") == {
+        "kind": "unconditional",
+        "nesting_depth": 0,
+        "condition_text": None,
+    }
+
+
+def test_branch_context_reaches_persisted_edges(tmp_path):
+    # PR #1352：真实单文件索引必须保留提取器提供的分支上下文。
+    source = tmp_path / "branch.py"
+    source.write_text(
+        "def run(flag):\n    if flag:\n        work()\n", encoding="utf-8"
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        rows = (
+            cache.get_conn()
+            .execute(
+                "SELECT metadata FROM edges WHERE kind='calls' AND callee_name='work'"
+            )
+            .fetchall()
+        )
+        assert [json.loads(row[0]).get("branch", {}).get("kind") for row in rows] == [
+            "if_true"
+        ]
+    finally:
+        cache.close()
+
+
+def test_comments_follow_symbol_replacement_and_deletion(tmp_path):
+    # PR #1352：真实索引关联最内层定义，替换和删除均不得留下旧注释。
+    from tree_sitter_analyzer.cache.write import invalidate_file_rows
+
+    source = tmp_path / "comments.py"
+    source.write_text(
+        "def outer():\n    # outer note\n    def inner():\n        # inner note\n        pass\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        conn = cache.get_conn()
+        query = (
+            "SELECT s.name, c.line, c.text FROM ast_symbol_comments c "
+            "JOIN ast_symbol_rows s ON s.id=c.symbol_id ORDER BY c.line"
+        )
+        assert [tuple(r) for r in conn.execute(query)] == [
+            ("outer", 2, "outer note"),
+            ("inner", 4, "inner note"),
+        ]
+        source.write_text(
+            "def outer():\n    # replacement\n    pass\n", encoding="utf-8"
+        )
+        cache.index_file(str(source))
+        assert [tuple(r) for r in conn.execute(query)] == [("outer", 2, "replacement")]
+        invalidate_file_rows(conn, "comments.py", cache.fts5_available)
+        assert (
+            conn.execute("SELECT count(*) FROM ast_symbol_comments").fetchone()[0] == 0
+        )
+    finally:
+        cache.close()
+
+
+def test_worker_payload_persists_comments_without_reparsing_source(tmp_path):
+    # PR #1352：直接运行 worker 函数，不启动进程池，验证主进程写入其注释证据。
+    from tree_sitter_analyzer.cache.extraction import _worker_index_file
+    from tree_sitter_analyzer.cache.indexer_io import insert_index_row
+
+    source = tmp_path / "worker.py"
+    source.write_text("def run():\n    # worker note\n    pass\n", encoding="utf-8")
+    payload = _worker_index_file((str(source), str(tmp_path), "python"))
+    cache = ASTCache(str(tmp_path))
+    try:
+        conn = cache.get_conn()
+        insert_index_row(
+            cache, conn, payload, "2026-09-07", 0, include_activation=False
+        )
+        rows = conn.execute(
+            "SELECT s.name,c.line,c.text FROM ast_symbol_comments c "
+            "JOIN ast_symbol_rows s ON s.id=c.symbol_id"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [("run", 2, "worker note")]
+    finally:
+        cache.close()
 
 
 # ---------------------------------------------------------------------------

@@ -24,6 +24,243 @@ from tests.fixtures.git_temporal.make_repo import make_shallow_marker
 _GIT_TIMEOUT_SECONDS = 15
 
 
+@pytest.mark.parametrize("message_present", [False, True])
+def test_legacy_message_projection_pending_then_real_git_refresh(
+    tmp_path, monkeypatch, message_present
+):
+    """PR #1350/#1352：升级失效消息先报未知，cached 索引路径再以真实 Git 修复，disabled 不动。"""
+    import json
+    from collections import OrderedDict
+
+    import tree_sitter_analyzer.cache.write as write
+    import tree_sitter_analyzer.git_readonly as git
+    from tree_sitter_analyzer.api.pulse import query_pulse
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.hyphae import Evaluator, parse
+    from tree_sitter_analyzer.hyphae.parser import HyphaeSyntaxError
+
+    _init_git_repo(tmp_path)
+    source = tmp_path / "sample.py"
+    original = 'def target(flag):\n    """kept doc"""\n    # initial comment\n    if flag:\n        helper()\n\ndef helper():\n    pass\n'
+    source.write_text(original, encoding="utf-8")
+    _run_git(tmp_path, ["add", "sample.py"])
+    _run_git(tmp_path, ["commit", "-m", "initial"])
+    source.write_text(
+        original.replace("initial comment", "kept comment"), encoding="utf-8"
+    )
+    _run_git(tmp_path, ["add", "sample.py"])
+    _run_git(tmp_path, ["commit", "-m", "restore message"])
+    cache = ASTCache(str(tmp_path))
+    assert cache.index_file(str(source))["status"] == "indexed"
+    db = cache.get_conn()
+    expected_heat = query_pulse(db, "sample.py", "target").git_heat
+    assert expected_heat.commit_msg == "restore message"
+    db.execute(
+        "UPDATE ast_symbol_activation SET last_commit_msg=NULL,activation_state='computed'"
+    )
+    if message_present:
+        db.execute(
+            "UPDATE ast_symbol_activation SET last_commit_msg='preserved historical message',activation_state=NULL WHERE symbol_id=(SELECT id FROM ast_symbol_rows WHERE name='target')"
+        )
+    db.execute(
+        "UPDATE ast_symbol_activation SET activation_state='disabled' WHERE symbol_id=(SELECT id FROM ast_symbol_rows WHERE name='helper')"
+    )
+    db.execute("DELETE FROM ast_schema_version WHERE version>=16")
+    db.commit()
+    cache.close()
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        db = cache.get_conn()
+        assert query_pulse(db, "sample.py", "target").git_heat is None
+        if message_present:
+            assert (
+                db.execute(
+                    "SELECT last_commit_msg FROM ast_symbol_activation WHERE symbol_id=(SELECT id FROM ast_symbol_rows WHERE name='target')"
+                ).fetchone()[0]
+                == "preserved historical message"
+            )
+        with pytest.raises(HyphaeSyntaxError, match="TEMPORAL_ACTIVATION_UNAVAILABLE"):
+            Evaluator(cache).eval(parse(".function:hot"))
+        disabled = tuple(
+            db.execute(
+                "SELECT * FROM ast_symbol_activation WHERE activation_state='disabled'"
+            ).fetchone()
+        )
+        real_git = git.run_git_readonly
+
+        def failed_message(*args, **kwargs):
+            if "--no-walk" in args[1]:
+                raise OSError("message transport unavailable")
+            return real_git(*args, **kwargs)
+
+        monkeypatch.setattr(write, "_COMMIT_MSG_CACHE", OrderedDict())
+        with monkeypatch.context() as failure:
+            failure.setattr(git, "run_git_readonly", failed_message)
+            assert write._flush_pending_activations(db, str(tmp_path)) == {
+                "flushed": 0,
+                "errors": 1,
+            }
+        assert db.in_transaction is False
+        assert query_pulse(db, "sample.py", "target").git_heat is None
+        # 模拟进程重启后的空消息缓存；不修改已存统计或调用业务替身。
+        write._COMMIT_MSG_CACHE.clear()
+        assert cache.index_file(str(source))["status"] == "cached"
+        pulse = query_pulse(db, "sample.py", "target")
+        assert pulse.git_heat == expected_heat
+        assert pulse.symbol.docstring == "kept doc"
+        assert [c.text for c in pulse.comments] == ["kept comment"]
+        assert (
+            json.loads(
+                db.execute(
+                    "SELECT metadata FROM edges WHERE kind='calls' AND callee_name='helper'"
+                ).fetchone()[0]
+            )["branch"]["kind"]
+            == "if_true"
+        )
+        assert (
+            tuple(
+                db.execute(
+                    "SELECT * FROM ast_symbol_activation WHERE activation_state='disabled'"
+                ).fetchone()
+            )
+            == disabled
+        )
+    finally:
+        cache.close()
+
+
+def test_commit_message_capacity_evicts_oldest_without_losing_new_subject(
+    tmp_path, monkeypatch
+):
+    """PR #1352：真实 Git 新消息挤出最旧条目，缓存容量有界且当前请求仍返回准确消息。"""
+    from collections import OrderedDict
+
+    import tree_sitter_analyzer.cache.write as write
+
+    _init_git_repo(tmp_path)
+    _run_git(tmp_path, ["commit", "--allow-empty", "-m", "bounded subject"])
+    sha = subprocess.check_output(
+        ["git", "-C", str(tmp_path), "rev-parse", "HEAD"], text=True, timeout=15
+    ).strip()
+    root = os.path.realpath(tmp_path)
+    oldest = (root, "0" * 40)
+    monkeypatch.setattr(
+        write,
+        "_COMMIT_MSG_CACHE",
+        OrderedDict(((root, f"{i:040x}"), (float("inf"), "old")) for i in range(4096)),
+    )
+    assert write._fetch_commit_msgs([sha], str(tmp_path)) == {sha: "bounded subject"}
+    assert len(write._COMMIT_MSG_CACHE) == 4096
+    assert oldest not in write._COMMIT_MSG_CACHE
+    assert next(reversed(write._COMMIT_MSG_CACHE)) == (root, sha)
+
+
+def test_commit_rpc_unrequested_subject_is_not_attached_to_symbol(
+    tmp_path, monkeypatch
+):
+    """PR #1352：外部 Git 返回非请求 SHA 时，消息不得串到当前符号或进入缓存。"""
+    import tree_sitter_analyzer.cache.write as write
+    import tree_sitter_analyzer.git_readonly as git
+
+    requested, alien = "e" * 40, "f" * 40
+    monkeypatch.setattr(
+        git,
+        "run_git_readonly",
+        lambda *args, **kwargs: (
+            f"{alien}\0alien subject\0{requested}\0correct subject\0".encode()
+        ),
+    )
+    assert write._fetch_commit_msgs([requested], str(tmp_path)) == {
+        requested: "correct subject"
+    }
+    assert (os.path.realpath(tmp_path), alien) not in write._COMMIT_MSG_CACHE
+
+
+def test_commit_messages_batch_shas_and_reuse_across_files(tmp_path, monkeypatch):
+    # PR #1352：多 SHA 共用一个有期限/字节上限的 Git 请求，跨文件复用结果。
+    import tree_sitter_analyzer.cache.write as write
+    import tree_sitter_analyzer.git_readonly as git
+
+    first, second = "a" * 40, "b" * 40
+    runner = mock.Mock(
+        return_value=f"{first}\0first subject\0\n{second}\0second subject\0\n".encode()
+    )
+    monkeypatch.setattr(git, "run_git_readonly", runner)
+    assert write._fetch_commit_msgs([first, second, first], str(tmp_path)) == {
+        first: "first subject",
+        second: "second subject",
+    }
+    assert write._fetch_commit_msgs([second], str(tmp_path)) == {
+        second: "second subject"
+    }
+    assert runner.call_count == 1
+    args, kwargs = runner.call_args
+    assert args == (
+        str(tmp_path),
+        ["log", "--no-walk", "--stdin", "--format=%H%x00%s%x00"],
+    )
+    assert kwargs["input_"] == f"{first}\n{second}\n".encode()
+    assert kwargs["limit"] == 1024 * 1024
+    assert isinstance(kwargs["deadline"], float)
+
+
+def test_commit_message_timeout_negative_cache_recovers(tmp_path, monkeypatch, caplog):
+    # PR #1352：超时不返回伪造消息，短期不重复 spawn，到期可重试恢复。
+    from collections import OrderedDict
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.cache.write as write
+    import tree_sitter_analyzer.git_readonly as git
+    from tree_sitter_analyzer.source_oracle import SourceOracleError
+
+    caplog.set_level("WARNING", logger=write.__name__)
+    clock = [100.0]
+    sha = "a" * 40
+    runner = mock.Mock(
+        side_effect=[
+            SourceOracleError("DIFF_SNAPSHOT_TIMEOUT"),
+            f"{sha}\0recovered\0".encode(),
+        ]
+    )
+    monkeypatch.setattr(write, "_COMMIT_MSG_CACHE", OrderedDict())
+    monkeypatch.setattr(write, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(git, "run_git_readonly", runner)
+    assert write._fetch_commit_msgs([sha], str(tmp_path)) == {}
+    assert write._fetch_commit_msgs([sha], str(tmp_path)) == {}
+    assert runner.call_count == 1
+    assert "COMMIT_MESSAGE_MISSING" in caplog.text
+    clock[0] = 161.0
+    assert write._fetch_commit_msgs([sha], str(tmp_path)) == {sha: "recovered"}
+    assert runner.call_count == 2
+
+
+def test_commit_message_deadline_prevents_later_batch_spawn(tmp_path, monkeypatch):
+    # PR #1352：首批耗尽整体预算后，后续 SHA 必须保持 missing，不能继续启动 Git。
+    from collections import OrderedDict
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.cache.write as write
+    import tree_sitter_analyzer.git_readonly as git
+
+    clock = [100.0]
+    shas = [f"{i:040x}" for i in range(300)]
+
+    def run(*args, **kwargs):
+        assert kwargs["deadline"] == 105.0
+        clock[0] = 106.0
+        return b"".join(f"{sha}\0subject\0\n".encode() for sha in shas[:256])
+
+    runner = mock.Mock(side_effect=run)
+    monkeypatch.setattr(write, "_COMMIT_MSG_CACHE", OrderedDict())
+    monkeypatch.setattr(write, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(git, "run_git_readonly", runner)
+    assert write._fetch_commit_msgs(shas, str(tmp_path)) == dict.fromkeys(
+        shas[:256], "subject"
+    )
+    assert runner.call_count == 1
+
+
 def _import_git_activation():
     """Deferred import so collection works before the module exists."""
     return importlib.import_module("tree_sitter_analyzer.git_activation")

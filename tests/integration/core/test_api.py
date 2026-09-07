@@ -17,6 +17,34 @@ from tree_sitter_analyzer import __version__, api
 class TestAPIFacade:
     """Test cases for the unified API facade"""
 
+    def test_package_is_the_only_public_api_owner(self):
+        # PR #1352：保留原 import 路径，但不再携带会被 package 遮蔽的重复模块。
+        import tree_sitter_analyzer
+
+        package_root = Path(tree_sitter_analyzer.__file__).resolve().parent
+        assert Path(api.__file__).resolve() == package_root / "api" / "__init__.py"
+        assert not (package_root / "api.py").exists()
+
+    def test_original_public_api_exports_remain_available(self):
+        # PR #1352：移除重复文件不能改变 package 的既有公开入口。
+        assert tuple(api.__all__) == (
+            "get_engine",
+            "analyze_file",
+            "analyze_code",
+            "get_supported_languages",
+            "get_available_queries",
+            "is_language_supported",
+            "detect_language",
+            "get_file_extensions",
+            "validate_file",
+            "get_framework_info",
+            "execute_query",
+            "extract_elements",
+            "analyze",
+            "get_languages",
+        )
+        assert [name for name in api.__all__ if not callable(getattr(api, name))] == []
+
     @pytest.fixture
     def sample_java_file(self) -> str:
         """Create a temporary Java file for testing"""

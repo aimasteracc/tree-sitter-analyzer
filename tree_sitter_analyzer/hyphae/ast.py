@@ -25,10 +25,15 @@ class PseudoClass:
     ``:not`` / ``:callers`` / ``:imports`` / ``:implements``), an ``int`` (for
     ``:nth-child``), a ``str`` path (for ``:in``), or ``None`` (for argument-less
     pseudo-classes like ``:first-child``).
+
+    ``depth_min`` and ``depth_max`` are set by the DepthQuantifier ``{n,m}`` syntax.
+    ``None`` means no depth quantifier (preserve existing semantics).
     """
 
     name: str
     arg: SelectorList | int | str | None = None
+    depth_min: int | None = None
+    depth_max: int | None = None
 
 
 @dataclass(frozen=True)

@@ -60,6 +60,9 @@ _INDEX_DESCRIPTION = (
     "via `mode` — index, sync, invalidate, watch_start, watch_stop (and "
     "`force=true` to force a reindex). Params: mode (default search/stats), "
     "query, file_path, kind, limit, force.\n"
+    "- action=schema — index statistics: languages, symbol count, edge "
+    "count, index age, available pulse fields, Hyphae pseudo-classes. Call "
+    "before nav action=pulse. Params: (none).\n"
     "\n"
     "WRITES ON-DISK INDEX:\n"
     "- action=build — full (re)build of the project index. Slow; use "
@@ -90,6 +93,7 @@ def build_index_facade(project_root: str | None = None) -> FacadeTool:
     from .full_index_tool import CodeGraphFullIndexTool
     from .incremental_sync_tool import CodeGraphIncrementalSyncTool
     from .knowledge_graph_tool import CodeGraphKnowledgeIndexTool
+    from .pulse_tool import GetProjectSchemaTool
 
     facade = FacadeTool(
         facade_name="index",
@@ -97,6 +101,7 @@ def build_index_facade(project_root: str | None = None) -> FacadeTool:
             # -- read-only -------------------------------------------------
             "status": CodeGraphStatusTool(project_root, read_existing_default=True),
             "cache": ASTCacheTool(project_root),
+            "schema": GetProjectSchemaTool(project_root),
             # -- writes on-disk index --------------------------------------
             "build": BuildProjectIndexTool(project_root),
             "full": CodeGraphFullIndexTool(project_root),

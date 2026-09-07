@@ -75,7 +75,8 @@ class TestCodeGraphSymbolSearchExecution:
     async def test_operational_index_update_and_query_without_snapshot_manifest(
         self, tmp_path
     ):
-        # PR #1350：真实 SQLite 操作平面不依赖快照认证；这不是 Windows 原生模拟验收。
+        # PR #1350/#1352：v17 操作平面仍不依赖快照认证；这不是 Windows 原生模拟验收。
+        from tree_sitter_analyzer.cache.schema_extensions import CURRENT_SCHEMA_VERSION
         from tree_sitter_analyzer.incremental_sync import IncrementalSync
 
         source = tmp_path / "app.py"
@@ -89,7 +90,8 @@ class TestCodeGraphSymbolSearchExecution:
                 conn.execute("SELECT MAX(version) FROM ast_schema_version").fetchone()[
                     0
                 ]
-                == 15
+                == CURRENT_SCHEMA_VERSION
+                == 17
             )
             assert (
                 conn.execute(

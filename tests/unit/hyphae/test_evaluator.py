@@ -45,6 +45,23 @@ def _names(rows):
     return sorted(r["name"] for r in rows)
 
 
+@pytest.mark.parametrize("pseudo", ["hot", "stale", "hotspot"])
+def test_temporal_damaged_store_never_returns_unfiltered_candidates(tmp_path, pseudo):
+    """PR #1352：真实时序表损坏必须显式失败，不能把所有函数标成命中。"""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "a.py"
+    source.write_text("def live():\n    pass\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        cache.get_conn().execute("DROP TABLE ast_symbol_activation")
+        with pytest.raises(HyphaeSyntaxError, match="TEMPORAL_INDEX_UNAVAILABLE"):
+            Evaluator(cache).eval(parse(f".function:{pseudo}"))
+    finally:
+        cache.close()
+
+
 def _fixture():
     functions = [
         {
@@ -300,3 +317,473 @@ def test_implements_queries_implements_edge_kind():
     ev = Evaluator(FakeCache([], classes, edges))
     got = _names(ev.eval(parse(".class:implements(#Writeable)")))
     assert got == ["JsonWriter"]
+
+
+# ===========================================================================
+# FakeCacheWithConn — extends FakeCache with get_conn() for temporal/depth
+# ===========================================================================
+
+
+class FakeCacheWithConn(FakeCache):
+    """FakeCache subclass that provides a real sqlite3 connection.
+
+    Used for tests of temporal, depth-BFS, violates, reaches, and branch
+    pseudo-classes that call `getattr(self._cache, "get_conn", None)()`.
+    """
+
+    def __init__(self, functions, classes, edges, conn):
+        super().__init__(functions, classes, edges)
+        self._conn = conn
+
+    def get_conn(self):
+        return self._conn
+
+
+# ---------------------------------------------------------------------------
+# Private seed helpers for the new test cases
+# ---------------------------------------------------------------------------
+
+
+def _seed_sym(
+    conn, name: str, file_path: str = "f.py", language: str = "python", line: int = 1
+) -> int:
+    """Insert a row into ast_symbol_rows; return the new id."""
+    cur = conn.execute(
+        "INSERT INTO ast_symbol_rows (name, kind, file_path, language, line, end_line) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (name, "function", file_path, language, line, line + 5),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def _seed_activation(
+    conn, sym_id: int, mod_count_30d: int = 0, last_modified_at: int | None = None
+) -> None:
+    """Insert a row into ast_symbol_activation."""
+    if last_modified_at is None:
+        last_modified_at = 0
+    conn.execute(
+        "INSERT OR REPLACE INTO ast_symbol_activation "
+        "(symbol_id, file_path, last_modified_at, mod_count_30d, computed_at) "
+        "VALUES (?, "
+        "(SELECT file_path FROM ast_symbol_rows WHERE id = ?), "
+        "?, ?, 0)",
+        (sym_id, sym_id, last_modified_at, mod_count_30d),
+    )
+    conn.commit()
+
+
+def _seed_edge(
+    conn,
+    src_name: str,
+    tgt_name: str,
+    kind: str = "calls",
+    callee_symbol_id: int | None = None,
+    metadata: str | None = None,
+    file_path: str = "f.py",
+) -> int:
+    """Insert a row into edges; return the new id."""
+    cur = conn.execute(
+        "INSERT INTO edges "
+        "(source_node_id, target_node_id, kind, line, caller_name, callee_name, "
+        "file_path, callee_symbol_id, metadata) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            src_name,
+            tgt_name,
+            kind,
+            1,
+            src_name,
+            tgt_name,
+            file_path,
+            callee_symbol_id,
+            metadata,
+        ),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def _seed_violation(
+    conn,
+    rule_id: str,
+    caller_file: str,
+    caller_name: str,
+    caller_line: int = 1,
+    callee_name: str = "something",
+    severity: str = "error",
+) -> None:
+    """Insert a row into ast_constraint_violations."""
+    import time as _time
+
+    conn.execute(
+        "INSERT OR REPLACE INTO ast_constraint_violations "
+        "(rule_id, caller_file, caller_name, caller_line, callee_name, severity, detected_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            rule_id,
+            caller_file,
+            caller_name,
+            caller_line,
+            callee_name,
+            severity,
+            int(_time.time()),
+        ),
+    )
+    conn.commit()
+
+
+# ===========================================================================
+# Temporal filter tests
+# ===========================================================================
+
+
+def test_filter_temporal_hot(ast_cache_conn):
+    """PR #1352：hot(N) 是时间窗口，不是修改次数阈值。"""
+    import time
+
+    id_hot = _seed_sym(ast_cache_conn, "hot_fn")
+    id_cold = _seed_sym(ast_cache_conn, "cold_fn")
+    _seed_activation(
+        ast_cache_conn, id_hot, mod_count_30d=1, last_modified_at=int(time.time())
+    )
+    _seed_activation(ast_cache_conn, id_cold, mod_count_30d=100, last_modified_at=0)
+
+    cache = FakeCacheWithConn(
+        [
+            {"name": "hot_fn", "file": "f.py", "line": 1, "language": "python"},
+            {"name": "cold_fn", "file": "f.py", "line": 6, "language": "python"},
+        ],
+        [],
+        [],
+        ast_cache_conn,
+    )
+    ev = Evaluator(cache)
+    # 只保留最近五天修改的符号。
+    result = ev._filter_temporal(
+        [
+            {"name": "hot_fn", "file": "f.py", "line": 1},
+            {"name": "cold_fn", "file": "f.py", "line": 1},
+        ],
+        "hot",
+        5,
+    )
+    assert _names(result) == ["hot_fn"]
+
+
+def test_filter_temporal_hotspot(ast_cache_conn):
+    """Top 10% by mod_count_30d within a file are kept as hotspots."""
+    syms = []
+    for i in range(10):
+        sid = _seed_sym(ast_cache_conn, f"fn_{i}", file_path="hot.py", line=i * 10 + 1)
+        _seed_activation(ast_cache_conn, sid, mod_count_30d=i + 1)
+        syms.append({"name": f"fn_{i}", "file": "hot.py", "line": i * 10 + 1})
+
+    cache = FakeCacheWithConn([], [], [], ast_cache_conn)
+    ev = Evaluator(cache)
+    result = ev._filter_temporal(syms, "hotspot", None)
+    # top 10% of 10 = max(1, 1) = 1 symbol (fn_9 with mod_count=10)
+    assert len(result) == 1
+    assert result[0]["name"] == "fn_9"
+
+
+def test_filter_temporal_recently_modified(ast_cache_conn):
+    """Symbols modified within 30 days are kept; older ones dropped."""
+    import time as _time
+
+    now = int(_time.time())
+
+    id_recent = _seed_sym(ast_cache_conn, "recent_fn")
+    id_old = _seed_sym(ast_cache_conn, "old_fn")
+    _seed_activation(ast_cache_conn, id_recent, last_modified_at=now)
+    _seed_activation(ast_cache_conn, id_old, last_modified_at=0)
+
+    cache = FakeCacheWithConn([], [], [], ast_cache_conn)
+    ev = Evaluator(cache)
+    result = ev._filter_temporal(
+        [
+            {"name": "recent_fn", "file": "f.py", "line": 1},
+            {"name": "old_fn", "file": "f.py", "line": 1},
+        ],
+        "recently_modified",
+        None,
+    )
+    assert _names(result) == ["recent_fn"]
+
+
+# ===========================================================================
+# Violates filter test
+# ===========================================================================
+
+
+def test_filter_violates(ast_cache_conn):
+    """Symbols with a matching violation are kept; clean symbols dropped."""
+    _seed_violation(ast_cache_conn, "no_db", "f.py", "dirty_fn")
+
+    cache = FakeCacheWithConn([], [], [], ast_cache_conn)
+    ev = Evaluator(cache)
+    result = ev._filter_violates(
+        [
+            {"name": "dirty_fn", "file": "f.py", "line": 1},
+            {"name": "clean_fn", "file": "f.py", "line": 1},
+        ],
+        "no_db",
+    )
+    assert _names(result) == ["dirty_fn"]
+
+
+# ===========================================================================
+# Branch filter test
+# ===========================================================================
+
+
+def test_filter_branch_loop(ast_cache_conn):
+    """Symbols called inside a loop branch are kept; others dropped."""
+    import json
+
+    _seed_edge(
+        ast_cache_conn,
+        "caller",
+        "fn_in_loop",
+        kind="calls",
+        metadata=json.dumps({"branch": {"kind": "loop"}}),
+    )
+
+    cache = FakeCacheWithConn([], [], [], ast_cache_conn)
+    ev = Evaluator(cache)
+    result = ev._filter_branch(
+        [
+            {"name": "fn_in_loop", "file": "f.py"},
+            {"name": "fn_not_loop", "file": "f.py"},
+        ],
+        "loop",
+    )
+    assert _names(result) == ["fn_in_loop"]
+
+
+# ===========================================================================
+# Depth BFS test
+# ===========================================================================
+
+
+def test_eval_depth_bfs_callee(ast_cache_conn):
+    """BFS in callee direction traverses A→B→C correctly."""
+    id_a = _seed_sym(ast_cache_conn, "A")
+    id_b = _seed_sym(ast_cache_conn, "B")
+    id_c = _seed_sym(ast_cache_conn, "C")
+    _seed_edge(ast_cache_conn, "A", "B", callee_symbol_id=id_b)
+    _seed_edge(ast_cache_conn, "B", "C", callee_symbol_id=id_c)
+
+    cache = FakeCacheWithConn([], [], [], ast_cache_conn)
+    ev = Evaluator(cache)
+
+    # depth 1-2: both B and C reachable
+    result_2 = ev._eval_depth_bfs([id_a], "callee", 1, 2)
+    assert id_b in result_2
+    assert id_c in result_2
+
+    # depth 1 only: just B
+    result_1 = ev._eval_depth_bfs([id_a], "callee", 1, 1)
+    assert id_b in result_1
+    assert id_c not in result_1
+
+
+# ===========================================================================
+# Hit cap truncation test
+# ===========================================================================
+
+
+def test_eval_hit_cap_truncated():
+    """Evaluator truncates at max_results and reports was_truncated correctly."""
+    functions = [
+        {"name": f"fn_{i}", "file": "f.py", "line": i, "language": "python"}
+        for i in range(5)
+    ]
+    cache = FakeCache(functions, [], [])
+    ev = Evaluator(cache, max_results=3)
+    results = ev.eval(parse("*"))
+
+    assert len(results) == 3
+    assert ev.was_truncated() is True
+    assert ev.total_matches() == 5
+
+
+# ===========================================================================
+# Reaches filter test
+# ===========================================================================
+
+
+def test_filter_reaches(ast_cache_conn):
+    """_filter_reaches: only candidates that can reach the target are kept."""
+    _seed_sym(ast_cache_conn, "A")
+    id_b = _seed_sym(ast_cache_conn, "B")
+    id_c = _seed_sym(ast_cache_conn, "C")
+    _seed_edge(ast_cache_conn, "A", "B", callee_symbol_id=id_b)
+    _seed_edge(ast_cache_conn, "B", "C", callee_symbol_id=id_c)
+
+    cache = FakeCacheWithConn([], [], [], ast_cache_conn)
+    ev = Evaluator(cache)
+
+    from tree_sitter_analyzer.hyphae.ast import (
+        PseudoClass,
+        SelectorList,
+        SimpleSelector,
+    )
+
+    # pc for :reaches(#C){1,1} — direct callers of C only (depth 1)
+    target_sl = SelectorList((SimpleSelector(base=("name", "C")),))
+    pc = PseudoClass(name="reaches", arg=target_sl, depth_min=1, depth_max=1)
+
+    cands = [
+        {"name": "A", "file": "f.py", "line": 1},
+        {"name": "B", "file": "f.py", "line": 1},
+    ]
+    result = ev._filter_reaches(cands, pc)
+    # Only B directly calls C (1 hop); A is 2 hops away
+    assert _names(result) == ["B"]
+
+
+# ===========================================================================
+# End-to-end _filter_edge_depth via selector evaluation (MED-3)
+# ===========================================================================
+
+
+def test_filter_edge_depth_via_selector(ast_cache_conn):
+    """_filter_edge_depth exercised end-to-end through ev.eval(parse(...)).
+
+    Selector '*:calls(#C){1,2}' means: all symbols that call C within 1-2 hops.
+    Chain: A→B→C.  B calls C directly (depth 1); A calls C via B (depth 2).
+    Expected: both A and B in results, C excluded.
+    """
+    _seed_sym(ast_cache_conn, "A")
+    id_b = _seed_sym(ast_cache_conn, "B")
+    id_c = _seed_sym(ast_cache_conn, "C")
+    _seed_edge(ast_cache_conn, "A", "B", callee_symbol_id=id_b)
+    _seed_edge(ast_cache_conn, "B", "C", callee_symbol_id=id_c)
+
+    cache = FakeCacheWithConn(
+        [
+            {"name": "A", "file": "f.py", "line": 1, "language": "python"},
+            {"name": "B", "file": "f.py", "line": 1, "language": "python"},
+            {"name": "C", "file": "f.py", "line": 1, "language": "python"},
+        ],
+        [],
+        [],
+        ast_cache_conn,
+    )
+    ev = Evaluator(cache)
+
+    # depth 1-2: A (2 hops) and B (1 hop) both call C within range
+    results = ev.eval(parse("*:calls(#C){1,2}"))
+    result_names = set(_names(results))
+    assert "B" in result_names, "B calls C at depth 1, must be included"
+    assert "A" in result_names, "A calls C at depth 2, must be included"
+    assert "C" not in result_names, "C does not call itself"
+
+    # depth 2 exact: only A (B is depth 1, excluded by depth_min=2)
+    results_exact = ev.eval(parse("*:calls(#C){2,2}"))
+    result_names_exact = set(_names(results_exact))
+    assert "A" in result_names_exact, "A is exactly 2 hops from C"
+    assert "B" not in result_names_exact, "B is 1 hop, outside {2,2}"
+
+
+@pytest.mark.parametrize("direction", ["caller", "callee"])
+def test_depth_bfs_preserves_file_identity(ast_cache_conn, direction):
+    # PR #1352：同名函数不能把两个文件的调用链拼接起来。
+    a = _seed_sym(ast_cache_conn, "A", "a.py")
+    _seed_sym(ast_cache_conn, "A", "other.py")
+    b = _seed_sym(ast_cache_conn, "B", "b.py")
+    c = _seed_sym(ast_cache_conn, "C", "c.py")
+    _seed_edge(ast_cache_conn, "A", "B", file_path="a.py", callee_symbol_id=b)
+    _seed_edge(ast_cache_conn, "A", "C", file_path="other.py", callee_symbol_id=c)
+    ev = Evaluator(FakeCacheWithConn([], [], [], ast_cache_conn))
+    if direction == "callee":
+        assert ev._eval_depth_bfs([a], direction, 1, 1) == {b}
+    else:
+        assert ev._eval_depth_bfs([b], direction, 1, 1) == {a}
+
+
+def test_depth_bfs_cycle_budget_is_explicit(ast_cache_conn, monkeypatch):
+    # PR #1352：环上的状态超限必须报错，不能无界递归或伪装成空结果。
+    import tree_sitter_analyzer.hyphae.evaluator as module
+
+    a = _seed_sym(ast_cache_conn, "A")
+    b = _seed_sym(ast_cache_conn, "B")
+    _seed_edge(ast_cache_conn, "A", "B", callee_symbol_id=b)
+    _seed_edge(ast_cache_conn, "B", "A", callee_symbol_id=a)
+    monkeypatch.setattr(module, "_BFS_MAX_STATES", 2, raising=False)
+    ev = Evaluator(FakeCacheWithConn([], [], [], ast_cache_conn))
+    with pytest.raises(HyphaeSyntaxError, match="BFS_RESOURCE_LIMIT"):
+        ev._eval_depth_bfs([a], "callee", 1, 5)
+
+
+@pytest.mark.parametrize("low,high", [(0, 1), (2, 1), (1, 51)])
+def test_depth_bfs_rejects_invalid_depths(ast_cache_conn, low, high):
+    # PR #1352：直接调用也不能绕过深度边界。
+    ev = Evaluator(FakeCacheWithConn([], [], [], ast_cache_conn))
+    with pytest.raises(HyphaeSyntaxError, match="depth"):
+        ev._eval_depth_bfs([], "callee", low, high)
+
+
+@pytest.mark.parametrize("pseudo", ["hot", "recently_modified", "stale", "hotspot"])
+def test_temporal_identity_without_symbol_id(ast_cache_conn, pseudo):
+    # PR #1352：生产候选未携带数据库 ID，必须用文件、名称、定义行完整匹配。
+    import time
+
+    wanted = _seed_sym(ast_cache_conn, "run", line=1)
+    other = _seed_sym(ast_cache_conn, "run", line=20)
+    if pseudo == "stale":
+        _seed_activation(ast_cache_conn, wanted, last_modified_at=0)
+        _seed_activation(ast_cache_conn, other, last_modified_at=int(time.time()))
+    else:
+        _seed_activation(
+            ast_cache_conn, wanted, mod_count_30d=10, last_modified_at=int(time.time())
+        )
+        _seed_activation(ast_cache_conn, other, mod_count_30d=0, last_modified_at=0)
+    cands = [{"name": "run", "file": "f.py", "line": line} for line in (1, 20)]
+    ev = Evaluator(FakeCacheWithConn(cands, [], [], ast_cache_conn))
+    assert ev._filter_temporal(cands, pseudo, None) == [cands[0]]
+
+
+@pytest.mark.parametrize(
+    "pseudo,arg", [("hot", None), ("hot", 30), ("recently_modified", None)]
+)
+def test_hot_default_has_documented_thirty_day_boundary(
+    ast_cache_conn, monkeypatch, pseudo, arg
+):
+    # PR #1352：既有 tql_schema 文档声明默认 30 天，与别名完全一致。
+    import tree_sitter_analyzer.hyphae.evaluator as module
+
+    now = 2_000_000_000
+    monkeypatch.setattr(module.time, "time", lambda: now)
+    cands = []
+    for name, age in [("inside", 30 * 86400 - 1), ("boundary", 30 * 86400)]:
+        sid = _seed_sym(ast_cache_conn, name)
+        _seed_activation(ast_cache_conn, sid, last_modified_at=now - age)
+        cands.append({"name": name, "file": "f.py", "line": 1})
+    ev = Evaluator(FakeCacheWithConn(cands, [], [], ast_cache_conn))
+    assert ev._filter_temporal(cands, pseudo, arg) == [cands[0]]
+
+
+@pytest.mark.parametrize("pseudo", ["calls", "reaches"])
+def test_depth_selector_keeps_exact_seed_and_result_identity(ast_cache_conn, pseudo):
+    # PR #1352：参数筛选必须保留文件/行，结果不能带入同名另一方法。
+    wanted = _seed_sym(ast_cache_conn, "target", "target.py", line=1)
+    other = _seed_sym(ast_cache_conn, "target", "other.py", line=1)
+    cands = [{"name": "run", "file": "f.py", "line": line} for line in (1, 20)]
+    for c in cands:
+        _seed_sym(ast_cache_conn, "run", line=c["line"])
+    for line, target in [(1, wanted), (20, other)]:
+        edge = _seed_edge(ast_cache_conn, "run", str(target), callee_symbol_id=target)
+        ast_cache_conn.execute(
+            "UPDATE edges SET caller_line=? WHERE id=?", (line, edge)
+        )
+    targets = [
+        {"name": "target", "file": file, "line": 1}
+        for file in ("target.py", "other.py")
+    ]
+    ev = Evaluator(FakeCacheWithConn(cands + targets, [], [], ast_cache_conn))
+    assert ev.eval(parse(f"#run:{pseudo}(#target[file=target.py]){{1,1}}")) == [
+        cands[0]
+    ]
