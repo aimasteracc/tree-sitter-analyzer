@@ -53,7 +53,7 @@ classifiers = [
 # Core dependencies (minimal set for basic functionality)
 # Includes HTML/CSS support for comprehensive web technology analysis
 dependencies = [
-    "tree-sitter>=0.25.0",
+    "tree-sitter>=0.26.0",
     "chardet>=7.4.3",
     "cachetools>=5.0.0",
     "tree-sitter-java>=0.23.5",
@@ -67,13 +67,13 @@ dependencies = [
     "tree-sitter-css>=0.23.0",
     "psutil>=5.9.8",
     "tree-sitter-typescript>=0.23.2",
-    "deepdiff>=6.7.1",
+    "deepdiff>=9.1.0",
     "jsonschema>=4.26.0",
     "tree-sitter-c-sharp>=0.23.1",
     "tree-sitter-sql>=0.3.11",
     "tree-sitter-php>=0.24.1",
     "tree-sitter-ruby>=0.23.1",
-    "tree-sitter-yaml>=0.7.0",
+    "tree-sitter-yaml>=0.7.2",
     "tree-sitter-go>=0.20.0",
     "tree-sitter-rust>=0.20.0",
     "tree-sitter-kotlin>=1.1.0",
@@ -114,7 +114,7 @@ sql = ["tree-sitter-sql>=0.3.11,<0.4.0"]   # SQL language support for database s
 csharp = ["tree-sitter-c-sharp>=0.23.1"]  # C# language support for .NET applications
 php = ["tree-sitter-php>=0.23.0,<0.25.0"]  # PHP language support for web applications
 ruby = ["tree-sitter-ruby>=0.23.0,<0.25.0"]  # Ruby language support for Rails and scripting
-yaml = ["tree-sitter-yaml>=0.7.0"]  # YAML language support for configuration files
+yaml = ["tree-sitter-yaml>=0.7.2"]  # YAML 配置文件语言支持
 kotlin = [
     "tree-sitter-kotlin>=1.1.0",
 ]  # Kotlin language support for Android and JVM applications
@@ -162,7 +162,7 @@ all-languages = [
     "tree-sitter-c-sharp>=0.23.1",  # C# language support for .NET applications
     "tree-sitter-php>=0.23.0,<0.25.0",  # PHP language support for web applications
     "tree-sitter-ruby>=0.23.0,<0.25.0",  # Ruby language support for Rails and scripting
-    "tree-sitter-yaml>=0.7.0",  # YAML language support for configuration files
+    "tree-sitter-yaml>=0.7.2",  # YAML 配置文件语言支持
     "tree-sitter-bash>=0.23.0,<0.26.0",  # Bash/shell script support
     "tree-sitter-scala>=0.23.0,<0.27.0",  # Scala language support
     "tree-sitter-lua>=0.5.0",  # Lua language support for scripting and game development
@@ -171,7 +171,7 @@ all-languages = [
 # MCP server support
 mcp = [
     "mcp>=1.12.2",
-    "anyio>=4.0.0",
+    "anyio>=4.15.0",
     "httpx>=0.27.0,<1.0.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.2.1",
@@ -233,7 +233,7 @@ integration = [
     "tree-sitter-typescript>=0.20.0",
     "tree-sitter-markdown>=0.3.1",
     "mcp>=1.12.2",
-    "anyio>=4.0.0",
+    "anyio>=4.15.0",
 ]
 
 # Complete development environment
@@ -249,7 +249,7 @@ full = [
     "tree-sitter-markdown>=0.3.1",
     "tree-sitter-swift>=0.7.2",
     "mcp>=1.12.2",
-    "anyio>=4.0.0",
+    "anyio>=4.15.0",
     "httpx>=0.27.0,<1.0.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.2.1",
@@ -285,7 +285,7 @@ all = [
     "tree-sitter-css>=0.23.0,<0.25.0",
     "tree-sitter-sql>=0.3.11,<0.4.0",  # SQL language support for database schema analysis
     "mcp>=1.12.2",
-    "anyio>=4.0.0",
+    "anyio>=4.15.0",
     "httpx>=0.27.0,<1.0.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.2.1",
@@ -716,7 +716,7 @@ no1-006b-collector-tool = [
     "packaging==25.0",
 ]
 dev = [
-    "build>=1.2.2.post1",
+    "build>=1.6.0",
     "cryptography>=44.0.0",
     "pre-commit>=4.2.0",
     "pytest>=8.4.1",
