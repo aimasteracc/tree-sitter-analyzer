@@ -1002,7 +1002,7 @@ def _hot_zone_symbols_for_files(
 
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(str(db_path))
+        conn = sqlite3.connect(str(db_path), timeout=10)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(sql, [*changed_files, _HOT_ZONE_THRESHOLD]).fetchall()
         return [dict(r) for r in rows]

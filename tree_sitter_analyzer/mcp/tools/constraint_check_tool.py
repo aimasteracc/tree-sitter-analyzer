@@ -382,7 +382,7 @@ class ConstraintCheckTool(BaseMCPTool):
         constraints: list[Any],
     ) -> tuple[list[Violation], int]:
         """Evaluate and persist, preserving cached rows when no CALLS exist."""
-        conn = sqlite3.connect(str(db_path))
+        conn = sqlite3.connect(str(db_path), timeout=10)
         try:
             conn.execute(self._violations_ddl())
             edge_count = self._count_edges(conn)

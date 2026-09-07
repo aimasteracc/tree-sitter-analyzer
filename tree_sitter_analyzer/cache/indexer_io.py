@@ -128,16 +128,15 @@ def parse_and_write(
             indexed_at,
         ),
     )
-    # REQ-E-401: set certified_at so _indexed_source_files_are_complete() can
-    # detect a fully-certified index via COUNT(*) without an O(n) os.walk.
-    # Pre-v14 DBs that do not yet have the column are silently tolerated.
+    # schema 已在初始化时验证；认证写失败必须回滚并上抛，不能提交未认证的新行。
     try:
         conn.execute(
             "UPDATE ast_index SET certified_at = ? WHERE file_path = ?",
             (int(time.time()), rel_path),
         )
-    except sqlite3.OperationalError:
-        pass  # certified_at column absent (pre-v14 DB) — safe degradation
+    except sqlite3.DatabaseError:
+        conn.rollback()
+        raise
     from . import write as _write
 
     inserted = _write.write_fts5_symbols(
@@ -431,14 +430,11 @@ def insert_index_row(
         conn, rel_path, r["language"], symbols, imports_list, call_edges
     ):
         raise sqlite3.OperationalError("GRAPH_EDGE_WRITE_FAILED")
-    # REQ-E-401: stamp certified_at so _indexed_source_files_are_complete() works.
-    try:
-        conn.execute(
-            "UPDATE ast_index SET certified_at = ? WHERE file_path = ?",
-            (int(time.time()), rel_path),
-        )
-    except sqlite3.OperationalError:
-        pass  # certified_at column absent (pre-v14 DB) — safe degradation
+    # 批量写入的调用方负责回滚整个批次；不得吞掉认证更新错误。
+    conn.execute(
+        "UPDATE ast_index SET certified_at = ? WHERE file_path = ?",
+        (int(time.time()), rel_path),
+    )
     if include_activation:
         cache._write_activation_for_file(conn, rel_path, inserted_symbol_rows)  # noqa: SLF001
     else:

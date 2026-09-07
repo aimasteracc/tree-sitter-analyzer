@@ -67,6 +67,8 @@ def hash_source_at(
     finally:
         os.close(fd)
     clean = same_file_metadata(before, after)
+    # 摘要只对本次已打开的文件成立；读取绑定失败后，后续路径 stat 相等
+    # 不能证明已读字节来自同一版本，也不能替代目录描述符绑定的路径。
     return (
         metadata_marker(after),
         digest.hexdigest() if clean else "<unsafe>",

@@ -400,9 +400,7 @@ def evaluate_ordinary_snapshot(
                 if index.snapshot_id is None or index.completeness != "complete":
                     # Phase B-3: distinguish partial from missing/unknown.
                     if index.completeness == "partial":
-                        raise ValueError(
-                            index.reason or "CONSTRAINT_INDEX_PARTIAL"
-                        )
+                        raise ValueError(index.reason or "CONSTRAINT_INDEX_PARTIAL")
                     raise ValueError(index.reason or "CONSTRAINT_INDEX_UNKNOWN")
                 acquire_kwargs = (
                     {"deadline": deadline}

@@ -452,7 +452,8 @@ async def _scatter_find_references(
     for i in range(0, len(source_files), _SYMBOL_SEARCH_BATCH_SIZE):
         batch = source_files[i : i + _SYMBOL_SEARCH_BATCH_SIZE]
         batch_results = await asyncio.gather(*[_scan_one(fp) for fp in batch])
-        for file_refs, file_defs in batch_results:
+        # _scan_file_for_references 现按文档返回 (defs, refs)，此处解包同步翻转
+        for file_defs, file_refs in batch_results:
             references.extend(file_refs)
             definitions.extend(file_defs)
     return definitions, references
@@ -467,23 +468,29 @@ async def _scan_file_for_references(
     AnalysisRequest: Any,
     detect_language_from_file: Any,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """One file's contribution to references + definitions."""
+    """One file's contribution to references + definitions.
+
+    返回顺序为 ``(defs, refs)``，与 docstring 契约一致。
+    修复说明（v1.29.4 热修）：此前实际返回 ``(refs, defs)``，
+    与文档相反；唯一的内部调用方以相反顺序解包才碰巧得到正确结果，
+    任何按文档直调的代码都会拿到颠倒的清单。现已统一为文档顺序。
+    """
     refs: list[dict[str, Any]] = []
     defs: list[dict[str, Any]] = []
     lang = detect_language_from_file(str(fp))
     if lang == "unknown":
-        return refs, defs
+        return defs, refs
     try:
         req = AnalysisRequest(file_path=str(fp), language=lang, include_details=False)
         result = await engine.analyze(req)
         if not result or not result.success:
-            return refs, defs
+            return defs, refs
         rel = str(fp.relative_to(root))
         for e in result.elements:
             _classify_element_for_references(e, rel, bare_name, seen_refs, refs, defs)
     except Exception:  # nosec B110
         pass
-    return refs, defs
+    return defs, refs
 
 
 def _classify_element_for_references(

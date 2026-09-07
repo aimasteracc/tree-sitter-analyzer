@@ -122,9 +122,7 @@ class IncrementalSync:
         # below).  This enables per-file partial certification tracking.
         _certified_at_epoch = int(time.time())
         _certified_paths = [
-            p
-            for p, a in action_by_file.items()
-            if a in ("new", "updated", "unchanged")
+            p for p, a in action_by_file.items() if a in ("new", "updated", "unchanged")
         ]
         if _certified_paths:
             _placeholders = ",".join("?" * len(_certified_paths))
@@ -135,9 +133,15 @@ class IncrementalSync:
                     [_certified_at_epoch, *_certified_paths],
                 )
             except Exception:
-                # certified_at column may not exist yet (pre-v14 DB).
-                # Ignore silently; the column is added by apply_migration_v14.
-                pass
+                # PR #1350：认证写入失败必须进入既有失败闭合路径，不能仍发布 complete。
+                result.errors += 1
+                result.details.append(
+                    {
+                        "file": "",
+                        "status": "error",
+                        "reason": "FILE_CERTIFICATION_FAILED",
+                    }
+                )
 
         frozen_epoch = bool(
             candidate_snapshot is not None
@@ -177,11 +181,8 @@ class IncrementalSync:
                         result.errors -= 1
                     del result.details[index]
                     break
-                action = action_by_file.get(rel_path)
-                if action is None:
-                    # rel_path は action_by_file に存在しない (例: changed_files で
-                    # スキップ済みのパス)。カウンタ操作なしで次へ進む。
-                    continue
+                # 扫描与处理已为每个 late-change 路径登记 action；缺键是协议错误。
+                action = action_by_file[rel_path]
                 counter_name = {
                     "new": "new_files",
                     "updated": "updated_files",
@@ -262,7 +263,7 @@ class IncrementalSync:
                 self._cache, result
             )
 
-        if changed_paths := invalidate_snapshot_changes():
+        if invalidate_snapshot_changes():
             # The pipeline ran against a generation that no longer exists.  A
             # later retry sees this explicit incomplete marker and repairs all
             # three stages; this run must never certify its pre-race results.
@@ -270,44 +271,7 @@ class IncrementalSync:
 
             backfill_complete = False
             clear_call_graph_built_strict(conn)
-            # REQ-E-202: record partial_at in the manifest without deleting it.
-            # The manifest singleton row retains its other columns (canonical_root
-            # etc.) for the next reader; only partial_at is updated to indicate
-            # that this pipeline generation was overtaken by source changes.
-            # REQ-E-201: full-manifest DELETE is intentionally avoided.
-            # TD-001: reset certified_at for changed paths so they are re-certified.
-            for rel_path in changed_paths:
-                try:
-                    conn.execute(
-                        "UPDATE ast_index SET certified_at = NULL WHERE file_path = ?",
-                        (rel_path,),
-                    )
-                except Exception:
-                    pass  # pre-v14 DB: certified_at column not yet added
-            try:
-                _manifest_cols = {
-                    r[1]
-                    for r in conn.execute(
-                        "PRAGMA table_info(ast_index_snapshot_manifest)"
-                    ).fetchall()
-                }
-                if "partial_at" not in _manifest_cols:
-                    conn.execute(
-                        "ALTER TABLE ast_index_snapshot_manifest"
-                        " ADD COLUMN partial_at INTEGER"
-                    )
-                # TD-002: UPSERT prevents silent no-op when manifest row is absent.
-                # Inserts a sentinel row if missing; updates partial_at only otherwise.
-                conn.execute(
-                    "INSERT INTO ast_index_snapshot_manifest "
-                    "(singleton, canonical_root, source_fingerprint, index_fingerprint, "
-                    "file_count, source_scope_descriptor, manifest_version, partial_at) "
-                    "VALUES (1, '', '', '', 0, '', 0, ?) "
-                    "ON CONFLICT(singleton) DO UPDATE SET partial_at = excluded.partial_at",
-                    (int(time.time()),),
-                )
-            except sqlite3.OperationalError:
-                pass
+            # 仅撤销认证；partial_at 持久历史尚未实现，不写入随后必删的 manifest。
         indexed_paths = {
             str(row["file_path"])
             for row in conn.execute("SELECT file_path FROM ast_index").fetchall()
@@ -740,6 +704,18 @@ class IncrementalSync:
             _frozen_deadline=time.monotonic() + _FROZEN_READ_SECONDS,
         )
 
-    def get_changes(self) -> dict[str, list[str]]:
-        """Return live new, modified, and deleted paths without re-indexing."""
-        return get_changes(self._cache, self._file_changed, _walk_source_files)
+    def get_changes(
+        self, *, exclude_patterns: frozenset[str] | None = None
+    ) -> dict[str, list[str]]:
+        """按调用方的排除策略返回变更；省略策略时保持原有全范围行为。"""
+        changes = get_changes(self._cache, self._file_changed, _walk_source_files)
+        return {
+            kind: [
+                path
+                for path in paths
+                if not any(
+                    fnmatch.fnmatch(path, pattern) for pattern in exclude_patterns or ()
+                )
+            ]
+            for kind, paths in changes.items()
+        }

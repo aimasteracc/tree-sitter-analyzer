@@ -155,6 +155,18 @@ def extract_java_method(
     log_error_func: Callable[[str], None],
 ) -> Function | None:
     """Extract Java method/constructor information."""
+    # 紧凑构造器的协议错误由插件边界报告，不进入旧方法路径的容错捕获。
+    if node.type == "compact_constructor_declaration":
+        constructor = extract_compact_constructor(
+            node,
+            get_node_text,
+            content_lines,
+            log_debug_func=log_debug_func,
+            log_error_func=log_error_func,
+        )
+        if constructor is not None:
+            constructor.complexity_score = calculate_complexity(node)
+        return constructor
     try:
         start_line, end_line = _node_line_span(node)
         method_info = parse_method_signature(node)
@@ -269,33 +281,21 @@ def extract_lambda_function(
     *,
     log_debug_func: Callable[[str], None] = lambda _: None,
     log_error_func: Callable[[str], None] = lambda _: None,
-) -> Function | None:
-    """Extract a ``lambda_expression`` node as a :class:`Function` element.
-
-    The synthetic name ``"<lambda>"`` is used because the variable the lambda
-    is assigned to is not unique (the same lambda can be re-assigned) and is
-    not available from the lambda node itself.
-    """
-    try:
-        start_line, end_line = _node_line_span(node)
-        parameters = _extract_lambda_parameters(node, get_node_text)
-        return Function(
-            name="<lambda>",
-            start_line=start_line,
-            end_line=end_line,
-            raw_text=_raw_text_for_span(content_lines, start_line, end_line),
-            language="java",
-            parameters=parameters,
-            return_type=None,
-            modifiers=[],
-            is_method=True,
-        )
-    except (AttributeError, ValueError, TypeError) as e:
-        log_debug_func(f"Failed to extract lambda: {e}")
-        return None
-    except Exception as e:
-        log_error_func(f"Unexpected error in lambda extraction: {e}")
-        return None
+) -> Function:
+    """提取真实 lambda 节点；Node 或文本适配器的协议错误交由插件边界处理。"""
+    start_line, end_line = _node_line_span(node)
+    parameters = _extract_lambda_parameters(node, get_node_text)
+    return Function(
+        name="<lambda>",
+        start_line=start_line,
+        end_line=end_line,
+        raw_text=_raw_text_for_span(content_lines, start_line, end_line),
+        language="java",
+        parameters=parameters,
+        return_type=None,
+        modifiers=[],
+        is_method=True,
+    )
 
 
 def extract_static_initializer(
@@ -351,13 +351,13 @@ def extract_anonymous_class(
             _raw_text_for_span(content_lines, start_line, end_line),
             _qualified_class_name(current_package, "<anonymous>"),
             current_package,
-            None,   # extends_class
-            [],     # implements_interfaces
-            [],     # modifiers
+            None,  # extends_class
+            [],  # implements_interfaces
+            [],  # modifiers
             "package",  # visibility
-            [],     # annotations
-            True,   # is_nested (always true for anonymous classes)
-            None,   # parent_class
+            [],  # annotations
+            True,  # is_nested (always true for anonymous classes)
+            None,  # parent_class
             # Explicit override: tree-sitter-java 0.23.5 represents anonymous
             # class bodies as class_body (inside object_creation_expression)
             # rather than a distinct anonymous_class_body node type, so we
@@ -377,46 +377,42 @@ def extract_compact_constructor(
     log_debug_func: Callable[[str], None] = lambda _: None,
     log_error_func: Callable[[str], None] = lambda _: None,
 ) -> Function | None:
-    """Extract a ``compact_constructor_declaration`` (Java 16+ record).
-
-    Compact constructors have no ``formal_parameters`` — the parameters come
-    from the enclosing record header.  ``is_constructor`` is set to ``True``.
-    """
-    try:
-        start_line, end_line = _node_line_span(node)
-        ctor_name = _extract_identifier(node, get_node_text)
-        if not ctor_name:
-            return None
-
-        modifiers = _extract_inline_modifiers(node, get_node_text)
-        return Function(
-            name=ctor_name,
-            start_line=start_line,
-            end_line=end_line,
-            raw_text=_raw_text_for_span(content_lines, start_line, end_line),
-            language="java",
-            parameters=[],
-            return_type="void",
-            modifiers=modifiers,
-            is_constructor=True,
-            is_static="static" in modifiers,
-            is_private="private" in modifiers,
-            is_public="public" in modifiers,
-            visibility=_determine_visibility_inline(modifiers),
-            docstring=_extract_javadoc_from_node(node, get_node_text),
-            annotations=_extract_node_annotations(node, get_node_text),
-            throws=[],
-            complexity_score=1,
-            is_abstract=False,
-            is_final=False,
-            is_method=True,
-        )
-    except (AttributeError, ValueError, TypeError) as e:
-        log_debug_func(f"Failed to extract compact_constructor: {e}")
+    """保留 record 隐式参数；缺失名称返回 None，协议错误上抛。"""
+    start_line, end_line = _node_line_span(node)
+    ctor_name = _extract_identifier(node, get_node_text)
+    if not ctor_name:
         return None
-    except Exception as e:
-        log_error_func(f"Unexpected error in compact_constructor extraction: {e}")
-        return None
+
+    modifiers = _extract_inline_modifiers(node, get_node_text)
+    record = node.parent.parent if node.parent is not None else None
+    header = record.child_by_field_name("parameters") if record is not None else None
+    parameters = [
+        get_node_text(parameter)
+        for parameter in (header.named_children if header is not None else ())
+        if parameter.type in ("formal_parameter", "spread_parameter")
+    ]
+    return Function(
+        name=ctor_name,
+        start_line=start_line,
+        end_line=end_line,
+        raw_text=_raw_text_for_span(content_lines, start_line, end_line),
+        language="java",
+        parameters=parameters,
+        return_type="void",
+        modifiers=modifiers,
+        is_constructor=True,
+        is_static="static" in modifiers,
+        is_private="private" in modifiers,
+        is_public="public" in modifiers,
+        visibility=_determine_visibility_inline(modifiers),
+        docstring=_extract_javadoc_from_node(node, get_node_text),
+        annotations=_extract_node_annotations(node, get_node_text),
+        throws=[],
+        complexity_score=1,
+        is_abstract=False,
+        is_final=False,
+        is_method=True,
+    )
 
 
 def extract_module_declaration(
@@ -425,25 +421,21 @@ def extract_module_declaration(
     *,
     log_debug_func: Callable[[str], None] = lambda _: None,
 ) -> Package | None:
-    """Extract a ``module_declaration`` node as a :class:`Package` element."""
-    try:
-        start_line, end_line = _node_line_span(node)
-        module_name: str | None = None
-        for child in node.children:
-            if child.type in ("identifier", "scoped_identifier"):
-                module_name = get_node_text(child)
-                break
-        if not module_name:
-            return None
-        return Package(
-            name=module_name,
-            start_line=start_line,
-            end_line=end_line,
-            language="java",
-        )
-    except Exception as e:
-        log_debug_func(f"Failed to extract module_declaration: {e}")
+    """模块元素的唯一构造入口；缺失名称返回 None，协议错误上抛。"""
+    start_line, end_line = _node_line_span(node)
+    module_name: str | None = None
+    for child in node.children:
+        if child.type in ("identifier", "scoped_identifier"):
+            module_name = get_node_text(child)
+            break
+    if not module_name:
         return None
+    return Package(
+        name=module_name,
+        start_line=start_line,
+        end_line=end_line,
+        language="java",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -535,17 +527,13 @@ def _extract_lambda_parameters(
     for child in node.children:
         if child.type in ("inferred_parameters", "inferred_formal_parameters"):
             # (x, y) -> ...  or  (x) -> ...
-            return [
-                get_node_text(p)
-                for p in child.children
-                if p.type == "identifier"
-            ]
+            return [get_node_text(p) for p in child.children if p.type == "identifier"]
         if child.type == "formal_parameters":
             # (String x, int y) -> ...
             return [
                 get_node_text(p)
                 for p in child.children
-                if p.type == "formal_parameter"
+                if p.type in ("formal_parameter", "spread_parameter")
             ]
         if child.type == "identifier":
             # x -> ...  (single inferred parameter without parentheses)
@@ -687,7 +675,9 @@ def _build_java_class(
         end_line=end_line,
         raw_text=raw_text,
         language="java",
-        class_type=class_type if class_type is not None else _CLASS_TYPE_MAP.get(node.type, "class"),
+        class_type=class_type
+        if class_type is not None
+        else _CLASS_TYPE_MAP.get(node.type, "class"),
         full_qualified_name=full_qualified_name,
         package_name=package_name,
         superclass=extends_class,

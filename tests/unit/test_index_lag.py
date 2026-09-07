@@ -222,3 +222,105 @@ def test_child_fd_closes_when_scandir_setup_raises(tmp_path, monkeypatch):
             states.append(False)
             real_close(fd)
     assert states == [True, True]
+
+
+@pytest.fixture
+def portable_lag(monkeypatch):
+    """仅切换平台分派，目录、文件和时间戳仍由真实文件系统提供。"""
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_lag as lag
+
+    monkeypatch.setattr(
+        lag, "os", SimpleNamespace(name="nt", path=os.path, scandir=os.scandir)
+    )
+    return lag
+
+
+def test_portable_lag_reads_nested_sources_and_ignores_excluded_entries(
+    tmp_path, portable_lag
+):
+    # PR #1350：Windows 路径应使用同一源文件集合，而不是忽略嵌套目录。
+    cache = tmp_path / "index.db"
+    cache.write_bytes(b"cache")
+    os.utime(cache, (20, 20))
+    for relative, mtime in [
+        ("src/App.JAVA", 25),
+        ("notes.txt", 60),
+        (".hidden/secret.py", 70),
+        ("node_modules/dependency.py", 80),
+    ]:
+        path = tmp_path / relative
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("value = 1\n", encoding="utf-8")
+        os.utime(path, (mtime, mtime))
+    assert portable_lag.compute_qualitative_lag(str(tmp_path), str(cache)) == 5.0
+
+
+@pytest.mark.parametrize(
+    "budget", ["_LAG_ENTRY_CAP", "_LAG_PATH_BYTE_CAP", "_LAG_WALK_FILE_CAP"]
+)
+def test_portable_lag_exhausted_budget_returns_unknown(
+    tmp_path, portable_lag, monkeypatch, budget
+):
+    # PR #1350：扫描超预算不能返回已扫描前缀的时间戳。
+    (tmp_path / "a.py").write_text("a = 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("b = 2\n", encoding="utf-8")
+    monkeypatch.setattr(portable_lag, budget, 1)
+    assert portable_lag._newest_source_mtime(str(tmp_path)) is None
+
+
+def test_portable_lag_expired_deadline_does_not_scan(
+    tmp_path, portable_lag, monkeypatch
+):
+    from types import SimpleNamespace
+
+    ticks = iter([0.0, 1.0])
+    monkeypatch.setattr(
+        portable_lag, "time", SimpleNamespace(monotonic=lambda: next(ticks))
+    )
+    scans = []
+
+    def scan(path):
+        scans.append(path)
+        return os.scandir(path)
+
+    monkeypatch.setattr(portable_lag.os, "scandir", scan)
+    assert portable_lag._newest_source_mtime(str(tmp_path)) is None
+    assert scans == []
+
+
+@pytest.mark.parametrize("failure_point", ["scandir", "stat"])
+def test_portable_lag_unreadable_subtree_does_not_report_partial_age(
+    tmp_path, portable_lag, monkeypatch, failure_point
+):
+    # PR #1350：只在 OS 边界注入 EACCES，不能把不完整扫描伪装成精确的最新时间。
+    import errno
+    from types import SimpleNamespace
+
+    (tmp_path / "ok.py").write_text("ok = 1\n", encoding="utf-8")
+    blocked = tmp_path / "blocked"
+    blocked.mkdir()
+    (blocked / "new.py").write_text("new = 1\n", encoding="utf-8")
+    attempted = []
+
+    def scan(path):
+        if os.path.abspath(path) == str(blocked):
+            attempted.append(str(blocked))
+            if failure_point == "scandir":
+                raise PermissionError(errno.EACCES, "denied", str(blocked))
+
+            def denied_stat(*, follow_symlinks):
+                assert follow_symlinks is False
+                raise PermissionError(errno.EACCES, "denied", str(blocked / "new.py"))
+
+            with os.scandir(path) as entries:
+                return [
+                    SimpleNamespace(name=entry.name, path=entry.path, stat=denied_stat)
+                    for entry in entries
+                ]
+        return os.scandir(path)
+
+    monkeypatch.setattr(portable_lag.os, "scandir", scan)
+    assert portable_lag._newest_source_mtime(str(tmp_path)) is None
+    assert attempted == [str(blocked)]

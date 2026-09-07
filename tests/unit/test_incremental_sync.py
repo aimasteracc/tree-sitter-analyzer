@@ -277,15 +277,22 @@ class TestSyncNewFile:
 
 
 def test_snapshot_mutation_during_backfill_is_invalidated(tmp_path):
-    # PR #1172: the final backfill must not certify a stale snapshot.
+    # PR #1172/#1350：真实 backfill 后的变化必须撤销认证，不发布未实现的 partial_at 历史。
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     snapshot = _snapshot(tmp_path, path)
     cache = ASTCache(str(tmp_path))
+    conn = cache.get_conn()
+    columns = [
+        tuple(row)
+        for row in conn.execute("PRAGMA table_info(ast_index_snapshot_manifest)")
+    ]
+    backfill = cache._run_synapse_backfill
 
     def backfill_then_mutate():
+        result = backfill()
         path.write_text("value = 200\n")
-        return {"resolved": 0, "errors": 0}
+        return result
 
     try:
         with patch.object(
@@ -300,6 +307,17 @@ def test_snapshot_mutation_during_backfill_is_invalidated(tmp_path):
             cache.lookup(str(path)),
             cache.call_graph_built(),
         )
+        assert [
+            tuple(row)
+            for row in conn.execute("PRAGMA table_info(ast_index_snapshot_manifest)")
+        ] == columns
+        assert (
+            conn.execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest").fetchone()[
+                0
+            ]
+            == 0
+        )
+        assert conn.in_transaction is False
     finally:
         cache.close()
 
@@ -2253,141 +2271,190 @@ def test_truncated_unchanged_snapshot_clears_global_certification(tmp_path):
     ) == (1, 0, True, "incomplete", 0, False)
 
 
-def test_invalidate_snapshot_missing_rel_path_no_keyerror(tmp_path, monkeypatch):
-    """REQ-E-002 回帰テスト: rel_path が action_by_file に存在しない場合に
-    invalidate_snapshot_changes() 内で KeyError が発生しないことを確認する。"""
-    import tree_sitter_analyzer.incremental_sync as sync_module
-    from tree_sitter_analyzer.indexing_candidate_materialization import (
-        release_index_candidate_snapshot,
-    )
-
+@pytest.mark.parametrize("operation", ["cached", "update", "delete", "reset"])
+def test_real_file_certification_lifecycle(tmp_path, operation):
+    # PR #1350：从真实 index_file 行出发，验证缓存、替换、删除和重新认证的持久状态。
     path = tmp_path / "app.py"
-    path.write_text("x = 1\n", encoding="utf-8")
-
-    snapshot = build_index_candidate_snapshot(
-        str(tmp_path),
-        max_files=10,
-        exclude_patterns=frozenset(),
-        walk_fn=lambda _root: (str(path),),
-        language_fn=_python_language,
-    )
-
+    path.write_text("def original(): return 1\n", encoding="utf-8")
     cache = ASTCache(str(tmp_path))
-    # 初期 index で app.py を登録
-    cache.index_file(str(path))
-
-    # changed_since_snapshot が "app.py" の late change を返すよう monkeypatch する。
-    # action_by_file には "app.py" が存在しない状況を作るため、
-    # _index_or_reindex_files が空の dict を返すよう差し替える。
-    def _stub_index(self, disk_files, indexed_rows, conn, result, callback, **kwargs):
-        # action_by_file を意図的に空にして KeyError シナリオを再現
-        return {}
-
-    monkeypatch.setattr(sync_module.IncrementalSync, "_index_or_reindex_files", _stub_index)
-
-    # changed_since_snapshot が何らかの変更理由を返すよう monkeypatch する
-    import tree_sitter_analyzer.indexing_snapshot as snap_module
-
-    monkeypatch.setattr(
-        snap_module,
-        "changed_since_snapshot",
-        lambda _entry: "MTIME_CHANGED",
-    )
-
     try:
-        # KeyError が出なければ OK (action is None → continue で処理される)
-        sync_module.IncrementalSync(cache).sync(
-            max_files=10,
-            candidate_snapshot=snapshot,
-            certify_manifest=False,
+        with patch("time.time", return_value=1000):
+            assert cache.index_file(str(path))["status"] == "indexed"
+        conn = cache.get_conn()
+        assert [
+            tuple(r)
+            for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
+        ] == [("app.py", 1000)]
+        with patch("time.time", return_value=2000):
+            if operation == "update":
+                path.write_text("def replacement(): return 22\n", encoding="utf-8")
+                assert cache.index_file(str(path))["status"] == "indexed"
+            elif operation == "delete":
+                path.unlink()
+                result = IncrementalSync(cache).sync(
+                    max_files=10, candidate_snapshot=_snapshot(tmp_path)
+                )
+                assert result.deleted_files == 1
+            elif operation == "reset":
+                conn.execute("UPDATE ast_index SET certified_at=NULL")
+                conn.commit()
+                result = IncrementalSync(cache).sync(
+                    max_files=10, candidate_snapshot=_snapshot(tmp_path, path)
+                )
+                assert (result.unchanged_files, result.errors) == (1, 0)
+            else:
+                assert cache.index_file(str(path))["status"] == "cached"
+        expected = (
+            []
+            if operation == "delete"
+            else [("app.py", 1000 if operation == "cached" else 2000)]
         )
-    except KeyError as exc:
-        raise AssertionError(
-            f"action_by_file[rel_path] が KeyError を送出した: {exc}"
-        ) from exc
+        assert [
+            tuple(r)
+            for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
+        ] == expected
+        assert [r[0] for r in conn.execute("SELECT name FROM ast_symbol_rows")] == (
+            []
+            if operation == "delete"
+            else ["replacement" if operation == "update" else "original"]
+        )
+        assert conn.in_transaction is False
     finally:
         cache.close()
-        release_index_candidate_snapshot(snapshot)
 
 
-# ---------------------------------------------------------------------------
-# REQ-U-203: partial_at manifest recording (changed_after_pipeline branch)
-# ---------------------------------------------------------------------------
-
-class TestPartialAtManifestRecording:
-    """REQ-U-203: validate partial_at is recorded without full-manifest DELETE."""
-
-    @staticmethod
-    def _manifest_conn_with_row():
-        """Return an in-memory DB with ast_index_snapshot_manifest (singleton row)."""
-        conn = sqlite3.connect(":memory:")
-        conn.execute(
-            """CREATE TABLE ast_index_snapshot_manifest (
-                singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-                canonical_root TEXT NOT NULL,
-                source_fingerprint TEXT NOT NULL,
-                index_fingerprint TEXT NOT NULL,
-                file_count INTEGER NOT NULL,
-                source_scope_descriptor TEXT NOT NULL,
-                manifest_version INTEGER NOT NULL
-            )"""
-        )
-        conn.execute(
-            "INSERT INTO ast_index_snapshot_manifest VALUES"
-            " (1, '/root', 'sfp', 'ifp', 2, '{}', 13)"
-        )
+def test_certification_write_denial_cannot_report_complete(tmp_path):
+    # PR #1350：真实 SQLite 拒绝认证字段更新时，必须撤销全局认证并报告错误。
+    path = tmp_path / "app.py"
+    path.write_text("def original(): return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(path))
+        conn = cache.get_conn()
+        conn.execute("UPDATE ast_index SET certified_at=NULL")
         conn.commit()
-        return conn
+        denied = []
 
-    def test_partial_at_column_added_and_set(self):
-        """partial_at is written to manifest after changed_after_pipeline."""
-        conn = self._manifest_conn_with_row()
+        def authorize(action, table, column, _database, _trigger):
+            if action == sqlite3.SQLITE_UPDATE and (table, column) == (
+                "ast_index",
+                "certified_at",
+            ):
+                denied.append((table, column))
+                return sqlite3.SQLITE_DENY
+            return sqlite3.SQLITE_OK
 
-        import time as _time
-        _manifest_cols = {
-            r[1]
-            for r in conn.execute(
-                "PRAGMA table_info(ast_index_snapshot_manifest)"
-            ).fetchall()
-        }
-        if "partial_at" not in _manifest_cols:
-            conn.execute(
-                "ALTER TABLE ast_index_snapshot_manifest"
-                " ADD COLUMN partial_at INTEGER"
+        conn.set_authorizer(authorize)
+        try:
+            result = IncrementalSync(cache).sync(
+                max_files=10, candidate_snapshot=_snapshot(tmp_path, path)
             )
-        before = int(_time.time())
+        finally:
+            conn.set_authorizer(None)
+        assert denied == [("ast_index", "certified_at")]
+        assert (
+            result.errors,
+            result.to_dict()["completeness"],
+            cache.call_graph_built(),
+        ) == (1, "incomplete", False)
+        assert [d["reason"] for d in result.details if d.get("status") == "error"] == [
+            "FILE_CERTIFICATION_FAILED"
+        ]
+        assert conn.execute("SELECT certified_at FROM ast_index").fetchone()[0] is None
+        assert (
+            conn.execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest").fetchone()[
+                0
+            ]
+            == 0
+        )
+        assert conn.in_transaction is False
+    finally:
+        cache.close()
+
+
+def test_failed_file_write_rolls_back_its_certification_only(tmp_path):
+    # PR #1350：在真实边写入处 ABORT，失败文件的行和认证必须消失，邻居仍可认证。
+    good, bad = tmp_path / "good.py", tmp_path / "bad.py"
+    good.write_text("def good(): return 1\n", encoding="utf-8")
+    bad.write_text("def old_bad(): return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(good))
+        cache.index_file(str(bad))
+        conn = cache.get_conn()
         conn.execute(
-            "UPDATE ast_index_snapshot_manifest SET partial_at = ? WHERE singleton = 1",
-            (before,),
+            "CREATE TRIGGER deny_bad_edges BEFORE INSERT ON edges WHEN NEW.file_path='bad.py' BEGIN SELECT RAISE(ABORT, 'edge write denied'); END"
         )
         conn.commit()
+        bad.write_text("def replacement_bad(): return good()\n", encoding="utf-8")
+        with patch("time.time", return_value=2000):
+            result = IncrementalSync(cache).sync(
+                max_files=10, candidate_snapshot=_snapshot(tmp_path, good, bad)
+            )
+        assert (
+            result.errors,
+            result.to_dict()["completeness"],
+            cache.call_graph_built(),
+        ) == (1, "incomplete", False)
+        assert [
+            (d["file"], d["error_type"], d["error_message"])
+            for d in result.details
+            if d["status"] == "error"
+        ] == [("bad.py", "IntegrityError", "edge write denied")]
+        assert [
+            tuple(r)
+            for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
+        ] == [("good.py", 2000)]
+        for table in ("ast_symbol_rows", "ast_symbol_projection_state", "edges"):
+            assert (
+                conn.execute(
+                    f"SELECT COUNT(*) FROM {table} WHERE file_path='bad.py'"
+                ).fetchone()[0]
+                == 0
+            )
+        assert conn.in_transaction is False
+    finally:
+        cache.close()
 
-        row = conn.execute(
-            "SELECT partial_at FROM ast_index_snapshot_manifest WHERE singleton = 1"
-        ).fetchone()
-        assert row is not None, "manifest row must still exist (no DELETE)"
-        assert row[0] is not None, "partial_at must be set"
-        assert row[0] >= before - 1
 
-    def test_other_manifest_columns_preserved(self):
-        """REQ-E-201: other manifest columns survive the partial_at update."""
-        conn = self._manifest_conn_with_row()
+def test_late_source_mutation_resets_certification_through_sync(tmp_path):
+    # PR #1350：公开 callback 中的真实源变化必须撤销该文件，而非只修改测试自造 SQL。
+    good, bad = tmp_path / "good.py", tmp_path / "bad.py"
+    good.write_text("def good(): return 1\n", encoding="utf-8")
+    bad.write_text("def original(): return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(good))
+        cache.index_file(str(bad))
+        bad.write_text("def updated(): return 22\n", encoding="utf-8")
 
-        conn.execute(
-            "ALTER TABLE ast_index_snapshot_manifest ADD COLUMN partial_at INTEGER"
+        def mutate(detail):
+            if detail["file"] == "bad.py" and detail["status"] == "indexed":
+                bad.write_text("def newer(): return 333\n", encoding="utf-8")
+
+        with patch("time.time", return_value=2000):
+            result = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=_snapshot(tmp_path, good, bad),
+                callback=mutate,
+            )
+        conn = cache.get_conn()
+        assert (
+            result.changed_during_run_files,
+            result.errors,
+            cache.call_graph_built(),
+        ) == (["bad.py"], 0, False)
+        assert result.to_dict()["completeness"] == "incomplete"
+        assert [
+            tuple(r)
+            for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
+        ] == [("good.py", 2000)]
+        assert (
+            conn.execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest").fetchone()[
+                0
+            ]
+            == 0
         )
-        conn.execute(
-            "UPDATE ast_index_snapshot_manifest SET partial_at = 9999 WHERE singleton = 1"
-        )
-        conn.commit()
-
-        row = conn.execute(
-            "SELECT canonical_root, file_count, manifest_version, partial_at"
-            " FROM ast_index_snapshot_manifest WHERE singleton = 1"
-        ).fetchone()
-        assert row is not None
-        canonical_root, file_count, manifest_version, partial_at = row
-        assert canonical_root == "/root"
-        assert file_count == 2
-        assert manifest_version == 13
-        assert partial_at == 9999
+        assert conn.in_transaction is False
+    finally:
+        cache.close()

@@ -353,7 +353,9 @@ def _flush_pending_activations(
     try:
         from .. import git_activation
     except Exception as exc:  # pragma: no cover
-        logger.debug("git_activation import failed in _flush_pending_activations: %s", exc)
+        logger.debug(
+            "git_activation import failed in _flush_pending_activations: %s", exc
+        )
         return {"flushed": 0, "errors": 0}
 
     try:
@@ -420,9 +422,7 @@ def _flush_pending_activations(
             conn.commit()
             flushed += 1
         except Exception as exc:
-            logger.debug(
-                "_flush_pending_activations failed for %s: %s", rel_path, exc
-            )
+            logger.debug("_flush_pending_activations failed for %s: %s", rel_path, exc)
             # Degradation: mark as computed to prevent retry storms (REQ-E-304(d))
             try:
                 conn.execute(

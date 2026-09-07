@@ -443,3 +443,97 @@ def test_in_place_rewrite_with_restored_mtime_is_unsafe(tmp_path, monkeypatch):
         "<unsafe>",
         False,
     )
+
+
+class TestStaleSnapshotRecovery:
+    """#1364/#1373：后续路径稳定不能洗白一次读取的一致性检查失败。"""
+
+    def test_读取不一致时不能用后续路径比较恢复clean(self, tmp_path):
+        from tree_sitter_analyzer.index_source_stream import hash_source_at
+        from tree_sitter_analyzer.portable_source_snapshot import _marker
+
+        target = tmp_path / "fresh.py"
+        target.write_text("value = 1\n", encoding="utf-8")
+        import os as _os
+
+        before = _os.lstat(target)
+        calls = []
+
+        def first_dirty_then_clean(a, b):
+            calls.append(1)
+            # 只有读取绑定的第一次比较有意义；后续路径比较不能证明摘要有效。
+            return len(calls) > 1
+
+        _marker_fn, digest, clean = hash_source_at(
+            None,
+            str(target),
+            before,
+            float("inf"),
+            {"input": 0, "output": 0},
+            10 * 1024 * 1024,
+            _marker,
+            first_dirty_then_clean,
+        )
+        assert clean is False
+        assert digest == "<unsafe>"
+        assert len(calls) == 1
+
+    @requires_posix_fd
+    def test_dir_fd读取不能退回当前目录的同名文件(self, tmp_path, monkeypatch):
+        # #1364：相对名称绑定目录描述符，不得以工作目录中的同名路径替换证据。
+        import tree_sitter_analyzer.index_source_stream as stream
+
+        project = tmp_path / "project"
+        project.mkdir()
+        target = project / "sample.py"
+        target.write_text("value = 1\n", encoding="utf-8")
+        (tmp_path / "sample.py").write_text("unrelated = 2\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        before = target.stat()
+        fd = os.open(project, os.O_RDONLY)
+        try:
+            with monkeypatch.context() as context:
+                context.setattr(
+                    stream.os,
+                    "lstat",
+                    lambda *_args, **_kwargs: pytest.fail("读取证据不得退回路径重查"),
+                )
+                _, digest, clean = stream.hash_source_at(
+                    fd,
+                    "sample.py",
+                    before,
+                    float("inf"),
+                    {"input": 0, "output": 0},
+                    100,
+                    lambda info: str(info.st_ino),
+                    lambda *_args: False,
+                )
+        finally:
+            os.close(fd)
+        assert (digest, clean) == ("<unsafe>", False)
+
+    def test_持续不一致_维持unsafe(self, tmp_path):
+        from tree_sitter_analyzer.index_source_stream import hash_source_at
+        from tree_sitter_analyzer.portable_source_snapshot import _marker
+
+        target = tmp_path / "hot.py"
+        target.write_text("a" * 100, encoding="utf-8")
+        import os as _os
+
+        before = _os.lstat(target)
+
+        def always_dirty(a, b):
+            return False
+
+        _marker_fn, digest, clean = hash_source_at(
+            None,
+            str(target),
+            before,
+            float("inf"),
+            {"input": 0, "output": 0},
+            10 * 1024 * 1024,
+            _marker,
+            always_dirty,
+        )
+        assert clean is False
+        assert digest == "<unsafe>"

@@ -1,10 +1,149 @@
 # Roadmap — Trusted Agent Change Intelligence No.1 Program
 
 - **Status:** active
-- **Branch:** `docs/no1-roadmap-governance`
+- **Branch:** `docs/tsa-trust-consolidation`
 - **Mission:** Become the most trusted local code-change intelligence layer for AI coding agents.
 - **North star:** Verified Change Success Rate (VCSR), not feature, language, tool, test, or edge count.
 - **Claim policy:** Public language is always bounded to named tools, versions, repositories, models, dates, and evidence levels. E0–E3 emit no quantitative competitive wording; E4 permits only the exact admitted bounded sentence, never an unqualified "No.1" claim.
+
+## 2026-09-07 执行收敛：先可信，再扩展
+
+本节是当前执行优先级；后文的历史基线和十二个月目标不代表已实现能力。
+本轮完成的是初审与隔离复现，不是全仓整顿、全量测试有效性证明或发布验收。
+既有 RFC 的实现授权、证据和发布门槛仍然有效；本节不绕过这些门槛。
+
+### 用户已裁决的边界
+
+- 内部被替代实现应移除；已经发布的旧 CLI/MCP/Python 接口在下一次明确的
+  **主版本升级**统一删除并提供迁移说明，不无限期保留两套业务实现。
+- 第一阶段的即时反馈是**文件保存后的自动更新，以及 Agent 编辑前的风险反馈**。
+  未保存缓冲区、任意读取事件和编辑器深度集成不属于第一阶段。
+- golden/黄金快照是验证方法，不是与 unit/integration/E2E 互斥的执行层级。
+- 所有普通修复、文档和架构收敛进入 `develop`；只有经裁决的发布候选进入
+  `release/v*`，再按 GITFLOW 合入 `main` 并回合 `develop`。本轮不授权发版。
+
+### 本轮证据与限制
+
+分支比较固定为 `main@915eb0dee2526e6f552f81aafcb07c6019408d87` 与
+`develop@c9f777beb7f183c3cad7a153a34142fd1c23480b`：main-only 为 0，
+develop-only 为 412 个提交；差异涉及 1,392 个文件、211,994 行增加和
+102,091 行删除。祖先关系不证明这 412 个提交都应发布。
+
+隔离索引实验运行于 `2851b611887ceab6a4d23a9b4b25f1b0839892e5`
+（PR #1383，尚未合并到上述 develop 基线），macOS、Python 3.12.13、
+24 GiB 内存、10 个逻辑 CPU。实验只有两个 Python 文件，没有启用 watcher。
+以下是单次诊断，不是正式性能基准，也不能外推到十万文件。
+
+| 场景 | 实测结果 | 裁决 |
+|---|---|---|
+| 无索引查询状态 | `MISSING_INDEX` | 正确拒绝假装已就绪 |
+| 两文件完整索引 | 约 0.148 秒；状态 complete；跨文件 caller 1 条，绑定为 project | 小样本正向链路可用 |
+| CLI 重复查询 | 约 0.142 / 0.147 秒 | 两个独立进程，只代表磁盘缓存复用 |
+| 同一 MCP 进程重复查询 | 首次 0.0895 秒，后续 0.0025 / 0.0021 / 0.0020 秒 | 存在热路径；当时索引认证 incomplete，不能算可信热查询达标 |
+| 保存后旧符号查询 | 旧名称仍为 `match_tier=exact`，附带新名称的当前源码 | 阻断项：同一响应混合两个版本 |
+| 保存后新符号 callers | `NOT_FOUND`，但状态工具报告 `SOURCE_INDEX_MISMATCH` | 查询必须携带新鲜度，不能让旧索引误导拼写诊断 |
+| 显式增量同步 | 两文件均更新、符号和 caller 随之更新；exit 1、`incomplete` | 数据更新与认证完成是两个状态，不得混为成功 |
+| 随后再次无变化同步 | errors=0、backfill_errors=0、manifest_certification_failed=false，仍 incomplete | 需要可操作的未完成原因；根因未在本轮定位 |
+
+复现输入：`leaf.py` 定义 `tsa_probe_leaf(value)`；`service.py` 导入并调用它。
+完整索引后将两文件中的名称改为 `tsa_probe_leaf_v2`，实现从 `value + 1`
+改为 `value + 2`。针对同一隔离目录依次执行：
+
+```bash
+uv run python -m tree_sitter_analyzer --project-root "$PROBE_ROOT" --full-index --full-index-mode full --full-index-max-files 100 --format json
+# 修改两个文件后，先查询，不能提前同步而隐藏问题。
+uv run python -m tree_sitter_analyzer --project-root "$PROBE_ROOT" --codegraph-status --format json
+uv run python -m tree_sitter_analyzer --project-root "$PROBE_ROOT" --symbol-search tsa_probe_leaf --format json
+uv run python -m tree_sitter_analyzer --project-root "$PROBE_ROOT" --callers tsa_probe_leaf_v2 --format json
+uv run python -m tree_sitter_analyzer --project-root "$PROBE_ROOT" --incremental-sync --format json
+```
+
+测试初审也发现两个已核验事实，不代表整个测试树都已审完：
+
+- `tests/integration/test_phase7_integration_suite.py` 的集成、性能、安全等
+  路径只等待 `_simulate_integration_step()` 后赋值 `success = True`，没有
+  调用其宣称验证的能力。它只能证明报告流程，不能证明企业就绪或系统正确。
+- `test_mcp_list_files_p1.py` 重导出 p1a/p1b；三个文件一起 collect 得到
+  **46 个 node ID，对应 23 个原始测试函数**。这是重复收集的具体证据。
+  其他“相似测试”仍须比较输入和行为断言，不能凭相同被测函数就删除。
+
+### 目标架构：一个事实源，多个有版本的视图
+
+```text
+文件保存 / Agent 编辑前事件
+  -> 项目与工作树隔离、事件序号、立即标记相关证据待更新
+  -> 单写者增量流水线：文件清单 -> 解析 -> 符号/边差异 -> 受影响绑定
+  -> 原子发布 generation：源码证据 + 符号 + 边 + 完整性
+  -> 有界查询与版本绑定的反馈：影响位置、约束、测试建议、unknown
+  -> MCP / CLI / 订阅通知 / 生成式参考文档
+```
+
+现有 `graph/edge_store.py` 已提供 SQLite 统一边表及 calls/imports/extends/
+implements/references 等关系类型；枚举中存在类型不等于所有语言都完整产生它。
+`knowledge_graph/builder.py` 从 AST/edges 构建投影，`knowledge_graph/stores.py`
+提供可选 LadybugDB/Cypher 镜像。暂不增加 Neo4j 或第二个权威事实库。
+可视化与图数据库镜像是可重建视图，不得各自决定源代码真相。
+
+每次查询的符号坐标、源码片段和关系必须绑定同一 generation；无法绑定时返回
+明确的 stale/partial/unknown。`match_tier=exact` 只表示名称匹配，不表示事实新鲜。
+“零匹配”“未索引”“解析失败”“事件待处理”“预算截断”必须可区分。
+静态解析不可能消除动态语言所有歧义；未知关系不能改名为精确影响。
+
+保存后先快速报告“已变更、证据待更新”，再发布可信影响结果。编辑前反馈通过
+Agent hook/MCP 请求获得，不能声称磁盘 watcher 能感知尚未发生的编辑意图。
+watcher 要覆盖原子替换、创建/删除/重命名、事件乱序与丢失、队列溢出、重启、
+分支切换、多工作树和并发查询；事件丢失必须重新核对清单，不能静默沿用旧图。
+
+### 执行工作包与退出条件
+
+| 顺序 / ID | 范围 | 退出条件 |
+|---|---|---|
+| P0 / TRUST-C1 | 索引版本一致性与认证诊断 | 上述混版本复现变红再修绿；查询明确显示证据版本；同步未完成有稳定原因；不以重试洗白不一致 |
+| P0 / TRUST-T1 | 虚假测试与重复收集试点 | 报告模拟不再被算成系统验证；重复 node ID 有明确去重；保留的断言能抓住具名真实故障 |
+| P1 / TRUST-A1 | 新旧实现责任清单及逐项收敛 | 每个删除项都有当前入口、消费者、唯一职责、替代实现和回归证据；更新入口后旧实现不再可达，再删除 |
+| P1 / TRUST-I1 | 保存后刷新及编辑前反馈 | 同进程/跨进程冷暖启动、增改删重命名、watcher恢复与并发读在声明平台实测；旧边清除、新绑定出现、输出版本一致 |
+| P2 / TRUST-S1 | 1万/10万/30万文件规模阶梯 | 固定机器、语料字节数/符号数/边数/语言/扇出；记录构建、热查、刷新 p50/p95、峰值内存、队列与失败率；全部失败保留分母 |
+| P2 / TRUST-D1 | 文档与代码可验证同步 | 同一能力清单生成 schema/CLI/语言参考；文档例子可执行；失效参考区分确定与候选；三语共享事实、不复制手工数字 |
+| P3 / TRUST-R1 | develop 发布价值逐项裁决 | 每个能力有 keep/migrate/experimental/remove 决策及依赖闭包；被排除实验真正不进入发布构建；升级路径与跨平台门槛通过 |
+
+依赖：C1 在 I1 之前；T1 与 C1 可独立推进；A1 先清点，删除按 C1/T1 的
+保护网逐批落地；S1 在可信增量闭环后才评价性能；D1 的事实源来自收敛后的
+运行时能力表。R1 接受经过验证的能力切片，不等所有愿景完成才发布，也不
+按 git commit 日期把依赖链割断。普通工作包拆成可独立验证的 develop PR。
+
+大规模热路径不得每次全仓读取、全图复制或重复解析未变化文件；用有界图扩展、
+按需源码、背压和可恢复批次控制成本。`KnowledgeGraphBuilder.build()` 当前
+读取全量文件行，默认无上限时也读取全量边，不能直接当作实时热查询路径。
+规模目标尚未达标；延迟和内存预算在固定语料的首轮基线后预注册，不能在失败
+后改阈值来获得绿灯。可先用合成语料定位瓶颈，最终必须加入具名真实大仓库。
+
+### 测试、删除与文档的统一规则
+
+- 测试采用三个正交维度：执行层级 unit/integration/E2E；验证方法
+  example/property/golden/mutation；运行成本 quick/full_language/slow/benchmark。
+  contract/regression 描述被保护的约定或事故，不因目录名字就自动具备有效性。
+- 删除测试前列出其行为、输入分区、失败见证和保留位置；同一实现的不同边界
+  输入不算重复。golden 保留跨语言代表性与复杂结构，不用全量快照覆盖所有细节。
+  覆盖率只是漏测信号；静态 test_map 不等于执行覆盖，更不等于约束有效。
+- 不降低 pytest 时限、不关闭 xdist、不新增无追踪 skip、不把失败测试改成
+  仅断言“返回了对象”。沿用 AGENTS.md 的 quick/comprehensive 两层命令。
+- 旧实现删除不是按 `legacy`、mixin、adapter 文件名扫除。仍有唯一职责的
+  代码先迁移职责；持久化缓存的旧格式明确迁移或版本化失效；外部接口按主版本政策。
+- 代码能生成的是接口、字段、语言支持和结构事实；设计动机与使用承诺由人审。
+  保存时使相关文档事实失效并刷新局部生成视图，CI 校验 committed 输出和示例；
+  不让 LLM 每次保存都重写整本文档，也不自动改写历史报告来贴合当前结果。
+
+### 发布与团队边界
+
+优先候选是可靠解析/绑定、可信增量与查询、编辑影响与有效验证、安装诊断和
+一致的 JSON 契约。图可视化/镜像可保持可选；学习、语义检索和更高层任务 API
+按各自证据及 RFC 授权判定实验状态。移除重复搜索封装与格式不意味着移除内部
+CSV 批量导入等不同职责。没有逐项验证之前，不把上述候选写成“可发布”。
+
+PM/主代理负责架构决策、证据复核和验收；Spark 负责限定路径、限定输出的
+调查与机械工作，按既有团队规则最多两个工作者并发。模型用量不足时暂停派发，
+不得冒称指定模型已完成。本轮架构 Spark 审计因配额停止，发布/测试初审已返回；
+主代理复核了本节列出的具体事实，尚无全仓“可安全删除”清单。
 
 ## 1. Strategic position
 
@@ -84,7 +223,7 @@ commit changes.
 
 ### Continue
 
-- Continue local-first operation, project-root security, MCP/CLI parity, TOON for MCP, JSON for CLI, and fail-closed benchmarks.
+- Continue local-first operation, project-root security, MCP/CLI parity, JSON for both MCP and CLI, and fail-closed benchmarks.
 - Continue conservative resolution: a visible `unknown` is safer than a confident unsupported edge.
 - Continue dogfooding before edits and following the emitted verification command after edits.
 - Continue exact behavioral tests, but prefer realistic corpus failures over coverage-only growth.
@@ -218,7 +357,7 @@ from a digest-verified artifact; E0–E3 and blocked records cannot emit text.
 | NO1-010A | Three-task prototype | Product/API Lead | NO1-007A/B | MCP/CLI parity or explicit internal-only status; exact contract tests; real CLI smoke |
 | NO1-010B | Agent change-outcome benchmark RFC | Benchmark + Product | NO1-008B, NO1-010A | bugfix/refactor/migration/test-selection oracles; VCSR primary endpoint |
 | NO1-011A | Lightweight default install implementation | Runtime Lead | NO1-006B | compatibility preserved; fresh-install success and startup improve on all axes |
-| NO1-012A | Performance/SLO artifact pipeline | Runtime Lead | NO1-006A | byte-stable reports; P50/P95 by repo size; no benchmark-only pytest misuse |
+| NO1-012A | Performance/SLO artifact pipeline (TRUST-S1) | Runtime Lead | NO1-006A, TRUST-I1 | byte-stable reports; P50/P95 by repo size only after the trusted incremental loop passes; no benchmark-only pytest misuse |
 | NO1-013A | Three-client integration qualification | Community/GTM | NO1-010A | Claude Code, Cursor, Codex install/index/query/uninstall scenarios pass |
 
 ## 8. Dependency graph
@@ -235,7 +374,7 @@ NO1-002D ─ NO1-003B ─ NO1-003D (dispatcher; no model call)
 NO1-003D + NO1-008A ─ NO1-003C (bounded E0 canary; both are required)
 
 NO1-006A ─ NO1-006B ─ NO1-011A
-         └─ NO1-012A
+NO1-006A + TRUST-I1 ─ NO1-012A / TRUST-S1
 
 NO1-010A ─ NO1-010B
          └─ NO1-013A
@@ -250,7 +389,7 @@ NO1-010A ─ NO1-010B
 5. Run post-edit change-impact and its reported verification command.
 6. For Python changes, run focused coverage and the patch-coverage gate.
 7. Update codemaps in the same commit when a guarded registry changes.
-8. Preserve locked defaults: MCP TOON, CLI JSON, stderr diagnostics, project-root behavior.
+8. Preserve locked defaults: JSON for both MCP and CLI, stderr diagnostics, project-root behavior.
 9. Record failures and unfavorable benchmark results; never weaken a gate to create a headline.
 10. Produce a concise dogfood feedback record for project memory or the final handoff.
 
@@ -258,7 +397,7 @@ NO1-010A ─ NO1-010B
 
 NO1-006A completed at `refs/heads/develop` commit `c91b026a9a11d044f1f67fda9e060db45aebd7f3` in [workflow run `31288611024`, attempt `1`](https://github.com/aimasteracc/tree-sitter-analyzer/actions/runs/31288611024/attempts/1). One exact wheel (`sha256:c1cb3520542fd14dad60ddec55dfac6afbdaa424e7a4a39d875be1801d98f9e8`) passed native Linux, macOS, and Windows package-to-MCP-first-answer axes. Native Linux and macOS additionally proved real uv `0.10.9` detection, fail-closed behavior with mutable bootstrap disabled, and recovery through the content-bound uv `0.11.0`; Windows honestly records installer recovery as `NOT_APPLICABLE_NO_NATIVE_INSTALLER` with `passed=false` while preserving its real old `uv.exe` and package/MCP evidence. The no-checkout read-only job independently verified all axis bytes, identities, causal sidecars, exact package aggregate (`sha256:04cfdbb96643c7ea34f90707fdf9f3778513c763632c3946ce5532cba25635af`), exact outdated aggregate (`sha256:a110bfc1e423b9c1961f0d02cd2ab676c425b001c23d2449921add73e2860e45`), and deterministic run-bound sandboxes before the tiny OIDC job issued attestations for all three subjects. Pinned post-run verification records and durable evidence are preserved in [`rfcs/evidence/no1-006a/c91b026a9a11d044f1f67fda9e060db45aebd7f3-attempt-1/`](evidence/no1-006a/c91b026a9a11d044f1f67fda9e060db45aebd7f3-attempt-1/). This evidence proves the attested source ref and run identity, not a branch-protection snapshot. Automatic mutable bootstrap remains explicitly unqualified, and this completion does not upgrade canary, benchmark, comparison, cross-file E2E, or public-claim evidence.
 
-1. Begin NO1-006B dependency-split measurement and NO1-012A byte-stable SLO artifact work now that NO1-006A is complete; neither task upgrades canary, benchmark, comparison, cross-file E2E, or public-claim evidence.
+1. Prioritize TRUST-C1/T1, then TRUST-I1 under the 2026-09-07 execution gates. NO1-006B dependency-split baseline work may proceed independently. NO1-012A is the TRUST-S1 performance/SLO work package and waits for TRUST-I1; before that gate, only non-measurement report-schema infrastructure may proceed. None of these tasks upgrades canary, benchmark, comparison, cross-file E2E, or public-claim evidence.
 2. Establish and record a distinct reproducible RFC-0021 E1 install/smoke qualification, then complete NO1-008A's model-free seven-repository setup; any setup failure blocks every model-backed phase.
 3. Implement and independently review NO1-003D's production dispatcher without invoking a model.
 4. Only after NO1-003D, NO1-008A, human budget, signed attestation, and judge gates pass, execute NO1-003C as a bounded E0 canary; retain failures and do not relabel it E1.

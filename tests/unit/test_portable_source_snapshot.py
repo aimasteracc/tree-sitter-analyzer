@@ -54,7 +54,7 @@ def test_portable_inventory_rejects_non_directory_project_root(tmp_path: Path) -
 
     rows, unsafe = _inventory(project)
 
-    assert (rows, unsafe) == (frozenset(), True)
+    assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
 
 def test_portable_inventory_rejects_reparse_project_root(
@@ -64,13 +64,13 @@ def test_portable_inventory_rejects_reparse_project_root(
 
     rows, unsafe = _inventory(tmp_path)
 
-    assert (rows, unsafe) == (frozenset(), True)
+    assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
 
 def test_portable_inventory_rejects_missing_scope_root(tmp_path: Path) -> None:
     rows, unsafe = _inventory(tmp_path, roots=("missing",))
 
-    assert (rows, unsafe) == (frozenset(), True)
+    assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
 
 def test_portable_inventory_rejects_non_directory_scope_root(tmp_path: Path) -> None:
@@ -78,7 +78,7 @@ def test_portable_inventory_rejects_non_directory_scope_root(tmp_path: Path) -> 
 
     rows, unsafe = _inventory(tmp_path, roots=("scope",))
 
-    assert (rows, unsafe) == (frozenset(), True)
+    assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
 
 def test_portable_inventory_enforces_deadline(tmp_path: Path) -> None:
@@ -87,7 +87,7 @@ def test_portable_inventory_enforces_deadline(tmp_path: Path) -> None:
 
     rows, unsafe = portable._portable_inventory(str(tmp_path), scope, -1.0)
 
-    assert (rows, unsafe) == (frozenset(), True)
+    assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
 
 def test_portable_inventory_counts_unsupported_entries_against_budget(
@@ -115,7 +115,8 @@ def test_portable_inventory_skips_hidden_and_excluded_directories(
 
     rows, unsafe = _inventory(tmp_path)
 
-    assert ({row[0] for row in rows}, unsafe) == ({"pkg/kept.py"}, False)
+    assert {row[0] for row in rows} == {"pkg/kept.py"}
+    assert not unsafe  # None=安全
 
 
 def test_portable_inventory_skips_reparse_directory(
@@ -136,7 +137,7 @@ def test_portable_inventory_skips_reparse_directory(
 
     rows, unsafe = _inventory(tmp_path)
 
-    assert (rows, unsafe) == (frozenset(), False)
+    assert rows == frozenset() and not unsafe
 
 
 def test_portable_inventory_marks_supported_reparse_leaf_unsafe(
@@ -156,7 +157,7 @@ def test_portable_inventory_marks_supported_reparse_leaf_unsafe(
 
     rows, unsafe = _inventory(tmp_path)
 
-    assert (rows, unsafe) == (frozenset(), True)
+    assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
 
 def test_portable_inventory_ignores_unsupported_reparse_leaf(
@@ -176,7 +177,7 @@ def test_portable_inventory_ignores_unsupported_reparse_leaf(
 
     rows, unsafe = _inventory(tmp_path)
 
-    assert (rows, unsafe) == (frozenset(), False)
+    assert rows == frozenset() and not unsafe
 
 
 def test_portable_inventory_omits_effectively_excluded_source(tmp_path: Path) -> None:
@@ -186,7 +187,7 @@ def test_portable_inventory_omits_effectively_excluded_source(tmp_path: Path) ->
 
     rows, unsafe = portable._portable_inventory(str(tmp_path), scope, float("inf"))
 
-    assert (rows, unsafe) == (frozenset(), False)
+    assert rows == frozenset() and not unsafe
 
 
 def test_portable_inventory_marks_supported_nonregular_leaf_unsafe(
@@ -211,7 +212,7 @@ def test_portable_inventory_marks_supported_nonregular_leaf_unsafe(
 
     rows, unsafe = _inventory(tmp_path)
 
-    assert (rows, unsafe) == (frozenset(), True)
+    assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
 
 def test_portable_inventory_enforces_supported_file_capacity(
@@ -238,10 +239,8 @@ def test_portable_inventory_marks_unclean_source_hash_unsafe(
 
     rows, unsafe = _inventory(tmp_path)
 
-    assert (rows, unsafe) == (
-        frozenset({("sample.py", "<unsafe>", "python")}),
-        True,
-    )
+    assert rows == frozenset({("sample.py", "<unsafe>", "python")})
+    assert unsafe == "hash_unclean"
     assert len(observed) == 1
     assert observed[0][0] is None
     assert observed[0][1] == str(tmp_path / "sample.py")
@@ -259,7 +258,7 @@ def test_portable_inventory_normalizes_scandir_error(
 
     rows, unsafe = _inventory(tmp_path)
 
-    assert (rows, unsafe) == (frozenset(), True)
+    assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
 
 def test_portable_inventory_detects_directory_identity_change(
@@ -280,7 +279,7 @@ def test_portable_inventory_detects_directory_identity_change(
 
     rows, unsafe = _inventory(tmp_path)
 
-    assert (rows, unsafe) == (frozenset(), True)
+    assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
 
 def test_portable_inventory_detects_scope_root_identity_change(
@@ -305,7 +304,7 @@ def test_portable_inventory_detects_scope_root_identity_change(
 
     rows, unsafe = _inventory(tmp_path, roots=("first", "second"))
 
-    assert (rows, unsafe) == (frozenset(), True)
+    assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
 
 def test_portable_inventory_retains_unsafe_state_from_earlier_scope_root(
@@ -330,7 +329,7 @@ def test_portable_inventory_retains_unsafe_state_from_earlier_scope_root(
 
     rows, unsafe = _inventory(tmp_path, roots=("first", "second"))
 
-    assert (rows, unsafe) == (frozenset(), True)
+    assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
 
 def test_portable_inventory_detects_project_identity_change(
@@ -353,7 +352,7 @@ def test_portable_inventory_detects_project_identity_change(
 
     rows, unsafe = _inventory(tmp_path, roots=("src",))
 
-    assert (rows, unsafe) == (frozenset(), True)
+    assert rows == frozenset() and unsafe  # unsafe 现为原因字符串,非空即不安全
 
 
 @pytest.mark.parametrize(
@@ -393,7 +392,8 @@ def test_capture_portable_source_snapshot_rejects_changed_inventory(
 ) -> None:
     first = frozenset({("first.py", "digest", "python")})
     second = frozenset({("second.py", "digest", "python")})
-    inventories = iter(((first, False), (second, False)))
+    # #1364：已经观察到源不一致，不能用后续恰好一致的扫描替换该证据。
+    inventories = iter(((first, None), (second, None), (first, None), (first, None)))
     monkeypatch.setattr(
         portable, "_portable_inventory", lambda *_args: next(inventories)
     )
@@ -402,14 +402,32 @@ def test_capture_portable_source_snapshot_rejects_changed_inventory(
         str(tmp_path), make_source_scope_descriptor(), deadline=float("inf")
     )
 
-    assert (result.rows, result.state, result.reason) == (
-        first,
-        "unsafe",
-        "SOURCE_SCOPE_UNSAFE",
-    )
+    assert (result.rows, result.state) == (first, "unsafe")
+    assert result.reason == "SOURCE_SCOPE_UNSAFE:walk_mismatch"
     assert result.fingerprint is not None
     assert result.generation == "idxsrc-v3:" + result.fingerprint.removeprefix(
         "sha256:"
+    )
+
+
+def test_capture_deadline_failure_does_not_restart_expired_budget(
+    tmp_path, monkeypatch
+):
+    # #1364：调用者的截止时间是整次捕获的上限，不得隐藏超时后重试。
+    calls = []
+
+    def timed_out(*_args):
+        calls.append(1)
+        raise TimeoutError
+
+    monkeypatch.setattr(portable, "_portable_inventory", timed_out)
+    result = portable.capture_portable_source_snapshot(
+        str(tmp_path), make_source_scope_descriptor(), deadline=0.0
+    )
+    assert (result.state, result.reason, calls) == (
+        "unknown",
+        "SOURCE_SCAN_DEADLINE",
+        [1],
     )
 
 
@@ -439,7 +457,8 @@ def test_portable_inventory_revalidates_queued_directory_before_scan(
     monkeypatch.setattr(portable.os, "lstat", lstat)
     monkeypatch.setattr(portable.os, "scandir", scandir)
 
-    assert _inventory(tmp_path) == (frozenset(), True)
+    result = _inventory(tmp_path)
+    assert result[0] == frozenset() and result[1]  # 原因非空=不安全
     assert scanned == [tmp_path]
 
 

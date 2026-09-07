@@ -327,9 +327,7 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         try:
             from .cache.write import _flush_pending_activations
 
-            _result = _flush_pending_activations(
-                self._get_conn(), self.project_root
-            )
+            _result = _flush_pending_activations(self._get_conn(), self.project_root)
             logger.debug("_flush_pending_activations result: %s", _result)
         except Exception as exc:  # pragma: no cover
             logger.debug("_flush_pending_activations raised: %s", exc)

@@ -6,6 +6,7 @@ from typing import Any
 
 from ..models import Import, Package
 from ..utils import log_debug, log_error
+from ._java_element import extract_module_declaration as _extract_module_element
 
 
 def extract_java_imports(
@@ -69,32 +70,6 @@ def extract_java_packages(
 
     log_debug(f"Extracted {len(packages)} Java packages")
     return packages
-
-
-def _extract_module_element(
-    node: Any,
-    get_node_text: Callable[..., str],
-) -> Package | None:
-    """Extract a ``module_declaration`` node as a :class:`Package` element."""
-    try:
-        module_name: str | None = None
-        for child in node.children:
-            if child.type in ("identifier", "scoped_identifier"):
-                module_name = get_node_text(child)
-                break
-        if not module_name:
-            return None
-        return Package(
-            name=module_name,
-            start_line=node.start_point[0] + 1,
-            end_line=node.end_point[0] + 1,
-            language="java",
-        )
-    except (AttributeError, ValueError, IndexError) as e:
-        log_debug(f"Failed to extract module element: {e}")
-    except Exception as e:
-        log_error(f"Unexpected error in module element extraction: {e}")
-    return None
 
 
 def _extract_package_name(

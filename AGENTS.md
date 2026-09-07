@@ -16,6 +16,7 @@
 ## Test Runtime Contract
 
 - The default local quick-gate command is `uv run pytest -q`.
+- Transition note: `main` inherits the curated quick-gate `pytest.ini` at the next release; until then bare `uv run pytest -q` on `main` still runs the full suite. When validating on `main` before that sync, use the comprehensive command explicitly — one command must mean one thing, so the canonical full-suite path is always the explicit `tests/` form above.
 - The comprehensive local command is `uv run pytest tests/ -q --timeout=120 -m "not e2e and not network and not benchmark"`; the explicit marker override restores slow and full-language tests that the quick gate excludes.
 - Do not run either tier serially. Project pytest config enables four xdist workers with work stealing.
 - The quick gate must finish in under 5 minutes. The config enforces `--session-timeout=900` and `--timeout=30`. (Bumped from 300 in v1.13.1 — see `docs/POSTMORTEM_v1.13.md` § 9.)
@@ -55,6 +56,12 @@ Memory records should capture reusable lessons, not logs: benchmark surprises, C
 - RFC-0022 Phase 0 has one narrow process-local exception: the `edit.release_snapshot` action, snapshot/generation/lease controls, and a `read_existing` sequence that requires those controls are exercised through the non-public same-process CLI-handler bridge rather than exposed as unusable cross-invocation CLI operations. Every other action-level CLI path and parameter remains mandatory; parity contracts must encode this exact exception, which does not authorize another tool, a one-shot composition command, or any other waiver.
 - When adding or changing an MCP tool, update the CLI path in the same change and run a real CLI smoke test, for example `uv run python -m tree_sitter_analyzer <file> --smart-context --format json`.
 - This keeps MCP-only features from becoming invisible to users, CI, and future agents.
+
+## 注释语言规范（Comment Language Rule）
+
+- 今后所有新增或修改的代码注释、docstring 一律使用中文（领导 2026-09-05 裁决）。
+- 存量英文注释不做强制翻译；只在本次改动触碰到的行内顺手转换。
+- 提交信息（commit message）仍沿用仓库既有英文约定，不受本条约束。
 
 ## Codemap-sync mandate
 

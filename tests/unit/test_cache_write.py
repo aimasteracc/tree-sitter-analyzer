@@ -5,9 +5,12 @@ from __future__ import annotations
 import sqlite3
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_activation_conn():
     """In-memory DB with ast_symbol_activation and ast_symbol_rows tables."""
@@ -54,6 +57,7 @@ def _insert_symbol(conn, file_path, name="func", kind="function", line=1, end_li
 # ---------------------------------------------------------------------------
 # Case (a): write_activation_for_file writes pending state, NOT subprocess.run
 # ---------------------------------------------------------------------------
+
 
 class TestWriteActivationLazy:
     """REQ-U-305(a): write_activation_for_file must not call subprocess.run."""
@@ -107,6 +111,7 @@ class TestWriteActivationLazy:
 # Case (c): TSA_INDEX_ACTIVATION=0 → activation_state='disabled'
 # ---------------------------------------------------------------------------
 
+
 class TestWriteActivationDisabled:
     """REQ-U-305(c): disabled activation writes 'disabled' rows, not 'pending'."""
 
@@ -134,6 +139,7 @@ class TestWriteActivationDisabled:
 # ---------------------------------------------------------------------------
 # Case (b): _flush_pending_activations transitions pending → computed
 # ---------------------------------------------------------------------------
+
 
 class TestFlushPendingActivations:
     """REQ-U-305(b): _flush_pending_activations transitions pending→computed."""
@@ -234,6 +240,7 @@ class TestFlushPendingActivations:
 # Migration v15 idempotency
 # ---------------------------------------------------------------------------
 
+
 class TestApplyMigrationV15:
     """apply_migration_v15 is idempotent and adds activation_state."""
 
@@ -263,9 +270,10 @@ class TestApplyMigrationV15:
 
         apply_migration_v15(conn, record_fn)
 
-        cols = {r[1] for r in conn.execute(
-            "PRAGMA table_info(ast_symbol_activation)"
-        ).fetchall()}
+        cols = {
+            r[1]
+            for r in conn.execute("PRAGMA table_info(ast_symbol_activation)").fetchall()
+        }
         assert "activation_state" in cols
         assert any(v == 15 for v, _ in record_calls)
 
@@ -288,3 +296,54 @@ class TestApplyMigrationV15:
         # Should not raise even when column already exists
         apply_migration_v15(conn, lambda c, v, n: None)
         apply_migration_v15(conn, lambda c, v, n: None)
+
+
+@pytest.mark.parametrize(
+    ("version", "table", "column", "column_type"),
+    [
+        (14, "ast_index", "certified_at", "INTEGER"),
+        (15, "ast_symbol_activation", "activation_state", "TEXT"),
+    ],
+)
+def test_real_migration_record_failure_can_retry_without_false_version(
+    tmp_path, version, table, column, column_type
+):
+    # PR #1350：真实版本表写入失败不能公布成功版本；已完成的 DDL 必须支持安全重试。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache import schema
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        conn = cache.get_conn()
+        conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+        conn.execute("DELETE FROM ast_schema_version WHERE version=?", (version,))
+        conn.commit()
+        conn.execute(
+            f"CREATE TEMP TRIGGER deny_migration BEFORE INSERT ON ast_schema_version WHEN NEW.version={version} BEGIN SELECT RAISE(ABORT, 'migration record denied'); END"
+        )
+        migrate = getattr(schema, f"apply_migration_v{version}")
+        with pytest.raises(sqlite3.IntegrityError, match="^migration record denied$"):
+            migrate(conn, schema.record_schema_version)
+        conn.rollback()
+        assert (
+            conn.execute(
+                "SELECT version FROM ast_schema_version WHERE version=?", (version,)
+            ).fetchall()
+            == []
+        )
+        assert [
+            (r[1], r[2])
+            for r in conn.execute(f"PRAGMA table_info({table})")
+            if r[1] == column
+        ] == [(column, column_type)]
+        conn.execute("DROP TRIGGER deny_migration")
+        migrate(conn, schema.record_schema_version)
+        assert [
+            r[0]
+            for r in conn.execute(
+                "SELECT version FROM ast_schema_version WHERE version=?", (version,)
+            )
+        ] == [version]
+        assert conn.in_transaction is False
+    finally:
+        cache.close()

@@ -62,7 +62,7 @@ def _newest_source_mtime(project_root: str) -> float | None:
 
 
 def _newest_source_mtime_scandir(project_root: str) -> float | None:
-    """Cross-platform os.scandir-based bounded source mtime walk (B-4 Windows parity)."""
+    """便携式有预算扫描；无法完整读取时返回未知，不以可读子集冒充最新时间。"""
     deadline = time.monotonic() + _LAG_DEADLINE_SECONDS
     newest: float | None = None
     counters = {"entries": 0, "path_bytes": 0, "sources": 0}
@@ -75,7 +75,7 @@ def _newest_source_mtime_scandir(project_root: str) -> float | None:
         try:
             entries = list(os.scandir(dirpath))
         except OSError:
-            continue
+            return None
         for entry in entries:
             name = entry.name
             relative = f"{prefix}/{name}" if prefix else name
@@ -89,7 +89,7 @@ def _newest_source_mtime_scandir(project_root: str) -> float | None:
             try:
                 info = entry.stat(follow_symlinks=False)
             except OSError:
-                continue
+                return None
             if stat.S_ISDIR(info.st_mode):
                 if name in _LAG_SKIP_DIRS or name.startswith("."):
                     continue

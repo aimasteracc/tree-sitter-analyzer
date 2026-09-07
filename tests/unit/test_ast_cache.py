@@ -2576,6 +2576,55 @@ def test_single_file_edge_write_failure_is_index_error(tmp_path, monkeypatch):
     )
 
 
+@pytest.mark.parametrize("route", ["single", "project"])
+@pytest.mark.parametrize("fault", ["sql_error", "schema_changed"])
+def test_certification_write_fault_propagates_and_rolls_back(tmp_path, route, fault):
+    # PR #1350：真实 SQLite 更新错误不能被 pre-v14 兼容层吞掉并提交新行。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "sample.py"
+    source.write_text("def before():\n    return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        assert cache.index_file(str(source))["status"] == "indexed"
+        conn = cache.get_conn()
+        if fault == "sql_error":
+            conn.execute(
+                "CREATE TRIGGER reject_certification BEFORE UPDATE OF certified_at ON ast_index BEGIN SELECT abs(-9223372036854775808); END"
+            )
+            error = "integer overflow"
+        else:
+            conn.execute("ALTER TABLE ast_index DROP COLUMN certified_at")
+            error = "no such column: certified_at"
+        conn.commit()
+        before = tuple(conn.execute("SELECT * FROM ast_index").fetchone())
+        source.write_text("def after_change():\n    return 22\n", encoding="utf-8")
+        with pytest.raises(sqlite3.OperationalError, match=error):
+            if route == "single":
+                cache.index_file(str(source))
+            else:
+                cache.index_project(workers=0)
+        assert conn.in_transaction is False
+        assert tuple(conn.execute("SELECT * FROM ast_index").fetchone()) == before
+        assert [r[0] for r in conn.execute("SELECT name FROM ast_symbol_rows")] == [
+            "before"
+        ]
+        if fault == "sql_error":
+            conn.execute("DROP TRIGGER reject_certification")
+        else:
+            conn.execute("ALTER TABLE ast_index ADD COLUMN certified_at INTEGER")
+        conn.commit()
+        if route == "single":
+            assert cache.index_file(str(source))["status"] == "indexed"
+        else:
+            assert cache.index_project(workers=0)["indexed"] == 1
+        assert [r[0] for r in conn.execute("SELECT name FROM ast_symbol_rows")] == [
+            "after_change"
+        ]
+    finally:
+        cache.close()
+
+
 def test_project_edge_write_failure_rolls_back_batch(tmp_path, monkeypatch):
     # PR #1253 review thread 2088: worker-result commits propagate edge failure.
     from tree_sitter_analyzer.ast_cache import ASTCache

@@ -1,5 +1,66 @@
 # Changelog
 
+## [1.29.4] - 2026-09-05
+
+Test-effectiveness round 3 + two real bug fixes.
+
+### Fixed (runtime)
+
+- **`_is_test_path` missed bare relative paths** (`tests/unit/a.py` without a leading slash) — exactly the form `ast_diff` feeds, so test-file changes could be misclassified. Now normalized (backslashes too); `tests/`-prefixed paths match.
+- **`_scan_file_for_references` returned `(refs, defs)` while its docstring promised `(defs, refs)`** — the internal caller compensated with a flipped unpack (end-to-end was correct); return order fixed, caller synchronized, direct doc-following calls no longer get swapped lists.
+
+### Fixed (tests)
+
+- **query_symbol_search mutation survival 266 -> 90 (score ~37% -> 82.4%)** — 54 scenario tests: keyword-sweep categorization, matcher semantics, collector exclusion rules (#699, 500 cap), envelope exact values, reference classification/dedup, FTS fast-path precedence/passthrough, missing-attribute robustness.
+- semantic_change_classifier re-measured after the `_is_test_path` fix: 330 total / 12 surviving (96.4%).
+- BASELINE.md TOTAL: surviving 591 -> 323, score 74.3% (toon_encoder row historical — removed on develop).
+
+
+## [1.29.3] - 2026-09-05
+
+Test-effectiveness hotfix round 2 — no runtime behavior changes.
+
+### Fixed
+
+- **semantic_change_classifier mutation survival 71 -> 10 (score 77.4% -> 96.3%)**. New `tests/unit/test_semantic_change_scenarios.py` (36 scenario tests) locks the full classification matrix, risk-threshold boundaries, dominant priority order, and exact summary strings.
+- **facade_tool mutation survival 65 -> 17 (score 70.3% -> 93.1%)**. New `tests/unit/mcp/tools/test_facade_tool_scenarios.py` (28 scenario tests) locks the error envelope key-by-key, typo self-heal suggestions, bespoke precedence, schema enum/params, and root-rebind propagation. Harness: facade test selection narrowed from the whole `tests/unit/mcp/` directory to facade-specific files — the directory-wide selection pulled in tests depending on repo files absent from the mutmut sandbox, failing the unmutated baseline.
+- **Weak-assertion ratchet false positives fixed**: plain mode now picks its diff base by GitFlow branch lineage (main/hotfix/release -> origin/main; feature-lineage -> origin/develop). The old unconditional origin/develop base flagged pre-existing main assertions as "new" on main-lineage branches.
+
+### Known issues (BLOCKED.md)
+
+- `_is_test_path` does not match bare relative paths like `tests/unit/a.py` (no leading slash) — suspected real bug, characterized not fixed (source frozen).
+- Remaining survivors: semantic 10 / facade 17, largely near-equivalent mutations.
+
+
+## [1.29.2] - 2026-09-05
+
+Test-effectiveness hotfix: no runtime behavior changes.
+
+### Fixed
+
+- **ast_diff.py mutation survival 238 -> 64 (kill rate 59.0% -> 84.8%).** New `tests/unit/test_ast_diff_scenarios.py` adds 65 scenario tests locking real semantics (classification matrix, signature/body/rename branches, encoding-contract on non-UTF-8 files, extension-based language detection order, exact stats/summary texts). 156 mutants killed in total.
+- **Mutation harness sandbox regression.** `scripts/run_mutation_baseline.py` mutmut sandbox broke after the 2026-07 restructure (ast_diff gained intra-package imports `.core.parser`/`.project_graph` not copied into `mutants/`); every baseline re-run since June failed silently as "not checked". Fixed with `also_copy = ["tree_sitter_analyzer"]`; baselines are reproducible again.
+
+### Docs
+
+- `tests/effectiveness/BASELINE.md` updated: ast_diff row + TOTAL (874 -> 700 surviving across 5 modules), with a dated methodology note.
+
+
+## [1.29.1] - 2026-09-05
+
+Hotfix: index robustness and storage hygiene, from the 2026-09-05 agent dogfood audit.
+
+### Fixed
+
+- **Cross-version index crash (`'dict' object has no attribute 'split'`).** An index written by a newer build (import entries recorded as `{text, line}` dicts since #1281) crashed `--dead-code`, `--codegraph-impact`, and call-graph builds on this build (`call_graph.py` expected plain strings). `ASTCache.get_imports()` now normalizes both shapes to strings. Verified red→green on the affected 289MB shared index: dead-code analysis recovered (1,928 transitive dead functions).
+- **Orphan maintenance module wired.** `cache/maintenance.py` (`reclaim_storage_after_full_rebuild`) was implemented and tested but never called by anything — index DBs could only grow. It now runs at the end of every full-index build (threshold-guarded; failures reported, never blocking), and the reclaim result is surfaced in the payload as `maintenance`.
+- **Unified SQLite busy timeouts.** 6 of 8 `sqlite3.connect` sites used the default timeout (immediate `database is locked` under multi-process contention). All sites now pass `timeout=10`, matching `ast_cache.py`'s main connection.
+
+### Docs
+
+- AGENTS.md: new 注释语言规范 section — all new/modified code comments and docstrings in Chinese (leader ruling 2026-09-05).
+
+
 ## [Unreleased] - search_content / find_and_grep 廃止
 
 ### Removed

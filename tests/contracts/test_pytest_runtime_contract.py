@@ -50,7 +50,7 @@ DEFAULT_QUICK_TESTPATHS = (
     "tests/unit/security/test_validator.py",
 )
 COMPREHENSIVE_COMMAND = (
-    'uv run pytest tests/ -q --timeout=120 '
+    "uv run pytest tests/ -q --timeout=120 "
     '-m "not e2e and not network and not benchmark"'
 )
 SKIPPED_SCAN_DIRS = {
@@ -108,6 +108,39 @@ def test_comprehensive_command_overrides_quick_marker_exclusions() -> None:
     for relative_path in docs:
         text = (PROJECT_ROOT / relative_path).read_text(encoding="utf-8")
         assert COMPREHENSIVE_COMMAND in text, relative_path
+
+
+def test_no_third_marker_variant_in_docs() -> None:
+    """#1364 会话教训:同一动作只允许一套 canonical 命令。
+
+    历史上 README 的「低 CPU 模式」曾自带第三套 marker 过滤串
+    (not slow and not full_language and not integration),与快速门、
+    全量命令三足鼎立。契约钉死:任何文档不得再引入该串;低 CPU 模式
+    必须与 canonical 命令同构(仅改 worker 数)。
+    """
+    stale_variants = ("not slow and not full_language and not integration",)
+    docs = ("AGENTS.md", "README.md", "docs/TESTING.md", "docs/developer_guide.md")
+    for relative_path in docs:
+        path = PROJECT_ROOT / relative_path
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8")
+        for stale in stale_variants:
+            assert stale not in text, f"{relative_path} reintroduces {stale!r}"
+
+
+def test_readme_labels_bare_quick_gate_and_agents_documents_transition() -> None:
+    """裸 `pytest -q` 在文档中必须标注为 quick gate;AGENTS.md 必须写明
+    main 分支在下一班 release 前的过渡语义(同命令双语义的唯一残留窗口)。
+    """
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    assert (
+        "uv run pytest -q                                # bounded local quick gate"
+        in readme
+    )
+    agents = (PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "Transition note" in agents
+    assert "one command must mean one thing" in agents
 
 
 def _assert_pytest_runtime_contract(
@@ -341,7 +374,9 @@ def test_managed_temp_directories_are_private(monkeypatch, tmp_path) -> None:
     from tests import pytest_temp_hygiene
 
     chmod_calls = []
-    monkeypatch.setattr(Path, "chmod", lambda self, mode: chmod_calls.append((self, mode)))
+    monkeypatch.setattr(
+        Path, "chmod", lambda self, mode: chmod_calls.append((self, mode))
+    )
     private_root = tmp_path / "private"
 
     pytest_temp_hygiene._ensure_private_directory(private_root)
@@ -432,6 +467,7 @@ def test_dead_pytest_process_temp_root_is_removed(tmp_path) -> None:
 def test_xdist_worker_keeps_controller_temp_root(monkeypatch, tmp_path) -> None:
     """Workers must inherit the controller root instead of replacing it."""
     from tests import pytest_temp_hygiene
+
     managed_parent = tmp_path / "managed-pytest-temp"
     controller_root = managed_parent / "run-12345678-deadbeef"
     monkeypatch.setenv("TSA_PYTEST_TEMP_ROOT", str(managed_parent))
@@ -449,9 +485,9 @@ def test_xdist_worker_keeps_controller_temp_root(monkeypatch, tmp_path) -> None:
 
 def test_cli_fixtures_do_not_create_collectable_python_inside_tests_tree() -> None:
     """Runtime CLI inputs must not become tests after an interrupted worker."""
-    source = (
-        PROJECT_ROOT / "tests/integration/cli/test_cli_async.py"
-    ).read_text(encoding="utf-8")
+    source = (PROJECT_ROOT / "tests/integration/cli/test_cli_async.py").read_text(
+        encoding="utf-8"
+    )
 
     assert 'Path("tests") / "temp_cli_test"' not in source
     assert 'Path("tests") / "temp_cli_test_large"' not in source
@@ -459,9 +495,9 @@ def test_cli_fixtures_do_not_create_collectable_python_inside_tests_tree() -> No
 
 def test_cli_subprocess_integration_suite_is_outside_default_gate() -> None:
     """The 19-process CLI suite belongs to the explicit slow lane."""
-    source = (
-        PROJECT_ROOT / "tests/integration/cli/test_cli_async.py"
-    ).read_text(encoding="utf-8")
+    source = (PROJECT_ROOT / "tests/integration/cli/test_cli_async.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "pytestmark = pytest.mark.slow" in source
 
@@ -495,22 +531,17 @@ def test_hypothesis_deadlines_are_disabled_for_parallel_suite_stability() -> Non
     assert hypothesis_settings.default.deadline is None
 
 
-def test_phase7_suite_simulated_work_stays_fast_and_configurable() -> None:
-    """Summary-style integration checks should not spend seconds sleeping."""
-    path = PROJECT_ROOT / "tests/integration/test_phase7_integration_suite.py"
-    module = ast.parse(path.read_text(encoding="utf-8"))
-    constants = {
-        node.targets[0].id: ast.literal_eval(node.value)
-        for node in module.body
-        if isinstance(node, ast.Assign)
-        and len(node.targets) == 1
-        and isinstance(node.targets[0], ast.Name)
-    }
-
-    assert constants["DEFAULT_PHASE7_SUITE_SIMULATION_SECONDS"] <= 0.05
-
-    source = path.read_text(encoding="utf-8")
-    assert "TSA_PHASE7_SUITE_SIMULATION_SECONDS" in source
-    assert "asyncio.sleep(0.2)" not in source
-    assert "asyncio.sleep(0.15)" not in source
-    assert "asyncio.sleep(0.1)" not in source
+@pytest.mark.parametrize(
+    "retired_path",
+    [
+        "scripts/run_phase7_integration_tests.py",
+        "tests/integration/test_phase7_integration_suite.py",
+        "tests/unit/mcp/test_mcp_list_files_p1.py",
+    ],
+)
+def test_retired_simulation_and_duplicate_suites_stay_removed(
+    retired_path: str,
+) -> None:
+    """禁止恢复已退役的模拟认证套件、孤儿入口和重复收集聚合器。"""
+    # 2026-09-07 信任审计：sleep 冒充系统验证，23 个重导出函数被收集 46 次。
+    assert (PROJECT_ROOT / retired_path).exists() is False

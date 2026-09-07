@@ -1,53 +1,7 @@
-"""Java AST traversal helpers."""
+"""Java AST 游标遍历辅助函数。"""
 
 from collections.abc import Callable
 from typing import Any
-
-_JAVA_CONTAINER_NODES = {
-    "program",
-    "class_body",
-    "interface_body",
-    "enum_body",
-    "enum_body_declarations",
-    "class_declaration",
-    "interface_declaration",
-    "enum_declaration",
-    # Theme-I (2026-06-10): descend into records and annotation types so
-    # their members (e.g. a record's methods) are reachable. A record's body
-    # is a plain ``class_body``; annotation types use ``annotation_type_body``.
-    "record_declaration",
-    "annotation_type_declaration",
-    "annotation_type_body",
-    "method_declaration",
-    "constructor_declaration",
-    "block",
-    "modifiers",
-    # Modern Java support (2026-09-01): containers for new syntax constructs.
-    # Ensures lambda, anonymous_class, static_initializer, and related nodes
-    # are reachable and their inner elements are extractable.
-    "compact_constructor_declaration",
-    "static_initializer",
-    "instance_initializer",
-    "switch_block",
-    "switch_block_statement_group",
-    "try_with_resources_statement",
-    "lambda_expression",
-    "object_creation_expression",
-    "anonymous_class_body",
-    "module_declaration",
-    "module_body",
-    # C-1 (2026-09-01): intermediate containers needed to reach
-    # object_creation_expression from field/local-variable declarations.
-    # Without these, the cursor never descends into anonymous class bodies
-    # created in field initialisers or local-variable assignments.
-    "field_declaration",
-    "local_variable_declaration",
-    "variable_declarator",
-    "expression_statement",
-    "assignment_expression",
-    "return_statement",
-    "argument_list",
-}
 
 
 def java_traverse_and_extract(
@@ -61,16 +15,10 @@ def java_traverse_and_extract(
     log_warning_func: Callable[[str], None],
     log_debug_func: Callable[[str], None],
 ) -> None:
-    """Cursor-based node traversal and extraction with batch field processing.
+    """用 TreeCursor 遍历所有 named 后代，并批量处理字段。
 
-    Uses tree-sitter's TreeCursor API (node.walk() / goto_first_child /
-    goto_next_sibling / goto_parent) instead of a manual node_stack so that
-    node identity is stable across traversal.  Only container nodes (listed in
-    ``_JAVA_CONTAINER_NODES``) are descended into; all other nodes are visited
-    for extraction but not explored further.
-
-    Node identity key: ``(node.start_byte, node.end_byte)`` — unique and stable
-    after Cursor movement, unlike ``id(node)`` which may alias across moves.
+    不按语法容器白名单剪枝，避免遗漏任意表达式或控制流中的声明。
+    缓存仍以字节范围为键，不依赖游标移动时临时 Node 对象的身份。
     """
     if not root_node:
         return
@@ -98,10 +46,8 @@ def java_traverse_and_extract(
                 field_batch,
             )
 
-        # Descend into container nodes (and always descend into the root)
-        should_descend = (
-            current_node == root_node or current_node.type in _JAVA_CONTAINER_NODES
-        )
+        # PR #1350：只跳过匿名标点的内部，不截断任何 named 子树。
+        should_descend = current_node == root_node or current_node.is_named
         if should_descend and cursor.goto_first_child():
             continue
 

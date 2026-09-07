@@ -34,9 +34,7 @@ class TestNonPosixSnapshotContract:
         result = owner.read_existing_snapshot(str(tmp_path))
         assert result.reason == "MISSING_INDEX"
 
-    def test_non_posix_existing_index_uses_wal_path(
-        self, tmp_path, monkeypatch
-    ):
+    def test_non_posix_existing_index_uses_wal_path(self, tmp_path, monkeypatch):
         """Phase B-1: non-POSIX now routes to WAL path instead of returning
         SECURE_FD_SNAPSHOT_UNSUPPORTED.  An empty (invalid) DB still results
         in unknown completeness but with a different reason (CORRUPT_INDEX or
@@ -278,6 +276,64 @@ class TestAuthoritativeSnapshotOracle:
 
         assert result["completeness"] == "partial"
         assert result["oracle_reason"] == "NO_EXACT_FULL_INDEX_MANIFEST"
+
+    @pytest.mark.parametrize(
+        ("change", "reason"),
+        [
+            ("source_edit", "CONCURRENT_SOURCE"),
+            ("source_delete", "CONCURRENT_SOURCE"),
+            ("database_replace", "CONCURRENT_WRITER"),
+            ("database_delete", "CONCURRENT_WRITER"),
+        ],
+    )
+    def test_wal_capture_race_rejects_token_and_closes_connections(
+        self, tmp_path, monkeypatch, change, reason
+    ):
+        # PR #1350：在真实复制后改变文件；不得发布旧认证，且源连接与副本都须关闭。
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        self._certified_cache(tmp_path)
+        db = tmp_path / ".ast-cache" / "index.db"
+        source = tmp_path / "sample.py"
+        writer = sqlite3.connect(db)
+        assert writer.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+        writer.execute("INSERT INTO ast_cache_metadata VALUES ('race_test', 'active')")
+        writer.commit()
+        copy_evidence = owner._copy_projection_evidence
+        connections = []
+        registered = set(owner.REGISTRY._entries)
+
+        def mutate_after_copy(conn, deadline):
+            evidence, exact = copy_evidence(conn, deadline)
+            connections.extend([conn, evidence])
+            if change == "source_edit":
+                source.write_text("def answer():\n    return 43\n", encoding="utf-8")
+            elif change == "source_delete":
+                source.unlink()
+            elif change == "database_replace":
+                db.rename(db.with_name("original.db"))
+                db.write_bytes(b"replacement database")
+            else:
+                db.unlink()
+            return evidence, exact
+
+        monkeypatch.setattr(owner, "_copy_projection_evidence", mutate_after_copy)
+        try:
+            snapshot = owner._capture_wal_snapshot(
+                str(tmp_path.resolve()), str(db), deadline=owner._clock() + 10
+            )
+            assert (snapshot.snapshot_id, snapshot.completeness, snapshot.reason) == (
+                None,
+                "unknown",
+                reason,
+            )
+            assert set(owner.REGISTRY._entries) == registered
+            assert len(connections) == 2
+            for conn in connections:
+                with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                    conn.execute("SELECT 1")
+        finally:
+            writer.close()
 
 
 requires_posix_fd = requires_posix_snapshot
@@ -1037,6 +1093,207 @@ class TestWalSnapshotPath:
 
         REGISTRY.close_all()
 
+    @pytest.fixture
+    def wal_source(self):
+        return "def answer():\n    return 42\n"
+
+    @pytest.fixture
+    async def wal_project(self, tmp_path, wal_source):
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        if wal_source is not None:
+            (tmp_path / "sample.py").write_text(wal_source, encoding="utf-8")
+        build = await CodeGraphFullIndexTool(str(tmp_path)).execute({"mode": "full"})
+        assert (build["success"], build["verdict"]) == (True, "INFO")
+        conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+        try:
+            assert conn.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+            # PR #1350：保持真实非空 WAL 与写端连接，核验不能依赖已 checkpoint 的主库。
+            conn.execute("INSERT INTO ast_cache_metadata VALUES ('wal_test', 'active')")
+            conn.commit()
+            assert (tmp_path / ".ast-cache" / "index.db-wal").read_bytes()[:4] in {
+                b"\x37\x7f\x06\x82",
+                b"\x37\x7f\x06\x83",
+            }
+            yield conn
+        finally:
+            conn.close()
+
+    @requires_posix_snapshot
+    @pytest.mark.parametrize(
+        ("wal_source", "expected_names"),
+        [
+            ("def answer():\n    return 42\n", ["answer"]),
+            ("# no symbols\n", []),
+            (None, []),
+        ],
+    )
+    async def test_wal_projection_certifies_readonly_ordinary_consumer(
+        self, tmp_path, wal_project, expected_names, monkeypatch
+    ):
+        # PR #1350：完整与零符号项目都需真实核验；控制写入只允许在私有内存副本。
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        observed = []
+        validator = owner.symbol_projection_is_exact
+
+        def record_validation(conn, **kwargs):
+            observed.append(
+                (
+                    conn.execute("PRAGMA query_only").fetchone()[0],
+                    conn.execute("PRAGMA database_list").fetchone()[2],
+                    kwargs["require_fts"],
+                )
+            )
+            return validator(conn, **kwargs)
+
+        monkeypatch.setattr(owner, "symbol_projection_is_exact", record_validation)
+        root = str(tmp_path.resolve())
+        db = tmp_path / ".ast-cache" / "index.db"
+        wal = db.with_name("index.db-wal")
+        before = (db.read_bytes(), wal.read_bytes())
+        snapshot = owner._capture_wal_snapshot(
+            root, str(db), deadline=owner._clock() + 10
+        )
+        assert (
+            snapshot.completeness,
+            snapshot.symbol_projection_exact,
+            snapshot.reason,
+        ) == ("complete", True, None)
+        with owner.read_existing_index_scope(
+            snapshot.snapshot_id, root, snapshot.source_generation
+        ) as (_, reader):
+            assert [
+                row[0]
+                for row in reader.execute(
+                    "SELECT name FROM ast_symbol_rows ORDER BY name"
+                )
+            ] == expected_names
+            assert reader.execute("PRAGMA query_only").fetchone()[0] == 1
+            with pytest.raises(sqlite3.OperationalError, match="readonly"):
+                reader.execute("DELETE FROM ast_symbol_rows")
+        assert observed == [(0, "", True)]
+        assert (db.read_bytes(), wal.read_bytes()) == before
+
+    @requires_posix_snapshot
+    @pytest.mark.parametrize(
+        "corruption", ["missing_rows", "changed_payload", "stale_fts_terms"]
+    )
+    async def test_wal_restamped_manifest_cannot_certify_corrupt_projection(
+        self, tmp_path, wal_project, corruption
+    ):
+        # PR #1350：重签 manifest 只绑定索引字节，不能替代 ordinary/FTS 投影认证。
+        import tree_sitter_analyzer.index_snapshot as owner
+        from tree_sitter_analyzer.index_symbol_projection import (
+            upsert_symbol_projection_state,
+        )
+
+        conn = wal_project
+        assert conn.execute("SELECT name FROM ast_symbol_rows").fetchall() == [
+            ("answer",)
+        ]
+        if corruption == "missing_rows":
+            conn.execute("DELETE FROM ast_symbol_rows")
+        else:
+            conn.execute("UPDATE ast_symbol_rows SET name='wrong'")
+            if corruption == "stale_fts_terms":
+                upsert_symbol_projection_state(conn, "sample.py")
+                assert conn.execute(
+                    "SELECT COUNT(*) FROM ast_symbols_fts_docsize"
+                ).fetchone() == (1,)
+        conn.commit()
+        root = str(tmp_path.resolve())
+        owner.stamp_full_index_manifest(conn, root)
+        snapshot = owner._capture_wal_snapshot(
+            root,
+            str(tmp_path / ".ast-cache" / "index.db"),
+            deadline=owner._clock() + 10,
+        )
+        with pytest.raises(ValueError, match="^INDEX_SNAPSHOT_INCOMPLETE$"):
+            with owner.read_existing_index_scope(
+                snapshot.snapshot_id, root, snapshot.source_generation
+            ):
+                pytest.fail("损坏投影不应到达 consumer")
+        assert (
+            snapshot.completeness,
+            snapshot.symbol_projection_exact,
+            snapshot.reason,
+        ) == ("partial", False, "SYMBOL_PROJECTION_INCOMPLETE")
+
+    @requires_posix_snapshot
+    async def test_wal_projection_copy_obeys_byte_budget(
+        self, tmp_path, wal_project, monkeypatch
+    ):
+        # PR #1350：只读核验也必须在分配内存副本前执行既有字节预算。
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        monkeypatch.setattr(owner, "_BACKUP_BYTE_BUDGET", 0)
+        snapshot = owner._capture_wal_snapshot(
+            str(tmp_path.resolve()),
+            str(tmp_path / ".ast-cache" / "index.db"),
+            deadline=owner._clock() + 10,
+        )
+        assert (snapshot.snapshot_id, snapshot.completeness, snapshot.reason) == (
+            None,
+            "unknown",
+            "INDEX_BACKUP_BUDGET",
+        )
+
+    @requires_posix_snapshot
+    async def test_wal_projection_failure_closes_private_copy(
+        self, tmp_path, wal_project, monkeypatch
+    ):
+        # PR #1350：核验异常不能发布能力，也不能泄漏私有数据库连接。
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        copies = []
+
+        def fail_validation(conn, **kwargs):
+            copies.append(conn)
+            raise RuntimeError("projection verification failed")
+
+        monkeypatch.setattr(owner, "symbol_projection_is_exact", fail_validation)
+        snapshot = owner._capture_wal_snapshot(
+            str(tmp_path.resolve()),
+            str(tmp_path / ".ast-cache" / "index.db"),
+            deadline=owner._clock() + 10,
+        )
+        assert (snapshot.snapshot_id, snapshot.completeness, snapshot.reason) == (
+            None,
+            "unknown",
+            "projection verification failed",
+        )
+        assert len(copies) == 1
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            copies[0].execute("SELECT 1")
+
+    @requires_posix_snapshot
+    async def test_wal_projection_lock_contention_fails_closed(
+        self, tmp_path, wal_project, monkeypatch
+    ):
+        # PR #1350：等待内存核验锁超时，不得跳过核验或释放其他捕获者的锁。
+        from unittest.mock import Mock
+
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        lock = Mock()
+        lock.acquire.return_value = False
+        monkeypatch.setattr(owner, "_CAPTURE_LOCK", lock)
+        snapshot = owner._capture_wal_snapshot(
+            str(tmp_path.resolve()),
+            str(tmp_path / ".ast-cache" / "index.db"),
+            deadline=owner._clock() + 10,
+        )
+        assert (snapshot.snapshot_id, snapshot.completeness, snapshot.reason) == (
+            None,
+            "unknown",
+            "INDEX_SNAPSHOT_DEADLINE",
+        )
+        assert lock.acquire.call_count == 1
+        lock.release.assert_not_called()
+
     def test_wal_path_bypasses_posix_gate(self, tmp_path, monkeypatch):
         """POSIX gate (SECURE_FD_SNAPSHOT_UNSUPPORTED) が返らなくなることを確認。"""
         import tree_sitter_analyzer.index_snapshot as owner
@@ -1191,6 +1448,7 @@ class TestWalSnapshotPath:
             raw = real_stat(path)
             if str(path) == candidate_str:
                 stat_call_count["n"] += 1
+
                 # Windows スタイル: st_ino は常に 0
                 # 2回目の呼び出しで st_size を変えて mismatch を発生させる
                 class _WindowsStat:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import re
 import sqlite3
@@ -21,7 +22,7 @@ from .index_source_snapshot import (
     recorded_source_rows,
 )
 
-SNAPSHOT_SCHEMA_VERSION = 13
+SNAPSHOT_SCHEMA_VERSION = 15
 SCHEMA_V13_INDEX_SNAPSHOT = """
 CREATE TABLE IF NOT EXISTS ast_index_snapshot_manifest (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -94,6 +95,27 @@ _REQUIRED_COLUMNS = {
     ),
 }
 _FINGERPRINT_DEADLINE_SECONDS = 5.0
+# 单次便携式扫描允许配置有限预算；超时不等同于源变化，也不能放行认证。
+_FINGERPRINT_DEADLINE_ENV = "TSA_FINGERPRINT_DEADLINE_SECONDS"
+
+
+def _fingerprint_deadline_seconds() -> float:
+    """读取（可配置的）单次源指纹遍历墙钟上限，下限 1 秒防误配。"""
+    # 测试会以 PortableOS 桩替换 os 模块强制走便携分支(无 environ);
+    # 防御式读取,桩环境下回落默认值
+    env = getattr(os, "environ", None)
+    raw = env.get(_FINGERPRINT_DEADLINE_ENV, "") if env else ""
+    if not raw:
+        return _FINGERPRINT_DEADLINE_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        return _FINGERPRINT_DEADLINE_SECONDS
+    if not math.isfinite(value):
+        return _FINGERPRINT_DEADLINE_SECONDS
+    return max(1.0, value)
+
+
 _FINGERPRINT_ROW_BUDGET = 2_000_000
 _FINGERPRINT_BYTE_BUDGET = 512 * 1024 * 1024
 _FINGERPRINT_CELL_BYTE_BUDGET = 4 * 1024 * 1024
@@ -141,12 +163,10 @@ def validate_manifest_scalars(manifest: sqlite3.Row) -> None:
 
 
 def apply_snapshot_migration(conn: sqlite3.Connection, record_fn: Any) -> None:
-    """Install the owner-written full-index manifest table (schema v13)."""
+    """安装 v13 manifest 表；历史迁移编号不随读取器上限变化。"""
     try:
         conn.executescript(SCHEMA_V13_INDEX_SNAPSHOT)
-        record_fn(
-            conn, SNAPSHOT_SCHEMA_VERSION, "Authoritative index snapshot manifest"
-        )
+        record_fn(conn, 13, "Authoritative index snapshot manifest")
         conn.commit()
     except sqlite3.OperationalError:
         pass
@@ -178,10 +198,18 @@ def stamp_full_index_manifest(
             from .portable_source_snapshot import capture_portable_source_snapshot
 
             current = capture_portable_source_snapshot(
-                root, scope, deadline=time.monotonic() + _FINGERPRINT_DEADLINE_SECONDS
+                root,
+                scope,
+                deadline=time.monotonic() + _fingerprint_deadline_seconds(),
             )
         if current.state != "exact" or current.rows != recorded:
-            raise sqlite3.OperationalError("SOURCE_CHANGED")
+            # 携带具体原因(#1364 诊断):区分超时/不安全/行不一致三种死法
+            raise sqlite3.OperationalError(
+                f"SOURCE_CHANGED:state={current.state}:"
+                f"reason={getattr(current, 'reason', None)}:"
+                f"rows_current={len(current.rows) if current.rows else 0}:"
+                f"rows_recorded={len(recorded)}"
+            )
         conn.execute("DELETE FROM ast_index_snapshot_manifest")
         conn.execute(
             "INSERT INTO ast_index_snapshot_manifest "

@@ -242,10 +242,23 @@ class JavaElementExtractor(ElementExtractor):
     def extract_packages(
         self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Package]:
-        """Extract Java package declarations"""
+        """提取包或模块；切换源码时清空按字节范围缓存的旧文本。"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
-        packages = _extract_packages_standalone(tree, self._get_node_text_optimized)
+        self._reset_caches()
+        modules = [
+            child
+            for child in tree.root_node.children
+            if child.type == "module_declaration"
+        ]
+        if modules:
+            packages = []
+            for node in modules:
+                package = self._extract_module_declaration_optimized(node)
+                if package is not None:
+                    packages.append(package)
+        else:
+            packages = _extract_packages_standalone(tree, self._get_node_text_optimized)
         if packages and packages[0].name:
             self.current_package = packages[0].name
         return packages

@@ -380,13 +380,10 @@ def apply_migration_v14(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
     """
     try:
         cols = {
-            row[1]
-            for row in conn.execute("PRAGMA table_info(ast_index)").fetchall()
+            row[1] for row in conn.execute("PRAGMA table_info(ast_index)").fetchall()
         }
         if "certified_at" not in cols:
-            conn.execute(
-                "ALTER TABLE ast_index ADD COLUMN certified_at INTEGER"
-            )
+            conn.execute("ALTER TABLE ast_index ADD COLUMN certified_at INTEGER")
         record_fn(
             conn,
             14,

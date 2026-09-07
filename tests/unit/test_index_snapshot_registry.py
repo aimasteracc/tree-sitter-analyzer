@@ -491,17 +491,20 @@ class TestAuthoritativeSnapshotTransitions:
 # REQ-U-105: _WalEntry rename + TTL + WAL overhead constant
 # ---------------------------------------------------------------------------
 
+
 class TestWalEntryRename:
     """REQ-U-105: _WalEntry exists, _Entry is absent or aliased, TTL ≤ 35 s."""
 
     def test_wal_entry_class_exists(self):
         """_WalEntry is the canonical registry entry class."""
         from tree_sitter_analyzer.index_snapshot_registry import _WalEntry
+
         assert isinstance(_WalEntry, type), "_WalEntry must be a class"
 
     def test_entry_class_absent_or_aliased(self):
         """_Entry is either absent or an alias for _WalEntry (no separate class)."""
         import tree_sitter_analyzer.index_snapshot_registry as reg
+
         if hasattr(reg, "_Entry"):
             assert reg._Entry is reg._WalEntry, "_Entry must alias _WalEntry"
 
@@ -510,6 +513,7 @@ class TestWalEntryRename:
         from tree_sitter_analyzer.index_snapshot_registry import (
             _WAL_CONNECTION_OVERHEAD_BYTES,
         )
+
         assert _WAL_CONNECTION_OVERHEAD_BYTES == 2 * 1024 * 1024
 
     def test_published_entry_is_wal_entry_type(self, tmp_path):

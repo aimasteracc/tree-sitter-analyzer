@@ -144,8 +144,14 @@ class SemanticClassification:
 def _is_test_path(file_path: str | None) -> bool:
     if file_path is None:
         return False
-    lower = file_path.lower()
-    return any(ind in lower for ind in _TEST_PATH_INDICATORS)
+    # 统一分隔符后判断：既覆盖带前导斜杠的路径（"/repo/tests/a.py"、
+    # Windows 的 "\\tests\\"），也覆盖无前导斜杠的裸相对路径
+    # （"tests/unit/a.py"——ast_diff 的 old_file/new_file 常喂这种形式，
+    # v1.29.4 修复：此前这类路径不命中导致测试文件被误分类）。
+    normalized = file_path.lower().replace("\\", "/")
+    if normalized.startswith("tests/"):
+        return True
+    return any(ind.replace("\\", "/") in normalized for ind in _TEST_PATH_INDICATORS)
 
 
 def _is_doc_path(file_path: str | None) -> bool:

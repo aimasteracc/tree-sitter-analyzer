@@ -142,6 +142,60 @@ def _read_bounded_manifest(
     )
 
 
+def _copy_projection_evidence(
+    connection: sqlite3.Connection, deadline: float
+) -> tuple[sqlite3.Connection, bool]:
+    """在有预算的私有内存副本上核验投影，绝不向源库执行 FTS 控制写入。"""
+    _require_capture_budget(deadline)
+    source_page_size = int(connection.execute("PRAGMA page_size").fetchone()[0])
+    source_page_count = int(connection.execute("PRAGMA page_count").fetchone()[0])
+    if source_page_size * source_page_count > _BACKUP_BYTE_BUDGET:
+        raise RuntimeError("INDEX_BACKUP_BUDGET")
+    evidence = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        _require_memory_temp_store(evidence)
+        _require_capture_budget(deadline)
+        max_backup_pages = (
+            _BACKUP_BYTE_BUDGET + source_page_size - 1
+        ) // source_page_size
+
+        def progress(_status: int, remaining: int, total: int) -> None:
+            copied_pages = total - remaining
+            if (
+                copied_pages > max_backup_pages
+                or copied_pages * source_page_size > _BACKUP_BYTE_BUDGET
+                or _clock() > deadline
+            ):
+                raise RuntimeError(
+                    "INDEX_SNAPSHOT_DEADLINE"
+                    if _clock() > deadline
+                    else "INDEX_BACKUP_BUDGET"
+                )
+
+        # 沿用 POSIX 的分块复制与 rank=1 核验，WAL 读取同一事务所固定的版本。
+        backup_pages = max(64, (512 * 1024) // source_page_size)
+        connection.backup(evidence, pages=backup_pages, progress=progress, sleep=0)
+        evidence_tables = {
+            str(row[0])
+            for row in evidence.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        evidence_fts5 = sqlite_compile_supports_fts5(evidence)
+        projection_exact = bool(
+            evidence_fts5 is not None
+            and has_ordinary_symbol_projection(evidence, evidence_tables)
+            and symbol_projection_is_exact(
+                evidence, deadline=deadline, require_fts=evidence_fts5
+            )
+        )
+        _require_capture_budget(deadline)
+        return evidence, projection_exact
+    except BaseException:
+        evidence.close()
+        raise
+
+
 def _capture_wal_snapshot(
     canonical_root: str,
     candidate: str,
@@ -149,15 +203,10 @@ def _capture_wal_snapshot(
     pin: bool = False,
     deadline: float,
 ) -> IndexSnapshot:
-    """WAL read-only snapshot path for non-POSIX or systems without /dev/fd.
+    """为无 /dev/fd 的平台捕获只读 WAL 事务，并独立验证源与符号投影。
 
-    Phase B-1 prototype. Replaces the SECURE_FD_SNAPSHOT_UNSUPPORTED gate with a
-    WAL read-only SQLite URI connection that provides snapshot isolation via BEGIN.
-    Multiple concurrent WAL readers are permitted; _CAPTURE_LOCK is not acquired.
-
-    Physical identity: verified via os.stat() before and after connecting.
-    FTS5 rank: symbol_projection_is_exact() is skipped (requires write access).
-    Tech-debt: [TBD-FTS5-WAL] — see tech-debt-log.md.
+    投影检查与 POSIX 共用内存副本；检查结束即释放副本，发布只读事务。
+    同一捕获锁限制临时副本并发，stat 检查保持原有物理身份约束。
     """
     connection: sqlite3.Connection | None = None
     try:
@@ -267,14 +316,16 @@ def _capture_wal_snapshot(
         else:
             reason = "NO_EXACT_FULL_INDEX_MANIFEST"
 
-        # Phase B-1 NOTE: FTS5 rank=1 is a transactional write command.
-        # WAL read-only connections cannot execute it; symbol_projection_is_exact()
-        # is therefore skipped.  A complete index is still reported as complete
-        # (projection_exact=False) so that callers get useful results rather than
-        # SYMBOL_PROJECTION_INCOMPLETE on every non-POSIX host.
-        # Tech-debt: [TBD-FTS5-WAL] Revisit when WAL write-capable rank caching
-        # is added (e.g. run rank=1 on a brief write connection before snapshot).
-        projection_exact = False
+        if not _CAPTURE_LOCK.acquire(timeout=max(0.0, deadline - _clock())):
+            raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+        try:
+            evidence, projection_exact = _copy_projection_evidence(connection, deadline)
+            evidence.close()
+        finally:
+            _CAPTURE_LOCK.release()
+        if complete and not projection_exact:
+            complete = False
+            reason = "SYMBOL_PROJECTION_INCOMPLETE"
 
         if source_scope is not None and current is not None:
             _require_capture_budget(deadline)
@@ -302,7 +353,7 @@ def _capture_wal_snapshot(
         if final_id != pre_id:
             raise ValueError("CONCURRENT_WRITER")
 
-        # WAL connection overhead: no backup copy, so charge ~2 MB overhead only.
+        # 临时副本已释放，注册表只保留 WAL 连接的开销。
         charged = _SNAPSHOT_OVERHEAD_BYTES
         REGISTRY.ensure_capacity(charged)
         _require_capture_budget(deadline)
@@ -360,7 +411,9 @@ def _capture_existing_snapshot(
     # Non-POSIX systems (Windows) and POSIX without /dev/fd use WAL path.
     # POSIX with /dev/fd continues using the existing fd-pinned backup path.
     if os.name != "posix" or not os.path.exists("/dev/fd"):
-        wal_deadline = _clock() + _CAPTURE_DEADLINE_SECONDS if deadline is None else deadline
+        wal_deadline = (
+            _clock() + _CAPTURE_DEADLINE_SECONDS if deadline is None else deadline
+        )
         return _capture_wal_snapshot(
             canonical_root, candidate, pin=pin, deadline=wal_deadline
         )
@@ -461,51 +514,7 @@ def _capture_existing_snapshot(
                 )
             else:
                 reason = "NO_EXACT_FULL_INDEX_MANIFEST"
-            evidence = sqlite3.connect(":memory:", check_same_thread=False)
-            _require_memory_temp_store(evidence)
-            _require_capture_budget(deadline)
-            copied_pages = 0
-            max_backup_pages = (
-                _BACKUP_BYTE_BUDGET + source_page_size - 1
-            ) // source_page_size
-
-            def progress(_status: int, remaining: int, total: int) -> None:
-                nonlocal copied_pages
-                copied_pages = total - remaining
-                copied_bytes = copied_pages * source_page_size
-                if (
-                    copied_pages > max_backup_pages
-                    or copied_bytes > _BACKUP_BYTE_BUDGET
-                    or _clock() > deadline
-                ):
-                    raise RuntimeError(
-                        "INDEX_SNAPSHOT_DEADLINE"
-                        if _clock() > deadline
-                        else "INDEX_BACKUP_BUDGET"
-                    )
-
-            # Copy in bounded 512 KiB chunks at the minimum SQLite page size;
-            # this avoids thousands of Python callbacks for large certified caches.
-            backup_pages = max(64, (512 * 1024) // source_page_size)
-            connection.backup(evidence, pages=backup_pages, progress=progress, sleep=0)
-            # FTS5's rank=1 integrity control command is a transactional write.
-            # Run it exactly once on the private in-memory evidence copy while it
-            # is still writable, then cache the result on the capability before
-            # query_only is enabled. The immutable workspace source is never used.
-            evidence_tables = {
-                str(row[0])
-                for row in evidence.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
-                )
-            }
-            evidence_fts5 = sqlite_compile_supports_fts5(evidence)
-            projection_exact = bool(
-                evidence_fts5 is not None
-                and has_ordinary_symbol_projection(evidence, evidence_tables)
-                and symbol_projection_is_exact(
-                    evidence, deadline=deadline, require_fts=evidence_fts5
-                )
-            )
+            evidence, projection_exact = _copy_projection_evidence(connection, deadline)
             if source_scope is not None and current is not None:
                 _require_capture_budget(deadline)
                 final_current = _capture_sources_with_deadline(

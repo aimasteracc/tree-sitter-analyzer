@@ -493,4 +493,6 @@ def post_index_backfill(
         flush_result = _flush_pending_activations(cache._get_conn(), cache.project_root)  # noqa: SLF001
         stats["activation_flushed"] = flush_result.get("flushed", 0)
     except Exception:
-        logger.debug("_flush_pending_activations failed in post_index_backfill", exc_info=True)
+        logger.debug(
+            "_flush_pending_activations failed in post_index_backfill", exc_info=True
+        )

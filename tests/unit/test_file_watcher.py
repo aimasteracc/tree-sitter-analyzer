@@ -190,25 +190,25 @@ class TestSkipDirExclusion:
         watcher.stop()
 
     def test_detect_changes_excludes_skip_dirs(self, cache, project):
-        """_LAG_SKIP_DIRS の全ディレクトリが _detect_changes から除外される。"""
+        """PR #1350：全部排除目录都不进入变更集合，且不误判祖先路径。"""
         from tree_sitter_analyzer.index_lag import _LAG_SKIP_DIRS
 
-        skip_dir_names = list(_LAG_SKIP_DIRS)[:3]  # サンプルで3つ確認
+        skip_dir_names = sorted(_LAG_SKIP_DIRS)
 
         for skip_dir in skip_dir_names:
             d = project / skip_dir
             d.mkdir(exist_ok=True)
-            (d / "hidden.py").write_text("# should be excluded\n")
+            (d / "hidden.py").write_text("hidden = True\n", encoding="utf-8")
 
         watcher = FileWatcherDaemon(cache, poll_interval=1.0, debounce=0.3)
-        # 初期スナップショットを空にしておく
+        # 空快照应只报告项目内两个真实源文件。
         with watcher._snapshot_lock:
             watcher._snapshot = {}
 
         changed = watcher._detect_changes()
         watcher.stop()
 
-        for skip_dir in skip_dir_names:
-            assert not any(skip_dir in p for p in changed), (
-                f"{skip_dir!r} 内のファイルが detect_changes に含まれている"
-            )
+        assert {os.path.relpath(p, project) for p in changed} == {
+            os.path.join("src", "main.py"),
+            os.path.join("src", "util.py"),
+        }

@@ -45,7 +45,7 @@ class TestSnapshotFailureContracts:
 
         conn = sqlite3.connect(":memory:")
         conn.execute("CREATE TABLE ast_schema_version(version INTEGER)")
-        conn.execute("INSERT INTO ast_schema_version VALUES(13)")
+        conn.execute("INSERT INTO ast_schema_version VALUES(15)")
         with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
             validate_snapshot_schema(conn)
         conn.close()
@@ -55,7 +55,7 @@ class TestSnapshotFailureContracts:
 
         conn = sqlite3.connect(":memory:")
         conn.execute("CREATE TABLE ast_schema_version(version INTEGER)")
-        conn.execute("INSERT INTO ast_schema_version VALUES(13)")
+        conn.execute("INSERT INTO ast_schema_version VALUES(15)")
         for table in (
             "ast_index",
             "ast_symbol_rows",
@@ -465,3 +465,42 @@ def test_unsupported_table_xinfo_metadata_fails_closed(row: tuple[object, ...]) 
 
     with pytest.raises(RuntimeError, match="^INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA$"):
         schema._query_visible_columns(Connection(), "payload", float("inf"))
+
+
+class TestFingerprintDeadlineConfig:
+    """#1364：可配置扫描预算必须保持有限，超时不放行认证。"""
+
+    @pytest.mark.parametrize("value", ["inf", "-inf", "nan", "1e999"])
+    def test_非有限预算回退默认(self, monkeypatch, value):
+        from tree_sitter_analyzer.index_snapshot_schema import (
+            _fingerprint_deadline_seconds,
+        )
+
+        monkeypatch.setenv("TSA_FINGERPRINT_DEADLINE_SECONDS", value)
+        assert _fingerprint_deadline_seconds() == 5.0
+
+    def test_环境变量覆盖生效且有下限(self, monkeypatch):
+        from tree_sitter_analyzer.index_snapshot_schema import (
+            _fingerprint_deadline_seconds,
+        )
+
+        monkeypatch.setenv("TSA_FINGERPRINT_DEADLINE_SECONDS", "30")
+        assert _fingerprint_deadline_seconds() == 30.0
+        monkeypatch.setenv("TSA_FINGERPRINT_DEADLINE_SECONDS", "0.1")
+        assert _fingerprint_deadline_seconds() == 1.0  # 下限保护
+
+    def test_误配回退默认5秒(self, monkeypatch):
+        from tree_sitter_analyzer.index_snapshot_schema import (
+            _fingerprint_deadline_seconds,
+        )
+
+        monkeypatch.setenv("TSA_FINGERPRINT_DEADLINE_SECONDS", "not-a-number")
+        assert _fingerprint_deadline_seconds() == 5.0
+
+    def test_未设置用默认值(self, monkeypatch):
+        from tree_sitter_analyzer.index_snapshot_schema import (
+            _fingerprint_deadline_seconds,
+        )
+
+        monkeypatch.delenv("TSA_FINGERPRINT_DEADLINE_SECONDS", raising=False)
+        assert _fingerprint_deadline_seconds() == 5.0

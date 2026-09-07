@@ -177,7 +177,9 @@ def is_ast_index_stale(project_root: str) -> bool:
         return False
     root = Path(project_root)
     try:
-        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        # timeout=10 与 ast_cache.py 的主连接保持一致：多进程共用缓存库时，
+        # 无超时的连接遇到写锁会立刻抛 database is locked 而不是等待重试
+        conn = sqlite3.connect(str(db_path), timeout=10, check_same_thread=False)
         try:
             rows = conn.execute("SELECT file_path, mtime_ns FROM ast_index").fetchall()
         finally:

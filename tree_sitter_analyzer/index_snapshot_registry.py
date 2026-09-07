@@ -129,6 +129,7 @@ class _WalEntry:
       multiple concurrent WAL readers are permitted without serialisation.
       (See index_snapshot.py Phase B-1 note.)
     """
+
     snapshot: IndexSnapshot
     connection: sqlite3.Connection
     charged_bytes: int

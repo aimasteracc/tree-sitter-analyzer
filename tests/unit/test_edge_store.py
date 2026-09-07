@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 from typing import Any
+from unittest.mock import call, patch
 
 import pytest
 
@@ -83,6 +84,31 @@ def test_edge_store_serializes_edges_and_subgraphs(tmp_path: Path) -> None:
             "edges": [edge.to_dict()],
         }
         assert store.conn is not None
+    finally:
+        store.close()
+
+
+def test_upsert_computes_real_columns_once_per_edge(tmp_path: Path) -> None:
+    # PR #1350：每条边只解析一次真实列，批量写入不能按列重复解析。
+    store = EdgeStore(str(tmp_path / "edges.db"))
+    edges = [
+        Edge("a.py:caller:1", "b.py:callee:2", EdgeKind.CALLS, 3),
+        Edge("b.py:callee:2", "c.py:leaf:4", EdgeKind.CALLS, 5),
+    ]
+    try:
+        with patch.object(
+            edge_store_module,
+            "_edge_real_columns",
+            wraps=edge_store_module._edge_real_columns,
+        ) as real_columns:
+            store.upsert_edges(edges)
+        assert real_columns.call_args_list == [call(edge) for edge in edges]
+        assert [
+            tuple(row)
+            for row in store.conn.execute(
+                "SELECT caller_name, callee_name, file_path FROM edges ORDER BY line"
+            )
+        ] == [("caller", "callee", "a.py"), ("callee", "leaf", "b.py")]
     finally:
         store.close()
 

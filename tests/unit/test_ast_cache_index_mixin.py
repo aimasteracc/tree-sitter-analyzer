@@ -10,9 +10,7 @@ def _make_conn(rows: list[tuple[int | None]], has_certified_at: bool = True):
     """Create an in-memory DB with ast_index (optionally including certified_at)."""
     conn = sqlite3.connect(":memory:")
     if has_certified_at:
-        conn.execute(
-            "CREATE TABLE ast_index (file_path TEXT, certified_at INTEGER)"
-        )
+        conn.execute("CREATE TABLE ast_index (file_path TEXT, certified_at INTEGER)")
         conn.executemany(
             "INSERT INTO ast_index (file_path, certified_at) VALUES (?, ?)",
             rows,

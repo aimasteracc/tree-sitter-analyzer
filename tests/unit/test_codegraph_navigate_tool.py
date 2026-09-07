@@ -198,10 +198,14 @@ class TestExecuteHierarchy:
         assert result["verdict"] == "NOT_FOUND"
         assert "--class-hierarchy" in result["hint"]
         assert "--class-hierarchy-class MyClass" in result["hint"]
+        # PR #1350：默认 summary 模式忽略类名，提示必须显式选择 tree。
+        assert "--class-hierarchy-mode tree" in result["hint"]
         assert "CALL graph" in result["hint"]
 
     @pytest.mark.asyncio
-    async def test_hierarchy_not_found_agent_summary_mentions_class_hierarchy(self, tool):
+    async def test_hierarchy_not_found_agent_summary_mentions_class_hierarchy(
+        self, tool
+    ):
         """agent_summary.next_step for hierarchy NOT_FOUND must reference --class-hierarchy."""
         mock_graph = MagicMock()
         mock_graph.build.side_effect = Exception("no graph")
@@ -211,6 +215,7 @@ class TestExecuteHierarchy:
             )
         next_step = result["agent_summary"]["next_step"]
         assert "--class-hierarchy" in next_step
+        assert "--class-hierarchy-mode tree" in next_step
         assert "MyClass" in next_step
 
     @pytest.mark.asyncio
