@@ -370,6 +370,37 @@ class TestIsSafePath:
 class TestValidateWindowsDriveLetter:
     """测试 _validate_windows_drive_letter 方法"""
 
+    @pytest.mark.parametrize("host", ["Linux", "Darwin"])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            r"\rooted\file.txt",
+            r"\\server\share\file.txt",
+            r"\\?\C:\file.txt",
+            r"\\.\pipe\name",
+        ],
+    )
+    def test_foreign_rooted_path_is_rejected_before_boundary(
+        self, tmp_path, monkeypatch, host, path
+    ):
+        # 2026-09-07：项目根等于 cwd 时，UNC 不能被 POSIX 当成合法相对名称。
+        monkeypatch.chdir(tmp_path)
+        validator = SecurityValidator(str(tmp_path))
+        with patch("platform.system", return_value=host):
+            valid, error = validator.validate_file_path(path)
+        assert valid is False
+        assert error == f"Windows rooted paths are not allowed on {host} system"
+        assert path not in error
+
+    @pytest.mark.parametrize("path", [r"\rooted\file.txt", r"\\server\share\file.txt"])
+    def test_windows_rooted_path_reaches_existing_boundary(self, path):
+        # 本次只修跨平台语法，Windows 自身仍由既有目录边界裁决。
+        with patch("platform.system", return_value="Windows"):
+            assert SecurityValidator()._validate_windows_drive_letter(path) == (
+                True,
+                "",
+            )
+
     def test_validate_windows_drive_letter_on_windows(self):
         """测试Windows系统上的驱动器字母"""
         validator = SecurityValidator()
