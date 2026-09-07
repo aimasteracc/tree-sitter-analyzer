@@ -24,6 +24,53 @@ from tests.fixtures.git_temporal.make_repo import make_shallow_marker
 _GIT_TIMEOUT_SECONDS = 15
 
 
+def test_commit_message_capacity_evicts_oldest_without_losing_new_subject(
+    tmp_path, monkeypatch
+):
+    """PR #1352：真实 Git 新消息挤出最旧条目，缓存容量有界且当前请求仍返回准确消息。"""
+    from collections import OrderedDict
+
+    import tree_sitter_analyzer.cache.write as write
+
+    _init_git_repo(tmp_path)
+    _run_git(tmp_path, ["commit", "--allow-empty", "-m", "bounded subject"])
+    sha = subprocess.check_output(
+        ["git", "-C", str(tmp_path), "rev-parse", "HEAD"], text=True, timeout=15
+    ).strip()
+    root = os.path.realpath(tmp_path)
+    oldest = (root, "0" * 40)
+    monkeypatch.setattr(
+        write,
+        "_COMMIT_MSG_CACHE",
+        OrderedDict(((root, f"{i:040x}"), (float("inf"), "old")) for i in range(4096)),
+    )
+    assert write._fetch_commit_msgs([sha], str(tmp_path)) == {sha: "bounded subject"}
+    assert len(write._COMMIT_MSG_CACHE) == 4096
+    assert oldest not in write._COMMIT_MSG_CACHE
+    assert next(reversed(write._COMMIT_MSG_CACHE)) == (root, sha)
+
+
+def test_commit_rpc_unrequested_subject_is_not_attached_to_symbol(
+    tmp_path, monkeypatch
+):
+    """PR #1352：外部 Git 返回非请求 SHA 时，消息不得串到当前符号或进入缓存。"""
+    import tree_sitter_analyzer.cache.write as write
+    import tree_sitter_analyzer.git_readonly as git
+
+    requested, alien = "e" * 40, "f" * 40
+    monkeypatch.setattr(
+        git,
+        "run_git_readonly",
+        lambda *args, **kwargs: (
+            f"{alien}\0alien subject\0{requested}\0correct subject\0".encode()
+        ),
+    )
+    assert write._fetch_commit_msgs([requested], str(tmp_path)) == {
+        requested: "correct subject"
+    }
+    assert (os.path.realpath(tmp_path), alien) not in write._COMMIT_MSG_CACHE
+
+
 def test_commit_messages_batch_shas_and_reuse_across_files(tmp_path, monkeypatch):
     # PR #1352：多 SHA 共用一个有期限/字节上限的 Git 请求，跨文件复用结果。
     import tree_sitter_analyzer.cache.write as write

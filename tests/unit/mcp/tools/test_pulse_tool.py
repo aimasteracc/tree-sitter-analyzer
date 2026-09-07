@@ -29,6 +29,162 @@ def _make_fake_cache(conn):
     return fake
 
 
+async def test_pulse_missing_relation_is_query_failure(indexed_pulse_project):
+    """PR #1352：目标存在但关系表损坏时，不得谎报目标不存在。"""
+    root, cache = indexed_pulse_project
+    tool = PulseTool(str(root))
+    tool._cache = cache
+    cache.get_conn().execute("DROP TABLE ast_symbol_activation")
+    cache.get_conn().commit()
+    response = await tool.execute({"file": "a.py", "symbol": "greet"})
+    assert response == {
+        "success": False,
+        "error": "pulse query failed: no such table: ast_symbol_activation",
+    }
+
+
+async def test_batch_corrupt_target_does_not_discard_healthy_target(
+    indexed_pulse_project,
+):
+    """PR #1352：真实坏 JSON 只使该目标失败，批量计数保留其余成功目标。"""
+    root, cache = indexed_pulse_project
+    source = root / "bad.py"
+    source.write_text("def broken():\n    pass\n", encoding="utf-8")
+    cache.index_file(str(source))
+    cache.get_conn().execute(
+        "UPDATE ast_index SET symbols_json='{' WHERE file_path='bad.py'"
+    )
+    tool = PulseBatchTool(str(root))
+    tool._cache = cache
+    result = await tool.execute(
+        {
+            "targets": [
+                {"file": "bad.py", "symbol": "broken"},
+                {"file": "a.py", "symbol": "greet"},
+            ],
+            "max_symbols": 2.0,
+            "token_budget_per_symbol": 400.0,
+        }
+    )
+    assert (
+        result["success"],
+        result["count"],
+        result["error_count"],
+        result["truncated_count"],
+    ) == (False, 1, 1, 0)
+    assert result["results"][0] == {
+        "file": "bad.py",
+        "symbol": "broken",
+        "error": "malformed JSON",
+    }
+    assert result["results"][1]["sym"]["n"] == "greet"
+
+
+async def test_schema_invalid_timestamp_does_not_invent_index_age(
+    indexed_pulse_project,
+):
+    """PR #1352：已有索引时间字段损坏时保留真实数量，年龄明确为未知。"""
+    root, cache = indexed_pulse_project
+    cache.get_conn().execute("UPDATE ast_index SET indexed_at='invalid timestamp'")
+    tool = GetProjectSchemaTool(str(root))
+    tool._cache = cache
+    result = await tool.execute({})
+    assert result["success"] is True
+    assert result["result"]["index_age_seconds"] is None
+    assert result["result"]["total_symbols"] == 1
+
+
+@pytest.mark.parametrize(
+    "kind", ["pulse", "batch", "schema", "semantic", "tql", "tql_schema"]
+)
+async def test_factory_schema_and_missing_root_contract(tmp_path, kind):
+    """PR #1352：公开工厂产生匹配的输入 schema，无项目时执行不能创建隐式索引。"""
+    from tree_sitter_analyzer.mcp.tools import pulse_tool, semantic_tool, tql_tool
+
+    factory, arguments = {
+        "pulse": (pulse_tool.build_pulse_tool, {"file": "a.py", "symbol": "greet"}),
+        "batch": (
+            pulse_tool.build_pulse_batch_tool,
+            {"targets": [{"file": "a.py", "symbol": "greet"}]},
+        ),
+        "schema": (pulse_tool.build_project_schema_tool, {}),
+        "semantic": (semantic_tool.build_semantic_neighbors_tool, {"query": "greet"}),
+        "tql": (tql_tool.build_tql_execute_tool, {"selector": ".function"}),
+        "tql_schema": (tql_tool.build_tql_schema_tool, {}),
+    }[kind]
+    tool = factory(str(tmp_path))
+    tool.project_root = None
+    assert (
+        tool.get_tool_schema()
+        == tool.get_tool_definition()["inputSchema"]["properties"]
+    )
+    assert tool.validate_arguments(dict(arguments)) is True
+    result = await tool.execute(arguments)
+    if kind == "tql_schema":
+        assert result["success"] is True
+        assert ":hot(N)" in result["schema"]
+    else:
+        assert result["success"] is False
+        assert result["error"] == "Project root not set. Call set_project_path first."
+    assert not (tmp_path / ".ast-cache").exists()
+
+
+@pytest.mark.parametrize("field,value", [("token_budget", 0), ("token_budget", False)])
+async def test_pulse_invalid_budget_is_not_silently_reinterpreted(field, value):
+    """PR #1352：零和布尔预算违反公开整数约束，不能执行另一条查询。"""
+    result = await PulseTool().execute(
+        {"file": "a.py", "symbol": "greet", field: value}
+    )
+    assert result == {
+        "success": False,
+        "error_code": "INVALID_ARGUMENT",
+        "error": "token_budget must be a positive integer",
+    }
+
+
+async def test_batch_rejects_excessive_capacity():
+    """PR #1352：批量上限超过服务边界时必须拒绝，不允许突破资源限制。"""
+    result = await PulseBatchTool().execute({"targets": [], "max_symbols": 1001})
+    assert result == {
+        "success": False,
+        "error_code": "INVALID_ARGUMENT",
+        "error": "max_symbols must not exceed 1000",
+    }
+
+
+async def test_explicit_positive_budget_preserves_requested_definition(
+    indexed_pulse_project,
+):
+    """PR #1352：显式合法的 JSON 整值预算保持目标身份，不改写调用者的参数。"""
+    root, cache = indexed_pulse_project
+    tool = PulseTool(str(root))
+    tool._cache = cache
+    arguments = {"file": "a.py", "symbol": "greet", "token_budget": 600.0}
+    result = await tool.execute(arguments)
+    assert result["success"] is True
+    assert result["result"]["sym"]["n"] == "greet"
+    assert type(arguments["token_budget"]) is float
+
+
+async def test_reverse_import_does_not_attach_unrelated_module(indexed_pulse_project):
+    """PR #1352：真实解析无关模块的 import 不能误归属当前定义文件。"""
+    root, cache = indexed_pulse_project
+    for filename, text in [
+        ("other.py", "def other():\n    pass\n"),
+        ("consumer.py", "import other\n"),
+    ]:
+        path = root / filename
+        path.write_text(text, encoding="utf-8")
+        cache.index_file(str(path))
+    tool = PulseTool(str(root))
+    tool._cache = cache
+    response = await tool.execute(
+        {"file": "a.py", "symbol": "greet", "format": "verbose"}
+    )
+    assert response["success"] is True
+    assert response["result"]["imported_by"] == []
+
+
 def _seed_symbol(
     conn, name: str, file_path: str = "a.py", language: str = "python"
 ) -> int:

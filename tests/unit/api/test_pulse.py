@@ -36,11 +36,281 @@ _MINIMAL_SYM = SymbolInfo(
 _MINIMAL_PR = PulseResponse(symbol=_MINIMAL_SYM)
 
 
+@pytest.mark.parametrize(
+    "name,args",
+    [
+        ("SymbolInfo", ("fn", "function", "a.py", 1, 5, "python")),
+        ("CallerRef", ("caller", "a.py", 1, 0)),
+        ("CalleeRef", ("callee",)),
+        ("ImportRef", ("module",)),
+        ("GitHeat", ()),
+        ("SiblingRef", ("sibling", "function", 2)),
+        ("CommentRef", (3, "note", "inline")),
+        ("BranchContext", ("loop",)),
+        ("PulseResponse", (_MINIMAL_SYM,)),
+    ],
+)
+def test_split_dtos_preserve_public_identity_and_pickle(name, args):
+    """PR #1352：机械迁移 DTO 后仍为单一类型，公开路径、冻结行为和 pickle 往返不变。"""
+    import dataclasses
+    import pickle
+
+    from tree_sitter_analyzer.api import _pulse_models, pulse
+
+    cls = getattr(pulse, name)
+    assert cls is getattr(_pulse_models, name)
+    assert cls.__module__ == "tree_sitter_analyzer.api.pulse"
+    value = cls(*args)
+    restored = pickle.loads(pickle.dumps(value))
+    assert type(restored) is cls
+    assert restored == value
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        setattr(value, dataclasses.fields(value)[0].name, None)
+
+
+@pytest.mark.parametrize(
+    "first", ["_pulse_models", "_pulse_sql", "serialization", "pulse"]
+)
+def test_pulse_leaf_import_order_is_acyclic(first):
+    """PR #1352：干净解释器中不同导入顺序均可用，DTO 与序列化不会提前加载查询实现。"""
+    import subprocess
+    import sys
+
+    script = """
+import importlib, sys, typing
+first = sys.argv[1]
+importlib.import_module('tree_sitter_analyzer.api.' + first)
+if first != 'pulse':
+    assert 'tree_sitter_analyzer.api.pulse' not in sys.modules
+from tree_sitter_analyzer.api import pulse, serialization
+assert serialization.PulseResponse is pulse.PulseResponse
+assert typing.get_type_hints(pulse.PulseResponse)['symbol'] is pulse.SymbolInfo
+print('ok')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, first],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+        timeout=10,
+    )
+    assert result.stdout == "ok\n"
+
+
+def test_pulse_sql_moved_without_changing_query_bytes():
+    """PR #1352：固定 SQL 的原始字节必须保持拆分前指纹，避免夹带查询语义修改。"""
+    import hashlib
+
+    from tree_sitter_analyzer.api import _pulse_sql, pulse
+
+    assert pulse._PULSE_SQL is _pulse_sql._PULSE_SQL
+    # 使用原始摘要字节表达公开校验和，不添加秘密扫描豁免。
+    assert hashlib.sha256(pulse._PULSE_SQL.encode("utf-8")).digest() == (
+        b"\x17\x6b\x4f\xbb\x0e\xce\x93\x9d\x87\xf5\xdd\xc7\x17\x45\x78\xc5"
+        b"\xbb\xcb\xd5\x27\xf6\x79\xb1\x1c\xb6\x90\x2e\x03\xc3\xf0\xe1\x01"
+    )
+
+
+@pytest.mark.parametrize("boundary", ["identity", "imports"])
+@pytest.mark.parametrize("outer_transaction", [False, True])
+def test_pulse_wal_reindex_keeps_one_read_version(
+    tmp_path, boundary, outer_transaction
+):
+    """PR #1352 P2：另一真实 WAL 连接重索引换 ID 后，整次只读 Pulse 必须保持同一版本。"""
+    import sqlite3
+
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "sample.py"
+    importer = tmp_path / "consumer.py"
+    source.write_text(
+        'def target():\n    """old doc"""\n    # old comment\n    old_helper()\n\ndef old_helper():\n    pass\n',
+        encoding="utf-8",
+    )
+    importer.write_text(
+        "import sample\n" if boundary == "identity" else "import elsewhere\n",
+        encoding="utf-8",
+    )
+    writer = ASTCache(str(tmp_path))
+    writer.index_file(str(source))
+    writer.index_file(str(importer))
+    db = writer.get_conn()
+    old_id = db.execute(
+        "SELECT id FROM ast_symbol_rows WHERE name='target'"
+    ).fetchone()[0]
+    reader = sqlite3.connect(
+        f"file:{writer.db_path}?mode=ro", uri=True, isolation_level=None
+    )
+    assert reader.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+    reader.execute("PRAGMA query_only=ON")
+    if outer_transaction:
+        reader.execute("BEGIN")
+    switched = []
+    failures = []
+
+    def reindex_between_reads(sql):
+        marker = (
+            "SELECT json_type(symbols_json"
+            if boundary == "identity"
+            else "SELECT file_path FROM ast_index WHERE language='python'"
+        )
+        if switched or not sql.lstrip().startswith(marker):
+            return
+        switched.append(True)
+        try:
+            source.write_text(
+                'def target():\n    """new doc"""\n    # new comment\n    new_helper()\n\ndef new_helper():\n    pass\n',
+                encoding="utf-8",
+            )
+            importer.write_text(
+                "import elsewhere\n" if boundary == "identity" else "import sample\n",
+                encoding="utf-8",
+            )
+            writer.index_file(str(source))
+            writer.index_file(str(importer))
+        except Exception as exc:
+            failures.append(exc)
+
+    reader.set_trace_callback(reindex_between_reads)
+    try:
+        result = query_pulse(reader, "sample.py", "target")
+        assert switched == [True]
+        assert failures == []
+        assert (
+            db.execute("SELECT id FROM ast_symbol_rows WHERE name='target'").fetchone()[
+                0
+            ]
+            != old_id
+        )
+        assert result is not None
+        assert result.symbol.docstring == "old doc"
+        assert [c.name for c in result.callees] == ["old_helper"]
+        assert [c.text for c in result.comments] == ["old comment"]
+        assert result.imported_by == (
+            ("consumer.py",) if boundary == "identity" else ()
+        )
+        assert reader.in_transaction is outer_transaction
+        assert reader.total_changes == 0
+        current = query_pulse(db, "sample.py", "target")
+        assert current.symbol.docstring == "new doc"
+        assert current.imported_by == (
+            () if boundary == "identity" else ("consumer.py",)
+        )
+    finally:
+        reader.close()
+        writer.close()
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_pulse_does_not_commit_or_rollback_caller_write_transaction(
+    ast_cache_conn, failure
+):
+    """PR #1352 P2：Pulse 成功或报错均不得提交/回滚调用者已有写事务。"""
+    _seed_symbol(ast_cache_conn, "target", "a.py")
+    ast_cache_conn.execute("CREATE TABLE caller_state(value TEXT)")
+    ast_cache_conn.commit()
+    ast_cache_conn.execute("BEGIN")
+    ast_cache_conn.execute("INSERT INTO caller_state VALUES ('pending')")
+    if failure:
+        ast_cache_conn.execute("DROP TABLE ast_symbol_activation")
+        import sqlite3
+
+        with pytest.raises(sqlite3.OperationalError, match="ast_symbol_activation"):
+            query_pulse(ast_cache_conn, "a.py", "target", max_comments=0)
+    else:
+        assert (
+            query_pulse(ast_cache_conn, "a.py", "target", max_comments=0).symbol.name
+            == "target"
+        )
+    assert ast_cache_conn.in_transaction is True
+    assert (
+        ast_cache_conn.execute("SELECT value FROM caller_state").fetchone()[0]
+        == "pending"
+    )
+    ast_cache_conn.rollback()
+    assert ast_cache_conn.execute("SELECT * FROM caller_state").fetchall() == []
+
+
 def _make_pr_with_comments(n: int = 10) -> PulseResponse:
     comments = tuple(
         CommentRef(line=i, text=f"comment {i}", kind="inline") for i in range(n)
     )
     return PulseResponse(symbol=_MINIMAL_SYM, comments=comments)
+
+
+@pytest.mark.parametrize(
+    "cached", ["missing_table", "bad_line", "missing_file", "text_line"]
+)
+def test_optional_lsp_damage_preserves_indexed_callsite(ast_cache_conn, cached):
+    """PR #1352：可选 LSP 缓存缺失或损坏不得抹掉基础调用点，也不能伪造定义。"""
+    from tree_sitter_analyzer.api.pulse import CalleeRef
+
+    _seed_symbol(ast_cache_conn, "caller", "a.py")
+    edge = ast_cache_conn.execute(
+        "INSERT INTO edges(source_node_id,target_node_id,kind,file_path,caller_name,caller_line,callee_name,callee_line,callee_resolution) "
+        "VALUES ('src','dst','calls','a.py','caller',1,'unknown',3,'unknown')"
+    ).lastrowid
+    if cached == "missing_table":
+        ast_cache_conn.execute("DROP TABLE lsp_resolution_cache")
+    else:
+        file, line = {
+            "bad_line": ("b.py", -1),
+            "missing_file": (None, 0),
+            "text_line": ("b.py", "invalid"),
+        }[cached]
+        ast_cache_conn.execute(
+            "INSERT INTO lsp_resolution_cache(edge_id,resolved_file,resolved_line,lsp_server,cached_at) VALUES (?,?,?,'peer',0)",
+            (edge, file, line),
+        )
+    result = query_pulse(ast_cache_conn, "a.py", "caller", max_comments=0)
+    assert result is not None
+    assert result.symbol.name == "caller"
+    assert result.callees == (
+        CalleeRef(name="unknown", file=None, line=None, resolution="unknown"),
+    )
+
+
+def test_target_removed_between_identity_and_context_returns_missing(ast_cache_conn):
+    """PR #1352：连接上并发删除已识别目标后，不能从其他同名目标拼出上下文。"""
+    _seed_symbol(ast_cache_conn, "vanish", "a.py")
+
+    def delete_before_context(sql):
+        if sql.lstrip().startswith("WITH"):
+            ast_cache_conn.execute("DELETE FROM ast_symbol_rows WHERE name='vanish'")
+
+    ast_cache_conn.set_trace_callback(delete_before_context)
+    try:
+        assert query_pulse(ast_cache_conn, "a.py", "vanish", max_comments=0) is None
+    finally:
+        ast_cache_conn.set_trace_callback(None)
+
+
+def test_budget_uses_optional_tokenizer_without_network(monkeypatch):
+    """PR #1352：已安装 tokenizer 的编码结果决定裁剪，保留 Unicode 和原输入。"""
+    import sys
+    from types import SimpleNamespace
+
+    calls = []
+
+    def encoding(name):
+        assert name == "cl100k_base"
+
+        def encode(text):
+            calls.append(json.loads(text))
+            return list(text.encode("utf-8"))
+
+        return SimpleNamespace(encode=encode)
+
+    monkeypatch.setitem(sys.modules, "tiktoken", SimpleNamespace(get_encoding=encoding))
+    original = PulseResponse(
+        symbol=_MINIMAL_SYM, comments=(CommentRef(1, "注释", "inline"),)
+    )
+    result = apply_budget(original, token_budget=1)
+    assert result.comments == ()
+    assert result.truncated_fields == ("comments",)
+    assert original.comments[0].text == "注释"
+    assert any("注释" in json.dumps(value, ensure_ascii=False) for value in calls)
 
 
 # ---------------------------------------------------------------------------

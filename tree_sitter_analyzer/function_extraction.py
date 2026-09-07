@@ -455,8 +455,6 @@ def extract_comments_from_body(root_node: Any, language: str) -> list[dict[str, 
     results: list[dict[str, Any]] = []
 
     def _walk(node: Any) -> None:
-        if not hasattr(node, "type"):
-            return
         if node.type in comment_types:
             raw = _node_text_value(node)
             # Strip leading comment markers and surrounding whitespace.

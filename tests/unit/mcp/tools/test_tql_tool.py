@@ -11,11 +11,129 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests.unit.hyphae.test_evaluator import (
+    FakeCache,
+    FakeCacheWithConn,
+    _seed_edge,
+    _seed_sym,
+)
+from tree_sitter_analyzer.hyphae.evaluator import Evaluator
+from tree_sitter_analyzer.hyphae.parser import HyphaeSyntaxError, parse
 from tree_sitter_analyzer.mcp.tools.tql_tool import (
     TqlExecuteTool,
     TqlSchemaTool,
     _cap_echo,
 )
+
+
+@pytest.mark.parametrize(
+    "selector,error",
+    [
+        (".function:hot", "TEMPORAL_INDEX_UNAVAILABLE"),
+        (".function:reaches(#alpha){1,2}", "BFS_INDEX_UNAVAILABLE"),
+        (".function:violates(rule)", "VIOLATION_INDEX_UNAVAILABLE"),
+        (".function:branch(loop)", "BRANCH_INDEX_UNAVAILABLE"),
+    ],
+)
+@pytest.mark.parametrize("storage", ["unsupported", "cannot_open"])
+def test_sql_predicates_refuse_unavailable_adapter(tmp_path, selector, error, storage):
+    """PR #1352：旧非 SQL 适配器及真实无法打开的数据库，不能给需要持久化证据的谓词伪造结果。"""
+    import sqlite3
+
+    cache = FakeCache([{"name": "alpha", "file": "a.py", "line": 1}], [], [])
+    if storage == "cannot_open":
+        cache.get_conn = lambda: sqlite3.connect(str(tmp_path))
+    with pytest.raises(HyphaeSyntaxError, match=error):
+        Evaluator(cache).eval(parse(selector))
+
+
+@pytest.mark.parametrize(
+    "table,pseudo,error",
+    [
+        ("edges", "reaches(#A){1,2}", "BFS_INDEX_UNAVAILABLE"),
+        ("ast_constraint_violations", "violates(rule)", "VIOLATION_INDEX_UNAVAILABLE"),
+    ],
+)
+def test_sql_predicate_missing_table_is_not_empty_graph(
+    ast_cache_conn, table, pseudo, error
+):
+    """PR #1352：迁移后表被删除时，真实 SQL 必须报告无法验明图关系。"""
+    _seed_sym(ast_cache_conn, "A")
+    ast_cache_conn.execute(f"DROP TABLE {table}")
+    cache = FakeCacheWithConn(
+        [{"name": "A", "file": "f.py", "line": 1}], [], [], ast_cache_conn
+    )
+    with pytest.raises(HyphaeSyntaxError, match=error):
+        Evaluator(cache).eval(parse(f".function:{pseudo}"))
+
+
+def test_bfs_sql_interrupt_cleans_progress_handler(ast_cache_conn, monkeypatch):
+    """PR #1352：真实递归 SQL 的时限中断必须失败且撤销 handler，后续数据库仍可使用。"""
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.hyphae.evaluator as module
+
+    ids = [_seed_sym(ast_cache_conn, f"n{i}") for i in range(60)]
+    for i in range(59):
+        _seed_edge(ast_cache_conn, f"n{i}", f"n{i + 1}", callee_symbol_id=ids[i + 1])
+    ticks = iter([0.0])
+    monkeypatch.setattr(
+        module, "time", SimpleNamespace(monotonic=lambda: next(ticks, 2.0))
+    )
+    ev = Evaluator(FakeCacheWithConn([], [], [], ast_cache_conn))
+    with pytest.raises(HyphaeSyntaxError, match="BFS_RESOURCE_LIMIT"):
+        ev._eval_depth_bfs([ids[0]], "callee", 1, 50)
+    assert (
+        ast_cache_conn.execute(
+            "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<1000) SELECT sum(x) FROM n"
+        ).fetchone()[0]
+        == 500500
+    )
+
+
+@pytest.mark.parametrize("stage", ["seed", "result"])
+def test_bfs_sql_authorization_failure_is_not_empty_matches(ast_cache_conn, stage):
+    """PR #1352：种子解析或结果身份读取受数据库拒绝时，错误不能降级为空匹配。"""
+    import sqlite3
+
+    _seed_sym(ast_cache_conn, "A")
+    target = _seed_sym(ast_cache_conn, "B")
+    _seed_edge(ast_cache_conn, "A", "B", callee_symbol_id=target)
+    traversed = [False]
+
+    def trace(sql):
+        if sql.lstrip().startswith("WITH RECURSIVE"):
+            traversed[0] = True
+
+    def authorize(action, table, column, *_):
+        if action == sqlite3.SQLITE_READ and table == "ast_symbol_rows":
+            if (stage == "seed" and column == "id") or (
+                stage == "result" and traversed[0]
+            ):
+                return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
+
+    cache = FakeCacheWithConn(
+        [{"name": "A", "file": "f.py", "line": 1}], [], [], ast_cache_conn
+    )
+    ast_cache_conn.set_trace_callback(trace)
+    ast_cache_conn.set_authorizer(authorize)
+    try:
+        with pytest.raises(HyphaeSyntaxError, match="BFS_INDEX_UNAVAILABLE"):
+            Evaluator(cache).eval(parse(".function:reaches(#B){1,2}"))
+    finally:
+        ast_cache_conn.set_authorizer(None)
+        ast_cache_conn.set_trace_callback(None)
+
+
+def test_depth_without_selector_is_rejected(ast_cache_conn):
+    """PR #1352：可解析但缺失目标的深度谓词必须明确拒绝，不能遍历全部图。"""
+    cache = FakeCacheWithConn([], [], [], ast_cache_conn)
+    with pytest.raises(
+        HyphaeSyntaxError, match="depth pseudo-class requires a selector argument"
+    ):
+        Evaluator(cache).eval(parse(".function:reaches{1,2}"))
+
 
 # ---------------------------------------------------------------------------
 # _cap_echo
@@ -166,6 +284,85 @@ def indexed_tql(tmp_path):
     cache.index_file(str(source))
     yield tool, cache
     cache.close()
+
+
+@pytest.mark.parametrize(
+    "selector", [".function:hot", ".function:stale", ".function:hotspot"]
+)
+async def test_temporal_filters_execute_against_real_activation(indexed_tql, selector):
+    """PR #1352：公开时序谓词通过真实 activation 精确筛选，而非直接调用过滤私有函数。"""
+    tool, cache = indexed_tql
+    import time
+
+    db = cache.get_conn()
+    db.execute("DELETE FROM ast_symbol_activation")
+    now = int(time.time())
+    db.execute(
+        "INSERT INTO ast_symbol_activation(symbol_id,file_path,last_modified_at,mod_count_30d,computed_at) "
+        "SELECT id,file_path,CASE WHEN name='alpha' THEN ? ELSE 0 END,CASE WHEN name='alpha' THEN 9 ELSE 0 END,0 FROM ast_symbol_rows",
+        (now,),
+    )
+    result = await tool.execute({"selector": selector})
+    assert result["success"] is True
+    expected = ["beta", "gamma"] if selector.endswith(":stale") else ["alpha"]
+    assert [s["name"] for s in result["symbols"]] == expected
+    assert result["count"] == len(expected)
+
+
+@pytest.mark.parametrize("selector", [".function:hot(0)", ".function:hot(365001)"])
+async def test_temporal_day_boundaries_are_errors(indexed_tql, selector):
+    """PR #1352：超范围日期不得变成全部命中或空命中。"""
+    tool, _ = indexed_tql
+    result = await tool.execute({"selector": selector})
+    assert result["success"] is False
+    assert result["error"] == "TQL evaluation failed: hot days must be within 1..365000"
+    assert result["symbols"] == []
+
+
+@pytest.mark.parametrize("target", ["#seed", ".function[file=seeds.py]"])
+async def test_bfs_seed_capacity_rejects_real_oversized_store(indexed_tql, target):
+    """PR #1352：名字及复合选择器均不得绕过 512 种子限制，返回失败而不是截断图。"""
+    tool, cache = indexed_tql
+    import json
+
+    symbols = [{"name": "seed", "kind": "function", "line": n + 1} for n in range(513)]
+    cache.get_conn().execute(
+        "INSERT INTO ast_index(file_path,content_hash,language,mtime_ns,file_size,indexed_at,symbols_json) VALUES ('seeds.py','x','python',0,0,'',?)",
+        (json.dumps({"symbols": symbols}),),
+    )
+    cache.get_conn().executemany(
+        "INSERT INTO ast_symbol_rows(name,kind,file_path,language,line) VALUES ('seed','function','seeds.py','python',?)",
+        [(n + 1,) for n in range(513)],
+    )
+    result = await tool.execute({"selector": f".function:reaches({target}){{1,2}}"})
+    assert result["success"] is False
+    assert result["error"] == "TQL evaluation failed: BFS_RESOURCE_LIMIT: seed count"
+    assert result["symbols"] == []
+
+
+async def test_bfs_missing_seed_is_legitimate_zero_matches(indexed_tql):
+    """PR #1352：健康图中缺失种子是有效零匹配，不同于图读取失败。"""
+    tool, _ = indexed_tql
+    result = await tool.execute({"selector": ".function:reaches(#absent){1,2}"})
+    assert result["success"] is True
+    assert (result["count"], result["total_matches"], result["truncated"]) == (
+        0,
+        0,
+        False,
+    )
+
+
+async def test_bfs_duplicate_definition_identity_is_not_arbitrarily_chosen(indexed_tql):
+    """PR #1352：损坏索引中重复定义坐标不能任取一条进入调用链。"""
+    tool, cache = indexed_tql
+    cache.get_conn().execute(
+        "INSERT INTO ast_symbol_rows(name,kind,file_path,language,line) VALUES ('alpha','function','a.py','python',1)"
+    )
+    result = await tool.execute(
+        {"selector": ".function:reaches(#alpha[file=a.py]){1,2}"}
+    )
+    assert result["success"] is False
+    assert result["error"] == "TQL evaluation failed: BFS_SYMBOL_IDENTITY_UNAVAILABLE"
 
 
 async def test_tql_cap_returns_exact_total_and_truncation(indexed_tql):

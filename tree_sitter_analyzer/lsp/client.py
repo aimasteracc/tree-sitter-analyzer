@@ -1,7 +1,7 @@
 """LSP client for TSA — asyncio JSON-RPC over stdio.
 
 Supported servers (detected by extension / language):
-  pyright              — Python
+  pyright-langserver   — Python 语言服务，不是 pyright 检查器
   typescript-language-server — TypeScript / JavaScript
   rust-analyzer        — Rust
 
@@ -40,7 +40,7 @@ _MAX_LSP_MESSAGE_BYTES = 4 * 1024 * 1024
 
 # Maps language names (from ast_symbol_rows.language) to LSP server commands.
 _SERVER_COMMANDS: dict[str, list[str]] = {
-    "python": ["pyright", "--stdio"],
+    "python": ["pyright-langserver", "--stdio"],
     "typescript": ["typescript-language-server", "--stdio"],
     "javascript": ["typescript-language-server", "--stdio"],
     "rust": ["rust-analyzer"],
@@ -133,7 +133,11 @@ class LspClient:
             try:
                 await asyncio.wait_for(self._proc.wait(), timeout=2.0)
             except asyncio.TimeoutError:
-                self._proc.kill()
+                try:
+                    self._proc.kill()
+                except ProcessLookupError:
+                    # terminate 等待超时与 kill 之间，对端仍可能自行退出。
+                    pass
                 await asyncio.wait_for(self._proc.wait(), timeout=2.0)
 
     def _next_id(self) -> int:

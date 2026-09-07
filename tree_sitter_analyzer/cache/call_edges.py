@@ -73,8 +73,7 @@ def _edge_for_call(
         "callee_name": callee_name,
         "callee_full": call.get("full_name", callee_name),
         "callee_line": call_line,
+        # walk_tree 为每个调用写入分支上下文（包括 unconditional），无需再次猜测缺失。
+        "branch": call["branch"],
     }
-    # PR #1352：分支证据必须穿过归属转换层，再由写入层持久化。
-    if call.get("branch") is not None:
-        edge["branch"] = call["branch"]
     return edge

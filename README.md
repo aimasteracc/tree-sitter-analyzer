@@ -22,6 +22,11 @@ The `tql_schema` action documents the window and the shared default for bare
 `:hot` and `:recently_modified`. Depth queries retain exact definition identity
 and fail explicitly when traversal limits are exceeded.
 
+Pulse requests return snapshot-bound context. SQL reads for identity,
+relationships, reverse-import context and optional cached LSP enrichment share
+a savepoint without ending a caller-owned transaction. This is not a SQL
+round-trip or latency guarantee.
+
 Pulse's Python reverse-import context uses the existing module resolver; this
 is not a claim of complete cross-language module resolution. Comment context
 requires an index rebuilt with comment extraction. Old indexes and languages

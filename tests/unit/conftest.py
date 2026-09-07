@@ -22,6 +22,62 @@ from tree_sitter_analyzer.embeddings.pipeline import _SCHEMA_SYMBOL_VECTORS
 from tree_sitter_analyzer.graph.edge_store import EDGE_STORE_SCHEMA
 
 
+@pytest.fixture
+def openai_transport(monkeypatch):
+    """只替换外部 SDK 请求边界，保留生产模型选择、文本构造和存储逻辑。"""
+    import sys
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.embeddings import pipeline
+
+    rpc = MagicMock(
+        side_effect=lambda input, **kwargs: SimpleNamespace(
+            data=[SimpleNamespace(embedding=[1.0, 0.0]) for _ in input]
+        )
+    )
+    client = SimpleNamespace(embeddings=SimpleNamespace(create=rpc))
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=lambda: client))
+    monkeypatch.setattr(pipeline, "_OPENAI_CLIENT", None)
+    return rpc
+
+
+@pytest.fixture
+def unixcoder_transport(monkeypatch):
+    """替换本地模型 SDK，不下载权重；生产 provider 适配器与模型选择仍真实执行。"""
+    import sys
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.embeddings import pipeline
+
+    vector = MagicMock(return_value=[0.0, 1.0])
+
+    class Tensor:
+        def __getitem__(self, key):
+            return self
+
+        def squeeze(self):
+            return self
+
+        def tolist(self):
+            return vector()
+
+    def tokenizer(text, **kwargs):
+        return {"text": text}
+
+    def model(**kwargs):
+        return SimpleNamespace(last_hidden_state=Tensor())
+
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(no_grad=nullcontext))
+    monkeypatch.setitem(
+        sys.modules, "transformers", SimpleNamespace(AutoModel=None, AutoTokenizer=None)
+    )
+    monkeypatch.setattr(
+        pipeline, "_UNIXCODER_CACHE", {"microsoft/unixcoder-base": (tokenizer, model)}
+    )
+    return vector
+
+
 def _write(root: Path, rel: str, content: str) -> Path:
     p = root / rel
     p.parent.mkdir(parents=True, exist_ok=True)

@@ -1,13 +1,7 @@
-"""Semantic neighbor search for TSA symbols.
+"""使用 symbol_embeddings 中的预计算向量检索语义相近符号。
 
-Uses pre-computed embeddings from the symbol_vectors table to find symbols
-with similar intent (doc / name / kind) without requiring identical call edges.
-
-Graceful degradation:
-  - numpy unavailable  → raises SemanticUnavailableError
-  - symbol_vectors empty → returns empty list with a warning
-  - sqlite-vss ANN available → uses vss_search for O(log n)
-  - fallback              → numpy cosine over all rows (O(n))
+查询向量必须明确声明模型身份并匹配候选维度。当前实现使用 NumPy 计算余弦
+相似度；缺少依赖或存储损坏时显式失败，健康空表或无匹配时返回空列表。
 """
 
 from __future__ import annotations
@@ -26,23 +20,13 @@ except ImportError:
 
 
 class SemanticUnavailableError(RuntimeError):
-    """Raised when numpy (required for cosine similarity) is not installed."""
+    """计算余弦相似度所需的 NumPy 不可用。"""
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Return cosine similarity in [-1, 1] between two equal-length vectors.
+    """计算两个等长浮点向量的余弦相似度，范围为 [-1, 1]。
 
-    Returns 0.0 if either vector is all-zero.
-
-    Args:
-        a: First float vector.
-        b: Second float vector.
-
-    Returns:
-        Cosine similarity as a float.
-
-    Raises:
-        SemanticUnavailableError: if numpy is not installed.
+    任一向量全零时返回 0.0；缺少 NumPy 时抛 SemanticUnavailableError。
     """
     if not _NUMPY_AVAILABLE:
         raise SemanticUnavailableError("numpy required for cosine_similarity")
@@ -66,10 +50,10 @@ def combined_score(
     alpha: float = 0.6,
     beta: float = 0.4,
 ) -> float:
-    """Compute combined relevance score from graph distance and semantic similarity.
+    """按图距离与语义相似度计算组合相关性。
 
-    graph_score = 1 / (hop_count + 1); zero hops = same symbol (score 1.0).
-    Score = alpha * graph_score + beta * cosine_sim
+    图分数为 1 / (hop_count + 1)，零跳代表同一符号、分数为 1。
+    最终分数为 alpha * graph_score + beta * cosine_sim。
     """
     graph_score = 1.0 / (graph_hop_count + 1) if graph_hop_count >= 0 else 0.0
     return alpha * graph_score + beta * cosine_sim
@@ -96,44 +80,35 @@ def find_semantic_neighbors(
     conn: sqlite3.Connection,
     query_embedding: list[float],
     *,
+    query_model: str,
     top_k: int = 10,
     min_similarity: float = 0.5,
     language_filter: str | None = None,
     kind_filter: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Find the top-k symbols most similar to query_embedding.
+    """按余弦相似度返回同模型、同维度的候选符号；身份不匹配抛 ValueError。
 
-    Tries sqlite-vss ANN first; falls back to full numpy scan if unavailable.
+    query_model 是必需的生成模型声明，不能从维度推断或使用默认身份。
 
-    Args:
-        conn:              Open SQLite connection with symbol_vectors populated.
-        query_embedding:   Float vector (must match indexed dimension).
-        top_k:             Max number of results to return.
-        min_similarity:    Minimum cosine similarity threshold (default 0.5).
-        language_filter:   If set, restrict to symbols in this language.
-        kind_filter:       If set, restrict to symbols of this kind.
+    参数：
+        conn：已打开且包含 symbol_embeddings 的 SQLite 连接。
+        query_embedding：与候选维度一致的查询浮点向量。
+        query_model：查询向量生成模型的明确标识。
+        top_k：最多返回的结果数量。
+        min_similarity：最低余弦相似度，默认 0.5。
+        language_filter、kind_filter：可选语言及符号类型筛选。
 
-    Returns:
-        List of dicts with keys: symbol_id, name, file, line, language, kind,
-        class_name, similarity.
-
-    Raises:
-        SemanticUnavailableError: if numpy is not installed.
+    返回包含 symbol_id、name、file、line、language、kind、class_name、similarity
+    的字典列表；缺少 NumPy 时抛 SemanticUnavailableError。
     """
     if not _NUMPY_AVAILABLE:
         raise SemanticUnavailableError(
             "numpy required for find_semantic_neighbors — install numpy"
         )
+    if not isinstance(query_model, str) or not query_model.strip():
+        raise ValueError("query_model must be a non-empty model identifier")
 
-    # Check that the table exists and has rows.
-    try:
-        count_row = conn.execute("SELECT COUNT(*) FROM symbol_embeddings").fetchone()
-        if not count_row or count_row[0] == 0:
-            return []
-    except sqlite3.OperationalError:
-        return []
-
-    # Fetch all embeddings (O(n) fallback; ANN path below replaces this if available).
+    # 直接读取向量：健康空表自然返回空列表，存储错误必须传播给公开错误边界。
     where_parts: list[str] = []
     params: list[Any] = []
     if language_filter:
@@ -146,12 +121,16 @@ def find_semantic_neighbors(
 
     sql = f"""
         SELECT v.symbol_id, r.name, r.file_path, r.line, r.language, r.kind,
-               v.vector
+               v.vector, v.model
         FROM symbol_embeddings v
         JOIN ast_symbol_rows r ON r.id = v.symbol_id
         {where_clause}
     """
     rows = conn.execute(sql, params).fetchall()
+    if any(row[7] != query_model for row in rows):
+        raise ValueError("EMBEDDING_MODEL_MISMATCH")
+    if any(len(row[6]) != len(query_embedding) * 4 for row in rows):
+        raise ValueError("EMBEDDING_DIMENSION_MISMATCH")
 
     query_vec = np.array(query_embedding, dtype=np.float32)
     qnorm = float(np.linalg.norm(query_vec))
@@ -160,9 +139,11 @@ def find_semantic_neighbors(
 
     scored: list[tuple[float, dict[str, Any]]] = []
     for row in rows:
-        sym_id, name, file_, line, lang, kind, blob = row
+        sym_id, name, file_, line, lang, kind, blob, _model = row
         cls = None
         vec = np.array(_decode_blob(blob), dtype=np.float32)
+        if not np.isfinite(vec).all():
+            raise ValueError("INVALID_STORED_EMBEDDING")
         vnorm = float(np.linalg.norm(vec))
         if vnorm == 0.0:
             continue

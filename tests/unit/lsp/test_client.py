@@ -40,6 +40,47 @@ async def test_start_missing_binary():
             await client._start()
 
 
+@pytest.mark.parametrize("server_available", [False, True])
+async def test_python_command_uses_language_server_not_checker(
+    tmp_path, monkeypatch, server_available
+):
+    """PR #1352 P2：pyright 检查器可用不代表 LSP 可用；只能启动 pyright-langserver --stdio。"""
+    import tree_sitter_analyzer.lsp.client as module
+
+    peer = _ProtocolPeer(tmp_path / "target.py")
+    looked_up = []
+
+    def which(binary):
+        looked_up.append(binary)
+        return (
+            "/controlled/" + binary if binary == "pyright" or server_available else None
+        )
+
+    spawn = AsyncMock(return_value=peer)
+    monkeypatch.setattr("shutil.which", which)
+    monkeypatch.setattr(module.asyncio, "create_subprocess_exec", spawn)
+    client = LspClient("python", str(tmp_path))
+    try:
+        if server_available:
+            async with client:
+                result = await client.go_to_definition(str(tmp_path / "a.py"), 0, 0)
+                assert result["file"] == str(tmp_path / "target.py")
+            spawn.assert_awaited_once_with(
+                "pyright-langserver",
+                "--stdio",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+        else:
+            with pytest.raises(LspServerUnavailableError, match="pyright-langserver"):
+                await client.__aenter__()
+            spawn.assert_not_awaited()
+        assert looked_up == ["pyright-langserver"]
+    finally:
+        await client._stop()
+
+
 # ---------------------------------------------------------------------------
 # _reader_loop() — happy path
 # ---------------------------------------------------------------------------
@@ -188,6 +229,108 @@ class _ProtocolPeer:
         return self.returncode
 
 
+@pytest.mark.parametrize(
+    "fault",
+    ["oversized_header", "eof_after_cancel", "late_response", "close_after_cancel"],
+)
+async def test_protocol_failure_and_cancelled_response_cannot_resurrect_request(
+    tmp_path, fault
+):
+    """PR #1352：取消与迟到帧/EOF/关闭竞态不会复活 Future；超大头立即失败。"""
+    from tree_sitter_analyzer.lsp.client import LspProtocolError
+
+    client = LspClient("python", str(tmp_path))
+    peer = _ProtocolPeer(tmp_path / "target.py", mode="silent")
+    client._proc = peer
+    request = asyncio.create_task(client.go_to_definition(str(tmp_path / "a.py"), 0, 0))
+    await asyncio.sleep(0)
+    pending = client._pending[1]
+    if fault != "oversized_header":
+        pending.cancel()
+    if fault == "oversized_header":
+        peer.stdout.feed_data(b"X-Padding: " + b"x" * 8200 + b"\r\n")
+    elif fault == "late_response":
+        raw = json.dumps({"id": 1, "result": None}).encode()
+        peer.stdout.feed_data(f"Content-Length: {len(raw)}\r\n\r\n".encode() + raw)
+        peer.stdout.feed_eof()
+    else:
+        peer.stdout.feed_eof()
+    try:
+        if fault == "close_after_cancel":
+            await client._stop()
+        else:
+            await client._reader_loop()
+        expected = (
+            LspProtocolError if fault == "oversized_header" else asyncio.CancelledError
+        )
+        with pytest.raises(expected):
+            await request
+        assert client._pending == {}
+        assert pending.done()
+    finally:
+        await client._stop()
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        [None],
+        {"uri": "https://example.invalid/a.py", "range": {"start": {"line": 0}}},
+        {"uri": "file:///a.py", "range": {"start": {}}},
+    ],
+)
+async def test_unusable_definition_frame_returns_no_invented_location(
+    tmp_path, location
+):
+    """PR #1352：对端空项、非文件 URI 或缺失行号不能变成伪造的本地定义。"""
+    peer = _ProtocolPeer(tmp_path / "target.py", mode="silent")
+    client = LspClient("python", str(tmp_path))
+    client._proc = peer
+    for msg in (
+        {"method": "window/logMessage", "params": {}},
+        {"id": 1, "result": location},
+    ):
+        raw = json.dumps(msg).encode()
+        peer.stdout.feed_data(f"Content-Length: {len(raw)}\r\n\r\n".encode() + raw)
+    client._reader_task = asyncio.create_task(client._reader_loop())
+    try:
+        assert await client.go_to_definition(str(tmp_path / "a.py"), 0, 0) is None
+        assert client._pending == {}
+    finally:
+        await client._stop()
+
+
+def test_read_only_lsp_cache_keeps_original_resolution(
+    tmp_path, ast_cache_conn, caplog
+):
+    """PR #1352：可选缓存写入遇只读数据库时告警，不能覆盖既有定义。"""
+    edge = _seed_edge(ast_cache_conn)
+    values = {
+        "edge_id": edge,
+        "symbol_id": None,
+        "resolved_type": None,
+        "resolved_file": "old.py",
+        "resolved_line": 0,
+        "lsp_server": "peer",
+    }
+    cache_lsp_resolution(ast_cache_conn, **values)
+    ast_cache_conn.execute("PRAGMA query_only=ON")
+    try:
+        cache_lsp_resolution(ast_cache_conn, **{**values, "resolved_file": "new.py"})
+        assert (
+            ast_cache_conn.execute(
+                "SELECT resolved_file FROM lsp_resolution_cache"
+            ).fetchone()[0]
+            == "old.py"
+        )
+        assert (
+            "cache_lsp_resolution: insert failed: attempt to write a readonly database"
+            in caplog.text
+        )
+    finally:
+        ast_cache_conn.execute("PRAGMA query_only=OFF")
+
+
 @pytest.mark.parametrize("extra_header", [False, True])
 async def test_protocol_initialize_definition_and_close(
     tmp_path, monkeypatch, extra_header
@@ -295,6 +438,28 @@ async def test_stop_kills_peer_that_ignores_termination(tmp_path):
     assert peer.terminated == 1
     assert peer.killed == 1
     assert peer.wait.call_count == 2
+
+
+@pytest.mark.parametrize("phase", ["terminate", "kill"])
+async def test_stop_reaps_peer_that_exits_between_lookup_and_signal(tmp_path, phase):
+    """PR #1352：进程查询与发信号间退出时，关闭仍必须等待回收且可以重复调用。"""
+    peer = _ProtocolPeer(tmp_path / "target.py", mode="silent")
+    client = LspClient("python", str(tmp_path))
+    client._proc = peer
+
+    def already_exited():
+        peer.returncode = 0
+        raise ProcessLookupError("peer exited")
+
+    setattr(peer, phase, already_exited)
+    peer.wait = AsyncMock(
+        side_effect=[asyncio.TimeoutError(), 0] if phase == "kill" else [0]
+    )
+    await client._stop()
+    await client._stop()
+    assert peer.wait.await_count == (2 if phase == "kill" else 1)
+    assert client._pending == {}
+    assert peer.returncode == 0
 
 
 @pytest.mark.parametrize("length", [-1, 4 * 1024 * 1024 + 1])

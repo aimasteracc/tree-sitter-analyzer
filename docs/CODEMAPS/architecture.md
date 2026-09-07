@@ -94,6 +94,11 @@ The former sibling `api.py` has been removed. Existing Python imports and public
 function signatures remain unchanged; consumers must not load the removed file
 by pathname. API regression routing watches `tree_sitter_analyzer/api/**`.
 
+Pulse 的模块边界：`api/pulse.py` 保留公开名字、快照事务、查询和预算实现；
+`api/_pulse_models.py` 仅定义共用冻结 DTO，`api/_pulse_sql.py` 仅保存固定 SQL。
+`api/serialization.py` 直接依赖 DTO，不反向依赖查询入口；两个私有叶子模块均不导入
+`pulse.py`。单请求内的读取绑定同一快照，不表示只执行一次 SQL。
+
 ## Benchmark qualification support
 
 `benchmarks/codegraph_compare/setup_qualification.py` is a compatibility facade for

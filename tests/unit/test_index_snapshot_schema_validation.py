@@ -19,6 +19,40 @@ def _fd_is_closed(fd: int) -> bool:
     return False
 
 
+@pytest.mark.parametrize(
+    "version,table", [(14, "ast_symbol_comments"), (15, "lsp_resolution_cache")]
+)
+def test_failed_optional_migration_does_not_certify_schema(tmp_path, version, table):
+    """PR #1352：只读存储上的迁移失败不能写入版本凭证，snapshot 校验必须拒绝残缺 schema。"""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache import schema
+    from tree_sitter_analyzer.index_snapshot_schema import validate_snapshot_schema
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        db = cache.get_conn()
+        db.execute(f"DROP TABLE {table}")
+        db.execute("DELETE FROM ast_schema_version WHERE version >= ?", (version,))
+        db.commit()
+        before = [
+            tuple(r)
+            for r in db.execute("SELECT * FROM ast_schema_version ORDER BY version")
+        ]
+        db.execute("PRAGMA query_only=ON")
+        migration = (
+            schema.apply_migration_v14 if version == 14 else schema.apply_migration_v15
+        )
+        migration(db, schema.record_schema_version)
+        assert [
+            tuple(r)
+            for r in db.execute("SELECT * FROM ast_schema_version ORDER BY version")
+        ] == before
+        with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
+            validate_snapshot_schema(db)
+    finally:
+        cache.close()
+
+
 def test_schema_version_rejects_unknown_row_immediately():
     # PR #1352：未来版本测试必须相对当前版本，不能用已支持的 14。
     from tree_sitter_analyzer.index_snapshot_schema import (

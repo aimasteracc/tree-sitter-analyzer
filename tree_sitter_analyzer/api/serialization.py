@@ -1,21 +1,16 @@
-"""Three-mode serialization for :class:`PulseResponse`.
+"""PulseResponse 的三种序列化视图。
 
-Modes:
-- ``skeletal``  (~150-250 tokens): symbol identity + counts only.
-- ``compact``   (~400-600 tokens, default): short keys, all fields.
-- ``verbose``   (~1500-2500 tokens): full keys, all fields.
-
-The ``COMPACT_LEGEND`` constant is embedded in tool descriptions so agents
-learn the key mappings once without paying the legend cost on every call.
+skeletal 仅保留身份与计数，compact 使用短键，verbose 使用完整键名。
+COMPACT_LEGEND 为工具描述提供固定键名映射；实际大小取决于内容与裁剪结果。
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from .pulse import PulseResponse
+from ._pulse_models import PulseResponse
 
-# Compact key legend for tool descriptions (embed once, read many times).
+# 工具描述共用的紧凑键名映射，内容属于既有公开协议。
 COMPACT_LEGEND = (
     "sym=symbol, cr=callers, ce=callees, gh=git_heat, im=imports, ib=imported_by, "
     "sib=siblings, cmt=comments, n=name, k=kind, f=file, l=line, el=end_line, "
@@ -26,15 +21,7 @@ COMPACT_LEGEND = (
 
 
 def serialize(pulse: PulseResponse, format: str = "compact") -> dict[str, Any]:
-    """Serialize ``pulse`` to a JSON-compatible dict in the requested format.
-
-    Args:
-        pulse: The :class:`PulseResponse` to serialize.
-        format: One of ``"skeletal"``, ``"compact"``, or ``"verbose"``.
-
-    Returns:
-        A dict ready for ``json.dumps``.
-    """
+    """按 skeletal、compact 或 verbose 视图返回可供 json.dumps 使用的字典。"""
     if format == "skeletal":
         return _skeletal(pulse)
     if format == "verbose":
@@ -43,7 +30,7 @@ def serialize(pulse: PulseResponse, format: str = "compact") -> dict[str, Any]:
 
 
 def _skeletal(pulse: PulseResponse) -> dict[str, Any]:
-    """~150-250 tokens: symbol identity + counts."""
+    """仅返回符号身份、关系计数与调用图可用性。"""
     sym = pulse.symbol
     return {
         "n": sym.name,
@@ -57,7 +44,7 @@ def _skeletal(pulse: PulseResponse) -> dict[str, Any]:
 
 
 def _compact(pulse: PulseResponse) -> dict[str, Any]:
-    """~400-600 tokens: short keys, all fields."""
+    """以既有短键输出全部字段。"""
     sym = pulse.symbol
     gh = pulse.git_heat
 
@@ -101,7 +88,7 @@ def _compact(pulse: PulseResponse) -> dict[str, Any]:
 
 
 def _verbose(pulse: PulseResponse) -> dict[str, Any]:
-    """~1500-2500 tokens: full key names, all fields."""
+    """以完整键名输出全部字段。"""
     sym = pulse.symbol
     gh = pulse.git_heat
 

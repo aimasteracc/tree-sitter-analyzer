@@ -32,10 +32,12 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import sqlite3
 import struct
 import time
 from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -176,12 +178,12 @@ def run_pipeline(
     batch_size: int = 32,
     rebuild: bool = False,
 ) -> dict[str, Any]:
-    """Index symbol embeddings into the symbol_embeddings table.
+    """索引符号向量；增量绑定已有模型及维度，切换模型须使用原子 rebuild=True。
 
     Args:
         conn: Open SQLite connection with ast_symbol_rows populated.
         model: One of ``"auto"`` / ``"unixcoder"`` / ``"openai"``.
-               ``"auto"`` tries openai first, then unixcoder.
+               auto 仅在新建/重建时允许回退；增量只使用已有 provider。
         batch_size: Number of symbols to embed per batch.
         rebuild: If True, drop and re-index all embeddings.
 
@@ -197,6 +199,33 @@ def run_pipeline(
         )
     if type(batch_size) is not int or not 1 <= batch_size <= 1024:
         raise ValueError("batch_size must be within 1..1024")
+
+    dimension: int | None = None
+    if not rebuild:
+        spaces = conn.execute(
+            "SELECT DISTINCT model,length(vector),typeof(vector) FROM symbol_embeddings LIMIT 2"
+        ).fetchall()
+        if spaces:
+            providers = {
+                "text-embedding-3-small": "openai",
+                "unixcoder-base": "unixcoder",
+            }
+            if len(spaces) != 1 or spaces[0][0] not in providers:
+                raise ValueError(
+                    "EMBEDDING_SPACE_INVALID: use rebuild=True for an atomic rebuild"
+                )
+            stored_model, byte_count, storage_type = spaces[0]
+            if storage_type != "blob" or not byte_count or byte_count % 4:
+                raise ValueError(
+                    "EMBEDDING_SPACE_INVALID: use rebuild=True for an atomic rebuild"
+                )
+            dimension = byte_count // 4
+            provider = providers[stored_model]
+            if model not in ("auto", provider):
+                raise ValueError(
+                    "EMBEDDING_MODEL_MISMATCH: use rebuild=True for an atomic rebuild"
+                )
+            model = provider
 
     # 先验证输入，避免元数据错误触发模型请求或破坏已有向量。
     already_indexed: set[int] = (
@@ -245,8 +274,13 @@ def run_pipeline(
     model_name = ""
     if model in ("auto", "openai"):
         try:
-            _embed_with_openai(["warmup"])
-            embed_fn = _embed_with_openai
+            candidate = (
+                partial(_embed_with_openai, dimensions=dimension)
+                if dimension is not None
+                else _embed_with_openai
+            )
+            candidate(["warmup"])
+            embed_fn = candidate
             model_name = "text-embedding-3-small"
         except Exception as exc:
             logger.debug("run_pipeline: openai unavailable (%s)", exc)
@@ -269,8 +303,36 @@ def run_pipeline(
     for i in range(0, len(to_index), batch_size):
         batch = to_index[i : i + batch_size]
         texts = [texts_by_id[r[0]] for r in batch]
+        if not rebuild:
+            # 增量批次也必须原子化，失败的半批不能被下一个成功批次提交。
+            conn.execute("SAVEPOINT embeddings_batch")
         try:
             vecs = embed_fn(texts)
+            if any(
+                not vec or any(not math.isfinite(value) for value in vec)
+                for vec in vecs
+            ):
+                raise ValueError("INVALID_PROVIDER_EMBEDDING")
+            if len(vecs) != len(batch):
+                raise ValueError("EMBEDDING_BATCH_SIZE_MISMATCH")
+            if dimension is None:
+                dimension = len(vecs[0])
+            if any(len(vec) != dimension for vec in vecs):
+                raise ValueError("EMBEDDING_DIMENSION_MISMATCH")
+            if not rebuild:
+                # RPC 期间可能有其他连接重建索引；在批次保存点内再次绑定空间，再执行写入。
+                current_space = [
+                    tuple(row)
+                    for row in conn.execute(
+                        "SELECT DISTINCT model,length(vector),typeof(vector) FROM symbol_embeddings LIMIT 2"
+                    )
+                ]
+                if current_space and current_space != [
+                    (model_name, dimension * 4, "blob")
+                ]:
+                    raise ValueError(
+                        "EMBEDDING_SPACE_CHANGED: use rebuild=True for an atomic rebuild"
+                    )
             now = int(time.time())
             conn.executemany(
                 "INSERT OR REPLACE INTO symbol_embeddings "
@@ -281,9 +343,6 @@ def run_pipeline(
                     for j in range(len(batch))
                 ],
             )
-            if not rebuild:
-                conn.commit()
-            indexed += len(batch)
         except Exception as exc:
             logger.warning("run_pipeline: batch %d failed: %s", i // batch_size, exc)
             errors += len(batch)
@@ -293,6 +352,13 @@ def run_pipeline(
                 indexed = 0
                 errors = len(to_index)
                 break
+            conn.execute("ROLLBACK TO embeddings_batch")
+            conn.execute("RELEASE embeddings_batch")
+        else:
+            if not rebuild:
+                conn.execute("RELEASE embeddings_batch")
+                conn.commit()
+            indexed += len(batch)
 
     if rebuild and not errors:
         conn.execute("RELEASE embeddings_rebuild")

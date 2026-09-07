@@ -28,6 +28,113 @@ def _make_fake_cache(conn):
     return fake
 
 
+@pytest.mark.parametrize(
+    "damage", ["vectors_disappear", "definition_table_disappears", "invalid_heat"]
+)
+async def test_semantic_store_damage_during_provider_request_is_failure(
+    tmp_path, openai_transport, damage
+):
+    """PR #1352：外部请求期间真实数据库变化后，不得报成功空集或伪造热度。"""
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.embeddings import pipeline
+
+    source = tmp_path / "a.py"
+    source.write_text("def alpha():\n    pass\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        db = cache.get_conn()
+        assert pipeline.init_embeddings_db(db) is True
+        assert pipeline.run_pipeline(db, model="openai")["indexed"] == 1
+
+        def rpc(**kwargs):
+            if damage == "vectors_disappear":
+                db.execute("DROP TABLE symbol_embeddings")
+            elif damage == "definition_table_disappears":
+                db.execute("ALTER TABLE ast_symbol_rows RENAME TO lost_symbols")
+            else:
+                db.execute(
+                    "INSERT OR REPLACE INTO ast_symbol_activation(symbol_id,file_path,mod_count_30d,computed_at) SELECT id,file_path,'bad',0 FROM ast_symbol_rows"
+                )
+            return SimpleNamespace(data=[SimpleNamespace(embedding=[1.0, 0.0])])
+
+        openai_transport.side_effect = rpc
+        tool = SemanticNeighborsTool(str(tmp_path))
+        tool._cache = cache
+        result = await tool.execute(
+            {"query": "alpha", "use_combined_score": damage == "invalid_heat"}
+        )
+        assert result["success"] is False
+        assert result["neighbors"] == []
+        prefix = (
+            "COMBINED_SCORE_UNAVAILABLE:"
+            if damage == "invalid_heat"
+            else "semantic search failed:"
+        )
+        assert result["error"].startswith(prefix)
+    finally:
+        cache.close()
+
+
+async def test_zero_stored_vector_is_not_a_similarity_match(tmp_path, openai_transport):
+    """PR #1352：零向量没有余弦方向，不能凭阈值为零挤入结果。"""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.embeddings import pipeline
+
+    source = tmp_path / "a.py"
+    source.write_text("def alpha():\n    pass\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        db = cache.get_conn()
+        pipeline.init_embeddings_db(db)
+        pipeline.run_pipeline(db, model="openai")
+        db.execute(
+            "UPDATE symbol_embeddings SET vector=?",
+            (pipeline._encode_embedding([0.0, 0.0]),),
+        )
+        tool = SemanticNeighborsTool(str(tmp_path))
+        tool._cache = cache
+        result = await tool.execute({"query": "alpha", "min_similarity": 0})
+        assert result["success"] is True
+        assert (result["count"], result["neighbors"]) == (0, [])
+    finally:
+        cache.close()
+
+
+async def test_nonfinite_stored_vector_is_corruption_not_zero_matches(
+    tmp_path, openai_transport
+):
+    """PR #1352：格式大小正确但数值损坏的持久化向量不能伪装成无匹配。"""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.embeddings import pipeline
+
+    source = tmp_path / "a.py"
+    source.write_text("def alpha():\n    pass\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        db = cache.get_conn()
+        pipeline.init_embeddings_db(db)
+        pipeline.run_pipeline(db, model="openai")
+        db.execute(
+            "UPDATE symbol_embeddings SET vector=?",
+            (pipeline._encode_embedding([float("nan"), 0.0]),),
+        )
+        tool = SemanticNeighborsTool(str(tmp_path))
+        tool._cache = cache
+        result = await tool.execute({"query": "alpha"})
+        assert result == {
+            "success": False,
+            "error": "semantic search failed: INVALID_STORED_EMBEDDING",
+            "neighbors": [],
+        }
+    finally:
+        cache.close()
+
+
 def _seed_symbol(
     conn, name: str, file_path: str = "a.py", language: str = "python", line: int = 1
 ) -> int:

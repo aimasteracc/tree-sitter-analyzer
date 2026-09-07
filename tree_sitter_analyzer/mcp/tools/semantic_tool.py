@@ -134,7 +134,6 @@ class SemanticNeighborsTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         from ...api.semantic import (
             _NUMPY_AVAILABLE,
-            SemanticUnavailableError,
             _score_symbol_full,
             find_semantic_neighbors,
         )
@@ -250,18 +249,12 @@ class SemanticNeighborsTool(BaseMCPTool):
             neighbors = find_semantic_neighbors(
                 conn,
                 query_vec,
+                query_model=stored_model,
                 top_k=top_k,
                 min_similarity=min_sim,
                 language_filter=language,
                 kind_filter=kind,
             )
-        except SemanticUnavailableError as exc:
-            return {
-                "success": False,
-                "error": str(exc),
-                "hint": "Install numpy: pip install numpy",
-                "neighbors": [],
-            }
         except Exception as exc:
             return {
                 "success": False,

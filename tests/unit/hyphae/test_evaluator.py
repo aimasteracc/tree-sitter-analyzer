@@ -45,6 +45,23 @@ def _names(rows):
     return sorted(r["name"] for r in rows)
 
 
+@pytest.mark.parametrize("pseudo", ["hot", "stale", "hotspot"])
+def test_temporal_damaged_store_never_returns_unfiltered_candidates(tmp_path, pseudo):
+    """PR #1352：真实时序表损坏必须显式失败，不能把所有函数标成命中。"""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "a.py"
+    source.write_text("def live():\n    pass\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        cache.get_conn().execute("DROP TABLE ast_symbol_activation")
+        with pytest.raises(HyphaeSyntaxError, match="TEMPORAL_INDEX_UNAVAILABLE"):
+            Evaluator(cache).eval(parse(f".function:{pseudo}"))
+    finally:
+        cache.close()
+
+
 def _fixture():
     functions = [
         {

@@ -34,6 +34,22 @@ def _parse(source: str, language: str = "python"):
     return result.tree
 
 
+def test_unsupported_language_does_not_invent_comments_or_branch_metadata():
+    """PR #1352：真实 JSON 语法树没有本模块支持的注释和控制流，结果应明确为空及无条件。"""
+    from tree_sitter_analyzer.function_extraction import (
+        extract_branch_context,
+        extract_comments_from_body,
+    )
+
+    root = _parse('{"value": 1}', "json").root_node
+    assert extract_comments_from_body(root, "json") == []
+    assert extract_branch_context(root, "json") == {
+        "kind": "unconditional",
+        "nesting_depth": 0,
+        "condition_text": None,
+    }
+
+
 def test_branch_context_reaches_persisted_edges(tmp_path):
     # PR #1352：真实单文件索引必须保留提取器提供的分支上下文。
     source = tmp_path / "branch.py"

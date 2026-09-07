@@ -221,17 +221,8 @@ class Evaluator:
         """
         if not 1 <= depth_min <= depth_max <= _MAX_DEPTH_QUANTIFIER:
             raise HyphaeSyntaxError(f"depth must be within 1..{_MAX_DEPTH_QUANTIFIER}")
-        if direction not in ("callee", "caller"):
-            raise HyphaeSyntaxError("invalid BFS direction")
-        if len(seed_ids) > 512:
-            raise HyphaeSyntaxError("BFS_RESOURCE_LIMIT: seed count")
-        conn = getattr(self._cache, "get_conn", None)
-        if conn is None:
-            raise HyphaeSyntaxError("BFS_INDEX_UNAVAILABLE")
-        try:
-            db = conn()
-        except Exception as exc:
-            raise HyphaeSyntaxError("BFS_INDEX_UNAVAILABLE") from exc
+        # 唯一业务调用方已验证连接、种子上限，并从固定二值集合构造方向。
+        db = self._cache.get_conn()
 
         if not seed_ids:
             return set()
@@ -325,11 +316,11 @@ SELECT id, hop FROM reachable
         """Apply :hot/:hot(N)/:recently_modified/:stale/:hotspot filters."""
         conn_fn = getattr(self._cache, "get_conn", None)
         if conn_fn is None:
-            return cands
+            raise HyphaeSyntaxError("TEMPORAL_INDEX_UNAVAILABLE")
         try:
             db = conn_fn()
-        except Exception:
-            return cands
+        except Exception as exc:
+            raise HyphaeSyntaxError("TEMPORAL_INDEX_UNAVAILABLE") from exc
 
         if name in ("hot", "recently_modified"):
             # tql_schema 既有契约：bare hot 默认 30 天，recently_modified 是其别名。
@@ -366,10 +357,10 @@ SELECT id, hop FROM reachable
                     )
                 }
                 return [c for c in cands if _key(c) in stale_pairs]
-            except Exception:
-                return cands
+            except sqlite3.Error as exc:
+                raise HyphaeSyntaxError("TEMPORAL_INDEX_UNAVAILABLE") from exc
 
-        if name == "hotspot":
+        else:
             # Python-side top-10% per file rank (SQLite version-independent).
             from collections import defaultdict as _dd
 
@@ -379,8 +370,8 @@ SELECT id, hop FROM reachable
                     "FROM ast_symbol_activation a "
                     "JOIN ast_symbol_rows sr ON sr.id = a.symbol_id"
                 ).fetchall()
-            except Exception:
-                return cands
+            except sqlite3.Error as exc:
+                raise HyphaeSyntaxError("TEMPORAL_INDEX_UNAVAILABLE") from exc
 
             by_file: dict[str, list[tuple[str, int, int]]] = _dd(list)
             for r in act_rows:
@@ -396,8 +387,6 @@ SELECT id, hop FROM reachable
                 )
 
             return [c for c in cands if _key(c) in hotspot_pairs]
-
-        return cands
 
     # -- pseudo-classes ------------------------------------------------------
     def _apply_pseudo(

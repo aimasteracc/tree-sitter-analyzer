@@ -36,6 +36,300 @@ def _seed_symbol(conn, name: str, kind: str = "function") -> int:
     return cur.lastrowid
 
 
+@pytest.mark.parametrize(
+    "stored,requested", [("openai", "unixcoder"), ("unixcoder", "openai")]
+)
+def test_incremental_explicit_model_change_requires_atomic_rebuild(
+    ast_cache_conn, openai_transport, unixcoder_transport, stored, requested
+):
+    """PR #1352 P2：同维度的不同模型也不得增量混写；明确切换必须走原子重建。"""
+    _seed_symbol(ast_cache_conn, "old_symbol")
+    assert run_pipeline(ast_cache_conn, model=stored)["indexed"] == 1
+    before = [
+        tuple(r) for r in ast_cache_conn.execute("SELECT * FROM symbol_embeddings")
+    ]
+    _seed_symbol(ast_cache_conn, "new_symbol")
+    openai_transport.reset_mock()
+    unixcoder_transport.reset_mock()
+    with pytest.raises(ValueError, match="EMBEDDING_MODEL_MISMATCH.*rebuild=True"):
+        run_pipeline(ast_cache_conn, model=requested)
+    assert [
+        tuple(r) for r in ast_cache_conn.execute("SELECT * FROM symbol_embeddings")
+    ] == before
+    openai_transport.assert_not_called()
+    unixcoder_transport.assert_not_called()
+    result = run_pipeline(ast_cache_conn, model=requested, rebuild=True)
+    assert (result["indexed"], result["skipped"], result["errors"]) == (2, 0, 0)
+    expected = "text-embedding-3-small" if requested == "openai" else "unixcoder-base"
+    assert [
+        tuple(r)
+        for r in ast_cache_conn.execute(
+            "SELECT DISTINCT model,length(vector) FROM symbol_embeddings"
+        )
+    ] == [(expected, 8)]
+
+
+@pytest.mark.parametrize("stored", ["openai", "unixcoder"])
+def test_auto_incremental_binds_existing_provider_even_when_unavailable(
+    ast_cache_conn, openai_transport, unixcoder_transport, stored
+):
+    """PR #1352 P2：auto 只续写已有模型；该 provider 失败不得回退到另一向量空间。"""
+    _seed_symbol(ast_cache_conn, "old_symbol")
+    run_pipeline(ast_cache_conn, model=stored)
+    before = [
+        tuple(r) for r in ast_cache_conn.execute("SELECT * FROM symbol_embeddings")
+    ]
+    _seed_symbol(ast_cache_conn, "new_symbol")
+    openai_transport.reset_mock()
+    unixcoder_transport.reset_mock()
+    selected, other = (
+        (openai_transport, unixcoder_transport)
+        if stored == "openai"
+        else (unixcoder_transport, openai_transport)
+    )
+    selected.side_effect = RuntimeError("provider offline")
+    with pytest.raises(EmbeddingModelUnavailableError):
+        run_pipeline(ast_cache_conn)
+    other.assert_not_called()
+    assert [
+        tuple(r) for r in ast_cache_conn.execute("SELECT * FROM symbol_embeddings")
+    ] == before
+
+
+def test_incremental_openai_requests_existing_dimension(
+    ast_cache_conn, openai_transport, unixcoder_transport
+):
+    """PR #1352 P2：缩维索引续写时必须把原维度传给 SDK，而不是使用 provider 默认维度。"""
+    from types import SimpleNamespace
+
+    _seed_symbol(ast_cache_conn, "old_symbol")
+    run_pipeline(ast_cache_conn, model="openai")
+    _seed_symbol(ast_cache_conn, "new_symbol")
+    openai_transport.reset_mock()
+
+    def response(**kwargs):
+        dimension = kwargs.get("dimensions", 3)
+        return SimpleNamespace(
+            data=[
+                SimpleNamespace(embedding=[1.0] + [0.0] * (dimension - 1))
+                for _ in kwargs["input"]
+            ]
+        )
+
+    openai_transport.side_effect = response
+    result = run_pipeline(ast_cache_conn)
+    assert (result["indexed"], result["errors"]) == (1, 0)
+    assert [call.kwargs["dimensions"] for call in openai_transport.call_args_list] == [
+        2,
+        2,
+    ]
+    assert [
+        r[0]
+        for r in ast_cache_conn.execute(
+            "SELECT DISTINCT length(vector) FROM symbol_embeddings"
+        )
+    ] == [8]
+    unixcoder_transport.assert_not_called()
+
+
+def test_incremental_provider_dimension_drift_keeps_existing_vectors(
+    ast_cache_conn, openai_transport
+):
+    """PR #1352 P2：provider 忽略约定维度时该批失败，不能污染已存向量。"""
+    from types import SimpleNamespace
+
+    _seed_symbol(ast_cache_conn, "old_symbol")
+    run_pipeline(ast_cache_conn, model="openai")
+    before = [
+        tuple(r) for r in ast_cache_conn.execute("SELECT * FROM symbol_embeddings")
+    ]
+    _seed_symbol(ast_cache_conn, "new_symbol")
+    openai_transport.side_effect = lambda **kwargs: SimpleNamespace(
+        data=[SimpleNamespace(embedding=[1.0, 0.0, 0.0])]
+    )
+    result = run_pipeline(ast_cache_conn)
+    assert (result["indexed"], result["errors"]) == (0, 1)
+    assert [
+        tuple(r) for r in ast_cache_conn.execute("SELECT * FROM symbol_embeddings")
+    ] == before
+
+
+@pytest.mark.parametrize("area", ["semantic", "pipeline"])
+def test_missing_numpy_import_preserves_explicit_dependency_error(
+    monkeypatch, ast_cache_conn, area
+):
+    """PR #1352：真实导入失败必须保留可诊断错误，不能尝试读取 SQL 或请求模型。"""
+    import importlib.util
+    import sys
+
+    from tree_sitter_analyzer.api import semantic
+    from tree_sitter_analyzer.embeddings import pipeline
+
+    owner = semantic if area == "semantic" else pipeline
+    spec = importlib.util.spec_from_file_location(
+        owner.__name__ + "_without_numpy", owner.__file__
+    )
+    module = importlib.util.module_from_spec(spec)
+    with monkeypatch.context() as m:
+        m.setitem(sys.modules, "numpy", None)
+        spec.loader.exec_module(module)
+    assert module._NUMPY_AVAILABLE is False
+    if area == "semantic":
+        with pytest.raises(
+            module.SemanticUnavailableError,
+            match="numpy required for cosine_similarity",
+        ):
+            module.cosine_similarity([1.0], [1.0])
+    else:
+        with pytest.raises(
+            module.EmbeddingModelUnavailableError, match="numpy not available"
+        ):
+            module.run_pipeline(ast_cache_conn)
+
+
+@pytest.mark.parametrize("batch_size", [0, 1025, True, 1.5])
+def test_invalid_batch_does_not_contact_provider_or_modify_store(
+    ast_cache_conn, openai_transport, batch_size
+):
+    """PR #1352：非法批量大小在任何模型请求和重建删除前拒绝。"""
+    with pytest.raises(ValueError, match="batch_size must be within 1..1024"):
+        run_pipeline(ast_cache_conn, rebuild=True, batch_size=batch_size)
+    openai_transport.assert_not_called()
+    assert (
+        ast_cache_conn.execute("SELECT count(*) FROM symbol_embeddings").fetchone()[0]
+        == 0
+    )
+
+
+def test_embedding_schema_read_only_failure_is_reported(ast_cache_conn):
+    """PR #1352：创建表失败不能声称初始化成功。"""
+    ast_cache_conn.execute("DROP TABLE symbol_embeddings")
+    ast_cache_conn.execute("PRAGMA query_only=ON")
+    try:
+        assert init_embeddings_db(ast_cache_conn) is False
+        assert (
+            ast_cache_conn.execute(
+                "SELECT name FROM sqlite_master WHERE name='symbol_embeddings'"
+            ).fetchall()
+            == []
+        )
+    finally:
+        ast_cache_conn.execute("PRAGMA query_only=OFF")
+
+
+def test_incremental_failed_batch_cannot_be_committed_by_next_batch(
+    ast_cache_conn, openai_transport
+):
+    """PR #1352：真实触发器拒绝批次后，其前半部分不能被下一成功批次提交。"""
+    for name in ("first", "second", "third"):
+        _seed_symbol(ast_cache_conn, name)
+    ast_cache_conn.execute(
+        "CREATE TRIGGER reject_second BEFORE INSERT ON symbol_embeddings "
+        "WHEN NEW.symbol_id=(SELECT id FROM ast_symbol_rows WHERE name='second') "
+        "BEGIN SELECT RAISE(ABORT, 'storage refused'); END"
+    )
+    result = run_pipeline(ast_cache_conn, model="openai", batch_size=2)
+    assert (result["indexed"], result["errors"]) == (1, 2)
+    assert [
+        r[0]
+        for r in ast_cache_conn.execute(
+            "SELECT s.name FROM symbol_embeddings e JOIN ast_symbol_rows s ON s.id=e.symbol_id"
+        )
+    ] == ["third"]
+
+
+@pytest.mark.parametrize("vector", [[], [float("nan"), 0.0], [float("inf"), 0.0]])
+def test_invalid_provider_vector_cannot_replace_healthy_index(
+    ast_cache_conn, openai_transport, vector
+):
+    """PR #1352：provider 的空向量和非有限浮点不能替换可搜索的旧向量。"""
+    from types import SimpleNamespace
+
+    _seed_symbol(ast_cache_conn, "alpha")
+    assert run_pipeline(ast_cache_conn, model="openai")["indexed"] == 1
+    before = [
+        tuple(r) for r in ast_cache_conn.execute("SELECT * FROM symbol_embeddings")
+    ]
+    openai_transport.side_effect = lambda **kwargs: SimpleNamespace(
+        data=[SimpleNamespace(embedding=vector)]
+    )
+    result = run_pipeline(ast_cache_conn, model="openai", rebuild=True)
+    assert (result["indexed"], result["errors"]) == (0, 1)
+    assert [
+        tuple(r) for r in ast_cache_conn.execute("SELECT * FROM symbol_embeddings")
+    ] == before
+
+
+def test_embedding_extension_loading_is_optional_and_not_repeated(monkeypatch):
+    """PR #1352：外部扩展加载成功后不重复请求，真实普通向量表仍可正常使用。"""
+    import sqlite3
+
+    from tree_sitter_analyzer.embeddings import pipeline
+
+    loads = []
+
+    class ExtensionConnection(sqlite3.Connection):
+        def load_extension(self, path):
+            loads.append(path)
+
+    monkeypatch.setattr(pipeline, "_VSS_AVAILABLE", False)
+    db = sqlite3.connect(":memory:", factory=ExtensionConnection)
+    try:
+        assert init_embeddings_db(db) is True
+        assert init_embeddings_db(db) is True
+        assert loads == ["vss0"]
+        assert db.execute("SELECT count(*) FROM symbol_embeddings").fetchone()[0] == 0
+    finally:
+        db.close()
+
+
+def test_explicit_local_model_uses_real_adapter_without_remote_request(
+    ast_cache_conn, monkeypatch, openai_transport
+):
+    """PR #1352：显式 unixcoder 选择只访问本地模型 SDK，绝不请求远程 provider。"""
+    import sys
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.embeddings import pipeline
+
+    class Tensor:
+        def __getitem__(self, key):
+            return self
+
+        def squeeze(self):
+            return self
+
+        def tolist(self):
+            return [1.0, 0.0]
+
+    def tokenizer(text, **kwargs):
+        return {"text": text}
+
+    def model(**kwargs):
+        return SimpleNamespace(last_hidden_state=Tensor())
+
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(no_grad=nullcontext))
+    monkeypatch.setitem(
+        sys.modules, "transformers", SimpleNamespace(AutoModel=None, AutoTokenizer=None)
+    )
+    monkeypatch.setattr(
+        pipeline, "_UNIXCODER_CACHE", {"microsoft/unixcoder-base": (tokenizer, model)}
+    )
+    sid = _seed_symbol(ast_cache_conn, "local")
+    result = run_pipeline(ast_cache_conn, model="unixcoder")
+    assert (result["model_name"], result["indexed"], result["errors"]) == (
+        "unixcoder-base",
+        1,
+        0,
+    )
+    row = ast_cache_conn.execute(
+        "SELECT symbol_id,model,vector FROM symbol_embeddings"
+    ).fetchone()
+    assert tuple(row) == (sid, "unixcoder-base", _encode_embedding([1.0, 0.0]))
+    openai_transport.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # init_embeddings_db
 # ---------------------------------------------------------------------------
