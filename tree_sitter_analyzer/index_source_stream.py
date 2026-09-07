@@ -66,9 +66,16 @@ def hash_source_at(
         after = os.fstat(fd)
     finally:
         os.close(fd)
-    clean = same_file_metadata(before, after)
-    # 摘要只对本次已打开的文件成立；读取绑定失败后，后续路径 stat 相等
-    # 不能证明已读字节来自同一版本，也不能替代目录描述符绑定的路径。
+    # 摘要绑定同一句柄读前后的完整元数据，后续路径稳定不能洗白读取变化。
+    clean = same_file_metadata(opened, after)
+    if os.name == "nt":
+        # #1356：Windows 3.13 的路径/句柄 ctime 不可直接比较；其余前置字段保留。
+        fields = ("st_size", "st_mtime_ns", "st_file_attributes")
+        clean = clean and all(
+            getattr(before, field, 0) == getattr(opened, field, 0) for field in fields
+        )
+    else:
+        clean = clean and same_file_metadata(before, opened)
     return (
         metadata_marker(after),
         digest.hexdigest() if clean else "<unsafe>",
