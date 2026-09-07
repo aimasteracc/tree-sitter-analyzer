@@ -38,6 +38,27 @@ Banned name patterns — pre-commit will reject any new file matching:
 new subsystem (a new subpackage, a new MCP tool, a new CLI command) that has no
 existing test file. The file name must match the module it tests exactly.
 
+**Controlled pure-migration exception (user-approved; tracked: #1376):** An
+oversized existing suite may be split into bounded behavior modules only when
+all of the following conditions hold:
+
+- A tracking issue explicitly authorizes the migration.
+- No original test cases are added, removed, duplicated, or weakened; preserve
+  names, parameters, fixture scopes, markers, and helper dependencies.
+- Preserve exact before/after collected nodeid mappings, including class methods
+  and parameter IDs, plus AST comparisons and negative mutation probes.
+- AST normalization may cover imports, source positions, real docstring
+  translation, and separately declared UTF-8 corrections, never assertion or
+  test-input data. Existing explicit encoding values must not change.
+- Every migrated target and new Python module must be at most 500 lines.
+- Shared helpers must be non-test modules, without duplicated production logic
+  or star-imported test re-exports. Update live references and verification-family
+  mappings so the old entry file cannot silently become a partial gate.
+
+New behavior must still go into the corresponding existing behavior module.
+This is not permission to create arbitrary new language-plugin or MCP-tool test
+files, duplicate coverage fragments, or files with the banned names above.
+
 ### T-2: No weak assertions — ratchet-enforced (BLOCKER)
 
 See §"Exact assertions only" below. The `weak-assertion-ratchet` pre-commit hook

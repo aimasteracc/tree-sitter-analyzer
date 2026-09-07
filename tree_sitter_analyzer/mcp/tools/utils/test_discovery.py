@@ -148,6 +148,15 @@ def find_test_files(
         results,
     )
 
+    if language == "python":
+        # #1376：纯迁移后的命名族必须完整；十项上限只约束弱符号候选。
+        stems = [stem, *related_test_stems_for_path(p)]
+        named_family = [
+            test
+            for test in results
+            if any(related_stem_matches(Path(test).stem, name) for name in stems)
+        ]
+        return list(dict.fromkeys([*named_family, *results[:10]]))
     return results[:10]
 
 
@@ -180,13 +189,11 @@ def _find_recursive_test_candidates(
     root: Path,
     results: list[str],
 ) -> None:
-    """Find matching tests recursively within a test directory."""
+    """按稳定顺序收集完整文件名匹配，最终候选边界由调用者决定。"""
     if not test_dir.is_dir():
         return
-    for candidate in test_dir.rglob(test_filename):
+    for candidate in sorted(test_dir.rglob(test_filename)):
         _add_result(results, candidate, root)
-        if len(results) >= 10:
-            break
 
 
 def _find_colocated_tests(

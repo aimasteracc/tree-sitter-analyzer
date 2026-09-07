@@ -66,6 +66,65 @@ class TestDetectLanguageFromExt:
 
 
 class TestFindTestFilesPython:
+    def test_cache_package_maps_to_the_facade_test_family(self, tmp_path):
+        """#1376：实现包与 facade 共用测试族，实时与图映射不能分叉。"""
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+            _find_test_files,
+        )
+
+        relative = "tree_sitter_analyzer/cache/indexer.py"
+        source = tmp_path / relative
+        source.parent.mkdir(parents=True)
+        source.write_text("pass\n", encoding="utf-8")
+        tests = tmp_path / "tests/unit"
+        tests.mkdir(parents=True)
+        expected = [
+            "tests/unit/test_ast_cache.py",
+            "tests/unit/test_ast_cache_epochs.py",
+        ]
+        for path in expected:
+            (tmp_path / path).write_text("def test_epoch(): pass\n", encoding="utf-8")
+
+        assert find_test_files(str(source), str(tmp_path)) == expected
+        assert _find_test_files([relative], {relative, *expected}) == {
+            relative: expected
+        }
+
+    @pytest.mark.parametrize(
+        "source_name", ["component.py", "component_helpers.py", "_component_helpers.py"]
+    )
+    def test_complete_named_family_survives_display_limit(self, tmp_path, source_name):
+        """#1376：纯迁移超过十个文件时，命名族不能被展示上限截断。"""
+        source = tmp_path / source_name
+        source.write_text("pass\n", encoding="utf-8")
+        tests = tmp_path / "tests/unit"
+        tests.mkdir(parents=True)
+        names = ["test_component.py"] + [
+            f"test_component_phase_{index:02}.py" for index in range(14)
+        ]
+        for name in names:
+            (tests / name).write_text("def test_behavior(): pass\n", encoding="utf-8")
+
+        found = find_test_files(str(source), str(tmp_path))
+
+        assert set(found) == {f"tests/unit/{name}" for name in names}
+        assert len(found) == len(names)
+
+    def test_symbol_only_candidates_keep_the_bounded_limit(self, tmp_path):
+        """#1376：放完整命名族不等于取消弱符号匹配的候选上限。"""
+        source = tmp_path / "component.py"
+        source.write_text("def shared(): pass\n", encoding="utf-8")
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        for index in range(15):
+            (tests / f"test_unrelated_{index:02}.py").write_text(
+                "def test_behavior(): shared()\n", encoding="utf-8"
+            )
+
+        found = find_test_files(str(source), str(tmp_path))
+
+        assert found == [f"tests/test_unrelated_{index:02}.py" for index in range(10)]
+
     def test_finds_python_test_in_unit_dir(self):
         """Finds tests/unit/module/test_file.py for file.py."""
         with tempfile.TemporaryDirectory() as tmp:

@@ -28,11 +28,7 @@ def source_subsystem_stems(
         index for index, part in enumerate(parents) if part.lower() in {"lib", "src"}
     ]
     root_index = next(
-        (
-            index
-            for index, part in enumerate(parents)
-            if part.lower() in source_roots
-        ),
+        (index for index, part in enumerate(parents) if part.lower() in source_roots),
         None,
     )
     if strict_root_indexes:
@@ -203,11 +199,7 @@ def _monorepo_package_identity(file_path: str | Path) -> str | None:
     parts = normalized.parts[:-1]
     test_roots = {"__tests__", "spec", "test", "tests"}
     test_root_index = next(
-        (
-            index
-            for index, part in enumerate(parts)
-            if part.lower() in test_roots
-        ),
+        (index for index, part in enumerate(parts) if part.lower() in test_roots),
         len(parts),
     )
     package_lineage: list[str] = []
@@ -292,6 +284,9 @@ def module_family_test_stems(file_path: str | Path) -> list[str]:
     )
     stems = _special_module_family_stems(normalized.stem)
     is_repository_source = "tree_sitter_analyzer" in normalized.parts[:-1]
+    if is_repository_source and "cache" in normalized.parts[:-1]:
+        # #1376：cache 实现包共享 ast_cache facade 的完整测试族。
+        stems.append("ast_cache")
     if (
         is_repository_source
         and normalized.stem == "evaluator"
