@@ -218,12 +218,51 @@ def test_constraint_source_capture_selects_portable_certifier(
 
 def test_portable_source_certifier_hashes_stable_supported_scope(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # PR #1254 review 3768096778: portable capture can certify real source bytes.
+    # #1356 / PR #1254：保留原断言，并在失败时提供路径与描述符的字段级证据。
+    from tree_sitter_analyzer import index_source_stream, portable_source_snapshot
     from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
     from tree_sitter_analyzer.portable_source_snapshot import (
         capture_portable_source_snapshot,
     )
+
+    fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+        "st_file_attributes",
+    )
+    comparisons = []
+    descriptors = []
+    original_same = portable_source_snapshot._same
+    original_os = index_source_stream.os
+
+    def observe_same(before, after):
+        equal = original_same(before, after)
+        comparisons.append(
+            {
+                "before": [getattr(before, key, None) for key in fields],
+                "after": [getattr(after, key, None) for key in fields],
+                "equal": equal,
+            }
+        )
+        return equal
+
+    class ObservedOS:
+        def __getattr__(self, name):
+            return getattr(original_os, name)
+
+        def fstat(self, fd):
+            value = original_os.fstat(fd)
+            descriptors.append([getattr(value, key, None) for key in fields])
+            return value
+
+    monkeypatch.setattr(portable_source_snapshot, "_same", observe_same)
+    monkeypatch.setattr(index_source_stream, "os", ObservedOS())
 
     source = tmp_path / "pkg" / "sample.py"
     source.parent.mkdir()
@@ -253,7 +292,7 @@ def test_portable_source_certifier_hashes_stable_supported_scope(
         "exact",
         None,
         expected_rows,
-    )
+    ), {"fields": fields, "comparisons": comparisons, "descriptors": descriptors}
     assert result.fingerprint == expected_fingerprint
     assert result.generation == "idxsrc-v3:" + expected_fingerprint.removeprefix(
         "sha256:"
