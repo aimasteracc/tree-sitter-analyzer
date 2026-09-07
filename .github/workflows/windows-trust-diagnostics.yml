@@ -61,7 +61,8 @@ jobs:
             $xml = Join-Path $output "iteration-$iteration.xml"
             $temporary = Join-Path $output "tmp-$iteration"
             uv run pytest @cases -q --reruns 0 --junitxml $xml --basetemp $temporary *> $log
-            $code = $LASTEXITCODE
+            $rawCode = $LASTEXITCODE
+            $code = $rawCode
             $executed = 0
             $skipped = 0
             $xmlError = $null
@@ -82,14 +83,15 @@ jobs:
               sha = $env:TARGET_SHA
               python = $env:PYTHON_VERSION
               iteration = $iteration
-              exit_code = $code
+              exit_code = $rawCode
+              qualification_exit_code = $code
               tests = $executed
               skipped = $skipped
               junit_error = $xmlError
               log = "iteration-$iteration.log"
               junit = "iteration-$iteration.xml"
             } | ConvertTo-Json -Compress | Add-Content -Encoding utf8 (Join-Path $output 'iterations.jsonl')
-            Write-Output "Iteration $iteration/20: exit $code"
+            Write-Output "Iteration $iteration/20: pytest exit $rawCode, qualification exit $code"
           }
           if ($failures -ne 0) { exit 1 }
       - name: Preserve every attempt
