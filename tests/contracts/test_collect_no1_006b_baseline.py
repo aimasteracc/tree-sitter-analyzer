@@ -530,7 +530,10 @@ def test_secrets_baseline_preserves_reviewed_base_result_signatures() -> None:
 
 def test_secrets_baseline_union_contract_works_in_fresh_clone_without_remote(tmp_path: Path) -> None:
     clone=tmp_path/"clone"
-    subprocess.run(["git","clone","--no-local","--quiet",str(REPO),str(clone)],check=True)
+    subprocess.run(["git","clone","--no-local","--no-checkout","--quiet",str(REPO),str(clone)],check=True)
+    subprocess.run(["git","checkout","HEAD","--",".secrets.baseline"],cwd=clone,check=True)
+    # #1373：只校验基线文件，不应让无关源码检出占满 Windows worker 的时间预算。
+    assert sorted(path.name for path in clone.iterdir()) == [".git", ".secrets.baseline"]
     subprocess.run(["git","remote","remove","origin"],cwd=clone,check=True)
     assert subprocess.run(["git","remote"],cwd=clone,check=True,capture_output=True,text=True).stdout == ""
     assert_secrets_baseline_preserves_reviewed_base(clone)
