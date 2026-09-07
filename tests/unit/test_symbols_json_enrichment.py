@@ -143,8 +143,8 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 15
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 15
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 16
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 16
 
 
 class TestBashVariableAssignmentScope:

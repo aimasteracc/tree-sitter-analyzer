@@ -41,7 +41,10 @@ logger = logging.getLogger(__name__)
 #      ``future_import_statement`` node), and a ``def`` nested inside a method
 #      is classified ``function`` rather than ``method``. Both change the
 #      persisted symbol rows, so cached entries must be re-indexed.
-_AST_CACHE_EXTRACTOR_VERSION = 15
+# v16: C++ ``function_definition`` nodes now recover their name via
+#      ``_c_function_def_name`` (same declarator walk as C). Previously all
+#      C++ free functions and methods were absent from ast_symbol_rows.
+_AST_CACHE_EXTRACTOR_VERSION = 16
 
 
 def check_cache_or_read(
