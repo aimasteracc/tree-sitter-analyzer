@@ -67,7 +67,7 @@ uv run pytest -q \
   tests/unit/test_production_trust.py \
   tests/unit/test_production_dispatch.py \
   tests/unit/test_production_rehearsal.py \
-  tests/unit/test_benchmark_harness.py
+  tests/unit/test_benchmark_harness*.py
 uv run python scripts/no1_003d_mutations.py
 uv run python -m tree_sitter_analyzer --change-impact --format json
 ```
