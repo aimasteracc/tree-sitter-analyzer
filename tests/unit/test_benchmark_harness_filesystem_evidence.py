@@ -1,4 +1,4 @@
-"""Issue #1376：filesystem_evidence 行为组，原测试 AST 保持不变。"""
+"""Issue #1376：test_benchmark_harness_filesystem_evidence 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ _mark_posix_qualification_section_tests = partial(
 
 
 def test_harness_artifact_rejects_huge_sparse_file(tmp_path: Path):
-    # PR #1247: pinned harness verification must not materialize hostile files.
+    # PR #1247: 固定的 harness 验证不能实体化恶意文件。
     import pytest
 
     from benchmarks.codegraph_compare.setup_qualification import HarnessArtifactV1
@@ -77,7 +77,7 @@ def test_index_tree_hash_binds_exact_paths_and_bytes(tmp_path: Path):
 
 
 def test_index_tree_hash_binds_empty_directory_mutation(tmp_path: Path):
-    # PR #1247: empty index shards are topology, even though they contain no bytes.
+    # PR #1247: 空索引分片虽然不含字节，仍属于拓扑结构。
     from benchmarks.codegraph_compare.setup_qualification import _hash_tree
 
     index = tmp_path / "index"
@@ -89,7 +89,7 @@ def test_index_tree_hash_binds_empty_directory_mutation(tmp_path: Path):
 
 
 def test_index_tree_breadth_is_rejected_before_unbounded_sort(tmp_path: Path):
-    # PR #1247: each scandir is collected only to the remaining ceiling plus one.
+    # PR #1247: 每次 scandir 最多收集剩余额度加一个条目。
     import pytest
 
     from benchmarks.codegraph_compare import setup_qualification_paths as paths
@@ -109,7 +109,7 @@ def test_index_tree_breadth_is_rejected_before_unbounded_sort(tmp_path: Path):
 def test_index_tree_enumeration_checks_deadline_before_chunk_sort(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1249 review 3745026816: wide directories cannot hide an expired deadline.
+    # PR #1249 review 3745026816: 宽目录不能掩盖已经过期的截止时间。
     from benchmarks.codegraph_compare import setup_qualification_paths as paths
 
     index = tmp_path / "index"
@@ -132,7 +132,7 @@ def test_index_tree_enumeration_checks_deadline_before_chunk_sort(
 
 
 def test_index_tree_rejects_directory_topology_race(tmp_path: Path):
-    # PR #1247: directory pre/post metadata must bind one topology snapshot.
+    # PR #1247: 目录操作前后的元数据必须绑定同一份拓扑快照。
     import pytest
 
     from benchmarks.codegraph_compare import setup_qualification_paths as paths
@@ -153,7 +153,7 @@ def test_index_tree_rejects_directory_topology_race(tmp_path: Path):
 
 
 def test_index_snapshot_returns_hash_bytes_and_exact_counts(tmp_path: Path):
-    # PR #1247: hash, size, and topology counts come from one traversal.
+    # PR #1247: 哈希、大小和拓扑计数必须来自同一次遍历。
     from benchmarks.codegraph_compare import setup_qualification_paths as paths
 
     index = tmp_path / "index"
@@ -170,7 +170,7 @@ def test_index_snapshot_returns_hash_bytes_and_exact_counts(tmp_path: Path):
 
 
 def test_index_tree_hash_rejects_concurrent_append(tmp_path: Path, monkeypatch):
-    # PR #1247: a producer must not extend the verifier's snapshotted read.
+    # PR #1247: 生产者不能扩大 verifier 已快照化的读取范围。
     import os
     import threading
 
@@ -219,7 +219,7 @@ def test_index_tree_hash_rejects_concurrent_append(tmp_path: Path, monkeypatch):
 def test_index_tree_hash_handles_one_thousand_directory_levels(
     tmp_path: Path, request: pytest.FixtureRequest
 ):
-    # PR #1247: producer-controlled depth must not consume Python recursion.
+    # PR #1247: 生产者控制的深度不能耗尽 Python 递归栈。
     import os
 
     from benchmarks.codegraph_compare.setup_qualification import _hash_tree
@@ -273,7 +273,7 @@ def test_index_tree_hash_handles_one_thousand_directory_levels(
 def test_index_tree_hash_rejects_same_size_concurrent_rewrite(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1247: size stability alone must not authenticate mutable index bytes.
+    # PR #1247: 仅大小稳定不能认证可变的索引字节。
     import os
 
     import pytest

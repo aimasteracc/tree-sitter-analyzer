@@ -1,4 +1,4 @@
-"""Issue #1376：gin_execution 行为组，原测试 AST 保持不变。"""
+"""Issue #1376：test_benchmark_harness_gin_execution 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
@@ -352,7 +352,7 @@ class TestGinSmokeManifestExecution(_TestGinSmokeManifestExecution):
                 encoding="utf-8"
             )
         )
-        # Issue #1201: post-run index validation must not erase model evidence.
+        # Issue #1201: 运行后的索引验证不能抹去模型证据。
         assert result == 1
         assert first["answer"] == "completed answer for codegraph-warm"
         assert first["transcript_path"].endswith(

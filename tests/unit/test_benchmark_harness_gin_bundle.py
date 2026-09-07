@@ -1,146 +1,18 @@
-"""Issue #1376：Gin bundle 行为组，保留测试逻辑，文本 I/O 显式使用 UTF-8。"""
+"""Issue #1376：test_benchmark_harness_gin_bundle 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
-import hashlib
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
-from tests.unit._benchmark_harness_matrix_helpers import _v1_manifest, _v1_run
+from tests.unit._benchmark_harness_smoke_helpers import (
+    TestGinSmokeBundle as _TestGinSmokeBundle,
+)
 
 
-class TestGinSmokeBundle:
-    @staticmethod
-    def _bundle_inputs(tmp_path: Path):
-        from dataclasses import asdict
-
-        from benchmarks.codegraph_compare.integrity import RegistryEvent
-        from benchmarks.codegraph_compare.smoke_policy import PolicyAudit
-
-        manifest = _v1_manifest(
-            index_content_hashes={
-                "codegraph-warm": "codegraph-index-hash",
-                "tsa-warm": "tsa-index-hash",
-            },
-        )
-        plan = tmp_path / "plan-source"
-        plan.mkdir()
-        (plan / "experiment-manifest.json").write_text(
-            json.dumps(asdict(manifest)), encoding="utf-8"
-        )
-        from benchmarks.codegraph_compare.smoke_preflight import SENTINEL
-
-        (plan / "model-preflight.json").write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "status": "PASSED",
-                    "provider": "OpenAI",
-                    "account_surface": "ChatGPT",
-                    "model": manifest.model,
-                    "checked_at": "2026-07-31T00:00:00+00:00",
-                    "agent_cli": {},
-                    "agent_cli_fingerprint": manifest.agent_cli_fingerprint,
-                    "sentinel_sha256": hashlib.sha256(SENTINEL.encode()).hexdigest(),
-                }
-            ),
-            encoding="utf-8",
-        )
-        (plan / "arm-tool-preflight.json").write_text(
-            json.dumps(
-                {
-                    arm: {
-                        "server": server,
-                        "enabled": True,
-                        "command": sys.executable,
-                        "args": ["serve", "--mcp"],
-                    }
-                    for arm, server in {
-                        "tsa-warm": "tree-sitter-analyzer",
-                        "codegraph-warm": "codegraph",
-                    }.items()
-                }
-            ),
-            encoding="utf-8",
-        )
-        for name in (
-            "eligibility.json",
-            "index-evidence.json",
-            "workspace-evidence.json",
-        ):
-            (plan / name).write_text("{}\n", encoding="utf-8")
-        experiment = tmp_path / "experiment"
-        experiment.mkdir()
-        runs = []
-        servers = {
-            "codegraph-warm": "codegraph",
-            "tsa-warm": "tree-sitter-analyzer",
-        }
-        for cell in manifest.expected_cells:
-            transcript_path = f"/original/{cell.run_id}.jsonl"
-            transcript = (
-                plan / "artifacts" / cell.arm / "raw" / Path(transcript_path).name
-            )
-            transcript.parent.mkdir(parents=True)
-            transcript.write_text(
-                json.dumps(
-                    {
-                        "type": "item.completed",
-                        "item": {
-                            "type": "mcp_tool_call",
-                            "server": servers[cell.arm],
-                            "tool": "query",
-                        },
-                    }
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            run = _v1_run(manifest, cell.run_id, transcript_path=transcript_path)
-            runs.append(run)
-            (experiment / f"policy_{cell.run_id}.json").write_text(
-                json.dumps(
-                    asdict(
-                        PolicyAudit(
-                            cell.arm,
-                            transcript_path,
-                            (servers[cell.arm],),
-                            ("query",),
-                            (),
-                        )
-                    )
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-        (experiment / "runs.jsonl").write_text(
-            "".join(json.dumps(asdict(run)) + "\n" for run in runs),
-            encoding="utf-8",
-        )
-        registry = tmp_path / "registry.jsonl"
-        events = (
-            RegistryEvent(
-                manifest.experiment_id,
-                manifest.manifest_hash,
-                "RUNNING",
-                "smoke_started",
-            ),
-            RegistryEvent(
-                manifest.experiment_id,
-                manifest.manifest_hash,
-                "INVALID",
-                "smoke_invalid",
-            ),
-        )
-        registry.write_text(
-            "".join(json.dumps(asdict(event)) + "\n" for event in events),
-            encoding="utf-8",
-        )
-        return plan, experiment, registry
-
+class TestGinSmokeBundle(_TestGinSmokeBundle):
     def test_bundle_recomputes_invalid_claim_bounded_verdict(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_bundle import (
             create_smoke_bundle,
@@ -170,7 +42,7 @@ class TestGinSmokeBundle:
             "{}\n", encoding="utf-8"
         )
 
-        # Issue #1219: every retained runtime audit must bind to an exact run.
+        # Issue #1219: 每份留存的运行时审计都必须绑定精确的运行实例。
         with pytest.raises(ValueError, match="runtime evidence inventory mismatch"):
             create_smoke_bundle(
                 tmp_path / "bundle",
@@ -208,7 +80,7 @@ class TestGinSmokeBundle:
         policy["observed_mcp_tools"] = []
         policy["violations"] = violations
         policy_path.write_text(json.dumps(policy) + "\n", encoding="utf-8")
-        # Issue #1201: immutable INVALID evidence predates transcript retention.
+        # Issue #1201: 不可变的 INVALID 证据早于 transcript 留存机制。
         digest = create_smoke_bundle(
             tmp_path / "bundle",
             plan_dir=plan,
@@ -281,7 +153,7 @@ class TestGinSmokeBundle:
             encoding="utf-8",
         )
 
-        # Issue #1219: evidence fallback replaces the earlier runtime policy audit.
+        # Issue #1219: 证据回退会替换先前的运行时策略审计。
         digest = create_smoke_bundle(
             tmp_path / "bundle",
             plan_dir=plan,
@@ -371,7 +243,7 @@ class TestGinSmokeBundle:
             encoding="utf-8",
         )
 
-        # Issue #1219: product failures remain bound to runtime policy evidence.
+        # Issue #1219: 产品失败仍须绑定运行时策略证据。
         digest = create_smoke_bundle(
             tmp_path / "bundle",
             plan_dir=plan,
@@ -435,7 +307,7 @@ class TestGinSmokeBundle:
             encoding="utf-8",
         )
 
-        # Issue #1219: a policy marker cannot self-authorize runtime evidence.
+        # Issue #1219: 策略标记不能自行授权运行时证据。
         with pytest.raises(ValueError, match="runtime evidence measurement mismatch"):
             create_smoke_bundle(
                 tmp_path / "bundle",
@@ -506,7 +378,7 @@ class TestGinSmokeBundle:
             encoding="utf-8",
         )
 
-        # Issue #1219: runtime terminal evidence must remain bundleable.
+        # Issue #1219: 运行时终态证据必须仍可打包。
         digest = create_smoke_bundle(
             tmp_path / "bundle",
             plan_dir=plan,

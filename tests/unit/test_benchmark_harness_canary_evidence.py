@@ -1,4 +1,4 @@
-"""Issue #1376：canary evidence 行为组，保留测试逻辑，文本 I/O 显式使用 UTF-8。"""
+"""Issue #1376：test_benchmark_harness_canary_evidence 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
@@ -8,151 +8,13 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit._benchmark_harness_smoke_helpers import (
+    TestCanaryEvidence as _TestCanaryEvidence,
+)
 from tests.unit._benchmark_harness_smoke_helpers import TestGinSmokeManifestExecution
 
 
-class TestCanaryEvidence:
-    @staticmethod
-    def _manifest():
-        from benchmarks.codegraph_compare.canary_evidence import create_canary_manifest
-
-        return create_canary_manifest(
-            benchmark_git_sha="benchmark-sha",
-            benchmark_version="NO1-002C-E0-v1",
-            model="gpt-fixture",
-            agent_cli_fingerprint="codex-cli-fixture",
-            gin_commit="gin-commit",
-            gin_source_fingerprint="a" * 64,
-            canary_prompt_sha256="b" * 64,
-            launch_config_hashes={"tsa-warm": "c" * 64, "codegraph-warm": "d" * 64},
-            timeout_seconds=300,
-            seed=1195,
-        )
-
-    @staticmethod
-    def _evidence(manifest, tmp_path):
-        from benchmarks.codegraph_compare.canary_evidence import (
-            CanaryArtifactV1,
-            CanaryAttemptV1,
-            CanaryRegistryEventV1,
-        )
-
-        attempts = []
-        artifacts = []
-        for index, cell in enumerate(manifest.cells):
-            call_id = f"call-{index}"
-            if cell.arm == "tsa-warm":
-                item = TestGinSmokeManifestExecution._tsa_canary_item(call_id)
-            else:
-                item = {
-                    "id": call_id,
-                    "type": "mcp_tool_call",
-                    "status": "completed",
-                    "server": "codegraph",
-                    "tool": "codegraph_search",
-                    "arguments": {
-                        "query": "Engine.ServeHTTP",
-                        "kind": "method",
-                        "limit": 10,
-                    },
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": "**ServeHTTP** (method)\n"
-                                "func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request)\n"
-                                "gin.go:42",
-                            }
-                        ]
-                    },
-                }
-            transcript_payload = (
-                json.dumps({"type": "item.completed", "item": item}) + "\n"
-            ).encode()
-            source_inventory = [["gin.go", "a" * 64]]
-            audit = {
-                "checkout_root": str((tmp_path / f"checkout-{index}").resolve()),
-                "head_commit": "e" * 40,
-                "tracked_paths": ["gin.go"],
-                "repository_fingerprint": "f" * 64,
-                "source_before": source_inventory,
-                "source_after": source_inventory,
-                "runtime_namespace": (
-                    ".ast-cache" if cell.arm == "tsa-warm" else ".codegraph"
-                ),
-                "runtime_before": [],
-                "runtime_after": [["index.db", "b" * 64]],
-            }
-            workspace = hashlib.sha256(
-                json.dumps(audit, separators=(",", ":"), sort_keys=True).encode()
-            ).hexdigest()
-            payloads = {
-                "receipt": json.dumps(
-                    {"call_id": call_id}, separators=(",", ":"), sort_keys=True
-                ).encode(),
-                "transcript": transcript_payload,
-                "workspace_audit": json.dumps(
-                    {
-                        "schema_version": 1,
-                        "manifest_hash": manifest.manifest_hash,
-                        "session_id": "session-001",
-                        "run_id": cell.cell_id,
-                        "cell_id": cell.cell_id,
-                        "arm": cell.arm,
-                        "audit_sha256": workspace,
-                        "audit": audit,
-                    },
-                    separators=(",", ":"),
-                    sort_keys=True,
-                ).encode(),
-            }
-            runtime = hashlib.sha256(f"runtime-{index}".encode()).hexdigest()
-            payloads["runtime"] = runtime.encode()
-            transcript = hashlib.sha256(payloads["transcript"]).hexdigest()
-            attempt = CanaryAttemptV1(
-                1,
-                manifest.manifest_hash,
-                "session-001",
-                cell.cell_id,
-                cell.cell_id,
-                cell.arm,
-                1,
-                call_id,
-                transcript,
-                workspace,
-                runtime,
-                "SUCCESS",
-            )
-            attempts.append(attempt)
-            for kind, payload in payloads.items():
-                path = (tmp_path / f"{cell.cell_id}.{kind}").resolve()
-                path.write_bytes(payload)
-                artifacts.append(
-                    CanaryArtifactV1(
-                        1,
-                        manifest.manifest_hash,
-                        "session-001",
-                        cell.cell_id,
-                        cell.cell_id,
-                        cell.arm,
-                        kind,
-                        hashlib.sha256(payload).hexdigest(),
-                        str(path),
-                        call_id if kind == "receipt" else None,
-                    )
-                )
-        registry = (
-            CanaryRegistryEventV1(
-                1,
-                manifest.manifest_hash,
-                "session-001",
-                "COMPLETE",
-                "canary_accepted",
-                ("tsa-warm-canary", "codegraph-warm-canary"),
-            ),
-        )
-        return tuple(attempts), tuple(artifacts), registry
-
+class TestCanaryEvidence(_TestCanaryEvidence):
     def test_manifest_freezes_exact_two_cell_e0_protocol(self):
         from benchmarks.codegraph_compare.canary_evidence import (
             canonical_sha256,

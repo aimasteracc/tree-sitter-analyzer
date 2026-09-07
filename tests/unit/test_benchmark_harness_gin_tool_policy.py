@@ -1,4 +1,4 @@
-"""Issue #1376：gin_tool_policy 行为组，原测试 AST 保持不变。"""
+"""Issue #1376：test_benchmark_harness_gin_tool_policy 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
@@ -290,7 +290,7 @@ class TestGinSmokeManifestExecution(_TestGinSmokeManifestExecution):
     def test_codex_transcript_does_not_treat_search_terms_as_network_commands(
         self, tmp_path: Path, command: str
     ):
-        """Regression for the retained NO1-001C false policy failures (#1216)."""
+        """针对留存的 NO1-001C 策略误报的回归测试（#1216）。"""
         from benchmarks.codegraph_compare.smoke_execution import (
             audit_codex_transcript,
         )

@@ -1,4 +1,4 @@
-"""Issue #1376：canary protocol 行为组，保留测试逻辑，文本 I/O 显式使用 UTF-8。"""
+"""Issue #1376：test_benchmark_harness_canary_protocol 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 

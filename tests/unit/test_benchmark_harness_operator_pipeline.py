@@ -1,8 +1,7 @@
-"""Issue #1376：operator pipeline 行为组，保留测试逻辑，文本 I/O 显式使用 UTF-8。"""
+"""Issue #1376：test_benchmark_harness_operator_pipeline 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import stat
@@ -10,7 +9,6 @@ import subprocess
 import sys
 from functools import partial
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -97,71 +95,8 @@ def test_qualification_seccomp_denies_exact_network_syscall_set():
     ]
 
 
-def test_stage_copy_file_applies_requested_mode_despite_umask(tmp_path: Path):
-    # PR #1249 review 3744303005: distinct service UIDs must read staged inputs.
-    from benchmarks.codegraph_compare.stage_inputs import copy_file
-
-    source = tmp_path / "source"
-    destination = tmp_path / "destination"
-    source.write_bytes(b"trusted")
-    previous = os.umask(0o077)
-    try:
-        copy_file(source, destination, 0o444)
-    finally:
-        os.umask(previous)
-
-    assert stat.S_IMODE(destination.stat().st_mode) == 0o444
-
-
-def test_operator_success_state_replace_is_directory_durable(
-    tmp_path: Path, monkeypatch
-):
-    # PR #1249 review 3744303001: terminal success must survive host power loss.
-    from benchmarks.codegraph_compare import qualification_operator
-
-    output = tmp_path / "experiment"
-    synced = []
-    monkeypatch.setattr(qualification_operator, "_run_impl", lambda _args: 0)
-    monkeypatch.setattr(
-        qualification_operator, "_fsync_directory", lambda path: synced.append(path)
-    )
-
-    assert qualification_operator.run(SimpleNamespace(experiment_root=str(output))) == 0
-    assert synced == [output, output, output]
-    assert json.loads((output / "operator-state.json").read_bytes()) == {
-        "completed_cells": 14,
-        "state": "SUCCESS",
-    }
-
-
-def test_operator_failed_state_replace_is_directory_durable(
-    tmp_path: Path, monkeypatch
-):
-    # PR #1249 review 3744303001: terminal failure must survive host power loss.
-    from benchmarks.codegraph_compare import qualification_operator
-
-    output = tmp_path / "experiment"
-    synced = []
-
-    def fail(_args):
-        raise RuntimeError("failed")
-
-    monkeypatch.setattr(qualification_operator, "_run_impl", fail)
-    monkeypatch.setattr(
-        qualification_operator, "_fsync_directory", lambda path: synced.append(path)
-    )
-
-    with pytest.raises(RuntimeError, match="failed"):
-        qualification_operator.run(SimpleNamespace(experiment_root=str(output)))
-    assert synced == [output, output, output]
-    assert json.loads((output / "operator-state.json").read_bytes()) == {
-        "error": "RuntimeError",
-        "state": "FAILED",
-    }
-
-
 def test_all_service_sockets_defer_access_control_to_peer_uid():
-    # PR #1249 review 3744303010: service primary groups differ from the operator's.
+    # PR #1249 review 3744303010: 服务的主组与 operator 的主组不同。
     sources = {
         path: Path(path).read_text(encoding="utf-8")
         for path in (
@@ -184,7 +119,7 @@ def test_all_service_sockets_defer_access_control_to_peer_uid():
 
 
 def test_no1_008a_wrapper_forwards_decision_service_inputs(tmp_path: Path):
-    # PR #1249 review 3744178808: the documented wrapper dropped required inputs.
+    # PR #1249 review 3744178808: 文档中的包装脚本丢弃了必需输入。
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     capture = tmp_path / "argv"
@@ -258,46 +193,8 @@ def test_no1_008a_wrapper_forwards_decision_service_inputs(tmp_path: Path):
     assert argv[argv.index("--decision-contract") + 1] == str(paths["decision.json"])
 
 
-def test_stage_inventory_tree_uses_read_only_modes_from_git_inventory(
-    tmp_path: Path,
-):
-    # PR #1249 review 3744439670: staged executable and regular blobs must be immutable.
-    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
-    from benchmarks.codegraph_compare.stage_inputs import stage_inventory_tree
-
-    source = tmp_path / "checkout"
-    source.mkdir()
-    payloads = {
-        "README.md": ("100644", b"fixture\n"),
-        "bin/tool": ("100755", b"#!/bin/sh\n"),
-    }
-    records = []
-    for relative, (mode, payload) in payloads.items():
-        path = source / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(payload)
-        oid = hashlib.sha1(f"blob {len(payload)}\0".encode() + payload).hexdigest()
-        records.append(
-            [relative, mode, oid, len(payload), hashlib.sha256(payload).hexdigest()]
-        )
-    inventory = tmp_path / "inventory.json"
-    inventory.write_bytes(
-        canonical_json_bytes({"eligibility": {"tracked_files": records}})
-    )
-    destination = tmp_path / "staged"
-
-    stage_inventory_tree(source, destination, tmp_path / "source.tar", inventory)
-
-    assert {
-        relative: stat.S_IMODE((destination / relative).stat().st_mode)
-        for relative in payloads
-    } == {"README.md": 0o444, "bin/tool": 0o555}
-    assert stat.S_IMODE((destination / "bin").stat().st_mode) == 0o555
-    assert stat.S_IMODE(destination.stat().st_mode) == 0o555
-
-
 def test_no1_008a_dockerfile_has_independent_decision_consumer_target():
-    # PR #1249 review 3744178814: the final decision service was not buildable.
+    # PR #1249 review 3744178814: 最终 decision 服务曾无法构建。
     dockerfile = Path("benchmarks/codegraph_compare/Dockerfile.no1-008a").read_text(
         encoding="utf-8"
     )
@@ -311,7 +208,7 @@ def test_no1_008a_dockerfile_has_independent_decision_consumer_target():
 
 
 def test_receipt_image_provenance_excludes_post_decision_consumer():
-    # PR #1249 review 3744178824: receipt-v3 signs exactly five pre-decision roles.
+    # PR #1249 review 3744178824: receipt-v3 精确签署决策前的五个角色。
     from benchmarks.codegraph_compare.verifier_evidence import _receipt_images
 
     images = {
@@ -335,37 +232,10 @@ def test_receipt_image_provenance_excludes_post_decision_consumer():
     }
 
 
-def test_operator_write_completes_short_writes_before_fsync(
-    tmp_path: Path, monkeypatch
-):
-    # PR #1249 review 3744358510: a successful write retains the full envelope.
-    from benchmarks.codegraph_compare import qualification_operator as operator
-
-    real_write = os.write
-
-    def short_write(descriptor, payload):
-        return real_write(descriptor, payload[:3])
-
-    monkeypatch.setattr(operator.os, "write", short_write)
-    path = tmp_path / "evidence.json"
-    operator._write(path, {"status": "SUCCESS"})
-
-    assert path.read_bytes() == b'{"status":"SUCCESS"}\n'
-
-
-def test_operator_write_rejects_zero_progress(tmp_path: Path, monkeypatch):
-    # PR #1249 review 3744358510: zero-byte writes cannot report operator success.
-    from benchmarks.codegraph_compare import qualification_operator as operator
-
-    monkeypatch.setattr(operator.os, "write", lambda *_args: 0)
-    with pytest.raises(OSError, match="made no progress"):
-        operator._write(tmp_path / "evidence.json", {"status": "SUCCESS"})
-
-
 def test_launch_attestation_handoff_uses_private_role_owned_paths(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1249 review 3744358508: distinct service UIDs can read only their artifact.
+    # PR #1249 review 3744358508: 不同服务 UID 只能读取各自的产物。
     from benchmarks.codegraph_compare import service_runtime
 
     output = tmp_path / "handoff"
@@ -446,67 +316,10 @@ def test_launch_attestation_handoff_uses_private_role_owned_paths(
     )
 
 
-def test_stage_copy_file_completes_short_writes(tmp_path: Path, monkeypatch):
-    # PR #1249 review 3744482394: staging must retain every byte after a short write.
-    from benchmarks.codegraph_compare import stage_inputs
-
-    source = tmp_path / "source"
-    destination = tmp_path / "destination"
-    source.write_bytes(b"trusted-stage-bytes")
-    real_write = os.write
-
-    def short_write(descriptor, payload):
-        return real_write(descriptor, payload[:3])
-
-    monkeypatch.setattr(stage_inputs.os, "write", short_write)
-    stage_inputs.copy_file(source, destination)
-
-    assert destination.read_bytes() == b"trusted-stage-bytes"
-
-
-def test_stage_copy_file_rejects_zero_progress(tmp_path: Path, monkeypatch):
-    # PR #1249 review 3744482394: a zero-byte write cannot stage trusted input.
-    from benchmarks.codegraph_compare import stage_inputs
-
-    source = tmp_path / "source"
-    source.write_bytes(b"trusted-stage-bytes")
-    monkeypatch.setattr(stage_inputs.os, "write", lambda *_args: 0)
-
-    with pytest.raises(OSError, match="staged input write made no progress"):
-        stage_inputs.copy_file(source, tmp_path / "destination")
-
-
-def test_aggregate_output_writer_retries_partial_writes(monkeypatch):
-    # PR #1249 review 3744561299: a short write cannot truncate aggregate evidence.
-    from benchmarks.codegraph_compare import verifier_aggregate
-
-    observed = bytearray()
-
-    def partial(_descriptor, payload):
-        count = min(2, len(payload))
-        observed.extend(payload[:count])
-        return count
-
-    monkeypatch.setattr(verifier_aggregate.os, "write", partial)
-    verifier_aggregate._write_all(7, b"abcdef")
-
-    assert bytes(observed) == b"abcdef"
-
-
-def test_aggregate_output_writer_rejects_zero_progress(monkeypatch):
-    # PR #1249 review 3744561299: zero-progress writes fail closed.
-    from benchmarks.codegraph_compare import verifier_aggregate
-
-    monkeypatch.setattr(verifier_aggregate.os, "write", lambda *_args: 0)
-
-    with pytest.raises(OSError, match="made no progress"):
-        verifier_aggregate._write_all(7, b"x")
-
-
 def test_exact14_manifest_preflight_counts_outer_json_escaping_and_rejects_ceiling(
     monkeypatch,
 ):
-    # PR #1249 review 3744728248: frame failure must precede the first cell.
+    # PR #1249 review 3744728248: 帧检查失败必须先于首个 cell。
     from benchmarks.codegraph_compare import verifier_service
 
     cells = [({"p": '"'}, {"i": "\\"}, {"c": 1}) for _ in range(14)]
@@ -518,7 +331,7 @@ def test_exact14_manifest_preflight_counts_outer_json_escaping_and_rejects_ceili
 
 
 def test_exact14_budget_uses_sealed_image_extractions_not_producer_wall():
-    # PR #1249 review 3744776113: post-authority service work uses image bounds.
+    # PR #1249 review 3744776113: authority 之后的服务工作使用镜像界限。
     from benchmarks.codegraph_compare.execution_budget import (
         exact14_execution_budget_seconds,
     )
@@ -534,7 +347,7 @@ def test_exact14_budget_uses_sealed_image_extractions_not_producer_wall():
 
 
 def test_exact14_manifest_preflight_rejects_node_budget_before_wire(monkeypatch):
-    # PR #1249 review 3744822109: byte-fit manifests still need exact node accounting.
+    # PR #1249 review 3744822109: 满足字节限制的 manifest 仍需要精确节点计量。
     from benchmarks.codegraph_compare import verifier_service
 
     cells = [({"p": 1}, {"i": 1}, {"c": 1}) for _ in range(14)]
@@ -545,7 +358,7 @@ def test_exact14_manifest_preflight_rejects_node_budget_before_wire(monkeypatch)
 
 
 def test_operator_recomputes_configured_plan_set_before_authority_calls():
-    # PR #1249 review 3744915238: stale aggregate hashes fail before cell consumption.
+    # PR #1249 review 3744915238: 过期的聚合哈希必须在消耗 cell 前失败。
     source = Path("benchmarks/codegraph_compare/qualification_operator.py").read_text(
         encoding="utf-8"
     )

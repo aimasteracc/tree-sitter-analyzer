@@ -1,4 +1,4 @@
-"""Issue #1376：迁移原有 POSIX 标记，不新增平台排除。"""
+"""Issue #1376：_benchmark_harness_platform 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 import pytest
 

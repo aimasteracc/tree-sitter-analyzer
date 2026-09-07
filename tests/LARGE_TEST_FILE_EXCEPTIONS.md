@@ -70,49 +70,73 @@ Acceptable temporary reasons:
 ## Issue #1376: Benchmark Harness Split
 
 The 16,567-line `test_benchmark_harness.py` at
-`50252c224d439b8a06e4055dee9f9a057a03fdef` is now 32 behavior-focused test
-modules plus five non-collected helper modules. All paths below are under
-`tests/unit/`. The failed two-file WIP is not the baseline.
+`50252c224d439b8a06e4055dee9f9a057a03fdef` is split into bounded behavior
+modules and non-collected shared helpers, under the explicit #1376 migration
+authorization. PR #1393 applies CLAUDE.md's **500-line hard cap** to every
+migrated Python module; the 800-line inventory threshold above is a legacy
+warning line, not permission to exceed 500. The size contract dynamically
+discovers both harness filename prefixes rather than fixing a module count.
+All paths below are under `tests/unit/`. The failed two-file WIP is not the
+baseline; this review round also compares directly against `ab9cc537`.
 
 | File | Lines |
 |---|---:|
-| `test_benchmark_harness.py` | 481 |
-| `test_benchmark_harness_authority_lifecycle.py` | 576 |
+| `test_benchmark_harness.py` | 476 |
+| `test_benchmark_harness_authority_host.py` | 129 |
+| `test_benchmark_harness_authority_lifecycle.py` | 468 |
 | `test_benchmark_harness_authority_storage.py` | 378 |
-| `test_benchmark_harness_canary_evidence.py` | 526 |
-| `test_benchmark_harness_canary_preflight.py` | 556 |
+| `test_benchmark_harness_canary_evidence.py` | 388 |
+| `test_benchmark_harness_canary_preflight.py` | 393 |
 | `test_benchmark_harness_canary_protocol.py` | 420 |
-| `test_benchmark_harness_experiment_integrity.py` | 723 |
+| `test_benchmark_harness_canary_workspace.py` | 173 |
+| `test_benchmark_harness_decision_service.py` | 253 |
+| `test_benchmark_harness_decision_transport.py` | 263 |
+| `test_benchmark_harness_experiment_integrity.py` | 390 |
+| `test_benchmark_harness_experiment_registry.py` | 347 |
 | `test_benchmark_harness_filesystem_evidence.py` | 352 |
-| `test_benchmark_harness_gin_bundle.py` | 593 |
+| `test_benchmark_harness_gin_bundle.py` | 465 |
+| `test_benchmark_harness_gin_codegraph_receipts.py` | 164 |
 | `test_benchmark_harness_gin_execution.py` | 385 |
+| `test_benchmark_harness_gin_index_snapshot.py` | 330 |
 | `test_benchmark_harness_gin_qualification.py` | 413 |
-| `test_benchmark_harness_gin_receipts.py` | 537 |
+| `test_benchmark_harness_gin_receipts.py` | 387 |
 | `test_benchmark_harness_gin_tool_policy.py` | 394 |
-| `test_benchmark_harness_gin_workspace.py` | 724 |
+| `test_benchmark_harness_gin_workspace.py` | 241 |
 | `test_benchmark_harness_host_audit.py` | 379 |
-| `test_benchmark_harness_operator_pipeline.py` | 559 |
-| `test_benchmark_harness_plan_contract.py` | 624 |
-| `test_benchmark_harness_platform_contract.py` | 179 |
-| `test_benchmark_harness_receipt_authentication.py` | 522 |
-| `test_benchmark_harness_receipt_binding.py` | 538 |
-| `test_benchmark_harness_receipt_json.py` | 310 |
-| `test_benchmark_harness_records.py` | 455 |
+| `test_benchmark_harness_operator_io.py` | 211 |
+| `test_benchmark_harness_operator_pipeline.py` | 372 |
+| `test_benchmark_harness_plan_contract.py` | 381 |
+| `test_benchmark_harness_plan_oracles.py` | 271 |
+| `test_benchmark_harness_platform_contract.py` | 317 |
+| `test_benchmark_harness_receipt_authentication.py` | 445 |
+| `test_benchmark_harness_receipt_binding.py` | 422 |
+| `test_benchmark_harness_receipt_json.py` | 312 |
+| `test_benchmark_harness_receipt_resource_limits.py` | 149 |
+| `test_benchmark_harness_receipt_retention.py` | 107 |
+| `test_benchmark_harness_receipt_transport.py` | 293 |
+| `test_benchmark_harness_records.py` | 445 |
 | `test_benchmark_harness_recovery_preflight.py` | 123 |
 | `test_benchmark_harness_resource_bounds.py` | 446 |
-| `test_benchmark_harness_service_ledger.py` | 750 |
-| `test_benchmark_harness_service_schema.py` | 766 |
+| `test_benchmark_harness_service_ledger.py` | 298 |
+| `test_benchmark_harness_service_runtime_schema.py` | 419 |
+| `test_benchmark_harness_service_schema.py` | 376 |
 | `test_benchmark_harness_setup_backend.py` | 209 |
-| `test_benchmark_harness_setup_failures.py` | 542 |
-| `test_benchmark_harness_setup_manifest.py` | 632 |
+| `test_benchmark_harness_setup_diagnostics.py` | 180 |
+| `test_benchmark_harness_setup_failures.py` | 380 |
+| `test_benchmark_harness_setup_manifest.py` | 459 |
+| `test_benchmark_harness_setup_schedule.py` | 190 |
 | `test_benchmark_harness_setup_schema.py` | 271 |
-| `test_benchmark_harness_source_inventory.py` | 643 |
-| `test_benchmark_harness_transport_recovery.py` | 735 |
+| `test_benchmark_harness_source_inventory.py` | 468 |
+| `test_benchmark_harness_source_manifest.py` | 193 |
+| `test_benchmark_harness_transport_recovery.py` | 229 |
+| `test_benchmark_harness_verifier_ledger.py` | 245 |
 | `_benchmark_harness_matrix_helpers.py` | 380 |
 | `_benchmark_harness_platform.py` | 20 |
-| `_benchmark_harness_qualification_helpers.py` | 538 |
+| `_benchmark_harness_qualification_helpers.py` | 315 |
+| `_benchmark_harness_receipt_helpers.py` | 232 |
 | `_benchmark_harness_service_helpers.py` | 456 |
-| `_benchmark_harness_smoke_helpers.py` | 70 |
+| `_benchmark_harness_smoke_helpers.py` | 347 |
+| `_benchmark_harness_workspace_helpers.py` | 178 |
 
 Run the entire migrated surface with
 `uv run pytest tests/unit/test_benchmark_harness*.py -q` (default four xdist
@@ -120,36 +144,49 @@ workers). The live verification command in
 [`benchmarks/codegraph_compare/README.md`](../benchmarks/codegraph_compare/README.md)
 uses this same glob; selecting only the old file no longer covers the harness.
 
-Before/after `pytest --collect-only -m ""` collected exactly 702 nodeids,
-including class methods and parameter IDs. The mapping preserves everything
-after the first `::`; only the owning file changes. The 609 checked AST blocks
-(tests, helpers, and intact classes) are **not all identical to the original**:
-the staged encoding ratchet reported 71 calls in 11 migrated files. Exactly
-66 implicit-locale text calls now specify `encoding="utf-8"`. This is the only
-additional behavior change beyond the split: text decoding/encoding no longer
-depends on the runner's locale. Another five calls already passed `"utf-8"`
-positionally; they now use the same value as an `encoding=` keyword because
-the detector only recognizes keywords. Their encoding behavior is unchanged.
-No pre-existing explicit encoding value or test payload was changed.
+Actual before/after `pytest --collect-only -m ""` retains all 702 original
+nodeids, including class methods and parameter IDs. The original-case mapping
+preserves everything after the first `::`; only the owning file changes.
+New platform-governance cases are counted separately, with one parameter per
+actual POSIX-section module, plus the independent 500-line inventory contract.
 
-Pairwise AST verification excludes import statements and source positions,
-then normalizes only an added UTF-8 keyword at an old implicit text call, or
-the five exact `read_text("utf-8")` to `read_text(encoding="utf-8")` conversions.
-Original, current, and normalized fingerprints are recorded separately.
-Existing keyword/positional encoding changes or removals, non-UTF-8 additions,
-assertion changes, payload changes, and receiver changes are rejected by ten
-negative probes. Decorators, test parameters, assertions, and test/helper
-docstrings are not excluded. Collected markers and fixture scopes still match
-exactly. The per-file module descriptions were corrected to disclose UTF-8.
+The function/method ASTs are **not claimed to be byte-identical**. The preceding
+encoding-ratchet fix changed exactly 66 implicit-locale text calls to explicit
+`encoding="utf-8"`; five already-explicit positional UTF-8 arguments became
+same-valued keywords. This review preserves those changes without adding any
+new encoding changes. No explicit encoding value or test payload was changed.
+Real comments and docstrings are now Chinese; tokenizer/AST boundaries protect
+test-input strings, assertion strings, and pragma/noqa/type directives.
+
+Pairwise AST verification first recognizes true module/class/function
+docstrings, then excludes their translated values, import statements, and
+source positions. It does not discard arbitrary string expressions; a string
+following an import is not retroactively treated as a docstring. Decorators,
+test parameters, assertions, test data, and all other executable nodes remain
+strictly compared. The review checks 589 function/method blocks against
+`ab9cc537` and chains 588 original-source function/method blocks back to the
+16,567-line baseline, normalizing only the previously authorized 66+5 UTF-8
+adjustments in that older comparison. Original, current, and normalized
+fingerprints are recorded separately. Seven docstring-boundary negative probes
+and the ten encoding probes reject business-string/assertion/encoding changes.
+Collected markers and fixture scopes match for every original case.
 
 The original sole `tiny_repo` fixture remains function-scoped in the entry
 module. There were no class/module fixtures or xunit lifecycle hooks to widen
 or duplicate. Split classes retain their names and inherit only their original
-non-test helpers; helper modules never import tests. POSIX section registration
-now receives each module's namespace explicitly instead of consulting the
-helper module's globals. The five tests inspected by the simulated-Windows
-contract remain together with that contract, and the original platform reason
-and string condition are unchanged. The six pre-section tests remain unmarked.
+non-test helpers; helper modules never import tests. All original helper
+methods are defined once, even when several test modules share a helper base.
+
+The new function-scoped `posix_module` fixture discovers every actual top-level
+`_POSIX_QUALIFICATION_SECTION_START` assignment. Parameterized governance checks
+exact final registration and exact platform markers for every section test,
+comparing source definitions with the runtime namespace. In-memory appended-test
+and missing-marker mutations must trigger assertion failures for every module.
+These new governance tests precede the POSIX boundary and also run on Windows;
+they copy namespaces/functions rather than mutating live test modules. The
+original local and simulated-Windows tests remain, including their five
+introspected cases. The original platform reason/condition are unchanged, and
+the six original pre-section cases remain unmarked.
 
 `test_safe_to_edit_tool.py` and `test_ast_cache.py` remain tracked above; this
 split does not close all of #1376. Historical reports are unchanged.

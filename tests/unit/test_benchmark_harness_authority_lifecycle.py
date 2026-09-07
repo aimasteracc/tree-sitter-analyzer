@@ -1,4 +1,4 @@
-"""Issue #1376：authority lifecycle 行为组，保留测试逻辑，文本 I/O 显式使用 UTF-8。"""
+"""Issue #1376：test_benchmark_harness_authority_lifecycle 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ import pytest
 from tests.unit._benchmark_harness_platform import (
     mark_posix_qualification_section_tests,
 )
-from tests.unit._benchmark_harness_service_helpers import _mock_authority_cgroup_host
 
 _POSIX_QUALIFICATION_SECTION_START = sys._getframe().f_lineno
 _mark_posix_qualification_section_tests = partial(
@@ -26,7 +25,7 @@ _mark_posix_qualification_section_tests = partial(
 def test_operator_gives_authority_aggregate_remaining_timeout(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1249 review 3744178822: sealing time must not consume producer wall budget.
+    # PR #1249 review 3744178822: 封存耗时不能占用生产者的墙钟时间预算。
     from benchmarks.codegraph_compare import qualification_operator
     from benchmarks.codegraph_compare.receipt_v3 import (
         canonical_json_bytes,
@@ -80,7 +79,7 @@ def test_operator_gives_authority_aggregate_remaining_timeout(
     digest = hashlib.sha256(canonical_json_bytes(decision)).hexdigest()
     for contract in contracts:
         contract["decision_contract_sha256"] = digest
-    # Rewrite after adding the common decision digest.
+    # 添加共享 decision 摘要后重新写入。
     for ordinal, contract in enumerate(contracts):
         (contracts_dir / f"{ordinal}.json").write_bytes(canonical_json_bytes(contract))
     public_config = tmp_path / "public.json"
@@ -150,7 +149,7 @@ def test_operator_gives_authority_aggregate_remaining_timeout(
 
 
 def test_authority_deadline_subtracts_docker_start_rpc_and_audit_time(monkeypatch):
-    # PR #1249 review 3744261033: producer budget is Docker StartedAt-to-FinishedAt.
+    # PR #1249 review 3744261033: 生产者预算是 Docker StartedAt 到 FinishedAt 之间的时间。
     from benchmarks.codegraph_compare import audit_authority_runner as runner
 
     clock = SimpleNamespace(
@@ -209,7 +208,7 @@ def test_authority_deadline_subtracts_docker_start_rpc_and_audit_time(monkeypatc
 
 
 def test_producer_gate_readiness_timeout_is_terminal(tmp_path: Path, monkeypatch):
-    # PR #1249 review 3744358517: a missing gate reader cannot hang the reservation.
+    # PR #1249 review 3744358517: 缺失的 gate 读取者不能挂起预留状态。
     import errno
 
     from benchmarks.codegraph_compare import audit_authority_runner as runner
@@ -235,7 +234,7 @@ def test_producer_gate_readiness_timeout_is_terminal(tmp_path: Path, monkeypatch
 def test_operator_rejects_short_common_lifetime_before_first_cell(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1249 review 3744588269: closed serial budget failure consumes no job.
+    # PR #1249 review 3744588269: 封闭的串行预算检查失败不能消耗任务。
     from benchmarks.codegraph_compare import qualification_operator as operator
     from benchmarks.codegraph_compare.receipt_v3 import (
         canonical_json_bytes,
@@ -334,115 +333,8 @@ def test_operator_rejects_short_common_lifetime_before_first_cell(
     assert callbacks == []
 
 
-def test_authority_preflight_rejects_ambiguous_mount_without_state(
-    tmp_path: Path, monkeypatch
-):
-    # PR #1249 review 3744627747: plan mount errors must precede reservation.
-    from benchmarks.codegraph_compare import audit_authority_runner as authority
-    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
-
-    job = tmp_path / "job"
-    job.mkdir()
-    plan = {
-        "resource_ceilings": {"io_bytes": 1024},
-        "executions": [
-            {
-                "id": execution_id,
-                "argv": [
-                    "/tool/bin",
-                    execution_id,
-                    "--config",
-                    "/config.json",
-                    *(
-                        ["--source", "/source", "--source", "/source"]
-                        if execution_id == "build"
-                        else []
-                    ),
-                ],
-            }
-            for execution_id in ("delete", "build", "health", "symbol", "call")
-        ],
-    }
-    (job / "plan.json").write_bytes(canonical_json_bytes(plan))
-    runner = object.__new__(authority.AuthorityRunner)
-    runner._artifacts = tmp_path
-    runner._inputs = lambda _contract: (job, {}, {})
-    runner._verify_staged = lambda *_args: 1
-    monkeypatch.setattr(authority, "validate_producer_plan", lambda value: value)
-
-    with pytest.raises(ValueError, match="source target is not exact"):
-        runner.preflight({"job_id": "a" * 64})
-
-    assert list(tmp_path.glob("*.state")) == []
-
-
-def test_authority_cgroup_host_failure_precedes_running_reservation(
-    tmp_path: Path, monkeypatch
-):
-    # PR #1249 review 3744853003: deterministic host failures cannot consume a job.
-    from benchmarks.codegraph_compare import audit_authority_runner as authority
-
-    job = tmp_path / "job"
-    artifacts = tmp_path / "artifacts"
-    job.mkdir()
-    artifacts.mkdir()
-    (job / "plan.json").write_text("{}", encoding="utf-8")
-    runner = object.__new__(authority.AuthorityRunner)
-    runner._artifacts = artifacts
-    runner._inputs = lambda _contract: (job, {}, {})
-    runner._verify_staged = lambda *_args: 1
-    monkeypatch.setattr(authority, "validate_producer_plan", lambda value: value)
-    monkeypatch.setattr(authority, "_authorized_output_ceiling", lambda _plan: 1)
-    monkeypatch.setattr(
-        authority,
-        "_producer_mount_targets",
-        lambda _plan: ("/source", "/tool", "/config"),
-    )
-    monkeypatch.setattr(
-        authority,
-        "_run",
-        lambda *_args: b'{"CgroupVersion":"2","CgroupDriver":"systemd"}',
-    )
-
-    with pytest.raises(ValueError, match="only cgroup-v2 cgroupfs Docker"):
-        runner.preflight({"job_id": "a" * 64})
-
-    assert list(artifacts.glob("*.state")) == []
-
-
-def test_authority_requires_all_available_cgroup_controllers(
-    tmp_path: Path, monkeypatch
-):
-    # PR #1249 review 3744853003: every producer controller must be available.
-    authority, cgroup = _mock_authority_cgroup_host(tmp_path, monkeypatch)
-    (cgroup / "cgroup.controllers").write_text("cpu memory pids", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="controllers are unavailable"):
-        authority._preflight_cgroup_host()
-
-
-def test_authority_requires_all_delegated_cgroup_controllers(
-    tmp_path: Path, monkeypatch
-):
-    # PR #1249 review 3744853003: every producer controller must be delegated.
-    authority, cgroup = _mock_authority_cgroup_host(tmp_path, monkeypatch)
-    (cgroup / "cgroup.subtree_control").write_text("cpu memory pids", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="controllers are not delegated"):
-        authority._preflight_cgroup_host()
-
-
-def test_authority_requires_writable_cgroup_delegation(tmp_path: Path, monkeypatch):
-    # PR #1249 review 3744853003: the delegated hierarchy must accept a child.
-    authority, _cgroup = _mock_authority_cgroup_host(tmp_path, monkeypatch)
-    monkeypatch.setattr(authority.os, "access", lambda *_args: False)
-
-    with pytest.raises(ValueError, match="delegation is not writable"):
-        authority._preflight_cgroup_host()
-
-
 def test_authority_response_recovery_uses_original_absolute_deadline(monkeypatch):
-    # PR #1249 review 3744677879: recovery cannot renew a consumed request budget.
+    # PR #1249 review 3744677879: 恢复不能续期已经消耗的请求预算。
     from benchmarks.codegraph_compare import audit_authority_client as client
 
     observed = []
@@ -468,7 +360,7 @@ def test_authority_response_recovery_uses_original_absolute_deadline(monkeypatch
 
 
 def test_authority_budget_includes_all_bounded_post_processing():
-    # PR #1249 review 3744677882: preflight covers work after producer exit.
+    # PR #1249 review 3744677882: 预检必须覆盖生产者退出后的工作。
     from benchmarks.codegraph_compare.execution_budget import (
         authority_cell_budget_seconds,
     )
@@ -488,7 +380,7 @@ def test_authority_budget_includes_all_bounded_post_processing():
 def test_authority_retries_transport_failure_under_original_deadline(
     monkeypatch, failure: str
 ):
-    # PR #1249 reviews 3744915224: no authority retry may renew the cell budget.
+    # PR #1249 reviews 3744915224: 任何 authority 重试都不能续期 cell 预算。
     from benchmarks.codegraph_compare import audit_authority_client as client
 
     observed: list[tuple[str, float]] = []
@@ -520,7 +412,7 @@ def test_authority_retries_transport_failure_under_original_deadline(
 
 
 def test_authority_cleanup_recovers_only_after_confirmed_absence(monkeypatch):
-    # PR #1249 review 3744944754: ambiguous rm requires Docker+cgroup confirmation.
+    # PR #1249 review 3744944754: 有歧义的 rm 结果需要 Docker 和 cgroup 共同确认。
     from benchmarks.codegraph_compare import audit_authority_runner as authority
 
     calls = []
@@ -546,7 +438,7 @@ def test_authority_cleanup_recovers_only_after_confirmed_absence(monkeypatch):
 
 
 def test_authority_cleanup_unknown_state_is_process_fatal(monkeypatch):
-    # PR #1249 review 3744944754: unconfirmed cleanup must fail-stop the service.
+    # PR #1249 review 3744944754: 无法确认清理结果时，服务必须停止运行。
     from benchmarks.codegraph_compare import audit_authority_runner as authority
 
     ticks = iter((0.0, 0.0, 1.0, 1.0))

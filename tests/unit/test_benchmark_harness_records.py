@@ -1,4 +1,4 @@
-"""Issue #1376：records 行为组，原测试 AST 保持不变。"""
+"""Issue #1376：test_benchmark_harness_records 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
@@ -162,9 +162,7 @@ class TestCodeGraphCompareEvaluator:
 
 
 class TestRunIdUniqueness:
-    """Raw benchmark artifacts must survive re-runs: a per-invocation session_id
-    keeps repeated runs of the same (question, arm, repeat) from overwriting each
-    other's transcript — without it, n>1 cost measurement loses earlier data."""
+    """原始 benchmark 产物必须在重跑后保留。每次调用独立的 session_id 防止相同 question、arm、repeat 的运行互相覆盖 transcript；否则 n>1 的成本测量会丢失较早数据。"""
 
     def test_session_id_uniquifies_raw_artifacts(self, tmp_path):
         from benchmarks.codegraph_compare.adapters import RunConfig
@@ -189,9 +187,9 @@ class TestRunIdUniqueness:
         r1 = run_one(**common, session_id="SESS_A")
         r2 = run_one(**common, session_id="SESS_B")
 
-        # Same logical run_id (grouping key) ...
+        # 使用相同的逻辑 run_id 作为分组键。
         assert r1["run_id"] == r2["run_id"]
-        # ... but DISTINCT session ids + distinct raw artifact paths (no overwrite).
+        # 但会话 ID 和原始产物路径必须不同，不能覆盖。
         assert r1["session_id"] == "SESS_A"
         assert r2["session_id"] == "SESS_B"
         assert r1["transcript_path"] != r2["transcript_path"]
@@ -202,8 +200,7 @@ class TestRunIdUniqueness:
         assert any("SESS_B" in n for n in results_files)
 
     def test_run_record_with_session_id_validates_against_schema(self, tmp_path):
-        """Codex P2 #332: the new session_id field must NOT break RunRecord's
-        extra='forbid' schema — fresh runner output has to validate."""
+        """Codex P2 #332：新增 session_id 不能破坏 RunRecord 的 extra='forbid' schema；新 runner 输出必须通过验证。"""
         from benchmarks.codegraph_compare.adapters import RunConfig
         from benchmarks.codegraph_compare.adapters.claude_runner import run_one
         from benchmarks.codegraph_compare.schemas import RunRecord
@@ -223,23 +220,19 @@ class TestRunIdUniqueness:
             dry_run=True,
             session_id="SESS_X",
         )
-        # Must not raise — session_id is now a declared optional field.
+        # 不能抛异常：session_id 现已声明为可选字段。
         validated = RunRecord(**record)
         assert validated.session_id == "SESS_X"
 
 
 class TestRunRecordCostCacheColumns:
-    """The benchmark must record the provider's REAL cache/cost accounting so a
-    cost comparison can't be silently contaminated by estimates (see
-    benchmark-cost-analysis-rigor memory). The new columns must be optional with
-    defaults so pre-existing runs.jsonl records still validate under
-    extra='forbid'."""
+    """benchmark 必须记录提供方真实的缓存和成本计量，不能让估算值静默污染成本比较（参见 benchmark-cost-analysis-rigor 记忆）。新增列必须可选并提供默认值，使既有 runs.jsonl 记录在 extra='forbid' 下仍可验证。"""
 
     def test_run_record_defaults_keep_old_records_loadable(self):
         from benchmarks.codegraph_compare.schemas import RunRecord
 
-        # An "old" record written before the cost/cache columns existed — it has
-        # none of the new keys. extra='forbid' + defaults must let it validate.
+        # 在成本和缓存列引入前写入的旧记录中，
+        # 没有任何新增键；extra='forbid' 配合默认值必须让它通过验证。
         old_record = {
             "run_id": "q1__native-only__claude__00",
             "repo": "gin",
@@ -262,7 +255,7 @@ class TestRunRecordCostCacheColumns:
             "transcript_path": "/tmp/x.jsonl",
         }
         validated = RunRecord(**old_record)
-        # Defaults applied — no real accounting present in an old record.
+        # 应用默认值；旧记录中没有真实的计费数据。
         assert validated.cache_read_tokens == 0
         assert validated.cache_creation_tokens == 0
         assert validated.total_cost_usd == 0.0
@@ -303,8 +296,7 @@ class TestRunRecordCostCacheColumns:
         assert validated.num_turns == 7
 
     def test_runner_parses_real_cache_cost_from_claude_usage_block(self):
-        """The runner must pull cache_read/creation, total_cost_usd and num_turns
-        straight from the claude --print result/usage block — not estimate them."""
+        """runner 必须直接从 claude --print 的 result/usage 块提取 cache_read/creation、total_cost_usd 和 num_turns，不能估算。"""
         from benchmarks.codegraph_compare.adapters.claude_runner import (
             _extract_cost_accounting,
         )
@@ -326,9 +318,7 @@ class TestRunRecordCostCacheColumns:
         assert acct["num_turns"] == 7
 
     def test_runner_captures_codex_cache_hits(self):
-        """Codex reports prompt-cache hits as `cached_input_tokens`, not Claude's
-        `cache_read_input_tokens` — the backend-neutral cache_read_tokens column
-        must capture them, not record 0 (Codex P2 #342)."""
+        """Codex 通过 cached_input_tokens 而非 Claude 的 cache_read_input_tokens 报告提示缓存命中。与后端无关的 cache_read_tokens 列必须捕获它，不能记为 0（Codex P2 #342）。"""
         from benchmarks.codegraph_compare.adapters.claude_runner import (
             _extract_cost_accounting,
         )
@@ -358,7 +348,7 @@ class TestRunRecordCostCacheColumns:
             dry_run=True,
             session_id="SESS_X",
         )
-        # Keys present on every record (dry-run → zeros) and schema-valid.
+        # 每条记录都包含这些键；dry-run 使用零值，且符合 schema。
         for key in (
             "cache_read_tokens",
             "cache_creation_tokens",
@@ -366,7 +356,7 @@ class TestRunRecordCostCacheColumns:
             "num_turns",
         ):
             assert key in record, key
-        RunRecord(**record)  # must not raise
+        RunRecord(**record)  # 不能抛出异常。
 
 
 class TestBenchmarkV1SchemaDispatch:

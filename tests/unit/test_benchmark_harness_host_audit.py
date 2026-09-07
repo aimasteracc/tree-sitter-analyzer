@@ -1,4 +1,4 @@
-"""Issue #1376：host_audit 行为组，原测试 AST 保持不变。"""
+"""Issue #1376：test_benchmark_harness_host_audit 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ _mark_posix_qualification_section_tests = partial(
 def test_qualification_external_audit_protocol_verifies_exact_signed_request(
     tmp_path: Path, monkeypatch
 ):
-    # Mutation 5 (2026-08-10): only the external Unix authority may authorize an audit.
+    # Mutation 5 (2026-08-10): 只有外部 Unix authority 可以授权审计。
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     from benchmarks.codegraph_compare import audit_authority_client
@@ -60,7 +60,7 @@ def test_qualification_external_audit_protocol_verifies_exact_signed_request(
 def test_qualification_external_audit_accepts_early_response_close(
     tmp_path: Path, monkeypatch
 ):
-    # GH-1253: macOS may report ENOTCONN after the authority closes its response.
+    # GH-1253：authority 关闭响应后，macOS 可能报告 ENOTCONN。
     import errno
     import socket
 
@@ -114,7 +114,7 @@ def test_qualification_external_audit_accepts_early_response_close(
 def test_qualification_external_audit_protocol_rejects_forged_reply(
     tmp_path: Path, monkeypatch
 ):
-    # Mutation 5 (2026-08-10): a socket endpoint without the pinned key is non-authorizing.
+    # Mutation 5 (2026-08-10): 没有固定密钥的 socket 端点不具备授权能力。
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     from benchmarks.codegraph_compare import audit_authority_client
@@ -147,7 +147,7 @@ def test_qualification_external_audit_protocol_rejects_forged_reply(
 
 
 def test_qualification_host_auditor_rejects_local_private_key_cli():
-    # Mutation 5 (2026-08-10): production has no local auditor-key compatibility path.
+    # Mutation 5 (2026-08-10): 生产环境没有本地 auditor 密钥的兼容路径。
     from benchmarks.codegraph_compare.host_auditor import main
 
     with pytest.raises(SystemExit) as error:
@@ -176,7 +176,7 @@ def test_qualification_host_auditor_rejects_local_private_key_cli():
 
 
 def test_qualification_host_auditor_checks_root_pinned_top_level_image_id():
-    # Mutation 5 (2026-08-10): Config.Image alone cannot authorize a container.
+    # Mutation 5 (2026-08-10): 仅凭 Config.Image 不能授权容器。
     from benchmarks.codegraph_compare.host_auditor import _docker_facts
 
     inspected = {
@@ -203,7 +203,7 @@ def test_qualification_host_auditor_checks_root_pinned_top_level_image_id():
 
 
 def test_qualification_host_auditor_preserves_exact_observed_security_options():
-    # PR #1249 review 3745026819: terminal evidence is observed, not synthesized.
+    # PR #1249 review 3745026819: 终态证据来自观测，而不是合成。
     from benchmarks.codegraph_compare.host_auditor import (
         PRODUCER_GATE_TARGET,
         PRODUCER_GATE_WRAPPER,
@@ -247,7 +247,7 @@ def test_qualification_host_auditor_preserves_exact_observed_security_options():
 
 
 def test_qualification_host_auditor_rejects_extra_security_option():
-    # PR #1249 review 3745026819: unrequested Docker isolation options fail closed.
+    # PR #1249 review 3745026819: 未请求的 Docker 隔离选项必须失败关闭。
     from benchmarks.codegraph_compare.host_auditor import (
         PRODUCER_GATE_TARGET,
         PRODUCER_GATE_WRAPPER,
@@ -301,7 +301,7 @@ def test_host_auditor_accepts_only_all_eight_exact_producer_bind_mounts(
     tmp_path: Path,
     monkeypatch,
 ):
-    # PR #1249 review 3744261017: authenticated tool/config/seccomp mounts are mandatory.
+    # PR #1249 review 3744261017: 经过认证的工具、配置和 seccomp 挂载都是必需的。
     from benchmarks.codegraph_compare.host_auditor import _mounts
     from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
 

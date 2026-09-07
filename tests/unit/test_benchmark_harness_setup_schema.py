@@ -1,4 +1,4 @@
-"""Issue #1376：setup_schema 行为组，原测试 AST 保持不变。"""
+"""Issue #1376：test_benchmark_harness_setup_schema 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from tests.unit._benchmark_harness_matrix_helpers import _v1_manifest, _v1_run
 
 
 class TestCodeGraphCompareSetupGate(_TestCodeGraphCompareSetupGate):
-    """Model-backed matrix work must be fail-closed behind setup validation."""
+    """模型驱动的矩阵执行必须受 setup 验证保护，失败时保持关闭。"""
 
     def test_index_evidence_schema_version_requires_integer_one(self):
         from benchmarks.codegraph_compare.setup_validation import (

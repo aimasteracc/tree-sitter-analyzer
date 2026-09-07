@@ -1,4 +1,4 @@
-"""Issue #1376：service helpers 行为组，保留测试逻辑，文本 I/O 显式使用 UTF-8。"""
+"""Issue #1376：_benchmark_harness_service_helpers 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 

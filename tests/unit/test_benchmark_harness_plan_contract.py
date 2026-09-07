@@ -1,4 +1,4 @@
-"""Issue #1376：plan_contract 行为组，原测试 AST 保持不变。"""
+"""Issue #1376：test_benchmark_harness_plan_contract 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
@@ -16,10 +16,6 @@ from tests.unit._benchmark_harness_platform import (
 from tests.unit._benchmark_harness_qualification_helpers import (
     _qualification_inventories,
     _qualification_plans,
-    _qualification_verifier_config,
-    _resign_qualification_receipt,
-    _validate_qualification_receipt,
-    _write_valid_qualification_receipt,
 )
 from tests.unit._benchmark_harness_service_helpers import _qualification_v3_body
 
@@ -33,7 +29,7 @@ _mark_posix_qualification_section_tests = partial(
 def test_cell_plan_rejects_reserved_oracle_execution_ids(
     tmp_path: Path, reserved_id: str
 ):
-    # PR #1247: an oracle must not replace a built-in execution in frozen argv.
+    # PR #1247: oracle 不能替换冻结 argv 中的内置执行项。
     from dataclasses import replace
 
     from benchmarks.codegraph_compare.setup_qualification import ExecutionSpecV1
@@ -83,7 +79,7 @@ def test_cell_plan_allows_oracle_id_that_only_contains_reserved_word(tmp_path: P
 
 
 def test_execution_spec_rejects_mutable_argv():
-    # PR #1247: frozen dataclasses must not retain caller-owned command lists.
+    # PR #1247: 冻结 dataclass 不能保留调用方持有的可变命令列表。
     from benchmarks.codegraph_compare.setup_qualification import ExecutionSpecV1
 
     with pytest.raises(ValueError, match="argv"):
@@ -95,70 +91,8 @@ def test_execution_spec_rejects_mutable_argv():
         )
 
 
-def test_oracle_spec_rejects_mutable_query():
-    # PR #1247: oracle query allowlists use exact immutable tuples.
-    from benchmarks.codegraph_compare.setup_qualification import OracleSpecV1
-
-    with pytest.raises(ValueError, match="immutable string pairs"):
-        OracleSpecV1("main.symbol", "symbol", [("name", "Main")], {})  # type: ignore[arg-type]
-
-
-def test_oracle_expected_result_is_copied_to_canonical_bytes():
-    # PR #1247: later caller mutations cannot alter a signed oracle expectation.
-    from benchmarks.codegraph_compare.setup_qualification import OracleSpecV1
-
-    supplied = {"matches": [{"line": 1, "path": "main.ts"}]}
-    spec = OracleSpecV1("main.symbol", "symbol", (("name", "Main"),), supplied)
-    supplied["matches"][0]["line"] = 99
-
-    assert spec.expected_result == b'{"matches":[{"line":1,"path":"main.ts"}]}'
-
-
-def test_oracle_spec_rejects_duplicate_query_key():
-    # PR #1247: dict conversion must not discard an earlier frozen query value.
-    from benchmarks.codegraph_compare.setup_qualification import OracleSpecV1
-
-    with pytest.raises(ValueError, match="parameter keys"):
-        OracleSpecV1(
-            "duplicate.query",
-            "symbol",
-            (("name", "A"), ("name", "B")),
-            {"path": "main.ts"},
-        )
-
-
-@pytest.mark.parametrize(
-    "query_key",
-    ("config", "--INDEX", "source_path", "cwd", "tool-path"),
-)
-def test_oracle_spec_rejects_harness_owned_query_flags(query_key: str):
-    # PR #1247: query expansion cannot override harness-selected execution inputs.
-    from benchmarks.codegraph_compare.setup_qualification import OracleSpecV1
-
-    with pytest.raises(ValueError, match="harness-owned flags"):
-        OracleSpecV1(
-            "reserved.query",
-            "symbol",
-            ((query_key, "decoy"),),
-            {"matches": []},
-        )
-
-
-def test_oracle_spec_rejects_query_flag_normalization_collision():
-    # PR #1247: syntactic aliases must not produce duplicate parser options.
-    from benchmarks.codegraph_compare.setup_qualification import OracleSpecV1
-
-    with pytest.raises(ValueError, match="collide after normalization"):
-        OracleSpecV1(
-            "alias.query",
-            "symbol",
-            (("foo-bar", "one"), ("foo_bar", "two")),
-            {"matches": []},
-        )
-
-
 def test_cell_plan_rejects_noncanonical_execution_cwd(tmp_path: Path):
-    # PR #1247: every frozen command is bound to an authenticated working directory.
+    # PR #1247: 每条冻结命令都绑定到经过认证的工作目录。
     from dataclasses import replace
 
     plan = _qualification_plans(tmp_path)[0]
@@ -183,72 +117,13 @@ def test_cell_plan_rejects_noncanonical_execution_cwd(tmp_path: Path):
 def test_cell_plan_rejects_nonexact_or_reserved_index_path(
     tmp_path: Path, index_path: str
 ):
-    # PR #1247: index output cannot overlap retained evidence or control documents.
+    # PR #1247: 索引输出不能与留存证据或控制文档重叠。
     from dataclasses import replace
 
     plan = _qualification_plans(tmp_path)[0]
 
     with pytest.raises(ValueError, match="Index path"):
         replace(plan, index_path=index_path)
-
-
-def test_resource_plan_rejects_each_missing_ceiling():
-    from dataclasses import fields
-
-    import pytest
-
-    from benchmarks.codegraph_compare.setup_qualification import ResourcePlanV1
-
-    valid = {
-        "wall_timeout_seconds": 30,
-        "max_cpu_seconds": 20,
-        "max_index_bytes": 1024,
-        "max_disk_write_bytes": 4096,
-        "min_free_disk_bytes": 1,
-        "max_rss_bytes": 1024,
-        "max_processes": 2,
-        "max_open_files": 8,
-        "max_concurrency": 1,
-    }
-    rejected = []
-    for field in fields(ResourcePlanV1):
-        values = dict(valid)
-        values[field.name] = 0 if field.name != "max_concurrency" else 2
-        with pytest.raises(ValueError, match="resource ceiling"):
-            ResourcePlanV1(**values)
-        rejected.append(field.name)
-
-    assert tuple(rejected) == tuple(valid)
-
-
-@pytest.mark.parametrize("value", (float("nan"), float("inf"), True))
-def test_resource_plan_rejects_nonfinite_or_boolean_ceiling(value):
-    import pytest
-
-    from benchmarks.codegraph_compare.setup_qualification import ResourcePlanV1
-
-    values = {
-        "wall_timeout_seconds": value,
-        "max_cpu_seconds": 20,
-        "max_index_bytes": 1024,
-        "max_disk_write_bytes": 4096,
-        "min_free_disk_bytes": 1,
-        "max_rss_bytes": 1024,
-        "max_processes": 2,
-        "max_open_files": 8,
-        "max_concurrency": 1,
-    }
-    with pytest.raises(ValueError, match="resource ceiling"):
-        ResourcePlanV1(**values)
-
-
-def test_resource_plan_accepts_arbitrarily_large_exact_integer_ceiling():
-    # PR #1247: math.isfinite used to overflow while converting this JSON integer.
-    from benchmarks.codegraph_compare.setup_qualification import ResourcePlanV1
-
-    plan = ResourcePlanV1(10**400, 20, 1024, 4096, 1, 1024, 2, 8, 1)
-
-    assert plan.wall_timeout_seconds == 10**400
 
 
 def test_cell_plan_rejects_duplicate_oracle_ids(tmp_path: Path):
@@ -262,75 +137,8 @@ def test_cell_plan_rejects_duplicate_oracle_ids(tmp_path: Path):
         replace(plan, oracle_specs=(plan.oracle_specs[0], duplicate))
 
 
-def test_plan_set_rejects_cross_arm_oracle_spec_difference(tmp_path: Path):
-    # PR #1247: both comparison arms must use the exact same oracle contract.
-    from dataclasses import replace
-
-    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
-        _trusted_commits,
-        _validate_plans,
-    )
-
-    plans = list(_qualification_plans(tmp_path))
-    changed_oracle = replace(
-        plans[1].oracle_specs[0], expected_result={"path": "other.ts", "line": 1}
-    )
-    plans[1] = replace(
-        plans[1], oracle_specs=(changed_oracle, plans[1].oracle_specs[1])
-    )
-    trusted = _trusted_commits(Path("benchmarks/codegraph_compare/repos.yaml"))
-
-    with pytest.raises(ValueError, match="exactly identical oracle specifications"):
-        _validate_plans(plans, trusted, _qualification_inventories(plans))
-
-
-def test_plan_set_distinguishes_boolean_from_integer_oracle_result(
-    tmp_path: Path,
-):
-    # PR #1247: Python equality aliases JSON true and integer 1.
-    from dataclasses import replace
-
-    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
-        _trusted_commits,
-        _validate_plans,
-    )
-
-    plans = list(_qualification_plans(tmp_path))
-    first = replace(plans[0].oracle_specs[0], expected_result={"line": True})
-    second = replace(plans[1].oracle_specs[0], expected_result={"line": 1})
-    plans[0] = replace(plans[0], oracle_specs=(first, plans[0].oracle_specs[1]))
-    plans[1] = replace(plans[1], oracle_specs=(second, plans[1].oracle_specs[1]))
-    trusted = _trusted_commits(Path("benchmarks/codegraph_compare/repos.yaml"))
-
-    with pytest.raises(ValueError, match="exactly identical oracle specifications"):
-        _validate_plans(plans, trusted, _qualification_inventories(plans))
-
-
-@pytest.mark.parametrize(
-    "field",
-    ("parse_error_allowlist", "explicit_excluded_allowlist"),
-)
-def test_plan_set_rejects_one_cross_arm_allowlist_difference(
-    tmp_path: Path, field: str
-):
-    # PR #1247: comparison arms must index the exact same eligible source workload.
-    from dataclasses import replace
-
-    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
-        _trusted_commits,
-        _validate_plans,
-    )
-
-    plans = list(_qualification_plans(tmp_path))
-    plans[1] = replace(plans[1], **{field: ("main.ts",)})
-    trusted = _trusted_commits(Path("benchmarks/codegraph_compare/repos.yaml"))
-
-    with pytest.raises(ValueError, match="exactly identical source allowlists"):
-        _validate_plans(plans, trusted, _qualification_inventories(plans))
-
-
 def test_trusted_manifest_rejects_duplicate_id_before_mapping(tmp_path: Path):
-    # PR #1247: mapping construction must not silently overwrite a repository pin.
+    # PR #1247: 构建映射不能静默覆盖仓库的固定提交值。
     import yaml
 
     from benchmarks.codegraph_compare.setup_qualification_orchestration import (
@@ -405,7 +213,7 @@ def test_e0_orchestrator_rejects_untrusted_complete_inventory(tmp_path: Path):
 
 
 def test_cell_plan_requires_each_execution_to_reference_index_path(tmp_path: Path):
-    # PR #1247: every lifecycle and oracle command is bound to the same index.
+    # PR #1247: 所有生命周期和 oracle 命令都绑定同一个索引。
     from dataclasses import replace
 
     plan = _qualification_plans(tmp_path)[0]
@@ -416,7 +224,7 @@ def test_cell_plan_requires_each_execution_to_reference_index_path(tmp_path: Pat
 
 
 def test_cell_plan_build_argv_is_bound_to_exact_source_checkout(tmp_path: Path):
-    # PR #1247: a frozen build cannot consume a checkout other than inventory source.
+    # PR #1247: 冻结构建不能使用清单来源以外的工作副本。
     from dataclasses import replace
 
     plan = _qualification_plans(tmp_path)[0]
@@ -437,59 +245,8 @@ def test_cell_plan_requires_delete_build_health_and_all_oracles(tmp_path: Path):
         replace(plan, executions=plan.executions[1:])
 
 
-def test_oracle_comparison_distinguishes_boolean_from_number(tmp_path: Path):
-    from benchmarks.codegraph_compare.setup_qualification import (
-        _bytes_hash,
-    )
-
-    plan = _qualification_plans(tmp_path)[0]
-    cell_root = tmp_path / "cell"
-    receipt = _write_valid_qualification_receipt(cell_root, plan)
-    blob = receipt["raw_executions"][3]["stdout_bytes"]
-    payload = b'{"line":true,"path":"main.ts"}'
-    (cell_root / blob["path"]).write_bytes(payload)
-    blob["size_bytes"] = len(payload)
-    blob["sha256"] = _bytes_hash(payload)
-    _resign_qualification_receipt(receipt)
-
-    assert _validate_qualification_receipt(
-        receipt,
-        plan=plan,
-        cell_root=cell_root,
-        verifier_config=_qualification_verifier_config(),
-    ) == (
-        "RAW_EXECUTION_EVIDENCE_MISSING",
-        "INDEX_PROVENANCE_MISSING",
-        "OS_AUDIT_MISSING",
-        "HUMAN_ORACLE_APPROVAL_MISSING",
-    )
-
-
-def test_plan_set_rejects_cross_arm_resource_plan_difference(tmp_path: Path):
-    # PR #1247 review 3743050574: comparison arms share one exact resource budget.
-    from dataclasses import replace
-
-    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
-        _trusted_commits,
-        _validate_plans,
-    )
-
-    plans = list(_qualification_plans(tmp_path))
-    plans[1] = replace(
-        plans[1],
-        resources=replace(
-            plans[1].resources,
-            wall_timeout_seconds=plans[1].resources.wall_timeout_seconds + 1,
-        ),
-    )
-    trusted = _trusted_commits(Path("benchmarks/codegraph_compare/repos.yaml"))
-
-    with pytest.raises(ValueError, match="exactly identical resource plans"):
-        _validate_plans(plans, trusted, _qualification_inventories(plans))
-
-
 def test_producer_plan_rejects_noncanonical_environment_digest_before_execution():
-    # PR #1249 review 3744776130: stale execution digests fail producer preflight.
+    # PR #1249 review 3744776130: 过期的执行摘要必须在生产者预检阶段失败。
     from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
     from benchmarks.codegraph_compare.setup_qualification_executor import (
         validate_producer_plan,
@@ -549,7 +306,7 @@ def test_producer_plan_rejects_noncanonical_environment_digest_before_execution(
 
 
 def test_receipt_inventory_rejects_missing_commit_before_signing():
-    # PR #1249 review 3744887352: all inventories share the receipt validator.
+    # PR #1249 review 3744887352: 所有清单共享 receipt validator。
     from benchmarks.codegraph_compare.receipt_inventory import (
         validate_receipt_inventory,
     )
@@ -573,7 +330,7 @@ def test_receipt_inventory_rejects_missing_commit_before_signing():
     ),
 )
 def test_receipt_inventory_enforces_published_relative_path(invalid: str):
-    # PR #1249 review 3744944744: preflight must match published relativePath.
+    # PR #1249 review 3744944744: 预检必须匹配已发布的 relativePath 规则。
     from benchmarks.codegraph_compare.receipt_inventory import (
         validate_receipt_inventory,
     )
@@ -586,7 +343,7 @@ def test_receipt_inventory_enforces_published_relative_path(invalid: str):
 
 
 def test_receipt_inventory_accepts_consistent_sha256_git_object_ids():
-    # PR #1249 review 3744944747: SHA-256 Git repositories use 64-char OIDs.
+    # PR #1249 review 3744944747: SHA-256 Git 仓库使用 64 字符 OID。
     from benchmarks.codegraph_compare.receipt_inventory import (
         validate_receipt_inventory,
     )
@@ -609,7 +366,7 @@ def test_receipt_inventory_accepts_consistent_sha256_git_object_ids():
 
 
 def test_receipt_inventory_rejects_mixed_git_object_formats():
-    # PR #1249 review 3744944747: every OID must match the root-tree algorithm.
+    # PR #1249 review 3744944747: 每个 OID 都必须匹配根树的算法。
     from benchmarks.codegraph_compare.receipt_inventory import (
         validate_receipt_inventory,
     )

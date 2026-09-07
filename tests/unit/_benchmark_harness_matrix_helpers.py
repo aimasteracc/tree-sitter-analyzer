@@ -1,4 +1,4 @@
-"""Issue #1376：_matrix_helpers 行为组，原测试 AST 保持不变。"""
+"""Issue #1376：_benchmark_harness_matrix_helpers 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
@@ -183,7 +183,7 @@ def _v1_eval(run):
 
 
 class TestCodeGraphCompareSetupGate:
-    """Model-backed matrix work must be fail-closed behind setup validation."""
+    """模型驱动的矩阵执行必须受 setup 验证保护，失败时保持关闭。"""
 
     @staticmethod
     def _matrix_args() -> SimpleNamespace:

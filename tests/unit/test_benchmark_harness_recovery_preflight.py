@@ -1,4 +1,4 @@
-"""Issue #1376：recovery_preflight 行为组，原测试 AST 保持不变。"""
+"""Issue #1376：test_benchmark_harness_recovery_preflight 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from tests.unit._benchmark_harness_qualification_helpers import (
 
 
 def test_verifier_retries_definitely_unsent_verification_request(monkeypatch):
-    # PR #1249 review 3744975446: the issued challenge remains safe pre-send.
+    # PR #1249 review 3744975446: 已发出的 challenge 在发送前仍可安全重试。
     from benchmarks.codegraph_compare import verifier_service
 
     manifest, config, begin, envelope = _verifier_recovery_fixture()
@@ -40,7 +40,7 @@ def test_verifier_retries_definitely_unsent_verification_request(monkeypatch):
 
 
 def test_verifier_polls_until_ambiguous_request_commits(monkeypatch):
-    # PR #1249 review 3744975448: VERIFYING is transient under the original deadline.
+    # PR #1249 review 3744975448: VERIFYING 是受原始截止时间约束的瞬态。
     from benchmarks.codegraph_compare import verifier_service
 
     manifest, config, begin, envelope = _verifier_recovery_fixture()
@@ -81,7 +81,7 @@ def test_verifier_polls_until_ambiguous_request_commits(monkeypatch):
 
 
 def test_operator_rejects_staged_inventory_with_untrusted_digest(monkeypatch):
-    # PR #1249 review 3744975449: digest failure must precede authority use.
+    # PR #1249 review 3744975449: 摘要失败必须先于使用 authority。
     from benchmarks.codegraph_compare import qualification_operator as operator
     from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
 
@@ -93,7 +93,7 @@ def test_operator_rejects_staged_inventory_with_untrusted_digest(monkeypatch):
 
 
 def test_decision_parser_accepts_payload_above_receipt_parser_ceiling():
-    # PR #1249 review 3744975455: decision parsing must honor its 64 MiB frame.
+    # PR #1249 review 3744975455: decision 解析必须遵循其 64 MiB 帧限制。
     from benchmarks.codegraph_compare import decision_consumer_service as consumer
 
     padding = "x" * (16 * 1024 * 1024)
@@ -103,7 +103,7 @@ def test_decision_parser_accepts_payload_above_receipt_parser_ceiling():
 
 
 def test_decision_preflight_rejects_final_frame_before_execution(monkeypatch):
-    # PR #1249 review 3744975455: bound the final consume envelope pre-execution.
+    # PR #1249 review 3744975455: 执行前就要约束最终 consume envelope 的大小。
     from benchmarks.codegraph_compare import decision_consumer_service as consumer
 
     monkeypatch.setattr(consumer, "DECISION_ENVELOPE_SCHEMA_OVERHEAD", 0)
@@ -116,7 +116,7 @@ def test_decision_preflight_rejects_final_frame_before_execution(monkeypatch):
 
 
 def test_staged_plan_path_rejects_parent_traversal():
-    # PR #1249 review 3744975460: receipt paths are canonical before reservation.
+    # PR #1249 review 3744975460: receipt 路径必须在预留前规范化。
     from benchmarks.codegraph_compare.setup_qualification_executor import _bounded_path
 
     with pytest.raises(ValueError, match="artifact path is not canonical"):

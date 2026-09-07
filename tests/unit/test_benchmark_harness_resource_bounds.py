@@ -1,4 +1,4 @@
-"""Issue #1376：resource_bounds 行为组，原测试 AST 保持不变。"""
+"""Issue #1376：test_benchmark_harness_resource_bounds 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ _mark_posix_qualification_section_tests = partial(
 def test_qualification_index_observation_streams_canonical_bounded_records(
     tmp_path: Path,
 ):
-    # PR #1249 review 3745026823: observations are bounded before producer success.
+    # PR #1249 review 3745026823: 观测必须在生产者报告成功前受到界限约束。
     from benchmarks.codegraph_compare.setup_qualification_executor import (
         _write_final_index_observation,
     )
@@ -64,7 +64,7 @@ def test_qualification_index_observation_streams_canonical_bounded_records(
 def test_qualification_index_observation_rejects_receipt_node_overflow(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1249 review 3745026823: node complexity fails before successful sealing.
+    # PR #1249 review 3745026823: 节点复杂度超限必须先于封存成功而失败。
     from benchmarks.codegraph_compare import setup_qualification_executor as executor
 
     index = tmp_path / "index"
@@ -83,7 +83,7 @@ def test_qualification_index_observation_rejects_receipt_node_overflow(
 def test_qualification_index_observation_rejects_receipt_byte_overflow(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1249 review 3745026823: byte complexity fails before successful sealing.
+    # PR #1249 review 3745026823: 字节复杂度超限必须先于封存成功而失败。
     from benchmarks.codegraph_compare import setup_qualification_executor as executor
 
     index = tmp_path / "index"
@@ -99,7 +99,7 @@ def test_qualification_index_observation_rejects_receipt_byte_overflow(
 
 
 def test_sealed_read_budget_uses_named_actual_passes():
-    # PR #1249 review 3745026813: budget counts signer x2 and verifier readers.
+    # PR #1249 review 3745026813: 预算需要计入两次 signer 读取和 verifier 的各次读取。
     from benchmarks.codegraph_compare.execution_budget import sealed_read_passes
 
     assert sealed_read_passes("executor") == sealed_read_passes("approver")
@@ -114,7 +114,7 @@ def test_sealed_read_budget_uses_named_actual_passes():
 
 
 def test_ext4_image_sizing_rejects_large_sparse_output(tmp_path: Path):
-    # PR #1249 review 3744561310: sparse logical bytes cannot bypass output ceilings.
+    # PR #1249 review 3744561310: 稀疏逻辑字节不能绕过输出上限。
     from benchmarks.codegraph_compare.audit_authority_runner import _ext4_image_size
 
     core = tmp_path / "core"
@@ -127,7 +127,7 @@ def test_ext4_image_sizing_rejects_large_sparse_output(tmp_path: Path):
 
 
 def test_ext4_image_sizing_uses_sealed_core_usage(tmp_path: Path):
-    # PR #1249 review 3744561310: small outputs no longer allocate a fixed 1 GiB.
+    # PR #1249 review 3744561310: 小输出不再固定分配 1 GiB。
     from benchmarks.codegraph_compare.audit_authority_runner import _ext4_image_size
 
     core = tmp_path / "core"
@@ -139,7 +139,7 @@ def test_ext4_image_sizing_uses_sealed_core_usage(tmp_path: Path):
 
 
 def test_ext4_layout_reserves_exact_sealed_core_inodes(tmp_path: Path):
-    # PR #1249 review 3744627741: byte sizing alone under-provisioned small-file inodes.
+    # PR #1249 review 3744627741: 仅按字节估算会低估小文件所需的 inode。
     from benchmarks.codegraph_compare.audit_authority_runner import _ext4_layout
 
     core = tmp_path / "core"
@@ -156,7 +156,7 @@ def test_ext4_layout_reserves_exact_sealed_core_inodes(tmp_path: Path):
 
 
 def test_ext4_layout_rejects_core_above_entry_bound(tmp_path: Path, monkeypatch):
-    # PR #1249 review 3744627741: inode counting work has an authority-owned bound.
+    # PR #1249 review 3744627741: inode 计数工作具有 authority 控制的界限。
     from benchmarks.codegraph_compare import audit_authority_runner as authority
 
     core = tmp_path / "core"
@@ -172,7 +172,7 @@ def test_ext4_layout_rejects_core_above_entry_bound(tmp_path: Path, monkeypatch)
 def test_debugfs_timeout_scales_with_payload_and_contract_expiry(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1249 review 3744627743: extraction cannot inherit the fixed 120s default.
+    # PR #1249 review 3744627743: 提取不能沿用固定的 120 秒默认值。
     from benchmarks.codegraph_compare import audit_authority_runner as authority
 
     observed = []
@@ -199,7 +199,7 @@ def test_debugfs_timeout_scales_with_payload_and_contract_expiry(
 
 
 def test_streamed_blob_descriptor_does_not_use_read_bytes(tmp_path: Path, monkeypatch):
-    # PR #1249 review 3744677888: producer evidence descriptors are streamed from disk.
+    # PR #1249 review 3744677888: 生产者的证据描述符必须从磁盘流式读取。
     from benchmarks.codegraph_compare.setup_qualification_executor import (
         _describe_blob,
     )
@@ -217,7 +217,7 @@ def test_streamed_blob_descriptor_does_not_use_read_bytes(tmp_path: Path, monkey
 
 
 def test_core_blob_bound_uses_signed_output_ceiling_not_legacy_512mib():
-    # PR #1249 review 3744728241: valid large descriptors use the signed ceiling.
+    # PR #1249 review 3744728241: 合法的大描述符使用已签名的上限。
     from benchmarks.codegraph_compare.verifier_recompute import _core_blob_size
 
     size = 513 * 1024 * 1024
@@ -231,7 +231,7 @@ def test_core_blob_bound_uses_signed_output_ceiling_not_legacy_512mib():
 def test_shared_verifier_debugfs_timeout_uses_image_size_and_absolute_deadline(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1249 review 3744728245: all receipt/verifier extraction shares this path.
+    # PR #1249 review 3744728245: 所有 receipt 和 verifier 提取共享这条路径。
     from benchmarks.codegraph_compare import execution_budget, verifier
 
     image = tmp_path / "data.img"
@@ -253,7 +253,7 @@ def test_shared_verifier_debugfs_timeout_uses_image_size_and_absolute_deadline(
 
 
 def test_live_output_size_ignores_disappearing_entry(tmp_path: Path, monkeypatch):
-    # PR #1249 review 3744776119: mutable producer trees race live accounting.
+    # PR #1249 review 3744776119: 可变生产者目录树会与实时计量发生竞争。
     from benchmarks.codegraph_compare import setup_qualification_executor as executor
 
     output = tmp_path / "output"
@@ -274,7 +274,7 @@ def test_live_output_size_ignores_disappearing_entry(tmp_path: Path, monkeypatch
 def test_live_output_size_charges_allocated_blocks_and_shared_metadata(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1249 review 3745125491: empty and sparse output consumes live budget.
+    # PR #1249 review 3745125491: 空输出和稀疏输出也消耗实时预算。
     from benchmarks.codegraph_compare import setup_qualification_executor as executor
     from benchmarks.codegraph_compare.execution_budget import (
         OUTPUT_ENTRY_METADATA_CHARGE_BYTES,
@@ -300,7 +300,7 @@ def test_live_output_size_charges_allocated_blocks_and_shared_metadata(
 def test_live_output_size_rejects_entry_count_above_shared_bound(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1249 review 3745125491: every mutable-tree scan has bounded work.
+    # PR #1249 review 3745125491: 每次可变目录树扫描的工作量都必须受限。
     from benchmarks.codegraph_compare import setup_qualification_executor as executor
 
     output = tmp_path / "output"
@@ -316,7 +316,7 @@ def test_live_output_size_rejects_entry_count_above_shared_bound(
 def test_live_output_size_enforces_signed_ceiling_during_scan(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1249 review 3745125491: allocated output cannot grow past signed bytes.
+    # PR #1249 review 3745125491: 已分配输出不能增长到已签名字节上限之外。
     from benchmarks.codegraph_compare import setup_qualification_executor as executor
 
     output = tmp_path / "output"
@@ -338,7 +338,7 @@ def test_live_output_size_enforces_signed_ceiling_during_scan(
 
 
 def test_terminal_output_size_rejects_disappearing_entry(tmp_path: Path, monkeypatch):
-    # PR #1249 review 3744776119: only the stable terminal snapshot is strict.
+    # PR #1249 review 3744776119: 只有稳定的终态快照采用严格检查。
     from benchmarks.codegraph_compare import setup_qualification_executor as executor
 
     output = tmp_path / "output"
@@ -358,7 +358,7 @@ def test_terminal_output_size_rejects_disappearing_entry(tmp_path: Path, monkeyp
 
 
 def test_verifier_server_frame_deadline_scales_to_maximum_payload(monkeypatch):
-    # PR #1249 review 3744822112: 512 MiB reads must not retain a fixed 10s budget.
+    # PR #1249 review 3744822112: 512 MiB 读取不能仍使用固定 10 秒预算。
 
     from benchmarks.codegraph_compare import verifier_service
 
@@ -376,7 +376,7 @@ def test_verifier_server_frame_deadline_scales_to_maximum_payload(monkeypatch):
 
 
 def test_receipt_frame_preflight_rejects_approver_draft_ceiling(monkeypatch):
-    # PR #1249 review 3744822118: all receipt frames must fit before authority use.
+    # PR #1249 review 3744822118: 所有 receipt 帧必须在使用 authority 前确认满足界限。
     from benchmarks.codegraph_compare import qualification_operator as operator
 
     plan = {"plan": "x"}
@@ -389,7 +389,7 @@ def test_receipt_frame_preflight_rejects_approver_draft_ceiling(monkeypatch):
 
 
 def test_receipt_server_frame_deadline_scales_to_maximum_payload(monkeypatch):
-    # PR #1249 review 3744887360: 16 MiB reads use the declared frame size.
+    # PR #1249 review 3744887360: 16 MiB 读取使用声明的帧大小。
 
     from benchmarks.codegraph_compare import receipt_v3_service
 
@@ -408,7 +408,7 @@ def test_receipt_server_frame_deadline_scales_to_maximum_payload(monkeypatch):
 
 @pytest.mark.parametrize("role", ["executor", "approver"])
 def test_receipt_signer_rechecks_expired_deadline_before_signature(monkeypatch, role):
-    # PR #1249 review 3744915233: completed semantic work cannot sign after expiry.
+    # PR #1249 review 3744915233: 即使语义处理已完成，也不能在过期后签名。
     from benchmarks.codegraph_compare import receipt_v3_signer as signer
 
     body = {"sealed": True}

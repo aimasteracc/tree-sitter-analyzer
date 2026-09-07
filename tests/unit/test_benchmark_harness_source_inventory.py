@@ -1,9 +1,8 @@
-"""Issue #1376：source inventory 行为组，已有 UTF-8 编码仅转为同值 keyword。"""
+"""Issue #1376：test_benchmark_harness_source_inventory 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
 import hashlib
-import json
 import os as os
 import subprocess
 import sys
@@ -32,7 +31,7 @@ _mark_posix_qualification_section_tests = partial(
 def test_source_inventory_rejects_one_untracked_checkout_path(
     tmp_path: Path, relative: str
 ):
-    # PR #1247: a fresh qualification checkout must contain no untracked inputs.
+    # PR #1247: 新的资格验证工作副本不能包含未跟踪输入。
     from benchmarks.codegraph_compare.setup_qualification import (
         DEFAULT_SOURCE_RULES,
         inventory_sources,
@@ -49,7 +48,7 @@ def test_source_inventory_rejects_one_untracked_checkout_path(
 
 
 def test_source_inventory_rechecks_exact_full_status_after_blob_scan(tmp_path: Path):
-    # PR #1247: checkout cleanliness is snapshotted both before and after inventory.
+    # PR #1247: 清单生成前后都要快照检查工作副本是否干净。
     import benchmarks.codegraph_compare.setup_qualification_inventory as module
     from benchmarks.codegraph_compare.setup_qualification import (
         DEFAULT_SOURCE_RULES,
@@ -82,7 +81,7 @@ def test_source_inventory_rechecks_exact_full_status_after_blob_scan(tmp_path: P
 
 
 def test_source_inventory_rejects_assume_unchanged_flag(tmp_path: Path):
-    # PR #1247: status porcelain hides assume-unchanged worktree divergence.
+    # PR #1247: status porcelain 会隐藏 assume-unchanged 工作副本的偏离。
     from benchmarks.codegraph_compare.setup_qualification import (
         DEFAULT_SOURCE_RULES,
         inventory_sources,
@@ -102,7 +101,7 @@ def test_source_inventory_rejects_assume_unchanged_flag(tmp_path: Path):
 
 
 def test_source_inventory_rejects_skip_worktree_flag(tmp_path: Path):
-    # PR #1247: skip-worktree entries cannot attest bytes consumed by a build.
+    # PR #1247: skip-worktree 条目不能证明构建实际使用的字节。
     from benchmarks.codegraph_compare.setup_qualification import (
         DEFAULT_SOURCE_RULES,
         inventory_sources,
@@ -123,7 +122,7 @@ def test_source_inventory_rejects_skip_worktree_flag(tmp_path: Path):
 def test_source_inventory_hashes_eligible_worktree_bytes_against_blob(
     tmp_path: Path,
 ):
-    # PR #1247: build input bytes are verified independently of Git status hints.
+    # PR #1247: 构建输入字节须独立于 Git 状态提示进行验证。
     import benchmarks.codegraph_compare.setup_qualification_inventory as module
     from benchmarks.codegraph_compare.setup_qualification import (
         DEFAULT_SOURCE_RULES,
@@ -160,7 +159,7 @@ def test_source_rules_inventory_selects_eligible_source(tmp_path: Path):
 
 
 def test_source_inventory_requires_canonical_worktree_root(tmp_path: Path):
-    # PR #1247: a subdirectory-scoped ls-files result cannot label the full commit.
+    # PR #1247: 仅限子目录的 ls-files 结果不能代表整个提交。
     from benchmarks.codegraph_compare.setup_qualification import (
         DEFAULT_SOURCE_RULES,
         inventory_sources,
@@ -213,7 +212,7 @@ def test_git_batch_parser_uses_size_framing_for_embedded_nul():
 
 
 def test_git_blob_generated_marker_is_detected_after_former_prefix_limit():
-    # PR #1247: generated markers apply to the complete pinned blob.
+    # PR #1247: 生成文件标记适用于整个固定的 blob。
     import io
 
     import benchmarks.codegraph_compare.setup_qualification_inventory as inventory_module
@@ -228,7 +227,7 @@ def test_git_blob_generated_marker_is_detected_after_former_prefix_limit():
 
 
 def test_git_blob_generated_marker_is_detected_across_chunk_boundary():
-    # PR #1247: rolling overlap binds markers straddling stream chunks.
+    # PR #1247: 滚动重叠区用于绑定跨越流分块边界的标记。
     import io
 
     import benchmarks.codegraph_compare.setup_qualification_inventory as inventory_module
@@ -286,7 +285,7 @@ def test_git_batch_rejects_repository_above_trusted_total_ceiling():
     ),
 )
 def test_git_batch_parser_rejects_malformed_type_size_or_terminator(mutate):
-    # PR #1247: batch framing must fail closed rather than shift into the next blob.
+    # PR #1247: 批量帧解析必须失败关闭，不能错位进入下一个 blob。
     import io
 
     import benchmarks.codegraph_compare.setup_qualification_inventory as inventory_module
@@ -327,7 +326,7 @@ def test_git_batch_timeout_kills_and_reaps_process(tmp_path: Path):
 
 
 def test_large_source_inventory_uses_constant_subprocess_count(tmp_path: Path):
-    # PR #1247: process count must not scale with tracked regular blobs.
+    # PR #1247: 进程数量不能随跟踪的普通 blob 数量线性增长。
     import benchmarks.codegraph_compare.setup_qualification_inventory as inventory_module
     from benchmarks.codegraph_compare.setup_qualification import (
         DEFAULT_SOURCE_RULES,
@@ -433,7 +432,7 @@ def test_source_inventory_is_exactly_bound_to_git_modes_objects_and_bytes(
 
 
 def test_source_archive_ceiling_matches_tarfile_record_algorithm(tmp_path: Path):
-    # PR #1249 review 3744561292: the authority ceiling mirrors tarfile exactly.
+    # PR #1249 review 3744561292: authority 的上限必须与 tarfile 完全一致。
     import io
     import tarfile
 
@@ -464,180 +463,6 @@ def test_source_archive_ceiling_matches_tarfile_record_algorithm(tmp_path: Path)
     inventory = canonical_json_bytes({"eligibility": {"tracked_files": records}})
 
     assert _source_archive_ceiling(inventory) == archive_path.stat().st_size
-
-
-def test_seven_repo_inventory_lists_exactly_the_canonical_repositories() -> None:
-    from benchmarks.codegraph_compare.setup_qualification_inventory import (
-        load_seven_repo_inventory,
-    )
-    from benchmarks.codegraph_compare.setup_qualification_plan import REPOSITORIES
-
-    payload = load_seven_repo_inventory()
-    assert [entry["repo_id"] for entry in payload["repositories"]] == list(REPOSITORIES)
-
-
-def test_seven_repo_inventory_commit_pins_match_repos_yaml() -> None:
-    import yaml
-
-    from benchmarks.codegraph_compare.run import REPOS_YAML
-    from benchmarks.codegraph_compare.setup_qualification_inventory import (
-        load_seven_repo_inventory,
-    )
-
-    payload = load_seven_repo_inventory()
-    registry = yaml.safe_load(REPOS_YAML.read_text(encoding="utf-8"))
-    # Codex P2 (#1260): compare every shared field across the exact
-    # seven-entry mapping, so name/language/url/approx_files drift (or a
-    # removed repository) turns the parity test red, not just commit pins.
-    pinned = {
-        entry["repo_id"]: {
-            "commit": entry["commit"],
-            "name": entry["name"],
-            "language": entry["language"],
-            "url": entry["url"],
-            "approx_files": entry["approx_files"],
-        }
-        for entry in payload["repositories"]
-    }
-    assert len(pinned) == 7
-    yaml_repos = registry["repos"]
-    assert len(yaml_repos) == 7
-    for repo in yaml_repos:
-        expected = {
-            "commit": repo["commit"],
-            "name": repo["name"],
-            "language": repo["language"],
-            "url": repo["url"],
-            "approx_files": repo["approx_files"],
-        }
-        assert pinned[repo["id"]] == expected, repo["id"]
-
-
-def test_seven_repo_inventory_extensions_match_default_source_rules() -> None:
-    from benchmarks.codegraph_compare.setup_qualification_inventory import (
-        load_seven_repo_inventory,
-    )
-    from benchmarks.codegraph_compare.setup_qualification_plan import (
-        DEFAULT_SOURCE_RULES,
-    )
-
-    payload = load_seven_repo_inventory()
-    for entry in payload["repositories"]:
-        assert entry["source_extensions"] == list(
-            DEFAULT_SOURCE_RULES.extensions(entry["repo_id"])
-        ), entry["repo_id"]
-
-
-def test_seven_repo_inventory_rejects_bad_commit_pin() -> None:
-    from benchmarks.codegraph_compare.setup_qualification_inventory import (
-        SEVEN_REPO_INVENTORY_PATH,
-        _validate_inventory_entry,
-    )
-
-    payload = json.loads(SEVEN_REPO_INVENTORY_PATH.read_text(encoding="utf-8"))
-    entry = dict(payload["repositories"][0])
-    entry["commit"] = entry["commit"][:-1]  # 39 hex: bad pin
-    with pytest.raises(ValueError, match="bad commit pin"):
-        _validate_inventory_entry(entry, 0)
-
-
-def test_seven_repo_inventory_rejects_unsorted_extensions() -> None:
-    from benchmarks.codegraph_compare.setup_qualification_inventory import (
-        SEVEN_REPO_INVENTORY_PATH,
-        _validate_inventory_entry,
-    )
-
-    payload = json.loads(SEVEN_REPO_INVENTORY_PATH.read_text(encoding="utf-8"))
-    entry = dict(payload["repositories"][0])
-    entry["source_extensions"] = [".tsx", ".ts"]
-    with pytest.raises(ValueError, match="not sorted unique"):
-        _validate_inventory_entry(entry, 0)
-
-
-def test_seven_repo_inventory_rejects_duplicate_repo_id(tmp_path: Path) -> None:
-    from unittest.mock import patch
-
-    from benchmarks.codegraph_compare.setup_qualification_inventory import (
-        SEVEN_REPO_INVENTORY_PATH,
-        load_seven_repo_inventory,
-    )
-
-    payload = json.loads(SEVEN_REPO_INVENTORY_PATH.read_text(encoding="utf-8"))
-    payload["repositories"][6] = dict(payload["repositories"][0])
-    broken = tmp_path / "broken-inventory.json"
-    broken.write_text(json.dumps(payload), encoding="utf-8")
-    with patch(
-        "benchmarks.codegraph_compare.setup_qualification_inventory"
-        ".SEVEN_REPO_INVENTORY_PATH",
-        broken,
-    ):
-        with pytest.raises(ValueError, match="duplicates repo_id"):
-            load_seven_repo_inventory()
-
-
-def test_seven_repo_inventory_schema_rejects_wrong_repository_count(
-    tmp_path: Path,
-) -> None:
-    from unittest.mock import patch
-
-    from benchmarks.codegraph_compare.setup_qualification_inventory import (
-        SEVEN_REPO_INVENTORY_PATH,
-        load_seven_repo_inventory,
-    )
-
-    payload = json.loads(SEVEN_REPO_INVENTORY_PATH.read_text(encoding="utf-8"))
-    del payload["repositories"][-1]
-    broken = tmp_path / "broken-inventory.json"
-    broken.write_text(json.dumps(payload), encoding="utf-8")
-    with patch(
-        "benchmarks.codegraph_compare.setup_qualification_inventory"
-        ".SEVEN_REPO_INVENTORY_PATH",
-        broken,
-    ):
-        with pytest.raises(ValueError, match="violates its schema"):
-            load_seven_repo_inventory()
-
-
-def test_seven_repo_inventory_rejects_duplicate_json_members(
-    tmp_path: Path,
-) -> None:
-    # Codex P2 (#1260): a duplicated member (e.g. two "commit" keys) must
-    # be rejected up front — json.loads would silently keep the last value
-    # and the schema would validate only the collapsed object.
-    from unittest.mock import patch
-
-    from benchmarks.codegraph_compare.setup_qualification_inventory import (
-        SEVEN_REPO_INVENTORY_PATH,
-        load_seven_repo_inventory,
-    )
-
-    payload = json.loads(SEVEN_REPO_INVENTORY_PATH.read_text(encoding="utf-8"))
-    first = payload["repositories"][0]
-    duplicated = (
-        "{"
-        + '"repo_id": "gin", "commit": "'
-        + first["commit"]
-        + '", "commit": "'
-        + first["commit"]
-        + '", "name": "Gin", "language": "Go", "url": "https://github.com/gin-gonic/gin", "approx_files": 200, "source_extensions": [".go"]'
-        + "}"
-    )
-    broken = tmp_path / "broken-duplicate.json"
-    broken.write_text(
-        '{"schema_version": 1, "repositories": ['
-        + duplicated
-        + ","
-        + json.dumps(payload["repositories"][1:])[1:]
-        + "}",
-        encoding="utf-8",
-    )
-    with patch(
-        "benchmarks.codegraph_compare.setup_qualification_inventory"
-        ".SEVEN_REPO_INVENTORY_PATH",
-        broken,
-    ):
-        with pytest.raises(ValueError, match="not strict JSON"):
-            load_seven_repo_inventory()
 
 
 _mark_posix_qualification_section_tests()

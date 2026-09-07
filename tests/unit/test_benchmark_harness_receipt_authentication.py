@@ -1,4 +1,4 @@
-"""Issue #1376：receipt_authentication 行为组，原测试 AST 保持不变。"""
+"""Issue #1376：test_benchmark_harness_receipt_authentication 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from tests.unit._benchmark_harness_platform import (
 from tests.unit._benchmark_harness_qualification_helpers import (
     _qualification_plans,
     _qualification_verifier_config,
+)
+from tests.unit._benchmark_harness_receipt_helpers import (
     _resign_qualification_receipt,
     _validate_qualification_receipt,
     _write_valid_qualification_receipt,
@@ -116,7 +118,7 @@ def test_strict_validator_rejects_forged_executor_signature(tmp_path: Path):
 def test_validator_authenticates_quiescence_before_tree_hash(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1247: an untrusted snapshot signature must fail before index bytes are read.
+    # PR #1247: 不可信的快照签名必须在读取索引字节之前失败。
     import benchmarks.codegraph_compare.setup_qualification_validation as validation
 
     plan = _qualification_plans(tmp_path)[0]
@@ -232,7 +234,7 @@ def test_strict_validator_rejects_unplanned_parse_error_allowlist(tmp_path: Path
 
 
 def test_strict_validator_rejects_arbitrarily_large_integer_observation(tmp_path: Path):
-    # PR #1247: resource validation must fail closed rather than raise OverflowError.
+    # PR #1247: 资源验证必须失败关闭，而不是抛出 OverflowError。
     import copy
 
     plan = _qualification_plans(tmp_path)[0]
@@ -255,9 +257,8 @@ def test_strict_validator_rejects_arbitrarily_large_integer_observation(tmp_path
 
 
 def test_validator_rejects_null_digest_signatures_after_core_failure(tmp_path: Path):
-    # PR #1247: a non-canonical evidence core cannot authenticate as a null digest.
+    # PR #1247: 非规范证据核心不能通过空摘要获得认证。
     import copy
-    import json
 
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -299,7 +300,7 @@ def test_validator_rejects_null_digest_signatures_after_core_failure(tmp_path: P
 def test_strict_validator_rejects_receipt_extension_even_with_matching_hash(
     tmp_path: Path,
 ):
-    # PR #1247: direct validator callers receive a fail-closed schema failure.
+    # PR #1247: 直接调用 validator 也必须收到失败关闭的 schema 错误。
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
@@ -316,7 +317,7 @@ def test_strict_validator_rejects_receipt_extension_even_with_matching_hash(
 
 
 def test_validator_rejects_default_reopen_through_symlinked_ancestor(tmp_path: Path):
-    # PR #1247: untrusted evidence has no path-reopen fallback.
+    # PR #1247: 不可信证据没有重新打开路径的回退方式。
     from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
@@ -374,7 +375,7 @@ def test_validator_uses_pinned_experiment_descriptor_after_path_replacement(
 
 
 def test_strict_validator_rejects_decoy_receipt_index_path(tmp_path: Path):
-    # PR #1247: receipt-selected decoy trees cannot replace the plan-bound index.
+    # PR #1247: receipt 选择的诱饵树不能替代计划绑定的索引。
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
@@ -439,84 +440,6 @@ def test_validator_exports_no_mutable_trust_key_globals():
         hasattr(qualification, "TRUSTED_EXECUTOR_PUBLIC_KEY"),
         hasattr(qualification, "TRUSTED_APPROVER_PUBLIC_KEY"),
     ) == (False, False)
-
-
-def test_validator_rejects_missing_retained_receipt(tmp_path: Path):
-    # PR #1247 review 3743050577: supplied mappings cannot replace retained evidence.
-    plan = _qualification_plans(tmp_path)[0]
-    cell_root = tmp_path / "cell"
-    receipt = _write_valid_qualification_receipt(cell_root, plan)
-    (cell_root / "cell-receipt.json").unlink()
-
-    assert _validate_qualification_receipt(
-        receipt,
-        plan=plan,
-        cell_root=cell_root,
-        verifier_config=_qualification_verifier_config(),
-        sync_retained=False,
-    ) == ("RETAINED_RECEIPT_MISMATCH",)
-
-
-def test_validator_rejects_stale_retained_receipt(tmp_path: Path):
-    # PR #1247 review 3743050577: retained and supplied hashes must match exactly.
-    import copy
-
-    plan = _qualification_plans(tmp_path)[0]
-    cell_root = tmp_path / "cell"
-    receipt = _write_valid_qualification_receipt(cell_root, plan)
-    stale = copy.deepcopy(receipt)
-    stale["resource_observation"]["wall_seconds"] = 2
-    _resign_qualification_receipt(stale)
-    (cell_root / "cell-receipt.json").write_text(
-        json.dumps(stale, sort_keys=True), encoding="utf-8"
-    )
-
-    assert _validate_qualification_receipt(
-        receipt,
-        plan=plan,
-        cell_root=cell_root,
-        verifier_config=_qualification_verifier_config(),
-        sync_retained=False,
-    ) == ("RETAINED_RECEIPT_MISMATCH",)
-
-
-def test_validator_rejects_type_different_retained_receipt(tmp_path: Path):
-    # PR #1247 review 3743050577: JSON true never aliases integer one.
-    import copy
-
-    plan = _qualification_plans(tmp_path)[0]
-    cell_root = tmp_path / "cell"
-    receipt = _write_valid_qualification_receipt(cell_root, plan)
-    type_different = copy.deepcopy(receipt)
-    type_different["resource_observation"]["wall_seconds"] = True
-    _resign_qualification_receipt(type_different)
-    (cell_root / "cell-receipt.json").write_text(
-        json.dumps(type_different, sort_keys=True), encoding="utf-8"
-    )
-
-    assert _validate_qualification_receipt(
-        receipt,
-        plan=plan,
-        cell_root=cell_root,
-        verifier_config=_qualification_verifier_config(),
-        sync_retained=False,
-    ) == ("RETAINED_RECEIPT_MISMATCH",)
-
-
-def test_validator_rejects_empty_retained_receipt_object(tmp_path: Path):
-    # PR #1247 review 3743050577: an empty retained JSON object is not evidence.
-    plan = _qualification_plans(tmp_path)[0]
-    cell_root = tmp_path / "cell"
-    receipt = _write_valid_qualification_receipt(cell_root, plan)
-    (cell_root / "cell-receipt.json").write_bytes(b"{}")
-
-    assert _validate_qualification_receipt(
-        receipt,
-        plan=plan,
-        cell_root=cell_root,
-        verifier_config=_qualification_verifier_config(),
-        sync_retained=False,
-    ) == ("RETAINED_RECEIPT_MISMATCH",)
 
 
 _mark_posix_qualification_section_tests()

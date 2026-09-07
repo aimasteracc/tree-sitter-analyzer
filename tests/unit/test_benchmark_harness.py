@@ -1,4 +1,4 @@
-"""Issue #1376：core 行为组，原测试 AST 保持不变。"""
+"""Issue #1376：test_benchmark_harness 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from benchmarks.codegraph_compare import run as compare_run
 from benchmarks.codegraph_compare.adapters import IndexStats
 from benchmarks.codegraph_compare.adapters.tree_sitter_analyzer import TSAAdapter
 
-# ``benchmarks/agent-tasks`` sits at the repo root, not under ``tree_sitter_analyzer``.
+# benchmarks/agent-tasks 位于仓库根目录，不在 tree_sitter_analyzer 下。
 _BENCH_DIR = Path(__file__).resolve().parents[2] / "benchmarks" / "agent-tasks"
 if str(_BENCH_DIR) not in sys.path:
     sys.path.insert(0, str(_BENCH_DIR))
@@ -27,7 +27,7 @@ import scenarios  # noqa: E402
 
 @pytest.fixture
 def tiny_repo(tmp_path: Path) -> Path:
-    """Create a 3-file Python project. Returns the repo root."""
+    """创建包含三个文件的 Python 项目，并返回仓库根目录。"""
     src = tmp_path / "tiny_pkg"
     src.mkdir()
     (src / "__init__.py").write_text("")
@@ -88,7 +88,7 @@ class TestRunCaseSchema:
         row = bench_runner.run_case(str(tiny_repo), "cold-start", "baseline")
         for field in bench_runner.REQUIRED_FIELDS:
             assert field in row
-        # Baseline always makes more than 1 call (README + ls + git log + find)
+        # 基线始终调用不止一次，包括 README、ls、git log 和 find。
         assert row["tool_calls"]
 
     @pytest.mark.parametrize(
@@ -104,8 +104,8 @@ class TestRunCaseSchema:
         self, tiny_repo: Path, task: str, extra: dict
     ):
         row = bench_runner.run_case(str(tiny_repo), task, "tsa", **extra)
-        # Even if change-impact has no diff to analyze, the row must be
-        # schema-complete (verdict will be SAFE / NOT_FOUND / INFO).
+        # 即使 change-impact 没有差异可分析，结果行也必须
+        # 满足完整 schema；verdict 可以是 SAFE、NOT_FOUND 或 INFO。
         for field in bench_runner.REQUIRED_FIELDS:
             assert field in row, f"task={task} missing {field}"
         assert isinstance(row["verdict"], str) and row["verdict"]
@@ -162,7 +162,7 @@ class TestTokenEstimation:
         assert scenarios.estimate_tokens("a") == 1
 
     def test_long_string_scales_by_four_chars(self):
-        # 400 chars → 100 tokens (within 1)
+        # 400 个字符对应 100 个 token，容差为 1。
         text = "x" * 400
         assert 99 <= scenarios.estimate_tokens(text) <= 101
 
@@ -339,9 +339,9 @@ class TestCodeGraphCompareTSAAdapter:
         build_index.assert_not_called()
 
     def test_parse_tool_metrics_counts_mcp_calls_as_index_queries(self):
-        # The TSA arm now runs through its MCP facade tools (not the CLI), so
-        # mcp__tree-sitter-analyzer__* calls count as index queries, Bash as
-        # search, Read as file reads — mirroring the CodeGraph MCP adapter.
+        # TSA 组现在通过 MCP facade 工具运行，而不是 CLI，因此
+        # mcp__tree-sitter-analyzer__* 调用计为索引查询，Bash 计为搜索，
+        # Read 计为文件读取，与 CodeGraph MCP adapter 的统计规则一致。
         transcript = textwrap.dedent(
             """
             Tool: mcp__tree-sitter-analyzer__nav
@@ -363,7 +363,7 @@ class TestCodeGraphCompareTSAAdapter:
     def test_run_config_promotes_mcp_nav_context_first(self, tmp_path: Path):
         config = TSAAdapter().build_run_config(tmp_path, "Where is routing handled?")
 
-        # Steer the agent to the one-call MCP context entry point, not the CLI.
+        # 引导 agent 使用单次调用的 MCP context 入口，而非 CLI。
         assert "mcp__tree-sitter-analyzer__nav" in config.extra_context
         assert "action=context" in config.extra_context
         assert "--codegraph-query" not in config.extra_context
@@ -383,17 +383,17 @@ class TestCodeGraphCompareToolPolicy:
             allowed = set(_ARM_ALLOWED_TOOLS[arm])
             disallowed = set(_ARM_DISALLOWED_TOOLS[arm])
 
-            # The TSA MCP facade tools are available (index-first path).
+            # TSA MCP facade 工具可用，采用索引优先路径。
             assert "mcp__tree-sitter-analyzer__nav" in allowed
             assert any(t.startswith("mcp__tree-sitter-analyzer__") for t in allowed)
-            # The competing index and escape hatches are blocked for a fair,
-            # isolated TSA-vs-CodeGraph comparison.
+            # 为实现公平且隔离的 TSA 与 CodeGraph 比较，
+            # 必须阻止竞争索引和绕过限制的路径。
             assert "mcp__codegraph__*" in disallowed
             assert "ToolSearch" in disallowed
             assert "Agent" in disallowed
 
-        # The adapter exposes the TSA MCP facade tools (alongside raw discovery,
-        # which the prompt steers the agent away from).
+        # adapter 暴露 TSA MCP facade 工具，同时保留原始发现能力，
+        # 但提示词会引导 agent 不去使用原始发现能力。
         assert "mcp__tree-sitter-analyzer__nav" in _ALLOWED_TOOLS
         assert "mcp__tree-sitter-analyzer__search" in _ALLOWED_TOOLS
 
@@ -407,22 +407,17 @@ class TestCodeGraphCompareToolPolicy:
         )
         prompt = prompt_path.read_text(encoding="utf-8")
 
-        # MCP-arm prompt: nav action=context first, index is source of truth.
+        # MCP 组提示词要求先执行 nav action=context，以索引为权威来源。
         assert "mcp__tree-sitter-analyzer__nav" in prompt
         assert "action=context" in prompt
         assert "AST index is the source of truth" in prompt
-        # No stale CLI-DSL references from the old CLI-based arm.
+        # 不能残留旧 CLI 组的 CLI-DSL 引用。
         assert "--codegraph-query" not in prompt
 
     def test_tsa_mcp_config_pins_target_repo_as_project_root(self, tmp_path: Path):
-        """The TSA MCP server must get --project-root <target repo>.
+        """TSA MCP server 必须接收 --project-root <目标仓库>。
 
-        Without it the server auto-detects and resolves to the ANALYZER repo
-        (where its package lives), so every query analyzes tree-sitter-analyzer
-        instead of the benchmark target — the agent then calls set_project_path,
-        re-queries, and Reads the analyzer tree, inflating cost ~2.5x and
-        invalidating the comparison.
-        """
+        缺少该参数时，server 自动探测到自身包所在的 ANALYZER 仓库，所有查询都会分析 tree-sitter-analyzer 而非 benchmark 目标。agent 随后调用 set_project_path、重新查询并读取 analyzer 目录树，导致成本约增至 2.5 倍，并使比较失效。"""
         import json as _json
 
         from benchmarks.codegraph_compare.adapters.claude_runner import (
@@ -437,7 +432,7 @@ class TestCodeGraphCompareToolPolicy:
 
         assert "--project-root" in args
         assert str(repo) in args
-        # The flag value must be the repo, immediately after the flag.
+        # 参数值必须是仓库路径，并紧随参数标志之后。
         assert args[args.index("--project-root") + 1] == str(repo)
 
 

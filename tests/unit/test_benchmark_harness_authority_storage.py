@@ -1,4 +1,4 @@
-"""Issue #1376：authority storage 行为组，保留测试逻辑，文本 I/O 显式使用 UTF-8。"""
+"""Issue #1376：test_benchmark_harness_authority_storage 行为模块；保留测试语义，文档中文化，编码变更单独核验。"""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ _mark_posix_qualification_section_tests = partial(
 def test_authority_materialized_source_is_immutable_and_producer_readable(
     tmp_path: Path,
 ):
-    # PR #1249 review 3744178810: UID 65532 could not traverse root-only snapshots.
+    # PR #1249 review 3744178810: UID 65532 无法遍历仅 root 可访问的快照。
     import io
     import tarfile
 
@@ -83,7 +83,7 @@ def test_authority_materialized_source_is_immutable_and_producer_readable(
 
 
 def test_authority_serializes_distinct_signed_jobs(tmp_path: Path):
-    # PR #1249 review 3744178818: direct clients bypassed max_concurrency=1.
+    # PR #1249 review 3744178818: 直接客户端曾绕过 max_concurrency=1。
     import threading
 
     runner = _authority_runner_for_test(tmp_path)
@@ -121,7 +121,7 @@ def test_authority_serializes_distinct_signed_jobs(tmp_path: Path):
 def test_authority_fsyncs_parent_after_reservation_and_terminal_replace(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1249 review 3744178821: file fsync alone did not persist directory entries.
+    # PR #1249 review 3744178821: 仅对文件执行 fsync 不会持久化目录项。
     from benchmarks.codegraph_compare import audit_authority_runner
 
     runner = _authority_runner_for_test(tmp_path)
@@ -138,7 +138,7 @@ def test_authority_fsyncs_parent_after_reservation_and_terminal_replace(
 
 
 def test_authority_mounts_authenticated_plan_inputs_at_exact_read_only_targets():
-    # PR #1249 review 3744178826: staged tool/config bytes must reach plan argv paths.
+    # PR #1249 review 3744178826: 暂存工具和配置的字节必须到达计划 argv 指定的路径。
     from benchmarks.codegraph_compare.audit_authority_storage import (
         _producer_mount_targets,
     )
@@ -173,7 +173,7 @@ def test_authority_mounts_authenticated_plan_inputs_at_exact_read_only_targets()
 
 
 def test_authority_removes_ext4_lost_found_and_checks_payload_before_verity():
-    # PR #1249 review 3744439674: mkfs lost+found must not alter the signed tree hash.
+    # PR #1249 review 3744439674: mkfs 的 lost+found 不能改变已签名的树哈希。
     source = Path("benchmarks/codegraph_compare/audit_authority_runner.py").read_text(
         encoding="utf-8"
     )
@@ -194,7 +194,7 @@ def test_authority_removes_ext4_lost_found_and_checks_payload_before_verity():
 def test_authority_streams_repository_sized_source_archive_under_inventory_ceiling(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1249 review 3744261021: source snapshots are not receipt-sized messages.
+    # PR #1249 review 3744261021: 源快照不能按 receipt 大小的消息限制处理。
     import io
     import tarfile
 
@@ -251,7 +251,7 @@ def test_authority_streams_repository_sized_source_archive_under_inventory_ceili
 
 
 def test_producer_gate_releases_only_exact_signal(tmp_path: Path, monkeypatch):
-    # PR #1249 review 3744358517: producer commands wait for authority release.
+    # PR #1249 review 3744358517: 生产者命令必须等待 authority 放行。
     import threading
 
     from benchmarks.codegraph_compare import audit_authority_runner as runner
@@ -274,7 +274,7 @@ def test_producer_gate_releases_only_exact_signal(tmp_path: Path, monkeypatch):
 def test_producer_gate_fails_if_container_exits_before_release(
     tmp_path: Path, monkeypatch
 ):
-    # PR #1249 review 3744358517: exit-before-gate is a terminal authority failure.
+    # PR #1249 review 3744358517: 在 gate 放行前退出属于 authority 的终态失败。
     import errno
 
     from benchmarks.codegraph_compare import audit_authority_runner as runner
@@ -296,7 +296,7 @@ def test_producer_gate_fails_if_container_exits_before_release(
 
 
 def test_service_launch_release_is_blocked_until_private_release_exists(tmp_path: Path):
-    # PR #1249 review 3744400323: services start blocked before exact-five attestation.
+    # PR #1249 review 3744400323: 服务在 exact-five 认证完成前应以阻塞状态启动。
     import threading
 
     from benchmarks.codegraph_compare.service_runtime import wait_for_launch_release
@@ -323,7 +323,7 @@ def test_service_launch_release_is_blocked_until_private_release_exists(tmp_path
 
 
 def test_authority_runner_persists_response_before_success(tmp_path: Path, monkeypatch):
-    # PR #1249 review 3744482397: SUCCESS never precedes the durable signed response.
+    # PR #1249 review 3744482397: SUCCESS 绝不能先于已持久化的签名响应。
     runner = _authority_runner_for_test(tmp_path)
     runner._execute = lambda _contract: {"audit": {}, "artifacts": {}}
     runner._sync_sealed_job = lambda _job_id, _result: None
@@ -350,7 +350,7 @@ def test_authority_runner_persists_response_before_success(tmp_path: Path, monke
 
 
 def test_authority_mount_plan_rejects_nonexact_oracle_execution_id():
-    # PR #1249 review 3744561306: receipt-v3 IDs are fixed before reservation.
+    # PR #1249 review 3744561306: receipt-v3 ID 必须在预留之前固定。
     from benchmarks.codegraph_compare.audit_authority_storage import (
         _producer_mount_targets,
     )
