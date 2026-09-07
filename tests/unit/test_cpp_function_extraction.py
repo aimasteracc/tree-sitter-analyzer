@@ -93,3 +93,39 @@ def test_cpp_symbols_reach_sqlite(tmp_path) -> None:
         assert "compute" in names_by_kind["method"]
     finally:
         con.close()
+
+
+# ---------------------------------------------------------------------------
+# Kotlin companion object attribution (found during multi-language MECE check)
+# ---------------------------------------------------------------------------
+
+
+def test_kotlin_companion_object_members_attributed_to_outer_class() -> None:
+    """Methods inside a companion object must be attributed to the enclosing class."""
+    import tree_sitter_kotlin as _kt
+    from tree_sitter import Language as _Lang
+    from tree_sitter import Parser as _Parser
+
+    from tree_sitter_analyzer.cache.extraction import _extract_symbols as _ex
+
+    src = """\
+class Person(val name: String) {
+    companion object {
+        fun createDefault(): Person = Person("Default")
+    }
+    fun greet() = name
+}
+"""
+    tree = _Parser(_Lang(_kt.language())).parse(src.encode())
+    symbols = _ex(tree, src, "kotlin")["symbols"]
+    by_name = {s["name"]: s for s in symbols}
+
+    create = by_name["createDefault"]
+    assert create["kind"] == "method", f"expected method, got {create['kind']}"
+    assert create["class"] == "Person", (
+        f"expected class=Person, got {create.get('class')}"
+    )
+
+    greet = by_name["greet"]
+    assert greet["kind"] == "method"
+    assert greet["class"] == "Person"

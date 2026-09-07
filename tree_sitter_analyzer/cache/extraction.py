@@ -765,6 +765,12 @@ def _find_parent_class(node: Any, source: str) -> str | None:
                 name_node = parent.child_by_field_name("name")
                 if name_node:
                     return _node_text(name_node, source)
+                # Kotlin ``companion_object`` is a named body that belongs
+                # to its enclosing class — continue walking so the enclosing
+                # class_declaration can provide the name.
+                if parent.type == "companion_object":
+                    parent = parent.parent
+                    continue
             # An unnamed class-like ancestor (e.g. a Java anonymous class) is
             # still the owner; do not attribute the member to an outer class.
             return None
