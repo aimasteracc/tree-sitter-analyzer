@@ -290,6 +290,18 @@ def test_portable_lag_expired_deadline_does_not_scan(
     assert scans == []
 
 
+def test_portable_lag_keeps_maximum_when_later_entry_is_older(tmp_path, portable_lag):
+    # PR #1350：最大时间戳与枚举顺序无关，后续较旧文件不能覆盖它。
+    for name, stamp in [("new.py", 40), ("old.py", 10)]:
+        file = tmp_path / name
+        file.write_text("value = 1\n", encoding="utf-8")
+        os.utime(file, (stamp, stamp))
+    with os.scandir(tmp_path) as entries:
+        ordered = sorted(entries, key=lambda e: e.name, reverse=False)
+    portable_lag.os.scandir = lambda _path: iter(ordered)
+    assert portable_lag._newest_source_mtime(str(tmp_path)) == 40.0
+
+
 @pytest.mark.parametrize("failure_point", ["scandir", "stat"])
 def test_portable_lag_unreadable_subtree_does_not_report_partial_age(
     tmp_path, portable_lag, monkeypatch, failure_point

@@ -239,8 +239,9 @@ class IncrementalSync:
                         f" WHERE file_path IN ({_ph1})",
                         _error_paths_1,
                     )
-                except Exception:
-                    pass  # pre-v14 DB: column not yet added
+                except sqlite3.DatabaseError:
+                    conn.rollback()
+                    raise
             from .cache.callgraph_state import clear_call_graph_built_strict
 
             clear_call_graph_built_strict(conn)
@@ -315,8 +316,9 @@ class IncrementalSync:
                         f" WHERE file_path IN ({_ph3})",
                         _error_paths_3,
                     )
-                except Exception:
-                    pass  # pre-v14 DB: column not yet added
+                except sqlite3.DatabaseError:
+                    conn.rollback()
+                    raise
             from .cache.callgraph_state import clear_call_graph_built_strict
 
             clear_call_graph_built_strict(conn)

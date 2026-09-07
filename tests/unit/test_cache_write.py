@@ -217,8 +217,8 @@ class TestFlushPendingActivations:
         assert row[0] == "computed"
         assert row[1] == 0
 
-    def test_absent_activation_state_column_returns_empty(self):
-        """Pre-v15 DB without activation_state column returns zeros gracefully."""
+    def test_absent_activation_state_column_reports_unavailable(self):
+        """PR #1350：缺失必要列应报告不可用，而不是声称没有待处理工作。"""
         from tree_sitter_analyzer.cache.write import _flush_pending_activations
 
         conn = sqlite3.connect(":memory:")
@@ -233,7 +233,7 @@ class TestFlushPendingActivations:
         conn.commit()
 
         result = _flush_pending_activations(conn, "/repo")
-        assert result == {"flushed": 0, "errors": 0}
+        assert result == {"flushed": 0, "errors": 1}
 
 
 # ---------------------------------------------------------------------------
@@ -305,8 +305,9 @@ class TestApplyMigrationV15:
         (15, "ast_symbol_activation", "activation_state", "TEXT"),
     ],
 )
+@pytest.mark.parametrize("failure", ["integrity", "operational"])
 def test_real_migration_record_failure_can_retry_without_false_version(
-    tmp_path, version, table, column, column_type
+    tmp_path, version, table, column, column_type, failure
 ):
     # PR #1350：真实版本表写入失败不能公布成功版本；已完成的 DDL 必须支持安全重试。
     from tree_sitter_analyzer.ast_cache import ASTCache
@@ -318,13 +319,26 @@ def test_real_migration_record_failure_can_retry_without_false_version(
         conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
         conn.execute("DELETE FROM ast_schema_version WHERE version=?", (version,))
         conn.commit()
+        expression = (
+            "RAISE(ABORT, 'migration record denied')"
+            if failure == "integrity"
+            else "abs(-9223372036854775808)"
+        )
         conn.execute(
-            f"CREATE TEMP TRIGGER deny_migration BEFORE INSERT ON ast_schema_version WHEN NEW.version={version} BEGIN SELECT RAISE(ABORT, 'migration record denied'); END"
+            f"CREATE TEMP TRIGGER deny_migration BEFORE INSERT ON ast_schema_version WHEN NEW.version={version} BEGIN SELECT {expression}; END"
         )
         migrate = getattr(schema, f"apply_migration_v{version}")
-        with pytest.raises(sqlite3.IntegrityError, match="^migration record denied$"):
+        error = (
+            sqlite3.IntegrityError
+            if failure == "integrity"
+            else sqlite3.OperationalError
+        )
+        message = (
+            "migration record denied" if failure == "integrity" else "integer overflow"
+        )
+        with pytest.raises(error, match=message):
             migrate(conn, schema.record_schema_version)
-        conn.rollback()
+        assert conn.in_transaction is False
         assert (
             conn.execute(
                 "SELECT version FROM ast_schema_version WHERE version=?", (version,)
@@ -344,6 +358,242 @@ def test_real_migration_record_failure_can_retry_without_false_version(
                 "SELECT version FROM ast_schema_version WHERE version=?", (version,)
             )
         ] == [version]
+        assert conn.in_transaction is False
+    finally:
+        cache.close()
+
+
+@pytest.mark.parametrize("failure", ["integrity", "operational"])
+def test_activation_sql_failure_leaves_retryable_rows_and_no_transaction(
+    tmp_path, failure
+):
+    # PR #1350：真实 UPDATE 故障不能遗留打开事务，也不能把未计算数据标成 computed。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache.write import _flush_pending_activations
+
+    source = tmp_path / "app.py"
+    source.write_text(
+        "def first(): return 1\ndef second(): return 2\n", encoding="utf-8"
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        assert cache.index_file(str(source))["status"] == "indexed"
+        conn = cache.get_conn()
+        conn.execute("UPDATE ast_symbol_activation SET activation_state='pending'")
+        before = [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT * FROM ast_symbol_activation ORDER BY symbol_id"
+            )
+        ]
+        last_id = conn.execute(
+            "SELECT MAX(symbol_id) FROM ast_symbol_activation"
+        ).fetchone()[0]
+        expression = (
+            "RAISE(ABORT, 'activation write denied')"
+            if failure == "integrity"
+            else "abs(-9223372036854775808)"
+        )
+        conn.execute(
+            f"CREATE TEMP TRIGGER deny_activation BEFORE UPDATE OF mod_count_30d ON ast_symbol_activation WHEN NEW.symbol_id={last_id} BEGIN SELECT {expression}; END"
+        )
+        conn.commit()
+        result = _flush_pending_activations(conn, str(tmp_path))
+        assert result == {"flushed": 0, "errors": 1}
+        assert conn.in_transaction is False
+        # PR #1350：只拒绝第二条统计更新；状态更新仍允许，也必须保留两条记录的重试资格。
+        assert [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT * FROM ast_symbol_activation ORDER BY symbol_id"
+            )
+        ] == before
+        assert [
+            r[0]
+            for r in conn.execute(
+                "SELECT activation_state FROM ast_symbol_activation ORDER BY symbol_id"
+            )
+        ] == ["pending", "pending"]
+        conn.execute("DROP TRIGGER deny_activation")
+        assert _flush_pending_activations(conn, str(tmp_path)) == {
+            "flushed": 1,
+            "errors": 0,
+        }
+        assert [
+            r[0]
+            for r in conn.execute(
+                "SELECT activation_state FROM ast_symbol_activation ORDER BY symbol_id"
+            )
+        ] == ["computed", "computed"]
+    finally:
+        cache.close()
+
+
+def test_single_file_index_keeps_failed_activation_retryable(tmp_path):
+    # PR #1350：辅助 git 信息写失败不撤销已成功的索引，也不能泄漏 SQLite 事务。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    path = tmp_path / "app.py"
+    path.write_text("def answer(): return 42\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        conn = cache.get_conn()
+        conn.execute(
+            "CREATE TEMP TRIGGER deny_activation BEFORE UPDATE ON ast_symbol_activation BEGIN SELECT RAISE(ABORT, 'denied'); END"
+        )
+        assert cache.index_file(str(path))["status"] == "indexed"
+        assert conn.in_transaction is False
+        assert [
+            r[0]
+            for r in conn.execute("SELECT activation_state FROM ast_symbol_activation")
+        ] == ["pending"]
+        conn.execute("DROP TRIGGER deny_activation")
+        assert cache.index_file(str(path))["status"] == "cached"
+        assert [
+            r[0]
+            for r in conn.execute("SELECT activation_state FROM ast_symbol_activation")
+        ] == ["computed"]
+        assert conn.in_transaction is False
+    finally:
+        cache.close()
+
+
+def test_reopen_rejects_claimed_v15_without_activation_column(tmp_path):
+    # PR #1350：版本号不能替代真实 schema，缺失 activation_state 必须在初始化边界拒绝。
+    from tree_sitter_analyzer.ast_cache import ASTCache, SchemaIntegrityError
+
+    cache = ASTCache(str(tmp_path))
+    db = cache.db_path
+    cache.close()
+    with sqlite3.connect(db) as conn:
+        conn.execute("ALTER TABLE ast_symbol_activation DROP COLUMN activation_state")
+        assert conn.execute(
+            "SELECT version FROM ast_schema_version WHERE version=15"
+        ).fetchone() == (15,)
+    with pytest.raises(
+        SchemaIntegrityError, match="ast_symbol_activation.activation_state"
+    ):
+        reopened = ASTCache(str(tmp_path))
+        reopened.close()
+
+
+def test_activation_read_permission_failure_is_reported(tmp_path):
+    # PR #1350：真实 SQLite READ 拒绝仍保留待处理数据，且不能返回零错误。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache.write import _flush_pending_activations
+
+    path = tmp_path / "app.py"
+    path.write_text("def answer(): return 42\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(path))
+        conn = cache.get_conn()
+        conn.execute("UPDATE ast_symbol_activation SET activation_state='pending'")
+        conn.commit()
+        conn.set_authorizer(
+            lambda action, table, *_: (
+                sqlite3.SQLITE_DENY
+                if action == sqlite3.SQLITE_READ and table == "ast_symbol_activation"
+                else sqlite3.SQLITE_OK
+            )
+        )
+        try:
+            assert _flush_pending_activations(conn, str(tmp_path)) == {
+                "flushed": 0,
+                "errors": 1,
+            }
+        finally:
+            conn.set_authorizer(None)
+        assert conn.in_transaction is False
+        assert [
+            r[0]
+            for r in conn.execute("SELECT activation_state FROM ast_symbol_activation")
+        ] == ["pending"]
+    finally:
+        cache.close()
+
+
+def test_activation_driver_os_error_rolls_back_without_git_degradation(
+    tmp_path, monkeypatch
+):
+    # PR #1350：驱动层在第二条统计写入抛出 OS 错误，不能遗留第一条更新或降级状态。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache.write import _flush_pending_activations
+
+    class InterruptibleConnection(sqlite3.Connection):
+        interrupt = False
+        writes = 0
+
+        def execute(self, sql, *args, **kwargs):
+            if self.interrupt and "SET last_modified_commit" in sql:
+                self.writes += 1
+                if self.writes == 2:
+                    raise OSError("driver interrupted")
+            return super().execute(sql, *args, **kwargs)
+
+    connect = sqlite3.connect
+    monkeypatch.setattr(
+        sqlite3,
+        "connect",
+        lambda *args, **kwargs: connect(
+            *args, **kwargs, factory=InterruptibleConnection
+        ),
+    )
+    path = tmp_path / "app.py"
+    path.write_text("def first(): return 1\ndef second(): return 2\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(path))
+        conn = cache.get_conn()
+        conn.execute("UPDATE ast_symbol_activation SET activation_state='pending'")
+        conn.commit()
+        before = [
+            tuple(r)
+            for r in conn.execute(
+                "SELECT * FROM ast_symbol_activation ORDER BY symbol_id"
+            )
+        ]
+        assert isinstance(conn, InterruptibleConnection)
+        conn.interrupt = True
+        with pytest.raises(OSError, match="^driver interrupted$"):
+            _flush_pending_activations(conn, str(tmp_path))
+        assert conn.writes == 2
+        assert conn.in_transaction is False
+        assert [
+            tuple(r)
+            for r in conn.execute(
+                "SELECT * FROM ast_symbol_activation ORDER BY symbol_id"
+            )
+        ] == before
+    finally:
+        cache.close()
+
+
+def test_post_index_flush_is_not_duplicated(tmp_path):
+    # PR #1350：入口委托一次真实 backfill 后，不应再扫描一次相同的 activation 队列。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        statements = []
+        conn = cache.get_conn()
+        conn.set_trace_callback(statements.append)
+        stats = {}
+        cache._post_index_backfill(stats)
+        conn.set_trace_callback(None)
+        assert (
+            len(
+                [
+                    sql
+                    for sql in statements
+                    if sql.startswith(
+                        "SELECT DISTINCT file_path FROM ast_symbol_activation"
+                    )
+                ]
+            )
+            == 1
+        )
+        assert stats["activation_flushed"] == 0
         assert conn.in_transaction is False
     finally:
         cache.close()

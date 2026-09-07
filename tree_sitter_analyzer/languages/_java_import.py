@@ -6,7 +6,7 @@ from typing import Any
 
 from ..models import Import, Package
 from ..utils import log_debug, log_error
-from ._java_element import extract_module_declaration as _extract_module_element
+from ._java_modern import extract_module_declaration as _extract_module_element
 
 
 def extract_java_imports(

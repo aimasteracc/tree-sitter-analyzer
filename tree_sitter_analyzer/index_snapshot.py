@@ -9,7 +9,7 @@ import sqlite3
 import threading
 import time
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, closing, contextmanager
 from typing import Any, cast
 from urllib.parse import quote
 
@@ -28,6 +28,7 @@ from .index_snapshot_capability import (
 from .index_snapshot_capability import (
     physical_storage_identity as _physical_storage_identity,
 )
+from .index_snapshot_capability import private_wal_database
 from .index_snapshot_capability import (
     reject_sidecars as _reject_sidecars,
 )
@@ -203,158 +204,133 @@ def _capture_wal_snapshot(
     pin: bool = False,
     deadline: float,
 ) -> IndexSnapshot:
-    """为无 /dev/fd 的平台捕获只读 WAL 事务，并独立验证源与符号投影。
-
-    投影检查与 POSIX 共用内存副本；检查结束即释放副本，发布只读事务。
-    同一捕获锁限制临时副本并发，stat 检查保持原有物理身份约束。
-    """
+    """在私有目录恢复 WAL，再发布经过认证的只读内存副本；绝不连接源数据库。"""
     connection: sqlite3.Connection | None = None
+    acquired = False
     try:
-        # Stat identity BEFORE open (anti-swap check step 1)
-        try:
-            pre_stat = os.stat(candidate)
-        except OSError:
+        if not os.path.lexists(candidate):
             return _unknown("MISSING_INDEX")
-        pre_id = (
-            pre_stat.st_dev,
-            pre_stat.st_ino,
-            pre_stat.st_size,
-            pre_stat.st_mtime_ns,
-        )
-
-        # Open WAL read-only connection.  mode=ro lets SQLite read the WAL
-        # transparently; BEGIN pins the current write generation as a reader.
-        uri = f"file:{quote(candidate, safe='/')}?mode=ro"
-        connection = sqlite3.connect(
-            uri, uri=True, timeout=0, isolation_level=None, check_same_thread=False
-        )
-        _require_memory_temp_store(connection)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA query_only=ON")
-        connection.execute("PRAGMA busy_timeout=0")
-        # BEGIN acquires a WAL reader slot, pinning the current write generation.
-        connection.execute("BEGIN")
-
-        # Stat identity AFTER connecting (verify no swap between stat and open)
-        try:
-            post_stat = os.stat(candidate)
-        except OSError:
-            raise ValueError("CONCURRENT_WRITER") from None
-        post_id = (
-            post_stat.st_dev,
-            post_stat.st_ino,
-            post_stat.st_size,
-            post_stat.st_mtime_ns,
-        )
-        if pre_id != post_id:
-            raise ValueError("CONCURRENT_WRITER")
-
-        _require_capture_budget(deadline)
-        validate_snapshot_schema(connection, deadline=deadline)
-        from .cache.build_state import build_in_progress
-
-        if build_in_progress(connection):
-            raise ValueError("CONCURRENT_WRITER")
-
-        _require_capture_budget(deadline)
-        root = canonical_root
-        index = _index_fingerprint_with_deadline(connection, root, deadline)
-        _require_capture_budget(deadline)
-        recorded = recorded_source_rows(connection, deadline=deadline)
-        _require_capture_budget(deadline)
-        manifest = _read_bounded_manifest(connection, deadline)
-        if manifest is not None:
-            _validate_manifest_scalars(manifest)
-
-        current = None
-        source_scope = None
-        scope_reason: str | None = None
-        if manifest is None:
-            scope_reason = "SOURCE_SCOPE_DESCRIPTOR_MISSING"
-        else:
-            try:
-                source_scope = parse_source_scope_descriptor(
-                    manifest["source_scope_descriptor"]
-                )
-            except (TypeError, ValueError):
-                scope_reason = "SOURCE_SCOPE_DESCRIPTOR_INVALID"
-            else:
-                _require_capture_budget(deadline)
-                current = _capture_sources_with_deadline(root, source_scope, deadline)
-                if current.state == "unknown":
-                    raise ValueError(current.reason or "SOURCE_SCOPE_UNKNOWN")
-
-        count = len(recorded)
-        exact_sources = bool(
-            current and current.state == "exact" and recorded == current.rows
-        )
-        exact_manifest = bool(
-            manifest
-            and current
-            and manifest["canonical_root"] == root
-            and manifest["source_fingerprint"] == current.fingerprint
-            and manifest["index_fingerprint"] == index
-            and manifest["file_count"] == count
-            and manifest["manifest_version"] == 2
-        )
-        _require_capture_budget(deadline)
-        call_graph_complete = _exact_call_graph_marker(connection, deadline=deadline)
-        complete = exact_sources and exact_manifest and call_graph_complete
-
-        if complete:
-            reason: str | None = None
-        elif not call_graph_complete:
-            reason = "CALL_GRAPH_INCOMPLETE"
-        elif scope_reason is not None:
-            reason = scope_reason
-        elif not exact_sources:
-            reason = (
-                current.reason or "SOURCE_INDEX_MISMATCH"
-                if current
-                else "SOURCE_INDEX_MISMATCH"
-            )
-        else:
-            reason = "NO_EXACT_FULL_INDEX_MANIFEST"
-
-        if not _CAPTURE_LOCK.acquire(timeout=max(0.0, deadline - _clock())):
+        root = os.path.realpath(canonical_root)
+        if os.path.abspath(candidate) != os.path.join(root, ".ast-cache", "index.db"):
+            raise ValueError("INDEX_PATH_UNSAFE")
+        acquired = _CAPTURE_LOCK.acquire(timeout=max(0.0, deadline - _clock()))
+        if not acquired:
             raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
-        try:
-            evidence, projection_exact = _copy_projection_evidence(connection, deadline)
-            evidence.close()
-        finally:
-            _CAPTURE_LOCK.release()
-        if complete and not projection_exact:
-            complete = False
-            reason = "SYMBOL_PROJECTION_INCOMPLETE"
 
-        if source_scope is not None and current is not None:
+        with ExitStack() as private:
+            private_path, wal_frames = private.enter_context(
+                private_wal_database(
+                    root,
+                    deadline=deadline,
+                    byte_limit=_BACKUP_BYTE_BUDGET,
+                    check_deadline=_require_capture_budget,
+                )
+            )
+            uri = f"file:{quote(private_path, safe='/')}?mode=rw"
+            staged = private.enter_context(
+                closing(
+                    sqlite3.connect(
+                        uri,
+                        uri=True,
+                        timeout=0,
+                        isolation_level=None,
+                        check_same_thread=False,
+                    )
+                )
+            )
+            _require_memory_temp_store(staged)
+            staged.row_factory = sqlite3.Row
+            staged.execute("PRAGMA busy_timeout=0")
+            size = int(staged.execute("PRAGMA page_size").fetchone()[0]) * int(
+                staged.execute("PRAGMA page_count").fetchone()[0]
+            )
+            REGISTRY.ensure_capacity(size + _SNAPSHOT_OVERHEAD_BYTES)
+            validate_snapshot_schema(staged, deadline=deadline)
+            from .cache.build_state import build_in_progress
+
+            if build_in_progress(staged):
+                raise ValueError("CONCURRENT_WRITER")
             _require_capture_budget(deadline)
-            final_current = _capture_sources_with_deadline(root, source_scope, deadline)
-            if final_current.state != "exact":
-                raise ValueError(final_current.reason or "SOURCE_INDEX_MISMATCH")
-            if (
-                current.state != "exact"
-                or final_current.rows != current.rows
-                or final_current.fingerprint != current.fingerprint
-            ):
-                raise ValueError("CONCURRENT_SOURCE")
-
-        # Final stat identity check (anti-swap step 3)
-        try:
-            final_stat = os.stat(candidate)
-        except OSError:
-            raise ValueError("CONCURRENT_WRITER") from None
-        final_id = (
-            final_stat.st_dev,
-            final_stat.st_ino,
-            final_stat.st_size,
-            final_stat.st_mtime_ns,
-        )
-        if final_id != pre_id:
-            raise ValueError("CONCURRENT_WRITER")
-
-        # 临时副本已释放，注册表只保留 WAL 连接的开销。
-        charged = _SNAPSHOT_OVERHEAD_BYTES
+            index = _index_fingerprint_with_deadline(staged, root, deadline)
+            recorded = recorded_source_rows(staged, deadline=deadline)
+            manifest = _read_bounded_manifest(staged, deadline)
+            if manifest is not None:
+                _validate_manifest_scalars(manifest)
+            current = None
+            source_scope = None
+            scope_reason: str | None = None
+            if manifest is None:
+                scope_reason = "SOURCE_SCOPE_DESCRIPTOR_MISSING"
+            else:
+                try:
+                    source_scope = parse_source_scope_descriptor(
+                        manifest["source_scope_descriptor"]
+                    )
+                except (TypeError, ValueError):
+                    scope_reason = "SOURCE_SCOPE_DESCRIPTOR_INVALID"
+                else:
+                    current = _capture_sources_with_deadline(
+                        root, source_scope, deadline
+                    )
+                    if current.state == "unknown":
+                        raise ValueError(current.reason or "SOURCE_SCOPE_UNKNOWN")
+            count = len(recorded)
+            exact_sources = bool(
+                current and current.state == "exact" and recorded == current.rows
+            )
+            exact_manifest = bool(
+                manifest
+                and current
+                and manifest["canonical_root"] == root
+                and manifest["source_fingerprint"] == current.fingerprint
+                and manifest["index_fingerprint"] == index
+                and manifest["file_count"] == count
+                and manifest["manifest_version"] == 2
+            )
+            call_graph_complete = _exact_call_graph_marker(staged, deadline=deadline)
+            complete = exact_sources and exact_manifest and call_graph_complete
+            if complete:
+                reason: str | None = None
+            elif not call_graph_complete:
+                reason = "CALL_GRAPH_INCOMPLETE"
+            elif scope_reason is not None:
+                reason = scope_reason
+            elif not exact_sources:
+                reason = (
+                    (current.reason or "SOURCE_INDEX_MISMATCH")
+                    if current
+                    else "SOURCE_INDEX_MISMATCH"
+                )
+            else:
+                reason = "NO_EXACT_FULL_INDEX_MANIFEST"
+            connection, projection_exact = _copy_projection_evidence(staged, deadline)
+            if wal_frames is not None:
+                # 私有 checkpoint 的帧数必须等于捕获的完整 WAL；不接受被 SQLite 忽略的尾帧。
+                checkpoint = tuple(
+                    staged.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
+                )
+                if checkpoint != (0, wal_frames, wal_frames):
+                    raise ValueError("CONCURRENT_WRITER")
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA query_only=ON")
+            connection.execute("BEGIN")
+            if complete and not projection_exact:
+                complete = False
+                reason = "SYMBOL_PROJECTION_INCOMPLETE"
+            if source_scope is not None and current is not None:
+                final_current = _capture_sources_with_deadline(
+                    root, source_scope, deadline
+                )
+                if final_current.state != "exact":
+                    raise ValueError(final_current.reason or "SOURCE_INDEX_MISMATCH")
+                if (
+                    current.state != "exact"
+                    or final_current.rows != current.rows
+                    or final_current.fingerprint != current.fingerprint
+                ):
+                    raise ValueError("CONCURRENT_SOURCE")
+        # 源身份/内容复核及私有目录清理成功后，才能发布唯一的内存证据。
+        charged = _physical_storage_identity(connection)[0] + _SNAPSHOT_OVERHEAD_BYTES
         REGISTRY.ensure_capacity(charged)
         _require_capture_budget(deadline)
 
@@ -393,6 +369,8 @@ def _capture_wal_snapshot(
     finally:
         if connection is not None:
             connection.close()
+        if acquired:
+            _CAPTURE_LOCK.release()
 
 
 def _capture_existing_snapshot(
@@ -410,7 +388,11 @@ def _capture_existing_snapshot(
     # Phase B-1: Replace POSIX gate with WAL read-only fallback.
     # Non-POSIX systems (Windows) and POSIX without /dev/fd use WAL path.
     # POSIX with /dev/fd continues using the existing fd-pinned backup path.
-    if os.name != "posix" or not os.path.exists("/dev/fd"):
+    if (
+        os.name != "posix"
+        or not os.path.exists("/dev/fd")
+        or os.path.lexists(candidate + "-wal")
+    ):
         wal_deadline = (
             _clock() + _CAPTURE_DEADLINE_SECONDS if deadline is None else deadline
         )

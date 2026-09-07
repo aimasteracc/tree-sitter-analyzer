@@ -491,3 +491,64 @@ def test_constraint_source_capture_selects_descriptor_oracle(monkeypatch) -> Non
         owner, "capture_current_source_snapshot", lambda *_a, **_k: expected
     )
     assert owner._capture_constraint_sources("/project", object(), 1.0) is expected
+
+
+@pytest.mark.parametrize("portable", [False, True])
+def test_real_partial_projection_rejects_constraint_evaluation(
+    tmp_path, monkeypatch, portable
+):
+    # PR #1350：两种真实快照来源都必须在执行约束 SQL 前拒绝损坏投影。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_snapshot import REGISTRY, stamp_full_index_manifest
+    from tree_sitter_analyzer.mcp.tools.constraint_check_tool import ConstraintCheckTool
+
+    source = tmp_path / "app.py"
+    source.write_text("def answer(): return 42\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        conn = cache.get_conn()
+        conn.execute("DELETE FROM ast_symbol_rows")
+        stamp_full_index_manifest(conn, str(tmp_path))
+    finally:
+        cache.close()
+    monkeypatch.setattr(owner, "portable_snapshot_required", lambda: portable)
+    try:
+        # 原生注册表在无描述符 oracle 的平台必须保持 unknown，不能伪称已经检查投影。
+        reason = (
+            "WAL_PRIVATE_SNAPSHOT_UNSUPPORTED"
+            if not portable and os.name != "posix"
+            else "SOURCE_SCOPE_UNSUPPORTED"
+            if not portable and not os.path.exists("/dev/fd")
+            else "SYMBOL_PROJECTION_INCOMPLETE"
+        )
+        with pytest.raises(ValueError, match=f"^{reason}$"):
+            owner.evaluate_ordinary_snapshot(
+                ConstraintCheckTool(str(tmp_path)),
+                [],
+                path_filter="",
+                min_severity_rank=0,
+                scope_paths=None,
+                evaluator=None,
+                deadline=time.monotonic() + 10,
+            )
+    finally:
+        REGISTRY.close_all()
+
+
+def test_missing_registry_index_is_rejected_without_creation(tmp_path, monkeypatch):
+    # PR #1350：无索引不是部分索引，读取约束不能悄悄创建缓存。
+    from tree_sitter_analyzer.mcp.tools.constraint_check_tool import ConstraintCheckTool
+
+    monkeypatch.setattr(owner, "portable_snapshot_required", lambda: False)
+    with pytest.raises(ValueError, match="^MISSING_INDEX$"):
+        owner.evaluate_ordinary_snapshot(
+            ConstraintCheckTool(str(tmp_path)),
+            [],
+            path_filter="",
+            min_severity_rank=0,
+            scope_paths=None,
+            evaluator=None,
+            deadline=time.monotonic() + 10,
+        )
+    assert (tmp_path / ".ast-cache").exists() is False

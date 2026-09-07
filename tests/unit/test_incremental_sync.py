@@ -2458,3 +2458,64 @@ def test_late_source_mutation_resets_certification_through_sync(tmp_path):
         assert conn.in_transaction is False
     finally:
         cache.close()
+
+
+@pytest.mark.parametrize("truncated", [False, True])
+def test_failed_file_certification_reset_denial_rolls_back(tmp_path, truncated):
+    # PR #1350：真实文件写失败后，撤销 reset 权限必须报告失败，不能遗留未提交事务。
+    good, bad, unseen = (
+        tmp_path / name for name in ("a_good.py", "b_bad.py", "z_unseen.py")
+    )
+    good.write_text("def good(): return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        with patch("time.time", return_value=1000):
+            cache.index_file(str(good))
+        bad.write_text("def bad(): return 2\n", encoding="utf-8")
+        if truncated:
+            unseen.write_text("def unseen(): return 3\n", encoding="utf-8")
+        conn = cache.get_conn()
+        conn.execute(
+            "CREATE TEMP TRIGGER fail_bad_symbol BEFORE INSERT ON ast_symbol_rows WHEN NEW.file_path='b_bad.py' BEGIN SELECT abs(-9223372036854775808); END"
+        )
+        conn.commit()
+        updates = []
+
+        def authorize(action, table, column, _database, _trigger):
+            if action == sqlite3.SQLITE_UPDATE and (table, column) == (
+                "ast_index",
+                "certified_at",
+            ):
+                updates.append((table, column))
+                if len(updates) == 3:
+                    return sqlite3.SQLITE_DENY
+            return sqlite3.SQLITE_OK
+
+        snapshot = build_index_candidate_snapshot(
+            str(tmp_path),
+            max_files=2,
+            exclude_patterns=frozenset(),
+            walk_fn=lambda _: map(
+                str, [good, bad, unseen] if truncated else [good, bad]
+            ),
+            language_fn=_python_language,
+        )
+        conn.set_authorizer(authorize)
+        try:
+            with (
+                patch("time.time", return_value=2000),
+                pytest.raises(sqlite3.DatabaseError, match="not authorized"),
+            ):
+                IncrementalSync(cache).sync(max_files=2, candidate_snapshot=snapshot)
+        finally:
+            conn.set_authorizer(None)
+        assert len(updates) == 3
+        assert conn.in_transaction is False
+        assert [
+            tuple(r)
+            for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
+        ] == [("a_good.py", 1000 if truncated else 2000)]
+        # 完整扫描的 reset 位于提交之后；只回滚当前事务，不撤销已提交的正常邻居。
+        assert cache.call_graph_built() is False
+    finally:
+        cache.close()

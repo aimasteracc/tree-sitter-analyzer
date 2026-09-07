@@ -277,48 +277,36 @@ class TestIndexFile:
         finally:
             migrated.close()
 
-    def test_init_tolerates_extractor_version_migration_operational_error(
+    def test_init_reports_migration_metadata_failure_and_closes_connection(
         self, tmp_path, monkeypatch
     ):
-        class FlakyConnection:
-            def __init__(self):
-                self._conn = sqlite3.connect(":memory:")
-                self._conn.row_factory = sqlite3.Row
-
+        # PR #1350：使用真实 SQLite connection 的故障边界，不绕过 schema 校验器。
+        class FlakyConnection(sqlite3.Connection):
             def execute(self, sql, *args, **kwargs):
                 if "PRAGMA table_info(ast_index)" in sql:
                     raise sqlite3.OperationalError("metadata temporarily unavailable")
-                return self._conn.execute(sql, *args, **kwargs)
+                return super().execute(sql, *args, **kwargs)
 
-            def executescript(self, *args, **kwargs):
-                return self._conn.executescript(*args, **kwargs)
+        connect = sqlite3.connect
+        opened = []
 
-            def commit(self):
-                self._conn.commit()
+        def connect_with_failure(*args, **kwargs):
+            conn = connect(*args, **kwargs, factory=FlakyConnection)
+            opened.append(conn)
+            return conn
 
-            def set_progress_handler(self, callback, steps):
-                self._conn.set_progress_handler(callback, steps)
-
-            def close(self):
-                self._conn.close()
-
-        class FlakyASTCache(ASTCache):
-            def _get_conn(self):
-                conn = getattr(self._local, "conn", None)
-                if conn is None:
-                    conn = FlakyConnection()
-                    self._local.conn = conn
-                return conn
-
-        monkeypatch.setattr(
-            ASTCache, "_verify_schema_integrity", lambda self, conn: None
-        )
-
-        cache = FlakyASTCache(str(tmp_path), db_path=str(tmp_path / "flaky.db"))
+        monkeypatch.setattr(sqlite3, "connect", connect_with_failure)
         try:
-            assert cache.project_root == str(tmp_path)
+            with pytest.raises(
+                sqlite3.OperationalError, match="metadata temporarily unavailable"
+            ):
+                ASTCache(str(tmp_path), db_path=str(tmp_path / "flaky.db"))
+            assert len(opened) == 1
+            with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                opened[0].execute("SELECT 1")
         finally:
-            cache.close()
+            for conn in opened:
+                conn.close()
 
     def test_index_with_explicit_language(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")

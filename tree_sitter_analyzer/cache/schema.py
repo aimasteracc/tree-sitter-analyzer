@@ -390,8 +390,9 @@ def apply_migration_v14(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
             "Add certified_at column to ast_index (partial certification model)",
         )
         conn.commit()
-    except sqlite3.OperationalError:
-        pass
+    except sqlite3.DatabaseError:
+        conn.rollback()
+        raise
 
 
 def apply_migration_v15(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
@@ -422,8 +423,9 @@ def apply_migration_v15(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
             "Add activation_state column to ast_symbol_activation (lazy activation model)",
         )
         conn.commit()
-    except sqlite3.OperationalError:
-        pass
+    except sqlite3.DatabaseError:
+        conn.rollback()
+        raise
 
 
 def apply_migration_v12(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
@@ -621,6 +623,11 @@ EXPECTED_SCHEMA_VERSIONS: list[Any] = [
             "ast_index_columns": ["certified_at"],
         },
     ),
+    (
+        15,
+        "Add activation_state column to ast_symbol_activation (lazy activation model)",
+        {"ast_symbol_activation_columns": ["activation_state"]},
+    ),
 ]
 
 # ---------------------------------------------------------------------------
@@ -704,18 +711,15 @@ def already_applied_versions(conn: sqlite3.Connection) -> set[int]:
 def record_schema_version(
     conn: sqlite3.Connection, version: int, description: str
 ) -> None:
-    """Stamp a row in ast_schema_version after a migration block applies."""
+    """记录已完成的迁移；注册表由初始化器创建，写入故障交给迁移事务处理。"""
     import time as _time
 
     ts = int(_time.time())
-    try:
-        conn.execute(
-            "INSERT OR IGNORE INTO ast_schema_version "
-            "(version, applied_at, description) VALUES (?, ?, ?)",
-            (version, ts, description),
-        )
-    except sqlite3.OperationalError:
-        pass
+    conn.execute(
+        "INSERT OR IGNORE INTO ast_schema_version "
+        "(version, applied_at, description) VALUES (?, ?, ?)",
+        (version, ts, description),
+    )
 
 
 def backfill_schema_version_row(

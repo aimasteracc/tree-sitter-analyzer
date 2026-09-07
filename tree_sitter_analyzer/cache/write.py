@@ -350,13 +350,7 @@ def _flush_pending_activations(
     the rows are marked ``'computed'`` with zero counts rather than left
     ``'pending'`` to avoid unbounded retry storms.
     """
-    try:
-        from .. import git_activation
-    except Exception as exc:  # pragma: no cover
-        logger.debug(
-            "git_activation import failed in _flush_pending_activations: %s", exc
-        )
-        return {"flushed": 0, "errors": 0}
+    from .. import git_activation
 
     try:
         pending_paths = [
@@ -368,9 +362,9 @@ def _flush_pending_activations(
                 (batch_size,),
             ).fetchall()
         ]
-    except sqlite3.OperationalError:
-        # activation_state column absent (pre-v15 DB) — nothing to flush
-        return {"flushed": 0, "errors": 0}
+    except sqlite3.DatabaseError:
+        # 查询失败代表队列不可用，不等于没有工作；已初始化的 schema 必须包含该列。
+        return {"flushed": 0, "errors": 1}
 
     flushed = 0
     errors = 0
@@ -382,11 +376,25 @@ def _flush_pending_activations(
                 (rel_path,),
             ).fetchall()
             symbols = [{"id": r[0], "line": r[1], "end_line": r[2]} for r in sym_rows]
-            activation_rows = git_activation.compute_symbol_activation(
-                os.path.join(project_root, rel_path),
-                symbols,
-                repo_root=project_root,
-            )
+            try:
+                activation_rows = git_activation.compute_symbol_activation(
+                    os.path.join(project_root, rel_path),
+                    symbols,
+                    repo_root=project_root,
+                )
+            except Exception as exc:
+                # 仅 Git 计算失败使用既有零值降级；数据库失败必须保留 pending。
+                logger.debug(
+                    "git activation computation failed for %s: %s", rel_path, exc
+                )
+                conn.execute(
+                    "UPDATE ast_symbol_activation SET activation_state='computed' "
+                    "WHERE file_path=? AND activation_state='pending'",
+                    (rel_path,),
+                )
+                conn.commit()
+                errors += 1
+                continue
             # Write computed values back
             for r in activation_rows:
                 conn.execute(
@@ -421,20 +429,13 @@ def _flush_pending_activations(
             )
             conn.commit()
             flushed += 1
-        except Exception as exc:
+        except sqlite3.DatabaseError as exc:
             logger.debug("_flush_pending_activations failed for %s: %s", rel_path, exc)
-            # Degradation: mark as computed to prevent retry storms (REQ-E-304(d))
-            try:
-                conn.execute(
-                    """UPDATE ast_symbol_activation
-                       SET activation_state = 'computed'
-                       WHERE file_path = ? AND activation_state = 'pending'""",
-                    (rel_path,),
-                )
-                conn.commit()
-            except sqlite3.OperationalError:
-                pass
+            conn.rollback()
             errors += 1
+        except BaseException:
+            conn.rollback()
+            raise
 
     return {"flushed": flushed, "errors": errors}
 

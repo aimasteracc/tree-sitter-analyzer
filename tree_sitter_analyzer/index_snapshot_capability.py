@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import errno
+import hashlib
 import os
 import sqlite3
 import stat
+import tempfile
 import time
+from collections.abc import Callable, Iterator
+from contextlib import ExitStack, contextmanager
+from typing import BinaryIO
 
 from .cache.callgraph_state import exact_call_graph_marker as _exact_marker
 
@@ -23,6 +28,7 @@ def require_memory_temp_store(conn: sqlite3.Connection) -> None:
 
 
 _CALL_GRAPH_MARKER_DEADLINE_SECONDS = 5.0
+_WAL_FD_COPY_SUPPORTED = os.open in os.supports_dir_fd and os.stat in os.supports_dir_fd
 
 
 def physical_storage_identity(
@@ -197,6 +203,164 @@ def hierarchy_matches_pinned_database(
 def _fd_identity(fd: int) -> tuple[int, int]:
     info = os.fstat(fd)
     return int(info.st_dev), int(info.st_ino)
+
+
+@contextmanager
+def private_wal_database(
+    project_root: str,
+    *,
+    deadline: float,
+    byte_limit: int,
+    check_deadline: Callable[[float], None],
+) -> Iterator[tuple[str, int | None]]:
+    """只用只读 fd 捕获稳定的主库与 WAL；SQLite 只能打开返回的私有路径。
+
+    不复制 SHM，不获取源 SQLite 连接。POSIX 路径绑定、完整字节复核和前后
+    身份一致是发布前提；不具备这些能力的平台直接拒绝，不能退化成路径猜测。
+    """
+    from .frozen_git_index import safe_external_temp_parent
+    from .source_oracle import SourceOracleError
+
+    if (
+        os.name != "posix"
+        or not hasattr(os, "O_NOFOLLOW")
+        or not _WAL_FD_COPY_SUPPORTED
+    ):
+        raise ValueError("WAL_PRIVATE_SNAPSHOT_UNSUPPORTED")
+
+    def identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
+        return (
+            info.st_dev,
+            info.st_ino,
+            info.st_size,
+            info.st_mtime_ns,
+            info.st_ctime_ns,
+        )
+
+    with ExitStack() as owned:
+        root, root_fd, cache_fd, db_fd = open_bound_database(project_root)
+        for fd in (root_fd, cache_fd, db_fd):
+            owned.callback(os.close, fd)
+        files = [("index.db", db_fd, identity(os.fstat(db_fd)))]
+        try:
+            wal_stat = os.stat("index.db-wal", dir_fd=cache_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            wal_stat = None
+        if wal_stat is not None:
+            try:
+                fd = _open_pinned_path(
+                    "index.db-wal",
+                    os.O_RDONLY | os.O_NONBLOCK,
+                    dir_fd=cache_fd,
+                    directory=False,
+                )
+            except FileNotFoundError as exc:
+                raise ValueError("CONCURRENT_WRITER") from exc
+            owned.callback(os.close, fd)
+            expected = identity(wal_stat)
+            if identity(os.fstat(fd)) != expected:
+                raise ValueError("CONCURRENT_WRITER")
+            files.append(("index.db-wal", fd, expected))
+        if sum(expected[2] for _, _, expected in files) > byte_limit:
+            raise RuntimeError("INDEX_BACKUP_BUDGET")
+
+        def verify_paths() -> None:
+            check_deadline(deadline)
+            try:
+                for name, fd, expected in files:
+                    current = os.stat(name, dir_fd=cache_fd, follow_symlinks=False)
+                    if (
+                        identity(current) != expected
+                        or identity(os.fstat(fd)) != expected
+                    ):
+                        raise ValueError("CONCURRENT_WRITER")
+                if wal_stat is None:
+                    try:
+                        os.stat("index.db-wal", dir_fd=cache_fd, follow_symlinks=False)
+                    except FileNotFoundError:
+                        pass
+                    else:
+                        raise ValueError("CONCURRENT_WRITER")
+                try:
+                    os.stat("index.db-journal", dir_fd=cache_fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    pass
+                else:
+                    raise ValueError("CONCURRENT_WRITER")
+                if not hierarchy_matches_pinned_database(
+                    root, root_fd, cache_fd, db_fd
+                ):
+                    raise ValueError("CONCURRENT_WRITER")
+            except OSError as exc:
+                raise ValueError("CONCURRENT_WRITER") from exc
+
+        def stream_file(
+            fd: int, size: int, destination: BinaryIO | None = None
+        ) -> bytes:
+            os.lseek(fd, 0, os.SEEK_SET)
+            digest = hashlib.sha256()
+            remaining = size
+            while remaining:
+                check_deadline(deadline)
+                chunk = os.read(fd, min(64 * 1024, remaining))
+                if not chunk:
+                    raise ValueError("CONCURRENT_WRITER")
+                digest.update(chunk)
+                if destination is not None:
+                    view = memoryview(chunk)
+                    while view:
+                        check_deadline(deadline)
+                        written = destination.write(view)
+                        if not isinstance(written, int) or not 0 < written <= len(view):
+                            raise OSError("INDEX_STAGE_WRITE_FAILED")
+                        view = view[written:]
+                remaining -= len(chunk)
+            check_deadline(deadline)
+            if os.read(fd, 1):
+                raise ValueError("CONCURRENT_WRITER")
+            return digest.digest()
+
+        verify_paths()
+        try:
+            temp_parent = safe_external_temp_parent(root)
+        except SourceOracleError as exc:
+            raise ValueError("INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED") from exc
+        with tempfile.TemporaryDirectory(
+            prefix="tsa-wal-index-", dir=temp_parent
+        ) as private:
+            private = os.path.realpath(private)
+            if os.path.commonpath((root, private)) == root:
+                raise ValueError("INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED")
+            hashes = []
+            for name, fd, expected in files:
+                with open(os.path.join(private, name), "xb", buffering=0) as stream:
+                    hashes.append(stream_file(fd, expected[2], stream))
+            verify_paths()
+            wal_frames = None
+            if wal_stat is not None:
+                wal_size = wal_stat.st_size
+                wal_frames = 0
+                if wal_size:
+                    with open(os.path.join(private, "index.db-wal"), "rb") as wal:
+                        header = wal.read(32)
+                    page_size = int.from_bytes(header[8:12], "big")
+                    if (
+                        len(header) != 32
+                        or int.from_bytes(header[:4], "big")
+                        not in (0x377F0682, 0x377F0683)
+                        or int.from_bytes(header[4:8], "big") != 3007000
+                        or not 512 <= page_size <= 65536
+                        or page_size & (page_size - 1)
+                        or (wal_size - 32) % (24 + page_size)
+                    ):
+                        raise ValueError("CONCURRENT_WRITER")
+                    wal_frames = (wal_size - 32) // (24 + page_size)
+            yield os.path.join(private, "index.db"), wal_frames
+            # 跨主库/WAL 的完整复核发生在私有 SQLite 读取之后、发布能力之前。
+            for (_, fd, expected), captured in zip(files, hashes, strict=True):
+                if stream_file(fd, expected[2]) != captured:
+                    raise ValueError("CONCURRENT_WRITER")
+            verify_paths()
 
 
 def reject_sidecars(cache_fd: int) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import os
 import sqlite3
 
@@ -35,10 +36,7 @@ class TestNonPosixSnapshotContract:
         assert result.reason == "MISSING_INDEX"
 
     def test_non_posix_existing_index_uses_wal_path(self, tmp_path, monkeypatch):
-        """Phase B-1: non-POSIX now routes to WAL path instead of returning
-        SECURE_FD_SNAPSHOT_UNSUPPORTED.  An empty (invalid) DB still results
-        in unknown completeness but with a different reason (CORRUPT_INDEX or
-        similar), confirming the WAL gate replaced the old hard gate."""
+        """无安全 fd 复制能力的平台必须拒绝，而非用源 SQLite 连接降级。"""
         import tree_sitter_analyzer.index_snapshot as owner
 
         cache_dir = tmp_path / ".ast-cache"
@@ -46,9 +44,10 @@ class TestNonPosixSnapshotContract:
         (cache_dir / "index.db").write_bytes(b"")
         monkeypatch.setattr(owner.os, "name", "nt")
         result = owner.read_existing_snapshot(str(tmp_path))
-        assert result.completeness == "unknown"
-        # The WAL path replaces the gate: SECURE_FD_SNAPSHOT_UNSUPPORTED must NOT appear.
-        assert result.reason != "SECURE_FD_SNAPSHOT_UNSUPPORTED"
+        assert (result.completeness, result.reason) == (
+            "unknown",
+            "WAL_PRIVATE_SNAPSHOT_UNSUPPORTED",
+        )
 
 
 @requires_posix_snapshot
@@ -282,6 +281,7 @@ class TestAuthoritativeSnapshotOracle:
         [
             ("source_edit", "CONCURRENT_SOURCE"),
             ("source_delete", "CONCURRENT_SOURCE"),
+            ("source_symlink", "SOURCE_SCOPE_UNSAFE"),
             ("database_replace", "CONCURRENT_WRITER"),
             ("database_delete", "CONCURRENT_WRITER"),
         ],
@@ -310,6 +310,9 @@ class TestAuthoritativeSnapshotOracle:
                 source.write_text("def answer():\n    return 43\n", encoding="utf-8")
             elif change == "source_delete":
                 source.unlink()
+            elif change == "source_symlink":
+                source.unlink()
+                source.symlink_to(tmp_path / "missing.txt")
             elif change == "database_replace":
                 db.rename(db.with_name("original.db"))
                 db.write_bytes(b"replacement database")
@@ -334,6 +337,175 @@ class TestAuthoritativeSnapshotOracle:
                     conn.execute("SELECT 1")
         finally:
             writer.close()
+
+    @pytest.mark.parametrize(
+        ("change", "reason"),
+        [
+            ("marker", "CALL_GRAPH_INCOMPLETE"),
+            ("manifest_missing", "SOURCE_SCOPE_DESCRIPTOR_MISSING"),
+            ("scope_invalid", "SOURCE_SCOPE_DESCRIPTOR_INVALID"),
+            ("source_changed", "SOURCE_INDEX_MISMATCH"),
+            ("manifest_mismatch", "NO_EXACT_FULL_INDEX_MANIFEST"),
+        ],
+    )
+    def test_wal_uncertified_states_reject_consumer(self, tmp_path, change, reason):
+        # PR #1350：真实持久状态损坏不得被 WAL 路径的成功投影核验覆盖。
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        self._certified_cache(tmp_path)
+        db = tmp_path / ".ast-cache" / "index.db"
+        with sqlite3.connect(db) as conn:
+            if change == "marker":
+                conn.execute("DELETE FROM ast_call_graph_state")
+            elif change == "manifest_missing":
+                conn.execute("DELETE FROM ast_index_snapshot_manifest")
+            elif change == "scope_invalid":
+                conn.execute(
+                    "UPDATE ast_index_snapshot_manifest SET source_scope_descriptor='not-json'"
+                )
+            elif change == "manifest_mismatch":
+                conn.execute(
+                    "UPDATE ast_index_snapshot_manifest SET index_fingerprint=?",
+                    ("sha256:" + "0" * 64,),
+                )
+            else:
+                (tmp_path / "sample.py").write_text(
+                    "def changed(): return 22\n", encoding="utf-8"
+                )
+        snapshot = owner._capture_wal_snapshot(
+            str(tmp_path.resolve()), str(db), deadline=owner._clock() + 10
+        )
+        assert (snapshot.completeness, snapshot.reason) == ("partial", reason)
+        with pytest.raises(ValueError, match="^INDEX_SNAPSHOT_INCOMPLETE$"):
+            with owner.read_existing_index_scope(
+                snapshot.snapshot_id, str(tmp_path), snapshot.source_generation
+            ):
+                pytest.fail("未认证状态不能到达 consumer")
+
+    def test_wal_missing_database_is_unknown(self, tmp_path):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        snapshot = owner._capture_wal_snapshot(
+            str(tmp_path), str(tmp_path / "missing.db"), deadline=owner._clock() + 10
+        )
+        assert (snapshot.snapshot_id, snapshot.completeness, snapshot.reason) == (
+            None,
+            "unknown",
+            "MISSING_INDEX",
+        )
+
+    def test_wal_rejects_a_foreign_database_path(self, tmp_path):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        other = tmp_path / "other.db"
+        other.write_bytes(b"not the project cache")
+        snapshot = owner._capture_wal_snapshot(
+            str(tmp_path.resolve()), str(other), deadline=owner._clock() + 10
+        )
+        assert (snapshot.snapshot_id, snapshot.reason) == (None, "INDEX_PATH_UNSAFE")
+
+    def test_projection_backup_has_its_own_byte_admission(self, monkeypatch):
+        # PR #1350：共享 SQLite 复制函数也必须独立检查逻辑页预算。
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        conn = sqlite3.connect(":memory:")
+        try:
+            conn.execute("CREATE TABLE payload(value INTEGER)")
+            monkeypatch.setattr(owner, "_BACKUP_BYTE_BUDGET", 0)
+            with pytest.raises(RuntimeError, match="^INDEX_BACKUP_BUDGET$"):
+                owner._copy_projection_evidence(conn, owner._clock() + 10)
+        finally:
+            conn.close()
+
+    def test_wal_database_disappears_after_open(self, tmp_path, monkeypatch):
+        # PR #1350：连接刚打开主库就消失，必须关闭该连接且不发布 token。
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        self._certified_cache(tmp_path)
+        db = tmp_path / ".ast-cache" / "index.db"
+        connect = sqlite3.connect
+        opened = []
+
+        def open_then_unlink(database, *args, **kwargs):
+            conn = connect(database, *args, **kwargs)
+            if str(database).startswith("file:"):
+                opened.append(conn)
+                db.unlink()
+            return conn
+
+        monkeypatch.setattr(owner.sqlite3, "connect", open_then_unlink)
+        snapshot = owner._capture_wal_snapshot(
+            str(tmp_path.resolve()), str(db), deadline=owner._clock() + 10
+        )
+        assert (snapshot.snapshot_id, snapshot.reason) == (None, "CONCURRENT_WRITER")
+        assert len(opened) == 1
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            opened[0].execute("SELECT 1")
+
+    def test_wal_build_in_progress_is_unknown(self, tmp_path):
+        import tree_sitter_analyzer.index_snapshot as owner
+        from tree_sitter_analyzer.cache.build_state import mark_build_in_progress
+
+        self._certified_cache(tmp_path)
+        db = tmp_path / ".ast-cache" / "index.db"
+        with sqlite3.connect(db) as conn:
+            mark_build_in_progress(conn)
+        snapshot = owner._capture_wal_snapshot(
+            str(tmp_path.resolve()), str(db), deadline=owner._clock() + 10
+        )
+        assert (snapshot.snapshot_id, snapshot.reason) == (None, "CONCURRENT_WRITER")
+
+    def test_wal_source_budget_remains_unknown(self, tmp_path, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot as owner
+        import tree_sitter_analyzer.index_source_snapshot as source_owner
+
+        self._certified_cache(tmp_path)
+        monkeypatch.setattr(source_owner, "_SOURCE_ENTRY_BUDGET", 0)
+        snapshot = owner._capture_wal_snapshot(
+            str(tmp_path.resolve()),
+            str(tmp_path / ".ast-cache" / "index.db"),
+            deadline=owner._clock() + 10,
+        )
+        assert (snapshot.snapshot_id, snapshot.completeness, snapshot.reason) == (
+            None,
+            "unknown",
+            "SOURCE_SCOPE_UNBOUNDED",
+        )
+
+    @pytest.mark.parametrize(
+        "error_number", [errno.ENOENT, errno.EACCES, errno.ENOTDIR, errno.ELOOP]
+    )
+    def test_wal_open_os_failure_is_classified(
+        self, tmp_path, monkeypatch, error_number
+    ):
+        # PR #1350：仅在数据库打开边界注入 OS 故障，不替换快照业务结果。
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        self._certified_cache(tmp_path)
+        fault = OSError(error_number, "open denied")
+        connect = sqlite3.connect
+
+        def fail_open(database, *args, **kwargs):
+            if str(database).startswith("file:"):
+                raise fault
+            return connect(database, *args, **kwargs)
+
+        monkeypatch.setattr(owner.sqlite3, "connect", fail_open)
+        snapshot = owner._capture_wal_snapshot(
+            str(tmp_path.resolve()),
+            str(tmp_path / ".ast-cache" / "index.db"),
+            deadline=owner._clock() + 10,
+        )
+        reason = (
+            "INDEX_PATH_SYMLINK"
+            if error_number in (errno.ELOOP, errno.ENOTDIR)
+            else str(fault)
+        )
+        assert (snapshot.snapshot_id, snapshot.completeness, snapshot.reason) == (
+            None,
+            "unknown",
+            reason,
+        )
 
 
 requires_posix_fd = requires_posix_snapshot
@@ -1093,6 +1265,155 @@ class TestWalSnapshotPath:
 
         REGISTRY.close_all()
 
+    @requires_posix_snapshot
+    @pytest.mark.parametrize("sidecars", ["present", "absent"])
+    async def test_wal_snapshot_does_not_change_source_directory(
+        self, tmp_path, wal_project, sidecars
+    ):
+        # PR #1350：mode=ro 也可能创建 sidecar；必须对整个源缓存目录取证。
+        import hashlib
+
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        conn = wal_project
+        db = tmp_path / ".ast-cache" / "index.db"
+        conn.execute("PRAGMA wal_autocheckpoint=0")
+        main_before = db.read_bytes()
+        conn.execute("CREATE TABLE wal_only(value TEXT)")
+        conn.execute("INSERT INTO wal_only VALUES ('committed')")
+        owner.stamp_full_index_manifest(conn, str(tmp_path))
+        assert db.read_bytes() == main_before
+        if sidecars == "absent":
+            # 让 SQLite 正常 checkpoint/关闭，不手工删除 sidecar。
+            conn.close()
+
+        def source_state():
+            return {
+                path.name: (
+                    path.stat().st_size,
+                    path.stat().st_mtime_ns,
+                    path.stat().st_ctime_ns,
+                    hashlib.sha256(path.read_bytes()).hexdigest(),
+                )
+                for path in db.parent.iterdir()
+            }
+
+        before = source_state()
+        assert set(before) == (
+            {"index.db", "index.db-wal", "index.db-shm"}
+            if sidecars == "present"
+            else {"index.db"}
+        )
+        snapshot = owner._capture_wal_snapshot(
+            str(tmp_path.resolve()), str(db), deadline=owner._clock() + 10
+        )
+        after = source_state()
+        assert set(after) == set(before), (
+            f"source before={sorted(before)} after={sorted(after)}"
+        )
+        assert after == before
+        assert (
+            snapshot.completeness,
+            snapshot.symbol_projection_exact,
+            snapshot.reason,
+        ) == ("complete", True, None)
+        with owner.read_existing_index_scope(
+            snapshot.snapshot_id, str(tmp_path), snapshot.source_generation
+        ) as (_, reader):
+            assert [r[0] for r in reader.execute("SELECT value FROM wal_only")] == [
+                "committed"
+            ]
+
+    @requires_posix_snapshot
+    @pytest.mark.parametrize("corrupt", [False, True])
+    async def test_detached_wal_without_shm_recovers_or_rejects_all_frames(
+        self, tmp_path, wal_project, corrupt
+    ):
+        # PR #1350：从真实已提交 WAL 建立无 SHM 的源缓存，不能回退到旧主库的完整状态。
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        target = tmp_path / "detached"
+        target.mkdir()
+        (target / "sample.py").write_bytes((tmp_path / "sample.py").read_bytes())
+        conn = wal_project
+        conn.execute("PRAGMA wal_autocheckpoint=0")
+        owner.stamp_full_index_manifest(conn, str(target))
+        source_db = tmp_path / ".ast-cache" / "index.db"
+        source_wal = source_db.with_name("index.db-wal")
+        previous_size = source_wal.stat().st_size
+        conn.execute("CREATE TABLE wal_only(value TEXT)")
+        conn.execute("INSERT INTO wal_only VALUES ('committed')")
+        owner.stamp_full_index_manifest(conn, str(target))
+        cache_dir = target / ".ast-cache"
+        cache_dir.mkdir()
+        db = cache_dir / "index.db"
+        wal = cache_dir / "index.db-wal"
+        db.write_bytes(source_db.read_bytes())
+        payload = bytearray(source_wal.read_bytes())
+        if corrupt:
+            payload[previous_size + 24] ^= 1
+        wal.write_bytes(payload)
+        before = {p.name: p.read_bytes() for p in cache_dir.iterdir()}
+        snapshot = owner.read_existing_snapshot(str(target))
+        assert {p.name: p.read_bytes() for p in cache_dir.iterdir()} == before
+        if corrupt:
+            assert (snapshot.snapshot_id, snapshot.completeness, snapshot.reason) == (
+                None,
+                "unknown",
+                "CONCURRENT_WRITER",
+            )
+        else:
+            assert (snapshot.completeness, snapshot.reason) == ("complete", None)
+            with owner.read_existing_index_scope(
+                snapshot.snapshot_id, str(target), snapshot.source_generation
+            ) as (_, reader):
+                assert [r[0] for r in reader.execute("SELECT value FROM wal_only")] == [
+                    "committed"
+                ]
+
+    @requires_posix_snapshot
+    async def test_wal_commit_during_file_copy_is_unknown_and_retryable(
+        self, tmp_path, wal_project, monkeypatch
+    ):
+        # PR #1350：复制主库时真实提交 WAL，不能拼接两代文件后发布 token。
+        import tree_sitter_analyzer.index_snapshot as owner
+        import tree_sitter_analyzer.index_snapshot_capability as capability
+
+        conn = wal_project
+        conn.execute("PRAGMA wal_autocheckpoint=0")
+        conn.execute("CREATE TABLE wal_only(value TEXT)")
+        conn.execute("INSERT INTO wal_only VALUES ('before')")
+        owner.stamp_full_index_manifest(conn, str(tmp_path))
+        db = tmp_path / ".ast-cache" / "index.db"
+        inode = db.stat().st_ino
+        read = os.read
+        fired = []
+
+        def read_with_commit(fd, size):
+            if not fired and os.fstat(fd).st_ino == inode:
+                fired.append(True)
+                conn.execute("INSERT INTO wal_only VALUES ('during')")
+                owner.stamp_full_index_manifest(conn, str(tmp_path))
+            return read(fd, size)
+
+        monkeypatch.setattr(capability.os, "read", read_with_commit)
+        snapshot = owner.read_existing_snapshot(str(tmp_path))
+        assert fired == [True]
+        assert (snapshot.snapshot_id, snapshot.completeness, snapshot.reason) == (
+            None,
+            "unknown",
+            "CONCURRENT_WRITER",
+        )
+        retry = owner.read_existing_snapshot(str(tmp_path))
+        assert (retry.completeness, retry.reason) == ("complete", None)
+        with owner.read_existing_index_scope(
+            retry.snapshot_id, str(tmp_path), retry.source_generation
+        ) as (_, reader):
+            assert [
+                r[0]
+                for r in reader.execute("SELECT value FROM wal_only ORDER BY value")
+            ] == ["before", "during"]
+
     @pytest.fixture
     def wal_source(self):
         return "def answer():\n    return 42\n"
@@ -1295,28 +1616,33 @@ class TestWalSnapshotPath:
         lock.release.assert_not_called()
 
     def test_wal_path_bypasses_posix_gate(self, tmp_path, monkeypatch):
-        """POSIX gate (SECURE_FD_SNAPSHOT_UNSUPPORTED) が返らなくなることを確認。"""
+        """空文件不是有效索引，WAL 路径必须明确报告 CORRUPT_INDEX。"""
         import tree_sitter_analyzer.index_snapshot as owner
 
         cache_dir = tmp_path / ".ast-cache"
         cache_dir.mkdir()
-        # Empty file → WAL path will attempt connection and fail with CORRUPT_INDEX/similar
+        # 缺失 schema 表的 SQLite 错误由快照打开边界归类。
         (cache_dir / "index.db").write_bytes(b"")
-        monkeypatch.setattr(owner.os, "name", "nt")
-        result = owner.read_existing_snapshot(str(tmp_path))
-        assert result.reason != "SECURE_FD_SNAPSHOT_UNSUPPORTED"
+        result = owner._capture_wal_snapshot(
+            str(tmp_path.resolve()),
+            str(cache_dir / "index.db"),
+            deadline=owner._clock() + 10,
+        )
+        assert (result.completeness, result.reason) == (
+            "unknown",
+            "CORRUPT_INDEX",
+        )
 
     def test_capture_snapshot_on_windows_no_longer_unknown_unsupported(
         self, tmp_path, monkeypatch
     ):
-        """Windows 相当環境で SECURE_FD_SNAPSHOT_UNSUPPORTED が返らないことを確認。
-        Phase B-1 コア: /dev/fd ゲートが撤廃され WAL パスが使われる。"""
+        """即使数据库有效，未支持的 Windows 私有捕获也只能返回 unknown。"""
         import tree_sitter_analyzer.index_snapshot as owner
         from tree_sitter_analyzer.ast_cache import ASTCache
 
         # 有効な SQLite DB を作成しておく (WAL 接続が成功するため)
         source = tmp_path / "sample.py"
-        source.write_text("x = 1\n")
+        source.write_text("x = 1\n", encoding="utf-8")
         cache = ASTCache(str(tmp_path))
         cache.index_file(str(source))
         cache.close()
@@ -1326,10 +1652,11 @@ class TestWalSnapshotPath:
         monkeypatch.setattr(owner.os.path, "exists", lambda path: path != "/dev/fd")
 
         result = owner.read_existing_snapshot(str(tmp_path))
-        # WAL path では SECURE_FD_SNAPSHOT_UNSUPPORTED が返らない
-        assert result.reason != "SECURE_FD_SNAPSHOT_UNSUPPORTED"
-        # completeness は "unknown" または "partial" (manifest がないため)
-        assert result.completeness in ("unknown", "partial")
+        # PR #1350：不得为了保留旧成功结果而连接源库创建 sidecar。
+        assert (result.completeness, result.reason) == (
+            "unknown",
+            "WAL_PRIVATE_SNAPSHOT_UNSUPPORTED",
+        )
 
     def test_wal_readonly_connection_consistent_view(self, tmp_path):
         """WAL mode DB に concurrent write 中でも read-only 接続が一貫ビューを返す統合テスト。
@@ -1368,101 +1695,69 @@ class TestWalSnapshotPath:
     def test_wal_snapshot_stat_mismatch_falls_back_to_concurrent_writer(
         self, tmp_path, monkeypatch
     ):
-        """stat mismatch (capture 中にファイルが入れ替わった場合) → CONCURRENT_WRITER。
-
-        AC-B1-2: _capture_wal_snapshot の pre_stat / post_stat 比較が機能することを確認。
-        os.stat の2回目の呼び出しで st_size / st_mtime_ns を変化させて swap をシミュレート。
-        """
-        import os as _real_os
-
+        """读取原始字节期间真实修改 mtime，必须拒绝该代快照。"""
         import tree_sitter_analyzer.index_snapshot as owner
+        import tree_sitter_analyzer.index_snapshot_capability as capability
         from tree_sitter_analyzer.ast_cache import ASTCache
 
         # 有効な SQLite DB を作成
         source = tmp_path / "sample.py"
-        source.write_text("x = 1\n")
+        source.write_text("x = 1\n", encoding="utf-8")
         cache = ASTCache(str(tmp_path))
         cache.index_file(str(source))
         cache.close()
 
-        # WAL パスを強制
-        monkeypatch.setattr(owner.os, "name", "nt")
-        monkeypatch.setattr(owner.os.path, "exists", lambda path: path != "/dev/fd")
+        db = tmp_path / ".ast-cache" / "index.db"
+        before = db.stat()
+        read = os.read
+        changed = []
 
-        candidate_str = str(tmp_path / ".ast-cache" / "index.db")
-        stat_call_count = {"n": 0}
-        real_stat = _real_os.stat
+        def read_with_mtime_change(fd, size):
+            if not changed and os.fstat(fd).st_ino == before.st_ino:
+                changed.append(True)
+                os.utime(
+                    db, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000)
+                )
+            return read(fd, size)
 
-        def mock_stat_swap(path):
-            raw = real_stat(path)
-            if str(path) == candidate_str:
-                stat_call_count["n"] += 1
-                if stat_call_count["n"] == 2:
-                    # 2回目: ファイルが入れ替わったことをシミュレート
-                    class _SwappedStat:
-                        st_dev = raw.st_dev
-                        st_ino = raw.st_ino
-                        st_size = raw.st_size + 1024
-                        st_mtime_ns = raw.st_mtime_ns + 1_000_000_000
-
-                    return _SwappedStat()
-            return raw
-
-        monkeypatch.setattr(owner.os, "stat", mock_stat_swap)
-
-        result = owner.read_existing_snapshot(str(tmp_path))
-
+        monkeypatch.setattr(capability.os, "read", read_with_mtime_change)
+        result = owner._capture_wal_snapshot(
+            str(tmp_path.resolve()), str(db), deadline=owner._clock() + 10
+        )
+        assert changed == [True]
         assert result.completeness == "unknown"
         assert result.reason == "CONCURRENT_WRITER"
 
-    def test_wal_snapshot_windows_inode_zero_still_detects_mismatch_via_size_mtime(
+    def test_wal_without_descriptor_identity_support_never_opens_sqlite(
         self, tmp_path, monkeypatch
     ):
-        """Windows では st_ino=0 のため、size+mtime の 2 要素で swap を検出することを確認。
-
-        Windows CI 推奨テスト: st_ino=0 を返す mock でも CONCURRENT_WRITER が正しく
-        返ることを検証する。inode が常に 0 でも st_size または st_mtime_ns の差異で
-        anti-swap 検出が機能する。
-        """
-        import os as _real_os
-
+        """不具备身份绑定能力时，连 SQLite 打开都不允许发生。"""
         import tree_sitter_analyzer.index_snapshot as owner
+        import tree_sitter_analyzer.index_snapshot_capability as capability
         from tree_sitter_analyzer.ast_cache import ASTCache
 
         # 有効な SQLite DB を作成
         source = tmp_path / "sample.py"
-        source.write_text("x = 1\n")
+        source.write_text("x = 1\n", encoding="utf-8")
         cache = ASTCache(str(tmp_path))
         cache.index_file(str(source))
         cache.close()
 
-        # WAL パスを強制 (Windows シミュレーション)
-        monkeypatch.setattr(owner.os, "name", "nt")
-        monkeypatch.setattr(owner.os.path, "exists", lambda path: path != "/dev/fd")
+        opened = []
 
-        candidate_str = str(tmp_path / ".ast-cache" / "index.db")
-        stat_call_count = {"n": 0}
-        real_stat = _real_os.stat
+        def forbidden_open(*args, **kwargs):
+            opened.append(args)
+            pytest.fail("不支持的平台不能打开 SQLite")
 
-        def mock_stat_windows(path):
-            raw = real_stat(path)
-            if str(path) == candidate_str:
-                stat_call_count["n"] += 1
-
-                # Windows スタイル: st_ino は常に 0
-                # 2回目の呼び出しで st_size を変えて mismatch を発生させる
-                class _WindowsStat:
-                    st_dev = raw.st_dev
-                    st_ino = 0  # Windows では常に 0
-                    st_size = raw.st_size + (512 if stat_call_count["n"] == 2 else 0)
-                    st_mtime_ns = raw.st_mtime_ns
-
-                return _WindowsStat()
-            return raw
-
-        monkeypatch.setattr(owner.os, "stat", mock_stat_windows)
-
-        result = owner.read_existing_snapshot(str(tmp_path))
-
-        assert result.completeness == "unknown"
-        assert result.reason == "CONCURRENT_WRITER"
+        monkeypatch.setattr(capability, "_WAL_FD_COPY_SUPPORTED", False)
+        monkeypatch.setattr(owner.sqlite3, "connect", forbidden_open)
+        result = owner._capture_wal_snapshot(
+            str(tmp_path.resolve()),
+            str(tmp_path / ".ast-cache" / "index.db"),
+            deadline=owner._clock() + 10,
+        )
+        assert (result.completeness, result.reason) == (
+            "unknown",
+            "WAL_PRIVATE_SNAPSHOT_UNSUPPORTED",
+        )
+        assert opened == []

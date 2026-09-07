@@ -301,6 +301,27 @@ Lua 已获索引准入，并具备 call dispatch 与 resolver slot，但 import 
 * **缓存位置**：`<project>/.ast-cache/`。可安全删除 — 会自动重建。
 * **可选**：`TREE_SITTER_OUTPUT_PATH` 用于大输出写入目标。
 
+### 快照证据的平台范围
+
+普通文件分析、索引创建/更新及既有索引查询，与认证快照访问是两个独立平面。
+Windows 既有操作路径不依赖新增的私有 WAL 快照内核。这些操作可以创建或更新
+缓存，不能因此被理解为具有零写入保证。
+
+PR #1350 新增的是**仅限 POSIX 的私有数据库/WAL 证据捕获**，要求描述符相对
+操作、`O_NOFOLLOW`、项目外的安全临时目录，以及 source、manifest、projection
+检查全部成功。它**不交付 Windows 只读快照 parity**，也不扩大显式
+`access_mode="read_existing"` 消费者已有的平台资格门。
+
+develop 基线上的 Windows 快照认证原本就不可用，原因码为
+`SECURE_FD_SNAPSHOT_UNSUPPORTED`；当前仍不可用，原因码改为
+`WAL_PRIVATE_SNAPSHOT_UNSUPPORTED`，返回 `completeness="unknown"` 且没有
+snapshot token。这不代表物理索引为空，也不代表普通查询被禁用。新增捕获路径
+尚未完成 Windows 原生资格验证，本地能力契约测试不能代替该验证。
+
+逐文件 `certified_at` 状态不能替代完整快照认证。`partial_at` 持久历史
+**尚未实现，也不在本 PR 交付范围内**。不完整或无法验证的 projection 不能
+授权认证消费者读取。
+
 ---
 
 ## 质量与测试
@@ -310,7 +331,7 @@ Lua 已获索引准入，并具备 call dispatch 与 resolver slot，但 import 
 | 测试通过 | 全面的测试套件 ✅ |
 | 覆盖率 | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | 类型安全 | mypy |
-| 平台 | macOS · Linux · Windows |
+| 平台 | 普通操作支持 macOS · Linux · Windows；快照证据适用上方更窄的范围 |
 | Pre-commit 闸门 | ruff · bandit · mypy · pyupgrade · detect-secrets · tsa-codemap-sync |
 
 ```bash

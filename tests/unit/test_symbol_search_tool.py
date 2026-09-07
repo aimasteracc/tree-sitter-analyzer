@@ -72,6 +72,57 @@ class TestCodeGraphSymbolSearchValidation:
 
 @pytest.mark.asyncio
 class TestCodeGraphSymbolSearchExecution:
+    async def test_operational_index_update_and_query_without_snapshot_manifest(
+        self, tmp_path
+    ):
+        # PR #1350：真实 SQLite 操作平面不依赖快照认证；这不是 Windows 原生模拟验收。
+        from tree_sitter_analyzer.incremental_sync import IncrementalSync
+
+        source = tmp_path / "app.py"
+        source.write_text("def original(): return 1\n", encoding="utf-8")
+        cache = ASTCache(str(tmp_path))
+        tool = CodeGraphSymbolSearchTool(str(tmp_path))
+        try:
+            assert cache.index_file(str(source))["status"] == "indexed"
+            conn = cache.get_conn()
+            assert (
+                conn.execute("SELECT MAX(version) FROM ast_schema_version").fetchone()[
+                    0
+                ]
+                == 15
+            )
+            assert (
+                conn.execute(
+                    "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
+                ).fetchone()[0]
+                == 0
+            )
+            first = await tool.execute({"query": "original", "output_format": "json"})
+            assert (first["success"], [row["name"] for row in first["results"]]) == (
+                True,
+                ["original"],
+            )
+            source.write_text("def replacement(): return 22\n", encoding="utf-8")
+            sync = IncrementalSync(cache).sync(certify_manifest=False)
+            assert (sync.updated_files, sync.errors) == (1, 0)
+            second = await tool.execute(
+                {"query": "replacement", "output_format": "json"}
+            )
+            assert (second["success"], [row["name"] for row in second["results"]]) == (
+                True,
+                ["replacement"],
+            )
+            assert (
+                conn.execute(
+                    "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
+                ).fetchone()[0]
+                == 0
+            )
+        finally:
+            cache.close()
+            if tool._cache is not None:
+                tool._cache.close()
+
     async def test_exact_match(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "UserService", "output_format": "json"})

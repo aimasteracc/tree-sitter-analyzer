@@ -419,10 +419,8 @@ def evaluate_ordinary_snapshot(
         authority = registry_authority()
     with authority as (index, conn):
         if index.completeness != "complete":
-            # Phase B-3: propagate partial completeness to callers distinctly.
-            if index.completeness == "partial":
-                raise ValueError(index.reason or "CONSTRAINT_INDEX_PARTIAL")
-            raise ValueError(index.reason or "CONSTRAINT_INDEX_UNKNOWN")
+            # 注册表路径已拒绝不完整状态；便携认证器仅返回 complete/partial。
+            raise ValueError(index.reason or "CONSTRAINT_INDEX_PARTIAL")
         source_scope = getattr(index, "source_scope", None)
         if hasattr(index, "source_scope") and not ordinary_source_scope_is_full(
             source_scope

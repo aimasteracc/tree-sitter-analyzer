@@ -270,7 +270,7 @@ class TestNodeTextCaching:
         extractor._file_encoding = "utf-8"
 
         with patch(
-            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages._java_extractor_support.extract_text_slice",
             return_value="test text",
         ) as mock_extract:
             result1 = extractor._get_node_text_optimized(node)
@@ -291,7 +291,7 @@ class TestNodeTextCaching:
         extractor._file_encoding = "utf-8"
 
         with patch(
-            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages._java_extractor_support.extract_text_slice",
             side_effect=Exception("err"),
         ):
             result = extractor._get_node_text_optimized(node)
@@ -308,7 +308,7 @@ class TestNodeTextCaching:
         extractor._file_encoding = "utf-8"
 
         with patch(
-            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages._java_extractor_support.extract_text_slice",
             side_effect=UnicodeDecodeError("utf-8", b"", 0, 1, "test"),
         ):
             result = extractor._get_node_text_optimized(node)
@@ -323,11 +323,32 @@ class TestNodeTextCaching:
         extractor.content_lines = ["test content"]
 
         with patch(
-            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages._java_extractor_support.extract_text_slice",
             side_effect=Exception("err"),
         ):
             result = extractor._get_node_text_optimized(node)
         assert result == ""
+
+    @pytest.mark.parametrize(
+        ("line_count", "expected"),
+        [(3, "{\n    int value;\n}"), (2, "{\n    int value;")],
+    )
+    def test_multiline_decode_fallback_preserves_available_text(
+        self, extractor, line_count, expected
+    ):
+        """解码失败时保留首末列边界及内部行；截短内容不虚构缺失行。"""
+        source = "class Demo {\n    int value;\n} class Neighbor {}"
+        tree = _parse_java_treewalk(source)
+        node = tree.root_node.named_children[0].child_by_field_name("body")
+        extractor.content_lines = source.split("\n")[:line_count]
+
+        with patch(
+            "tree_sitter_analyzer.languages._java_extractor_support.extract_text_slice",
+            side_effect=UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid byte"),
+        ):
+            result = extractor._get_node_text_optimized(node)
+
+        assert result == expected
 
 
 # ---------------------------------------------------------------------------
@@ -998,7 +1019,7 @@ class TestLambdaExtraction:
     }"""
 
     def test_lambda_extracted_as_function(self):
-        from tree_sitter_analyzer.languages._java_element import extract_lambda_function
+        from tree_sitter_analyzer.languages._java_modern import extract_lambda_function
 
         nodes = _java_treewalk_nodes(
             _parse_java_treewalk(self._SRC), "lambda_expression"
@@ -1014,7 +1035,7 @@ class TestLambdaExtraction:
         )
 
     def test_lambda_parameters_extracted(self):
-        from tree_sitter_analyzer.languages._java_element import extract_lambda_function
+        from tree_sitter_analyzer.languages._java_modern import extract_lambda_function
 
         nodes = _java_treewalk_nodes(
             _parse_java_treewalk(self._SRC), "lambda_expression"
@@ -1096,7 +1117,7 @@ class TestStaticInitializerExtraction:
     }"""
 
     def test_static_initializer_extracted(self):
-        from tree_sitter_analyzer.languages._java_element import (
+        from tree_sitter_analyzer.languages._java_modern import (
             extract_static_initializer,
         )
 
@@ -1112,7 +1133,7 @@ class TestStaticInitializerExtraction:
         )
 
     def test_multiple_static_initializers(self):
-        from tree_sitter_analyzer.languages._java_element import (
+        from tree_sitter_analyzer.languages._java_modern import (
             extract_static_initializer,
         )
 
@@ -1135,7 +1156,7 @@ class TestStaticInitializerExtraction:
 
 class TestAnonymousClassExtraction:
     def test_anonymous_class_extracted(self):
-        from tree_sitter_analyzer.languages._java_element import extract_anonymous_class
+        from tree_sitter_analyzer.languages._java_modern import extract_anonymous_class
 
         src = "class Demo { void run() { Runnable r = new Runnable() { public void run() {} }; } }"
         nodes = _java_treewalk_nodes(
@@ -1159,7 +1180,7 @@ class TestCompactConstructorExtraction:
     }"""
 
     def test_compact_constructor_extracted(self):
-        from tree_sitter_analyzer.languages._java_element import (
+        from tree_sitter_analyzer.languages._java_modern import (
             extract_compact_constructor,
         )
 
@@ -1220,7 +1241,7 @@ class TestJavadocAst:
     }"""
 
     def test_javadoc_from_ast_sibling(self):
-        from tree_sitter_analyzer.languages._java_element import (
+        from tree_sitter_analyzer.languages._java_element_common import (
             _extract_javadoc_from_node,
         )
 
@@ -1353,6 +1374,29 @@ def test_public_annotation_ownership_does_not_bleed_to_neighbors():
     ] == [("run", ["Deprecated"]), ("plain", [])]
 
 
+def test_qualified_annotation_preserves_source_metadata():
+    """限定名注解没有直接 identifier 子节点时，仍保留原始文本和位置。"""
+    source = '\n@flags.Check(value = "demo") class Demo {}'
+    elements = JavaPlugin().extract_elements(_parse_java_treewalk(source), source)
+    assert [
+        (c.name, [(a["text"], a["line"], a["type"]) for a in c.annotations])
+        for c in elements["classes"]
+    ] == [("Demo", [('@flags.Check(value = "demo")', 2, "annotation")])]
+
+
+def test_recovered_annotation_without_name_is_not_attached():
+    """真实错误树的空注解名不能成为声明元数据。"""
+    import tree_sitter
+
+    source = "@() class Demo {}"
+    tree = tree_sitter.Parser(JavaPlugin().get_tree_sitter_language()).parse(
+        source.encode("utf-8")
+    )
+    assert tree.root_node.has_error is True
+    elements = JavaPlugin().extract_elements(tree, source)
+    assert [(c.name, c.annotations) for c in elements["classes"]] == [("Demo", [])]
+
+
 @pytest.mark.parametrize("src", ["module { }", "record { }", "@"])
 def test_public_malformed_java_does_not_invent_elements(src):
     # PR #1350：使用真实错误树验证公开容错入口，不伪造 Node 异常。
@@ -1449,3 +1493,93 @@ def test_exported_module_helper_propagates_adapter_protocol_error():
 
     with pytest.raises(TypeError, match="^broken node-text adapter$"):
         extract_java_packages(tree, broken_adapter)
+
+
+@pytest.mark.parametrize("source", ["open module {}", "module app. {}"])
+def test_recovered_module_name_is_not_published(source):
+    # PR #1350：grammar 真实恢复出的 MISSING identifier 不能成为模块名。
+    import tree_sitter
+
+    from tree_sitter_analyzer.languages.java_helpers import extract_java_packages
+
+    tree = tree_sitter.Parser(JavaPlugin().get_tree_sitter_language()).parse(
+        source.encode()
+    )
+    assert tree.root_node.has_error is True
+    assert JavaPlugin().extract_elements(tree, source)["packages"] == []
+    assert extract_java_packages(tree, lambda n: n.text.decode()) == []
+
+
+def test_recovered_lambda_parameters_are_not_reported_as_empty():
+    # PR #1350：真实参数 ERROR 不能被当成合法零参数 lambda。
+    import tree_sitter
+
+    src = "class Demo { void run() { consume((,) -> 1); } }"
+    tree = tree_sitter.Parser(JavaPlugin().get_tree_sitter_language()).parse(
+        src.encode()
+    )
+    assert tree.root_node.has_error is True
+    assert [f.name for f in JavaPlugin().extract_elements(tree, src)["functions"]] == [
+        "run"
+    ]
+
+
+@pytest.mark.parametrize("visibility", ["private", "protected", "public", ""])
+def test_nested_record_constructor_visibility(visibility):
+    src = (
+        f"class Outer {{ {visibility} record R(int value) {{ {visibility} R {{}} }} }}"
+    )
+    functions = JavaPlugin().extract_elements(_parse_java_treewalk(src), src)[
+        "functions"
+    ]
+    assert [(f.name, f.visibility, f.parameters) for f in functions] == [
+        ("R", visibility or "package", ["int value"])
+    ]
+
+
+@pytest.mark.parametrize(
+    ("comments", "expected"),
+    [
+        ("/** chosen */\n// intervening\n", "/** chosen */"),
+        ("/** stale */\n/* ordinary */\n", None),
+    ],
+)
+def test_javadoc_sibling_boundary(comments, expected):
+    src = f"class Demo {{ {comments} void run() {{}} }}"
+    functions = JavaPlugin().extract_elements(_parse_java_treewalk(src), src)[
+        "functions"
+    ]
+    assert [(f.name, f.docstring) for f in functions] == [("run", expected)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "class Demo {}",
+        "record R(int value) {}",
+        "class Outer {\n/** inner */ void run() {} }",
+    ],
+)
+async def test_javadoc_adapter_error_is_reported(tmp_path, monkeypatch, declaration):
+    # PR #1350：可选文档缺失与文本适配器程序错误不是同一种状态。
+    from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
+
+    getter = JavaElementExtractor._get_node_text_optimized
+
+    def fail_comment(self, node):
+        if node.type == "block_comment":
+            raise TypeError("javadoc adapter failed")
+        return getter(self, node)
+
+    monkeypatch.setattr(JavaElementExtractor, "_get_node_text_optimized", fail_comment)
+    path = tmp_path / "Example.java"
+    path.write_text("/** outer */\n" + declaration, encoding="utf-8")
+    result = await JavaPlugin().analyze_file(
+        str(path), AnalysisRequest(file_path=str(path))
+    )
+    assert (result.success, result.error_message, result.elements) == (
+        False,
+        "javadoc adapter failed",
+        [],
+    )

@@ -170,13 +170,10 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             _mark_call_graph_built_strict(self._get_conn())
         except sqlite3.OperationalError:
             logger.debug("single-file call-graph certification failed", exc_info=True)
-        # REQ-C-306: flush 'pending' activation rows written by write_activation_for_file.
-        try:
-            from .cache.write import _flush_pending_activations
+        # 可恢复的 git/SQLite 故障由 flush 统一回滚并报告；程序错误不能在此吞掉。
+        from .cache.write import _flush_pending_activations
 
-            _flush_pending_activations(self._get_conn(), self.project_root)
-        except Exception:
-            logger.debug("single-file _flush_pending_activations failed", exc_info=True)
+        _flush_pending_activations(self._get_conn(), self.project_root)
 
     def _check_cache_or_read(
         self,
@@ -321,16 +318,6 @@ class ASTCacheIndexMixin(ASTCacheSurface):
     def _post_index_backfill(self, stats: dict[str, Any]) -> None:
         """Run graph backfills after project indexing."""
         _indexer.post_index_backfill(self, stats)
-        # REQ-C-306: flush pending activation rows produced by write_activation_for_file.
-        # Called synchronously here; ThreadPoolExecutor-based async scheduling is
-        # deferred to a future scheduler-integration phase.
-        try:
-            from .cache.write import _flush_pending_activations
-
-            _result = _flush_pending_activations(self._get_conn(), self.project_root)
-            logger.debug("_flush_pending_activations result: %s", _result)
-        except Exception as exc:  # pragma: no cover
-            logger.debug("_flush_pending_activations raised: %s", exc)
 
     @staticmethod
     def _completed_full_index_sweep(stats: dict[str, Any]) -> bool:

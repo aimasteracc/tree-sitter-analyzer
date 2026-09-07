@@ -18,29 +18,16 @@ if TYPE_CHECKING:
     from ..core.analysis_engine import AnalysisRequest
 
 from .. import encoding_utils as _encoding_utils
-from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import AnalysisResult, Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 from ..utils.tree_sitter_compat import count_nodes_iterative
-from ._java_element import (
-    extract_anonymous_class as _extract_anon_class_impl,
-)
-from ._java_element import (
-    extract_lambda_function as _extract_lambda_impl,
-)
-from ._java_element import (
-    extract_module_declaration as _extract_module_decl_impl,
-)
-from ._java_element import (
-    extract_static_initializer as _extract_static_init_impl,
-)
+from ._java_extractor_support import _JavaExtractorSupport
 from .java_helpers import (
     _extract_import_info,
     _extract_imports_fallback,
     _extract_package_element,
     _extract_package_name,
-    _process_field_batch,
 )
 from .java_helpers import (
     calculate_complexity as _calc_complexity_standalone,
@@ -82,9 +69,6 @@ from .java_helpers import (
     is_nested_class as _is_nested_standalone,
 )
 from .java_helpers import (
-    java_traverse_and_extract as _traverse_standalone,
-)
-from .java_helpers import (
     parse_field_declaration as _parse_field_standalone,
 )
 from .java_helpers import (
@@ -92,26 +76,8 @@ from .java_helpers import (
 )
 
 
-class JavaElementExtractor(ElementExtractor):
+class JavaElementExtractor(_JavaExtractorSupport):
     """Java-specific element extractor with AdvancedAnalyzer implementation"""
-
-    def __init__(self) -> None:
-        """Initialize the Java element extractor."""
-        self.current_package: str = ""
-        self.current_file: str = ""
-        self.source_code: str = ""
-        self.content_lines: list[str] = []
-        self.imports: list[str] = []
-
-        self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[tuple[int, int]] = set()
-        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
-        self._file_encoding: str | None = None
-        self._annotation_cache: dict[int, list[dict[str, Any]]] = {}
-        self._signature_cache: dict[int, str] = {}
-        self.annotations: list[
-            dict[str, Any]
-        ] = []  # populated before class/method extraction
 
     def extract_annotations(
         self, tree: tree_sitter.Tree, source_code: str
@@ -184,12 +150,8 @@ class JavaElementExtractor(ElementExtractor):
             # dropped from outlines — modern Java DTOs/annotations invisible.
             "record_declaration": self._extract_class_optimized,
             "annotation_type_declaration": self._extract_class_optimized,
-            # Modern Java (2026-09-01): anonymous class bodies.
-            # tree-sitter-java 0.23.5 represents them as class_body inside
-            # object_creation_expression (no distinct anonymous_class_body node).
-            # Both keys are kept for forward/backward grammar compatibility.
+            # 已安装 grammar 的匿名类使用 object_creation_expression 下的 class_body。
             "class_body": self._extract_anonymous_class_optimized,
-            "anonymous_class_body": self._extract_anonymous_class_optimized,
         }
 
         self._traverse_and_extract_iterative(
@@ -262,88 +224,6 @@ class JavaElementExtractor(ElementExtractor):
         if packages and packages[0].name:
             self.current_package = packages[0].name
         return packages
-
-    def _reset_caches(self) -> None:
-        """Reset performance caches and package state to avoid cross-test contamination."""
-        for cache in (
-            self._node_text_cache,
-            self._element_cache,
-            self._annotation_cache,
-            self._signature_cache,
-        ):
-            cache.clear()
-        self._processed_nodes.clear()
-        self.current_package = ""
-
-    def _traverse_and_extract_iterative(
-        self,
-        root_node: tree_sitter.Node | None,
-        extractors: dict[str, Any],
-        results: list[Any],
-        element_type: str,
-    ) -> None:
-        """Iterative node traversal and extraction with batch processing"""
-        _traverse_standalone(
-            root_node,
-            extractors,
-            results,
-            element_type,
-            self._processed_nodes,
-            self._element_cache,
-        )
-
-    def _process_field_batch(
-        self, batch: list[tree_sitter.Node], extractors: dict, results: list[Any]
-    ) -> None:
-        """Process field nodes with caching — delegated to helper."""
-        _process_field_batch(
-            batch, extractors, results, self._processed_nodes, self._element_cache
-        )
-
-    def _get_node_text_optimized(self, node: tree_sitter.Node) -> str:
-        """Get node text with position-based cache key for deterministic behavior."""
-        cache_key = (node.start_byte, node.end_byte)
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
-        try:
-            encoding = self._file_encoding or "utf-8"
-            content_bytes = safe_encode("\n".join(self.content_lines), encoding)
-            text = extract_text_slice(
-                content_bytes, node.start_byte, node.end_byte, encoding
-            )
-            self._node_text_cache[cache_key] = text
-            return text
-        except Exception as e:
-            log_error(f"Error in _get_node_text_optimized: {e}")
-            return self._get_node_text_fallback(node)
-
-    def _get_node_text_fallback(self, node: tree_sitter.Node) -> str:
-        """Fallback: slice source lines by start/end points (handles encoding errors)."""
-        try:
-            sp, ep = node.start_point, node.end_point
-            if sp[0] == ep[0]:
-                return str(self.content_lines[sp[0]][sp[1] : ep[1]])
-            return "\n".join(self._collect_multiline_slices(sp, ep))
-        except Exception as fe:
-            log_error(f"Fallback text extraction also failed: {fe}")
-            return ""
-
-    def _collect_multiline_slices(
-        self, sp: tuple[int, int], ep: tuple[int, int]
-    ) -> list[str]:
-        """Collect sliced lines from sp[0] to ep[0] for multiline node text."""
-        lines = []
-        for i in range(sp[0], ep[0] + 1):
-            if i >= len(self.content_lines):
-                continue
-            line = self.content_lines[i]
-            if i == sp[0]:
-                lines.append(line[sp[1] :])
-            elif i == ep[0]:
-                lines.append(line[: ep[1]])
-            else:
-                lines.append(line)
-        return lines
 
     def _extract_class_optimized(self, node: tree_sitter.Node) -> Class | None:
         """Extract class information optimized"""
@@ -451,66 +331,6 @@ class JavaElementExtractor(ElementExtractor):
 
     def _extract_class_name(self, node: tree_sitter.Node) -> str | None:
         return _extract_class_name_standalone(node, self._get_node_text_optimized)
-
-    # -----------------------------------------------------------------------
-    # Modern Java extractors (2026-09-01)
-    # -----------------------------------------------------------------------
-
-    def _extract_lambda_optimized(self, node: tree_sitter.Node) -> Function | None:
-        """Extract a lambda_expression as a Function."""
-        return _extract_lambda_impl(
-            node,
-            self._get_node_text_optimized,
-            self.content_lines,
-            log_debug_func=log_debug,
-            log_error_func=log_error,
-        )
-
-    def _extract_static_initializer_optimized(
-        self, node: tree_sitter.Node
-    ) -> Function | None:
-        """Extract a static_initializer as a Function."""
-        return _extract_static_init_impl(
-            node,
-            self.content_lines,
-            log_debug_func=log_debug,
-            log_error_func=log_error,
-        )
-
-    def _extract_anonymous_class_optimized(
-        self, node: tree_sitter.Node
-    ) -> Class | None:
-        """Extract an anonymous class body as a Class.
-
-        Handles two grammar representations:
-        - tree-sitter-java 0.23.5: ``class_body`` child of
-          ``object_creation_expression`` (no distinct anonymous_class_body type).
-        - Older grammars: ``anonymous_class_body`` node.
-
-        When the node type is ``class_body``, only fire when the parent is
-        ``object_creation_expression`` to avoid matching regular class bodies.
-        """
-        if node.type == "class_body":
-            if node.parent is None or node.parent.type != "object_creation_expression":
-                return None
-        return _extract_anon_class_impl(
-            node,
-            self._get_node_text_optimized,
-            self.content_lines,
-            self.current_package,
-            log_debug_func=log_debug,
-            log_error_func=log_error,
-        )
-
-    def _extract_module_declaration_optimized(
-        self, node: tree_sitter.Node
-    ) -> Package | None:
-        """Extract a module_declaration as a Package."""
-        return _extract_module_decl_impl(
-            node,
-            self._get_node_text_optimized,
-            log_debug_func=log_debug,
-        )
 
 
 class JavaPlugin(LanguagePlugin):

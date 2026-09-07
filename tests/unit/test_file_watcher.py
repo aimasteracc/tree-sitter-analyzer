@@ -177,7 +177,7 @@ class TestSkipDirExclusion:
         """node_modules 内の .py ファイルが snapshot に含まれない (P4b 修正)。"""
         nm = project / "node_modules"
         nm.mkdir()
-        (nm / "some_lib.py").write_text("# node_modules file\n")
+        (nm / "some_lib.py").write_text("# node_modules file\n", encoding="utf-8")
 
         watcher = FileWatcherDaemon(cache, poll_interval=1.0, debounce=0.3)
         watcher._take_snapshot()

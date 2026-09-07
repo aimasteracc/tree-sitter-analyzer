@@ -357,6 +357,30 @@ Mostly nothing. The defaults are designed so you can hook it into your agent and
 * **Cache location**: `<project>/.ast-cache/`. Safe to delete — auto-rebuilds.
 * **Optional**: `TREE_SITTER_OUTPUT_PATH` for large-output write target.
 
+### Platform Scope Of Snapshot Evidence
+
+Ordinary file analysis, index creation/update, and legacy index-backed queries are
+separate from certified snapshot access. Their existing Windows operational paths
+do not require the new private WAL snapshot kernel. They may create or update the
+cache; they do not acquire a zero-write guarantee by using this feature.
+
+PR #1350 adds **POSIX-only private database/WAL evidence capture**, requiring
+descriptor-relative operations, `O_NOFOLLOW`, a safe external temporary directory,
+and successful source/manifest/projection checks. It does **not** deliver Windows
+read-only snapshot parity or extend the existing qualification gate for explicit
+`access_mode="read_existing"` consumers.
+
+Windows snapshot certification was already unavailable in the develop baseline
+(`SECURE_FD_SNAPSHOT_UNSUPPORTED`). It remains unavailable in this implementation
+(`WAL_PRIVATE_SNAPSHOT_UNSUPPORTED`, `completeness="unknown"`, no snapshot token).
+This is not a statement that the physical index is empty or that ordinary queries
+are disabled. Native Windows qualification for the new capture path has not been
+performed; a local capability test is not a substitute for it.
+
+The per-file `certified_at` state is not a replacement for full snapshot authority.
+`partial_at` persistent history is **not implemented or included in this PR**.
+An incomplete or unverifiable projection cannot authorize a certified consumer.
+
 ---
 
 ## Quality & Testing
@@ -366,7 +390,7 @@ Mostly nothing. The defaults are designed so you can hook it into your agent and
 | Tests passed | Comprehensive test suite ✅ |
 | Coverage | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | Type safety | mypy |
-| Platforms | macOS · Linux · Windows |
+| Platforms | macOS · Linux · Windows for ordinary operations; snapshot evidence has the narrower scope above |
 | Pre-commit gates | ruff · bandit · mypy · pyupgrade · detect-secrets · tsa-codemap-sync |
 
 ```bash
