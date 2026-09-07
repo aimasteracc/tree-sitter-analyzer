@@ -136,7 +136,7 @@ class SecurityValidator:
                 log_warning(f"Null byte detected in file path: {file_path}")
                 return False, "File path contains null bytes"
 
-            # Layer 3: Windows drive letter check (only on non-Windows systems)
+            # 第三层：非 Windows 平台拒绝盘符、UNC 和设备等根路径语法。
             is_valid, error = self._validate_windows_drive_letter(file_path)
             if not is_valid:
                 return False, error
@@ -463,25 +463,16 @@ class SecurityValidator:
         return False
 
     def _validate_windows_drive_letter(self, file_path: str) -> tuple[bool, str]:
-        """
-        Validate Windows drive letter on non-Windows systems.
-
-        Args:
-            file_path: File path to validate
-
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
+        """非 Windows 平台拒绝外来根路径语法，避免将 UNC 当作项目内相对名称。"""
         import platform
 
-        if (
-            len(file_path) > 1
-            and file_path[1] == ":"
-            and platform.system() != "Windows"
-        ):
+        host = platform.system()
+        if host != "Windows" and file_path.startswith("\\"):
+            return False, f"Windows rooted paths are not allowed on {host} system"
+        if len(file_path) > 1 and file_path[1] == ":" and host != "Windows":
             return (
                 False,
-                f"Windows drive letters are not allowed on {platform.system()} system",
+                f"Windows drive letters are not allowed on {host} system",
             )
 
         return True, ""
