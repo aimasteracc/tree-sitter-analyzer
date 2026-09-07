@@ -30,6 +30,9 @@ def _add_output_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--table",
+        # 领导裁决(2026-09-06):compact/csv 判无用,彻底删除。
+        # 实现层已在 d4fa151b 删除,此处菜单与校验层(同提交)同步收口,
+        # 终结「菜单承诺厨房做不出的菜」的三层分裂
         choices=["full", "signatures"],
         help=(
             "Output in table format. "

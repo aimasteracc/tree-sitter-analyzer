@@ -15,6 +15,8 @@ to protect.
 from __future__ import annotations
 
 import asyncio
+import shutil
+from pathlib import Path
 
 import pytest
 
@@ -26,16 +28,30 @@ _TARGET = "tree_sitter_analyzer/latency.py"
 
 
 @pytest.fixture
+def quiet_project(tmp_path: Path) -> Path:
+    """RFC-0027 的 claims 需要一棵「安静的树」。
+
+    仓库根被并行 xdist worker 共享：兄弟测试对 .ast-cache 的写入会持续
+    推进世代号，缓存策略对未安静的树按设计跳过/失效缓存键（#1364 家族，
+    windows 满载轴实测）。复制单文件最小项目到 tmp 隔离。
+    """
+    pkg = tmp_path / "tree_sitter_analyzer"
+    pkg.mkdir()
+    shutil.copy2(_TARGET, pkg / "latency.py")
+    return tmp_path
+
+
+@pytest.fixture
 def edit_safe_args() -> dict[str, object]:
     return {"action": "safe", "file_path": _TARGET, "output_format": "json"}
 
 
 @pytest.fixture
-def edit_facade():
+def edit_facade(quiet_project: Path):
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     reset_answer_cache()
-    yield build_edit_facade(".")
+    yield build_edit_facade(str(quiet_project))
     reset_answer_cache()
 
 
@@ -61,14 +77,20 @@ class TestTheInterleavedWorkflowActuallyHits:
     """
 
     @pytest.fixture
-    def pair(self):
+    def pair(self, quiet_project: Path):
         from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
         from tree_sitter_analyzer.mcp.tools.health_facade import build_health_facade
 
         reset_answer_cache()
         yield (
-            (build_edit_facade("."), {"action": "safe", "file_path": _TARGET}),
-            (build_health_facade("."), {"action": "file", "file_path": _TARGET}),
+            (
+                build_edit_facade(str(quiet_project)),
+                {"action": "safe", "file_path": _TARGET},
+            ),
+            (
+                build_health_facade(str(quiet_project)),
+                {"action": "file", "file_path": _TARGET},
+            ),
         )
         reset_answer_cache()
 

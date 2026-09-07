@@ -30,10 +30,13 @@ import sqlite3
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
+from urllib.request import url2pathname
 
 logger = logging.getLogger(__name__)
 
 _LSP_TIMEOUT = 10.0  # seconds per request
+_MAX_LSP_MESSAGE_BYTES = 4 * 1024 * 1024
 
 # Maps language names (from ast_symbol_rows.language) to LSP server commands.
 _SERVER_COMMANDS: dict[str, list[str]] = {
@@ -50,6 +53,10 @@ class LspServerUnavailableError(RuntimeError):
 
 class LspTimeoutError(RuntimeError):
     """Raised when an LSP request times out."""
+
+
+class LspProtocolError(RuntimeError):
+    """对端协议错误、断流或错误响应，不能视为成功的空结果。"""
 
 
 class LspClient:
@@ -87,10 +94,9 @@ class LspClient:
             )
 
         import shutil
+
         if not shutil.which(cmd[0]):
-            raise LspServerUnavailableError(
-                f"LSP server '{cmd[0]}' not found on PATH"
-            )
+            raise LspServerUnavailableError(f"LSP server '{cmd[0]}' not found on PATH")
 
         self._proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -100,21 +106,35 @@ class LspClient:
         )
 
         self._reader_task = asyncio.create_task(self._reader_loop())
-        await self._initialize()
+        try:
+            await self._initialize()
+        except BaseException:
+            # __aenter__ 失败时不会自动进入 __aexit__，必须在此回收进程。
+            await self._stop()
+            raise
 
     async def _stop(self) -> None:
+        for future in self._pending.values():
+            if not future.done():
+                future.cancel()
+        self._pending.clear()
         if self._reader_task:
             self._reader_task.cancel()
             try:
                 await self._reader_task
             except asyncio.CancelledError:
                 pass
+            self._reader_task = None
         if self._proc and self._proc.returncode is None:
             try:
                 self._proc.terminate()
-                await asyncio.wait_for(self._proc.wait(), timeout=2.0)
-            except Exception:
+            except ProcessLookupError:
                 pass
+            try:
+                await asyncio.wait_for(self._proc.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
+                self._proc.kill()
+                await asyncio.wait_for(self._proc.wait(), timeout=2.0)
 
     def _next_id(self) -> int:
         self._request_id += 1
@@ -122,49 +142,79 @@ class LspClient:
 
     def _send(self, message: dict[str, Any]) -> None:
         assert self._proc and self._proc.stdin
-        body = json.dumps(message)
+        body = json.dumps(message).encode("utf-8")
         header = f"Content-Length: {len(body)}\r\n\r\n"
-        self._proc.stdin.write((header + body).encode())
+        self._proc.stdin.write(header.encode("ascii") + body)
 
     async def _request(self, method: str, params: Any) -> Any:
         req_id = self._next_id()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         fut: asyncio.Future[Any] = loop.create_future()
         self._pending[req_id] = fut
-        self._send({"jsonrpc": "2.0", "id": req_id, "method": method, "params": params})
         try:
+            self._send(
+                {"jsonrpc": "2.0", "id": req_id, "method": method, "params": params}
+            )
             return await asyncio.wait_for(fut, timeout=_LSP_TIMEOUT)
         except asyncio.TimeoutError:
+            raise LspTimeoutError(
+                f"LSP request '{method}' timed out after {_LSP_TIMEOUT}s"
+            ) from None
+        finally:
             self._pending.pop(req_id, None)
-            raise LspTimeoutError(f"LSP request '{method}' timed out after {_LSP_TIMEOUT}s") from None
+            if not fut.done():
+                fut.cancel()
 
     def _notify(self, method: str, params: Any) -> None:
         self._send({"jsonrpc": "2.0", "method": method, "params": params})
 
     async def _reader_loop(self) -> None:
         assert self._proc and self._proc.stdout
-        while True:
-            try:
-                header_line = await self._proc.stdout.readline()
-                if not header_line:
-                    break
-                if not header_line.startswith(b"Content-Length:"):
-                    continue
-                content_length = int(header_line.split(b":")[1].strip())
-                # Consume blank line separator.
-                await self._proc.stdout.readline()
+        failure = LspProtocolError("LSP reader stopped")
+        try:
+            while True:
+                content_length = None
+                header_bytes = 0
+                # LSP 允许 Content-Type 等附加头；读到空行才开始读取正文。
+                while True:
+                    header_line = await self._proc.stdout.readline()
+                    if not header_line:
+                        raise LspProtocolError("stream closed")
+                    header_bytes += len(header_line)
+                    if header_bytes > 8192:
+                        raise LspProtocolError("header too large")
+                    if header_line in (b"\r\n", b"\n"):
+                        break
+                    key, value = header_line.split(b":", 1)
+                    if key.lower() == b"content-length":
+                        content_length = int(value.strip())
+                if (
+                    content_length is None
+                    or not 0 <= content_length <= _MAX_LSP_MESSAGE_BYTES
+                ):
+                    raise LspProtocolError("invalid Content-Length")
                 raw = await self._proc.stdout.readexactly(content_length)
                 msg = json.loads(raw)
                 msg_id = msg.get("id")
                 if msg_id in self._pending:
                     fut = self._pending.pop(msg_id)
                     if not fut.done():
-                        fut.set_result(msg.get("result"))
-            except asyncio.CancelledError:
-                break
-            except Exception as exc:
-                logger.debug("LspClient reader error: %s", exc)
-                break
+                        if "error" in msg:
+                            fut.set_exception(
+                                LspProtocolError(f"LSP request failed: {msg['error']}")
+                            )
+                        else:
+                            fut.set_result(msg.get("result"))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            failure = LspProtocolError(f"LSP reader failed: {exc}")
+            logger.debug("LspClient reader error: %s", exc)
+        finally:
+            for fut in self._pending.values():
+                if not fut.done():
+                    fut.set_exception(failure)
+            self._pending.clear()
 
     async def _initialize(self) -> None:
         workspace_uri = Path(self.workspace_root).as_uri()
@@ -209,16 +259,19 @@ class LspClient:
         )
         if not result:
             return None
-        # result can be a Location or a list of Location.
+        # 同时支持 Location 和 LocationLink，优先取定义标识符的选区。
         loc = result[0] if isinstance(result, list) else result
         if not loc:
             return None
-        target_uri = loc.get("uri", "")
-        rng = loc.get("range", {}).get("start", {})
-        try:
-            target_path = str(Path(target_uri.replace("file://", "")))
-        except Exception:
-            target_path = target_uri
+        target_uri = loc.get("targetUri", loc.get("uri", ""))
+        rng = loc.get("targetSelectionRange", loc.get("range", {})).get("start", {})
+        uri = urlsplit(target_uri)
+        if uri.scheme != "file" or not uri.path or "line" not in rng:
+            return None
+        path = (
+            uri.path if uri.netloc in ("", "localhost") else f"//{uri.netloc}{uri.path}"
+        )
+        target_path = url2pathname(path)
         return {
             "file": target_path,
             "line": rng.get("line", 0),
@@ -247,7 +300,7 @@ def cache_lsp_resolution(
         symbol_id:      Symbol ID (may be None when edge_id is used).
         resolved_type:  Fully-qualified type string, or None if unresolved.
         resolved_file:  Absolute path of the definition file, or None.
-        resolved_line:  Line number in resolved_file, or None.
+        resolved_line:  LSP 零基定义行号；展示为 TSA 坐标时才转换，缺失为 None。
         lsp_server:     Name of the LSP server that produced this result
                         (e.g. "pyright", "typescript-language-server").
     """

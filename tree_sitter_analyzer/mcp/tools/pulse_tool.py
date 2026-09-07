@@ -39,6 +39,7 @@ class PulseTool(BaseMCPTool):
             if not self.project_root:
                 raise ValueError("Project root not set. Call set_project_path first.")
             from ...ast_cache import ASTCache
+
             self._cache = ASTCache(self.project_root)
         return self._cache
 
@@ -61,10 +62,12 @@ class PulseTool(BaseMCPTool):
                 "properties": {
                     "file": {
                         "type": "string",
+                        "minLength": 1,
                         "description": "Project-relative file path",
                     },
                     "symbol": {
                         "type": "string",
+                        "minLength": 1,
                         "description": "Symbol name (function, class, method)",
                     },
                     "format": {
@@ -74,13 +77,34 @@ class PulseTool(BaseMCPTool):
                     },
                     "token_budget": {
                         "type": "integer",
+                        "minimum": 1,
                         "default": 600,
                         "description": "Max tokens for the response",
                     },
-                    "max_callers": {"type": "integer", "default": 10},
-                    "max_callees": {"type": "integer", "default": 10},
-                    "max_siblings": {"type": "integer", "default": 15},
-                    "max_comments": {"type": "integer", "default": 10},
+                    "max_callers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000,
+                        "default": 10,
+                    },
+                    "max_callees": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000,
+                        "default": 10,
+                    },
+                    "max_siblings": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000,
+                        "default": 15,
+                    },
+                    "max_comments": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000,
+                        "default": 10,
+                    },
                 },
                 "required": ["file", "symbol"],
                 "additionalProperties": False,
@@ -91,24 +115,53 @@ class PulseTool(BaseMCPTool):
         return self.get_tool_definition()["inputSchema"]["properties"]  # type: ignore[no-any-return]
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        if not arguments.get("file"):
-            raise ValueError("'file' is required")
-        if not arguments.get("symbol"):
-            raise ValueError("'symbol' is required")
+        for key in ("file", "symbol"):
+            if not isinstance(arguments.get(key), str) or not arguments[key].strip():
+                raise ValueError(f"{key} is required and must be a non-empty string")
+        if arguments.get("format", "compact") not in ("skeletal", "compact", "verbose"):
+            raise ValueError("format must be one of skeletal, compact, verbose")
+        for key in (
+            "token_budget",
+            "max_callers",
+            "max_callees",
+            "max_siblings",
+            "max_comments",
+        ):
+            if key not in arguments:
+                continue
+            value = arguments[key]
+            # 保持仓库既有 JSON 整数兼容：接受 10.0，但拒绝 bool、字符串和小数。
+            if isinstance(value, float) and value.is_integer():
+                value = int(value)
+            if key == "token_budget":
+                if type(value) is not int or value < 1:
+                    raise ValueError("token_budget must be a positive integer")
+            elif type(value) is not int or not 0 <= value <= 1000:
+                raise ValueError(f"{key} must be an integer between 0 and 1000")
+            arguments[key] = value
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         from ...api.pulse import apply_budget, query_pulse
         from ...api.serialization import serialize
 
+        arguments = dict(arguments)
+        try:
+            self.validate_arguments(arguments)
+        except ValueError as exc:
+            return {
+                "success": False,
+                "error_code": "INVALID_ARGUMENT",
+                "error": str(exc),
+            }
         file_path = arguments.get("file", "")
         symbol = arguments.get("symbol", "")
         fmt = arguments.get("format", "compact")
-        budget = int(arguments.get("token_budget", 600))
-        max_callers = int(arguments.get("max_callers", 10))
-        max_callees = int(arguments.get("max_callees", 10))
-        max_siblings = int(arguments.get("max_siblings", 15))
-        max_comments = int(arguments.get("max_comments", 10))
+        budget = arguments.get("token_budget", 600)
+        max_callers = arguments.get("max_callers", 10)
+        max_callees = arguments.get("max_callees", 10)
+        max_siblings = arguments.get("max_siblings", 15)
+        max_comments = arguments.get("max_comments", 10)
 
         try:
             cache = self._get_cache()
@@ -156,6 +209,7 @@ class PulseBatchTool(BaseMCPTool):
             if not self.project_root:
                 raise ValueError("Project root not set. Call set_project_path first.")
             from ...ast_cache import ASTCache
+
             self._cache = ASTCache(self.project_root)
         return self._cache
 
@@ -175,8 +229,8 @@ class PulseBatchTool(BaseMCPTool):
                         "items": {
                             "type": "object",
                             "properties": {
-                                "file": {"type": "string"},
-                                "symbol": {"type": "string"},
+                                "file": {"type": "string", "minLength": 1},
+                                "symbol": {"type": "string", "minLength": 1},
                             },
                             "required": ["file", "symbol"],
                         },
@@ -189,10 +243,13 @@ class PulseBatchTool(BaseMCPTool):
                     },
                     "token_budget_per_symbol": {
                         "type": "integer",
+                        "minimum": 1,
                         "default": 400,
                     },
                     "max_symbols": {
                         "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000,
                         "default": 10,
                     },
                 },
@@ -207,16 +264,54 @@ class PulseBatchTool(BaseMCPTool):
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         if not isinstance(arguments.get("targets"), list):
             raise ValueError("'targets' must be a list")
+        for index, target in enumerate(arguments["targets"]):
+            if not isinstance(target, dict):
+                raise ValueError(f"targets[{index}] must be an object")
+            for key in ("file", "symbol"):
+                if not isinstance(target.get(key), str) or not target[key].strip():
+                    raise ValueError(
+                        f"targets[{index}].{key} must be a non-empty string"
+                    )
+        if arguments.get("format", "compact") not in ("skeletal", "compact"):
+            raise ValueError("format must be one of skeletal, compact")
+        for key in ("token_budget_per_symbol", "max_symbols"):
+            if key not in arguments:
+                continue
+            value = arguments[key]
+            if isinstance(value, float) and value.is_integer():
+                value = int(value)
+            if type(value) is not int or value < 1:
+                raise ValueError(f"{key} must be a positive integer")
+            if key == "max_symbols" and value > 1000:
+                raise ValueError("max_symbols must not exceed 1000")
+            arguments[key] = value
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         from ...api.pulse import apply_budget, query_pulse
         from ...api.serialization import serialize
 
+        arguments = dict(arguments)
+        try:
+            self.validate_arguments(arguments)
+        except ValueError as exc:
+            return {
+                "success": False,
+                "error_code": "INVALID_ARGUMENT",
+                "error": str(exc),
+            }
         targets = arguments.get("targets", [])
         fmt = arguments.get("format", "compact")
-        budget = int(arguments.get("token_budget_per_symbol", 400))
-        max_sym = int(arguments.get("max_symbols", 10))
+        budget = arguments.get("token_budget_per_symbol", 400)
+        max_sym = arguments.get("max_symbols", 10)
+        if not targets:
+            return {
+                "success": True,
+                "results": [],
+                "count": 0,
+                "error_count": 0,
+                "truncated_count": 0,
+            }
 
         truncated_count = max(0, len(targets) - max_sym)
         targets = targets[:max_sym]
@@ -228,23 +323,34 @@ class PulseBatchTool(BaseMCPTool):
             return {"success": False, "error": str(exc)}
 
         results: list[Any] = []
+        error_count = 0
         for t in targets:
             file_path = t.get("file", "")
             symbol = t.get("symbol", "")
             try:
                 pulse = query_pulse(conn, file_path=file_path, symbol_name=symbol)
                 if pulse is None:
-                    results.append({"file": file_path, "symbol": symbol, "error": "not found"})
+                    error_count += 1
+                    results.append(
+                        {"file": file_path, "symbol": symbol, "error": "not found"}
+                    )
                 else:
                     budgeted = apply_budget(pulse, token_budget=budget)
                     results.append(serialize(budgeted, format=fmt))
             except Exception as exc:
+                error_count += 1
                 results.append({"file": file_path, "symbol": symbol, "error": str(exc)})
 
         if truncated_count > 0:
             results.append({"warning": f"{truncated_count} targets truncated"})
 
-        return {"success": True, "results": results}
+        return {
+            "success": error_count == 0,
+            "results": results,
+            "count": len(targets) - error_count,
+            "error_count": error_count,
+            "truncated_count": truncated_count,
+        }
 
 
 class GetProjectSchemaTool(BaseMCPTool):
@@ -272,6 +378,7 @@ class GetProjectSchemaTool(BaseMCPTool):
             if not self.project_root:
                 raise ValueError("Project root not set. Call set_project_path first.")
             from ...ast_cache import ASTCache
+
             self._cache = ASTCache(self.project_root)
         return self._cache
 
@@ -304,30 +411,32 @@ class GetProjectSchemaTool(BaseMCPTool):
             cache = self._get_cache()
             conn = cache.get_conn()
         except Exception as exc:
-            return {"success": True, "result": {"indexed": False, "error": str(exc)}}
+            return {"success": False, "error": str(exc), "result": {"indexed": False}}
 
         try:
-            sym_count = conn.execute("SELECT COUNT(*) FROM ast_symbol_rows").fetchone()[0]
+            sym_count = conn.execute("SELECT COUNT(*) FROM ast_symbol_rows").fetchone()[
+                0
+            ]
             edge_count = conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
             langs = [
-                r[0] for r in conn.execute(
+                r[0]
+                for r in conn.execute(
                     "SELECT DISTINCT language FROM ast_symbol_rows ORDER BY language"
                 )
             ]
             # Estimate index age from the most recently indexed file.
-            age_row = conn.execute(
-                "SELECT MAX(indexed_at) FROM ast_index"
-            ).fetchone()
+            age_row = conn.execute("SELECT MAX(indexed_at) FROM ast_index").fetchone()
             age_secs: int | None = None
             if age_row and age_row[0]:
                 try:
                     import datetime as _dt
+
                     ts = _dt.datetime.fromisoformat(str(age_row[0]))
                     age_secs = int(time.time() - ts.timestamp())
                 except Exception:
                     age_secs = None
         except Exception as exc:
-            return {"success": True, "result": {"indexed": False, "error": str(exc)}}
+            return {"success": False, "error": str(exc), "result": {"indexed": False}}
 
         return {
             "success": True,
@@ -338,17 +447,38 @@ class GetProjectSchemaTool(BaseMCPTool):
                 "total_edges": edge_count,
                 "index_age_seconds": age_secs,
                 "available_pulse_fields": [
-                    "callers", "callees", "git_heat", "imports",
-                    "imported_by", "siblings", "comments",
+                    "callers",
+                    "callees",
+                    "git_heat",
+                    "imports",
+                    "imported_by",
+                    "siblings",
+                    "comments",
                 ],
                 "hyphae_pseudo_classes": [
-                    ":calls(#X)", ":callees(#X)", ":called-by(#X)",
-                    ":extends(#X)", ":implements(#X)", ":subclasses(#X)",
-                    ":imports(mod)", ":has(#X)", ":not(sel)", ":in(path)",
-                    ":first-child", ":only-child", ":nth-child(n)",
-                    ":calls(#X){n,m}", ":called-by(#X){n,m}",
-                    ":hot", ":hot(N)", ":recently_modified", ":stale", ":hotspot",
-                    ":violates(rule_id)", ":reaches(#X){n,m}", ":branch(kind)",
+                    ":calls(#X)",
+                    ":callees(#X)",
+                    ":called-by(#X)",
+                    ":extends(#X)",
+                    ":implements(#X)",
+                    ":subclasses(#X)",
+                    ":imports(mod)",
+                    ":has(#X)",
+                    ":not(sel)",
+                    ":in(path)",
+                    ":first-child",
+                    ":only-child",
+                    ":nth-child(n)",
+                    ":calls(#X){n,m}",
+                    ":called-by(#X){n,m}",
+                    ":hot",
+                    ":hot(N)",
+                    ":recently_modified",
+                    ":stale",
+                    ":hotspot",
+                    ":violates(rule_id)",
+                    ":reaches(#X){n,m}",
+                    ":branch(kind)",
                 ],
             },
         }

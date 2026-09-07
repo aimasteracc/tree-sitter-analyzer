@@ -335,7 +335,7 @@ class TestExtractParentClasses:
         outer_name = SimpleNamespace(text=b"Outer")
         outer = SimpleNamespace(
             type="class_definition",
-            child_by_field_name=lambda field: (outer_name if field == "name" else None),
+            child_by_field_name=lambda field: outer_name if field == "name" else None,
             parent=None,
         )
         impl = SimpleNamespace(
@@ -396,8 +396,8 @@ class TestWalkForSymbols:
         name_node = SimpleNamespace(type="identifier", text=b"")
         node = MagicMock()
         node.type = "class_definition"
-        node.child_by_field_name.side_effect = (
-            lambda field: name_node if field == "name" else None
+        node.child_by_field_name.side_effect = lambda field: (
+            name_node if field == "name" else None
         )
         node.children = []
         symbols: list[dict] = []
@@ -412,8 +412,8 @@ class TestWalkForSymbols:
         node = MagicMock()
         node.type = "variable_declarator"
         node.parent = None
-        node.child_by_field_name.side_effect = (
-            lambda field: name_node if field == "name" else None
+        node.child_by_field_name.side_effect = lambda field: (
+            name_node if field == "name" else None
         )
         node.children = []
         symbols: list[dict] = []
@@ -2042,7 +2042,7 @@ def _mixed_scope_call_edges():
 
 class TestExtractCallEdgesReal:
     def test_call_edge_mapping_preserves_exact_shape(self):
-        # Issue #1173 (2026-07-27): extraction must remain shape compatible.
+        # #1173 的五个字段保持不变；PR #1352 新增的 branch 也必须完整透传。
         edge = _mixed_scope_call_edges()[0]
 
         assert tuple(edge) == (
@@ -2051,7 +2051,13 @@ class TestExtractCallEdgesReal:
             "callee_name",
             "callee_full",
             "callee_line",
+            "branch",
         )
+        assert edge["branch"] == {
+            "kind": "unconditional",
+            "nesting_depth": 0,
+            "condition_text": None,
+        }
 
     def test_call_edges_preserve_source_order(self):
         # Issue #1173 (2026-07-27): extraction must retain walker ordering.

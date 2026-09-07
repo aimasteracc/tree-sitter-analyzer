@@ -88,7 +88,11 @@ contract violation.**
 | `tree-sitter-analyzer-mcp` MCP stdio server | `mcp/server.py` | AI-agent-facing, JSON output |
 | `miswire-audit` | `miswire_audit.py` | Run-on-your-repo cross-language correctness demo |
 | `list-files` / `search-content` / `find-and-grep` | `cli/commands/*_cli.py` | fd / ripgrep / fd+rg standalone utilities |
-| Python API (no console script) | `api.py` | Embeddable library entry |
+| Python API (no console script) | `api/__init__.py` | Authoritative implementation of the existing `tree_sitter_analyzer.api` API; Pulse/serialization/semantic live in explicit submodules |
+
+The former sibling `api.py` has been removed. Existing Python imports and public
+function signatures remain unchanged; consumers must not load the removed file
+by pathname. API regression routing watches `tree_sitter_analyzer/api/**`.
 
 ## Benchmark qualification support
 

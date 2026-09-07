@@ -15,6 +15,31 @@ TSA indexes your codebase with tree-sitter and serves correct call graphs, symbo
 
 > Upgrading from v1.x? See [docs/MIGRATION.md](docs/MIGRATION.md).
 
+### Unreleased Nervous-System Boundaries
+
+TQL temporal selectors compare modification timestamps, not modification counts.
+The `tql_schema` action documents the window and the shared default for bare
+`:hot` and `:recently_modified`. Depth queries retain exact definition identity
+and fail explicitly when traversal limits are exceeded.
+
+Pulse's Python reverse-import context uses the existing module resolver; this
+is not a claim of complete cross-language module resolution. Comment context
+requires an index rebuilt with comment extraction. Old indexes and languages
+without comment extraction return `COMMENTS_NOT_INDEXED`, rather than an empty
+success; explicitly omit comment context with the documented `max_comments`
+setting when it is not needed. Missing legacy
+commit messages remain `null` with a `COMMIT_MESSAGE_MISSING` diagnostic, not a
+claim that historical activation rows have been backfilled.
+
+Semantic queries require a known stored embedding model and a consistent
+dimension. Mixed or unknown models are errors, with no provider fallback.
+Offline tests use model doubles; they do not certify live-provider quality.
+
+Pulse batches retain successful entries but report failure if a target fails.
+TQL treats missing or unreadable indexes as errors, distinct from a ready index
+with no matches. Public request validation rejects invalid types and limits
+before opening the index or invoking an embedding provider.
+
 ---
 
 ## Get Started
@@ -372,8 +397,8 @@ Mostly nothing. The defaults are designed so you can hook it into your agent and
 ```bash
 uv run pytest -q                                # bounded local quick gate
 uv run pytest tests/ -q --timeout=120 -m "not e2e and not network and not benchmark"  # comprehensive local suite
-PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # one-worker mode for lower CPU load
-PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # two-worker balanced mode
+PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1                  # quick gate, one worker (lower CPU load)
+PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q --maxfail=1                  # quick gate, two workers (balanced)
 uv run pytest --lf --maxfail=1                  # rerun only failed tests from last run
 uv run python check_quality.py --new-code-only  # quality gate
 ```
@@ -398,7 +423,7 @@ uv run python check_quality.py --new-code-only  # quality gate
 git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
 cd tree-sitter-analyzer
 uv sync --extra all --extra mcp
-uv run pytest -q
+uv run pytest -q                                # quick gate (bounded)
 ```
 
 See **[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)** for the development guide.

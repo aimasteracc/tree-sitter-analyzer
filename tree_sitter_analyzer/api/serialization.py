@@ -73,8 +73,7 @@ def _compact(pulse: PulseResponse) -> dict[str, Any]:
             "doc": sym.docstring,
         },
         "cr": [
-            {"n": c.name, "f": c.file, "l": c.line, "h": c.hot30}
-            for c in pulse.callers
+            {"n": c.name, "f": c.file, "l": c.line, "h": c.hot30} for c in pulse.callers
         ],
         "ce": [
             {"n": c.name, "f": c.file, "l": c.line, "r": c.resolution}
@@ -88,7 +87,9 @@ def _compact(pulse: PulseResponse) -> dict[str, Any]:
             "m90": gh.mod_90d,
             "mall": gh.mod_all,
             "s": gh.state,
-        } if gh else None,
+        }
+        if gh
+        else None,
         "im": [{"m": i.module, "f": i.file} for i in pulse.imports],
         "ib": list(pulse.imported_by),
         "sib": [{"n": s.name, "k": s.kind, "l": s.line} for s in pulse.siblings],
@@ -136,16 +137,16 @@ def _verbose(pulse: PulseResponse) -> dict[str, Any]:
             "mod_90d": gh.mod_90d,
             "mod_all": gh.mod_all,
             "state": gh.state,
-        } if gh else None,
+        }
+        if gh
+        else None,
         "imports": [{"module": i.module, "file": i.file} for i in pulse.imports],
         "imported_by": list(pulse.imported_by),
         "siblings": [
-            {"name": s.name, "kind": s.kind, "line": s.line}
-            for s in pulse.siblings
+            {"name": s.name, "kind": s.kind, "line": s.line} for s in pulse.siblings
         ],
         "comments": [
-            {"line": c.line, "text": c.text, "kind": c.kind}
-            for c in pulse.comments
+            {"line": c.line, "text": c.text, "kind": c.kind} for c in pulse.comments
         ],
         "token_estimate": pulse.token_estimate,
         "truncated_fields": list(pulse.truncated_fields),

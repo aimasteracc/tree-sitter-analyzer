@@ -67,10 +67,14 @@ def _edge_for_call(
             caller_name = name
             caller_line = raw_start
     callee_name = call.get("name", "")
-    return {
+    edge = {
         "caller_name": caller_name,
         "caller_line": caller_line,
         "callee_name": callee_name,
         "callee_full": call.get("full_name", callee_name),
         "callee_line": call_line,
     }
+    # PR #1352：分支证据必须穿过归属转换层，再由写入层持久化。
+    if call.get("branch") is not None:
+        edge["branch"] = call["branch"]
+    return edge

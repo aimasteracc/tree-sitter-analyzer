@@ -34,12 +34,16 @@ than silently passing candidates through.
 
 from __future__ import annotations
 
+import sqlite3
 import time
 from collections import defaultdict
 from typing import Any
 
 from .ast import Combined, PseudoClass, SelectorList, SimpleSelector
-from .parser import HyphaeSyntaxError
+from .parser import _MAX_DEPTH_QUANTIFIER, HyphaeSyntaxError
+
+_BFS_MAX_STATES = 10_000
+_BFS_TIMEOUT_SECONDS = 1.0
 
 # .kind alias → TSA symbol kind. TSA stores Java methods as functions with a
 # populated ``class`` field, so we discriminate methods on that.
@@ -215,18 +219,33 @@ class Evaluator:
         ``direction`` is ``"callee"`` (forward) or ``"caller"`` (reverse).
         Edges where callee_symbol_id IS NULL are skipped by the CTE condition.
         """
+        if not 1 <= depth_min <= depth_max <= _MAX_DEPTH_QUANTIFIER:
+            raise HyphaeSyntaxError(f"depth must be within 1..{_MAX_DEPTH_QUANTIFIER}")
+        if direction not in ("callee", "caller"):
+            raise HyphaeSyntaxError("invalid BFS direction")
+        if len(seed_ids) > 512:
+            raise HyphaeSyntaxError("BFS_RESOURCE_LIMIT: seed count")
         conn = getattr(self._cache, "get_conn", None)
         if conn is None:
-            return set()
+            raise HyphaeSyntaxError("BFS_INDEX_UNAVAILABLE")
         try:
             db = conn()
-        except Exception:
-            return set()
+        except Exception as exc:
+            raise HyphaeSyntaxError("BFS_INDEX_UNAVAILABLE") from exc
 
         if not seed_ids:
             return set()
 
         placeholders = ",".join("?" * len(seed_ids))
+
+        # 旧边可能没有 caller_line；仅当文件内名字唯一时才能恢复身份。
+        def caller_identity(alias: str) -> str:
+            return (
+                f"e.file_path = {alias}.file_path AND "
+                f"(e.caller_line = {alias}.line OR (e.caller_line = 0 AND "
+                f"(SELECT count(*) FROM ast_symbol_rows same "
+                f"WHERE same.file_path = {alias}.file_path AND same.name = {alias}.name) = 1))"
+            )
 
         if direction == "callee":
             # Forward BFS: follow edges from seed symbols to their callees (INTEGER IDs).
@@ -238,19 +257,21 @@ WITH RECURSIVE reachable(id, hop) AS (
     FROM   edges e
     JOIN   ast_symbol_rows sr ON sr.id IN ({placeholders})
                               AND sr.name = e.caller_name
+                              AND {caller_identity("sr")}
     WHERE  e.kind = 'calls'
     AND    e.callee_symbol_id IS NOT NULL
-    UNION ALL
+    UNION
     SELECT e.callee_symbol_id, r.hop + 1
     FROM   reachable r
     JOIN   ast_symbol_rows sr2 ON sr2.id = r.id
     JOIN   edges e ON e.caller_name = sr2.name
+                   AND {caller_identity("sr2")}
                    AND e.kind = 'calls'
                    AND e.callee_symbol_id IS NOT NULL
     WHERE  r.hop < ?
+    LIMIT ?
 )
-SELECT DISTINCT id FROM reachable
-WHERE hop >= ? AND hop <= ?
+SELECT id, hop FROM reachable
 """
         else:
             # Reverse BFS: find callers of seeds (and their callers, etc.)
@@ -262,25 +283,39 @@ WITH RECURSIVE reachable(id, hop) AS (
     JOIN   ast_symbol_rows sr  ON sr.id IN ({placeholders})
                               AND e.callee_symbol_id = sr.id
     JOIN   ast_symbol_rows sr2 ON sr2.name = e.caller_name
+                              AND {caller_identity("sr2")}
     WHERE  e.kind = 'calls'
-    UNION ALL
+    UNION
     SELECT sr2.id, r.hop + 1
     FROM   edges e
     JOIN   reachable r          ON e.callee_symbol_id = r.id
     JOIN   ast_symbol_rows sr2  ON sr2.name = e.caller_name
+                               AND {caller_identity("sr2")}
     WHERE  r.hop < ?
     AND    e.kind = 'calls'
+    LIMIT ?
 )
-SELECT DISTINCT id FROM reachable
-WHERE hop >= ? AND hop <= ?
+SELECT id, hop FROM reachable
 """
 
+        # UNION 去重每层状态；数量和 SQLite 执行时间同时受限，不能返回假空集。
+        deadline = time.monotonic() + _BFS_TIMEOUT_SECONDS
+        db.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
         try:
-            params = list(seed_ids) + [depth_max, depth_min, depth_max]
+            params = list(seed_ids) + [depth_max, _BFS_MAX_STATES + 1]
             rows = db.execute(sql, params).fetchall()
-            return {int(r[0]) for r in rows}
-        except Exception:
-            return set()
+            if len(rows) > _BFS_MAX_STATES or time.monotonic() > deadline:
+                raise HyphaeSyntaxError("BFS_RESOURCE_LIMIT")
+            return {int(r[0]) for r in rows if depth_min <= r[1] <= depth_max}
+        except sqlite3.OperationalError as exc:
+            reason = (
+                "BFS_RESOURCE_LIMIT"
+                if "interrupt" in str(exc).lower()
+                else "BFS_INDEX_UNAVAILABLE"
+            )
+            raise HyphaeSyntaxError(reason) from exc
+        finally:
+            db.set_progress_handler(None, 0)
 
     # -- temporal pseudo-classes --------------------------------------------
 
@@ -296,77 +331,71 @@ WHERE hop >= ? AND hop <= ?
         except Exception:
             return cands
 
-        if name == "hot":
-            threshold = int(arg) if isinstance(arg, int) else 5
-            try:
-                hot_pairs = {
-                    (r[0], r[1]) for r in db.execute(
-                        "SELECT sr.name, sr.file_path "
-                        "FROM ast_symbol_rows sr "
-                        "JOIN ast_symbol_activation a ON a.symbol_id = sr.id "
-                        "WHERE a.mod_count_30d > ?",
-                        (threshold,),
-                    )
-                }
-                return [c for c in cands if (c.get("name"), c.get("file")) in hot_pairs]
-            except Exception:
-                return cands
-
-        if name == "recently_modified":
-            cutoff = int(time.time()) - 30 * 86400
+        if name in ("hot", "recently_modified"):
+            # tql_schema 既有契约：bare hot 默认 30 天，recently_modified 是其别名。
+            days = 30 if arg is None or name == "recently_modified" else arg
+            if type(days) is not int or not 1 <= days <= 365000:
+                raise HyphaeSyntaxError("hot days must be within 1..365000")
+            cutoff = int(time.time()) - days * 86400
             try:
                 recent_pairs = {
-                    (r[0], r[1]) for r in db.execute(
-                        "SELECT sr.name, sr.file_path "
+                    (r[0], r[1], r[2])
+                    for r in db.execute(
+                        "SELECT sr.name, sr.file_path, sr.line "
                         "FROM ast_symbol_rows sr "
                         "JOIN ast_symbol_activation a ON a.symbol_id = sr.id "
                         "WHERE a.last_modified_at > ?",
                         (cutoff,),
                     )
                 }
-                return [c for c in cands if (c.get("name"), c.get("file")) in recent_pairs]
-            except Exception:
-                return cands
+                return [c for c in cands if _key(c) in recent_pairs]
+            except sqlite3.Error as exc:
+                raise HyphaeSyntaxError("TEMPORAL_INDEX_UNAVAILABLE") from exc
 
         if name == "stale":
             cutoff = int(time.time()) - 180 * 86400
             try:
                 stale_pairs = {
-                    (r[0], r[1]) for r in db.execute(
-                        "SELECT sr.name, sr.file_path "
+                    (r[0], r[1], r[2])
+                    for r in db.execute(
+                        "SELECT sr.name, sr.file_path, sr.line "
                         "FROM ast_symbol_rows sr "
                         "JOIN ast_symbol_activation a ON a.symbol_id = sr.id "
                         "WHERE a.last_modified_at < ? AND a.mod_count_30d = 0",
                         (cutoff,),
                     )
                 }
-                return [c for c in cands if (c.get("name"), c.get("file")) in stale_pairs]
+                return [c for c in cands if _key(c) in stale_pairs]
             except Exception:
                 return cands
 
         if name == "hotspot":
             # Python-side top-10% per file rank (SQLite version-independent).
             from collections import defaultdict as _dd
+
             try:
                 act_rows = db.execute(
-                    "SELECT sr.name, a.file_path, COALESCE(a.mod_count_30d, 0) "
+                    "SELECT sr.name, a.file_path, COALESCE(a.mod_count_30d, 0), sr.line "
                     "FROM ast_symbol_activation a "
                     "JOIN ast_symbol_rows sr ON sr.id = a.symbol_id"
                 ).fetchall()
             except Exception:
                 return cands
 
-            by_file: dict[str, list[tuple[str, int]]] = _dd(list)
+            by_file: dict[str, list[tuple[str, int, int]]] = _dd(list)
             for r in act_rows:
-                by_file[r[1]].append((r[0], r[2] or 0))
+                by_file[r[1]].append((r[0], r[2] or 0, r[3]))
 
-            hotspot_pairs: set[tuple[str, str]] = set()
+            hotspot_pairs: set[tuple[str, str, int]] = set()
             for file_path, file_syms in by_file.items():
                 sorted_syms = sorted(file_syms, key=lambda x: x[1], reverse=True)
                 cutoff_n = max(1, len(sorted_syms) // 10)
-                hotspot_pairs.update((sym_name, file_path) for sym_name, _ in sorted_syms[:cutoff_n])
+                hotspot_pairs.update(
+                    (sym_name, file_path, line)
+                    for sym_name, _, line in sorted_syms[:cutoff_n]
+                )
 
-            return [c for c in cands if (c.get("name"), c.get("file")) in hotspot_pairs]
+            return [c for c in cands if _key(c) in hotspot_pairs]
 
         return cands
 
@@ -379,6 +408,13 @@ WHERE hop >= ? AND hop <= ?
             # Check for DepthQuantifier — use BFS CTE when depth_min is set.
             if pc.depth_min is not None:
                 return self._filter_edge_depth(cands, pc)
+            # 持久化调用边已有稳定 ID，单跳也不能降回名字匹配；非 SQLite 适配器保留原查询接口。
+            if name in ("calls", "callees", "called-by") and callable(
+                getattr(self._cache, "get_conn", None)
+            ):
+                return self._filter_edge_depth(
+                    cands, PseudoClass(name=name, arg=pc.arg, depth_min=1, depth_max=1)
+                )
             return self._filter_edge(cands, pc.arg, *_EDGE_PSEUDOS[name])
         if name == "imports":
             return self._filter_imports(cands, pc.arg)
@@ -414,145 +450,125 @@ WHERE hop >= ? AND hop <= ?
         cands: list[dict[str, Any]],
         pc: PseudoClass,
     ) -> list[dict[str, Any]]:
-        """Apply depth-bounded BFS for :calls{n,m} and :called-by{n,m}."""
-        depth_min = pc.depth_min or 1
+        """为深度调用查询和 reaches 共用精确身份解析及有界 BFS。"""
+        depth_min = pc.depth_min if pc.depth_min is not None else 1
         depth_max = pc.depth_max if pc.depth_max is not None else depth_min
 
-        # Resolve seed symbol IDs from the argument selector.
+        # 参数选择器到返回候选始终保留 file/name/line，不能降格为名字集合。
         if not isinstance(pc.arg, SelectorList):
             raise HyphaeSyntaxError("depth pseudo-class requires a selector argument")
-        names = self._target_names(pc.arg)
-
         conn_fn = getattr(self._cache, "get_conn", None)
         if conn_fn is None:
-            return cands
+            raise HyphaeSyntaxError("BFS_INDEX_UNAVAILABLE")
         try:
             db = conn_fn()
-        except Exception:
-            return cands
+        except Exception as exc:
+            raise HyphaeSyntaxError("BFS_INDEX_UNAVAILABLE") from exc
 
+        seed_ids: set[int] = set()
         try:
-            seed_rows = db.execute(
-                "SELECT id FROM ast_symbol_rows WHERE name IN ({})".format(
-                    ",".join("?" * len(names))
-                ),
-                list(names),
-            ).fetchall()
-        except Exception:
-            return cands
-
-        seed_ids = [int(r[0]) for r in seed_rows]
+            for selector in pc.arg.selectors:
+                if (
+                    isinstance(selector, SimpleSelector)
+                    and selector.base[0] == "name"
+                    and not selector.attributes
+                    and not selector.pseudo_classes
+                ):
+                    seed_ids.update(
+                        r[0]
+                        for r in db.execute(
+                            "SELECT id FROM ast_symbol_rows WHERE name=? LIMIT 513",
+                            (selector.base[1],),
+                        )
+                    )
+                else:
+                    targets = self._eval_selector(selector)
+                    if len(targets) > 512:
+                        raise HyphaeSyntaxError("BFS_RESOURCE_LIMIT: seed count")
+                    for target in targets:
+                        matches = db.execute(
+                            "SELECT id FROM ast_symbol_rows WHERE name=? AND file_path=? AND line=? LIMIT 2",
+                            _key(target),
+                        ).fetchall()
+                        if len(matches) != 1:
+                            raise HyphaeSyntaxError("BFS_SYMBOL_IDENTITY_UNAVAILABLE")
+                        seed_ids.add(matches[0][0])
+                if len(seed_ids) > 512:
+                    raise HyphaeSyntaxError("BFS_RESOURCE_LIMIT: seed count")
+        except sqlite3.Error as exc:
+            raise HyphaeSyntaxError("BFS_INDEX_UNAVAILABLE") from exc
 
         # Direction: "calls(#X){n,m}" = find who calls X (reverse BFS from X).
         # "callees"/"called-by" = find what X calls (forward BFS from X).
         direction = "callee" if pc.name in ("called-by", "callees") else "caller"
-        reachable_ids = self._eval_depth_bfs(seed_ids, direction, depth_min, depth_max)
+        reachable_ids = sorted(
+            self._eval_depth_bfs(sorted(seed_ids), direction, depth_min, depth_max)
+        )
 
+        reachable_keys: set[tuple[Any, Any, Any]] = set()
         try:
-            id_rows = db.execute(
-                "SELECT id, name, file_path FROM ast_symbol_rows "
-                "WHERE id IN ({})".format(",".join("?" * len(reachable_ids))),
-                list(reachable_ids),
-            ).fetchall() if reachable_ids else []
-        except Exception:
-            return cands
-
-        reachable_nf: set[tuple[Any, Any]] = {(r[1], r[2]) for r in id_rows}
-        return [
-            c for c in cands
-            if (c.get("name"), c.get("file")) in reachable_nf
-        ]
+            for offset in range(0, len(reachable_ids), 512):
+                batch = reachable_ids[offset : offset + 512]
+                reachable_keys.update(
+                    tuple(r)
+                    for r in db.execute(
+                        "SELECT name, file_path, line FROM ast_symbol_rows WHERE id IN ({})".format(
+                            ",".join("?" * len(batch))
+                        ),
+                        batch,
+                    )
+                )
+        except sqlite3.Error as exc:
+            raise HyphaeSyntaxError("BFS_INDEX_UNAVAILABLE") from exc
+        return [c for c in cands if _key(c) in reachable_keys]
 
     def _filter_violates(
         self,
         cands: list[dict[str, Any]],
         arg: Any,
     ) -> list[dict[str, Any]]:
-        """Keep candidates that have a violation registered for ``rule_id``."""
+        """按规则和完整定义坐标匹配违规，不能把同名方法全部标为违规。"""
         rule_id = str(arg) if arg is not None else ""
         conn_fn = getattr(self._cache, "get_conn", None)
         if conn_fn is None:
-            return cands
+            raise HyphaeSyntaxError("VIOLATION_INDEX_UNAVAILABLE")
         try:
             db = conn_fn()
             violated = {
-                (r[0], r[1]) for r in db.execute(
-                    "SELECT caller_file, caller_name FROM ast_constraint_violations "
+                (r[0], r[1], r[2])
+                for r in db.execute(
+                    "SELECT caller_name, caller_file, caller_line FROM ast_constraint_violations "
                     "WHERE rule_id = ?",
                     (rule_id,),
                 )
             }
-            return [
-                c for c in cands
-                if (c.get("file"), c.get("name")) in violated
-            ]
-        except Exception:
-            return cands
+            return [c for c in cands if _key(c) in violated]
+        except Exception as exc:
+            raise HyphaeSyntaxError(f"VIOLATION_INDEX_UNAVAILABLE: {exc}") from exc
 
     def _filter_reaches(
         self,
         cands: list[dict[str, Any]],
         pc: PseudoClass,
     ) -> list[dict[str, Any]]:
-        """:reaches(#target){n,m} — candidates that can reach ``target`` in n-m hops."""
-        depth_min = pc.depth_min or 1
-        depth_max = pc.depth_max if pc.depth_max is not None else depth_min
-
-        if not isinstance(pc.arg, SelectorList):
-            raise HyphaeSyntaxError(":reaches requires a selector argument")
-        target_names = self._target_names(pc.arg)
-
-        conn_fn = getattr(self._cache, "get_conn", None)
-        if conn_fn is None:
-            return cands
-        try:
-            db = conn_fn()
-        except Exception:
-            return cands
-
-        try:
-            target_rows = db.execute(
-                "SELECT id FROM ast_symbol_rows WHERE name IN ({})".format(
-                    ",".join("?" * len(target_names))
-                ),
-                list(target_names),
-            ).fetchall() if target_names else []
-        except Exception:
-            return cands
-
-        target_ids = [int(r[0]) for r in target_rows]
-        # BFS in caller direction from target to find who can reach target.
-        reachable_ids = self._eval_depth_bfs(target_ids, "caller", depth_min, depth_max)
-
-        try:
-            id_rows = db.execute(
-                "SELECT id, name, file_path FROM ast_symbol_rows "
-                "WHERE id IN ({})".format(",".join("?" * len(reachable_ids))),
-                list(reachable_ids),
-            ).fetchall() if reachable_ids else []
-        except Exception:
-            return cands
-
-        reachable_nf: set[tuple[Any, Any]] = {(r[1], r[2]) for r in id_rows}
-        return [
-            c for c in cands
-            if (c.get("name"), c.get("file")) in reachable_nf
-        ]
+        """reaches 与 calls 的反向 BFS 语义一致，复用同一身份路径。"""
+        return self._filter_edge_depth(cands, pc)
 
     def _filter_branch(
         self,
         cands: list[dict[str, Any]],
         arg: Any,
     ) -> list[dict[str, Any]]:
-        """:branch(kind) — keep candidates called inside the given branch kind."""
+        """按已索引的分支类型筛选被调用符号，读取失败必须显式报错。"""
         branch_kind = str(arg) if arg is not None else ""
         conn_fn = getattr(self._cache, "get_conn", None)
         if conn_fn is None:
-            return cands
+            raise HyphaeSyntaxError("BRANCH_INDEX_UNAVAILABLE")
         try:
             db = conn_fn()
             matched = {
-                r[0] for r in db.execute(
+                r[0]
+                for r in db.execute(
                     "SELECT callee_name FROM edges "
                     "WHERE kind = 'calls' "
                     "AND json_extract(metadata, '$.branch.kind') = ?",
@@ -560,8 +576,8 @@ WHERE hop >= ? AND hop <= ?
                 )
             }
             return [c for c in cands if c.get("name") in matched]
-        except Exception:
-            return cands
+        except Exception as exc:
+            raise HyphaeSyntaxError(f"BRANCH_INDEX_UNAVAILABLE: {exc}") from exc
 
     def _filter_edge(
         self,

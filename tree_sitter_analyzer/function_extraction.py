@@ -6,105 +6,105 @@ from collections.abc import Callable
 from typing import Any, cast
 
 _COMMENT_NODE_TYPES: dict[str, frozenset[str]] = {
-    "python":     frozenset(["comment"]),
+    "python": frozenset(["comment"]),
     "javascript": frozenset(["comment", "block_comment"]),
     "typescript": frozenset(["comment", "block_comment"]),
-    "java":       frozenset(["line_comment", "block_comment"]),
-    "go":         frozenset(["comment"]),
-    "c":          frozenset(["comment"]),
-    "cpp":        frozenset(["comment"]),
-    "rust":       frozenset(["line_comment", "block_comment"]),
-    "csharp":     frozenset(["comment", "multiline_comment"]),
-    "kotlin":     frozenset(["multiline_comment", "line_comment"]),
-    "ruby":       frozenset(["comment"]),
-    "php":        frozenset(["comment", "shell_comment"]),
-    "lua":        frozenset(["comment", "long_comment"]),
-    "swift":      frozenset(["comment", "multiline_comment"]),
+    "java": frozenset(["line_comment", "block_comment"]),
+    "go": frozenset(["comment"]),
+    "c": frozenset(["comment"]),
+    "cpp": frozenset(["comment"]),
+    "rust": frozenset(["line_comment", "block_comment"]),
+    "csharp": frozenset(["comment", "multiline_comment"]),
+    "kotlin": frozenset(["multiline_comment", "line_comment"]),
+    "ruby": frozenset(["comment"]),
+    "php": frozenset(["comment", "shell_comment"]),
+    "lua": frozenset(["comment", "long_comment"]),
+    "swift": frozenset(["comment", "multiline_comment"]),
 }
 
 _BRANCH_NODE_TYPES: dict[str, dict[str, tuple[str, ...]]] = {
     "python": {
-        "if_statement":    ("if_true", "if_false"),
-        "try_statement":   ("try", "except", "finally"),
-        "for_statement":   ("loop",),
+        "if_statement": ("if_true", "if_false"),
+        "try_statement": ("try", "except", "finally"),
+        "for_statement": ("loop",),
         "while_statement": ("loop",),
-        "with_statement":  ("with",),
+        "with_statement": ("with",),
     },
     "javascript": {
-        "if_statement":    ("if_true", "if_false"),
-        "try_statement":   ("try", "catch", "finally"),
-        "for_statement":   ("loop",),
+        "if_statement": ("if_true", "if_false"),
+        "try_statement": ("try", "catch", "finally"),
+        "for_statement": ("loop",),
         "while_statement": ("loop",),
     },
     "typescript": {
-        "if_statement":    ("if_true", "if_false"),
-        "try_statement":   ("try", "catch", "finally"),
-        "for_statement":   ("loop",),
+        "if_statement": ("if_true", "if_false"),
+        "try_statement": ("try", "catch", "finally"),
+        "for_statement": ("loop",),
         "while_statement": ("loop",),
     },
     "java": {
-        "if_statement":            ("if_true", "if_false"),
-        "try_statement":           ("try", "catch", "finally"),
-        "enhanced_for_statement":  ("loop",),
-        "while_statement":         ("loop",),
+        "if_statement": ("if_true", "if_false"),
+        "try_statement": ("try", "catch", "finally"),
+        "enhanced_for_statement": ("loop",),
+        "while_statement": ("loop",),
     },
     "go": {
-        "if_statement":  ("if_true", "if_false"),
+        "if_statement": ("if_true", "if_false"),
         "for_statement": ("loop",),
     },
     "rust": {
-        "if_expression":    ("if_true", "if_false"),
-        "loop_expression":  ("loop",),
-        "for_expression":   ("loop",),
+        "if_expression": ("if_true", "if_false"),
+        "loop_expression": ("loop",),
+        "for_expression": ("loop",),
         "while_expression": ("loop",),
     },
     "c": {
-        "if_statement":    ("if_true", "if_false"),
-        "for_statement":   ("loop",),
+        "if_statement": ("if_true", "if_false"),
+        "for_statement": ("loop",),
         "while_statement": ("loop",),
-        "try_statement":   ("try",),
+        "try_statement": ("try",),
     },
     "cpp": {
-        "if_statement":    ("if_true", "if_false"),
-        "for_statement":   ("loop",),
+        "if_statement": ("if_true", "if_false"),
+        "for_statement": ("loop",),
         "while_statement": ("loop",),
-        "try_statement":   ("try", "catch"),
+        "try_statement": ("try", "catch"),
     },
     "csharp": {
-        "if_statement":    ("if_true", "if_false"),
-        "try_statement":   ("try", "catch", "finally"),
-        "for_statement":   ("loop",),
+        "if_statement": ("if_true", "if_false"),
+        "try_statement": ("try", "catch", "finally"),
+        "for_statement": ("loop",),
         "while_statement": ("loop",),
     },
     "kotlin": {
-        "if_expression":   ("if_true", "if_false"),
-        "try_expression":  ("try", "catch", "finally"),
-        "for_statement":   ("loop",),
+        "if_expression": ("if_true", "if_false"),
+        "try_expression": ("try", "catch", "finally"),
+        "for_statement": ("loop",),
         "while_statement": ("loop",),
     },
     "ruby": {
-        "if":        ("if_true",),
-        "unless":    ("if_false",),
-        "while":     ("loop",),
-        "for":       ("loop",),
-        "begin":     ("try",),
-        "rescue":    ("except",),
+        "if": ("if_true",),
+        "unless": ("if_false",),
+        "while": ("loop",),
+        "for": ("loop",),
+        "begin": ("try",),
+        "rescue": ("except",),
     },
     "php": {
-        "if_statement":    ("if_true", "if_false"),
-        "try_statement":   ("try", "catch", "finally"),
-        "for_statement":   ("loop",),
+        "if_statement": ("if_true", "if_false"),
+        "try_statement": ("try", "catch", "finally"),
+        "for_statement": ("loop",),
         "while_statement": ("loop",),
     },
     "lua": {
-        "if_statement":    ("if_true", "if_false"),
-        "for_statement":   ("loop",),
+        "if_statement": ("if_true", "if_false"),
+        "for_statement": ("loop",),
         "while_statement": ("loop",),
     },
     "swift": {
-        "if_statement":    ("if_true", "if_false"),
-        "do_statement":    ("try",),
-        "catch_clause":    ("except",),
+        "if_statement": ("if_true", "if_false"),
+        "do_statement": ("try",),
+        "catch_clause": ("except",),
         "for_in_statement": ("loop",),
         "while_statement": ("loop",),
     },
@@ -463,15 +463,17 @@ def extract_comments_from_body(root_node: Any, language: str) -> list[dict[str, 
             cleaned = raw.strip()
             for prefix in ("/**", "/*", "//", "#", "*", "///", "--"):
                 if cleaned.startswith(prefix):
-                    cleaned = cleaned[len(prefix):].strip()
+                    cleaned = cleaned[len(prefix) :].strip()
                     break
             cleaned = cleaned.rstrip("*/").strip()
             kind = "block" if "block" in node.type else "inline"
-            results.append({
-                "line": node.start_point[0] + 1,
-                "text": cleaned[:80],
-                "kind": kind,
-            })
+            results.append(
+                {
+                    "line": node.start_point[0] + 1,
+                    "text": cleaned[:80],
+                    "kind": kind,
+                }
+            )
             return  # do not recurse into comment children
         for child in getattr(node, "children", []):
             _walk(child)

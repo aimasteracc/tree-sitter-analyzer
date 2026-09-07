@@ -28,6 +28,7 @@ MODULES: dict[str, tuple[str, list[str]]] = {
         [
             "tests/unit/test_ast_diff.py",
             "tests/unit/test_ast_diff_tool.py",
+            "tests/unit/test_ast_diff_scenarios.py",
         ],
     ),
     "semantic_change_classifier": (
@@ -35,18 +36,29 @@ MODULES: dict[str, tuple[str, list[str]]] = {
         [
             "tests/unit/test_semantic_change_classifier.py",
             "tests/unit/test_semantic_classify_tool.py",
+            "tests/unit/test_semantic_change_scenarios.py",
         ],
     ),
     "facade_tool": (
         "tree_sitter_analyzer/mcp/tools/facade_tool.py",
         [
-            "tests/unit/mcp/",
+            # 收窄到真正打 FacadeTool 的文件:整目录会拖进依赖
+            # examples/ 等沙盒外文件的用例,导致未变异基线即失败
+            "tests/unit/mcp/tools/test_facade_tool.py",
+            "tests/unit/mcp/tools/test_nav_facade.py",
+            "tests/unit/mcp/tools/test_edit_facade.py",
+            "tests/unit/mcp/tools/test_structure_facade.py",
+            "tests/unit/mcp/tools/test_health_facade.py",
+            "tests/unit/mcp/tools/test_facade_tool_scenarios.py",
         ],
     ),
     "query_symbol_search": (
         "tree_sitter_analyzer/mcp/tools/query_symbol_search.py",
         [
-            "tests/unit/mcp/",
+            # 收窄:整目录会拖进依赖沙盒外文件的用例(见 facade_tool 注释)
+            "tests/unit/mcp/test_query_symbol_search.py",
+            "tests/unit/mcp/test_fts5_bm25_ranking.py",
+            "tests/unit/mcp/test_query_symbol_search_scenarios.py",
         ],
     ),
     "toon_encoder": (
@@ -62,6 +74,10 @@ PYPROJECT_TEMPLATE = """\
 # Do not edit — regenerated on each run.
 [tool.mutmut]
 source_paths = ["{source_path}"]
+# 被测模块的包内依赖（如 ast_diff 引用的 .core.parser、.project_graph）
+# 必须一并拷进 mutmut 沙盒，否则 mutants/ 里只有被测文件本身，
+# 导入链断裂、全部变异 not checked（2026-07 大重构后引入的回归）。
+also_copy = ["tree_sitter_analyzer"]
 pytest_add_cli_args_test_selection = {test_paths_toml}
 pytest_add_cli_args = ["-n", "0", "-x", "--timeout=30", "-q"]
 timeout_multiplier = 10.0
@@ -118,13 +134,15 @@ def run_module(module_key: str, repo_root: Path) -> None:
                 capture_output=False,
             )
             print(f"\n=== mutmut run exit code: {result.returncode} ===")
+            result.check_returncode()
 
-            # Collect results
+            # 仅在变异运行成功后读取结果；读取失败同样必须向入口传播。
             print(f"\n=== Results for {module_key} ===")
-            subprocess.run(
+            result = subprocess.run(
                 [*mutmut_command, "results"],
                 cwd=repo_root,
             )
+            result.check_returncode()
         finally:
             shutil.copy2(backup, real_pyproject)
 

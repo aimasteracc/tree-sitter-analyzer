@@ -640,6 +640,18 @@ class IncrementalSync:
             _frozen_deadline=time.monotonic() + _FROZEN_READ_SECONDS,
         )
 
-    def get_changes(self) -> dict[str, list[str]]:
-        """Return live new, modified, and deleted paths without re-indexing."""
-        return get_changes(self._cache, self._file_changed, _walk_source_files)
+    def get_changes(
+        self, *, exclude_patterns: frozenset[str] | None = None
+    ) -> dict[str, list[str]]:
+        """按调用方的排除策略返回变更；省略策略时保持原有全范围行为。"""
+        changes = get_changes(self._cache, self._file_changed, _walk_source_files)
+        return {
+            kind: [
+                path
+                for path in paths
+                if not any(
+                    fnmatch.fnmatch(path, pattern) for pattern in exclude_patterns or ()
+                )
+            ]
+            for kind, paths in changes.items()
+        }

@@ -21,6 +21,7 @@ from tree_sitter_analyzer.api.semantic import (
 # Private seed helpers
 # ---------------------------------------------------------------------------
 
+
 def _seed_symbol(
     conn,
     name: str,
@@ -54,6 +55,7 @@ def _seed_embedding(conn, symbol_id: int, vec: list[float]) -> None:
 # cosine_similarity
 # ---------------------------------------------------------------------------
 
+
 def test_cosine_similarity_identical_vectors():
     result = cosine_similarity([1.0, 0.0], [1.0, 0.0])
     assert result == pytest.approx(1.0)
@@ -83,6 +85,7 @@ def test_cosine_similarity_negative_values():
 # combined_score
 # ---------------------------------------------------------------------------
 
+
 def test_combined_score_zero_hops():
     # graph_score = 1/(0+1) = 1.0, alpha=0.6, beta=0.4
     result = combined_score(0, 0.5)
@@ -101,9 +104,36 @@ def test_combined_score_negative_hops():
     assert result == pytest.approx(0.0 + 0.4 * 0.5)
 
 
+def test_internal_arithmetic_score_does_not_require_numpy(monkeypatch):
+    # PR #1352：私有纯算术评分不应因无关的 NumPy 可用性而失败。
+    from tree_sitter_analyzer.api import semantic
+
+    monkeypatch.setattr(semantic, "_NUMPY_AVAILABLE", False)
+    assert (
+        semantic._score_symbol_full(1.0, 100, 50, alpha=0.5, beta=0.25, gamma=0.25)
+        == 1.0
+    )
+
+
+def test_public_search_still_requires_numpy_before_sql(ast_cache_conn, monkeypatch):
+    # PR #1352：公开搜索确实依赖 NumPy，缺依赖时必须在访问索引前失败。
+    from tree_sitter_analyzer.api import semantic
+
+    monkeypatch.setattr(semantic, "_NUMPY_AVAILABLE", False)
+    statements = []
+    ast_cache_conn.set_trace_callback(statements.append)
+    with pytest.raises(
+        semantic.SemanticUnavailableError,
+        match="numpy required for find_semantic_neighbors",
+    ):
+        semantic.find_semantic_neighbors(ast_cache_conn, [1.0, 0.0])
+    assert statements == []
+
+
 # ---------------------------------------------------------------------------
 # find_semantic_neighbors
 # ---------------------------------------------------------------------------
+
 
 def test_find_semantic_neighbors_empty_table(ast_cache_conn):
     result = find_semantic_neighbors(ast_cache_conn, [1.0, 0.0])
@@ -122,12 +152,10 @@ def test_find_semantic_neighbors_min_similarity_filter(ast_cache_conn):
     """Only symbols above min_similarity threshold are returned."""
     id_a = _seed_symbol(ast_cache_conn, "sym_a", language="python")
     id_b = _seed_symbol(ast_cache_conn, "sym_b", language="python")
-    _seed_embedding(ast_cache_conn, id_a, [1.0, 0.0])   # identical to query
-    _seed_embedding(ast_cache_conn, id_b, [0.0, 1.0])   # orthogonal to query
+    _seed_embedding(ast_cache_conn, id_a, [1.0, 0.0])  # identical to query
+    _seed_embedding(ast_cache_conn, id_b, [0.0, 1.0])  # orthogonal to query
 
-    result = find_semantic_neighbors(
-        ast_cache_conn, [1.0, 0.0], min_similarity=0.9
-    )
+    result = find_semantic_neighbors(ast_cache_conn, [1.0, 0.0], min_similarity=0.9)
     names = [r["name"] for r in result]
     assert "sym_a" in names
     assert "sym_b" not in names
@@ -139,7 +167,9 @@ def test_find_semantic_neighbors_top_k(ast_cache_conn):
         sid = _seed_symbol(ast_cache_conn, f"sym_{i}", language="python", line=i + 1)
         _seed_embedding(ast_cache_conn, sid, [1.0, float(i) * 0.01])
 
-    result = find_semantic_neighbors(ast_cache_conn, [1.0, 0.0], top_k=2, min_similarity=0.0)
+    result = find_semantic_neighbors(
+        ast_cache_conn, [1.0, 0.0], top_k=2, min_similarity=0.0
+    )
     assert len(result) <= 2
 
 

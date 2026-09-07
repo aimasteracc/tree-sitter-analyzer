@@ -20,15 +20,48 @@ def _fd_is_closed(fd: int) -> bool:
 
 
 def test_schema_version_rejects_unknown_row_immediately():
-    # PR #1253 review thread 3755297945: unknown versions fail while streaming.
-    from tree_sitter_analyzer.index_snapshot_schema import validate_snapshot_schema
+    # PR #1352：未来版本测试必须相对当前版本，不能用已支持的 14。
+    from tree_sitter_analyzer.index_snapshot_schema import (
+        SNAPSHOT_SCHEMA_VERSION,
+        validate_snapshot_schema,
+    )
 
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE ast_schema_version(version)")
-    conn.executemany("INSERT INTO ast_schema_version VALUES(?)", [(14,), (13,)])
+    conn.executemany(
+        "INSERT INTO ast_schema_version VALUES(?)",
+        [(SNAPSHOT_SCHEMA_VERSION + 1,), (SNAPSHOT_SCHEMA_VERSION,)],
+    )
     with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
         validate_snapshot_schema(conn)
     conn.close()
+
+
+def test_default_cache_schema_matches_snapshot_reader(tmp_path):
+    # PR #1352：默认迁移 14/15 和认证读取版本必须一致。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_snapshot_schema import (
+        SNAPSHOT_SCHEMA_VERSION,
+        validate_snapshot_schema,
+    )
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        conn = cache.get_conn()
+        assert (
+            conn.execute("SELECT max(version) FROM ast_schema_version").fetchone()[0]
+            == SNAPSHOT_SCHEMA_VERSION
+            == 15
+        )
+        validate_snapshot_schema(conn)
+        conn.execute(
+            "INSERT INTO ast_schema_version(version, applied_at, description) VALUES (?, '', 'future')",
+            (SNAPSHOT_SCHEMA_VERSION + 1,),
+        )
+        with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
+            validate_snapshot_schema(conn)
+    finally:
+        cache.close()
 
 
 def test_schema_version_row_cap_precedes_table_inventory(monkeypatch):
@@ -37,7 +70,10 @@ def test_schema_version_row_cap_precedes_table_inventory(monkeypatch):
 
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE ast_schema_version(version)")
-    conn.executemany("INSERT INTO ast_schema_version VALUES(13)", [()] * 3)
+    conn.executemany(
+        "INSERT INTO ast_schema_version VALUES(?)",
+        [(schema.SNAPSHOT_SCHEMA_VERSION,)] * 3,
+    )
     monkeypatch.setattr(schema, "_SCHEMA_VALIDATION_ROW_BUDGET", 2)
     with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
         schema.validate_snapshot_schema(conn)
@@ -50,7 +86,9 @@ def test_schema_table_cap_precedes_required_table_materialization(monkeypatch):
 
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE ast_schema_version(version)")
-    conn.execute("INSERT INTO ast_schema_version VALUES(13)")
+    conn.execute(
+        "INSERT INTO ast_schema_version VALUES(?)", (schema.SNAPSHOT_SCHEMA_VERSION,)
+    )
     monkeypatch.setattr(schema, "_SCHEMA_TABLE_BUDGET", 0)
     with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
         schema.validate_snapshot_schema(conn)
@@ -63,7 +101,9 @@ def test_schema_column_cap_is_checked_per_required_table(monkeypatch):
 
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE ast_schema_version(version)")
-    conn.execute("INSERT INTO ast_schema_version VALUES(13)")
+    conn.execute(
+        "INSERT INTO ast_schema_version VALUES(?)", (schema.SNAPSHOT_SCHEMA_VERSION,)
+    )
     conn.execute("CREATE TABLE ast_index(file_path)")
     monkeypatch.setattr(schema, "_SCHEMA_VALIDATION_COLUMN_BUDGET", 0)
     with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
@@ -83,7 +123,10 @@ def test_stamp_rejects_new_source_and_preserves_old_manifest(tmp_path):
     stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     (tmp_path / "late.py").write_text("late = True\n")
 
-    with pytest.raises(sqlite3.OperationalError, match="^SOURCE_CHANGED$"):
+    # #1364 起错误消息携带诊断后缀(state/reason/行数),锚定前缀即可
+    with pytest.raises(
+        sqlite3.OperationalError, match=r"^SOURCE_CHANGED:state=[a-z]+:"
+    ):
         stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     count = (
         cache.get_conn()
@@ -218,7 +261,9 @@ def test_schema_column_name_budget_rejects_first_column(monkeypatch):
 
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE ast_schema_version(version)")
-    conn.execute("INSERT INTO ast_schema_version VALUES (13)")
+    conn.execute(
+        "INSERT INTO ast_schema_version VALUES (?)", (schema.SNAPSHOT_SCHEMA_VERSION,)
+    )
     conn.execute("CREATE TABLE ast_index(file_path)")
     monkeypatch.setattr(schema, "_SCHEMA_CELL_BYTE_BUDGET", 0)
     with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
@@ -231,7 +276,9 @@ def test_schema_total_column_name_budget_rejects_before_collection(monkeypatch):
 
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE ast_schema_version(version)")
-    conn.execute("INSERT INTO ast_schema_version VALUES (13)")
+    conn.execute(
+        "INSERT INTO ast_schema_version VALUES (?)", (schema.SNAPSHOT_SCHEMA_VERSION,)
+    )
     conn.execute("CREATE TABLE ast_index(file_path)")
     monkeypatch.setattr(schema, "_SCHEMA_TOTAL_BYTE_BUDGET", 0)
     with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):

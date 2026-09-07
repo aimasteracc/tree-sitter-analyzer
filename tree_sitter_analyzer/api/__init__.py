@@ -82,7 +82,9 @@ def analyze_file(
     include_complexity: bool = False,
 ) -> dict[str, Any]:
     try:
-        return _analyze_file_sync(file_path, language, queries, include_elements, include_queries)
+        return _analyze_file_sync(
+            file_path, language, queries, include_elements, include_queries
+        )
     except FileNotFoundError as e:
         raise e
     except Exception as e:
@@ -99,10 +101,14 @@ def analyze_code(
 ) -> dict[str, Any]:
     try:
         engine = get_engine()
-        analysis_result = engine.analyze_code_sync(source_code, language, filename="string")
+        analysis_result = engine.analyze_code_sync(
+            source_code, language, filename="string"
+        )
         return code_analysis_result(
-            analysis_result, language,
-            include_elements=include_elements, include_queries=include_queries,
+            analysis_result,
+            language,
+            include_elements=include_elements,
+            include_queries=include_queries,
         )
     except Exception as e:
         log_error(f"API analyze_code failed: {e}")
@@ -152,9 +158,14 @@ def get_file_extensions(language: str) -> list[str]:
             result = engine.language_detector.get_extensions_for_language(language)
             return list(result) if result else []
         extension_map = {
-            "java": [".java"], "python": [".py"], "javascript": [".js"],
-            "typescript": [".ts"], "c": [".c"], "cpp": [".cpp", ".cxx", ".cc"],
-            "go": [".go"], "rust": [".rs"],
+            "java": [".java"],
+            "python": [".py"],
+            "javascript": [".js"],
+            "typescript": [".ts"],
+            "c": [".c"],
+            "cpp": [".cpp", ".cxx", ".cc"],
+            "go": [".go"],
+            "rust": [".rs"],
         }
         return extension_map.get(language.lower(), [])
     except Exception as e:
@@ -180,14 +191,25 @@ def get_framework_info() -> dict[str, Any]:
     try:
         engine = get_engine()
         plugin_manager = engine.plugin_manager
-        loaded_plugins = len(plugin_manager.get_supported_languages()) if plugin_manager else 0
+        loaded_plugins = (
+            len(plugin_manager.get_supported_languages()) if plugin_manager else 0
+        )
         return {
             "name": "tree-sitter-analyzer",
             "version": __version__,
             "supported_languages": engine.get_supported_languages(),
             "total_languages": len(engine.get_supported_languages()),
-            "plugin_info": {"manager_available": plugin_manager is not None, "loaded_plugins": loaded_plugins},
-            "core_components": ["AnalysisEngine", "Parser", "QueryExecutor", "PluginManager", "LanguageDetector"],
+            "plugin_info": {
+                "manager_available": plugin_manager is not None,
+                "loaded_plugins": loaded_plugins,
+            },
+            "core_components": [
+                "AnalysisEngine",
+                "Parser",
+                "QueryExecutor",
+                "PluginManager",
+                "LanguageDetector",
+            ],
         }
     except Exception as e:
         log_error(f"Failed to get framework info: {e}")
@@ -198,12 +220,22 @@ def execute_query(
     file_path: str | Path, query_name: str, language: str | None = None
 ) -> dict[str, Any]:
     try:
-        result = analyze_file(file_path, language=language, queries=[query_name],
-                               include_elements=False, include_queries=True)
+        result = analyze_file(
+            file_path,
+            language=language,
+            queries=[query_name],
+            include_elements=False,
+            include_queries=True,
+        )
         return query_execution_result(result, query_name, file_path)
     except Exception as e:
         log_error(f"Query execution failed: {e}")
-        return {"success": False, "query_name": query_name, "error": str(e), "file_path": str(file_path)}
+        return {
+            "success": False,
+            "query_name": query_name,
+            "error": str(e),
+            "file_path": str(file_path),
+        }
 
 
 def extract_elements(
@@ -212,12 +244,23 @@ def extract_elements(
     element_types: list[str] | None = None,
 ) -> dict[str, Any]:
     try:
-        result = analyze_file(file_path, language=language, include_elements=True, include_queries=False)
+        result = analyze_file(
+            file_path, language=language, include_elements=True, include_queries=False
+        )
         if result["success"] and "elements" in result:
             elements = filter_elements_by_type(result["elements"], element_types)
-            return {"success": True, "elements": elements, "count": len(elements),
-                    "language": result.get("language_info", {}).get("language"), "file_path": str(file_path)}
-        return {"success": False, "error": result.get("error", "Unknown error"), "file_path": str(file_path)}
+            return {
+                "success": True,
+                "elements": elements,
+                "count": len(elements),
+                "language": result.get("language_info", {}).get("language"),
+                "file_path": str(file_path),
+            }
+        return {
+            "success": False,
+            "error": result.get("error", "Unknown error"),
+            "file_path": str(file_path),
+        }
     except Exception as e:
         log_error(f"Element extraction failed: {e}")
         return {"success": False, "error": str(e), "file_path": str(file_path)}
@@ -232,8 +275,18 @@ def get_languages() -> list[str]:
 
 
 __all__ = [
-    "get_engine", "analyze_file", "analyze_code", "get_supported_languages",
-    "get_available_queries", "is_language_supported", "detect_language",
-    "get_file_extensions", "validate_file", "get_framework_info",
-    "execute_query", "extract_elements", "analyze", "get_languages",
+    "get_engine",
+    "analyze_file",
+    "analyze_code",
+    "get_supported_languages",
+    "get_available_queries",
+    "is_language_supported",
+    "detect_language",
+    "get_file_extensions",
+    "validate_file",
+    "get_framework_info",
+    "execute_query",
+    "extract_elements",
+    "analyze",
+    "get_languages",
 ]

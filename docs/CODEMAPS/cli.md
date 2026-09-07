@@ -42,7 +42,7 @@ enforced by `tests/unit/cli/test_mcp_commands.py`.
 Categories of CLI surface:
 
 ### Structural Analysis
-- `--table full|compact|csv` — full structural AST table
+- `--table full|signatures` — full structural AST table (compact/csv removed as useless, 2026-09-06)
 - `--summary` — one-screen summary
 - `--partial-read --start-line N --end-line M` — extract range
 
@@ -136,7 +136,7 @@ Categories of CLI surface:
 
 `--format` is intentionally narrower than `--output-format` and `--table`:
 use `--format json` for agent envelopes, `--output-format text` for the
-remaining human-readable text paths, and `--table csv|full|compact|json`
+remaining human-readable text paths, and `--table full|signatures`
 for table rendering. There is no global `--format yaml` mode.
 
 ## File Output

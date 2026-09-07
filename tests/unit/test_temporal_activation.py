@@ -24,6 +24,90 @@ from tests.fixtures.git_temporal.make_repo import make_shallow_marker
 _GIT_TIMEOUT_SECONDS = 15
 
 
+def test_commit_messages_batch_shas_and_reuse_across_files(tmp_path, monkeypatch):
+    # PR #1352：多 SHA 共用一个有期限/字节上限的 Git 请求，跨文件复用结果。
+    import tree_sitter_analyzer.cache.write as write
+    import tree_sitter_analyzer.git_readonly as git
+
+    first, second = "a" * 40, "b" * 40
+    runner = mock.Mock(
+        return_value=f"{first}\0first subject\0\n{second}\0second subject\0\n".encode()
+    )
+    monkeypatch.setattr(git, "run_git_readonly", runner)
+    assert write._fetch_commit_msgs([first, second, first], str(tmp_path)) == {
+        first: "first subject",
+        second: "second subject",
+    }
+    assert write._fetch_commit_msgs([second], str(tmp_path)) == {
+        second: "second subject"
+    }
+    assert runner.call_count == 1
+    args, kwargs = runner.call_args
+    assert args == (
+        str(tmp_path),
+        ["log", "--no-walk", "--stdin", "--format=%H%x00%s%x00"],
+    )
+    assert kwargs["input_"] == f"{first}\n{second}\n".encode()
+    assert kwargs["limit"] == 1024 * 1024
+    assert isinstance(kwargs["deadline"], float)
+
+
+def test_commit_message_timeout_negative_cache_recovers(tmp_path, monkeypatch, caplog):
+    # PR #1352：超时不返回伪造消息，短期不重复 spawn，到期可重试恢复。
+    from collections import OrderedDict
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.cache.write as write
+    import tree_sitter_analyzer.git_readonly as git
+    from tree_sitter_analyzer.source_oracle import SourceOracleError
+
+    caplog.set_level("WARNING", logger=write.__name__)
+    clock = [100.0]
+    sha = "a" * 40
+    runner = mock.Mock(
+        side_effect=[
+            SourceOracleError("DIFF_SNAPSHOT_TIMEOUT"),
+            f"{sha}\0recovered\0".encode(),
+        ]
+    )
+    monkeypatch.setattr(write, "_COMMIT_MSG_CACHE", OrderedDict())
+    monkeypatch.setattr(write, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(git, "run_git_readonly", runner)
+    assert write._fetch_commit_msgs([sha], str(tmp_path)) == {}
+    assert write._fetch_commit_msgs([sha], str(tmp_path)) == {}
+    assert runner.call_count == 1
+    assert "COMMIT_MESSAGE_MISSING" in caplog.text
+    clock[0] = 161.0
+    assert write._fetch_commit_msgs([sha], str(tmp_path)) == {sha: "recovered"}
+    assert runner.call_count == 2
+
+
+def test_commit_message_deadline_prevents_later_batch_spawn(tmp_path, monkeypatch):
+    # PR #1352：首批耗尽整体预算后，后续 SHA 必须保持 missing，不能继续启动 Git。
+    from collections import OrderedDict
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.cache.write as write
+    import tree_sitter_analyzer.git_readonly as git
+
+    clock = [100.0]
+    shas = [f"{i:040x}" for i in range(300)]
+
+    def run(*args, **kwargs):
+        assert kwargs["deadline"] == 105.0
+        clock[0] = 106.0
+        return b"".join(f"{sha}\0subject\0\n".encode() for sha in shas[:256])
+
+    runner = mock.Mock(side_effect=run)
+    monkeypatch.setattr(write, "_COMMIT_MSG_CACHE", OrderedDict())
+    monkeypatch.setattr(write, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(git, "run_git_readonly", runner)
+    assert write._fetch_commit_msgs(shas, str(tmp_path)) == dict.fromkeys(
+        shas[:256], "subject"
+    )
+    assert runner.call_count == 1
+
+
 def _import_git_activation():
     """Deferred import so collection works before the module exists."""
     return importlib.import_module("tree_sitter_analyzer.git_activation")

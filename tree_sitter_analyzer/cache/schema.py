@@ -433,7 +433,8 @@ def apply_migration_v14(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
     try:
         conn.executescript(SCHEMA_V14_COMMENTS)
         act_cols = {
-            r[1] for r in conn.execute("PRAGMA table_info(ast_symbol_activation)").fetchall()
+            r[1]
+            for r in conn.execute("PRAGMA table_info(ast_symbol_activation)").fetchall()
         }
         if "last_commit_msg" not in act_cols:
             conn.execute(

@@ -264,7 +264,10 @@ def _content_hash(source: str | bytes) -> str:
 def _extract_call_edges(
     tree: Any, source_code: str, language: str, symbols: dict[str, Any]
 ) -> list[dict[str, Any]]:
-    """Preserve the historical cache-extraction entry point."""
+    """共用提取入口同时携带注释证据，单文件与 worker 写入走同一事务。"""
+    from ..function_extraction import _COMMENT_NODE_TYPES, extract_comments_from_body
     from .call_edges import extract_call_edges
 
+    if tree is not None and language in _COMMENT_NODE_TYPES:
+        symbols["comments"] = extract_comments_from_body(tree.root_node, language)
     return extract_call_edges(tree, source_code, language)

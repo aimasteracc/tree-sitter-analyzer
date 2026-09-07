@@ -19,6 +19,7 @@ from typing import Any
 _NUMPY_AVAILABLE = False
 try:
     import numpy as np
+
     _NUMPY_AVAILABLE = True
 except ImportError:
     pass
@@ -83,10 +84,9 @@ def _score_symbol_full(
     beta: float = 0.2,
     gamma: float = 0.1,
 ) -> float:
-    """Internal: three-factor score used by find_semantic_neighbors."""
-    if not _NUMPY_AVAILABLE:
-        raise SemanticUnavailableError("numpy required for _score_symbol_full")
+    """MCP 组合排序使用的纯算术评分，不依赖 NumPy。"""
     import math
+
     heat_norm = math.log1p(max(0, git_heat)) / math.log1p(100)
     caller_norm = math.log1p(max(0, caller_count)) / math.log1p(50)
     return alpha * semantic_similarity + beta * heat_norm + gamma * caller_norm
@@ -168,16 +168,21 @@ def find_semantic_neighbors(
             continue
         sim = float(np.dot(query_vec, vec) / (qnorm * vnorm))
         if sim >= min_similarity:
-            scored.append((sim, {
-                "symbol_id": sym_id,
-                "name": name,
-                "file": file_,
-                "line": line,
-                "language": lang,
-                "kind": kind,
-                "class_name": cls,
-                "similarity": round(sim, 4),
-            }))
+            scored.append(
+                (
+                    sim,
+                    {
+                        "symbol_id": sym_id,
+                        "name": name,
+                        "file": file_,
+                        "line": line,
+                        "language": lang,
+                        "kind": kind,
+                        "class_name": cls,
+                        "similarity": round(sim, 4),
+                    },
+                )
+            )
 
     scored.sort(key=lambda t: t[0], reverse=True)
     return [item for _, item in scored[:top_k]]

@@ -33,7 +33,7 @@ _TQL_SCHEMA_DOC = """\
 ## Edge pseudo-classes
   :calls(#X)         symbols that call X
   :callees(#X)       symbols called by X
-  :called-by(#X)     alias for :calls(#X)
+  :called-by(#X)     alias for :callees(#X)
   :extends(#X)       classes extending X
   :implements(#X)    classes implementing interface X
   :subclasses(#X)    subclasses of X
@@ -44,7 +44,7 @@ _TQL_SCHEMA_DOC = """\
   :called-by(#X){n,m}  callees up to depth m, at least depth n
   :reaches(#X){n,m}    symbols that can reach X within m hops
 
-  n and m are non-negative integers, n <= m.
+  n and m are positive integers, n <= m; traversal is capped at 50 hops.
   Omit {n,m} for single-hop (equivalent to {1,1}).
 
 ## Structural pseudo-classes
@@ -68,7 +68,7 @@ _TQL_SCHEMA_DOC = """\
 
 ## Branch context
   :branch(kind)      symbol is invoked inside a branch of the given kind
-                     kinds: if  loop  try  match
+                     use stored branch kinds, for example if_true or loop
 
 ## Combinators
   A > B              B is a direct child of A
@@ -92,13 +92,7 @@ def _cap_echo(selector: str) -> str:
 
 
 class TqlExecuteTool(BaseMCPTool):
-    """Execute a TQL (extended Hyphae) selector against the symbol graph.
-
-    Wraps the full Hyphae evaluator including the temporal, depth-quantifier,
-    violates, reaches, and branch pseudo-classes added in the Nervous System
-    implementation. Behaviorally identical to hyphae_select but documents
-    the extended grammar and is the recommended entry point going forward.
-    """
+    """复用 Hyphae evaluator，同时明确区分缺失索引、执行失败和有效零匹配。"""
 
     action_map: dict[str, Any] = {}
 
@@ -114,6 +108,7 @@ class TqlExecuteTool(BaseMCPTool):
             if not self.project_root:
                 raise ValueError("Project root not set. Call set_project_path first.")
             from ...ast_cache import ASTCache
+
             self._cache = ASTCache(self.project_root)
         return self._cache
 
@@ -126,7 +121,7 @@ class TqlExecuteTool(BaseMCPTool):
                 "bounded BFS (:calls(#X){1,3}), temporal pseudo-classes "
                 "(:hot / :hot(N) / :recently_modified / :stale / :hotspot), "
                 "reachability (:reaches(#X){n,m}), architecture violations "
-                "(:violates(rule_id)), and branch context (:branch(if|loop|try|match)). "
+                "(:violates(rule_id)), and branch context (for example :branch(loop)). "
                 "All standard Hyphae pseudo-classes are also valid. "
                 "Call tql_schema to get the full DSL reference. "
                 "Requires indexed project (run index action=warm first). "
@@ -137,6 +132,7 @@ class TqlExecuteTool(BaseMCPTool):
                 "properties": {
                     "selector": {
                         "type": "string",
+                        "minLength": 1,
                         "description": (
                             "TQL selector, e.g. '.function:hot(14):in(src/)' or "
                             "#process_request:calls(#db_write){1,3}"
@@ -144,6 +140,8 @@ class TqlExecuteTool(BaseMCPTool):
                     },
                     "max_results": {
                         "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000,
                         "default": 100,
                         "description": "Max symbols to return (1-1000, default 100)",
                     },
@@ -163,17 +161,33 @@ class TqlExecuteTool(BaseMCPTool):
         return self.get_tool_definition()["inputSchema"]["properties"]  # type: ignore[no-any-return]
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        if not arguments.get("selector"):
-            raise ValueError("'selector' is required")
+        if (
+            not isinstance(arguments.get("selector"), str)
+            or not arguments["selector"].strip()
+        ):
+            raise ValueError("selector is required and must be a non-empty string")
+        value = arguments.get("max_results", 100)
+        if isinstance(value, float) and value.is_integer():
+            value = int(value)
+        if type(value) is not int or not 1 <= value <= 1000:
+            raise ValueError("max_results must be an integer between 1 and 1000")
+        arguments["max_results"] = value
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        selector = str(arguments.get("selector", "")).strip()
-        if not selector:
-            return {"success": False, "error": "selector is required", "symbols": []}
-
-        max_results = int(arguments.get("max_results", 100) or 100)
-        max_results = max(1, min(max_results, 1000))
+        arguments = dict(arguments)
+        try:
+            self.validate_arguments(arguments)
+        except ValueError as exc:
+            return {
+                "success": False,
+                "error_code": "INVALID_ARGUMENT",
+                "error": str(exc),
+                "count": 0,
+                "symbols": [],
+            }
+        selector = arguments["selector"].strip()
+        max_results = arguments["max_results"]
         selector_echo = _cap_echo(selector)
 
         from ...hyphae import Evaluator, parse
@@ -194,10 +208,46 @@ class TqlExecuteTool(BaseMCPTool):
         except Exception as exc:
             return {"success": False, "error": str(exc), "symbols": []}
 
+        # 部分旧 cache/evaluator 读路径会吞掉 SQL 错误；先验证读取所需表列。
+        try:
+            conn = cache.get_conn()
+            for query in (
+                "SELECT file_path, language, symbols_json FROM ast_index LIMIT 0",
+                "SELECT id, name, kind, file_path, language, line FROM ast_symbol_rows LIMIT 0",
+                "SELECT kind, caller_name, callee_name, file_path, caller_line, callee_symbol_id, callee_resolved_file, metadata FROM edges LIMIT 0",
+                "SELECT symbol_id, file_path, last_modified_at, mod_count_30d FROM ast_symbol_activation LIMIT 0",
+                "SELECT rule_id, caller_file, caller_name FROM ast_constraint_violations LIMIT 0",
+            ):
+                conn.execute(query)
+        except Exception as exc:
+            return {
+                "success": False,
+                "error": f"TQL_INDEX_UNAVAILABLE: {exc}",
+                "count": 0,
+                "symbols": [],
+            }
         index_state, indexed_files = self._detect_index_state(cache)
+        if index_state != "ready":
+            return {
+                "success": False,
+                "error": "TQL_INDEX_" + index_state.upper(),
+                "index_state": index_state,
+                "indexed_files": indexed_files,
+                "count": 0,
+                "symbols": [],
+            }
 
         evaluator = Evaluator(cache, max_results=max_results)
-        matches = evaluator.eval(ast)
+        try:
+            matches = evaluator.eval(ast)
+        except Exception as exc:
+            return {
+                "success": False,
+                "selector": selector_echo,
+                "error": f"TQL evaluation failed: {exc}",
+                "count": 0,
+                "symbols": [],
+            }
         symbols = [
             {
                 "name": m.get("name"),
@@ -212,12 +262,7 @@ class TqlExecuteTool(BaseMCPTool):
         truncated = evaluator.was_truncated()
         total_matches = evaluator.total_matches()
 
-        if index_state != "ready":
-            verdict = "WARN"
-            next_step = (
-                "Index missing or empty. Run index action=warm to build the cache."
-            )
-        elif truncated:
+        if truncated:
             verdict = "INFO"
             next_step = (
                 f"Truncated at {max_results} of {total_matches}. "

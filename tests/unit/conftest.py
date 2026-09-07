@@ -255,6 +255,7 @@ def multi_framework_project(
 # Step 1: ast_cache_conn — in-memory SQLite with full TSA schema
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def ast_cache_conn():
     """Function-scoped in-memory SQLite connection with all TSA DDL applied.
@@ -295,6 +296,7 @@ def ast_cache_conn():
 # Step 8a: mock_embed_models — patches embed functions in pipeline + tool
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_embed_models(monkeypatch):
     """Patch _embed_with_openai and _embed_with_unixcoder in both modules.
@@ -318,6 +320,7 @@ def mock_embed_models(monkeypatch):
 # ---------------------------------------------------------------------------
 # Step 9a: fake_lsp_process — async subprocess double
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 async def fake_lsp_process():

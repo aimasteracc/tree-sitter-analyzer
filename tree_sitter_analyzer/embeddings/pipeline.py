@@ -30,6 +30,7 @@ Schema (appended to existing SQLite DB):
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 import struct
@@ -43,9 +44,11 @@ _EMBED_ERROR: str | None = None
 _NUMPY_AVAILABLE = False
 _VSS_AVAILABLE = False
 _UNIXCODER_CACHE: dict[str, Any] = {}
+_OPENAI_CLIENT: Any = None
 
 try:
     import numpy as _np  # noqa: F401
+
     _NUMPY_AVAILABLE = True
 except ImportError:
     _EMBED_ERROR = "numpy not available — install numpy for embedding support"
@@ -85,17 +88,16 @@ def init_embeddings_db(conn: sqlite3.Connection) -> bool:
             _VSS_AVAILABLE = True
             logger.info("init_embeddings_db: sqlite-vss loaded")
         except Exception as exc:
-            logger.debug("init_embeddings_db: sqlite-vss unavailable (%s) — fallback to numpy cosine", exc)
+            logger.debug(
+                "init_embeddings_db: sqlite-vss unavailable (%s) — fallback to numpy cosine",
+                exc,
+            )
 
     return True
 
 
 def build_embedding_input(symbol_row: dict[str, Any]) -> str:
-    """Build the text input for the embedding model from a symbol row dict.
-
-    The format is: ``kind:name [class_name] docstring``
-    Symbol rows are expected to have keys: name, kind, class_name, docstring.
-    """
+    """使用真实索引字段构造 kind/name/class、签名和文档；缺少的字段不猜测。"""
     parts: list[str] = []
     kind = symbol_row.get("kind") or "symbol"
     name = symbol_row.get("name") or ""
@@ -103,6 +105,13 @@ def build_embedding_input(symbol_row: dict[str, Any]) -> str:
     cls = symbol_row.get("class_name") or symbol_row.get("class") or ""
     if cls:
         parts.append(f"[{cls}]")
+    signature = symbol_row.get("signature")
+    if not signature and symbol_row.get("params"):
+        signature = name + symbol_row["params"]
+        if symbol_row.get("return_type"):
+            signature += " -> " + symbol_row["return_type"]
+    if signature:
+        parts.append(str(signature))
     doc = symbol_row.get("docstring") or ""
     if doc:
         # Truncate docstrings to 256 chars to stay within token budget.
@@ -123,8 +132,8 @@ def _decode_embedding(blob: bytes) -> list[float]:
 
 def _embed_with_unixcoder(texts: list[str]) -> list[list[float]]:  # pragma: no cover
     """Embed texts using UniXcoder (local HuggingFace model)."""
-    import torch  # type: ignore
-    from transformers import AutoModel, AutoTokenizer  # type: ignore
+    import torch
+    from transformers import AutoModel, AutoTokenizer
 
     model_name = "microsoft/unixcoder-base"
     if model_name not in _UNIXCODER_CACHE:
@@ -143,12 +152,20 @@ def _embed_with_unixcoder(texts: list[str]) -> list[list[float]]:  # pragma: no 
     return results
 
 
-def _embed_with_openai(texts: list[str], model: str = "text-embedding-3-small") -> list[list[float]]:  # pragma: no cover
-    """Embed texts using OpenAI embeddings API."""
-    from openai import OpenAI  # type: ignore
+def _embed_with_openai(
+    texts: list[str],
+    model: str = "text-embedding-3-small",
+    *,
+    dimensions: int | None = None,
+) -> list[list[float]]:  # pragma: no cover
+    """复用客户端，并在查询时请求与存储一致的向量维度。"""
+    from openai import OpenAI
 
-    client = OpenAI()
-    response = client.embeddings.create(input=texts, model=model)
+    global _OPENAI_CLIENT
+    if _OPENAI_CLIENT is None:
+        _OPENAI_CLIENT = OpenAI()
+    options = {"dimensions": dimensions} if dimensions is not None else {}
+    response = _OPENAI_CLIENT.embeddings.create(input=texts, model=model, **options)
     return [item.embedding for item in response.data]
 
 
@@ -178,42 +195,18 @@ def run_pipeline(
         raise EmbeddingModelUnavailableError(
             _EMBED_ERROR or "numpy required for embeddings"
         )
+    if type(batch_size) is not int or not 1 <= batch_size <= 1024:
+        raise ValueError("batch_size must be within 1..1024")
 
-    # Resolve embed function.
-    embed_fn: Callable[..., list[list[float]]] | None = None
-    model_name: str = ""
-    if model in ("auto", "openai"):
-        try:
-            _embed_with_openai(["warmup"])
-            embed_fn = _embed_with_openai
-            model_name = "text-embedding-3-small"
-        except Exception as exc:
-            logger.debug("run_pipeline: openai unavailable (%s)", exc)
-
-    if embed_fn is None and model in ("auto", "unixcoder"):
-        try:
-            _embed_with_unixcoder(["warmup"])
-            embed_fn = _embed_with_unixcoder
-            model_name = "unixcoder-base"
-        except Exception as exc:
-            logger.debug("run_pipeline: unixcoder unavailable (%s)", exc)
-
-    if embed_fn is None:
-        raise EmbeddingModelUnavailableError(
-            "No embedding model available. Install openai or transformers+torch."
-        )
-
-    # Fetch symbols to index.
-    if rebuild:
-        conn.execute("DELETE FROM symbol_embeddings")
-        conn.commit()
-
-    already_indexed: set[int] = {
-        r[0] for r in conn.execute("SELECT symbol_id FROM symbol_embeddings")
-    }
+    # 先验证输入，避免元数据错误触发模型请求或破坏已有向量。
+    already_indexed: set[int] = (
+        set()
+        if rebuild
+        else {r[0] for r in conn.execute("SELECT symbol_id FROM symbol_embeddings")}
+    )
 
     rows = conn.execute(
-        "SELECT id, name, kind FROM ast_symbol_rows"
+        "SELECT id, name, kind, file_path, line FROM ast_symbol_rows ORDER BY file_path, line, id"
     ).fetchall()
 
     to_index = [r for r in rows if r[0] not in already_indexed]
@@ -222,14 +215,60 @@ def run_pipeline(
     errors = 0
     t0 = time.monotonic()
 
+    # 每文件只解析一次 symbols_json，按精确身份取元数据，不能只按名字拿首条。
+    texts_by_id: dict[int, str] = {}
+    current_file: str | None = None
+    metadata: dict[tuple[Any, Any, Any], dict[str, Any]] = {}
+    for row in to_index:
+        if row[3] != current_file:
+            current_file = row[3]
+            stored = conn.execute(
+                "SELECT symbols_json FROM ast_index WHERE file_path=?", (current_file,)
+            ).fetchone()
+            payload = json.loads(stored[0]) if stored else {}
+            metadata = {}
+            for symbol in payload.get("symbols", []):
+                key = (symbol.get("name"), symbol.get("kind"), symbol.get("line"))
+                if key in metadata:
+                    raise ValueError("AMBIGUOUS_EMBEDDING_SYMBOL")
+                metadata[key] = symbol
+        symbol = metadata.get((row[1], row[2], row[4]))
+        if symbol is None:
+            logger.warning(
+                "EMBEDDING_METADATA_MISSING: %s:%s:%s", row[3], row[1], row[4]
+            )
+        texts_by_id[row[0]] = build_embedding_input(
+            symbol or {"name": row[1], "kind": row[2]}
+        )
+
+    embed_fn: Callable[..., list[list[float]]] | None = None
+    model_name = ""
+    if model in ("auto", "openai"):
+        try:
+            _embed_with_openai(["warmup"])
+            embed_fn = _embed_with_openai
+            model_name = "text-embedding-3-small"
+        except Exception as exc:
+            logger.debug("run_pipeline: openai unavailable (%s)", exc)
+    if embed_fn is None and model in ("auto", "unixcoder"):
+        try:
+            _embed_with_unixcoder(["warmup"])
+            embed_fn = _embed_with_unixcoder
+            model_name = "unixcoder-base"
+        except Exception as exc:
+            logger.debug("run_pipeline: unixcoder unavailable (%s)", exc)
+    if embed_fn is None:
+        raise EmbeddingModelUnavailableError(
+            "No embedding model available. Install openai or transformers+torch."
+        )
+
+    # 重建采用保存点；任一批次失败都恢复旧索引，不提交半成品。
+    if rebuild:
+        conn.execute("SAVEPOINT embeddings_rebuild")
+        conn.execute("DELETE FROM symbol_embeddings")
     for i in range(0, len(to_index), batch_size):
         batch = to_index[i : i + batch_size]
-        texts = [
-            build_embedding_input(
-                {"name": r[1], "kind": r[2]}
-            )
-            for r in batch
-        ]
+        texts = [texts_by_id[r[0]] for r in batch]
         try:
             vecs = embed_fn(texts)
             now = int(time.time())
@@ -242,11 +281,22 @@ def run_pipeline(
                     for j in range(len(batch))
                 ],
             )
-            conn.commit()
+            if not rebuild:
+                conn.commit()
             indexed += len(batch)
         except Exception as exc:
             logger.warning("run_pipeline: batch %d failed: %s", i // batch_size, exc)
             errors += len(batch)
+            if rebuild:
+                conn.execute("ROLLBACK TO embeddings_rebuild")
+                conn.execute("RELEASE embeddings_rebuild")
+                indexed = 0
+                errors = len(to_index)
+                break
+
+    if rebuild and not errors:
+        conn.execute("RELEASE embeddings_rebuild")
+        conn.commit()
 
     elapsed = time.monotonic() - t0
     return {

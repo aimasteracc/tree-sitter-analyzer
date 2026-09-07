@@ -115,7 +115,7 @@ def violations_for_files(
 
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(str(db_path))
+        conn = sqlite3.connect(str(db_path), timeout=10)
         return violations_for_files_from_conn(conn, file_paths)
     except sqlite3.Error:
         logger.debug("violations_for_files: query failed", exc_info=True)

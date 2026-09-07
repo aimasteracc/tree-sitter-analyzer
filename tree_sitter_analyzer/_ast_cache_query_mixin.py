@@ -136,7 +136,18 @@ class ASTCacheQueryMixin(ASTCacheSurface):
             .execute("SELECT file_path, imports_json FROM ast_index")
             .fetchall()
         )
-        return {row["file_path"]: json.loads(row["imports_json"]) for row in rows}
+        result: dict[str, Any] = {}
+        for row in rows:
+            # 兼容两种索引历史格式：旧构建把 import 写成纯字符串；
+            # 新构建（#1281 起）写成 {"text": ..., "line": ...} 字典。
+            # 统一归一化为字符串，否则 call_graph 的 imp_text.split()
+            # 在读到旧格式索引时会直接崩溃（v1.29.1 热修的移植）。
+            entries = [
+                entry.get("text", "") if isinstance(entry, dict) else entry
+                for entry in json.loads(row["imports_json"])
+            ]
+            result[row["file_path"]] = [entry for entry in entries if entry]
+        return result
 
     def get_symbols_by_kind(
         self,

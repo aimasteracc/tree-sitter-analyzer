@@ -117,6 +117,7 @@ def test_parse_error_on_garbage() -> None:
 # Step 10: DepthQuantifier parsing tests (hyphae/parser.py lines 185-201)
 # ===========================================================================
 
+
 def test_parse_depth_quantifier_exact() -> None:
     """{2} sets depth_min == depth_max == 2."""
     pc = parse(".method:calls(#x){2}").selectors[0].pseudo_classes[0]
