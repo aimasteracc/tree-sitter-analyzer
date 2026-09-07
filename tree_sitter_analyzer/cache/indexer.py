@@ -37,7 +37,11 @@ logger = logging.getLogger(__name__)
 # v14: #1094 / RFC-0019 — function symbols now carry the extractor's canonical
 #      ``complexity`` so the cache-backed heatmap matches the extractor instead
 #      of re-deriving the count from the per-arm ``decision_points`` sum.
-_AST_CACHE_EXTRACTOR_VERSION = 14
+# v15: ``from __future__ import X`` is now indexed (dedicated
+#      ``future_import_statement`` node), and a ``def`` nested inside a method
+#      is classified ``function`` rather than ``method``. Both change the
+#      persisted symbol rows, so cached entries must be re-indexed.
+_AST_CACHE_EXTRACTOR_VERSION = 15
 
 
 def check_cache_or_read(
@@ -136,7 +140,7 @@ def parse_and_write(
         if cache.fts5_available
         else []
     )
-    cache._write_imports_for_file(conn, rel_path, language, imports)  # noqa: SLF001
+    cache._write_imports_for_file(conn, rel_path, language, imports, symbols)  # noqa: SLF001
     cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
     # CALLS rows live in the unified ``edges`` table (B1.3 — no ast_call_edges).
     # Write the edges first so synapse resolution can UPDATE them in place.
@@ -270,8 +274,10 @@ def insert_index_row(
     )
     call_edges = json.loads(r.get("call_edges_json", "[]"))
     imports_list = json.loads(r.get("imports_json", "[]"))
-    cache._write_imports_for_file(conn, rel_path, r["language"], imports_list)  # noqa: SLF001
     symbols = json.loads(r.get("symbols_json", "{}"))
+    cache._write_imports_for_file(  # noqa: SLF001
+        conn, rel_path, r["language"], imports_list, symbols
+    )
     # CALLS rows live in the unified ``edges`` table (B1.3 — no ast_call_edges).
     # Cross-file / synapse resolution UPDATEs these rows in the post-index pass.
     _write.write_graph_edges_for_file(

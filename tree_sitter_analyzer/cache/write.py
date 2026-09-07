@@ -131,8 +131,8 @@ def _insert_import_entry(
         conn.execute(
             """INSERT INTO ast_imports
                (file_path, language, module_path, local_name,
-                is_relative, is_star, alias_of)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                is_relative, is_star, alias_of, line)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 rel_path,
                 language,
@@ -141,6 +141,7 @@ def _insert_import_entry(
                 1 if entry.is_relative else 0,
                 1 if entry.is_star else 0,
                 entry.alias_of,
+                entry.line,
             ),
         )
         return True
@@ -210,13 +211,36 @@ def write_activation_for_file(
         logger.debug("activation write failed for %s: %s", rel_path, exc)
 
 
+def _import_lines_from_symbols(symbols: dict[str, Any] | None) -> dict[str, int]:
+    """Map an import statement's raw text to the line it starts on.
+
+    ``imports_json`` is a plain ``list[str]`` consumed by many call sites, so it
+    cannot carry the line itself. The symbol payload written alongside it does,
+    and both are derived from the same nodes — so the text is a reliable key.
+    Duplicate statements keep the first occurrence.
+    """
+    lines: dict[str, int] = {}
+    for sym in (symbols or {}).get("symbols", []):
+        if sym.get("kind") != "import":
+            continue
+        text = sym.get("text")
+        if text and text not in lines:
+            lines[text] = int(sym.get("line", 0) or 0)
+    return lines
+
+
 def write_imports_for_file(
     conn: sqlite3.Connection,
     rel_path: str,
     language: str,
     imports: list[str] | list[dict[str, Any]],
+    symbols: dict[str, Any] | None = None,
 ) -> None:
-    """Refresh ast_imports rows for rel_path."""
+    """Refresh ast_imports rows for rel_path.
+
+    ``symbols`` is optional and only supplies line numbers for the plain-string
+    ``imports`` form; omitting it degrades to line 0 as before.
+    """
     try:
         from ..synapse_resolver import parse_imports
     except Exception as exc:  # pragma: no cover
@@ -226,10 +250,13 @@ def write_imports_for_file(
         conn.execute("DELETE FROM ast_imports WHERE file_path = ?", (rel_path,))
     except sqlite3.OperationalError:
         return
+    line_by_text = _import_lines_from_symbols(symbols)
     for raw in imports or []:
         text, line = _parse_import_raw(raw)
         if not text:
             continue
+        if not line:
+            line = line_by_text.get(text, 0)
         for entry in parse_imports(text, language, rel_path, line):
             if not _insert_import_entry(conn, rel_path, language, entry):
                 return

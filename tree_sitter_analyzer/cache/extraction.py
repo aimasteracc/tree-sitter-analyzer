@@ -206,6 +206,10 @@ _IMPORT_LIKE = frozenset(
     {
         "import_statement",
         "import_from_statement",
+        # Python's grammar emits a dedicated node for ``from __future__
+        # import X``; without it the single most common import in a typed
+        # codebase never reached ast_symbol_rows / ast_imports / edges.
+        "future_import_statement",
         "import_declaration",
         "require_statement",
         "use_declaration",
@@ -736,6 +740,16 @@ def _find_parent_class(node: Any, source: str) -> str | None:
     - ``impl_item`` (Rust): exposes the implemented type in the ``type``
       field (e.g. ``Container<T>`` or ``User``), NOT a ``name`` field.
       Strip any generic parameters so ``Container<T>`` → ``"Container"``.
+
+    The walk stops at the first enclosing function-like node: a ``def``
+    nested inside a *method* body is a local function, not a member of the
+    surrounding class. Without this gate such nested defs were recorded as
+    ``kind="method"`` with a bogus ``class`` attribution, which also
+    produced phantom class->function ``contains`` edges.
+
+    ``_CLASS_LIKE`` is tested first so a class declared *inside* a function
+    body still owns its own members (a Python class defined in a method, or a
+    Java anonymous class); only the walk past that class is cut off.
     """
     parent = node.parent
     while parent:
@@ -751,6 +765,11 @@ def _find_parent_class(node: Any, source: str) -> str | None:
                 name_node = parent.child_by_field_name("name")
                 if name_node:
                     return _node_text(name_node, source)
+            # An unnamed class-like ancestor (e.g. a Java anonymous class) is
+            # still the owner; do not attribute the member to an outer class.
+            return None
+        if parent.type in _FUNCTION_LIKE:
+            return None
         parent = parent.parent
     return None
 
