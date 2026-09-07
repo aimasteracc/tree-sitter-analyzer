@@ -448,6 +448,92 @@ def test_in_place_rewrite_with_restored_mtime_is_unsafe(tmp_path, monkeypatch):
 class TestStaleSnapshotRecovery:
     """#1364/#1373：后续路径稳定不能洗白一次读取的一致性检查失败。"""
 
+    @pytest.mark.parametrize(
+        "case",
+        [
+            "windows_ctime",
+            "posix_ctime",
+            "path_size",
+            "path_mtime",
+            "path_attributes",
+            "path_inode",
+            "read_ctime",
+            "read_size",
+            "read_mtime",
+        ],
+    )
+    def test_descriptor_baseline_preserves_read_and_path_guards(
+        self, tmp_path, monkeypatch, case
+    ):
+        # #1356：真实 Windows 3.13 日志表明 lstat/句柄 ctime 不同，句柄自身前后相等。
+        from types import SimpleNamespace
+
+        from tree_sitter_analyzer import index_source_stream as stream
+        from tree_sitter_analyzer.portable_source_snapshot import _marker, _same
+
+        target = tmp_path / "sample.py"
+        content = b"value = 1\n"
+        target.write_bytes(content)
+        fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+            "st_file_attributes",
+        )
+        values = {field: getattr(target.stat(), field, 0) for field in fields}
+        before = SimpleNamespace(**values)
+        opened = SimpleNamespace(
+            **{**values, "st_ctime_ns": values["st_ctime_ns"] + 100}
+        )
+        after = SimpleNamespace(**vars(opened))
+        path_fields = {
+            "path_size": "st_size",
+            "path_mtime": "st_mtime_ns",
+            "path_attributes": "st_file_attributes",
+            "path_inode": "st_ino",
+        }
+        if case in path_fields:
+            field = path_fields[case]
+            setattr(before, field, getattr(before, field) + 1)
+        if case == "read_ctime":
+            after.st_ctime_ns = before.st_ctime_ns
+        elif case == "read_size":
+            after.st_size += 1
+        elif case == "read_mtime":
+            after.st_mtime_ns += 1
+        original_os = stream.os
+        observations = iter((opened, after))
+
+        class ObservedOS:
+            name = "posix" if case == "posix_ctime" else "nt"
+
+            def __getattr__(self, name):
+                return getattr(original_os, name)
+
+            def fstat(self, fd):
+                original_os.fstat(fd)
+                return next(observations)
+
+        monkeypatch.setattr(stream, "os", ObservedOS())
+        _, digest, clean = stream.hash_source_at(
+            None,
+            str(target),
+            before,
+            float("inf"),
+            {"input": 0, "output": 0},
+            100,
+            _marker,
+            _same,
+        )
+        assert (digest, clean) == (
+            (hashlib.sha256(content).hexdigest(), True)
+            if case == "windows_ctime"
+            else ("<unsafe>", False)
+        )
+
     def test_读取不一致时不能用后续路径比较恢复clean(self, tmp_path):
         from tree_sitter_analyzer.index_source_stream import hash_source_at
         from tree_sitter_analyzer.portable_source_snapshot import _marker
