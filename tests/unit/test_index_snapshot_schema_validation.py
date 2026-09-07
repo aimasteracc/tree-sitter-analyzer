@@ -8,7 +8,7 @@ import sqlite3
 import pytest
 
 requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
-pytestmark = requires_posix_fd
+# 纯 SQLite 校验跨平台执行；需要 POSIX 描述符的用例保留各自的标记。
 
 
 def _fd_is_closed(fd: int) -> bool:
@@ -19,8 +19,242 @@ def _fd_is_closed(fd: int) -> bool:
     return False
 
 
+def _legacy_cache_layout(tmp_path, layout):
+    """用截至 v13 的真实迁移构造旧库，再分别附加 canonical 或实验布局。"""
+    import json
+
+    from tree_sitter_analyzer import ast_cache
+    from tree_sitter_analyzer.cache import schema
+    from tree_sitter_analyzer.index_snapshot_schema import apply_snapshot_migration
+
+    root = tmp_path / "project"
+    root.mkdir()
+    directory = root / ".ast-cache"
+    directory.mkdir()
+    path = directory / "index.db"
+    conn = sqlite3.connect(path)
+    conn.execute("PRAGMA journal_mode=WAL")
+    migrations = [(v, getattr(schema, f"apply_migration_v{v}")) for v in range(3, 13)]
+    schema.init_db(
+        conn, None, ast_cache._has_fts5, migrations + [(13, apply_snapshot_migration)]
+    )
+    symbols = [
+        {"name": name, "kind": "function", "line": line, "end_line": line + 1}
+        for name, line in [("run", 1), ("other", 4)]
+    ]
+    conn.execute(
+        "INSERT INTO ast_index(file_path,content_hash,language,mtime_ns,file_size,indexed_at,symbols_json) VALUES ('a.py','original','python',0,0,'old',?)",
+        (json.dumps({"symbols": symbols, "comments": []}),),
+    )
+    from tree_sitter_analyzer.cache.write import write_fts5_symbols
+
+    write_fts5_symbols(conn, "a.py", "python", {"symbols": symbols})
+    assert conn.execute(
+        "SELECT id,name FROM ast_symbol_rows ORDER BY id"
+    ).fetchall() == [(1, "run"), (2, "other")]
+    conn.executemany(
+        "INSERT INTO ast_symbol_activation(symbol_id,file_path,mod_count_30d,computed_at,git_state) VALUES (?,'a.py',?,123,'tracked')",
+        [(1, 7), (2, 9)],
+    )
+    conn.execute("CREATE TABLE user_notes(id INTEGER PRIMARY KEY, payload BLOB)")
+    conn.execute("INSERT INTO user_notes VALUES (99,?)", ("用户数据\x00保留".encode(),))
+    if layout == "canonical15":
+        schema.apply_migration_v14(conn, schema.record_schema_version)
+        schema.apply_migration_v15(conn, schema.record_schema_version)
+        conn.execute("UPDATE ast_index SET certified_at=456")
+        conn.execute(
+            "UPDATE ast_symbol_activation SET activation_state=CASE symbol_id WHEN 1 THEN 'computed' ELSE 'disabled' END"
+        )
+    elif layout == "experimental15":
+        conn.executescript(schema.SCHEMA_V16_COMMENTS)
+        conn.executescript(schema.SCHEMA_V17_LSP_CACHE)
+        conn.execute(
+            "ALTER TABLE ast_symbol_activation ADD COLUMN last_commit_msg TEXT"
+        )
+        conn.execute(
+            "UPDATE ast_symbol_activation SET last_commit_msg='preserved message' WHERE symbol_id=2"
+        )
+        conn.execute(
+            "INSERT INTO ast_symbol_comments(id,symbol_id,line,text,kind) VALUES (77,1,2,'用户注释','inline')"
+        )
+        conn.execute(
+            "INSERT INTO edges(id,source_node_id,target_node_id,kind) VALUES (88,'source','target','calls')"
+        )
+        conn.execute(
+            "INSERT INTO lsp_resolution_cache(symbol_id,edge_id,resolved_file,resolved_line,lsp_server,cached_at) VALUES (1,88,'target.py',3,'peer',22)"
+        )
+        schema.record_schema_version(
+            conn, 14, "Pulse MVP: ast_symbol_comments + last_commit_msg"
+        )
+        schema.record_schema_version(conn, 15, "LSP resolution cache")
+    conn.commit()
+    conn.close()
+    return root, path
+
+
+@pytest.mark.parametrize("layout", ["v13", "canonical15", "experimental15"])
+def test_legacy_layout_upgrade_preserves_data_and_is_idempotent(tmp_path, layout):
+    """PR #1350/#1352：三种真实旧布局统一升级，不因相同版本号漏列或丢失用户投影。"""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_snapshot_schema import validate_snapshot_schema
+
+    root, path = _legacy_cache_layout(tmp_path, layout)
+    cache = ASTCache(str(root), db_path=str(path))
+    try:
+        db = cache.get_conn()
+        assert [
+            r[0]
+            for r in db.execute(
+                "SELECT version FROM ast_schema_version WHERE version>=13 ORDER BY version"
+            )
+        ] == [13, 14, 15, 16, 17]
+        assert validate_snapshot_schema(db) is None
+        assert db.execute("SELECT certified_at FROM ast_index").fetchone()[0] == (
+            456 if layout == "canonical15" else None
+        )
+        expected_states = [
+            (1, 7, "pending"),
+            (
+                2,
+                9,
+                "disabled" if layout == "canonical15" else "pending",
+            ),
+        ]
+        assert [
+            tuple(r)
+            for r in db.execute(
+                "SELECT symbol_id,mod_count_30d,activation_state FROM ast_symbol_activation ORDER BY symbol_id"
+            )
+        ] == expected_states
+        assert (
+            db.execute("SELECT payload FROM user_notes WHERE id=99").fetchone()[0]
+            == "用户数据\x00保留".encode()
+        )
+        assert (
+            db.execute("SELECT content_hash FROM ast_index").fetchone()[0] == "original"
+        )
+        if layout == "experimental15":
+            assert tuple(
+                db.execute(
+                    "SELECT id,symbol_id,text FROM ast_symbol_comments"
+                ).fetchone()
+            ) == (77, 1, "用户注释")
+            assert tuple(
+                db.execute(
+                    "SELECT edge_id,resolved_file,resolved_line,cached_at FROM lsp_resolution_cache"
+                ).fetchone()
+            ) == (88, "target.py", 3, 22)
+            assert (
+                db.execute(
+                    "SELECT last_commit_msg FROM ast_symbol_activation WHERE symbol_id=2"
+                ).fetchone()[0]
+                == "preserved message"
+            )
+        before = tuple(db.iterdump())
+    finally:
+        cache.close()
+    reopened = ASTCache(str(root), db_path=str(path))
+    try:
+        assert tuple(reopened.get_conn().iterdump()) == before
+    finally:
+        reopened.close()
+
+
+@pytest.mark.parametrize("layout", ["v13", "canonical15", "experimental15"])
+@pytest.mark.parametrize("fault", ["record", "interrupt", "release"])
+def test_entire_extension_upgrade_rolls_back_and_retries(tmp_path, layout, fault):
+    """PR #1350/#1352：末次迁移的真实记录失败或 SQLite 中断必须回滚整次扩展升级。"""
+    from tree_sitter_analyzer.cache import schema
+    from tree_sitter_analyzer.index_snapshot_schema import (
+        apply_snapshot_migration,
+        validate_snapshot_schema,
+    )
+
+    _, path = _legacy_cache_layout(tmp_path, layout)
+    db = sqlite3.connect(path)
+    migrations = [(13, apply_snapshot_migration)] + [
+        (v, getattr(schema, f"apply_migration_v{v}")) for v in range(14, 18)
+    ]
+    try:
+        if fault == "record":
+            db.execute(
+                "CREATE TEMP TRIGGER deny_record BEFORE INSERT ON ast_schema_version WHEN NEW.version=17 BEGIN SELECT RAISE(ABORT,'record denied'); END"
+            )
+        elif fault == "interrupt":
+
+            def interrupt(sql):
+                if (
+                    sql.startswith("INSERT OR IGNORE INTO ast_schema_version")
+                    and "LSP resolution cache" in sql
+                ):
+                    db.interrupt()
+
+            db.set_trace_callback(interrupt)
+        else:
+            denied = []
+
+            def deny_release(action, operation, *_):
+                if (
+                    action == sqlite3.SQLITE_SAVEPOINT
+                    and operation == "RELEASE"
+                    and not denied
+                ):
+                    denied.append(True)
+                    return sqlite3.SQLITE_DENY
+                return sqlite3.SQLITE_OK
+
+            db.set_authorizer(deny_release)
+        before = tuple(db.iterdump())
+        with pytest.raises(
+            sqlite3.DatabaseError, match="record denied|interrupted|not authorized"
+        ):
+            schema.init_db(db, False, None, migrations)
+        db.set_trace_callback(None)
+        db.set_authorizer(None)
+        assert db.in_transaction is False
+        assert tuple(db.iterdump()) == before
+        db.execute("DROP TRIGGER IF EXISTS deny_record")
+        schema.init_db(db, False, None, migrations)
+        assert validate_snapshot_schema(db) is None
+    finally:
+        db.close()
+
+
+def test_future_schema_is_rejected_without_mutating_cache(tmp_path):
+    """PR #1350/#1352：未来 v18 在任何迁移写入之前被拒绝，原库保持可由新版处理。"""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    root, path = _legacy_cache_layout(tmp_path, "experimental15")
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO ast_schema_version VALUES (18,0,'future')")
+    with sqlite3.connect(path) as db:
+        before = tuple(db.iterdump())
+    with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
+        ASTCache(str(root), db_path=str(path))
+    with sqlite3.connect(path) as db:
+        assert tuple(db.iterdump()) == before
+
+
 @pytest.mark.parametrize(
-    "version,table", [(14, "ast_symbol_comments"), (15, "lsp_resolution_cache")]
+    "table,column",
+    [("ast_symbol_comments", "text"), ("lsp_resolution_cache", "resolved_line")],
+)
+def test_unrecognized_experimental_shape_is_not_certified(tmp_path, table, column):
+    """PR #1350/#1352：超出已知旧布局的缺列不能因 CREATE IF NOT EXISTS 被当成升级成功。"""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    root, path = _legacy_cache_layout(tmp_path, "experimental15")
+    with sqlite3.connect(path) as db:
+        db.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+        before = tuple(db.iterdump())
+    with pytest.raises(sqlite3.OperationalError, match=column):
+        ASTCache(str(root), db_path=str(path))
+    with sqlite3.connect(path) as db:
+        assert tuple(db.iterdump()) == before
+
+
+@pytest.mark.parametrize(
+    "version,table", [(16, "ast_symbol_comments"), (17, "lsp_resolution_cache")]
 )
 def test_failed_optional_migration_does_not_certify_schema(tmp_path, version, table):
     """PR #1352：只读存储上的迁移失败不能写入版本凭证，snapshot 校验必须拒绝残缺 schema。"""
@@ -39,10 +273,9 @@ def test_failed_optional_migration_does_not_certify_schema(tmp_path, version, ta
             for r in db.execute("SELECT * FROM ast_schema_version ORDER BY version")
         ]
         db.execute("PRAGMA query_only=ON")
-        migration = (
-            schema.apply_migration_v14 if version == 14 else schema.apply_migration_v15
-        )
-        migration(db, schema.record_schema_version)
+        migration = getattr(schema, f"apply_migration_v{version}")
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            migration(db, schema.record_schema_version)
         assert [
             tuple(r)
             for r in db.execute("SELECT * FROM ast_schema_version ORDER BY version")
@@ -71,8 +304,9 @@ def test_schema_version_rejects_unknown_row_immediately():
     conn.close()
 
 
-def test_default_cache_schema_matches_snapshot_reader(tmp_path):
-    # PR #1352：默认迁移 14/15 和认证读取版本必须一致。
+@pytest.mark.parametrize("future_version", [None, 18])
+def test_snapshot_reader_matches_latest_real_migration(tmp_path, future_version):
+    # PR #1350/#1352：canonical 14/15 与新 16/17 必须同时存在，未来 18 不可接受。
     from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_snapshot_schema import (
         SNAPSHOT_SCHEMA_VERSION,
@@ -82,18 +316,30 @@ def test_default_cache_schema_matches_snapshot_reader(tmp_path):
     cache = ASTCache(str(tmp_path))
     try:
         conn = cache.get_conn()
-        assert (
-            conn.execute("SELECT max(version) FROM ast_schema_version").fetchone()[0]
-            == SNAPSHOT_SCHEMA_VERSION
-            == 15
-        )
-        validate_snapshot_schema(conn)
-        conn.execute(
-            "INSERT INTO ast_schema_version(version, applied_at, description) VALUES (?, '', 'future')",
-            (SNAPSHOT_SCHEMA_VERSION + 1,),
-        )
-        with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
-            validate_snapshot_schema(conn)
+        versions = [
+            row[0]
+            for row in conn.execute(
+                "SELECT version FROM ast_schema_version WHERE version >= 13 ORDER BY version"
+            )
+        ]
+        assert versions == [13, 14, 15, 16, 17]
+        assert SNAPSHOT_SCHEMA_VERSION == max(versions) == 17
+        assert "certified_at" in {
+            row[1] for row in conn.execute("PRAGMA table_info(ast_index)")
+        }
+        assert "activation_state" in {
+            row[1] for row in conn.execute("PRAGMA table_info(ast_symbol_activation)")
+        }
+        if future_version is None:
+            assert validate_snapshot_schema(conn) is None
+        else:
+            conn.execute(
+                "INSERT INTO ast_schema_version(version, applied_at, description) "
+                "VALUES (?, 0, 'future')",
+                (future_version,),
+            )
+            with pytest.raises(ValueError, match="^INCOMPATIBLE_SCHEMA$"):
+                validate_snapshot_schema(conn)
     finally:
         cache.close()
 
@@ -271,7 +517,7 @@ def test_schema_version_rejects_text_version():
 
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE ast_schema_version(version)")
-    conn.execute("INSERT INTO ast_schema_version VALUES ('13')")
+    conn.execute("INSERT INTO ast_schema_version VALUES ('15')")
     with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
         validate_snapshot_schema(conn)
     conn.close()
@@ -282,7 +528,7 @@ def test_schema_requires_current_version_row(monkeypatch):
 
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE ast_schema_version(version)")
-    conn.execute("INSERT INTO ast_schema_version VALUES (13)")
+    conn.execute("INSERT INTO ast_schema_version VALUES (15)")
     monkeypatch.setattr(schema, "SNAPSHOT_SCHEMA_VERSION", 99)
     with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
         schema.validate_snapshot_schema(conn)

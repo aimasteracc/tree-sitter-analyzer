@@ -24,6 +24,112 @@ from tests.fixtures.git_temporal.make_repo import make_shallow_marker
 _GIT_TIMEOUT_SECONDS = 15
 
 
+@pytest.mark.parametrize("message_present", [False, True])
+def test_legacy_message_projection_pending_then_real_git_refresh(
+    tmp_path, monkeypatch, message_present
+):
+    """PR #1350/#1352：升级失效消息先报未知，cached 索引路径再以真实 Git 修复，disabled 不动。"""
+    import json
+    from collections import OrderedDict
+
+    import tree_sitter_analyzer.cache.write as write
+    import tree_sitter_analyzer.git_readonly as git
+    from tree_sitter_analyzer.api.pulse import query_pulse
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.hyphae import Evaluator, parse
+    from tree_sitter_analyzer.hyphae.parser import HyphaeSyntaxError
+
+    _init_git_repo(tmp_path)
+    source = tmp_path / "sample.py"
+    original = 'def target(flag):\n    """kept doc"""\n    # initial comment\n    if flag:\n        helper()\n\ndef helper():\n    pass\n'
+    source.write_text(original, encoding="utf-8")
+    _run_git(tmp_path, ["add", "sample.py"])
+    _run_git(tmp_path, ["commit", "-m", "initial"])
+    source.write_text(
+        original.replace("initial comment", "kept comment"), encoding="utf-8"
+    )
+    _run_git(tmp_path, ["add", "sample.py"])
+    _run_git(tmp_path, ["commit", "-m", "restore message"])
+    cache = ASTCache(str(tmp_path))
+    assert cache.index_file(str(source))["status"] == "indexed"
+    db = cache.get_conn()
+    expected_heat = query_pulse(db, "sample.py", "target").git_heat
+    assert expected_heat.commit_msg == "restore message"
+    db.execute(
+        "UPDATE ast_symbol_activation SET last_commit_msg=NULL,activation_state='computed'"
+    )
+    if message_present:
+        db.execute(
+            "UPDATE ast_symbol_activation SET last_commit_msg='preserved historical message',activation_state=NULL WHERE symbol_id=(SELECT id FROM ast_symbol_rows WHERE name='target')"
+        )
+    db.execute(
+        "UPDATE ast_symbol_activation SET activation_state='disabled' WHERE symbol_id=(SELECT id FROM ast_symbol_rows WHERE name='helper')"
+    )
+    db.execute("DELETE FROM ast_schema_version WHERE version>=16")
+    db.commit()
+    cache.close()
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        db = cache.get_conn()
+        assert query_pulse(db, "sample.py", "target").git_heat is None
+        if message_present:
+            assert (
+                db.execute(
+                    "SELECT last_commit_msg FROM ast_symbol_activation WHERE symbol_id=(SELECT id FROM ast_symbol_rows WHERE name='target')"
+                ).fetchone()[0]
+                == "preserved historical message"
+            )
+        with pytest.raises(HyphaeSyntaxError, match="TEMPORAL_ACTIVATION_UNAVAILABLE"):
+            Evaluator(cache).eval(parse(".function:hot"))
+        disabled = tuple(
+            db.execute(
+                "SELECT * FROM ast_symbol_activation WHERE activation_state='disabled'"
+            ).fetchone()
+        )
+        real_git = git.run_git_readonly
+
+        def failed_message(*args, **kwargs):
+            if "--no-walk" in args[1]:
+                raise OSError("message transport unavailable")
+            return real_git(*args, **kwargs)
+
+        monkeypatch.setattr(write, "_COMMIT_MSG_CACHE", OrderedDict())
+        with monkeypatch.context() as failure:
+            failure.setattr(git, "run_git_readonly", failed_message)
+            assert write._flush_pending_activations(db, str(tmp_path)) == {
+                "flushed": 0,
+                "errors": 1,
+            }
+        assert db.in_transaction is False
+        assert query_pulse(db, "sample.py", "target").git_heat is None
+        # 模拟进程重启后的空消息缓存；不修改已存统计或调用业务替身。
+        write._COMMIT_MSG_CACHE.clear()
+        assert cache.index_file(str(source))["status"] == "cached"
+        pulse = query_pulse(db, "sample.py", "target")
+        assert pulse.git_heat == expected_heat
+        assert pulse.symbol.docstring == "kept doc"
+        assert [c.text for c in pulse.comments] == ["kept comment"]
+        assert (
+            json.loads(
+                db.execute(
+                    "SELECT metadata FROM edges WHERE kind='calls' AND callee_name='helper'"
+                ).fetchone()[0]
+            )["branch"]["kind"]
+            == "if_true"
+        )
+        assert (
+            tuple(
+                db.execute(
+                    "SELECT * FROM ast_symbol_activation WHERE activation_state='disabled'"
+                ).fetchone()
+            )
+            == disabled
+        )
+    finally:
+        cache.close()
+
+
 def test_commit_message_capacity_evicts_oldest_without_losing_new_subject(
     tmp_path, monkeypatch
 ):
@@ -521,15 +627,18 @@ class TestEnvDisable:
             conn = sqlite3.connect(db_path)
             try:
                 try:
-                    cur = conn.execute("SELECT COUNT(*) FROM ast_symbol_activation")
-                    count = cur.fetchone()[0]
+                    # REQ-E-303: disabled writes 'disabled' placeholder rows to
+                    # avoid NULL-join gaps; subprocess.run must not be called.
+                    cur = conn.execute(
+                        "SELECT DISTINCT activation_state FROM ast_symbol_activation"
+                        " WHERE file_path = 'a.py'"
+                    )
+                    states = {row[0] for row in cur.fetchall()}
                 except sqlite3.OperationalError:
-                    # Table may not exist when feature is disabled —
-                    # equally acceptable: nothing was written.
-                    count = 0
+                    states = set()
             finally:
                 conn.close()
-            assert count == 0
+            assert states == {"disabled"}
             assert mock_subprocess.run.call_count == 0
 
 

@@ -4,11 +4,212 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import time
 
 import pytest
 
 requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 requires_posix_snapshot = requires_posix_fd
+
+
+@requires_posix_fd
+class TestPrivateWalFiles:
+    @pytest.fixture
+    def pair(self, tmp_path):
+        directory = tmp_path / ".ast-cache"
+        directory.mkdir()
+        db = directory / "index.db"
+        conn = sqlite3.connect(db)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA wal_autocheckpoint=0")
+        conn.execute("CREATE TABLE payload(value INTEGER)")
+        conn.execute("INSERT INTO payload VALUES (1)")
+        conn.commit()
+        yield db, conn
+        conn.close()
+
+    def capture(self, root):
+        from tree_sitter_analyzer.index_snapshot import _require_capture_budget
+        from tree_sitter_analyzer.index_snapshot_capability import private_wal_database
+
+        return private_wal_database(
+            str(root),
+            deadline=time.monotonic() + 10,
+            byte_limit=1024 * 1024,
+            check_deadline=_require_capture_budget,
+        )
+
+    @pytest.mark.parametrize("fault", ["missing", "changed"])
+    def test_wal_change_between_stat_and_open(self, tmp_path, pair, monkeypatch, fault):
+        # PR #1350：真实 WAL 路径的打开失败或身份变化，不能按起初的 stat 放行。
+        import tree_sitter_analyzer.index_snapshot_capability as owner
+
+        db, _ = pair
+        wal = db.with_name("index.db-wal")
+        original = os.open
+        events = []
+
+        def changed_open(path, flags, *args, **kwargs):
+            if path == "index.db-wal":
+                events.append(path)
+                if fault == "missing":
+                    raise FileNotFoundError("WAL disappeared")
+                info = wal.stat()
+                os.utime(wal, ns=(info.st_atime_ns, info.st_mtime_ns + 1_000_000_000))
+            return original(path, flags, *args, **kwargs)
+
+        monkeypatch.setattr(owner.os, "open", changed_open)
+        with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
+            with self.capture(tmp_path):
+                pytest.fail("变化的 WAL 不应被复制")
+        assert events == ["index.db-wal"]
+
+    def test_new_wal_during_copy_rejects_missing_sidecar_snapshot(
+        self, tmp_path, pair, monkeypatch
+    ):
+        import tree_sitter_analyzer.index_snapshot_capability as owner
+
+        db, conn = pair
+        conn.close()
+        assert db.with_name("index.db-wal").exists() is False
+        inode = db.stat().st_ino
+        original = os.read
+        writers = []
+
+        def create_wal(fd, size):
+            if not writers and os.fstat(fd).st_ino == inode:
+                writer = sqlite3.connect(db)
+                writers.append(writer)
+                writer.execute("INSERT INTO payload VALUES (2)")
+                writer.commit()
+            return original(fd, size)
+
+        monkeypatch.setattr(owner.os, "read", create_wal)
+        try:
+            with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
+                with self.capture(tmp_path):
+                    pytest.fail("新 WAL 不能被遗漏")
+            assert len(writers) == 1
+        finally:
+            for writer in writers:
+                writer.close()
+
+    def test_active_rollback_journal_is_not_ignored(self, tmp_path, pair):
+        db, conn = pair
+        conn.execute("PRAGMA journal_mode=DELETE")
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("UPDATE payload SET value=2")
+        assert db.with_name("index.db-journal").is_file() is True
+        try:
+            with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
+                with self.capture(tmp_path):
+                    pytest.fail("未提交 rollback journal 不能被忽略")
+        finally:
+            conn.rollback()
+
+    def test_cache_directory_swap_is_rejected(self, tmp_path, pair):
+        db, conn = pair
+        conn.close()
+        with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
+            with self.capture(tmp_path):
+                db.parent.rename(tmp_path / "old-cache")
+                (tmp_path / ".ast-cache").mkdir()
+
+    def test_same_size_source_byte_change_is_rejected(self, tmp_path, pair):
+        db, conn = pair
+        conn.close()
+        with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
+            with self.capture(tmp_path):
+                with db.open("r+b") as stream:
+                    stream.seek(-1, os.SEEK_END)
+                    value = stream.read(1)[0]
+                    stream.seek(-1, os.SEEK_END)
+                    stream.write(bytes([value ^ 1]))
+
+    def test_short_source_read_is_rejected(self, tmp_path, pair, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot_capability as owner
+
+        db, _ = pair
+        inode = db.stat().st_ino
+        original = os.read
+        monkeypatch.setattr(
+            owner.os,
+            "read",
+            lambda fd, size: (
+                b"" if os.fstat(fd).st_ino == inode else original(fd, size)
+            ),
+        )
+        with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
+            with self.capture(tmp_path):
+                pytest.fail("短读不能发布文件")
+
+    @pytest.mark.parametrize("zero_progress", [False, True])
+    def test_private_stream_write_progress_is_checked(
+        self, tmp_path, pair, monkeypatch, zero_progress
+    ):
+        # PR #1350：实际文件写入的短进展必须循环完成，零进展必须失败并清理临时目录。
+        import builtins
+        from pathlib import Path
+
+        import tree_sitter_analyzer.index_snapshot_capability as owner
+
+        directories = []
+
+        class Writer:
+            def __init__(self, file):
+                self.file = file
+
+            def __enter__(self):
+                self.file.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self.file.__exit__(*args)
+
+            def write(self, data):
+                if zero_progress:
+                    return 0
+                return self.file.write(data[: max(1, len(data) // 2)])
+
+        def open_private(path, mode, **kwargs):
+            stream = builtins.open(path, mode, **kwargs)
+            if mode == "xb":
+                directories.append(Path(path).parent)
+                return Writer(stream)
+            return stream
+
+        monkeypatch.setattr(owner, "open", open_private, raising=False)
+        if zero_progress:
+            with pytest.raises(OSError, match="^INDEX_STAGE_WRITE_FAILED$"):
+                with self.capture(tmp_path):
+                    pytest.fail("零进展不能成功")
+        else:
+            with self.capture(tmp_path) as (path, _):
+                assert Path(path).read_bytes() == pair[0].read_bytes()
+        assert {p.exists() for p in directories} == {False}
+
+    def test_no_writable_external_temp_parent_fails_closed(
+        self, tmp_path, pair, monkeypatch
+    ):
+        import tree_sitter_analyzer.frozen_git_index as temporary
+
+        monkeypatch.setattr(temporary.os, "access", lambda *_args: False)
+        with pytest.raises(ValueError, match="^INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED$"):
+            with self.capture(tmp_path):
+                pytest.fail("不能退回项目内临时目录")
+
+    def test_misdirected_temp_allocator_is_rejected(self, tmp_path, pair, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot_capability as owner
+
+        allocate = owner.tempfile.TemporaryDirectory
+        monkeypatch.setattr(
+            owner.tempfile,
+            "TemporaryDirectory",
+            lambda **kwargs: allocate(prefix=kwargs["prefix"], dir=tmp_path),
+        )
+        with pytest.raises(ValueError, match="^INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED$"):
+            with self.capture(tmp_path):
+                pytest.fail("不能接受项目内私有副本")
 
 
 def test_exact_call_graph_marker_rejects_duplicate_ids_without_materializing_built():

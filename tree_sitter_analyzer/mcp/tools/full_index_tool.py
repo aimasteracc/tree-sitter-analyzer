@@ -679,11 +679,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                     incremental_phase.get("completeness") != "incomplete"
                     or grammar_only_errors
                 )
-                and (
-                    manifest_certified
-                    or operational_manifest_only
-                    or grammar_only_errors
-                ),
+                and (manifest_certified or operational_manifest_only),
                 "verdict": top_verdict,
                 "summary_line": summary_line,
                 "agent_summary": {

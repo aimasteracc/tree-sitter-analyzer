@@ -28,6 +28,38 @@ def _make_fake_cache(conn):
     return fake
 
 
+@pytest.mark.parametrize("state", ["pending", "disabled"])
+async def test_combined_score_rejects_unavailable_lazy_heat_before_provider(
+    tmp_path, openai_transport, state
+):
+    """PR #1350/#1352：真实索引的热度未计算时，组合评分不得伪造分数或浪费 provider 请求。"""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.embeddings import pipeline
+
+    source = tmp_path / "a.py"
+    source.write_text("def run():\n    pass\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        db = cache.get_conn()
+        pipeline.init_embeddings_db(db)
+        pipeline.run_pipeline(db, model="openai")
+        db.execute("UPDATE ast_symbol_activation SET activation_state=?", (state,))
+        openai_transport.reset_mock()
+        tool = SemanticNeighborsTool(str(tmp_path))
+        tool._cache = cache
+        response = await tool.execute({"query": "run", "use_combined_score": True})
+        assert response == {
+            "success": False,
+            "error": "COMBINED_SCORE_UNAVAILABLE: activation pending or disabled",
+            "count": 0,
+            "neighbors": [],
+        }
+        openai_transport.assert_not_called()
+    finally:
+        cache.close()
+
+
 @pytest.mark.parametrize(
     "damage", ["vectors_disappear", "definition_table_disappears", "invalid_heat"]
 )

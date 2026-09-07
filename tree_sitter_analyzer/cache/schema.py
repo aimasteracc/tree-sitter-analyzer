@@ -18,6 +18,30 @@ from collections.abc import Callable
 from typing import Any
 
 from ..index_snapshot_symbols import ensure_symbol_rows_backfilled
+from .schema_extensions import (
+    CURRENT_SCHEMA_VERSION as CURRENT_SCHEMA_VERSION,
+)
+from .schema_extensions import (
+    SCHEMA_V16_COMMENTS as SCHEMA_V16_COMMENTS,
+)
+from .schema_extensions import (
+    SCHEMA_V17_LSP_CACHE as SCHEMA_V17_LSP_CACHE,
+)
+from .schema_extensions import (
+    apply_migration_v14 as apply_migration_v14,
+)
+from .schema_extensions import (
+    apply_migration_v15 as apply_migration_v15,
+)
+from .schema_extensions import (
+    apply_migration_v16 as apply_migration_v16,
+)
+from .schema_extensions import (
+    apply_migration_v17 as apply_migration_v17,
+)
+from .schema_extensions import (
+    schema_update,
+)
 
 # ---------------------------------------------------------------------------
 # Schema DDL constants
@@ -368,33 +392,6 @@ def apply_migration_v11(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
         pass
 
 
-SCHEMA_V14_COMMENTS = """
-CREATE TABLE IF NOT EXISTS ast_symbol_comments (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    symbol_id INTEGER NOT NULL REFERENCES ast_symbol_rows(id) ON DELETE CASCADE,
-    line      INTEGER NOT NULL,
-    text      TEXT NOT NULL,
-    kind      TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_comments_symbol ON ast_symbol_comments(symbol_id);
-"""
-
-SCHEMA_V15_LSP_CACHE = """
-CREATE TABLE IF NOT EXISTS lsp_resolution_cache (
-    symbol_id     INTEGER REFERENCES ast_symbol_rows(id),
-    edge_id       INTEGER REFERENCES edges(id),
-    resolved_type TEXT,
-    resolved_file TEXT,
-    resolved_line INTEGER,
-    lsp_server    TEXT NOT NULL,
-    cached_at     INTEGER NOT NULL,
-    PRIMARY KEY (edge_id, lsp_server)
-);
-CREATE INDEX IF NOT EXISTS idx_lsp_edge ON lsp_resolution_cache(edge_id);
-CREATE INDEX IF NOT EXISTS idx_lsp_sym  ON lsp_resolution_cache(symbol_id);
-"""
-
-
 def apply_migration_v12(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
     """Rebuild ``ast_symbols_fts`` with porter stemming (v12 — #604).
 
@@ -420,40 +417,6 @@ def apply_migration_v12(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
             "SELECT id, name, kind, file_path, language FROM ast_symbol_rows"
         )
         record_fn(conn, 12, "FTS5 porter stemming rebuild")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass
-
-
-def apply_migration_v14(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
-    """Create ``ast_symbol_comments`` table and add ``last_commit_msg`` column (v14 — Pulse MVP).
-
-    Idempotent: PRAGMA table_info detects existing columns before ALTER.
-    """
-    try:
-        conn.executescript(SCHEMA_V14_COMMENTS)
-        act_cols = {
-            r[1]
-            for r in conn.execute("PRAGMA table_info(ast_symbol_activation)").fetchall()
-        }
-        if "last_commit_msg" not in act_cols:
-            conn.execute(
-                "ALTER TABLE ast_symbol_activation ADD COLUMN last_commit_msg TEXT"
-            )
-        record_fn(conn, 14, "Pulse MVP: ast_symbol_comments + last_commit_msg")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass
-
-
-def apply_migration_v15(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
-    """Create ``lsp_resolution_cache`` table (v15 — LSP Semantic Enrichment).
-
-    Idempotent via ``CREATE TABLE IF NOT EXISTS``.
-    """
-    try:
-        conn.executescript(SCHEMA_V15_LSP_CACHE)
-        record_fn(conn, 15, "LSP resolution cache")
         conn.commit()
     except sqlite3.OperationalError:
         pass
@@ -619,17 +582,51 @@ EXPECTED_SCHEMA_VERSIONS: list[Any] = [
     ),
     (
         14,
-        "Pulse MVP: ast_symbol_comments + last_commit_msg",
+        "Add certified_at column to ast_index (partial certification model)",
         {
-            "tables": ["ast_symbol_comments"],
-            "ast_symbol_activation_columns": ["last_commit_msg"],
+            "ast_index_columns": ["certified_at"],
         },
     ),
     (
         15,
+        "Add activation_state column to ast_symbol_activation (lazy activation model)",
+        {"ast_symbol_activation_columns": ["activation_state"]},
+    ),
+    (
+        16,
+        "Pulse comments and commit messages; canonical layout repair",
+        {
+            "tables": ["ast_symbol_comments"],
+            "ast_symbol_comments_columns": ["id", "symbol_id", "line", "text", "kind"],
+            "ast_symbol_activation_columns": [
+                "symbol_id",
+                "file_path",
+                "last_modified_commit",
+                "last_modified_at",
+                "mod_count_30d",
+                "mod_count_90d",
+                "mod_count_all",
+                "computed_at",
+                "git_state",
+                "activation_state",
+                "last_commit_msg",
+            ],
+        },
+    ),
+    (
+        17,
         "LSP resolution cache",
         {
             "tables": ["lsp_resolution_cache"],
+            "lsp_resolution_cache_columns": [
+                "symbol_id",
+                "edge_id",
+                "resolved_type",
+                "resolved_file",
+                "resolved_line",
+                "lsp_server",
+                "cached_at",
+            ],
         },
     ),
 ]
@@ -715,18 +712,15 @@ def already_applied_versions(conn: sqlite3.Connection) -> set[int]:
 def record_schema_version(
     conn: sqlite3.Connection, version: int, description: str
 ) -> None:
-    """Stamp a row in ast_schema_version after a migration block applies."""
+    """记录已完成的迁移；注册表由初始化器创建，写入故障交给迁移事务处理。"""
     import time as _time
 
     ts = int(_time.time())
-    try:
-        conn.execute(
-            "INSERT OR IGNORE INTO ast_schema_version "
-            "(version, applied_at, description) VALUES (?, ?, ?)",
-            (version, ts, description),
-        )
-    except sqlite3.OperationalError:
-        pass
+    conn.execute(
+        "INSERT OR IGNORE INTO ast_schema_version "
+        "(version, applied_at, description) VALUES (?, ?, ?)",
+        (version, ts, description),
+    )
 
 
 def backfill_schema_version_row(
@@ -782,6 +776,18 @@ def _ensure_exact_fts_schema(conn: sqlite3.Connection) -> None:
     )
 
 
+def _apply_extension_migrations(
+    conn: sqlite3.Connection,
+    migrations: list[tuple[int, Any]],
+    applied: set[int],
+) -> None:
+    """v13 及之后的升级在同一事务中完成，后续版本失败不能留下半次升级。"""
+    with schema_update(conn):
+        for version, migration_fn in migrations:
+            if version >= 13 and version not in applied:
+                migration_fn(conn, record_schema_version)
+
+
 def init_db(
     conn: sqlite3.Connection,
     fts5_available: bool | None,
@@ -789,6 +795,12 @@ def init_db(
     migrations: list[tuple[int, Any]],
 ) -> bool:
     """Apply schema DDL and migrations. Returns updated fts5_available flag."""
+    applied = already_applied_versions(conn)
+    if any(version < 1 or version > CURRENT_SCHEMA_VERSION for version in applied):
+        raise ValueError("INCOMPATIBLE_SCHEMA")
+    # 支持的既有缓存先做原子升级，失败时连 bootstrap 的可选 DDL 都不能残留。
+    if any(version >= 13 for version in applied):
+        _apply_extension_migrations(conn, migrations, applied)
     conn.executescript(SCHEMA_V1)
     # Establish the ordinary table before the externally backed FTS schema.
     conn.executescript(SCHEMA_SYMBOL_ROWS)
@@ -805,8 +817,9 @@ def init_db(
             fts5_available = False
     applied = already_applied_versions(conn)
     for version, migration_fn in migrations:
-        if version not in applied:
+        if version < 13 and version not in applied:
             migration_fn(conn, record_schema_version)
+    _apply_extension_migrations(conn, migrations, applied)
     # Migration exact-state fast paths must include FTS whenever this runtime
     # supports it; FTS-less SQLite keeps the ordinary-only projection legal.
     projection_complete = ensure_symbol_rows_backfilled(

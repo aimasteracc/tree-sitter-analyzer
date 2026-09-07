@@ -167,3 +167,48 @@ class TestNonSourceFiles:
         (project / "data.json").write_text("{}")
         result = watcher.trigger_sync()
         assert result["scanned"] == 2
+
+
+class TestSkipDirExclusion:
+    """REQ-E-001 回帰テスト: _LAG_SKIP_DIRS に含まれるディレクトリが
+    _take_snapshot / _detect_changes のスナップショットに含まれないことを確認する。"""
+
+    def test_take_snapshot_excludes_node_modules(self, cache, project):
+        """node_modules 内の .py ファイルが snapshot に含まれない (P4b 修正)。"""
+        nm = project / "node_modules"
+        nm.mkdir()
+        (nm / "some_lib.py").write_text("# node_modules file\n", encoding="utf-8")
+
+        watcher = FileWatcherDaemon(cache, poll_interval=1.0, debounce=0.3)
+        watcher._take_snapshot()
+        with watcher._snapshot_lock:
+            snapshot_keys = set(watcher._snapshot.keys())
+
+        assert not any("node_modules" in k for k in snapshot_keys), (
+            "node_modules 内のファイルが snapshot に含まれている"
+        )
+        watcher.stop()
+
+    def test_detect_changes_excludes_skip_dirs(self, cache, project):
+        """PR #1350：全部排除目录都不进入变更集合，且不误判祖先路径。"""
+        from tree_sitter_analyzer.index_lag import _LAG_SKIP_DIRS
+
+        skip_dir_names = sorted(_LAG_SKIP_DIRS)
+
+        for skip_dir in skip_dir_names:
+            d = project / skip_dir
+            d.mkdir(exist_ok=True)
+            (d / "hidden.py").write_text("hidden = True\n", encoding="utf-8")
+
+        watcher = FileWatcherDaemon(cache, poll_interval=1.0, debounce=0.3)
+        # 空快照应只报告项目内两个真实源文件。
+        with watcher._snapshot_lock:
+            watcher._snapshot = {}
+
+        changed = watcher._detect_changes()
+        watcher.stop()
+
+        assert {os.path.relpath(p, project) for p in changed} == {
+            os.path.join("src", "main.py"),
+            os.path.join("src", "util.py"),
+        }

@@ -15,6 +15,8 @@ callers AS (
     LEFT   JOIN ast_symbol_rows cs ON cs.name = e.caller_name AND cs.file_path = e.file_path
                                    AND cs.line = e.caller_line
     LEFT   JOIN ast_symbol_activation a ON a.symbol_id = cs.id
+                                      AND a.activation_state IS NOT 'pending'
+                                      AND a.activation_state IS NOT 'disabled'
     WHERE  e.kind = 'calls'
     AND    (e.callee_symbol_id = t.id
             OR (e.callee_symbol_id IS NULL AND e.callee_name = t.name
@@ -64,6 +66,9 @@ git_heat AS (
            a.git_state            AS state
     FROM   ast_symbol_activation a
     JOIN   target t ON a.symbol_id = t.id
+    WHERE  a.activation_state IS NOT 'pending'
+    AND    a.activation_state IS NOT 'disabled'
+    AND    a.git_state IS NOT NULL
     LIMIT  1
 ),
 siblings AS (

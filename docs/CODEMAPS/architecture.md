@@ -99,6 +99,31 @@ Pulse 的模块边界：`api/pulse.py` 保留公开名字、快照事务、查�
 `api/serialization.py` 直接依赖 DTO，不反向依赖查询入口；两个私有叶子模块均不导入
 `pulse.py`。单请求内的读取绑定同一快照，不表示只执行一次 SQL。
 
+### 缓存版本收敛
+
+`cache/schema_extensions.py` 是扩展迁移及当前版本常量的唯一实现；
+`cache/schema.py` 注册结构要求，`_ast_cache_database_mixin.py` 按顺序调用，
+`index_snapshot_schema.py` 共用当前版本并验证所有消费列。
+
+| 版本 | 定义 |
+|---|---|
+| 13 | 历史 manifest 迁移，编号固定不随 reader 版本变化 |
+| 14 | canonical `ast_index.certified_at` |
+| 15 | canonical `ast_symbol_activation.activation_state` |
+| 16 | Pulse 注释、提交消息及旧实验 15 的 canonical 缺列修复 |
+| 17 | LSP 缓存；保留旧实验已有的解析行 |
+
+从 v13、canonical v15 或实验 Pulse v15 升级时，扩展迁移共用保存点；
+DDL、数据修复和版本凭证一起提交或回滚。未知未来 v18 不写入即拒绝。
+消息或 activation_state 为 NULL 的非 disabled 行一次性置 pending，原统计和消息
+保留到刷新完成；重复初始化不重置已完成状态。
+lazy flush 保留 DB 失败的 pending 重试资格，提交消息沿用有界 SHA 批次与负缓存；
+消息失败不发布 computed。Pulse 不将 pending/disabled 显示为有效热度，时序谓词对
+尚有 pending/disabled 的索引保守报 unknown/error，不宣称完整零匹配。
+每个启用 activation 的项目索引周期都独立执行有界 flush，包括图 marker 有效的
+全缓存周期；禁用周期不消费队列。变更影响的热区读取仅采信 computed 状态，缺失或
+未计算证据通过 activation_diagnostic 保留在完整及精简响应中。
+
 ## Benchmark qualification support
 
 `benchmarks/codegraph_compare/setup_qualification.py` is a compatibility facade for

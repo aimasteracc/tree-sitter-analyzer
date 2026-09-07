@@ -3,11 +3,13 @@
 - **Status**: draft
 - **Author(s)**: project maintainers
 - **Created**: 2026-07-17
-- **Last updated**: 2026-07-17
+- **Last updated**: 2026-09-07 (test organization authorization, issue #1376)
 - **Tracking issue**: TBD
 - **Affected source paths**:
   - `benchmarks/codegraph_compare/`
-  - `tests/unit/test_benchmark_harness.py`
+  - `tests/unit/test_benchmark_harness*.py` (bounded behavior modules authorized by #1376)
+  - `tests/unit/_benchmark_harness*.py` (shared non-collected helpers only)
+  - `tests/LARGE_TEST_FILE_EXCEPTIONS.md` (current path and line-count inventory)
   - `rfcs/ROADMAP-beyond-codegraph.md`
 
 ## Summary
@@ -403,8 +405,32 @@ its own parity design and contract tests.
 
 ## Test plan (RED-first)
 
-Extend `tests/unit/test_benchmark_harness.py`; T-1 forbids creating fragmented
-benchmark test files for this existing subsystem. RED tests must prove exact behavior:
+Extend the existing behavior module under `tests/unit/test_benchmark_harness*.py`
+that owns the affected contract. Issue #1376 explicitly authorizes migrating the
+oversized single-file harness into bounded behavior modules; it does not waive
+T-1's prohibition on parallel coverage-boost or duplicate regression fragments.
+New functionality belongs in its corresponding existing module, not in a new
+file named after a review round or coverage target. Keep every Python module at
+or below the project's 500-line cap; 800 is the legacy inventory warning line,
+not an authorization to exceed 500. Shared helpers live in non-collected
+`_benchmark_harness*.py` modules and must not duplicate production logic or
+re-export tests from another test module.
+
+Each migration must retain all original tests, parameters, fixtures, and markers,
+with actual before/after pytest nodeid mappings and AST evidence. Fingerprints
+may normalize source positions/import relocation and real docstring translation,
+but never assertion or test-data strings. Any separately authorized behavior
+change, such as implicit-locale I/O becoming explicit UTF-8, must be identified
+and narrowly verified, with negative mutation probes. Discover every actual
+POSIX-section module for registration/marker governance; report added governance
+cases separately from the preserved benchmark cases. The current module paths
+and measured sizes are listed in `tests/LARGE_TEST_FILE_EXCEPTIONS.md`.
+
+Run `uv run pytest tests/unit/test_benchmark_harness*.py
+tests/contracts/test_large_test_file_inventory.py -q` for the migrated surface,
+then the quick gate and real staged pre-commit hooks. This test-organization
+authorization does not revise historical benchmark results or evidence levels.
+RED tests must prove exact behavior:
 
 1. cold preparation occurs for every trial and build time is included in cold
    end-to-end time;

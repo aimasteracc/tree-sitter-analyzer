@@ -60,6 +60,11 @@ def test_execute_exposes_verification_fields_for_agents(monkeypatch):
     # agent_summary surface too, so the post-hook can mirror it to the
     # top level. Pre-M5 both surfaces returned ``summary_line=None``.
     assert result["agent_summary"] == {
+        # PR #1350/#1352：缺失热度索引也要保留诊断，不能裁剪成完整无热点。
+        "activation_diagnostic": {
+            "available": False,
+            "reason": "ACTIVATION_INDEX_MISSING",
+        },
         "risk": "unknown",
         "scope": "workspace",
         "changed_count": 1,

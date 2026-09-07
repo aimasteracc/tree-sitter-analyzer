@@ -1406,8 +1406,12 @@ class TestGrammarErrorsOnly:
             "ast_cache": {
                 "error_details_total": 2,
                 "error_details": [
-                    {"reason": "Swift grammar not installed — pip install tree-sitter-analyzer[swift]"},
-                    {"reason": "LUA grammar not installed — pip install tree-sitter-analyzer[lua]"},
+                    {
+                        "reason": "Swift grammar not installed — pip install tree-sitter-analyzer[swift]"
+                    },
+                    {
+                        "reason": "LUA grammar not installed — pip install tree-sitter-analyzer[lua]"
+                    },
                 ],
             }
         }
@@ -1418,7 +1422,9 @@ class TestGrammarErrorsOnly:
             "ast_cache": {
                 "error_details_total": 2,
                 "error_details": [
-                    {"reason": "Swift grammar not installed — pip install tree-sitter-analyzer[swift]"},
+                    {
+                        "reason": "Swift grammar not installed — pip install tree-sitter-analyzer[swift]"
+                    },
                     {"reason": "File read error: permission denied"},
                 ],
             }
@@ -1434,7 +1440,9 @@ class TestGrammarErrorsOnly:
             "ast_cache": {
                 "error_details_total": 5,
                 "error_details": [
-                    {"reason": "Swift grammar not installed — pip install tree-sitter-analyzer[swift]"},
+                    {
+                        "reason": "Swift grammar not installed — pip install tree-sitter-analyzer[swift]"
+                    },
                 ],
             }
         }
@@ -1446,7 +1454,9 @@ class TestGrammarErrorsOnly:
             "ast_cache": {
                 "error_details_total": 1,
                 "error_details": [
-                    {"reason": "Ruby grammar not installed — pip install tree-sitter-analyzer[ruby]"},
+                    {
+                        "reason": "Ruby grammar not installed — pip install tree-sitter-analyzer[ruby]"
+                    },
                 ],
             },
         }
@@ -1467,8 +1477,38 @@ class TestGrammarErrorsOnly:
 
 
 @pytest.mark.asyncio
-async def test_grammar_only_errors_yield_success_true(tool_with_root):
-    """When all errors are optional grammar packages, success must be True."""
+@pytest.mark.parametrize(
+    ("stats", "success"),
+    [
+        ({"_manifest_certified": True}, True),
+        ({"scope_complete": False}, False),
+        (
+            {
+                "manifest_warning": "INDEX_MANIFEST_CERTIFICATION_FAILED",
+                "manifest_certification_failed": True,
+            },
+            False,
+        ),
+        (
+            {
+                "manifest_warning": "CALL_GRAPH_MARKER_CERTIFICATION_FAILED",
+                "certification_errors": 1,
+            },
+            False,
+        ),
+        (
+            {
+                "manifest_warning": "SOURCE_SCOPE_UNSUPPORTED",
+                "manifest_certification_failed": True,
+            },
+            False,
+        ),
+    ],
+)
+async def test_grammar_only_errors_require_independent_certification(
+    tool_with_root, stats, success
+):
+    """PR #1350：可选 grammar 错误不能豁免独立 manifest 认证。"""
     grammar_error_phase = {
         "status": "error",
         "processed": 1,
@@ -1484,11 +1524,15 @@ async def test_grammar_only_errors_yield_success_true(tool_with_root):
         ],
     }
     with (
-        patch.object(tool_with_root, "_phase_ast_cache", return_value=grammar_error_phase),
+        patch.object(
+            tool_with_root, "_phase_ast_cache", return_value=grammar_error_phase
+        ),
         patch.object(
             tool_with_root, "_phase_incremental_sync", return_value=grammar_error_phase
         ),
-        patch.object(tool_with_root, "_phase_fts5_stats", return_value={"status": "ok"}),
+        patch.object(
+            tool_with_root, "_phase_fts5_stats", return_value={"status": "ok"}
+        ),
         patch.object(
             tool_with_root,
             "_phase_call_edge_stats",
@@ -1497,14 +1541,14 @@ async def test_grammar_only_errors_yield_success_true(tool_with_root):
         patch.object(
             tool_with_root,
             "_collect_final_stats",
-            return_value={"scope_complete": False},
+            return_value=stats,
         ),
     ):
         result = await tool_with_root.execute(
             {"mode": "incremental", "resolve_synapse": False, "output_format": "json"}
         )
 
-    assert result["success"] is True
+    assert result["success"] is success
     assert result["verdict"] == "WARN"
 
 

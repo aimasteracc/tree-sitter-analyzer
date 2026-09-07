@@ -85,4 +85,55 @@ interface WithConstants {
     int CONSTANT = 42;
     String NAME = "hello";
 }
+
+class LambdaExamples {
+    void run() {
+        Runnable r = () -> System.out.println("lambda");
+        java.util.function.Function<String, Integer> f = String::length;
+        java.util.List.of("a","b","c").stream()
+            .filter(s -> s.startsWith("a"))
+            .map(String::toUpperCase)
+            .forEach(System.out::println);
+    }
+}
+
+sealed class Shape permits Circle, Rectangle {}
+final class Circle extends Shape { double radius; }
+final class Rectangle extends Shape { double width, height; }
+class PatternMatch {
+    static double area(Shape s) {
+        return switch (s) {
+            case Circle c -> Math.PI * c.radius * c.radius;
+            case Rectangle r -> r.width * r.height;
+        };
+    }
+    static boolean checkString(Object obj) {
+        return obj instanceof String str && str.length() > 0;
+    }
+}
+
+class TextBlockExample {
+    String json = \"""
+            {"key": "value"}
+            \""";
+}
+record Range(int min, int max) {
+    Range {
+        if (min > max) throw new IllegalArgumentException();
+    }
+}
+
+class InitializerExample {
+    static final java.util.Map<String, Integer> MAP;
+    static {
+        MAP = new java.util.HashMap<>();
+        MAP.put("a", 1);
+    }
+    void run() {
+        Runnable anon = new Runnable() {
+            @Override
+            public void run() { System.out.println("anonymous"); }
+        };
+    }
+}
 """

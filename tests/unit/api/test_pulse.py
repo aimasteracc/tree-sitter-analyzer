@@ -98,8 +98,8 @@ print('ok')
     assert result.stdout == "ok\n"
 
 
-def test_pulse_sql_moved_without_changing_query_bytes():
-    """PR #1352：固定 SQL 的原始字节必须保持拆分前指纹，避免夹带查询语义修改。"""
+def test_pulse_sql_preserves_reviewed_snapshot_and_activation_guards():
+    """PR #1350/#1352：固定 SQL 包含已审阅的快照与 lazy-state 守卫，指纹随此次收敛更新。"""
     import hashlib
 
     from tree_sitter_analyzer.api import _pulse_sql, pulse
@@ -107,8 +107,8 @@ def test_pulse_sql_moved_without_changing_query_bytes():
     assert pulse._PULSE_SQL is _pulse_sql._PULSE_SQL
     # 使用原始摘要字节表达公开校验和，不添加秘密扫描豁免。
     assert hashlib.sha256(pulse._PULSE_SQL.encode("utf-8")).digest() == (
-        b"\x17\x6b\x4f\xbb\x0e\xce\x93\x9d\x87\xf5\xdd\xc7\x17\x45\x78\xc5"
-        b"\xbb\xcb\xd5\x27\xf6\x79\xb1\x1c\xb6\x90\x2e\x03\xc3\xf0\xe1\x01"
+        b"XHYf\xa0.\xb5#]\xa6\xaf\xc6\x91(N\x96"
+        b"\xad\ta\x80\xda>\x91\x85!Vn\x07@8\x80\x84"
     )
 
 

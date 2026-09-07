@@ -163,7 +163,7 @@ def test_index_project_resolves_cross_file_extends_and_calls(tmp_path: Path) -> 
 def test_resolve_only_does_not_reparse(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A warm cache resolves pending cross-file refs without re-parsing."""
+    """PR #1350：单文件写入尚未覆盖项目时保留 pending，resolve-only 不重解析。"""
     _write_project(tmp_path)
     cache = ASTCache(str(tmp_path))
     try:
@@ -174,8 +174,9 @@ def test_resolve_only_does_not_reparse(
             cache.index_file(str(tmp_path / "pkg" / "alias_plugin.py"))["status"]
             == "indexed"
         )
-        # AliasPlugin's parent (LP) is cross-file and not yet resolved.
-        assert ("pkg/alias_plugin.py", "LP") in _pending_extends(cache)
+        assert cache._indexed_source_files_are_complete() is False
+        assert cache.call_graph_built() is False
+        assert _pending_extends(cache) == {("pkg/alias_plugin.py", "LP")}
 
         calls: list[str] = []
         real_parse = ast_cache_module.Parser.parse_file
@@ -190,17 +191,18 @@ def test_resolve_only_does_not_reparse(
         assert stats["mode_used"] == "resolve_only"
         assert calls == []
 
-        # After the resolve-only pass a real resolved EXTENDS edge exists.
+        # 第二阶段必须产生真实目标边，不能仅把 pending 列表清空。
         resolved = (
             cache.get_conn()
             .execute(
-                "SELECT 1 FROM edges WHERE kind = 'extends' "
+                "SELECT target_node_id FROM edges WHERE kind = 'extends' "
                 "AND provenance = 'unresolved_refs' AND source_node_id = ?",
                 (symbol_node("pkg/alias_plugin.py", "AliasPlugin", 3),),
             )
             .fetchone()
         )
-        assert resolved is not None
+        assert tuple(resolved) == (symbol_node("pkg/base.py", "LanguagePlugin", 1),)
+        assert _pending_extends(cache) == set()
     finally:
         cache.close()
 
@@ -232,36 +234,49 @@ def test_unknown_parent_stays_unresolved(tmp_path: Path) -> None:
 
 def test_autoindex_resolves_pending_refs_when_cache_is_already_warm(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """PR #1350：使用增量引擎的延后回填阶段建立真实热缓存，随后自动完成解析。"""
     _write_project(tmp_path)
     cache = ASTCache(str(tmp_path))
     try:
-        assert (
-            cache.index_file(str(tmp_path / "pkg" / "base.py"))["status"] == "indexed"
-        )
-        assert (
-            cache.index_file(str(tmp_path / "pkg" / "python_plugin.py"))["status"]
-            == "indexed"
-        )
-        # python_plugin's cross-file parent is unresolved before warming.
-        assert ("pkg/python_plugin.py", "LanguagePlugin") in _pending_extends(cache)
+        cache._defer_single_file_backfill = True
+        for path in sorted(tmp_path.rglob("*.py")):
+            assert cache.index_file(str(path))["status"] == "indexed"
+        cache._defer_single_file_backfill = False
+        assert cache.get_stats()["total_files"] == 9
+        assert _pending_extends(cache) == {
+            ("pkg/alias_plugin.py", "LP"),
+            ("pkg/python_plugin.py", "LanguagePlugin"),
+            ("pkg/missing.py", "MissingBase"),
+        }
     finally:
         cache.close()
 
     auto_index_guard.reset()
+    parse_calls: list[str] = []
+    real_parse = ast_cache_module.Parser.parse_file
+
+    def counting_parse(self: Any, *args: Any, **kwargs: Any) -> Any:
+        parse_calls.append(str(args[0]) if args else "")
+        return real_parse(self, *args, **kwargs)
+
+    monkeypatch.setattr(ast_cache_module.Parser, "parse_file", counting_parse)
     warmed = auto_index_guard.ensure_indexed(str(tmp_path), max_files=20)
     try:
-        assert warmed is not None
+        assert parse_calls == []
+        assert warmed.get_stats()["total_files"] == 9
         resolved = (
             warmed.get_conn()
             .execute(
-                "SELECT 1 FROM edges WHERE kind = 'extends' "
+                "SELECT target_node_id FROM edges WHERE kind = 'extends' "
                 "AND provenance = 'unresolved_refs' AND source_node_id = ?",
                 (symbol_node("pkg/python_plugin.py", "PythonPlugin", 3),),
             )
             .fetchone()
         )
-        assert resolved is not None
+        assert tuple(resolved) == (symbol_node("pkg/base.py", "LanguagePlugin", 1),)
+        assert _pending_extends(warmed) == {("pkg/missing.py", "MissingBase")}
     finally:
         if warmed is not None:
             warmed.close()

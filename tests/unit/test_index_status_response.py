@@ -421,6 +421,50 @@ def test_p04_status_retains_acquired_identity_after_stats_failure(monkeypatch):
     }
 
 
+def test_partial_completeness_hint_is_returned(monkeypatch):
+    """Phase B-3: completeness='partial' のとき partial 用ヒントが返ることを確認。"""
+    from contextlib import contextmanager
+
+    from tree_sitter_analyzer import index_status_response as response
+    from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
+
+    snapshot = IndexSnapshot(
+        "idxsnap_partial",
+        "sha256:source",
+        "sha256:index",
+        "idxsrc-v3:source",
+        "partial",
+        "CALL_GRAPH_INCOMPLETE",
+        "/canonical/project",
+        3,
+    )
+
+    @contextmanager
+    def lease(_project_root):
+        yield snapshot
+
+    monkeypatch.setattr(response.index_snapshot, "lease_existing_snapshot", lease)
+    monkeypatch.setattr(
+        response.index_snapshot,
+        "read_snapshot_stats",
+        lambda *_args: {
+            "snapshot_id": snapshot.snapshot_id,
+            "source_generation": snapshot.source_generation,
+            "source_fingerprint": snapshot.source_fingerprint,
+            "index_fingerprint": snapshot.index_fingerprint,
+            "total_files": 3,
+        },
+    )
+
+    result = response.build_index_status_response(
+        "/logical/project", "json", include_lag=False
+    )
+
+    assert result["completeness"] == "partial"
+    # partial hint はユーザーに部分認証状態を説明する
+    assert "partial" in result["hint"].lower()
+
+
 def test_p04_missing_project_root_adds_evidence_only_when_requested() -> None:
     from tree_sitter_analyzer import index_status_response as response
 

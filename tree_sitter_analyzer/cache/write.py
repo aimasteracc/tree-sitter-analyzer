@@ -362,7 +362,7 @@ def write_activation_for_file(
     inserted_symbol_rows: list[dict[str, Any]],
     project_root: str,
 ) -> None:
-    """Refresh ast_symbol_activation rows for a single file."""
+    """只写 pending/disabled 占位行，Git 与提交消息统一延迟到 flush。"""
     if not inserted_symbol_rows:
         try:
             conn.execute(
@@ -377,48 +377,146 @@ def write_activation_for_file(
     except Exception as exc:  # pragma: no cover
         logger.debug("git_activation import failed: %s", exc)
         return
-    if git_activation._activation_disabled():  # noqa: SLF001
-        return
-    try:
-        rows = git_activation.compute_symbol_activation(
-            file_path=os.path.join(project_root, rel_path),
-            symbols=inserted_symbol_rows,
-            repo_root=project_root,
-        )
-    except Exception as exc:  # pragma: no cover
-        logger.debug("compute_symbol_activation failed for %s: %s", rel_path, exc)
-        return
-    # SHA 跨文件去重，查询批次具有共同的时间预算。
-    shas = [r.last_modified_commit for r in rows if r.last_modified_commit]
-    commit_msgs = _fetch_commit_msgs(shas, project_root)
+    # disabled 也保留显式占位，不能把缺行误当成完成计算。
+    state = "disabled" if git_activation._activation_disabled() else "pending"  # noqa: SLF001
     try:
         conn.execute(
             "DELETE FROM ast_symbol_activation WHERE file_path = ?",
             (rel_path,),
         )
-        for r in rows:
+        for r in inserted_symbol_rows:
             conn.execute(
                 """INSERT OR REPLACE INTO ast_symbol_activation (
                     symbol_id, file_path,
                     last_modified_commit, last_modified_at,
                     mod_count_30d, mod_count_90d, mod_count_all,
-                    computed_at, git_state, last_commit_msg
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    int(r.symbol_id),
-                    rel_path,
-                    r.last_modified_commit,
-                    r.last_modified_at,
-                    int(r.mod_count_30d),
-                    int(r.mod_count_90d),
-                    int(r.mod_count_all),
-                    int(r.computed_at),
-                    r.git_state,
-                    commit_msgs.get(r.last_modified_commit or ""),
-                ),
+                    computed_at, git_state, activation_state, last_commit_msg
+                ) VALUES (?, ?, NULL, NULL, 0, 0, 0, 0, NULL, ?, NULL)""",
+                (int(r["id"]), rel_path, state),
             )
     except sqlite3.OperationalError as exc:
         logger.debug("activation write failed for %s: %s", rel_path, exc)
+
+
+def _flush_pending_activations(
+    conn: sqlite3.Connection,
+    project_root: str,
+    batch_size: int = 50,
+) -> dict[str, int]:
+    """有界刷新 pending：DB 故障回滚重试，消息缺失保留 pending，disabled 不动。
+
+    Git 计算异常保留 canonical 的 computed/零值降级，但不伪造有效 git_state。
+    提交消息通过共享 SHA 批次及负缓存读取；返回 flushed/errors 数量。
+    """
+    from .. import git_activation
+
+    if git_activation._activation_disabled():
+        # 暂停计算不等于完成；旧 pending 留给显式重新启用后的刷新。
+        return {"flushed": 0, "errors": 0}
+
+    try:
+        pending_paths = [
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT file_path FROM ast_symbol_activation"
+                " WHERE activation_state = 'pending'"
+                " LIMIT ?",
+                (batch_size,),
+            ).fetchall()
+        ]
+    except sqlite3.DatabaseError:
+        # 查询失败代表队列不可用，不等于没有工作；已初始化的 schema 必须包含该列。
+        return {"flushed": 0, "errors": 1}
+
+    flushed = 0
+    errors = 0
+    for rel_path in pending_paths:
+        try:
+            # 同一快照内读身份并发布，另一连接重索引时由 SQLite 拒绝旧快照写回。
+            conn.execute("SAVEPOINT tsa_activation_flush")
+            sym_rows = conn.execute(
+                "SELECT s.id, s.line, s.end_line FROM ast_symbol_rows s "
+                "JOIN ast_symbol_activation a ON a.symbol_id=s.id "
+                "WHERE s.file_path=? AND a.activation_state='pending'",
+                (rel_path,),
+            ).fetchall()
+            symbols = [{"id": r[0], "line": r[1], "end_line": r[2]} for r in sym_rows]
+            try:
+                activation_rows = git_activation.compute_symbol_activation(
+                    os.path.join(project_root, rel_path),
+                    symbols,
+                    repo_root=project_root,
+                )
+            except Exception as exc:
+                # 仅 Git 计算失败使用既有零值降级；数据库失败必须保留 pending。
+                logger.debug(
+                    "git activation computation failed for %s: %s", rel_path, exc
+                )
+                conn.execute(
+                    "UPDATE ast_symbol_activation SET activation_state='computed', "
+                    "last_modified_commit=NULL,last_modified_at=NULL,last_commit_msg=NULL, "
+                    "mod_count_30d=0,mod_count_90d=0,mod_count_all=0,computed_at=0,git_state=NULL "
+                    "WHERE file_path=? AND activation_state='pending'",
+                    (rel_path,),
+                )
+                conn.commit()
+                errors += 1
+                continue
+            shas = [
+                r.last_modified_commit
+                for r in activation_rows
+                if r.last_modified_commit
+            ]
+            commit_msgs = _fetch_commit_msgs(shas, project_root)
+            if any(sha not in commit_msgs for sha in shas):
+                conn.execute("RELEASE SAVEPOINT tsa_activation_flush")
+                errors += 1
+                continue
+            # 消息与统计共同写入；不能先宣称 computed 再补消息。
+            for r in activation_rows:
+                conn.execute(
+                    """UPDATE ast_symbol_activation
+                       SET last_modified_commit = ?,
+                           last_modified_at = ?,
+                           mod_count_30d = ?,
+                           mod_count_90d = ?,
+                           mod_count_all = ?,
+                           computed_at = ?,
+                            git_state = ?,
+                            last_commit_msg = ?,
+                            activation_state = 'computed'
+                       WHERE file_path = ? AND symbol_id = ? AND activation_state='pending'""",
+                    (
+                        r.last_modified_commit,
+                        r.last_modified_at,
+                        int(r.mod_count_30d),
+                        int(r.mod_count_90d),
+                        int(r.mod_count_all),
+                        int(r.computed_at),
+                        r.git_state,
+                        commit_msgs.get(r.last_modified_commit or ""),
+                        rel_path,
+                        int(r.symbol_id),
+                    ),
+                )
+            # 没有 Git 记录的占位行仍按 canonical 语义完成，不改 disabled。
+            conn.execute(
+                """UPDATE ast_symbol_activation
+                   SET activation_state = 'computed'
+                   WHERE file_path = ? AND activation_state = 'pending'""",
+                (rel_path,),
+            )
+            conn.commit()
+            flushed += 1
+        except sqlite3.DatabaseError as exc:
+            logger.debug("_flush_pending_activations failed for %s: %s", rel_path, exc)
+            conn.rollback()
+            errors += 1
+        except BaseException:
+            conn.rollback()
+            raise
+
+    return {"flushed": flushed, "errors": errors}
 
 
 def write_imports_for_file(

@@ -6,6 +6,7 @@ from typing import Any
 
 from ..models import Import, Package
 from ..utils import log_debug, log_error
+from ._java_modern import extract_module_declaration as _extract_module_element
 
 
 def extract_java_imports(
@@ -45,12 +46,21 @@ def extract_java_packages(
     tree: Any,
     get_node_text: Callable[..., str],
 ) -> list[Package]:
-    """Extract Java package declarations."""
+    """Extract Java package and module declarations.
+
+    Handles both ``package_declaration`` (regular packages) and
+    ``module_declaration`` (Java 9+ module-info.java), each returned as a
+    :class:`Package` element so callers can treat them uniformly.
+    """
     packages: list[Package] = []
 
     def find_packages(node: Any) -> None:
         if node.type == "package_declaration":
             info = _extract_package_element(node, get_node_text)
+            if info:
+                packages.append(info)
+        elif node.type == "module_declaration":
+            info = _extract_module_element(node, get_node_text)
             if info:
                 packages.append(info)
         for child in node.children:

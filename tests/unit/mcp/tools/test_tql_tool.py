@@ -287,6 +287,41 @@ def indexed_tql(tmp_path):
 
 
 @pytest.mark.parametrize(
+    "pseudo,column",
+    [
+        ("hot", "last_modified_at"),
+        ("stale", "last_modified_at"),
+        ("hotspot", "mod_count_30d"),
+    ],
+)
+def test_temporal_data_read_failure_after_lazy_state_check(indexed_tql, pseudo, column):
+    """PR #1350/#1352：状态列可读不代表统计可读，SQLite 拒绝实际数据读取时仍必须显式失败。"""
+    import sqlite3
+
+    _, cache = indexed_tql
+    db = cache.get_conn()
+    denied = []
+
+    def authorize(action, table, field, *_):
+        if (
+            action == sqlite3.SQLITE_READ
+            and table == "ast_symbol_activation"
+            and field == column
+        ):
+            denied.append(field)
+            return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
+
+    db.set_authorizer(authorize)
+    try:
+        with pytest.raises(HyphaeSyntaxError, match="TEMPORAL_INDEX_UNAVAILABLE"):
+            Evaluator(cache).eval(parse(f".function:{pseudo}"))
+        assert denied == [column]
+    finally:
+        db.set_authorizer(None)
+
+
+@pytest.mark.parametrize(
     "selector", [".function:hot", ".function:stale", ".function:hotspot"]
 )
 async def test_temporal_filters_execute_against_real_activation(indexed_tql, selector):

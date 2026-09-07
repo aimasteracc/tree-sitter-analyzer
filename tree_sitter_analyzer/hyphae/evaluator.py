@@ -319,8 +319,14 @@ SELECT id, hop FROM reachable
             raise HyphaeSyntaxError("TEMPORAL_INDEX_UNAVAILABLE")
         try:
             db = conn_fn()
+            unavailable = db.execute(
+                "SELECT 1 FROM ast_symbol_activation "
+                "WHERE activation_state IN ('pending','disabled') LIMIT 1"
+            ).fetchone()
         except Exception as exc:
             raise HyphaeSyntaxError("TEMPORAL_INDEX_UNAVAILABLE") from exc
+        if unavailable:
+            raise HyphaeSyntaxError("TEMPORAL_ACTIVATION_UNAVAILABLE")
 
         if name in ("hot", "recently_modified"):
             # tql_schema 既有契约：bare hot 默认 30 天，recently_modified 是其别名。

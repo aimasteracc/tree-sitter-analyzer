@@ -9,7 +9,7 @@ import sqlite3
 import threading
 import time
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, closing, contextmanager
 from typing import Any, cast
 from urllib.parse import quote
 
@@ -28,6 +28,7 @@ from .index_snapshot_capability import (
 from .index_snapshot_capability import (
     physical_storage_identity as _physical_storage_identity,
 )
+from .index_snapshot_capability import private_wal_database
 from .index_snapshot_capability import (
     reject_sidecars as _reject_sidecars,
 )
@@ -35,7 +36,11 @@ from .index_snapshot_capability import (
     require_memory_temp_store as _require_memory_temp_store,
 )
 from .index_snapshot_manifest import _read_bounded_manifest_impl
-from .index_snapshot_registry import IndexSnapshot, IndexSnapshotRegistry
+from .index_snapshot_registry import (
+    _WAL_CONNECTION_OVERHEAD_BYTES,
+    IndexSnapshot,
+    IndexSnapshotRegistry,
+)
 from .index_snapshot_schema import index_fingerprint, validate_snapshot_schema
 from .index_snapshot_schema import (
     stamp_full_index_manifest as stamp_full_index_manifest,
@@ -69,7 +74,10 @@ def _close_pinned_descriptor(fd: int) -> None:
 _MAX_SNAPSHOTS = 16
 _MAX_CHARGED_BYTES = 512 * 1024 * 1024
 _TTL_SECONDS = 35.0
-_SNAPSHOT_OVERHEAD_BYTES = 2 * 1024 * 1024
+# TD-003: alias for _WAL_CONNECTION_OVERHEAD_BYTES in index_snapshot_registry.py.
+# Both represent the same ~2 MB process-local overhead per open WAL connection.
+# (import direction: index_snapshot.py → index_snapshot_registry.py avoids circular import)
+_SNAPSHOT_OVERHEAD_BYTES = _WAL_CONNECTION_OVERHEAD_BYTES
 _CAPTURE_DEADLINE_SECONDS = 10.0
 _BACKUP_BYTE_BUDGET = _MAX_CHARGED_BYTES - _SNAPSHOT_OVERHEAD_BYTES
 _clock = time.monotonic
@@ -135,6 +143,236 @@ def _read_bounded_manifest(
     )
 
 
+def _copy_projection_evidence(
+    connection: sqlite3.Connection, deadline: float
+) -> tuple[sqlite3.Connection, bool]:
+    """在有预算的私有内存副本上核验投影，绝不向源库执行 FTS 控制写入。"""
+    _require_capture_budget(deadline)
+    source_page_size = int(connection.execute("PRAGMA page_size").fetchone()[0])
+    source_page_count = int(connection.execute("PRAGMA page_count").fetchone()[0])
+    if source_page_size * source_page_count > _BACKUP_BYTE_BUDGET:
+        raise RuntimeError("INDEX_BACKUP_BUDGET")
+    evidence = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        _require_memory_temp_store(evidence)
+        _require_capture_budget(deadline)
+        max_backup_pages = (
+            _BACKUP_BYTE_BUDGET + source_page_size - 1
+        ) // source_page_size
+
+        def progress(_status: int, remaining: int, total: int) -> None:
+            copied_pages = total - remaining
+            if (
+                copied_pages > max_backup_pages
+                or copied_pages * source_page_size > _BACKUP_BYTE_BUDGET
+                or _clock() > deadline
+            ):
+                raise RuntimeError(
+                    "INDEX_SNAPSHOT_DEADLINE"
+                    if _clock() > deadline
+                    else "INDEX_BACKUP_BUDGET"
+                )
+
+        # 沿用 POSIX 的分块复制与 rank=1 核验，WAL 读取同一事务所固定的版本。
+        backup_pages = max(64, (512 * 1024) // source_page_size)
+        connection.backup(evidence, pages=backup_pages, progress=progress, sleep=0)
+        evidence_tables = {
+            str(row[0])
+            for row in evidence.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        evidence_fts5 = sqlite_compile_supports_fts5(evidence)
+        projection_exact = bool(
+            evidence_fts5 is not None
+            and has_ordinary_symbol_projection(evidence, evidence_tables)
+            and symbol_projection_is_exact(
+                evidence, deadline=deadline, require_fts=evidence_fts5
+            )
+        )
+        _require_capture_budget(deadline)
+        return evidence, projection_exact
+    except BaseException:
+        evidence.close()
+        raise
+
+
+def _capture_wal_snapshot(
+    canonical_root: str,
+    candidate: str,
+    *,
+    pin: bool = False,
+    deadline: float,
+) -> IndexSnapshot:
+    """在私有目录恢复 WAL，再发布经过认证的只读内存副本；绝不连接源数据库。"""
+    connection: sqlite3.Connection | None = None
+    acquired = False
+    try:
+        if not os.path.lexists(candidate):
+            return _unknown("MISSING_INDEX")
+        root = os.path.realpath(canonical_root)
+        if os.path.abspath(candidate) != os.path.join(root, ".ast-cache", "index.db"):
+            raise ValueError("INDEX_PATH_UNSAFE")
+        acquired = _CAPTURE_LOCK.acquire(timeout=max(0.0, deadline - _clock()))
+        if not acquired:
+            raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+
+        with ExitStack() as private:
+            private_path, wal_frames = private.enter_context(
+                private_wal_database(
+                    root,
+                    deadline=deadline,
+                    byte_limit=_BACKUP_BYTE_BUDGET,
+                    check_deadline=_require_capture_budget,
+                )
+            )
+            uri = f"file:{quote(private_path, safe='/')}?mode=rw"
+            staged = private.enter_context(
+                closing(
+                    sqlite3.connect(
+                        uri,
+                        uri=True,
+                        timeout=0,
+                        isolation_level=None,
+                        check_same_thread=False,
+                    )
+                )
+            )
+            _require_memory_temp_store(staged)
+            staged.row_factory = sqlite3.Row
+            staged.execute("PRAGMA busy_timeout=0")
+            size = int(staged.execute("PRAGMA page_size").fetchone()[0]) * int(
+                staged.execute("PRAGMA page_count").fetchone()[0]
+            )
+            REGISTRY.ensure_capacity(size + _SNAPSHOT_OVERHEAD_BYTES)
+            validate_snapshot_schema(staged, deadline=deadline)
+            from .cache.build_state import build_in_progress
+
+            if build_in_progress(staged):
+                raise ValueError("CONCURRENT_WRITER")
+            _require_capture_budget(deadline)
+            index = _index_fingerprint_with_deadline(staged, root, deadline)
+            recorded = recorded_source_rows(staged, deadline=deadline)
+            manifest = _read_bounded_manifest(staged, deadline)
+            if manifest is not None:
+                _validate_manifest_scalars(manifest)
+            current = None
+            source_scope = None
+            scope_reason: str | None = None
+            if manifest is None:
+                scope_reason = "SOURCE_SCOPE_DESCRIPTOR_MISSING"
+            else:
+                try:
+                    source_scope = parse_source_scope_descriptor(
+                        manifest["source_scope_descriptor"]
+                    )
+                except (TypeError, ValueError):
+                    scope_reason = "SOURCE_SCOPE_DESCRIPTOR_INVALID"
+                else:
+                    current = _capture_sources_with_deadline(
+                        root, source_scope, deadline
+                    )
+                    if current.state == "unknown":
+                        raise ValueError(current.reason or "SOURCE_SCOPE_UNKNOWN")
+            count = len(recorded)
+            exact_sources = bool(
+                current and current.state == "exact" and recorded == current.rows
+            )
+            exact_manifest = bool(
+                manifest
+                and current
+                and manifest["canonical_root"] == root
+                and manifest["source_fingerprint"] == current.fingerprint
+                and manifest["index_fingerprint"] == index
+                and manifest["file_count"] == count
+                and manifest["manifest_version"] == 2
+            )
+            call_graph_complete = _exact_call_graph_marker(staged, deadline=deadline)
+            complete = exact_sources and exact_manifest and call_graph_complete
+            if complete:
+                reason: str | None = None
+            elif not call_graph_complete:
+                reason = "CALL_GRAPH_INCOMPLETE"
+            elif scope_reason is not None:
+                reason = scope_reason
+            elif not exact_sources:
+                reason = (
+                    (current.reason or "SOURCE_INDEX_MISMATCH")
+                    if current
+                    else "SOURCE_INDEX_MISMATCH"
+                )
+            else:
+                reason = "NO_EXACT_FULL_INDEX_MANIFEST"
+            connection, projection_exact = _copy_projection_evidence(staged, deadline)
+            if wal_frames is not None:
+                # 私有 checkpoint 的帧数必须等于捕获的完整 WAL；不接受被 SQLite 忽略的尾帧。
+                checkpoint = tuple(
+                    staged.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
+                )
+                if checkpoint != (0, wal_frames, wal_frames):
+                    raise ValueError("CONCURRENT_WRITER")
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA query_only=ON")
+            connection.execute("BEGIN")
+            if complete and not projection_exact:
+                complete = False
+                reason = "SYMBOL_PROJECTION_INCOMPLETE"
+            if source_scope is not None and current is not None:
+                final_current = _capture_sources_with_deadline(
+                    root, source_scope, deadline
+                )
+                if final_current.state != "exact":
+                    raise ValueError(final_current.reason or "SOURCE_INDEX_MISMATCH")
+                if (
+                    current.state != "exact"
+                    or final_current.rows != current.rows
+                    or final_current.fingerprint != current.fingerprint
+                ):
+                    raise ValueError("CONCURRENT_SOURCE")
+        # 源身份/内容复核及私有目录清理成功后，才能发布唯一的内存证据。
+        charged = _physical_storage_identity(connection)[0] + _SNAPSHOT_OVERHEAD_BYTES
+        REGISTRY.ensure_capacity(charged)
+        _require_capture_budget(deadline)
+
+        snapshot = IndexSnapshot(
+            None,
+            current.fingerprint if current else None,
+            index,
+            current.generation if current else None,
+            "complete" if complete else "partial",
+            reason,
+            root,
+            count,
+            _physical_storage_identity(connection),
+            projection_exact,
+            source_scope,
+        )
+        published = REGISTRY.publish(snapshot, connection, charged, deadline, pin=pin)
+        connection = None  # ownership transferred to registry
+        return published
+    except FileNotFoundError as exc:
+        return _unknown(str(exc))
+    except sqlite3.DatabaseError as exc:
+        return _unknown(
+            "CONCURRENT_WRITER"
+            if any(x in str(exc).lower() for x in ("locked", "busy"))
+            else "CORRUPT_INDEX"
+        )
+    except (OSError, TimeoutError, TypeError, ValueError, RuntimeError) as exc:
+        reason = "INDEX_SNAPSHOT_DEADLINE" if _clock() >= deadline else str(exc)
+        if isinstance(exc, OSError) and getattr(exc, "errno", None) in (
+            errno.ELOOP,
+            errno.ENOTDIR,
+        ):
+            reason = "INDEX_PATH_SYMLINK"
+        return _unknown(reason or "INDEX_SNAPSHOT_FAILED")
+    finally:
+        if connection is not None:
+            connection.close()
+        if acquired:
+            _CAPTURE_LOCK.release()
+
+
 def _capture_existing_snapshot(
     project_root: str, *, pin: bool = False, deadline: float | None = None
 ) -> IndexSnapshot:
@@ -147,8 +385,20 @@ def _capture_existing_snapshot(
     candidate = os.path.join(canonical_root, ".ast-cache", "index.db")
     if not os.path.lexists(candidate):
         return _unknown("MISSING_INDEX")
-    if os.name != "posix" or not os.path.exists("/dev/fd"):
-        return _unknown("SECURE_FD_SNAPSHOT_UNSUPPORTED")
+    # Phase B-1: Replace POSIX gate with WAL read-only fallback.
+    # Non-POSIX systems (Windows) and POSIX without /dev/fd use WAL path.
+    # POSIX with /dev/fd continues using the existing fd-pinned backup path.
+    if (
+        os.name != "posix"
+        or not os.path.exists("/dev/fd")
+        or os.path.lexists(candidate + "-wal")
+    ):
+        wal_deadline = (
+            _clock() + _CAPTURE_DEADLINE_SECONDS if deadline is None else deadline
+        )
+        return _capture_wal_snapshot(
+            canonical_root, candidate, pin=pin, deadline=wal_deadline
+        )
     handles: tuple[int, int, int] | None = None
     connection: sqlite3.Connection | None = None
     evidence: sqlite3.Connection | None = None
@@ -246,51 +496,7 @@ def _capture_existing_snapshot(
                 )
             else:
                 reason = "NO_EXACT_FULL_INDEX_MANIFEST"
-            evidence = sqlite3.connect(":memory:", check_same_thread=False)
-            _require_memory_temp_store(evidence)
-            _require_capture_budget(deadline)
-            copied_pages = 0
-            max_backup_pages = (
-                _BACKUP_BYTE_BUDGET + source_page_size - 1
-            ) // source_page_size
-
-            def progress(_status: int, remaining: int, total: int) -> None:
-                nonlocal copied_pages
-                copied_pages = total - remaining
-                copied_bytes = copied_pages * source_page_size
-                if (
-                    copied_pages > max_backup_pages
-                    or copied_bytes > _BACKUP_BYTE_BUDGET
-                    or _clock() > deadline
-                ):
-                    raise RuntimeError(
-                        "INDEX_SNAPSHOT_DEADLINE"
-                        if _clock() > deadline
-                        else "INDEX_BACKUP_BUDGET"
-                    )
-
-            # Copy in bounded 512 KiB chunks at the minimum SQLite page size;
-            # this avoids thousands of Python callbacks for large certified caches.
-            backup_pages = max(64, (512 * 1024) // source_page_size)
-            connection.backup(evidence, pages=backup_pages, progress=progress, sleep=0)
-            # FTS5's rank=1 integrity control command is a transactional write.
-            # Run it exactly once on the private in-memory evidence copy while it
-            # is still writable, then cache the result on the capability before
-            # query_only is enabled. The immutable workspace source is never used.
-            evidence_tables = {
-                str(row[0])
-                for row in evidence.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
-                )
-            }
-            evidence_fts5 = sqlite_compile_supports_fts5(evidence)
-            projection_exact = bool(
-                evidence_fts5 is not None
-                and has_ordinary_symbol_projection(evidence, evidence_tables)
-                and symbol_projection_is_exact(
-                    evidence, deadline=deadline, require_fts=evidence_fts5
-                )
-            )
+            evidence, projection_exact = _copy_projection_evidence(connection, deadline)
             if source_scope is not None and current is not None:
                 _require_capture_budget(deadline)
                 final_current = _capture_sources_with_deadline(

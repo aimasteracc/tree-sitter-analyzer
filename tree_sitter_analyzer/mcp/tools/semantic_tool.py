@@ -207,6 +207,12 @@ class SemanticNeighborsTool(BaseMCPTool):
                     "SELECT symbol_id, mod_count_30d FROM ast_symbol_activation LIMIT 0"
                 )
                 conn.execute("SELECT callee_symbol_id, kind FROM edges LIMIT 0")
+                # 组合评分依赖已计算热度；不能消费 lazy 占位或已失效的旧投影。
+                if conn.execute(
+                    "SELECT 1 FROM ast_symbol_activation "
+                    "WHERE activation_state IN ('pending','disabled') LIMIT 1"
+                ).fetchone():
+                    raise ValueError("activation pending or disabled")
             except Exception as exc:
                 return {
                     "success": False,

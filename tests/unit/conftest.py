@@ -15,8 +15,8 @@ from tree_sitter_analyzer.cache.schema import (
     SCHEMA_V4_IMPORTS,
     SCHEMA_V5_ACTIVATION,
     SCHEMA_V6_VIOLATIONS,
-    SCHEMA_V14_COMMENTS,
-    SCHEMA_V15_LSP_CACHE,
+    SCHEMA_V16_COMMENTS,
+    SCHEMA_V17_LSP_CACHE,
 )
 from tree_sitter_analyzer.embeddings.pipeline import _SCHEMA_SYMBOL_VECTORS
 from tree_sitter_analyzer.graph.edge_store import EDGE_STORE_SCHEMA
@@ -333,14 +333,14 @@ def ast_cache_conn():
     # Dependent tables (no FK on symbol_rows, but logical dependency).
     conn.executescript(SCHEMA_V4_IMPORTS)
     conn.executescript(SCHEMA_V5_ACTIVATION)
-    # last_commit_msg is added by apply_migration_v14 (not in base DDL);
-    # _PULSE_SQL references it, so add it here to avoid silent OperationalError.
+    # canonical 15 与 Pulse 16 的列均属于当前读路径，不能用半套 schema 伪造环境。
     conn.execute("ALTER TABLE ast_symbol_activation ADD COLUMN last_commit_msg TEXT")
+    conn.execute("ALTER TABLE ast_symbol_activation ADD COLUMN activation_state TEXT")
     conn.executescript(SCHEMA_V6_VIOLATIONS)
     # Tables that REFERENCE ast_symbol_rows(id).
-    conn.executescript(SCHEMA_V14_COMMENTS)
+    conn.executescript(SCHEMA_V16_COMMENTS)
     # Table that REFERENCES both ast_symbol_rows(id) and edges(id).
-    conn.executescript(SCHEMA_V15_LSP_CACHE)
+    conn.executescript(SCHEMA_V17_LSP_CACHE)
     # Embeddings table — REFERENCES ast_symbol_rows(id).
     conn.executescript(_SCHEMA_SYMBOL_VECTORS)
     conn.commit()
