@@ -370,3 +370,26 @@ class TestASTCacheGetConnPublicAccessor:
         conn1 = cache.get_conn()
         conn2 = cache.get_conn()
         assert conn1 is conn2
+
+
+def test_writer_lock_is_shared_by_canonical_database_path(tmp_path):
+    # #1405：路径别名必须共享锁，不同数据库不能被无关写入阻塞。
+    first = ast_cache_module._shared_writer_lock(str(tmp_path / "index.db"))
+    alias = ast_cache_module._shared_writer_lock(
+        str(tmp_path / "sub" / ".." / "index.db")
+    )
+    other = ast_cache_module._shared_writer_lock(str(tmp_path / "other.db"))
+    assert first is alias
+    assert first is not other
+
+
+def test_writer_lock_registry_does_not_retain_unused_databases(tmp_path):
+    # #1405：长期运行的服务器切换项目后不能累积永久锁注册项。
+    import gc
+    import weakref
+
+    lock = ast_cache_module._shared_writer_lock(str(tmp_path / "index.db"))
+    reference = weakref.ref(lock)
+    del lock
+    gc.collect()
+    assert reference() is None
