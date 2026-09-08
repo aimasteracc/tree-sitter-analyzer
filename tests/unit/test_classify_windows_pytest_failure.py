@@ -58,8 +58,9 @@ def test_collection_error_blocks_retry() -> None:
 
 @pytest.mark.parametrize("outcome", ["FAILED", "ERROR"])
 @pytest.mark.parametrize("newline", ["\n", "\r\n"])
+@pytest.mark.parametrize("parameter", ["", "[with spaces]"])
 def test_reasonless_failure_blocks_budget_retry(
-    tmp_path: Path, outcome: str, newline: str
+    tmp_path: Path, outcome: str, newline: str, parameter: str
 ) -> None:
     """无原因的失败仍须计入，且不能因另一项超时重跑成功而放行。"""
     # 2026-09-09：#1419 Windows worker 崩溃行被分类器忽略，导致错误绿灯。
@@ -67,7 +68,7 @@ def test_reasonless_failure_blocks_budget_retry(
         [
             "FAILED tests/unit/test_a.py::test_a - Failed: Unit test exceeded "
             "per-test budget: 16.47s > 12.8s.",
-            f"{outcome} tests/unit/test_decision_journal.py::TestSearch::test_search_returns_newest_first",
+            f"{outcome} tests/unit/test_decision_journal.py::TestSearch::test_search_returns_newest_first{parameter}",
             "2 failed, 23381 passed, 1211 skipped, 5 rerun in 801.13s",
             "",
         ]

@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 
 _OUTCOME = re.compile(
-    r"^(?P<outcome>FAILED|ERROR) (?P<nodeid>\S+)(?: - (?P<reason>.*))?$",
+    r"^(?P<outcome>FAILED|ERROR) (?P<nodeid>.+?)(?: - (?P<reason>.*))?$",
     re.MULTILINE,
 )
 _BUDGET = "Unit test exceeded per-test budget:"
