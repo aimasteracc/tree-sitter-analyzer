@@ -224,6 +224,51 @@ class TestIndexFile:
 
 
 class TestLookup:
+    @pytest.mark.parametrize("through_alias", [False, True])
+    def test_root_alias_preserves_logical_descendant_path(
+        self, tmp_path, through_alias
+    ):
+        # 2026-09-08：只统一根目录；冻结后的子路径不能因活文件变成链接而重定向。
+        from tree_sitter_analyzer.cache.helpers import _canonical_project_path
+
+        root = tmp_path / "project"
+        root.mkdir()
+        alias = tmp_path / "alias"
+        alias.symlink_to(root, target_is_directory=True)
+        logical = root / "logical"
+        logical.symlink_to(tmp_path, target_is_directory=True)
+        supplied = (alias if through_alias else root) / "logical" / "sample.py"
+        assert _canonical_project_path(str(supplied), str(root)) == str(
+            logical / "sample.py"
+        )
+
+    @pytest.mark.parametrize("index_through_alias", [False, True])
+    def test_project_root_alias_has_one_cache_identity(
+        self, tmp_path, index_through_alias
+    ):
+        # 2026-09-08：根目录别名曾产生 ../alias 键，导致真实路径查询与删除失效。
+        root = tmp_path / "project"
+        root.mkdir()
+        alias = tmp_path / "alias"
+        alias.symlink_to(root, target_is_directory=True)
+        source = root / "sample.py"
+        source.write_text("def signal(): return 1\n", encoding="utf-8")
+        aliased = alias / source.name
+        cache = ASTCache(str(alias))
+        try:
+            result = cache.index_file(str(aliased if index_through_alias else source))
+            assert result["file"] == "sample.py"
+            row = cache.lookup(str(source))
+            assert row is not None
+            assert cache.lookup(str(aliased)) == row
+            assert cache.index_file(str(aliased))["status"] == "cached"
+            assert cache.get_stats()["total_files"] == 1
+            source.unlink()
+            assert cache.invalidate(str(aliased)) is True
+            assert cache.lookup(str(source)) is None
+        finally:
+            cache.close()
+
     def test_lookup_indexed_file(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
         cache.index_file(f)

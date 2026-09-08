@@ -18,6 +18,7 @@ from .cache.callgraph_state import (
     mark_call_graph_built_strict as _mark_call_graph_built_strict,
 )
 from .cache.extraction import _content_hash
+from .cache.helpers import _canonical_project_path
 from .cache.schema import clear_activation_for_file as _clear_activation_for_file_fn
 from .index_source_snapshot import SourceScopeDescriptor
 from .indexing_snapshot import IndexCandidateSnapshot
@@ -82,7 +83,7 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         _frozen_deadline: float | None = None,
     ) -> dict[str, Any]:
         """Index one logical path; private frozen inputs are engine-only evidence."""
-        abs_path = os.path.abspath(file_path)
+        abs_path = _canonical_project_path(file_path, self.project_root)
         rel_path = os.path.relpath(abs_path, self.project_root).replace("\\", "/")
         if language is None:
             language = _language_from_ext(abs_path)
