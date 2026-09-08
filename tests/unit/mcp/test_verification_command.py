@@ -235,3 +235,33 @@ def test_native_verification_chain_preserves_order_and_literal_arguments(tmp_pat
     result = subprocess.run(args, cwd=tmp_path, capture_output=True, check=False)
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "receipt").read_text(encoding="utf-8") == literal
+
+
+def test_argv_batches_preserve_exact_targets_and_windows_process_budget():
+    # #1407：参数数组保留引用字符和重复项，Windows 启动转义后的长度也必须有界。
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        build_test_argv_batches,
+    )
+
+    target = "tests/test_case.py::test_value[" + ('\\\\\\\\"' * 350) + "]"
+    targets = [target, target, "tests/空 格.py"]
+    assert build_test_argv_batches(
+        DefaultTestCommand("pytest", "uv run pytest -q"), targets
+    ) == [
+        ["uv", "run", "pytest", target, "-q"],
+        ["uv", "run", "pytest", target, "tests/空 格.py", "-q"],
+    ]
+
+
+def test_argv_batches_preserve_default_runner_semantics():
+    # #1407：不能把不可定向的项目默认门禁改成空执行或错误的路径参数。
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        build_test_argv_batches,
+    )
+
+    assert build_test_argv_batches(
+        DefaultTestCommand("go", "go test ./..."), ["a_test.go"]
+    ) == [["go", "test", "./..."]]
+    assert build_test_argv_batches(
+        DefaultTestCommand("pytest", "uv run pytest -q"), []
+    ) == [["uv", "run", "pytest", "-q"]]
