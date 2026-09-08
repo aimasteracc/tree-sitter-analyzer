@@ -936,27 +936,35 @@ def test_project_health_reuses_graph_only_within_one_call(tmp_path, monkeypatch)
     assert by_name(second)["c.py"] == 99.1
 
 
-def test_project_health_restores_graph_scope_after_failure(tmp_path, monkeypatch):
-    """评分失败也必须恢复调用方上下文，不泄漏项目图缓存。"""
-    from tree_sitter_analyzer.health_scorer import (
-        _PROJECT_DEPENDENCY_GRAPHS,
-        HealthScorer,
-    )
+@pytest.mark.parametrize("failure_phase", ["enumeration", "prefetch"])
+def test_project_health_restores_graph_scope_after_failure(
+    tmp_path, monkeypatch, failure_phase
+):
+    """枚举或预取异常后，恢复调用方的依赖图与 Git 预取上下文。"""
+    from tree_sitter_analyzer import health_scorer as health
 
-    scorer = HealthScorer()
+    scorer = health.HealthScorer()
     outer = {"outer": object()}
-    token = _PROJECT_DEPENDENCY_GRAPHS.set(outer)
+    outer_hotspots = {"outer": 17.0}
+    token = health._PROJECT_DEPENDENCY_GRAPHS.set(outer)
+    hotspot_token = health._PROJECT_HOTSPOT_SCORES.set(outer_hotspots)
+    (tmp_path / "probe.py").write_text("value=1\n", encoding="utf-8")
 
-    def fail(_root):
-        raise RuntimeError("enumeration failed")
+    def fail(_path):
+        raise RuntimeError("operation failed")
 
-    monkeypatch.setattr(scorer, "_iter_source_files", fail)
+    if failure_phase == "enumeration":
+        monkeypatch.setattr(scorer, "_iter_source_files", fail)
+    else:
+        monkeypatch.setattr(health, "score_git_hotspot", fail)
     try:
-        with pytest.raises(RuntimeError, match="enumeration failed"):
+        with pytest.raises(RuntimeError, match="operation failed"):
             scorer.score_project_with_stats(str(tmp_path), use_cache=False)
-        assert _PROJECT_DEPENDENCY_GRAPHS.get() is outer
+        assert health._PROJECT_DEPENDENCY_GRAPHS.get() is outer
+        assert health._PROJECT_HOTSPOT_SCORES.get() is outer_hotspots
     finally:
-        _PROJECT_DEPENDENCY_GRAPHS.reset(token)
+        health._PROJECT_HOTSPOT_SCORES.reset(hotspot_token)
+        health._PROJECT_DEPENDENCY_GRAPHS.reset(token)
 
 
 def test_project_graph_timeout_does_not_populate_scope(tmp_path, monkeypatch):
@@ -1237,3 +1245,46 @@ def test_project_git_prefetch_preserves_warm_hits_and_resets_scope(
     value[0] = 70.0
     assert health.score_git_hotspot(str(target)) == 70.0
     assert calls == [str(target)] * 3
+
+
+def test_project_git_prefetch_cancels_queued_queries_on_interrupt(
+    tmp_path, monkeypatch
+):
+    """中断后取消未启动的查询，并等待已经启动的工作退出。"""
+    # 2026-09-08：以实际首次调用触发中断，不假定文件枚举顺序。
+    import concurrent.futures
+    import threading
+
+    from tree_sitter_analyzer import health_scorer as health
+
+    futures = []
+    release = threading.Event()
+    lock = threading.Lock()
+    calls = 0
+
+    class ObservedPool(concurrent.futures.ThreadPoolExecutor):
+        def submit(self, *args, **kwargs):
+            future = super().submit(*args, **kwargs)
+            futures.append(future)
+            return future
+
+    def query(*args):
+        nonlocal calls
+        with lock:
+            calls += 1
+            first = calls == 1
+        if first:
+            raise KeyboardInterrupt("cancel prefetch")
+        release.wait(timeout=0.1)
+        return 100.0
+
+    for index in range(40):
+        (tmp_path / f"f{index}.py").write_text("x=1\n", encoding="utf-8")
+    monkeypatch.setattr(concurrent.futures, "ThreadPoolExecutor", ObservedPool)
+    monkeypatch.setattr(health, "calculate_git_hotspot", query)
+    with pytest.raises(KeyboardInterrupt, match="cancel prefetch"):
+        health.HealthScorer().score_project_with_stats(str(tmp_path), use_cache=False)
+    assert len(futures) == 40
+    # 调度顺序决定取消数量；不变量是存在取消且没有未结束的任务。
+    assert any(f.cancelled() for f in futures)
+    assert all(f.done() for f in futures)
