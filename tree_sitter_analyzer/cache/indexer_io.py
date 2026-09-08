@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 from ..indexing_limits import normalize_index_max_files
 from ..indexing_snapshot import (
+    _INDEX_SOURCE_BYTE_LIMIT,
     IndexCandidateSnapshot,
     IndexFileFingerprint,
     changed_since_snapshot,
@@ -49,8 +50,13 @@ def check_cache_or_read(
     ).fetchone()
     if source_code is None:
         try:
+            if stat.st_size > _INDEX_SOURCE_BYTE_LIMIT:
+                raise OSError("source exceeds indexing byte limit")
             with open(abs_path, "rb") as f:
-                source_code = decode_index_source(f.read())
+                data = f.read(_INDEX_SOURCE_BYTE_LIMIT + 1)
+            if len(data) > _INDEX_SOURCE_BYTE_LIMIT:
+                raise OSError("source exceeds indexing byte limit")
+            source_code = decode_index_source(data)
         except OSError as e:
             return {"file": rel_path, "status": "error", "reason": str(e)}
     content_hash = content_hash_fn(source_code)
