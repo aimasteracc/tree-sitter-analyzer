@@ -17,6 +17,10 @@ from pathlib import Path
 from typing import Any
 
 from ....cache.schema import CURRENT_SCHEMA_VERSION, already_applied_versions
+from ....index_source_snapshot import (
+    capture_current_source_snapshot,
+    recorded_source_rows,
+)
 from ....project_graph import _IMPORT_RESOLVERS
 from ....synapse_resolver import parse_imports
 
@@ -96,11 +100,13 @@ def load_cached_dependency_graph(
         conn = sqlite3.connect(db_path.absolute().as_uri() + "?mode=rw", uri=True)
         conn.execute("PRAGMA query_only=ON")
         conn.row_factory = sqlite3.Row
+        conn.execute("BEGIN")
         versions = already_applied_versions(conn)
         if CURRENT_SCHEMA_VERSION not in versions or any(
             version < 1 or version > CURRENT_SCHEMA_VERSION for version in versions
         ):
             return None
+        recorded = recorded_source_rows(conn)
         rows = _cached_index_rows(conn)
         if not rows:
             return None
@@ -108,6 +114,10 @@ def load_cached_dependency_graph(
         graph = CachedDependencyGraph(project_root, nodes)
         for row in rows:
             _add_cached_import_edges(graph, row, nodes)
+        # 用同一数据库读取事务的库存核对完整源码，拒绝陈旧或不可认证输入。
+        current = capture_current_source_snapshot(str(graph.project_root))
+        if current.state != "exact" or current.rows != recorded:
+            return None
         return graph
     except Exception:
         logger.debug("cached dependency graph load failed", exc_info=True)

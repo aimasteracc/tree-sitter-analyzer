@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 
 import pytest
@@ -9,6 +10,9 @@ import pytest
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.schema import CURRENT_SCHEMA_VERSION
 from tree_sitter_analyzer.mcp.tools.utils import change_impact_cached_graph as cached
+from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+    _load_dependency_graph,
+)
 from tree_sitter_analyzer.mcp.tools.utils.change_impact_cached_graph import (
     CachedDependencyGraph,
 )
@@ -38,7 +42,7 @@ def test_cached_dependency_graph_resolves_python_relative_edges(tmp_path):
     (pkg / "b.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
     _index_project(tmp_path)
 
-    graph = cached.load_cached_dependency_graph(str(tmp_path))
+    graph = _load_dependency_graph(str(tmp_path))
 
     assert graph is not None
     assert graph.dependencies_of("pkg/a.py") == ["pkg/b.py"]
@@ -58,7 +62,7 @@ def test_cached_dependency_graph_resolves_js_relative_edges(tmp_path):
     )
     _index_project(tmp_path)
 
-    graph = cached.load_cached_dependency_graph(str(tmp_path))
+    graph = _load_dependency_graph(str(tmp_path))
 
     assert graph is not None
     assert graph.dependencies_of("src/index.js") == ["src/formatter.js"]
@@ -197,3 +201,57 @@ def test_cached_graph_does_not_migrate_incompatible_database(tmp_path, version):
         assert list(conn.iterdump()) == before
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize("change", ["rewrite", "add", "delete"])
+def test_cached_graph_rejects_changed_source_inventory(tmp_path, change):
+    """缓存准入必须发现等时间戳改写及文件增删。"""
+    importer = tmp_path / "a.py"
+    importer.write_text("import b\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("value = 1\n", encoding="utf-8")
+    (tmp_path / "c.py").write_text("value = 2\n", encoding="utf-8")
+    _index_project(tmp_path)
+    if change == "rewrite":
+        before = importer.stat()
+        importer.write_text("import c\n", encoding="utf-8")
+        os.utime(importer, ns=(before.st_atime_ns, before.st_mtime_ns))
+    elif change == "add":
+        (tmp_path / "d.py").write_text("import c\n", encoding="utf-8")
+    else:
+        importer.unlink()
+    assert cached.load_cached_dependency_graph(str(tmp_path)) is None
+
+
+def test_cached_graph_admission_matches_native_source_capability(tmp_path):
+    """具备源码认证能力时复用缓存，否则明确回退。"""
+    from tree_sitter_analyzer.index_source_snapshot import (
+        capture_current_source_snapshot,
+    )
+
+    (tmp_path / "a.py").write_text("value = 1\n", encoding="utf-8")
+    _index_project(tmp_path)
+    evidence = capture_current_source_snapshot(str(tmp_path))
+    graph = cached.load_cached_dependency_graph(str(tmp_path))
+    if os.name == "posix" and os.path.exists("/dev/fd"):
+        assert evidence.state == "exact"
+        assert graph is not None
+        assert graph.nodes() == ["a.py"]
+    else:
+        assert evidence.reason == "SOURCE_SCOPE_UNSUPPORTED"
+        assert graph is None
+    assert _load_dependency_graph(str(tmp_path)).nodes() == ["a.py"]
+
+
+def test_cached_graph_rejects_unavailable_source_evidence(tmp_path, monkeypatch):
+    """认证不可用不能继续返回缓存图，源码分析仍可使用。"""
+    from tree_sitter_analyzer.index_source_snapshot import CurrentSourceSnapshot
+
+    (tmp_path / "a.py").write_text("value = 1\n", encoding="utf-8")
+    _index_project(tmp_path)
+    monkeypatch.setattr(
+        cached,
+        "capture_current_source_snapshot",
+        lambda _root: CurrentSourceSnapshot(frozenset(), None, None, "unknown", "test"),
+    )
+    assert cached.load_cached_dependency_graph(str(tmp_path)) is None
+    assert _load_dependency_graph(str(tmp_path)).nodes() == ["a.py"]
