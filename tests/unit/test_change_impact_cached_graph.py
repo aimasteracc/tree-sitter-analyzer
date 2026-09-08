@@ -255,3 +255,47 @@ def test_cached_graph_rejects_unavailable_source_evidence(tmp_path, monkeypatch)
     )
     assert cached.load_cached_dependency_graph(str(tmp_path)) is None
     assert _load_dependency_graph(str(tmp_path)).nodes() == ["a.py"]
+
+
+def test_repeated_change_impact_tracks_preserved_mtime_imports(tmp_path):
+    """同一工具实例反复处理修改时，磁盘与内存缓存不能落后一次。"""
+    import asyncio
+    import subprocess
+
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+
+    for name, text in {
+        "a.py": "import b\n",
+        "b.py": "value = 1\n",
+        "c.py": "value = 2\n",
+    }.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    for command in (
+        ["git", "init", "-q"],
+        ["git", "add", "."],
+        [
+            "git",
+            "-c",
+            "user.name=TSA Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-qm",
+            "baseline",
+        ],
+    ):
+        subprocess.run(command, cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / "c.py").write_text("value = 3\n", encoding="utf-8")
+    _index_project(tmp_path)
+    tool = ChangeImpactTool(str(tmp_path))
+    for module in ("b", "c", "b", "c", "b"):
+        path = tmp_path / "a.py"
+        before = path.stat()
+        path.write_text(f"import {module}\n", encoding="utf-8")
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        result = asyncio.run(tool.execute({"mode": "diff", "output_format": "json"}))
+        assert result["success"] is True
+        impact = next(row for row in result["file_impacts"] if row["file"] == "c.py")
+        assert impact["direct_dependents"] == (["a.py"] if module == "c" else [])
