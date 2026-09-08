@@ -32,13 +32,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Detect changed files
         run: |
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}" > changed-files.txt
+            # 事件中的 base SHA 可能落后于合并提交的实际第一父提交。
+            git diff --name-only "${{ github.sha }}^1" "${{ github.sha }}" > changed-files.txt
           elif [[ "${{ github.event.before || '' }}" != "" && "${{ github.event.before || '' }}" != "0000000000000000000000000000000000000000" ]]; then
             git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" > changed-files.txt
           else
