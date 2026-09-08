@@ -128,6 +128,8 @@ def query_pulse(
 ) -> PulseResponse | None:
     """返回符号上下文，缺少符号时返回 None。
 
+    本函数只保证传入数据库连接内的版本一致，不认证当前磁盘源码。
+    项目级查询须由 certified_pulse_connection 绑定源码证据并完成退出验证。
     Python 反向 import 复用 Synapse resolver。注释必须来自新提取器写入的
     索引；旧索引或不支持注释的语言需重新索引或显式设置 max_comments=0。
     存量 activation 消息缺失时保持 NULL，并发出 COMMIT_MESSAGE_MISSING。

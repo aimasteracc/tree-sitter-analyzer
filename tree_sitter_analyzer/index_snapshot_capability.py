@@ -11,7 +11,7 @@ import tempfile
 import time
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 from .cache.callgraph_state import exact_call_graph_marker as _exact_marker
 
@@ -28,7 +28,10 @@ def require_memory_temp_store(conn: sqlite3.Connection) -> None:
 
 
 _CALL_GRAPH_MARKER_DEADLINE_SECONDS = 5.0
-_WAL_FD_COPY_SUPPORTED = os.open in os.supports_dir_fd and os.stat in os.supports_dir_fd
+_WINDOWS_WAL_SUPPORTED = os.name == "nt"
+_WAL_FD_COPY_SUPPORTED = _WINDOWS_WAL_SUPPORTED or (
+    os.open in os.supports_dir_fd and os.stat in os.supports_dir_fd
+)
 
 
 def physical_storage_identity(
@@ -215,11 +218,27 @@ def private_wal_database(
 ) -> Iterator[tuple[str, int | None]]:
     """只用只读 fd 捕获稳定的主库与 WAL；SQLite 只能打开返回的私有路径。
 
-    不复制 SHM，不获取源 SQLite 连接。POSIX 路径绑定、完整字节复核和前后
-    身份一致是发布前提；不具备这些能力的平台直接拒绝，不能退化成路径猜测。
+    不复制 SHM，不获取源 SQLite 连接。两平台均要求句柄身份绑定、完整字节
+    复核和前后身份一致；缺少能力时拒绝，不能退化成路径猜测。
     """
-    from .frozen_git_index import safe_external_temp_parent
-    from .source_oracle import SourceOracleError
+    if os.name == "nt" and _WINDOWS_WAL_SUPPORTED and _WAL_FD_COPY_SUPPORTED:
+        from .index_snapshot_windows import pinned_windows_files
+
+        with pinned_windows_files(project_root, lambda: check_deadline(deadline)) as (
+            root,
+            files,
+            verify_paths,
+        ):
+            with _copy_pinned_wal_files(
+                root,
+                files,
+                verify_paths,
+                deadline=deadline,
+                byte_limit=byte_limit,
+                check_deadline=check_deadline,
+            ) as copied:
+                yield copied
+        return
 
     if (
         os.name != "posix"
@@ -261,8 +280,6 @@ def private_wal_database(
             if identity(os.fstat(fd)) != expected:
                 raise ValueError("CONCURRENT_WRITER")
             files.append(("index.db-wal", fd, expected))
-        if sum(expected[2] for _, _, expected in files) > byte_limit:
-            raise RuntimeError("INDEX_BACKUP_BUDGET")
 
         def verify_paths() -> None:
             check_deadline(deadline)
@@ -294,73 +311,105 @@ def private_wal_database(
             except OSError as exc:
                 raise ValueError("CONCURRENT_WRITER") from exc
 
-        def stream_file(
-            fd: int, size: int, destination: BinaryIO | None = None
-        ) -> bytes:
-            os.lseek(fd, 0, os.SEEK_SET)
-            digest = hashlib.sha256()
-            remaining = size
-            while remaining:
-                check_deadline(deadline)
-                chunk = os.read(fd, min(64 * 1024, remaining))
-                if not chunk:
-                    raise ValueError("CONCURRENT_WRITER")
-                digest.update(chunk)
-                if destination is not None:
-                    view = memoryview(chunk)
-                    while view:
-                        check_deadline(deadline)
-                        written = destination.write(view)
-                        if not isinstance(written, int) or not 0 < written <= len(view):
-                            raise OSError("INDEX_STAGE_WRITE_FAILED")
-                        view = view[written:]
-                remaining -= len(chunk)
-            check_deadline(deadline)
-            if os.read(fd, 1):
-                raise ValueError("CONCURRENT_WRITER")
-            return digest.digest()
+        with _copy_pinned_wal_files(
+            root,
+            files,
+            verify_paths,
+            deadline=deadline,
+            byte_limit=byte_limit,
+            check_deadline=check_deadline,
+        ) as copied:
+            yield copied
 
-        verify_paths()
+
+@contextmanager
+def _copy_pinned_wal_files(
+    root: str,
+    files: list[tuple[str, int, tuple[Any, ...]]],
+    verify_paths: Callable[[], None],
+    *,
+    deadline: float,
+    byte_limit: int,
+    check_deadline: Callable[[float], None],
+) -> Iterator[tuple[str, int | None]]:
+    """两平台共享完整字节复制、WAL 验证、预算和发布后复核。"""
+    from .frozen_git_index import safe_external_temp_parent
+    from .source_oracle import SourceOracleError
+
+    if sum(expected[2] for _, _, expected in files) > byte_limit:
+        raise RuntimeError("INDEX_BACKUP_BUDGET")
+    wal_size = next(
+        (expected[2] for name, _, expected in files if name == "index.db-wal"), None
+    )
+
+    def stream_file(fd: int, size: int, destination: BinaryIO | None = None) -> bytes:
+        os.lseek(fd, 0, os.SEEK_SET)
+        digest = hashlib.sha256()
+        remaining = size
+        while remaining:
+            check_deadline(deadline)
+            chunk = os.read(fd, min(64 * 1024, remaining))
+            if not chunk:
+                raise ValueError("CONCURRENT_WRITER")
+            digest.update(chunk)
+            if destination is not None:
+                view = memoryview(chunk)
+                while view:
+                    check_deadline(deadline)
+                    written = destination.write(view)
+                    if not isinstance(written, int) or not 0 < written <= len(view):
+                        raise OSError("INDEX_STAGE_WRITE_FAILED")
+                    view = view[written:]
+            remaining -= len(chunk)
+        check_deadline(deadline)
+        if os.read(fd, 1):
+            raise ValueError("CONCURRENT_WRITER")
+        return digest.digest()
+
+    verify_paths()
+    try:
+        temp_parent = safe_external_temp_parent(root)
+    except SourceOracleError as exc:
+        raise ValueError("INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED") from exc
+    with tempfile.TemporaryDirectory(
+        prefix="tsa-wal-index-", dir=temp_parent
+    ) as private:
+        private = os.path.realpath(private)
         try:
-            temp_parent = safe_external_temp_parent(root)
-        except SourceOracleError as exc:
-            raise ValueError("INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED") from exc
-        with tempfile.TemporaryDirectory(
-            prefix="tsa-wal-index-", dir=temp_parent
-        ) as private:
-            private = os.path.realpath(private)
-            if os.path.commonpath((root, private)) == root:
-                raise ValueError("INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED")
-            hashes = []
-            for name, fd, expected in files:
-                with open(os.path.join(private, name), "xb", buffering=0) as stream:
-                    hashes.append(stream_file(fd, expected[2], stream))
-            verify_paths()
-            wal_frames = None
-            if wal_stat is not None:
-                wal_size = wal_stat.st_size
-                wal_frames = 0
-                if wal_size:
-                    with open(os.path.join(private, "index.db-wal"), "rb") as wal:
-                        header = wal.read(32)
-                    page_size = int.from_bytes(header[8:12], "big")
-                    if (
-                        len(header) != 32
-                        or int.from_bytes(header[:4], "big")
-                        not in (0x377F0682, 0x377F0683)
-                        or int.from_bytes(header[4:8], "big") != 3007000
-                        or not 512 <= page_size <= 65536
-                        or page_size & (page_size - 1)
-                        or (wal_size - 32) % (24 + page_size)
-                    ):
-                        raise ValueError("CONCURRENT_WRITER")
-                    wal_frames = (wal_size - 32) // (24 + page_size)
-            yield os.path.join(private, "index.db"), wal_frames
-            # 跨主库/WAL 的完整复核发生在私有 SQLite 读取之后、发布能力之前。
-            for (_, fd, expected), captured in zip(files, hashes, strict=True):
-                if stream_file(fd, expected[2]) != captured:
+            inside_project = os.path.commonpath((root, private)) == root
+        except ValueError:
+            # 两个路径均已绝对化；Windows 不同盘符的临时目录必在项目外。
+            inside_project = False
+        if inside_project:
+            raise ValueError("INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED")
+        hashes = []
+        for name, fd, expected in files:
+            with open(os.path.join(private, name), "xb", buffering=0) as stream:
+                hashes.append(stream_file(fd, expected[2], stream))
+        verify_paths()
+        wal_frames = None
+        if wal_size is not None:
+            wal_frames = 0
+            if wal_size:
+                with open(os.path.join(private, "index.db-wal"), "rb") as wal:
+                    header = wal.read(32)
+                page_size = int.from_bytes(header[8:12], "big")
+                if (
+                    len(header) != 32
+                    or int.from_bytes(header[:4], "big") not in (0x377F0682, 0x377F0683)
+                    or int.from_bytes(header[4:8], "big") != 3007000
+                    or not 512 <= page_size <= 65536
+                    or page_size & (page_size - 1)
+                    or (wal_size - 32) % (24 + page_size)
+                ):
                     raise ValueError("CONCURRENT_WRITER")
-            verify_paths()
+                wal_frames = (wal_size - 32) // (24 + page_size)
+        yield os.path.join(private, "index.db"), wal_frames
+        # 跨主库/WAL 的完整复核发生在私有 SQLite 读取之后、发布能力之前。
+        for (_, fd, expected), captured in zip(files, hashes, strict=True):
+            if stream_file(fd, expected[2]) != captured:
+                raise ValueError("CONCURRENT_WRITER")
+        verify_paths()
 
 
 def reject_sidecars(cache_fd: int) -> None:

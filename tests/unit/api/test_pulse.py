@@ -440,8 +440,9 @@ def test_sql_json_empty_relations_and_null_heat_keep_public_shape(
 
 async def test_raw_symbols_json_corruption_remains_an_error(tmp_path):
     # PR #1352：简化内置 JSON 解码不能让真正的索引 JSON 损坏成为成功响应。
+    import sqlite3
+
     from tree_sitter_analyzer.ast_cache import ASTCache
-    from tree_sitter_analyzer.mcp.tools.pulse_tool import PulseTool
 
     source = tmp_path / "a.py"
     source.write_text("def only():\n    pass\n", encoding="utf-8")
@@ -449,11 +450,8 @@ async def test_raw_symbols_json_corruption_remains_an_error(tmp_path):
     try:
         cache.index_file(str(source))
         cache.get_conn().execute("UPDATE ast_index SET symbols_json='{broken'")
-        tool = PulseTool(str(tmp_path))
-        tool._cache = cache
-        result = await tool.execute({"file": "a.py", "symbol": "only"})
-        assert result["success"] is False
-        assert result["error"] == "pulse query failed: malformed JSON"
+        with pytest.raises(sqlite3.OperationalError, match="malformed JSON"):
+            query_pulse(cache.get_conn(), "a.py", "only")
     finally:
         cache.close()
 
@@ -758,3 +756,28 @@ def test_serialization_preserves_relationship_payloads(format):
         assert result["imported_by"] == ["consumer.py"]
         assert result["siblings"] == [{"name": "other", "kind": "function", "line": 20}]
         assert result["comments"] == [{"line": 2, "text": "note", "kind": "inline"}]
+
+
+def test_query_pulse_import_capacity_is_an_error(ast_cache_conn):
+    """PR #1352：保留 SQL 层的反向导入资源上限见证，超限不能返回空列表。"""
+    _seed_symbol(ast_cache_conn, "greet", "a.py")
+    ast_cache_conn.executemany(
+        "INSERT INTO ast_imports(file_path,language,module_path) VALUES ('a.py','python',?)",
+        [(f"module_{i}",) for i in range(20001)],
+    )
+    with pytest.raises(ValueError, match="PULSE_IMPORT_RESOURCE_LIMIT"):
+        query_pulse(ast_cache_conn, "a.py", "greet", max_comments=0)
+
+
+def test_certified_pulse_missing_index_is_read_only(tmp_path):
+    # 2026-09-08：查询不能创建空索引后把无索引误报成不存在。
+    from tree_sitter_analyzer.api.pulse_evidence import (
+        PulseSourceError,
+        certified_pulse_connection,
+    )
+
+    with pytest.raises(PulseSourceError) as error:
+        with certified_pulse_connection(str(tmp_path)):
+            pytest.fail("缺失索引不能发布读取连接")
+    assert (error.value.reason, error.value.freshness) == ("MISSING_INDEX", "missing")
+    assert list(tmp_path.iterdir()) == []

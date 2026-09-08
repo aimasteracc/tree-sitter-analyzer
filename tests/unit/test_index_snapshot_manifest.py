@@ -223,13 +223,19 @@ def test_module_exports_exact_focused_surface() -> None:
     assert index_snapshot_manifest.__all__ == ["_read_bounded_manifest"]
 
 
-def test_capture_source_wrapper_propagates_body_type_error(monkeypatch):
+@pytest.mark.parametrize("platform", ["posix", "nt"])
+def test_capture_source_wrapper_propagates_body_type_error(monkeypatch, platform):
+    from types import SimpleNamespace
+
     import tree_sitter_analyzer.index_snapshot as snapshot
+    import tree_sitter_analyzer.portable_source_snapshot as portable
 
     def broken(_root, _scope, *, deadline):
         raise TypeError("source decoder failed")
 
     monkeypatch.setattr(snapshot, "capture_current_source_snapshot", broken)
+    monkeypatch.setattr(portable, "capture_portable_source_snapshot", broken)
+    monkeypatch.setattr(snapshot, "os", SimpleNamespace(name=platform))
 
     with pytest.raises(TypeError, match="source decoder failed"):
         snapshot._capture_sources_with_deadline("/root", object(), 1.0)

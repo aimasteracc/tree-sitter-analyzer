@@ -27,22 +27,29 @@ MCP_COMMAND_FLAGS = (
 )
 
 
+def _certify_pulse_cli_project(root):
+    """真实 CLI 用例通过完整索引建立源码认证。"""
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    result = asyncio.run(CodeGraphFullIndexTool(str(root)).execute({"mode": "full"}))
+    assert result["scope_complete"] is True
+
+
 def test_pulse_cli_real_index_emits_json_success(tmp_path, monkeypatch, capsys):
     # PR #1352：运行真实 CLI 解析/分发/工具/序列化，不 mock 任一业务层。
     import json
     import logging
     import sys
 
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.cli_main import main
 
     source = tmp_path / "a.py"
     source.write_text(
         'def greet():\n    """Hello CLI."""\n    return 1\n', encoding="utf-8"
     )
-    cache = ASTCache(str(tmp_path))
-    cache.index_file(str(source))
-    cache.close()
+    _certify_pulse_cli_project(tmp_path)
     capsys.readouterr()
     monkeypatch.setattr(
         sys,
@@ -79,6 +86,7 @@ def test_pulse_cli_real_index_emits_json_success(tmp_path, monkeypatch, capsys):
     assert exited.value.code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["success"] is True
+    assert payload["source_evidence"]["freshness"] == "fresh"
     assert payload["result"]["sym"]["n"] == "greet"
     assert payload["result"]["sym"]["doc"] == "Hello CLI."
     assert [logger.level for logger in loggers] == levels
@@ -105,9 +113,7 @@ def test_batch_cli_project_sequence_keeps_results_and_warning_capture(
             f'def greet():\n    """{label} greet"""\n    pass\n\ndef other():\n    """{label} other"""\n    pass\n',
             encoding="utf-8",
         )
-        cache = ASTCache(str(root))
-        cache.index_file(str(source))
-        cache.close()
+        _certify_pulse_cli_project(root)
         roots.append(root)
     targets = [{"file": "a.py", "symbol": name} for name in ("greet", "other")]
     loggers = [
@@ -142,6 +148,7 @@ def test_batch_cli_project_sequence_keeps_results_and_warning_capture(
             assert exited.value.code == 0
             payload = json.loads(capsys.readouterr().out)
             assert payload["success"] is True
+            assert payload["source_evidence"]["freshness"] == "fresh"
             assert (
                 payload["count"],
                 payload["error_count"],

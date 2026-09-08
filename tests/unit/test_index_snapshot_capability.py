@@ -12,6 +12,59 @@ requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 requires_posix_snapshot = requires_posix_fd
 
 
+@pytest.mark.parametrize("changed", [False, True])
+@pytest.mark.parametrize("consumer", ["verify", "reuse"])
+def test_windows_source_revalidation_uses_portable_inventory(
+    tmp_path, monkeypatch, changed, consumer
+):
+    """Windows 读后核验与租约复用都使用便携扫描器，保存后拒绝旧代次。"""
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+    from tree_sitter_analyzer.portable_source_snapshot import (
+        capture_portable_source_snapshot,
+    )
+
+    source = tmp_path / "app.py"
+    source.write_text("def before(): return 1\n", encoding="utf-8")
+    scope = make_source_scope_descriptor()
+    current = capture_portable_source_snapshot(
+        str(tmp_path), scope, deadline=time.monotonic() + 5
+    )
+    assert current.state == "exact"
+    snapshot = SimpleNamespace(
+        completeness="complete",
+        source_scope=scope,
+        canonical_root=str(tmp_path),
+        source_generation=current.generation,
+    )
+    monkeypatch.setattr(owner, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        owner,
+        "capture_current_source_snapshot",
+        lambda *_a, **_k: pytest.fail("不能使用 POSIX 扫描器"),
+    )
+    if changed:
+        source.write_text("def after(): return 2\n", encoding="utf-8")
+
+    if consumer == "reuse":
+
+        @contextmanager
+        def pinned(_root):
+            yield snapshot
+
+        monkeypatch.setattr(owner.REGISTRY, "pin_reusable", pinned)
+        with owner.lease_reusable_snapshot(str(tmp_path)) as reusable:
+            assert reusable is (None if changed else snapshot)
+    elif changed:
+        with pytest.raises(ValueError, match="^SOURCE_GENERATION_MISMATCH$"):
+            owner.verify_snapshot_source_current(snapshot)
+    else:
+        assert owner.verify_snapshot_source_current(snapshot) is None
+
+
 @requires_posix_fd
 class TestPrivateWalFiles:
     @pytest.fixture
