@@ -34,7 +34,6 @@ async def test_pulse_missing_relation_is_query_failure(indexed_pulse_project):
     """PR #1352：目标存在但关系表损坏时，不得谎报目标不存在。"""
     root, cache = indexed_pulse_project
     tool = PulseTool(str(root))
-    tool._cache = cache
     cache.get_conn().execute("DROP TABLE ast_symbol_activation")
     cache.get_conn().commit()
     response = await tool.execute({"file": "a.py", "symbol": "greet"})
@@ -154,7 +153,6 @@ async def test_explicit_positive_budget_preserves_requested_definition(
     """PR #1352：显式合法的 JSON 整值预算保持目标身份，不改写调用者的参数。"""
     root, cache = indexed_pulse_project
     tool = PulseTool(str(root))
-    tool._cache = cache
     arguments = {"file": "a.py", "symbol": "greet", "token_budget": 600.0}
     result = await tool.execute(arguments)
     assert result["success"] is True
@@ -420,17 +418,23 @@ async def test_pulse_batch_retains_per_target_error(indexed_pulse_project):
         ({"max_siblings": None}, "max_siblings"),
     ],
 )
-async def test_pulse_invalid_public_parameter_has_no_index_side_effect(changes, field):
+async def test_pulse_invalid_public_parameter_has_no_index_side_effect(
+    changes, field, monkeypatch
+):
     # PR #1352：无效参数必须在打开/迁移索引之前拒绝，不能隐式强制转换。
     tool = PulseTool(None)
-    tool._get_cache = MagicMock(side_effect=AssertionError("must not open index"))
+    source_access = MagicMock(side_effect=AssertionError("must not open index"))
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.pulse_tool.certified_pulse_connection",
+        source_access,
+    )
     args = {"file": "a.py", "symbol": "greet", **changes}
     response = await tool.execute(args)
     assert response["success"] is False
     assert response["error_code"] == "INVALID_ARGUMENT"
     assert field in response["error"]
     assert "result" not in response
-    tool._get_cache.assert_not_called()
+    source_access.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -445,17 +449,23 @@ async def test_pulse_invalid_public_parameter_has_no_index_side_effect(changes, 
         ({"format": "verbose"}, "format"),
     ],
 )
-async def test_pulse_batch_validates_public_request_before_index(changes, field):
+async def test_pulse_batch_validates_public_request_before_index(
+    changes, field, monkeypatch
+):
     # PR #1352：嵌套 targets 和批量上限也必须校验，不能切片后才暴露错误。
     tool = PulseBatchTool(None)
-    tool._get_cache = MagicMock(side_effect=AssertionError("must not open index"))
+    source_access = MagicMock(side_effect=AssertionError("must not open index"))
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.pulse_tool.certified_pulse_connection",
+        source_access,
+    )
     response = await tool.execute(
         {"targets": [{"file": "a.py", "symbol": "greet"}], **changes}
     )
     assert response["success"] is False
     assert response["error_code"] == "INVALID_ARGUMENT"
     assert field in response["error"]
-    tool._get_cache.assert_not_called()
+    source_access.assert_not_called()
 
 
 async def test_project_schema_sql_failure_is_not_an_empty_index(indexed_pulse_project):
@@ -481,10 +491,14 @@ async def test_project_schema_reports_real_counts(indexed_pulse_project):
     assert response["result"]["total_edges"] == 0
 
 
-async def test_pulse_batch_empty_request_does_not_create_index():
+async def test_pulse_batch_empty_request_does_not_create_index(monkeypatch):
     # PR #1352：空批次可以成功，但不能创建索引或捏造已处理目标。
     tool = PulseBatchTool(None)
-    tool._get_cache = MagicMock(side_effect=AssertionError("must not open index"))
+    source_access = MagicMock(side_effect=AssertionError("must not open index"))
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.pulse_tool.certified_pulse_connection",
+        source_access,
+    )
     response = await tool.execute({"targets": []})
     assert response == {
         "success": True,
@@ -493,7 +507,7 @@ async def test_pulse_batch_empty_request_does_not_create_index():
         "error_count": 0,
         "truncated_count": 0,
     }
-    tool._get_cache.assert_not_called()
+    source_access.assert_not_called()
 
 
 async def test_pulse_accepts_integral_zero_limit_without_mutating_request(
