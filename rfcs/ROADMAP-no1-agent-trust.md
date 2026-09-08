@@ -6,6 +6,111 @@
 - **North star:** Verified Change Success Rate (VCSR), not feature, language, tool, test, or edge count.
 - **Claim policy:** Public language is always bounded to named tools, versions, repositories, models, dates, and evidence levels. E0–E3 emit no quantitative competitive wording; E4 permits only the exact admitted bounded sentence, never an unqualified "No.1" claim.
 
+## 2026-09-08 第二轮合入：内容新鲜度与健康评分
+
+当前合入基线为 `develop@9233bb49a26283e57d7d9435f9a7251b344f2b74`。
+下面的早期复测章节保留历史证据；它们的分支状态与基线不覆盖本节。
+本节不授权发版，也不改变 VCSR / E4 的竞争性声明门槛。
+
+### 已落地的变化
+
+- [#1415](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1415)：
+  查询路径不再意外创建缺失数据库或迁移旧索引。使用编码后的 SQLite URI；
+  部分读取采用现有文件 `mode=rw` 配合 `query_only` 以保留 WAL 清理行为，
+  因而不能把业务查询只读表述为整个文件系统绝无写入。
+- [#1416](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1416)：
+  解析器、依赖图和常驻工具缓存按源码内容失效，覆盖等长改写并恢复时间戳；
+  健康评分在一次项目调用中复用依赖图，避免逐文件重复计算整个项目摘要。
+- [#1417](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1417)：
+  磁盘依赖图要求当前源码清单与记录一致，拒绝旧提取器、不完整提取和损坏导入条目；
+  健康评分缓存绑定源码内容，比较本次评分前后的文件身份和变更时间，
+  覆盖已复现的原地改写后恢复、替换后恢复及保存期间变化。
+  Windows 使用原生 `ChangeTime`，不把可能表示创建时间的 `st_ctime` 当作变更时间。
+  冷文件的 Git 热点评分采用四路并发预取，保持原逐路径 Git 查询语义；
+  暖缓存命中不预取，调用退出后恢复上下文。
+
+### 实际项目诊断：冷启动仍需几十秒
+
+环境为本机 macOS、Python 3.14.3，目标为本仓库工作树，共评分 2,237 个文件。
+下表各次均零跳过。分项计时使用透传包装器；它们是开发过程中的单次诊断，
+不是受控性能基准、总体分位数、跨平台延迟承诺或行业对照结果。
+
+| 场景与源码版本 | 耗时 | 补充观察 |
+|---|---|---|
+| `057a403c`，禁用评分缓存重算 | 120.47 秒 | Git 热点 98.05 秒；复杂度 15.40 秒；依赖 3.65 秒 |
+| `ed1f3395`，并发预取后的缓存填充 | 43.17 秒 | Git 查询 2,237 次 |
+| 同一进程随后暖调用 | 0.62 秒 | Git 查询 0 次；仍返回 2,237 文件评分 |
+
+原始计时与计数已保存为
+[`health-cache-20260908-e0.json`](../docs/baselines/health-cache-20260908-e0.json)。
+该记录保留诊断时的数据，但当时未捕获完整工作树及环境摘要，不能补称为可精确重建的基准。
+下面的复测命令产生新的观测，不保证重现历史耗时或文件数。
+另有 200 文件抽样的并发与串行提交计数完全一致；没有采用简单的
+`git log --name-only` 按文件累加，因为实际合并案例中该算法计数为 3，
+而既有逐路径查询为 2。加速不能靠悄悄改变历史计数的含义。
+
+### 复测缓存填充与暖调用
+
+在单独的新工作树中执行以下命令，并把 stdout 保存到工作树之外。
+要求 `.ast-cache/health_scores.db` 不存在，避免把已有评分缓存误报为冷启动；
+命令会创建该评分缓存。这里测量的是评分缓存填充，未声称操作系统页缓存为冷。
+完整仓库的运行成本约为几十秒，随 Git 历史、文件数和机器负载变化。
+
+```bash
+uv run python - <<'PY'
+import json
+import platform
+import subprocess
+from pathlib import Path
+from time import perf_counter
+from tree_sitter_analyzer.health_scorer import HealthScorer
+from tree_sitter_analyzer.registry.health_score_cache import HealthScoreCache
+
+root = Path.cwd().resolve()
+if Path(HealthScoreCache._default_db_path(str(root))).exists():
+    raise SystemExit("需要没有评分缓存的新工作树")
+scorer = HealthScorer()
+observations = []
+for phase in ("populate", "warm"):
+    started = perf_counter()
+    scores, stats = scorer.score_project_with_stats(str(root))
+    observations.append({"phase": phase, "seconds": perf_counter() - started,
+                         "scored": len(scores), "stats": stats})
+print(json.dumps({
+    "head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+    "dirty": subprocess.check_output(["git", "status", "--porcelain"], text=True),
+    "platform": platform.platform(), "python": platform.python_version(),
+    "observations": observations,
+}, ensure_ascii=False, indent=2))
+PY
+```
+
+### 合入验证与证据限制
+
+[#1417 的最终检查](https://github.com/aimasteracc/tree-sitter-analyzer/actions/runs/34235789804)
+覆盖原生平台矩阵、Linux 覆盖率及慢测试、MCP 黑盒和构建门禁；
+实际运行的检查均成功，其余按路由跳过。MCP 黑盒为 45 项通过。
+审查发现的 P2 导入条目校验缺口已由 `52a90b90` 修复，并有实际失败再通过的回归；
+审查原提交为 `feae24db`，不据此声称最终提交接受了新一轮自动审查。
+Windows 矩阵报告 2 次重跑，Linux 慢测试报告 1 次重跑；日志未标明具体用例，
+不能断言这些重跑与改动无关。跳过与重跑均不作为额外成功案例计入。
+
+TSA 在这些已验证的本地结构查询、保存检测和缓存复用场景中更值得信赖，
+但仍不能成为 Agent 的唯一事实来源或称为不可替代。当前最重要的缺口仍是：
+
+1. 过时索引写入可能覆盖更新结果；RFC-0032 / #1412 的写入所有权、代次、
+   崩溃恢复和已发布接口迁移方向仍未实施。该 PR 处于待审状态，不能代替架构裁决。
+2. 单文件变更检测不等于整个响应绑定同一项目快照；磁盘图的源码捕获在
+   Windows 上走源码回退，完整提取投影认证和对抗性元数据恢复仍未建立。
+3. 冷健康评分仍需约 43 秒；此前万文件 Pulse 保存到恢复 fresh 的观测仍约
+   7–12 秒。本轮未重新测量该保存链路，不能以健康评分暖缓存时间替代它。
+4. 尚无满足既定门槛的同任务 Agent 成功率与竞品对照证据，不能宣称行业 No.1。
+
+“大脑、血液、神经网络”可以表达结构信息与反馈流动的愿景；当前实现提供的是
+可检查的结构事实、缓存和事件反馈，不能替代推理、领域知识、运行时观测与测试。
+下一阶段优先落实已提出的写入所有权方案及验证计划接口，再以真实任务成功率
+检验保存后的反馈是否既及时又正确；不通过继续增加工具数量来替代这些验收。
+
 ## 2026-09-08 已合入修复与可信反馈复测
 
 本节更新运行证据；下节已裁决的范围和发布边界继续有效。
