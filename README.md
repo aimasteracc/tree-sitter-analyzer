@@ -435,8 +435,6 @@ MCP client config (the project root inside the container is the mount point `/wo
 
 CodeGraph supports a similar set. **Dart, Vue, Svelte, Lua** are not yet shipped — aspirational backlog, no committed date.
 
----
-
 ## Configuration
 
 Mostly nothing. The defaults are designed so you can hook it into your agent and forget:
@@ -478,8 +476,6 @@ uv run python check_quality.py --new-code-only  # quality gate
 | `database is locked` | Stop any other process holding `.ast-cache/index.db`; if persistent, `rm -rf .ast-cache && tree-sitter-analyzer --full-index`. |
 | Slow first call | First call builds the index. Subsequent calls are sub-second. Run `--full-index` upfront to amortise. |
 | Agent picks the wrong tool | Use a `tsa-*` skill (`/tsa-graph`, `/tsa-find`, ...) — each skill restricts the visible tool set to one workflow. |
-
----
 
 ## Development
 
