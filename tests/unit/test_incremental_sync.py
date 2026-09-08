@@ -2582,7 +2582,7 @@ def test_unchanged_content_refreshes_indexed_metadata(tmp_path):
 
 
 @requires_posix_fd
-@pytest.mark.parametrize("replacement", ["symlink", "fifo"])
+@pytest.mark.parametrize("replacement", ["symlink", "fifo", "oversized"])
 def test_candidate_unsafe_replacement_invalidates_existing_rows(tmp_path, replacement):
     # #1405：候选拒绝路径后必须清除旧 AST，不能仅撤销认证。
     from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
@@ -2596,8 +2596,11 @@ def test_candidate_unsafe_replacement_invalidates_existing_rows(tmp_path, replac
         path.unlink()
         if replacement == "symlink":
             path.symlink_to(tmp_path / "missing.py")
-        else:
+        elif replacement == "fifo":
             os.mkfifo(path)
+        else:
+            with path.open("wb") as source:
+                source.truncate(64 * 1024 * 1024 + 1)
         result = watcher.trigger_sync()
         assert cache.get_stats()["total_files"] == 0
         assert result["completeness"] == "incomplete"

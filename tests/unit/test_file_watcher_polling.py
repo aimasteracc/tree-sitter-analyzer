@@ -358,33 +358,27 @@ def test_unsafe_source_replacement_emits_removal_once(scanner, tmp_path, replace
     assert errors == ["error", "error"]
 
 
-def test_reparse_source_replacement_emits_removal(scanner, tmp_path, monkeypatch):
-    # #1405：Windows reparse 属性也必须清除已知旧指纹。
-    import stat
-
+@pytest.mark.parametrize("size,attrs", [(0, 0x400), (64 * 1024 * 1024 + 1, 0)])
+def test_rejected_source_removal(scanner, tmp_path, monkeypatch, size, attrs):
+    # #1405：reparse 和超过容量的源码都必须撤销旧指纹，且只通知一次。
     scan, errors = scanner
     scan.scan(baseline=True)
     path = str(tmp_path / "a.py")
-    monkeypatch.setattr(
-        owner,
-        "_entries",
-        lambda _root: iter(
-            [
-                (
-                    "file",
-                    path,
-                    SimpleNamespace(st_mode=stat.S_IFREG, st_file_attributes=0x400),
-                ),
-                ("file", str(tmp_path / "b.py"), (tmp_path / "b.py").stat()),
-            ]
-        ),
+    info = SimpleNamespace(
+        st_mode=owner.stat.S_IFREG, st_file_attributes=attrs, st_size=size
     )
+    entries = [
+        ("file", path, info),
+        ("file", str(tmp_path / "b.py"), (tmp_path / "b.py").stat()),
+    ]
+    monkeypatch.setattr(owner, "_entries", lambda _root: iter(entries))
     monkeypatch.setattr(
         owner.stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400, raising=False
     )
     assert scan.scan() == [path]
     assert sorted(scan.snapshot) == [str(tmp_path / "b.py")]
-    assert errors == ["error"]
+    assert scan.scan() == []
+    assert errors == ["error", "error"]
 
 
 @pytest.mark.skipif(os.name != "posix", reason="tracked: #1405 POSIX 目录替换竞态")
