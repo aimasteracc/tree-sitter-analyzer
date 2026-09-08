@@ -15,23 +15,20 @@ from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import (
 )
 from tree_sitter_analyzer.mcp.tools.utils import safe_to_edit_helpers as helpers
 
+unreadable_index = _fixtures.unreadable_index
 tool = _fixtures.tool
 _close_index_snapshot_registry = _fixtures._close_index_snapshot_registry
 
 
-def test_live_violations_query_degrades_on_corrupt_db_file(
-    tmp_path: Path,
-) -> None:
-    """非 SQLite 的 index.db 降级为空违规列表。"""
+def test_live_violations_query_degrades_on_corrupt_db_file(unreadable_index) -> None:
+    """损坏或打开前被删除的数据库降级为空列表，且不重建文件。"""
     from tree_sitter_analyzer.mcp.tools.utils.constraint_violation_query import (
         violations_for_files,
     )
 
-    (tmp_path / ".ast-cache").mkdir()
-    (tmp_path / ".ast-cache" / "index.db").write_text(
-        "not-a-sqlite-database", encoding="utf-8"
-    )
+    tmp_path, db_path, remove_during_open = unreadable_index
     assert violations_for_files(str(tmp_path), ["app.py"]) == []
+    assert db_path.exists() is (not remove_during_open)
 
 
 def test_snapshot_dependency_view_degrades_on_closed_conn() -> None:

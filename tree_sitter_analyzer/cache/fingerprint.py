@@ -179,8 +179,15 @@ def is_ast_index_stale(project_root: str) -> bool:
     try:
         # timeout=10 与 ast_cache.py 的主连接保持一致：多进程共用缓存库时，
         # 无超时的连接遇到写锁会立刻抛 database is locked 而不是等待重试
-        conn = sqlite3.connect(str(db_path), timeout=10, check_same_thread=False)
+        conn = sqlite3.connect(
+            db_path.absolute().as_uri() + "?mode=rw",
+            uri=True,
+            timeout=10,
+            check_same_thread=False,
+        )
         try:
+            # 只查询现有索引；文件消失时拒绝连接，不能重建空库。
+            conn.execute("PRAGMA query_only=ON")
             rows = conn.execute("SELECT file_path, mtime_ns FROM ast_index").fetchall()
         finally:
             conn.close()

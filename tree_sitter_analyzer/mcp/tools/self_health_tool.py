@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from pathlib import Path
 from typing import Any
 
 from ...latency import (
@@ -252,7 +253,9 @@ def _ast_index_report(project_root: str | None) -> dict[str, Any]:
     report["present"] = True
     try:
         report["size_bytes"] = os.path.getsize(db_path)
-        connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        connection = sqlite3.connect(
+            Path(db_path).absolute().as_uri() + "?mode=ro", uri=True
+        )
         try:
             row = connection.execute("SELECT COUNT(*) FROM ast_index").fetchone()
         finally:

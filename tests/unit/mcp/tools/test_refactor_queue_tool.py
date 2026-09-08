@@ -199,3 +199,27 @@ class TestReadOnlyInPractice:
         before = snapshot()
         _run(RefactorQueueTool(project_root=str(tmp_path)), {"output_format": "json"})
         assert sorted(snapshot()) == sorted(before)
+
+
+@pytest.mark.parametrize("name", ["_churn_by_file", "_symbol_counts"])
+@pytest.mark.parametrize("directory", ["project", "project # % 日本語"])
+def test_queue_reads_do_not_recreate_removed_database(
+    tmp_path, monkeypatch, name, directory
+):
+    """统计读取保留正常结果，但存在检查后的删除不能重新创建空库。"""
+    from tree_sitter_analyzer.mcp.tools import refactor_queue_tool as module
+
+    root = tmp_path / directory
+    _seed_index(root, {"a.py": 3}, {"a.py": 3})
+    reader = getattr(module, name)
+    assert reader(root) == {"a.py": 3}
+    db = root / ".ast-cache" / "index.db"
+    original = sqlite3.connect
+
+    def removed(*args, **kwargs):
+        db.unlink()
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module.sqlite3, "connect", removed)
+    assert reader(root) == {}
+    assert not db.exists()

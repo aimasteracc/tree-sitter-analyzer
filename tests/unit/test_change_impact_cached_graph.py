@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import sqlite3
+
+import pytest
+
 from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.cache.schema import CURRENT_SCHEMA_VERSION
 from tree_sitter_analyzer.mcp.tools.utils import change_impact_cached_graph as cached
 from tree_sitter_analyzer.mcp.tools.utils.change_impact_cached_graph import (
     CachedDependencyGraph,
@@ -119,14 +124,7 @@ def test_cached_index_rows_handles_query_failure():
         def execute(self, query):
             raise RuntimeError("boom")
 
-    class BadCache:
-        def get_conn(self):
-            return BadConn()
-
-        def _get_conn(self):  # backward-compat alias
-            return self.get_conn()
-
-    assert cached._cached_index_rows(BadCache()) == []
+    assert cached._cached_index_rows(BadConn()) == []
 
 
 def test_add_cached_import_edges_ignores_unsupported_languages(tmp_path):
@@ -162,3 +160,40 @@ def test_add_cached_import_edges_normalizes_windows_resolver_paths(
     )
 
     assert graph.dependencies_of("src/index.js") == ["src/formatter.js"]
+
+
+def test_cached_graph_does_not_recreate_removed_database(tmp_path, monkeypatch):
+    """存在检查后消失的索引应回退，不能被查询重新创建。"""
+    _index_project(tmp_path)
+    db_path = tmp_path / ".ast-cache" / "index.db"
+    connect = sqlite3.connect
+
+    def remove_then_connect(*args, **kwargs):
+        db_path.unlink()
+        return connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", remove_then_connect)
+    assert cached.load_cached_dependency_graph(str(tmp_path)) is None
+    assert not db_path.exists()
+
+
+@pytest.mark.parametrize("version", [1, CURRENT_SCHEMA_VERSION + 1])
+def test_cached_graph_does_not_migrate_incompatible_database(tmp_path, version):
+    """旧版或未来版本索引保持原状，由调用方回退到源码分析。"""
+    (tmp_path / "a.py").write_text("value = 1\n", encoding="utf-8")
+    _index_project(tmp_path)
+    db_path = tmp_path / ".ast-cache" / "index.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("DELETE FROM ast_schema_version")
+        conn.execute(
+            "INSERT INTO ast_schema_version(version, applied_at, description) "
+            "VALUES (?, 0, 'test')",
+            (version,),
+        )
+        conn.commit()
+        before = list(conn.iterdump())
+        assert cached.load_cached_dependency_graph(str(tmp_path)) is None
+        assert list(conn.iterdump()) == before
+    finally:
+        conn.close()

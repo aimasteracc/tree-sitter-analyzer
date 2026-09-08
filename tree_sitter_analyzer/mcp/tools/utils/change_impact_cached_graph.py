@@ -11,11 +11,12 @@ from __future__ import annotations
 import json
 import logging
 import re
+import sqlite3
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from ....ast_cache import ASTCache
+from ....cache.schema import CURRENT_SCHEMA_VERSION, already_applied_versions
 from ....project_graph import _IMPORT_RESOLVERS
 from ....synapse_resolver import parse_imports
 
@@ -89,10 +90,18 @@ def load_cached_dependency_graph(
     if not db_path.is_file():
         return None
 
-    cache: ASTCache | None = None
+    conn: sqlite3.Connection | None = None
     try:
-        cache = ASTCache(project_root)
-        rows = _cached_index_rows(cache)
+        # 查询不负责建库或迁移；旧索引交给现有源码分析路径处理。
+        conn = sqlite3.connect(db_path.absolute().as_uri() + "?mode=rw", uri=True)
+        conn.execute("PRAGMA query_only=ON")
+        conn.row_factory = sqlite3.Row
+        versions = already_applied_versions(conn)
+        if CURRENT_SCHEMA_VERSION not in versions or any(
+            version < 1 or version > CURRENT_SCHEMA_VERSION for version in versions
+        ):
+            return None
+        rows = _cached_index_rows(conn)
         if not rows:
             return None
         nodes = {row["file_path"] for row in rows}
@@ -104,15 +113,14 @@ def load_cached_dependency_graph(
         logger.debug("cached dependency graph load failed", exc_info=True)
         return None
     finally:
-        if cache is not None:
+        if conn is not None:
             try:
-                cache.close()
+                conn.close()
             except Exception:
                 pass
 
 
-def _cached_index_rows(cache: ASTCache) -> list[dict[str, Any]]:
-    conn = cache.get_conn()
+def _cached_index_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     try:
         rows = conn.execute(
             "SELECT file_path, language, imports_json FROM ast_index"

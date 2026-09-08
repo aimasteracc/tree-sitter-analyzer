@@ -359,3 +359,25 @@ def test_index_derivation_reads_less_than_the_scan(project: Path) -> None:
         dependents_index.scan_dependents("pkg/target.py", project)
 
     assert len(reads_index) < len(reads_scan)
+
+
+def test_dependents_read_does_not_recreate_removed_database(project, monkeypatch):
+    """读取时数据库消失应明确回退到扫描，不能创建空索引。"""
+    db = project / ".ast-cache" / "index.db"
+    db.parent.mkdir()
+    sqlite3.connect(db).close()
+    original = sqlite3.connect
+
+    def removed(*args, **kwargs):
+        db.unlink()
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(dependents_index.sqlite3, "connect", removed)
+    answer = resolve_dependents("pkg/target.py", project)
+    assert answer.certification_reason == "INDEX_UNREADABLE"
+    assert answer.dependents == frozenset(
+        {"pkg/importer.py", "pkg/absolute_importer.py", "pkg/mentions_only.py"}
+    )
+    assert answer.basis == "scan"
+    assert answer.certified is False
+    assert not db.exists()
