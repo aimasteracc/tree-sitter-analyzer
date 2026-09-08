@@ -404,6 +404,24 @@ def _copy_pinned_wal_files(
                 ):
                     raise ValueError("CONCURRENT_WRITER")
                 wal_frames = (wal_size - 32) // (24 + page_size)
+                # SQLite 重用 WAL 不必截断旧代尾部；只认证当前 salt 的连续前缀。
+                # 校验和及提交边界仍由私有 SQLite 的精确 checkpoint 帧数核验。
+                with open(os.path.join(private, "index.db-wal"), "rb") as wal:
+                    current_frames = 0
+                    old_tail = False
+                    for frame in range(wal_frames):
+                        check_deadline(deadline)
+                        wal.seek(32 + frame * (24 + page_size))
+                        frame_header = wal.read(24)
+                        if frame_header[8:16] != header[16:24]:
+                            old_tail = True
+                        elif old_tail:
+                            raise ValueError("CONCURRENT_WRITER")
+                        else:
+                            current_frames += 1
+                    if wal_frames and not current_frames:
+                        raise ValueError("CONCURRENT_WRITER")
+                    wal_frames = current_frames
         yield os.path.join(private, "index.db"), wal_frames
         # 跨主库/WAL 的完整复核发生在私有 SQLite 读取之后、发布能力之前。
         for (_, fd, expected), captured in zip(files, hashes, strict=True):

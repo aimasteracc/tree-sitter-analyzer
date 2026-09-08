@@ -199,12 +199,25 @@ def test_rejected_native_handle_is_closed(tmp_path, kernel, fault, expected):
     assert kernel.handles == {}
 
 
-def test_wal_copy_recovers_committed_rows_and_closes_pins(tmp_path, pair, kernel):
+@pytest.mark.parametrize("recycled", [False, True])
+def test_wal_copy_recovers_committed_rows_and_closes_pins(
+    tmp_path, pair, kernel, recycled
+):
+    # 2026-09-08：Windows 能力路径也必须识别真实 SQLite 重用后的当前代帧数。
+    if recycled:
+        path, writer = pair
+        before = path.with_name("index.db-wal").read_bytes()
+        assert writer.execute("PRAGMA wal_checkpoint(RESTART)").fetchone() == (0, 3, 3)
+        writer.execute("UPDATE payload SET value=43")
+        writer.commit()
+        assert path.with_name("index.db-wal").stat().st_size == len(before)
     with _capture(tmp_path) as (private, frames):
-        assert frames == 3
+        assert frames == (1 if recycled else 3)
         conn = sqlite3.connect(private)
         try:
-            assert conn.execute("SELECT value FROM payload").fetchall() == [(42,)]
+            assert conn.execute("SELECT value FROM payload").fetchall() == [
+                (43 if recycled else 42,)
+            ]
         finally:
             conn.close()
     assert os.path.exists(private) is False
