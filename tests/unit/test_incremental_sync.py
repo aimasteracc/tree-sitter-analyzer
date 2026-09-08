@@ -2737,3 +2737,111 @@ def test_watcher_stop_retains_active_timer_ownership(tmp_path, monkeypatch):
         release.set()
         watcher.stop(timeout=3)
         cache.close()
+
+
+@requires_posix_fd
+@pytest.mark.parametrize("failure", ["candidate", "exception"])
+def test_watcher_retries_transient_capture_without_another_event(
+    tmp_path, monkeypatch, failure
+):
+    # #1405：唯一一次保存通知遇到暂时读失败后，后台必须自行恢复新索引。
+    import threading
+
+    import tree_sitter_analyzer.indexing_snapshot as snapshot_owner
+    from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
+
+    path = tmp_path / "a.py"
+    path.write_text("def old(): pass\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    recovered = threading.Event()
+    results = []
+
+    def on_sync(result):
+        results.append(result)
+        if result.get("completeness") == "complete":
+            recovered.set()
+
+    watcher = FileWatcherDaemon(cache, poll_interval=1, debounce=0, on_sync=on_sync)
+    target = (
+        "_capture_candidate_fingerprint"
+        if failure == "candidate"
+        else "build_index_candidate_snapshot"
+    )
+    original = getattr(snapshot_owner, target)
+    attempts = []
+
+    def capture(*args, **kwargs):
+        attempts.append(True)
+        if len(attempts) == 1:
+            raise OSError("temporarily unreadable")
+        return original(*args, **kwargs)
+
+    try:
+        assert watcher.trigger_sync()["new_files"] == 1
+        path.write_text("def saved(): pass\n", encoding="utf-8")
+        monkeypatch.setattr(snapshot_owner, target, capture)
+        watcher._enqueue(str(path))
+        assert recovered.wait(4)
+        if failure == "candidate":
+            assert results[0]["completeness"] == "incomplete"
+        else:
+            assert results[0] == {"error": "temporarily unreadable"}
+        assert len(results) == 2
+        assert results[-1]["completeness"] == "complete"
+        assert results[-1]["updated_files"] == 1
+        assert watcher.get_stats()["events_processed"] == 1
+    finally:
+        watcher.stop(timeout=3)
+        cache.close()
+
+
+def test_watcher_retry_backoff_preserves_pending_file_notification(
+    tmp_path, monkeypatch
+):
+    # #1405：持续故障按上限退避，但不能把已有文件通知推迟到重试间隔。
+    from unittest.mock import Mock
+
+    from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
+
+    cache = ASTCache(str(tmp_path))
+    watcher = FileWatcherDaemon(cache, debounce=0.2)
+    scheduled = []
+
+    def timer(delay, callback):
+        scheduled.append((delay, callback))
+        return Mock(is_alive=lambda: False)
+
+    monkeypatch.setattr("tree_sitter_analyzer.file_watcher.threading.Timer", timer)
+    monkeypatch.setattr(watcher, "is_running", lambda: True)
+    monkeypatch.setattr(watcher, "_do_sync", lambda: {})
+    try:
+        for _ in range(7):
+            watcher._request_sync(retry=True)
+            scheduled[-1][1]()
+        assert [delay for delay, _ in scheduled] == [5, 10, 20, 40, 60, 60, 60]
+        watcher._enqueue("a.py")
+        watcher._request_sync(retry=True)
+        assert [delay for delay, _ in scheduled] == [5, 10, 20, 40, 60, 60, 60, 0.2]
+        assert watcher.get_stats()["events_processed"] == 1
+    finally:
+        watcher.stop()
+        cache.close()
+
+
+def test_watcher_does_not_retry_permanently_oversized_source(tmp_path):
+    # #1405：永久超过字节上限不能启动无意义的后台重试。
+    from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
+
+    with (tmp_path / "a.py").open("wb") as source:
+        source.truncate(64 * 1024 * 1024 + 1)
+    cache = ASTCache(str(tmp_path))
+    results = []
+    watcher = FileWatcherDaemon(cache, debounce=0, on_sync=results.append)
+    try:
+        watcher._request_sync()
+        watcher._debounce_timer.join(timeout=3)
+        assert watcher.is_running() is False
+        assert [result["completeness"] for result in results] == ["incomplete"]
+    finally:
+        watcher.stop(timeout=3)
+        cache.close()

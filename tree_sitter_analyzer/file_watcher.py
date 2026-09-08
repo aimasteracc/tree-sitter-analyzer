@@ -108,6 +108,7 @@ class FileWatcherDaemon:
 
         self._pending: set[str] = set()
         self._sync_requested = False
+        self._retry_attempt = 0
         self._pending_lock = threading.Lock()
         self._debounce_timer: threading.Timer | None = None
         self._timers: set[threading.Timer] = set()
@@ -258,16 +259,26 @@ class FileWatcherDaemon:
 
         self._request_sync()
 
-    def _request_sync(self) -> None:
-        """把启动对齐和文件通知合并到同一后台同步请求。"""
+    def _request_sync(self, *, retry: bool = False) -> None:
+        """合并通知与重试，临时故障指数退避且不推迟已排队的文件通知。"""
+        if retry and not self.is_running():
+            return
         with self._pending_lock:
             if self._stop_event.is_set():
                 return
+            if retry and self._sync_requested:
+                return
+            delay = self._debounce
+            if retry:
+                delay = min(60.0, self._poll_interval * 2**self._retry_attempt)
+                self._retry_attempt = min(6, self._retry_attempt + 1)
+            else:
+                self._retry_attempt = 0
             self._sync_requested = True
             if self._debounce_timer is not None:
                 self._debounce_timer.cancel()
             self._timers = {timer for timer in self._timers if timer.is_alive()}
-            timer = threading.Timer(self._debounce, self._flush_pending)
+            timer = threading.Timer(delay, self._flush_pending)
             timer.daemon = True
             self._debounce_timer = timer
             self._timers.add(timer)
@@ -302,6 +313,7 @@ class FileWatcherDaemon:
                 release_index_candidate_snapshot,
             )
             from .indexing_snapshot import (
+                _PERMANENT_SOURCE_REJECTIONS,
                 build_index_candidate_snapshot,
                 walk_index_candidate_entries,
             )
@@ -330,11 +342,25 @@ class FileWatcherDaemon:
             with self._stats_lock:
                 self._stats.syncs_triggered += 1
                 self._stats.last_sync_at = time.time()
+            if (
+                candidate.discovery_error
+                or candidate.frozen_error
+                or any(
+                    entry.decision == "error"
+                    and entry.reason not in _PERMANENT_SOURCE_REJECTIONS
+                    for entry in candidate.entries
+                )
+            ):
+                self._request_sync(retry=True)
+            elif result.scope_complete:
+                with self._pending_lock:
+                    self._retry_attempt = 0
             return result.to_dict()
         except Exception as exc:
             with self._stats_lock:
                 self._stats.errors += 1
             logger.error("sync failed: %s", exc)
+            self._request_sync(retry=True)
             return {"error": str(exc)}
 
 
