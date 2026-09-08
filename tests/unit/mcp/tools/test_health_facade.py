@@ -67,6 +67,8 @@ _ALL_ACTIONS = frozenset(
         "imports",
         "matrix",
         "dead",
+        "unreachable",
+        "middleware",
         "routes",
         "overview",
         "deps",
@@ -167,12 +169,10 @@ def test_health_facade_builds_and_has_all_actions() -> None:
 
 
 def test_health_facade_total_action_count() -> None:
-    """14 actions total — uml/graph/similarity moved to viz; test_gap wired
-    (RFC-0003); self wired (RFC-0025 Layer 5); refactor_queue wired
-    (RFC-0027 §L8)."""
+    """保留已有动作并整合两个发布的检查，合计 16 个动作。"""
     facade = build_health_facade(project_root=None)
     total = len(facade.action_map) + len(facade.bespoke_map)
-    assert total == 14
+    assert total == 16
 
 
 def test_health_facade_does_not_contain_viz_actions() -> None:

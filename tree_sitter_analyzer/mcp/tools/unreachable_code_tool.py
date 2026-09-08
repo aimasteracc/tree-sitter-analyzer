@@ -110,19 +110,16 @@ class UnreachableCodeTool(BaseMCPTool):
     def _execute_file_mode(
         self, arguments: dict[str, Any], output_format: str
     ) -> dict[str, Any]:
-        file_path = arguments.get("file_path", "")
-        if not file_path:
-            return {"error": "file_path is required for file mode"}
-
+        file_path = arguments["file_path"]
         resolved = self._resolve_path(file_path)
         if resolved is None:
-            return {"error": f"File not found: {file_path}"}
+            return {"success": False, "error": f"File not found: {file_path}"}
 
         try:
             result = analyze_file_unreachable(resolved)
         except Exception as exc:
             logger.error("unreachable_code file analysis failed: %s", exc)
-            return {"error": str(exc)}
+            return {"success": False, "error": str(exc)}
 
         response = self._build_file_response(result, output_format)
         return response
@@ -131,7 +128,7 @@ class UnreachableCodeTool(BaseMCPTool):
         self, arguments: dict[str, Any], output_format: str
     ) -> dict[str, Any]:
         if not self.project_root:
-            return {"error": "Project root not set for project mode."}
+            return {"success": False, "error": "Project root not set for project mode."}
 
         include_tests = arguments.get("include_test_files", False)
         max_files = int(arguments.get("max_files", 500))
@@ -144,16 +141,15 @@ class UnreachableCodeTool(BaseMCPTool):
             )
         except Exception as exc:
             logger.error("unreachable_code project analysis failed: %s", exc)
-            return {"error": str(exc)}
+            return {"success": False, "error": str(exc)}
 
         response = self._build_project_response(results, output_format)
         return response
 
-
     def _build_file_response(
         self, result: UnreachableCodeResult, output_format: str
     ) -> dict[str, Any]:
-        return result.to_dict()
+        return {"success": not result.errors, **result.to_dict()}
 
     def _build_project_response(
         self, results: list[UnreachableCodeResult], output_format: str
@@ -163,6 +159,7 @@ class UnreachableCodeTool(BaseMCPTool):
         files_with_issues = sum(1 for r in results if r.unreachable_blocks)
 
         return {
+            "success": not any(r.errors for r in results),
             "files_with_issues": files_with_issues,
             "total_functions_analyzed": total_functions,
             "total_unreachable_blocks": total_blocks,

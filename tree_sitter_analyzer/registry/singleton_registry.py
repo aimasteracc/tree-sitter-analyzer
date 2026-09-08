@@ -7,7 +7,7 @@ provides the accessor so callers don't need to pass the registry explicitly.
 
 from __future__ import annotations
 
-from ..mcp.subscription_registry import SubscriptionRegistry
+from .subscription_registry import SubscriptionRegistry
 
 _registry: SubscriptionRegistry | None = None
 

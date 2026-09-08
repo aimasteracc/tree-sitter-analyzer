@@ -6,19 +6,17 @@ proving the rename engine's core logic without any ASTCache instance.
 
 from __future__ import annotations
 
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from tree_sitter_analyzer.rename_symbol import (
     RenameResult,
     RenameSite,
     _apply_rename_to_file,
-    _collect_rename_sites_from_resolver,
-    _deduplicate_sites,
-    _find_identifier_at_or_near,
     _group_sites_by_file,
-    _is_word_boundary,
-    _scan_line_for_name,
     rename_symbol,
 )
 
@@ -65,134 +63,6 @@ class TestRenameResultToDict:
         assert d["errors"] == []
         assert d["files_changed"] == 0
         assert d["sites_renamed"] == 0
-
-
-# ---------------------------------------------------------------------------
-# _is_word_boundary
-# ---------------------------------------------------------------------------
-
-
-class TestIsWordBoundary:
-    def test_position_before_text(self):
-        assert _is_word_boundary("foo", -1) is True
-
-    def test_position_after_text(self):
-        assert _is_word_boundary("foo", 3) is True
-
-    def test_space_is_boundary(self):
-        assert _is_word_boundary("foo bar", 3) is True  # space at index 3
-
-    def test_dot_is_boundary(self):
-        assert _is_word_boundary("a.b", 1) is True  # '.'
-
-    def test_underscore_is_not_boundary(self):
-        assert _is_word_boundary("a_b", 1) is False  # '_'
-
-    def test_alpha_is_not_boundary(self):
-        assert _is_word_boundary("abc", 1) is False
-
-    def test_digit_is_not_boundary(self):
-        assert _is_word_boundary("a1b", 1) is False
-
-
-# ---------------------------------------------------------------------------
-# _scan_line_for_name
-# ---------------------------------------------------------------------------
-
-
-class TestScanLineForName:
-    def test_single_match(self):
-        positions = _scan_line_for_name("x = foo()", "foo")
-        assert positions == [4]
-
-    def test_no_match(self):
-        assert _scan_line_for_name("bar = baz()", "foo") == []
-
-    def test_prefix_not_matched(self):
-        # "foobar" — "foo" is a prefix but not a standalone word
-        assert _scan_line_for_name("foobar = 1", "foo") == []
-
-    def test_suffix_not_matched(self):
-        assert _scan_line_for_name("myfoo = 1", "foo") == []
-
-    def test_multiple_occurrences(self):
-        positions = _scan_line_for_name("foo + foo", "foo")
-        assert positions == [0, 6]
-
-    def test_dot_access_counts_as_boundary(self):
-        # "obj.foo" — dot is a word boundary so "foo" at pos 4 is matched
-        positions = _scan_line_for_name("obj.foo", "foo")
-        assert 4 in positions
-
-    def test_empty_line(self):
-        assert _scan_line_for_name("", "foo") == []
-
-
-# ---------------------------------------------------------------------------
-# _find_identifier_at_or_near
-# ---------------------------------------------------------------------------
-
-
-class TestFindIdentifierAtOrNear:
-    def test_exact_column(self):
-        # "def foo()" — "foo" starts at col 4
-        col = _find_identifier_at_or_near("def foo():", 4, "foo")
-        assert col == 4
-
-    def test_near_column(self):
-        # column given is 2 (inside "def"), but "foo" starts at 4
-        col = _find_identifier_at_or_near("def foo():", 2, "foo")
-        assert col == 4
-
-    def test_not_found(self):
-        col = _find_identifier_at_or_near("def bar():", 4, "foo")
-        assert col is None
-
-    def test_prefix_not_matched(self):
-        # "foobar" — should not match "foo"
-        col = _find_identifier_at_or_near("foobar = 1", 0, "foo")
-        assert col is None
-
-
-# ---------------------------------------------------------------------------
-# _deduplicate_sites
-# ---------------------------------------------------------------------------
-
-
-class TestDeduplicateSites:
-    def _make_site(self, file: str, line: int, col: int) -> RenameSite:
-        return RenameSite(
-            file=file, line=line, column=col, old_text="x", site_type="ref"
-        )
-
-    def test_no_duplicates(self):
-        sites = [self._make_site("a.py", 1, 0), self._make_site("a.py", 2, 0)]
-        assert len(_deduplicate_sites(sites)) == 2
-
-    def test_exact_duplicate_removed(self):
-        s1 = self._make_site("a.py", 1, 0)
-        s2 = self._make_site("a.py", 1, 0)
-        result = _deduplicate_sites([s1, s2])
-        assert len(result) == 1
-
-    def test_different_file_not_deduped(self):
-        s1 = self._make_site("a.py", 1, 0)
-        s2 = self._make_site("b.py", 1, 0)
-        result = _deduplicate_sites([s1, s2])
-        assert len(result) == 2
-
-    def test_preserves_order_first_wins(self):
-        s1 = RenameSite(
-            file="a.py", line=1, column=0, old_text="foo", site_type="definition"
-        )
-        s2 = RenameSite(
-            file="a.py", line=1, column=0, old_text="foo", site_type="reference"
-        )
-        result = _deduplicate_sites([s1, s2])
-        assert result[0].site_type == "definition"
-
-    def test_empty_input(self):
-        assert _deduplicate_sites([]) == []
 
 
 # ---------------------------------------------------------------------------
@@ -272,177 +142,23 @@ class TestApplyRenameToFile:
         assert "foobar" in content
         assert "baz" in content
 
-    def test_line_zero_site_scans_for_name(self, tmp_path):
-        """A site with line=0 should fall back to scanning the first line."""
-        f = tmp_path / "zero_line.py"
-        f.write_text("foo = 1\n")
-        # column=-1 and line=0 triggers the fallback scan branch
-        site = RenameSite(
-            file=str(f), line=0, column=-1, old_text="foo", site_type="reference"
-        )
-        ok = _apply_rename_to_file(str(f), [site], "foo", "bar")
-        assert ok is True
-        assert "bar" in f.read_text()
-
-    def test_site_with_negative_column_triggers_fallback(self, tmp_path):
-        """A site with column<0 on a real line triggers _scan_line_for_name fallback."""
-        f = tmp_path / "neg_col.py"
-        f.write_text("x = foo\n")
-        site = RenameSite(
-            file=str(f), line=1, column=-1, old_text="foo", site_type="reference"
-        )
-        ok = _apply_rename_to_file(str(f), [site], "foo", "baz")
-        assert ok is True
-        assert "baz" in f.read_text()
-
-    def test_out_of_range_line_skipped(self, tmp_path):
-        """A site pointing to a line beyond file length is silently skipped."""
-        f = tmp_path / "short.py"
-        f.write_text("foo = 1\n")
-        site = RenameSite(
-            file=str(f), line=999, column=0, old_text="foo", site_type="reference"
-        )
-        ok = _apply_rename_to_file(str(f), [site], "foo", "bar")
-        assert ok is True
-        # File should be unchanged (site skipped)
-        assert "foo" in f.read_text()
-
-    def test_col_beyond_line_length_not_renamed(self, tmp_path):
-        """A column beyond the line length does not raise, just skips."""
-        f = tmp_path / "short_line.py"
-        f.write_text("x\n")
-        site = RenameSite(
-            file=str(f), line=1, column=50, old_text="foo", site_type="reference"
-        )
-        ok = _apply_rename_to_file(str(f), [site], "foo", "bar")
-        assert ok is True
-
-    def test_candidate_mismatch_not_renamed(self, tmp_path):
-        """When text at given column doesn't match old_name, nothing is renamed."""
-        # "xyz = foo" — site points to col 0 (where "xyz" is), not where "foo" is
-        f = tmp_path / "mismatch.py"
-        f.write_text("xyz = foo\n")
-        site = RenameSite(
-            file=str(f), line=1, column=0, old_text="foo", site_type="reference"
-        )
-        ok = _apply_rename_to_file(str(f), [site], "foo", "bar")
-        assert ok is True
-        # candidate at col 0 is "xyz", not "foo", so neither occurrence is renamed
-        content = f.read_text()
-        assert "foo" in content  # unchanged
+    def test_unknown_positions_are_rejected(self, tmp_path):
+        """未知坐标不能触发文本扫描替换。"""
+        f = tmp_path / "unknown.py"
+        original = b"foo = 1\n"
+        f.write_bytes(original)
+        for line, column in [(0, -1), (1, -1), (999, 0), (1, 50), (1, 1)]:
+            site = RenameSite(str(f), line, column, "foo", "reference")
+            assert _apply_rename_to_file(str(f), [site], "foo", "bar") is False
+            assert f.read_bytes() == original
 
     def test_write_failure_returns_false(self, tmp_path):
-        """OSError on write returns False."""
+        """写入异常必须上报失败。"""
         f = tmp_path / "read_only.py"
-        f.write_text("foo = 1\n")
-        site = RenameSite(
-            file=str(f), line=1, column=0, old_text="foo", site_type="definition"
-        )
-        with patch("builtins.open", side_effect=[open(f), OSError("disk full")]):
-            ok = _apply_rename_to_file(str(f), [site], "foo", "bar")
-        assert ok is False
-
-
-# ---------------------------------------------------------------------------
-# _collect_rename_sites_from_resolver (mock resolve_result)
-# ---------------------------------------------------------------------------
-
-
-class TestCollectRenameSitesFromResolver:
-    def _make_resolve(self, definitions=(), references=()):
-        return SimpleNamespace(
-            definitions=list(definitions), references=list(references)
-        )
-
-    def _make_defn(self, file: str, line: int):
-        return SimpleNamespace(file=file, line=line)
-
-    def _make_ref(self, file: str, line: int, reference_type: str = "call"):
-        return SimpleNamespace(file=file, line=line, reference_type=reference_type)
-
-    def test_empty_resolve_result(self, tmp_path):
-        resolve = self._make_resolve()
-        sites = _collect_rename_sites_from_resolver(resolve, "foo", str(tmp_path))
-        assert sites == []
-
-    def test_definition_collected(self, tmp_path):
-        f = tmp_path / "a.py"
-        f.write_text("def foo():\n    pass\n")
-        defn = self._make_defn(str(f), 1)
-        resolve = self._make_resolve(definitions=[defn])
-        sites = _collect_rename_sites_from_resolver(resolve, "foo", str(tmp_path))
-        assert any(s.site_type == "definition" for s in sites)
-        assert any(s.old_text == "foo" for s in sites)
-
-    def test_reference_collected(self, tmp_path):
-        f = tmp_path / "b.py"
-        f.write_text("result = foo()\n")
-        ref = self._make_ref(str(f), 1, "call")
-        resolve = self._make_resolve(references=[ref])
-        sites = _collect_rename_sites_from_resolver(resolve, "foo", str(tmp_path))
-        assert any(s.site_type == "call" for s in sites)
-
-    def test_missing_file_skipped(self, tmp_path):
-        defn = self._make_defn(str(tmp_path / "missing.py"), 1)
-        resolve = self._make_resolve(definitions=[defn])
-        sites = _collect_rename_sites_from_resolver(resolve, "foo", str(tmp_path))
-        assert sites == []
-
-    def test_reference_line_zero_added_with_zero_coords(self, tmp_path):
-        """References with line=0 are added with line=0, col=0."""
-        f = tmp_path / "ref.py"
-        f.write_text("import foo\n")
-        ref = self._make_ref(str(f), 0, "import")
-        resolve = self._make_resolve(references=[ref])
-        sites = _collect_rename_sites_from_resolver(resolve, "foo", str(tmp_path))
-        assert len(sites) == 1
-        assert sites[0].line == 0
-        assert sites[0].column == 0
-
-    def test_definition_ioerror_skipped(self, tmp_path):
-        """OSError when reading definition file is silently skipped."""
-        f = tmp_path / "broken.py"
-        f.write_text("def foo(): pass\n")
-        defn = self._make_defn(str(f), 1)
-        resolve = self._make_resolve(definitions=[defn])
-        with patch("builtins.open", side_effect=OSError("perm denied")):
-            sites = _collect_rename_sites_from_resolver(resolve, "foo", str(tmp_path))
-        assert sites == []
-
-    def test_reference_ioerror_skipped(self, tmp_path):
-        """OSError when reading reference file is silently skipped."""
-        f = tmp_path / "broken_ref.py"
-        f.write_text("foo()\n")
-        ref = self._make_ref(str(f), 1, "call")
-        resolve = self._make_resolve(references=[ref])
-        with patch("builtins.open", side_effect=OSError("perm denied")):
-            sites = _collect_rename_sites_from_resolver(resolve, "foo", str(tmp_path))
-        assert sites == []
-
-    def test_definition_line_out_of_range(self, tmp_path):
-        """Definition line beyond file length adds no sites."""
-        f = tmp_path / "short.py"
-        f.write_text("foo = 1\n")
-        defn = self._make_defn(str(f), 999)
-        resolve = self._make_resolve(definitions=[defn])
-        sites = _collect_rename_sites_from_resolver(resolve, "foo", str(tmp_path))
-        assert sites == []
-
-    def test_reference_line_out_of_range(self, tmp_path):
-        """Reference line beyond file length adds no sites."""
-        f = tmp_path / "short_ref.py"
-        f.write_text("foo = 1\n")
-        ref = self._make_ref(str(f), 999, "call")
-        resolve = self._make_resolve(references=[ref])
-        sites = _collect_rename_sites_from_resolver(resolve, "foo", str(tmp_path))
-        assert sites == []
-
-    def test_missing_reference_file_skipped(self, tmp_path):
-        """Non-existent reference file is silently skipped."""
-        ref = self._make_ref(str(tmp_path / "missing_ref.py"), 1, "call")
-        resolve = self._make_resolve(references=[ref])
-        sites = _collect_rename_sites_from_resolver(resolve, "foo", str(tmp_path))
-        assert sites == []
+        f.write_bytes(b"foo = 1\n")
+        site = RenameSite(str(f), 1, 0, "foo", "definition")
+        with patch("pathlib.Path.write_bytes", side_effect=OSError("disk full")):
+            assert _apply_rename_to_file(str(f), [site], "foo", "bar") is False
 
 
 # ---------------------------------------------------------------------------
@@ -525,3 +241,139 @@ class TestRenameSymbol:
         assert result.errors
         # Rollback should restore original content
         assert f.read_text() == original
+
+
+@pytest.mark.parametrize(
+    "source, new_name, error",
+    [
+        ("def foo(): pass\n", "class", "identifiers"),
+        ("foo = 1\n", "bar", "module-level"),
+        ("def foo(): pass\ndef foo(): pass\n", "bar", "multiple definitions"),
+        (
+            "def foo[T](): pass\n",
+            "bar",
+            "Generic type parameter bindings are unsupported"
+            if sys.version_info >= (3, 12)
+            else None,
+        ),
+        ("def foo(): pass\nmatch {}:\n    case {**bar}: pass\n", "bar", "Pattern"),
+        ("def foo(): pass\nfrom a import foo\n", "bar", "Ambiguous import binding"),
+        ("def foo(): pass\ndef other():\n    global foo\n", "bar", "Global/nonlocal"),
+        (
+            "def foo(): pass\ndef other():\n    def foo(): pass\n",
+            "bar",
+            "shadowed definition",
+        ),
+        ("def foo(): pass\nimport bar\n", "bar", "import binding"),
+        (
+            "def foo(): pass\ntry: pass\nexcept Exception as bar: pass\n",
+            "bar",
+            "exception binding",
+        ),
+        ("def \uff46\uff4f\uff4f(): pass\n", "bar", "exact identifier"),
+    ],
+)
+def test_unsupported_engine_bindings_preserve_bytes(tmp_path, source, new_name, error):
+    path = tmp_path / "a.py"
+    original = source.encode()
+    path.write_bytes(original)
+    result = rename_symbol(
+        _make_mock_cache(str(tmp_path)), "foo", new_name, dry_run=False
+    )
+    assert len(result.errors) == 1
+    if error:
+        assert error in result.errors[0]
+    else:
+        # 2026-09-08：旧版解释器的语法错误文案随补丁版本变化。
+        with pytest.raises(SyntaxError) as syntax_error:
+            compile(source, str(path), "exec")
+        assert result.errors == [str(syntax_error.value)]
+    assert result.files_changed == 0
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "other_source, succeeds", [(b"foo();", False), (b"other();", True)]
+)
+def test_other_language_possible_reference_is_checked(tmp_path, other_source, succeeds):
+    source = tmp_path / "a.py"
+    source.write_bytes(b"def foo(): pass\n")
+    other = tmp_path / "b.js"
+    other.write_bytes(other_source)
+    result = rename_symbol(_make_mock_cache(str(tmp_path)), "foo", "bar", dry_run=False)
+    assert (result.errors == []) is succeeds
+    assert source.read_bytes() == (
+        b"def bar(): pass\n" if succeeds else b"def foo(): pass\n"
+    )
+    assert other.read_bytes() == other_source
+
+
+def test_outside_root_source_is_rejected(tmp_path):
+    source = tmp_path / "outside.py"
+    original = b"def foo(): pass\n"
+    source.write_bytes(original)
+    root = tmp_path / "project"
+    root.mkdir()
+    with patch(
+        "tree_sitter_analyzer.ast_cache._walk_source_files",
+        return_value=iter([str(source)]),
+    ):
+        result = rename_symbol(_make_mock_cache(str(root)), "foo", "bar", dry_run=False)
+    assert result.errors == ["Source path is outside project root"]
+    assert source.read_bytes() == original
+
+
+def test_changed_source_is_not_overwritten(tmp_path):
+    from tree_sitter_analyzer.rename_symbol import _render_rename
+
+    source = tmp_path / "a.py"
+    source.write_bytes(b"def foo(): pass\n")
+    changed = b"def foo(): return 42\n"
+
+    def edit_after_plan(*args):
+        rendered = _render_rename(*args)
+        source.write_bytes(changed)
+        return rendered
+
+    with patch(
+        "tree_sitter_analyzer.rename_symbol._render_rename", side_effect=edit_after_plan
+    ):
+        result = rename_symbol(
+            _make_mock_cache(str(tmp_path)), "foo", "bar", dry_run=False
+        )
+    assert len(result.errors) == 1
+    assert "Source changed during rename" in result.errors[0]
+    assert source.read_bytes() == changed
+
+
+def test_rollback_failure_is_reported(tmp_path):
+    source = tmp_path / "a.py"
+    original = b"def foo(): pass\n"
+    source.write_bytes(original)
+    with patch("pathlib.Path.write_bytes", side_effect=OSError("access denied")):
+        result = rename_symbol(
+            _make_mock_cache(str(tmp_path)), "foo", "bar", dry_run=False
+        )
+    assert len(result.errors) == 2
+    assert "Failed to write" in result.errors[0]
+    assert "Rollback failed" in result.errors[1]
+    assert source.read_bytes() == original
+
+
+def test_unrelated_import_and_annotation_remain_unchanged(tmp_path):
+    source = tmp_path / "a.py"
+    original = b'from typing import Any\ndef foo(x: Any) -> str: return "foo"\n'
+    source.write_bytes(original)
+    result = rename_symbol(_make_mock_cache(str(tmp_path)), "foo", "bar", dry_run=False)
+    assert result.errors == []
+    assert source.read_bytes() == original.replace(b"def foo", b"def bar")
+
+
+def test_unicode_line_separator_in_literal_is_not_a_source_line(tmp_path):
+    # 2026-09-08：字符串里的 Unicode 分隔符不能改变调用坐标。
+    source = tmp_path / "a.py"
+    original = 'def foo(x="a\u0085foo"): return x\nfoo()\n'.encode()
+    source.write_bytes(original)
+    result = rename_symbol(_make_mock_cache(str(tmp_path)), "foo", "bar", dry_run=False)
+    assert result.errors == []
+    assert source.read_bytes() == 'def bar(x="a\u0085foo"): return x\nbar()\n'.encode()

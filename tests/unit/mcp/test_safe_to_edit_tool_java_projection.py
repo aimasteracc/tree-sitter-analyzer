@@ -6,6 +6,7 @@ import sqlite3
 import pytest
 
 import tests.unit.mcp._safe_to_edit_tool_helpers as _fixtures
+from tree_sitter_analyzer.ast_cache import _AST_CACHE_EXTRACTOR_VERSION
 from tree_sitter_analyzer.mcp.tools.utils import safe_to_edit_helpers as helpers
 
 tool = _fixtures.tool
@@ -295,10 +296,11 @@ def test_snapshot_syntax_envelope_certifies_single_java_file() -> None:
     conn.execute(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 38)',
+        '"syntax_error": false}\', ?)',
         (
             "src/main/java/com/acme/Util.java",
             json.dumps([{"text": "package com.acme;"}]),
+            _AST_CACHE_EXTRACTOR_VERSION,
         ),
     )
 
@@ -365,7 +367,7 @@ def test_snapshot_syntax_envelope_rejects_conflicting_java_packages() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 38)',
+        '"syntax_error": false}\', ?)',
         [
             (
                 target,
@@ -375,8 +377,13 @@ def test_snapshot_syntax_envelope_rejects_conflicting_java_packages() -> None:
                         {"text": "package forged.name;"},
                     ]
                 ),
+                _AST_CACHE_EXTRACTOR_VERSION,
             ),
-            (other, json.dumps([{"text": "package org.example;"}])),
+            (
+                other,
+                json.dumps([{"text": "package org.example;"}]),
+                _AST_CACHE_EXTRACTOR_VERSION,
+            ),
         ],
     )
 

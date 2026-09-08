@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.29.5] - 2026-09-08
+
+**Develop merge-back:** retains all three published routes alongside existing preview-only planning and snapshot controls. Develop uses JSON-only output, exposes 355 CLI flags / 86 facade actions, and keeps its newer extractor version 39; the main-release details below describe the v1.29.5 release baseline.
+
+Hotfix for symbol extraction, safe Python renaming, and missing MCP/CLI routes.
+
+### Fixed
+
+- Centralized the symbol walker's node categories for 16 indexed languages. Corrected declaration and scope handling, including named JavaScript/TypeScript function expressions, Scala type declarations, and C++ functions. Extractor version **19** invalidates older extraction results when files are indexed again.
+- Replaced text-based renaming with fresh Python AST identifier locations. Supports a unique module-level function or class and direct absolute `from` imports, including aliases; preserves comments, strings, source encoding, and newlines. Ambiguous bindings, unsupported references, and affected unsupported languages fail before writing. Preview remains the default; explicit apply validates edits and attempts rollback if a write fails.
+- Restored `edit.rename`, `health.unreachable`, and `health.middleware` through the existing MCP facades and matching CLI routes: `--rename`, `--unreachable-code`, and `--detect-middleware`. The CLI now exposes **332 flags**. Statement-level unreachable-code reports return a successful exit status when analysis succeeds; parse errors remain failures.
+- Corrected dependency direction: the singleton registry uses the subscription registry from the registry layer, and TOON serialization calls the formatter without importing the MCP layer.
+
+### Added
+
+- Optional unhandled-node diagnostics via `TSA_TRACK_UNHANDLED_NODES=1` to help identify declarations missing from extraction rules. Disabled by default.
+- Explicit public exports for the embedding API, plus regression checks for extraction categories, rename safety, facade/CLI routing, and generated action documentation.
+
+### Usage
+
+```bash
+# Preview first; add --rename-mode apply only to write the changes.
+tree-sitter-analyzer --rename old_name --rename-new-name new_name
+# Detect unreachable statements in a file or discover project middleware.
+tree-sitter-analyzer example.py --unreachable-code
+tree-sitter-analyzer --detect-middleware
+```
+
+The eight-facade MCP surface is unchanged. CLI output defaults to JSON; MCP output defaults to TOON. Run indexing again after upgrading to refresh cached extraction results.
+
 ## [1.29.4] - 2026-09-05
 
 Test-effectiveness round 3 + two real bug fixes.

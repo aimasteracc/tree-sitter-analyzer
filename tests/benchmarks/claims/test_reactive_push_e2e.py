@@ -133,7 +133,7 @@ def test_subscription_registry_detects_added_items():
 
     This is the delta engine that triggers resource-updated notifications.
     """
-    from tree_sitter_analyzer.mcp.subscription_registry import SubscriptionRegistry
+    from tree_sitter_analyzer.registry.subscription_registry import SubscriptionRegistry
 
     reg = SubscriptionRegistry(min_interval_s=0)  # no throttle in tests
     reg.subscribe("session-1", "functions()")
@@ -146,7 +146,7 @@ def test_subscription_registry_detects_added_items():
 
 def test_subscription_registry_detects_removed_items():
     """Registry must detect when items disappear from a snapshot."""
-    from tree_sitter_analyzer.mcp.subscription_registry import SubscriptionRegistry
+    from tree_sitter_analyzer.registry.subscription_registry import SubscriptionRegistry
 
     reg = SubscriptionRegistry(min_interval_s=0)
     reg.subscribe("session-2", "classes()")
@@ -159,7 +159,7 @@ def test_subscription_registry_detects_removed_items():
 
 def test_subscription_registry_no_delta_when_unchanged():
     """Registry must not fire delta when snapshot is unchanged (prevents noise)."""
-    from tree_sitter_analyzer.mcp.subscription_registry import SubscriptionRegistry
+    from tree_sitter_analyzer.registry.subscription_registry import SubscriptionRegistry
 
     reg = SubscriptionRegistry(min_interval_s=0)
     reg.subscribe("session-3", "imports()")

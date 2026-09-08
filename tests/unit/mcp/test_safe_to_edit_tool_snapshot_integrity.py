@@ -9,6 +9,7 @@ import pytest
 
 import tests.unit.mcp._safe_to_edit_tool_helpers as _fixtures
 from tests.unit.mcp._safe_to_edit_tool_helpers import _BrokenConnection, _symbol_conn
+from tree_sitter_analyzer.ast_cache import _AST_CACHE_EXTRACTOR_VERSION
 from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import (
     SafeToEditTool,
 )
@@ -401,7 +402,15 @@ def test_symbol_projection_completeness_ignores_irrelevant_rows() -> None:
 
 
 def test_symbol_projection_completeness_rejects_incomplete_walk() -> None:
-    conn = _symbol_conn(json.dumps({"import_projection_complete": False}))
+    conn = _symbol_conn(
+        json.dumps(
+            {
+                "truncated_depth": False,
+                "import_projection_complete": False,
+                "syntax_error": False,
+            }
+        )
+    )
 
     assert (
         helpers._symbol_walk_projections_complete(
@@ -412,7 +421,15 @@ def test_symbol_projection_completeness_rejects_incomplete_walk() -> None:
 
 
 def test_symbol_projection_completeness_rejects_syntax_error() -> None:
-    conn = _symbol_conn(json.dumps({"syntax_error": True}))
+    conn = _symbol_conn(
+        json.dumps(
+            {
+                "truncated_depth": False,
+                "import_projection_complete": True,
+                "syntax_error": True,
+            }
+        )
+    )
 
     assert (
         helpers._symbol_walk_projections_complete(
@@ -456,8 +473,22 @@ def test_symbol_projection_completeness_rejects_malformed_payload(
 
 
 def test_symbol_projection_rejects_stale_extractor_version() -> None:
-    conn = _symbol_conn(json.dumps({"truncated_depth": False}))
-    conn.execute("UPDATE ast_index SET extractor_version = 24")
+    conn = _symbol_conn(
+        json.dumps(
+            {
+                "truncated_depth": False,
+                "import_projection_complete": True,
+                "syntax_error": False,
+            }
+        )
+    )
+    assert helpers._symbol_walk_projections_complete(
+        conn, frozenset({"app.py"}), {"python"}
+    )
+    conn.execute(
+        "UPDATE ast_index SET extractor_version = ?",
+        (_AST_CACHE_EXTRACTOR_VERSION - 1,),
+    )
 
     assert (
         helpers._symbol_walk_projections_complete(

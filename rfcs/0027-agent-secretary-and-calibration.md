@@ -752,3 +752,15 @@ and emits a calibration report with non-placeholder numbers.
    it strictly a supporting signal? **Proposal: supporting signal — VCSR stays
    the single north star, per the roadmap's "no weighted score may hide a
    regression" rule.**
+
+## v1.29.5 release integration clarification (2026-09-08)
+
+The main v1.29.5 release published the following existing inner tools through MCP and CLI. Merge-back retains these public capabilities alongside develop's newer JSON-only protocol; it does not widen rename's conservative Python support. `plan_rename` continues to reject apply-like arguments and force preview, and `release_snapshot` retains its existing process-local lease exception.
+
+| Capability | CLI | MCP |
+|---|---|---|
+| Python rename, preview by default; explicit apply writes | `--rename SYMBOL --rename-new-name NAME [--rename-mode preview|apply]` | `edit action=rename` |
+| Unreachable statements within functions | `FILE --unreachable-code`; project mode available | `health action=unreachable` |
+| Middleware/interceptor chain discovery | `--detect-middleware` | `health action=middleware` |
+
+The previous `UnreachableCodeTool` deprecation rationale conflated statement-level analysis with `dead_code_analyzer`'s function-level external-caller concern. They use different analyzers. Both it and `MiddlewareDetectorTool` now have `wire` dispositions, backed by live registry checks and CLI parity. `UniversalAnalyzeTool` keeps its separate deprecation deadline. Tests must cover default rename preview, explicit apply, unchanged preview-only planning, unreachable analysis success/errors, and the exact facade/CLI maps.

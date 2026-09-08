@@ -931,3 +931,34 @@ class TestRFC0002HyphaeCalleeFalsePositive:
                 )
         finally:
             cache.close()
+
+
+@pytest.mark.parametrize(
+    ("statement", "bindings"),
+    [
+        ("import os  # noqa: F401", [("os", "os", "")]),
+        ("import a.b as c  # noqa: F401", [("a.b", "c", "a.b")]),
+        (
+            "from pkg import (  # noqa: F401\n    a, b\n)",
+            [("pkg", "a", ""), ("pkg", "b", "")],
+        ),
+    ],
+)
+def test_commented_import_preserves_bindings_and_source_location(statement, bindings):
+    """2026-09-08：普通导入须在正则匹配前去除注释，同时保留别名及来源坐标。"""
+    from tree_sitter_analyzer.synapse_resolver._imports import (
+        ImportEntry,
+        parse_imports,
+    )
+
+    assert parse_imports(statement, "python", "consumer.py", 7) == [
+        ImportEntry(
+            file_path="consumer.py",
+            language="python",
+            module_path=module,
+            local_name=local,
+            alias_of=alias,
+            line=7,
+        )
+        for module, local, alias in bindings
+    ]

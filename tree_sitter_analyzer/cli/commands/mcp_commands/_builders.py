@@ -331,3 +331,43 @@ def _build_uml_tool_args(args: Any, output_format: str) -> dict[str, Any]:
     if max_nodes is not None:
         tool_args["max_nodes"] = max_nodes
     return tool_args
+
+
+def _build_rename_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    """构造重命名参数，缺少新名称时在执行前返回验证错误。"""
+    new_name = getattr(args, "rename_new_name", None)
+    if not isinstance(new_name, str) or not new_name.strip():
+        raise ValueError("--rename requires --rename-new-name")
+    return {
+        "symbol": args.rename,
+        "new_name": new_name,
+        "mode": getattr(args, "rename_mode", "preview"),
+        "output_format": output_format,
+    }
+
+
+def _build_unreachable_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    """仅在提供文件路径时传递文件参数，项目模式无需位置参数。"""
+    result = {
+        "mode": getattr(args, "unreachable_code_mode", "file"),
+        "include_test_files": bool(
+            getattr(args, "unreachable_code_include_tests", False)
+        ),
+        "max_files": getattr(args, "unreachable_code_max_files", 500),
+        "output_format": output_format,
+    }
+    if getattr(args, "file_path", None):
+        result["file_path"] = args.file_path
+    return result
+
+
+def _build_middleware_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    """构造中间件查询参数并保留工具默认值。"""
+    result = {
+        "mode": getattr(args, "detect_middleware_mode", "all"),
+        "framework": getattr(args, "detect_middleware_framework", "all"),
+        "output_format": output_format,
+    }
+    if getattr(args, "detect_middleware_url_prefix", None) is not None:
+        result["url_prefix"] = args.detect_middleware_url_prefix
+    return result

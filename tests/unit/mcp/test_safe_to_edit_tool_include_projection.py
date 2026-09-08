@@ -7,6 +7,7 @@ import pytest
 
 import tests.unit.mcp._safe_to_edit_tool_helpers as _fixtures
 from tests.unit.mcp._safe_to_edit_tool_helpers import _projection_conn
+from tree_sitter_analyzer.ast_cache import _AST_CACHE_EXTRACTOR_VERSION
 from tree_sitter_analyzer.mcp.tools.utils import safe_to_edit_helpers as helpers
 
 tool = _fixtures.tool
@@ -125,7 +126,7 @@ def test_snapshot_syntax_envelope_rejects_uncaptured_include_root() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, ?, "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 38)',
+        '"syntax_error": false}\', ?)',
         [
             (
                 importer,
@@ -135,8 +136,9 @@ def test_snapshot_syntax_envelope_rejects_uncaptured_include_root() -> None:
                         {"text": '#include "project/util.h"'},
                     ]
                 ),
+                _AST_CACHE_EXTRACTOR_VERSION,
             ),
-            (target, "[]"),
+            (target, "[]", _AST_CACHE_EXTRACTOR_VERSION),
         ],
     )
 
