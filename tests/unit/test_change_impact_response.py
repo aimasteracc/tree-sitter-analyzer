@@ -653,3 +653,19 @@ def test_verdict_severity_rank_matches_journal_rank():
     )
 
     assert _VERDICT_SEVERITY == _JOURNAL_VERDICT_RANK
+
+
+def test_legacy_strategy_without_steps_preserves_verification_command():
+    """#1407：没有分步字段的旧内部调用仍返回已有完整命令。"""
+    summary = build_agent_summary(
+        AgentSummaryContext(
+            risk="low",
+            changed_files=["runtime.py"],
+            scope_paths=None,
+            verification=_make_verification(verification_command="uv run pytest -q"),
+            strategy=_make_strategy(verification_steps=[], focused_test_command=""),
+            affected_count=1,
+            tests_to_run_count=0,
+        )
+    )
+    assert summary["verification_command"] == "uv run pytest -q"

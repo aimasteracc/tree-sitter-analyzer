@@ -309,11 +309,15 @@ def test_low_impact_profile_rewrites_focused_pytest_for_local_agents(monkeypatch
     )
     assert strategy["local_verification_command"] == (
         "nice -n 15 uv run pytest tests/unit/cli/test_cli_main_module.py -n 2 -q"
+        " && nice -n 15 uv run pytest -n 2 -q"
     )
-    assert strategy["ci_verification_command"] == "uv run pytest -q"
+    assert strategy["ci_verification_command"] == (
+        "uv run pytest tests/unit/cli/test_cli_main_module.py -q && uv run pytest -q"
+    )
     assert strategy["verification_strategy"] == "local_low_impact_focused_then_ci"
     assert strategy["verification_steps"] == [
-        "nice -n 15 uv run pytest tests/unit/cli/test_cli_main_module.py -n 2 -q"
+        "nice -n 15 uv run pytest tests/unit/cli/test_cli_main_module.py -n 2 -q",
+        "nice -n 15 uv run pytest -n 2 -q",
     ]
 
 
@@ -435,14 +439,17 @@ def test_verification_strategy_retains_all_mapped_targets():
         verification=plan,
     )
 
-    expected = (
+    expected_steps = [
         "uv run pytest "
-        + " ".join(f"tests/unit/test_feature_{index:02d}.py" for index in range(25))
+        + " ".join(
+            f"tests/unit/test_feature_{index:02d}.py" for index in range(start, end)
+        )
         + " -q"
-    )
-    assert strategy["focused_test_command"] == expected
+        for start, end in [(0, 20), (20, 25)]
+    ]
+    assert strategy["focused_test_command"] == " && ".join(expected_steps)
     assert strategy["verification_strategy"] == "single_command"
-    assert strategy["verification_steps"] == [expected]
+    assert strategy["verification_steps"] == expected_steps
 
 
 def test_code_change_verification_plan_falls_back_to_default_suite():
@@ -726,9 +733,13 @@ def test_mixed_mapping_summary_requires_known_tests_before_default():
             tests_to_run_count=25,
         )
     )
-    focused = "uv run pytest " + " ".join(targets) + " -q"
-    assert summary["verification_command"] == focused
-    assert strategy["verification_steps"] == [focused, "uv run pytest -q"]
+    focused_steps = [
+        "uv run pytest " + " ".join(targets[start:end]) + " -q"
+        for start, end in [(0, 20), (20, 25)]
+    ]
+    steps = [*focused_steps, "uv run pytest -q"]
+    assert summary["verification_command"] == " && ".join(steps)
+    assert strategy["verification_steps"] == steps
     assert summary["stop_condition"] == (
-        f"All verification steps pass in order: {focused}; uv run pytest -q."
+        "All verification steps pass in order: " + "; ".join(steps) + "."
     )

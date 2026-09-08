@@ -406,8 +406,10 @@ def build_change_impact_response(
         "test_runner": verification["test_runner"],
         "default_test_command": verification["default_test_command"],
         "pytest_required": verification["pytest_required"],
-        "pytest_command": verification["pytest_command"],
-        "test_command": verification["test_command"],
+        "pytest_command": verification_command
+        if verification["pytest_required"]
+        else "",
+        "test_command": verification_command if verification["test_required"] else "",
         "verification_command": verification_command,
         "verification_reason": verification["verification_reason"],
         "focused_test_command": strategy["focused_test_command"],
@@ -493,9 +495,9 @@ def _effective_verification_command(
     local_command = strategy.get("local_verification_command")
     if isinstance(local_command, str) and local_command:
         return local_command
-    focused_command = strategy.get("focused_test_command")
-    if isinstance(focused_command, str) and focused_command:
-        return focused_command
+    steps = strategy.get("verification_steps")
+    if steps:
+        return " && ".join(steps)
     command = verification["verification_command"]
     return command if isinstance(command, str) else str(command)
 

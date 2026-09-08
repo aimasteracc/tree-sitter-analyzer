@@ -96,6 +96,32 @@ def build_test_command(
     return default_command.command
 
 
+def build_test_commands(
+    default_command: DefaultTestCommand, tests_to_run: list[str]
+) -> list[str]:
+    """完整保留测试集合；限制每次启动的目标数和 UTF-8 命令长度。"""
+    if not tests_to_run or default_command.runner not in {
+        "pytest",
+        "npm",
+        "pnpm",
+        "yarn",
+        "bun",
+    }:
+        return [default_command.command]
+    commands: list[str] = []
+    batch: list[str] = []
+    for target in tests_to_run:
+        if len(build_test_command(default_command, [target]).encode("utf-8")) > 6000:
+            raise ValueError("TEST_TARGET_EXCEEDS_COMMAND_BUDGET")
+        candidate = build_test_command(default_command, [*batch, target])
+        if batch and (len(batch) == 20 or len(candidate.encode("utf-8")) > 6000):
+            commands.append(build_test_command(default_command, batch))
+            batch = []
+        batch.append(target)
+    commands.append(build_test_command(default_command, batch))
+    return commands
+
+
 def _package_json_has_test_script(package_json: Path) -> bool:
     """Return True when package.json has a non-empty scripts.test entry."""
     try:

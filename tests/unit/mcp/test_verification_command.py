@@ -82,3 +82,52 @@ def test_build_test_command_falls_back_for_untargetable_runners():
         )
         == "go test ./..."
     )
+
+
+def test_batches_preserve_a_thousand_targets_in_order():
+    """#1407：大集合按实际进程参数分批，不能丢弃或重复目标。"""
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        build_test_commands,
+    )
+
+    targets = [f"tests/test_{index:04d}.py" for index in range(1000)]
+    commands = build_test_commands(
+        DefaultTestCommand("pytest", "uv run pytest -q"), targets
+    )
+    expected = [
+        "uv run pytest " + " ".join(targets[start : start + 20]) + " -q"
+        for start in range(0, 1000, 20)
+    ]
+    assert commands == expected
+
+
+def test_batches_respect_encoded_command_length():
+    """#1407：少量长 Unicode 路径也须分批，不能只限制路径个数。"""
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        build_test_commands,
+    )
+
+    prefix = ("路径" * 40 + "/") * 15
+    targets = [prefix + f"test_{index}.py" for index in range(3)]
+    expected = [
+        build_test_command(DefaultTestCommand("pytest", "uv run pytest -q"), [target])
+        for target in targets
+    ]
+    assert (
+        build_test_commands(DefaultTestCommand("pytest", "uv run pytest -q"), targets)
+        == expected
+    )
+
+
+def test_oversized_single_target_is_explicitly_rejected():
+    """#1407：无法形成有界命令的单路径必须报错，不能产生不可执行的成功计划。"""
+    import pytest
+
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        build_test_commands,
+    )
+
+    with pytest.raises(ValueError, match="TEST_TARGET_EXCEEDS_COMMAND_BUDGET"):
+        build_test_commands(
+            DefaultTestCommand("pytest", "uv run pytest -q"), ["x" * 6000]
+        )

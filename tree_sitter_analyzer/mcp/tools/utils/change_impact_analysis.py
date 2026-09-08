@@ -48,7 +48,7 @@ from .test_discovery_stems import (
 )
 from .verification_command import (
     DefaultTestCommand,
-    build_test_command,
+    build_test_commands,
     detect_default_test_command,
 )
 
@@ -481,13 +481,13 @@ def _build_verification_strategy(
         verification["test_runner"],
         verification["default_test_command"],
     )
-    # 展示长度不能改变验证集合；默认快速门禁不保证包含这些测试。
-    can_build_focused_command = bool(tests_to_run)
-    focused_command = (
-        build_test_command(default_command, tests_to_run)
-        if verification["test_required"] and can_build_focused_command
-        else ""
+    # 展示长度不能改变验证集合；每个子进程使用有界批次。
+    focused_steps = (
+        build_test_commands(default_command, tests_to_run)
+        if verification["test_required"] and tests_to_run
+        else []
     )
+    focused_command = " && ".join(focused_steps)
     final_command = verification["verification_command"]
 
     steps, strategy, hint = _select_verification_path(
@@ -495,6 +495,8 @@ def _build_verification_strategy(
         focused_command=focused_command,
         final_command=final_command,
     )
+    if focused_steps and steps[0] == focused_command:
+        steps = [*focused_steps, *steps[1:]]
     hint = _append_large_dirty_hint(hint, changed_count)
 
     strategy_payload = {
@@ -508,6 +510,7 @@ def _build_verification_strategy(
             strategy_payload,
             verification=verification,
             focused_command=focused_command,
+            focused_steps=focused_steps,
             final_command=final_command,
         )
     return strategy_payload
@@ -518,14 +521,20 @@ def _with_local_low_impact_profile(
     *,
     verification: dict[str, Any],
     focused_command: str,
+    focused_steps: list[str],
     final_command: str,
 ) -> dict[str, Any]:
     """Attach local low-impact pytest commands while preserving CI intent."""
     if not verification["test_required"] or verification["test_runner"] != "pytest":
         return strategy
 
-    local_source = focused_command or final_command
-    local_command = _low_impact_pytest_command(local_source)
+    # 本地降载只调整每一步的资源参数，不得遗漏默认门禁或已知测试。
+    local_steps = [
+        _low_impact_pytest_command(command)
+        for command in strategy["verification_steps"]
+    ]
+    local_command = " && ".join(local_steps)
+    final_command = " && ".join(strategy["verification_steps"])
     label = (
         "local_low_impact_focused_then_ci"
         if focused_command and focused_command != final_command
@@ -538,11 +547,13 @@ def _with_local_low_impact_profile(
     return {
         **strategy,
         "resource_profile": RESOURCE_PROFILE_LOCAL_LOW_IMPACT,
-        "low_impact_focused_test_command": local_command if focused_command else "",
+        "low_impact_focused_test_command": (
+            " && ".join(_low_impact_pytest_command(step) for step in focused_steps)
+        ),
         "local_verification_command": local_command,
         "ci_verification_command": final_command,
         "verification_strategy": label,
-        "verification_steps": [local_command],
+        "verification_steps": local_steps,
         "verification_hint": hint,
     }
 
