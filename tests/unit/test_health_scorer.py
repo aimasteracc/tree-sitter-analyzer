@@ -981,3 +981,38 @@ def test_project_graph_timeout_does_not_populate_scope(tmp_path, monkeypatch):
         assert graphs == {}
     finally:
         health._PROJECT_DEPENDENCY_GRAPHS.reset(token)
+
+
+def test_project_health_cache_tracks_changed_incoming_dependencies(tmp_path):
+    """默认磁盘缓存必须更新未改动文件的入向依赖评分。"""
+    # 2026-09-08 事件：保留时间戳的导入改写留下旧健康评分。
+    import os
+
+    from tree_sitter_analyzer.health_scorer import HealthScorer
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname="probe"\n', encoding="utf-8"
+    )
+    for name in ("b", "c"):
+        (tmp_path / f"{name}.py").write_text("value = 1\n", encoding="utf-8")
+    for index in range(6):
+        (tmp_path / f"a{index}.py").write_text("import b\n", encoding="utf-8")
+    scorer = HealthScorer()
+    scorer.score_project_with_stats(str(tmp_path))
+    for index in range(6):
+        path = tmp_path / f"a{index}.py"
+        before = path.stat()
+        path.write_text("import c\n", encoding="utf-8")
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    cached, _ = scorer.score_project_with_stats(str(tmp_path))
+    fresh, _ = scorer.score_project_with_stats(str(tmp_path), use_cache=False)
+
+    def dependencies(scores):
+        return {
+            Path(score.file_path).name: score.dimensions["dependencies"]
+            for score in scores
+            if Path(score.file_path).name in {"b.py", "c.py"}
+        }
+
+    assert dependencies(fresh) == {"b.py": 100.0, "c.py": 99.1}
+    assert dependencies(cached) == dependencies(fresh)

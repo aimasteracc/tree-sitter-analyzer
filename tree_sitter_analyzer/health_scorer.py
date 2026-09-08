@@ -428,7 +428,11 @@ class HealthScorer:
         """
         if cache is not None:
             cached = cache.lookup(file_path)
-            if cached is not None:
+            # 2026-09-08：其他文件的导入变化也会改变当前文件的依赖分数。
+            # 项目调用共用依赖图，缓存命中只需计算当前节点的入向、出向评分。
+            if cached is not None and cached.get("dimensions", {}).get(
+                "dependencies"
+            ) == round(score_dependencies(file_path), 1):
                 return HealthScore(
                     file_path=cached["file_path"],
                     total=cached["total"],
