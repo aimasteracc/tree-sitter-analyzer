@@ -320,8 +320,6 @@ class PulseBatchTool(BaseMCPTool):
 
         except PulseSourceError as exc:
             return exc.to_response()
-        except Exception as exc:
-            return {"success": False, "error": f"pulse query failed: {exc}"}
 
         if truncated_count > 0:
             results.append({"warning": f"{truncated_count} targets truncated"})

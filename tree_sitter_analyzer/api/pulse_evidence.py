@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from typing import Any
 
 from .. import index_snapshot
+from ..read_existing_access import _stable_consumer_code
 
 _STALE_REASONS = frozenset({"SOURCE_INDEX_MISMATCH", "SOURCE_GENERATION_MISMATCH"})
 _MISSING_REASONS = frozenset({"MISSING_INDEX", "MISSING_PROJECT_ROOT"})
@@ -53,26 +54,44 @@ def certified_pulse_connection(
     """
     if not project_root:
         raise PulseSourceError("MISSING_PROJECT_ROOT")
-    with index_snapshot.lease_existing_snapshot(project_root) as snapshot:
-        if (
-            snapshot.completeness != "complete"
-            or not snapshot.snapshot_id
-            or not snapshot.source_generation
-            or snapshot.source_scope is None
-        ):
-            raise PulseSourceError(snapshot.reason or "INDEX_SNAPSHOT_UNKNOWN")
+    with ExitStack() as stack:
+        try:
+            snapshot = stack.enter_context(
+                index_snapshot.lease_existing_snapshot(project_root)
+            )
+            if (
+                snapshot.completeness != "complete"
+                or not snapshot.snapshot_id
+                or not snapshot.source_generation
+                or snapshot.source_scope is None
+            ):
+                raise PulseSourceError(snapshot.reason or "INDEX_SNAPSHOT_UNKNOWN")
+            _owned_snapshot, connection = stack.enter_context(
+                index_snapshot.acquire_index_snapshot(
+                    snapshot.snapshot_id, project_root, snapshot.source_generation
+                )
+            )
+        except PulseSourceError:
+            raise
+        except (ValueError, RuntimeError, OSError, sqlite3.DatabaseError) as exc:
+            raise _source_failure(exc) from exc
         evidence: dict[str, Any] = {
             "freshness": "unknown",
             "snapshot_id": snapshot.snapshot_id,
             "source_generation": snapshot.source_generation,
             "reason": "SOURCE_REVALIDATION_PENDING",
         }
-        with index_snapshot.acquire_index_snapshot(
-            snapshot.snapshot_id, project_root, snapshot.source_generation
-        ) as (_owned_snapshot, connection):
-            yield connection, evidence
-            try:
-                index_snapshot.verify_snapshot_source_current(snapshot)
-            except (ValueError, RuntimeError, OSError) as exc:
-                raise PulseSourceError(str(exc)) from exc
-        evidence.update(freshness="fresh", reason=None)
+        yield connection, evidence
+        try:
+            index_snapshot.verify_snapshot_source_current(snapshot)
+        except (ValueError, RuntimeError, OSError, sqlite3.DatabaseError) as exc:
+            raise _source_failure(exc) from exc
+    evidence.update(freshness="fresh", reason=None)
+
+
+def _source_failure(exc: Exception) -> PulseSourceError:
+    """沿用既有认证错误分类，不把操作系统异常原文当作稳定协议字段。"""
+    code = _stable_consumer_code(exc)
+    if code == "INDEX_SNAPSHOT_FAILED":
+        code = "INDEX_SNAPSHOT_UNKNOWN"
+    return PulseSourceError(code)

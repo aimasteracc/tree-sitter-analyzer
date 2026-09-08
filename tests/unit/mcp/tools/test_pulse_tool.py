@@ -1,9 +1,4 @@
-"""Tests for tree_sitter_analyzer.mcp.tools.pulse_tool.
-
-Covers: PulseTool, PulseBatchTool, GetProjectSchemaTool execute() paths,
-error handling, and batch truncation.
-Target coverage: ~80-88% of pulse_tool.py.
-"""
+"""Pulse 工具的参数、源码认证、批次隔离和错误语义测试。"""
 
 from __future__ import annotations
 
@@ -17,10 +12,6 @@ from tree_sitter_analyzer.mcp.tools.pulse_tool import (
     PulseBatchTool,
     PulseTool,
 )
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _make_fake_cache(conn):
@@ -179,11 +170,6 @@ async def test_reverse_import_does_not_attach_unrelated_module(indexed_pulse_pro
     assert response["result"]["imported_by"] == []
 
 
-# ---------------------------------------------------------------------------
-# PulseTool
-# ---------------------------------------------------------------------------
-
-
 async def test_pulse_missing_project_returns_source_error():
     """缺失项目必须与符号不存在分开，不打开隐式索引。"""
     result = await PulseTool(None).execute({"file": "a.py", "symbol": "fn"})
@@ -216,11 +202,6 @@ async def test_pulse_query_raises_returns_error(indexed_pulse_project, monkeypat
     assert "pulse query failed" in result["error"]
 
 
-# ---------------------------------------------------------------------------
-# PulseBatchTool
-# ---------------------------------------------------------------------------
-
-
 async def test_pulse_batch_truncates_targets(indexed_pulse_project):
     """超量目标保留截断警告，已尝试但不存在的目标仍须计为失败。"""
     root, _ = indexed_pulse_project
@@ -246,11 +227,6 @@ async def test_pulse_batch_missing_project_returns_source_error():
     assert result["success"] is False
     assert result["source_evidence"]["reason"] == "MISSING_PROJECT_ROOT"
     assert "results" not in result
-
-
-# ---------------------------------------------------------------------------
-# GetProjectSchemaTool
-# ---------------------------------------------------------------------------
 
 
 async def test_get_project_schema_get_cache_raises():
@@ -777,22 +753,39 @@ async def test_certified_pulse_releases_readers_after_failure(
     assert evidence["freshness"] == "unknown"
 
 
-async def test_pulse_batch_source_access_failure_discards_targets(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize("kind", ["single", "batch"])
+@pytest.mark.parametrize(
+    "stage",
+    [
+        "lease_existing_snapshot",
+        "acquire_index_snapshot",
+        "verify_snapshot_source_current",
+    ],
+)
+async def test_pulse_source_access_failure_discards_targets(
+    certified_pulse_project, monkeypatch, kind, stage
 ):
-    """源码快照访问发生操作系统错误时，整批不能发布目标级结果。"""
+    """认证任一阶段的权限错误均返回稳定 unknown，不能发布部分结果。"""
 
     def denied(*args, **kwargs):
         raise PermissionError("source access denied")
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.api.pulse_evidence.index_snapshot.lease_existing_snapshot",
-        denied,
+        f"tree_sitter_analyzer.api.pulse_evidence.index_snapshot.{stage}", denied
     )
-    result = await PulseBatchTool(str(tmp_path)).execute(
-        {"targets": [{"file": "a.py", "symbol": "greet"}]}
+    target = {"file": "leaf.py", "symbol": "leaf"}
+    tool = PulseTool if kind == "single" else PulseBatchTool
+    result = await tool(str(certified_pulse_project)).execute(
+        target if kind == "single" else {"targets": [target]}
     )
     assert result == {
         "success": False,
-        "error": "pulse query failed: source access denied",
+        "error_code": "SOURCE_EVIDENCE_UNAVAILABLE",
+        "error": "Pulse source evidence unavailable: INDEX_SNAPSHOT_UNKNOWN",
+        "source_evidence": {
+            "freshness": "unknown",
+            "snapshot_id": None,
+            "source_generation": None,
+            "reason": "INDEX_SNAPSHOT_UNKNOWN",
+        },
     }
