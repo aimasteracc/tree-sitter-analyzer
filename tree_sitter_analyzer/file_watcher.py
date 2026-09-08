@@ -345,6 +345,9 @@ class FileWatcherDaemon:
             if (
                 candidate.discovery_error
                 or candidate.frozen_error
+                or result.errors
+                or result.backfill_errors
+                or result.manifest_certification_failed
                 or any(
                     entry.decision == "error"
                     and entry.reason not in _PERMANENT_SOURCE_REJECTIONS

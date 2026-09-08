@@ -2747,13 +2747,16 @@ def test_watcher_stop_retains_active_timer_ownership(tmp_path, monkeypatch):
 
 
 @requires_posix_fd
-@pytest.mark.parametrize("failure", ["candidate", "exception"])
+@pytest.mark.parametrize(
+    "failure", ["candidate", "exception", "file_result", "backfill", "manifest"]
+)
 def test_watcher_retries_transient_capture_without_another_event(
     tmp_path, monkeypatch, failure
 ):
     # #1405：唯一一次保存通知遇到暂时读失败后，后台必须自行恢复新索引。
     import threading
 
+    import tree_sitter_analyzer.index_snapshot_schema as manifest_owner
     import tree_sitter_analyzer.indexing_snapshot as snapshot_owner
     from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
 
@@ -2769,33 +2772,54 @@ def test_watcher_retries_transient_capture_without_another_event(
             recovered.set()
 
     watcher = FileWatcherDaemon(cache, poll_interval=1, debounce=0, on_sync=on_sync)
-    target = (
-        "_capture_candidate_fingerprint"
-        if failure == "candidate"
-        else "build_index_candidate_snapshot"
+    target = {
+        "candidate": "_capture_candidate_fingerprint",
+        "exception": "build_index_candidate_snapshot",
+        "file_result": "index_file",
+        "backfill": "backfill_cross_file_edges",
+        "manifest": "stamp_full_index_manifest",
+    }[failure]
+    owner = {"file_result": cache, "backfill": cache, "manifest": manifest_owner}.get(
+        failure, snapshot_owner
     )
-    original = getattr(snapshot_owner, target)
+    original = getattr(owner, target)
     attempts = []
 
     def capture(*args, **kwargs):
         attempts.append(True)
         if len(attempts) == 1:
+            if failure == "file_result":
+                return {
+                    "file": "a.py",
+                    "status": "error",
+                    "reason": "temporary read failure",
+                }
+            if failure == "backfill":
+                return {"errors": 1}
             raise OSError("temporarily unreadable")
         return original(*args, **kwargs)
 
     try:
         assert watcher.trigger_sync()["new_files"] == 1
         path.write_text("def saved(): pass\n", encoding="utf-8")
-        monkeypatch.setattr(snapshot_owner, target, capture)
+        monkeypatch.setattr(owner, target, capture)
         watcher._enqueue(str(path))
         assert recovered.wait(4)
-        if failure == "candidate":
-            assert results[0]["completeness"] == "incomplete"
-        else:
+        if failure == "exception":
             assert results[0] == {"error": "temporarily unreadable"}
+        else:
+            assert results[0]["completeness"] == "incomplete"
         assert len(results) == 2
         assert results[-1]["completeness"] == "complete"
-        assert results[-1]["updated_files"] == 1
+        counter = {
+            "file_result": "new_files",
+            "backfill": "unchanged_files",
+            "manifest": "unchanged_files",
+        }.get(failure, "updated_files")
+        assert results[-1][counter] == 1
+        assert [s["name"] for s in cache.lookup(str(path))["symbols"]["symbols"]] == [
+            "saved"
+        ]
         assert watcher.get_stats()["events_processed"] == 1
     finally:
         watcher.stop(timeout=3)
