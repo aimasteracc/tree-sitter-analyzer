@@ -16,6 +16,7 @@ from tree_sitter_analyzer.cache.fingerprint import (
 )
 
 from ...call_graph import CallGraph
+from ...project_graph import DependencyGraph
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
 
@@ -252,6 +253,7 @@ class CodeGraphCallTool(BaseMCPTool):
         # Compared against a fresh fingerprint on every _get_call_graph()
         # to detect in-place edits that don't change the directory mtime.
         self._call_graph_fingerprint: GraphFingerprint | None = None
+        self._graph_content_key: str | None = None
         self._call_graph_built_at: float | None = None
         self._cache_invalidated_reason: str | None = None
         super().__init__(project_root)
@@ -259,6 +261,7 @@ class CodeGraphCallTool(BaseMCPTool):
     def _on_project_root_changed(self, project_root: str | None) -> None:
         self._call_graph = None
         self._call_graph_fingerprint = None
+        self._graph_content_key = None
         self._call_graph_built_at = None
         self._cache_invalidated_reason = None
 
@@ -267,6 +270,7 @@ class CodeGraphCallTool(BaseMCPTool):
             raise ValueError("Project root not set. Call set_project_path first.")
 
         current_fp = compute_graph_fingerprint(self.project_root)
+        content_key = DependencyGraph._cache_key_for(str(self.project_root))
         reason: str | None = None
         if self._call_graph is None:
             reason = "cold"
@@ -274,11 +278,14 @@ class CodeGraphCallTool(BaseMCPTool):
             reason = self._explain_fingerprint_delta(
                 self._call_graph_fingerprint, current_fp
             )
+        elif content_key is None or self._graph_content_key != content_key:
+            reason = "source_modified"
 
         if reason is not None:
             self._call_graph = CallGraph(self.project_root)
             self._call_graph.build()
             self._call_graph_fingerprint = current_fp
+            self._graph_content_key = content_key
             self._call_graph_built_at = time.time()
             self._cache_invalidated_reason = reason
         else:

@@ -891,3 +891,93 @@ class TestScoreComplexityExtractorPath:
         assert score == 100.0, (
             f"4 simple Python functions must score 100.0 (avg_cc=1.0), got {score}"
         )
+
+
+def test_project_health_reuses_graph_only_within_one_call(tmp_path, monkeypatch):
+    """每次项目评分只校验一次依赖图，下次调用必须发现内容变化。"""
+    import os
+
+    from tree_sitter_analyzer.health_scorer import HealthScorer
+    from tree_sitter_analyzer.project_graph import DependencyGraph
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname="probe"\n', encoding="utf-8"
+    )
+    for name in ("b", "c"):
+        (tmp_path / f"{name}.py").write_text("value = 1\n", encoding="utf-8")
+    for index in range(6):
+        (tmp_path / f"a{index}.py").write_text("import b\n", encoding="utf-8")
+    original = DependencyGraph._cache_key_for
+    calls = []
+
+    def measured(root):
+        calls.append(root)
+        return original(root)
+
+    monkeypatch.setattr(DependencyGraph, "_cache_key_for", staticmethod(measured))
+    scorer = HealthScorer()
+    first, _ = scorer.score_project_with_stats(str(tmp_path), use_cache=False)
+    for index in range(6):
+        path = tmp_path / f"a{index}.py"
+        before = path.stat()
+        path.write_text("import c\n", encoding="utf-8")
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    second, _ = scorer.score_project_with_stats(str(tmp_path), use_cache=False)
+    assert len(calls) == 2
+
+    def by_name(scores):
+        return {
+            Path(score.file_path).name: score.dimensions["dependencies"]
+            for score in scores
+        }
+
+    assert by_name(first)["b.py"] == 99.1
+    assert by_name(second)["b.py"] == 100.0
+    assert by_name(second)["c.py"] == 99.1
+
+
+def test_project_health_restores_graph_scope_after_failure(tmp_path, monkeypatch):
+    """评分失败也必须恢复调用方上下文，不泄漏项目图缓存。"""
+    from tree_sitter_analyzer.health_scorer import (
+        _PROJECT_DEPENDENCY_GRAPHS,
+        HealthScorer,
+    )
+
+    scorer = HealthScorer()
+    outer = {"outer": object()}
+    token = _PROJECT_DEPENDENCY_GRAPHS.set(outer)
+
+    def fail(_root):
+        raise RuntimeError("enumeration failed")
+
+    monkeypatch.setattr(scorer, "_iter_source_files", fail)
+    try:
+        with pytest.raises(RuntimeError, match="enumeration failed"):
+            scorer.score_project_with_stats(str(tmp_path), use_cache=False)
+        assert _PROJECT_DEPENDENCY_GRAPHS.get() is outer
+    finally:
+        _PROJECT_DEPENDENCY_GRAPHS.reset(token)
+
+
+def test_project_graph_timeout_does_not_populate_scope(tmp_path, monkeypatch):
+    """超时回退不能把未完成的图当作本次评分可复用的结果。"""
+    import time
+
+    import tree_sitter_analyzer.health_scorer as health
+
+    path = tmp_path / "a.py"
+    path.write_text("import os\n", encoding="utf-8")
+    graphs = {}
+    token = health._PROJECT_DEPENDENCY_GRAPHS.set(graphs)
+
+    def delayed(_root):
+        time.sleep(0.03)
+        return object()
+
+    monkeypatch.setattr(health, "_build_dep_graph", delayed)
+    monkeypatch.setattr(health, "_DEP_GRAPH_TIMEOUT_S", 0.001)
+    try:
+        assert health.score_dependencies(str(path)) == 100.0
+        assert graphs == {}
+    finally:
+        health._PROJECT_DEPENDENCY_GRAPHS.reset(token)

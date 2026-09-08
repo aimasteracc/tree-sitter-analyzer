@@ -9,6 +9,7 @@ Key classes:
 - BlastRadius: Impact analysis (forward/reverse dependency traversal)
 """
 
+import hashlib
 import os
 from collections import defaultdict, deque
 from collections.abc import Callable
@@ -359,7 +360,7 @@ class DependencyGraph:
     _global_cache: dict[str, "DependencyGraph"] = {}
 
     def __new__(cls, project_root: str) -> "DependencyGraph":
-        # Use cache keyed by project_root + mtime
+        # 完整内容与项目路径决定复用；无法读取时仅构建，不复用。
         key = cls._cache_key_for(project_root)
         if key is not None and key in cls._global_cache:
             return cls._global_cache[key]
@@ -398,24 +399,52 @@ class DependencyGraph:
 
     @staticmethod
     def _cache_key_for(project_root: str) -> str | None:
-        """Generate a cache key based on project source-file fingerprint.
+        """完整内容与路径共同决定缓存键；读取失败或超限时不复用。"""
 
-        Uses ``compute_graph_fingerprint`` (file_count + max_mtime_ns of all
-        source files) instead of the project-root directory mtime alone.
-        Directory mtime only flips on file add/remove, so modifying a file
-        in place previously left a stale graph cached forever.
+        def abort(error: OSError) -> None:
+            raise error
 
-        Cost: ~10ms on a 1300-file repo — fast enough to call on every
-        ``DependencyGraph(root)`` construction.
-        """
+        digest = hashlib.sha256()
         try:
             os.stat(project_root)
+            for directory, dirs, names in os.walk(project_root, onerror=abort):
+                dirs[:] = sorted(
+                    name
+                    for name in dirs
+                    if name not in EXCLUDE_DIRS and not name.startswith(".")
+                )
+                for name in sorted(names):
+                    if (
+                        name.startswith(".")
+                        or Path(name).suffix.lower() not in GRAPH_SOURCE_EXTS
+                    ):
+                        continue
+                    path = Path(directory) / name
+                    with path.open("rb") as stream:
+                        before = os.fstat(stream.fileno())
+                        content = stream.read(64 * 1024 * 1024 + 1)
+                        after = os.fstat(stream.fileno())
+                    if len(content) > 64 * 1024 * 1024 or (
+                        before.st_dev,
+                        before.st_ino,
+                        before.st_size,
+                        before.st_mtime_ns,
+                        before.st_ctime_ns,
+                    ) != (
+                        after.st_dev,
+                        after.st_ino,
+                        after.st_size,
+                        after.st_mtime_ns,
+                        after.st_ctime_ns,
+                    ):
+                        return None
+                    digest.update(os.fsencode(os.path.relpath(path, project_root)))
+                    digest.update(b"\0")
+                    digest.update(str(after.st_mtime_ns).encode("ascii") + b"\0")
+                    digest.update(hashlib.sha256(content).digest())
         except OSError:
             return None
-        from .cache.fingerprint import compute_graph_fingerprint
-
-        fp = compute_graph_fingerprint(project_root)
-        return f"{project_root}:{fp.file_count}:{fp.max_mtime_ns}"
+        return f"{project_root}:{digest.hexdigest()}"
 
     # Shared exclude set (incl. C#/Java/Rust build dirs) — constants.EXCLUDE_DIRS
     _EXCLUDE_DIRS = EXCLUDE_DIRS
@@ -448,8 +477,7 @@ class DependencyGraph:
 
     def _build(self) -> None:
         """Scan project directory and build the dependency graph."""
-        # Shared with cache/fingerprint.py — the fingerprint is this graph's
-        # staleness signal, so the two sets must never drift.
+        # 与内容缓存键使用相同的扩展名范围。
         supported_exts = set(GRAPH_SOURCE_EXTS)
 
         # Collect all source files (excluding generated/dependency dirs)
