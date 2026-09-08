@@ -32,13 +32,10 @@ _SAFE_SPANS = (
     re.compile(r"13 言語は `?pipeline_registered|13 种语言为 `?pipeline_registered"),
     re.compile(r"5 言語 gap|5 语言 gap"),
     re.compile(r"1 ワークフロー|一个工作流"),
-    # Re-pinned 2026-09-05: 338 -> 344 for the 6 new nervous-system facade
-    # actions' CLI twins (--pulse, --pulse-batch, --project-schema,
-    # --tql-schema, --tql, --semantic-neighbors).
-    # Deliberately an exact count, not \d+ — the registry must force a
-    # conscious re-pin when the CLI surface changes.
-    re.compile(r"\b344 CLI flags\b", re.IGNORECASE),
-    re.compile(r"344 の CLI フラグ|344 个 CLI flag", re.IGNORECASE),
+    # v1.29.5 合并恢复三个路由及其参数，共增加 11 个选项：344 → 355。
+    # 只放行经运行时与文档契约验证的精确数量，不允许任意数字。
+    re.compile(r"\b355 CLI flags\b", re.IGNORECASE),
+    re.compile(r"355 の CLI フラグ|355 个 CLI flag", re.IGNORECASE),
     re.compile(r"\b(?:FTS5|BM25)\b"),
     re.compile(r"\bE[0-4]\b"),
     re.compile(r"\bE2E\b", re.IGNORECASE),
