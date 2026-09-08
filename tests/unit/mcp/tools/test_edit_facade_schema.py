@@ -17,11 +17,11 @@ def test_edit_annotations_not_read_only() -> None:
     )
 
 
-def test_edit_annotations_not_destructive() -> None:
-    """edit facade suggests/analyses; it does not write files."""
+def test_edit_annotations_advertise_rename_writes() -> None:
+    """发布的 rename apply 会写文件，公开注解必须如实声明。"""
     from tree_sitter_analyzer.mcp.tools.edit_facade import _EDIT_ANNOTATIONS
 
-    assert _EDIT_ANNOTATIONS["destructiveHint"] is False
+    assert _EDIT_ANNOTATIONS["destructiveHint"] is True
 
 
 def test_edit_annotations_all_four_hints_present() -> None:
@@ -40,7 +40,7 @@ def test_edit_facade_definition_includes_annotations() -> None:
     assert "annotations" in defn
     annot = defn["annotations"]
     assert annot["readOnlyHint"] is False
-    assert annot["destructiveHint"] is False
+    assert annot["destructiveHint"] is True
 
 
 def test_ast_diff_facade_description_uses_real_mode_params() -> None:
@@ -82,6 +82,7 @@ def test_edit_facade_schema_includes_action_and_required() -> None:
         "guard",
         "impact",
         "refactor",
+        "rename",
         "constraints",
         "pr",
         "classify",

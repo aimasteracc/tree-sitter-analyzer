@@ -75,7 +75,8 @@ TOOL_DISPOSITIONS: dict[str, Disposition] = {
             "A true minimal rename edit set with 15 passing tests and no "
             "surface. Wired as edit action=plan_rename / --plan-rename, pinned "
             "to preview: apply-like arguments are rejected with "
-            "PLAN_RENAME_IS_PREVIEW_ONLY, never forwarded."
+            "PLAN_RENAME_IS_PREVIEW_ONLY, never forwarded. v1.29.5 additionally "
+            "publishes edit action=rename / --rename for explicit preview or apply."
         ),
     ),
     # ---- already reachable; the audit measured a subclass, not the class --
@@ -93,32 +94,21 @@ TOOL_DISPOSITIONS: dict[str, Disposition] = {
     ),
     # ---- deprecate with an expiry ----------------------------------------
     "UnreachableCodeTool": Disposition(
-        kind="deprecate",
+        kind="wire",
         reason=(
-            "Deliberately NOT wired. Statement-level unreachable-code "
-            "detection overlaps health action=dead, and the analyzer it sits "
-            "on documents an 'external callers' safeguard at "
-            "dead_code_analyzer.py:172 that is not implemented — so any "
-            "library public API called only from outside the tree is reported "
-            "dead. Registering it would put a known false-positive generator "
-            "on the agent-facing surface under an authoritative label. Wire it "
-            "only after the safeguard lands; delete it if the safeguard is "
-            "abandoned."
+            "Published in v1.29.5 as health action=unreachable / --unreachable-code. "
+            "This analyzes unreachable statements inside functions, not external "
+            "callers or function-level dead-code reachability. The old deprecation "
+            "rationale incorrectly attributed dead_code_analyzer limitations to it."
         ),
-        remove_in="1.33.0",
     ),
     "MiddlewareDetectorTool": Disposition(
-        kind="deprecate",
+        kind="wire",
         reason=(
-            "Wiring is real work, not this PR's. detect_middleware genuinely "
-            "complements health action=routes, but RFC-0027's Three-Surface "
-            "table has no row for it, so registering it would add an "
-            "unspecified MCP action plus a CLI twin without an RFC — which the "
-            "RFC process requires for any facade-or-tool addition. Deprecated "
-            "with an expiry so the deadline forces a decision instead of "
-            "letting it sit."
+            "Published in v1.29.5 as health action=middleware / --detect-middleware. "
+            "Complements route discovery with middleware/interceptor chains; "
+            "RFC-0027/0028 release integration records the existing public routes."
         ),
-        remove_in="1.33.0",
     ),
     "UniversalAnalyzeTool": Disposition(
         kind="deprecate",

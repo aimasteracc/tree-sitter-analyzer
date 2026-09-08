@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """``health`` facade — Wave B facade for the FacadeTool framework (P0 geode layer).
 
-Folds 12 health/analysis capabilities behind one ``action`` parameter.
+通过 action 参数提供 16 个健康检查动作，包括语句级不可达检查与中间件检测。
 The ``uml`` / ``graph`` / ``similarity`` trio have been split into the
 separate ``viz`` facade (see ``viz_facade.py``).
 
@@ -77,6 +77,10 @@ _HEALTH_DESCRIPTION = (
     "- action=dead — unreferenced functions / unused imports / unused variables "
     "(codegraph_dead_code equivalent). "
     "Params: mode, include_test_files, max_dead, max_imports, max_variables.\n"
+    "- action=unreachable — statement-level unreachable code inside live functions. "
+    "Params: mode (file|project), file_path, include_test_files, max_files.\n"
+    "- action=middleware — framework middleware/interceptor chains. "
+    "Params: mode (all|summary|lookup), url_prefix, framework.\n"
     "- action=routes — HTTP route discovery across framework conventions. "
     "Params: mode, url_pattern, file_path, framework.\n"
     "- action=overview — entry-points / hub files / dead-code summary "
@@ -126,11 +130,13 @@ def build_health_facade(project_root: str | None = None) -> FacadeTool:
     from .dependency_matrix_tool import CodeGraphDependencyMatrixTool
     from .file_health_tool import FileHealthTool
     from .import_graph_tool import CodeGraphImportGraphTool
+    from .middleware_detector_tool import MiddlewareDetectorTool
     from .project_health_tool import ProjectHealthTool
     from .refactor_queue_tool import RefactorQueueTool
     from .route_detector_tool import RouteDetectorTool
     from .self_health_tool import SelfHealthTool
     from .test_gap_tool import CodeGraphTestGapTool
+    from .unreachable_code_tool import UnreachableCodeTool
 
     facade = FacadeTool(
         facade_name="health",
@@ -146,6 +152,8 @@ def build_health_facade(project_root: str | None = None) -> FacadeTool:
             "matrix": CodeGraphDependencyMatrixTool(project_root),
             "dead": CodeGraphDeadCodeTool(project_root),
             "routes": RouteDetectorTool(project_root),
+            "unreachable": UnreachableCodeTool(project_root),
+            "middleware": MiddlewareDetectorTool(project_root),
             "overview": CodeGraphOverviewTool(project_root),
             # R5: deps — multi-mode, ``mode`` kept by projection filter automatically
             "deps": DependencyAnalysisTool(project_root),
