@@ -1,17 +1,16 @@
-"""Shared read-side signal for AST cache full rebuild windows (#578)."""
+"""AST 缓存完整重建期间共用的只读状态信号（#578）。"""
 
 from __future__ import annotations
 
 import os
 import sqlite3
+from pathlib import Path
 
 
 def is_index_rebuilding(project_root: str | None) -> bool:
-    """Return True when a full AST-cache rebuild marker is active.
+    """尽力读取重建标记；缺失或读取失败时返回 False，不阻断导航。
 
-    Best-effort and deliberately fail-open. A slow/locked marker read must not
-    block navigation tools; missing the warning is preferable to turning every
-    read into a lock-contention failure.
+    只读打开防止存在检查后文件消失时创建空库；保留两秒锁等待上限。
     """
     if not project_root:
         return False
@@ -21,7 +20,9 @@ def is_index_rebuilding(project_root: str | None) -> bool:
     try:
         from tree_sitter_analyzer.cache.build_state import build_in_progress
 
-        conn = sqlite3.connect(db_path, timeout=2)
+        conn = sqlite3.connect(
+            Path(db_path).absolute().as_uri() + "?mode=ro", uri=True, timeout=2
+        )
         try:
             return bool(build_in_progress(conn))
         finally:

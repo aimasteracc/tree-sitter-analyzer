@@ -193,3 +193,20 @@ def _reverse_dependency_conn(
 class _BrokenConnection:
     def execute(self, _query: str) -> Any:
         raise sqlite3.DatabaseError("broken snapshot")
+
+
+@pytest.fixture(params=[False, True])
+def unreadable_index(tmp_path, monkeypatch, request):
+    """准备损坏数据库，或模拟存在检查之后文件被删除。"""
+    db_path = tmp_path / ".ast-cache" / "index.db"
+    db_path.parent.mkdir()
+    db_path.write_text("not-a-sqlite-database", encoding="utf-8")
+    if request.param:
+        connect = sqlite3.connect
+
+        def remove_then_connect(*args, **kwargs):
+            db_path.unlink()
+            return connect(*args, **kwargs)
+
+        monkeypatch.setattr(sqlite3, "connect", remove_then_connect)
+    return tmp_path, db_path, request.param
