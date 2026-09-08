@@ -6,9 +6,70 @@
 - **North star:** Verified Change Success Rate (VCSR), not feature, language, tool, test, or edge count.
 - **Claim policy:** Public language is always bounded to named tools, versions, repositories, models, dates, and evidence levels. E0–E3 emit no quantitative competitive wording; E4 permits only the exact admitted bounded sentence, never an unqualified "No.1" claim.
 
+## 2026-09-08 已合入修复与可信反馈复测
+
+本节更新运行证据；下节已裁决的范围和发布边界继续有效。
+本次基线为 `develop@0d50d2760ba5f5447393b5df5e21eccc5af42934`。
+已合入 [#1405](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1405)
+（保存检测、扫描续跑与 watcher 生命周期）、
+[#1410](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1410)
+（SQLite 复用 WAL 尾部的认证误拒绝）、
+[#1411](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1411)
+（项目根别名的缓存身份统一）。组合基线 quick gate 为
+**2,047 passed、28 skipped，31.63 秒**；既有跳过不算通过。
+
+### 重复测量：可信可恢复，尚非瞬间反馈
+
+环境为 macOS 26.6.2 arm64、Python 3.14.3；合成项目包含 10,000 个
+Python 文件。使用真实 ASTCache、PulseTool 和 FileWatcherDaemon，没有模块替换。
+先在无 watcher 的同一进程连续查询 20 次，再启动默认 watcher
+（轮询 5 秒、debounce 2 秒），等待启动同步完成后连续执行 10 个保存周期。
+每次切换末尾文件函数的等长返回值，并恢复原 `mtime_ns`，验证内容检测。
+保存后立即查询，收到同步 complete 回调后再次查询；每轮等待上限 60 秒。
+保存延迟从写入前计时至同步后的查询返回，包含该实验自己的即时查询成本。
+
+| 观测 | 成功 / 总数 | 最小 / 中位 / 最大耗时 |
+|---|---|---|
+| 稳定 Pulse 查询返回 fresh | 20 / 20 | 1.734 / 1.755 / 2.643 秒 |
+| 保存后立即查询正确拒绝陈旧证据 | 10 / 10 | 全部为 stale / SOURCE_INDEX_MISMATCH |
+| 保存至查询恢复 fresh | 10 / 10 | 7.298 / 11.725 / 11.844 秒 |
+
+启动同步耗时 5.422 秒；保存至同步 complete 的中位耗时为 9.599 秒。
+watcher 记录 10 个事件、11 次同步、0 个错误，并成功停止。
+样本最近秩 95% 分位分别为 2.040 秒和 11.844 秒；它们只描述这
+20 / 10 次顺序观测，**不是总体 p95、SLA、跨平台或真实项目性能证明**。
+所有失败均保留在分母中；没有以过滤失败后的延迟冒充整体成功率。
+
+另一个独立计时进程以透传包装器记录 `_capture_sources_with_deadline`。
+首次查询后，3 次复用同一快照的查询耗时为 1.630 / 1.631 / 1.626 秒，
+每次均调用该函数 3 次，累计耗时分别为 1.359 / 1.361 / 1.354 秒，
+约占总耗时 83%。这是源码证据采集成本的定位线索，不是删除一致性检查的依据。
+优化必须证明同一响应仍绑定同一源码代次，并保留保存、并发写入、替换和删除的拒绝路径。
+
+### 尚未闭合的可信边界
+
+- 旧候选在更新后的完整索引之后恢复执行，仍可删除新结果；同进程顺序重放和
+  跨进程实验均已复现。进程内锁无法拒绝已经过时的输入。
+  [RFC-0032 / #1412](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1412)
+  仍为 draft；schema 代次、写入所有权、崩溃恢复及兼容性取舍尚未实施。
+- [#1407](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1407)
+  的分批验证仍存在外层命令总长度限制；RFC-0031 的短验证计划入口仍待裁决。
+- 本次观测覆盖 Pulse 的一个合成 Python 场景，未证明所有读取入口、原生 Windows
+  路径、多语言真实项目或长时间并发场景均满足相同边界。
+- 当前可把 TSA 描述为 Agent 的结构化感知与反馈基础设施；它不能替代 Agent 的
+  推理、运行时观测或测试。还不能据此宣称“用了就拥有完整大脑和神经网络”，
+  更不能宣称行业 No.1。竞争优势仍需按既定 VCSR / E4 规则进行同任务对照验证。
+
+本地原始记录为 `/tmp/tsa-repeated-feedback-proof.json` 与
+`/tmp/tsa-feedback-timing-breakdown.json`，复测脚本为
+`/tmp/tsa_repeated_feedback_probe.py`；这些是临时诊断附件，未作为仓库基准资产发布。
+下一步优先关闭过时写入的数据保护缺口，再以一致性回归证明约束源码认证优化，
+并补齐真实项目、原生平台与任务成功率证据；本节不新增性能承诺或授权发版。
+
 ## 2026-09-07 执行收敛：先可信，再扩展
 
-本节是当前执行优先级；后文的历史基线和十二个月目标不代表已实现能力。
+本节保留执行优先级与用户裁决；运行证据以上方 2026-09-08 复测为准。
+后文的历史基线和十二个月目标不代表已实现能力。
 本轮完成的是初审与隔离复现，不是全仓整顿、全量测试有效性证明或发布验收。
 既有 RFC 的实现授权、证据和发布门槛仍然有效；本节不绕过这些门槛。
 
