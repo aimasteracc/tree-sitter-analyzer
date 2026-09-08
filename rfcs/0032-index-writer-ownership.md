@@ -118,14 +118,108 @@ keep the constructor argument as a logical locator, expose its original value as
 public `get_conn()` to reads. Existing ASTCache mutation methods remain the supported
 write entry points and must acquire operation ownership. Internal SQL helpers use
 owned connections; do not secretly preserve a second unrestricted public write path.
-This is a direction for review, not an accepted API change; the exact read-connection
-lifetime and compatibility/migration examples still need specification.
+This is a direction for review, not an accepted API change; the proposed read-session
+contract below still needs qualification and compatibility/migration examples.
 
 If accepted, these changes must be part of the next explicitly authorized major-version
 migration with notes for direct SQLite clients. This round authorizes no release.
 If the published physical-path/raw-write behavior must remain unchanged, redesign
 the storage/admission approach; do not claim complete enforcement while leaving an
 undocumented escape through the published accessor. The owner decision is pending.
+
+### Proposed read-session contract — pending major-version decision
+
+`get_conn()` would return a TSA read session, **not** a `sqlite3.Connection` subclass
+or a proxy forwarding unknown attributes. Existing callers relying on raw connection
+identity, writable SQL, connection configuration or SQLite cursor objects need explicit
+migration notes. This proposal does not claim drop-in Python compatibility.
+
+- A session owns one private reader and its pinned generation identity. It supports
+  `execute(sql, parameters)`, `close()` and context management. Creation establishes a
+  read transaction and reads generation/revision metadata before returning; context
+  entry returns the same TSA session. Explicit close, context exit and
+  `ASTCache.close()` release all associated cursors, the transaction and reader pin.
+  Exit never commits user SQL. Use after close and cross-thread use fail explicitly.
+- Returned TSA cursors support row iteration, `fetchone`, `fetchmany`, `fetchall`,
+  `description` and `close`. They expose no raw `.connection`, delegated attributes,
+  callback setters or underlying SQLite cursor. Session closure invalidates every
+  child cursor; closing one cursor does not close its sibling or parent session.
+- No public `executescript`, transaction control, writable blob, backup destination,
+  extension loading, authorizer/progress-handler replacement, user function/collation
+  registration, or mutable row/text factory. Built-in row conversion cannot invoke
+  caller code with the underlying connection. Unsupported operations fail, rather
+  than silently forwarding to the private reader.
+- Initialize a dedicated connection with read-only database mode, `query_only=ON`
+  and `trusted_schema=OFF` before admitting user statements. A non-removable-through-
+  the-public-surface authorizer denies unlisted actions and functions. An SQL prefix
+  check is insufficient: CTEs, nested statements and SQLite virtual-table callbacks
+  must pass the same authorization policy. Do not share a writer's prepared statements
+  or change authorization policy while cached statements/cursors remain live.
+- The session pins database rows, not source files. Existing source-evidence checks
+  still decide whether a result can be labeled current. A reader pin prevents physical
+  retirement while the session exists; it does not confer writer authority or certify
+  a retired generation as current. Query cancellation closes the affected statement
+  before releasing its resources. Qualification must measure reader/WAL retention and
+  use the applicable existing query resource limits, not promise unbounded snapshots.
+
+A local SQLite 3.50.4 probe exposed a concrete authorization compatibility issue:
+allowing only SELECT/READ/RECURSIVE actions and the functions `count`, `lower`, `match`,
+`bm25` accepts ordinary SELECT and CTE queries but **rejects normal FTS5 MATCH**.
+Its first denied callback is `SQLITE_PRAGMA, data_version, None, main, None`.
+Adding the exact read-only `data_version` PRAGMA case lets all three queries succeed;
+UPDATE, ATTACH, `query_only=OFF`, extension loading, DROP TABLE and BEGIN remain
+rejected, and an independent reader still sees the original row. This is nine local
+observations, not an exhaustive function allowlist or a qualified session implementation.
+
+The FTS callback can be reproduced independently with this disposable fixture:
+
+```python
+import sqlite3
+import tempfile
+from pathlib import Path
+
+with tempfile.TemporaryDirectory() as directory:
+    path = Path(directory) / "fts.db"
+    with sqlite3.connect(path) as writer:
+        writer.execute("CREATE VIRTUAL TABLE words USING fts5(text)")
+        writer.execute("INSERT INTO words VALUES ('alpha beta')")
+    for allow_data_version in (False, True):
+        reader = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)
+        reader.execute("PRAGMA query_only=ON")
+        reader.execute("PRAGMA trusted_schema=OFF")
+        denied = []
+
+        def authorize(action, first, second, database, trigger):
+            if action in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ):
+                return sqlite3.SQLITE_OK
+            if action == sqlite3.SQLITE_FUNCTION and second == "match":
+                return sqlite3.SQLITE_OK
+            if (allow_data_version and action == sqlite3.SQLITE_PRAGMA
+                    and first == "data_version" and second is None):
+                return sqlite3.SQLITE_OK
+            denied.append((action, first, second, database, trigger))
+            return sqlite3.SQLITE_DENY
+
+        reader.set_authorizer(authorize)
+        try:
+            try:
+                rows = reader.execute(
+                    "SELECT text FROM words WHERE words MATCH 'alpha'"
+                ).fetchall()
+            except sqlite3.DatabaseError:
+                assert not allow_data_version
+                assert denied == [(sqlite3.SQLITE_PRAGMA, "data_version", None, "main", None)]
+            else:
+                assert allow_data_version and rows == [("alpha beta",)]
+        finally:
+            reader.close()
+```
+
+Before implementation, enumerate the actual supported TSA read functions and virtual
+tables; qualify both allowed queries and denied mutations on native supported SQLite
+builds. Explicitly test `cursor.connection`, context-manager return values, callback
+registration, prepared-statement reuse, close/cancellation and generation retirement.
+The authorizer primitive alone does not prove any of these session guarantees.
 
 ## Detailed design
 
@@ -446,6 +540,8 @@ coverage, and the runtime-contract quick gate before any implementation PR is pu
 - [ ] All candidate producers bind cache revision; unbound/obsolete candidates write nothing.
 - [ ] Released calls without candidates remain valid; latest-artifact surface audit and
   migration notes respect the major-release boundary without silently rebinding old input.
+- [ ] Read-session/cursor lifetime, supported SQL/FTS reads and denied write/connection
+  escapes pass on native platforms; no raw connection is returned through public access.
 - [ ] Cross-process exclusion covers every managed write route and full operation lifetime.
 - [ ] Late cleanup cannot remove another operation's data or certification, including ABA.
 - [ ] Every independently mutable canonical table has recoverable ownership; cross-file
