@@ -421,11 +421,10 @@ class HealthScorer:
         file_path: str,
         cache: Any,
     ) -> HealthScore | None:
-        """Look up a cached score, fall back to fresh scoring on miss/error.
+        """复用当前内容的评分；评分期间变化的文件不发布缓存。"""
+        from .registry.health_score_cache import _Fingerprint
 
-        Returns None when scoring raises; the outer loop just skips the
-        file (mirrors the original ``except Exception: continue`` flow).
-        """
+        before = _Fingerprint.from_path(file_path) if cache is not None else None
         if cache is not None:
             cached = cache.lookup(file_path)
             # 2026-09-08：其他文件的导入变化也会改变当前文件的依赖分数。
@@ -433,6 +432,8 @@ class HealthScorer:
             if cached is not None and cached.get("dimensions", {}).get(
                 "dependencies"
             ) == round(score_dependencies(file_path), 1):
+                if before is None or _Fingerprint.from_path(file_path) != before:
+                    return None
                 return HealthScore(
                     file_path=cached["file_path"],
                     total=cached["total"],
@@ -443,8 +444,10 @@ class HealthScorer:
             score = self.score_file(file_path)
         except Exception:  # nosec B112
             return None
-        if cache is not None:
-            cache.store(score)
+        if cache is not None and before is not None:
+            if _Fingerprint.from_path(file_path) != before:
+                return None
+            cache.store(score, _expected=before)
         return score
 
     # ---- Dimension scoring helpers ----

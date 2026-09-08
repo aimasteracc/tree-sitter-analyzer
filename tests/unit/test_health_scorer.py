@@ -1016,3 +1016,75 @@ def test_project_health_cache_tracks_changed_incoming_dependencies(tmp_path):
 
     assert dependencies(fresh) == {"b.py": 100.0, "c.py": 99.1}
     assert dependencies(cached) == dependencies(fresh)
+
+
+@pytest.mark.parametrize("mutation_phase", ["scoring", "publication", "reuse"])
+def test_health_cache_does_not_publish_scores_for_changed_source(
+    tmp_path, monkeypatch, mutation_phase
+):
+    """评分或发布期间改写文件，不得把旧分数绑定到新内容。"""
+    # 2026-09-08 事件：保存时单独读取指纹会给旧评分贴上新内容标记。
+    import os
+
+    from tree_sitter_analyzer.health_scorer import HealthScorer
+    from tree_sitter_analyzer.registry.health_score_cache import HealthScoreCache
+
+    target = tmp_path / "probe.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    scorer = HealthScorer()
+    cache = HealthScoreCache(str(tmp_path))
+    owner, method = (
+        (scorer, "score_file") if mutation_phase == "scoring" else (cache, "store")
+    )
+    if mutation_phase == "reuse":
+        from tree_sitter_analyzer import health_scorer
+
+        scorer._score_file_with_cache(str(target), cache)
+        owner, method = health_scorer, "score_dependencies"
+    original = getattr(owner, method)
+
+    def mutate(*args, **kwargs):
+        result = original(*args, **kwargs) if mutation_phase != "publication" else None
+        before = target.stat()
+        target.write_text("value = 2\n", encoding="utf-8")
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        return result if mutation_phase != "publication" else original(*args, **kwargs)
+
+    monkeypatch.setattr(owner, method, mutate)
+    try:
+        result = scorer._score_file_with_cache(str(target), cache)
+        if mutation_phase != "publication":
+            assert result is None
+        assert cache.lookup(str(target)) is None
+    finally:
+        cache.close()
+
+
+@pytest.mark.parametrize("condition", ["special", "oversized", "changed"])
+def test_health_source_fingerprint_rejects_unstable_reads(
+    tmp_path, monkeypatch, condition
+):
+    """特殊文件、超限内容和读取中变化均不能形成缓存准入证据。"""
+    import os
+
+    from tree_sitter_analyzer.registry.health_score_cache import _Fingerprint
+
+    target = tmp_path / "probe.py"
+    target.write_bytes(b"value=1\n")
+    original = os.fstat
+    calls = 0
+
+    def observed(fd):
+        nonlocal calls
+        calls += 1
+        if condition == "changed" and calls == 2:
+            target.write_bytes(b"value=22\n")
+        if condition == "special":
+            return os.stat(tmp_path)
+        return original(fd)
+
+    if condition == "oversized":
+        with target.open("wb") as stream:
+            stream.truncate(64 * 1024 * 1024 + 1)
+    monkeypatch.setattr(os, "fstat", observed)
+    assert _Fingerprint.from_path(str(target)) is None
