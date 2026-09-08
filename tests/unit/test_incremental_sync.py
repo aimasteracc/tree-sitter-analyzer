@@ -2648,8 +2648,9 @@ def test_transient_candidate_failure_preserves_index_rows(
 
 
 @pytest.mark.parametrize("pause_at", ["capture", "commit"])
+@pytest.mark.parametrize("separate_watcher", [False, True])
 def test_watcher_serializes_capture_through_index_commit(
-    tmp_path, monkeypatch, pause_at
+    tmp_path, monkeypatch, pause_at, separate_watcher
 ):
     # #1405：后一个同步不能在前一个提交之前捕获候选，避免旧快照覆盖新索引。
     import threading
@@ -2664,6 +2665,7 @@ def test_watcher_serializes_capture_through_index_commit(
     entered, release, overlap, attempted = (threading.Event() for _ in range(4))
     original = snapshot_owner.build_index_candidate_snapshot
     original_sync = watcher._sync.sync
+    second_watcher = FileWatcherDaemon(cache) if separate_watcher else watcher
 
     def capture(*args, **kwargs):
         if entered.is_set():
@@ -2681,7 +2683,7 @@ def test_watcher_serializes_capture_through_index_commit(
 
     def second_sync():
         attempted.set()
-        return watcher.trigger_sync()
+        return second_watcher.trigger_sync()
 
     monkeypatch.setattr(snapshot_owner, "build_index_candidate_snapshot", capture)
     monkeypatch.setattr(watcher._sync, "sync", commit)
