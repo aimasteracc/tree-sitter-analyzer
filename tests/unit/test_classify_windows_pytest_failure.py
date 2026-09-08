@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from scripts.classify_windows_pytest_failure import classify, main
 
 
@@ -52,6 +54,38 @@ def test_collection_error_blocks_retry() -> None:
     )
 
     assert classify(output)["retry_eligible"] is False
+
+
+@pytest.mark.parametrize("outcome", ["FAILED", "ERROR"])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_reasonless_failure_blocks_budget_retry(
+    tmp_path: Path, outcome: str, newline: str
+) -> None:
+    """无原因的失败仍须计入，且不能因另一项超时重跑成功而放行。"""
+    # 2026-09-09：#1419 Windows worker 崩溃行被分类器忽略，导致错误绿灯。
+    output = newline.join(
+        [
+            "FAILED tests/unit/test_a.py::test_a - Failed: Unit test exceeded "
+            "per-test budget: 16.47s > 12.8s.",
+            f"{outcome} tests/unit/test_decision_journal.py::TestSearch::test_search_returns_newest_first",
+            "2 failed, 23381 passed, 1211 skipped, 5 rerun in 801.13s",
+            "",
+        ]
+    )
+    assert classify(output) == {
+        "retry_eligible": False,
+        "nodeids": [],
+        "failure_count": 2,
+        "reason": "non_budget_or_unclassified",
+    }
+    log = tmp_path / "pytest-output.txt"
+    log.write_text(output, encoding="utf-8", newline="")
+    nodeids = tmp_path / "retry.txt"
+    with patch.object(
+        sys, "argv", ["classify", str(log), "--nodeids-output", str(nodeids)]
+    ):
+        assert main() == 1
+    assert nodeids.read_bytes() == b""
 
 
 def test_nodeid_file_uses_lf_so_the_ci_retry_can_match(tmp_path: Path) -> None:

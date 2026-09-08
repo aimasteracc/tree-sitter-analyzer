@@ -9,19 +9,20 @@ import re
 from pathlib import Path
 
 _OUTCOME = re.compile(
-    r"^(?P<outcome>FAILED|ERROR) (?P<nodeid>\S+) - (?P<reason>.+)$",
+    r"^(?P<outcome>FAILED|ERROR) (?P<nodeid>\S+)(?: - (?P<reason>.*))?$",
     re.MULTILINE,
 )
 _BUDGET = "Unit test exceeded per-test budget:"
 
 
 def classify(output: str) -> dict[str, object]:
-    """Allow retry only when every reported failure is a runtime-budget failure."""
+    """仅在全部失败均明确归因于运行时间预算时允许重跑。"""
 
-    failures = tuple(_OUTCOME.finditer(output))
+    # worker 崩溃的摘要没有原因后缀；统一换行后仍须将该失败纳入判断。
+    failures = tuple(_OUTCOME.finditer("\n".join(output.splitlines())))
     nodeids = tuple(match.group("nodeid") for match in failures)
     budget_only = bool(failures) and all(
-        match.group("outcome") == "FAILED" and _BUDGET in match.group("reason")
+        match.group("outcome") == "FAILED" and _BUDGET in (match.group("reason") or "")
         for match in failures
     )
     return {
