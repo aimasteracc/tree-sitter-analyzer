@@ -104,6 +104,71 @@ class TestWatcherStats:
 
 
 class TestPollingDetection:
+    def test_failed_scan_preserves_snapshot_and_requests_retry(
+        self, watcher, project, monkeypatch
+    ):
+        """失败扫描不能覆盖基线或伪装成无变化；恢复后继续识别保存。"""
+        from types import SimpleNamespace
+
+        import tree_sitter_analyzer.file_watcher as owner
+
+        watcher._take_snapshot()
+        before = dict(watcher._snapshot)
+        with monkeypatch.context() as patcher:
+
+            def failed(*_a, **_k):
+                return SimpleNamespace(state="unknown", reason="SOURCE_SCAN_DEADLINE")
+
+            patcher.setattr(owner, "capture_current_source_snapshot", failed)
+            patcher.setattr(owner, "capture_portable_source_snapshot", failed)
+            assert watcher._detect_changes() == [str(project)]
+            watcher._take_snapshot()
+        assert watcher._snapshot == before
+        assert watcher.get_stats()["errors"] == 2
+        path = project / "src" / "main.py"
+        path.write_text("def saved():\n    pass\n", encoding="utf-8")
+        assert watcher._detect_changes() == [str(path)]
+
+    def test_portable_polling_reads_actual_content(self, watcher, project, monkeypatch):
+        """便携路由也读取真实内容，不退回仅比较时间戳。"""
+        from types import SimpleNamespace
+
+        import tree_sitter_analyzer.file_watcher as owner
+
+        monkeypatch.setattr(owner, "os", SimpleNamespace(name="nt", path=os.path))
+        monkeypatch.setattr(
+            owner,
+            "capture_current_source_snapshot",
+            lambda *_a, **_k: pytest.fail("不应调用 POSIX 路由"),
+        )
+        watcher._take_snapshot()
+        path = project / "src" / "main.py"
+        before = path.stat()
+        path.write_text("def saved():\n    pass\n", encoding="utf-8")
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        assert watcher._detect_changes() == [str(path)]
+
+    @pytest.mark.parametrize("atomic", [False, True])
+    def test_detects_content_change_with_preserved_metadata(
+        self, watcher, project, atomic
+    ):
+        """等长写入与原子替换均不能借相同 mtime 绕过轮询。"""
+        # 2026-09-08 实测：保留 mtime 的保存曾被轮询遗漏。
+        path = project / "src" / "main.py"
+        watcher._take_snapshot()
+        before = path.stat()
+        target = path.with_suffix(".tmp") if atomic else path
+        target.write_text("def saved():\n    pass\n", encoding="utf-8")
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        if atomic:
+            os.replace(target, path)
+        assert (path.stat().st_size, path.stat().st_mtime_ns) == (
+            before.st_size,
+            before.st_mtime_ns,
+        )
+        assert watcher._detect_changes() == [str(path)]
+        assert watcher._detect_changes() == []
+
     def test_detects_new_file(self, watcher, project, cache):
         # The watcher snapshots the tree at start(), then detects later changes.
         # So: start FIRST, let the initial snapshot settle, THEN create the file,

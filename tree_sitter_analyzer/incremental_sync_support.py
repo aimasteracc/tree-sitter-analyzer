@@ -51,29 +51,27 @@ class SyncResult:
 
 
 def file_content_hash(path: str) -> str:
-    """Return the SHA-256 digest of one source file."""
+    """与索引写入端一致：UTF-8 替换解码和通用换行归一化后计算摘要。"""
     digest = hashlib.sha256()
-    with open(path, "rb") as source:
-        for chunk in iter(lambda: source.read(65536), b""):
-            digest.update(chunk)
+    with open(path, encoding="utf-8", errors="replace") as source:
+        for chunk in iter(lambda: source.read(65536), ""):
+            digest.update(chunk.encode("utf-8", errors="replace"))
     return digest.hexdigest()
 
 
 def file_changed(disk_info: dict[str, Any], indexed_info: dict[str, Any]) -> bool:
-    """Compare live file metadata and content with a cached row."""
+    """比较冻结摘要；缺少摘要时必须重读，等长等 mtime 不能证明内容相同。"""
     if disk_info["file_size"] != indexed_info["file_size"]:
         return True
     candidate_hash = disk_info.get("content_hash")
     if candidate_hash:
         return str(candidate_hash) != str(indexed_info["content_hash"])
-    if disk_info["mtime_ns"] != indexed_info["mtime_ns"]:
-        try:
-            return file_content_hash(
-                disk_info.get("source_path", disk_info["abs_path"])
-            ) != str(indexed_info["content_hash"])
-        except OSError:
-            return True
-    return False
+    try:
+        return file_content_hash(
+            disk_info.get("source_path", disk_info["abs_path"])
+        ) != str(indexed_info["content_hash"])
+    except OSError:
+        return True
 
 
 def get_changes(

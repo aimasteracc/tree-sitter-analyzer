@@ -25,7 +25,11 @@ from typing import Any
 
 from .ast_cache import _EXT_TO_LANG
 from .incremental_sync import IncrementalSync
-from .index_lag import _LAG_SKIP_DIRS
+from .index_source_snapshot import (
+    capture_current_source_snapshot,
+    make_source_scope_descriptor,
+)
+from .portable_source_snapshot import capture_portable_source_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +116,7 @@ class FileWatcherDaemon:
         self._stats = WatcherStats()
         self._stats_lock = threading.Lock()
 
-        self._snapshot: dict[str, float] = {}
+        self._snapshot: dict[str, str] = {}
         self._snapshot_lock = threading.Lock()
 
     @property
@@ -208,56 +212,44 @@ class FileWatcherDaemon:
             observer.join(timeout=5.0)
         self._flush_pending()
 
+    def _collect_snapshot(self) -> dict[str, str] | None:
+        """复用有界源码扫描器，不能把相同 mtime 当成内容未变的证据。"""
+        root = self._cache.project_root
+        scope = make_source_scope_descriptor(no_default_excludes=True)
+        deadline = time.monotonic() + 5.0
+        capture = (
+            capture_current_source_snapshot
+            if os.name == "posix" and os.path.exists("/dev/fd")
+            else capture_portable_source_snapshot
+        )
+        source = capture(root, scope, deadline=deadline)
+        if source.state != "exact":
+            with self._stats_lock:
+                self._stats.errors += 1
+            logger.debug("watcher source scan unavailable: %s", source.reason)
+            return None
+        return {os.path.join(root, path): digest for path, digest, _ in source.rows}
+
     def _take_snapshot(self) -> None:
-        snapshot: dict[str, float] = {}
-        project_root = self._cache.project_root
-        for dirpath, dirnames, filenames in os.walk(project_root):
-            dirnames[:] = [
-                d for d in dirnames if d not in _LAG_SKIP_DIRS and not d.startswith(".")
-            ]
-            for fname in filenames:
-                ext = os.path.splitext(fname)[1].lower()
-                if ext not in _EXT_TO_LANG:
-                    continue
-                full = os.path.join(dirpath, fname)
-                try:
-                    mtime = os.path.getmtime(full)
-                    snapshot[full] = mtime
-                except OSError:
-                    pass
-        with self._snapshot_lock:
-            self._snapshot = snapshot
+        snapshot = self._collect_snapshot()
+        if snapshot is not None:
+            with self._snapshot_lock:
+                self._snapshot = snapshot
 
     def _detect_changes(self) -> list[str]:
-        current: dict[str, float] = {}
-        project_root = self._cache.project_root
-        for dirpath, dirnames, filenames in os.walk(project_root):
-            dirnames[:] = [
-                d for d in dirnames if d not in _LAG_SKIP_DIRS and not d.startswith(".")
-            ]
-            for fname in filenames:
-                ext = os.path.splitext(fname)[1].lower()
-                if ext not in _EXT_TO_LANG:
-                    continue
-                full = os.path.join(dirpath, fname)
-                try:
-                    mtime = os.path.getmtime(full)
-                    current[full] = mtime
-                except OSError:
-                    pass
-
-        changed: list[str] = []
+        current = self._collect_snapshot()
+        if current is None:
+            # 保留上次已知快照，并请求重试；不把失败扫描写成“没有变化”。
+            return [self._cache.project_root]
         with self._snapshot_lock:
-            for path, mtime in current.items():
-                old_mtime = self._snapshot.get(path)
-                if old_mtime is None or old_mtime != mtime:
-                    changed.append(path)
-            for path in self._snapshot:
-                if path not in current:
-                    changed.append(path)
+            changed = [
+                path
+                for path, digest in current.items()
+                if self._snapshot.get(path) != digest
+            ]
+            changed.extend(path for path in self._snapshot if path not in current)
             self._snapshot = current
-
-        return changed
+        return sorted(changed)
 
     def _enqueue(self, file_path: str) -> None:
         with self._pending_lock:

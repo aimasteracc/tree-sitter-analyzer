@@ -383,7 +383,7 @@ def test_parse_and_write_returns_exact_parser_failure():
 
     cache = SimpleNamespace(
         parser=SimpleNamespace(
-            parse_file=lambda *_args: SimpleNamespace(
+            parse_code=lambda *_args, **_kwargs: SimpleNamespace(
                 success=False, error_message="invalid source"
             )
         )
@@ -406,3 +406,22 @@ def test_parse_and_write_returns_exact_parser_failure():
         "status": "error",
         "reason": "invalid source",
     }
+
+
+def test_index_file_preserved_metadata_uses_current_source(tmp_path):
+    """单文件入口不能用相同元数据复用旧源码或旧语法树。"""
+    # 2026-09-08 实测：等长等 mtime 保存曾复用旧索引和旧语法树。
+    path = tmp_path / "app.py"
+    path.write_text("def old(): return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        assert cache.index_file(str(path))["status"] == "indexed"
+        before = path.stat()
+        path.write_text("def new(): return 2\n", encoding="utf-8")
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        assert cache.index_file(str(path))["status"] == "indexed"
+        names = cache.get_conn().execute("SELECT name FROM ast_symbol_rows").fetchall()
+        assert [row[0] for row in names] == ["new"]
+        assert cache.index_file(str(path))["status"] == "cached"
+    finally:
+        cache.close()

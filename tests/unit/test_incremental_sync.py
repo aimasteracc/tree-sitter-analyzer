@@ -2089,6 +2089,31 @@ def test_candidate_hash_detects_equal_size_and_mtime_change(tmp_path):
     ) == (1, 0, expected_hash)
 
 
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_legacy_sync_detects_equal_size_and_mtime_change(tmp_path, newline):
+    """无冻结内容摘要时也须核验真实源码；换行格式不能引起重复解析。"""
+    # 2026-09-08 实测：等长等 mtime 保存曾复用旧索引和旧语法树。
+    path = tmp_path / "app.py"
+    path.write_bytes(f"def old():{newline}    return 1{newline}".encode())
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(path))
+        before = path.stat()
+        path.write_bytes(f"def new():{newline}    return 2{newline}".encode())
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        result = IncrementalSync(cache).sync()
+        names = cache.get_conn().execute("SELECT name FROM ast_symbol_rows").fetchall()
+        assert (
+            result.updated_files,
+            result.unchanged_files,
+            [row[0] for row in names],
+        ) == (1, 0, ["new"])
+        repeated = IncrementalSync(cache).sync()
+        assert (repeated.updated_files, repeated.unchanged_files) == (0, 1)
+    finally:
+        cache.close()
+
+
 def test_file_changed_fails_closed_when_rehash_becomes_unreadable(
     tmp_path, monkeypatch
 ):
