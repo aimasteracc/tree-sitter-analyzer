@@ -110,10 +110,7 @@ class UnreachableCodeTool(BaseMCPTool):
     def _execute_file_mode(
         self, arguments: dict[str, Any], output_format: str
     ) -> dict[str, Any]:
-        file_path = arguments.get("file_path", "")
-        if not file_path:
-            return {"success": False, "error": "file_path is required for file mode"}
-
+        file_path = arguments["file_path"]
         resolved = self._resolve_path(file_path)
         if resolved is None:
             return {"success": False, "error": f"File not found: {file_path}"}
