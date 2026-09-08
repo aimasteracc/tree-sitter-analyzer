@@ -131,19 +131,16 @@ class TestPollingDetection:
         self, watcher, project, monkeypatch
     ):
         """#1405：扫描失败保留基线并由下一轮重试，不触发虚假同步。"""
-        from types import SimpleNamespace
-
-        import tree_sitter_analyzer.file_watcher as owner
+        import tree_sitter_analyzer.file_watcher_polling as owner
 
         watcher._take_snapshot()
         before = dict(watcher._snapshot)
         with monkeypatch.context() as patcher:
 
-            def failed(*_a, **_k):
-                return SimpleNamespace(state="unknown", reason="SOURCE_SCAN_DEADLINE")
+            def failed(root):
+                yield "blocked", root, None
 
-            patcher.setattr(owner, "capture_current_source_snapshot", failed)
-            patcher.setattr(owner, "capture_portable_source_snapshot", failed)
+            patcher.setattr(owner, "_entries", failed)
             assert watcher._detect_changes() == []
             watcher._take_snapshot()
         assert watcher._snapshot == before
@@ -152,25 +149,37 @@ class TestPollingDetection:
         path.write_text("def saved():\n    pass\n", encoding="utf-8")
         assert watcher._detect_changes() == [str(path)]
 
-    def test_portable_polling_reads_actual_content(self, watcher, project, monkeypatch):
-        """便携路由也读取真实内容，不退回仅比较时间戳。"""
-        import ntpath
+    def test_native_reader_reads_actual_content(self, watcher, project):
+        """#1405：原生读取接口处理真实字节；Windows CI 使用真实 Kernel32。"""
+        import hashlib
         from types import SimpleNamespace
 
-        import tree_sitter_analyzer.file_watcher as owner
+        if os.name != "nt":
 
-        monkeypatch.setattr(owner, "os", SimpleNamespace(name="nt", path=ntpath))
-        monkeypatch.setattr(
-            owner,
-            "capture_current_source_snapshot",
-            lambda *_a, **_k: pytest.fail("不应调用 POSIX 路由"),
-        )
-        watcher._take_snapshot()
+            def identity(handle):
+                info = os.fstat(handle)
+                return (
+                    info.st_dev,
+                    info.st_ino,
+                    info.st_size,
+                    info.st_mtime_ns,
+                    info.st_ctime_ns,
+                )
+
+            watcher._polling._native = SimpleNamespace(
+                open=lambda path, _directory: os.open(path, os.O_RDONLY),
+                identity=identity,
+                reader_fd=lambda handle: handle,
+                close=os.close,
+            )
         path = project / "src" / "main.py"
         before = path.stat()
         path.write_text("def saved():\n    pass\n", encoding="utf-8")
         os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
-        assert watcher._detect_changes() == [ntpath.normpath(str(path))]
+        fingerprint = watcher._polling._windows_fingerprint(
+            str(path), time.monotonic() + 1
+        )
+        assert fingerprint[0] == hashlib.sha256(path.read_bytes()).hexdigest()
 
     @pytest.mark.parametrize("atomic", [False, True])
     def test_detects_content_change_with_preserved_metadata(
@@ -203,6 +212,43 @@ class TestPollingDetection:
         before = path.stat()
         path.write_bytes(b"# coding: cp1252\ndef caf\xf6(): pass\n")
         os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        assert watcher._detect_changes() == [str(path)]
+
+    def test_polling_survives_certification_file_cap(self, watcher, project):
+        """#1405：认证容量不足不能让普通文件的变化通知永久失效。"""
+        from tree_sitter_analyzer.index_source_snapshot import (
+            capture_current_source_snapshot,
+            make_source_scope_descriptor,
+        )
+        from tree_sitter_analyzer.portable_source_snapshot import (
+            capture_portable_source_snapshot,
+        )
+
+        capture = (
+            capture_portable_source_snapshot
+            if os.name == "nt"
+            else capture_current_source_snapshot
+        )
+        result = capture(
+            str(project),
+            make_source_scope_descriptor(
+                no_default_excludes=True, certification_max_files=1
+            ),
+            deadline=time.monotonic() + 1,
+        )
+        assert (result.state, result.reason) == ("unknown", "SOURCE_SCOPE_UNBOUNDED")
+        watcher._take_snapshot()
+        assert len(watcher._snapshot) == 2
+        path = project / "src" / "main.py"
+        path.write_text("def saved(): pass\n", encoding="utf-8")
+        assert watcher._detect_changes() == [str(path)]
+
+    def test_detects_metadata_only_save(self, watcher, project):
+        """#1405：纯元数据保存也必须保持既有通知语义。"""
+        path = project / "src" / "main.py"
+        watcher._take_snapshot()
+        before = path.stat()
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
         assert watcher._detect_changes() == [str(path)]
 
     def test_detects_new_file(self, watcher, project, cache):
@@ -374,3 +420,61 @@ def test_watchdog_atomic_save_refreshes_index(watcher, cache, project):
     assert [tuple(row) for row in manifest] == [
         (2, index_fingerprint(conn, str(project)))
     ]
+
+
+def test_stop_timeout_leaves_cursor_owned_by_running_thread(watcher, monkeypatch):
+    """#1405：超时停止不能关闭其他线程正在使用的游标；线程退出时负责释放。"""
+    import threading
+
+    entered, release = threading.Event(), threading.Event()
+    closed = []
+
+    def baseline():
+        entered.set()
+        assert release.wait(3)
+
+    monkeypatch.setattr(watcher, "_take_snapshot", baseline)
+    monkeypatch.setattr(watcher._polling, "close", lambda: closed.append("closed"))
+    watcher.start()
+    try:
+        assert entered.wait(3)
+        watcher.stop(timeout=0)
+        assert closed == []
+        assert watcher.is_running() is True
+    finally:
+        release.set()
+        watcher._thread.join(timeout=3)
+    assert watcher.is_running() is False
+    assert closed == ["closed"]
+
+
+def test_incomplete_scan_resumes_without_full_poll_interval(watcher, monkeypatch):
+    """#1405：大项目切片之间只短暂让出，不能每片都等待完整轮询间隔。"""
+    from types import SimpleNamespace
+
+    waits = []
+    state = {"stopped": False}
+    polling = SimpleNamespace(in_progress=True, close=lambda: None)
+
+    def wait(timeout):
+        waits.append(timeout)
+        state["stopped"] = len(waits) == 2
+
+    def detect():
+        polling.in_progress = False
+        return []
+
+    monkeypatch.setattr(watcher, "_polling", polling)
+    monkeypatch.setattr(watcher, "_take_snapshot", lambda: None)
+    monkeypatch.setattr(watcher, "_detect_changes", detect)
+    monkeypatch.setattr(
+        watcher,
+        "_stop_event",
+        SimpleNamespace(
+            is_set=lambda: state["stopped"],
+            wait=wait,
+            set=lambda: state.update(stopped=True),
+        ),
+    )
+    watcher._run_polling()
+    assert waits == [0.05, watcher.poll_interval]

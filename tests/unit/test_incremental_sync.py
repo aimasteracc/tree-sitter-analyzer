@@ -2556,3 +2556,26 @@ def test_encoding_rehash_rejects_source_over_index_byte_limit(tmp_path, monkeypa
     monkeypatch.setattr(snapshot, "_INDEX_SOURCE_BYTE_LIMIT", 1)
     with pytest.raises(OSError, match="source exceeds indexing byte limit"):
         file_content_hash(str(path))
+
+
+def test_unchanged_content_refreshes_indexed_metadata(tmp_path):
+    """#1405：纯元数据保存仍更新索引元数据，且不重新解析相同内容。"""
+    path = tmp_path / "app.py"
+    path.write_text("def saved(): return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(path))
+        before = path.stat()
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
+        result = IncrementalSync(cache).sync()
+        row = (
+            cache.get_conn()
+            .execute(
+                "SELECT mtime_ns, file_size FROM ast_index WHERE file_path = 'app.py'"
+            )
+            .fetchone()
+        )
+        assert tuple(row) == (path.stat().st_mtime_ns, path.stat().st_size)
+        assert (result.updated_files, result.unchanged_files) == (0, 1)
+    finally:
+        cache.close()

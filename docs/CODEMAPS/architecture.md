@@ -66,6 +66,10 @@ Every path is validated against `TREE_SITTER_PROJECT_ROOT` by `security/validato
 - `indexing_snapshot.py` freezes one ordered project scope for both full-index
   phases and detects selected files that mutate while the operation is running.
 
+监听链路由 `file_watcher.py` 调度，`file_watcher_polling.py` 保存可续跑的扫描游标，
+比较原始内容摘要和文件元数据。异常路径只影响其自身；删除在遍历完成后确认。
+这些观察只用于触发同步，不能替代 `index_source_snapshot.py` 的完整范围认证。
+
 ### Caching layers
 1. `ast_cache.py` — persistent SQLite store of parsed AST symbols/imports/structure
 2. `_route_cache.py` — SQLite store of detected routes (Flask/Django/Express/Spring)

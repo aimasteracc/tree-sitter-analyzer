@@ -61,8 +61,6 @@ def _portable_inventory(
     project_root: str,
     scope: SourceScopeDescriptor,
     deadline: float,
-    *,
-    raw_content: bool = False,
 ) -> tuple[frozenset[tuple[str, str, str]], str | None]:
     """Hash one bounded pathname inventory without following directory links.
 
@@ -155,7 +153,6 @@ def _portable_inventory(
                             _SOURCE_BYTE_BUDGET,
                             _marker,
                             _same,
-                            **({"raw_content": True} if raw_content else {}),
                         )
                         if not clean:
                             _flag("hash_unclean")
@@ -176,23 +173,12 @@ def capture_portable_source_snapshot(
     source_scope: SourceScopeDescriptor,
     *,
     deadline: float,
-    raw_content: bool = False,
 ) -> CurrentSourceSnapshot:
     """在调用者给定的总期限内双次扫描；不一致与超时均拒绝认证。"""
     root = os.path.abspath(project_root)
     try:
-        first, unsafe_first = _portable_inventory(
-            root,
-            source_scope,
-            deadline,
-            **({"raw_content": True} if raw_content else {}),
-        )
-        second, unsafe_second = _portable_inventory(
-            root,
-            source_scope,
-            deadline,
-            **({"raw_content": True} if raw_content else {}),
-        )
+        first, unsafe_first = _portable_inventory(root, source_scope, deadline)
+        second, unsafe_second = _portable_inventory(root, source_scope, deadline)
         fingerprint = inventory_fingerprint(first, deadline=deadline)
     except TimeoutError:
         return CurrentSourceSnapshot(
@@ -206,9 +192,7 @@ def capture_portable_source_snapshot(
         return CurrentSourceSnapshot(
             frozenset(), None, None, "unknown", "SOURCE_SCOPE_UNREADABLE"
         )
-    generation = (
-        "idxraw-v1:" if raw_content else "idxsrc-v3:"
-    ) + fingerprint.removeprefix("sha256:")
+    generation = "idxsrc-v3:" + fingerprint.removeprefix("sha256:")
     if unsafe_first or unsafe_second or first != second:
         detail = unsafe_first or unsafe_second or "walk_mismatch"
         return CurrentSourceSnapshot(

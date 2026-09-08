@@ -28,10 +28,8 @@ def hash_source_at(
     byte_budget: int,
     metadata_marker: Any,
     same_file_metadata: Any,
-    *,
-    raw_content: bool = False,
 ) -> tuple[str, str, bool]:
-    """有界读取同一句柄；监听使用原始字节，索引认证使用统一解码源码。"""
+    """从同一句柄有界读取，并按索引写入端的统一解码规则计算摘要。"""
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
         fd = (
@@ -58,14 +56,11 @@ def hash_source_at(
                     raise OverflowError
                 if time.monotonic() > deadline:
                     raise TimeoutError
-                if raw_content:
-                    digest.update(chunk)
-                    continue
                 decoded = decoder.decode(chunk, final=False)
                 pending_cr = _hash_normalized_chunk(
                     digest, decoded, pending_cr, deadline, counters, byte_budget
                 )
-            decoded = "" if raw_content else decoder.decode(b"", final=True)
+            decoded = decoder.decode(b"", final=True)
             _hash_normalized_chunk(
                 digest, decoded, pending_cr, deadline, counters, byte_budget
             )

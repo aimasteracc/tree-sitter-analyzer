@@ -573,6 +573,12 @@ class IncrementalSync:
                 result.updated_files += 1
                 action_by_file[rel] = "updated"
             else:
+                # #1405：内容相同仍刷新捕获到的元数据，不需要重建语法树。
+                if info["mtime_ns"] != indexed_info["mtime_ns"]:
+                    conn.execute(
+                        "UPDATE ast_index SET mtime_ns = ?, file_size = ? WHERE file_path = ?",
+                        (info["mtime_ns"], info["file_size"], rel),
+                    )
                 result.unchanged_files += 1
                 action_by_file[rel] = "unchanged"
                 continue

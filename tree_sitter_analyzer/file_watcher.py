@@ -24,12 +24,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from .ast_cache import _EXT_TO_LANG
+from .file_watcher_polling import PollingScanner
 from .incremental_sync import IncrementalSync
-from .index_source_snapshot import (
-    capture_current_source_snapshot,
-    make_source_scope_descriptor,
-)
-from .portable_source_snapshot import capture_portable_source_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +112,10 @@ class FileWatcherDaemon:
         self._stats = WatcherStats()
         self._stats_lock = threading.Lock()
 
-        self._snapshot: dict[str, str] = {}
+        self._polling = PollingScanner(
+            self._cache.project_root, self._record_scan_error
+        )
+        self._snapshot = self._polling.snapshot
         self._snapshot_lock = threading.Lock()
 
     @property
@@ -149,6 +148,8 @@ class FileWatcherDaemon:
             self._debounce_timer = None
         if self._thread is not None and self._thread.is_alive():
             self._thread.join(timeout=timeout)
+        if not self.is_running():
+            self._polling.close()
         logger.info("file_watcher stopped")
 
     def is_running(self) -> bool:
@@ -176,15 +177,20 @@ class FileWatcherDaemon:
             self._run_polling()
 
     def _run_polling(self) -> None:
-        self._take_snapshot()
-        while not self._stop_event.is_set():
-            self._stop_event.wait(timeout=self._poll_interval)
-            if self._stop_event.is_set():
-                break
-            changed = self._detect_changes()
-            for path in changed:
-                self._enqueue(path)
-        self._flush_pending()
+        try:
+            self._take_snapshot()
+            while not self._stop_event.is_set():
+                # 未完成的扫描短暂让出后续跑；完整轮询之间才使用配置间隔。
+                delay = 0.05 if self._polling.in_progress else self._poll_interval
+                self._stop_event.wait(timeout=delay)
+                if self._stop_event.is_set():
+                    break
+                changed = self._detect_changes()
+                for path in changed:
+                    self._enqueue(path)
+        finally:
+            self._polling.close()
+            self._flush_pending()
 
     def _run_watchdog(self) -> None:
         try:
@@ -212,47 +218,17 @@ class FileWatcherDaemon:
             observer.join(timeout=5.0)
         self._flush_pending()
 
-    def _collect_snapshot(self) -> dict[str, str] | None:
-        """复用有界源码扫描器，不能把相同 mtime 当成内容未变的证据。"""
-        root = self._cache.project_root
-        scope = make_source_scope_descriptor(no_default_excludes=True)
-        deadline = time.monotonic() + 5.0
-        capture = (
-            capture_current_source_snapshot
-            if os.name == "posix" and os.path.exists("/dev/fd")
-            else capture_portable_source_snapshot
-        )
-        source = capture(root, scope, deadline=deadline, raw_content=True)
-        if source.state != "exact":
-            with self._stats_lock:
-                self._stats.errors += 1
-            logger.debug("watcher source scan unavailable: %s", source.reason)
-            return None
-        return {
-            os.path.normpath(os.path.join(root, path)): digest
-            for path, digest, _ in source.rows
-        }
+    def _record_scan_error(self) -> None:
+        with self._stats_lock:
+            self._stats.errors += 1
 
     def _take_snapshot(self) -> None:
-        snapshot = self._collect_snapshot()
-        if snapshot is not None:
-            with self._snapshot_lock:
-                self._snapshot = snapshot
+        with self._snapshot_lock:
+            self._polling.scan(baseline=True)
 
     def _detect_changes(self) -> list[str]:
-        current = self._collect_snapshot()
-        if current is None:
-            # 保留基线并由下一轮轮询重试；扫描错误已计入统计，不伪造保存事件。
-            return []
         with self._snapshot_lock:
-            changed = [
-                path
-                for path, digest in current.items()
-                if self._snapshot.get(path) != digest
-            ]
-            changed.extend(path for path in self._snapshot if path not in current)
-            self._snapshot = current
-        return sorted(changed)
+            return self._polling.scan()
 
     def _enqueue(self, file_path: str) -> None:
         with self._pending_lock:
