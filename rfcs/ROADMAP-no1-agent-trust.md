@@ -41,11 +41,49 @@
 | `ed1f3395`，并发预取后的缓存填充 | 43.17 秒 | Git 查询 2,237 次 |
 | 同一进程随后暖调用 | 0.62 秒 | Git 查询 0 次；仍返回 2,237 文件评分 |
 
-本地原始记录为 `/tmp/tsa-health-dimension-profile.json` 和
-`/tmp/tsa-health-prefetch-warm-recheck.json`，属于临时诊断附件。
+原始计时与计数已保存为
+[`health-cache-20260908-e0.json`](../docs/baselines/health-cache-20260908-e0.json)。
+该记录保留诊断时的数据，但当时未捕获完整工作树及环境摘要，不能补称为可精确重建的基准。
+下面的复测命令产生新的观测，不保证重现历史耗时或文件数。
 另有 200 文件抽样的并发与串行提交计数完全一致；没有采用简单的
 `git log --name-only` 按文件累加，因为实际合并案例中该算法计数为 3，
 而既有逐路径查询为 2。加速不能靠悄悄改变历史计数的含义。
+
+### 复测缓存填充与暖调用
+
+在单独的新工作树中执行以下命令，并把 stdout 保存到工作树之外。
+要求 `.ast-cache/health_scores.db` 不存在，避免把已有评分缓存误报为冷启动；
+命令会创建该评分缓存。这里测量的是评分缓存填充，未声称操作系统页缓存为冷。
+完整仓库的运行成本约为几十秒，随 Git 历史、文件数和机器负载变化。
+
+```bash
+uv run python - <<'PY'
+import json
+import platform
+import subprocess
+from pathlib import Path
+from time import perf_counter
+from tree_sitter_analyzer.health_scorer import HealthScorer
+from tree_sitter_analyzer.registry.health_score_cache import HealthScoreCache
+
+root = Path.cwd().resolve()
+if Path(HealthScoreCache._default_db_path(str(root))).exists():
+    raise SystemExit("需要没有评分缓存的新工作树")
+scorer = HealthScorer()
+observations = []
+for phase in ("populate", "warm"):
+    started = perf_counter()
+    scores, stats = scorer.score_project_with_stats(str(root))
+    observations.append({"phase": phase, "seconds": perf_counter() - started,
+                         "scored": len(scores), "stats": stats})
+print(json.dumps({
+    "head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+    "dirty": subprocess.check_output(["git", "status", "--porcelain"], text=True),
+    "platform": platform.platform(), "python": platform.python_version(),
+    "observations": observations,
+}, ensure_ascii=False, indent=2))
+PY
+```
 
 ### 合入验证与证据限制
 
