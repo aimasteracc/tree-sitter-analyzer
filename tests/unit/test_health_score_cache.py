@@ -412,16 +412,22 @@ def test_legacy_schema_migrates_to_context_miss(project, monkeypatch):
     cache.close()
 
 
-def test_cache_misses_on_mtime_change(project):
+@pytest.mark.parametrize("preserve_mtime", [False, True])
+def test_cache_misses_on_mtime_change(project, preserve_mtime):
     target = project / "src" / "main.py"
     cache = HealthScoreCache(str(project))
     cache.store(
         HealthScore(file_path=str(target), total=90.0, dimensions={"size": 100.0})
     )
-    # Force mtime to change. Touch with a future timestamp to guarantee
-    # the fingerprint differs even on filesystems with low mtime resolution.
-    future = time.time() + 10
-    os.utime(target, (future, future))
+    # 2026-09-08 事件：等长改写并恢复时间戳仍必须撤销旧评分。
+    if preserve_mtime:
+        before = target.stat()
+        target.write_text(
+            target.read_text(encoding="utf-8").replace("add", "sub"), encoding="utf-8"
+        )
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+    else:
+        os.utime(target, (time.time() + 10,) * 2)
     assert cache.lookup(str(target)) is None
     cache.close()
 
@@ -462,7 +468,6 @@ def test_score_project_warm_run_is_fast(project):
     warm = scorer.score_project(str(project))
     warm_elapsed = time.perf_counter() - warm_start
 
-    # Equivalent results.
     assert {s.file_path for s in cold} == {s.file_path for s in warm}
     assert {s.grade for s in cold} == {s.grade for s in warm}
 

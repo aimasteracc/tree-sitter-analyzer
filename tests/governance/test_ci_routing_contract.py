@@ -289,3 +289,116 @@ def test_docs_check_fetches_history_for_contract_subjects() -> None:
     checkout_end = docs_job.index("\n      - name:", checkout_start)
     checkout_step = docs_job[checkout_start:checkout_end]
     assert checkout_step.splitlines().count("          fetch-depth: 0") == 1
+
+
+def test_dogfood_reads_complete_pr_diff_instead_of_output_files(tmp_path: Path) -> None:
+    """PR 分析覆盖全部提交，且不把自己的报告当作源码变更。"""
+    # 2026-09-08：#1418 的文档 PR 被报告为两个输出文件，真实提交完全遗漏。
+    import shlex
+    import subprocess
+
+    import yaml
+
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_git import (
+        _get_changed_files,
+    )
+
+    workflow = yaml.safe_load(
+        (PROJECT_ROOT / ".github/workflows/dogfood-pr-check.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    steps = workflow["jobs"]["claim-invariants"]["steps"]
+    checkout = next(
+        step for step in steps if "uses" in step and "checkout@" in step["uses"]
+    )
+    impact = next(step["run"] for step in steps if step.get("id") == "impact")
+    command = next(
+        line.strip() for line in impact.splitlines() if "uv run python -m" in line
+    )
+    argv = shlex.split(command.rstrip("\\").strip())[5:]
+    args = create_argument_parser().parse_args(argv)
+    source = tmp_path / "source"
+    source.mkdir()
+
+    def git(root: Path, *arguments: str) -> None:
+        subprocess.run(["git", *arguments], cwd=root, check=True, capture_output=True)
+
+    git(source, "init", "-b", "base")
+    git(source, "config", "user.name", "TSA Test")
+    git(source, "config", "user.email", "tsa@example.invalid")
+    (source / "README.md").write_text("base\n", encoding="utf-8")
+    git(source, "add", ".")
+    git(source, "commit", "-m", "base")
+    git(source, "checkout", "-b", "feature")
+    for name in ("first.py", "second.py"):
+        (source / name).write_text("value = 1\n", encoding="utf-8")
+        git(source, "add", name)
+        git(source, "commit", "-m", name)
+    git(source, "checkout", "base")
+    git(source, "merge", "--no-ff", "feature", "-m", "PR merge")
+    checkout_root = tmp_path / "checkout"
+    depth = str(checkout.get("with", {}).get("fetch-depth", 1))
+    git(tmp_path, "clone", "--depth", depth, source.as_uri(), str(checkout_root))
+    artifacts = checkout_root / "dogfood-artifacts"
+    artifacts.mkdir()
+    for suffix in ("json", "txt"):
+        (artifacts / f"change-impact.{suffix}").write_text("", encoding="utf-8")
+    assert _get_changed_files(args.change_impact_mode, str(checkout_root)) == [
+        "first.py",
+        "second.py",
+    ]
+    assert checkout["with"]["ref"] == "${{ github.sha }}"
+
+
+def test_ci_routing_uses_merge_parent_when_event_base_is_stale(tmp_path: Path) -> None:
+    """基线分支前进后，路由只看到 PR 自身的变更。"""
+    # 2026-09-09：#1412 事件中的旧 base SHA 把 develop 后续代码误计入文档 PR。
+    import shlex
+    import subprocess
+
+    import yaml
+
+    workflow = yaml.safe_load(
+        (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    steps = workflow["jobs"]["route"]["steps"]
+    detect = next(
+        step["run"] for step in steps if step.get("name") == "Detect changed files"
+    )
+    command = next(
+        line.strip() for line in detect.splitlines() if "git diff --name-only" in line
+    )
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        ).stdout.strip()
+
+    git("init", "-b", "base")
+    git("config", "user.name", "TSA Test")
+    git("config", "user.email", "tsa@example.invalid")
+    (tmp_path / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "base")
+    old_base = git("rev-parse", "HEAD")
+    git("checkout", "-b", "docs")
+    (tmp_path / "proposal.md").write_text("proposal\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "proposal")
+    git("checkout", "base")
+    (tmp_path / "unrelated.py").write_text("value = 1\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "advance base")
+    git("merge", "--no-ff", "docs", "-m", "PR merge")
+    merge_sha = git("rev-parse", "HEAD")
+    command = command.replace("${{ github.event.pull_request.base.sha }}", old_base)
+    command = command.replace("${{ github.sha }}", merge_sha)
+    argv = shlex.split(command)
+    assert git(*argv[1 : argv.index(">")]).splitlines() == ["proposal.md"]
+    assert steps[0]["with"]["ref"] == "${{ github.sha }}"

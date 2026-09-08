@@ -49,7 +49,7 @@ Categories of CLI surface:
 ### Querying
 - `--query-key methods|classes|imports|...` — predefined queries
 - `--filter "public=true"` — field filter
-- `--query "(method_declaration) @m"` — raw tree-sitter query
+- `--query-string "(method_declaration) @m"` — raw tree-sitter query
 
 ### Project-Level
 - `--overview` — snapshot

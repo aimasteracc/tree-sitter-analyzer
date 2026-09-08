@@ -891,3 +891,400 @@ class TestScoreComplexityExtractorPath:
         assert score == 100.0, (
             f"4 simple Python functions must score 100.0 (avg_cc=1.0), got {score}"
         )
+
+
+def test_project_health_reuses_graph_only_within_one_call(tmp_path, monkeypatch):
+    """每次项目评分只校验一次依赖图，下次调用必须发现内容变化。"""
+    import os
+
+    from tree_sitter_analyzer.health_scorer import HealthScorer
+    from tree_sitter_analyzer.project_graph import DependencyGraph
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname="probe"\n', encoding="utf-8"
+    )
+    for name in ("b", "c"):
+        (tmp_path / f"{name}.py").write_text("value = 1\n", encoding="utf-8")
+    for index in range(6):
+        (tmp_path / f"a{index}.py").write_text("import b\n", encoding="utf-8")
+    original = DependencyGraph._cache_key_for
+    calls = []
+
+    def measured(root):
+        calls.append(root)
+        return original(root)
+
+    monkeypatch.setattr(DependencyGraph, "_cache_key_for", staticmethod(measured))
+    scorer = HealthScorer()
+    first, _ = scorer.score_project_with_stats(str(tmp_path), use_cache=False)
+    for index in range(6):
+        path = tmp_path / f"a{index}.py"
+        before = path.stat()
+        path.write_text("import c\n", encoding="utf-8")
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    second, _ = scorer.score_project_with_stats(str(tmp_path), use_cache=False)
+    assert len(calls) == 2
+
+    def by_name(scores):
+        return {
+            Path(score.file_path).name: score.dimensions["dependencies"]
+            for score in scores
+        }
+
+    assert by_name(first)["b.py"] == 99.1
+    assert by_name(second)["b.py"] == 100.0
+    assert by_name(second)["c.py"] == 99.1
+
+
+@pytest.mark.parametrize("failure_phase", ["enumeration", "prefetch"])
+def test_project_health_restores_graph_scope_after_failure(
+    tmp_path, monkeypatch, failure_phase
+):
+    """枚举或预取异常后，恢复调用方的依赖图与 Git 预取上下文。"""
+    from tree_sitter_analyzer import health_scorer as health
+
+    scorer = health.HealthScorer()
+    outer = {"outer": object()}
+    outer_hotspots = {"outer": 17.0}
+    token = health._PROJECT_DEPENDENCY_GRAPHS.set(outer)
+    hotspot_token = health._PROJECT_HOTSPOT_SCORES.set(outer_hotspots)
+    (tmp_path / "probe.py").write_text("value=1\n", encoding="utf-8")
+
+    def fail(_path):
+        raise RuntimeError("operation failed")
+
+    if failure_phase == "enumeration":
+        monkeypatch.setattr(scorer, "_iter_source_files", fail)
+    else:
+        monkeypatch.setattr(health, "score_git_hotspot", fail)
+    try:
+        with pytest.raises(RuntimeError, match="operation failed"):
+            scorer.score_project_with_stats(str(tmp_path), use_cache=False)
+        assert health._PROJECT_DEPENDENCY_GRAPHS.get() is outer
+        assert health._PROJECT_HOTSPOT_SCORES.get() is outer_hotspots
+    finally:
+        health._PROJECT_HOTSPOT_SCORES.reset(hotspot_token)
+        health._PROJECT_DEPENDENCY_GRAPHS.reset(token)
+
+
+def test_project_graph_timeout_does_not_populate_scope(tmp_path, monkeypatch):
+    """超时回退不能把未完成的图当作本次评分可复用的结果。"""
+    import time
+
+    import tree_sitter_analyzer.health_scorer as health
+
+    path = tmp_path / "a.py"
+    path.write_text("import os\n", encoding="utf-8")
+    graphs = {}
+    token = health._PROJECT_DEPENDENCY_GRAPHS.set(graphs)
+
+    def delayed(_root):
+        time.sleep(0.03)
+        return object()
+
+    monkeypatch.setattr(health, "_build_dep_graph", delayed)
+    monkeypatch.setattr(health, "_DEP_GRAPH_TIMEOUT_S", 0.001)
+    try:
+        assert health.score_dependencies(str(path)) == 100.0
+        assert graphs == {}
+    finally:
+        health._PROJECT_DEPENDENCY_GRAPHS.reset(token)
+
+
+def test_project_health_cache_tracks_changed_incoming_dependencies(tmp_path):
+    """默认磁盘缓存必须更新未改动文件的入向依赖评分。"""
+    # 2026-09-08 事件：保留时间戳的导入改写留下旧健康评分。
+    import os
+
+    from tree_sitter_analyzer.health_scorer import HealthScorer
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname="probe"\n', encoding="utf-8"
+    )
+    for name in ("b", "c"):
+        (tmp_path / f"{name}.py").write_text("value = 1\n", encoding="utf-8")
+    for index in range(6):
+        (tmp_path / f"a{index}.py").write_text("import b\n", encoding="utf-8")
+    scorer = HealthScorer()
+    scorer.score_project_with_stats(str(tmp_path))
+    for index in range(6):
+        path = tmp_path / f"a{index}.py"
+        before = path.stat()
+        path.write_text("import c\n", encoding="utf-8")
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    cached, _ = scorer.score_project_with_stats(str(tmp_path))
+    fresh, _ = scorer.score_project_with_stats(str(tmp_path), use_cache=False)
+
+    def dependencies(scores):
+        return {
+            Path(score.file_path).name: score.dimensions["dependencies"]
+            for score in scores
+            if Path(score.file_path).name in {"b.py", "c.py"}
+        }
+
+    assert dependencies(fresh) == {"b.py": 100.0, "c.py": 99.1}
+    assert dependencies(cached) == dependencies(fresh)
+
+
+@pytest.mark.parametrize("mutation_phase", ["scoring", "publication", "reuse"])
+def test_health_cache_does_not_publish_scores_for_changed_source(
+    tmp_path, monkeypatch, mutation_phase
+):
+    """评分或发布期间改写文件，不得把旧分数绑定到新内容。"""
+    # 2026-09-08 事件：保存时单独读取指纹会给旧评分贴上新内容标记。
+    import os
+
+    from tree_sitter_analyzer.health_scorer import HealthScorer
+    from tree_sitter_analyzer.registry.health_score_cache import HealthScoreCache
+
+    target = tmp_path / "probe.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    scorer = HealthScorer()
+    cache = HealthScoreCache(str(tmp_path))
+    owner, method = (
+        (scorer, "score_file") if mutation_phase == "scoring" else (cache, "store")
+    )
+    if mutation_phase == "reuse":
+        from tree_sitter_analyzer import health_scorer
+
+        scorer._score_file_with_cache(str(target), cache)
+        owner, method = health_scorer, "score_dependencies"
+    original = getattr(owner, method)
+
+    def mutate(*args, **kwargs):
+        result = original(*args, **kwargs) if mutation_phase != "publication" else None
+        before = target.stat()
+        target.write_text("value = 2\n", encoding="utf-8")
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        return result if mutation_phase != "publication" else original(*args, **kwargs)
+
+    monkeypatch.setattr(owner, method, mutate)
+    try:
+        result = scorer._score_file_with_cache(str(target), cache)
+        if mutation_phase != "publication":
+            assert result is None
+        assert cache.lookup(str(target)) is None
+    finally:
+        cache.close()
+
+
+@pytest.mark.parametrize("condition", ["special", "oversized", "changed"])
+def test_health_source_fingerprint_rejects_unstable_reads(
+    tmp_path, monkeypatch, condition
+):
+    """特殊文件、超限内容和读取中变化均不能形成缓存准入证据。"""
+    import os
+
+    from tree_sitter_analyzer.registry.health_score_cache import _Fingerprint
+
+    target = tmp_path / "probe.py"
+    target.write_bytes(b"value=1\n")
+    original = os.fstat
+    calls = 0
+
+    def observed(fd):
+        nonlocal calls
+        calls += 1
+        if condition == "changed" and calls == 2:
+            target.write_bytes(b"value=22\n")
+        if condition == "special":
+            return os.stat(tmp_path)
+        return original(fd)
+
+    if condition == "oversized":
+        with target.open("wb") as stream:
+            stream.truncate(64 * 1024 * 1024 + 1)
+    monkeypatch.setattr(os, "fstat", observed)
+    assert _Fingerprint.from_path(str(target)) is None
+
+
+@pytest.mark.parametrize("restore_mode", ["rewrite", "replace"])
+def test_health_cache_rejects_source_changed_then_restored(
+    tmp_path, monkeypatch, restore_mode
+):
+    """内容和时间戳恢复后，仍拒绝评分期间的中间版本。"""
+    # 2026-09-08 事件：中间版本 75.4 分被发布给实际应为 100 分的文件。
+    import os
+
+    from tree_sitter_analyzer.health_scorer import HealthScorer
+    from tree_sitter_analyzer.registry.health_score_cache import HealthScoreCache
+
+    target = tmp_path / "probe.py"
+    initial = "def f(x):\n    return x\n"
+    target.write_text(initial, encoding="utf-8")
+    scorer = HealthScorer()
+    cache = HealthScoreCache(str(tmp_path))
+    original = scorer.score_file
+
+    def intermediate(path):
+        before = target.stat()
+        target.write_text(
+            "def f(x):\n"
+            + "".join(f"    if x == {i}: return {i}\n" for i in range(60)),
+            encoding="utf-8",
+        )
+        score = original(path)
+        restored = target if restore_mode == "rewrite" else tmp_path / "restored.py"
+        restored.write_text(initial, encoding="utf-8")
+        if restore_mode == "replace":
+            restored.replace(target)
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        return score
+
+    monkeypatch.setattr(scorer, "score_file", intermediate)
+    try:
+        result = scorer._score_file_with_cache(str(target), cache)
+        assert original(str(target)).total == 100.0
+        assert result is None
+        assert cache.lookup(str(target)) is None
+    finally:
+        cache.close()
+
+
+@pytest.mark.parametrize("success", [True, False])
+def test_health_fingerprint_windows_change_time_binding(tmp_path, monkeypatch, success):
+    """原生查询使用真实变更时间字段，失败时不回退为创建时间。"""
+    import ctypes
+    import sys
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.registry import health_score_fingerprint as fingerprint
+
+    def query(handle, selector, pointer, size):
+        assert (handle, selector, size) == (123, 0, 40)
+        info = ctypes.cast(pointer, ctypes.POINTER(fingerprint._FileBasicInfo)).contents
+        info.creation, info.change = 11, 987654321
+        return int(success)
+
+    def library(name, *, use_last_error):
+        assert (name, use_last_error) == ("kernel32", True)
+        return SimpleNamespace(GetFileInformationByHandleEx=query)
+
+    monkeypatch.setattr(fingerprint, "_IS_WINDOWS", True)
+    monkeypatch.setattr(ctypes, "WinDLL", library, raising=False)
+    monkeypatch.setitem(
+        sys.modules, "msvcrt", SimpleNamespace(get_osfhandle=lambda fd: fd + 100)
+    )
+    fingerprint._windows_file_info.cache_clear()
+    try:
+        if success:
+            assert fingerprint._change_time(23, tmp_path.stat()) == 987654321
+        else:
+            with pytest.raises(OSError, match="change time unavailable"):
+                fingerprint._change_time(23, tmp_path.stat())
+    finally:
+        fingerprint._windows_file_info.cache_clear()
+
+
+def test_project_health_prefetches_git_scores_with_four_workers(tmp_path, monkeypatch):
+    """冷评分最多并发四路 Git 查询，并按文件保留各自结果。"""
+    import threading
+
+    from tree_sitter_analyzer import health_scorer as health
+
+    barrier = threading.Barrier(4, timeout=2)
+    lock = threading.Lock()
+    active = maximum = 0
+
+    def git_score(path, low, high):
+        nonlocal active, maximum
+        with lock:
+            active += 1
+            maximum = max(maximum, active)
+        try:
+            barrier.wait()
+            return float(Path(path).stem[1:]) * 10
+        finally:
+            with lock:
+                active -= 1
+
+    for index in range(4):
+        (tmp_path / f"f{index}.py").write_text("value=1\n", encoding="utf-8")
+    monkeypatch.setattr(health, "calculate_git_hotspot", git_score)
+    scores, _ = health.HealthScorer().score_project_with_stats(
+        str(tmp_path), use_cache=False
+    )
+    assert maximum == 4
+    assert {
+        Path(s.file_path).name: s.dimensions.get("git_hotspot") for s in scores
+    } == {
+        "f0.py": 0.0,
+        "f1.py": 10.0,
+        "f2.py": 20.0,
+        "f3.py": 30.0,
+    }
+
+
+def test_project_git_prefetch_preserves_warm_hits_and_resets_scope(
+    tmp_path, monkeypatch
+):
+    """暖缓存不查询历史；后续冷调用与单文件调用不继承旧预取结果。"""
+    from tree_sitter_analyzer import health_scorer as health
+
+    target = tmp_path / "probe.py"
+    target.write_text("value=1\n", encoding="utf-8")
+    calls = []
+    value = [90.0]
+
+    def git_score(path, low, high):
+        calls.append(path)
+        return value[0]
+
+    monkeypatch.setattr(health, "calculate_git_hotspot", git_score)
+    scorer = health.HealthScorer()
+    cold, _ = scorer.score_project_with_stats(str(tmp_path))
+    warm, _ = scorer.score_project_with_stats(str(tmp_path))
+    assert calls == [str(target)]
+    assert (
+        cold[0].dimensions["git_hotspot"] == warm[0].dimensions["git_hotspot"] == 90.0
+    )
+    value[0] = 80.0
+    target.write_text("value=2\n", encoding="utf-8")
+    changed, _ = scorer.score_project_with_stats(str(tmp_path))
+    assert changed[0].dimensions["git_hotspot"] == 80.0
+    value[0] = 70.0
+    assert health.score_git_hotspot(str(target)) == 70.0
+    assert calls == [str(target)] * 3
+
+
+def test_project_git_prefetch_cancels_queued_queries_on_interrupt(
+    tmp_path, monkeypatch
+):
+    """中断后取消未启动的查询，并等待已经启动的工作退出。"""
+    # 2026-09-08：以实际首次调用触发中断，不假定文件枚举顺序。
+    import concurrent.futures
+    import threading
+
+    from tree_sitter_analyzer import health_scorer as health
+
+    futures = []
+    release = threading.Event()
+    lock = threading.Lock()
+    calls = 0
+
+    class ObservedPool(concurrent.futures.ThreadPoolExecutor):
+        def submit(self, *args, **kwargs):
+            future = super().submit(*args, **kwargs)
+            futures.append(future)
+            return future
+
+    def query(*args):
+        nonlocal calls
+        with lock:
+            calls += 1
+            first = calls == 1
+        if first:
+            raise KeyboardInterrupt("cancel prefetch")
+        release.wait(timeout=0.1)
+        return 100.0
+
+    for index in range(40):
+        (tmp_path / f"f{index}.py").write_text("x=1\n", encoding="utf-8")
+    monkeypatch.setattr(concurrent.futures, "ThreadPoolExecutor", ObservedPool)
+    monkeypatch.setattr(health, "calculate_git_hotspot", query)
+    with pytest.raises(KeyboardInterrupt, match="cancel prefetch"):
+        health.HealthScorer().score_project_with_stats(str(tmp_path), use_cache=False)
+    assert len(futures) == 40
+    # 调度顺序决定取消数量；不变量是存在取消且没有未结束的任务。
+    assert any(f.cancelled() for f in futures)
+    assert all(f.done() for f in futures)

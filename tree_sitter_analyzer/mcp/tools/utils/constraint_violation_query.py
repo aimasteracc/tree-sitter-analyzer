@@ -115,7 +115,11 @@ def violations_for_files(
 
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(str(db_path), timeout=10)
+        # 只打开已有文件并禁止业务 SQL 写入，保留 SQLite 的 WAL 清理行为。
+        conn = sqlite3.connect(
+            db_path.absolute().as_uri() + "?mode=rw", uri=True, timeout=10
+        )
+        conn.execute("PRAGMA query_only=ON")
         return violations_for_files_from_conn(conn, file_paths)
     except sqlite3.Error:
         logger.debug("violations_for_files: query failed", exc_info=True)

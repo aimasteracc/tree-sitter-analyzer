@@ -1,0 +1,73 @@
+{
+  "evidence_level": "E0",
+  "kind": "historical developer diagnostics",
+  "environment": {
+    "os": "macOS",
+    "python": "3.14.3"
+  },
+  "limitations": [
+    "Single observations, not controlled before/after trials or an SLA.",
+    "Original source-tree and environment digests were not captured; exact historical state cannot be reconstructed from these records.",
+    "Rerun instructions in rfcs/ROADMAP-no1-agent-trust.md produce new observations, not identical historical timings."
+  ],
+  "serial_no_score_cache": {
+    "head": "057a403c",
+    "total_seconds": 120.46775104204426,
+    "scores": 2237,
+    "dimensions": {
+      "score_size": {
+        "calls": 2237,
+        "seconds": 0.004775598295964301
+      },
+      "score_complexity": {
+        "calls": 2237,
+        "seconds": 15.400264034396969
+      },
+      "score_dependencies": {
+        "calls": 2237,
+        "seconds": 3.646484085940756
+      },
+      "score_duplication": {
+        "calls": 2237,
+        "seconds": 0.2883616178878583
+      },
+      "score_structure": {
+        "calls": 2237,
+        "seconds": 1.1383093205513433
+      },
+      "score_git_hotspot": {
+        "calls": 2237,
+        "seconds": 98.05495111987693
+      }
+    },
+    "stats": {
+      "total_files_scanned": 2237,
+      "total_files_scored": 2237,
+      "total_files_skipped": 0,
+      "pruned_directories": 78,
+      "skip_reasons": {
+        "excluded_dir": 0,
+        "scoring_failed": 0
+      }
+    }
+  },
+  "concurrent_score_cache": {
+    "head": "ed1f3395",
+    "observations": [
+      {
+        "phase": "populate",
+        "seconds": 43.166111833998,
+        "git_queries": 2237,
+        "scored": 2237,
+        "skipped": 0
+      },
+      {
+        "phase": "warm",
+        "seconds": 0.6213587080128491,
+        "git_queries": 0,
+        "scored": 2237,
+        "skipped": 0
+      }
+    ]
+  }
+}

@@ -14,6 +14,7 @@ Computes a 0-100 health score for source files based on weighted dimensions:
 import json
 import logging
 import os
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,11 @@ from .registry.health_scorer_helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 仅在一次项目评分内复用依赖图；上下文令牌隔离嵌套调用与并发请求。
+_PROJECT_DEPENDENCY_GRAPHS: ContextVar[dict[str, Any] | None] = ContextVar(
+    "project_health_dependency_graphs", default=None
+)
 
 # Dimension weights (must sum to 100)
 DIMENSION_WEIGHTS = {
@@ -56,6 +62,11 @@ PROJECT_HEALTH_SOURCE_EXTS = frozenset(
     # .yaml, .yml — see _lang_extension_map.py) are also excluded here since
     # they are not wired into EXT_TO_LANG.
     _EXT_TO_LANG.keys()
+)
+
+# Git 预取结果只属于本次项目调用，不在不同项目评分之间保留。
+_PROJECT_HOTSPOT_SCORES: ContextVar[dict[str, float | None] | None] = ContextVar(
+    "project_health_hotspot_scores", default=None
 )
 
 # Thresholds for scoring
@@ -379,8 +390,26 @@ class HealthScorer:
         excluded_files = 0
         pruned_directories = 0
         scoring_failed = 0
+        graph_token = _PROJECT_DEPENDENCY_GRAPHS.set({})
+        hotspots: dict[str, float | None] = {}
+        hotspot_token = _PROJECT_HOTSPOT_SCORES.set(hotspots)
         try:
+            from concurrent.futures import ThreadPoolExecutor
+
             files, pruned_directories = self._iter_source_files(root)
+            cold_paths = [
+                str(f)
+                for f in files
+                if not self._is_excluded(f, root)
+                and (cache is None or cache.lookup(str(f)) is None)
+            ]
+            # 保留逐路径 git log 的合并历史语义，仅限制并发查询数量。
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                hotspots.update(
+                    zip(
+                        cold_paths, pool.map(score_git_hotspot, cold_paths), strict=True
+                    )
+                )
             for f in files:
                 scanned += 1
                 if self._is_excluded(f, root):
@@ -392,6 +421,8 @@ class HealthScorer:
                     continue
                 results.append(score)
         finally:
+            _PROJECT_HOTSPOT_SCORES.reset(hotspot_token)
+            _PROJECT_DEPENDENCY_GRAPHS.reset(graph_token)
             if cache is not None:
                 cache.close()
 
@@ -413,14 +444,19 @@ class HealthScorer:
         file_path: str,
         cache: Any,
     ) -> HealthScore | None:
-        """Look up a cached score, fall back to fresh scoring on miss/error.
+        """复用当前内容的评分；评分期间变化的文件不发布缓存。"""
+        from .registry.health_score_cache import _Fingerprint
 
-        Returns None when scoring raises; the outer loop just skips the
-        file (mirrors the original ``except Exception: continue`` flow).
-        """
+        before = _Fingerprint.from_path(file_path) if cache is not None else None
         if cache is not None:
             cached = cache.lookup(file_path)
-            if cached is not None:
+            # 2026-09-08：其他文件的导入变化也会改变当前文件的依赖分数。
+            # 项目调用共用依赖图，缓存命中只需计算当前节点的入向、出向评分。
+            if cached is not None and cached.get("dimensions", {}).get(
+                "dependencies"
+            ) == round(score_dependencies(file_path), 1):
+                if before is None or _Fingerprint.from_path(file_path) != before:
+                    return None
                 return HealthScore(
                     file_path=cached["file_path"],
                     total=cached["total"],
@@ -431,8 +467,10 @@ class HealthScorer:
             score = self.score_file(file_path)
         except Exception:  # nosec B112
             return None
-        if cache is not None:
-            cache.store(score)
+        if cache is not None and before is not None:
+            if _Fingerprint.from_path(file_path) != before:
+                return None
+            cache.store(score, _expected=before)
         return score
 
     # ---- Dimension scoring helpers ----
@@ -776,12 +814,18 @@ def score_dependencies(file_path: str) -> float:
         path = Path(file_path).resolve()
         project_root = find_project_root(path)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-            fut = ex.submit(_build_dep_graph, str(project_root))
-            try:
-                graph = fut.result(timeout=_DEP_GRAPH_TIMEOUT_S)
-            except concurrent.futures.TimeoutError:
-                return _score_deps_fallback(file_path)
+        graphs = _PROJECT_DEPENDENCY_GRAPHS.get()
+        root_key = str(project_root)
+        graph = graphs.get(root_key) if graphs is not None else None
+        if graph is None:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(_build_dep_graph, root_key)
+                try:
+                    graph = fut.result(timeout=_DEP_GRAPH_TIMEOUT_S)
+                except concurrent.futures.TimeoutError:
+                    return _score_deps_fallback(file_path)
+            if graphs is not None:
+                graphs[root_key] = graph
 
         rel = str(path.relative_to(project_root)).replace("\\", "/")
 
@@ -875,7 +919,10 @@ def score_structure(file_path: str, source: str, language: str | None) -> float:
 
 
 def score_git_hotspot(file_path: str) -> float | None:
-    """Score based on git commit frequency (Tornhill's hotspot analysis)."""
+    """根据 Git 提交频率评分，项目调用可复用本次预取结果。"""
+    prefetched = _PROJECT_HOTSPOT_SCORES.get()
+    if prefetched is not None and file_path in prefetched:
+        return prefetched[file_path]
     try:
         return calculate_git_hotspot(
             file_path,

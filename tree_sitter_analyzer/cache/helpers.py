@@ -10,6 +10,27 @@ import os
 from typing import Any
 
 
+def _canonical_project_path(file_path: str, project_root: str) -> str:
+    """统一项目根目录别名，保留根目录内逻辑路径及冻结源码的身份。"""
+    absolute = os.path.abspath(file_path)
+    root_key = os.path.normcase(project_root)
+    absolute_key = os.path.normcase(absolute)
+    if absolute_key == root_key or absolute_key.startswith(
+        root_key.rstrip(os.sep) + os.sep
+    ):
+        return absolute
+    parent = os.path.dirname(absolute)
+    mapped = absolute
+    while True:
+        if os.path.normcase(os.path.realpath(parent)) == root_key:
+            # 子链接也可能指回根目录；必须以最外层根别名保留完整逻辑后缀。
+            mapped = os.path.join(project_root, os.path.relpath(absolute, parent))
+        ancestor = os.path.dirname(parent)
+        if ancestor == parent:
+            return mapped
+        parent = ancestor
+
+
 def _build_function_entry(
     sym: dict[str, Any], file_path: str, language: str
 ) -> dict[str, Any]:

@@ -71,10 +71,9 @@ class SmartContextTool(BaseMCPTool):
 
     # _get_graph: implementation
     def _get_graph(self) -> DependencyGraph:
-        if self._graph is None:
-            if not self.project_root:
-                raise ValueError("Project root not set.")
-            self._graph = DependencyGraph(self.project_root)
+        if not self.project_root:
+            raise ValueError("Project root not set.")
+        self._graph = DependencyGraph(self.project_root)
         return self._graph
 
     # _get_scorer: implementation
