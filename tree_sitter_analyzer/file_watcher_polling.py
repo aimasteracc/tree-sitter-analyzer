@@ -130,6 +130,7 @@ class PollingScanner:
         self.on_error = on_error
         self.snapshot: dict[str, tuple[Any, ...]] = {}
         self._cursor: Iterator[tuple[str, str, Any]] | None = None
+        self._retry_entry: tuple[str, str, Any] | None = None
         self._seen: set[str] = set()
         self._blocked: set[str] = set()
         self._warming = False
@@ -140,6 +141,7 @@ class PollingScanner:
         return self._cursor is not None
 
     def close(self) -> None:
+        self._retry_entry = None
         if self._cursor is not None:
             self._cursor.close()  # type: ignore[attr-defined]
             self._cursor = None
@@ -155,8 +157,13 @@ class PollingScanner:
         for _ in range(_POLL_ENTRIES):
             if time.monotonic() >= deadline:
                 break
+            retrying = self._retry_entry is not None
             try:
-                kind, path, info = next(self._cursor)
+                if self._retry_entry is not None:
+                    kind, path, info = self._retry_entry
+                    self._retry_entry = None
+                else:
+                    kind, path, info = next(self._cursor)
             except StopIteration:
                 deleted = [
                     path
@@ -190,6 +197,10 @@ class PollingScanner:
                 fingerprint = self._fingerprint(path, deadline)
             except (OSError, SourceOracleError, ValueError):
                 self.on_error()
+                if not retrying and time.monotonic() >= deadline:
+                    # 片尾失败只补一次完整预算；持续失败必须让后续文件继续前进。
+                    self._retry_entry = (kind, path, info)
+                    break
                 continue
             if (
                 not (baseline or self._warming)

@@ -2876,3 +2876,48 @@ def test_watcher_does_not_retry_permanently_oversized_source(tmp_path):
     finally:
         watcher.stop(timeout=3)
         cache.close()
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+def test_polling_retries_expired_fingerprint_without_starving_followers(
+    tmp_path, monkeypatch, persistent
+):
+    # #1405：片尾失败的文件获得一次新切片预算，持续失败也不能挡住后续文件。
+    import stat
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.file_watcher_polling as polling
+
+    paths = [str(tmp_path / name) for name in ("a.py", "b.py", "c.py")]
+    clock = [0.0]
+    attempts = []
+    errors = []
+    scan = polling.PollingScanner(str(tmp_path), lambda: errors.append(True))
+    scan.snapshot.update(dict.fromkeys(paths, ("old",)))
+    info = SimpleNamespace(st_mode=stat.S_IFREG, st_size=1)
+    monkeypatch.setattr(polling, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(
+        polling, "_entries", lambda _root: (("file", path, info) for path in paths)
+    )
+
+    def fingerprint(path, deadline):
+        attempts.append(path)
+        if path == paths[1] and (persistent or deadline - clock[0] < 0.5):
+            clock[0] = deadline + 0.01
+            raise OSError("deadline exceeded")
+        clock[0] += 0.9 if path == paths[0] else 0.1
+        return ("new",)
+
+    monkeypatch.setattr(scan, "_fingerprint", fingerprint)
+    try:
+        assert scan.scan() == [paths[0]]
+        second = scan.scan()
+        assert second == ([] if persistent else paths[1:])
+        if persistent:
+            assert scan.scan() == [paths[2]]
+        assert attempts == [paths[0], paths[1], paths[1], paths[2]]
+        assert scan.snapshot[paths[1]] == (("old",) if persistent else ("new",))
+        assert scan.in_progress is False
+        assert len(errors) == (2 if persistent else 1)
+    finally:
+        scan.close()
