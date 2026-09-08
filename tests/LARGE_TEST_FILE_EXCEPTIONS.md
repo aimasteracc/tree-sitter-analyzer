@@ -24,7 +24,7 @@ match reality or CI fails). The threshold is 800 lines.
 | 1615 | `tests/unit/languages/test_cyclomatic_complexity.py` | |
 | 1585 | `tests/unit/languages/test_java_plugin.py` | |
 | 1575 | `tests/unit/test_uml_activity.py` | |
-| 1690 | `tests/unit/mcp/test_test_discovery.py` | |
+| 1728 | `tests/unit/mcp/test_test_discovery.py` | |
 | 1403 | `tests/unit/core/test_engine.py` | |
 | 1357 | `tests/unit/test_codegraph_pr_review_tool.py` | |
 | 1348 | `tests/integration/formatters/test_data_manager.py` | |
@@ -299,9 +299,17 @@ and `answer_cache_policy` components, which retain their own test families.
 Complete Python candidates and the bounded fallback both reuse the existing
 monorepo identity/package-compatibility and subsystem-affinity helpers. Monorepo
 foreign-package candidates cannot re-enter through the ten-item fallback.
-Outside monorepos, known facade families retain their cross-layer consumers;
-where no positive affinity exists, explicit naming keeps the existing conservative
-fallback rather than inventing a new path-ownership rule. Root canonicalization
+After the compatible-package check, derived facade families retain cross-layer
+consumers even when the source is in a monorepo, matching the existing graph
+policy. A real-directory cross-case pins graph/live equality at five own/root
+targets while excluding the foreign package. Outside monorepos, where no positive
+affinity exists, explicit naming keeps the existing conservative fallback rather
+than inventing a new path-ownership rule. Root canonicalization
 and the weak stem-matching rule are unchanged. No parallel parser or mapping engine
 was added. New policy/discovery contract cases are separate from the original
 580 migrated cases, and do not manufacture coverage for those suites.
+
+The final scope follow-up also integrates published develop `8a5f8ab3` (#1401),
+which corrects the separate gap analyzer's absolute-parent-path classification.
+That does not identify the historical full-session FD source tracked in #1402.
+No additional comprehensive run or FD-observer run is claimed for this follow-up.

@@ -66,6 +66,44 @@ class TestDetectLanguageFromExt:
 
 
 class TestFindTestFilesPython:
+    @pytest.mark.parametrize("absolute_source", [False, True])
+    def test_monorepo_facade_family_matches_graph_without_foreign_package(
+        self, tmp_path, monkeypatch, absolute_source
+    ):
+        """#1400：包内 facade 与根级 CLI/MCP 共享族，foreign 包仍必须排除。"""
+        from tree_sitter_analyzer.mcp.tools.utils import test_discovery
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+            _find_test_files,
+        )
+
+        relative = "packages/b/src/tree_sitter_analyzer/cache/schema.py"
+        source = tmp_path / relative
+        source.parent.mkdir(parents=True)
+        source.write_text("pass\n", encoding="utf-8")
+        expected = {
+            "packages/b/tests/cli/test_ast_cache.py",
+            "tests/test_ast_cache.py",
+            "tests/unit/cache/test_ast_cache.py",
+            "tests/unit/cli/test_ast_cache.py",
+            "tests/unit/mcp/test_ast_cache.py",
+        }
+        foreign = "packages/a/tests/cli/test_ast_cache.py"
+        for name in {*expected, foreign}:
+            target = tmp_path / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("def test_behavior(): pass\n", encoding="utf-8")
+        monkeypatch.setitem(test_discovery._TEST_DIRS, "python", ["tests", "packages"])
+
+        graph = _find_test_files([relative], {relative, *expected, foreign})[relative]
+        live = find_test_files(
+            str(source) if absolute_source else relative, str(tmp_path)
+        )
+
+        assert graph == sorted(expected)
+        assert sorted(live) == graph
+        assert len(live) == 5
+        assert foreign not in live
+
     @pytest.mark.parametrize(
         "source_name", ["answer_cache.py", "answer_cache_policy.py"]
     )

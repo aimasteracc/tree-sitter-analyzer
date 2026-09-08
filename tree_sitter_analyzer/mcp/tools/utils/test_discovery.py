@@ -180,13 +180,9 @@ def find_test_files(
                 not require_affinity
                 or test_path_is_unscoped(test)
                 or test_path_subsystem_affinity_rank(test, relative_source) is not None
-                # 非 monorepo 的已知 facade 族可跨 CLI/MCP 层，与图映射约定一致。
-                or (
-                    not in_monorepo
-                    and any(
-                        related_stem_matches(Path(test).stem, name)
-                        for name in family_stems
-                    )
+                # 与 graph policy 一致：先通过包兼容校验，再保留跨层的已知 family。
+                or any(
+                    related_stem_matches(Path(test).stem, name) for name in family_stems
                 )
             )
         ]
