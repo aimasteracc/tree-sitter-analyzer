@@ -2149,3 +2149,26 @@ def test_legacy_parent_lookup_without_ancestors_returns_none():
     from tree_sitter_analyzer.cache.extraction import _find_parent_class
 
     assert _find_parent_class(SimpleNamespace(parent=None), "") is None
+
+
+def test_anonymous_javascript_class_does_not_borrow_outer_member_owner():
+    """匿名类的方法不能错误归属到外围具名类，外围方法仍保留正确归属。"""
+    import tree_sitter_javascript
+    from tree_sitter import Language, Parser
+
+    from tree_sitter_analyzer.cache.extraction import _find_parent_class
+
+    source = "class Outer { field = class { inner() {} }; outer() {} }"
+    tree = Parser(Language(tree_sitter_javascript.language())).parse(source.encode())
+    assert tree.root_node.has_error is False
+    methods = {}
+    pending = [tree.root_node]
+    while pending:
+        node = pending.pop()
+        if node.type == "method_definition":
+            name_node = node.child_by_field_name("name")
+            methods[_node_text(name_node, source)] = _find_parent_class(
+                node, source, "javascript"
+            )
+        pending.extend(node.named_children)
+    assert methods == {"inner": None, "outer": "Outer"}

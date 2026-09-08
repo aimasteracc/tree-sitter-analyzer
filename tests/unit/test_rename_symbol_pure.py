@@ -6,6 +6,7 @@ proving the rename engine's core logic without any ASTCache instance.
 
 from __future__ import annotations
 
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -248,7 +249,13 @@ class TestRenameSymbol:
         ("def foo(): pass\n", "class", "identifiers"),
         ("foo = 1\n", "bar", "module-level"),
         ("def foo(): pass\ndef foo(): pass\n", "bar", "multiple definitions"),
-        ("def foo[T](): pass\n", "bar", ""),
+        (
+            "def foo[T](): pass\n",
+            "bar",
+            "Generic type parameter bindings are unsupported"
+            if sys.version_info >= (3, 12)
+            else "invalid syntax",
+        ),
         ("def foo(): pass\nmatch {}:\n    case {**bar}: pass\n", "bar", "Pattern"),
         ("def foo(): pass\nfrom a import foo\n", "bar", "Ambiguous import binding"),
         ("def foo(): pass\ndef other():\n    global foo\n", "bar", "Global/nonlocal"),
