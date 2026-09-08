@@ -228,7 +228,10 @@ class FileWatcherDaemon:
                 self._stats.errors += 1
             logger.debug("watcher source scan unavailable: %s", source.reason)
             return None
-        return {os.path.join(root, path): digest for path, digest, _ in source.rows}
+        return {
+            os.path.normpath(os.path.join(root, path)): digest
+            for path, digest, _ in source.rows
+        }
 
     def _take_snapshot(self) -> None:
         snapshot = self._collect_snapshot()
@@ -239,8 +242,8 @@ class FileWatcherDaemon:
     def _detect_changes(self) -> list[str]:
         current = self._collect_snapshot()
         if current is None:
-            # 保留上次已知快照，并请求重试；不把失败扫描写成“没有变化”。
-            return [self._cache.project_root]
+            # 保留基线并由下一轮轮询重试；扫描错误已计入统计，不伪造保存事件。
+            return []
         with self._snapshot_lock:
             changed = [
                 path

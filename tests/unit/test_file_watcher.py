@@ -127,10 +127,10 @@ class TestWatcherStats:
 
 
 class TestPollingDetection:
-    def test_failed_scan_preserves_snapshot_and_requests_retry(
+    def test_failed_scan_preserves_snapshot_without_synthesizing_change(
         self, watcher, project, monkeypatch
     ):
-        """失败扫描不能覆盖基线或伪装成无变化；恢复后继续识别保存。"""
+        """#1405：扫描失败保留基线并由下一轮重试，不触发虚假同步。"""
         from types import SimpleNamespace
 
         import tree_sitter_analyzer.file_watcher as owner
@@ -144,7 +144,7 @@ class TestPollingDetection:
 
             patcher.setattr(owner, "capture_current_source_snapshot", failed)
             patcher.setattr(owner, "capture_portable_source_snapshot", failed)
-            assert watcher._detect_changes() == [str(project)]
+            assert watcher._detect_changes() == []
             watcher._take_snapshot()
         assert watcher._snapshot == before
         assert watcher.get_stats()["errors"] == 2
@@ -154,11 +154,12 @@ class TestPollingDetection:
 
     def test_portable_polling_reads_actual_content(self, watcher, project, monkeypatch):
         """便携路由也读取真实内容，不退回仅比较时间戳。"""
+        import ntpath
         from types import SimpleNamespace
 
         import tree_sitter_analyzer.file_watcher as owner
 
-        monkeypatch.setattr(owner, "os", SimpleNamespace(name="nt", path=os.path))
+        monkeypatch.setattr(owner, "os", SimpleNamespace(name="nt", path=ntpath))
         monkeypatch.setattr(
             owner,
             "capture_current_source_snapshot",
@@ -169,7 +170,7 @@ class TestPollingDetection:
         before = path.stat()
         path.write_text("def saved():\n    pass\n", encoding="utf-8")
         os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
-        assert watcher._detect_changes() == [str(path)]
+        assert watcher._detect_changes() == [ntpath.normpath(str(path))]
 
     @pytest.mark.parametrize("atomic", [False, True])
     def test_detects_content_change_with_preserved_metadata(
