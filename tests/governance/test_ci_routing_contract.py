@@ -349,3 +349,56 @@ def test_dogfood_reads_complete_pr_diff_instead_of_output_files(tmp_path: Path) 
         "second.py",
     ]
     assert checkout["with"]["ref"] == "${{ github.sha }}"
+
+
+def test_ci_routing_uses_merge_parent_when_event_base_is_stale(tmp_path: Path) -> None:
+    """基线分支前进后，路由只看到 PR 自身的变更。"""
+    # 2026-09-09：#1412 事件中的旧 base SHA 把 develop 后续代码误计入文档 PR。
+    import shlex
+    import subprocess
+
+    import yaml
+
+    workflow = yaml.safe_load(
+        (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    steps = workflow["jobs"]["route"]["steps"]
+    detect = next(
+        step["run"] for step in steps if step.get("name") == "Detect changed files"
+    )
+    command = next(
+        line.strip() for line in detect.splitlines() if "git diff --name-only" in line
+    )
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        ).stdout.strip()
+
+    git("init", "-b", "base")
+    git("config", "user.name", "TSA Test")
+    git("config", "user.email", "tsa@example.invalid")
+    (tmp_path / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "base")
+    old_base = git("rev-parse", "HEAD")
+    git("checkout", "-b", "docs")
+    (tmp_path / "proposal.md").write_text("proposal\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "proposal")
+    git("checkout", "base")
+    (tmp_path / "unrelated.py").write_text("value = 1\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "advance base")
+    git("merge", "--no-ff", "docs", "-m", "PR merge")
+    merge_sha = git("rev-parse", "HEAD")
+    command = command.replace("${{ github.event.pull_request.base.sha }}", old_base)
+    command = command.replace("${{ github.sha }}", merge_sha)
+    argv = shlex.split(command)
+    assert git(*argv[1 : argv.index(">")]).splitlines() == ["proposal.md"]
+    assert steps[0]["with"]["ref"] == "${{ github.sha }}"
