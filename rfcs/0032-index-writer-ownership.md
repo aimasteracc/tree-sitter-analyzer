@@ -3,7 +3,7 @@
 - **Status**: draft
 - **Author(s)**: @aimasteracc, Codex
 - **Created**: 2026-09-08
-- **Last updated**: 2026-09-08
+- **Last updated**: 2026-09-09
 - **Tracking issue**: TBD after acceptance
 - **Affected source paths**:
   - `tree_sitter_analyzer/ast_cache.py`, `_ast_cache_*_mixin.py`
@@ -75,6 +75,41 @@ writes commit and are visible from an independent connection. The published docs
 explicitly invites external modules to use this accessor for raw SQL. The probe uses
 a custom file outside the project and creates no project `.ast-cache` directory.
 Raw record: `/tmp/tsa-published-custom-db-contract.json`.
+
+Read-only main-database mode is not a read-only SQL capability. A local Python/
+SQLite 3.51.0 probe on 2026-09-09 rejected direct UPDATE through `mode=ro`, but
+allowed ATTACH of the same file with `mode=rw` and then updated it through that alias.
+The following bounded reproduction uses only a disposable database:
+
+```python
+import sqlite3
+import tempfile
+from pathlib import Path
+
+with tempfile.TemporaryDirectory() as directory:
+    path = Path(directory) / "index.db"
+    with sqlite3.connect(path) as writer:
+        writer.execute("CREATE TABLE state (value INTEGER)")
+        writer.execute("INSERT INTO state VALUES (1)")
+    reader = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)
+    try:
+        reader.execute("ATTACH DATABASE ? AS writable", (path.as_uri() + "?mode=rw",))
+        reader.execute("UPDATE writable.state SET value=3")
+        reader.commit()
+    finally:
+        reader.close()
+    with sqlite3.connect(path) as verifier:
+        assert verifier.execute("SELECT value FROM state").fetchone() == (3,)
+```
+
+Consequently a public read capability must not expose an unrestricted raw connection
+or cursor escape to it. Merely setting `query_only` or installing a removable
+authorizer on a returned raw connection is not an enforcement design. Before
+acceptance, specify the read-session/cursor surface, ownership and closure lifetime,
+and qualification for ATTACH, PRAGMA and callback changes. This would also change the
+published Python object contract and belongs in the pending major-version decision.
+The boundary concerns TSA-managed access; hostile code with the same OS file-write
+authority can open SQLite independently and is not isolated by a Python wrapper.
 
 Consequently physical relocation and mandatory write admission affect released
 behavior even though candidate binding does not. Proposed **major-version direction**:
