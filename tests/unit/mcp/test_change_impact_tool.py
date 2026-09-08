@@ -72,6 +72,6 @@ from test_change_impact_tool_git_and_verification import (  # noqa: F401
     test_non_pytest_default_verification_plan_uses_detected_runner,
     test_requirements_txt_is_not_treated_as_docs_only,
     test_staged_mode_keeps_staged_semantics,
-    test_verification_strategy_avoids_huge_focused_commands,
     test_verification_strategy_recommends_focused_then_default_for_dirty_worktree,
+    test_verification_strategy_retains_all_mapped_targets,
 )

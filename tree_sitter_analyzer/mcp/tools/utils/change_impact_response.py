@@ -470,6 +470,9 @@ def _agent_stop_condition(
                 "or queue-boundary command."
             )
         return f"{local} exits successfully locally."
+    steps = strategy.get("verification_steps") or [verification["verification_command"]]
+    if len(steps) > 1:
+        return "All verification steps pass in order: " + "; ".join(steps) + "."
     if (
         risk == "high"
         and verification["verification_command"] != verification["default_test_command"]
@@ -490,6 +493,9 @@ def _effective_verification_command(
     local_command = strategy.get("local_verification_command")
     if isinstance(local_command, str) and local_command:
         return local_command
+    focused_command = strategy.get("focused_test_command")
+    if isinstance(focused_command, str) and focused_command:
+        return focused_command
     command = verification["verification_command"]
     return command if isinstance(command, str) else str(command)
 

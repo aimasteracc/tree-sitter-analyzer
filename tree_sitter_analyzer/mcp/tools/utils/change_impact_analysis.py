@@ -481,7 +481,8 @@ def _build_verification_strategy(
         verification["test_runner"],
         verification["default_test_command"],
     )
-    can_build_focused_command = 0 < len(tests_to_run) <= FOCUSED_TEST_COMMAND_LIMIT
+    # 展示长度不能改变验证集合；默认快速门禁不保证包含这些测试。
+    can_build_focused_command = bool(tests_to_run)
     focused_command = (
         build_test_command(default_command, tests_to_run)
         if verification["test_required"] and can_build_focused_command
@@ -493,8 +494,6 @@ def _build_verification_strategy(
         verification=verification,
         focused_command=focused_command,
         final_command=final_command,
-        tests_to_run_count=len(tests_to_run),
-        default_command=default_command.command,
     )
     hint = _append_large_dirty_hint(hint, changed_count)
 
@@ -596,8 +595,6 @@ def _select_verification_path(
     verification: dict[str, Any],
     focused_command: str,
     final_command: str,
-    tests_to_run_count: int,
-    default_command: str,
 ) -> tuple[list[str], str, str]:
     """Choose verification steps, strategy label, and hint text."""
     if not verification["test_required"]:
@@ -612,14 +609,6 @@ def _select_verification_path(
             "focused_then_default",
             "Run focused tests while iterating; run the default suite once at the "
             "queue boundary because unmapped runtime changes remain.",
-        )
-    if tests_to_run_count > FOCUSED_TEST_COMMAND_LIMIT:
-        return (
-            [default_command],
-            "default_for_large_diff",
-            f"{tests_to_run_count} mapped tests exceed the focused command limit "
-            f"({FOCUSED_TEST_COMMAND_LIMIT}); use queue-specific focused tests while "
-            "editing and run the default suite once at the verification boundary.",
         )
     return (
         [final_command],
