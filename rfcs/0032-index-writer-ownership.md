@@ -295,6 +295,27 @@ There is no selected separate-file schema/path protocol yet. The positive observ
 justifies developing that alternative; it does not accept it, remove existing gates,
 or authorize implementation or release.
 
+### Legacy FTS name sealed by a view: narrow in-place probe
+
+A further four-route old-wheel experiment renames the FTS virtual table to
+`ast_symbols_fts_owned` and creates a read-only `ast_symbols_fts` view, then installs
+the same eager ordinary-table guards. The old connection remains open throughout.
+All four real v1.29.5 operations are rejected and the complete logical dump remains
+unchanged after an explicit old-connection commit. `invalidate` and incremental sync
+fail with `cannot modify ast_symbols_fts because it is a view`; `index_file` and forced
+rebuild fail with the missing admission function. No malformed-image error occurs in
+these four observations. Raw record: `/tmp/tsa-published-writer-fts-view-proof.json`.
+
+This closes the observed FTS-before-guard hole only for the four tested routes. It
+is not a selected migration. Three operations still leave a deferred transaction
+before explicit commit; prove bounded new-writer progress and safe connection reuse.
+The proposed view cannot transparently preserve FTS `MATCH`/control-command behavior;
+new writers, search readers, schema validators and snapshot projection must agree on
+the active FTS owner. Qualify fresh old-runtime connections, all lazy DDL, rollback,
+trusted-schema settings, native platforms and mirrors before making a compatibility
+or isolation claim. Keep the earlier failing probes: do not erase negative evidence
+when a more constrained experiment passes.
+
 ### Crash recovery and publication
 
 A killed process cannot update its phase: it leaves `phase=writing` and its operation
