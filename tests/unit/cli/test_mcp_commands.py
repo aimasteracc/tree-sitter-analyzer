@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from argparse import Namespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
 from tree_sitter_analyzer.cli.commands import mcp_commands
+from tree_sitter_analyzer.cli_main import create_argument_parser
 
 MCP_COMMAND_FLAGS = (
     "file_health",
@@ -985,3 +987,160 @@ def test_compact_toon_cli_flag_forwards_compact_only(monkeypatch) -> None:
 
     assert result == 0
     assert seen["arguments"]["compact_only"] is True
+
+
+@pytest.mark.parametrize(
+    ("argv", "tool", "expected"),
+    [
+        (
+            ["--rename", "before", "--rename-new-name", "after"],
+            "CodeGraphRefactorTool",
+            {"symbol": "before", "new_name": "after", "mode": "preview"},
+        ),
+        (
+            [
+                "--rename",
+                "before",
+                "--rename-new-name",
+                "after",
+                "--rename-mode",
+                "apply",
+            ],
+            "CodeGraphRefactorTool",
+            {"symbol": "before", "new_name": "after", "mode": "apply"},
+        ),
+        (
+            ["sample.py", "--unreachable-code"],
+            "UnreachableCodeTool",
+            {
+                "mode": "file",
+                "file_path": "sample.py",
+                "include_test_files": False,
+                "max_files": 500,
+            },
+        ),
+        (
+            [
+                "--unreachable-code",
+                "--unreachable-code-mode",
+                "project",
+                "--unreachable-code-include-tests",
+                "--unreachable-code-max-files",
+                "7",
+            ],
+            "UnreachableCodeTool",
+            {"mode": "project", "include_test_files": True, "max_files": 7},
+        ),
+        (
+            ["--detect-middleware"],
+            "MiddlewareDetectorTool",
+            {"mode": "all", "framework": "all"},
+        ),
+        (
+            [
+                "--detect-middleware",
+                "--detect-middleware-mode",
+                "lookup",
+                "--detect-middleware-url-prefix",
+                "/api",
+                "--detect-middleware-framework",
+                "express",
+            ],
+            "MiddlewareDetectorTool",
+            {"mode": "lookup", "url_prefix": "/api", "framework": "express"},
+        ),
+    ],
+)
+@pytest.mark.parametrize("output_format", ["json", "toon"])
+def test_recovered_routes_delegate_all_arguments(
+    argv, tool, expected, output_format, monkeypatch
+):
+    args = create_argument_parser().parse_args(argv)
+    executed = AsyncMock(return_value={"success": True, "verdict": "OK"})
+
+    class FakeTool:
+        def __init__(self, *args, **kwargs):
+            self.execute = executed
+
+    monkeypatch.setattr(mcp_commands, tool, FakeTool, raising=False)
+    assert (
+        mcp_commands.handle_mcp_commands(
+            args, lambda result: None, pytest.fail, lambda: output_format
+        )
+        == 0
+    )
+    assert executed.call_args.args[0] == {**expected, "output_format": output_format}
+
+
+def test_unreachable_file_mode_requires_positional_path():
+    args = create_argument_parser().parse_args(["--unreachable-code"])
+    errors = []
+    assert (
+        mcp_commands.handle_mcp_commands(
+            args, lambda result: None, errors.append, lambda: "json"
+        )
+        == 1
+    )
+    assert "requires a file path" in errors[0]
+
+
+def test_rename_missing_new_name_returns_validation_envelope():
+    args = create_argument_parser().parse_args(["--rename", "before"])
+    results = []
+    assert (
+        mcp_commands.handle_mcp_commands(
+            args, results.append, pytest.fail, lambda: "json"
+        )
+        == 1
+    )
+    assert results[0]["success"] is False
+    assert "--rename-new-name" in results[0]["error"]
+
+
+@pytest.mark.slow_ok  # 五次真实 CLI 进程启动及临时项目索引，验证跨进程写入边界。
+def test_real_cli_recovered_routes(tmp_path):
+    """在可丢弃项目上验证真实入口、预览不写文件以及显式应用。"""
+    import json
+    import subprocess
+    import sys
+
+    source = tmp_path / "sample.py"
+    original = "def before():\n    return 1\n    print('unreachable')\n\nbefore()\n"
+    source.write_text(original, encoding="utf-8")
+
+    def run(*argv):
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tree_sitter_analyzer",
+                "--project-root",
+                str(tmp_path),
+                *argv,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=20,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        return json.loads(completed.stdout)
+
+    unreachable = run(str(source), "--unreachable-code")
+    assert unreachable.get("error") is None
+    assert unreachable["success"] is True
+    assert unreachable["unreachable_count"] == 1
+    assert unreachable["unreachable_blocks"][0]["start_line"] == 3
+    middleware = run("--detect-middleware")
+    assert middleware.get("error") is None
+    assert middleware["success"] is True
+    assert middleware["middleware_count"] == 0
+    run("--ast-cache", "index")
+    preview = run("--rename", "before", "--rename-new-name", "after")
+    assert preview["success"] is True
+    assert source.read_text(encoding="utf-8") == original
+    applied = run(
+        "--rename", "before", "--rename-new-name", "after", "--rename-mode", "apply"
+    )
+    assert applied["success"] is True
+    assert source.read_text(encoding="utf-8") == original.replace("before", "after")

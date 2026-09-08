@@ -47,7 +47,9 @@ logger = logging.getLogger(__name__)
 # v17: Kotlin companion_object members now attributed to their enclosing class;
 #      Java record_declaration added to _CLASS_LIKE so record methods/ctors are
 #      classified method instead of function. Both change persisted symbol rows.
-_AST_CACHE_EXTRACTOR_VERSION = 17
+# v18：Scala object/trait 等类型的成员获得归属；普通 class 原本已支持。
+# v19：所有 walker 分支接入语言注册表，补充 JS/TS 具名函数表达式。
+_AST_CACHE_EXTRACTOR_VERSION = 19
 
 
 def check_cache_or_read(

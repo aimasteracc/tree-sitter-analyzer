@@ -31,12 +31,6 @@ from tree_sitter_analyzer.mcp.tools._call_tree_tool import (  # noqa: F401
     CodeGraphCalleeTreeTool,
     CodeGraphCallerTreeTool,
 )
-
-# ---------------------------------------------------------------------------
-# Tool class imports — consumed via globals() inside _get_tool_class so that
-# tests can monkeypatch the names at module level.  The # noqa codes prevent
-# ruff / autoflake from stripping imports that appear unused.
-# ---------------------------------------------------------------------------
 from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.ast_diff_tool import ASTDiffTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.ast_path_tool import (
@@ -99,6 +93,15 @@ from tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool import (
 from tree_sitter_analyzer.mcp.tools.codegraph_query_tool import (
     CodeGraphQueryTool,  # noqa: F401
 )
+
+# ---------------------------------------------------------------------------
+# Tool class imports — consumed via globals() inside _get_tool_class so that
+# tests can monkeypatch the names at module level.  The # noqa codes prevent
+# ruff / autoflake from stripping imports that appear unused.
+# ---------------------------------------------------------------------------
+from tree_sitter_analyzer.mcp.tools.codegraph_refactor_tool import (
+    CodeGraphRefactorTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.codegraph_sitemap_tool import (
     CodeGraphSitemapTool,  # noqa: F401
 )
@@ -138,6 +141,9 @@ from tree_sitter_analyzer.mcp.tools.import_graph_tool import (
 )
 from tree_sitter_analyzer.mcp.tools.knowledge_graph_tool import (
     CodeGraphKnowledgeGraphTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.middleware_detector_tool import (
+    MiddlewareDetectorTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.modification_guard_tool import (
     ModificationGuardTool,  # noqa: F401
@@ -182,6 +188,9 @@ from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
     TraceImpactTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.uml_tool import CodeGraphUMLTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.unreachable_code_tool import (
+    UnreachableCodeTool,  # noqa: F401
+)
 
 # ---------------------------------------------------------------------------
 # Sub-module imports — builders, specs, helpers
@@ -219,6 +228,9 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "ASTCacheTool",
         "ASTDiffTool",
         "RouteDetectorTool",
+        "CodeGraphRefactorTool",
+        "UnreachableCodeTool",
+        "MiddlewareDetectorTool",
         "CodeGraphSymbolSearchTool",
         "CodeGraphSymbolResolveTool",
         "CodeGraphImpactTool",

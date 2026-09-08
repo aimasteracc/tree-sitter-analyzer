@@ -16,11 +16,11 @@ Response-envelope semantics (verdict alphabet, truncation fields, `compact_only`
 | `search` | symbol / query / content / grep / batch / chain / select / subscribe / unsubscribe | Code search: BM25 symbol lookup, tree-sitter .scm DSL, ripgrep, fd+rg, batch, graph-chain DSL, Hyphae DSL, reactive push subscriptions (RFC-0001) |
 | `nav` | navigate / call_path / xref / resolve / lineage / impact / trace / context / callers / callees / callee_tree / caller_tree / test_map / co_change | Call-graph navigation + one-call symbol context; test_map = which tests exercise a function (RFC-0014 Phase B); co_change = git-history temporal coupling (RFC-0014 Phase C) |
 | `structure` | outline / analyze / ast_path / sitemap / class_tree / class_detail / explore / read / signatures | Structural AST analysis + partial file read + signature-only listing |
-| `health` | project / file / scale / patterns / heatmap / imports / matrix / dead / routes / overview / deps / test_gap | Code health, complexity, dependency analysis, untested symbol discovery |
-| `edit` | safe / guard / impact / refactor / constraints / pr / classify / ast_diff | Edit-safety, blast-radius, refactor, PR review |
+| `health` | project / file / scale / patterns / heatmap / imports / matrix / dead / unreachable / routes / middleware / overview / deps / test_gap | Code health, complexity, dependency analysis, untested symbol discovery |
+| `edit` | safe / guard / impact / refactor / rename / constraints / pr / classify / ast_diff | Edit-safety, blast-radius, refactor, PR review |
 | `project` | overview / files / smart / parser / tools / metrics / skills / workflow / journal / doc_sync | Project-intelligence hub |
-| `index` | status / cache / build / full / auto / sync | CodeGraph index lifecycle |
-| `viz` | uml / graph / similarity | UML / graph diagrams + similarity |
+| `index` | status / cache / build / full / auto / sync / knowledge | CodeGraph index lifecycle |
+| `viz` | uml / graph / similarity / knowledge | UML / graph diagrams + similarity |
 
 > `set_project_path` remains a standalone infrastructure entry (not a facade
 > action) because it mutates server-level state. Final client surface = **8
@@ -160,3 +160,14 @@ All tools return:
 - [`docs/api/mcp_tools_specification.md`](../api/mcp_tools_specification.md) — Full per-tool API
 - [`docs/smart-workflow.md`](../smart-workflow.md) — SMART methodology
 - [`docs/CODEMAPS/cli.md`](./cli.md) — CLI counterpart map
+
+## Recovered action CLI paths
+
+| Facade action | CLI path |
+|---|---|
+| `edit.rename` | `--rename SYMBOL --rename-new-name NAME --rename-mode preview` (default); Python module-level functions/classes and direct imports; unsupported bindings are rejected; `apply` writes files |
+| `health.unreachable` | `FILE --unreachable-code`; `--unreachable-code-mode project` scans the project |
+| `health.middleware` | `--detect-middleware`; mode, URL prefix and framework filters are available |
+
+These actions are tracked in `NEW_ACTION_PARITY`. CLI defaults to JSON and MCP defaults to TOON.
+The pre-existing Hyphae `search.select`, `search.subscribe`, and `search.unsubscribe` CLI gaps remain explicitly pinned by the parity contract.

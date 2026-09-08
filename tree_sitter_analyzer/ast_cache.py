@@ -96,7 +96,8 @@ logger = logging.getLogger(__name__)
 #      Java record_declaration added to _CLASS_LIKE. Both change symbol rows.
 #      MUST stay equal to the copy in ``cache/indexer.py``
 #      (gated by test_extractor_version_matches_in_both_sites).
-_AST_CACHE_EXTRACTOR_VERSION = 17
+# v19：所有 walker 分支接入语言注册表，补充 JS/TS 具名函数表达式。
+_AST_CACHE_EXTRACTOR_VERSION = 19
 
 
 class SchemaIntegrityError(RuntimeError):

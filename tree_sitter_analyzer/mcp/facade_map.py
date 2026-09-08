@@ -174,6 +174,13 @@ NEW_ACTION_PARITY: dict[str, tuple[str, str, str]] = {
     "nav_test_map": ("nav", "test_map", "--test-map"),
     # RFC-0014 Phase C: co_change is new; it was never a registered v1.x tool.
     "nav_co_change": ("nav", "co_change", "--co-change"),
+    "edit_rename": ("edit", "rename", "--rename"),
+    "health_unreachable": ("health", "unreachable", "--unreachable-code"),
+    "health_middleware": ("health", "middleware", "--detect-middleware"),
+    "structure_signatures": ("structure", "signatures", "--table"),
     "index_knowledge": ("index", "knowledge", "--knowledge-graph-index"),
     "viz_knowledge": ("viz", "knowledge", "--knowledge-graph-export"),
 }
+
+# 保留兼容导入；本次补全的三个动作均已有 CLI 路由。
+MCP_ONLY_ACTIONS: dict[str, tuple[str, str]] = {}

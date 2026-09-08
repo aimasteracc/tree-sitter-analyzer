@@ -2,7 +2,7 @@
 """Tests for the ``health`` facade (Wave B, P0 geode layer).
 
 Covered behaviours (mirrors test_facade_tool.py §5 contract):
-1.  builds & routes — factory returns FacadeTool; all 11 actions present
+1.  构造与路由：工厂返回 FacadeTool，包含 14 个动作
     (uml/graph/similarity moved to ``viz`` facade).
 2.  action routing — {"action": X, ...} reaches the right inner.
 3.  arg projection — ``action`` is NOT in the args the inner received.
@@ -43,7 +43,7 @@ from tree_sitter_analyzer.mcp.tools.health_facade import build_health_facade
 #   - unknown action error     (success=False, available_actions listed)
 #
 # Facade-specific tests that remain in this file:
-#   - action routing to each of the 12 named actions
+#   - 14 个动作的路由
 #   - sibling-param drop between actions
 #   - R3 normalize (symbol -> function_name for heatmap inner)
 #   - R5 deps mode sub-routing (mode kept by projection filter)
@@ -67,7 +67,9 @@ _ALL_ACTIONS = frozenset(
         "imports",
         "matrix",
         "dead",
+        "unreachable",
         "routes",
+        "middleware",
         "overview",
         "deps",
         "test_gap",  # RFC-0003 pre-req: wired from orphaned CodeGraphTestGapTool
@@ -165,10 +167,10 @@ def test_health_facade_builds_and_has_all_actions() -> None:
 
 
 def test_health_facade_total_action_count() -> None:
-    """12 actions total — uml/graph/similarity moved to viz; test_gap wired (RFC-0003)."""
+    """健康 facade 共 14 个动作，含不可达代码和中间件检测。"""
     facade = build_health_facade(project_root=None)
     total = len(facade.action_map) + len(facade.bespoke_map)
-    assert total == 12
+    assert total == 14
 
 
 def test_health_facade_does_not_contain_viz_actions() -> None:

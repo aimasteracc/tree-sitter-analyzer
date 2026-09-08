@@ -17,6 +17,10 @@ TSA は tree-sitter でコードベースをインデックスし、正確なコ
 
 > v1.x からの移行は [docs/MIGRATION.md](docs/MIGRATION.md) を参照。
 
+### v1.29.5 ホットフィックス — 2026-09-08
+
+共通のノード分類でシンボル抽出を修正しました（抽出バージョン 19）。Python の名前変更には正確な AST 位置を使用し、`edit.rename` / `--rename`、`health.unreachable` / `--unreachable-code`、`health.middleware` / `--detect-middleware` の MCP・CLI 経路を復旧しました。名前変更の既定はプレビューです。一意な Python モジュール直下の関数・クラスと、直接の絶対 `from` インポートを対象とし、曖昧な参照や未対応の参照は拒否します。更新後は再度インデックスを実行して古い抽出結果を更新してください。[変更の詳細](CHANGELOG.md#1295---2026-09-08)。
+
 ---
 
 ## はじめに
@@ -160,7 +164,7 @@ CodeGraph には skill システムが存在しない。本ツールは `.claude
 
 各 skill は `allowed-tools` ツール サブセット + 手順レシピ + 決定面スキーマを同梱し、エージェントは 8 個のツールから毎回選別する必要が無い。
 
-### 321 の CLI フラグ
+### 332 の CLI フラグ
 
 CodeGraph の CLI の厳密な上位互換。主なもの:
 

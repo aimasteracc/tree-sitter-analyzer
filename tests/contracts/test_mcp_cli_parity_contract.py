@@ -338,7 +338,11 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("health", "imports"): "CodeGraphImportGraphTool",
         ("health", "matrix"): "CodeGraphDependencyMatrixTool",
         ("health", "dead"): "CodeGraphDeadCodeTool",
+        # 语句级不可达代码，与函数级 dead 检查互补。
+        ("health", "unreachable"): "UnreachableCodeTool",
         ("health", "routes"): "RouteDetectorTool",
+        # 中间件链检查，与 routes 端点检查互补。
+        ("health", "middleware"): "MiddlewareDetectorTool",
         ("health", "overview"): "CodeGraphOverviewTool",
         ("health", "deps"): "DependencyAnalysisTool",
         ("health", "test_gap"): "CodeGraphTestGapTool",
@@ -346,6 +350,10 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("edit", "guard"): "ModificationGuardTool",
         ("edit", "impact"): "ChangeImpactTool",
         ("edit", "refactor"): "RefactoringSuggestionsTool",
+        # ``refactor`` advises, ``rename`` acts: CodeGraphRefactorTool is the
+        # only write-capable AST-aware rename, so it gets its own action
+        # rather than displacing the read-only advisor above.
+        ("edit", "rename"): "CodeGraphRefactorTool",
         ("edit", "constraints"): "ConstraintCheckTool",
         # _PRReviewViaFacade subclasses CodeGraphPRReviewTool so facade
         # action=pr implies mode=pr (#451 Codex P1); delegation to the
@@ -475,3 +483,36 @@ def test_every_tool_declares_mcp_annotations() -> None:
         "Tools cannot be both readOnly AND destructive — pick one. "
         f"Offenders: {contradictions}"
     )
+
+
+def test_live_facade_actions_have_explicit_parity_accounting() -> None:
+    """枚举真实路由，防止新动作绕过映射检查；锁定既存 Hyphae 缺口。"""
+    from tree_sitter_analyzer.mcp.facade_map import (
+        LEGACY_TOOL_MAP,
+        MCP_ONLY_ACTIONS,
+        NEW_ACTION_PARITY,
+    )
+
+    _, lookup = _create_tool_registry(str(PROJECT_ROOT))
+    declared = {
+        (name, action)
+        for name, facade in lookup.items()
+        for action in set(facade.action_map) | set(facade.bespoke_map)
+    }
+    mapped = set(LEGACY_TOOL_MAP.values()) | {
+        (facade, action) for facade, action, _flag in NEW_ACTION_PARITY.values()
+    }
+    # 这些是本次修改前已存在且由文档漂移测试记录的 CLI 缺口。
+    existing_hyphae_gaps = {
+        ("search", "select"),
+        ("search", "subscribe"),
+        ("search", "unsubscribe"),
+    }
+    assert declared - mapped == existing_hyphae_gaps
+    assert mapped <= declared
+    assert MCP_ONLY_ACTIONS == {}
+    assert {
+        ("edit", "rename"),
+        ("health", "unreachable"),
+        ("health", "middleware"),
+    } <= mapped

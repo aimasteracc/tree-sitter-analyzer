@@ -2,9 +2,15 @@
 """
 Tree-sitter Analyzer API
 
-Public API facade that provides a stable, high-level interface to the
-tree-sitter analyzer framework. This is the main entry point for both
-CLI and MCP interfaces.
+Public API facade providing a stable, high-level interface for embedding the
+analyzer in another Python program. It is one of the three entry points
+listed in ``docs/architecture.md``, alongside the CLI and the MCP server.
+
+Scope note: the CLI and the MCP server do **not** route through this module —
+both call ``core.analysis_engine`` directly. Having no internal callers is
+therefore the expected state here; the consumers are downstream embedders
+(see ``examples/javascript_analysis_demo.py``). ``__all__`` pins the
+supported surface; anything absent from it is an implementation detail.
 """
 
 import logging
@@ -435,3 +441,27 @@ def analyze(file_path: str | Path, **kwargs: Any) -> dict[str, Any]:
 def get_languages() -> list[str]:
     """Convenience function that aliases to get_supported_languages."""
     return get_supported_languages()
+
+
+# The supported embedding surface. Names absent from this list (including
+# ``get_engine`` and every underscore-prefixed helper) are implementation
+# details and may change without a deprecation cycle.
+__all__ = [
+    # Analysis
+    "analyze_file",
+    "analyze_code",
+    "extract_elements",
+    "execute_query",
+    # Language capability queries
+    "get_supported_languages",
+    "get_available_queries",
+    "is_language_supported",
+    "detect_language",
+    "get_file_extensions",
+    "get_framework_info",
+    # Validation
+    "validate_file",
+    # Backward-compatible aliases
+    "analyze",
+    "get_languages",
+]

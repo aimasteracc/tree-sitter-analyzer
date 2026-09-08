@@ -163,3 +163,43 @@ public record Point(int x, int y) {
     assert by_name["distance"]["class"] == "Point"
     assert by_name["origin"]["kind"] == "method"
     assert by_name["origin"]["class"] == "Point"
+
+
+# ---------------------------------------------------------------------------
+# Scala member attribution (surfaced by the node-taxonomy refactor)
+# ---------------------------------------------------------------------------
+
+
+def test_scala_members_are_attributed_to_their_enclosing_type() -> None:
+    """Scala 普通 class 保持原归属，object/trait 成员也必须归属到外层类型。"""
+    from tree_sitter_analyzer.cache.extraction import _extract_symbols as _ex
+    from tree_sitter_analyzer.core.parser import Parser as _Parser
+
+    src = """\
+class Calculator {
+  def add(a: Int, b: Int): Int = a + b
+}
+
+object Helper {
+  def create(): Calculator = new Calculator()
+}
+
+trait Greeter {
+  def greet(): String
+}
+"""
+    result = _Parser().parse_code(src, "scala")
+    assert result.success and result.tree is not None
+    by_name = {
+        s["name"]: s for s in _ex(result.tree, src, "scala")["symbols"] if "name" in s
+    }
+
+    for method, owner in (
+        ("add", "Calculator"),
+        ("create", "Helper"),
+        ("greet", "Greeter"),
+    ):
+        assert by_name[method]["kind"] == "method", (
+            f"{method} should be a method, got {by_name[method]['kind']}"
+        )
+        assert by_name[method]["class"] == owner
