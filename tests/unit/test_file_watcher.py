@@ -70,6 +70,7 @@ class TestManualTriggerSync:
         result = watcher.trigger_sync()
         assert result["new_files"] == 2
         assert result["scanned"] == 2
+        assert result["completeness"] == "complete"
 
     def test_trigger_sync_populates_cache(self, watcher, cache):
         watcher.trigger_sync()
@@ -81,6 +82,28 @@ class TestManualTriggerSync:
         result = watcher.trigger_sync()
         assert result["new_files"] == 0
         assert result["unchanged_files"] == 2
+
+    def test_trigger_sync_uses_full_index_default_scope(self, watcher, cache, project):
+        """自动同步遵守完整索引默认排除范围，并记录可重放的认证范围。"""
+        from tree_sitter_analyzer.index_source_scope import (
+            canonical_source_scope_descriptor,
+            make_source_scope_descriptor,
+        )
+
+        excluded = project / "tests" / "golden" / "corpus_watch.py"
+        excluded.parent.mkdir(parents=True)
+        excluded.write_text("def excluded():\n    pass\n", encoding="utf-8")
+        result = watcher.trigger_sync()
+        assert result["scanned"] == 2
+        assert result["completeness"] == "complete"
+        rows = (
+            cache.get_conn()
+            .execute("SELECT source_scope_descriptor FROM ast_index_snapshot_manifest")
+            .fetchall()
+        )
+        assert [row[0] for row in rows] == [
+            canonical_source_scope_descriptor(make_source_scope_descriptor())
+        ]
 
 
 class TestWatcherStats:
@@ -264,3 +287,12 @@ def test_watchdog_atomic_save_refreshes_index(watcher, cache, project):
         .fetchall()
     )
     assert [row[0] for row in rows] == ["saved"]
+    from tree_sitter_analyzer.index_snapshot_schema import index_fingerprint
+
+    conn = cache.get_conn()
+    manifest = conn.execute(
+        "SELECT file_count, index_fingerprint FROM ast_index_snapshot_manifest"
+    ).fetchall()
+    assert [tuple(row) for row in manifest] == [
+        (2, index_fingerprint(conn, str(project)))
+    ]
