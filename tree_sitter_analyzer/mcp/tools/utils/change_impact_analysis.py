@@ -50,6 +50,7 @@ from .verification_command import (
     DefaultTestCommand,
     build_test_commands,
     detect_default_test_command,
+    join_verification_steps,
 )
 
 logger = logging.getLogger(__name__)
@@ -487,7 +488,7 @@ def _build_verification_strategy(
         if verification["test_required"] and tests_to_run
         else []
     )
-    focused_command = " && ".join(focused_steps)
+    focused_command = join_verification_steps(focused_steps)
     final_command = verification["verification_command"]
 
     steps, strategy, hint = _select_verification_path(
@@ -533,8 +534,8 @@ def _with_local_low_impact_profile(
         _low_impact_pytest_command(command)
         for command in strategy["verification_steps"]
     ]
-    local_command = " && ".join(local_steps)
-    final_command = " && ".join(strategy["verification_steps"])
+    local_command = join_verification_steps(local_steps)
+    final_command = join_verification_steps(strategy["verification_steps"])
     label = (
         "local_low_impact_focused_then_ci"
         if focused_command and focused_command != final_command
@@ -548,7 +549,9 @@ def _with_local_low_impact_profile(
         **strategy,
         "resource_profile": RESOURCE_PROFILE_LOCAL_LOW_IMPACT,
         "low_impact_focused_test_command": (
-            " && ".join(_low_impact_pytest_command(step) for step in focused_steps)
+            join_verification_steps(
+                [_low_impact_pytest_command(step) for step in focused_steps]
+            )
         ),
         "local_verification_command": local_command,
         "ci_verification_command": final_command,

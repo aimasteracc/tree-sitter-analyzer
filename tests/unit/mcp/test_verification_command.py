@@ -131,3 +131,107 @@ def test_oversized_single_target_is_explicitly_rejected():
         build_test_commands(
             DefaultTestCommand("pytest", "uv run pytest -q"), ["x" * 6000]
         )
+
+
+def test_windows_verification_chain_quotes_arguments_and_checks_each_step(monkeypatch):
+    # #1407：PowerShell 5.1 不支持 &&，单引号和美元符号必须保留原值。
+    from tree_sitter_analyzer.mcp.tools.utils import verification_command as commands
+
+    monkeypatch.setattr(commands.sys, "platform", "win32")
+    assert commands.join_verification_steps(
+        ["pytest 'tests/a b.py'", "pytest 'tests/a'\"'\"'b$HOME.py'"]
+    ) == (
+        "& { & 'pytest' 'tests/a b.py'; if (-not $?) { throw 'Verification failed' }; "
+        "& 'pytest' 'tests/a''b$HOME.py'; if (-not $?) { throw 'Verification failed' } }"
+    )
+
+
+def test_posix_verification_chain_stops_after_failure(tmp_path):
+    # #1407：多步命令不能在前一步失败后继续运行。
+    import subprocess
+    import sys
+
+    import pytest
+
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        join_verification_steps,
+    )
+
+    if sys.platform == "win32":
+        pytest.skip("tracked: #1407 POSIX 原生 shell 验证")
+    result = subprocess.run(
+        join_verification_steps(["false", "touch should_not_exist"]),
+        shell=True,
+        cwd=tmp_path,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert (tmp_path / "should_not_exist").exists() is False
+
+
+def test_windows_native_verification_chain_stops_after_failure(tmp_path):
+    # #1407：Windows CI 使用真实 PowerShell 5.1 验证失败传播。
+    import subprocess
+    import sys
+
+    import pytest
+
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        join_verification_steps,
+    )
+
+    if sys.platform != "win32":
+        pytest.skip("tracked: #1407 PowerShell 5.1 原生验证由 Windows CI 执行")
+    result = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            join_verification_steps(["cmd /c exit 7", "cmd /c mkdir should_not_exist"]),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert (tmp_path / "should_not_exist").exists() is False
+
+
+def test_native_verification_chain_preserves_order_and_literal_arguments(tmp_path):
+    # #1407：真实 shell 按顺序执行，并保留路径中的引号、空格和美元符号。
+    import shlex
+    import subprocess
+    import sys
+
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        join_verification_steps,
+    )
+
+    literal = "a b'c$HOME"
+    steps = [
+        shlex.join(
+            [
+                sys.executable,
+                "-c",
+                "import pathlib,sys; pathlib.Path('receipt').write_text(sys.argv[1], encoding='utf-8')",
+                literal,
+            ]
+        ),
+        shlex.join(
+            [
+                sys.executable,
+                "-c",
+                "import pathlib,sys; assert pathlib.Path('receipt').read_text(encoding='utf-8')==sys.argv[1]",
+                literal,
+            ]
+        ),
+    ]
+    command = join_verification_steps(steps)
+    if sys.platform == "win32":
+        args = ["powershell", "-NoProfile", "-NonInteractive", "-Command", command]
+    else:
+        args = ["/bin/sh", "-c", command]
+    result = subprocess.run(args, cwd=tmp_path, capture_output=True, check=False)
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "receipt").read_text(encoding="utf-8") == literal

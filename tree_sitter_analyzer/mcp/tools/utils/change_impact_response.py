@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .verification_command import join_verification_steps
+
 LARGE_DIRTY_DIFF_THRESHOLD = 25
 
 # Pol3 (round-21): the in-response preview lists (``changed_preview``,
@@ -474,7 +476,13 @@ def _agent_stop_condition(
         return f"{local} exits successfully locally."
     steps = strategy.get("verification_steps") or [verification["verification_command"]]
     if len(steps) > 1:
-        return "All verification steps pass in order: " + "; ".join(steps) + "."
+        completion = "All verification steps pass in order: " + "; ".join(steps)
+        if risk == "high" and verification["default_test_command"] not in steps:
+            return (
+                completion
+                + f"; run {verification['default_test_command']} at the queue boundary."
+            )
+        return completion + "."
     if (
         risk == "high"
         and verification["verification_command"] != verification["default_test_command"]
@@ -497,7 +505,7 @@ def _effective_verification_command(
         return local_command
     steps = strategy.get("verification_steps")
     if steps:
-        return " && ".join(steps)
+        return join_verification_steps(steps)
     command = verification["verification_command"]
     return command if isinstance(command, str) else str(command)
 

@@ -426,8 +426,11 @@ def test_low_impact_pytest_command_replaces_existing_worker_flags(monkeypatch):
     )
 
 
-def test_verification_strategy_retains_all_mapped_targets():
+def test_verification_strategy_retains_all_mapped_targets(monkeypatch):
     """2026-09-08：超过展示阈值也不能丢弃已知相关测试。"""
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
     plan = verification_tool._build_verification_plan(
         ["tree_sitter_analyzer/runtime.py"],
         [f"tests/unit/test_feature_{index:02d}.py" for index in range(25)],
@@ -738,7 +741,11 @@ def test_mixed_mapping_summary_requires_known_tests_before_default():
         for start, end in [(0, 20), (20, 25)]
     ]
     steps = [*focused_steps, "uv run pytest -q"]
-    assert summary["verification_command"] == " && ".join(steps)
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        join_verification_steps,
+    )
+
+    assert summary["verification_command"] == join_verification_steps(steps)
     assert strategy["verification_steps"] == steps
     assert summary["stop_condition"] == (
         "All verification steps pass in order: " + "; ".join(steps) + "."

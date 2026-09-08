@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shlex
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -141,3 +142,24 @@ def _node_test_command(root: Path) -> DefaultTestCommand:
     if (root / "yarn.lock").exists():
         return DefaultTestCommand("yarn", "yarn test")
     return DefaultTestCommand("npm", "npm test")
+
+
+def join_verification_steps(steps: list[str]) -> str:
+    """组合内部 POSIX 引用的命令；Windows 使用 PowerShell 5.1 的失败即停语法。"""
+    if sys.platform == "win32" and len(steps) > 1:
+        return _powershell_verification_steps(steps)
+    return " && ".join(steps)
+
+
+def _powershell_verification_steps(steps: list[str]) -> str:
+    """把各步骤的参数原样传给 PowerShell；检查每一步的退出状态。"""
+    commands = []
+    for step in steps:
+        arguments = shlex.split(step)
+        quoted = " ".join(
+            "'" + argument.replace("'", "''") + "'" for argument in arguments
+        )
+        commands.append(
+            "& " + quoted + "; if (-not $?) { throw 'Verification failed' }"
+        )
+    return "& { " + "; ".join(commands) + " }"

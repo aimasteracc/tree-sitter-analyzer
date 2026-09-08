@@ -10,6 +10,7 @@ from .verification_command import (
     DefaultTestCommand,
     build_test_command,
     build_test_commands,
+    join_verification_steps,
 )
 
 AUTO_DISCOVER_TEST_HINT = "(auto-discover: run full suite)"
@@ -78,7 +79,9 @@ def _build_verification_plan(
             "verification_reason": "unmapped runtime changes remain; run the default test command",
         }
 
-    test_command = " && ".join(build_test_commands(default_test_command, tests_to_run))
+    test_command = join_verification_steps(
+        build_test_commands(default_test_command, tests_to_run)
+    )
     reason = (
         "targeted tests cover mapped runtime changes"
         if tests_to_run
