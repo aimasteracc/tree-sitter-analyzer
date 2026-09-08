@@ -151,6 +151,14 @@ def _cached_index_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             or payload.get("import_projection_complete") is not True
             or payload.get("syntax_error") is not False
             or not isinstance(imports, list)
+            or any(
+                not isinstance(entry, str)
+                and (
+                    not isinstance(entry, dict)
+                    or not isinstance(entry.get("text"), str)
+                )
+                for entry in imports
+            )
         ):
             return []
         result.append(item)

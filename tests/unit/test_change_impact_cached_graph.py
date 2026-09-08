@@ -320,6 +320,10 @@ def test_repeated_change_impact_tracks_preserved_mtime_imports(tmp_path):
         ("symbols_json", "[]"),
         ("imports_json", "{"),
         ("imports_json", "{}"),
+        # PR #1417 审查：列表成员的文本缺失或类型错误也必须拒绝。
+        ("imports_json", '[{"line":1}]'),
+        ("imports_json", "[42]"),
+        ("imports_json", '[{"text":7}]'),
     ],
 )
 def test_cached_graph_rejects_invalid_extraction_evidence(tmp_path, column, value):
@@ -336,3 +340,34 @@ def test_cached_graph_rejects_invalid_extraction_evidence(tmp_path, column, valu
     finally:
         conn.close()
     assert cached.load_cached_dependency_graph(str(tmp_path)) is None
+    assert _load_dependency_graph(str(tmp_path)).dependencies_of("a.py") == ["b.py"]
+
+
+@pytest.mark.parametrize(
+    "imports_json,expected_rows",
+    [
+        ('["import b"]', 2),
+        ('[{"text":"import b"}]', 2),
+        ('[{"line":1}]', 0),
+        ("[42]", 0),
+        ('[{"text":7}]', 0),
+    ],
+)
+def test_cached_import_row_admission_checks_each_entry(
+    tmp_path, imports_json, expected_rows
+):
+    """在源码捕获平台判断之前，直接校验每个导入成员的文本类型。"""
+    # PR #1417 审查：顶层列表校验无法发现损坏成员。
+    (tmp_path / "a.py").write_text("import b\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("value=1\n", encoding="utf-8")
+    _index_project(tmp_path)
+    conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute(
+            "UPDATE ast_index SET imports_json=? WHERE file_path='a.py'",
+            (imports_json,),
+        )
+        assert len(cached._cached_index_rows(conn)) == expected_rows
+    finally:
+        conn.close()
