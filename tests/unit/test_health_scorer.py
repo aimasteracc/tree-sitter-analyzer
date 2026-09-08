@@ -1166,3 +1166,74 @@ def test_health_fingerprint_windows_change_time_binding(tmp_path, monkeypatch, s
                 fingerprint._change_time(23, tmp_path.stat())
     finally:
         fingerprint._windows_file_info.cache_clear()
+
+
+def test_project_health_prefetches_git_scores_with_four_workers(tmp_path, monkeypatch):
+    """冷评分最多并发四路 Git 查询，并按文件保留各自结果。"""
+    import threading
+
+    from tree_sitter_analyzer import health_scorer as health
+
+    barrier = threading.Barrier(4, timeout=2)
+    lock = threading.Lock()
+    active = maximum = 0
+
+    def git_score(path, low, high):
+        nonlocal active, maximum
+        with lock:
+            active += 1
+            maximum = max(maximum, active)
+        try:
+            barrier.wait()
+            return float(Path(path).stem[1:]) * 10
+        finally:
+            with lock:
+                active -= 1
+
+    for index in range(4):
+        (tmp_path / f"f{index}.py").write_text("value=1\n", encoding="utf-8")
+    monkeypatch.setattr(health, "calculate_git_hotspot", git_score)
+    scores, _ = health.HealthScorer().score_project_with_stats(
+        str(tmp_path), use_cache=False
+    )
+    assert maximum == 4
+    assert {
+        Path(s.file_path).name: s.dimensions.get("git_hotspot") for s in scores
+    } == {
+        "f0.py": 0.0,
+        "f1.py": 10.0,
+        "f2.py": 20.0,
+        "f3.py": 30.0,
+    }
+
+
+def test_project_git_prefetch_preserves_warm_hits_and_resets_scope(
+    tmp_path, monkeypatch
+):
+    """暖缓存不查询历史；后续冷调用与单文件调用不继承旧预取结果。"""
+    from tree_sitter_analyzer import health_scorer as health
+
+    target = tmp_path / "probe.py"
+    target.write_text("value=1\n", encoding="utf-8")
+    calls = []
+    value = [90.0]
+
+    def git_score(path, low, high):
+        calls.append(path)
+        return value[0]
+
+    monkeypatch.setattr(health, "calculate_git_hotspot", git_score)
+    scorer = health.HealthScorer()
+    cold, _ = scorer.score_project_with_stats(str(tmp_path))
+    warm, _ = scorer.score_project_with_stats(str(tmp_path))
+    assert calls == [str(target)]
+    assert (
+        cold[0].dimensions["git_hotspot"] == warm[0].dimensions["git_hotspot"] == 90.0
+    )
+    value[0] = 80.0
+    target.write_text("value=2\n", encoding="utf-8")
+    changed, _ = scorer.score_project_with_stats(str(tmp_path))
+    assert changed[0].dimensions["git_hotspot"] == 80.0
+    value[0] = 70.0
+    assert health.score_git_hotspot(str(target)) == 70.0
+    assert calls == [str(target)] * 3

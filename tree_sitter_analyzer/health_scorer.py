@@ -64,6 +64,11 @@ PROJECT_HEALTH_SOURCE_EXTS = frozenset(
     _EXT_TO_LANG.keys()
 )
 
+# Git 预取结果只属于本次项目调用，不在不同项目评分之间保留。
+_PROJECT_HOTSPOT_SCORES: ContextVar[dict[str, float | None] | None] = ContextVar(
+    "project_health_hotspot_scores", default=None
+)
+
 # Thresholds for scoring
 SIZE_IDEAL = 200  # Files under 200 lines get full size score
 SIZE_MAX = 2000  # Files over 2000 lines get 0 size score
@@ -386,8 +391,25 @@ class HealthScorer:
         pruned_directories = 0
         scoring_failed = 0
         graph_token = _PROJECT_DEPENDENCY_GRAPHS.set({})
+        hotspots: dict[str, float | None] = {}
+        hotspot_token = _PROJECT_HOTSPOT_SCORES.set(hotspots)
         try:
+            from concurrent.futures import ThreadPoolExecutor
+
             files, pruned_directories = self._iter_source_files(root)
+            cold_paths = [
+                str(f)
+                for f in files
+                if not self._is_excluded(f, root)
+                and (cache is None or cache.lookup(str(f)) is None)
+            ]
+            # 保留逐路径 git log 的合并历史语义，仅限制并发查询数量。
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                hotspots.update(
+                    zip(
+                        cold_paths, pool.map(score_git_hotspot, cold_paths), strict=True
+                    )
+                )
             for f in files:
                 scanned += 1
                 if self._is_excluded(f, root):
@@ -399,6 +421,7 @@ class HealthScorer:
                     continue
                 results.append(score)
         finally:
+            _PROJECT_HOTSPOT_SCORES.reset(hotspot_token)
             _PROJECT_DEPENDENCY_GRAPHS.reset(graph_token)
             if cache is not None:
                 cache.close()
@@ -896,7 +919,10 @@ def score_structure(file_path: str, source: str, language: str | None) -> float:
 
 
 def score_git_hotspot(file_path: str) -> float | None:
-    """Score based on git commit frequency (Tornhill's hotspot analysis)."""
+    """根据 Git 提交频率评分，项目调用可复用本次预取结果。"""
+    prefetched = _PROJECT_HOTSPOT_SCORES.get()
+    if prefetched is not None and file_path in prefetched:
+        return prefetched[file_path]
     try:
         return calculate_git_hotspot(
             file_path,
