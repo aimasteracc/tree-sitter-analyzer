@@ -284,8 +284,12 @@ def module_family_test_stems(file_path: str | Path) -> list[str]:
     )
     stems = _special_module_family_stems(normalized.stem)
     is_repository_source = "tree_sitter_analyzer" in normalized.parts[:-1]
-    if is_repository_source and "cache" in normalized.parts[:-1]:
-        # #1376：cache 实现包共享 ast_cache facade 的完整测试族。
+    if (
+        is_repository_source
+        and "cache" in normalized.parts[:-1]
+        and normalized.stem not in {"answer_cache", "answer_cache_policy"}
+    ):
+        # #1376：AST facade 的实现共享测试族；独立答案缓存有自己的测试。
         stems.append("ast_cache")
     if (
         is_repository_source

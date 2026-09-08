@@ -24,7 +24,7 @@ match reality or CI fails). The threshold is 800 lines.
 | 1615 | `tests/unit/languages/test_cyclomatic_complexity.py` | |
 | 1585 | `tests/unit/languages/test_java_plugin.py` | |
 | 1575 | `tests/unit/test_uml_activity.py` | |
-| 1553 | `tests/unit/mcp/test_test_discovery.py` | |
+| 1690 | `tests/unit/mcp/test_test_discovery.py` | |
 | 1403 | `tests/unit/core/test_engine.py` | |
 | 1357 | `tests/unit/test_codegraph_pr_review_tool.py` | |
 | 1348 | `tests/integration/formatters/test_data_manager.py` | |
@@ -294,6 +294,14 @@ rule itself is not broadened. Real-directory parameterized tests pin exactly
 Non-Python recursive discovery keeps its original lazy ten-candidate stop;
 a separate iteration-count regression guards against exhausting its iterator.
 The repository's `cache/` implementation package maps to the `ast_cache` facade
-family through the existing stem mapper. No parallel parser or mapping engine
+family through the existing stem mapper, except the independent `answer_cache`
+and `answer_cache_policy` components, which retain their own test families.
+Complete Python candidates and the bounded fallback both reuse the existing
+monorepo identity/package-compatibility and subsystem-affinity helpers. Monorepo
+foreign-package candidates cannot re-enter through the ten-item fallback.
+Outside monorepos, known facade families retain their cross-layer consumers;
+where no positive affinity exists, explicit naming keeps the existing conservative
+fallback rather than inventing a new path-ownership rule. Root canonicalization
+and the weak stem-matching rule are unchanged. No parallel parser or mapping engine
 was added. New policy/discovery contract cases are separate from the original
 580 migrated cases, and do not manufacture coverage for those suites.

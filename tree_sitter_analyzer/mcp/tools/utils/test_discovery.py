@@ -12,12 +12,17 @@ from pathlib import Path
 
 from .test_discovery_languages import find_language_specific_tests
 from .test_discovery_predicates import is_existing_test_file as _is_existing_test_file
+from .test_discovery_python import _relative_to_root
 from .test_discovery_stems import (
+    _monorepo_package_identity,
     fixture_test_stems,
     module_family_test_stems,
     python_package_test_stems,
     related_stem_matches,
     related_test_stems_for_path,
+    test_path_is_unscoped,
+    test_path_subsystem_affinity_rank,
+    test_paths_have_compatible_package_scope,
 )
 
 __all__ = [
@@ -151,14 +156,42 @@ def find_test_files(
     )
 
     if language == "python":
-        # #1376：明确命名匹配保留身份，不能因弱 stem 规则而降级；仅弱候选限十项。
-        stems = [stem, *related_test_stems_for_path(p)]
-        named_family = [
+        relative_source = str(_relative_to_root(p, root) or p)
+        family_stems = related_test_stems_for_path(p)
+        stems = [stem, *family_stems]
+        named_candidates = {
             test
             for test in results
             if test in explicit_matches
             or any(related_stem_matches(Path(test).stem, name) for name in stems)
+        }
+        in_monorepo = _monorepo_package_identity(relative_source) is not None
+        require_affinity = in_monorepo or any(
+            test_paths_have_compatible_package_scope(test, relative_source)
+            and test_path_subsystem_affinity_rank(test, relative_source) is not None
+            for test in named_candidates
+        )
+        # #1400：明确命名与弱回退都必须受包边界约束，不能回流其他包的候选。
+        results = [
+            test
+            for test in results
+            if test_paths_have_compatible_package_scope(test, relative_source)
+            and (
+                not require_affinity
+                or test_path_is_unscoped(test)
+                or test_path_subsystem_affinity_rank(test, relative_source) is not None
+                # 非 monorepo 的已知 facade 族可跨 CLI/MCP 层，与图映射约定一致。
+                or (
+                    not in_monorepo
+                    and any(
+                        related_stem_matches(Path(test).stem, name)
+                        for name in family_stems
+                    )
+                )
+            )
         ]
+        # #1376：明确命名匹配保留身份，不能因弱 stem 规则而降级；仅弱候选限十项。
+        named_family = [test for test in results if test in named_candidates]
         return list(dict.fromkeys([*named_family, *results[:10]]))
     return results[:10]
 

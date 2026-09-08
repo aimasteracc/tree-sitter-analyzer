@@ -66,6 +66,143 @@ class TestDetectLanguageFromExt:
 
 
 class TestFindTestFilesPython:
+    @pytest.mark.parametrize(
+        "source_name", ["answer_cache.py", "answer_cache_policy.py"]
+    )
+    def test_independent_cache_keeps_only_its_own_named_family(
+        self, tmp_path, source_name
+    ):
+        """#1400：独立答案缓存不能因目录相同而继承 AST cache 的测试族。"""
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+            _find_test_files,
+        )
+
+        relative = f"tree_sitter_analyzer/cache/{source_name}"
+        source = tmp_path / relative
+        source.parent.mkdir(parents=True)
+        source.write_text("pass\n", encoding="utf-8")
+        directory = tmp_path / "tests/unit"
+        directory.mkdir(parents=True)
+        expected = []
+        unrelated = []
+        for index in range(15):
+            for stem, paths in ((source.stem, expected), ("ast_cache", unrelated)):
+                path = directory / f"test_{stem}_part_{index:02}.py"
+                path.write_text("def test_behavior(): pass\n", encoding="utf-8")
+                paths.append(path.relative_to(tmp_path).as_posix())
+
+        found = find_test_files(str(source), str(tmp_path))
+
+        assert set(found) == set(expected)
+        assert len(found) == 15
+        assert set(found) & set(unrelated) == set()
+        assert _find_test_files([relative], {relative, *expected, *unrelated}) == {
+            relative: sorted(expected)
+        }
+
+    @pytest.mark.parametrize("source_name", ["schema.py", "indexer.py"])
+    def test_ast_cache_implementation_keeps_complete_cross_surface_family(
+        self, tmp_path, source_name
+    ):
+        """#1400：真实 facade 实现仍覆盖 unit、CLI、MCP 的完整命名族。"""
+        source = tmp_path / "tree_sitter_analyzer/cache" / source_name
+        source.parent.mkdir(parents=True)
+        source.write_text("pass\n", encoding="utf-8")
+        expected = set()
+        for index in range(15):
+            directory = (
+                tmp_path
+                / (
+                    "tests/unit/cache",
+                    "tests/unit/cli",
+                    "tests/unit/mcp",
+                )[index % 3]
+            )
+            directory.mkdir(parents=True, exist_ok=True)
+            path = directory / f"test_ast_cache_part_{index:02}.py"
+            path.write_text("def test_behavior(): pass\n", encoding="utf-8")
+            expected.add(path.relative_to(tmp_path).as_posix())
+
+        found = find_test_files(str(source), str(tmp_path))
+
+        assert set(found) == expected
+        assert len(found) == 15
+
+    @pytest.mark.parametrize("absolute_source", [False, True])
+    @pytest.mark.parametrize(
+        ("relative", "own_directory", "foreign_directory", "test_roots"),
+        [
+            ("packages/b/src/utils.py", "tests/b", "tests/a", ["tests"]),
+            (
+                "packages/b/src/utils.py",
+                "packages/b/tests",
+                "packages/a/tests",
+                ["packages"],
+            ),
+            ("src/core/utils.py", "tests/unit/core", "tests/unit/cli", ["tests"]),
+        ],
+        ids=["central-mirror", "configured-package-roots", "subsystems"],
+    )
+    def test_complete_family_respects_package_and_subsystem_scope(
+        self,
+        tmp_path,
+        monkeypatch,
+        relative,
+        own_directory,
+        foreign_directory,
+        test_roots,
+        absolute_source,
+    ):
+        """#1400：真实目录中保留本包十五项，其他包不得从命名或弱候选回流。"""
+        from tree_sitter_analyzer.mcp.tools.utils import test_discovery
+
+        source = tmp_path / relative
+        source.parent.mkdir(parents=True)
+        source.write_text("def shared(): pass\n", encoding="utf-8")
+        expected = set()
+        for directory in (own_directory, foreign_directory):
+            parent = tmp_path / directory
+            parent.mkdir(parents=True)
+            for index in range(15):
+                path = parent / f"test_utils_part_{index:02}.py"
+                path.write_text("def test_behavior(): pass\n", encoding="utf-8")
+                if directory == own_directory:
+                    expected.add(path.relative_to(tmp_path).as_posix())
+        (tmp_path / foreign_directory / "test_foreign.py").write_text(
+            "def test_reference(): shared()\n", encoding="utf-8"
+        )
+        monkeypatch.setitem(test_discovery._TEST_DIRS, "python", test_roots)
+
+        found = find_test_files(
+            str(source) if absolute_source else relative, str(tmp_path)
+        )
+
+        assert set(found) == expected
+        assert len(found) == 15
+
+    @pytest.mark.parametrize(
+        ("foreign_directory", "test_roots"),
+        [("tests/a", ["tests"]), ("packages/a/tests", ["packages"])],
+    )
+    def test_missing_local_monorepo_family_does_not_fall_back_to_foreign_tests(
+        self, tmp_path, monkeypatch, foreign_directory, test_roots
+    ):
+        """#1400：即使本包没有候选，其他包也不能补进默认十项回退。"""
+        from tree_sitter_analyzer.mcp.tools.utils import test_discovery
+
+        source = tmp_path / "packages/b/src/utils.py"
+        source.parent.mkdir(parents=True)
+        source.write_text("def shared(): pass\n", encoding="utf-8")
+        directory = tmp_path / foreign_directory
+        directory.mkdir(parents=True)
+        for index in range(15):
+            (directory / f"test_utils_{index:02}.py").write_text(
+                "def test_behavior(): shared()\n", encoding="utf-8"
+            )
+        monkeypatch.setitem(test_discovery._TEST_DIRS, "python", test_roots)
+
+        assert find_test_files(str(source), str(tmp_path)) == []
+
     def test_cache_package_maps_to_the_facade_test_family(self, tmp_path):
         """#1376：实现包与 facade 共用测试族，实时与图映射不能分叉。"""
         from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
