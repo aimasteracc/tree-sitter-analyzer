@@ -49,6 +49,10 @@ lands first, renumber this migration and its exact contracts before implementati
   Revision never depends on wall clocks, mtimes, hashes, or reusable row IDs.
 - Generate a new cache UUID on a true cache replacement; retain it during ordinary
   incremental updates. A revision from another cache incarnation is never valid.
+- Materialize the complete managed schema, including lazily created state tables,
+  before installing guards. An inventory of currently existing tables is insufficient.
+  The migration contract must enumerate the exact supported table/DDL set, including
+  `ast_build_state` and `ast_resolve_state`, and fail on an unwatched managed addition.
 
 Migration runs under writer exclusion and a SQLite write transaction. Install all
 required schema/guards and record version 18 atomically. Existing content remains
@@ -118,6 +122,40 @@ The same SQLite 3.50.4 prototype confirms `unsafe use of tsa_writer_admitted()` 
 `trusted_schema=OFF`, and `cannot create triggers on virtual tables` for FTS5.
 These are reproduced limitations, not hypothetical exceptions to the admission gate.
 
+### Real-route feasibility evidence
+
+Additional local experiments use the real `ASTCache` and `IncrementalSync` methods
+from develop `0d50d276`, Python 3.14.3 and SQLite 3.50.4 on macOS. Each cell starts
+with a complete one-file index and an already-open runtime connection. A separate
+connection installs denial triggers, then the existing runtime executes the listed
+operation. Compare whole SQLite logical dumps both immediately and after committing
+any transaction the rejected operation left open. No source-code methods are mocked.
+
+| Rejected operation | Only `ast_index` guarded: dump changed | Existing ordinary tables guarded: dump changed | Ordinary tables plus eager `ast_build_state`: dump changed |
+|---|---|---|---|
+| `index_file` | yes | no | no |
+| `invalidate` | no | no | no |
+| incremental sync | no | no | no |
+| forced project rebuild | yes | yes | no |
+
+The first failure clears `ast_call_graph_state` before the primary-table rejection.
+The second failure creates and writes `ast_build_state` after the guard inventory was
+taken. Eager creation removes that observed DDL gap. Merely catching the final SQLite
+exception does not undo already committed metadata changes.
+
+With all ordinary tables guarded and the state table eagerly created, a separate
+four-route probe registers an admission function returning false and uses
+`RAISE(ROLLBACK, 'WRITER_REQUIRED')`. All four operations preserve the logical dump
+and leave `in_transaction=false`. Use transaction-aborting rejection, not a mechanism
+that only aborts the last statement. Entry wrappers must also roll back connection
+state for preparation errors such as a missing guard function; that older-connection
+case left a deferred transaction open in the `index_file` probe.
+
+These 16 route observations are feasibility evidence, not full qualification. They
+do not cover direct virtual-table/DDL writes, every lazy table, filesystem mirrors,
+all old wheels, concurrent owner transitions, or native Windows/Linux. Reproduce the
+negative cells and preserve the positive cells in the implementation test matrix.
+
 ### Crash recovery and publication
 
 An abandoned operation leaves `phase=incomplete`; readers cannot infer fresh/complete
@@ -180,6 +218,8 @@ coverage, and the runtime-contract quick gate before any implementation PR is pu
 
 - [ ] RFC accepted, guard feasibility/native compatibility gate resolved.
 - [ ] Migration and exact schema/guard contracts pass; old writers cannot partially mutate.
+- [ ] Lazy table/DDL inventory is exact; rejected operations preserve committed state
+  and leave no transaction that can publish delayed mutations.
 - [ ] All candidate producers bind cache revision; unbound/obsolete candidates write nothing.
 - [ ] Cross-process exclusion covers every managed write route and full operation lifetime.
 - [ ] Late cleanup cannot remove another operation's data or certification, including ABA.
