@@ -229,86 +229,42 @@ def test_watch_health_daemon_starts_and_stops_clean_on_sigint(
     reason="Windows-specific incompatibility — tracked separately",
 )
 def test_file_modify_triggers_reevaluation(tmp_path: Path) -> None:
-    """Modifying a watched file → after debounce, HealthHistory has a new row.
+    """#1405：相同健康分数的保存也必须产生新的历史记录。"""
+    from tree_sitter_analyzer.registry.health_history import HealthHistory
 
-    Uses short interval (1s) + debounce (0.2s) for test speed.
-    """
-    runner_target = _import_runner()
-    from tree_sitter_analyzer.registry.health_history import (
-        HealthHistory,  # noqa: WPS433
-    )
-
-    # Seed a project with one scorable file.
     src = tmp_path / "src"
     src.mkdir()
     target = src / "main.py"
-    target.write_text("def hello():\n    pass\n")
+    target.write_text("def hello():\n    pass\n", encoding="utf-8")
+    runner = _spawn_runner(_import_runner(), tmp_path, threshold_grade="F")
+    history = HealthHistory(str(tmp_path))
 
-    runner = _spawn_runner(
-        runner_target,
-        tmp_path,
-        threshold_grade="F",  # don't care about alerts in this test
-        interval=1.0,
-        debounce=0.2,
-    )
+    def wait_for_rows(expected):
+        deadline = time.monotonic() + 8
+        while True:
+            rows = history._conn.execute(
+                "SELECT id FROM health_score_history WHERE file_path = ? ORDER BY id",
+                (str(target),),
+            ).fetchall()
+            if len(rows) == expected or time.monotonic() >= deadline:
+                return [row[0] for row in rows]
+            time.sleep(0.05)
+
     runner.start()
-
     try:
-        # Wait for the cold-start scan to finish.
-        time.sleep(1.5)
-
-        history = HealthHistory(str(tmp_path))
-        try:
-            cold_row = history.last(str(target))
-        finally:
-            close = getattr(history, "close", None)
-            if callable(close):
-                close()
-
-        # Trigger a modification — change content + bump mtime past poll resolution.
+        assert wait_for_rows(1) == [1]
         target.write_text(
             "def hello():\n"
             "    if True:\n"
             "        if True:\n"
             "            if True:\n"
-            "                return 42\n"
+            "                return 42\n",
+            encoding="utf-8",
         )
-        import os
-
-        future = time.time() + 2.0
-        os.utime(str(target), (future, future))
-
-        # Allow daemon to detect + debounce + recompute.
-        time.sleep(3.0)
-
-        # Re-open history and verify a new row landed.
-        history2 = HealthHistory(str(tmp_path))
-        try:
-            warm_row = history2.last(str(target))
-        finally:
-            close = getattr(history2, "close", None)
-            if callable(close):
-                close()
-
-        assert warm_row is not None, (
-            "after modify + debounce, HealthHistory must have at least one row"
-        )
-
-        # If we had a cold row, the latest row should differ (modified content
-        # produces a different grade or score). If cold_row was None, the new
-        # row alone is sufficient evidence.
-        if cold_row is not None:
-            assert warm_row != cold_row, (
-                "modify did not produce a new history entry — "
-                f"cold={cold_row} warm={warm_row}"
-            )
+        assert wait_for_rows(2) == [1, 2]
     finally:
-        stop = getattr(runner, "stop", None)
-        if callable(stop):
-            if "timeout" in stop.__code__.co_varnames:
-                stop(timeout=5.0)
-            else:
-                stop()
+        runner.stop()
+        history.close()
 
 
 # ------------------------------------------------------------------ cli → runner glue
