@@ -98,14 +98,14 @@ def test_unreadable_directory_only_protects_its_own_subtree(
         path.write_text("saved = 2\n", encoding="utf-8")
     else:
         path.unlink()
-    original = owner.os.scandir
+    original = owner._open_directory
 
-    def scandir(path):
+    def open_directory(root, path, *args):
         if str(path) == str(blocked):
             raise OSError("blocked directory")
-        return original(path)
+        return original(root, path, *args)
 
-    monkeypatch.setattr(owner.os, "scandir", scandir)
+    monkeypatch.setattr(owner, "_open_directory", open_directory)
     assert scan.scan() == [str(path)]
     assert scan.snapshot[str(blocked / "inside.py")] == before
     assert errors == ["error"]
@@ -254,7 +254,11 @@ def test_entry_stat_failure_does_not_abort_directory(tmp_path, monkeypatch):
     class Directory:
         def __init__(self):
             self.entries = iter(
-                [SimpleNamespace(path=str(tmp_path / "lost.py"), stat=self.fail)]
+                [
+                    SimpleNamespace(
+                        name="lost.py", path=str(tmp_path / "lost.py"), stat=self.fail
+                    )
+                ]
             )
             self.closed = False
 
@@ -381,3 +385,115 @@ def test_reparse_source_replacement_emits_removal(scanner, tmp_path, monkeypatch
     assert scan.scan() == [path]
     assert sorted(scan.snapshot) == [str(tmp_path / "b.py")]
     assert errors == ["error"]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="tracked: #1405 POSIX 目录替换竞态")
+@pytest.mark.parametrize("replacement", ["symlink", "directory"])
+def test_directory_replacement_before_descent_is_not_enumerated(
+    tmp_path, monkeypatch, replacement
+):
+    # #1405：在 stat 与打开之间替换目录，不能枚举新目标的名称。
+    root = tmp_path / "project"
+    child = root / "child"
+    child.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.py").write_bytes(b"secret = 1\n")
+    original = os.scandir
+    replaced = []
+
+    class Scanner:
+        def __init__(self, path):
+            self.inner = original(path)
+
+        def __next__(self):
+            entry = next(self.inner)
+
+            def entry_stat(**kwargs):
+                info = entry.stat(**kwargs)
+                if entry.name == "child" and not replaced:
+                    child.rename(tmp_path / "saved")
+                    if replacement == "symlink":
+                        child.symlink_to(outside, target_is_directory=True)
+                    else:
+                        outside.rename(child)
+                    replaced.append(True)
+                return info
+
+            return SimpleNamespace(name=entry.name, path=entry.path, stat=entry_stat)
+
+        def close(self):
+            self.inner.close()
+
+    monkeypatch.setattr(owner.os, "scandir", Scanner)
+    assert list(owner._entries(str(root))) == [("blocked", str(child), None)]
+    assert replaced == [True]
+
+
+@pytest.mark.parametrize("reject_child", [False, True])
+def test_windows_directory_pins_are_released_before_iteration(
+    tmp_path, monkeypatch, reject_child
+):
+    # #1405：创建枚举器时固定全部祖先，成功或拒绝后均释放临时句柄。
+    import tree_sitter_analyzer.index_snapshot_windows as native
+
+    child = tmp_path / "child"
+    child.mkdir()
+    api = NativeHarness("")
+    original_open = api.open
+    original_scan = os.scandir
+    observed = []
+
+    def open_directory(path, directory):
+        if reject_child and path == str(child):
+            raise ValueError("INDEX_PATH_SYMLINK")
+        return original_open(path, directory)
+
+    def scandir(path):
+        observed.append([entry[1] for entry in api.directories])
+        return original_scan(path)
+
+    monkeypatch.setattr(api, "open", open_directory)
+    monkeypatch.setattr(native, "NativeFiles", lambda: api)
+    monkeypatch.setattr(owner.os, "scandir", scandir)
+    if reject_child:
+        with pytest.raises(ValueError, match="INDEX_PATH_SYMLINK"):
+            owner._open_windows_directory(str(tmp_path), str(child))
+        assert observed == []
+    else:
+        with owner._open_windows_directory(str(tmp_path), str(child)) as entries:
+            assert observed == [[str(tmp_path), str(child)]]
+            assert list(entries) == []
+    assert api.directories == []
+
+
+@pytest.mark.skipif(os.name != "nt", reason="tracked: #1405 Windows 搜索句柄原生验证")
+def test_windows_search_handle_survives_directory_replacement(tmp_path):
+    # #1405：枚举间隔允许重命名，随后迭代仍只读取已打开目录。
+    child = tmp_path / "child"
+    child.mkdir()
+    (child / "original.py").write_bytes(b"original = 1\n")
+    entries = owner._open_windows_directory(str(tmp_path), str(child))
+    try:
+        child.rename(tmp_path / "saved")
+        child.mkdir()
+        (child / "replacement.py").write_bytes(b"replacement = 1\n")
+        assert [entry.name for entry in entries] == ["original.py"]
+    finally:
+        entries.close()
+
+
+def test_windows_directory_dispatch_does_not_use_posix_flags(monkeypatch):
+    # #1405：Windows 必须经过原生目录固定路径，不能尝试 POSIX 描述符 API。
+    calls = []
+    marker = SimpleNamespace(close=lambda: calls.append("closed"))
+
+    def open_directory(root, path):
+        calls.append((root, path))
+        return marker
+
+    monkeypatch.setattr(owner, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(owner, "_open_windows_directory", open_directory)
+    assert owner._open_directory("root", "root/child") == (marker, None)
+    owner._close_directory(marker, None)
+    assert calls == [("root", "root/child"), "closed"]

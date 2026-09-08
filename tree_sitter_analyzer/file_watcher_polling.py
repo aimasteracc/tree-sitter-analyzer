@@ -26,45 +26,100 @@ def _reparse(info: os.stat_result) -> bool:
     )
 
 
+def _open_directory(
+    root: str, path: str, parent_fd: int | None = None, expected: Any = None
+) -> tuple[Any, int | None]:
+    """先固定目录再创建枚举器；POSIX 子目录只通过固定的父描述符打开。"""
+    if os.name == "nt":
+        return _open_windows_directory(root, path), None
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+    fd = os.open(
+        os.path.basename(path) if parent_fd is not None else path,
+        flags,
+        dir_fd=parent_fd,
+    )
+    try:
+        opened = os.fstat(fd)
+        if expected is not None and (opened.st_dev, opened.st_ino, opened.st_mode) != (
+            expected.st_dev,
+            expected.st_ino,
+            expected.st_mode,
+        ):
+            raise OSError("watcher directory changed before open")
+        return os.scandir(fd), fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _open_windows_directory(root: str, path: str) -> Any:
+    """只在建立搜索句柄时固定祖先，枚举间隔不持有禁止重命名的句柄。"""
+    from .index_snapshot_windows import NativeFiles
+
+    api = NativeFiles()
+    relative = os.path.relpath(path, root)
+    parts = [] if relative == "." else relative.split(os.sep)
+    with ExitStack() as owned:
+        directory = root
+        for part in [None, *parts]:
+            if part is not None:
+                directory = os.path.join(directory, part)
+            handle = api.open(directory, True)
+            owned.callback(api.close, handle)
+        return os.scandir(path)
+
+
+def _close_directory(entries: Any, fd: int | None) -> None:
+    """无论枚举器关闭是否成功，都释放所属目录描述符。"""
+    try:
+        entries.close()
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
 def _entries(root: str) -> Iterator[tuple[str, str, Any]]:
     """逐项遍历；异常目录单独报告，其他目录继续。"""
-    stack: list[tuple[str, Any]] = []
+    stack: list[tuple[str, Any, int | None]] = []
     try:
         try:
-            stack.append((root, os.scandir(root)))
-        except OSError:
+            entries, fd = _open_directory(root, root)
+            stack.append((root, entries, fd))
+        except (OSError, ValueError):
             yield "blocked", root, None
             return
         while stack:
-            directory, entries = stack[-1]
+            directory, entries, parent_fd = stack[-1]
             try:
                 entry = next(entries)
             except StopIteration:
-                entries.close()
                 stack.pop()
+                _close_directory(entries, parent_fd)
                 continue
             except OSError:
-                entries.close()
                 stack.pop()
+                _close_directory(entries, parent_fd)
                 yield "blocked", directory, None
                 continue
+            path = os.path.join(directory, entry.name)
             try:
                 info = entry.stat(follow_symlinks=False)
                 if stat.S_ISDIR(info.st_mode) and not _reparse(info):
                     if entry.name not in EXCLUDE_DIRS and not entry.name.startswith(
                         "."
                     ):
-                        stack.append((entry.path, os.scandir(entry.path)))
-                    yield "skip", entry.path, None
+                        child, child_fd = _open_directory(root, path, parent_fd, info)
+                        stack.append((path, child, child_fd))
+                    yield "skip", path, None
                 elif os.path.splitext(entry.name)[1].lower() in EXT_TO_LANG:
-                    yield "file", entry.path, info
+                    yield "file", path, info
                 else:
-                    yield "skip", entry.path, None
-            except OSError:
-                yield "blocked", entry.path, None
+                    yield "skip", path, None
+            except (OSError, ValueError):
+                yield "blocked", path, None
     finally:
-        for _directory, entries in reversed(stack):
-            entries.close()
+        for _directory, entries, fd in reversed(stack):
+            _close_directory(entries, fd)
 
 
 class PollingScanner:

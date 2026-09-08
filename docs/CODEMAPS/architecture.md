@@ -68,6 +68,9 @@ Every path is validated against `TREE_SITTER_PROJECT_ROOT` by `security/validato
 
 监听链路由 `file_watcher.py` 调度，`file_watcher_polling.py` 保存可续跑的扫描游标，
 比较原始内容摘要和文件元数据。异常路径只影响其自身；删除在遍历完成后确认。
+POSIX 枚举通过固定父目录描述符和 no-follow 打开，并核对目录身份；Windows
+仅在建立搜索句柄时短暂固定祖先目录，随后释放禁止重命名的句柄。
+普通源码被替换成特殊文件时触发失效，候选拒绝的路径也会清除旧索引行。
 这些观察只用于触发同步，不能替代 `index_source_snapshot.py` 的完整范围认证。
 
 ### Caching layers
