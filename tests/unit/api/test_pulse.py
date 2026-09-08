@@ -767,3 +767,17 @@ def test_query_pulse_import_capacity_is_an_error(ast_cache_conn):
     )
     with pytest.raises(ValueError, match="PULSE_IMPORT_RESOURCE_LIMIT"):
         query_pulse(ast_cache_conn, "a.py", "greet", max_comments=0)
+
+
+def test_certified_pulse_missing_index_is_read_only(tmp_path):
+    # 2026-09-08：查询不能创建空索引后把无索引误报成不存在。
+    from tree_sitter_analyzer.api.pulse_evidence import (
+        PulseSourceError,
+        certified_pulse_connection,
+    )
+
+    with pytest.raises(PulseSourceError) as error:
+        with certified_pulse_connection(str(tmp_path)):
+            pytest.fail("缺失索引不能发布读取连接")
+    assert (error.value.reason, error.value.freshness) == ("MISSING_INDEX", "missing")
+    assert list(tmp_path.iterdir()) == []

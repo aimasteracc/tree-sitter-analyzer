@@ -381,22 +381,35 @@ async def test_pulse_rejects_unrecorded_import_projection(indexed_pulse_project)
     assert response["source_evidence"]["reason"] == "NO_EXACT_FULL_INDEX_MANIFEST"
 
 
-async def test_pulse_batch_retains_per_target_error(indexed_pulse_project):
+@pytest.mark.parametrize(
+    "symbol,error",
+    [("missing", "not found"), ("repeated", "AMBIGUOUS_SYMBOL: a.py:repeated")],
+)
+async def test_pulse_batch_retains_per_target_error(
+    indexed_pulse_project, symbol, error
+):
     # PR #1352：批量结果成功项可序列化，缺失项仍须带错误，不能被丢弃。
     root, _ = indexed_pulse_project
+    source = root / "a.py"
+    source.write_text(
+        source.read_text(encoding="utf-8")
+        + "\ndef repeated():\n    pass\ndef repeated():\n    pass\n",
+        encoding="utf-8",
+    )
+    await _certify_project(root)
     response = await PulseBatchTool(str(root)).execute(
         {
             "targets": [
                 {"file": "a.py", "symbol": "greet"},
-                {"file": "a.py", "symbol": "missing"},
+                {"file": "a.py", "symbol": symbol},
             ]
         }
     )
     assert response["results"][0]["sym"]["n"] == "greet"
     assert response["results"][1] == {
         "file": "a.py",
-        "symbol": "missing",
-        "error": "not found",
+        "symbol": symbol,
+        "error": error,
     }
     assert response["success"] is False
     assert response["count"] == 1
@@ -670,20 +683,6 @@ async def certified_pulse_project(tmp_path):
     return tmp_path
 
 
-def test_certified_pulse_missing_index_is_read_only(tmp_path):
-    # 2026-09-08：查询不能创建空索引后把无索引误报成不存在。
-    from tree_sitter_analyzer.api.pulse_evidence import (
-        PulseSourceError,
-        certified_pulse_connection,
-    )
-
-    with pytest.raises(PulseSourceError) as error:
-        with certified_pulse_connection(str(tmp_path)):
-            pytest.fail("缺失索引不能发布读取连接")
-    assert (error.value.reason, error.value.freshness) == ("MISSING_INDEX", "missing")
-    assert list(tmp_path.iterdir()) == []
-
-
 @pytest.mark.parametrize(
     "change", ["definition", "caller", "delete_caller", "new_caller"]
 )
@@ -776,3 +775,24 @@ async def test_certified_pulse_releases_readers_after_failure(
     entry = index_snapshot.REGISTRY._entries[evidence["snapshot_id"]]
     assert entry.readers == 0
     assert evidence["freshness"] == "unknown"
+
+
+async def test_pulse_batch_source_access_failure_discards_targets(
+    tmp_path, monkeypatch
+):
+    """源码快照访问发生操作系统错误时，整批不能发布目标级结果。"""
+
+    def denied(*args, **kwargs):
+        raise PermissionError("source access denied")
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.api.pulse_evidence.index_snapshot.lease_existing_snapshot",
+        denied,
+    )
+    result = await PulseBatchTool(str(tmp_path)).execute(
+        {"targets": [{"file": "a.py", "symbol": "greet"}]}
+    )
+    assert result == {
+        "success": False,
+        "error": "pulse query failed: source access denied",
+    }
