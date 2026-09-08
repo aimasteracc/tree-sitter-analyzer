@@ -184,161 +184,87 @@ The same SQLite 3.50.4 prototype confirms `unsafe use of tsa_writer_admitted()` 
 `trusted_schema=OFF`, and `cannot create triggers on virtual tables` for FTS5.
 These are reproduced limitations, not hypothetical exceptions to the admission gate.
 
-### Real-route feasibility evidence
+### Mechanism evidence and decision
 
-Additional local experiments use the real `ASTCache` and `IncrementalSync` methods
-from develop `0d50d276`, Python 3.14.3 and SQLite 3.50.4 on macOS. Each cell starts
-with a complete one-file index and an already-open runtime connection. A separate
-connection installs denial triggers, then the existing runtime executes the listed
-operation. Compare whole SQLite logical dumps both immediately and after committing
-any transaction the rejected operation left open. No source-code methods are mocked.
+Forty real-route observations constrain this proposal. Experiments use macOS,
+Python 3.14.3/SQLite 3.50.4; published-runtime cases import the SHA-pinned v1.29.5
+wheel in separate processes opened before the experiment's migration/guard step.
+No observation proves native Windows/Linux behavior or complete route coverage.
 
-| Rejected operation | Only `ast_index` guarded: dump changed | Existing ordinary tables guarded: dump changed | Ordinary tables plus eager `ast_build_state`: dump changed |
-|---|---|---|---|
-| `index_file` | yes | no | no |
-| `invalidate` | no | no | no |
-| incremental sync | no | no | no |
-| forced project rebuild | yes | yes | no |
+| Probe family | Observations | Result and consequence |
+|---|---:|---|
+| Current runtime, primary/ordinary/eager ordinary guards plus explicit rollback | 16 | Primary guards miss committed graph changes; ordinary inventory misses lazy DDL; eager guards plus registered denial preserve four tested routes, but preparation failures can leave transactions. |
+| Published wheel, ordinary versus FTS-shadow guards | 8 | Old invalidate/incremental commit FTS changes before missing-function failure; shadow triggers instead produce malformed-image errors during operation and commit. Neither qualifies old-writer isolation. |
+| Published wheel, separate database files | 4 | Every old route succeeds and changes legacy data; every new database dump stays unchanged. |
+| Published wheel, read-only legacy FTS view | 4 | Every old route is rejected and post-commit dumps stay unchanged; three transactions remain open. |
+| Held old transaction, same versus separate new database | 8 | Same file blocks three new writes; separate file admits exactly one changed row in all four cases and late old commits preserve the entire new dump. |
 
-The first failure clears `ast_call_graph_state` before the primary-table rejection.
-The second failure creates and writes `ast_build_state` after the guard inventory was
-taken. Eager creation removes that observed DDL gap. Merely catching the final SQLite
-exception does not undo already committed metadata changes.
+The failed new writes cannot count as survived newer results. Final dump equality
+after closing a connection does not prove writer progress or absence of connection
+errors. The held-transaction comparison motivates the separate-file protocol below;
+it does not make the in-place trigger proposal safe.
 
-With all ordinary tables guarded and the state table eagerly created, a separate
-four-route probe registers an admission function returning false and uses
-`RAISE(ROLLBACK, 'WRITER_REQUIRED')`. All four operations preserve the logical dump
-and leave `in_transaction=false`. Use transaction-aborting rejection, not a mechanism
-that only aborts the last statement. Entry wrappers must also roll back connection
-state for preparation errors such as a missing guard function; that older-connection
-case left a deferred transaction open in the `index_file` probe.
+[Full earlier experimental methods and observations](https://github.com/aimasteracc/tree-sitter-analyzer/blob/09979aa88eeaeb2bc565d5ee16ccc9a2328ed040/rfcs/0032-index-writer-ownership.md)
+remain versioned, including raw temporary artifact paths, negative cases, exact route
+names and limitations. Raw records are diagnostic attachments, not shipped benchmarks.
 
-These 16 route observations are feasibility evidence, not full qualification. They
-do not cover direct virtual-table/DDL writes, every lazy table, filesystem mirrors,
-all old wheels, concurrent owner transitions, or native Windows/Linux. Reproduce the
-negative cells and preserve the positive cells in the implementation test matrix.
+### Proposed isolated storage protocol — pending acceptance
 
-### Published-wheel counterexample: ordinary-table guards are insufficient
+This is the preferred replacement for **legacy in-place migration** above; revision
+admission and owned cleanup within the active new database remain required. Acceptance
+must select this protocol explicitly and reconcile the schema section before coding.
 
-A subsequent eight-route probe imports the actual v1.29.5 wheel identified above in
-separate Python processes. Each old process opens its cache first; develop initializes
-and certifies the same database before installing provisional denial triggers. This
-is an already-open published runtime, not a second instance of develop. The ordinary
-variant eagerly creates `ast_build_state`; the shadow variant additionally guards FTS
-shadow tables. Both use a function-dependent `RAISE(ROLLBACK)` trigger, but the old
-connection has no admission function. No schema-18 migration is claimed.
+1. Treat the existing constructor's requested database path as a logical locator `L`.
+   Default `L` is `<root>/.ast-cache/index.db`; custom `L` retains its explicit parent.
+   The proposed namespace is `L + ".tsa-v18"`, with an `active.json` selector and
+   `generations/<32-lowercase-hex-id>/index.db`. No fallback, union, dual-write or
+   symlink from active storage to legacy `L` is allowed. Existing calls without a
+   candidate remain accepted; relocating physical storage is a separate compatibility
+   decision. Specify/document the returned `db_path` and maintenance-report paths
+   before accepting this protocol; do not silently change their published meaning.
+2. One resolver owns location choice for ASTCache, watcher, all CLI/MCP readers,
+   pinned snapshot acquisition, FTS, derived mirrors and maintenance. It returns the
+   logical locator, storage epoch, active generation ID and pinned physical identity.
+   A private immutable reader copy is not another active generation. Root aliases must
+   resolve to the same locator without resolving descendant source symlinks.
+3. `active.json` is bounded to 4 KiB and contains only protocol version, storage epoch,
+   generation ID, cache UUID and canonical locator/root bindings. Reject unknown or
+   missing fields, duplicate keys, invalid IDs, symlinks/reparse points, traversal,
+   mismatched bindings and database hard links. Revalidate the pinned hierarchy before
+   and after use. Never accept an arbitrary path supplied through selector content.
+4. Bootstrap under a cross-process locator lease. Create a fresh generation exclusively,
+   build schema 18 and a complete source-certified index there, then close every build
+   connection and worker before publication. Do not read mutable legacy rows as trusted
+   migration input. Publish a fully written, flushed selector with atomic replacement;
+   qualify directory durability on each native platform. Never rename a live SQLite
+   database or reuse its WAL/SHM names underneath old connections.
+5. Before selector publication, failure leaves no active new generation; after it,
+   readers see exactly the published generation. Missing/invalid selectors fail closed
+   without opening legacy `L`. Define the migration-required error and recovery command
+   across CLI/MCP before acceptance. Read-only calls must not bootstrap, repair or delete.
+   Recovery under the locator lease distinguishes unpublished staging from the active
+   generation using persisted identities, never directory age, PID or timestamps.
+6. Ordinary writes mutate the selected active database under the operation lease and
+   revision contract. Bind candidates to storage epoch plus cache UUID/revision. A
+   replacement build records its parent selector and may publish only if that parent
+   still matches. Recheck active identity before publishing results or cleanup; retired
+   tasks cannot write into, restore, or certify the new active generation.
+7. Generation replacement requires all managed users of the retiring generation to
+   release write authority; retained reader copies may finish only under their existing
+   source/identity validation contract. All mutable mirrors belong to the generation.
+   No reader may consult a legacy mirror after selecting new storage. The current custom
+   database option disables project mirrors, so the isolation probe did not verify this.
+8. Keep legacy files untouched and outside active reads. Old processes may mutate or lock
+   those files; neither may influence active data, selectors, mirrors or new-writer
+   progress. Do not auto-delete legacy or retired generations while leases/readers could
+   reference them. Explicit bounded retirement must verify inactivity and pinned identity.
+   This revises the earlier old-write-rejection requirement to isolation of active state;
+   it requires explicit RFC acceptance, not an inference from the positive experiment.
 
-| Old runtime operation | Ordinary guards: committed dump unchanged after explicit old commit | Including shadow guards: operation / commit outcome |
-|---|---|---|
-| `index_file` | yes; pending transaction remains before commit | missing function / commit succeeds |
-| `invalidate` | **no: FTS shadow rows changed** | `database disk image is malformed` on both |
-| incremental sync | **no: FTS shadow rows changed** | `database disk image is malformed` on both |
-| forced project rebuild | yes; no pending transaction | missing function / commit succeeds |
-
-The published invalidation route changes FTS before reaching a guarded ordinary-table
-statement. That statement fails during preparation with a missing function, so its
-`RAISE(ROLLBACK)` body never executes. The preceding FTS changes remain committable.
-Changing current entry wrappers cannot fix rollback behavior inside an already-open
-old process. Ordinary-table fencing therefore fails the old-writer acceptance gate.
-
-Adding triggers to shadow tables is also not a qualified solution: although committed
-dumps were unchanged after the old connections closed in all four observations, two
-operations and their subsequent commits raised `database disk image is malformed`.
-That error is not a typed admission rejection, and unchanged final dumps do not prove
-connection usability or safe FTS recovery. The experiment does not establish permanent
-on-disk corruption either. Preserve the error and transaction-lifetime observations;
-do not turn this negative experiment into an implementation recommendation.
-
-The enforcement mechanism remains **unqualified**. Resolve old-client FTS writes,
-preparation-time failures, and connection recovery before accepting a trigger-based
-migration, or qualify a different publication/isolation design against these same
-old-wheel scenarios. Local raw records are `/tmp/tsa-published-writer-fence-proof.json`
-and `/tmp/tsa-published-writer-shadow-fence-proof.json`; scripts are temporary probes,
-not shipped test or benchmark assets.
-
-### Separate-file isolation probe and remaining design obligations
-
-A four-route follow-up keeps each real v1.29.5 process attached to the historical
-`index.db` while current develop builds `owned-index.db` through the existing
-`ASTCache(..., db_path=...)` option. Sources are changed before the new build; no
-source edits occur during the subsequent old-writer operation. No denial triggers
-or runtime-method replacements are installed.
-
-All four old operations (`index_file`, `invalidate`, incremental sync, forced rebuild)
-succeed, commit, and change the legacy database dump. All four new database dumps
-remain exactly unchanged. This establishes file separation for those SQLite routes
-on this machine, not old-writer rejection or a complete migration protocol. Raw
-observations are in `/tmp/tsa-published-writer-namespace-proof.json`.
-
-This direction must resolve the following before it can replace the in-place design:
-
-- Define one authoritative active generation for every reader and writer. Current
-  pinned snapshot code still opens `index.db` and its WAL/journal names; a custom
-  write path alone cannot move certification, CLI/MCP routing, or snapshot identity.
-- Specify creation, publication, recovery and retirement without renaming a live
-  SQLite database underneath its WAL users. Prove native Windows/Linux/macOS behavior,
-  pinned hierarchy identity, hard-link/alias rejection, custom paths, and bounded
-  recovery after interruption at every publication boundary.
-- Scope all mutable mirrors and derived storage to the same generation. The existing
-  custom-database constructor disables the project mirror, so this experiment does
-  not qualify production mirror migration or isolation.
-- Preserve revision admission and complete-operation ownership among new-version
-  writers. Separate legacy files do not reject a stale candidate targeting the new
-  database, nor fence a delayed callback in the same active generation.
-- Explicitly decide legacy-file handling. Allowing an old process to modify a retired
-  file differs from rejecting its writes in place. Do not silently replace the
-  current acceptance criterion with that weaker statement; a revised contract must
-  prove retired writes cannot become active, influence readers, or affect shared
-  state before this alternative is accepted.
-
-There is no selected separate-file schema/path protocol yet. The positive observation
-justifies developing that alternative; it does not accept it, remove existing gates,
-or authorize implementation or release.
-
-### Legacy FTS name sealed by a view: narrow in-place probe
-
-A further four-route old-wheel experiment renames the FTS virtual table to
-`ast_symbols_fts_owned` and creates a read-only `ast_symbols_fts` view, then installs
-the same eager ordinary-table guards. The old connection remains open throughout.
-All four real v1.29.5 operations are rejected and the complete logical dump remains
-unchanged after an explicit old-connection commit. `invalidate` and incremental sync
-fail with `cannot modify ast_symbols_fts because it is a view`; `index_file` and forced
-rebuild fail with the missing admission function. No malformed-image error occurs in
-these four observations. Raw record: `/tmp/tsa-published-writer-fts-view-proof.json`.
-
-This closes the observed FTS-before-guard hole only for the four tested routes. It
-is not a selected migration. Three operations still leave a deferred transaction
-before explicit commit; prove bounded new-writer progress and safe connection reuse.
-The proposed view cannot transparently preserve FTS `MATCH`/control-command behavior;
-new writers, search readers, schema validators and snapshot projection must agree on
-the active FTS owner. Qualify fresh old-runtime connections, all lazy DDL, rollback,
-trusted-schema settings, native platforms and mirrors before making a compatibility
-or isolation claim. Keep the earlier failing probes: do not erase negative evidence
-when a more constrained experiment passes.
-
-### Held old transactions: progress counterexample and isolation comparison
-
-Eight follow-up observations pause each actual old-wheel process after rejection,
-before commit or close. Another connection then attempts a real one-row
-`ast_index.certified_at` update with a 0.2-second SQLite lock timeout. This is a SQL
-progress probe, not qualification of the future new-runtime indexing implementation.
-
-Against the same database, `index_file`, `invalidate` and incremental sync retain
-transactions and the new write fails with `database is locked` (observed 0.256–0.261
-seconds). Forced rebuild leaves no transaction and the new one-row write succeeds.
-Thus final dump preservation in the earlier view probe concealed a liveness failure.
-For the three failed new writes, an unchanged dump after old commit is **not** evidence
-that a newer write survived: there was no successful newer write.
-
-Repeating the experiment with the new connection targeting the independently built
-`owned-index.db` succeeds in all four cases: exactly one row changes each time, the
-new dump changes, and the later old commit leaves that new dump unchanged. This
-supports separate-file isolation against old transaction locks as well as mutations.
-It does not remove the active-reader/mirror/publication obligations above. The next
-design work should prioritize that alternative; the in-place view probe has not met
-the required progress guarantee. Neither alternative is accepted or implemented.
-Raw records: `/tmp/tsa-published-writer-held-transaction-proof.json` and
-`/tmp/tsa-published-writer-held-namespace-proof.json`.
+Before acceptance, resolve custom-path compatibility, selector error/parity details,
+native publication durability, the complete location-consumer inventory, and active
+write-guard feasibility (including trusted-schema and FTS). This protocol is not yet
+implemented, and the forty observations do not waive those gates.
 
 ### Crash recovery and publication
 
@@ -480,5 +406,7 @@ admission and pending RFC-0031 verification execution remain separate work.
 1. Accept revision-bound candidates and schema 18, including explicit rejection of
    unbound candidates from the unreleased develop interface? The published v1.29.5
    no-candidate call signatures must remain supported; no release is authorized here.
-2. The pure SQL guard feasibility gate must resolve trusted-schema, virtual-table/DDL,
-   and old-client write behavior before choosing the final enforcement mechanism.
+2. Select the isolated storage protocol explicitly, including custom-path/reporting
+   compatibility and active-state isolation instead of in-place old-write rejection?
+3. Resolve selector errors, native publication, consumer inventory, and active-write
+   guard feasibility before implementation; no experiment waives these requirements.
