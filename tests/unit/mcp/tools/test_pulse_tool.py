@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tree_sitter_analyzer.api.pulse import query_pulse
 from tree_sitter_analyzer.mcp.tools.pulse_tool import (
     GetProjectSchemaTool,
     PulseBatchTool,
@@ -37,16 +38,15 @@ async def test_pulse_missing_relation_is_query_failure(indexed_pulse_project):
     cache.get_conn().execute("DROP TABLE ast_symbol_activation")
     cache.get_conn().commit()
     response = await tool.execute({"file": "a.py", "symbol": "greet"})
-    assert response == {
-        "success": False,
-        "error": "pulse query failed: no such table: ast_symbol_activation",
-    }
+    assert response["success"] is False
+    assert response["source_evidence"]["reason"] == "INCOMPATIBLE_SCHEMA"
+    assert "result" not in response
 
 
-async def test_batch_corrupt_target_does_not_discard_healthy_target(
+async def test_batch_corrupt_index_rejects_all_uncertified_targets(
     indexed_pulse_project,
 ):
-    """PR #1352：真实坏 JSON 只使该目标失败，批量计数保留其余成功目标。"""
+    """2026-09-08：损坏索引无法认证，整批拒绝，不能发布貌似健康的部分结果。"""
     root, cache = indexed_pulse_project
     source = root / "bad.py"
     source.write_text("def broken():\n    pass\n", encoding="utf-8")
@@ -54,8 +54,8 @@ async def test_batch_corrupt_target_does_not_discard_healthy_target(
     cache.get_conn().execute(
         "UPDATE ast_index SET symbols_json='{' WHERE file_path='bad.py'"
     )
+    cache.get_conn().commit()
     tool = PulseBatchTool(str(root))
-    tool._cache = cache
     result = await tool.execute(
         {
             "targets": [
@@ -66,18 +66,9 @@ async def test_batch_corrupt_target_does_not_discard_healthy_target(
             "token_budget_per_symbol": 400.0,
         }
     )
-    assert (
-        result["success"],
-        result["count"],
-        result["error_count"],
-        result["truncated_count"],
-    ) == (False, 1, 1, 0)
-    assert result["results"][0] == {
-        "file": "bad.py",
-        "symbol": "broken",
-        "error": "malformed JSON",
-    }
-    assert result["results"][1]["sym"]["n"] == "greet"
+    assert result["success"] is False
+    assert result["source_evidence"]["freshness"] == "unknown"
+    assert "results" not in result
 
 
 async def test_schema_invalid_timestamp_does_not_invent_index_age(
@@ -125,7 +116,12 @@ async def test_factory_schema_and_missing_root_contract(tmp_path, kind):
         assert ":hot(N)" in result["schema"]
     else:
         assert result["success"] is False
-        assert result["error"] == "Project root not set. Call set_project_path first."
+        if kind in {"pulse", "batch"}:
+            assert result["source_evidence"]["reason"] == "MISSING_PROJECT_ROOT"
+        else:
+            assert (
+                result["error"] == "Project root not set. Call set_project_path first."
+            )
     assert not (tmp_path / ".ast-cache").exists()
 
 
@@ -176,8 +172,8 @@ async def test_reverse_import_does_not_attach_unrelated_module(indexed_pulse_pro
         path = root / filename
         path.write_text(text, encoding="utf-8")
         cache.index_file(str(path))
+    await _certify_project(root)
     tool = PulseTool(str(root))
-    tool._cache = cache
     response = await tool.execute(
         {"file": "a.py", "symbol": "greet", "format": "verbose"}
     )
@@ -185,37 +181,22 @@ async def test_reverse_import_does_not_attach_unrelated_module(indexed_pulse_pro
     assert response["result"]["imported_by"] == []
 
 
-def _seed_symbol(
-    conn, name: str, file_path: str = "a.py", language: str = "python"
-) -> int:
-    cur = conn.execute(
-        "INSERT INTO ast_symbol_rows (name, kind, file_path, language, line, end_line) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (name, "function", file_path, language, 1, 10),
-    )
-    conn.commit()
-    return cur.lastrowid
-
-
 # ---------------------------------------------------------------------------
 # PulseTool
 # ---------------------------------------------------------------------------
 
 
-async def test_pulse_get_cache_raises_returns_error():
-    """_get_cache() raises → execute() returns success=False with the error message."""
-    tool = PulseTool(project_root=None)
-    tool._get_cache = MagicMock(side_effect=ValueError("not set"))
-
-    result = await tool.execute({"file": "a.py", "symbol": "fn"})
+async def test_pulse_missing_project_returns_source_error():
+    """缺失项目必须与符号不存在分开，不打开隐式索引。"""
+    result = await PulseTool(None).execute({"file": "a.py", "symbol": "fn"})
     assert result["success"] is False
-    assert "not set" in result["error"]
+    assert result["source_evidence"]["reason"] == "MISSING_PROJECT_ROOT"
 
 
-async def test_pulse_symbol_not_found(ast_cache_conn):
-    """Empty DB → query_pulse returns None → success=False with descriptive message."""
-    tool = PulseTool(project_root=None)
-    tool._get_cache = MagicMock(return_value=_make_fake_cache(ast_cache_conn))
+async def test_pulse_symbol_not_found(indexed_pulse_project):
+    """当前认证快照内不存在的目标，才可以明确报告不存在。"""
+    root, _ = indexed_pulse_project
+    tool = PulseTool(str(root))
 
     result = await tool.execute({"file": "a.py", "symbol": "fn"})
     assert result["success"] is False
@@ -223,10 +204,10 @@ async def test_pulse_symbol_not_found(ast_cache_conn):
     assert "a.py" in result["error"]
 
 
-async def test_pulse_query_raises_returns_error(ast_cache_conn, monkeypatch):
-    """query_pulse raises → execute() returns success=False with 'pulse query failed'."""
-    tool = PulseTool(project_root=None)
-    tool._get_cache = MagicMock(return_value=_make_fake_cache(ast_cache_conn))
+async def test_pulse_query_raises_returns_error(indexed_pulse_project, monkeypatch):
+    """认证连接上的查询失败仍明确失败。"""
+    root, _ = indexed_pulse_project
+    tool = PulseTool(str(root))
 
     monkeypatch.setattr(
         "tree_sitter_analyzer.api.pulse.query_pulse",
@@ -242,11 +223,10 @@ async def test_pulse_query_raises_returns_error(ast_cache_conn, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-async def test_pulse_batch_truncates_targets(ast_cache_conn):
+async def test_pulse_batch_truncates_targets(indexed_pulse_project):
     """超量目标保留截断警告，已尝试但不存在的目标仍须计为失败。"""
-    tool = PulseBatchTool(project_root=None)
-    fake_cache = _make_fake_cache(ast_cache_conn)
-    tool._get_cache = MagicMock(return_value=fake_cache)
+    root, _ = indexed_pulse_project
+    tool = PulseBatchTool(str(root))
 
     targets = [{"file": f"f{i}.py", "symbol": f"fn{i}"} for i in range(5)]
     result = await tool.execute({"targets": targets, "max_symbols": 3})
@@ -260,14 +240,14 @@ async def test_pulse_batch_truncates_targets(ast_cache_conn):
     assert "2 targets truncated" in warnings[0]["warning"]
 
 
-async def test_pulse_batch_get_cache_raises():
-    """_get_cache() raises → execute() returns success=False."""
-    tool = PulseBatchTool(project_root=None)
-    tool._get_cache = MagicMock(side_effect=ValueError("no root"))
-
-    result = await tool.execute({"targets": [{"file": "a.py", "symbol": "fn"}]})
+async def test_pulse_batch_missing_project_returns_source_error():
+    """缺失项目时整批失败，无目标级假不存在。"""
+    result = await PulseBatchTool(None).execute(
+        {"targets": [{"file": "a.py", "symbol": "fn"}]}
+    )
     assert result["success"] is False
-    assert "no root" in result["error"]
+    assert result["source_evidence"]["reason"] == "MISSING_PROJECT_ROOT"
+    assert "results" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -286,8 +266,16 @@ async def test_get_project_schema_get_cache_raises():
     assert result["result"]["indexed"] is False
 
 
+async def _certify_project(root):
+    """通过生产完整索引入口生成认证，不能用 mock 声称源码当前。"""
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    result = await CodeGraphFullIndexTool(str(root)).execute({"mode": "full"})
+    assert result["scope_complete"] is True
+
+
 @pytest.fixture
-def indexed_pulse_project(tmp_path):
+async def indexed_pulse_project(tmp_path):
     """真实单文件索引，不替换 SQL、预算或序列化实现。"""
     from tree_sitter_analyzer.ast_cache import ASTCache
 
@@ -296,8 +284,8 @@ def indexed_pulse_project(tmp_path):
         'def greet(name):\n    """Say hello."""\n    # keep name\n    return name\n',
         encoding="utf-8",
     )
+    await _certify_project(tmp_path)
     cache = ASTCache(str(tmp_path))
-    cache.index_file(str(source))
     yield tmp_path, cache
     cache.close()
 
@@ -370,15 +358,18 @@ async def test_pulse_rejects_ambiguous_index_without_picking_a_definition(
 ):
     # PR #1352：通过真实工具错误边界验证同名歧义不能成为假成功。
     root, cache = indexed_pulse_project
-    _seed_symbol(cache.get_conn(), "greet")
+    (root / "a.py").write_text(
+        "def greet():\n    return 1\ndef greet():\n    return 2\n", encoding="utf-8"
+    )
+    await _certify_project(root)
     response = await PulseTool(str(root)).execute({"file": "a.py", "symbol": "greet"})
     assert response["success"] is False
     assert "AMBIGUOUS_SYMBOL" in response["error"]
     assert "result" not in response
 
 
-async def test_pulse_import_capacity_is_an_error(indexed_pulse_project):
-    # PR #1352：超出反向导入资源上限不能伪装成空列表。
+async def test_pulse_rejects_unrecorded_import_projection(indexed_pulse_project):
+    # 2026-09-08：未重新认证的导入表改动不能借用旧清单返回成功。
     root, cache = indexed_pulse_project
     conn = cache.get_conn()
     conn.executemany(
@@ -388,7 +379,8 @@ async def test_pulse_import_capacity_is_an_error(indexed_pulse_project):
     conn.commit()
     response = await PulseTool(str(root)).execute({"file": "a.py", "symbol": "greet"})
     assert response["success"] is False
-    assert "PULSE_IMPORT_RESOURCE_LIMIT" in response["error"]
+    assert response["source_evidence"]["freshness"] == "unknown"
+    assert response["source_evidence"]["reason"] == "NO_EXACT_FULL_INDEX_MANIFEST"
 
 
 async def test_pulse_batch_retains_per_target_error(indexed_pulse_project):
@@ -545,6 +537,7 @@ async def test_nav_batch_success_isolated_across_project_rebind(tmp_path):
             assert cache.index_file(str(source))["status"] == "indexed"
         finally:
             cache.close()
+        await _certify_project(root)
         roots.append(root)
     facade = build_nav_facade(str(roots[0]))
     request = {
@@ -569,3 +562,203 @@ async def test_nav_batch_success_isolated_across_project_rebind(tmp_path):
             ("greet", "a.py", f"{root.name} greet"),
             ("other", "a.py", f"{root.name} other"),
         ]
+
+
+@pytest.mark.parametrize(
+    "kind,symbol", [("single", "greet"), ("single", "renamed"), ("batch", "greet")]
+)
+async def test_pulse_saved_source_is_stale_not_missing(
+    indexed_pulse_project, kind, symbol
+):
+    # 2026-09-08：旧名和新名都必须指出索引过期，不能返回旧结果或假不存在。
+    root, _ = indexed_pulse_project
+    (root / "a.py").write_text("def renamed():\n    return 2\n", encoding="utf-8")
+    if kind == "single":
+        result = await PulseTool(str(root)).execute({"file": "a.py", "symbol": symbol})
+    else:
+        result = await PulseBatchTool(str(root)).execute(
+            {"targets": [{"file": "a.py", "symbol": symbol}]}
+        )
+    assert result == {
+        "success": False,
+        "error_code": "SOURCE_EVIDENCE_UNAVAILABLE",
+        "error": "Pulse source evidence unavailable: SOURCE_INDEX_MISMATCH",
+        "source_evidence": {
+            "freshness": "stale",
+            "snapshot_id": None,
+            "source_generation": None,
+            "reason": "SOURCE_INDEX_MISMATCH",
+        },
+    }
+
+
+async def test_pulse_batch_save_between_targets_discards_entire_result(
+    indexed_pulse_project, monkeypatch
+):
+    # 2026-09-08：第二个目标期间保存，不能保留第一个目标的成功结果。
+    from tree_sitter_analyzer.api import pulse
+
+    root, _ = indexed_pulse_project
+    original = pulse.query_pulse
+    calls = []
+
+    def changing_query(*args, **kwargs):
+        result = original(*args, **kwargs)
+        calls.append(kwargs["symbol_name"])
+        if len(calls) == 2:
+            (root / "a.py").write_text(
+                "def renamed():\n    return 2\n", encoding="utf-8"
+            )
+        return result
+
+    monkeypatch.setattr(pulse, "query_pulse", changing_query)
+    response = await PulseBatchTool(str(root)).execute(
+        {
+            "targets": [
+                {"file": "a.py", "symbol": "greet"},
+                {"file": "a.py", "symbol": "absent"},
+            ]
+        }
+    )
+    assert calls == ["greet", "absent"]
+    assert response["success"] is False
+    assert response["source_evidence"]["reason"] == "SOURCE_GENERATION_MISMATCH"
+    assert "results" not in response
+
+
+@pytest.mark.parametrize("format", ["skeletal", "compact", "verbose"])
+async def test_pulse_tiny_budget_preserves_source_evidence(
+    indexed_pulse_project, format
+):
+    """源码证据留在外层，最小内容预算与精简展示不能裁掉它。"""
+    root, _ = indexed_pulse_project
+    result = await PulseTool(str(root)).execute(
+        {"file": "a.py", "symbol": "greet", "token_budget": 1, "format": format}
+    )
+    assert result["success"] is True
+    assert result["source_evidence"]["freshness"] == "fresh"
+    assert result["source_evidence"]["reason"] is None
+
+
+@pytest.fixture
+async def certified_pulse_project(tmp_path):
+    """建立真实完整索引，认证范围包含定义及跨文件调用者。"""
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    (tmp_path / "leaf.py").write_text("def leaf():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "caller.py").write_text(
+        "from leaf import leaf\ndef caller():\n    return leaf()\n", encoding="utf-8"
+    )
+    result = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+        {"mode": "full", "max_files": 100}
+    )
+    assert result["scope_complete"] is True
+    return tmp_path
+
+
+def test_certified_pulse_missing_index_is_read_only(tmp_path):
+    # 2026-09-08：查询不能创建空索引后把无索引误报成不存在。
+    from tree_sitter_analyzer.api.pulse_evidence import (
+        PulseSourceError,
+        certified_pulse_connection,
+    )
+
+    with pytest.raises(PulseSourceError) as error:
+        with certified_pulse_connection(str(tmp_path)):
+            pytest.fail("缺失索引不能发布读取连接")
+    assert (error.value.reason, error.value.freshness) == ("MISSING_INDEX", "missing")
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "change", ["definition", "caller", "delete_caller", "new_caller"]
+)
+async def test_certified_pulse_rejects_changed_source_scope(
+    certified_pulse_project, change
+):
+    # 2026-09-08：目标未变也不能掩盖调用者的新增、删除或修改。
+    from tree_sitter_analyzer.api.pulse_evidence import (
+        PulseSourceError,
+        certified_pulse_connection,
+    )
+
+    root = certified_pulse_project
+    if change == "definition":
+        (root / "leaf.py").write_text(
+            "def renamed():\n    return 2\n", encoding="utf-8"
+        )
+    elif change == "caller":
+        (root / "caller.py").write_text(
+            "def caller():\n    return 2\n", encoding="utf-8"
+        )
+    elif change == "delete_caller":
+        (root / "caller.py").unlink()
+    else:
+        (root / "new.py").write_text(
+            "from leaf import leaf\ndef other():\n    return leaf()\n", encoding="utf-8"
+        )
+    with pytest.raises(PulseSourceError) as error:
+        with certified_pulse_connection(str(root)):
+            pytest.fail("源码范围过期不能发布读取连接")
+    assert (error.value.reason, error.value.freshness) == (
+        "SOURCE_INDEX_MISMATCH",
+        "stale",
+    )
+
+
+async def test_certified_pulse_reads_one_current_snapshot(certified_pulse_project):
+    """退出认证上下文后，结果和版本证据绑定同一个读取连接。"""
+    from tree_sitter_analyzer.api.pulse_evidence import certified_pulse_connection
+
+    with certified_pulse_connection(str(certified_pulse_project)) as (conn, evidence):
+        result = query_pulse(conn, "leaf.py", "leaf")
+        assert evidence["freshness"] == "unknown"
+    assert result.symbol.name == "leaf"
+    assert [(c.name, c.file) for c in result.callers] == [("caller", "caller.py")]
+    assert evidence["freshness"] == "fresh"
+    assert evidence["reason"] is None
+    assert isinstance(evidence["snapshot_id"], str)
+    assert isinstance(evidence["source_generation"], str)
+
+
+async def test_certified_pulse_rejects_save_during_read(certified_pulse_project):
+    # 2026-09-08：读取完成前再次保存时，不得发布读取前的 fresh 证据。
+    from tree_sitter_analyzer.api.pulse_evidence import (
+        PulseSourceError,
+        certified_pulse_connection,
+    )
+
+    with pytest.raises(PulseSourceError) as error:
+        with certified_pulse_connection(str(certified_pulse_project)) as (
+            conn,
+            evidence,
+        ):
+            query_pulse(conn, "leaf.py", "leaf")
+            (certified_pulse_project / "caller.py").unlink()
+    assert (error.value.reason, error.value.freshness) == (
+        "SOURCE_GENERATION_MISMATCH",
+        "stale",
+    )
+    assert evidence["freshness"] == "unknown"
+
+
+@pytest.mark.parametrize("failure", ["query", "save"])
+async def test_certified_pulse_releases_readers_after_failure(
+    certified_pulse_project, failure
+):
+    """失败后释放读取与租约 pin，不能阻塞后续索引或耗尽快照容量。"""
+    from tree_sitter_analyzer import index_snapshot
+    from tree_sitter_analyzer.api.pulse_evidence import (
+        PulseSourceError,
+        certified_pulse_connection,
+    )
+
+    expected = RuntimeError if failure == "query" else PulseSourceError
+    with pytest.raises(expected):
+        with certified_pulse_connection(str(certified_pulse_project)) as (_, evidence):
+            if failure == "query":
+                raise RuntimeError("query failed")
+            (certified_pulse_project / "leaf.py").unlink()
+    entry = index_snapshot.REGISTRY._entries[evidence["snapshot_id"]]
+    assert entry.readers == 0
+    assert evidence["freshness"] == "unknown"

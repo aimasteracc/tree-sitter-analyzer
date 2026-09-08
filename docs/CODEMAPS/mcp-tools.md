@@ -13,7 +13,7 @@ All tools return **JSON output** (locked — see `CLAUDE.md`). Response-envelope
 | MCP name | action= | Purpose |
 |---|---|---|
 | `search` | symbol / query / content / grep / batch / chain / select / subscribe / unsubscribe | Code search: BM25 symbol lookup, tree-sitter .scm DSL, ripgrep, fd+rg, batch, graph-chain DSL, Hyphae DSL, reactive push subscriptions (RFC-0001) |
-| `nav` | navigate / call_path / xref / resolve / lineage / impact / trace / context / callers / callees / callee_tree / caller_tree / test_map / co_change | Call-graph navigation + one-call symbol context; test_map = which tests exercise a function (RFC-0014 Phase B); co_change = git-history temporal coupling (RFC-0014 Phase C) |
+| `nav` | pulse / pulse_batch / navigate / call_path / xref / resolve / lineage / impact / trace / context / callers / callees / callee_tree / caller_tree / test_map / co_change | Call-graph navigation + one-call symbol context; test_map = which tests exercise a function (RFC-0014 Phase B); co_change = git-history temporal coupling (RFC-0014 Phase C) |
 | `structure` | outline / analyze / ast_path / sitemap / class_tree / class_detail / explore / read / signatures | Structural AST analysis + partial file read + signature-only listing |
 | `health` | project / file / scale / patterns / heatmap / imports / matrix / dead / routes / overview / deps / test_gap / self / refactor_queue | Code health, complexity, dependency analysis, untested symbol discovery; `self` = RFC-0025 Layer 5 self-proprioception (per-`(tool, action)` p50/p95 latency by tier + in-process analysis-cache hit rate + on-disk AST-index state, for the current process; CLI twin `--self-health`); `refactor_queue` = RFC-0027 §L8 top-N prioritized refactor queue ranked by `(1 - health/100) * log(1 + churn_30d) * (dead_ratio + 0.1)`, CLI twin `--refactor-queue` |
 | `edit` | safe / guard / impact / refactor / constraints / pr / classify / ast_diff / release_snapshot / plan_rename / mutation_probe | Edit-safety, blast-radius, refactor, PR review; RFC-0022 explicit-opt-in POSIX-only frozen workspace/staged snapshots (`impact` issues ID+lease or fails closed on Windows, `ast_diff`/`classify` consume ID+path, `release_snapshot` idempotently closes the owned lease in the same MCP process); legacy staged impact remains Windows-supported; `plan_rename` = RFC-0027 §L8 minimal rename edit set, PREVIEW ONLY (apply-like arguments are rejected with `PLAN_RENAME_IS_PREVIEW_ONLY`), CLI twin `--plan-rename`; `mutation_probe` = RFC-0029 on-demand "does this test constrain this code?" probe — applies one AST mutation in memory, runs named test in isolation, returns `constrains`/`does_not_constrain`/`unknown`, fail-closed, CLI twin `--mutation-probe` |
@@ -163,3 +163,12 @@ All tools return:
 - [`docs/api/mcp_tools_specification.md`](../api/mcp_tools_specification.md) — Full per-tool API
 - [`docs/smart-workflow.md`](../smart-workflow.md) — SMART methodology
 - [`docs/CODEMAPS/cli.md`](./cli.md) — CLI counterpart map
+
+### Pulse 源码证据
+
+`nav action=pulse` / `pulse_batch`（CLI `--pulse` / `--pulse-batch`）
+通过 `api/pulse_evidence.py` 共用索引所有者的认证连接；批次只获取一次。
+外层 `source_evidence` 携带 freshness、snapshot_id、source_generation、reason，
+不受内容预算影响。源码过期、缺失或未认证时不返回缓存结果，需先构建或同步索引。
+`api.pulse.query_pulse(conn, ...)` 自身只保证 SQL 读取一致，不证明磁盘源码当前。
+当前实现使用每次调用的认证后备路径，常驻认证与规模热路径仍未验收（RFC-0030）。
