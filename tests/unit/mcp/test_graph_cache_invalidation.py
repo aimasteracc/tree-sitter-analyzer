@@ -251,3 +251,63 @@ class TestDependencyGraphGlobalCacheRespectsFingerprint:
         g2 = DependencyGraph(str(project_root))
         # Different fingerprints -> different cache keys -> different objects.
         assert g2 is not g1
+
+
+@pytest.mark.parametrize(
+    "padding", ["", "#" + "x" * 131072 + "\n"], ids=["short", "tail"]
+)
+def test_dependency_graph_cache_tracks_full_content(project_root, padding):
+    """相同时间戳、长度及文件数不能掩盖导入变更，包括文件尾部。"""
+    from tree_sitter_analyzer.project_graph import DependencyGraph
+
+    importer = project_root / "pkg" / "a.py"
+    importer.write_text(padding + "from .b import bar\n", encoding="utf-8")
+    (project_root / "pkg" / "c.py").write_text(
+        "def bar(): return 2\n", encoding="utf-8"
+    )
+    first = DependencyGraph(str(project_root))
+    assert first.dependencies_of("pkg/a.py") == ["pkg/b.py"]
+    assert DependencyGraph(str(project_root)) is first
+    before = importer.stat()
+    importer.write_text(padding + "from .c import bar\n", encoding="utf-8")
+    os.utime(importer, ns=(before.st_atime_ns, before.st_mtime_ns))
+    second = DependencyGraph(str(project_root))
+    assert second.dependencies_of("pkg/a.py") == ["pkg/c.py"]
+    assert second is not first
+
+
+def test_dependency_graph_key_rejects_unreadable_walk(tmp_path, monkeypatch):
+    """遍历失败不能被当作可复用的空源码树。"""
+    from tree_sitter_analyzer.project_graph import DependencyGraph
+
+    def denied(_path):
+        raise PermissionError("unreadable tree")
+
+    monkeypatch.setattr(os, "scandir", denied)
+    assert DependencyGraph._cache_key_for(str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("failure", ["oversized", "changed_during_read"])
+def test_dependency_graph_key_rejects_unstable_input(tmp_path, monkeypatch, failure):
+    """超限或读取期间变化的文件不能产生可复用键。"""
+    from tree_sitter_analyzer.project_graph import DependencyGraph
+
+    path = tmp_path / "a.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    if failure == "oversized":
+        with path.open("ab") as stream:
+            stream.truncate(64 * 1024 * 1024 + 1)
+    else:
+        original = os.fstat
+        calls = 0
+
+        def changed(fd):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                before = path.stat()
+                os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 1000000))
+            return original(fd)
+
+        monkeypatch.setattr(os, "fstat", changed)
+    assert DependencyGraph._cache_key_for(str(tmp_path)) is None
