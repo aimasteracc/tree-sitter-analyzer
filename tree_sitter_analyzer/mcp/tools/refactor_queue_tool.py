@@ -81,7 +81,9 @@ def _churn_by_file(root: Path) -> dict[str, int]:
         return {}
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(str(db_path))
+        conn = sqlite3.connect(db_path.absolute().as_uri() + "?mode=rw", uri=True)
+        # 禁止建库和 SQL 写入，同时保留 SQLite 关闭时的 WAL 清理。
+        conn.execute("PRAGMA query_only=ON")
         rows = conn.execute(
             "SELECT file_path, SUM(mod_count_30d) AS churn "
             "FROM ast_symbol_activation GROUP BY file_path"
@@ -102,7 +104,9 @@ def _symbol_counts(root: Path) -> dict[str, int]:
         return {}
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(str(db_path))
+        conn = sqlite3.connect(db_path.absolute().as_uri() + "?mode=rw", uri=True)
+        # 禁止建库和 SQL 写入，同时保留 SQLite 关闭时的 WAL 清理。
+        conn.execute("PRAGMA query_only=ON")
         rows = conn.execute(
             "SELECT file_path, COUNT(*) AS n FROM ast_symbol_rows GROUP BY file_path"
         ).fetchall()
