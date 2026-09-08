@@ -21,6 +21,38 @@ def _make_fake_cache(conn):
     return fake
 
 
+@pytest.mark.parametrize("kind", ["single", "batch"])
+async def test_warm_pulse_rejects_invalidated_index_with_unchanged_source(
+    indexed_pulse_project, kind
+):
+    """源码未变不能替代索引认证；已预热的单次和批次查询都必须拒绝失效索引。"""
+    root, cache = indexed_pulse_project
+    source = root / "a.py"
+    original = source.read_bytes()
+    tool = PulseTool(str(root)) if kind == "single" else PulseBatchTool(str(root))
+    target = {"file": "a.py", "symbol": "greet"}
+    arguments = target if kind == "single" else {"targets": [target]}
+    warm = await tool.execute(arguments)
+    assert warm["success"] is True
+    assert warm["source_evidence"]["freshness"] == "fresh"
+    assert warm["source_evidence"]["snapshot_id"] is not None
+
+    cache.invalidate(str(source))
+    assert source.read_bytes() == original
+    response = await tool.execute(arguments)
+    assert response == {
+        "success": False,
+        "error_code": "SOURCE_EVIDENCE_UNAVAILABLE",
+        "error": "Pulse source evidence unavailable: CALL_GRAPH_INCOMPLETE",
+        "source_evidence": {
+            "freshness": "unknown",
+            "snapshot_id": None,
+            "source_generation": None,
+            "reason": "CALL_GRAPH_INCOMPLETE",
+        },
+    }
+
+
 async def test_pulse_missing_relation_is_query_failure(indexed_pulse_project):
     """PR #1352：目标存在但关系表损坏时，不得谎报目标不存在。"""
     root, cache = indexed_pulse_project
