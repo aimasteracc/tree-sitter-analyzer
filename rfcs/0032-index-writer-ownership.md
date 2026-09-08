@@ -66,6 +66,32 @@ the enforcement mechanism still require review. Draft status remains unchanged.
 Published sources: [v1.29.5 release](https://github.com/aimasteracc/tree-sitter-analyzer/releases/tag/v1.29.5)
 and [PyPI version metadata](https://pypi.org/pypi/tree-sitter-analyzer/1.29.5/json).
 
+### Published custom-path and raw-connection behavior
+
+A real v1.29.5 wheel probe confirms that a custom constructor path equals both
+`cache.db_path` and SQLite's `PRAGMA database_list` main path; the requested file
+exists. `get_conn()` returns a writable `sqlite3.Connection`: caller-created table
+writes commit and are visible from an independent connection. The published docstring
+explicitly invites external modules to use this accessor for raw SQL. The probe uses
+a custom file outside the project and creates no project `.ast-cache` directory.
+Raw record: `/tmp/tsa-published-custom-db-contract.json`.
+
+Consequently physical relocation and mandatory write admission affect released
+behavior even though candidate binding does not. Proposed **major-version direction**:
+keep the constructor argument as a logical locator, expose its original value as
+`requested_db_path`, report the actual active file through `db_path`, and restrict
+public `get_conn()` to reads. Existing ASTCache mutation methods remain the supported
+write entry points and must acquire operation ownership. Internal SQL helpers use
+owned connections; do not secretly preserve a second unrestricted public write path.
+This is a direction for review, not an accepted API change; the exact read-connection
+lifetime and compatibility/migration examples still need specification.
+
+If accepted, these changes must be part of the next explicitly authorized major-version
+migration with notes for direct SQLite clients. This round authorizes no release.
+If the published physical-path/raw-write behavior must remain unchanged, redesign
+the storage/admission approach; do not claim complete enforcement while leaving an
+undocumented escape through the published accessor. The owner decision is pending.
+
 ## Detailed design
 
 ### Persistent identity and schema migration
