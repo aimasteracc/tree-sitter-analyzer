@@ -2579,3 +2579,29 @@ def test_unchanged_content_refreshes_indexed_metadata(tmp_path):
         assert (result.updated_files, result.unchanged_files) == (0, 1)
     finally:
         cache.close()
+
+
+@requires_posix_fd
+@pytest.mark.parametrize("replacement", ["symlink", "fifo"])
+def test_candidate_unsafe_replacement_invalidates_existing_rows(tmp_path, replacement):
+    # #1405：候选拒绝路径后必须清除旧 AST，不能仅撤销认证。
+    from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
+
+    path = tmp_path / "a.py"
+    path.write_text("def old(): pass\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    watcher = FileWatcherDaemon(cache)
+    try:
+        assert watcher.trigger_sync()["new_files"] == 1
+        path.unlink()
+        if replacement == "symlink":
+            path.symlink_to(tmp_path / "missing.py")
+        else:
+            os.mkfifo(path)
+        result = watcher.trigger_sync()
+        assert cache.get_stats()["total_files"] == 0
+        assert result["completeness"] == "incomplete"
+        assert result["changed_during_run_files"] == ["a.py"]
+    finally:
+        watcher.stop()
+        cache.close()

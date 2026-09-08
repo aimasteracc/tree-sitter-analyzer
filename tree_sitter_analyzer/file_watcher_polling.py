@@ -122,10 +122,12 @@ class PollingScanner:
                 self._blocked.add(path)
                 self.on_error()
                 continue
+            if not stat.S_ISREG(info.st_mode) or _reparse(info):
+                # #1405：永久不安全的替换不算存活，遍历完成后按删除通知失效。
+                self.on_error()
+                continue
             self._seen.add(path)
             try:
-                if not stat.S_ISREG(info.st_mode) or _reparse(info):
-                    raise OSError("watcher source is not a regular file")
                 fingerprint = self._fingerprint(path, deadline)
             except (OSError, SourceOracleError, ValueError):
                 self.on_error()

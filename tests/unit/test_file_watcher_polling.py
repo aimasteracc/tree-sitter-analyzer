@@ -334,3 +334,50 @@ def test_baseline_reset_during_pass_removes_deleted_state_without_notification(
     assert scan.scan(baseline=True) == []
     assert sorted(scan.snapshot) == [str(tmp_path / "b.py")]
     assert errors == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="tracked: #1405 POSIX 特殊文件替换验证")
+@pytest.mark.parametrize("replacement", ["symlink", "fifo"])
+def test_unsafe_source_replacement_emits_removal_once(scanner, tmp_path, replacement):
+    # #1405：失去普通文件身份必须通知失效，不能无限保留旧指纹。
+    scan, errors = scanner
+    scan.scan(baseline=True)
+    path = tmp_path / "a.py"
+    path.unlink()
+    if replacement == "symlink":
+        path.symlink_to(tmp_path / "b.py")
+    else:
+        os.mkfifo(path)
+    assert scan.scan() == [str(path)]
+    assert sorted(scan.snapshot) == [str(tmp_path / "b.py")]
+    assert scan.scan() == []
+    assert errors == ["error", "error"]
+
+
+def test_reparse_source_replacement_emits_removal(scanner, tmp_path, monkeypatch):
+    # #1405：Windows reparse 属性也必须清除已知旧指纹。
+    import stat
+
+    scan, errors = scanner
+    scan.scan(baseline=True)
+    path = str(tmp_path / "a.py")
+    monkeypatch.setattr(
+        owner,
+        "_entries",
+        lambda _root: iter(
+            [
+                (
+                    "file",
+                    path,
+                    SimpleNamespace(st_mode=stat.S_IFREG, st_file_attributes=0x400),
+                ),
+                ("file", str(tmp_path / "b.py"), (tmp_path / "b.py").stat()),
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        owner.stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400, raising=False
+    )
+    assert scan.scan() == [path]
+    assert sorted(scan.snapshot) == [str(tmp_path / "b.py")]
+    assert errors == ["error"]

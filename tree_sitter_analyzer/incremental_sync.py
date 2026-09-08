@@ -439,7 +439,12 @@ class IncrementalSync:
                     candidate_snapshot, self._cache
                 ):
                     raise ValueError("INDEX_CACHE_HIERARCHY_CHANGED")
-            changed_files: list[tuple[str, str]] = []
+            # #1405：候选中明确拒绝的源码也要撤销旧缓存，不能只降低认证完整性。
+            changed_files: list[tuple[str, str]] = [
+                (entry.rel_path, entry.reason or "candidate source rejected")
+                for entry in candidate_snapshot.entries
+                if entry.decision == "error"
+            ]
             for entry in candidate_snapshot.selected_entries:
                 change_reason = (
                     None
