@@ -73,7 +73,12 @@ def source_subsystem_stems(
 
 
 def test_path_is_unscoped(test_file: str) -> bool:
-    """Return whether a test sits directly in a generic test collection root."""
+    """判断测试是否直接位于根级通用测试层。"""
+    return _root_test_scope_parts(test_file) == []
+
+
+def _root_test_scope_parts(test_file: str) -> list[str] | None:
+    """剥离既有根和通用层；嵌套测试根不能抹除前面的 scope。"""
     parts = list(Path(test_file.replace("\\", "/")).parts[:-1])
     test_roots = {"__tests__", "spec", "test", "tests"}
     root_indexes = [
@@ -82,7 +87,7 @@ def test_path_is_unscoped(test_file: str) -> bool:
     if root_indexes:
         test_root_index = root_indexes[-1]
         if test_root_index > 0:
-            return False
+            return None
         parts = parts[test_root_index + 1 :]
 
     generic_tiers = {
@@ -105,7 +110,7 @@ def test_path_is_unscoped(test_file: str) -> bool:
     }
     while parts and parts[0].lower() in generic_tiers:
         parts.pop(0)
-    return not parts
+    return parts
 
 
 def test_path_subsystem_affinity_rank(
@@ -144,11 +149,26 @@ def test_paths_have_compatible_package_scope(
     test_file: str,
     changed_file: str,
 ) -> bool:
-    """Return whether a test can cover the changed path's package scope."""
+    """统一准入包身份与首层 scope；后续 family 或弱回退不能推翻拒绝。"""
     changed_package = _monorepo_package_identity(changed_file)
     test_package = _monorepo_package_identity(test_file)
-    return test_package is None or (
-        changed_package is not None and changed_package == test_package
+    if test_package is not None:
+        return changed_package is not None and changed_package == test_package
+    if changed_package is None or Path(changed_file).suffix.lower() != ".py":
+        return True
+
+    scope_parts = _root_test_scope_parts(test_file)
+    if scope_parts is None:
+        return False
+    if not scope_parts:
+        return True
+    scope = _normalize_module_identifier(scope_parts[0])
+    if scope in source_subsystem_stems(changed_file):
+        return True
+    # #1400：只有明确 facade 映射可跨 CLI/MCP；后缀推导不是跨层授权。
+    return scope in {"cli", "mcp"} and any(
+        related_stem_matches(Path(test_file).stem, stem)
+        for stem in module_family_test_stems(changed_file, include_inferred=False)
     )
 
 
@@ -240,8 +260,10 @@ def python_package_test_stems(file_path: str | Path) -> list[str]:
     return _unique_nonempty_stems(stems)
 
 
-def module_family_test_stems(file_path: str | Path) -> list[str]:
-    """Return broader stems for extracted Python implementation modules."""
+def module_family_test_stems(
+    file_path: str | Path, *, include_inferred: bool = True
+) -> list[str]:
+    """复用明确模块映射，并可选择是否加入后缀推导族。"""
     normalized = Path(str(file_path).replace("\\", "/"))
     if normalized.suffix != ".py":
         return []
@@ -305,7 +327,8 @@ def module_family_test_stems(file_path: str | Path) -> list[str]:
         stems.append("project_summary_pagerank")
     if is_repository_source and normalized.stem == "test_discovery_stems":
         stems.append("change_impact_tool_execute_and_mapping")
-    stems.extend(_strip_family_suffixes(normalized.stem, suffixes))
+    if include_inferred:
+        stems.extend(_strip_family_suffixes(normalized.stem, suffixes))
     return _unique_nonempty_stems(stems)
 
 

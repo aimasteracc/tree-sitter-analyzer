@@ -66,49 +66,191 @@ class TestDetectLanguageFromExt:
 
 
 class TestFindTestFilesPython:
+    @pytest.mark.parametrize("engine", ["live", "graph"])
     @pytest.mark.parametrize("absolute_source", [False, True])
+    @pytest.mark.parametrize("tiers", ["", "unit/integration/"])
+    @pytest.mark.parametrize("subject", ["facade", "utils_helpers", "utils"])
+    @pytest.mark.parametrize(
+        "layout", ["mixed", "mirror-only", "foreign-only", "weak-only"]
+    )
     def test_monorepo_facade_family_matches_graph_without_foreign_package(
-        self, tmp_path, monkeypatch, absolute_source
+        self, tmp_path, monkeypatch, absolute_source, engine, tiers, subject, layout
     ):
-        """#1400：包内 facade 与根级 CLI/MCP 共享族，foreign 包仍必须排除。"""
+        """#1400：准入拒绝不能被后续 family、深层目录、文件名或弱引用推翻。"""
         from tree_sitter_analyzer.mcp.tools.utils import test_discovery
         from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
             _find_test_files,
         )
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_verification import (
+            AUTO_DISCOVER_TEST_HINT,
+        )
 
-        relative = "packages/b/src/tree_sitter_analyzer/cache/schema.py"
+        facade = subject == "facade"
+        module = "tree_sitter_analyzer/cache/schema" if facade else subject
+        stem = "ast_cache" if facade else "utils"
+        relative = f"packages/b/src/{module}.py"
+        source = tmp_path / relative
+        source.parent.mkdir(parents=True)
+        source.write_text("def shared(): pass\n", encoding="utf-8")
+        own_dirs = (
+            [
+                "packages/b/tests/cli",
+                "tests",
+                "tests/unit/cache",
+                "tests/unit/cli",
+                "tests/unit/mcp",
+            ]
+            if facade
+            else [
+                "packages/b/tests",
+                "tests/b",
+                "tests",
+                "tests/unit",
+                "tests/integration",
+            ]
+        )
+        foreign_dirs = [
+            "packages/a/tests/cli",
+            "tests/a",
+            "tests/a/cache",
+            "tests/a/cli",
+            "tests/a/mcp",
+            "tests/unit/a",
+            "tests/a/tests",
+            "tests/unit/a/b",
+        ]
+        if not facade:
+            foreign_dirs.extend(["tests/unit/cli", "tests/unit/mcp"])
+        if layout == "mirror-only":
+            own_dirs = ["tests/unit/cache" if facade else "tests/b"]
+            foreign_dirs = ["tests/a/cache" if facade else "tests/a"]
+        expected = {f"{directory}/test_{stem}.py" for directory in own_dirs}
+        foreign = {f"{directory}/test_{stem}.py" for directory in foreign_dirs}
+        if layout == "mixed":
+            foreign.add(f"tests/a/test_b_{stem}.py")
+        if layout in {"foreign-only", "weak-only"}:
+            expected = set()
+        if layout == "weak-only":
+            foreign = {f"{directory}/test_foreign.py" for directory in foreign_dirs}
+        expected = {
+            name.replace("tests/", f"tests/{tiers}", 1)
+            if name.startswith("tests/")
+            else name
+            for name in expected
+        }
+        foreign = {
+            name.replace("tests/", f"tests/{tiers}", 1)
+            if name.startswith("tests/")
+            else name
+            for name in foreign
+        }
+        for name in expected | foreign:
+            target = tmp_path / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("def test_behavior(): shared()\n", encoding="utf-8")
+        monkeypatch.setitem(test_discovery._TEST_DIRS, "python", ["tests", "packages"])
+        changed = str(source) if absolute_source else relative
+
+        if engine == "graph":
+            assert _find_test_files([changed], {changed, *expected, *foreign}) == {
+                changed: sorted(expected) or [AUTO_DISCOVER_TEST_HINT]
+            }
+        else:
+            assert sorted(find_test_files(changed, str(tmp_path))) == sorted(expected)
+
+    @pytest.mark.parametrize("engine", ["live", "graph"])
+    @pytest.mark.parametrize("absolute_source", [False, True])
+    def test_non_python_root_test_scope_keeps_existing_fallback(
+        self, tmp_path, absolute_source, engine
+    ):
+        """#1400：Python 的根级准入规则不能扩展至非 Python 既有回退。"""
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+            _find_test_files,
+        )
+
+        relative = "packages/b/src/utils.ts"
+        source = tmp_path / relative
+        source.parent.mkdir(parents=True)
+        source.write_text("export function shared() {}\n", encoding="utf-8")
+        expected = ["tests/a/utils.test.ts"]
+        target = tmp_path / expected[0]
+        target.parent.mkdir(parents=True)
+        target.write_text("test('shared', () => {});\n", encoding="utf-8")
+        changed = str(source) if absolute_source else relative
+
+        if engine == "graph":
+            assert _find_test_files([changed], {changed, *expected}) == {
+                changed: expected
+            }
+        else:
+            assert find_test_files(changed, str(tmp_path)) == expected
+
+    @pytest.mark.parametrize("engine", ["live", "graph"])
+    @pytest.mark.parametrize("absolute_source", [False, True])
+    @pytest.mark.parametrize("has_core", [False, True])
+    def test_non_monorepo_direct_affinity_keeps_existing_fallback(
+        self, tmp_path, absolute_source, engine, has_core
+    ):
+        """#1400：非 monorepo 无 affinity 时仍回退 CLI，有 core 时仅选 core。"""
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+            _find_test_files,
+        )
+
+        relative = "src/core/utils.py"
         source = tmp_path / relative
         source.parent.mkdir(parents=True)
         source.write_text("pass\n", encoding="utf-8")
-        expected = {
-            "packages/b/tests/cli/test_ast_cache.py",
-            "tests/test_ast_cache.py",
-            "tests/unit/cache/test_ast_cache.py",
-            "tests/unit/cli/test_ast_cache.py",
-            "tests/unit/mcp/test_ast_cache.py",
-        }
-        foreign = "packages/a/tests/cli/test_ast_cache.py"
-        for name in {*expected, foreign}:
+        candidates = {"tests/unit/cli/test_utils.py"}
+        expected = {"tests/unit/core/test_utils.py"} if has_core else candidates.copy()
+        for name in candidates | expected:
             target = tmp_path / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text("def test_behavior(): pass\n", encoding="utf-8")
+        changed = str(source) if absolute_source else relative
+
+        if engine == "graph":
+            assert _find_test_files([changed], {changed, *candidates, *expected}) == {
+                changed: sorted(expected)
+            }
+        else:
+            assert sorted(find_test_files(changed, str(tmp_path))) == sorted(expected)
+
+    @pytest.mark.parametrize("absolute_source", [False, True])
+    def test_monorepo_weak_reference_keeps_only_own_scope(
+        self, tmp_path, monkeypatch, absolute_source
+    ):
+        """#1400：相对输入也必须实际读取源码；弱引用不能绕过共享包准入。"""
+        from tree_sitter_analyzer.mcp.tools.utils import test_discovery
+
+        relative = "packages/b/src/utils_helpers.py"
+        source = tmp_path / relative
+        source.parent.mkdir(parents=True)
+        source.write_text("def shared(): pass\n", encoding="utf-8")
+        expected = {"packages/b/tests/test_reference.py", "tests/b/test_reference.py"}
+        foreign = {
+            "packages/a/tests/test_reference.py",
+            "tests/a/test_reference.py",
+            "tests/a/test_b_reference.py",
+            "tests/a/b/test_reference.py",
+            "tests/unit/cli/test_reference.py",
+        }
+        for name in expected | foreign:
+            target = tmp_path / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("def test_behavior(): shared()\n", encoding="utf-8")
         monkeypatch.setitem(test_discovery._TEST_DIRS, "python", ["tests", "packages"])
 
-        graph = _find_test_files([relative], {relative, *expected, foreign})[relative]
-        live = find_test_files(
-            str(source) if absolute_source else relative, str(tmp_path)
-        )
+        assert sorted(
+            find_test_files(str(source) if absolute_source else relative, str(tmp_path))
+        ) == sorted(expected)
 
-        assert graph == sorted(expected)
-        assert sorted(live) == graph
-        assert len(live) == 5
-        assert foreign not in live
-
+    @pytest.mark.parametrize("engine", ["live", "graph"])
+    @pytest.mark.parametrize("absolute_source", [False, True])
     @pytest.mark.parametrize(
         "source_name", ["answer_cache.py", "answer_cache_policy.py"]
     )
     def test_independent_cache_keeps_only_its_own_named_family(
-        self, tmp_path, source_name
+        self, tmp_path, source_name, engine, absolute_source
     ):
         """#1400：独立答案缓存不能因目录相同而继承 AST cache 的测试族。"""
         from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
@@ -129,14 +271,14 @@ class TestFindTestFilesPython:
                 path.write_text("def test_behavior(): pass\n", encoding="utf-8")
                 paths.append(path.relative_to(tmp_path).as_posix())
 
-        found = find_test_files(str(source), str(tmp_path))
-
-        assert set(found) == set(expected)
-        assert len(found) == 15
-        assert set(found) & set(unrelated) == set()
-        assert _find_test_files([relative], {relative, *expected, *unrelated}) == {
-            relative: sorted(expected)
-        }
+        changed = str(source) if absolute_source else relative
+        if engine == "graph":
+            assert _find_test_files([changed], {changed, *expected, *unrelated}) == {
+                changed: sorted(expected)
+            }
+        else:
+            assert sorted(find_test_files(changed, str(tmp_path))) == sorted(expected)
+        assert len(expected) == 15
 
     @pytest.mark.parametrize("source_name", ["schema.py", "indexer.py"])
     def test_ast_cache_implementation_keeps_complete_cross_surface_family(
@@ -285,6 +427,7 @@ class TestFindTestFilesPython:
         assert set(found) == {f"tests/unit/{name}" for name in names}
         assert len(found) == len(names)
 
+    @pytest.mark.parametrize("absolute_source", [False, True])
     @pytest.mark.parametrize("stem", ["foo", "component"])
     @pytest.mark.parametrize(
         "template",
@@ -297,7 +440,7 @@ class TestFindTestFilesPython:
         ids=["prefix", "prefix_variant", "suffix_test", "suffix_tests"],
     )
     def test_explicit_patterns_preserve_short_and_long_stems(
-        self, tmp_path, stem, template
+        self, tmp_path, stem, template, absolute_source
     ):
         """#1376 / #1400：明确命名规则的身份不能被弱 stem 规则重新降级。"""
         source = tmp_path / f"{stem}.py"
@@ -310,10 +453,20 @@ class TestFindTestFilesPython:
             target.write_text("def test_behavior(): pass\n", encoding="utf-8")
             expected.add(target.relative_to(tmp_path).as_posix())
 
-        found = find_test_files(str(source), str(tmp_path))
+        changed = str(source) if absolute_source else f"{stem}.py"
+        found = find_test_files(changed, str(tmp_path))
 
         assert set(found) == expected
         assert len(found) == 15
+        if template != "{stem}_tests.py":
+            # graph 既有 runnable 规则只支持前三种，不在准入修复中扩展命名面。
+            from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+                _find_test_files,
+            )
+
+            assert _find_test_files([changed], {changed, *expected}) == {
+                changed: sorted(expected)
+            }
 
     def test_symbol_only_candidates_keep_the_bounded_limit(self, tmp_path):
         """#1376：放完整命名族不等于取消弱符号匹配的候选上限。"""

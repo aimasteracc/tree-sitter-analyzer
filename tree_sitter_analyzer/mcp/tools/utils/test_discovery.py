@@ -131,6 +131,8 @@ def find_test_files(
     """
     p = Path(file_path)
     root = Path(project_root)
+    if not p.is_absolute():
+        p = root / p
     stem = p.stem
     ext = p.suffix.lower()
     language = detect_language_from_ext(ext) or "python"
@@ -157,7 +159,7 @@ def find_test_files(
 
     if language == "python":
         relative_source = str(_relative_to_root(p, root) or p)
-        family_stems = related_test_stems_for_path(p)
+        family_stems = related_test_stems_for_path(relative_source)
         stems = [stem, *family_stems]
         named_candidates = {
             test

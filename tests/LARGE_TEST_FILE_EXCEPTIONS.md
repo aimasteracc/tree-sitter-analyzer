@@ -9,7 +9,7 @@ match reality or CI fails). The threshold is 800 lines.
 | Lines | File | Note |
 |---:|---|---|
 | 2690 | `tests/unit/test_knowledge_graph.py` | |
-| 2631 | `tests/unit/mcp/test_change_impact_tool_execute_and_mapping.py` | |
+| 2641 | `tests/unit/mcp/test_change_impact_tool_execute_and_mapping.py` | |
 | 2521 | `tests/unit/test_incremental_sync.py` | |
 | 2192 | `tests/unit/languages/test_kotlin_plugin.py` | |
 | 2110 | `tests/unit/test_symbols_json_enrichment.py` | |
@@ -24,7 +24,7 @@ match reality or CI fails). The threshold is 800 lines.
 | 1615 | `tests/unit/languages/test_cyclomatic_complexity.py` | |
 | 1585 | `tests/unit/languages/test_java_plugin.py` | |
 | 1575 | `tests/unit/test_uml_activity.py` | |
-| 1728 | `tests/unit/mcp/test_test_discovery.py` | |
+| 1881 | `tests/unit/mcp/test_test_discovery.py` | |
 | 1403 | `tests/unit/core/test_engine.py` | |
 | 1357 | `tests/unit/test_codegraph_pr_review_tool.py` | |
 | 1348 | `tests/integration/formatters/test_data_manager.py` | |
@@ -299,10 +299,19 @@ and `answer_cache_policy` components, which retain their own test families.
 Complete Python candidates and the bounded fallback both reuse the existing
 monorepo identity/package-compatibility and subsystem-affinity helpers. Monorepo
 foreign-package candidates cannot re-enter through the ten-item fallback.
-After the compatible-package check, derived facade families retain cross-layer
-consumers even when the source is in a monorepo, matching the existing graph
-policy. A real-directory cross-case pins graph/live equality at five own/root
-targets while excluding the foreign package. Outside monorepos, where no positive
+The shared compatible-package helper admits explicit matching package identities
+first. For Python monorepo sources, root tests must have only generic tiers, a
+matching first actual scope, or CLI/MCP plus an explicit facade-family mapping.
+Neither deeper directories, filename hints, inferred suffix families nor later
+fallbacks may override rejection. Root/tier stripping reuses the existing
+unscoped-test logic, and `module_family_test_stems(include_inferred=False)` reuses
+the existing explicit mappings rather than adding a separate family whitelist.
+Real-directory matrices check live and graph independently against explicit
+expected paths, not against each other: facade five retained, inferred utilities
+own package/mirror/root tiers retained, and foreign/deep-scope candidates rejected.
+Relative source reads are anchored to the provided project root without changing
+cwd or canonicalization, so weak-reference tests cannot pass by failing to read
+the source. Outside monorepos, where no positive
 affinity exists, explicit naming keeps the existing conservative fallback rather
 than inventing a new path-ownership rule. Root canonicalization
 and the weak stem-matching rule are unchanged. No parallel parser or mapping engine
@@ -312,4 +321,6 @@ was added. New policy/discovery contract cases are separate from the original
 The final scope follow-up also integrates published develop `8a5f8ab3` (#1401),
 which corrects the separate gap analyzer's absolute-parent-path classification.
 That does not identify the historical full-session FD source tracked in #1402.
+The lead reports that the final full-run low-limit observation passed, but
+cross-test retention remains tracked in #1402; this is not an FD-fix claim.
 No additional comprehensive run or FD-observer run is claimed for this follow-up.
