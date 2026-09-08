@@ -218,6 +218,44 @@ do not cover direct virtual-table/DDL writes, every lazy table, filesystem mirro
 all old wheels, concurrent owner transitions, or native Windows/Linux. Reproduce the
 negative cells and preserve the positive cells in the implementation test matrix.
 
+### Published-wheel counterexample: ordinary-table guards are insufficient
+
+A subsequent eight-route probe imports the actual v1.29.5 wheel identified above in
+separate Python processes. Each old process opens its cache first; develop initializes
+and certifies the same database before installing provisional denial triggers. This
+is an already-open published runtime, not a second instance of develop. The ordinary
+variant eagerly creates `ast_build_state`; the shadow variant additionally guards FTS
+shadow tables. Both use a function-dependent `RAISE(ROLLBACK)` trigger, but the old
+connection has no admission function. No schema-18 migration is claimed.
+
+| Old runtime operation | Ordinary guards: committed dump unchanged after explicit old commit | Including shadow guards: operation / commit outcome |
+|---|---|---|
+| `index_file` | yes; pending transaction remains before commit | missing function / commit succeeds |
+| `invalidate` | **no: FTS shadow rows changed** | `database disk image is malformed` on both |
+| incremental sync | **no: FTS shadow rows changed** | `database disk image is malformed` on both |
+| forced project rebuild | yes; no pending transaction | missing function / commit succeeds |
+
+The published invalidation route changes FTS before reaching a guarded ordinary-table
+statement. That statement fails during preparation with a missing function, so its
+`RAISE(ROLLBACK)` body never executes. The preceding FTS changes remain committable.
+Changing current entry wrappers cannot fix rollback behavior inside an already-open
+old process. Ordinary-table fencing therefore fails the old-writer acceptance gate.
+
+Adding triggers to shadow tables is also not a qualified solution: although committed
+dumps were unchanged after the old connections closed in all four observations, two
+operations and their subsequent commits raised `database disk image is malformed`.
+That error is not a typed admission rejection, and unchanged final dumps do not prove
+connection usability or safe FTS recovery. The experiment does not establish permanent
+on-disk corruption either. Preserve the error and transaction-lifetime observations;
+do not turn this negative experiment into an implementation recommendation.
+
+The enforcement mechanism remains **unqualified**. Resolve old-client FTS writes,
+preparation-time failures, and connection recovery before accepting a trigger-based
+migration, or qualify a different publication/isolation design against these same
+old-wheel scenarios. Local raw records are `/tmp/tsa-published-writer-fence-proof.json`
+and `/tmp/tsa-published-writer-shadow-fence-proof.json`; scripts are temporary probes,
+not shipped test or benchmark assets.
+
 ### Crash recovery and publication
 
 A killed process cannot update its phase: it leaves `phase=writing` and its operation
