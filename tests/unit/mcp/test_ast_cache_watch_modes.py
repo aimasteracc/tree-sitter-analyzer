@@ -183,3 +183,38 @@ async def test_watchdog_start_reconciles_existing_sources_without_event(
     assert tool._watcher.get_stats()["events_processed"] == 0
     await tool.execute({"mode": "watch_stop"})
     assert calls == ["schedule", "start", "stop", "join"]
+
+
+@pytest.mark.asyncio
+async def test_watch_stop_does_not_claim_success_while_sync_is_alive(tool, monkeypatch):
+    # #1405：真实后台任务未退出时不得返回 stopped，调用方仍可查询并重试。
+    import threading
+
+    from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
+
+    watcher = FileWatcherDaemon(tool.get_cache(), debounce=0)
+    tool._watcher = watcher
+    entered, release = threading.Event(), threading.Event()
+    stop = watcher.stop
+
+    def sync():
+        entered.set()
+        assert release.wait(3)
+        return {}
+
+    monkeypatch.setattr(watcher, "_perform_sync", sync)
+    monkeypatch.setattr(watcher, "stop", lambda: stop(timeout=0))
+    try:
+        watcher._request_sync()
+        assert entered.wait(3)
+        with pytest.raises(TimeoutError, match="background work is still running"):
+            await tool.execute({"mode": "watch_stop"})
+        status = await tool.execute({"mode": "watch_status"})
+        assert status["running"] is True
+        release.set()
+        stop(timeout=3)
+        result = await tool.execute({"mode": "watch_stop"})
+        assert result["status"] == "not_running"
+    finally:
+        release.set()
+        stop(timeout=3)

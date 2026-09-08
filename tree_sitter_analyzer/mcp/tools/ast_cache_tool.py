@@ -751,6 +751,11 @@ class ASTCacheTool(BaseMCPTool):
         # even when the daemon stops mid-poll-tick.
         final_stats = self._watcher.get_stats()
         self._watcher.stop()
+        if self._watcher.is_running():
+            raise TimeoutError(
+                "Watcher shutdown timed out; background work is still running. "
+                "Retry watch_stop before closing or replacing the cache."
+            )
         summary_line = (
             f"ast_cache watch_stop status=stopped "
             f"uptime={final_stats.get('uptime_seconds', 0.0)}"
