@@ -252,35 +252,30 @@ class TestPollingDetection:
         assert watcher._detect_changes() == [str(path)]
 
     def test_detects_new_file(self, watcher, project, cache):
-        # The watcher snapshots the tree at start(), then detects later changes.
-        # So: start FIRST, let the initial snapshot settle, THEN create the file,
-        # and wait for the INCREMENT (>= 3). The previous version created the file
-        # before start() (already in the snapshot) and asserted >= 2 (true after
-        # trigger_sync regardless) — it never actually exercised detection.
+        # #1405：等启动对齐完成后再保存，确保测试真正经过后续轮询通知。
         watcher.trigger_sync()
         assert cache.get_stats()["total_files"] == 2
         watcher.start()
-        time.sleep(0.3)  # let the initial snapshot complete before mutating
+        assert _wait_until(lambda: watcher.get_stats()["syncs_triggered"] == 2)
         (project / "new_file.py").write_text("def world():\n    pass\n")
-        detected = _wait_until(lambda: cache.get_stats()["total_files"] >= 3)
+        detected = _wait_until(lambda: cache.get_stats()["total_files"] == 3)
         watcher.stop()
         assert detected, "watcher did not detect the newly created file"
-        assert cache.get_stats()["total_files"] >= 3  # ratchet: nondeterministic
+        assert cache.get_stats()["total_files"] == 3
 
     def test_detects_modified_file(self, watcher, project, cache):
-        # Same ordering requirement: start (snapshot) -> modify -> wait for the
-        # SECOND sync (>= 2) caused by the modification.
+        # #1405：修改必须触发启动对齐之后的第三次同步。
         watcher.trigger_sync()
         assert watcher.get_stats()["syncs_triggered"] == 1
         watcher.start()
-        time.sleep(0.3)  # let the initial snapshot complete before mutating
+        assert _wait_until(lambda: watcher.get_stats()["syncs_triggered"] == 2)
         py_file = project / "src" / "main.py"
         py_file.write_text("def hello():\n    return 42\n")
         os.utime(str(py_file), (time.time() + 1, time.time() + 1))
-        detected = _wait_until(lambda: watcher.get_stats()["syncs_triggered"] >= 2)
+        detected = _wait_until(lambda: watcher.get_stats()["syncs_triggered"] == 3)
         watcher.stop()
         assert detected, "watcher did not detect the modified file"
-        assert watcher.get_stats()["syncs_triggered"] >= 2  # ratchet: nondeterministic
+        assert watcher.get_stats()["syncs_triggered"] == 3
 
 
 class TestOnSyncCallback:
@@ -452,7 +447,7 @@ def test_incomplete_scan_resumes_without_full_poll_interval(watcher, monkeypatch
     """#1405：大项目切片之间只短暂让出，不能每片都等待完整轮询间隔。"""
     from types import SimpleNamespace
 
-    waits = []
+    waits, syncs = [], []
     state = {"stopped": False}
     polling = SimpleNamespace(in_progress=True, close=lambda: None)
 
@@ -476,5 +471,21 @@ def test_incomplete_scan_resumes_without_full_poll_interval(watcher, monkeypatch
             set=lambda: state.update(stopped=True),
         ),
     )
+    monkeypatch.setattr(watcher, "_request_sync", lambda: syncs.append(len(waits)))
     watcher._run_polling()
+    assert syncs == [1]
     assert waits == [0.05, watcher.poll_interval]
+
+
+def test_start_reconciles_changes_before_baseline(watcher, cache, project, monkeypatch):
+    # #1405：启动线程建立基线之前发生的变更也必须进入索引。
+    watcher.trigger_sync()
+    original = watcher._take_snapshot
+
+    def baseline():
+        (project / "startup.py").write_bytes(b"def startup(): pass\n")
+        original()
+
+    monkeypatch.setattr(watcher, "_take_snapshot", baseline)
+    watcher.start()
+    assert _wait_until(lambda: cache.get_stats()["total_files"] == 3)

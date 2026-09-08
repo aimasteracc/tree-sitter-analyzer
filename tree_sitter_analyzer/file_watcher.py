@@ -106,6 +106,7 @@ class FileWatcherDaemon:
         self._started_at: float = 0.0
 
         self._pending: set[str] = set()
+        self._sync_requested = False
         self._pending_lock = threading.Lock()
         self._debounce_timer: threading.Timer | None = None
 
@@ -179,7 +180,12 @@ class FileWatcherDaemon:
     def _run_polling(self) -> None:
         try:
             self._take_snapshot()
+            initial_sync_pending = True
             while not self._stop_event.is_set():
+                if initial_sync_pending and not self._polling.in_progress:
+                    # #1405：完整基线建立后对齐索引，覆盖启动窗口内已被基线吸收的保存。
+                    self._request_sync()
+                    initial_sync_pending = False
                 # 未完成的扫描短暂让出后续跑；完整轮询之间才使用配置间隔。
                 delay = 0.05 if self._polling.in_progress else self._poll_interval
                 self._stop_event.wait(timeout=delay)
@@ -211,6 +217,8 @@ class FileWatcherDaemon:
         observer.start()
 
         try:
+            if not self._stop_event.is_set():
+                self._request_sync()
             while not self._stop_event.is_set():
                 self._stop_event.wait(timeout=1.0)
         finally:
@@ -236,6 +244,12 @@ class FileWatcherDaemon:
         with self._stats_lock:
             self._stats.events_processed += 1
 
+        self._request_sync()
+
+    def _request_sync(self) -> None:
+        """把启动对齐和文件通知合并到同一后台同步请求。"""
+        with self._pending_lock:
+            self._sync_requested = True
         if self._debounce_timer is not None:
             self._debounce_timer.cancel()
         self._debounce_timer = threading.Timer(self._debounce, self._flush_pending)
@@ -244,8 +258,9 @@ class FileWatcherDaemon:
 
     def _flush_pending(self) -> None:
         with self._pending_lock:
-            pending = self._pending.copy()
+            pending = bool(self._pending) or self._sync_requested
             self._pending.clear()
+            self._sync_requested = False
 
         if not pending:
             return

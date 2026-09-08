@@ -71,6 +71,8 @@ Every path is validated against `TREE_SITTER_PROJECT_ROOT` by `security/validato
 POSIX 枚举通过固定父目录描述符和 no-follow 打开，并核对目录身份；Windows
 仅在建立搜索句柄时短暂固定祖先目录，随后释放禁止重命名的句柄。
 普通源码被替换成特殊文件时触发失效，候选拒绝的路径也会清除旧索引行。
+轮询完整基线建立后、原生观察器启用后，均异步请求一次索引对齐，以覆盖启动窗口；
+启动请求与后续文件通知共用防抖同步队列，不计作文件事件。
 这些观察只用于触发同步，不能替代 `index_source_snapshot.py` 的完整范围认证。
 
 ### Caching layers
