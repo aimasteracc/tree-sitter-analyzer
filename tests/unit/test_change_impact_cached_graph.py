@@ -299,3 +299,40 @@ def test_repeated_change_impact_tracks_preserved_mtime_imports(tmp_path):
         assert result["success"] is True
         impact = next(row for row in result["file_impacts"] if row["file"] == "c.py")
         assert impact["direct_dependents"] == (["a.py"] if module == "c" else [])
+
+
+@pytest.mark.parametrize(
+    "column,value",
+    [
+        ("extractor_version", 0),
+        (
+            "symbols_json",
+            '{"truncated_depth":true,"import_projection_complete":true,"syntax_error":false}',
+        ),
+        (
+            "symbols_json",
+            '{"truncated_depth":false,"import_projection_complete":false,"syntax_error":false}',
+        ),
+        (
+            "symbols_json",
+            '{"truncated_depth":false,"import_projection_complete":true,"syntax_error":true}',
+        ),
+        ("symbols_json", "[]"),
+        ("imports_json", "{"),
+        ("imports_json", "{}"),
+    ],
+)
+def test_cached_graph_rejects_invalid_extraction_evidence(tmp_path, column, value):
+    """源码哈希相同也不能复用旧提取器或不完整、损坏的导入证据。"""
+    (tmp_path / "a.py").write_text("import b\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("value = 1\n", encoding="utf-8")
+    _index_project(tmp_path)
+    conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+    try:
+        conn.execute(
+            f"UPDATE ast_index SET {column} = ? WHERE file_path = 'a.py'", (value,)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    assert cached.load_cached_dependency_graph(str(tmp_path)) is None

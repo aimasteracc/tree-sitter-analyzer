@@ -16,6 +16,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from ....ast_cache import _AST_CACHE_EXTRACTOR_VERSION
 from ....cache.schema import CURRENT_SCHEMA_VERSION, already_applied_versions
 from ....index_source_snapshot import (
     capture_current_source_snapshot,
@@ -133,11 +134,27 @@ def load_cached_dependency_graph(
 def _cached_index_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     try:
         rows = conn.execute(
-            "SELECT file_path, language, imports_json FROM ast_index"
+            "SELECT file_path, language, imports_json, symbols_json, extractor_version "
+            "FROM ast_index"
         ).fetchall()
     except Exception:
         return []
-    return [dict(row) for row in rows]
+    result = []
+    for row in rows:
+        item = dict(row)
+        payload = json.loads(item["symbols_json"])
+        imports = json.loads(item["imports_json"])
+        if (
+            item["extractor_version"] != _AST_CACHE_EXTRACTOR_VERSION
+            or not isinstance(payload, dict)
+            or payload.get("truncated_depth") is not False
+            or payload.get("import_projection_complete") is not True
+            or payload.get("syntax_error") is not False
+            or not isinstance(imports, list)
+        ):
+            return []
+        result.append(item)
+    return result
 
 
 def _add_cached_import_edges(
