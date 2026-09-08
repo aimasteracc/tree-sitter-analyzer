@@ -33,6 +33,39 @@ before and after replay, in same-process and other-process variants. Both fail;
 the other 127 incremental-sync tests pass. Protecting only a content hash or adding
 only a process lock does not establish the required ownership.
 
+## Released-interface boundary
+
+The roadmap's user decision remains binding: already released CLI/MCP/Python
+interfaces are removed only in an explicitly authorized major release with migration
+notes. This RFC does not override that decision or authorize a release.
+
+The candidate compatibility premise has now been checked against published artifacts.
+On 2026-09-08, the latest GitHub Release and PyPI wheel were v1.29.5. The wheel
+`tree_sitter_analyzer-1.29.5-py3-none-any.whl` has SHA-256
+`c97e2d6941e3cfc8714b18a00d97edfb637794705d59305d6e1509fa89153f89`.
+Scanning every packaged Python source found neither `IndexCandidateSnapshot` nor
+`candidate_snapshot`. Its `ASTCache.index_project` accepts `max_files`, `force` and
+keyword-only `workers`, `resolve_only`, `include_activation`, `language_filter`;
+`IncrementalSync.sync` accepts `max_files`, `callback`, with no candidate parameter.
+The same name scan across 113 locally fetched `v*` tags, including v1.29.5, found no
+candidate surface. Latest-wheel inspection is stronger evidence than merely testing
+whether the develop introduction commit is an ancestor of a release tag.
+
+Therefore the proposed binding changes an unreleased develop candidate interface;
+it has not been shown to remove a released retained-candidate API. Earlier wording
+that treated unbound candidates as a published legacy compatibility promise was
+unsupported. Existing released calls that omit a candidate must keep working through
+the new coordinator. Never manufacture write authority by binding an externally
+supplied obsolete candidate to the current revision. If another published artifact
+exposes that surface, resolve its migration against the major-release rule before
+shipping. Recheck the latest artifact when implementation starts.
+
+This evidence resolves that specific compatibility premise, not RFC acceptance.
+Schema migration, new admission responses, old already-open writer isolation, and
+the enforcement mechanism still require review. Draft status remains unchanged.
+Published sources: [v1.29.5 release](https://github.com/aimasteracc/tree-sitter-analyzer/releases/tag/v1.29.5)
+and [PyPI version metadata](https://pypi.org/pypi/tree-sitter-analyzer/1.29.5/json).
+
 ## Detailed design
 
 ### Persistent identity and schema migration
@@ -95,7 +128,7 @@ the lease. Store it as private candidate metadata. Before the first write, compa
 the binding to current state under the same lease. Mismatch returns
 `INDEX_CANDIDATE_SUPERSEDED`, with no changes to the logical database dump.
 
-Externally retained candidates also need this binding. Unbound legacy candidates
+Externally retained candidates also need this binding. Unbound develop candidates
 cannot authorize mutation: return `INDEX_CANDIDATE_UNBOUND` without writes and require
 fresh capture through the coordinator. Update every internal producer and real CLI/MCP
 route together. Frozen candidates remain tied to both their frozen source identity and
@@ -302,6 +335,8 @@ coverage, and the runtime-contract quick gate before any implementation PR is pu
 - [ ] Lazy table/DDL inventory is exact; rejected operations preserve committed state
   and leave no transaction that can publish delayed mutations.
 - [ ] All candidate producers bind cache revision; unbound/obsolete candidates write nothing.
+- [ ] Released calls without candidates remain valid; latest-artifact surface audit and
+  migration notes respect the major-release boundary without silently rebinding old input.
 - [ ] Cross-process exclusion covers every managed write route and full operation lifetime.
 - [ ] Late cleanup cannot remove another operation's data or certification, including ABA.
 - [ ] Every independently mutable canonical table has recoverable ownership; cross-file
@@ -321,6 +356,7 @@ This RFC does not establish industry leadership or instantaneous feedback. Bench
 admission and pending RFC-0031 verification execution remain separate work.
 
 1. Accept revision-bound candidates and schema 18, including explicit rejection of
-   legacy unbound retained candidates?
+   unbound candidates from the unreleased develop interface? The published v1.29.5
+   no-candidate call signatures must remain supported; no release is authorized here.
 2. The pure SQL guard feasibility gate must resolve trusted-schema, virtual-table/DDL,
    and old-client write behavior before choosing the final enforcement mechanism.
