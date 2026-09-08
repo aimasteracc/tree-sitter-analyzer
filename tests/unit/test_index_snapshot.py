@@ -1312,6 +1312,68 @@ class TestWalSnapshotPath:
         REGISTRY.close_all()
 
     @requires_posix_snapshot
+    @pytest.mark.parametrize(
+        "fault", [None, "checksum", "current_after_old", "header_salt"]
+    )
+    async def test_recycled_wal_certifies_current_committed_prefix(
+        self, tmp_path, wal_project, fault
+    ):
+        # 2026-09-08：真实 WAL 重用留下旧尾帧，静止索引不得误报并发写入。
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        conn = wal_project
+        conn.execute("PRAGMA wal_autocheckpoint=0")
+        for value in range(12):
+            conn.execute(
+                "UPDATE ast_cache_metadata SET value=? WHERE key='wal_test'",
+                (str(value),),
+            )
+            conn.commit()
+        wal = tmp_path / ".ast-cache" / "index.db-wal"
+        previous = wal.read_bytes()
+        checkpoint = conn.execute("PRAGMA wal_checkpoint(RESTART)").fetchone()
+        assert checkpoint[0] == 0
+        assert checkpoint[1] == checkpoint[2]
+        conn.execute(
+            "UPDATE ast_cache_metadata SET value='current' WHERE key='wal_test'"
+        )
+        conn.commit()
+        captured = wal.read_bytes()
+        assert len(captured) == len(previous)
+        assert captured[16:24] != previous[16:24]
+        if fault:
+            damaged = bytearray(captured)
+            if fault == "checksum":
+                damaged[32 + 24] ^= 1
+            elif fault == "header_salt":
+                damaged[16] ^= 1
+            else:
+                frame_size = 24 + int.from_bytes(captured[8:12], "big")
+                damaged[-frame_size + 8 : -frame_size + 16] = captured[16:24]
+            wal.write_bytes(damaged)
+            try:
+                rejected = owner.read_existing_snapshot(str(tmp_path))
+                assert (rejected.completeness, rejected.reason) == (
+                    "unknown",
+                    "CONCURRENT_WRITER",
+                )
+            finally:
+                wal.write_bytes(captured)
+            return
+        snapshot = owner.read_existing_snapshot(str(tmp_path))
+        assert (snapshot.completeness, snapshot.reason) == ("complete", None)
+        with owner.read_existing_index_scope(
+            snapshot.snapshot_id, str(tmp_path), snapshot.source_generation
+        ) as (_, reader):
+            assert (
+                reader.execute(
+                    "SELECT value FROM ast_cache_metadata WHERE key='wal_test'"
+                ).fetchone()[0]
+                == "current"
+            )
+        assert wal.read_bytes() == captured
+
+    @requires_posix_snapshot
     @pytest.mark.parametrize("sidecars", ["present", "absent"])
     async def test_wal_snapshot_does_not_change_source_directory(
         self, tmp_path, wal_project, sidecars

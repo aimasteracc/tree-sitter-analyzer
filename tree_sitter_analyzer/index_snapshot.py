@@ -309,7 +309,7 @@ def _capture_wal_snapshot(
                 reason = "NO_EXACT_FULL_INDEX_MANIFEST"
             connection, projection_exact = _copy_projection_evidence(staged, deadline)
             if wal_frames is not None:
-                # 私有 checkpoint 的帧数必须等于捕获的完整 WAL；不接受被 SQLite 忽略的尾帧。
+                # 帧数须等于当前 salt 的完整前缀；损坏或未提交的当前代帧不能被忽略。
                 checkpoint = tuple(
                     staged.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
                 )
