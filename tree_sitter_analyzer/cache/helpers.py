@@ -20,12 +20,14 @@ def _canonical_project_path(file_path: str, project_root: str) -> str:
     ):
         return absolute
     parent = os.path.dirname(absolute)
+    mapped = absolute
     while True:
         if os.path.normcase(os.path.realpath(parent)) == root_key:
-            return os.path.join(project_root, os.path.relpath(absolute, parent))
+            # 子链接也可能指回根目录；必须以最外层根别名保留完整逻辑后缀。
+            mapped = os.path.join(project_root, os.path.relpath(absolute, parent))
         ancestor = os.path.dirname(parent)
         if ancestor == parent:
-            return absolute
+            return mapped
         parent = ancestor
 
 

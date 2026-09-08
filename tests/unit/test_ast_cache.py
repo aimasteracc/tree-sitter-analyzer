@@ -225,8 +225,9 @@ class TestIndexFile:
 
 class TestLookup:
     @pytest.mark.parametrize("through_alias", [False, True])
+    @pytest.mark.parametrize("points_to_root", [False, True])
     def test_root_alias_preserves_logical_descendant_path(
-        self, tmp_path, through_alias
+        self, tmp_path, through_alias, points_to_root
     ):
         # 2026-09-08：只统一根目录；冻结后的子路径不能因活文件变成链接而重定向。
         from tree_sitter_analyzer.cache.helpers import _canonical_project_path
@@ -236,7 +237,9 @@ class TestLookup:
         alias = tmp_path / "alias"
         alias.symlink_to(root, target_is_directory=True)
         logical = root / "logical"
-        logical.symlink_to(tmp_path, target_is_directory=True)
+        logical.symlink_to(
+            root if points_to_root else tmp_path, target_is_directory=True
+        )
         supplied = (alias if through_alias else root) / "logical" / "sample.py"
         assert _canonical_project_path(str(supplied), str(root)) == str(
             logical / "sample.py"
