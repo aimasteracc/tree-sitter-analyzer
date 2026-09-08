@@ -96,6 +96,7 @@ class FileWatcherDaemon:
     ) -> None:
         self._cache = cache
         self._sync = IncrementalSync(cache)
+        self._sync_lock = threading.Lock()
         self._poll_interval = max(1.0, poll_interval)
         self._debounce = debounce
         self._backend = backend
@@ -273,6 +274,11 @@ class FileWatcherDaemon:
                 logger.debug("on_sync callback error", exc_info=True)
 
     def _do_sync(self) -> dict[str, Any]:
+        # 候选捕获至索引提交共用同一锁，防止同一守护进程的同步互相覆盖。
+        with self._sync_lock:
+            return self._perform_sync()
+
+    def _perform_sync(self) -> dict[str, Any]:
         try:
             from .constants import EXCLUDE_DIRS
             from .index_source_scope import make_source_scope_descriptor

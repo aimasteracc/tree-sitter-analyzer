@@ -2645,3 +2645,60 @@ def test_transient_candidate_failure_preserves_index_rows(
     finally:
         watcher.stop()
         cache.close()
+
+
+@pytest.mark.parametrize("pause_at", ["capture", "commit"])
+def test_watcher_serializes_capture_through_index_commit(
+    tmp_path, monkeypatch, pause_at
+):
+    # #1405：后一个同步不能在前一个提交之前捕获候选，避免旧快照覆盖新索引。
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    import tree_sitter_analyzer.indexing_snapshot as snapshot_owner
+    from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
+
+    (tmp_path / "a.py").write_text("def saved(): pass\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    watcher = FileWatcherDaemon(cache)
+    entered, release, overlap, attempted = (threading.Event() for _ in range(4))
+    original = snapshot_owner.build_index_candidate_snapshot
+    original_sync = watcher._sync.sync
+
+    def capture(*args, **kwargs):
+        if entered.is_set():
+            overlap.set()
+        elif pause_at == "capture":
+            entered.set()
+            assert release.wait(3)
+        return original(*args, **kwargs)
+
+    def commit(*args, **kwargs):
+        if pause_at == "commit" and not entered.is_set():
+            entered.set()
+            assert release.wait(3)
+        return original_sync(*args, **kwargs)
+
+    def second_sync():
+        attempted.set()
+        return watcher.trigger_sync()
+
+    monkeypatch.setattr(snapshot_owner, "build_index_candidate_snapshot", capture)
+    monkeypatch.setattr(watcher._sync, "sync", commit)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(watcher.trigger_sync)
+            try:
+                assert entered.wait(3)
+                second = pool.submit(second_sync)
+                assert attempted.wait(3)
+                assert overlap.wait(0.2) is False
+            finally:
+                release.set()
+            assert first.result(timeout=3)["new_files"] == 1
+            assert second.result(timeout=3)["unchanged_files"] == 1
+        assert cache.get_stats()["total_files"] == 1
+    finally:
+        release.set()
+        watcher.stop()
+        cache.close()
