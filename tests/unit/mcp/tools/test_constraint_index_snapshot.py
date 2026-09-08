@@ -556,16 +556,15 @@ def test_real_partial_projection_rejects_constraint_evaluation(
         lambda *_a, **_k: pytest.fail("incomplete snapshot evaluated constraints"),
     )
     try:
-        wal_supported = (
-            os.name == "posix"
-            and hasattr(os, "O_NOFOLLOW")
-            and capability._WAL_FD_COPY_SUPPORTED
+        wal_supported = capability._WAL_FD_COPY_SUPPORTED and (
+            (os.name == "posix" and hasattr(os, "O_NOFOLLOW"))
+            or (os.name == "nt" and capability._WINDOWS_WAL_SUPPORTED)
         )
         reason = (
             "WAL_PRIVATE_SNAPSHOT_UNSUPPORTED"
             if not portable and not wal_supported
             else "SOURCE_SCOPE_UNSUPPORTED"
-            if not portable and not os.path.exists("/dev/fd")
+            if not portable and os.name != "nt" and not os.path.exists("/dev/fd")
             else "SYMBOL_PROJECTION_INCOMPLETE"
         )
         with pytest.raises(ValueError, match=f"^{reason}$"):

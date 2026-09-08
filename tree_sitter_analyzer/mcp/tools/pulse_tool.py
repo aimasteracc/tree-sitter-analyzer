@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...api.pulse_evidence import PulseSourceError, certified_pulse_connection
 from ...api.serialization import COMPACT_LEGEND
 from .base_tool import BaseMCPTool
 
@@ -27,27 +28,11 @@ class PulseTool(BaseMCPTool):
 
     action_map: dict[str, Any] = {}
 
-    def __init__(self, project_root: str | None = None) -> None:
-        self._cache: Any = None
-        super().__init__(project_root)
-
-    def _on_project_root_changed(self, project_root: str | None) -> None:
-        self._cache = None
-
-    def _get_cache(self) -> Any:
-        if self._cache is None:
-            if not self.project_root:
-                raise ValueError("Project root not set. Call set_project_path first.")
-            from ...ast_cache import ASTCache
-
-            self._cache = ASTCache(self.project_root)
-        return self._cache
-
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "pulse",
             "description": (
-                "Get complete context for one symbol in a single query: callers, "
+                "Get source-certified context for one symbol: callers, "
                 "callees, git heat, imports, siblings, comments. "
                 f"Compact key legend: {COMPACT_LEGEND}. "
                 "Formats: skeletal (~200 tok, scan), compact (default ~500 tok), "
@@ -55,7 +40,8 @@ class PulseTool(BaseMCPTool):
                 "Token budget exceeded: drops fields lowest-priority first: "
                 "comments→siblings→imported_by→imports→git_heat→callees→callers. "
                 "call_graph=false for Bash/CSS/HTML/JSON/YAML/SQL/Markdown files. "
-                "Prerequisite: set_project_path → get_project_schema → pulse."
+                "Requires a complete current index; stale or uncertified source returns "
+                "SOURCE_EVIDENCE_UNAVAILABLE. source_evidence is outside the content budget."
             ),
             "inputSchema": {
                 "type": "object",
@@ -164,54 +150,41 @@ class PulseTool(BaseMCPTool):
         max_comments = arguments.get("max_comments", 10)
 
         try:
-            cache = self._get_cache()
-            conn = cache.get_conn()
-        except Exception as exc:
-            return {"success": False, "error": str(exc)}
-
-        try:
-            pulse = query_pulse(
-                conn,
-                file_path=file_path,
-                symbol_name=symbol,
-                max_callers=max_callers,
-                max_callees=max_callees,
-                max_siblings=max_siblings,
-                max_comments=max_comments,
-            )
+            with certified_pulse_connection(self.project_root) as (conn, evidence):
+                pulse = query_pulse(
+                    conn,
+                    file_path=file_path,
+                    symbol_name=symbol,
+                    max_callers=max_callers,
+                    max_callees=max_callees,
+                    max_siblings=max_siblings,
+                    max_comments=max_comments,
+                )
+        except PulseSourceError as exc:
+            return exc.to_response()
         except Exception as exc:
             return {"success": False, "error": f"pulse query failed: {exc}"}
 
         if pulse is None:
             return {
                 "success": False,
+                "error_code": "SYMBOL_NOT_FOUND",
                 "error": f"Symbol '{symbol}' not found in '{file_path}'",
+                "source_evidence": evidence,
             }
 
         budgeted = apply_budget(pulse, token_budget=budget)
-        return {"success": True, "result": serialize(budgeted, format=fmt)}
+        return {
+            "success": True,
+            "result": serialize(budgeted, format=fmt),
+            "source_evidence": evidence,
+        }
 
 
 class PulseBatchTool(BaseMCPTool):
     """Batch context query for multiple symbols."""
 
     action_map: dict[str, Any] = {}
-
-    def __init__(self, project_root: str | None = None) -> None:
-        self._cache: Any = None
-        super().__init__(project_root)
-
-    def _on_project_root_changed(self, project_root: str | None) -> None:
-        self._cache = None
-
-    def _get_cache(self) -> Any:
-        if self._cache is None:
-            if not self.project_root:
-                raise ValueError("Project root not set. Call set_project_path first.")
-            from ...ast_cache import ASTCache
-
-            self._cache = ASTCache(self.project_root)
-        return self._cache
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
@@ -317,29 +290,36 @@ class PulseBatchTool(BaseMCPTool):
         targets = targets[:max_sym]
 
         try:
-            cache = self._get_cache()
-            conn = cache.get_conn()
-        except Exception as exc:
-            return {"success": False, "error": str(exc)}
+            with certified_pulse_connection(self.project_root) as (conn, evidence):
+                results: list[Any] = []
+                error_count = 0
+                for t in targets:
+                    file_path = t.get("file", "")
+                    symbol = t.get("symbol", "")
+                    try:
+                        pulse = query_pulse(
+                            conn, file_path=file_path, symbol_name=symbol
+                        )
+                        if pulse is None:
+                            error_count += 1
+                            results.append(
+                                {
+                                    "file": file_path,
+                                    "symbol": symbol,
+                                    "error": "not found",
+                                }
+                            )
+                        else:
+                            budgeted = apply_budget(pulse, token_budget=budget)
+                            results.append(serialize(budgeted, format=fmt))
+                    except Exception as exc:
+                        error_count += 1
+                        results.append(
+                            {"file": file_path, "symbol": symbol, "error": str(exc)}
+                        )
 
-        results: list[Any] = []
-        error_count = 0
-        for t in targets:
-            file_path = t.get("file", "")
-            symbol = t.get("symbol", "")
-            try:
-                pulse = query_pulse(conn, file_path=file_path, symbol_name=symbol)
-                if pulse is None:
-                    error_count += 1
-                    results.append(
-                        {"file": file_path, "symbol": symbol, "error": "not found"}
-                    )
-                else:
-                    budgeted = apply_budget(pulse, token_budget=budget)
-                    results.append(serialize(budgeted, format=fmt))
-            except Exception as exc:
-                error_count += 1
-                results.append({"file": file_path, "symbol": symbol, "error": str(exc)})
+        except PulseSourceError as exc:
+            return exc.to_response()
 
         if truncated_count > 0:
             results.append({"warning": f"{truncated_count} targets truncated"})
@@ -350,6 +330,7 @@ class PulseBatchTool(BaseMCPTool):
             "count": len(targets) - error_count,
             "error_count": error_count,
             "truncated_count": truncated_count,
+            "source_evidence": evidence,
         }
 
 

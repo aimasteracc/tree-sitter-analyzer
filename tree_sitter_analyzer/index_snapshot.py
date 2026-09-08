@@ -91,7 +91,11 @@ def _require_capture_budget(deadline: float) -> None:
 def _capture_sources_with_deadline(
     root: str, source_scope: Any, deadline: float
 ) -> Any:
-    """Keep pre-deadline two-argument test seams source-compatible."""
+    """按平台选择同一认证范围的扫描器，兼容旧测试的双参数入口。"""
+    if os.name == "nt":
+        from .portable_source_snapshot import capture_portable_source_snapshot
+
+        return capture_portable_source_snapshot(root, source_scope, deadline=deadline)
     try:
         return capture_current_source_snapshot(root, source_scope, deadline=deadline)
     except TypeError as exc:
@@ -627,7 +631,7 @@ def lease_reusable_snapshot(
         ):
             yield None
             return
-        current = capture_current_source_snapshot(
+        current = _capture_sources_with_deadline(
             project_root,
             snapshot.source_scope,
             deadline=(
