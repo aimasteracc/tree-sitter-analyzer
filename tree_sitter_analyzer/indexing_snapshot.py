@@ -28,6 +28,9 @@ from .source_oracle import (
 
 _INDEX_SOURCE_BYTE_LIMIT = 64 * 1024 * 1024
 _INDEX_SOURCE_READ_SECONDS = 5.0
+_SOURCE_NONREGULAR = "supported source is symlinked or non-regular"
+_SOURCE_TOO_LARGE = "supported source exceeds byte limit"
+_PERMANENT_SOURCE_REJECTIONS = frozenset({_SOURCE_NONREGULAR, _SOURCE_TOO_LARGE})
 _CANDIDATE_ENTRY_BUDGET = 100_000
 _CANDIDATE_PATH_BYTE_BUDGET = 16 * 1024 * 1024
 _CANDIDATE_DISCOVERY_SECONDS = 5.0
@@ -86,10 +89,10 @@ class IndexFileFingerprint:
 
 
 def decode_index_source(data: bytes) -> str:
-    """Match text-mode UTF-8 replacement and universal-newline semantics."""
-    return (
-        data.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
-    )
+    """对捕获的同一份字节检测编码并统一换行，不复用按路径缓存的编码。"""
+    from .encoding_utils import EncodingManager
+
+    return EncodingManager.normalize_line_endings(EncodingManager.safe_decode(data))
 
 
 def index_source_content_hash(source: str) -> str:
@@ -361,8 +364,13 @@ def build_index_candidate_snapshot(
                 except OSError as exc:
                     invalid_reason = str(exc)
                 else:
-                    if not stat.S_ISREG(source_info.st_mode):
-                        invalid_reason = "supported source is symlinked or non-regular"
+                    if not stat.S_ISREG(source_info.st_mode) or (
+                        getattr(source_info, "st_file_attributes", 0)
+                        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+                    ):
+                        invalid_reason = _SOURCE_NONREGULAR
+                    elif source_info.st_size > _INDEX_SOURCE_BYTE_LIMIT:
+                        invalid_reason = _SOURCE_TOO_LARGE
         if invalid_reason is not None:
             discovered += 1
             present_paths.add(rel_path)

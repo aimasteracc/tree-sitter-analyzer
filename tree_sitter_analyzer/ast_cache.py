@@ -6,6 +6,8 @@ from __future__ import annotations
 import json  # noqa: F401  # historical monkeypatch surface
 import os
 import threading
+from _thread import LockType
+from weakref import WeakValueDictionary
 from collections.abc import Iterator
 
 from .cache import indexer as _indexer
@@ -67,6 +69,21 @@ _AST_CACHE_EXTRACTOR_VERSION = 39
 SchemaIntegrityError.__module__ = __name__
 
 
+_writer_locks: WeakValueDictionary[str, LockType] = WeakValueDictionary()
+_writer_locks_guard = threading.Lock()
+
+
+def _shared_writer_lock(db_path: str) -> LockType:
+    """同进程同数据库路径共用写入锁，最后一个缓存释放后不保留注册项。"""
+    key = os.path.normcase(os.path.realpath(os.path.abspath(db_path)))
+    with _writer_locks_guard:
+        lock = _writer_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _writer_locks[key] = lock
+        return lock
+
+
 class ASTCache(
     ASTCacheDatabaseMixin,
     ASTCacheIndexMixin,
@@ -88,7 +105,7 @@ class ASTCache(
         self.db_path = db_path
         self._local = threading.local()
         self._parser = Parser()
-        self._index_lock = threading.Lock()
+        self._index_lock = _shared_writer_lock(db_path)
         self._fts5_available: bool | None = None
         self._cache_dir_fd: int | None = None
         self._cache_dir_identity: tuple[int, int] | None = None

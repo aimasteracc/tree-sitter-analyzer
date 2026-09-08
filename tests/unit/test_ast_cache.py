@@ -370,3 +370,79 @@ class TestASTCacheGetConnPublicAccessor:
         conn1 = cache.get_conn()
         conn2 = cache.get_conn()
         assert conn1 is conn2
+
+
+def test_writer_lock_is_shared_by_canonical_database_path(tmp_path):
+    # #1405：路径别名必须共享锁，不同数据库不能被无关写入阻塞。
+    first = ast_cache_module._shared_writer_lock(str(tmp_path / "index.db"))
+    alias = ast_cache_module._shared_writer_lock(
+        str(tmp_path / "sub" / ".." / "index.db")
+    )
+    other = ast_cache_module._shared_writer_lock(str(tmp_path / "other.db"))
+    assert first is alias
+    assert first is not other
+
+
+def test_writer_lock_registry_does_not_retain_unused_databases(tmp_path):
+    # #1405：长期运行的服务器切换项目后不能累积永久锁注册项。
+    import gc
+    import weakref
+
+    lock = ast_cache_module._shared_writer_lock(str(tmp_path / "index.db"))
+    reference = weakref.ref(lock)
+    del lock
+    gc.collect()
+    assert reference() is None
+
+
+@pytest.mark.parametrize("growth", [False, True])
+def test_direct_cache_read_rejects_oversized_source_before_decode(
+    tmp_path, monkeypatch, growth
+):
+    # #1405：缓存核验也必须限流，且不能依赖读取之前的文件大小。
+    import io
+    from unittest.mock import Mock
+
+    from tree_sitter_analyzer.cache import indexer_io
+
+    source = tmp_path / "a.py"
+    source.write_bytes(b"x=1\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        original_row = cache.lookup(str(source))
+        admitted = source.stat()
+        source.write_bytes(b"x" * 17)
+        if not growth:
+            admitted = source.stat()
+        reads = []
+
+        class Reader(io.BytesIO):
+            def read(self, size=-1):
+                reads.append(size)
+                return super().read(size)
+
+        monkeypatch.setattr(indexer_io, "_INDEX_SOURCE_BYTE_LIMIT", 16, raising=False)
+        monkeypatch.setattr(
+            indexer_io, "open", lambda *_args: Reader(b"x" * 17), raising=False
+        )
+        decode = Mock(side_effect=AssertionError("oversized data must not be decoded"))
+        monkeypatch.setattr(indexer_io, "decode_index_source", decode)
+        result = indexer_io.check_cache_or_read(
+            cache.get_conn(),
+            "a.py",
+            str(source),
+            admitted,
+            _content_hash,
+            cache._extractor_version,
+        )
+        assert result == {
+            "file": "a.py",
+            "status": "error",
+            "reason": "source exceeds indexing byte limit",
+        }
+        assert reads == ([17] if growth else [])
+        assert cache.lookup(str(source)) == original_row
+        decode.assert_not_called()
+    finally:
+        cache.close()

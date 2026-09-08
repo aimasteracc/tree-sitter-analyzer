@@ -178,22 +178,39 @@ class ASTCacheTool(BaseMCPTool):
         self._cache: ASTCache | None = None
         self._sync: IncrementalSync | None = None
         self._watcher: FileWatcherDaemon | None = None
+        self._watcher_pending_stop = False
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
         self._cache = None
         self._sync = None
-        # Stop any running watcher when project root changes — it was
-        # snapshotting a different tree and would emit confusing events.
+        # 旧项目后台任务退出前保留所有权，后续缓存访问必须等待交接完成。
         if self._watcher is not None:
             try:
                 if self._watcher.is_running():
                     self._watcher.stop()
             except Exception:  # pragma: no cover — defensive
                 logger.debug("watcher stop on project change failed", exc_info=True)
+        self._watcher_pending_stop = (
+            self._watcher is not None and self._watcher.is_running()
+        )
+        if not self._watcher_pending_stop:
+            self._watcher = None
+
+    def _check_watcher_shutdown(self) -> None:
+        """旧项目后台任务未退出时，拒绝建立新项目运行状态。"""
+        if not self._watcher_pending_stop:
+            return
+        if self._watcher is not None and self._watcher.is_running():
+            raise TimeoutError(
+                "Watcher from the previous project is still stopping. "
+                "Retry watch_stop before accessing the new project cache."
+            )
         self._watcher = None
+        self._watcher_pending_stop = False
 
     def _get_cache(self) -> ASTCache:
+        self._check_watcher_shutdown()
         if self._cache is None:
             if not self.project_root:
                 raise ValueError("Project root not set. Call set_project_path first.")
@@ -674,7 +691,8 @@ class ASTCacheTool(BaseMCPTool):
         ``status='already_running'`` with the same envelope shape so
         callers can branch on ``status`` instead of error-handling.
         """
-        # Already running? Don't double-start.
+        self._check_watcher_shutdown()
+        # 已运行时沿用当前项目监听器。
         if self._watcher is not None and self._watcher.is_running():
             poll_interval = float(self._watcher.poll_interval)
             backend = str(self._watcher.backend)
@@ -751,6 +769,11 @@ class ASTCacheTool(BaseMCPTool):
         # even when the daemon stops mid-poll-tick.
         final_stats = self._watcher.get_stats()
         self._watcher.stop()
+        if self._watcher.is_running():
+            raise TimeoutError(
+                "Watcher shutdown timed out; background work is still running. "
+                "Retry watch_stop before closing or replacing the cache."
+            )
         summary_line = (
             f"ast_cache watch_stop status=stopped "
             f"uptime={final_stats.get('uptime_seconds', 0.0)}"

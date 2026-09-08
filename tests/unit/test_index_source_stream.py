@@ -147,29 +147,27 @@ class TestSnapshotFailureContracts:
         finally:
             os.close(fd)
 
-    def test_stream_invalid_utf8_matches_writer_replacement_across_chunks(
+    def test_stream_non_utf8_matches_writer_detection_across_chunks(
         self, tmp_path, monkeypatch
     ):
-        # PR #1253 review 3754914627: replay uses the writer's replacement decode.
+        # PR #1405：分块边界不能改变与写入端一致的编码检测结果。
         import tree_sitter_analyzer.index_source_snapshot as source
 
         target = tmp_path / "sample.py"
         target.write_bytes(b"\xe2\x82\xac\xffX")
-        chunks = iter((b"\xe2", b"\x82", b"\xac\xffX", b""))
-        monkeypatch.setattr(source.os, "read", lambda _fd, _size: next(chunks))
+        original_read = source.os.read
+        monkeypatch.setattr(source.os, "read", lambda fd, _size: original_read(fd, 1))
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        expected = hashlib.sha256("€\ufffdX".encode()).hexdigest()
+        expected = hashlib.sha256("â‚¬ÿX".encode()).hexdigest()
         assert (next(iter(rows))[1].split("|")[1], unsafe) == (expected, False)
 
-    def test_stream_incomplete_final_utf8_sequence_matches_writer_replacement(
-        self, tmp_path
-    ):
-        # PR #1253 review 3754914627: final decoder state emits U+FFFD like TextIO.
+    def test_stream_incomplete_utf8_uses_writer_encoding_detection(self, tmp_path):
+        # PR #1405：不完整 UTF-8 由统一编码检测解释，不能单独使用替换解码。
         import tree_sitter_analyzer.index_source_snapshot as source
 
         (tmp_path / "sample.py").write_bytes(b"\xe2\x82\r")
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
-        expected = hashlib.sha256("\ufffd\n".encode()).hexdigest()
+        expected = hashlib.sha256("â‚\n".encode()).hexdigest()
         assert (next(iter(rows))[1].split("|")[1], unsafe) == (expected, False)
 
     def test_portable_enumeration_deadline_is_enforced(self, tmp_path, monkeypatch):
@@ -623,3 +621,42 @@ class TestStaleSnapshotRecovery:
         )
         assert clean is False
         assert digest == "<unsafe>"
+
+
+@pytest.mark.parametrize(
+    "budget", ["deadline", "total_bytes", "file_bytes", "decode_deadline"]
+)
+def test_encoding_fallback_preserves_resource_limits(tmp_path, monkeypatch, budget):
+    """#1405：非 UTF-8 回退不得绕过期限、累计输入和单文件预算。"""
+    import tree_sitter_analyzer.index_source_stream as stream
+    import tree_sitter_analyzer.indexing_snapshot as snapshot
+
+    path = tmp_path / "app.py"
+    path.write_bytes(b"\xe9\xe9")
+    if budget == "file_bytes":
+        monkeypatch.setattr(snapshot, "_INDEX_SOURCE_BYTE_LIMIT", 1)
+    if budget == "decode_deadline":
+
+        def decode(_data):
+            monkeypatch.setattr(stream.time, "monotonic", lambda: 2.0)
+            return ""
+
+        monkeypatch.setattr(snapshot, "decode_index_source", decode)
+        monkeypatch.setattr(stream.time, "monotonic", lambda: 0.0)
+    deadline = (
+        -1.0
+        if budget == "deadline"
+        else (1.0 if budget == "decode_deadline" else float("inf"))
+    )
+    error = TimeoutError if "deadline" in budget else OverflowError
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        with pytest.raises(error):
+            stream._hash_detected_source(
+                fd,
+                deadline,
+                {"input": 0, "output": 0},
+                1 if budget == "total_bytes" else 100,
+            )
+    finally:
+        os.close(fd)

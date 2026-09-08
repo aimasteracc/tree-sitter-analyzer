@@ -16,6 +16,7 @@ from .index_source_snapshot import (
 )
 from .indexing_limits import normalize_index_max_files
 from .indexing_snapshot import (
+    _PERMANENT_SOURCE_REJECTIONS,
     IndexCandidateSnapshot,
     changed_since_snapshot,
     validate_index_candidate_snapshot,
@@ -439,7 +440,13 @@ class IncrementalSync:
                     candidate_snapshot, self._cache
                 ):
                     raise ValueError("INDEX_CACHE_HIERARCHY_CHANGED")
-            changed_files: list[tuple[str, str]] = []
+            # #1405：只撤销有永久拒绝证据的源码；读取/时限故障保留缓存并降低完整性。
+            changed_files: list[tuple[str, str]] = [
+                (entry.rel_path, entry.reason or "candidate source rejected")
+                for entry in candidate_snapshot.entries
+                if entry.decision == "error"
+                and entry.reason in _PERMANENT_SOURCE_REJECTIONS
+            ]
             for entry in candidate_snapshot.selected_entries:
                 change_reason = (
                     None
@@ -573,6 +580,12 @@ class IncrementalSync:
                 result.updated_files += 1
                 action_by_file[rel] = "updated"
             else:
+                # #1405：内容相同仍刷新捕获到的元数据，不需要重建语法树。
+                if info["mtime_ns"] != indexed_info["mtime_ns"]:
+                    conn.execute(
+                        "UPDATE ast_index SET mtime_ns = ?, file_size = ? WHERE file_path = ?",
+                        (info["mtime_ns"], info["file_size"], rel),
+                    )
                 result.unchanged_files += 1
                 action_by_file[rel] = "unchanged"
                 continue
