@@ -159,6 +159,8 @@ jobs:
           path: |
             claims-output.txt
             dogfood-claims.xml
+            dogfood-artifacts/change-impact.json
+            dogfood-artifacts/change-impact.txt
           retention-days: 14
 
   post-dogfood-comment:
