@@ -221,3 +221,23 @@ watcher 现使用与手动同步相同的默认范围、冻结候选和认证路
 `fresh → stale → fresh`，过期反馈 0.0030 秒，自动同步回调 7.0493 秒；最终
 新符号与调用者均正确。该小样本证明链路可用，也证明默认配置尚非瞬时刷新。
 这不是 Windows 成功证据，也不改变上节的平台及规模阻断结论。
+
+### Windows 认证前提与尚缺的数据库能力
+
+源码核验还存在独立的平台断点：快照所有者原本无条件调用 POSIX 源码扫描器。
+现在 Windows 的捕获/读后验证/可复用租约检查统一调用既有
+`capture_portable_source_snapshot`，保留总期限与完整范围核验。实文件回归覆盖
+读后验证和复用两条入口：源码未变可用，保存后拒绝旧 generation。该测试在
+本机选择 Windows 路由，不冒充 Windows 原生运行，也未启用 WAL 能力。
+
+剩余数据库后端不能退化为按文件大小比较身份，或直接打开源 SQLite 连接。
+Windows 原生实现应以目录/文件句柄绑定主库与 WAL，拒绝 reparse point，使用
+卷标识和完整文件 ID 比较身份，保留预算、完整字节复核、私有 SQLite 恢复以及
+查询后再验证。接口依据 Microsoft 的
+[CreateFileW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew)
+与 [FILE_ID_INFO](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_id_info)。
+这些 API 的存在不等于实现已经完成或取得资格。
+
+必须用原生 Windows 验证活跃非空 WAL、并发写入、同大小替换、目录替换、
+reparse point、缺失/新建 sidecar、超时/字节预算与异常清理。完成前保留
+`WAL_PRIVATE_SNAPSHOT_UNSUPPORTED`，PR 仍不可合入。
