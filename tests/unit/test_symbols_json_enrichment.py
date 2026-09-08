@@ -166,9 +166,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v38: loader projection fails closed by default.
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 38
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 38
+        # v39：分类驱动运行时提取，并保留加载器投影契约。
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 39
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 39
 
 
 def test_python_star_imported_loader_fails_closed() -> None:
@@ -1859,20 +1859,22 @@ def test_module_scope_statement_walk_skips_nested_function_body() -> None:
 
 
 @pytest.mark.parametrize(
-    ("language", "node_type", "enclosed"),
+    ("language", "node_type", "enclosed", "handled"),
     [
-        ("python", "class_definition", False),
-        ("scala", "identifier", False),
-        ("scala", "object_definition", True),
+        ("python", "class_definition", False, False),
+        ("scala", "identifier", False, False),
+        ("scala", "object_definition", True, True),
     ],
 )
 def test_scala_projection_rejects_non_top_level_class_like_nodes(
-    language: str, node_type: str, enclosed: bool
+    language: str, node_type: str, enclosed: bool, handled: bool
 ) -> None:
+    """局部延迟类型已处理但不输出，防止继续落入普通类分支。"""
     walker = _SymbolWalker("", [], language, None)
     node = SimpleNamespace(type=node_type)
 
-    assert walker._append_scala(node, enclosed) is False
+    assert walker._append_scala(node, enclosed) is handled
+    assert walker.symbols == []
 
 
 def test_scala_projection_handles_empty_and_present_symbols(monkeypatch) -> None:

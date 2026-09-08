@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from tree_sitter_analyzer.cache.extraction import (
     _content_hash,
     _count_decision_points,
@@ -2101,3 +2103,49 @@ class TestExtractCallEdgesReal:
         helper_edges = [e for e in edges if e["callee_name"] == "helper"]
         assert len(helper_edges) == 1
         assert helper_edges[0]["caller_name"] == "main"
+
+
+@pytest.mark.parametrize(
+    ("language", "inner_type", "inner_name", "type_text", "expected"),
+    [
+        (None, "impl_item", None, "Container<T>", "Container"),
+        (None, "class_definition", None, None, "Outer"),
+        ("rust", "impl_item", None, None, None),
+        ("rust", "impl_item", None, "   ", None),
+        ("kotlin", "companion_object", None, None, "Outer"),
+        ("java", "class_declaration", None, None, None),
+    ],
+)
+def test_parent_attribution_respects_unnamed_scope_boundaries(
+    language, inner_type, inner_name, type_text, expected
+):
+    """具名外层类不能越过匿名或缺损所属类型抢占方法；兼容旧调用方式。"""
+    from tree_sitter_analyzer.cache.extraction import _find_parent_class
+
+    outer = SimpleNamespace(
+        type="class_declaration",
+        child_by_field_name=lambda field: (
+            SimpleNamespace(text=b"Outer") if field == "name" else None
+        ),
+        parent=None,
+    )
+    fields = {
+        "name": SimpleNamespace(text=inner_name.encode())
+        if inner_name is not None
+        else None,
+        "type": SimpleNamespace(text=type_text.encode())
+        if type_text is not None
+        else None,
+    }
+    inner = SimpleNamespace(
+        type=inner_type, child_by_field_name=fields.get, parent=outer
+    )
+    node = SimpleNamespace(type="method_declaration", parent=inner)
+    assert _find_parent_class(node, "", language) == expected
+
+
+def test_legacy_parent_lookup_without_ancestors_returns_none():
+    """两参数历史入口对无所属类型的节点返回空结果。"""
+    from tree_sitter_analyzer.cache.extraction import _find_parent_class
+
+    assert _find_parent_class(SimpleNamespace(parent=None), "") is None
