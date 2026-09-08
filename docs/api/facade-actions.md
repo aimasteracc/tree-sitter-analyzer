@@ -3,13 +3,13 @@
 > **AUTO-GENERATED — do not edit by hand.** Regenerate with `uv run python scripts/generate_facade_actions_doc.py`.
 > Drift-gated by `tests/unit/docs/test_facade_actions_doc_drift.py` (regenerates in-memory and diffs).
 
-The MCP server exposes **8 facade tools** routing **83 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
+The MCP server exposes **8 facade tools** routing **86 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
 
 Reading the tables:
 
 - **Params** — accepted top-level parameters; `*` marks required ones. Facades mechanically alias the canonical `symbol` onto inner `function_name`/`class_name` params (noted inline). Every facade also accepts `action` (required) itself.
 - **Response keys** — the statically declared `ToolResponse` envelope (`get_output_schema()`); `*` marks guaranteed keys. `error` appears on failures. "+ action payload" means the action layers its own result keys on top (`additionalProperties: true`); payload shapes are not statically declared, so they are not listed here — see the facade description for per-action semantics.
-- **CLI twin** — the CLI flag (or console script) covering the same capability, from the CLI-parity contract. 5 actions have no authoritative CLI mapping and show — (honest gap, not an omission).
+- **CLI twin** — the CLI flag (or console script) covering the same capability, from the CLI-parity contract. 4 actions have no authoritative CLI mapping and show — (honest gap, not an omission).
 - *Bespoke routes* (closures with hand-rolled arg handling, e.g. `nav action=test_map`) have their params pinned in the generator with source provenance; the generator fails if the live route set drifts from those pins.
 
 ## `search` — 10 actions
@@ -59,10 +59,10 @@ Reading the tables:
 | `explore` | `includeCode`, `maxFiles`, `maxSymbols`, `output_format`, `query`, `symbol`, `symbols` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-explore` |
 | `outline` | `file_path`*, `include_fields`, `include_imports`, `language`, `listed_cap`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--outline` |
 | `read` | single: `file_path`* + `start_line`* [+ `end_line`, `start_column`, `end_column`, `format`, `output_file`, `suppress_output`, `output_format`, `allow_truncate`, `fail_fast`]; batch: `requests`* | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--partial-read` |
-| `signatures` | `file_path`*, `language`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
+| `signatures` | `file_path`*, `language`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--table` |
 | `sitemap` | `directory`, `language`, `max_files`, `max_symbols`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-sitemap` |
 
-## `health` — 14 actions
+## `health` — 16 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
@@ -72,6 +72,7 @@ Reading the tables:
 | `heatmap` | `directory`, `file_path`, `function_name` (`symbol` aliases `function_name`), `language`, `max_files`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-complexity-heatmap` |
 | `imports` | `file_path`, `max_depth`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--import-graph` |
 | `matrix` | `mode`*, `file_path`, `output_format`, `threshold`, `top_k` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--dependency-matrix` |
+| `middleware` | `framework`, `mode`, `output_format`, `url_prefix` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--detect-middleware` |
 | `overview` | `max_coupled_files`, `max_dead`, `max_entry_points`, `max_hubs`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-overview` |
 | `patterns` | `file_path`*, `categories`, `output_format`, `severity_threshold` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--code-patterns` |
 | `project` | `max_files`, `min_grade`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--project-health` |
@@ -80,8 +81,9 @@ Reading the tables:
 | `scale` | `file_path`, `file_paths`, `include_complexity`, `include_details`, `include_guidance`, `language`, `metrics_only`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--metrics-only` |
 | `self` | `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--self-health` |
 | `test_gap` | `coverage_json`, `file_path`, `include_covered`, `language`, `max_files`, `max_gaps`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--test-gap` |
+| `unreachable` | `file_path`, `include_test_files`, `max_files`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--unreachable-code` |
 
-## `edit` — 11 actions
+## `edit` — 12 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
@@ -95,6 +97,7 @@ Reading the tables:
 | `pr` | `include_call_graph`, `mode`, `output_format`, `pr_url` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--pr-review` |
 | `refactor` | `file_path`*, `include_extractions`, `include_skeleton`, `language`, `max_suggestions`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--refactor` |
 | `release_snapshot` | `diff_snapshot_id`*, `route_lease_id`*, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
+| `rename` | `new_name`*, `symbol`*, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--rename` |
 | `safe` | `file_path`*, `access_mode`, `edit_type`, `output_format`, `snapshot_id`, `source_generation` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--safe-to-edit` |
 
 ## `project` — 11 actions

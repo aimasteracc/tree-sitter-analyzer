@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._symbol_rules import _CLASS_LIKE, _SCALA_CLASS_LIKE
+from . import node_taxonomy as _taxonomy
+from ._symbol_rules import _CLASS_LIKE
 
 _C_DECLARATOR_WRAPPERS = (
     "function_declarator",
@@ -30,19 +31,40 @@ def _node_text(node: Any, source: str) -> str:
         return ""
 
 
-def _find_parent_class(node: Any, source: str) -> str | None:
-    """Return the innermost enclosing class-like container name."""
+def _find_parent_class(
+    node: Any, source: str, language: str | None = None
+) -> str | None:
+    """按语言查找最近的所属类；未传语言时保留历史调用约定。"""
+    if language is not None:
+        language = _taxonomy.normalize_language(language)
+    if language in ("javascript", "typescript") and node.type == "function_expression":
+        return None
+    class_like = (
+        _CLASS_LIKE if language is None else _taxonomy.nodes_for(language, "class_like")
+    )
+    function_like = (
+        frozenset()
+        if language is None
+        else _taxonomy.nodes_for(language, "function_like")
+    )
     parent = node.parent
     while parent:
-        if parent.type == "impl_item":
-            type_node = parent.child_by_field_name("type")
-            if type_node is not None:
-                raw = _node_text(type_node, source)
-                return raw.split("<")[0].strip() or None
-        elif parent.type in _CLASS_LIKE:
-            name_node = parent.child_by_field_name("name")
-            if name_node:
-                return _node_text(name_node, source)
+        if parent.type in class_like:
+            if parent.type == "impl_item":
+                type_node = parent.child_by_field_name("type")
+                if type_node is not None:
+                    return _node_text(type_node, source).split("<")[0].strip() or None
+            else:
+                name_node = parent.child_by_field_name("name")
+                if name_node:
+                    return _node_text(name_node, source)
+                if parent.type == "companion_object":
+                    parent = parent.parent
+                    continue
+            if language is not None:
+                return None
+        if parent.type in function_like:
+            return None
         parent = parent.parent
     return None
 
@@ -163,7 +185,7 @@ def _bash_subscript_base(subscript: Any) -> Any:
 
 
 def _scala_symbol_from_node(node: Any, source: str) -> dict[str, Any] | None:
-    if node.type not in _SCALA_CLASS_LIKE:
+    if node.type not in _taxonomy.nodes_for("scala", "deferred_class_like"):
         return None
     name = _scala_symbol_name(node, source)
     if not name:

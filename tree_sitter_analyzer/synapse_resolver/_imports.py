@@ -89,7 +89,7 @@ def _parse_python_imports(
     ``import a.b as c`` -> 1 row with module_path='a.b', local_name='c'.
     """
     language = "python"
-    text = text.strip()
+    text = _strip_line_comments(text).strip()
     if not text:
         return []
 

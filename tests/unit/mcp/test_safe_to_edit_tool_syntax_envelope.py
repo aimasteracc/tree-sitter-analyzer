@@ -4,6 +4,7 @@ import json
 import sqlite3
 
 import tests.unit.mcp._safe_to_edit_tool_helpers as _fixtures
+from tree_sitter_analyzer.ast_cache import _AST_CACHE_EXTRACTOR_VERSION
 
 tool = _fixtures.tool
 _close_index_snapshot_registry = _fixtures._close_index_snapshot_registry
@@ -29,13 +30,17 @@ def test_snapshot_syntax_envelope_keeps_complete_exercising_tests() -> None:
         "INSERT INTO ast_index VALUES "
         "('app.py', '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 38)'
+        '"syntax_error": false}\', ?)',
+        (_AST_CACHE_EXTRACTOR_VERSION,),
     )
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 38)',
-        [(f"tests/test_app_{index}.py",) for index in range(12)],
+        '"syntax_error": false}\', ?)',
+        [
+            (f"tests/test_app_{index}.py", _AST_CACHE_EXTRACTOR_VERSION)
+            for index in range(12)
+        ],
     )
     conn.executemany(
         "INSERT INTO edges VALUES (?, 'calls', ?, 'answer', 'app.py')",
@@ -69,8 +74,11 @@ def test_snapshot_syntax_envelope_excludes_unrelated_nearby_test() -> None:
     conn.executemany(
         "INSERT INTO ast_index VALUES (?, '[]', "
         '\'{"truncated_depth": false, "import_projection_complete": true, '
-        '"syntax_error": false}\', 38)',
-        [("app.py",), ("tests/test_app.py",)],
+        '"syntax_error": false}\', ?)',
+        [
+            ("app.py", _AST_CACHE_EXTRACTOR_VERSION),
+            ("tests/test_app.py", _AST_CACHE_EXTRACTOR_VERSION),
+        ],
     )
 
     envelope = build_snapshot_syntax_causal_envelope(conn, "app.py", "app.py")

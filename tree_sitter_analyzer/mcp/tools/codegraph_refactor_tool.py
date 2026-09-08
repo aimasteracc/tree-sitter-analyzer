@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""
-CodeGraph Refactor MCP Tool — AST-aware symbol renaming.
-
-Renames a function, class, method, or variable across the entire project
-using the pre-indexed AST cache for instant symbol location. Performs
-coordinated text replacement at all definition and reference sites.
-
-Modes:
-  - preview: Dry-run rename showing all sites that would change (default)
-  - apply:   Execute the rename, writing all affected files
-
-CodeGraph parity: equivalent to CodeGraph's "Rename Symbol" refactoring.
-"""
+"""保守的 Python 函数、类及直接导入重命名工具。"""
 
 from __future__ import annotations
 
@@ -55,12 +43,10 @@ class CodeGraphRefactorTool(BaseMCPTool):
         return {
             "name": "codegraph_refactor",
             "description": (
-                "AST-aware symbol renaming across the project (CodeGraph parity). "
-                "Renames a function, class, method, or variable at all definition "
-                "and reference sites using pre-indexed AST cache. "
-                "Mode 'preview' shows what would change (safe, default). "
-                "Mode 'apply' writes changes to disk. "
-                "No other tool performs project-wide AST-aware renaming."
+                "Rename a unique Python module-level function or class and its direct imports. "
+                "Fresh AST identifier locations preserve literals and comments. "
+                "Unsupported languages and ambiguous bindings fail closed. "
+                "Mode preview is read-only; mode apply writes validated changes."
             ),
             "inputSchema": self.get_tool_schema(),
         }
@@ -71,7 +57,7 @@ class CodeGraphRefactorTool(BaseMCPTool):
             "properties": {
                 "symbol": {
                     "type": "string",
-                    "description": "Symbol name to rename (function, class, method, or variable)",
+                    "description": "Unqualified Python module-level function or class name to rename",
                 },
                 "new_name": {
                     "type": "string",
@@ -98,6 +84,9 @@ class CodeGraphRefactorTool(BaseMCPTool):
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        mode = self.FORCED_MODE or arguments.get("mode", "preview")
+        if mode not in ("preview", "apply"):
+            raise ValueError("mode must be preview or apply")
         symbol = arguments.get("symbol", "").strip()
         new_name = arguments.get("new_name", "").strip()
         if not symbol:
@@ -155,17 +144,17 @@ class CodeGraphRefactorTool(BaseMCPTool):
             verdict = "INFO"  # preview-only, no state change
         else:
             verdict = "INFO"  # rename applied successfully
-        response: dict[str, Any] = {"success": True, "verdict": verdict}
+        response: dict[str, Any] = {"success": not result.errors, "verdict": verdict}
         response.update(result.to_dict())
 
-        if dry_run and result.sites:
+        if not result.errors and dry_run and result.sites:
             files = sorted({s.file for s in result.sites})
             response["files_affected"] = files
             response["hint"] = (
                 f"Would rename '{symbol}' → '{new_name}' at {result.sites_renamed or len(result.sites)} "
                 f"sites across {len(files)} files. Use mode=apply to execute."
             )
-        elif not dry_run and result.sites:
+        elif not result.errors and not dry_run and result.sites:
             response["hint"] = (
                 f"Renamed '{symbol}' → '{new_name}': "
                 f"{result.files_changed} files changed, "

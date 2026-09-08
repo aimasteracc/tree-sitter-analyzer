@@ -219,7 +219,6 @@ def test_rfc0022_process_local_cli_parity_exception_is_exact() -> None:
         ("search", "select"),
         ("search", "subscribe"),
         ("search", "unsubscribe"),
-        ("structure", "signatures"),
     }
     assert declared - cli_routes == facade_level_only | {("edit", "release_snapshot")}
 

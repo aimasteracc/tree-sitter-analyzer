@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from tree_sitter_analyzer.ast_cache import _AST_CACHE_EXTRACTOR_VERSION
 from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import (
     SafeToEditTool,
 )
@@ -173,7 +174,10 @@ def _symbol_conn(raw_symbols: object) -> sqlite3.Connection:
         "CREATE TABLE ast_index ("
         "file_path TEXT, symbols_json TEXT, extractor_version INTEGER)"
     )
-    conn.execute("INSERT INTO ast_index VALUES ('app.py', ?, 38)", (raw_symbols,))
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('app.py', ?, ?)",
+        (raw_symbols, _AST_CACHE_EXTRACTOR_VERSION),
+    )
     return conn
 
 

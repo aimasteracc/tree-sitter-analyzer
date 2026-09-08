@@ -1,51 +1,7 @@
 #!/usr/bin/env python3
-"""``edit`` facade — Wave B facade for edit/safety/impact capabilities.
+"""编辑 facade 保留快照安全协议，并整合发布的重命名能力。
 
-Folds eight code-safety and change-management capabilities behind one
-``action`` parameter:
-
-============  ==============================  ================================
-action        inner tool                      when to use
-============  ==============================  ================================
-safe          ``safe_to_edit``                Pre-edit safety gate (SAFE/UNSAFE)
-guard         ``modification_guard``          Blast-radius guard before touching a symbol
-impact        ``analyze_change_impact``       Post-edit dependency blast-radius scan
-refactor      ``refactoring_suggestions``     Refactoring opportunities for a file
-constraints   ``check_constraints``           Constraint violations in the project
-pr            ``codegraph_pr_review``         AI review of a PR diff via CodeGraph
-classify      ``semantic_classify``           Semantic change classification (file git-diff or code strings)
-ast_diff      ``ast_diff``                    Structural diff of two AST snapshots
-plan_rename      ``codegraph_refactor``       Minimal rename edit set, PREVIEW ONLY
-mutation_probe   ``MutationProbeTool``        Does this test constrain this code? (RFC-0029)
-============  ==============================  ================================
-
-RFC-0027 §L8: ``plan_rename`` wires the previously unreachable
-``CodeGraphRefactorTool`` — a true minimal rename edit set with 15 passing
-tests and no surface. The inner tool supports **both** preview and apply. A
-surface named for *planning* must not be able to write, so the binding pins
-``mode="preview"`` internally and **rejects** every apply-like argument
-(:data:`_APPLY_LIKE_PARAMS`) with the stable error
-``PLAN_RENAME_IS_PREVIEW_ONLY`` rather than forwarding it. The mode is not a
-caller-supplied parameter at this surface at all — even ``mode="preview"`` is
-rejected, because accepting it would advertise a parameter that is honoured and
-invite ``mode="apply"`` next. Applying a rename is deliberately NOT exposed
-here; that stays off the registered surface until a write-intent route exists.
-
-Annotation honesty (spec §6 / review §8 F-extra-3):
-    This facade spans READ-ONLY actions (``safe``, ``impact``, ``classify``,
-    ``constraints``, ``pr``, ``ast_diff``) and MUTATING-INTENT actions
-    (``refactor`` suggests changes; ``guard`` checks before a write). A single
-    honest ``readOnlyHint=True`` is IMPOSSIBLE for this facade — doing so would
-    violate the ``test_every_tool_declares_mcp_annotations`` contract which
-    forbids ``readOnly AND destructive``. We therefore set
-    ``readOnlyHint=False, destructiveHint=False`` (it suggests / analyses,
-    does not actually write files), ``idempotentHint=False`` (analysis results
-    may differ as the index updates), ``openWorldHint=False``. Read actions lose
-    the read-safe signal — accepted tradeoff per PRD §4. If a strict read-only
-    sub-facade is later needed, split ``safe``/``impact``/``classify`` into a
-    separate read-only facade (out of scope for Wave B).
-
-Not registered in ``_tool_registry.py`` at P0; Wave C handles cutover.
+rename 的显式 apply 会写入源文件；plan_rename 始终固定为预览并拒绝写入参数。
 """
 
 from __future__ import annotations
@@ -194,6 +150,7 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
             "guard": ModificationGuardTool(project_root),
             "impact": impact_tool,
             "refactor": RefactoringSuggestionsTool(project_root),
+            "rename": CodeGraphRefactorTool(project_root),
             "constraints": ConstraintCheckTool(project_root),
             "pr": _PRReviewViaFacade(project_root),
             "classify": SemanticClassifyTool(project_root),

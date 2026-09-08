@@ -1,163 +1,43 @@
-"""Declarative node-type rules for cache symbol extraction."""
+"""提供语法分类的兼容导出，以及复杂度与命名规则。"""
 
 from __future__ import annotations
 
 import re
 
-_FUNCTION_LIKE = frozenset(
-    {
-        "function_definition",
-        "function_declaration",
-        "method_definition",
-        "arrow_function",
-        "generator_function_declaration",
-        "function_item",
-        "method_declaration",
-        "constructor_declaration",
-        "lambda_expression",
-        "anonymous_function",
-        "class_method",
-        "member_function",
-        "function_declarator",
-        "declaration",
-        "init_declarator",
-        "method",
-        "singleton_method",
-    }
-)
+from .node_taxonomy import LANGUAGE_NODES, nodes_for
 
-_ENUM_LIKE = frozenset({"enum_declaration", "enum", "enum_specifier"})
 
-_CLASS_LIKE = frozenset(
-    {
-        "class_definition",
-        "class_declaration",
-        "class",
-        "interface_declaration",
-        "struct_item",
-        "trait_declaration",
-        "impl_item",
-        "struct_declaration",
-        "type_declaration",
-        "struct_specifier",
-        "class_specifier",
-        "type_spec",
-        "annotation_type_declaration",
-        "companion_object",
-        "module",
-        "trait_item",
-        "abstract_class_declaration",
-    }
-    | _ENUM_LIKE
-)
+def _category_union(category: str) -> frozenset[str]:
+    """旧调用方保留联合视图；运行时遍历直接读取按语言分类。"""
+    return frozenset(
+        node for rules in LANGUAGE_NODES.values() for node in rules.get(category, ())
+    )
 
-_SCALA_CLASS_LIKE = frozenset(
-    {
-        "object_definition",
-        "trait_definition",
-        "enum_definition",
-        "given_definition",
-        "type_definition",
-    }
-)
 
-_IMPORT_LIKE = frozenset(
-    {
-        "import_statement",
-        "import_from_statement",
-        "future_import_statement",
-        "import_declaration",
-        "require_statement",
-        "use_declaration",
-        "extern_crate_item",
-        "package_declaration",
-        "include_directive",
-        "preproc_include",
-    }
-)
-
-_VAR_DECL_LIKE = frozenset(
-    {
-        "variable_declarator",
-        "assignment_expression",
-        "lexical_declaration",
-        "variable_declaration",
-        "const_declaration",
-        "let_declaration",
-        "variable_assignment",
-    }
-)
-
+_FUNCTION_LIKE = _category_union("function_like")
+_CLASS_LIKE = _category_union("class_like")
+_ENUM_LIKE = _category_union("enum_like")
+_IMPORT_LIKE = _category_union("import_like")
+_VAR_DECL_LIKE = _category_union("var_decl_like")
+_SCALA_CLASS_LIKE = nodes_for("scala", "deferred_class_like")
+_GO_CONST_LIKE = nodes_for("go", "const_like")
+_RUST_CONST_LIKE = nodes_for("rust", "const_like")
+_SCOPE_BODY_NODES = {
+    language: rules.get("scope_body", frozenset())
+    for language, rules in LANGUAGE_NODES.items()
+}
+_PY_SCOPE_BODY_NODES = nodes_for("python", "scope_body")
+_GO_SCOPE_BODY_NODES = nodes_for("go", "scope_body")
+_RUST_SCOPE_BODY_NODES = nodes_for("rust", "scope_body")
+_PHP_SCOPE_BODY_NODES = nodes_for("php", "scope_body")
+_JSTS_SCOPE_BODY_NODES = nodes_for("javascript", "scope_body")
+_JAVA_SCOPE_BODY_NODES = nodes_for("java", "scope_body")
+_CSHARP_SCOPE_BODY_NODES = nodes_for("csharp", "scope_body")
+_SCALA_SCOPE_BODY_NODES = nodes_for("scala", "scope_body")
 _CONST_STYLE_NAME = re.compile(r"^_?[A-Z][A-Z0-9_]+$")
 _PY_CONST_STYLE_NAME = re.compile(r"^_?[A-Z][A-Z0-9_]*$")
 _PY_DUNDER_NAME = re.compile(r"^__\w+__$")
 
-_PY_SCOPE_BODY_NODES = frozenset({"function_definition", "class_definition"})
-_GO_CONST_LIKE = frozenset({"const_declaration", "var_declaration"})
-_GO_SCOPE_BODY_NODES = frozenset(
-    {"function_declaration", "method_declaration", "func_literal"}
-)
-_RUST_CONST_LIKE = frozenset({"const_item", "static_item"})
-_RUST_SCOPE_BODY_NODES = frozenset({"function_item", "closure_expression", "block"})
-_PHP_SCOPE_BODY_NODES = frozenset(
-    {
-        "function_definition",
-        "method_declaration",
-        "anonymous_function",
-        "arrow_function",
-    }
-)
-_JSTS_SCOPE_BODY_NODES = frozenset(
-    {
-        "function_declaration",
-        "function_expression",
-        "function",
-        "arrow_function",
-        "method_definition",
-        "generator_function",
-        "generator_function_declaration",
-        "class_static_block",
-        "ERROR",
-    }
-)
-_JAVA_SCOPE_BODY_NODES = frozenset(
-    {
-        "method_declaration",
-        "constructor_declaration",
-        "compact_constructor_declaration",
-        "lambda_expression",
-        "static_initializer",
-        "block",
-        "ERROR",
-    }
-)
-_CSHARP_SCOPE_BODY_NODES = frozenset(
-    {
-        "method_declaration",
-        "constructor_declaration",
-        "destructor_declaration",
-        "operator_declaration",
-        "conversion_operator_declaration",
-        "local_function_statement",
-        "accessor_declaration",
-        "lambda_expression",
-        "anonymous_method_expression",
-        "ERROR",
-    }
-)
-_SCALA_SCOPE_BODY_NODES = frozenset({"function_definition", "function_declaration"})
-
-_SCOPE_BODY_NODES: dict[str, frozenset[str]] = {
-    "python": _PY_SCOPE_BODY_NODES,
-    "go": _GO_SCOPE_BODY_NODES,
-    "rust": _RUST_SCOPE_BODY_NODES,
-    "php": _PHP_SCOPE_BODY_NODES,
-    "javascript": _JSTS_SCOPE_BODY_NODES,
-    "typescript": _JSTS_SCOPE_BODY_NODES,
-    "java": _JAVA_SCOPE_BODY_NODES,
-    "csharp": _CSHARP_SCOPE_BODY_NODES,
-    "scala": _SCALA_SCOPE_BODY_NODES,
-}
 
 _COMPLEXITY_NODE_TYPES: dict[str, set[str]] = {
     "python": {

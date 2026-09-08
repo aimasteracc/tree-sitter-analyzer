@@ -1,8 +1,6 @@
-"""TSA public API package — Pulse, Serialization, Semantic.
+"""供其他 Python 程序嵌入使用的公开 API，保留旧 api.py 的导出兼容性。
 
-This package replaces the top-level api.py module. All symbols previously
-available from tree_sitter_analyzer.api are re-exported here for backward
-compatibility.
+CLI 与 MCP 直接调用分析引擎，不经由此入口；公开嵌入接口由 __all__ 声明。
 """
 
 import logging

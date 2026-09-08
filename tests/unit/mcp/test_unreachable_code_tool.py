@@ -214,3 +214,16 @@ class TestExecute:
         ):
             resp = await tool.execute({"mode": "project"})
         assert "error" in resp
+
+
+@pytest.mark.parametrize("parse_errors", [0, 1])
+def test_response_success_distinguishes_findings_from_parse_errors(parse_errors):
+    """发现不可达语句不代表执行失败，解析错误则必须标记失败。"""
+    result = UnreachableCodeResult(
+        file_path="sample.py", language="python", errors=parse_errors
+    )
+    tool = UnreachableCodeTool()
+    assert tool._build_file_response(result, "json")["success"] is (parse_errors == 0)
+    assert tool._build_project_response([result], "json")["success"] is (
+        parse_errors == 0
+    )

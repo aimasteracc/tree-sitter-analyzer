@@ -12,13 +12,40 @@ from ._builders import (
     _build_change_impact_tool_args,
     _build_dependency_tool_args,
     _build_detect_routes_tool_args,
+    _build_middleware_tool_args,
     _build_parser_readiness_tool_args,
+    _build_rename_tool_args,
     _build_safe_to_edit_tool_args,
+    _build_unreachable_tool_args,
     _dependency_mode_requires_file,
 )
 from ._read_existing_bridge import _forward_read_existing_controls
 
 _CORE_SPECS: tuple[McpCommandSpec, ...] = (
+    McpCommandSpec(
+        flag_name="rename",
+        tool_attr="CodeGraphRefactorTool",
+        label="AST-aware rename",
+        value_arg_name="rename",
+        required_value_error="--rename requires a non-empty symbol",
+        build_tool_args=_build_rename_tool_args,
+    ),
+    McpCommandSpec(
+        flag_name="unreachable_code",
+        tool_attr="UnreachableCodeTool",
+        label="Unreachable statements",
+        required_file_error="--unreachable-code file mode requires a file path",
+        requires_file=lambda args: (
+            getattr(args, "unreachable_code_mode", "file") == "file"
+        ),
+        build_tool_args=_build_unreachable_tool_args,
+    ),
+    McpCommandSpec(
+        flag_name="detect_middleware",
+        tool_attr="MiddlewareDetectorTool",
+        label="Middleware chains",
+        build_tool_args=_build_middleware_tool_args,
+    ),
     McpCommandSpec(
         flag_name="file_health",
         tool_attr="FileHealthTool",

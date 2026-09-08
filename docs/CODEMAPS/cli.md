@@ -63,6 +63,9 @@ Categories of CLI surface:
 - `--check-constraints [--constraints-read-only]` — evaluate architecture constraints; read-only mode forwards `persist=false` and never updates violation rows
 - `--code-patterns` — smell detection
 - `--refactor` — concrete refactor recipes
+- `--rename SYMBOL --rename-new-name NAME [--rename-mode preview|apply]` — published v1.29.5 rename; default preview, explicit apply writes source
+- `FILE --unreachable-code [--unreachable-code-mode file|project]` — statement-level reachability; project options `--unreachable-code-include-tests`, `--unreachable-code-max-files N`
+- `--detect-middleware [--detect-middleware-mode all|summary|lookup]` — middleware chains with `--detect-middleware-framework` and `--detect-middleware-url-prefix`
 - `--outline` — hierarchical outline (package → class → method, no bodies)
 - `--safe-to-edit` — edit risk verdict
 - `--file-health` — per-file score
@@ -165,7 +168,7 @@ boundary.
 
 ## See Also
 
-- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (344 unique flags total — this codemap is intentionally categorical, not exhaustive)
+- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (355 unique flags total — this codemap is intentionally categorical, not exhaustive)
 - [`docs/CODEMAPS/mcp-tools.md`](./mcp-tools.md) — MCP-side counterpart
 - [`tests/unit/cli/test_mcp_commands.py`](../../tests/unit/cli/test_mcp_commands.py) — Parity contract tests
 - [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks a change to the CLI **flag surface** (any `cli/**/*.py`, compared as a set) without a `cli.md` update
