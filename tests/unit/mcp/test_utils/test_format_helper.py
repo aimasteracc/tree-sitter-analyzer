@@ -5,7 +5,10 @@ Unit tests for format_helper.py
 Tests the format helper utility functions for MCP tool output formatting.
 """
 
+import sys
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from tree_sitter_analyzer.mcp.utils.format_helper import (
     JsonFormatter,
@@ -531,3 +534,33 @@ class TestIntegration:
         assert "metadata" in attached
         assert "status" in attached
         assert "toon_content" in attached
+
+
+@pytest.mark.parametrize("scenario", ["normal", "missing_formatter", "formatter_error"])
+def test_toon_serializer_preserves_mcp_format_and_unicode_fallback(
+    scenario, monkeypatch
+):
+    """底层序列化与 MCP 格式保持一致，失败时完整保留 Unicode JSON。"""
+    from tree_sitter_analyzer.serialization.toon_serializer import TOONSerializer
+
+    data = {"text": "日本語与中文", "count": 2}
+    expected_json = '{\n  "text": "日本語与中文",\n  "count": 2\n}'
+    if scenario == "missing_formatter":
+        monkeypatch.setitem(
+            sys.modules, "tree_sitter_analyzer.formatters.toon_formatter", None
+        )
+    elif scenario == "formatter_error":
+        from tree_sitter_analyzer.formatters.toon_formatter import ToonFormatter
+
+        monkeypatch.setattr(
+            ToonFormatter,
+            "format",
+            MagicMock(side_effect=RuntimeError("formatter failed")),
+        )
+
+    serializer = TOONSerializer()
+    result = serializer.serialize(data)
+    assert result == format_as_toon(data)
+    assert serializer.byte_size(data) == len(result.encode("utf-8"))
+    if scenario != "normal":
+        assert result == expected_json
