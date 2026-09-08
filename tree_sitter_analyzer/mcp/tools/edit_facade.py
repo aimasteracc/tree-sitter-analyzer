@@ -1,37 +1,9 @@
 #!/usr/bin/env python3
-"""``edit`` facade — Wave B facade for edit/safety/impact capabilities.
+"""编辑 facade：通过九个 action 提供安全检查、影响分析及重命名。
 
-Folds eight code-safety and change-management capabilities behind one
-``action`` parameter:
-
-============  ==============================  ================================
-action        inner tool                      when to use
-============  ==============================  ================================
-safe          ``safe_to_edit``                Pre-edit safety gate (SAFE/UNSAFE)
-guard         ``modification_guard``          Blast-radius guard before touching a symbol
-impact        ``analyze_change_impact``       Post-edit dependency blast-radius scan
-refactor      ``refactoring_suggestions``     Refactoring opportunities for a file
-constraints   ``check_constraints``           Constraint violations in the project
-pr            ``codegraph_pr_review``         AI review of a PR diff via CodeGraph
-classify      ``semantic_classify``           Semantic change classification (file git-diff or code strings)
-ast_diff      ``ast_diff``                    Structural diff of two AST snapshots
-============  ==============================  ================================
-
-Annotation honesty (spec §6 / review §8 F-extra-3):
-    This facade spans READ-ONLY actions (``safe``, ``impact``, ``classify``,
-    ``constraints``, ``pr``, ``ast_diff``) and MUTATING-INTENT actions
-    (``refactor`` suggests changes; ``guard`` checks before a write). A single
-    honest ``readOnlyHint=True`` is IMPOSSIBLE for this facade — doing so would
-    violate the ``test_every_tool_declares_mcp_annotations`` contract which
-    forbids ``readOnly AND destructive``. We therefore set
-    ``readOnlyHint=False, destructiveHint=False`` (it suggests / analyses,
-    does not actually write files), ``idempotentHint=False`` (analysis results
-    may differ as the index updates), ``openWorldHint=False``. Read actions lose
-    the read-safe signal — accepted tradeoff per PRD §4. If a strict read-only
-    sub-facade is later needed, split ``safe``/``impact``/``classify`` into a
-    separate read-only facade (out of scope for Wave B).
-
-Not registered in ``_tool_registry.py`` at P0; Wave C handles cutover.
+refactor 只给出建议；rename 支持 Python 模块级函数、类与直接导入的安全重命名，
+apply 模式会写入文件。因此整个 facade 必须标记 destructiveHint=True，
+readOnlyHint=False；其他只读 action 保持原有行为。
 """
 
 from __future__ import annotations
@@ -45,7 +17,9 @@ from .facade_tool import FacadeTool
 # (refactor/guard). We cannot claim read-only across a mixed action set.
 _EDIT_ANNOTATIONS: dict[str, Any] = {
     "readOnlyHint": False,
-    "destructiveHint": False,  # suggests / analyses; never writes files
+    # action=rename with mode=apply rewrites source files in place — the facade
+    # must advertise that so MCP clients can prompt before invoking it.
+    "destructiveHint": True,
     "idempotentHint": False,  # analysis results can change as index updates
     "openWorldHint": False,
 }
@@ -65,9 +39,18 @@ _EDIT_DESCRIPTION = (
     "dependency graph: affected files, must-run tests, risk verdict (SAFE/REVIEW/WARN). "
     "Call after every non-trivial edit. Params: mode (diff|staged|branch|pr, "
     "default: diff), scope_paths, output_format.\n"
-    "- action=refactor — refactoring-opportunity analysis for a source file: extract "
-    "candidates, complexity hotspots, skeleton. Params: file_path, language, "
+    "- action=refactor — READ-ONLY refactoring-opportunity analysis for a source "
+    "file: extract candidates, complexity hotspots, skeleton. Suggests only; "
+    "never writes. Params: file_path, language, "
     "max_suggestions, include_extractions, include_skeleton, output_format.\n"
+    "- action=rename — rename a unique Python module-level function or class and "
+    "its direct absolute from-import references, including aliases. Uses fresh "
+    "AST identifier locations; preserves literals, comments, encoding and newlines. "
+    "Ambiguous bindings, affected unsupported languages and dynamic references "
+    "are rejected before writing. Params: symbol* (unqualified name), new_name*, "
+    "mode (preview|apply, default: preview), output_format. "
+    "mode=preview lists exact changes without writing; mode=apply WRITES files. "
+    "This differs from action=refactor, which only suggests changes.\n"
     "- action=constraints — scan the project for constraint/rule violations "
     "(architecture, naming, coupling). Params: severity_min, output_format.\n"
     "- action=pr — AI review of a PR diff via codegraph: structural issues, "
@@ -86,7 +69,8 @@ _EDIT_DESCRIPTION = (
     "Params: see inner schema.\n"
     "NOTE: ``safe``/``impact``/``classify``/``constraints``/``pr``/``ast_diff`` are "
     "read-only in practice; ``refactor``/``guard`` suggest changes but do not write "
-    "files. readOnlyHint is False for the whole facade (mixed action set)."
+    "files; ``rename`` with mode=apply DOES write files. readOnlyHint is False and "
+    "destructiveHint is True for the whole facade (mixed action set)."
 )
 
 
@@ -117,6 +101,7 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
             args.setdefault("mode", "pr")
             return await super().execute(args)
 
+    from .codegraph_refactor_tool import CodeGraphRefactorTool
     from .constraint_check_tool import ConstraintCheckTool
     from .modification_guard_tool import ModificationGuardTool
     from .refactoring_suggestions_tool import RefactoringSuggestionsTool
@@ -130,12 +115,17 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
             "guard": ModificationGuardTool(project_root),
             "impact": ChangeImpactTool(project_root),
             "refactor": RefactoringSuggestionsTool(project_root),
+            # Wiring fix: CodeGraphRefactorTool was implemented but never
+            # registered, so project-wide AST rename was unreachable. It gets
+            # its own action (``rename``) — it must NOT shadow ``refactor``,
+            # which is the read-only suggestions tool.
+            "rename": CodeGraphRefactorTool(project_root),
             "constraints": ConstraintCheckTool(project_root),
             "pr": _PRReviewViaFacade(project_root),
             "classify": SemanticClassifyTool(project_root),
             "ast_diff": ASTDiffTool(project_root),
         },
-        # No bespoke routes: all eight inners follow the normal action_map
+        # No bespoke routes: all nine inners follow the normal action_map
         # pattern (dict return, schema-projectable args, no union return type).
         bespoke_map={},
         description=_EDIT_DESCRIPTION,

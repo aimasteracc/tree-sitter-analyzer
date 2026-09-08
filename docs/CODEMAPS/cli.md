@@ -62,6 +62,9 @@ Categories of CLI surface:
 ### Code Quality
 - `--code-patterns` — smell detection
 - `--refactor` — concrete refactor recipes
+- `--rename SYMBOL --rename-new-name NAME [--rename-mode preview|apply]` — rename a unique Python module-level function/class and direct imports; defaults to preview, apply writes files. Ambiguous bindings, private class names/slots and affected unsupported languages are rejected.
+- `FILE --unreachable-code [--unreachable-code-mode file|project]` — unreachable statements; project mode supports `--unreachable-code-include-tests` and `--unreachable-code-max-files N` (default 500)
+- `--detect-middleware [--detect-middleware-mode all|summary|lookup]` — middleware chains; filter with `--detect-middleware-url-prefix` and `--detect-middleware-framework`
 - `--outline` — hierarchical outline (package → class → method, no bodies)
 - `--safe-to-edit` — edit risk verdict
 - `--file-health` — per-file score

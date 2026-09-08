@@ -17,6 +17,10 @@ TSA indexes your codebase with tree-sitter and serves correct call graphs, symbo
 
 > Upgrading from v1.x? See [docs/MIGRATION.md](docs/MIGRATION.md).
 
+### v1.29.5 hotfix — 2026-09-08
+
+Corrects symbol extraction with a shared node taxonomy (extractor version 19), makes Python symbol renaming use precise AST locations, and restores three MCP/CLI routes: `edit.rename` / `--rename`, `health.unreachable` / `--unreachable-code`, and `health.middleware` / `--detect-middleware`. Rename defaults to preview and supports unique Python module-level functions/classes and direct absolute `from` imports; ambiguous or unsupported references are rejected. Run indexing again after upgrading to refresh older results. [Release details](CHANGELOG.md#1295---2026-09-08).
+
 ---
 
 ## Get Started
@@ -162,7 +166,7 @@ CodeGraph has zero skills. We ship 13 under `.claude/skills/tsa-*/`:
 
 Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
 
-### 321 CLI flags
+### 332 CLI flags
 
 Superset of CodeGraph's CLI surface. Highlights:
 
@@ -431,8 +435,6 @@ MCP client config (the project root inside the container is the mount point `/wo
 
 CodeGraph supports a similar set. **Dart, Vue, Svelte, Lua** are not yet shipped — aspirational backlog, no committed date.
 
----
-
 ## Configuration
 
 Mostly nothing. The defaults are designed so you can hook it into your agent and forget:
@@ -474,8 +476,6 @@ uv run python check_quality.py --new-code-only  # quality gate
 | `database is locked` | Stop any other process holding `.ast-cache/index.db`; if persistent, `rm -rf .ast-cache && tree-sitter-analyzer --full-index`. |
 | Slow first call | First call builds the index. Subsequent calls are sub-second. Run `--full-index` upfront to amortise. |
 | Agent picks the wrong tool | Use a `tsa-*` skill (`/tsa-graph`, `/tsa-find`, ...) — each skill restricts the visible tool set to one workflow. |
-
----
 
 ## Development
 

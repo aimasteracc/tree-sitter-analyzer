@@ -405,6 +405,42 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="Minimum grade for --project-health detail list (default: D)",
     )
     parser.add_argument(
+        "--rename", metavar="SYMBOL", help="Preview an AST-aware symbol rename"
+    )
+    parser.add_argument(
+        "--rename-new-name", metavar="NAME", help="Replacement name for --rename"
+    )
+    parser.add_argument(
+        "--rename-mode",
+        choices=["preview", "apply"],
+        default="preview",
+        help="Rename mode (default: preview; apply writes files)",
+    )
+    parser.add_argument(
+        "--unreachable-code", action="store_true", help="Detect unreachable statements"
+    )
+    parser.add_argument(
+        "--unreachable-code-mode", choices=["file", "project"], default="file"
+    )
+    parser.add_argument("--unreachable-code-include-tests", action="store_true")
+    parser.add_argument("--unreachable-code-max-files", type=int, default=500)
+    parser.add_argument(
+        "--detect-middleware",
+        action="store_true",
+        help="Detect middleware and interceptor chains",
+    )
+    parser.add_argument(
+        "--detect-middleware-mode", choices=["all", "summary", "lookup"], default="all"
+    )
+    parser.add_argument(
+        "--detect-middleware-url-prefix", help="URL prefix for middleware lookup"
+    )
+    parser.add_argument(
+        "--detect-middleware-framework",
+        choices=["all", "flask", "django", "fastapi", "express", "spring"],
+        default="all",
+    )
+    parser.add_argument(
         "--detect-routes",
         action="store_true",
         help="Detect HTTP routes (Flask, Django, FastAPI, Express, Spring) — CodeGraph parity",

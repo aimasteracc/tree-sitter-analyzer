@@ -3,7 +3,7 @@
 
 Covers all §5 required cases from ``.recon/p0-facade-framework-spec.md``:
 
-1.  builds & routes — factory returns FacadeTool, all 8 actions present.
+1.  构造与路由：工厂返回 FacadeTool，包含九个动作。
 2.  action routing — each action reaches the right inner.
 3.  arg projection — ``action`` is NOT in args received by the inner.
 4.  sibling-param drop — param for action A doesn't reach action B's inner.
@@ -103,12 +103,13 @@ class _FakeInner(BaseMCPTool):
 
 
 def _make_fake_facade(**kwargs: Any) -> tuple[FacadeTool, dict[str, _FakeInner]]:
-    """Build a facade with all 8 edit actions wired to fake inners."""
+    """构造含九个编辑动作的测试 facade。"""
     inners: dict[str, _FakeInner] = {
         "safe": _FakeInner("safe"),
         "guard": _FakeInner("guard"),
         "impact": _FakeInner("impact"),
         "refactor": _FakeInner("refactor"),
+        "rename": _FakeInner("rename"),
         "constraints": _FakeInner("constraints"),
         "pr": _FakeInner("pr"),
         "classify": _FakeInner("classify"),
@@ -124,7 +125,7 @@ def _make_fake_facade(**kwargs: Any) -> tuple[FacadeTool, dict[str, _FakeInner]]
 
 
 # ---------------------------------------------------------------------------
-# 1. Builds & routes — factory returns FacadeTool, all 8 actions present
+# 1. 工厂构造包含九个动作的 FacadeTool。
 # ---------------------------------------------------------------------------
 
 
@@ -156,6 +157,7 @@ def test_edit_facade_all_actions_present() -> None:
         "guard",
         "impact",
         "refactor",
+        "rename",
         "constraints",
         "pr",
         "classify",
@@ -177,6 +179,7 @@ def test_edit_facade_all_actions_present() -> None:
         "guard",
         "impact",
         "refactor",
+        "rename",
         "constraints",
         "pr",
         "classify",
@@ -265,7 +268,7 @@ def test_guard_symbol_passes_through_unchanged() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 6. No bespoke routes — all 8 actions are in action_map
+# 6. 九个动作均通过 action_map 路由。
 # ---------------------------------------------------------------------------
 
 
@@ -274,7 +277,7 @@ def test_no_bespoke_routes() -> None:
 
     facade = build_edit_facade(project_root=None)
     assert facade.bespoke_map == {}, "edit facade should have no bespoke routes"
-    assert len(facade.action_map) == 8
+    assert len(facade.action_map) == 9
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +334,7 @@ def test_missing_action_returns_error_envelope() -> None:
         "guard",
         "impact",
         "refactor",
+        "rename",
         "constraints",
         "pr",
         "classify",
@@ -453,11 +457,11 @@ def test_edit_annotations_not_read_only() -> None:
     )
 
 
-def test_edit_annotations_not_destructive() -> None:
-    """edit facade suggests/analyses; it does not write files."""
+def test_edit_annotations_advertise_file_writes() -> None:
+    """rename 的 apply 会写文件，必须声明破坏性操作提示。"""
     from tree_sitter_analyzer.mcp.tools.edit_facade import _EDIT_ANNOTATIONS
 
-    assert _EDIT_ANNOTATIONS["destructiveHint"] is False
+    assert _EDIT_ANNOTATIONS["destructiveHint"] is True
 
 
 def test_edit_annotations_all_four_hints_present() -> None:
@@ -476,7 +480,7 @@ def test_edit_facade_definition_includes_annotations() -> None:
     assert "annotations" in defn
     annot = defn["annotations"]
     assert annot["readOnlyHint"] is False
-    assert annot["destructiveHint"] is False
+    assert annot["destructiveHint"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -522,13 +526,14 @@ def test_edit_facade_schema_includes_action_and_required() -> None:
     props = schema["properties"]
     assert "action" in props
     assert "action" in schema.get("required", [])
-    # action enum must list all 8 actions.
+    # 枚举必须列出九个动作。
     enum_vals = set(props["action"].get("enum", []))
     expected = {
         "safe",
         "guard",
         "impact",
         "refactor",
+        "rename",
         "constraints",
         "pr",
         "classify",

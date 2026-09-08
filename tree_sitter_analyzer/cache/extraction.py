@@ -17,6 +17,8 @@ from typing import Any
 
 from ..constants import EXCLUDE_DIRS
 from ..core.parser import Parser
+from . import node_taxonomy as _taxonomy
+from . import unhandled_nodes as _unhandled_nodes
 
 # ---------------------------------------------------------------------------
 # FTS5 probe
@@ -136,102 +138,6 @@ def _content_hash(source: str | bytes) -> str:
 # Symbol extraction — tree-walker + node-type sets
 # ---------------------------------------------------------------------------
 
-_FUNCTION_LIKE = frozenset(
-    {
-        "function_definition",
-        "function_declaration",
-        "method_definition",
-        "arrow_function",
-        "generator_function_declaration",
-        "function_item",
-        "method_declaration",
-        "constructor_declaration",
-        "lambda_expression",
-        "anonymous_function",
-        "class_method",
-        "member_function",
-        "function_declarator",
-        "declaration",
-        "init_declarator",
-        # Issue #532: Ruby uses ``method`` / ``singleton_method`` node types;
-        # without these, Ruby methods were invisible in symbols_json so the
-        # class_inspect_tool showed 0 methods for every Ruby class.
-        "method",
-        "singleton_method",
-    }
-)
-
-_ENUM_LIKE = frozenset(
-    {
-        "enum_declaration",
-        "enum",
-        "enum_specifier",  # C/C++
-    }
-)
-
-_CLASS_LIKE = frozenset(
-    {
-        "class_definition",
-        "class_declaration",
-        "class",
-        "interface_declaration",
-        "struct_item",
-        "trait_declaration",
-        "impl_item",
-        "struct_declaration",
-        "type_declaration",
-        "struct_specifier",  # C/C++
-        "class_specifier",  # C++
-        "type_spec",  # Go
-        "annotation_type_declaration",  # Java
-        "record_declaration",  # Java 16+ records — methods/ctors classified as method
-        "companion_object",  # Kotlin
-        "module",  # Ruby
-        "trait_item",  # Rust
-        "abstract_class_declaration",  # TypeScript/TSX
-    }
-    | _ENUM_LIKE
-)
-
-_SCALA_CLASS_LIKE = frozenset(
-    {
-        "object_definition",
-        "trait_definition",
-        "enum_definition",
-        "given_definition",
-        "type_definition",
-    }
-)
-
-_IMPORT_LIKE = frozenset(
-    {
-        "import_statement",
-        "import_from_statement",
-        # Python's grammar emits a dedicated node for ``from __future__
-        # import X``; without it the single most common import in a typed
-        # codebase never reached ast_symbol_rows / ast_imports / edges.
-        "future_import_statement",
-        "import_declaration",
-        "require_statement",
-        "use_declaration",
-        "extern_crate_item",
-        "package_declaration",
-        "include_directive",
-    }
-)
-
-_VAR_DECL_LIKE = frozenset(
-    {
-        "variable_declarator",
-        "assignment_expression",
-        "lexical_declaration",
-        "variable_declaration",
-        "const_declaration",
-        "let_declaration",
-        "variable_assignment",
-    }
-)
-
 # Issue #610 — Python module-level constants. tree-sitter-python emits
 # ``assignment`` nodes (with a ``left`` field, not ``name``), so they never
 # matched _VAR_DECL_LIKE and were invisible to ast_symbol_rows. Scope rule
@@ -246,23 +152,6 @@ _CONST_STYLE_NAME = re.compile(r"^_?[A-Z][A-Z0-9_]+$")
 # Uses ``*`` (zero-or-more) so a single uppercase letter matches.
 _PY_CONST_STYLE_NAME = re.compile(r"^_?[A-Z][A-Z0-9_]*$")
 _PY_DUNDER_NAME = re.compile(r"^__\w+__$")
-
-# Node types that open a non-module scope: an ``assignment`` nested under any
-# of these is a class attribute or function local, not a module constant.
-_PY_SCOPE_BODY_NODES = frozenset({"function_definition", "class_definition"})
-
-# Issue #613 — Go package-level constants, same shape as #610. tree-sitter-go
-# puts names on ``const_spec``/``var_spec`` children (repeated ``name`` field);
-# the const_declaration/var_declaration wrappers carry no ``name`` field, so
-# they never produced rows via _VAR_DECL_LIKE.
-_GO_CONST_LIKE = frozenset({"const_declaration", "var_declaration"})
-
-# Nodes that open a function scope in Go: const/var declarations nested under
-# any of these are locals, not package constants (Go analogue of
-# _PY_SCOPE_BODY_NODES, feeding the same top-down ``enclosed`` flag).
-_GO_SCOPE_BODY_NODES = frozenset(
-    {"function_declaration", "method_declaration", "func_literal"}
-)
 
 
 def _go_package_constants(node: Any, source: str) -> list[dict[str, Any]]:
@@ -304,174 +193,6 @@ def _go_package_constants(node: Any, source: str) -> list[dict[str, Any]]:
                 }
             )
     return out
-
-
-# Issue #613 — Rust const/static items, same shape as #610/#615. tree-sitter-
-# rust emits ``const_item``/``static_item`` (with a ``name`` field), but
-# neither type is in _VAR_DECL_LIKE (which carries Go's ``const_declaration``,
-# not Rust's node names), so they never produced rows. ALL names are captured
-# — Rust const/static are language-level constants/globals (rustc lints
-# non_upper_case_globals), so no const-style name gate is needed; this mirrors
-# the Go const reasoning. ``static mut`` counts too: still a named crate-level
-# global. Associated consts in impl/trait bodies ARE captured (deliberate):
-# they are compiler-enforced constants addressable as ``Type::CONST``, unlike
-# the Python class attributes #612 excludes — and impl/trait bodies are
-# ``declaration_list`` nodes, not function scopes, so the ``enclosed``
-# mechanism keeps them naturally.
-_RUST_CONST_LIKE = frozenset({"const_item", "static_item"})
-
-# Nodes that open a function scope in Rust: const/static items nested under
-# any of these are function-locals, not module constants (Rust analogue of
-# _PY_SCOPE_BODY_NODES / _GO_SCOPE_BODY_NODES, feeding the same top-down
-# ``enclosed`` flag). mod/impl/trait bodies are ``declaration_list`` — module
-# scope — and deliberately absent.
-_RUST_SCOPE_BODY_NODES = frozenset({"function_item", "closure_expression", "block"})
-
-# Issue #624 — PHP const declarations, same shape as #610/#615/#618.
-# tree-sitter-php emits ``const_declaration`` (the node type already sits in
-# _VAR_DECL_LIKE via Go's grammar) but the names live on ``const_element``
-# children which carry NO ``name`` field — the identifier is a bare ``name``
-# child — so the _VAR_DECL_LIKE name gate never matched and no rows were
-# produced. ALL names are captured — PHP ``const`` is compiler-enforced
-# immutable, so no const-style name gate (mirrors the Go/Rust reasoning).
-# Class/interface/trait/enum consts ARE captured (deliberate): addressable as
-# ``Config::MAX_USERS`` like Rust associated consts; their bodies are
-# declaration_list / enum_declaration_list nodes, not function scopes, so the
-# ``enclosed`` mechanism keeps them naturally. ``define()`` calls are
-# function_call_expression nodes — runtime registration whose name is a
-# string argument, not a declaration — and stay out of scope.
-
-# Nodes that open a function scope in PHP (PHP analogue of the other
-# _*_SCOPE_BODY_NODES sets, feeding the same top-down ``enclosed`` flag).
-# PHP has no legal function-scope const, but tree-sitter-php parses one
-# permissively as const_declaration, so the gate is still required. Braced
-# namespace bodies are ``compound_statement`` nodes — the gate keys on the
-# function/closure declaration node types (not compound_statement) precisely
-# so namespace-scope consts stay captured.
-_PHP_SCOPE_BODY_NODES = frozenset(
-    {
-        "function_definition",
-        "method_declaration",
-        "anonymous_function",
-        "arrow_function",
-    }
-)
-
-# Issue #626 — JS/TS function-local variables were OVER-captured: every
-# ``variable_declarator`` with a ``name`` field became a kind="variable" row
-# regardless of scope, so function locals (``const id = req.params.id``)
-# polluted FTS and symbol search (−57% JS / −54% TS variable rows on the
-# in-repo corpus). Inverse of the constants family (#612/#615/#618/#625):
-# the same language-gated top-down ``enclosed`` flag, used here to SKIP rows
-# instead of adding them. Module/top-level declarators stay captured —
-# const+let+var, NO const-style name gate (this is a contraction of the
-# pre-existing kind="variable" contract, not a constants feature).
-#
-# ``statement_block`` is deliberately ABSENT: module-level ``if``/``try``
-# bodies are statement_blocks outside any function node — including it would
-# break the #612 guarantee that if/try-wrapped module declarators stay
-# captured. TS namespace bodies (``internal_module`` / ``module`` /
-# ``ambient_declaration``) are not function scopes either, so namespace-level
-# declarators stay captured naturally (PHP #624 namespace precedent).
-# ``function`` is the anonymous-function-expression node of older grammar
-# versions; in current grammars it only matches the bare ``function`` keyword
-# token, which is harmless (keyword tokens have no children).
-_JSTS_SCOPE_BODY_NODES = frozenset(
-    {
-        "function_declaration",
-        "function_expression",
-        "function",
-        "arrow_function",
-        "method_definition",
-        "generator_function",
-        "generator_function_declaration",
-        "class_static_block",
-        # Declarations inside error-recovered regions have undecidable scope
-        # (.tsx is parsed with the typescript grammar, so JSX can shatter
-        # function bodies into ERROR nodes) — better unindexed than wrong
-        # (Codex P2 on #629; defensive hardening, 4 JSX shapes probed clean).
-        "ERROR",
-    }
-)
-
-# Issue #626 (Java half) — same over-capture disease: every Java
-# ``variable_declarator`` became a kind="variable" row, so method/ctor/
-# lambda/initializer locals polluted FTS and symbol search (−69% Java
-# variable rows on the in-repo corpus). Class fields and interface constants
-# stay captured: they route ``class_body > field_declaration`` /
-# ``interface_body > constant_declaration`` and NEVER through any node in
-# this set — ``block`` is safe for Java because fields never sit inside a
-# block node (live-parse verified), while the instance initializer is a bare
-# ``block`` child of ``class_body``, which is exactly why ``block`` is here.
-# ``constructor_declaration`` gates ctor locals (their body is a
-# ``constructor_body``, not a ``block``); ``compact_constructor_declaration``
-# covers record compact ctors; ``lambda_expression`` covers lambdas hanging
-# off FIELD initializers (lambdas in methods are already inside the method).
-# ``ERROR`` per the #629 hardening precedent: declarations inside
-# error-recovered regions have undecidable scope — better unindexed than a
-# lambda local masquerading as a field.
-_JAVA_SCOPE_BODY_NODES = frozenset(
-    {
-        "method_declaration",
-        "constructor_declaration",
-        "compact_constructor_declaration",
-        "lambda_expression",
-        "static_initializer",
-        "block",
-        "ERROR",
-    }
-)
-
-# Issue #628 (C#) — same over-capture disease as #626: every C#
-# ``variable_declarator`` became a kind="variable" row, so method/ctor/
-# dtor/local-fn/lambda/accessor/operator locals polluted FTS and symbol
-# search. Class/interface/record fields (const, static readonly, plain)
-# stay captured: they route ``declaration_list > field_declaration`` and
-# NEVER through any node in this set (live-parse verified).
-#
-# Unlike Java, ``block`` is deliberately ABSENT: C# top-level statements
-# (C# 9 top-level programs) put blocks at compilation-unit level
-# (``block < if_statement < global_statement``), so a block-keyed set
-# would drop if/try-wrapped top-level declarators and break the #612
-# module-scope guarantee. Function-keying is complete anyway: every
-# local's ancestry passes through one of these declaration nodes.
-# ``accessor_declaration`` gates property/indexer/event get/set/init/
-# add/remove bodies (their bodies are plain ``block``s);
-# ``local_function_statement`` is itself redundant under a method but
-# kept for explicitness (and gates top-level local functions);
-# ``lambda_expression`` / ``anonymous_method_expression`` cover lambdas
-# and ``delegate`` bodies hanging off FIELD initializers (lambdas in
-# methods are already inside the method). ``ERROR`` per the #629
-# hardening precedent: declarations inside error-recovered regions have
-# undecidable scope — better unindexed than a local masquerading as a
-# field.
-_CSHARP_SCOPE_BODY_NODES = frozenset(
-    {
-        "method_declaration",
-        "constructor_declaration",
-        "destructor_declaration",
-        "operator_declaration",
-        "conversion_operator_declaration",
-        "local_function_statement",
-        "accessor_declaration",
-        "lambda_expression",
-        "anonymous_method_expression",
-        "ERROR",
-    }
-)
-
-# #961: Scala method bodies must mark their descendants as enclosed so a
-# method-local ``given``/``type`` is NOT emitted as a top-level class-like
-# symbol (mirrors the scala_plugin path, which ``continue``s instead of
-# descending into ``function_definition``/``function_declaration``). The
-# scope node itself is enough — gating on it makes the body container
-# (``block`` / ``indented_block``) and everything below it enclosed.
-_SCALA_SCOPE_BODY_NODES = frozenset(
-    {
-        "function_definition",
-        "function_declaration",
-    }
-)
 
 
 def _php_constants(node: Any, source: str) -> list[dict[str, Any]]:
@@ -733,9 +454,13 @@ def _count_decision_points(node: Any, language: str) -> dict[str, int]:
     return counts
 
 
-def _find_parent_class(node: Any, source: str) -> str | None:
+def _find_parent_class(node: Any, source: str, language: str) -> str | None:
     """Walk up the parent chain to find the innermost enclosing class-like
     container, returning its name.
+
+    Membership is resolved per language through the node taxonomy, so a node
+    type that means "class" in one grammar cannot terminate the walk in
+    another.
 
     Special cases:
     - ``impl_item`` (Rust): exposes the implemented type in the ``type``
@@ -748,14 +473,20 @@ def _find_parent_class(node: Any, source: str) -> str | None:
     ``kind="method"`` with a bogus ``class`` attribution, which also
     produced phantom class->function ``contains`` edges.
 
-    ``_CLASS_LIKE`` is tested first so a class declared *inside* a function
-    body still owns its own members (a Python class defined in a method, or a
+    Class-like is tested first so a class declared *inside* a function body
+    still owns its own members (a Python class defined in a method, or a
     Java anonymous class); only the walk past that class is cut off.
     """
+    # JS/TS 具名函数表达式的名称只在自身作用域有效，并非外层类的方法。
+    if language in ("javascript", "typescript") and node.type == "function_expression":
+        return None
+    class_like = _taxonomy.nodes_for(language, "class_like")
+    function_like = _taxonomy.nodes_for(language, "function_like")
     parent = node.parent
     while parent:
-        if parent.type in _CLASS_LIKE:
-            if parent.type == "impl_item":
+        parent_type = parent.type
+        if parent_type in class_like:
+            if parent_type == "impl_item":
                 # Rust impl block: the implemented type is in the ``type`` field.
                 type_node = parent.child_by_field_name("type")
                 if type_node is not None:
@@ -769,13 +500,13 @@ def _find_parent_class(node: Any, source: str) -> str | None:
                 # Kotlin ``companion_object`` is a named body that belongs
                 # to its enclosing class — continue walking so the enclosing
                 # class_declaration can provide the name.
-                if parent.type == "companion_object":
+                if parent_type == "companion_object":
                     parent = parent.parent
                     continue
             # An unnamed class-like ancestor (e.g. a Java anonymous class) is
             # still the owner; do not attribute the member to an outer class.
             return None
-        if parent.type in _FUNCTION_LIKE:
+        if parent_type in function_like:
             return None
         parent = parent.parent
     return None
@@ -909,7 +640,7 @@ def _bash_subscript_base(subscript: Any) -> Any:
 
 def _scala_symbol_from_node(node: Any, source: str) -> dict[str, Any] | None:
     node_type = node.type
-    if node_type not in _SCALA_CLASS_LIKE:
+    if not _taxonomy.is_a("scala", "deferred_class_like", node_type):
         return None
     name = _scala_symbol_name(node, source)
     if not name:
@@ -964,6 +695,7 @@ def _walk_for_symbols(
     depth: int = 0,
     enclosed: bool = False,
     _truncated_flag: list[bool] | None = None,
+    _rules: dict[str, frozenset[str]] | None = None,
 ) -> None:
     """Walk the AST collecting symbol dicts.
 
@@ -986,6 +718,9 @@ def _walk_for_symbols(
         if _truncated_flag is not None:
             _truncated_flag[0] = True
         return
+    language = _taxonomy.normalize_language(language)
+    if _rules is None:
+        _rules = _taxonomy.LANGUAGE_NODES.get(language, {})
     node_type = node.type
     name_node = node.child_by_field_name("name")
     # C and C++ ``function_definition`` nodes carry their identifier under
@@ -995,7 +730,7 @@ def _walk_for_symbols(
     # FTS, and symbol search. C++ shares the same declarator grammar shape, so
     # extending to ``"cpp"`` applies the same walk without any other change.
     func_name: str | None = None
-    if node_type in _FUNCTION_LIKE:
+    if node_type in _rules.get("function_like", ()):
         if name_node is not None:
             func_name = _node_text(name_node, source)
         elif node_type == "function_definition" and language in ("c", "cpp"):
@@ -1027,19 +762,19 @@ def _walk_for_symbols(
             doc = _python_docstring(node, source)
             if doc is not None:
                 sym["docstring"] = doc
-        parent_cls = _find_parent_class(node, source)
+        parent_cls = _find_parent_class(node, source, language)
         if parent_cls:
             sym["kind"] = "method"
             sym["class"] = parent_cls
         symbols.append(sym)
-    elif language == "scala" and node_type in _SCALA_CLASS_LIKE and not enclosed:
-        # #961: ``not enclosed`` keeps a method-local ``given``/``type`` out of
-        # the top-level symbol set (CLI/plugin already excludes it; the
-        # ast_cache path must match — otherwise CLI vs MCP diverge).
-        scala_sym = _scala_symbol_from_node(node, source)
+    elif node_type in _rules.get("deferred_class_like", ()):
+        if enclosed:
+            scala_sym = None
+        else:
+            scala_sym = _scala_symbol_from_node(node, source)
         if scala_sym is not None:
             symbols.append(scala_sym)
-    elif node_type in _CLASS_LIKE:
+    elif node_type in _rules.get("class_like", ()):
         effective_name_node = name_node
         if effective_name_node is None:
             for child in node.children:
@@ -1055,7 +790,9 @@ def _walk_for_symbols(
             else:
                 parents = _extract_parent_classes(node, source, language)
                 cls_sym: dict[str, Any] = {
-                    "kind": "enum" if node_type in _ENUM_LIKE else "class",
+                    "kind": "enum"
+                    if node_type in _rules.get("enum_like", ())
+                    else "class",
                     "name": name,
                     "line": node.start_point[0] + 1,
                     "end_line": node.end_point[0] + 1,
@@ -1068,7 +805,7 @@ def _walk_for_symbols(
                     if doc is not None:
                         cls_sym["docstring"] = doc
                 symbols.append(cls_sym)
-    elif node_type in _IMPORT_LIKE:
+    elif node_type in _rules.get("import_like", ()):
         symbols.append(
             {
                 "kind": "import",
@@ -1078,7 +815,7 @@ def _walk_for_symbols(
             }
         )
     elif (
-        node_type in _VAR_DECL_LIKE
+        node_type in _rules.get("var_decl_like", ())
         and name_node is not None
         # #626/#628: JS/TS/Java/C# function-local declarators are not
         # cross-file symbols — skip them. The ast_cache path only ever
@@ -1115,14 +852,20 @@ def _walk_for_symbols(
                     "language": language,
                 }
             )
-    elif node_type == "assignment" and language == "python" and not enclosed:
+    elif (
+        node_type in _rules.get("const_like", ())
+        and language == "python"
+        and not enclosed
+    ):
         const_sym = _python_module_constant(node, source)
         if const_sym is not None:
             symbols.append(const_sym)
-    elif node_type in _GO_CONST_LIKE and language == "go" and not enclosed:
+    elif (
+        node_type in _rules.get("const_like", ()) and language == "go" and not enclosed
+    ):
         symbols.extend(_go_package_constants(node, source))
     elif (
-        node_type in _RUST_CONST_LIKE
+        node_type in _rules.get("const_like", ())
         and language == "rust"
         and not enclosed
         and name_node is not None
@@ -1139,32 +882,35 @@ def _walk_for_symbols(
                 "language": "rust",
             }
         )
-    elif node_type == "const_declaration" and language == "php" and not enclosed:
+    elif (
+        node_type in _rules.get("const_like", ()) and language == "php" and not enclosed
+    ):
         symbols.extend(_php_constants(node, source))
-    # Language-gated: Rust needs "block" in its scope set (const-initializer
-    # block expressions, Codex P2 on #618), but Python's if/try bodies are
-    # also "block" nodes — a shared set would break the #612 guarantee that
-    # if/try-wrapped module assignments stay captured.
-    child_enclosed = enclosed or (
-        (language == "python" and node_type in _PY_SCOPE_BODY_NODES)
-        or (language == "go" and node_type in _GO_SCOPE_BODY_NODES)
-        or (language == "rust" and node_type in _RUST_SCOPE_BODY_NODES)
-        or (language == "php" and node_type in _PHP_SCOPE_BODY_NODES)
-        or (
-            language in ("javascript", "typescript")
-            and node_type in _JSTS_SCOPE_BODY_NODES
-        )
-        or (language == "java" and node_type in _JAVA_SCOPE_BODY_NODES)
-        or (language == "csharp" and node_type in _CSHARP_SCOPE_BODY_NODES)
-        or (language == "scala" and node_type in _SCALA_SCOPE_BODY_NODES)
-    )
+    elif _unhandled_nodes.ENABLED and node.is_named:
+        # Terminal fall-through. Every silent data-loss defect in this
+        # walker's history (extractor versions v3..v17) had the same shape:
+        # a node type nobody had listed in a set reached this point and was
+        # dropped without a trace. Recording it under an opt-in flag turns
+        # "found by dogfooding months later" into "visible in CI".
+        # Guarded by ENABLED first so the hot path pays only a bool check.
+        _unhandled_nodes.record_unhandled(language, node_type)
+    # 分类在整棵树的遍历中共享，作用域边界只由当前语言的注册表决定。
+    child_enclosed = enclosed or node_type in _rules.get("scope_body", ())
     for child in node.children:
         _walk_for_symbols(
-            child, source, symbols, language, depth + 1, child_enclosed, _truncated_flag
+            child,
+            source,
+            symbols,
+            language,
+            depth + 1,
+            child_enclosed,
+            _truncated_flag,
+            _rules,
         )
 
 
 def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, Any]:
+    language = _taxonomy.normalize_language(language)
     symbols: list[dict[str, Any]] = []
     if tree is None:
         return {"symbols": symbols, "node_count": 0, "truncated_depth": False}

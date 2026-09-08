@@ -17,6 +17,10 @@ TSA 使用 tree-sitter 索引你的代码库，向 AI 编程 agent 提供正确�
 
 > 从 v1.x 升级？见 [docs/MIGRATION.md](docs/MIGRATION.md)。
 
+### v1.29.5 热修复 — 2026-09-08
+
+通过统一节点分类修复符号提取（提取器版本 19），让 Python 重命名使用精确的 AST 位置，并恢复三组 MCP/CLI 入口：`edit.rename` / `--rename`、`health.unreachable` / `--unreachable-code`、`health.middleware` / `--detect-middleware`。重命名默认仅预览，支持唯一的 Python 模块级函数、类及直接的绝对 `from` 导入；遇到歧义或不支持的引用会拒绝执行。升级后请重新运行索引，更新旧的提取结果。[完整变更记录](CHANGELOG.md#1295---2026-09-08)。
+
 ---
 
 ## 立即上手
@@ -160,7 +164,7 @@ CodeGraph 没有 skill 系统。我们在 `.claude/skills/tsa-*/` 下提供 13 �
 
 每个 skill 都带 `allowed-tools` 工具子集 + 操作流程 + 决策面 schema，agent 不必在 8 个工具间反复挑选。
 
-### 321 个 CLI flag
+### 332 个 CLI flag
 
 CodeGraph CLI 的严格超集。亮点：
 

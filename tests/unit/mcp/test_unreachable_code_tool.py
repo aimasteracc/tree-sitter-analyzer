@@ -59,6 +59,14 @@ def tool() -> UnreachableCodeTool:
     return UnreachableCodeTool(project_root="/fake/root")
 
 
+def test_file_mode_missing_path_returns_failure(tool: UnreachableCodeTool) -> None:
+    """文件模式缺少路径时不能向 CLI 返回成功状态。"""
+    assert tool._execute_file_mode({}, "json") == {
+        "success": False,
+        "error": "file_path is required for file mode",
+    }
+
+
 # ---------------------------------------------------------------------------
 # get_tool_definition / get_tool_name / get_tool_schema
 # ---------------------------------------------------------------------------
@@ -298,3 +306,24 @@ class TestExecute:
         ):
             resp = await tool.execute({"mode": "project"})
         assert "error" in resp
+
+
+@pytest.mark.parametrize("output_format", ["json", "toon"])
+@pytest.mark.parametrize("parse_errors", [0, 1])
+def test_response_success_distinguishes_findings_from_parse_errors(
+    output_format, parse_errors
+):
+    """不可达发现不是执行失败，但解析错误必须保留失败状态。"""
+    from tree_sitter_analyzer.mcp.tools.unreachable_code_tool import UnreachableCodeTool
+    from tree_sitter_analyzer.unreachable_code import UnreachableCodeResult
+
+    result = UnreachableCodeResult(
+        file_path="sample.py", language="python", errors=parse_errors
+    )
+    tool = UnreachableCodeTool()
+    assert tool._build_file_response(result, output_format)["success"] is (
+        parse_errors == 0
+    )
+    assert tool._build_project_response([result], output_format)["success"] is (
+        parse_errors == 0
+    )
