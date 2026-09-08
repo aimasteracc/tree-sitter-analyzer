@@ -149,7 +149,8 @@ class NativeHarness:
             handle = ("directory", path)
             self.directories.append(handle)
             return handle
-        handle = os.open(path, os.O_RDONLY)
+        # #1405：模拟原生 reader_fd 的二进制模式，不能让 CRT 改写 CRLF。
+        handle = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
         self.files.append(handle)
         return handle
 
@@ -312,6 +313,7 @@ def test_windows_dispatch_reuses_native_api_and_reads_raw_bytes(
         ),
     )
     path = tmp_path / "a.py"
+    path.write_bytes(b"a = 1\r\n# \x1a\xe9\r\n")
     for _ in range(2):
         assert (
             scan._fingerprint(str(path), float("inf"))[0]
