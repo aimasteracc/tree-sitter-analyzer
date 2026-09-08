@@ -38,6 +38,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # 固定 PR 合并提交，并取第一父提交以覆盖整个 PR 的差异。
+          ref: ${{ github.sha }}
+          fetch-depth: 2
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -63,7 +67,7 @@ jobs:
           mkdir -p dogfood-artifacts
 
           set +e
-          uv run python -m tree_sitter_analyzer --change-impact --output-format json \
+          uv run python -m tree_sitter_analyzer --change-impact --change-impact-mode branch --output-format json \
             > dogfood-artifacts/change-impact.json \
             2> dogfood-artifacts/change-impact.txt
           EXIT_CODE=$?
