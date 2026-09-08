@@ -256,6 +256,45 @@ old-wheel scenarios. Local raw records are `/tmp/tsa-published-writer-fence-proo
 and `/tmp/tsa-published-writer-shadow-fence-proof.json`; scripts are temporary probes,
 not shipped test or benchmark assets.
 
+### Separate-file isolation probe and remaining design obligations
+
+A four-route follow-up keeps each real v1.29.5 process attached to the historical
+`index.db` while current develop builds `owned-index.db` through the existing
+`ASTCache(..., db_path=...)` option. Sources are changed before the new build; no
+source edits occur during the subsequent old-writer operation. No denial triggers
+or runtime-method replacements are installed.
+
+All four old operations (`index_file`, `invalidate`, incremental sync, forced rebuild)
+succeed, commit, and change the legacy database dump. All four new database dumps
+remain exactly unchanged. This establishes file separation for those SQLite routes
+on this machine, not old-writer rejection or a complete migration protocol. Raw
+observations are in `/tmp/tsa-published-writer-namespace-proof.json`.
+
+This direction must resolve the following before it can replace the in-place design:
+
+- Define one authoritative active generation for every reader and writer. Current
+  pinned snapshot code still opens `index.db` and its WAL/journal names; a custom
+  write path alone cannot move certification, CLI/MCP routing, or snapshot identity.
+- Specify creation, publication, recovery and retirement without renaming a live
+  SQLite database underneath its WAL users. Prove native Windows/Linux/macOS behavior,
+  pinned hierarchy identity, hard-link/alias rejection, custom paths, and bounded
+  recovery after interruption at every publication boundary.
+- Scope all mutable mirrors and derived storage to the same generation. The existing
+  custom-database constructor disables the project mirror, so this experiment does
+  not qualify production mirror migration or isolation.
+- Preserve revision admission and complete-operation ownership among new-version
+  writers. Separate legacy files do not reject a stale candidate targeting the new
+  database, nor fence a delayed callback in the same active generation.
+- Explicitly decide legacy-file handling. Allowing an old process to modify a retired
+  file differs from rejecting its writes in place. Do not silently replace the
+  current acceptance criterion with that weaker statement; a revised contract must
+  prove retired writes cannot become active, influence readers, or affect shared
+  state before this alternative is accepted.
+
+There is no selected separate-file schema/path protocol yet. The positive observation
+justifies developing that alternative; it does not accept it, remove existing gates,
+or authorize implementation or release.
+
 ### Crash recovery and publication
 
 A killed process cannot update its phase: it leaves `phase=writing` and its operation
