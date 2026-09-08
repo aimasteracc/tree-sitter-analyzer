@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tree_sitter_analyzer.mcp.subscription_registry import (
+from tree_sitter_analyzer.registry.subscription_registry import (
     SubscriptionRegistry,
     _hashable,
 )

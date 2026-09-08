@@ -9,7 +9,7 @@ from typing import Any
 # (refactor/guard). We cannot claim read-only across a mixed action set.
 _EDIT_ANNOTATIONS: dict[str, Any] = {
     "readOnlyHint": False,
-    "destructiveHint": False,  # suggests / analyses; never writes files
+    "destructiveHint": True,  # rename 的 apply 模式会写入源文件
     "idempotentHint": False,  # analysis results can change as index updates
     "openWorldHint": False,
 }
@@ -35,6 +35,14 @@ _EDIT_DESCRIPTION = (
     "- action=refactor — refactoring-opportunity analysis for a source file: extract "
     "candidates, complexity hotspots, skeleton. Params: file_path, language, "
     "max_suggestions, include_extractions, include_skeleton, output_format.\n"
+    "- action=rename — rename a unique Python module-level function or class and "
+    "its direct absolute from-import references, including aliases. Uses fresh "
+    "AST identifier locations; preserves literals, comments, encoding and newlines. "
+    "Ambiguous bindings, affected unsupported languages and dynamic references "
+    "are rejected before writing. Params: symbol* (unqualified name), new_name*, "
+    "mode (preview|apply, default: preview), output_format. "
+    "mode=preview lists exact changes without writing; mode=apply WRITES files. "
+    "This differs from action=refactor, which only suggests changes.\n"
     "- action=constraints — scan the project for constraint/rule violations. "
     "For RFC-0022 frozen read-only evaluation pass persist=false, "
     "diff_snapshot_id, and the impact-produced scope_paths. "
@@ -56,9 +64,12 @@ _EDIT_DESCRIPTION = (
     "Params: see inner schema; frozen consumption also accepts access_mode.\n"
     "- action=release_snapshot — idempotently release a process-local frozen diff. "
     "Params: diff_snapshot_id + route_lease_id.\n"
-    "- action=plan_rename — the MINIMAL edit set for renaming a symbol project-wide "
-    "(RFC-0027 §L8): every definition and reference site an AST-aware rename would "
-    "touch, plus files_affected. PREVIEW ONLY — it never writes, and passing "
+    "- action=plan_rename — preview an AST-aware rename of a unique Python "
+    "module-level function or class and its direct absolute from-import references, "
+    "including aliases (RFC-0027 §L8). Uses fresh identifier locations and rejects "
+    "ambiguous bindings, affected unsupported languages and dynamic references. "
+    "Returns exact edit sites and files_affected. PREVIEW ONLY — it never writes, "
+    "and passing "
     "mode/dry_run/apply/write/force is REJECTED with PLAN_RENAME_IS_PREVIEW_ONLY "
     "rather than honoured. Params: symbol, new_name, output_format.\n"
     "- action=mutation_probe — on-demand query: does this test constrain this code? "
@@ -70,5 +81,6 @@ _EDIT_DESCRIPTION = (
     "NOTE: ``safe``/``impact``/``classify``/``constraints``/``pr``/``ast_diff``/"
     "``plan_rename``/``mutation_probe`` are "
     "read-only in practice; ``refactor``/``guard`` suggest changes but do not write "
-    "files. readOnlyHint is False for the whole facade (mixed action set)."
+    "files; rename with mode=apply writes files. readOnlyHint is False and "
+    "destructiveHint is True for the whole facade (mixed action set)."
 )

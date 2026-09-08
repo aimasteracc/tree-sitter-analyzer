@@ -39,12 +39,10 @@ def test_no_disposition_is_missing_a_reason() -> None:
     assert [n for n, d in TOOL_DISPOSITIONS.items() if not d.reason.strip()] == []
 
 
-def test_deprecations_are_exactly_the_three_unwired_tools() -> None:
+def test_deprecations_are_exactly_the_remaining_unwired_tool() -> None:
     deprecated = {n for n, d in TOOL_DISPOSITIONS.items() if d.kind == "deprecate"}
     assert deprecated == {
-        "MiddlewareDetectorTool",
         "UniversalAnalyzeTool",
-        "UnreachableCodeTool",
     }
 
 
@@ -59,9 +57,7 @@ def test_no_deprecation_has_expired() -> None:
 
 def test_expiry_fires_once_the_removal_version_ships() -> None:
     assert expired_dispositions("1.33.0") == [
-        "MiddlewareDetectorTool",
         "UniversalAnalyzeTool",
-        "UnreachableCodeTool",
     ]
 
 

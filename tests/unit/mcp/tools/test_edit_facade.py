@@ -109,6 +109,7 @@ def _make_fake_facade(**kwargs: Any) -> tuple[FacadeTool, dict[str, _FakeInner]]
         "guard": _FakeInner("guard"),
         "impact": _FakeInner("impact"),
         "refactor": _FakeInner("refactor"),
+        "rename": _FakeInner("rename"),
         "constraints": _FakeInner("constraints"),
         "pr": _FakeInner("pr"),
         "classify": _FakeInner("classify"),
@@ -173,6 +174,7 @@ def test_edit_facade_all_actions_present() -> None:
         "guard",
         "impact",
         "refactor",
+        "rename",
         "constraints",
         "pr",
         "classify",
@@ -200,6 +202,7 @@ def test_edit_facade_all_actions_present() -> None:
         "guard",
         "impact",
         "refactor",
+        "rename",
         "constraints",
         "pr",
         "classify",
@@ -297,7 +300,7 @@ def test_release_snapshot_is_the_only_bespoke_route() -> None:
 
     facade = build_edit_facade(project_root=None)
     assert set(facade.bespoke_map) == {"release_snapshot"}
-    assert len(facade.action_map) == 10
+    assert len(facade.action_map) == 11
 
 
 # ---------------------------------------------------------------------------
@@ -354,6 +357,7 @@ def test_missing_action_returns_error_envelope() -> None:
         "guard",
         "impact",
         "refactor",
+        "rename",
         "constraints",
         "pr",
         "classify",

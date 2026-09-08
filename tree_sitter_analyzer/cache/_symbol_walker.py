@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import node_taxonomy as _taxonomy
+from . import unhandled_nodes as _unhandled_nodes
 from ._symbol_declarations import (
     _go_package_constants,
     _php_constants,
@@ -18,18 +20,7 @@ from ._symbol_metrics import (
     _count_decision_points,
     _count_nodes,
 )
-from ._symbol_rules import (
-    _CLASS_LIKE,
-    _ENUM_LIKE,
-    _FUNCTION_LIKE,
-    _GO_CONST_LIKE,
-    _IMPORT_LIKE,
-    _RUST_CONST_LIKE,
-    _SCALA_CLASS_LIKE,
-    _SCOPE_BODY_NODES,
-    _VAR_DECL_LIKE,
-    _WALK_MAX_DEPTH,
-)
+from ._symbol_rules import _WALK_MAX_DEPTH
 from ._symbol_syntax import (
     _bash_subscript_base,
     _c_function_def_name,
@@ -623,6 +614,7 @@ class _SymbolWalker:
     symbols: list[dict[str, Any]]
     language: str
     truncated_flag: list[bool] | None
+    rules: dict[str, frozenset[str]] = field(init=False, repr=False)
     python_dynamic_loaders: set[str] = field(init=False, repr=False)
     jsts_module_loaders: set[str] = field(init=False, repr=False)
     jsts_shadowed_globals: set[str] = field(init=False, repr=False)
@@ -630,6 +622,8 @@ class _SymbolWalker:
     java_static_for_name: bool = field(init=False, repr=False, default=False)
 
     def __post_init__(self) -> None:
+        self.language = _taxonomy.normalize_language(self.language)
+        self.rules = _taxonomy.LANGUAGE_NODES.get(self.language, {})
         self.python_dynamic_loaders = set()
         self.jsts_module_loaders = {"require", "module.require", "import"}
         self.jsts_shadowed_globals = set()
@@ -654,9 +648,7 @@ class _SymbolWalker:
                 self.truncated_flag[0] = True
             return
         self._collect_node(node, depth, enclosed)
-        child_enclosed = enclosed or node.type in _SCOPE_BODY_NODES.get(
-            self.language, frozenset()
-        )
+        child_enclosed = enclosed or node.type in self.rules.get("scope_body", ())
         for child in node.children:
             self.walk(child, depth + 1, child_enclosed)
 
@@ -719,10 +711,10 @@ class _SymbolWalker:
             return
         if self._append_scala(node, enclosed):
             return
-        if node.type in _CLASS_LIKE:
+        if node.type in self.rules.get("class_like", ()):
             self._append_class(node, name_node)
             return
-        if node.type in _IMPORT_LIKE:
+        if node.type in self.rules.get("import_like", ()):
             self._append_import(node)
             return
         self._append_python_loader_assignment(node)
@@ -741,7 +733,10 @@ class _SymbolWalker:
         if self._is_variable(node, name_node, enclosed):
             self._append_variable(node, name_node, depth)
             return
-        self._append_constant(node, name_node, enclosed)
+        if self._append_constant(node, name_node, enclosed):
+            return
+        if _unhandled_nodes.ENABLED and getattr(node, "is_named", False):
+            _unhandled_nodes.record_unhandled(self.language, node.type)
 
     def _mark_jsts_loader_reference(self, node: Any) -> None:
         """Fail closed unless a loader-visible name sits in a projected position.
@@ -831,11 +826,11 @@ class _SymbolWalker:
         )
 
     def _function_name(self, node: Any, name_node: Any) -> str | None:
-        if node.type not in _FUNCTION_LIKE:
+        if node.type not in self.rules.get("function_like", ()):
             return None
         if name_node is not None:
             return _node_text(name_node, self.source)
-        if node.type == "function_definition" and self.language == "c":
+        if node.type == "function_definition" and self.language in ("c", "cpp"):
             return _c_function_def_name(node, self.source)
         return None
 
@@ -856,7 +851,7 @@ class _SymbolWalker:
         if return_type is not None:
             symbol["return_type"] = _node_text(return_type, self.source).lstrip(": ")
         self._add_python_docstring(symbol, node)
-        parent_class = _find_parent_class(node, self.source)
+        parent_class = _find_parent_class(node, self.source, self.language)
         if parent_class:
             symbol["kind"] = "method"
             symbol["class"] = parent_class
@@ -870,8 +865,10 @@ class _SymbolWalker:
             symbol["docstring"] = docstring
 
     def _append_scala(self, node: Any, enclosed: bool) -> bool:
-        if self.language != "scala" or node.type not in _SCALA_CLASS_LIKE or enclosed:
+        if node.type not in self.rules.get("deferred_class_like", ()):
             return False
+        if enclosed:
+            return True
         symbol = _scala_symbol_from_node(node, self.source)
         if symbol is not None:
             self.symbols.append(symbol)
@@ -885,7 +882,7 @@ class _SymbolWalker:
         if not name:
             return
         symbol: dict[str, Any] = {
-            "kind": "enum" if node.type in _ENUM_LIKE else "class",
+            "kind": "enum" if node.type in self.rules.get("enum_like", ()) else "class",
             "name": name,
             "line": node.start_point[0] + 1,
             "end_line": node.end_point[0] + 1,
@@ -1047,7 +1044,7 @@ class _SymbolWalker:
         return True
 
     def _is_variable(self, node: Any, name_node: Any, enclosed: bool) -> bool:
-        if node.type not in _VAR_DECL_LIKE or name_node is None:
+        if node.type not in self.rules.get("var_decl_like", ()) or name_node is None:
             return False
         if self.language in ("javascript", "typescript", "java", "csharp"):
             if enclosed:
@@ -1072,15 +1069,17 @@ class _SymbolWalker:
                 }
             )
 
-    def _append_constant(self, node: Any, name_node: Any, enclosed: bool) -> None:
-        if node.type == "assignment" and self.language == "python" and not enclosed:
+    def _append_constant(self, node: Any, name_node: Any, enclosed: bool) -> bool:
+        if node.type not in self.rules.get("const_like", ()) or enclosed:
+            return False
+        if self.language == "python":
             symbol = _python_module_constant(node, self.source)
             if symbol is not None:
                 self.symbols.append(symbol)
-            return
-        if node.type in _GO_CONST_LIKE and self.language == "go" and not enclosed:
+            return True
+        if self.language == "go":
             self.symbols.extend(_go_package_constants(node, self.source))
-            return
+            return True
         if self._is_rust_constant(node, name_node, enclosed):
             self.symbols.append(
                 {
@@ -1091,13 +1090,16 @@ class _SymbolWalker:
                     "language": "rust",
                 }
             )
-            return
-        if node.type == "const_declaration" and self.language == "php" and not enclosed:
+            return True
+        if self.language == "php":
             self.symbols.extend(_php_constants(node, self.source))
+
+            return True
+        return False
 
     def _is_rust_constant(self, node: Any, name_node: Any, enclosed: bool) -> bool:
         return (
-            node.type in _RUST_CONST_LIKE
+            node.type in self.rules.get("const_like", ())
             and self.language == "rust"
             and not enclosed
             and name_node is not None
@@ -1121,6 +1123,7 @@ def _walk_for_symbols(
 
 
 def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, Any]:
+    language = _taxonomy.normalize_language(language)
     symbols: list[dict[str, Any]] = []
     if tree is None:
         return {
