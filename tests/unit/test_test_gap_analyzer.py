@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
+from pathlib import Path
 
 import pytest
 
 from tree_sitter_analyzer.test_gap_analyzer import (
     CoverageGapResult,
     ProductionSymbol,
+    _collect_files,
     _extract_test_targets,
     _is_test_file,
     _make_reason,
@@ -141,6 +143,73 @@ class TestMakeReason:
 
 
 class TestAnalyzeCoverageGaps:
+    @pytest.mark.parametrize("parent", ["workspace", "pytest", "test", "tests"])
+    @pytest.mark.parametrize("root_form", ["absolute", "relative", "dot"])
+    def test_collection_ignores_project_ancestors(
+        self, tmp_path, monkeypatch, parent, root_form
+    ):
+        # #1400：项目外的 pytest/test/tests 目录不能改变生产分类或文件预算。
+        project = tmp_path / parent / "project"
+        expected = {
+            "src/service.py": False,
+            "src/test/helper.py": True,
+            "test/helper.py": True,
+            "tests/helper.py": True,
+            "test_support/service.py": False,
+        }
+        for relative in expected:
+            path = project / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("def work():\n    pass\n", encoding="utf-8")
+        root = str(project)
+        if root_form == "relative":
+            monkeypatch.chdir(project.parent)
+            root = "project"
+        elif root_form == "dot":
+            monkeypatch.chdir(project)
+            root = "."
+
+        files = _collect_files(root, max_files=2)
+
+        assert {
+            Path(path).resolve().relative_to(project.resolve()).as_posix(): is_test
+            for path, language, is_test in files
+        } == expected
+
+    @pytest.mark.parametrize("parent", ["workspace", "pytest"])
+    @pytest.mark.parametrize("target_file", [None, "service.py"])
+    def test_gap_results_ignore_project_ancestors(self, tmp_path, parent, target_file):
+        # #1400：真实解析必须保留未覆盖符号、命名覆盖及目标文件作用域。
+        project = tmp_path / parent / "project"
+        src = project / "src"
+        src.mkdir(parents=True)
+        (src / "service.py").write_text(
+            "def alpha():\n    return 1\n\ndef beta():\n    return 2\n",
+            encoding="utf-8",
+        )
+        (src / "other.py").write_text("def gamma():\n    return 3\n", encoding="utf-8")
+        tests = project / "tests"
+        tests.mkdir()
+        (tests / "test_service.py").write_text(
+            "def test_alpha():\n    assert alpha() == 1\n", encoding="utf-8"
+        )
+
+        result = analyze_coverage_gaps(
+            str(project), target_file=target_file, include_covered=True
+        )
+
+        assert result.total_production_symbols == (2 if target_file else 3)
+        assert result.total_test_symbols == 1
+        assert result.covered_count == 1
+        assert result.gap_count == (1 if target_file else 2)
+        assert result.coverage_pct == (50.0 if target_file else 33.3)
+        assert {gap.symbol.name for gap in result.gaps} == (
+            {"beta"} if target_file else {"beta", "gamma"}
+        )
+        assert [symbol.name for symbol in result.covered] == ["alpha"]
+        assert result.summary["production_files"] == (1 if target_file else 2)
+        assert result.summary["test_files"] == 1
+
     @pytest.fixture
     def project_with_gaps(self, tmp_path):
         src = tmp_path / "src"

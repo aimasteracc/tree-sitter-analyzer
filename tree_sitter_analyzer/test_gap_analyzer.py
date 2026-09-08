@@ -314,9 +314,10 @@ def _collect_files(
             lang = _language_from_ext(full) or ""
             if language_filter and lang != language_filter:
                 continue
-            # Files inside a non-production directory are always test/non-prod,
-            # regardless of their individual filename.
-            is_test = in_non_prod or _is_test_file(full)
+            # 分类仅看项目内路径，避免 pytest 等祖先目录污染整个项目。
+            # 保留前导分隔符，防止 test_support 等生产包被 ^test_ 误判。
+            relative = os.path.relpath(full, project_root).replace(os.sep, "/")
+            is_test = in_non_prod or _is_test_file(f"/{relative}")
             if not is_test:
                 # #713: a scoped request only wants production symbols from the
                 # target file — skip every other production file BEFORE the cap
