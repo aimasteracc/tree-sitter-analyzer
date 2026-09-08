@@ -86,10 +86,10 @@ class IndexFileFingerprint:
 
 
 def decode_index_source(data: bytes) -> str:
-    """Match text-mode UTF-8 replacement and universal-newline semantics."""
-    return (
-        data.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
-    )
+    """对捕获的同一份字节检测编码并统一换行，不复用按路径缓存的编码。"""
+    from .encoding_utils import EncodingManager
+
+    return EncodingManager.normalize_line_endings(EncodingManager.safe_decode(data))
 
 
 def index_source_content_hash(source: str) -> str:

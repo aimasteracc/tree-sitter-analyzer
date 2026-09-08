@@ -204,6 +204,7 @@ def capture_current_source_snapshot(
     source_scope: SourceScopeDescriptor | None = None,
     *,
     deadline: float | None = None,
+    raw_content: bool = False,
 ) -> CurrentSourceSnapshot:
     """Hash a stable, fully bounded view of the certified supported scope."""
     scope = source_scope or make_source_scope_descriptor()
@@ -217,7 +218,13 @@ def capture_current_source_snapshot(
     root = os.path.abspath(project_root)
     try:
         root_before = os.stat(root, follow_symlinks=False)
-        first, unsafe = _inventory(root, deadline, scope, with_content=True)
+        first, unsafe = _inventory(
+            root,
+            deadline,
+            scope,
+            with_content=True,
+            **({"raw_content": True} if raw_content else {}),
+        )
         second, unsafe_second = _inventory(root, deadline, scope, with_content=False)
         revalidated = _revalidate_source_rows(root, second, deadline)
         root_current = _reopened_root_matches(root, root_before)
@@ -252,7 +259,9 @@ def capture_current_source_snapshot(
         return CurrentSourceSnapshot(
             frozenset(), None, None, "unknown", "SOURCE_SCAN_DEADLINE"
         )
-    generation = "idxsrc-v3:" + fingerprint.removeprefix("sha256:")
+    generation = (
+        "idxraw-v1:" if raw_content else "idxsrc-v3:"
+    ) + fingerprint.removeprefix("sha256:")
     if (
         unsafe
         or unsafe_second
@@ -419,6 +428,7 @@ def _inventory(
     scope: SourceScopeDescriptor | None = None,
     *,
     with_content: bool,
+    raw_content: bool = False,
 ) -> tuple[frozenset[tuple[str, str, str]], bool]:
     """Walk supported sources through pinned directory descriptors on POSIX."""
     scope = scope or make_source_scope_descriptor()
@@ -562,6 +572,7 @@ def _inventory(
                             _SOURCE_BYTE_BUDGET,
                             _metadata_marker,
                             _same_file_metadata,
+                            **({"raw_content": True} if raw_content else {}),
                         )
                         if not clean:
                             unsafe = True

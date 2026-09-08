@@ -2544,3 +2544,15 @@ def test_failed_file_certification_reset_denial_rolls_back(tmp_path, truncated):
         assert cache.call_graph_built() is False
     finally:
         cache.close()
+
+
+def test_encoding_rehash_rejects_source_over_index_byte_limit(tmp_path, monkeypatch):
+    """#1405：编码检测不能让增量重哈希越过共享单文件上限。"""
+    import tree_sitter_analyzer.indexing_snapshot as snapshot
+    from tree_sitter_analyzer.incremental_sync_support import file_content_hash
+
+    path = tmp_path / "app.py"
+    path.write_bytes(b"xx")
+    monkeypatch.setattr(snapshot, "_INDEX_SOURCE_BYTE_LIMIT", 1)
+    with pytest.raises(OSError, match="source exceeds indexing byte limit"):
+        file_content_hash(str(path))

@@ -51,12 +51,14 @@ class SyncResult:
 
 
 def file_content_hash(path: str) -> str:
-    """与索引写入端一致：UTF-8 替换解码和通用换行归一化后计算摘要。"""
-    digest = hashlib.sha256()
-    with open(path, encoding="utf-8", errors="replace") as source:
-        for chunk in iter(lambda: source.read(65536), ""):
-            digest.update(chunk.encode("utf-8", errors="replace"))
-    return digest.hexdigest()
+    """使用与索引写入端相同的编码检测及换行归一化。"""
+    from .indexing_snapshot import _INDEX_SOURCE_BYTE_LIMIT, decode_index_source
+
+    with open(path, "rb") as source:
+        data = source.read(_INDEX_SOURCE_BYTE_LIMIT + 1)
+    if len(data) > _INDEX_SOURCE_BYTE_LIMIT:
+        raise OSError("source exceeds indexing byte limit")
+    return hashlib.sha256(decode_index_source(data).encode("utf-8")).hexdigest()
 
 
 def file_changed(disk_info: dict[str, Any], indexed_info: dict[str, Any]) -> bool:

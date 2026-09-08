@@ -222,7 +222,7 @@ class FileWatcherDaemon:
             if os.name == "posix" and os.path.exists("/dev/fd")
             else capture_portable_source_snapshot
         )
-        source = capture(root, scope, deadline=deadline)
+        source = capture(root, scope, deadline=deadline, raw_content=True)
         if source.state != "exact":
             with self._stats_lock:
                 self._stats.errors += 1

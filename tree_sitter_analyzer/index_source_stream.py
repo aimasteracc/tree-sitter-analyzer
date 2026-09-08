@@ -28,8 +28,10 @@ def hash_source_at(
     byte_budget: int,
     metadata_marker: Any,
     same_file_metadata: Any,
+    *,
+    raw_content: bool = False,
 ) -> tuple[str, str, bool]:
-    """Hash the writer's replacement-decoded, newline-normalized source stream."""
+    """有界读取同一句柄；监听使用原始字节，索引认证使用统一解码源码。"""
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
         fd = (
@@ -40,29 +42,35 @@ def hash_source_at(
     except OSError:
         return metadata_marker(before), "<unsafe>", False
     digest = hashlib.sha256()
-    decoder = codecs.getincrementaldecoder("utf-8")("replace")
+    decoder = codecs.getincrementaldecoder("utf-8")("strict")
     pending_cr = False
     try:
         opened = os.fstat(fd)
         if not stat.S_ISREG(opened.st_mode) or not opened_entry_matches(before, opened):
             return metadata_marker(opened), "<unsafe>", False
-        while True:
-            chunk = os.read(fd, 65536)
-            if not chunk:
-                break
-            counters["input"] += len(chunk)
-            if counters["input"] > byte_budget:
-                raise OverflowError
-            if time.monotonic() > deadline:
-                raise TimeoutError
-            decoded = decoder.decode(chunk, final=False)
-            pending_cr = _hash_normalized_chunk(
+        try:
+            while True:
+                chunk = os.read(fd, 65536)
+                if not chunk:
+                    break
+                counters["input"] += len(chunk)
+                if counters["input"] > byte_budget:
+                    raise OverflowError
+                if time.monotonic() > deadline:
+                    raise TimeoutError
+                if raw_content:
+                    digest.update(chunk)
+                    continue
+                decoded = decoder.decode(chunk, final=False)
+                pending_cr = _hash_normalized_chunk(
+                    digest, decoded, pending_cr, deadline, counters, byte_budget
+                )
+            decoded = "" if raw_content else decoder.decode(b"", final=True)
+            _hash_normalized_chunk(
                 digest, decoded, pending_cr, deadline, counters, byte_budget
             )
-        decoded = decoder.decode(b"", final=True)
-        _hash_normalized_chunk(
-            digest, decoded, pending_cr, deadline, counters, byte_budget
-        )
+        except UnicodeDecodeError:
+            digest = _hash_detected_source(fd, deadline, counters, byte_budget)
         after = os.fstat(fd)
     finally:
         os.close(fd)
@@ -81,6 +89,37 @@ def hash_source_at(
         digest.hexdigest() if clean else "<unsafe>",
         clean,
     )
+
+
+def _hash_detected_source(
+    fd: int, deadline: float, counters: dict[str, int], byte_budget: int
+) -> Any:
+    """非 UTF-8 时只重读已绑定的普通文件句柄，检测输入有独立的单文件上限。"""
+    from .indexing_snapshot import _INDEX_SOURCE_BYTE_LIMIT, decode_index_source
+
+    os.lseek(fd, 0, os.SEEK_SET)
+    pieces: list[bytes] = []
+    total = 0
+    while True:
+        if time.monotonic() > deadline:
+            raise TimeoutError
+        chunk = os.read(fd, 65536)
+        if not chunk:
+            break
+        total += len(chunk)
+        counters["input"] += len(chunk)
+        if total > _INDEX_SOURCE_BYTE_LIMIT or counters["input"] > byte_budget:
+            raise OverflowError
+        pieces.append(chunk)
+    source = decode_index_source(b"".join(pieces))
+    digest = hashlib.sha256()
+    for start in range(0, len(source), 65536):
+        _hash_text(
+            digest, source[start : start + 65536], deadline, counters, byte_budget
+        )
+    if time.monotonic() > deadline:
+        raise TimeoutError
+    return digest
 
 
 def _hash_normalized_chunk(

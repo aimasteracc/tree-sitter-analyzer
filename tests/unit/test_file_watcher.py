@@ -193,6 +193,18 @@ class TestPollingDetection:
         assert watcher._detect_changes() == [str(path)]
         assert watcher._detect_changes() == []
 
+    def test_detects_non_utf8_byte_change_with_preserved_metadata(
+        self, watcher, project
+    ):
+        """#1405：不同非法 UTF-8 字节不能因替换解码后的摘要相同而被遗漏。"""
+        path = project / "src" / "main.py"
+        path.write_bytes(b"# coding: cp1252\ndef caf\xe9(): pass\n")
+        watcher._take_snapshot()
+        before = path.stat()
+        path.write_bytes(b"# coding: cp1252\ndef caf\xf6(): pass\n")
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        assert watcher._detect_changes() == [str(path)]
+
     def test_detects_new_file(self, watcher, project, cache):
         # The watcher snapshots the tree at start(), then detects later changes.
         # So: start FIRST, let the initial snapshot settle, THEN create the file,

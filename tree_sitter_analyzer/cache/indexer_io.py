@@ -19,6 +19,7 @@ from ..indexing_snapshot import (
     IndexCandidateSnapshot,
     IndexFileFingerprint,
     changed_since_snapshot,
+    decode_index_source,
     validate_index_candidate_snapshot,
 )
 from .indexer import (
@@ -48,8 +49,8 @@ def check_cache_or_read(
     ).fetchone()
     if source_code is None:
         try:
-            with open(abs_path, encoding="utf-8", errors="replace") as f:
-                source_code = f.read()
+            with open(abs_path, "rb") as f:
+                source_code = decode_index_source(f.read())
         except OSError as e:
             return {"file": rel_path, "status": "error", "reason": str(e)}
     content_hash = content_hash_fn(source_code)

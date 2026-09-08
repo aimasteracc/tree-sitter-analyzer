@@ -425,3 +425,32 @@ def test_index_file_preserved_metadata_uses_current_source(tmp_path):
         assert cache.index_file(str(path))["status"] == "cached"
     finally:
         cache.close()
+
+
+def test_index_file_preserves_cp1252_identifiers(tmp_path):
+    """#1405：编码检测后的源码同时用于摘要和语法树，不能丢失重音字符。"""
+    path = tmp_path / "app.py"
+    path.write_bytes("# coding: cp1252\ndef café(): return 1\n".encode("cp1252"))
+    cache = ASTCache(str(tmp_path))
+    try:
+        assert cache.index_file(str(path))["status"] == "indexed"
+        assert [
+            r[0] for r in cache.get_conn().execute("SELECT name FROM ast_symbol_rows")
+        ] == ["café"]
+        assert cache.index_file(str(path))["status"] == "cached"
+    finally:
+        cache.close()
+
+
+def test_portable_worker_preserves_cp1252_identifiers(tmp_path, monkeypatch):
+    """#1405：便携工作进程必须保留与串行入口一致的编码语义。"""
+    import tree_sitter_analyzer.cache.extraction as owner
+
+    path = tmp_path / "app.py"
+    path.write_bytes("# coding: cp1252\ndef café(): return 1\n".encode("cp1252"))
+    monkeypatch.setattr(
+        owner, "os", SimpleNamespace(name="nt", path=os.path, stat=os.stat)
+    )
+    result = owner._worker_index_file((str(path), str(tmp_path), "python"))
+    assert result["status"] == "ok"
+    assert [row[0] for row in result["symbol_rows"]] == ["café"]
