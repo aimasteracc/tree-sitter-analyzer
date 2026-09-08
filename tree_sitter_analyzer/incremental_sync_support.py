@@ -51,29 +51,29 @@ class SyncResult:
 
 
 def file_content_hash(path: str) -> str:
-    """Return the SHA-256 digest of one source file."""
-    digest = hashlib.sha256()
+    """使用与索引写入端相同的编码检测及换行归一化。"""
+    from .indexing_snapshot import _INDEX_SOURCE_BYTE_LIMIT, decode_index_source
+
     with open(path, "rb") as source:
-        for chunk in iter(lambda: source.read(65536), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+        data = source.read(_INDEX_SOURCE_BYTE_LIMIT + 1)
+    if len(data) > _INDEX_SOURCE_BYTE_LIMIT:
+        raise OSError("source exceeds indexing byte limit")
+    return hashlib.sha256(decode_index_source(data).encode("utf-8")).hexdigest()
 
 
 def file_changed(disk_info: dict[str, Any], indexed_info: dict[str, Any]) -> bool:
-    """Compare live file metadata and content with a cached row."""
+    """比较冻结摘要；缺少摘要时必须重读，等长等 mtime 不能证明内容相同。"""
     if disk_info["file_size"] != indexed_info["file_size"]:
         return True
     candidate_hash = disk_info.get("content_hash")
     if candidate_hash:
         return str(candidate_hash) != str(indexed_info["content_hash"])
-    if disk_info["mtime_ns"] != indexed_info["mtime_ns"]:
-        try:
-            return file_content_hash(
-                disk_info.get("source_path", disk_info["abs_path"])
-            ) != str(indexed_info["content_hash"])
-        except OSError:
-            return True
-    return False
+    try:
+        return file_content_hash(
+            disk_info.get("source_path", disk_info["abs_path"])
+        ) != str(indexed_info["content_hash"])
+    except OSError:
+        return True
 
 
 def get_changes(
