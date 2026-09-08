@@ -218,3 +218,46 @@ async def test_watch_stop_does_not_claim_success_while_sync_is_alive(tool, monke
     finally:
         release.set()
         stop(timeout=3)
+
+
+@pytest.mark.asyncio
+async def test_project_rebind_retains_unfinished_watcher(tool, tmp_path, monkeypatch):
+    # #1405：项目切换钩子不能遗失尚未退出的后台任务或提前建立新项目缓存。
+    import threading
+
+    from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
+
+    old_cache = tool.get_cache()
+    watcher = FileWatcherDaemon(old_cache, debounce=0)
+    tool._watcher = watcher
+    entered, release = threading.Event(), threading.Event()
+    stop = watcher.stop
+
+    def sync():
+        entered.set()
+        assert release.wait(3)
+        return {}
+
+    monkeypatch.setattr(watcher, "_perform_sync", sync)
+    monkeypatch.setattr(watcher, "stop", lambda: stop(timeout=0))
+    target = tmp_path / "other"
+    target.mkdir()
+    try:
+        watcher._request_sync()
+        assert entered.wait(3)
+        tool.set_project_path(str(target))
+        assert tool._watcher is watcher
+        for mode in ("stats", "watch_start"):
+            with pytest.raises(TimeoutError, match="previous project"):
+                await tool.execute({"mode": mode})
+        assert tool._cache is None
+        release.set()
+        stop(timeout=3)
+        result = await tool.execute({"mode": "stats"})
+        assert result["success"] is True
+        assert tool.get_cache().project_root == str(target.resolve())
+        assert tool._watcher is None
+    finally:
+        release.set()
+        stop(timeout=3)
+        old_cache.close()
