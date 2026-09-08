@@ -1064,11 +1064,21 @@ def test_find_test_files_does_not_restore_sibling_package_direct_match():
     )
 
 
-def test_package_scope_ignores_hidden_workspace_marker():
-    """A hidden placeholder after packages does not declare a workspace."""
-    assert change_impact_tool.test_paths_have_compatible_package_scope(
-        "packages/.hidden/tests/core/test_config.py",
-        "packages/a/src/core/config.py",
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("src/core/config.py", True),
+        ("packages/a/src/core/config.py", False),
+        ("packages/a/src/core/config.PY", False),
+    ],
+)
+def test_package_scope_ignores_hidden_workspace_marker(source, expected):
+    """#1400：隐藏占位不声明包身份，也不能靠深层 core 获得明确包的准入。"""
+    assert (
+        change_impact_tool.test_paths_have_compatible_package_scope(
+            "packages/.hidden/tests/core/test_config.py", source
+        )
+        is expected
     )
 
 

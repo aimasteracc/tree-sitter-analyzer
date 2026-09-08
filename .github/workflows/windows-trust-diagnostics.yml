@@ -55,7 +55,7 @@ jobs:
             'tests/contracts/test_collect_no1_006b_baseline.py::test_fresh_clone_can_resolve_and_checkout_collector_commit',
             'tests/contracts/test_collect_no1_006b_baseline.py::test_secrets_baseline_union_contract_works_in_fresh_clone_without_remote',
             'tests/unit/mcp/tools/test_constraint_check_portable_snapshot.py::test_portable_source_certifier_hashes_stable_supported_scope',
-            'tests/unit/test_ast_cache.py::test_force_rebuild_without_secure_materialization_keeps_legacy_data_plane'
+            'tests/unit/test_ast_cache_force_rebuild.py::test_force_rebuild_without_secure_materialization_keeps_legacy_data_plane'
           )
           $failures = 0
           for ($iteration = 1; $iteration -le 20; $iteration++) {

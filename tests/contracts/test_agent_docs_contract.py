@@ -23,6 +23,38 @@ from tree_sitter_analyzer.mcp.server import _create_tool_registry
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_t1_pure_migration_exception_is_narrow_and_user_authorized() -> None:
+    """#1376：文档只允许受控纯迁移，不能放开任意插件或覆盖率碎片测试。"""
+    text = (PROJECT_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    section = text.split("### T-1:", 1)[1].split("### T-2:", 1)[0]
+    for required in (
+        "ADD to the existing `test_{plugin}.py` file. Do NOT create new files.",
+        "Controlled pure-migration exception (user-approved; tracked: #1376)",
+        "A tracking issue explicitly authorizes the migration.",
+        "No original test cases are added, removed, duplicated, or weakened",
+        "names, parameters, fixture scopes, markers, and helper dependencies",
+        "exact before/after collected nodeid mappings",
+        "including class methods\n  and parameter IDs",
+        "AST comparisons and negative mutation probes",
+        "never assertion or\n  test-input data",
+        "Existing explicit encoding values must not change",
+        "Every migrated target and new Python module must be at most 500 lines",
+        "Update live references and verification-family",
+        "New behavior must still go into the corresponding existing behavior module",
+        "not permission to create arbitrary new language-plugin or MCP-tool test",
+    ):
+        assert required in section, required
+    for pattern in (
+        "*_comprehensive*.py",
+        "*_edge_cases*.py",
+        "*_coverage_boost*.py",
+        "*_coverage*.py",
+        "*_extended*.py",
+        "*_optimized*.py",
+    ):
+        assert pattern in section, pattern
+
+
 def test_agent_facing_docs_do_not_recommend_bare_pytest() -> None:
     """Agent docs should route pytest through uv for consistent environments."""
     bare_pytest_command = re.compile(r"^(?:\$\s+)?pytest(?:\s|$)")

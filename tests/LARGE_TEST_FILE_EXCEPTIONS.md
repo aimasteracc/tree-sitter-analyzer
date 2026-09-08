@@ -4,38 +4,37 @@ Measured on 2026-09-07 (auto-audited by
 `tests/contracts/test_large_test_file_inventory.py` — the inventory must
 match reality or CI fails). The threshold is 800 lines.
 
-## Current Files Over Threshold (50)
+## Current Files Over Threshold (48)
 
 | Lines | File | Note |
 |---:|---|---|
-| 6123 | `tests/unit/mcp/test_safe_to_edit_tool.py` | tracked: #1376 |
-| 5333 | `tests/unit/test_ast_cache.py` | tracked: #1376 |
 | 2690 | `tests/unit/test_knowledge_graph.py` | |
-| 2594 | `tests/unit/mcp/test_change_impact_tool_execute_and_mapping.py` | |
-| 2253 | `tests/unit/test_incremental_sync.py` | |
+| 2641 | `tests/unit/mcp/test_change_impact_tool_execute_and_mapping.py` | |
+| 2521 | `tests/unit/test_incremental_sync.py` | |
 | 2192 | `tests/unit/languages/test_kotlin_plugin.py` | |
 | 2110 | `tests/unit/test_symbols_json_enrichment.py` | |
-| 2097 | `tests/unit/test_ast_extraction.py` | |
+| 2103 | `tests/unit/test_ast_extraction.py` | |
 | 2076 | `tests/unit/test_codegraph_context_tool.py` | |
 | 1894 | `tests/unit/task/test_edge_evidence.py` | |
 | 1878 | `tests/unit/test_uml_state.py` | |
-| 1739 | `tests/unit/test_codegraph_full_index_tool.py` | |
+| 1841 | `tests/unit/test_index_snapshot.py` | |
+| 1783 | `tests/unit/test_codegraph_full_index_tool.py` | |
 | 1693 | `tests/unit/task/test_task_router.py` | |
 | 1645 | `tests/unit/mcp/tools/test_co_change.py` | |
 | 1615 | `tests/unit/languages/test_cyclomatic_complexity.py` | |
+| 1585 | `tests/unit/languages/test_java_plugin.py` | |
 | 1575 | `tests/unit/test_uml_activity.py` | |
-| 1440 | `tests/unit/mcp/test_test_discovery.py` | |
+| 1881 | `tests/unit/mcp/test_test_discovery.py` | |
 | 1403 | `tests/unit/core/test_engine.py` | |
 | 1357 | `tests/unit/test_codegraph_pr_review_tool.py` | |
 | 1348 | `tests/integration/formatters/test_data_manager.py` | |
-| 1319 | `tests/unit/mcp/tools/test_nav_facade.py` | |
-| 1120 | `tests/unit/cli/test_mcp_commands.py` | |
+| 1325 | `tests/unit/mcp/tools/test_nav_facade.py` | |
+| 1269 | `tests/unit/cli/test_mcp_commands.py` | |
 | 1078 | `tests/unit/mcp/tools/test_class_inspect_tool.py` | |
 | 1062 | `tests/unit/languages/test_java_regression.py` | |
 | 1059 | `tests/unit/test_diff_snapshot_readonly_capture.py` | |
 | 1045 | `tests/unit/languages/test_cpp_plugin.py` | |
 | 1036 | `tests/contracts/test_outdated_uv_qualification.py` | |
-| 1022 | `tests/unit/test_index_snapshot.py` | |
 | 996 | `tests/unit/test_call_graph_built_signal.py` | |
 | 990 | `tests/unit/languages/test_python_plugin.py` | |
 | 988 | `tests/unit/languages/test_php_plugin.py` | |
@@ -44,16 +43,15 @@ match reality or CI fails). The threshold is 800 lines.
 | 968 | `tests/unit/test_semantic_classify_tool.py` | |
 | 953 | `tests/unit/mcp/tools/test_edit_facade_snapshot_routes.py` | |
 | 941 | `tests/unit/test_index_source_snapshot.py` | |
+| 933 | `tests/unit/test_synapse_resolution.py` | |
 | 932 | `tests/unit/mcp/tools/test_nav_facade_test_map.py` | |
-| 905 | `tests/unit/test_synapse_resolution.py` | |
 | 901 | `tests/unit/languages/test_html_plugin_advanced.py` | |
 | 893 | `tests/unit/test_health_scorer.py` | |
 | 873 | `tests/unit/mcp/test_query_symbol_search_scenarios.py` | |
 | 866 | `tests/unit/languages/test_css_plugin.py` | |
+| 848 | `tests/unit/test_edge_store.py` | |
 | 847 | `tests/unit/test_ast_diff_scenarios.py` | |
-| 847 | `tests/unit/languages/test_java_plugin.py` | |
 | 833 | `tests/unit/test_codegraph_impact_tool.py` | |
-| 822 | `tests/unit/test_edge_store.py` | |
 | 822 | `tests/unit/cli/test_install_skills.py` | |
 | 821 | `tests/unit/test_wire_owner_contract.py` | |
 | 814 | `tests/unit/languages/test_java_formatter.py` | |
@@ -62,8 +60,10 @@ match reality or CI fails). The threshold is 800 lines.
 ## Exception Policy
 
 No file has a permanent size exception. These files are tolerated as existing
-debt only. When a change adds new behavior to one of them, prefer extracting a
-focused test file for that behavior instead of appending more cases.
+debt only. New behavior goes into its corresponding existing behavior module.
+Splitting an oversized suite requires the user-approved controlled pure-migration
+exception in CLAUDE.md T-1, including a tracking issue and exact collection/AST
+evidence. The 800-line warning threshold does not waive the 500-line module cap.
 
 Acceptable temporary reasons:
 
@@ -188,5 +188,139 @@ original local and simulated-Windows tests remain, including their five
 introspected cases. The original platform reason/condition are unchanged, and
 the six original pre-section cases remain unmarked.
 
-`test_safe_to_edit_tool.py` and `test_ast_cache.py` remain tracked above; this
-split does not close all of #1376. Historical reports are unchanged.
+The remaining safety/cache suites were migrated separately as recorded below.
+Historical benchmark reports and the benchmark tests are unchanged by that work.
+
+## Issue #1376: Safety and Cache Splits
+
+This controlled migration uses the published `0841669f` baseline, not the earlier
+line-count report: safety was 6,123 lines and collected 332 cases; AST cache was
+5,370 lines and collected 248 cases. Remote develop was checked after completing
+safety and again immediately before the cache migration; it still pointed to
+`0841669f`. No unpublished schema17/PR #1352 content was merged.
+
+Every original class, test, parameter, marker and fixture scope is retained.
+Safety's function-scoped autouse registry cleanup remains active in each module;
+the cache suite's class-local fixtures stay inside their intact classes. Each
+suite shares one non-test helper module, binding the same fixture objects rather
+than re-exporting tests. No original cases were added, deleted or duplicated.
+
+| File | Lines |
+|---|---:|
+| `tests/unit/mcp/test_safe_to_edit_tool.py` | 396 |
+| `tests/unit/mcp/test_safe_to_edit_tool_causal_envelope.py` | 302 |
+| `tests/unit/mcp/test_safe_to_edit_tool_commands.py` | 332 |
+| `tests/unit/mcp/test_safe_to_edit_tool_exercising_tests.py` | 358 |
+| `tests/unit/mcp/test_safe_to_edit_tool_import_resolution.py` | 474 |
+| `tests/unit/mcp/test_safe_to_edit_tool_include_dependencies.py` | 386 |
+| `tests/unit/mcp/test_safe_to_edit_tool_include_projection.py` | 260 |
+| `tests/unit/mcp/test_safe_to_edit_tool_java_imports.py` | 247 |
+| `tests/unit/mcp/test_safe_to_edit_tool_java_projection.py` | 444 |
+| `tests/unit/mcp/test_safe_to_edit_tool_jsts_imports.py` | 307 |
+| `tests/unit/mcp/test_safe_to_edit_tool_jsts_projection.py` | 278 |
+| `tests/unit/mcp/test_safe_to_edit_tool_python_imports.py` | 257 |
+| `tests/unit/mcp/test_safe_to_edit_tool_python_projection.py` | 419 |
+| `tests/unit/mcp/test_safe_to_edit_tool_read_existing.py` | 271 |
+| `tests/unit/mcp/test_safe_to_edit_tool_snapshot_integrity.py` | 467 |
+| `tests/unit/mcp/test_safe_to_edit_tool_snapshot_routes.py` | 305 |
+| `tests/unit/mcp/test_safe_to_edit_tool_stale_edges.py` | 273 |
+| `tests/unit/mcp/test_safe_to_edit_tool_syntax_envelope.py` | 246 |
+| `tests/unit/mcp/_safe_to_edit_tool_helpers.py` | 191 |
+| `tests/unit/test_ast_cache.py` | 372 |
+| `tests/unit/test_ast_cache_cache_directory.py` | 369 |
+| `tests/unit/test_ast_cache_call_graph.py` | 333 |
+| `tests/unit/test_ast_cache_candidate_cleanup.py` | 243 |
+| `tests/unit/test_ast_cache_force_rebuild.py` | 233 |
+| `tests/unit/test_ast_cache_frozen_reader.py` | 408 |
+| `tests/unit/test_ast_cache_index_project.py` | 311 |
+| `tests/unit/test_ast_cache_materialization.py` | 390 |
+| `tests/unit/test_ast_cache_private_storage.py` | 344 |
+| `tests/unit/test_ast_cache_projection_state.py` | 389 |
+| `tests/unit/test_ast_cache_root_lease.py` | 341 |
+| `tests/unit/test_ast_cache_scope_partition.py` | 348 |
+| `tests/unit/test_ast_cache_snapshot_batches.py` | 258 |
+| `tests/unit/test_ast_cache_snapshot_epoch.py` | 269 |
+| `tests/unit/test_ast_cache_snapshot_validation.py` | 249 |
+| `tests/unit/test_ast_cache_storage_transactions.py` | 383 |
+| `tests/unit/test_ast_cache_symbols.py` | 306 |
+| `tests/unit/_ast_cache_helpers.py` | 123 |
+
+Actual before/after collection maps 332 safety cases to 332 and 248 cache cases
+to 248, including every class method and parameter ID. AST evidence compares
+236 safety and 162 cache top-level definition blocks, including whole classes;
+module constants such as `_BACKFILL_ROUTES` are checked separately. Only imports,
+source positions, true docstrings and the declared UTF-8 changes are normalized.
+Safety has eight and cache has 85 implicit-locale I/O calls changed to explicit
+UTF-8; no pre-existing explicit encoding values or test/assertion data changed.
+Real comments/docstrings are Chinese, and executable directives are preserved.
+Negative probes reject assertion, payload, parameter and explicit-encoding drift.
+
+`pytest.ini` and its runtime contract explicitly retain every migrated cache
+module in the quick gate without adding the pre-existing neighboring cache
+suites. Worker, timeout, marker and comprehensive-command settings are unchanged.
+The Windows trust diagnostic workflow's concrete nodeid points to the new
+`test_ast_cache_force_rebuild.py` owner.
+
+Shipping validation also integrates published develop `5ac5a68e` (#1398/#1399)
+and its refreshed dependency lock. The original migration baseline and nodeid
+maps remain unchanged. The Windows diagnostic retains Python 3.11/3.12/3.13,
+all five cases, the dynamic `$cases.Count` check, and twenty repetitions. This
+sync did not import the then-unmerged #1352 feature branch or change release versions.
+
+Subsequent integration uses published develop `8b4f21e7` (the #1352 merge), not
+a feature ref. All 34 upstream-added/modified test files remain byte-identical
+to that develop commit and in their original locations. The original safety
+332 and cache 248 nodeids, markers, fixture scopes and AST witnesses still
+match; the five Windows diagnostic nodeids still collect exactly. New schema17,
+Pulse, activation, embeddings and LSP tests are not folded into the old entries.
+
+The one permitted comprehensive local run retained its failure evidence:
+23866 passed, 22 failed, 165 skipped and one xfailed. Failures were associated
+with the long local checkout/socket path, a temporary-root name ending in
+`pytest`, `/private` path spelling, a missing optional Swift grammar and one
+whole-session descriptor-limit case. All 22 failed cases passed in focused
+fresh-process retries after environment correction (one cwd-sensitive Swift
+case was rerun separately). No test assertions, markers, worker count or timeout
+settings were weakened. This is not a claim of a green second comprehensive
+run; full-session descriptor accumulation remains a CI observation item.
+
+TSA uses its existing filename/stem family rules: complete Python named families
+are no longer cut to ten files, while symbol-only candidates remain bounded.
+Explicit `_TEST_PATTERNS` and colocated matches retain their identity before
+weaker stem inference runs. Short stems such as `foo` therefore keep all
+`foo_test.py` / `foo_tests.py` matches just like longer stems; the weak stem
+rule itself is not broadened. Real-directory parameterized tests pin exactly
+15 results for short/long stems across both prefix patterns and both suffixes.
+Non-Python recursive discovery keeps its original lazy ten-candidate stop;
+a separate iteration-count regression guards against exhausting its iterator.
+The repository's `cache/` implementation package maps to the `ast_cache` facade
+family through the existing stem mapper, except the independent `answer_cache`
+and `answer_cache_policy` components, which retain their own test families.
+Complete Python candidates and the bounded fallback both reuse the existing
+monorepo identity/package-compatibility and subsystem-affinity helpers. Monorepo
+foreign-package candidates cannot re-enter through the ten-item fallback.
+The shared compatible-package helper admits explicit matching package identities
+first. For Python monorepo sources, root tests must have only generic tiers, a
+matching first actual scope, or CLI/MCP plus an explicit facade-family mapping.
+Neither deeper directories, filename hints, inferred suffix families nor later
+fallbacks may override rejection. Root/tier stripping reuses the existing
+unscoped-test logic, and `module_family_test_stems(include_inferred=False)` reuses
+the existing explicit mappings rather than adding a separate family whitelist.
+Real-directory matrices check live and graph independently against explicit
+expected paths, not against each other: facade five retained, inferred utilities
+own package/mirror/root tiers retained, and foreign/deep-scope candidates rejected.
+Relative source reads are anchored to the provided project root without changing
+cwd or canonicalization, so weak-reference tests cannot pass by failing to read
+the source. Outside monorepos, where no positive
+affinity exists, explicit naming keeps the existing conservative fallback rather
+than inventing a new path-ownership rule. Root canonicalization
+and the weak stem-matching rule are unchanged. No parallel parser or mapping engine
+was added. New policy/discovery contract cases are separate from the original
+580 migrated cases, and do not manufacture coverage for those suites.
+
+The final scope follow-up also integrates published develop `8a5f8ab3` (#1401),
+which corrects the separate gap analyzer's absolute-parent-path classification.
+That does not identify the historical full-session FD source tracked in #1402.
+The lead reports that the final full-run low-limit observation passed, but
+cross-test retention remains tracked in #1402; this is not an FD-fix claim.
+No additional comprehensive run or FD-observer run is claimed for this follow-up.

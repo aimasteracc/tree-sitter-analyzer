@@ -18,15 +18,13 @@ def find_python_specific_tests(
     test_dirs: list[str],
     results: list[str],
 ) -> None:
-    """Find Python tests that need project-aware conventions."""
+    """完整收集项目约定的 Python 测试族，避免截断迁移后的测试门。"""
     for finder in (
         _find_python_package_tests,
         _find_python_family_tests,
         _find_fixture_tests,
     ):
         finder(source_path, root, test_dirs, results)
-        if len(results) >= 10:
-            return
 
 
 def _find_python_package_tests(
@@ -83,11 +81,9 @@ def _add_pattern_matches(
     patterns: list[str],
     results: list[str],
 ) -> None:
-    """Add tests matching one of the provided glob patterns."""
+    """添加所有匹配约定 glob 的测试，命名族不能按展示上限截断。"""
     for candidate in _iter_pattern_matches(root, test_dirs, patterns):
         _add_result(results, candidate, root)
-        if len(results) >= 10:
-            return
 
 
 def _add_stem_named_tests(
@@ -96,12 +92,10 @@ def _add_stem_named_tests(
     stems: list[str],
     results: list[str],
 ) -> None:
-    """Add tests whose test module stem matches one of the source stems."""
+    """添加完整的同 stem 测试族，共享 helper 的消费者不能遗漏。"""
     for candidate in _iter_python_test_files(root, test_dirs):
         if _matches_any_stem(candidate.stem, stems):
             _add_result(results, candidate, root)
-        if len(results) >= 10:
-            return
 
 
 def _iter_pattern_matches(
