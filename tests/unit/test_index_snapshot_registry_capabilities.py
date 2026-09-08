@@ -129,7 +129,7 @@ class TestReusableSnapshotLease:
         published = owner.REGISTRY.publish(candidate, sqlite3.connect(":memory:"), 0)
         monkeypatch.setattr(
             owner,
-            "capture_current_source_snapshot",
+            "_capture_sources_with_deadline",
             lambda *_args, **_kwargs: SimpleNamespace(
                 state=current_state, generation=current_generation
             ),

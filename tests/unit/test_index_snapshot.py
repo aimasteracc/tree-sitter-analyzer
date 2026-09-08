@@ -1701,29 +1701,41 @@ class TestWalSnapshotPath:
             "CORRUPT_INDEX" if supported else "WAL_PRIVATE_SNAPSHOT_UNSUPPORTED",
         )
 
-    def test_capture_snapshot_on_windows_no_longer_unknown_unsupported(
-        self, tmp_path, monkeypatch
+    @pytest.mark.parametrize("deny_capture", [False, True])
+    def test_windows_capture_distinguishes_partial_from_unsupported(
+        self, tmp_path, monkeypatch, deny_capture
     ):
-        """即使数据库有效，未支持的 Windows 私有捕获也只能返回 unknown。"""
+        """有原生能力时准确报告部分索引；能力被禁用时仍拒绝读取。"""
         import tree_sitter_analyzer.index_snapshot as owner
+        import tree_sitter_analyzer.index_snapshot_capability as capability
         from tree_sitter_analyzer.ast_cache import ASTCache
 
-        # 有効な SQLite DB を作成しておく (WAL 接続が成功するため)
+        # 只建普通索引，不伪造完整范围认证。
         source = tmp_path / "sample.py"
         source.write_text("x = 1\n", encoding="utf-8")
         cache = ASTCache(str(tmp_path))
         cache.index_file(str(source))
         cache.close()
 
-        # 非 POSIX 環境をシミュレート
+        if deny_capture:
+            monkeypatch.setattr(capability, "_WAL_FD_COPY_SUPPORTED", False)
+        supported = (
+            capability._WINDOWS_WAL_SUPPORTED and capability._WAL_FD_COPY_SUPPORTED
+        )
+        exists = owner.os.path.exists
         monkeypatch.setattr(owner.os, "name", "nt")
-        monkeypatch.setattr(owner.os.path, "exists", lambda path: path != "/dev/fd")
+        monkeypatch.setattr(
+            owner.os.path,
+            "exists",
+            lambda path: False if path == "/dev/fd" else exists(path),
+        )
 
         result = owner.read_existing_snapshot(str(tmp_path))
         # PR #1350：不得为了保留旧成功结果而连接源库创建 sidecar。
         assert (result.completeness, result.reason) == (
-            "unknown",
-            "WAL_PRIVATE_SNAPSHOT_UNSUPPORTED",
+            ("partial", "SOURCE_SCOPE_DESCRIPTOR_MISSING")
+            if supported
+            else ("unknown", "WAL_PRIVATE_SNAPSHOT_UNSUPPORTED")
         )
 
     def test_wal_readonly_connection_consistent_view(self, tmp_path):
