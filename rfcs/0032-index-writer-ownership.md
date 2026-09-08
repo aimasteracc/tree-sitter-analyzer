@@ -316,6 +316,30 @@ trusted-schema settings, native platforms and mirrors before making a compatibil
 or isolation claim. Keep the earlier failing probes: do not erase negative evidence
 when a more constrained experiment passes.
 
+### Held old transactions: progress counterexample and isolation comparison
+
+Eight follow-up observations pause each actual old-wheel process after rejection,
+before commit or close. Another connection then attempts a real one-row
+`ast_index.certified_at` update with a 0.2-second SQLite lock timeout. This is a SQL
+progress probe, not qualification of the future new-runtime indexing implementation.
+
+Against the same database, `index_file`, `invalidate` and incremental sync retain
+transactions and the new write fails with `database is locked` (observed 0.256–0.261
+seconds). Forced rebuild leaves no transaction and the new one-row write succeeds.
+Thus final dump preservation in the earlier view probe concealed a liveness failure.
+For the three failed new writes, an unchanged dump after old commit is **not** evidence
+that a newer write survived: there was no successful newer write.
+
+Repeating the experiment with the new connection targeting the independently built
+`owned-index.db` succeeds in all four cases: exactly one row changes each time, the
+new dump changes, and the later old commit leaves that new dump unchanged. This
+supports separate-file isolation against old transaction locks as well as mutations.
+It does not remove the active-reader/mirror/publication obligations above. The next
+design work should prioritize that alternative; the in-place view probe has not met
+the required progress guarantee. Neither alternative is accepted or implemented.
+Raw records: `/tmp/tsa-published-writer-held-transaction-proof.json` and
+`/tmp/tsa-published-writer-held-namespace-proof.json`.
+
 ### Crash recovery and publication
 
 A killed process cannot update its phase: it leaves `phase=writing` and its operation
