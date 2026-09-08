@@ -114,6 +114,9 @@ Pure Python SQLite functions cannot assume `SQLITE_INNOCUOUS` registration. Expl
 qualify the selected trigger/function approach with the deployed `trusted_schema`
 policy. Do not silently enable trusted schema to make a failing implementation pass.
 This feasibility gate may require a revised mechanism before acceptance is finalized.
+The same SQLite 3.50.4 prototype confirms `unsafe use of tsa_writer_admitted()` with
+`trusted_schema=OFF`, and `cannot create triggers on virtual tables` for FTS5.
+These are reproduced limitations, not hypothetical exceptions to the admission gate.
 
 ### Crash recovery and publication
 
