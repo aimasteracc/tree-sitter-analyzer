@@ -32,6 +32,7 @@ class DependencyAnalysisTool(BaseMCPTool):
         # both the instance cache AND, indirectly, DependencyGraph's
         # _global_cache (whose key is now derived from the same fingerprint).
         self._graph_fingerprint: GraphFingerprint | None = None
+        self._graph_content_key: str | None = None
         self._graph_built_at: float | None = None
         self._cache_invalidated_reason: str | None = None
         super().__init__(project_root)
@@ -39,6 +40,7 @@ class DependencyAnalysisTool(BaseMCPTool):
     def _on_project_root_changed(self, project_root: str | None) -> None:
         self._graph = None
         self._graph_fingerprint = None
+        self._graph_content_key = None
         self._graph_built_at = None
         self._cache_invalidated_reason = None
 
@@ -47,6 +49,7 @@ class DependencyAnalysisTool(BaseMCPTool):
             raise ValueError("Project root not set. Call set_project_path first.")
 
         current_fp = compute_graph_fingerprint(self.project_root)
+        content_key = DependencyGraph._cache_key_for(str(self.project_root))
         reason: str | None = None
         if self._graph is None:
             reason = "cold"
@@ -54,10 +57,13 @@ class DependencyAnalysisTool(BaseMCPTool):
             reason = self._explain_fingerprint_delta(
                 self._graph_fingerprint, current_fp
             )
+        elif content_key is None or self._graph_content_key != content_key:
+            reason = "source_modified"
 
         if reason is not None:
             self._graph = DependencyGraph(self.project_root)
             self._graph_fingerprint = current_fp
+            self._graph_content_key = content_key
             self._graph_built_at = time.time()
             self._cache_invalidated_reason = reason
         else:

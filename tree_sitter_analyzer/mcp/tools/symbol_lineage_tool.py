@@ -216,6 +216,7 @@ class SymbolLineageTool(BaseMCPTool):
         # response cache are invalidated together — the symbol responses
         # bake in the graph's downstream/upstream sets.
         self._dep_graph_fingerprint: GraphFingerprint | None = None
+        self._graph_content_key: str | None = None
         self._dep_graph_built_at: float | None = None
         self._cache_invalidated_reason: str | None = None
         # #568: the hierarchy section is derived from the AST index (index.db),
@@ -231,6 +232,7 @@ class SymbolLineageTool(BaseMCPTool):
         self._dep_graph = None
         self._symbol_cache = {}
         self._dep_graph_fingerprint = None
+        self._graph_content_key = None
         self._dep_graph_built_at = None
         self._cache_invalidated_reason = None
         self._ast_index_mtime_ns = None
@@ -245,6 +247,7 @@ class SymbolLineageTool(BaseMCPTool):
             raise ValueError("Project root not set. Call set_project_path first.")
 
         current_fp = compute_graph_fingerprint(str(self.project_root))
+        content_key = DependencyGraph._cache_key_for(str(self.project_root))
         reason: str | None = None
         if self._dep_graph is None:
             reason = "cold"
@@ -252,6 +255,8 @@ class SymbolLineageTool(BaseMCPTool):
             reason = self._explain_fingerprint_delta(
                 self._dep_graph_fingerprint, current_fp
             )
+        elif content_key is None or self._graph_content_key != content_key:
+            reason = "source_modified"
 
         if reason is not None:
             # Invalidate downstream caches that depend on the graph.
@@ -259,6 +264,7 @@ class SymbolLineageTool(BaseMCPTool):
             try:
                 self._dep_graph = DependencyGraph(str(self.project_root))
                 self._dep_graph_fingerprint = current_fp
+                self._graph_content_key = content_key
                 self._dep_graph_built_at = time.time()
                 self._cache_invalidated_reason = reason
             except Exception as exc:  # noqa: BLE001

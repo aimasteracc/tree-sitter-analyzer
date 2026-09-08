@@ -208,8 +208,9 @@ class TestDependencyAnalysisCacheInvalidatesOnFileChange:
 
 
 class TestSymbolLineageCacheInvalidatesOnFileChange:
+    @pytest.mark.parametrize("preserve_mtime", [False, True])
     def test_symbol_lineage_cache_invalidates_on_file_change(
-        self, project_root: Path
+        self, project_root: Path, preserve_mtime
     ) -> None:
         tool = SymbolLineageTool(project_root=str(project_root))
 
@@ -223,8 +224,17 @@ class TestSymbolLineageCacheInvalidatesOnFileChange:
         assert r2.get("from_cache") is True
         assert tool._dep_graph is cold_graph
 
-        time.sleep(0.05)
-        os.utime(project_root / "pkg" / "a.py")
+        path = project_root / "pkg" / "a.py"
+        if preserve_mtime:
+            before = path.stat()
+            path.write_text(
+                path.read_text(encoding="utf-8").replace("def foo", "def goo"),
+                encoding="utf-8",
+            )
+            os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        else:
+            time.sleep(0.05)
+            os.utime(path)
 
         r3 = asyncio.run(tool.execute({"symbol": "bar", "output_format": "json"}))
         # Rebuild must wipe the symbol cache too, so from_cache should be
@@ -311,3 +321,61 @@ def test_dependency_graph_key_rejects_unstable_input(tmp_path, monkeypatch, fail
 
         monkeypatch.setattr(os, "fstat", changed)
     assert DependencyGraph._cache_key_for(str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("kind", ["dependency", "lineage", "smart", "safe"])
+def test_live_tool_graph_rejects_preserved_mtime_edit(project_root, kind):
+    """常驻工具的外层图缓存也必须发现等时间戳改写。"""
+    from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+    from tree_sitter_analyzer.mcp.tools.smart_context_tool import SmartContextTool
+
+    factories = {
+        "dependency": DependencyAnalysisTool,
+        "lineage": SymbolLineageTool,
+        "smart": SmartContextTool,
+        "safe": SafeToEditTool,
+    }
+    (project_root / "pkg" / "c.py").write_text(
+        "def bar(): return 2\n", encoding="utf-8"
+    )
+    tool = factories[kind](str(project_root))
+    get_graph = tool._get_dep_graph if kind == "lineage" else tool._get_graph
+    first = get_graph()
+    assert first.dependencies_of("pkg/a.py") == ["pkg/b.py"]
+    assert get_graph() is first
+    path = project_root / "pkg" / "a.py"
+    before = path.stat()
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("from .b", "from .c"), encoding="utf-8"
+    )
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert get_graph().dependencies_of("pkg/a.py") == ["pkg/c.py"]
+
+
+def test_live_call_tool_rejects_preserved_mtime_edit(project_root):
+    """重复 MCP 调用不能沿用旧函数列表。"""
+    tool = CodeGraphCallTool(str(project_root))
+    args = {"mode": "all_functions", "output_format": "json"}
+    first = asyncio.run(tool.execute(args))
+    path = project_root / "pkg" / "a.py"
+    before = path.stat()
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("def foo", "def goo"), encoding="utf-8"
+    )
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    second = asyncio.run(tool.execute(args))
+    assert {row["name"] for row in first["functions"]} == {"foo", "bar"}
+    assert {row["name"] for row in second["functions"]} == {"goo", "bar"}
+
+
+@pytest.mark.parametrize("kind", ["smart", "safe"])
+def test_live_graph_requires_project_root(kind):
+    """项目根目录被清除后不能返回此前缓存的图。"""
+    from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+    from tree_sitter_analyzer.mcp.tools.smart_context_tool import SmartContextTool
+
+    cls = SmartContextTool if kind == "smart" else SafeToEditTool
+    tool = cls()
+    tool.project_root = None
+    with pytest.raises(ValueError, match="Project root not set"):
+        tool._get_graph()

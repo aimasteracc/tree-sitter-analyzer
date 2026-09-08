@@ -82,10 +82,9 @@ class SafeToEditTool(BaseMCPTool):
 
     # _get_graph: implementation
     def _get_graph(self) -> DependencyGraph:
-        if self._graph is None:
-            if not self.project_root:
-                raise ValueError("Project root not set.")
-            self._graph = DependencyGraph(self.project_root)
+        if not self.project_root:
+            raise ValueError("Project root not set.")
+        self._graph = DependencyGraph(self.project_root)
         return self._graph
 
     # _get_scorer: implementation
@@ -204,9 +203,7 @@ class SafeToEditTool(BaseMCPTool):
         syntax_response = _syntax_error_response(resolved, file_path, edit_type)
         if syntax_response is not None:
             syntax_response["output_format"] = output_format
-            return apply_output_format_to_response(
-                syntax_response, output_format
-            )
+            return apply_output_format_to_response(syntax_response, output_format)
 
         result = _build_safe_to_edit_result(
             SafeToEditContext(
@@ -251,9 +248,7 @@ class SafeToEditTool(BaseMCPTool):
         # now propagates it into ``agent_summary``.
         result = mirror_summary_line(result)
 
-        return apply_output_format_to_response(
-            result, output_format
-        )
+        return apply_output_format_to_response(result, output_format)
 
     def _read_existing_payload(
         self,
