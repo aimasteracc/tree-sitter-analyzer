@@ -2702,3 +2702,38 @@ def test_watcher_serializes_capture_through_index_commit(
         release.set()
         watcher.stop()
         cache.close()
+
+
+def test_watcher_stop_retains_active_timer_ownership(tmp_path, monkeypatch):
+    # #1405：停止轮询不代表后台写入结束，超时后仍须保留线程所有权。
+    import threading
+
+    from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
+
+    cache = ASTCache(str(tmp_path))
+    watcher = FileWatcherDaemon(cache, debounce=0)
+    entered, release = threading.Event(), threading.Event()
+
+    def sync():
+        entered.set()
+        assert release.wait(3)
+        return {}
+
+    monkeypatch.setattr(watcher, "_perform_sync", sync)
+    try:
+        watcher._request_sync()
+        assert entered.wait(3)
+        watcher._request_sync()
+        watcher.stop(timeout=0)
+        assert watcher.is_running() is True
+        watcher.start()
+        assert watcher._thread is None
+        release.set()
+        watcher.stop(timeout=3)
+        assert watcher.is_running() is False
+        watcher._request_sync()
+        assert watcher.is_running() is False
+    finally:
+        release.set()
+        watcher.stop(timeout=3)
+        cache.close()

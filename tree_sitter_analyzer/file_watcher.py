@@ -110,6 +110,7 @@ class FileWatcherDaemon:
         self._sync_requested = False
         self._pending_lock = threading.Lock()
         self._debounce_timer: threading.Timer | None = None
+        self._timers: set[threading.Timer] = set()
 
         self._stats = WatcherStats()
         self._stats_lock = threading.Lock()
@@ -131,7 +132,7 @@ class FileWatcherDaemon:
         return self._backend
 
     def start(self) -> None:
-        if self._thread is not None and self._thread.is_alive():
+        if self.is_running():
             return
         self._stop_event.clear()
         self._started_at = time.monotonic()
@@ -144,18 +145,28 @@ class FileWatcherDaemon:
         logger.info("file_watcher started (backend=%s)", self._backend)
 
     def stop(self, timeout: float = 5.0) -> None:
-        self._stop_event.set()
-        if self._debounce_timer is not None:
-            self._debounce_timer.cancel()
+        deadline = time.monotonic() + max(0.0, timeout)
+        with self._pending_lock:
+            self._stop_event.set()
+            timers = tuple(self._timers)
+            for timer in timers:
+                timer.cancel()
             self._debounce_timer = None
-        if self._thread is not None and self._thread.is_alive():
-            self._thread.join(timeout=timeout)
+        # 防抖回调可能已开始写入；取消计时器并不能终止这些线程。
+        workers = (*timers, self._thread)
+        for worker in workers:
+            if worker is not None and worker is not threading.current_thread():
+                worker.join(timeout=max(0.0, deadline - time.monotonic()))
         if not self.is_running():
             self._polling.close()
-        logger.info("file_watcher stopped")
+            logger.info("file_watcher stopped")
+        else:
+            logger.info("file_watcher shutdown pending")
 
     def is_running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive()
+        with self._pending_lock:
+            timer_running = any(timer.is_alive() for timer in self._timers)
+        return timer_running or (self._thread is not None and self._thread.is_alive())
 
     def get_stats(self) -> dict[str, Any]:
         with self._stats_lock:
@@ -250,12 +261,17 @@ class FileWatcherDaemon:
     def _request_sync(self) -> None:
         """把启动对齐和文件通知合并到同一后台同步请求。"""
         with self._pending_lock:
+            if self._stop_event.is_set():
+                return
             self._sync_requested = True
-        if self._debounce_timer is not None:
-            self._debounce_timer.cancel()
-        self._debounce_timer = threading.Timer(self._debounce, self._flush_pending)
-        self._debounce_timer.daemon = True
-        self._debounce_timer.start()
+            if self._debounce_timer is not None:
+                self._debounce_timer.cancel()
+            self._timers = {timer for timer in self._timers if timer.is_alive()}
+            timer = threading.Timer(self._debounce, self._flush_pending)
+            timer.daemon = True
+            self._debounce_timer = timer
+            self._timers.add(timer)
+            timer.start()
 
     def _flush_pending(self) -> None:
         with self._pending_lock:
