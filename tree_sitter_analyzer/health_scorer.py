@@ -14,6 +14,7 @@ Computes a 0-100 health score for source files based on weighted dimensions:
 import json
 import logging
 import os
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,11 @@ from .registry.health_scorer_helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 仅在一次项目评分内复用依赖图；上下文令牌隔离嵌套调用与并发请求。
+_PROJECT_DEPENDENCY_GRAPHS: ContextVar[dict[str, Any] | None] = ContextVar(
+    "project_health_dependency_graphs", default=None
+)
 
 # Dimension weights (must sum to 100)
 DIMENSION_WEIGHTS = {
@@ -379,6 +385,7 @@ class HealthScorer:
         excluded_files = 0
         pruned_directories = 0
         scoring_failed = 0
+        graph_token = _PROJECT_DEPENDENCY_GRAPHS.set({})
         try:
             files, pruned_directories = self._iter_source_files(root)
             for f in files:
@@ -392,6 +399,7 @@ class HealthScorer:
                     continue
                 results.append(score)
         finally:
+            _PROJECT_DEPENDENCY_GRAPHS.reset(graph_token)
             if cache is not None:
                 cache.close()
 
@@ -776,12 +784,18 @@ def score_dependencies(file_path: str) -> float:
         path = Path(file_path).resolve()
         project_root = find_project_root(path)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-            fut = ex.submit(_build_dep_graph, str(project_root))
-            try:
-                graph = fut.result(timeout=_DEP_GRAPH_TIMEOUT_S)
-            except concurrent.futures.TimeoutError:
-                return _score_deps_fallback(file_path)
+        graphs = _PROJECT_DEPENDENCY_GRAPHS.get()
+        root_key = str(project_root)
+        graph = graphs.get(root_key) if graphs is not None else None
+        if graph is None:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(_build_dep_graph, root_key)
+                try:
+                    graph = fut.result(timeout=_DEP_GRAPH_TIMEOUT_S)
+                except concurrent.futures.TimeoutError:
+                    return _score_deps_fallback(file_path)
+            if graphs is not None:
+                graphs[root_key] = graph
 
         rel = str(path.relative_to(project_root)).replace("\\", "/")
 
