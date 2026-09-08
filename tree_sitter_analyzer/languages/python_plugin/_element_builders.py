@@ -5,10 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from tree_sitter_analyzer.cache.extraction import (
-    _PY_SCOPE_BODY_NODES,
-    _python_module_constant,
-)
+from tree_sitter_analyzer.cache.extraction import _python_module_constant
+from tree_sitter_analyzer.cache.node_taxonomy import nodes_for
 
 from ...models import Class, Function, Variable
 from ...utils import log_warning
@@ -86,7 +84,7 @@ def extract_module_constants(tree: Any, source_code: str) -> list[Variable]:
     stack = [tree.root_node]
     while stack:
         node = stack.pop()
-        if node.type in _PY_SCOPE_BODY_NODES:
+        if node.type in nodes_for("python", "scope_body"):
             continue
         if node.type == "assignment":
             sym = _python_module_constant(node, source_code)

@@ -60,7 +60,8 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v24: project CommonJS aliases and C++20 imports for fail-closed reads.
 # v33-v37: invalidate computed/header loaders, then retained execution paths.
 # v38: loader projection fails closed by default instead of enumerating risks.
-_AST_CACHE_EXTRACTOR_VERSION = 38
+# v39：按语言分类驱动提取，修复成员作用域与 C++ 函数名称恢复。
+_AST_CACHE_EXTRACTOR_VERSION = 39
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__
