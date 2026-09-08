@@ -110,6 +110,36 @@ class TestFindTestFilesPython:
         assert set(found) == {f"tests/unit/{name}" for name in names}
         assert len(found) == len(names)
 
+    @pytest.mark.parametrize("stem", ["foo", "component"])
+    @pytest.mark.parametrize(
+        "template",
+        [
+            "test_{stem}.py",
+            "test_{stem}_behavior.py",
+            "{stem}_test.py",
+            "{stem}_tests.py",
+        ],
+        ids=["prefix", "prefix_variant", "suffix_test", "suffix_tests"],
+    )
+    def test_explicit_patterns_preserve_short_and_long_stems(
+        self, tmp_path, stem, template
+    ):
+        """#1376 / #1400：明确命名规则的身份不能被弱 stem 规则重新降级。"""
+        source = tmp_path / f"{stem}.py"
+        source.write_text("pass\n", encoding="utf-8")
+        expected = set()
+        for index in range(15):
+            directory = tmp_path / "tests/unit" / f"package_{index:02}"
+            directory.mkdir(parents=True)
+            target = directory / template.format(stem=stem)
+            target.write_text("def test_behavior(): pass\n", encoding="utf-8")
+            expected.add(target.relative_to(tmp_path).as_posix())
+
+        found = find_test_files(str(source), str(tmp_path))
+
+        assert set(found) == expected
+        assert len(found) == 15
+
     def test_symbol_only_candidates_keep_the_bounded_limit(self, tmp_path):
         """#1376：放完整命名族不等于取消弱符号匹配的候选上限。"""
         source = tmp_path / "component.py"

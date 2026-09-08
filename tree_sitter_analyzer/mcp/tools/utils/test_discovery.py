@@ -139,6 +139,7 @@ def find_test_files(
 
     _find_pattern_tests(root, stem, patterns, test_dirs, results)
     _find_colocated_tests(p, stem, patterns, root, results)
+    explicit_matches = set(results)
     _find_symbol_reference_tests(p, language, root, results)
     find_language_specific_tests(
         p,
@@ -150,12 +151,13 @@ def find_test_files(
     )
 
     if language == "python":
-        # #1376：纯迁移后的命名族必须完整；十项上限只约束弱符号候选。
+        # #1376：明确命名匹配保留身份，不能因弱 stem 规则而降级；仅弱候选限十项。
         stems = [stem, *related_test_stems_for_path(p)]
         named_family = [
             test
             for test in results
-            if any(related_stem_matches(Path(test).stem, name) for name in stems)
+            if test in explicit_matches
+            or any(related_stem_matches(Path(test).stem, name) for name in stems)
         ]
         return list(dict.fromkeys([*named_family, *results[:10]]))
     return results[:10]

@@ -24,7 +24,7 @@ match reality or CI fails). The threshold is 800 lines.
 | 1615 | `tests/unit/languages/test_cyclomatic_complexity.py` | |
 | 1585 | `tests/unit/languages/test_java_plugin.py` | |
 | 1575 | `tests/unit/test_uml_activity.py` | |
-| 1523 | `tests/unit/mcp/test_test_discovery.py` | |
+| 1553 | `tests/unit/mcp/test_test_discovery.py` | |
 | 1403 | `tests/unit/core/test_engine.py` | |
 | 1357 | `tests/unit/test_codegraph_pr_review_tool.py` | |
 | 1348 | `tests/integration/formatters/test_data_manager.py` | |
@@ -286,6 +286,11 @@ run; full-session descriptor accumulation remains a CI observation item.
 
 TSA uses its existing filename/stem family rules: complete Python named families
 are no longer cut to ten files, while symbol-only candidates remain bounded.
+Explicit `_TEST_PATTERNS` and colocated matches retain their identity before
+weaker stem inference runs. Short stems such as `foo` therefore keep all
+`foo_test.py` / `foo_tests.py` matches just like longer stems; the weak stem
+rule itself is not broadened. Real-directory parameterized tests pin exactly
+15 results for short/long stems across both prefix patterns and both suffixes.
 Non-Python recursive discovery keeps its original lazy ten-candidate stop;
 a separate iteration-count regression guards against exhausting its iterator.
 The repository's `cache/` implementation package maps to the `ast_cache` facade
