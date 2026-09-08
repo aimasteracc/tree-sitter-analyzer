@@ -254,7 +254,7 @@ class TestRenameSymbol:
             "bar",
             "Generic type parameter bindings are unsupported"
             if sys.version_info >= (3, 12)
-            else "invalid syntax",
+            else None,
         ),
         ("def foo(): pass\nmatch {}:\n    case {**bar}: pass\n", "bar", "Pattern"),
         ("def foo(): pass\nfrom a import foo\n", "bar", "Ambiguous import binding"),
@@ -283,6 +283,11 @@ def test_unsupported_engine_bindings_preserve_bytes(tmp_path, source, new_name, 
     assert len(result.errors) == 1
     if error:
         assert error in result.errors[0]
+    else:
+        # 2026-09-08：旧版解释器的语法错误文案随补丁版本变化。
+        with pytest.raises(SyntaxError) as syntax_error:
+            compile(source, str(path), "exec")
+        assert result.errors == [str(syntax_error.value)]
     assert result.files_changed == 0
     assert path.read_bytes() == original
 
