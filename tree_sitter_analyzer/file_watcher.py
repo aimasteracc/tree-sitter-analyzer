@@ -309,10 +309,10 @@ class _WatchdogHandler:
     def dispatch(self, event: Any) -> None:
         if getattr(event, "is_directory", False):
             return
-        src = getattr(event, "src_path", "")
-        if not src:
-            return
-        ext = os.path.splitext(src)[1].lower()
-        if ext not in _EXT_TO_LANG:
-            return
-        self._callback(src)
+        # 原子保存可能从临时扩展名移入源码；移动两端都要通知，并去除同路径重复。
+        paths = dict.fromkeys(
+            (getattr(event, "src_path", ""), getattr(event, "dest_path", ""))
+        )
+        for path in paths:
+            if path and os.path.splitext(path)[1].lower() in _EXT_TO_LANG:
+                self._callback(path)

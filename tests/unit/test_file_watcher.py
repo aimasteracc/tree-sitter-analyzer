@@ -212,3 +212,55 @@ class TestSkipDirExclusion:
             os.path.join("src", "main.py"),
             os.path.join("src", "util.py"),
         }
+
+
+@pytest.mark.parametrize(
+    "source,destination,expected",
+    [
+        ("save.tmp", "main.py", ["main.py"]),
+        ("main.py", "renamed.py", ["main.py", "renamed.py"]),
+        ("main.py", "archive.tmp", ["main.py"]),
+        ("save.tmp", "archive.tmp", []),
+        ("main.py", "main.py", ["main.py"]),
+        ("main.py", "", ["main.py"]),
+    ],
+)
+def test_watchdog_dispatches_supported_move_endpoints(source, destination, expected):
+    # 2026-09-08：原子保存的源文件扩展名不受支持时，目标源码仍必须触发刷新。
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.file_watcher import _WatchdogHandler
+
+    paths = []
+    _WatchdogHandler(paths.append).dispatch(
+        SimpleNamespace(src_path=source, dest_path=destination, is_directory=False)
+    )
+    assert paths == expected
+
+
+def test_watchdog_atomic_save_refreshes_index(watcher, cache, project):
+    # 2026-09-08：验证真实替换、事件入队和增量索引，不以回调次数代替索引正确性。
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.file_watcher import _WatchdogHandler
+
+    watcher.trigger_sync()
+    target = project / "src" / "main.py"
+    temporary = target.with_suffix(".tmp")
+    temporary.write_text("def saved():\n    pass\n", encoding="utf-8")
+    os.replace(temporary, target)
+    watcher._debounce = 60.0
+    _WatchdogHandler(watcher._enqueue).dispatch(
+        SimpleNamespace(
+            src_path=str(temporary), dest_path=str(target), is_directory=False
+        )
+    )
+    watcher._flush_pending()
+    rows = (
+        cache.get_conn()
+        .execute(
+            "SELECT name FROM ast_symbol_rows WHERE file_path='src/main.py' ORDER BY name"
+        )
+        .fetchall()
+    )
+    assert [row[0] for row in rows] == ["saved"]
