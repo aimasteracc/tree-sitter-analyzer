@@ -81,6 +81,9 @@ class TestNonPosixSnapshotContract:
     def test_non_posix_existing_index_uses_wal_path(self, tmp_path, monkeypatch):
         """无安全 fd 复制能力的平台必须拒绝，而非用源 SQLite 连接降级。"""
         import tree_sitter_analyzer.index_snapshot as owner
+        import tree_sitter_analyzer.index_snapshot_capability as capability
+
+        monkeypatch.setattr(capability, "_WINDOWS_WAL_SUPPORTED", False)
 
         cache_dir = tmp_path / ".ast-cache"
         cache_dir.mkdir()
@@ -1672,10 +1675,9 @@ class TestWalSnapshotPath:
         (cache_dir / "index.db").write_bytes(b"")
         if deny_capture:
             monkeypatch.setattr(capability, "_WAL_FD_COPY_SUPPORTED", False)
-        supported = (
-            os.name == "posix"
-            and hasattr(os, "O_NOFOLLOW")
-            and capability._WAL_FD_COPY_SUPPORTED
+        supported = capability._WAL_FD_COPY_SUPPORTED and (
+            (os.name == "posix" and hasattr(os, "O_NOFOLLOW"))
+            or (os.name == "nt" and capability._WINDOWS_WAL_SUPPORTED)
         )
         if not supported:
             monkeypatch.setattr(
@@ -1776,10 +1778,9 @@ class TestWalSnapshotPath:
 
         if deny_capture:
             monkeypatch.setattr(capability, "_WAL_FD_COPY_SUPPORTED", False)
-        supported = (
-            os.name == "posix"
-            and hasattr(os, "O_NOFOLLOW")
-            and capability._WAL_FD_COPY_SUPPORTED
+        supported = capability._WAL_FD_COPY_SUPPORTED and (
+            (os.name == "posix" and hasattr(os, "O_NOFOLLOW"))
+            or (os.name == "nt" and capability._WINDOWS_WAL_SUPPORTED)
         )
         db = tmp_path / ".ast-cache" / "index.db"
         before = db.stat()
@@ -1788,7 +1789,7 @@ class TestWalSnapshotPath:
 
         def read_with_mtime_change(fd, size):
             assert supported, "unsupported capture attempted source read"
-            if not changed and os.fstat(fd).st_ino == before.st_ino:
+            if not changed:
                 changed.append(True)
                 os.utime(
                     db, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000)

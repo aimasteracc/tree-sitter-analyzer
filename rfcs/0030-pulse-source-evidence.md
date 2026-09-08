@@ -222,13 +222,13 @@ watcher 现使用与手动同步相同的默认范围、冻结候选和认证路
 新符号与调用者均正确。该小样本证明链路可用，也证明默认配置尚非瞬时刷新。
 这不是 Windows 成功证据，也不改变上节的平台及规模阻断结论。
 
-### Windows 认证前提与尚缺的数据库能力
+### Windows 认证前提与数据库后端草案
 
 源码核验还存在独立的平台断点：快照所有者原本无条件调用 POSIX 源码扫描器。
 现在 Windows 的捕获/读后验证/可复用租约检查统一调用既有
 `capture_portable_source_snapshot`，保留总期限与完整范围核验。实文件回归覆盖
 读后验证和复用两条入口：源码未变可用，保存后拒绝旧 generation。该测试在
-本机选择 Windows 路由，不冒充 Windows 原生运行，也未启用 WAL 能力。
+本机选择 Windows 路由，不冒充 Windows 原生运行。
 
 剩余数据库后端不能退化为按文件大小比较身份，或直接打开源 SQLite 连接。
 Windows 原生实现应以目录/文件句柄绑定主库与 WAL，拒绝 reparse point，使用
@@ -239,5 +239,20 @@ Windows 原生实现应以目录/文件句柄绑定主库与 WAL，拒绝 repars
 这些 API 的存在不等于实现已经完成或取得资格。
 
 必须用原生 Windows 验证活跃非空 WAL、并发写入、同大小替换、目录替换、
-reparse point、缺失/新建 sidecar、超时/字节预算与异常清理。完成前保留
-`WAL_PRIVATE_SNAPSHOT_UNSUPPORTED`，PR 仍不可合入。
+reparse point、缺失/新建 sidecar、超时/字节预算与异常清理。能力缺失的环境
+继续返回 `WAL_PRIVATE_SNAPSHOT_UNSUPPORTED`，原生资格未通过前 PR 不可合入。
+
+当前草案已加入 `index_snapshot_windows.py`：Kernel32 以只读访问打开目录、
+主库和 WAL，不共享 DELETE，捕获期间阻止层级替换；拒绝重解析点与非磁盘文件。
+卷标识与 128 位文件 ID 通过原生句柄取得，避免 Windows CRT stat 身份不一致。
+文件句柄转交 CRT fd 后统一由 fd 所有者关闭，目录句柄独立清理。
+
+两平台共用原有字节复制、WAL 格式检查、预算和查询后完整字节复核；Windows
+后端只提供绑定句柄及身份检查。跨盘符的项目外临时目录也被正确接受。支持判定
+测试保留显式禁用能力的拒绝用例，同时新增 Windows 正向路径，不再假定所有
+非 POSIX 环境必定不支持。
+
+本机 ABI 模拟使用真实文件字节，覆盖只读 flags、完整文件 ID、错误关闭、
+缺失层级、并发写入、替换、sidecar 与预算。原生 Windows 用例另测完整 WAL
+恢复、目录/主库替换保护、重解析点、同大小字节变化及 fd 释放；在 macOS 上
+这些用例以带追踪号的条件标记跳过，不能计入 Windows 成功证据。等待 CI。
