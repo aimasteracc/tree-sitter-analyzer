@@ -16,6 +16,7 @@ from .index_source_snapshot import (
 )
 from .indexing_limits import normalize_index_max_files
 from .indexing_snapshot import (
+    _PERMANENT_SOURCE_REJECTIONS,
     IndexCandidateSnapshot,
     changed_since_snapshot,
     validate_index_candidate_snapshot,
@@ -439,11 +440,12 @@ class IncrementalSync:
                     candidate_snapshot, self._cache
                 ):
                     raise ValueError("INDEX_CACHE_HIERARCHY_CHANGED")
-            # #1405：候选中明确拒绝的源码也要撤销旧缓存，不能只降低认证完整性。
+            # #1405：只撤销有永久拒绝证据的源码；读取/时限故障保留缓存并降低完整性。
             changed_files: list[tuple[str, str]] = [
                 (entry.rel_path, entry.reason or "candidate source rejected")
                 for entry in candidate_snapshot.entries
                 if entry.decision == "error"
+                and entry.reason in _PERMANENT_SOURCE_REJECTIONS
             ]
             for entry in candidate_snapshot.selected_entries:
                 change_reason = (

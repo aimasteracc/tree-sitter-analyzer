@@ -2608,3 +2608,40 @@ def test_candidate_unsafe_replacement_invalidates_existing_rows(tmp_path, replac
     finally:
         watcher.stop()
         cache.close()
+
+
+@requires_posix_fd
+@pytest.mark.parametrize("failure", ["unreadable", "deadline"])
+def test_transient_candidate_failure_preserves_index_rows(
+    tmp_path, monkeypatch, failure
+):
+    # #1405：暂时无法认证不能当作永久拒绝并删除已有 AST。
+    import tree_sitter_analyzer.indexing_snapshot as snapshot_owner
+    from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
+    from tree_sitter_analyzer.source_oracle import SourceOracleError
+
+    path = tmp_path / "a.py"
+    path.write_text("def old(): pass\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    watcher = FileWatcherDaemon(cache)
+    try:
+        assert watcher.trigger_sync()["new_files"] == 1
+        old_row = cache.lookup(str(path))
+        path.write_text("def saved(): pass\n", encoding="utf-8")
+
+        def reject(*_args):
+            if failure == "deadline":
+                raise SourceOracleError("DIFF_SNAPSHOT_TIMEOUT")
+            raise OSError("temporarily unreadable")
+
+        with monkeypatch.context() as patcher:
+            patcher.setattr(snapshot_owner, "_capture_candidate_fingerprint", reject)
+            result = watcher.trigger_sync()
+        assert result["completeness"] == "incomplete"
+        assert cache.get_stats()["total_files"] == 1
+        assert cache.lookup(str(path)) == old_row
+        assert result["changed_during_run_files"] == []
+        assert watcher.trigger_sync()["updated_files"] == 1
+    finally:
+        watcher.stop()
+        cache.close()
