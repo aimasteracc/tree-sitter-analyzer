@@ -33,6 +33,57 @@ from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatus
 requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 
 
+@pytest.mark.parametrize("directory", ["project", "project # % 日本語"])
+def test_rebuild_signal_does_not_recreate_removed_database(
+    tmp_path, monkeypatch, directory
+):
+    """存在检查后数据库被删除时，状态探测不能创建替代空库。"""
+    from tree_sitter_analyzer.mcp.tools import index_rebuild_signal as signal
+
+    root = tmp_path / directory
+    db = root / ".ast-cache" / "index.db"
+    db.parent.mkdir(parents=True)
+    conn = sqlite3.connect(db)
+    bs.mark_build_in_progress(conn)
+    conn.close()
+    original_connect = sqlite3.connect
+
+    def remove_before_open(*args, **kwargs):
+        db.unlink()
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(signal.sqlite3, "connect", remove_before_open)
+    assert signal.is_index_rebuilding(str(root)) is False
+    assert not db.exists()
+
+
+@pytest.mark.parametrize("directory", ["project", "project # % 日本語"])
+def test_rebuild_signal_reads_current_marker_with_readonly_connection(
+    tmp_path, monkeypatch, directory
+):
+    """正常标记仍可读取；特殊路径必须正确编码，连接不能写入。"""
+    from tree_sitter_analyzer.mcp.tools import index_rebuild_signal as signal
+
+    root = tmp_path / directory
+    db = root / ".ast-cache" / "index.db"
+    db.parent.mkdir(parents=True)
+    conn = sqlite3.connect(db)
+    bs.mark_build_in_progress(conn)
+    conn.close()
+    original_reader = bs.build_in_progress
+    observed = []
+
+    def verify_readonly(connection):
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            connection.execute("CREATE TABLE forbidden_write (value INTEGER)")
+        observed.append(True)
+        return original_reader(connection)
+
+    monkeypatch.setattr(bs, "build_in_progress", verify_readonly)
+    assert signal.is_index_rebuilding(str(root)) is True
+    assert observed == [True]
+
+
 def test_build_state_helpers_degrade_on_missing_table() -> None:
     """No ast_build_state table → safe defaults, no raise; mark creates it."""
     conn = sqlite3.connect(":memory:")
