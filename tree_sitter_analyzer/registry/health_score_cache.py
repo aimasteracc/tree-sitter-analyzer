@@ -14,9 +14,10 @@ import sqlite3
 import stat
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from .health_score_fingerprint import _Fingerprint
 
 logger = logging.getLogger(__name__)
 
@@ -39,43 +40,6 @@ CREATE TABLE IF NOT EXISTS health_scores (
 );
 CREATE INDEX IF NOT EXISTS idx_health_scores_mtime ON health_scores(mtime_ns);
 """
-
-
-@dataclass(frozen=True)
-class _Fingerprint:
-    """绑定完整源码内容及读取时的文件元数据。"""
-
-    mtime_ns: int
-    size_bytes: int
-    content_hash: str
-
-    @classmethod
-    def from_path(cls, path: str) -> _Fingerprint | None:
-        try:
-            with os.fdopen(
-                os.open(
-                    path,
-                    os.O_RDONLY
-                    | getattr(os, "O_NONBLOCK", 0)
-                    | getattr(os, "O_BINARY", 0),
-                ),
-                "rb",
-            ) as stream:
-                before = os.fstat(stream.fileno())
-                if not stat.S_ISREG(before.st_mode):
-                    return None
-                content = stream.read(64 * 1024 * 1024 + 1)
-                after = os.fstat(stream.fileno())
-            fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
-            if len(content) > 64 * 1024 * 1024 or any(
-                getattr(before, field) != getattr(after, field) for field in fields
-            ):
-                return None
-        except OSError:
-            return None
-        return cls(
-            after.st_mtime_ns, after.st_size, hashlib.sha256(content).hexdigest()
-        )
 
 
 def _metadata_signature(path: Path) -> str:

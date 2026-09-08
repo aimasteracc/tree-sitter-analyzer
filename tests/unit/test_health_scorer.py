@@ -1088,3 +1088,81 @@ def test_health_source_fingerprint_rejects_unstable_reads(
             stream.truncate(64 * 1024 * 1024 + 1)
     monkeypatch.setattr(os, "fstat", observed)
     assert _Fingerprint.from_path(str(target)) is None
+
+
+@pytest.mark.parametrize("restore_mode", ["rewrite", "replace"])
+def test_health_cache_rejects_source_changed_then_restored(
+    tmp_path, monkeypatch, restore_mode
+):
+    """内容和时间戳恢复后，仍拒绝评分期间的中间版本。"""
+    # 2026-09-08 事件：中间版本 75.4 分被发布给实际应为 100 分的文件。
+    import os
+
+    from tree_sitter_analyzer.health_scorer import HealthScorer
+    from tree_sitter_analyzer.registry.health_score_cache import HealthScoreCache
+
+    target = tmp_path / "probe.py"
+    initial = "def f(x):\n    return x\n"
+    target.write_text(initial, encoding="utf-8")
+    scorer = HealthScorer()
+    cache = HealthScoreCache(str(tmp_path))
+    original = scorer.score_file
+
+    def intermediate(path):
+        before = target.stat()
+        target.write_text(
+            "def f(x):\n"
+            + "".join(f"    if x == {i}: return {i}\n" for i in range(60)),
+            encoding="utf-8",
+        )
+        score = original(path)
+        restored = target if restore_mode == "rewrite" else tmp_path / "restored.py"
+        restored.write_text(initial, encoding="utf-8")
+        if restore_mode == "replace":
+            restored.replace(target)
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        return score
+
+    monkeypatch.setattr(scorer, "score_file", intermediate)
+    try:
+        result = scorer._score_file_with_cache(str(target), cache)
+        assert original(str(target)).total == 100.0
+        assert result is None
+        assert cache.lookup(str(target)) is None
+    finally:
+        cache.close()
+
+
+@pytest.mark.parametrize("success", [True, False])
+def test_health_fingerprint_windows_change_time_binding(tmp_path, monkeypatch, success):
+    """原生查询使用真实变更时间字段，失败时不回退为创建时间。"""
+    import ctypes
+    import sys
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.registry import health_score_fingerprint as fingerprint
+
+    def query(handle, selector, pointer, size):
+        assert (handle, selector, size) == (123, 0, 40)
+        info = ctypes.cast(pointer, ctypes.POINTER(fingerprint._FileBasicInfo)).contents
+        info.creation, info.change = 11, 987654321
+        return int(success)
+
+    def library(name, *, use_last_error):
+        assert (name, use_last_error) == ("kernel32", True)
+        return SimpleNamespace(GetFileInformationByHandleEx=query)
+
+    monkeypatch.setattr(fingerprint, "_IS_WINDOWS", True)
+    monkeypatch.setattr(ctypes, "WinDLL", library, raising=False)
+    monkeypatch.setitem(
+        sys.modules, "msvcrt", SimpleNamespace(get_osfhandle=lambda fd: fd + 100)
+    )
+    fingerprint._windows_file_info.cache_clear()
+    try:
+        if success:
+            assert fingerprint._change_time(23, tmp_path.stat()) == 987654321
+        else:
+            with pytest.raises(OSError, match="change time unavailable"):
+                fingerprint._change_time(23, tmp_path.stat())
+    finally:
+        fingerprint._windows_file_info.cache_clear()
