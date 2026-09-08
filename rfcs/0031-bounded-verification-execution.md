@@ -120,11 +120,45 @@ CLI 与 MCP 必须支持相同模式、范围、阶段、超时和错误。actio
 注册 owner、CLI dispatch、帮助及 codemap，运行真实 CLI smoke 和 parity contracts。
 目前尚未新增这些入口；表格是待实现契约。
 
-`edit_facade_schema.py` 当前声明 `destructiveHint=False`（分析/建议不会写文件）。
-运行用户测试可能写文件，不能继续沿用这个声明。新增执行 action 前必须解决元数据
-诚实性与现有 facade 设计约束：若选择放入 edit，则同步调整注解及 contract；若选择
-独立执行工具，则另行审查注册面与工具数量。该取舍在本草案中未获批准，不得先落地
-执行入口再补说明。
+2026-09-08 合入 develop `a89d7229` 后重新核对：`edit_facade_schema.py` 已因
+rename/apply 声明 `readOnlyHint=False`、`destructiveHint=True`，原草案所述
+`destructiveHint=False` 已过时。本草案选择沿用现有 `edit(action="verify")`，
+不新增独立工具、不扩大八个 facade 的注册集合。执行 action 仍需新增 CLI 对等路径。
+
+现有 `openWorldHint=False` 不能覆盖任意项目测试：用户测试可能联网。注册执行 action
+时应将整个混合 facade 的 `openWorldHint` 改为 `True`，并更新描述与 contract；
+不能因为 TSA 自身快速套件排除了 network 标记就推断所有用户测试都是封闭的。
+这属于本 RFC 的待评审元数据变更，当前代码尚未注册该 action。
+
+### 完整计划摘要的边界
+
+完整步骤先表示为带角色的参数数组记录：`focused`、`default_gate`、`non_test_check`。
+阶段选择、资源降载和追加检查都在该结构上完成，最后才渲染 shell 文本。不能只给
+`build_test_argv_batches` 的聚焦批次计算摘要后声称覆盖完整验证计划。
+
+摘要输入使用固定版本的规范 JSON，字段包含 runner、stage、resource_profile 和完整
+有序步骤。每一步的角色、可执行文件、参数顺序、重复参数、Unicode 和空参数都进入
+SHA-256；不排序或去重步骤，不纳入计时、日志或显示截断。默认门禁被移除、阶段被替换、
+末尾追加检查改变，必须得到不同摘要。项目根、模式、范围和 PR 身份另由描述符完整绑定，
+再分析生成的这两部分均匹配才允许启动第一个子进程。
+
+`80d33fb9` 已实现纯 argv 聚焦批次编译并接入命令渲染，测试覆盖重复/Unicode 参数及
+Windows 实际启动引用预算。它没有实现上述完整阶段计划、摘要或执行器，验收项保持未勾选。
+
+### PR 模式的 checkout 约束
+
+当前 `_execute_pr_analysis` 只获取变更路径与 diff stat，没有把 PR head/base SHA
+传入 `ChangeImpactRequest`。执行描述符生成前必须补齐这项事实，不能从 PR URL 推断
+本地 checkout 正确。
+
+PR 执行描述符绑定规范仓库与编号、当次远端 head/base SHA、本地 HEAD。生成和重建时均
+要求本地 HEAD 等于远端 PR head，且已跟踪文件的暂存/未暂存差异为空；不自动 checkout、
+reset 或修改用户文件。GitHub 合成 merge checkout 或其他提交明确返回 checkout 不匹配，
+不能把它冒充 PR head。后续若要支持 merge checkout，必须单独定义并验证其双亲身份。
+
+重建时重新查询远端 head/base，任一变化或查询失败均拒绝执行。该约束只证明启动前的
+PR checkout 身份与计划一致，不证明运行期间源码被冻结。diff/staged/branch 模式仍使用
+各自现有差异语义，不继承 PR 模式的干净工作区要求。
 
 ## Drawbacks
 
@@ -174,7 +208,8 @@ CLI 与 MCP 必须支持相同模式、范围、阶段、超时和错误。actio
 
 ## Open questions
 
-1. 执行入口放入 edit 会改变 destructive 注解；独立工具则扩大注册面。哪个方案符合
-   已锁定的 facade 设计？评审确认前只实现和验证纯计划编译/摘要逻辑，不注册执行工具。
-2. PR 模式如何证明本地 checkout 对应所分析的 PR 身份，避免在错误 checkout 上执行？
+1. 是否接受现有 edit facade 的 verify action 及 `openWorldHint=True` 元数据调整？
+   本草案已选择该方案供 RFC 评审，不再保留基于旧 destructive 注解的独立工具分支。
+2. 第一版严格要求 PR head checkout；是否另行支持 GitHub 合成 merge checkout？
+   在双亲与工作区验证契约通过前，不能放宽为任意本地 HEAD。
 3. 对超大的用户范围描述符，是否增加显式文件输入；这不能成为默认只读分析的隐式写入。
