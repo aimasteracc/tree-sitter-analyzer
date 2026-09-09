@@ -5,6 +5,8 @@
 - **Tracking**: 用户发布准备任务；内部扫描实现 PR #1423
 - **Affected source paths**: `source_lines.py`, `mcp/tools/{trace_impact_tool,search_facade,project_facade,modification_guard_tool}.py`, `mcp/utils/project_index/`, `cli/`, 安装脚本与测试
 
+> 2026-09-09 用户后续允许重新评估适当位置的 rg/fd。可选后端取舍由 [RFC-0034](0034-optional-search-backend-qualification.md) 提议更新；本 RFC 的原生独立运行、安全边界和公开接口迁移门槛保留。
+
 ## Summary
 
 TSA 的索引发现改用进程内实现，实时源码核验使用自带 Python 工作进程隔离阻塞读取。公开接口、缓存及安装步骤的删除按下述主版本门槛推进。符号、AST、调用图和可选语义索引继续承担候选定位；实时文本核验用于核对当前源码。
