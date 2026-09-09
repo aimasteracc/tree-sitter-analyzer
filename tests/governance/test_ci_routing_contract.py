@@ -402,3 +402,84 @@ def test_ci_routing_uses_merge_parent_when_event_base_is_stale(tmp_path: Path) -
     argv = shlex.split(command)
     assert git(*argv[1 : argv.index(">")]).splitlines() == ["proposal.md"]
     assert steps[0]["with"]["ref"] == "${{ github.sha }}"
+
+
+@pytest.mark.parametrize("force_full", [False, True])
+@pytest.mark.parametrize("path", ["README.md", "tree_sitter_analyzer/formatters/x.py"])
+def test_manual_full_validation_routes_real_cli(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], force_full: bool, path: str
+) -> None:
+    """手动完整验证绕过文档跳过和子范围，同时保留普通路径路由。"""
+    # 2026-09-09：CI 34340908809 的文档路由跳过了待补验的完整矩阵。
+    import json
+
+    from scripts.ci_route import main
+
+    output = tmp_path / "outputs"
+    args = [path, "--github-output", str(output)]
+    if force_full:
+        args.append("--force-full")
+    assert main(args) == 0
+    result = json.loads(capsys.readouterr().out)
+    docs_only = path == "README.md" and not force_full
+    assert result["run_docs_check"] is docs_only
+    assert result["full_suite_required"] is force_full
+    for key in ("run_quality", "run_test_matrix", "run_build", "upload_coverage"):
+        assert result[key] is (not docs_only)
+    assert result["regression_scope"] == (
+        "format" if not force_full and not docs_only else "all"
+    )
+    if force_full:
+        assert {
+            key for key, value in result.items() if key.startswith("run_") and value
+        } == {
+            "run_quality",
+            "run_test_matrix",
+            "run_build",
+            "run_e2e_smoke",
+            "run_regression",
+            "run_sql_platform_compat",
+            "run_benchmarks",
+            "run_grammar_coverage",
+        }
+        assert result["benchmark_scope"] == "all"
+        assert "manual-full-validation" in result["reason_codes"]
+    assert f"run_test_matrix={str(not docs_only).lower()}\n" in output.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_manual_validation_is_non_publishing_and_concurrency_isolated() -> None:
+    """固定 SHA 的手动验证不被推送取消，且不调用发布工作流。"""
+    # 2026-09-09：CI 34340202847 被同分支的后续文档推送取消。
+    import yaml
+
+    workflow = yaml.safe_load(
+        (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    inputs = workflow[True]["workflow_dispatch"]["inputs"]
+    assert inputs["full-validation"]["type"] == "boolean"
+    assert inputs["full-validation"]["default"] is False
+    assert workflow["concurrency"]["group"] == (
+        "${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' "
+        "&& format('manual-{0}', github.run_id) || github.ref }}"
+    )
+    jobs = workflow["jobs"]
+    route = next(step for step in jobs["route"]["steps"] if step.get("id") == "route")
+    assert route["env"]["FORCE_FULL"] == (
+        "${{ github.event_name == 'workflow_dispatch' && inputs.full-validation "
+        "&& 'true' || 'false' }}"
+    )
+    assert 'if [[ "$FORCE_FULL" == "true" ]]; then' in route["run"]
+    assert "args+=(--force-full)" in route["run"]
+    assert '"${args[@]}"' in route["run"]
+    assert jobs["test"]["with"]["matrix-profile"] == (
+        "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}"
+    )
+    assert {job["uses"] for job in jobs.values() if "uses" in job} == {
+        "./.github/workflows/reusable-quality.yml",
+        "./.github/workflows/reusable-test.yml",
+        "./.github/workflows/reusable-build.yml",
+        "./.github/workflows/regression-tests.yml",
+        "./.github/workflows/sql-platform-compat.yml",
+    }

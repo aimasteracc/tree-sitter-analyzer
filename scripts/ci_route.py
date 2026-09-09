@@ -107,7 +107,7 @@ def matches_any(path: str, patterns: list[str]) -> bool:
 
 
 def route_changed_files(
-    changed_files: list[str], config: dict[str, Any]
+    changed_files: list[str], config: dict[str, Any], *, force_full: bool = False
 ) -> dict[str, Any]:
     outputs = dict(DEFAULT_OUTPUTS)
     outputs.update(config.get("always", {}))
@@ -134,6 +134,13 @@ def route_changed_files(
         elif len(matched_scopes) > 1:
             outputs[scope_name] = scope_config.get("default", "all")
             reason_codes.append(f"{scope_name}-multiple")
+
+    if force_full:
+        # 显式完整验证不受最后一次提交的路径或子范围限制。
+        outputs["full_suite_required"] = True
+        outputs["regression_scope"] = "all"
+        outputs["benchmark_scope"] = "all"
+        reason_codes.append("manual-full-validation")
 
     if outputs["full_suite_required"]:
         for key in list(outputs):
@@ -196,10 +203,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", default="config/ci-routing.yml")
     parser.add_argument("--files", action="append", default=[])
     parser.add_argument("--github-output")
+    parser.add_argument("--force-full", action="store_true")
     args = parser.parse_args(argv)
 
     config = load_routing_config(Path(args.config))
-    outputs = route_changed_files(_read_changed_files(args), config)
+    outputs = route_changed_files(
+        _read_changed_files(args), config, force_full=args.force_full
+    )
     print(json.dumps(outputs, indent=2, sort_keys=True))
     if args.github_output:
         _write_github_outputs(outputs, args.github_output)
