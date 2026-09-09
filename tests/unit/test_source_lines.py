@@ -402,3 +402,59 @@ def test_isolated_worker_preserves_unicode_paths_and_symbols(tmp_path):
         include_globs=[],
         exclude_globs=[],
     ) == [{"file": str(path), "line": 1, "text": "变量()"}]
+
+
+@pytest.mark.asyncio
+async def test_trace_never_rereads_hits_in_parent_process(tmp_path, monkeypatch):
+    # 2026-09-09：注释过滤不能在有界扫描之后重新阻塞 MCP 主进程。
+    import tree_sitter_analyzer.mcp.tools.trace_impact_tool as trace
+
+    (tmp_path / "a.py").write_text("# target()\ntarget()\n", encoding="utf-8")
+    monkeypatch.setattr(
+        trace,
+        "_file_non_code_lines",
+        lambda path: pytest.fail("主进程不得重读命中文件"),
+    )
+    result = await trace.TraceImpactTool(str(tmp_path)).execute({"symbol": "target"})
+    assert result["success"] is True
+    assert result["call_count"] == 1
+    assert result["usages"][0]["line"] == 2
+
+
+def test_worker_protocol_classifies_code_and_comments(tmp_path, monkeypatch, capsys):
+    import io
+    import json
+
+    import tree_sitter_analyzer.source_lines as native
+
+    path = tmp_path / "a.py"
+    path.write_text("# target()\ntarget()\n", encoding="utf-8")
+    request = {
+        "symbol": "target",
+        "roots": [str(tmp_path)],
+        "case_sensitive": True,
+        "word_match": True,
+        "include_globs": [],
+        "exclude_globs": [],
+        "classify_source": True,
+    }
+    monkeypatch.setattr(native.sys, "stdin", io.StringIO(json.dumps(request)))
+    native._main()
+    matches = json.loads(capsys.readouterr().out)["matches"]
+    assert [(m["line"], m["_source_match"]) for m in matches] == [(1, False), (2, True)]
+
+
+def test_classified_worker_response_requires_boolean_classification(
+    tmp_path, monkeypatch
+):
+    from unittest.mock import Mock
+
+    import tree_sitter_analyzer.source_lines as native
+
+    process = Mock(returncode=0)
+    process.communicate.return_value = ('{"matches": [{"file": "a.py"}]}', "")
+    monkeypatch.setattr(native.subprocess, "Popen", Mock(return_value=process))
+    with pytest.raises(OSError, match="SOURCE_WORKER_INVALID_RESPONSE"):
+        native.scan_symbol_lines_bounded(
+            "target", [str(tmp_path)], classify_source=True
+        )

@@ -305,6 +305,11 @@ def _filter_comment_docstring_matches(
         return matches
     kept: list[dict[str, Any]] = []
     for match in matches:
+        # 原生工作进程已分类的命中直接使用，避免主进程再次执行阻塞文件读取。
+        if "_source_match" in match:
+            if match["_source_match"]:
+                kept.append(match)
+            continue
         file_path = match.get("file", "")
         line_no = match.get("line")
         if not file_path or not isinstance(line_no, int):
@@ -821,6 +826,7 @@ class TraceImpactTool(BaseMCPTool):
                 word_match=word_match,
                 include_globs=include_globs,
                 exclude_globs=exclude_globs,
+                classify_source=True,
             )
         except (OSError, TimeoutError) as exc:
             return {"success": False, "error": str(exc), "usages": [], "call_count": 0}

@@ -214,7 +214,10 @@ def scan_symbol_lines_bounded(
         error_type = TimeoutError if result.get("timeout") else OSError
         raise error_type(result["error"])
     matches = result["matches"]
-    if not isinstance(matches, list):
+    if not isinstance(matches, list) or (
+        options.get("classify_source")
+        and any(not isinstance(match.get("_source_match"), bool) for match in matches)
+    ):
         raise OSError("SOURCE_WORKER_INVALID_RESPONSE")
     return matches
 
@@ -224,7 +227,22 @@ def _main() -> None:
     result: dict[str, Any]
     try:
         request = json.loads(sys.stdin.read(1024 * 1024))
-        result = {"matches": scan_symbol_lines(**request)}
+        classify_source = request.pop("classify_source", False)
+        matches = scan_symbol_lines(**request)
+        if classify_source:
+            from .mcp.tools.trace_impact_tool import (
+                _filter_comment_docstring_matches,
+                _filter_source_matches,
+            )
+
+            # 注释分类的文件重读也必须留在可终止的工作进程内。
+            kept = _filter_comment_docstring_matches(
+                _filter_source_matches(matches), symbol=request["symbol"]
+            )
+            kept_ids = {id(match) for match in kept}
+            for match in matches:
+                match["_source_match"] = id(match) in kept_ids
+        result = {"matches": matches}
     except (OSError, ValueError, TypeError) as exc:
         result = {"error": str(exc), "timeout": isinstance(exc, TimeoutError)}
     encoded = json.dumps(result, ensure_ascii=False)
