@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shlex
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -92,6 +93,29 @@ def _test_argv(default_command: DefaultTestCommand, targets: list[str]) -> list[
     return [runner, "test", *separator, *targets]
 
 
+def _shell_test_argv(
+    default_command: DefaultTestCommand, target: str
+) -> list[str] | None:
+    """shell 测试交给 Bash，Python 项目保留 uv 环境与 pytest 节点语义。"""
+    file_part, separator, _ = target.partition("::")
+    if separator and Path(file_part).suffix.lower() == ".py":
+        return None
+    if Path(target).suffix.lower() == ".sh":
+        prefix = ["uv", "run"] if default_command.runner == "pytest" else []
+        executable = "bash"
+        if not prefix and sys.platform == "win32":
+            # CreateProcess 的搜索顺序不同于 PATH；固定发现的原生执行文件。
+            executable = shutil.which("bash") or ""
+            if not executable:
+                raise ValueError("BASH_EXECUTABLE_NOT_FOUND")
+        if sys.platform == "win32":
+            # MSYS 会剥掉原生未引用参数中的撇号；整条含空格命令获得外层引用。
+            quoted_target = "'" + target.replace("'", "'\\''") + "'"
+            return [*prefix, executable, "-c", f"exec bash -- {quoted_target}"]
+        return [*prefix, executable, "--", target]
+    return None
+
+
 def build_test_command(
     default_command: DefaultTestCommand,
     tests_to_run: list[str],
@@ -99,6 +123,10 @@ def build_test_command(
     """支持定向执行时渲染精确参数，其余情况保留项目默认命令。"""
     if not tests_to_run or default_command.runner not in _TARGETED_RUNNERS:
         return default_command.command
+    if any(_shell_test_argv(default_command, target) for target in tests_to_run):
+        return join_verification_steps(
+            build_test_commands(default_command, tests_to_run)
+        )
     return shlex.join(_test_argv(default_command, tests_to_run))
 
 
@@ -119,6 +147,15 @@ def build_test_argv_batches(
     batches: list[list[str]] = []
     batch: list[str] = []
     for target in tests_to_run:
+        shell_argv = _shell_test_argv(default_command, target)
+        if shell_argv is not None:
+            if not _argv_within_budget(shell_argv):
+                raise ValueError("TEST_TARGET_EXCEEDS_COMMAND_BUDGET")
+            if batch:
+                batches.append(_test_argv(default_command, batch))
+                batch = []
+            batches.append(shell_argv)
+            continue
         if not _argv_within_budget(_test_argv(default_command, [target])):
             raise ValueError("TEST_TARGET_EXCEEDS_COMMAND_BUDGET")
         candidate = _test_argv(default_command, [*batch, target])
@@ -126,7 +163,8 @@ def build_test_argv_batches(
             batches.append(_test_argv(default_command, batch))
             batch = []
         batch.append(target)
-    batches.append(_test_argv(default_command, batch))
+    if batch:
+        batches.append(_test_argv(default_command, batch))
     return batches
 
 
@@ -165,7 +203,7 @@ def _node_test_command(root: Path) -> DefaultTestCommand:
 
 def join_verification_steps(steps: list[str]) -> str:
     """组合内部 POSIX 引用的命令；Windows 使用 PowerShell 5.1 的失败即停语法。"""
-    if sys.platform == "win32" and len(steps) > 1:
+    if sys.platform == "win32" and (len(steps) > 1 or (steps and "'" in steps[0])):
         return _powershell_verification_steps(steps)
     return " && ".join(steps)
 
