@@ -7,7 +7,8 @@ import shlex
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,8 @@ class DefaultTestCommand:
 
     runner: str
     command: str
+    pytest_marker: str | None = None
+    pytest_config_root: str | None = None
 
 
 PYTEST_DEFAULT_COMMAND = "uv run pytest -q"
@@ -50,7 +53,15 @@ def detect_default_test_command(project_root: str | Path | None) -> DefaultTestC
     if (root / "pom.xml").exists():
         return DefaultTestCommand("maven", "mvn test")
 
-    return PYTEST_COMMAND
+    from .verification_pytest_config import targeted_marker_expression
+
+    marker = targeted_marker_expression(root)
+    return DefaultTestCommand(
+        "pytest",
+        PYTEST_DEFAULT_COMMAND,
+        marker,
+        str(root.resolve()) if marker else None,
+    )
 
 
 def certified_default_test_command(
@@ -82,13 +93,29 @@ def certified_default_test_command(
 _TARGETED_RUNNERS = frozenset({"pytest", "npm", "pnpm", "yarn", "bun"})
 
 
+def _for_targets(default: DefaultTestCommand, targets: list[str]) -> DefaultTestCommand:
+    """每个完整目标集合只核对子项目配置一次，预算试装参数时不重复访问磁盘。"""
+    from .verification_pytest_config import targets_share_root_config
+
+    if (
+        default.pytest_marker
+        and default.pytest_config_root
+        and targets
+        and not targets_share_root_config(default.pytest_config_root, targets)
+    ):
+        return replace(default, pytest_marker=None, pytest_config_root=None)
+    return default
+
+
 def _test_argv(default_command: DefaultTestCommand, targets: list[str]) -> list[str]:
     """从结构化目标直接构造参数，命令文本只在最后渲染。"""
     runner = default_command.runner
     if not targets or runner not in _TARGETED_RUNNERS:
         return shlex.split(default_command.command)
     if runner == "pytest":
-        return ["uv", "run", "pytest", *targets, "-q"]
+        marker = default_command.pytest_marker
+        options = ["-m", marker] if marker else []
+        return ["uv", "run", "pytest", *options, *targets, "-q"]
     separator = ["--"] if runner in {"npm", "pnpm"} else []
     return [runner, "test", *separator, *targets]
 
@@ -123,6 +150,7 @@ def build_test_command(
     """支持定向执行时渲染精确参数，其余情况保留项目默认命令。"""
     if not tests_to_run or default_command.runner not in _TARGETED_RUNNERS:
         return default_command.command
+    default_command = _for_targets(default_command, tests_to_run)
     if any(_shell_test_argv(default_command, target) for target in tests_to_run):
         return join_verification_steps(
             build_test_commands(default_command, tests_to_run)
@@ -130,12 +158,27 @@ def build_test_command(
     return shlex.join(_test_argv(default_command, tests_to_run))
 
 
-def _argv_within_budget(argv: list[str]) -> bool:
-    """同时检查 POSIX 命令字节数和 Windows 引用后的 UTF-16 启动长度。"""
+@lru_cache(maxsize=128)
+def _argument_lengths(argument: str) -> tuple[int, int]:
+    """缓存单参数的纯转义长度，避免试装批次时反复转义已有路径。"""
     return (
-        len(shlex.join(argv).encode("utf-8")) <= 6000
-        and len(subprocess.list2cmdline(argv).encode("utf-16-le")) // 2 + 1 <= 6000
+        len(shlex.quote(argument).encode("utf-8")),
+        len(subprocess.list2cmdline([argument]).encode("utf-16-le")) // 2,
     )
+
+
+def _argv_within_budget(argv: list[str]) -> bool:
+    """按参数累加精确转义长度，包含分隔空格与 Windows 末尾 NUL。"""
+    posix = max(0, len(argv) - 1)
+    windows = max(1, len(argv))
+    for argument in argv:
+        # 超长参数必定超限，也不能进入有界转义缓存。
+        if len(argument) > 6000:
+            return False
+        posix_size, windows_size = _argument_lengths(argument)
+        posix += posix_size
+        windows += windows_size
+    return posix <= 6000 and windows <= 6000
 
 
 def build_test_argv_batches(
@@ -144,6 +187,7 @@ def build_test_argv_batches(
     """编译完整有序批次，保留重复目标，且不经过 shell 文本反向解析。"""
     if not tests_to_run or default_command.runner not in _TARGETED_RUNNERS:
         return [_test_argv(default_command, [])]
+    default_command = _for_targets(default_command, tests_to_run)
     batches: list[list[str]] = []
     batch: list[str] = []
     for target in tests_to_run:

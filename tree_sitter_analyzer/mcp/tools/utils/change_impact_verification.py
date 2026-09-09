@@ -53,8 +53,17 @@ def _build_verification_plan(
     default_test_command: DefaultTestCommand = PYTEST_COMMAND,
 ) -> dict[str, Any]:
     """Build the smallest recommended verification command for the diff."""
+    policy = (
+        {
+            "_pytest_marker": default_test_command.pytest_marker,
+            "_pytest_config_root": default_test_command.pytest_config_root,
+        }
+        if default_test_command.pytest_marker
+        else {}
+    )
     if not _requires_pytest(changed_files):
         return {
+            **policy,
             "test_required": False,
             "test_runner": default_test_command.runner,
             "default_test_command": default_test_command.command,
@@ -68,6 +77,7 @@ def _build_verification_plan(
     if _has_runtime_auto_discovery(test_mapping or {}):
         test_command = build_test_command(default_test_command, [])
         return {
+            **policy,
             "test_required": True,
             "test_runner": default_test_command.runner,
             "default_test_command": default_test_command.command,
@@ -97,6 +107,7 @@ def _build_verification_plan(
         else "no targeted tests found; run the default test command"
     )
     return {
+        **policy,
         "test_required": True,
         "test_runner": default_test_command.runner,
         "default_test_command": default_test_command.command,

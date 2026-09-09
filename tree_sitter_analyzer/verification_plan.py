@@ -58,7 +58,10 @@ def compile_stages(context: Any) -> dict[str, list[dict[str, Any]]]:
 
     verification = context.verification
     default = DefaultTestCommand(
-        verification["test_runner"], verification["default_test_command"]
+        verification["test_runner"],
+        verification["default_test_command"],
+        verification.get("_pytest_marker"),
+        verification.get("_pytest_config_root"),
     )
     focused = (
         [
@@ -92,7 +95,9 @@ def compile_stages(context: Any) -> dict[str, list[dict[str, Any]]]:
                     "-q",
                 ]
             if not _argv_within_budget(argv):
-                targets = step["argv"][3:-1]
+                # 参数由统一编译器生成；层级选择属于前缀，不能作为测试路径拆分。
+                target_start = 5 if step["argv"][3:4] == ["-m"] else 3
+                targets = step["argv"][target_start:-1]
                 if step["role"] != "focused" or len(targets) < 2:
                     raise ValueError("VERIFICATION_REQUEST_TOO_LARGE")
                 middle = len(targets) // 2
@@ -101,7 +106,7 @@ def compile_stages(context: Any) -> dict[str, list[dict[str, Any]]]:
                         [
                             {
                                 "role": "focused",
-                                "argv": [*step["argv"][:3], *part, "-q"],
+                                "argv": [*step["argv"][:target_start], *part, "-q"],
                             }
                             for part in (targets[:middle], targets[middle:])
                         ]
