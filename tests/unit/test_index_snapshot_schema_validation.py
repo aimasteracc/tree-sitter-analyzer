@@ -210,7 +210,8 @@ def test_entire_extension_upgrade_rolls_back_and_retries(tmp_path, layout, fault
         ):
             schema.init_db(db, False, None, migrations)
         db.set_trace_callback(None)
-        db.set_authorizer(None)
+        # 2026-09-09: Python 3.10 不支持用 None 撤销授权回调，恢复明确允许。
+        db.set_authorizer(lambda *_: sqlite3.SQLITE_OK)
         assert db.in_transaction is False
         assert tuple(db.iterdump()) == before
         db.execute("DROP TRIGGER IF EXISTS deny_record")

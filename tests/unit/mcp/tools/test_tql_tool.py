@@ -122,7 +122,8 @@ def test_bfs_sql_authorization_failure_is_not_empty_matches(ast_cache_conn, stag
         with pytest.raises(HyphaeSyntaxError, match="BFS_INDEX_UNAVAILABLE"):
             Evaluator(cache).eval(parse(".function:reaches(#B){1,2}"))
     finally:
-        ast_cache_conn.set_authorizer(None)
+        # 2026-09-09: Python 3.10 不支持用 None 撤销授权回调，恢复明确允许。
+        ast_cache_conn.set_authorizer(lambda *_: sqlite3.SQLITE_OK)
         ast_cache_conn.set_trace_callback(None)
 
 
@@ -318,7 +319,8 @@ def test_temporal_data_read_failure_after_lazy_state_check(indexed_tql, pseudo, 
             Evaluator(cache).eval(parse(f".function:{pseudo}"))
         assert denied == [column]
     finally:
-        db.set_authorizer(None)
+        # 2026-09-09: Python 3.10 不支持用 None 撤销授权回调，恢复明确允许。
+        db.set_authorizer(lambda *_: sqlite3.SQLITE_OK)
 
 
 @pytest.mark.parametrize(

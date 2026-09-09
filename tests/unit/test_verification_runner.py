@@ -301,3 +301,18 @@ def test_step_lifecycle_errors_preserve_truthful_status(tmp_path, monkeypatch, f
     assert result["cleanup_complete"] is (failure != "wait_timeout")
     assert result["output_truncated"] is (failure == "reader_alive")
     assert process.stdout.closed is (failure != "reader_alive")
+
+
+def test_cleanup_does_not_signal_a_bare_process_group_id(monkeypatch):
+    # 2026-09-09：macOS 的已退出组可能拒绝信号；清理以保留的进程身份为准。
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(runner.psutil, "process_iter", lambda: [])
+    monkeypatch.setattr(
+        runner,
+        "os",
+        SimpleNamespace(
+            name="posix", killpg=lambda *_: pytest.fail("不得凭旧组号发送信号")
+        ),
+    )
+    assert runner._cleanup(SimpleNamespace(pid=12345), {}, "owned") is True

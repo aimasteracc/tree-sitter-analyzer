@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import signal
 import subprocess
 import threading
 import time
@@ -104,11 +103,6 @@ def _cleanup(
                 continue
             except psutil.AccessDenied:
                 alive.append(process)
-        if os.name != "nt":
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
         if not alive:
             empty += 1
             if empty == 2:
