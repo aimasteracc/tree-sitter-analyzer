@@ -321,9 +321,13 @@ This will find all Java files and count TODO comments.
         assert stats["total_files_analyzed"] == 2
         assert stats["average_complexity"] == 2.5
         assert stats["files_by_complexity"] == [
-            {"file": "src/main/java/Service.java", "language": "java", "complexity": 3},
             {
-                "file": "src/test/java/ServiceTest.java",
+                "file": str(Path("src/main/java/Service.java")),
+                "language": "java",
+                "complexity": 3,
+            },
+            {
+                "file": str(Path("src/test/java/ServiceTest.java")),
                 "language": "java",
                 "complexity": 2,
             },

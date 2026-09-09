@@ -312,7 +312,11 @@ class ExampleClass:
 '''
         test_file.write_text(content, encoding="utf-8")
         mcp_server.set_project_path(str(tmpdir_path))
-        yield test_file
+        try:
+            yield test_file
+        finally:
+            # 临时目录删除前切换根，释放本次查询持有的索引连接。
+            mcp_server.set_project_path(str(tmpdir_path.parent))
 
 
 def _index_fixture(server, path):

@@ -60,7 +60,7 @@ FACADE_WIRE_CASES = [
             "output_format": "json",
         },
     ),
-    ("project", {"action": "tools", "output_format": "json"}),
+    ("project", {"action": "skills", "output_format": "json"}),
     ("index", {"action": "status", "output_format": "json"}),
     (
         "viz",

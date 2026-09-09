@@ -172,3 +172,16 @@ class TestGetProjectSummaryToolExecution:
         lang_dist = result["language_distribution"]
         assert "python" in lang_dist
         assert lang_dist["python"] >= 2  # src/main.py, tests/test_foo.py, etc.
+
+
+@pytest.mark.asyncio
+async def test_project_without_entry_point_recommends_indexed_structure(tmp_path):
+    """普通库文件没有入口时，下一步不得指向已退役的搜索包装器。"""
+    (tmp_path / "library.py").write_text("VALUE = 1\n", encoding="utf-8")
+    tool = GetProjectSummaryTool(project_root=str(tmp_path))
+    result = await tool.execute({"format": "json", "force_refresh": True})
+    assert result["file_count"] == 1
+    assert (
+        result["agent_summary"]["next_step"]
+        == "structure action=sitemap for a per-directory view"
+    )
