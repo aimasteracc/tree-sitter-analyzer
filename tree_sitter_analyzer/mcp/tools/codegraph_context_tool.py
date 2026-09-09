@@ -212,9 +212,7 @@ class CodeGraphContextTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
-                    "description": (
-                        "Output format: JSON"
-                    ),
+                    "description": ("Output format: JSON"),
                     "default": "json",
                 },
                 "include_graph": {
@@ -297,6 +295,16 @@ class CodeGraphContextTool(BaseMCPTool):
             max_nodes=max_nodes,
             elapsed_ms=int((time.perf_counter() - started) * 1000),
         )
+
+        if not entry_points:
+            from ..utils.auto_index_guard import empty_index_diagnostic
+
+            diagnostic = empty_index_diagnostic(self._get_cache())
+            result.update(diagnostic)
+            if diagnostic:
+                result["agent_summary"].update(
+                    verdict="ERROR", next_step=diagnostic["next_step"]
+                )
 
         from ..utils.format_helper import apply_output_format_to_response
 

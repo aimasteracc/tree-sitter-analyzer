@@ -184,3 +184,24 @@ def reset() -> None:
 
 def is_indexed(project_root: str) -> bool:
     return _indexed_roots.get(project_root, False)
+
+
+def empty_index_diagnostic(cache: Any) -> dict[str, Any]:
+    """仅诊断未初始化的空索引，不证明已有索引的完整性或新鲜度。"""
+    conn = cache.get_conn()
+    populated = conn.execute(
+        "SELECT EXISTS(SELECT 1 FROM ast_index) "
+        "OR EXISTS(SELECT 1 FROM ast_index_snapshot_manifest)"
+    ).fetchone()[0]
+    if populated or _call_graph_marker_is_current(cache):
+        return {}
+    return {
+        "success": False,
+        "verdict": "ERROR",
+        "error_code": "INDEX_NOT_READY",
+        "error": "INDEX_NOT_READY: No indexed files or completed indexing run. "
+        "An empty lookup cannot establish that the requested symbol is absent.",
+        "next_step": "From the project root, run tree-sitter-analyzer --ast-cache "
+        "--ast-cache-mode index --format json, or call index action=cache mode=index "
+        "for the bound project, then retry the query.",
+    }
