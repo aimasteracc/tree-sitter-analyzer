@@ -264,7 +264,7 @@ Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
                               MCP client / CLI consumer
 ```
 
-The 8 facades expose indexed queries and direct source analysis.
+The 8 MCP tools expose indexed queries and direct source analysis.
 Build the AST index explicitly before indexed symbol/context queries with
 `tree-sitter-analyzer --ast-cache --ast-cache-mode index --format json`. Refresh
 it after source changes with `index` action=sync. Indexed queries reuse cached

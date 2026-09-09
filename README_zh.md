@@ -204,7 +204,7 @@ tree-sitter-analyzer --safe-to-edit <file>        # 风险时拒绝
                        MCP 客户端 / CLI 消费者
 ```
 
-这 8 个门面提供索引查询和直接源代码分析。在查询索引中的符号或上下文前，先运行 `tree-sitter-analyzer --ast-cache --ast-cache-mode index --format json` 建立 AST 索引。源文件变更后使用 `index` action=sync 更新。索引查询复用已有 AST 数据；是否自动建索引取决于具体工具。
+这 8 个 MCP 工具提供索引查询和直接源代码分析。在查询索引中的符号或上下文前，先运行 `tree-sitter-analyzer --ast-cache --ast-cache-mode index --format json` 建立 AST 索引。源文件变更后使用 `index` action=sync 更新。索引查询复用已有 AST 数据；是否自动建索引取决于具体工具。
 
 ---
 
