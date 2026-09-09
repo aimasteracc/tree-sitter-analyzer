@@ -376,7 +376,7 @@ def test_readme_counts_match_registry() -> None:
         ),
         (
             "README.md",
-            re.compile(r"All (\d+) tools read"),
+            re.compile(r"The (\d+) facades expose"),
             tool_count,
             "MCP tool count (en cache section)",
         ),
@@ -406,7 +406,7 @@ def test_readme_counts_match_registry() -> None:
         ),
         (
             "README_zh.md",
-            re.compile(r"所有 (\d+) 个工具"),
+            re.compile(r"这 (\d+) 个门面"),
             tool_count,
             "MCP tool count (zh cache section)",
         ),
