@@ -405,12 +405,21 @@ def test_ci_routing_uses_merge_parent_when_event_base_is_stale(tmp_path: Path) -
 
 
 @pytest.mark.parametrize("force_full", [False, True])
-@pytest.mark.parametrize("path", ["README.md", "tree_sitter_analyzer/formatters/x.py"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "README.md",
+        "tree_sitter_analyzer/formatters/x.py",
+        "tests/benchmarks/test_query_performance.py",
+        "tree_sitter_analyzer/grammar_coverage/x.py",
+    ],
+)
 def test_manual_full_validation_routes_real_cli(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], force_full: bool, path: str
 ) -> None:
     """手动完整验证绕过文档跳过和子范围，同时保留普通路径路由。"""
     # 2026-09-09：CI 34340908809 的文档路由跳过了待补验的完整矩阵。
+    # PR #1431：启用集合必须对应实际消费路由的 CI 作业，不能包含独立资格工作流。
     import json
 
     from scripts.ci_route import main
@@ -424,25 +433,27 @@ def test_manual_full_validation_routes_real_cli(
     docs_only = path == "README.md" and not force_full
     assert result["run_docs_check"] is docs_only
     assert result["full_suite_required"] is force_full
+    assert [result["run_benchmarks"], result["run_grammar_coverage"]] == [
+        not force_full and "benchmarks" in path,
+        not force_full and "grammar_coverage" in path,
+    ]
     for key in ("run_quality", "run_test_matrix", "run_build", "upload_coverage"):
         assert result[key] is (not docs_only)
     assert result["regression_scope"] == (
-        "format" if not force_full and not docs_only else "all"
+        "format" if not force_full and "/formatters/" in path else "all"
     )
     if force_full:
         assert {
             key for key, value in result.items() if key.startswith("run_") and value
-        } == {
-            "run_quality",
-            "run_test_matrix",
-            "run_build",
-            "run_e2e_smoke",
-            "run_regression",
-            "run_sql_platform_compat",
-            "run_benchmarks",
-            "run_grammar_coverage",
-        }
-        assert result["benchmark_scope"] == "all"
+        } == set(
+            re.findall(
+                r"needs\.route\.outputs\.(run_\w+)",
+                (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"),
+            )
+        ) - {"run_docs_check"}
+        assert {"run_benchmarks", "run_grammar_coverage"}.isdisjoint(
+            result["reason_codes"]
+        )
         assert "manual-full-validation" in result["reason_codes"]
     assert f"run_test_matrix={str(not docs_only).lower()}\n" in output.read_text(
         encoding="utf-8"

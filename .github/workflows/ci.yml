@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       full-validation:
-        description: 'Run all validation routes and the full test matrix without publishing'
+        description: 'Run the full test matrix and connected CI checks without publishing'
         required: false
         default: false
         type: boolean
