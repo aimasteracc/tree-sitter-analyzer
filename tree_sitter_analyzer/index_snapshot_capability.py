@@ -126,9 +126,20 @@ def open_bound_database(project_root: str) -> tuple[str, int, int, int]:
     except FileNotFoundError:
         raise FileNotFoundError("MISSING_PROJECT_ROOT") from None
     try:
-        cache_fd = _open_pinned_path(
-            ".ast-cache", directory_flags, dir_fd=root_fd, directory=True
-        )
+        from .cache.generation_routing import resolve_index_path
+
+        parts = resolve_index_path(root).parent.relative_to(root).parts
+        cache_fd = os.dup(root_fd)
+        try:
+            for part in parts:
+                child_fd = _open_pinned_path(
+                    part, directory_flags, dir_fd=cache_fd, directory=True
+                )
+                os.close(cache_fd)
+                cache_fd = child_fd
+        except BaseException:
+            os.close(cache_fd)
+            raise
     except FileNotFoundError:
         os.close(root_fd)
         raise FileNotFoundError("MISSING_INDEX") from None
@@ -178,29 +189,25 @@ def hierarchy_matches_pinned_database(
     canonical_root: str, root_fd: int, cache_fd: int, db_fd: int
 ) -> bool:
     """Reopen the published pathname and compare every pinned hierarchy inode."""
-    directory_flags = (
-        os.O_RDONLY
-        | getattr(os, "O_DIRECTORY", 0)
-        | getattr(os, "O_NOFOLLOW", 0)
-        | getattr(os, "O_CLOEXEC", 0)
-    )
-    current_root: int | None = None
-    current_cache: int | None = None
+    handles: tuple[int, int, int] | None = None
     try:
-        current_root = os.open(canonical_root, directory_flags)
+        _root, current_root, current_cache, current_db = open_bound_database(
+            canonical_root
+        )
+        handles = (current_root, current_cache, current_db)
         if _fd_identity(current_root) != _fd_identity(root_fd):
             return False
-        current_cache = os.open(".ast-cache", directory_flags, dir_fd=current_root)
         if _fd_identity(current_cache) != _fd_identity(cache_fd):
             return False
-        return path_matches_pinned_database(current_cache, db_fd)
-    except OSError:
+        return _fd_identity(current_db) == _fd_identity(
+            db_fd
+        ) and path_matches_pinned_database(current_cache, db_fd)
+    except (OSError, ValueError):
         return False
     finally:
-        if current_cache is not None:
-            os.close(current_cache)
-        if current_root is not None:
-            os.close(current_root)
+        if handles is not None:
+            for handle in reversed(handles):
+                os.close(handle)
 
 
 def _fd_identity(fd: int) -> tuple[int, int]:

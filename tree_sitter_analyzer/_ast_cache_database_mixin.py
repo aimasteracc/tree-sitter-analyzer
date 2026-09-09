@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from pathlib import Path
 from typing import Any, cast
 
 from .cache.schema import (
@@ -127,17 +128,31 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
     """Thread-local connections, migrations, and schema verification."""
 
     def get_conn(self) -> sqlite3.Connection:
-        """Return the lazily configured thread-local SQLite connection."""
+        """按当前绑定版本复用线程本地连接；其他线程发布后重新打开。"""
+        database_path = self.db_path
         conn = getattr(self._local, "conn", None)
+        if (
+            conn is not None
+            and getattr(self._local, "db_path", database_path) != database_path
+        ):
+            conn.close()
+            self._local.conn = None
+            conn = None
         if conn is None:
-            conn = sqlite3.connect(self.db_path, timeout=10)
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
+            if getattr(self, "_read_only", False):
+                conn = sqlite3.connect(
+                    Path(database_path).as_uri() + "?mode=ro", uri=True, timeout=10
+                )
+            else:
+                conn = sqlite3.connect(database_path, timeout=10)
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("PRAGMA cache_size=-65536")
             conn.execute("PRAGMA mmap_size=268435456")
             conn.execute("PRAGMA temp_store=MEMORY")
             conn.row_factory = sqlite3.Row
             self._local.conn = conn
+            self._local.db_path = database_path
         return conn
 
     def _get_conn(self) -> sqlite3.Connection:

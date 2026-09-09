@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import os
 import sqlite3
 from typing import Any
+
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 
 from . import index_lag, index_snapshot
 from .index_snapshot import ACTION_VERSION
@@ -99,7 +100,7 @@ def build_index_status_response(
     indexed = complete or total_files > 0
     verdict = "INFO" if indexed and complete else "WARN"
     cache_path = (
-        os.path.join(snapshot.canonical_root, ".ast-cache", "index.db")
+        snapshot.database_path or str(resolve_index_path(snapshot.canonical_root))
         if snapshot.canonical_root and snapshot.snapshot_id
         else None
     )

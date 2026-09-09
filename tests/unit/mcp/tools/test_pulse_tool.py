@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+from contextlib import closing
 from unittest.mock import MagicMock
 
 import pytest
@@ -57,8 +59,9 @@ async def test_pulse_missing_relation_is_query_failure(indexed_pulse_project):
     """PR #1352：目标存在但关系表损坏时，不得谎报目标不存在。"""
     root, cache = indexed_pulse_project
     tool = PulseTool(str(root))
-    cache.get_conn().execute("DROP TABLE ast_symbol_activation")
-    cache.get_conn().commit()
+    with closing(sqlite3.connect(cache.db_path)) as corrupt:
+        corrupt.execute("DROP TABLE ast_symbol_activation")
+        corrupt.commit()
     response = await tool.execute({"file": "a.py", "symbol": "greet"})
     assert response["success"] is False
     assert response["source_evidence"]["reason"] == "INCOMPATIBLE_SCHEMA"
@@ -73,10 +76,11 @@ async def test_batch_corrupt_index_rejects_all_uncertified_targets(
     source = root / "bad.py"
     source.write_text("def broken():\n    pass\n", encoding="utf-8")
     cache.index_file(str(source))
-    cache.get_conn().execute(
-        "UPDATE ast_index SET symbols_json='{' WHERE file_path='bad.py'"
-    )
-    cache.get_conn().commit()
+    with closing(sqlite3.connect(cache.db_path)) as corrupt:
+        corrupt.execute(
+            "UPDATE ast_index SET symbols_json='{' WHERE file_path='bad.py'"
+        )
+        corrupt.commit()
     tool = PulseBatchTool(str(root))
     result = await tool.execute(
         {
@@ -98,7 +102,9 @@ async def test_schema_invalid_timestamp_does_not_invent_index_age(
 ):
     """PR #1352：已有索引时间字段损坏时保留真实数量，年龄明确为未知。"""
     root, cache = indexed_pulse_project
-    cache.get_conn().execute("UPDATE ast_index SET indexed_at='invalid timestamp'")
+    with closing(sqlite3.connect(cache.db_path)) as corrupt:
+        corrupt.execute("UPDATE ast_index SET indexed_at='invalid timestamp'")
+        corrupt.commit()
     tool = GetProjectSchemaTool(str(root))
     tool._cache = cache
     result = await tool.execute({})
@@ -377,12 +383,13 @@ async def test_pulse_rejects_ambiguous_index_without_picking_a_definition(
 async def test_pulse_rejects_unrecorded_import_projection(indexed_pulse_project):
     # 2026-09-08：未重新认证的导入表改动不能借用旧清单返回成功。
     root, cache = indexed_pulse_project
-    conn = cache.get_conn()
+    conn = sqlite3.connect(cache.db_path)
     conn.executemany(
         "INSERT INTO ast_imports(file_path,language,module_path) VALUES ('a.py','python',?)",
         [(f"module_{i}",) for i in range(20001)],
     )
     conn.commit()
+    conn.close()
     response = await PulseTool(str(root)).execute({"file": "a.py", "symbol": "greet"})
     assert response["success"] is False
     assert response["source_evidence"]["freshness"] == "unknown"
@@ -494,7 +501,9 @@ async def test_project_schema_sql_failure_is_not_an_empty_index(indexed_pulse_pr
     root, cache = indexed_pulse_project
     tool = GetProjectSchemaTool(str(root))
     tool._cache = cache
-    cache.get_conn().execute("DROP TABLE edges")
+    with closing(sqlite3.connect(cache.db_path)) as corrupt:
+        corrupt.execute("DROP TABLE edges")
+        corrupt.commit()
     response = await tool.execute({})
     assert response["success"] is False
     assert response["error"] == "no such table: edges"

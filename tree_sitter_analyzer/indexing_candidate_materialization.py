@@ -101,6 +101,12 @@ def index_candidate_cache_hierarchy_is_current(
     snapshot: Any, cache: Any, *, root_fd: int | None = None
 ) -> bool:
     """Require the pinned cache directory to remain visible below the captured root."""
+    generation_guard = getattr(cache, "_generation_guard", None)
+    if generation_guard is not None:
+        try:
+            generation_guard()
+        except (OSError, RuntimeError, ValueError):
+            return False
     if not getattr(cache, "_uses_project_mirror", True):
         return True
     cache_fd = getattr(cache, "_cache_dir_fd", None)

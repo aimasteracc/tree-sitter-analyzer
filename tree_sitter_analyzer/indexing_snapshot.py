@@ -167,6 +167,8 @@ class IndexCandidateSnapshot:
     errors: int
     limited: int
     discovery_error: str | None = None
+    publication_parent: object | None = field(default=None, repr=False, compare=False)
+    publication_bound: bool = field(default=False, repr=False, compare=False)
     root_identity: tuple[str, int, int] | None = field(
         default=None, repr=False, compare=False
     )
@@ -273,9 +275,12 @@ def build_index_candidate_snapshot(
     normalized_max = normalize_index_max_files(max_files)
     logical_root = os.path.abspath(project_root)
     resolved_root = os.path.realpath(logical_root)
+    from .cache.generation_routing import resolve_index_location
+
     root_info = os.stat(resolved_root, follow_symlinks=True)
     if not stat.S_ISDIR(root_info.st_mode):
         raise ValueError("candidate project root is not a directory")
+    publication_parent = resolve_index_location(resolved_root).selector
     root_identity = (resolved_root, int(root_info.st_dev), int(root_info.st_ino))
     entries: list[IndexSnapshotEntry] = []
     present_paths: set[str] = set()
@@ -481,6 +486,8 @@ def build_index_candidate_snapshot(
         limited=limited,
         discovery_error=discovery_error,
         root_identity=root_identity,
+        publication_parent=publication_parent,
+        publication_bound=True,
     )
     if materialize:
         from .indexing_candidate_materialization import (

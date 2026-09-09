@@ -21,6 +21,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from ...constraints import evaluate, load_constraints
 from ...constraints.parser import (
     ConstraintParseError,
@@ -199,7 +201,7 @@ def _evaluate_with_explicit_file(
             output_format,
         )
 
-    db_path = Path(project_root) / ".ast-cache" / "index.db"
+    db_path = resolve_index_path(project_root)
     if persist and not db_path.is_file():
         return _format_response(
             {

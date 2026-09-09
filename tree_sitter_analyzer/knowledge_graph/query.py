@@ -7,6 +7,8 @@ import os
 from collections import deque
 from typing import Any, Protocol
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from .builder import KnowledgeGraphBuilder
 from .exporters import to_graphology
 from .models import KnowledgeEdge, KnowledgeGraphSnapshot, KnowledgeNode
@@ -99,7 +101,7 @@ class SQLiteKnowledgeGraphQuery:
         self.snapshot = KnowledgeGraphBuilder(project_root).build()
         try:
             self.snapshot.stats["mtime_ns"] = os.stat(
-                os.path.join(project_root, ".ast-cache", "index.db")
+                str(resolve_index_path(project_root))
             ).st_mtime_ns
         except OSError:
             pass

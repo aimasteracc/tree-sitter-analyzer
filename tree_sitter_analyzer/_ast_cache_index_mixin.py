@@ -83,6 +83,20 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         _frozen_deadline: float | None = None,
     ) -> dict[str, Any]:
         """Index one logical path; private frozen inputs are engine-only evidence."""
+        if getattr(self, "_generation_managed", False):
+            from .cache.generation_indexing import mutate_published_cache
+
+            return mutate_published_cache(
+                self,
+                lambda writable: writable.index_file(
+                    file_path,
+                    language,
+                    _source_path=_source_path,
+                    _source_fingerprint=_source_fingerprint,
+                    _frozen_identity=_frozen_identity,
+                    _frozen_deadline=_frozen_deadline,
+                ),
+            )
         abs_path = _canonical_project_path(file_path, self.project_root)
         rel_path = os.path.relpath(abs_path, self.project_root).replace("\\", "/")
         if language is None:
@@ -289,6 +303,33 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         certify_manifest: bool = True,
     ) -> dict[str, Any]:
         """Index every source file below the project root."""
+        if getattr(self, "_generation_managed", False):
+            from .cache.generation_indexing import mutate_published_cache
+            from .index_source_scope import make_source_scope_descriptor
+
+            scope = source_scope or make_source_scope_descriptor(
+                no_default_excludes=exclude_patterns is not None,
+                exclude_patterns=tuple(sorted(exclude_patterns or ())),
+                certification_max_files=max_files,
+            )
+
+            return mutate_published_cache(
+                self,
+                lambda writable: writable.index_project(
+                    max_files,
+                    force,
+                    workers=workers,
+                    resolve_only=resolve_only,
+                    include_activation=include_activation,
+                    language_filter=language_filter,
+                    exclude_patterns=exclude_patterns,
+                    candidate_snapshot=candidate_snapshot,
+                    source_scope=source_scope,
+                    certify_manifest=certify_manifest,
+                ),
+                scope=scope,
+                candidate_snapshot=candidate_snapshot,
+            )
         # One cache owner serializes validation, destructive clear, and writes.
         # SQLite still arbitrates across processes; this lock closes the in-owner
         # thread window between the final source authorization and the clear.

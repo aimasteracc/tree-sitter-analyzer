@@ -389,6 +389,17 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        from ...cache.generation_indexing import run_full_index
+
+        return await run_full_index(self, arguments)
+
+    async def _execute_in_place(
+        self,
+        arguments: dict[str, Any],
+        candidate_snapshot: IndexCandidateSnapshot | None = None,
+        *,
+        started_at: float | None = None,
+    ) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
         if not self.project_root:
@@ -420,9 +431,9 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             exclude_patterns=tuple(extra_patterns),
             certification_max_files=max_files,
         )
-        t_start = time.monotonic()
+        t_start = time.monotonic() if started_at is None else started_at
         try:
-            candidate_snapshot = (
+            candidate_snapshot = candidate_snapshot or (
                 self._build_candidate_snapshot(
                     max_files,
                     exclude_patterns,
@@ -698,6 +709,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "candidate_snapshot": snapshot_report,
                 **stats,
             }
+            result["scope_complete"] = manifest_certified
 
             from ...indexing_candidate_materialization import (
                 release_index_candidate_snapshot,

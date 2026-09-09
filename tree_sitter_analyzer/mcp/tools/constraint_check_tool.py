@@ -12,6 +12,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from ... import read_existing_access as read_access
 from ...constraints import (
     Violation,
@@ -221,7 +223,7 @@ class ConstraintCheckTool(BaseMCPTool):
                 output_format,
             )
 
-        db_path = Path(self.project_root) / ".ast-cache" / "index.db"
+        db_path = resolve_index_path(self.project_root)
         if persist and not db_path.is_file():
             return apply_output_format_to_response(
                 {

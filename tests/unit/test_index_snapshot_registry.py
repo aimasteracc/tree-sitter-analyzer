@@ -424,7 +424,9 @@ class TestAuthoritativeSnapshotTransitions:
         await CodeGraphFullIndexTool(str(tmp_path)).execute(
             {"mode": "full", "output_format": "json"}
         )
-        conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+        from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
+        conn = sqlite3.connect(resolve_index_path(tmp_path))
         conn.execute("DELETE FROM ast_call_graph_state")
         conn.commit()
         conn.close()

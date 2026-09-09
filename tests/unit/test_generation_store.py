@@ -231,6 +231,24 @@ def test_corrupt_selector_cannot_be_treated_as_empty_store(store):
         store.capture()
 
 
+def test_deleted_selector_after_activation_cannot_reinitialize_store(store):
+    store.sync()
+    store.selector_path.unlink()
+    with pytest.raises(InvalidGenerationSelector, match="SELECTOR_MISSING"):
+        store.capture()
+
+
+def test_replaced_storage_directory_revokes_old_store(store):
+    candidate = store.capture()
+    displaced = store.storage.with_name("displaced")
+    store.storage.rename(displaced)
+    store.storage.mkdir()
+    (store.storage / "generations").mkdir()
+    with pytest.raises(Superseded, match="DIRECTORY_CHANGED"):
+        store.prepare(candidate)
+    assert list(store.storage.iterdir()) == [store.storage / "generations"]
+
+
 def test_nonregular_selector_is_rejected_without_reading_it(store):
     store.selector_path.mkdir()
     with pytest.raises((InvalidGenerationSelector, OSError)):
@@ -330,3 +348,88 @@ def test_killed_lease_owner_does_not_block_next_publisher(store):
             process.kill()
         process.join(5)
         parent.close()
+
+
+def test_missing_default_generation_directory_cannot_fall_back_to_legacy(tmp_path):
+    # 2026-09-09：整个版本目录丢失也不能复活旧进程遗留的数据库。
+    from tree_sitter_analyzer.cache.generation_indexing import project_store
+    from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
+    (tmp_path / "a.py").write_text("def saved(): return 1\n", encoding="utf-8")
+    active = project_store(str(tmp_path), make_source_scope_descriptor())
+    active.sync()
+    active.storage.rename(tmp_path / "displaced")
+    with pytest.raises(InvalidGenerationSelector, match="SELECTOR_MISSING"):
+        resolve_index_path(str(tmp_path))
+
+
+@pytest.mark.parametrize("change", ["content", "missing", "during_read"])
+def test_path_only_candidates_bind_content_and_reject_unstable_reads(
+    store, monkeypatch, change
+):
+    # 2026-09-09：验证路径平台摘要分支；此测试不代替 Windows 原生验收。
+    import tree_sitter_analyzer.cache.generation_store as owner
+    import tree_sitter_analyzer.index_source_stream as stream
+
+    (store.root / "note.txt").write_text("excluded", encoding="utf-8")
+    snapshot = store._snapshot()
+    monkeypatch.setattr(owner, "_PATH_ONLY_SOURCE", True)
+    first = owner._bind_source_hashes(snapshot)
+    source = store.root / "a.py"
+    if change == "missing":
+        source.unlink()
+        with pytest.raises(FileNotFoundError):
+            owner._bind_source_hashes(snapshot)
+    elif change == "during_read":
+        original = stream.hash_source_at
+
+        def mutate_before_read(*args, **kwargs):
+            source.write_text("def replaced(): return 4\n", encoding="utf-8")
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(stream, "hash_source_at", mutate_before_read)
+        with pytest.raises(RuntimeError, match="SOURCE_CHANGED"):
+            owner._bind_source_hashes(snapshot)
+    else:
+        source.write_text("def replaced(): return 4\n", encoding="utf-8")
+        second = store._snapshot()
+        assert (
+            first.entries[0].fingerprint.content_hash
+            != second.entries[0].fingerprint.content_hash
+        )
+
+
+def test_nonregular_publication_lock_is_rejected(store):
+    (store.storage / "publication.lock.db").mkdir()
+    with pytest.raises(Superseded, match="LOCK_UNSAFE"):
+        store.capture()
+
+
+def test_seal_rejects_database_with_pinned_uncheckpointed_frames(store, monkeypatch):
+    candidate = store.capture()
+    selector = store.begin(candidate)
+    database = store.database(selector)
+    writer = sqlite3.connect(database)
+    writer.execute("PRAGMA journal_mode=WAL")
+    writer.execute("CREATE TABLE payload(value)")
+    writer.commit()
+    reader = sqlite3.connect(database)
+    reader.execute("BEGIN")
+    reader.execute("SELECT * FROM payload").fetchall()
+    writer.execute("INSERT INTO payload VALUES(1)")
+    writer.commit()
+    original = sqlite3.connect
+
+    def impatient(*args, **kwargs):
+        connection = original(*args, **kwargs)
+        connection.execute("PRAGMA busy_timeout=1")
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", impatient)
+    try:
+        with pytest.raises(RuntimeError, match="CHECKPOINT_BUSY"):
+            store.seal(selector)
+        assert store.active_selector() is None
+    finally:
+        reader.close()
+        writer.close()

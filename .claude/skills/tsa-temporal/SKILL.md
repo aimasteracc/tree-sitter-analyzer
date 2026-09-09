@@ -135,13 +135,14 @@ Or query the SQLite DB directly for batch reports:
 # frequently absent from PATH on Windows).
 uv run python -c "
 import sqlite3
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 sql = '''
 SELECT s.name, s.file_path, a.mod_count_30d
 FROM ast_symbol_activation a
 JOIN ast_symbol_rows s ON s.id = a.symbol_id
 WHERE a.mod_count_30d >= 5
 ORDER BY a.mod_count_30d DESC LIMIT 20'''
-for r in sqlite3.connect('.ast-cache/index.db').execute(sql):
+for r in sqlite3.connect(resolve_index_path('.').as_uri() + '?mode=ro', uri=True).execute(sql):
     print(*r, sep='\t')
 "
 ```

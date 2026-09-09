@@ -67,6 +67,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from .safe_to_edit_helpers import (
     _DEPENDENCY_SKIP_DIRS,
     _DEPENDENCY_SOURCE_EXTS,
@@ -313,7 +315,7 @@ def resolve_dependents(target_rel: str, root: Path) -> DependentsAnswer:
     """
     root = Path(root)
     target_rel = target_rel.replace("\\", "/")
-    db_path = root / ".ast-cache" / "index.db"
+    db_path = resolve_index_path(str(root))
     inventory = _live_inventory(root)
     if not db_path.is_file():
         return _scan_answer(target_rel, root, "INDEX_ABSENT", len(inventory))

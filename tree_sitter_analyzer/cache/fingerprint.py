@@ -28,6 +28,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import NamedTuple
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from ..constants import EXCLUDE_DIRS, GRAPH_SOURCE_EXTS
 from ..languages.lang_extension_map import EXT_TO_LANG
 
@@ -172,7 +174,7 @@ def is_ast_index_stale(project_root: str) -> bool:
     Returns False (not stale / unknown) when the index does not exist or
     cannot be read — callers fall back to their existing staleness signal.
     """
-    db_path = Path(project_root) / ".ast-cache" / "index.db"
+    db_path = resolve_index_path(project_root)
     if not db_path.is_file():
         return False
     root = Path(project_root)

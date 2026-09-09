@@ -182,7 +182,13 @@ class TestAuthoritativeSnapshotOracle:
             }
         )
 
-        conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+        assert result["published"] is False
+        assert (tmp_path / ".ast-cache/index-generations/active.json").exists() is False
+        databases = list(
+            (tmp_path / ".ast-cache/index-generations/generations").glob("*/index.db")
+        )
+        assert len(databases) == 1
+        conn = sqlite3.connect(databases[0])
         marker = conn.execute(
             "SELECT building FROM ast_build_state WHERE id=1"
         ).fetchone()[0]
@@ -277,7 +283,13 @@ class TestAuthoritativeSnapshotOracle:
             }
         )
 
-        conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+        assert result["published"] is False
+        assert (tmp_path / ".ast-cache/index-generations/active.json").exists() is False
+        databases = list(
+            (tmp_path / ".ast-cache/index-generations/generations").glob("*/index.db")
+        )
+        assert len(databases) == 1
+        conn = sqlite3.connect(databases[0])
         manifest_count = conn.execute(
             "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
         ).fetchone()[0]
@@ -297,8 +309,8 @@ class TestAuthoritativeSnapshotOracle:
             rows,
         ) == (False, "WARN", 1, "incomplete", 0, [(1, 0), (2, 0)])
         assert (status["completeness"], status["oracle_reason"]) == (
-            "partial",
-            "CALL_GRAPH_INCOMPLETE",
+            "unknown",
+            "MISSING_INDEX",
         )
 
 

@@ -427,3 +427,13 @@ def test_real_windows_budget_and_sidecar_rejection(tmp_path, pair, fault):
         with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
             with _capture(tmp_path):
                 path.with_name("index.db-" + suffix).write_bytes(b"changed")
+
+
+def test_native_pins_reject_new_generation_publication(tmp_path, pair, kernel):
+    from tree_sitter_analyzer.cache.generation_indexing import project_store
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    (tmp_path / "a.py").write_text("def saved(): return 1\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
+        with _capture(tmp_path):
+            project_store(str(tmp_path), make_source_scope_descriptor()).sync()
