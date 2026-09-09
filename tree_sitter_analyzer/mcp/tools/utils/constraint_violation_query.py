@@ -19,8 +19,9 @@ from __future__ import annotations
 import logging
 import sqlite3
 from collections.abc import Iterable
-from pathlib import Path
 from typing import Any
+
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ def violations_for_files(
     """
     if not project_root:
         return []
-    db_path = Path(project_root) / ".ast-cache" / "index.db"
+    db_path = resolve_index_path(project_root)
     if not db_path.is_file():
         return []
 

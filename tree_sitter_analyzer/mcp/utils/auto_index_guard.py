@@ -159,7 +159,14 @@ def _mark_resolution_converged(cache: Any) -> None:
     try:
         from tree_sitter_analyzer.cache.unresolved import mark_resolution_converged
 
-        mark_resolution_converged(cache.get_conn())
+        if getattr(cache, "_generation_managed", False):
+            from ...cache.generation_indexing import mutate_published_cache
+
+            mutate_published_cache(
+                cache, lambda writable: mark_resolution_converged(writable.get_conn())
+            )
+        else:
+            mark_resolution_converged(cache.get_conn())
     except Exception:
         logger.debug("auto-index: could not mark resolution converged", exc_info=True)
 

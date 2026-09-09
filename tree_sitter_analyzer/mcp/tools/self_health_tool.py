@@ -52,6 +52,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from ...latency import (
     NO_OBSERVATIONS,
     PERCENTILE_METHOD,
@@ -238,7 +240,7 @@ def _ast_index_report(project_root: str | None) -> dict[str, Any]:
     replaces — ``hit_rate`` is ``None`` with an explicit reason.
     """
     root = project_root or "."
-    db_path = os.path.join(root, ".ast-cache", "index.db")
+    db_path = str(resolve_index_path(root))
     report: dict[str, Any] = {
         "path": db_path,
         "present": False,

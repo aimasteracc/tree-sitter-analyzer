@@ -28,6 +28,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import NamedTuple
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from ..constants import EXCLUDE_DIRS, GRAPH_SOURCE_EXTS
 from ..languages.lang_extension_map import EXT_TO_LANG
 
@@ -172,11 +174,11 @@ def is_ast_index_stale(project_root: str) -> bool:
     Returns False (not stale / unknown) when the index does not exist or
     cannot be read — callers fall back to their existing staleness signal.
     """
-    db_path = Path(project_root) / ".ast-cache" / "index.db"
-    if not db_path.is_file():
-        return False
     root = Path(project_root)
     try:
+        db_path = resolve_index_path(project_root)
+        if not db_path.is_file():
+            return False
         # timeout=10 与 ast_cache.py 的主连接保持一致：多进程共用缓存库时，
         # 无超时的连接遇到写锁会立刻抛 database is locked 而不是等待重试
         conn = sqlite3.connect(
@@ -191,7 +193,7 @@ def is_ast_index_stale(project_root: str) -> bool:
             rows = conn.execute("SELECT file_path, mtime_ns FROM ast_index").fetchall()
         finally:
             conn.close()
-    except sqlite3.Error:
+    except (sqlite3.Error, OSError, ValueError):
         return False
 
     if not rows:

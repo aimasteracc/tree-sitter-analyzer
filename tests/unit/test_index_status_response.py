@@ -182,7 +182,13 @@ class TestAuthoritativeSnapshotOracle:
             }
         )
 
-        conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+        assert result["published"] is False
+        assert (tmp_path / ".ast-cache/index-generations/active.json").exists() is False
+        databases = list(
+            (tmp_path / ".ast-cache/index-generations/generations").glob("*/index.db")
+        )
+        assert len(databases) == 1
+        conn = sqlite3.connect(databases[0])
         marker = conn.execute(
             "SELECT building FROM ast_build_state WHERE id=1"
         ).fetchone()[0]
@@ -277,7 +283,13 @@ class TestAuthoritativeSnapshotOracle:
             }
         )
 
-        conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+        assert result["published"] is False
+        assert (tmp_path / ".ast-cache/index-generations/active.json").exists() is False
+        databases = list(
+            (tmp_path / ".ast-cache/index-generations/generations").glob("*/index.db")
+        )
+        assert len(databases) == 1
+        conn = sqlite3.connect(databases[0])
         manifest_count = conn.execute(
             "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
         ).fetchone()[0]
@@ -297,8 +309,8 @@ class TestAuthoritativeSnapshotOracle:
             rows,
         ) == (False, "WARN", 1, "incomplete", 0, [(1, 0), (2, 0)])
         assert (status["completeness"], status["oracle_reason"]) == (
-            "partial",
-            "CALL_GRAPH_INCOMPLETE",
+            "unknown",
+            "MISSING_INDEX",
         )
 
 
@@ -310,13 +322,14 @@ def test_storage_fields_ignore_missing_and_null_values():
     assert result == {"db_size_bytes": 4096}
 
 
-def test_status_lag_scans_snapshot_canonical_root(monkeypatch):
-    # PR #1253 review 3763600670: O_NOFOLLOW requires the owner-resolved root.
+def test_status_lag_scans_snapshot_canonical_root(tmp_path, monkeypatch):
+    # PR #1253：必须使用快照解析出的原生规范根路径，不能假定 POSIX 拼写。
     from contextlib import contextmanager
 
     from tree_sitter_analyzer import index_status_response as response
     from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
 
+    canonical_root = str(tmp_path.resolve())
     snapshot = IndexSnapshot(
         "idxsnap_test",
         "sha256:source",
@@ -324,7 +337,7 @@ def test_status_lag_scans_snapshot_canonical_root(monkeypatch):
         "idxsrc-v3:source",
         "complete",
         None,
-        "/canonical/project",
+        canonical_root,
         1,
     )
 
@@ -357,8 +370,8 @@ def test_status_lag_scans_snapshot_canonical_root(monkeypatch):
 
     assert observed == [
         (
-            "/canonical/project",
-            os.path.join("/canonical/project", ".ast-cache", "index.db"),
+            canonical_root,
+            os.path.join(canonical_root, ".ast-cache", "index.db"),
         )
     ]
     assert result["lag_seconds"] == 3.0

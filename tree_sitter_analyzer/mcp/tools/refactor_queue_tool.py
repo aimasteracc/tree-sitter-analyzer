@@ -26,6 +26,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from ...refactor_queue import RefactorQueueRow, rank_refactor_queue
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool, format_summary_line
@@ -76,7 +78,7 @@ def _normalize(root: Path, file_path: str) -> str:
 
 def _churn_by_file(root: Path) -> dict[str, int]:
     """Summed ``mod_count_30d`` per file, or ``{}`` when the index is absent."""
-    db_path = root / ".ast-cache" / "index.db"
+    db_path = resolve_index_path(str(root))
     if not db_path.is_file():
         return {}
     conn: sqlite3.Connection | None = None
@@ -99,7 +101,7 @@ def _churn_by_file(root: Path) -> dict[str, int]:
 
 def _symbol_counts(root: Path) -> dict[str, int]:
     """Total indexed symbols per file, or ``{}`` when the index is absent."""
-    db_path = root / ".ast-cache" / "index.db"
+    db_path = resolve_index_path(str(root))
     if not db_path.is_file():
         return {}
     conn: sqlite3.Connection | None = None

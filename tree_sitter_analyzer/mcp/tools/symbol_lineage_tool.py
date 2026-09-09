@@ -21,6 +21,7 @@ from tree_sitter_analyzer.cache.fingerprint import (
     compute_graph_fingerprint,
     is_ast_index_stale,
 )
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 
 from ...project_graph import BlastRadius, DependencyGraph
 from ...utils import setup_logger
@@ -516,7 +517,7 @@ class SymbolLineageTool(BaseMCPTool):
         when no index exists. Called only after ``_validate_project_root``.
         """
         assert self.project_root is not None  # guaranteed by _validate_project_root
-        cache_dir = Path(self.project_root) / ".ast-cache"
+        cache_dir = resolve_index_path(self.project_root).parent
         sig = 0
         for name in ("index.db", "index.db-wal", "index.db-shm"):
             try:

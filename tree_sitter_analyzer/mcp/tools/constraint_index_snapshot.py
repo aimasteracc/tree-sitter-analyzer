@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from ...cache.build_state import build_in_progress
 from ...frozen_git_index import safe_external_temp_parent
 from ...index_snapshot_capability import (
@@ -255,8 +257,8 @@ def portable_ordinary_snapshot(
     """Certify a stable pinned database through an outside-project private copy."""
     root = os.path.realpath(os.path.abspath(project_root))
     root_path = Path(root)
-    cache_path = root_path / ".ast-cache"
-    db_path = cache_path / "index.db"
+    db_path = resolve_index_path(root)
+    cache_path = db_path.parent
     root_before = _identity(root_path, directory=True)
     try:
         cache_before = _identity(cache_path, directory=True)

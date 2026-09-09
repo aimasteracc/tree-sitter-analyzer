@@ -12,6 +12,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from ... import read_existing_access as read_access
 from ...constraints import (
     Violation,
@@ -221,7 +223,7 @@ class ConstraintCheckTool(BaseMCPTool):
                 output_format,
             )
 
-        db_path = Path(self.project_root) / ".ast-cache" / "index.db"
+        db_path = resolve_index_path(self.project_root)
         if persist and not db_path.is_file():
             return apply_output_format_to_response(
                 {
@@ -241,11 +243,19 @@ class ConstraintCheckTool(BaseMCPTool):
 
         if persist:
             try:
-                _, evaluated_edges = self._run_and_persist(db_path, constraints)
-                filtered_rows = self._read_filtered_violations(
-                    db_path,
-                    path_filter=path_filter,
-                    min_severity_rank=min_severity_rank,
+                from ...cache.generation_indexing import mutate_index_path
+
+                def persist_private(path: Path) -> tuple[list[dict[str, Any]], int]:
+                    _, count = self._run_and_persist(path, constraints)
+                    rows = self._read_filtered_violations(
+                        path,
+                        path_filter=path_filter,
+                        min_severity_rank=min_severity_rank,
+                    )
+                    return rows, count
+
+                filtered_rows, evaluated_edges = mutate_index_path(
+                    self.project_root, db_path, persist_private
                 )
             except RuntimeError as exc:
                 if str(exc) != "CONSTRAINT_EVALUATION_CAPACITY":

@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from ...incremental_sync import IncrementalSync
 from ...indexing_limits import (
     KNOWLEDGE_INDEX_MAX_FILES,
@@ -405,9 +407,7 @@ def _backend_ready(
 
 
 def _sqlite_index_status(project_root: str) -> dict[str, Any]:
-    from pathlib import Path
-
-    path = Path(project_root) / ".ast-cache" / "index.db"
+    path = resolve_index_path(project_root)
     if not path.exists():
         return {"exists": False, "path": str(path)}
     stat = path.stat()

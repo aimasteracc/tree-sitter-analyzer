@@ -138,7 +138,10 @@ def pinned_windows_files(
     """固定主库/WAL 与父目录；只提供 fd 和发布前的身份复核函数。"""
     api = NativeFiles()
     root = os.path.realpath(os.path.abspath(project_root))
-    cache = os.path.join(root, ".ast-cache")
+    from .cache.generation_routing import resolve_index_path
+
+    database = resolve_index_path(root)
+    cache = str(database.parent)
     with ExitStack() as owned:
         pinned: list[tuple[str, int, tuple[Any, ...], bool]] = []
 
@@ -164,7 +167,10 @@ def pinned_windows_files(
         except FileNotFoundError:
             raise FileNotFoundError("MISSING_PROJECT_ROOT") from None
         try:
-            pin(cache, True)
+            current_directory = root
+            for part in database.parent.relative_to(root).parts:
+                current_directory = os.path.join(current_directory, part)
+                pin(current_directory, True)
             db_fd, expected = pin(os.path.join(cache, "index.db"), False)
         except FileNotFoundError:
             raise FileNotFoundError("MISSING_INDEX") from None
@@ -180,6 +186,8 @@ def pinned_windows_files(
         def verify() -> None:
             check()
             try:
+                if resolve_index_path(root) != database:
+                    raise ValueError("CONCURRENT_WRITER")
                 for path, handle, expected, directory in pinned:
                     current = api.open(path, directory)
                     try:

@@ -16,6 +16,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from ....ast_cache import _AST_CACHE_EXTRACTOR_VERSION
 from ....cache.schema import CURRENT_SCHEMA_VERSION, already_applied_versions
 from ....index_source_snapshot import (
@@ -91,7 +93,7 @@ def load_cached_dependency_graph(
     """
     if not project_root:
         return None
-    db_path = Path(project_root) / ".ast-cache" / "index.db"
+    db_path = resolve_index_path(project_root)
     if not db_path.is_file():
         return None
 

@@ -13,7 +13,7 @@ TSA maintains two distinct caches:
 
 | Cache | Location | Built by | Purpose |
 |---|---|---|---|
-| AST symbol index | `.ast-cache/index.db` (SQLite) | `action=full`, `action=auto`, `action=sync` | Symbol definitions, call edges, type info — used by callers/callees, search, Hyphae selectors |
+| AST symbol index | `.ast-cache/index-generations/generations/<id>/index.db` (SQLite) | `action=full`, `action=auto`, `action=sync` | Symbol definitions, call edges, type info — used by callers/callees, search, Hyphae selectors |
 | Project structure index | `.tree-sitter-cache/project-index.json` | `action=build` | Directory/language map, entry points, README excerpt — used by `project` facade |
 
 Both directories are listed in `.gitignore` and are never committed.
@@ -44,8 +44,15 @@ uv run python -m tree_sitter_analyzer --build-project-index
 
 ### `action=full` — complete AST reindex
 
-Forces a full re-parse of every source file in the project and rebuilds
-`.ast-cache/index.db` from scratch. Equivalent to `--full-index` on the CLI.
+With `mode=full`, reparses source files into a private database and publishes it
+only after certification succeeds. The `active.json` selector binds default readers
+to one immutable generation. Failed or superseded builds leave the prior generation
+unchanged. `sync` and watcher updates use the same publication boundary.
+
+Legacy `.ast-cache/index.db` remains separate, so old writers cannot modify the
+published generation. Existing read sessions retain their version; generations are
+currently retained without automatic garbage collection. Use the status response
+`cache_path` or `cache.generation_routing.resolve_index_path()` for direct reads.
 
 **Use when:** after a `git pull`, rebase, or large refactor — any time many
 files changed and you want guaranteed consistency.

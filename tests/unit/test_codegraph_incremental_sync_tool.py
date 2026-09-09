@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import pytest_asyncio
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 from tree_sitter_analyzer.incremental_sync import IncrementalSync, SyncResult
 from tree_sitter_analyzer.index_snapshot_capability import strict_call_graph_marker
 from tree_sitter_analyzer.indexing_candidate_materialization import (
@@ -337,7 +338,7 @@ async def test_public_sync_certifies_no_git_lifecycle(
         result["manifest_certification_failed"],
     ) == (0, 0, False)
     with closing(
-        sqlite3.connect((root / ".ast-cache/index.db").as_uri() + "?mode=ro", uri=True)
+        sqlite3.connect(resolve_index_path(root).as_uri() + "?mode=ro", uri=True)
     ) as conn:
         assert conn.execute(
             "SELECT file_path, content_hash FROM ast_index ORDER BY file_path"
@@ -364,8 +365,10 @@ async def test_public_sync_failure_does_not_certify(indexed_pair, failure):
 
     root = indexed_pair
     with closing(
-        sqlite3.connect((root / ".ast-cache/index.db").as_uri() + "?mode=ro", uri=True)
+        sqlite3.connect(resolve_index_path(root).as_uri() + "?mode=ro", uri=True)
     ) as conn:
+        prior_path = resolve_index_path(root)
+        prior_dump = list(conn.iterdump())
         prior_manifest = conn.execute(
             "SELECT * FROM ast_index_snapshot_manifest"
         ).fetchall()
@@ -391,13 +394,22 @@ async def test_public_sync_failure_does_not_certify(indexed_pair, failure):
     assert result["manifest_certification_failed"] is (failure == "manifest")
     assert stamp.call_count == (1 if failure == "manifest" else 0)
     with closing(
-        sqlite3.connect((root / ".ast-cache/index.db").as_uri() + "?mode=ro", uri=True)
+        sqlite3.connect(resolve_index_path(root).as_uri() + "?mode=ro", uri=True)
     ) as conn:
-        # 认证失败保留旧 epoch，但必须撤销权威调用图标记，不能伪装新认证。
-        assert conn.execute("SELECT * FROM ast_index_snapshot_manifest").fetchall() == (
-            prior_manifest if failure == "manifest" else []
+        # 失败构建不得发布或修改旧版本；源码变化使旧清单失去当前认证。
+        assert resolve_index_path(root) == prior_path
+        assert list(conn.iterdump()) == prior_dump
+        assert (
+            conn.execute("SELECT * FROM ast_index_snapshot_manifest").fetchall()
+            == prior_manifest
         )
-        assert strict_call_graph_marker(conn) is False
+        assert strict_call_graph_marker(conn) is True
+    from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
+
+    status = await CodeGraphStatusTool(str(root)).execute(
+        {"access_mode": "read_existing"}
+    )
+    assert status["completeness"] != "complete"
 
 
 @pytest.mark.asyncio
@@ -485,7 +497,7 @@ async def test_public_sync_uses_full_index_default_exclusions(indexed_pair):
         2,
     )
     with closing(
-        sqlite3.connect((root / ".ast-cache/index.db").as_uri() + "?mode=ro", uri=True)
+        sqlite3.connect(resolve_index_path(root).as_uri() + "?mode=ro", uri=True)
     ) as conn:
         assert conn.execute(
             "SELECT file_path FROM ast_index ORDER BY file_path"

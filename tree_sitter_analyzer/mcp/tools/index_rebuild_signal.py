@@ -6,6 +6,8 @@ import os
 import sqlite3
 from pathlib import Path
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 
 def is_index_rebuilding(project_root: str | None) -> bool:
     """尽力读取重建标记；缺失或读取失败时返回 False，不阻断导航。
@@ -14,7 +16,7 @@ def is_index_rebuilding(project_root: str | None) -> bool:
     """
     if not project_root:
         return False
-    db_path = os.path.join(project_root, ".ast-cache", "index.db")
+    db_path = str(resolve_index_path(project_root))
     if not os.path.exists(db_path):
         return False
     try:

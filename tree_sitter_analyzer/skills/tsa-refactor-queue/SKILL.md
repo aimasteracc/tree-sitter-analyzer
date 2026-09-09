@@ -152,12 +152,13 @@ uv run tree-sitter-analyzer --project-health --max-files 20 --output-format json
 uv run tree-sitter-analyzer --dead-code --output-format json > /tmp/dead.json
 uv run python -c "
 import sqlite3
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 sql = '''
 SELECT s.file_path, SUM(a.mod_count_30d) AS churn
 FROM ast_symbol_activation a
 JOIN ast_symbol_rows s ON s.id = a.symbol_id
 GROUP BY s.file_path ORDER BY churn DESC LIMIT 50'''
-for r in sqlite3.connect('.ast-cache/index.db').execute(sql):
+for r in sqlite3.connect(resolve_index_path('.').as_uri() + '?mode=ro', uri=True).execute(sql):
     print(*r, sep='\t')
 " > /tmp/churn.tsv
 ```
@@ -254,6 +255,7 @@ uv run tree-sitter-analyzer --overview --output-format json
 # 4. Per-file churn (no dedicated --temporal flag yet — query DB directly)
 uv run python -c "
 import sqlite3
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 sql = '''
 SELECT s.file_path, SUM(a.mod_count_30d) AS churn_30d
 FROM ast_symbol_activation a
@@ -261,7 +263,7 @@ JOIN ast_symbol_rows s ON s.id = a.symbol_id
 WHERE a.git_state = 'tracked'
 GROUP BY s.file_path
 ORDER BY churn_30d DESC LIMIT 50'''
-for r in sqlite3.connect('.ast-cache/index.db').execute(sql):
+for r in sqlite3.connect(resolve_index_path('.').as_uri() + '?mode=ro', uri=True).execute(sql):
     print(*r, sep='\t')
 "
 

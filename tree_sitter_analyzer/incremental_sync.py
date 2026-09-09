@@ -31,6 +31,7 @@ class IncrementalSync:
 
     def __init__(self, cache: Any) -> None:
         self._cache = cache
+        self._default_generation = False
 
     def sync(
         self,
@@ -53,6 +54,20 @@ class IncrementalSync:
         validate_full_index_source_scope(
             source_scope, exclude_patterns or frozenset(), max_files
         )
+        if getattr(self._cache, "_generation_managed", False) or getattr(
+            self, "_default_generation", False
+        ):
+            from .cache.generation_indexing import run_incremental_sync
+
+            return run_incremental_sync(
+                self._cache,
+                max_files=max_files,
+                callback=callback,
+                exclude_patterns=exclude_patterns,
+                candidate_snapshot=candidate_snapshot,
+                source_scope=source_scope,
+                certify_manifest=certify_manifest,
+            )
         result = SyncResult()
         conn = self._cache.get_conn()
         indexed_rows = self._load_indexed_rows(conn)

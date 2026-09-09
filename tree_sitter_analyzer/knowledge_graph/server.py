@@ -14,6 +14,8 @@ from importlib import resources
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from .query import KnowledgeGraphQueryBackend, open_query_backend
 from .stores import LadybugKnowledgeGraphStore
 
@@ -160,7 +162,7 @@ def ensure_knowledge_graph_ready(
 
 def _prepare_reason(project_root: str) -> str:
     ladybug_store = LadybugKnowledgeGraphStore(project_root)
-    index_path = os.path.join(project_root, ".ast-cache", "index.db")
+    index_path = str(resolve_index_path(project_root))
     if not os.path.exists(index_path):
         return "SQLite index missing"
     if LadybugKnowledgeGraphStore.available() and not ladybug_store.exists():

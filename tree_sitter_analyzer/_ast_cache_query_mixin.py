@@ -82,6 +82,12 @@ class ASTCacheQueryMixin(ASTCacheSurface):
         return _get_stats(self._get_conn(), self._fts5_available, self.db_path)
 
     def invalidate(self, file_path: str) -> bool:
+        if getattr(self, "_generation_managed", False):
+            from .cache.generation_indexing import mutate_published_cache
+
+            return mutate_published_cache(
+                self, lambda writable: writable.invalidate(file_path)
+            )
         removed = _invalidate(
             self._get_conn(),
             file_path,

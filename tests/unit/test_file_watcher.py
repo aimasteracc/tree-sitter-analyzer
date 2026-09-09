@@ -66,6 +66,35 @@ class TestWatcherLifecycle:
 
 
 class TestManualTriggerSync:
+    def test_sync_publishes_version_seen_by_new_reader_and_certified_snapshot(
+        self, watcher, cache, project
+    ):
+        # 2026-09-09：监听更新必须进入查询与快照共用的正式版本。
+        from tree_sitter_analyzer.cache.generation_routing import resolve_index_location
+        from tree_sitter_analyzer.index_snapshot import _capture_existing_snapshot
+
+        first_result = watcher.trigger_sync()
+        first = resolve_index_location(str(project))
+        assert first.published is True
+        assert first_result["completeness"] == "complete"
+        (project / "src" / "main.py").write_text(
+            "def changed(): return 3\n", encoding="utf-8"
+        )
+        second_result = watcher.trigger_sync()
+        second = resolve_index_location(str(project))
+        assert second.selector != first.selector
+        assert second_result["updated_files"] == 1
+        reader = ASTCache(str(project))
+        try:
+            assert reader.db_path == cache.db_path == str(second.path)
+            assert [row["name"] for row in reader.search_symbols("changed")] == [
+                "changed"
+            ]
+        finally:
+            reader.close()
+        snapshot = _capture_existing_snapshot(str(project))
+        assert snapshot.completeness == "complete", snapshot.reason
+
     def test_trigger_sync_indexes_new_files(self, watcher, project):
         result = watcher.trigger_sync()
         assert result["new_files"] == 2

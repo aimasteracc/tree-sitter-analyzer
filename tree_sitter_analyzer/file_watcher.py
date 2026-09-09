@@ -96,6 +96,9 @@ class FileWatcherDaemon:
     ) -> None:
         self._cache = cache
         self._sync = IncrementalSync(cache)
+        self._sync._default_generation = bool(
+            getattr(cache, "_uses_project_mirror", False)
+        )
         self._sync_lock = cache._index_lock
         self._poll_interval = max(1.0, poll_interval)
         self._debounce = debounce

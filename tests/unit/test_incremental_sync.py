@@ -2779,9 +2779,11 @@ def test_watcher_retries_transient_capture_without_another_event(
         "backfill": "backfill_cross_file_edges",
         "manifest": "stamp_full_index_manifest",
     }[failure]
-    owner = {"file_result": cache, "backfill": cache, "manifest": manifest_owner}.get(
-        failure, snapshot_owner
-    )
+    owner = {
+        "file_result": ASTCache,
+        "backfill": ASTCache,
+        "manifest": manifest_owner,
+    }.get(failure, snapshot_owner)
     original = getattr(owner, target)
     attempts = []
 
@@ -2811,12 +2813,8 @@ def test_watcher_retries_transient_capture_without_another_event(
             assert results[0]["completeness"] == "incomplete"
         assert len(results) == 2
         assert results[-1]["completeness"] == "complete"
-        counter = {
-            "file_result": "new_files",
-            "backfill": "unchanged_files",
-            "manifest": "unchanged_files",
-        }.get(failure, "updated_files")
-        assert results[-1][counter] == 1
+        # 失败的私有版本不发布，重试仍从旧版本重新处理该文件。
+        assert results[-1]["updated_files"] == 1
         assert [s["name"] for s in cache.lookup(str(path))["symbols"]["symbols"]] == [
             "saved"
         ]
