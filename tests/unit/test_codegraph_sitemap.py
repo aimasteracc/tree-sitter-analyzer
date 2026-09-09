@@ -404,3 +404,27 @@ class TestSitemapFileLimitTruncation:
         for bad in ({"max_symbols": 0}, {"max_symbols": -1}, {"max_files": 0}):
             with pytest.raises(ValueError, match="positive integer"):
                 await tool.execute({"mode": "flat", **bad, "output_format": "json"})
+
+
+@pytest.mark.parametrize("tool_name", ["sitemap", "symbol"])
+def test_index_query_rebind_closes_previous_connection(tmp_path, tool_name):
+    """切换项目必须释放旧索引，使 Windows 可以删除原项目目录。"""
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.codegraph_sitemap_tool import (
+        CodeGraphSitemapTool,
+    )
+    from tree_sitter_analyzer.mcp.tools.symbol_search_tool import (
+        CodeGraphSymbolSearchTool,
+    )
+
+    tool_type = {"sitemap": CodeGraphSitemapTool, "symbol": CodeGraphSymbolSearchTool}[
+        tool_name
+    ]
+    tool = tool_type(str(tmp_path))
+    cache = tool._get_cache()
+    conn = cache.get_conn()
+    assert conn.execute("SELECT 1").fetchone()[0] == 1
+    tool.set_project_path(str(tmp_path.parent))
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        conn.execute("SELECT 1")

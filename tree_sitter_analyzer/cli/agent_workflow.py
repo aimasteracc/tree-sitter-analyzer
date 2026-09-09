@@ -241,10 +241,11 @@ def _map_step() -> dict[str, Any]:
     return {
         "step": "map",
         "step_index": 1,
-        "goal": "Find candidate files before reading code.",
-        "mcp_tools": ["codegraph_sitemap"],
+        "goal": "Refresh the AST index, then find candidate files before reading code.",
+        "mcp_tools": ["ast_cache", "codegraph_sitemap"],
         "cli_commands": [
-            "uv run python -m tree_sitter_analyzer --codegraph-sitemap",
+            "uv run python -m tree_sitter_analyzer --ast-cache --ast-cache-mode index --format json",
+            "uv run python -m tree_sitter_analyzer --codegraph-sitemap --codegraph-sitemap-mode flat --format json",
         ],
         "stop_condition": "A small set of relevant files is identified.",
     }

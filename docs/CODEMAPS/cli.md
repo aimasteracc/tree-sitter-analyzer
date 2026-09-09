@@ -79,7 +79,7 @@ Categories of CLI surface:
 - `--detect-routes` — framework route detection
 
 ### Cache & Index
-- `--ast-cache index|stats|lookup|invalidate` — AST cache ops (project index default cap: 20k files)
+- `--ast-cache --ast-cache-mode index|stats|lookup|invalidate` — AST cache ops (project index default cap: 20k files)
 - `--ast-cache-include-activation` — opt in to slower temporal git activation during project indexing
 - `--autoindex [--autoindex-mode status|warm|reset]` — transparent auto-index
 - `--full-index [--full-index-mode rebuild|stats|clear]` — one-shot complete index (default cap: 20k files)

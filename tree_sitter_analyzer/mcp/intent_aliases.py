@@ -1,23 +1,8 @@
 #!/usr/bin/env python3
-"""
-Intent Aliases System
+"""将意图别名解析为保留的工具入口。
 
-Intent-based tool名を実装ベースの tool名に変換するシステム。
-AI エージェントが「何をしたいか」（意図）でツールを呼び出せるようにする。
-
-例:
-- "locate_usage" → "search" (使用箇所を探す意図; action=symbol を推奨)
-- "map_structure" → "codegraph_sitemap"（查看索引中的项目结构）
-- "extract_structure" → "analyze_code_structure" (コード構造を抽出する意図)
-
-Features:
-- Intent-based naming (ユーザーの意図を反映した名前)
-- Backward compatibility (元の tool名も引き続き使用可能)
-- Multiple aliases (複数の alias が同じ tool を指せる)
-- Case-sensitive (大文字小文字を区別)
-
-Note: search_content (SearchContentTool) および find_and_grep (FindAndGrepTool) は
-廃止済み。テキストグレップには CC 組み込みの Grep tool を使用すること。
+符号定位使用 search action=symbol；map_structure 与 discover_files 使用已建立的 AST 索引。
+结构提取和导航别名保持原有入口。退役的文本搜索包装器不再作为检索建议。
 """
 
 # Intent Alias マッピング: 意図ベースの名前 → 実装ベースの tool名
@@ -26,8 +11,8 @@ INTENT_ALIASES: dict[str, str] = {
     "locate_usage": "search",  # 使用箇所を特定する (search action=symbol)
     "find_usage": "search",  # 使用箇所を見つける（locate_usage の代替）
     # File Discovery 系
-    "map_structure": "codegraph_sitemap",  # プロジェクト構造をマッピングする
-    "discover_files": "codegraph_sitemap",  # ファイルを発見する（map_structure の代替）
+    "map_structure": "codegraph_sitemap",  # 查看索引中的项目结构
+    "discover_files": "codegraph_sitemap",  # 查找已索引文件（map_structure 的别名）
     # Impact Analysis 系 (query_code で代替)
     "find_impacted_code": "query_code",  # 影響を受けるコードを見つける (query_code)
     # Structure Extraction 系

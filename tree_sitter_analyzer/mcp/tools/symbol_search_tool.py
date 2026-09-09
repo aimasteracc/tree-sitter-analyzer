@@ -54,6 +54,9 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
+        # 根切换时释放 SQLite 连接，避免持有旧目录的 Windows 文件锁。
+        if self._cache is not None:
+            self._cache.close()
         self._cache = None
 
     def _get_cache(self) -> Any:

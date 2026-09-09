@@ -37,15 +37,13 @@ allowed-tools:
 
 ## Procedure
 
-### Step 1 — Verify tools available
+Use the MCP server's configured project root. TSA's native discovery does not
+require `fd` or `rg`; do not run an external-search dependency preflight or stop
+because those executables are absent. The first project overview call below
+establishes whether the configured project can be read. Indexed workflow map
+steps build or update the AST index before requesting a sitemap.
 
-```bash
-uv run python -m tree_sitter_analyzer --check-tools --format json | head -5
-```
-
-If `fd` or `rg` missing, stop and tell user how to install.
-
-### Step 2 — Fan-out 4 MCP calls (in single message, parallel)
+### Step 1 — Fan-out 4 MCP calls (in single message, parallel)
 
 Call these 4 tools in ONE message (parallel tool use):
 
@@ -54,7 +52,7 @@ Call these 4 tools in ONE message (parallel tool use):
 3. `edit action=impact` with `mode: "branch"` — recent_signals (last commit, ahead-of-main)
 4. `project action=workflow` (no args) — current_phase + recommended_commands
 
-### Step 3 — Fold and emit decision_surface
+### Step 2 — Fold and emit decision_surface
 
 Combine into single Decision Surface:
 
@@ -103,7 +101,7 @@ Combine into single Decision Surface:
 }
 ```
 
-### Step 4 — Stop after landing
+### Step 3 — Stop after landing
 
 Do NOT proceed to action until user gives next instruction. The landing is the deliverable.
 

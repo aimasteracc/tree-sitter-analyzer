@@ -1,18 +1,6 @@
-"""Tests for the MCP SMART agent workflow tool.
+"""SMART 流程的规划、错误边界与真实 CLI 阶段衔接。
 
-r37fC (round-37f): the quality audit rated this file at 2/5. The
-original suite covered the happy paths (full JSON pack, compact
-TOON, scoped queue-ledger command, absolute-path rejection) but
-never the error / boundary surfaces an MCP caller will hit:
-invalid_target_path variants, unsupported language extensions,
-phase-corruption inputs, concurrent execute(), and the cross-format
-envelope contract. The block below adds coverage for those gaps.
-
-The tests run against the real :class:`AgentWorkflowTool` (no
-mocks) with tmp_path fixtures. The tool is a pure planning surface
-- there is no file I/O during workflow build - so the tests focus
-on the planning contract: phase resolution, command shape, target
-path interpolation, and envelope mirroring.
+r37fC 的既有回归覆盖路径、阶段和响应边界；新增冷索引场景验证生成的步骤能实际完成发现。
 """
 
 from __future__ import annotations
@@ -485,3 +473,27 @@ def test_cli_builder_succeeds_for_existing_file(tmp_path):
     )
     assert result["success"] is True
     assert result["current_phase"] == "analyze"
+
+
+def test_map_commands_bootstrap_an_empty_ast_index(tmp_path):
+    # 2026-09-09：新仓库不能先调用依赖索引的 sitemap 而遗漏索引构建。
+    import json
+    import shlex
+    import subprocess
+    import sys
+
+    (tmp_path / "entry.py").write_text("def entry(): pass\n", encoding="utf-8")
+    outputs = []
+    for command in agent_workflow._map_step()["cli_commands"]:
+        args = shlex.split(command)
+        assert args[:3] == ["uv", "run", "python"]
+        result = subprocess.run(
+            [sys.executable, *args[3:]],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        outputs.append(json.loads(result.stdout))
+    assert outputs[-1]["file_count"] == 1
