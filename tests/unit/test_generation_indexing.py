@@ -344,3 +344,35 @@ async def test_snapshot_capture_rejects_publication_at_final_binding(
         )
     assert result.completeness == "unknown"
     assert result.reason == "CONCURRENT_WRITER"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("damage", ["completed", "unreadable"])
+async def test_post_publication_error_reports_actual_visibility(
+    project_root, monkeypatch, damage
+):
+    from tree_sitter_analyzer.cache.generation_store import GenerationStore
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    original = GenerationStore.publish
+
+    def publish_then_fail(store, prepared):
+        original(store, prepared)
+        if damage == "unreadable":
+            store.selector_path.write_bytes(b"invalid")
+        raise OSError("post-publication fault")
+
+    monkeypatch.setattr(GenerationStore, "publish", publish_then_fail)
+    result = await CodeGraphFullIndexTool(project_root).execute({"mode": "full"})
+    assert result["success"] is False
+    assert result["published"] is (True if damage == "completed" else None)
+    assert result["phase"] == "generation_publication"
+
+
+def test_derived_mutation_rejects_nondefault_legacy_path(project_root):
+    from tree_sitter_analyzer.cache.generation_indexing import mutate_index_path
+
+    path = Path(project_root) / "unrelated.db"
+    with pytest.raises(ValueError, match="INDEX_GENERATION_PATH_MISMATCH"):
+        mutate_index_path(project_root, path, lambda _: pytest.fail("不得运行写入"))
+    assert path.exists() is False

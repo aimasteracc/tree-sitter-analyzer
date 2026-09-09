@@ -130,6 +130,13 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
     def get_conn(self) -> sqlite3.Connection:
         """按当前绑定版本复用线程本地连接；其他线程发布后重新打开。"""
         database_path = self.db_path
+        read_only = getattr(self, "_read_only", False)
+        if getattr(self, "_default_locator", False):
+            from .cache.generation_reads import current_read_location
+
+            location = current_read_location(self.project_root)
+            if location is not None:
+                read_only = location.published
         conn = getattr(self._local, "conn", None)
         if (
             conn is not None
@@ -139,7 +146,7 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             self._local.conn = None
             conn = None
         if conn is None:
-            if getattr(self, "_read_only", False):
+            if read_only:
                 conn = sqlite3.connect(
                     Path(database_path).as_uri() + "?mode=ro", uri=True, timeout=10
                 )

@@ -101,6 +101,9 @@ class ASTCache(
         # project through a symlink spelling.
         self.project_root = os.path.realpath(os.path.abspath(project_root))
         default_db_path = os.path.join(self.project_root, ".ast-cache", "index.db")
+        self._default_locator = (
+            db_path is None or os.path.abspath(db_path) == default_db_path
+        )
         self._read_only = False
         self._generation_managed = False
         self._generation_guard: Callable[[], None] | None = None
@@ -174,6 +177,20 @@ class ASTCache(
             self.close()
         except Exception:
             return
+
+    @property
+    def db_path(self) -> str:
+        if self._default_locator:
+            from .cache.generation_reads import current_read_location
+
+            location = current_read_location(self.project_root)
+            if location is not None:
+                return str(location.path)
+        return self._db_path
+
+    @db_path.setter
+    def db_path(self, path: str) -> None:
+        self._db_path = path
 
     def _adopt_published_generation(self) -> None:
         """写入成功后换绑只读连接，保留调用方缓存对象和解析器配置。"""

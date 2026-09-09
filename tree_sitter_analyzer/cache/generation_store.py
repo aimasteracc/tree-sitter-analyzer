@@ -27,6 +27,8 @@ from ..project_graph import _language_from_ext
 from .generation_routing import read_selector
 from .generation_selector import (
     GenerationSelector,
+    InvalidGenerationSelector,
+    decode_generation_selector,
 )
 
 _PATH_ONLY_SOURCE = os.name != "posix"
@@ -78,6 +80,7 @@ class GenerationCandidate:
     logical_path: str
     parent: GenerationSelector | None
     snapshot: IndexCandidateSnapshot
+    source_contents: tuple[object, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -112,6 +115,20 @@ def _flush_directory(path: Path) -> None:
         os.close(descriptor)
 
 
+def _write_atomic(path: Path, data: bytes) -> None:
+    """先刷盘临时文件，再替换入口并同步父目录。"""
+    temporary = path.parent / f"selector-{uuid.uuid4().hex}.tmp"
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        _flush_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _source_contents(snapshot: IndexCandidateSnapshot) -> tuple[object, ...]:
     """通用 DTO 比较忽略摘要和描述符链，发布边界必须显式纳入二者。"""
     return tuple(
@@ -142,6 +159,7 @@ class GenerationStore:
         (self.storage / "generations").mkdir(exist_ok=True)
         self.logical_path = logical_path or str(self.storage / "index.db")
         self.selector_path = self.storage / "active.json"
+        self._database_identities: dict[str, tuple[int, int]] = {}
         self.scope = scope or make_source_scope_descriptor()
         self._directory_identities = {
             path: (info.st_dev, info.st_ino)
@@ -195,38 +213,62 @@ class GenerationStore:
         return self.storage / "generations" / selector.generation_id / "index.db"
 
     def _snapshot(self) -> IndexCandidateSnapshot:
-        return _bind_source_hashes(
-            build_index_candidate_snapshot(
-                str(self.root),
-                max_files=self.scope.certification_max_files,
-                exclude_patterns=self.scope.effective_excludes,
-                walk_fn=lambda root: walk_index_candidate_entries(
-                    root, excluded_dir_names=frozenset(EXCLUDE_DIRS)
-                ),
-                language_fn=_language_from_ext,
-            )
+        return build_index_candidate_snapshot(
+            str(self.root),
+            max_files=self.scope.certification_max_files,
+            exclude_patterns=self.scope.effective_excludes,
+            walk_fn=lambda root: walk_index_candidate_entries(
+                root, excluded_dir_names=frozenset(EXCLUDE_DIRS)
+            ),
+            language_fn=_language_from_ext,
         )
+
+    def _publication_parent(self) -> GenerationSelector | None:
+        """仅写入租约内允许恢复未完成的首次激活；普通读者始终拒绝缺失选择器。"""
+        marker = Path(self.logical_path).with_suffix(".generation")
+        try:
+            parent = self.active_selector()
+        except InvalidGenerationSelector as exc:
+            if str(exc) != "INDEX_GENERATION_SELECTOR_MISSING":
+                raise
+            with marker.open("rb") as handle:
+                pending = handle.read(4105)
+            if not pending.startswith(b"pending\n"):
+                raise
+            decode_generation_selector(
+                pending[8:],
+                canonical_root=str(self.root),
+                logical_path=self.logical_path,
+            )
+            return None
+        if parent is not None:
+            # 选择器提交后发生故障时，在下一次写租约内补齐完成标记。
+            with marker.open("rb") as handle:
+                complete = handle.read(3) == b"1\n"
+            if not complete:
+                _write_atomic(marker, b"1\n")
+        return parent
 
     def capture(
         self, snapshot_factory: Callable[[], IndexCandidateSnapshot] | None = None
     ) -> GenerationCandidate:
-        """先捕获父身份再扫描；并行发布只会使这个候选过期。"""
+        """先捕获父身份再扫描；内容证据独立于旧索引器候选 DTO。"""
         with self._lease():
-            parent = self.active_selector()
+            parent = self._publication_parent()
+        snapshot = (snapshot_factory or self._snapshot)()
         return GenerationCandidate(
             str(self.root),
             self.logical_path,
             parent,
-            _bind_source_hashes(snapshot_factory())
-            if snapshot_factory is not None
-            else self._snapshot(),
+            snapshot,
+            _source_contents(_bind_source_hashes(snapshot)),
         )
 
     def _admit(self, candidate: GenerationCandidate) -> None:
         if (
             candidate.canonical_root != str(self.root)
             or candidate.logical_path != self.logical_path
-            or self.active_selector() != candidate.parent
+            or self._publication_parent() != candidate.parent
         ):
             raise Superseded("INDEX_GENERATION_SUPERSEDED")
 
@@ -257,6 +299,9 @@ class GenerationStore:
         )
         database = self.database(selector)
         database.parent.mkdir(exist_ok=False)
+        database.touch(exist_ok=False)
+        info = database.stat()
+        self._database_identities[selector.generation_id] = (info.st_dev, info.st_ino)
         if candidate.parent is not None:
             source = sqlite3.connect(
                 self.database(candidate.parent).as_uri() + "?mode=ro", uri=True
@@ -274,17 +319,27 @@ class GenerationStore:
     def seal(self, selector: GenerationSelector) -> None:
         """构建连接释放后截断 WAL 并刷盘；完成之前不能发布。"""
         database = self.database(selector)
-        connection = sqlite3.connect(database)
+        self._verify_database(selector)
+        connection = sqlite3.connect(database.as_uri() + "?mode=rw", uri=True)
         try:
             checkpoint = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             if checkpoint.fetchone()[0] != 0:
                 raise RuntimeError("INDEX_GENERATION_CHECKPOINT_BUSY")
         finally:
             connection.close()
-        with database.open("rb") as handle:
+        self._verify_database(selector)
+        with database.open("r+b") as handle:
             os.fsync(handle.fileno())
         _flush_directory(database.parent)
         _flush_directory(database.parent.parent)
+
+    def _verify_database(self, selector: GenerationSelector) -> None:
+        info = self.database(selector).lstat()
+        if not stat.S_ISREG(info.st_mode) or (
+            info.st_dev,
+            info.st_ino,
+        ) != self._database_identities.get(selector.generation_id):
+            raise RuntimeError("INDEX_GENERATION_DATABASE_CHANGED")
 
     def prepare(self, candidate: GenerationCandidate) -> PreparedGeneration:
         """复制已发布父数据库，再执行真实 TSA 增量同步，失败不会触碰父版本。"""
@@ -321,7 +376,12 @@ class GenerationStore:
             previous = prepared.candidate.snapshot
             if (
                 current != previous
-                or _source_contents(current) != _source_contents(previous)
+                or _source_contents(_bind_source_hashes(current))
+                != (
+                    prepared.candidate.source_contents
+                    if prepared.candidate.source_contents is not None
+                    else _source_contents(previous)
+                )
                 or current.root_identity != previous.root_identity
                 or (
                     current.errors
@@ -336,24 +396,15 @@ class GenerationStore:
             database = self.database(prepared.selector)
             if not database.is_file():
                 raise FileNotFoundError("INDEX_GENERATION_DATABASE_MISSING")
+            self._verify_database(prepared.selector)
             data = prepared.selector.encode()
             activated = Path(self.logical_path).with_suffix(".generation")
-            if not activated.exists():
-                with activated.open("xb") as handle:
-                    handle.write(b"1\n")
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                _flush_directory(activated.parent)
-            temporary = self.storage / f"selector-{uuid.uuid4().hex}.tmp"
-            try:
-                with temporary.open("xb") as handle:
-                    handle.write(data)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                os.replace(temporary, self.selector_path)
-                _flush_directory(self.storage)
-            finally:
-                temporary.unlink(missing_ok=True)
+            first = prepared.candidate.parent is None
+            if first:
+                _write_atomic(activated, b"pending\n" + data)
+            _write_atomic(self.selector_path, data)
+            if first:
+                _write_atomic(activated, b"1\n")
             return prepared.selector
 
     def sync(self) -> GenerationSelector:

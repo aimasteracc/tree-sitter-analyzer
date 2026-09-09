@@ -221,8 +221,12 @@ def _evaluate_with_explicit_file(
     min_severity_rank = _SEVERITY_ORDER.get(severity_min, 1)
     try:
         if persist:
-            violations, edge_count = _run_and_persist(
-                db_path, constraints, persist=True
+            from ...cache.generation_indexing import mutate_index_path
+
+            violations, edge_count = mutate_index_path(
+                project_root,
+                db_path,
+                lambda private: _run_and_persist(private, constraints, persist=True),
             )
             filtered = _filter_violations(
                 violations,

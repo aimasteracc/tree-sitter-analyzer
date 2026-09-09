@@ -6,6 +6,7 @@ import os
 import stat
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
@@ -54,6 +55,7 @@ def mutate_published_cache(
     *,
     scope: SourceScopeDescriptor | None = None,
     candidate_snapshot: IndexCandidateSnapshot | None = None,
+    expected_path: Path | None = None,
 ) -> _T:
     """已切换项目的显式单文件、重建和失效操作仍只能写私有副本。"""
     from ..ast_cache import ASTCache
@@ -65,6 +67,11 @@ def mutate_published_cache(
             (lambda: candidate_snapshot) if candidate_snapshot is not None else None
         )
         try:
+            if expected_path is not None and (
+                candidate.parent is None
+                or store.database(candidate.parent) != expected_path
+            ):
+                raise Superseded("INDEX_GENERATION_SUPERSEDED")
             if candidate_snapshot is not None and (
                 not candidate_snapshot.publication_bound
                 or candidate_snapshot.publication_parent != candidate.parent
@@ -193,7 +200,12 @@ async def run_full_index(
             store.seal(selector)
             store.publish(PreparedGeneration(candidate, selector, SyncResult()))
         except (OSError, ValueError, RuntimeError) as exc:
-            return _publication_error(exc, root, "generation_publication")
+            failure = _publication_error(exc, root, "generation_publication")
+            try:
+                failure["published"] = store.active_selector() == selector
+            except (OSError, ValueError):
+                failure["published"] = None
+            return failure
         result["published"] = True
         result["generation_id"] = selector.generation_id
         result["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
@@ -217,3 +229,24 @@ def _publication_error(exc: Exception, root: str, phase: str) -> dict[str, Any]:
         "error": error,
         "error_truncated": truncated,
     }
+
+
+def mutate_index_path(root: str, path: Path, operation: Callable[[Path], _T]) -> _T:
+    """派生数据持久化也只能修改私有副本，旧布局保留原调用语义。"""
+    from ..ast_cache import ASTCache
+    from .generation_routing import resolve_index_location
+
+    location = resolve_index_location(root)
+    if not location.published:
+        if location.path != path:
+            raise ValueError("INDEX_GENERATION_PATH_MISMATCH")
+        return operation(path)
+    cache = ASTCache(root)
+    try:
+        return mutate_published_cache(
+            cache,
+            lambda writable: operation(Path(writable.db_path)),
+            expected_path=path,
+        )
+    finally:
+        cache.close()

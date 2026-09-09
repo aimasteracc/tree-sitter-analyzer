@@ -243,11 +243,19 @@ class ConstraintCheckTool(BaseMCPTool):
 
         if persist:
             try:
-                _, evaluated_edges = self._run_and_persist(db_path, constraints)
-                filtered_rows = self._read_filtered_violations(
-                    db_path,
-                    path_filter=path_filter,
-                    min_severity_rank=min_severity_rank,
+                from ...cache.generation_indexing import mutate_index_path
+
+                def persist_private(path: Path) -> tuple[list[dict[str, Any]], int]:
+                    _, count = self._run_and_persist(path, constraints)
+                    rows = self._read_filtered_violations(
+                        path,
+                        path_filter=path_filter,
+                        min_severity_rank=min_severity_rank,
+                    )
+                    return rows, count
+
+                filtered_rows, evaluated_edges = mutate_index_path(
+                    self.project_root, db_path, persist_private
                 )
             except RuntimeError as exc:
                 if str(exc) != "CONSTRAINT_EVALUATION_CAPACITY":

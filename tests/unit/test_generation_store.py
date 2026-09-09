@@ -4,6 +4,7 @@ import multiprocessing
 import os
 import sqlite3
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -433,3 +434,63 @@ def test_seal_rejects_database_with_pinned_uncheckpointed_frames(store, monkeypa
     finally:
         reader.close()
         writer.close()
+
+
+@pytest.mark.parametrize("replacement", [False, True])
+def test_seal_rejects_removed_or_replaced_database(store, replacement):
+    selector = store.begin(store.capture())
+    path = store.database(selector)
+    path.rename(path.with_suffix(".displaced"))
+    if replacement:
+        path.touch()
+    with pytest.raises((OSError, RuntimeError)):
+        store.seal(selector)
+    assert path.exists() is replacement
+    assert store.active_selector() is None
+
+
+@pytest.mark.parametrize("phase", ["selector", "completion"])
+def test_initial_publication_recovers_with_fresh_writer(store, monkeypatch, phase):
+    import tree_sitter_analyzer.cache.generation_store as owner
+
+    original = owner._write_atomic
+
+    def interrupt(path, data):
+        if (phase == "selector" and path == store.selector_path) or (
+            phase == "completion" and data == b"1\n"
+        ):
+            raise OSError("publication interrupted")
+        return original(path, data)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, "_write_atomic", interrupt)
+        with pytest.raises(OSError, match="interrupted"):
+            store.sync()
+    if phase == "selector":
+        with pytest.raises(InvalidGenerationSelector, match="MISSING"):
+            store.active_selector()
+    else:
+        assert store.active_selector() is not None
+    retry = GenerationStore(str(store.root), str(store.storage))
+    assert retry.sync() == retry.active_selector()
+    retry.selector_path.unlink()
+    with pytest.raises(InvalidGenerationSelector, match="MISSING"):
+        retry.capture()
+
+
+def test_path_platform_hashes_do_not_change_indexer_candidate_metadata(
+    store, monkeypatch
+):
+    import tree_sitter_analyzer.cache.generation_store as owner
+    import tree_sitter_analyzer.indexing_snapshot as snapshots
+
+    monkeypatch.setattr(snapshots, "os", SimpleNamespace(**{**vars(os), "name": "nt"}))
+    monkeypatch.setattr(owner, "_PATH_ONLY_SOURCE", True)
+    candidate = store.capture()
+    assert candidate.snapshot.selected_entries[0].fingerprint.content_hash == ""
+    assert candidate.source_contents[0][1][0]
+    assert (
+        snapshots.changed_since_snapshot(candidate.snapshot.selected_entries[0]) is None
+    )
+    prepared = store.prepare(candidate)
+    assert store.publish(prepared) == store.active_selector()

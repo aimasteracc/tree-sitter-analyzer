@@ -978,7 +978,13 @@ class TestExecute:
         assert received[0] is received[1]
         assert received[0].selected_entries[0].rel_path == "app.py"
 
-    async def test_elapsed_time_includes_snapshot_discovery(self, tmp_path):
+    @pytest.mark.parametrize("path_only", [False, True])
+    async def test_elapsed_time_includes_snapshot_discovery(
+        self, tmp_path, monkeypatch, path_only
+    ):
+        monkeypatch.setattr(
+            "tree_sitter_analyzer.cache.generation_store._PATH_ONLY_SOURCE", path_only
+        )
         path = tmp_path / "app.py"
         path.write_text("value = 1\n")
         full_tool = CodeGraphFullIndexTool(str(tmp_path))
@@ -999,8 +1005,12 @@ class TestExecute:
 
         with (
             patch(
-                "tree_sitter_analyzer.mcp.tools.full_index_tool.time.monotonic",
-                side_effect=clock,
+                "tree_sitter_analyzer.mcp.tools.full_index_tool.time",
+                SimpleNamespace(monotonic=clock),
+            ),
+            patch(
+                "tree_sitter_analyzer.cache.generation_indexing.time",
+                SimpleNamespace(monotonic=clock),
             ),
             patch.object(
                 full_tool,
