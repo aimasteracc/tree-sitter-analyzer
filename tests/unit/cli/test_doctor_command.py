@@ -312,36 +312,8 @@ class TestCheckUvx:
         assert "reinstall uv" in result.message
 
 
-class TestCheckFd:
-    def test_pass_when_fd_found(self) -> None:
-        from tree_sitter_analyzer.cli.commands.doctor import _check_fd
-
-        with patch("shutil.which", return_value="/usr/bin/fd"):
-            result = _check_fd()
-        assert result.status == "PASS"
-
-    def test_warn_when_fd_missing(self) -> None:
-        from tree_sitter_analyzer.cli.commands.doctor import _check_fd
-
-        with patch("shutil.which", return_value=None):
-            result = _check_fd()
-        assert result.status == "WARN"
 
 
-class TestCheckRg:
-    def test_pass_when_rg_found(self) -> None:
-        from tree_sitter_analyzer.cli.commands.doctor import _check_rg
-
-        with patch("shutil.which", return_value="/usr/bin/rg"):
-            result = _check_rg()
-        assert result.status == "PASS"
-
-    def test_warn_when_rg_missing(self) -> None:
-        from tree_sitter_analyzer.cli.commands.doctor import _check_rg
-
-        with patch("shutil.which", return_value=None):
-            result = _check_rg()
-        assert result.status == "WARN"
 
 
 class TestCheckProjectRoot:

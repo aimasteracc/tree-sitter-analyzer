@@ -10,12 +10,12 @@ tree_sitter_analyzer/
 ├── cli/              ← CLI entry points + commands           (cli.md)
 ├── mcp/              ← MCP server + 8 facade tools             (mcp-tools.md)
 │   ├── server.py     ← stdio transport, tool registration
-│   ├── tools/        ← 146 modules / 79 inner tool classes (delegated from facades)
+│   ├── tools/        ← inner tool implementations (delegated from facades)
 │   ├── server_utils/ ← registration / smart_prompts / intent
-│   ├── utils/        ← project_index, search_cache, file_output_factory
+│   ├── utils/        ← project_index, file_output_factory
 │   └── resources/    ← MCP resources (read-only data exposed to AI)
 ├── languages/        ← 22 tree-sitter plugins                (languages.md)
-├── formatters/       ← JSON + explicit table/text views     (formatters.md)
+├── formatters/       ← JSON / table      (formatters.md)
 ├── core/             ← Parser, engine, AnalysisSession, AnalysisRequest
 ├── models/           ← AnalysisResult + Class/Function/Variable/Import models
 ├── plugins/          ← LanguagePlugin / ElementExtractor base + registry
@@ -25,6 +25,7 @@ tree_sitter_analyzer/
 ├── graph/            ← edge_store.py — single-edge-table call-graph store (B1)
 ├── constraints/      ← architectural-constraints.yml evaluator/parser/schema
 ├── hyphae/           ← Hyphae selector DSL (lexer/parser/ast/evaluator) — RFC-0001 reactive push
+├── source_lines.py ← 原生文件发现、忽略规则与实时符号文本核验
 ├── verification_plan.py ← 有界描述符、完整 argv 计划与阶段摘要
 ├── verification_runner.py ← 重新分析校验、顺序执行、日志预算与进程回收
 ├── skills/           ← 13 bundled tsa-* agent skills
@@ -48,7 +49,7 @@ languages/<lang>_plugin.analyze_file ← tree-sitter parse + extract elements
   ↓
 models.AnalysisResult               ← Class/Function/Variable/Import/Annotation
   ↓
-formatters/<fmt>_formatter          ← JSON / explicit terminal table views
+formatters/<fmt>_formatter          ← JSON / table
   ↓
 agent_summary envelope              ← verdict (SAFE/REVIEW/CAUTION/UNSAFE)
   ↓
@@ -120,7 +121,6 @@ contract violation.**
 | `tree-sitter-analyzer-mcp` MCP stdio server | `mcp/server.py` | AI-agent-facing, JSON output |
 | `tree-sitter-analyzer-doctor` | `cli_main.py:main_doctor` | Environment diagnostics |
 | `miswire-audit` | `miswire_audit.py` | Run-on-your-repo cross-language correctness demo |
-| `list-files` | `cli/commands/list_files_cli.py` | Retained fd-based file listing |
 | Python API (no console script) | `api/__init__.py` | Authoritative implementation of the existing `tree_sitter_analyzer.api` API; Pulse/serialization/semantic live in explicit submodules |
 
 The `search-content` and `find-and-grep` console scripts have been removed.

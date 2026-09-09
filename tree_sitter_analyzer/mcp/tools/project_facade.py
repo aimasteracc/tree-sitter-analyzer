@@ -7,10 +7,8 @@ Folds project-level capabilities behind one ``action`` parameter:
 action         inner / route                               when to use
 =============  ==========================================  ==========================
 overview       ``get_project_overview``                    high-level project summary
-files          ``list_files``                              enumerate source files
 smart          ``smart_context``                           S2 task-focused context
 parser         ``advise_parser_readiness``                 check tree-sitter support
-tools          ``check_tools``                             verify tool availability
 metrics        ``codegraph_metrics``                       graph-level statistics
 skills         ``list_agent_skills``                       enumerate agent skills
 workflow       ``get_agent_workflow``                      suggested agent workflow
@@ -63,8 +61,6 @@ _PROJECT_DESCRIPTION = (
     "PROJECT INFO (read-only):\n"
     "- action=overview — high-level summary of languages, entry points, and "
     "architecture. Best first call on an unfamiliar repo. Params: format.\n"
-    "- action=files — enumerate source files with filtering. "
-    "Params: path, extensions, limit, format.\n"
     "- action=smart — one-shot orientation for a single file: file_health "
     "grade, exported symbols (the file's public API), upstream/downstream "
     "dependencies, associated test files, and edit-risk in one envelope "
@@ -72,8 +68,6 @@ _PROJECT_DESCRIPTION = (
     "Params: file_path.\n"
     "- action=parser — check tree-sitter parser readiness for the project "
     "languages. Params: format.\n"
-    "- action=tools — verify availability of CLI tools (ripgrep, fd, etc.). "
-    "Params: (none).\n"
     "- action=metrics — codegraph graph-level statistics (node/edge counts, "
     "top hubs, codegraph_metrics equivalent). Params: format.\n"
     "- action=skills — enumerate available agent skills for this project. "
@@ -112,12 +106,10 @@ def build_project_facade(project_root: str | None = None) -> FacadeTool:
     """
     from .agent_skills_tool import AgentSkillsTool
     from .agent_workflow_tool import AgentWorkflowTool
-    from .check_tools_tool import CheckToolsTool
     from .codegraph_metrics_tool import CodeGraphMetricsTool
     from .decision_journal_tool import DecisionJournalTool
     from .doc_sync_tool import DocSyncTool
     from .get_project_summary_tool import GetProjectSummaryTool
-    from .list_files_tool import ListFilesTool
     from .parser_readiness_tool import ParserReadinessTool
     from .project_overview_tool import ProjectOverviewTool
     from .smart_context_tool import SmartContextTool
@@ -127,10 +119,8 @@ def build_project_facade(project_root: str | None = None) -> FacadeTool:
         action_map={
             # -- project info (read-only) -----------------------------------
             "overview": ProjectOverviewTool(project_root),
-            "files": ListFilesTool(project_root),
             "smart": SmartContextTool(project_root),  # S2 agentic highlight
             "parser": ParserReadinessTool(project_root),
-            "tools": CheckToolsTool(project_root),
             "metrics": CodeGraphMetricsTool(project_root),
             "skills": AgentSkillsTool(project_root),
             "workflow": AgentWorkflowTool(project_root),

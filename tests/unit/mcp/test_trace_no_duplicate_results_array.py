@@ -16,8 +16,6 @@ import asyncio
 import os
 import tempfile
 
-import pytest
-
 from tree_sitter_analyzer.mcp.tools.trace_impact_tool import TraceImpactTool
 
 
@@ -35,10 +33,9 @@ def _project() -> str:
     return d
 
 
-@pytest.mark.requires_ripgrep
 def test_trace_has_no_duplicate_results_array() -> (
     None
-):  # T5: tracked via requires_ripgrep
+):  # 2026-09-09：核验路径已改为原生扫描，不再依赖外部程序。
     d = _project()
     res = asyncio.run(
         TraceImpactTool(project_root=d).execute(
@@ -65,7 +62,6 @@ def test_trace_not_found_has_no_results_key() -> None:
     assert "results" not in res
 
 
-@pytest.mark.requires_ripgrep
 def test_trace_response_does_not_pay_for_the_duplicate_array() -> None:
     """RFC-0018 R11 cost invariant: dropping the duplicate is a measured win.
 

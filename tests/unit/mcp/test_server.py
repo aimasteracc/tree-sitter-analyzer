@@ -57,7 +57,7 @@ class TestServerInit:
             server.analyze_scale_tool.get_tool_definition()["name"]
             == "check_code_scale"
         )
-        assert server.list_files_tool.get_tool_definition()["name"] == "list_files"
+        assert not hasattr(server, "list_files_tool")
         # search_content_tool (SearchContentTool) と find_and_grep_tool (FindAndGrepTool) は廃止済み
 
     def test_initialization_creates_resources(self, tmp_path):
@@ -393,11 +393,6 @@ class TestToolDefinitions:
         """Test analyze scale tool has definition"""
         definition = server.analyze_scale_tool.get_tool_definition()
         assert definition["name"] == "check_code_scale"
-
-    def test_list_files_tool_definition(self, server):
-        """Test list files tool has definition"""
-        definition = server.list_files_tool.get_tool_definition()
-        assert definition["name"] == "list_files"
 
     # test_search_content_tool_definition と test_find_and_grep_tool_definition は
     # 廃止済み (SearchContentTool / FindAndGrepTool が削除されたため)

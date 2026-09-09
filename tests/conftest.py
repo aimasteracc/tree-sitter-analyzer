@@ -70,10 +70,6 @@ def pytest_configure(config):
         "ignore:Exception ignored while finalizing database connection"
         ":pytest.PytestUnraisableExceptionWarning",
     )
-    config.addinivalue_line(
-        "markers", "requires_ripgrep: mark test as requiring ripgrep (rg) command"
-    )
-    config.addinivalue_line("markers", "requires_fd: mark test as requiring fd command")
     config.addinivalue_line("markers", "integration: mark test as integration test")
     config.addinivalue_line("markers", "performance: mark test as performance test")
     config.addinivalue_line("markers", "regression: mark test as regression test")
@@ -114,39 +110,11 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    """Modify test collection to skip tests based on missing dependencies."""
-    # Check for external dependencies
-    has_ripgrep = shutil.which("rg") is not None
-    has_fd = shutil.which("fd") is not None
-
-    skip_ripgrep = pytest.mark.skip(
-        reason="ripgrep (rg) not available; tracked: optional local CLI dependency"
-    )
-    skip_fd = pytest.mark.skip(
-        reason="fd not available; tracked: optional local CLI dependency"
-    )
-
+    """只对已登记的不稳定测试禁用重跑。"""
     for item in items:
-        # Skip tests that require ripgrep if not available
-        if "requires_ripgrep" in item.keywords and not has_ripgrep:
-            item.add_marker(skip_ripgrep)
-
-        # Skip tests that require fd if not available
-        if "requires_fd" in item.keywords and not has_fd:
-            item.add_marker(skip_fd)
-
         if "quarantine" in item.keywords:
             item.add_marker(pytest.mark.flaky(reruns=0, reruns_delay=0))
             QUARANTINED_TESTS.append(item.nodeid)
-
-
-@pytest.fixture(scope="session")
-def has_external_tools():
-    """Check availability of external tools."""
-    return {
-        "ripgrep": shutil.which("rg") is not None,
-        "fd": shutil.which("fd") is not None,
-    }
 
 
 @pytest.fixture(scope="session")
@@ -403,12 +371,6 @@ def _reset_all_singletons():
 
     # Module-level attribute resets (no class attribute to look up)
     _MODULE_ATTR_RESETS: list[tuple[str, str, str]] = [
-        ("tree_sitter_analyzer.mcp.utils.search_cache", "clear_cache", "call"),
-        (
-            "tree_sitter_analyzer.mcp.utils.gitignore_detector",
-            "_default_detector",
-            "set_none",
-        ),
         ("tree_sitter_analyzer.language_loader", "_loader_instance", "set_none"),
         ("tree_sitter_analyzer.query_loader", "_query_loader_instance", "set_none"),
         # RFC-0025 Layer 5: the latency recorder is process-global and every

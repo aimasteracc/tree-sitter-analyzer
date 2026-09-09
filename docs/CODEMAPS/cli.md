@@ -1,24 +1,20 @@
 <!-- Generated: 2026-05-22; doc-code re-sync: 2026-08-19 -->
 # CLI Codemap
 
-Seven console-script entry points + flag-based dispatch through `cli_main.py`.
+Six installed console-script entry points; the main analyzer and its aliases dispatch through `cli_main.py`.
 
 ## Entry Points
 
-| Command | Module | Default format |
+| Command | Handler | Purpose |
 |---|---|---|
-| `tree-sitter-analyzer` | `cli_main.py` | `json` |
-| `tree-sitter-analyzer-mcp` | `mcp/server.py` (stdio) | `json` |
-| `tree-sitter-analyzer-doctor` | `cli_main.py:main_doctor` | text; `--doctor-json` for JSON |
-| `miswire-audit` | `miswire_audit.py` | text; `--card` adds Markdown |
-| `code-analyzer` | `cli_main.py` (alias) | `json` |
-| `java-analyzer` | `cli_main.py` (alias) | `json` |
-| `list-files` | `cli/commands/list_files_cli.py` | `json` |
+| `tree-sitter-analyzer` | `cli_main:main` | Main analysis CLI |
+| `tree-sitter-analyzer-mcp` | `mcp.server:main_sync` | MCP stdio server |
+| `tree-sitter-analyzer-doctor` | `cli_main:main_doctor` | Main CLI with `--doctor` |
+| `code-analyzer` | `cli_main:main` | Main CLI alias |
+| `java-analyzer` | `cli_main:main` | Main CLI alias |
+| `miswire-audit` | `miswire_audit:main` | Standalone terminal audit; optional Markdown card |
 
-MCP and CLI machine-readable envelopes use JSON. Human-readable CLI paths remain
-as documented below; TOON has been removed. The `search-content` and
-`find-and-grep` console scripts are removed on develop. `list-files`, batch search
-and external-tool checks remain available; see the [migration guide](../MIGRATION.md).
+The main analysis CLI and MCP use JSON; TOON has been removed. The standalone `miswire-audit` report is human-readable.
 
 ## Command Modules
 
@@ -32,7 +28,6 @@ cli/commands/
 ├── structure_command.py        ← --table full
 ├── summary_command.py          ← --summary
 ├── table_command.py            ← table rendering helpers
-├── list_files_cli.py           ← `list-files` subcommand
 ├── mcp_commands/               ← MCP-equivalent CLI flags (parity contract; package)
 └── codegraph_index_commands.py ← cache commands: autoindex / full-index / incremental-sync / metrics / knowledge graph index
 ```
@@ -81,9 +76,6 @@ Categories of CLI surface:
 
 ### Discovery
 - `--project-card` — the project card (RFC-0027 §L7): purpose from the README, top code languages, entry points, key config files, and per-module descriptions of the top-level structure. Persistent — built once into `.tree-sitter-cache/project-index.json` and recalled instantly. MCP twin: `project action=card`
-- `list-files` subcommand — fd wrapper
-- ~~`search-content` subcommand~~ — *(廃止済み: CC Grep tool を使用)*
-- ~~`find-and-grep` subcommand~~ — *(廃止済み: CC Glob + Grep tool を使用)*
 - `--detect-routes` — framework route detection
 
 ### Cache & Index
@@ -175,7 +167,7 @@ boundary.
 
 ## See Also
 
-- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (357 unique flags total — this codemap is intentionally categorical, not exhaustive)
+- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (353 unique flags total — this codemap is intentionally categorical, not exhaustive)
 - [`docs/CODEMAPS/mcp-tools.md`](./mcp-tools.md) — MCP-side counterpart
 - [`tests/unit/cli/test_mcp_commands.py`](../../tests/unit/cli/test_mcp_commands.py) — Parity contract tests
 - [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks a change to the CLI **flag surface** (any `cli/**/*.py`, compared as a set) without a `cli.md` update

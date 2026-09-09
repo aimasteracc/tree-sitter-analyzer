@@ -65,9 +65,6 @@ CLI 等效命令（无需 agent）：`tree-sitter-analyzer --codegraph-status`
 curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-# fd + ripgrep（`search action=batch` 多查询文本搜索所需；符号搜索使用 SQLite FTS5，两者都不需要）
-brew install fd ripgrep                                # macOS
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```
 
 #### 2. 安装 Tree-sitter Analyzer
@@ -170,7 +167,7 @@ TSA 在 `.claude/skills/tsa-*/` 下提供精选工作流：
 
 每个 skill 都带 `allowed-tools` 工具子集 + 操作流程 + 决策面 schema，agent 不必在 8 个工具间反复挑选。
 
-### 357 个 CLI flag
+### 353 个 CLI flag
 
 亮点：
 

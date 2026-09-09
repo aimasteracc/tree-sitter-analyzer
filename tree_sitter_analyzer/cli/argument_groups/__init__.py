@@ -5,7 +5,6 @@ All ``_add_*`` functions are re-exported from here so that
 """
 
 from ._advanced import (
-    _add_batch_search_options,
     _add_decision_journal_options,
     _add_environment_probe_options,
     _add_modification_guard_options,
@@ -48,7 +47,6 @@ __all__ = [
     "_add_agent_workflow_options",
     "_add_analysis_options",
     "_add_batch_options",
-    "_add_batch_search_options",
     "_add_clean_state_options",
     "_add_core_options",
     "_add_decision_journal_options",

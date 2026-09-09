@@ -35,13 +35,13 @@ class TestIntentAliasResolution:
 
         assert result == "search"
 
-    def test_resolve_map_structure_to_list_files(self):
-        """map_structure 应该解析为 list_files"""
+    def test_resolve_map_structure_to_codegraph_sitemap(self):
+        """map_structure 应该解析为 codegraph_sitemap"""
         resolver = IntentAliasResolver()
 
         result = resolver.resolve("map_structure")
 
-        assert result == "list_files"
+        assert result == "codegraph_sitemap"
 
     def test_resolve_find_impacted_code_to_query(self):
         """find_impacted_code 应该解析为 query_code"""
@@ -67,13 +67,13 @@ class TestIntentAliasResolution:
 
         assert result == "get_code_outline"
 
-    def test_resolve_discover_files_to_list_files(self):
-        """discover_files 应该解析为 list_files (multiple aliases)"""
+    def test_resolve_discover_files_to_codegraph_sitemap(self):
+        """discover_files 应该解析为 codegraph_sitemap (multiple aliases)"""
         resolver = IntentAliasResolver()
 
         result = resolver.resolve("discover_files")
 
-        assert result == "list_files"
+        assert result == "codegraph_sitemap"
 
     def test_resolve_find_usage_to_search(self):
         """find_usage 应该解析为 search (search action=symbol, locate_usage の代替)"""
@@ -114,7 +114,7 @@ class TestBackwardCompatibility:
         """所有原始工具名都应该 pass through (現在有効なもののみ)"""
         resolver = IntentAliasResolver()
         original_tools = [
-            "list_files",
+            "codegraph_sitemap",
             "search",
             "query_code",
             "analyze_code_structure",
@@ -197,12 +197,13 @@ class TestAliasMetadata:
     def test_is_valid_alias_for_original_tool(self):
         """is_valid_alias 对原始工具名返回 True (現在有効なもの)"""
         assert is_valid_alias("search") is True
-        assert is_valid_alias("list_files") is True
+        assert is_valid_alias("codegraph_sitemap") is True
 
     def test_is_valid_alias_deprecated_tools(self):
         """search_content と find_and_grep は廃止済み - False を返すこと"""
         assert is_valid_alias("search_content") is False
         assert is_valid_alias("find_and_grep") is False
+        assert is_valid_alias("list_files") is False
 
     def test_is_valid_alias_for_unknown_name(self):
         """is_valid_alias 对未知名称返回 False"""

@@ -1,19 +1,4 @@
-"""
-User Story 4 統合テスト: 統合ワークフロー・プロジェクト管理
-
-このテストスイートは、User Story 4の統合ワークフロー機能を検証します：
-- set_project_path による動的プロジェクト境界管理
-- MCPリソース（code_file、project_stats）による情報アクセス
-- 複合ワークフローでの統合動作
-
-テスト対象:
-- T015: set_project_path 機能
-- T017: MCPリソース（code_file、project_stats）
-- 統合ワークフローシナリオ
-
-Note: T016 (find_and_grep ツール) は廃止済みのため skip。
-テキスト検索は CC 組み込みの Grep tool を使用すること。
-"""
+"""项目边界、源码资源与统计资源的集成行为；退役检索接口另见 RFC-0033。"""
 
 import asyncio
 import json
@@ -196,7 +181,6 @@ This will find all Java files and count TODO comments.
         assert mcp_server.project_stats_resource._project_path == temp_project
 
         # 各ツールのプロジェクトパスが更新されたことを確認
-        # find_and_grep_tool は廃止済みのためチェックなし
         assert mcp_server.query_tool.project_root == temp_project
         assert mcp_server.read_partial_tool.project_root == temp_project
 
@@ -211,100 +195,6 @@ This will find all Java files and count TODO comments.
         with pytest.raises(ValueError) as exc_info:
             mcp_server.set_project_path("")
         assert "cannot be empty" in str(exc_info.value)
-
-    @pytest.mark.skip(reason="find_and_grep (FindAndGrepTool) は廃止済み。CC Glob + Grep tool を使用。")
-    @pytest.mark.requires_fd
-    @pytest.mark.requires_ripgrep
-    @pytest.mark.asyncio
-    async def test_find_and_grep_tool_basic(self, mcp_server, temp_project):
-        """T016: find_and_grep ツールの基本機能テスト (廃止済み)"""
-
-        # Java ファイルを検索してTODOコメントを探す (use JSON output_format for test assertions)
-        result = await mcp_server.find_and_grep_tool.execute(
-            {
-                "roots": [temp_project],
-                "extensions": ["java"],
-                "query": "TODO",
-                "case": "insensitive",
-                "output_format": "json",
-            }
-        )
-
-        # 結果検証
-        assert "results" in result
-        assert len(result["results"]) == 2
-
-        # TODOコメントが見つかることを確認
-        found_todos = False
-        for match in result["results"]:
-            if "TODO" in match["text"]:
-                found_todos = True
-                assert (
-                    "Service.java" in match["file"]
-                    or "ServiceTest.java" in match["file"]
-                )
-                break
-
-        assert found_todos, "TODO comments should be found in Java files"
-
-    @pytest.mark.skip(reason="find_and_grep (FindAndGrepTool) は廃止済み。CC Glob + Grep tool を使用。")
-    @pytest.mark.requires_fd
-    @pytest.mark.requires_ripgrep
-    @pytest.mark.asyncio
-    async def test_find_and_grep_two_stage_search(self, mcp_server, temp_project):
-        """find_and_grep ツールの2段階検索テスト (廃止済み)"""
-
-        # 第1段階: Pythonファイルを見つける
-        # 第2段階: その中で特定の関数を検索 (use JSON output_format for test assertions)
-        result = await mcp_server.find_and_grep_tool.execute(
-            {
-                "roots": [temp_project],
-                "extensions": ["py"],
-                "query": "def find_java_files",
-                "case": "sensitive",
-                "output_format": "json",
-            }
-        )
-
-        # 結果検証
-        assert "results" in result
-        assert len(result["results"]) == 1
-
-        # helper.pyで関数が見つかることを確認
-        found_function = False
-        for match in result["results"]:
-            if "def find_java_files" in match["text"]:
-                assert "helper.py" in match["file"]
-                found_function = True
-                break
-
-        assert found_function, "find_java_files function should be found"
-
-    @pytest.mark.skip(reason="find_and_grep (FindAndGrepTool) は廃止済み。CC Glob + Grep tool を使用。")
-    @pytest.mark.requires_fd
-    @pytest.mark.requires_ripgrep
-    @pytest.mark.asyncio
-    async def test_find_and_grep_optimization_features(self, mcp_server, temp_project):
-        """find_and_grep ツールの最適化機能テスト (廃止済み)"""
-
-        # total_only モードテスト
-        result = await mcp_server.find_and_grep_tool.execute(
-            {"roots": [temp_project], "query": "import", "total_only": True}
-        )
-
-        # total_onlyの場合は数値のみ返される
-        assert isinstance(result, int)
-        assert result == 14  # importステートメント数 (java 4 + python 3 + その他)
-
-        # summary_only モードテスト
-        result = await mcp_server.find_and_grep_tool.execute(
-            {"roots": [temp_project], "query": "public", "summary_only": True}
-        )
-
-        # サマリー形式の結果検証
-        assert "summary" in result
-        assert "total_matches" in result["summary"]
-        assert "top_files" in result["summary"]
 
     @pytest.mark.asyncio
     async def test_code_file_resource_access(self, mcp_server, temp_project):
@@ -418,153 +308,60 @@ This will find all Java files and count TODO comments.
 
         assert service_java_found, "Service.java should be in file statistics"
 
-    @pytest.mark.skip(reason="find_and_grep (FindAndGrepTool) は廃止済み。CC Grep tool を使用。")
-    @pytest.mark.requires_fd
-    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
-    async def test_integrated_workflow_scenario_1(self, mcp_server, temp_project):
-        """統合ワークフローシナリオ1: プロジェクト分析→検索→詳細確認"""
-
-        # Step 1: プロジェクト概要を取得
-        overview_content = await mcp_server.project_stats_resource.read_resource(
-            "code://stats/overview"
+    async def test_project_stats_complexity_survives_search_retirement(
+        self, mcp_server, temp_project
+    ):
+        # 2026-09-09：原混合场景退役时仍须保留复杂度统计的独立责任。
+        stats = json.loads(
+            await mcp_server.project_stats_resource.read_resource(
+                "code://stats/complexity"
+            )
         )
-        overview = json.loads(overview_content)
-
-        assert overview["total_files"] == 4
-        assert "java" in overview["languages"]
-
-        # Step 2: TODOコメントを検索 (use JSON output_format for test assertions)
-        search_result = await mcp_server.find_and_grep_tool.execute(
+        assert stats["total_files_analyzed"] == 2
+        assert stats["average_complexity"] == 2.5
+        assert stats["files_by_complexity"] == [
+            {"file": "src/main/java/Service.java", "language": "java", "complexity": 3},
             {
-                "roots": [temp_project],
-                "query": "TODO",
-                "case": "insensitive",
-                "context_before": 1,
-                "context_after": 1,
-                "output_format": "json",
-            }
-        )
+                "file": "src/test/java/ServiceTest.java",
+                "language": "java",
+                "complexity": 2,
+            },
+        ]
 
-        assert len(search_result["results"]) == 30
-
-        # Step 3: 見つかったファイルの詳細内容を確認
-        for match in search_result["results"]:
-            if "Service.java" in match["file"]:
-                # 絶対パスを使用
-                uri = f"code://file/{match['file']}"
-
-                file_content = await mcp_server.code_file_resource.read_resource(uri)
-                assert "TODO: implement data processing" in file_content
-                break
-
-    @pytest.mark.skip(reason="find_and_grep (FindAndGrepTool) は廃止済み。CC Grep tool を使用。")
-    @pytest.mark.requires_fd
-    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
-    async def test_integrated_workflow_scenario_2(self, mcp_server, temp_project):
-        """統合ワークフローシナリオ2: 言語別分析→特定言語検索→複雑度確認"""
-
-        # Step 1: 言語別統計を取得
-        languages_content = await mcp_server.project_stats_resource.read_resource(
-            "code://stats/languages"
+    async def test_reset_project_path_refreshes_file_inventory(
+        self, mcp_server, temp_project
+    ):
+        # 2026-09-09：旧场景的弱增量断言改为四个文件到五个文件的精确见证。
+        before = json.loads(
+            await mcp_server.project_stats_resource.read_resource(
+                "code://stats/overview"
+            )
         )
-        languages = json.loads(languages_content)
-
-        # Javaファイルが最も多いことを確認
-        java_stats = None
-        for lang in languages["languages"]:
-            if lang["name"] == "java":
-                java_stats = lang
-                break
-
-        assert java_stats is not None
-        assert java_stats["file_count"] == 2
-
-        # Step 2: Javaファイルでpublicメソッドを検索 (use JSON output_format)
-        search_result = await mcp_server.find_and_grep_tool.execute(
-            {
-                "roots": [temp_project],
-                "extensions": ["java"],
-                "query": "public.*\\(",
-                "case": "sensitive",
-                "output_format": "json",
-            }
+        (Path(temp_project) / "src/main/java/NewService.java").write_text(
+            "public class NewService {}", encoding="utf-8"
         )
-
-        assert len(search_result["results"]) == 5
-
-        # Step 3: 複雑度統計を確認
-        complexity_content = await mcp_server.project_stats_resource.read_resource(
-            "code://stats/complexity"
-        )
-        complexity = json.loads(complexity_content)
-
-        assert "average_complexity" in complexity
-        assert "total_files_analyzed" in complexity
-        assert complexity["total_files_analyzed"] == 2
-
-    @pytest.mark.skip(reason="find_and_grep (FindAndGrepTool) は廃止済み。CC Grep tool を使用。")
-    @pytest.mark.requires_fd
-    @pytest.mark.requires_ripgrep
-    @pytest.mark.asyncio
-    async def test_integrated_workflow_scenario_3(self, mcp_server, temp_project):
-        """統合ワークフローシナリオ3: プロジェクト変更→境界更新→再分析"""
-
-        # Step 1: 初期統計を取得
-        initial_overview = await mcp_server.project_stats_resource.read_resource(
-            "code://stats/overview"
-        )
-        initial_stats = json.loads(initial_overview)
-        initial_file_count = initial_stats["total_files"]
-
-        # Step 2: 新しいファイルを追加
-        new_file = Path(temp_project) / "src" / "main" / "java" / "NewService.java"
-        new_file.write_text(
-            """
-public class NewService {
-    public void newMethod() {
-        // New implementation
-        System.out.println("New service method");
-    }
-}
-""",
-            encoding="utf-8",
-            newline="\n",
-        )
-
-        # Step 3: プロジェクト境界を再設定（リフレッシュ）
         mcp_server.set_project_path(temp_project)
-
-        # Step 4: 更新された統計を確認
-        updated_overview = await mcp_server.project_stats_resource.read_resource(
-            "code://stats/overview"
+        after = json.loads(
+            await mcp_server.project_stats_resource.read_resource(
+                "code://stats/overview"
+            )
         )
-        updated_stats = json.loads(updated_overview)
+        assert (before["total_files"], after["total_files"]) == (4, 5)
 
-        # ファイル数が増加していることを確認
-        assert updated_stats["total_files"] >= initial_file_count
-
-        # Step 5: 新しいファイルが検索できることを確認 (use JSON output_format)
-        search_result = await mcp_server.find_and_grep_tool.execute(
-            {
-                "roots": [temp_project],
-                "query": "NewService",
-                "case": "sensitive",
-                "output_format": "json",
-            }
+    @pytest.mark.asyncio
+    async def test_concurrent_file_and_stats_reads_preserve_results(
+        self, mcp_server, temp_project
+    ):
+        # 2026-09-09：并发场景保留文件与统计读取，不再调用退役搜索包装器。
+        source = Path(temp_project) / "src/main/java/Service.java"
+        content, overview = await asyncio.gather(
+            mcp_server.code_file_resource.read_resource(f"code://file/{source}"),
+            mcp_server.project_stats_resource.read_resource("code://stats/overview"),
         )
-
-        assert len(search_result["results"]) == 4
-
-        # 新しいファイルが見つかることを確認
-        new_service_found = False
-        for match in search_result["results"]:
-            if "NewService.java" in match["file"]:
-                new_service_found = True
-                break
-
-        assert new_service_found, "NewService.java should be found after project update"
+        assert content == source.read_text(encoding="utf-8")
+        assert json.loads(overview)["total_files"] == 4
 
     @pytest.mark.asyncio
     async def test_error_handling_integration(self, mcp_server, temp_project):
@@ -577,8 +374,6 @@ public class NewService {
             )
 
         assert "Unsupported statistics type" in str(exc_info.value)
-
-        # find_and_grep_tool は廃止済み。CC Glob + Grep tool を使用すること。
 
     @pytest.mark.asyncio
     async def test_performance_integration(self, mcp_server, temp_project):
@@ -612,55 +407,6 @@ public class NewService {
             stats = json.loads(result)
             assert isinstance(stats, dict)
             assert len(stats) == expected_lens[i]
-
-    @pytest.mark.skip(reason="find_and_grep (FindAndGrepTool) は廃止済み。CC Grep tool を使用。")
-    @pytest.mark.asyncio
-    async def test_concurrent_access_integration(self, mcp_server, temp_project):
-        """並行アクセス統合テスト"""
-
-        # 複数の操作を並行実行 (use JSON output_format for test assertions)
-        tasks = [
-            # 検索操作
-            mcp_server.find_and_grep_tool.execute(
-                {
-                    "roots": [temp_project],
-                    "query": "public",
-                    "extensions": ["java"],
-                    "output_format": "json",
-                }
-            ),
-            # ファイルアクセス（絶対パス使用）
-            mcp_server.code_file_resource.read_resource(
-                f"code://file/{Path(temp_project) / 'src' / 'main' / 'java' / 'Service.java'}"
-            ),
-            # 統計生成
-            mcp_server.project_stats_resource.read_resource("code://stats/overview"),
-            # 別の検索
-            mcp_server.find_and_grep_tool.execute(
-                {
-                    "roots": [temp_project],
-                    "query": "TODO",
-                    "case": "insensitive",
-                    "output_format": "json",
-                }
-            ),
-        ]
-
-        # すべてのタスクが正常に完了することを確認
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # 例外が発生していないことを確認
-        for i, result in enumerate(results):
-            assert not isinstance(result, Exception), (
-                f"Task {i} failed with exception: {result}"
-            )
-
-        # 結果が期待される形式であることを確認
-        assert "results" in results[0]  # find_and_grep結果
-        assert "public class Service" in results[1]  # ファイル内容
-        overview = json.loads(results[2])  # 統計結果
-        assert "total_files" in overview
-        assert "results" in results[3]  # 別のfind_and_grep結果
 
 
 if __name__ == "__main__":

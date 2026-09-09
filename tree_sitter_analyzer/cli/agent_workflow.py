@@ -242,9 +242,9 @@ def _map_step() -> dict[str, Any]:
         "step": "map",
         "step_index": 1,
         "goal": "Find candidate files before reading code.",
-        "mcp_tools": ["list_files"],
+        "mcp_tools": ["codegraph_sitemap"],
         "cli_commands": [
-            "uv run list-files . --types f",
+            "uv run python -m tree_sitter_analyzer --codegraph-sitemap",
         ],
         "stop_condition": "A small set of relevant files is identified.",
     }

@@ -2,25 +2,24 @@
 # MCP Tools Codemap
 
 **8 facade tools** registered in [`mcp/_tool_registry.py`](../../tree_sitter_analyzer/mcp/_tool_registry.py)
-with **87 actions**. The published v1.29.5 baseline already has the eight-facade
-shape. Current develop forwards **65 legacy names** through
-[`mcp/legacy_shim.py`](../../tree_sitter_analyzer/mcp/legacy_shim.py); the removed
-`search_content` and `find_and_grep` names are excluded. See the
-[migration guide](../MIGRATION.md) for released versus Unreleased behavior.
+Each facade dispatches an `action` parameter to its inner implementation.
+Remaining legacy names route through the legacy-name shim; retired search
+wrappers are rejected rather than advertised as available
+([`mcp/legacy_shim.py`](../../tree_sitter_analyzer/mcp/legacy_shim.py)).
 All tools return **JSON output** (locked — see `CLAUDE.md`). Response-envelope semantics (verdict alphabet and truncation fields) are specified in the [Agent Envelope Contract](../agent-envelope-contract.md).
 
 ## Facade Surface (8 domain tools plus standalone infrastructure)
 
 | MCP name | action= | Purpose |
 |---|---|---|
-| `search` | batch / chain / query / select / semantic / subscribe / symbol / tql_execute / tql_schema / unsubscribe | Code search: BM25 symbols, tree-sitter .scm queries, ripgrep batch search, optional embedding search, graph-chain DSL, Hyphae/TQL and reactive subscriptions |
-| `nav` | call_path / callee_tree / callees / caller_tree / callers / co_change / context / impact / lineage / navigate / pulse / pulse_batch / resolve / test_map / trace / xref | Call-graph navigation + one-call symbol context; test_map = which tests exercise a function (RFC-0014 Phase B); co_change = git-history temporal coupling (RFC-0014 Phase C) |
-| `structure` | analyze / ast_path / class_detail / class_tree / explore / outline / read / signatures / sitemap | Structural AST analysis + partial file read + signature-only listing |
-| `health` | dead / deps / file / heatmap / imports / matrix / middleware / overview / patterns / project / refactor_queue / routes / scale / self / test_gap / unreachable | Code health, complexity, dependency analysis, untested symbol discovery; `self` = RFC-0025 Layer 5 self-proprioception (per-`(tool, action)` p50/p95 latency by tier + in-process analysis-cache hit rate + on-disk AST-index state, for the current process; CLI twin `--self-health`); `refactor_queue` = RFC-0027 §L8 top-N prioritized refactor queue ranked by `(1 - health/100) * log(1 + churn_30d) * (dead_ratio + 0.1)`, CLI twin `--refactor-queue` |
-| `edit` | ast_diff / classify / constraints / guard / impact / mutation_probe / plan_rename / pr / refactor / release_snapshot / rename / safe / verify | Edit-safety, blast-radius, refactor, PR review; RFC-0022 explicit-opt-in POSIX-only frozen workspace/staged snapshots (`impact` issues ID+lease or fails closed on Windows, `ast_diff`/`classify` consume ID+path, `release_snapshot` idempotently closes the owned lease in the same MCP process); legacy staged impact remains Windows-supported; `plan_rename` = RFC-0027 §L8 minimal rename edit set, PREVIEW ONLY (apply-like arguments are rejected with `PLAN_RENAME_IS_PREVIEW_ONLY`), CLI twin `--plan-rename`; `mutation_probe` = RFC-0029 on-demand "does this test constrain this code?" probe — applies one AST mutation in memory, runs named test in isolation, returns `constrains`/`does_not_constrain`/`unknown`, fail-closed, CLI twin `--mutation-probe`; `verify` 通过 `request` 描述符重新分析并运行完整验证计划，CLI twin `--verify-plan`，用户测试可能写文件及联网 |
-| `project` | card / doc_sync / files / journal / metrics / overview / parser / skills / smart / tools / workflow | Project-intelligence hub; `card` = RFC-0027 §L7 project card (purpose, top languages, entry points, module descriptions), CLI twin `--project-card` |
-| `index` | auto / build / cache / full / knowledge / schema / status / sync | CodeGraph index lifecycle |
-| `viz` | graph / knowledge / similarity / uml | UML / graph diagrams + similarity |
+| `search` | symbol / query / chain / select / subscribe / unsubscribe / tql_schema / tql_execute / semantic | Code search: BM25 symbol lookup, tree-sitter .scm DSL, indexed semantic retrieval, graph-chain DSL, Hyphae DSL, reactive push subscriptions (RFC-0001) |
+| `nav` | pulse / pulse_batch / navigate / call_path / xref / resolve / lineage / impact / trace / context / callers / callees / callee_tree / caller_tree / test_map / co_change | Call-graph navigation + one-call symbol context; test_map = which tests exercise a function (RFC-0014 Phase B); co_change = git-history temporal coupling (RFC-0014 Phase C) |
+| `structure` | outline / analyze / ast_path / sitemap / class_tree / class_detail / explore / read / signatures | Structural AST analysis + partial file read + signature-only listing |
+| `health` | project / file / scale / patterns / heatmap / imports / matrix / dead / unreachable / routes / middleware / overview / deps / test_gap / self / refactor_queue | Code health, complexity, dependency analysis, untested symbol discovery; `self` = RFC-0025 Layer 5 self-proprioception (per-`(tool, action)` p50/p95 latency by tier + in-process analysis-cache hit rate + on-disk AST-index state, for the current process; CLI twin `--self-health`); `refactor_queue` = RFC-0027 §L8 top-N prioritized refactor queue ranked by `(1 - health/100) * log(1 + churn_30d) * (dead_ratio + 0.1)`, CLI twin `--refactor-queue` |
+| `edit` | safe / guard / impact / refactor / rename / constraints / pr / classify / ast_diff / release_snapshot / plan_rename / mutation_probe / verify | Edit-safety, blast-radius, refactor, PR review; RFC-0022 explicit-opt-in POSIX-only frozen workspace/staged snapshots (`impact` issues ID+lease or fails closed on Windows, `ast_diff`/`classify` consume ID+path, `release_snapshot` idempotently closes the owned lease in the same MCP process); legacy staged impact remains Windows-supported; `plan_rename` = RFC-0027 §L8 minimal rename edit set, PREVIEW ONLY (apply-like arguments are rejected with `PLAN_RENAME_IS_PREVIEW_ONLY`), CLI twin `--plan-rename`; `mutation_probe` = RFC-0029 on-demand "does this test constrain this code?" probe — applies one AST mutation in memory, runs named test in isolation, returns `constrains`/`does_not_constrain`/`unknown`, fail-closed, CLI twin `--mutation-probe`; `verify` 通过 `request` 描述符重新分析并运行完整验证计划，CLI twin `--verify-plan`，用户测试可能写文件及联网 |
+| `project` | overview / smart / parser / metrics / skills / workflow / journal / doc_sync / card | Project-intelligence hub; `card` = RFC-0027 §L7 project card (purpose, top languages, entry points, module descriptions), CLI twin `--project-card` |
+| `index` | status / cache / build / full / auto / sync | CodeGraph index lifecycle |
+| `viz` | uml / graph / similarity | UML / graph diagrams + similarity |
 
 > `set_project_path` remains a standalone infrastructure entry (not a facade
 > action) because it mutates server-level state. Final client surface = **8
@@ -28,10 +27,9 @@ All tools return **JSON output** (locked — see `CLAUDE.md`). Response-envelope
 
 ## Capability → CLI Reference
 
-This reference includes legacy aliases, newer facade capabilities, and explicitly
-marked removals. The exact 65-name shim crosswalk is in the
-[migration guide](../MIGRATION.md) and
-[`mcp/facade_map.py`](../../tree_sitter_analyzer/mcp/facade_map.py).
+The table below documents legacy capabilities and their CLI flags. Each
+legacy MCP name is now reached via its facade (`old_name` →
+`facade action=<...>`); see [`mcp/facade_map.py`](../../tree_sitter_analyzer/mcp/facade_map.py).
 
 | MCP name | CLI flag / handler | Purpose |
 |---|---|---|
@@ -40,11 +38,8 @@ marked removals. The exact 65-name shim crosswalk is in the
 | `get_code_outline` | `--outline` | Hierarchical outline (package → class → method) without method bodies |
 | `extract_code_section` | `--partial-read --start-line N --end-line M` | Token-efficient line range |
 | `query_code` | `--query-key methods --filter "public=true"` | tree-sitter query DSL |
-| `list_files` | `list-files` subcommand (fd) | Discovery |
-| ~~`search_content`~~ | *(Removed)* | Use host text search or a search program directly |
-| ~~`find_and_grep`~~ | *(Removed)* | Use host file/text search or a search program directly |
-| `batch_search` | `--batch-search` / `--batch-search-queries-json` | Multiple ripgrep searches in parallel |
-| `check_tools` | `--check-tools` | Verify fd + ripgrep are installed (and report versions) |
+| ~~`search_content`~~ | *(retired)* | Use indexed `search action=symbol`, AST queries, or bounded `nav action=trace` as appropriate |
+| ~~`find_and_grep`~~ | *(retired)* | Use indexed `structure action=sitemap` for structure and verify candidates against source |
 | `list_agent_skills` | `--list-skills` | Curated skill index for AI agents |
 | `get_agent_workflow` | `--smart-context` | SMART workflow (Set→Map→Analyze→Retrieve→Trace) |
 | `advise_parser_readiness` | `--parser-readiness` | Pre-flight check before parsing |
@@ -152,7 +147,6 @@ All tools return:
 | File | Purpose |
 |---|---|
 | `mcp/utils/project_index/` | Persistent project structure snapshot |
-| `mcp/utils/search_cache.py` | LRU cache for fd/ripgrep results |
 | `mcp/utils/file_output_factory.py` | Atomic file output for large payloads |
 | `mcp/utils/error_handler.py` | Typed error envelopes |
 | `mcp/utils/gitignore_detector.py` | `.gitignore` aware file filtering |

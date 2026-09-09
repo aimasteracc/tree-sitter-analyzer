@@ -219,10 +219,10 @@ class GetProjectSummaryTool(BaseMCPTool):
                 '- When you need a quick orientation: "what languages does this '
                 'project use?", "where are the entry points?", "what\'s the '
                 'top-level structure?"\n'
-                "- Before calling list_files — this gives the big picture in one call\n"
+                "- Before calling structure action=sitemap — this gives the big picture in one call\n"
                 "\n"
                 "WHEN NOT TO USE:\n"
-                "- When you need real-time file search (use list_files instead — the "
+                "- When you need real-time file search (use bounded native filesystem discovery — the "
                 "index may be up to 24 hours old)\n"
                 "- When you need code structure details of specific files (use "
                 "get_code_outline instead)\n"
@@ -350,5 +350,5 @@ def _build_project_summary_line(
     elif idx.entry_points:
         next_step = f"read_partial {idx.entry_points[0]} to inspect the entry point"
     else:
-        next_step = "list_files for a per-directory view"
+        next_step = "structure action=sitemap for a per-directory view"
     return summary_line, next_step

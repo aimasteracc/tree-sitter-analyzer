@@ -46,14 +46,14 @@ _ERROR_RECOVERY_HINTS: list[tuple[str, str, str, str]] = [
     (
         "not found",
         "file_not_found",
-        "The file does not exist at the given path. Verify the path or use project action=files to discover files.",
-        "project action=files",
+        "The file does not exist at the given path. Verify the path or use structure action=sitemap to discover files.",
+        "structure action=sitemap",
     ),
     (
         "no such file",
         "file_not_found",
-        "The file does not exist at the given path. Verify the path or use project action=files to discover files.",
-        "project action=files",
+        "The file does not exist at the given path. Verify the path or use structure action=sitemap to discover files.",
+        "structure action=sitemap",
     ),
     (
         "unsupported language",

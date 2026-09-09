@@ -1,6 +1,11 @@
 # Changelog
 
 ## [Unreleased]
+### Breaking changes
+
+- Complete the removal of external-search wrappers: `search.batch`, `project.files`, `project.tools`, `--batch-search`, `--batch-search-queries-json`, `--check-tools`, and the `list-files` console script are retired. The earlier `search.content`/`search.grep` removal remains in effect.
+- TSA no longer requires ripgrep or fd. Project discovery and live symbol verification run in process; symbol, graph, AST and semantic retrieval remain available.
+
 
 ## [1.32.0] - 2026-09-12
 

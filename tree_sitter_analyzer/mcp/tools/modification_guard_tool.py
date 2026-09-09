@@ -91,11 +91,11 @@ def _build_agent_summary(
         "symbol": symbol,
         "modification_type": modification_type,
         "total_callers": total_callers,
-        "ripgrep_occurrences": total_callers,
-        "count_unit": "ripgrep_occurrences",
+        "source_occurrences": total_callers,
+        "count_unit": "source_occurrences",
         "recommendation": proceed_recommendation,
         "stop_condition": (
-            f"safety_verdict resolves to SAFE or all {total_callers} ripgrep "
+            f"safety_verdict resolves to SAFE or all {total_callers} live source "
             "occurrence(s) have been reconciled with AST callers or reviewed."
         ),
     }
@@ -113,25 +113,25 @@ def _next_step_for_verdict(
     if architecture_rank is not None and architecture_rank <= 10:
         return (
             f"{symbol} is rank #{architecture_rank} in the architecture — "
-            "plan a staged migration and run batch_search before editing."
+            "plan a staged migration and run nav action=trace before editing."
         )
     if safety_verdict == "SAFE":
         return f"Proceed with {modification_type} for '{symbol}'."
     if safety_verdict == "CAUTION":
         return (
-            f"Run batch_search(['{symbol}']) to review {total_callers} ripgrep "
+            f"Run nav action=trace symbol='{symbol}' to review {total_callers} live source "
             "occurrence(s), then compare nav action=callers before editing."
         )
     if safety_verdict == "REVIEW":
         return (
-            f"Audit all {total_callers} ripgrep occurrence(s) via "
-            f"batch_search(['{symbol}']) and compare nav action=callers before "
+            f"Audit all {total_callers} live source occurrence(s) via "
+            f"nav action=trace symbol='{symbol}' and compare nav action=callers before "
             "changing the signature."
         )
     # UNSAFE / anything else: highest caution
     return (
         f"Do NOT modify '{symbol}' yet — plan a deprecation strategy and "
-        f"reconcile all {total_callers} ripgrep occurrence(s) with AST callers."
+        f"reconcile all {total_callers} live source occurrence(s) with AST callers."
     )
 
 
@@ -152,19 +152,19 @@ def _build_proceed_recommendation(
         return f"No callers found for '{symbol}'. Safe to {modification_type}."
     if safety_verdict == "CAUTION":
         return (
-            f"Review {total_callers} ripgrep occurrence(s) before proceeding. "
-            f"Use batch_search(['{symbol}']) and nav action=callers to inspect "
+            f"Review {total_callers} live source occurrence(s) before proceeding. "
+            f"Use nav action=trace symbol='{symbol}' and nav action=callers to inspect "
             "usage patterns."
         )
     if safety_verdict == "REVIEW":
         return (
-            f"Check all {total_callers} ripgrep occurrence(s) before modifying. "
-            f"Use batch_search(['{symbol}']) and nav action=callers to see all "
+            f"Check all {total_callers} live source occurrence(s) before modifying. "
+            f"Use nav action=trace symbol='{symbol}' and nav action=callers to see all "
             "usage patterns."
         )
     return (
-        f"Review all {total_callers} ripgrep occurrence(s) first. "
-        f"Use batch_search(['{symbol}']) and nav action=callers to see all usage "
+        f"Review all {total_callers} live source occurrence(s) first. "
+        f"Use nav action=trace symbol='{symbol}' and nav action=callers to see all usage "
         "patterns."
     )
 
@@ -193,7 +193,7 @@ def _format_modification_summary_line(
     parts = [
         symbol,
         rank_str,
-        f"ripgrep_occurrences={total_callers}",
+        f"source_occurrences={total_callers}",
         f"verdict={final_verdict}",
     ]
     if pr_str:
@@ -202,10 +202,10 @@ def _format_modification_summary_line(
 
 
 def _guard_impact_badge(impact: dict[str, Any], total_callers: int) -> str:
-    """Render guard impact with the correct unit for its trace-derived count."""
+    """按实时源码命中数显示影响等级，避免误称 AST 调用者。"""
     badge = str(impact["badge"])
     if total_callers > 20:
-        return f"🚨 HIGH IMPACT — {total_callers} RIPGREP OCCURRENCES"
+        return f"🚨 HIGH IMPACT — {total_callers} SOURCE OCCURRENCES"
     return badge
 
 
@@ -214,7 +214,7 @@ def _guard_impact_guidance(impact: dict[str, Any], total_callers: int) -> str:
     if total_callers == 0:
         return str(impact["guidance"])
     return (
-        f"{total_callers} source ripgrep occurrence(s) found after filtering. "
+        f"{total_callers} source occurrence(s) found after filtering. "
         "Compare ast_caller_count or nav action=callers for AST direct caller "
         "fan-in before changing signatures."
     )
@@ -260,9 +260,9 @@ def _build_required_actions(
         return actions
 
     actions.append(
-        f"Review all {total_callers} ripgrep occurrence(s) before modifying."
+        f"Review all {total_callers} live source occurrence(s) before modifying."
     )
-    actions.append(f"Use batch_search to find callers: ['{symbol}']")
+    actions.append(f"Use nav action=trace to find callers: ['{symbol}']")
 
     if modification_type in ("rename", "signature_change"):
         actions.append(
@@ -618,10 +618,10 @@ class ModificationGuardTool(BaseMCPTool):
             "impact_badge": _guard_impact_badge(impact, total_callers),
             "impact_guidance": _guard_impact_guidance(impact, total_callers),
             "total_callers": total_callers,
-            "ripgrep_occurrences": total_callers,
-            "count_unit": "ripgrep_occurrences",
+            "source_occurrences": total_callers,
+            "count_unit": "source_occurrences",
             "count_caveat": (
-                "modification_guard counts source ripgrep occurrences after "
+                "modification_guard counts source occurrences after "
                 "comment/import/string filtering; compare ast_caller_count or "
                 "nav action=callers for graph-derived direct caller fan-in."
             ),
