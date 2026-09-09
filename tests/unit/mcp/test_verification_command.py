@@ -354,9 +354,11 @@ def test_shell_only_cli_plan_executes_the_actual_script(tmp_path, project_kind):
     import sys
 
     def run(argv):
-        return subprocess.run(
-            argv, cwd=tmp_path, capture_output=True, text=True, check=True
+        result = subprocess.run(
+            argv, cwd=tmp_path, capture_output=True, text=True, check=False
         )
+        assert result.returncode == 0, (argv, result.stdout, result.stderr)
+        return result
 
     if project_kind == "node":
         (tmp_path / "package.json").write_text(
@@ -365,7 +367,7 @@ def test_shell_only_cli_plan_executes_the_actual_script(tmp_path, project_kind):
     run(["git", "init", "-q"])
     run(["git", "config", "user.email", "test@example.com"])
     run(["git", "config", "user.name", "test"])
-    path = tmp_path / "tests/test_smoke.sh"
+    path = tmp_path / "tests/test_smoke's.sh"
     path.parent.mkdir()
     path.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     run(["git", "add", "."])
@@ -390,7 +392,11 @@ def test_shell_only_cli_plan_executes_the_actual_script(tmp_path, project_kind):
     plan = json.loads(response.stdout)
     assert plan["pytest_required"] is False
     assert plan["test_required"] is True
-    run(shlex.split(plan["verification_command"]))
+    command = plan["verification_command"]
+    if sys.platform == "win32":
+        run(["powershell", "-NoProfile", "-NonInteractive", "-Command", command])
+    else:
+        run(shlex.split(command))
     assert (tmp_path / "receipt").read_text(encoding="utf-8") == "shell-verified"
 
 
@@ -398,8 +404,12 @@ def test_shell_only_cli_plan_executes_the_actual_script(tmp_path, project_kind):
 def test_node_shell_targets_bypass_the_package_test_runner(runner):
     """Node 的 shell 检查也必须由 Bash 执行，不能传入 Jest/Vitest。"""
     default = DefaultTestCommand(runner, f"{runner} test")
+    import shutil
+    import sys
+
+    executable = shutil.which("bash") if sys.platform == "win32" else "bash"
     assert build_test_argv_batches(default, ["tests/test_smoke.sh"]) == [
-        ["bash", "--", "tests/test_smoke.sh"]
+        [executable, "--", "tests/test_smoke.sh"]
     ]
 
 
@@ -412,3 +422,24 @@ def test_single_shell_target_uses_powershell_literal_quoting(monkeypatch):
         "& { & 'uv' 'run' 'bash' '--' 'tests/a''b$HOME.sh'; "
         "if (-not $?) { throw 'Verification failed' } }"
     )
+
+
+@pytest.mark.parametrize("bash_path", ["C:/Program Files/Git/bin/bash.exe", None])
+def test_windows_node_shell_resolves_the_path_executable(monkeypatch, bash_path):
+    """Windows 原生启动不得绕过 PATH 选择另一个同名 Bash。"""
+    import shutil
+
+    from tree_sitter_analyzer.mcp.tools.utils import verification_command as module
+
+    monkeypatch.setattr(module.sys, "platform", "win32")
+    monkeypatch.setattr(
+        shutil, "which", lambda name: bash_path if name == "bash" else None
+    )
+    default = DefaultTestCommand("npm", "npm test")
+    if bash_path is None:
+        with pytest.raises(ValueError, match="BASH_EXECUTABLE_NOT_FOUND"):
+            build_test_argv_batches(default, ["tests/test_smoke.sh"])
+    else:
+        assert build_test_argv_batches(default, ["tests/test_smoke.sh"]) == [
+            [bash_path, "--", "tests/test_smoke.sh"]
+        ]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shlex
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -101,7 +102,13 @@ def _shell_test_argv(
         return None
     if Path(target).suffix.lower() == ".sh":
         prefix = ["uv", "run"] if default_command.runner == "pytest" else []
-        return [*prefix, "bash", "--", target]
+        executable = "bash"
+        if not prefix and sys.platform == "win32":
+            # CreateProcess 的搜索顺序不同于 PATH；固定发现的原生执行文件。
+            executable = shutil.which("bash") or ""
+            if not executable:
+                raise ValueError("BASH_EXECUTABLE_NOT_FOUND")
+        return [*prefix, executable, "--", target]
     return None
 
 
