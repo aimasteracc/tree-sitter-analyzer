@@ -6,6 +6,8 @@ import sqlite3
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tree_sitter_analyzer.semantic_search import SemanticSymbolSearch
 
 # ---------------------------------------------------------------------------
@@ -79,19 +81,23 @@ class TestSemanticSymbolSearchFallback:
         assert results[0]["name"] == "format_user"
         assert results[0]["semantic_score"]
 
-    def test_short_query_uses_full_scan(self):
-        """Queries shorter than 2 chars bypass BM25 pre-filter."""
+    def test_short_query_reports_unusable_terms(self):
+        """无可用词项时不能宣称检索完成且没有匹配。"""
         cache = _make_cache([("a", "function", "a.py", "python")])
 
         with patch.object(cache, "fts_search_ranked") as mock_fts:
-            SemanticSymbolSearch(cache).search("a", limit=5)
+            with pytest.raises(ValueError, match="SEMANTIC_QUERY_NO_TERMS"):
+                SemanticSymbolSearch(cache).search("a", limit=5)
 
         mock_fts.assert_not_called()
 
-    def test_empty_query_returns_empty(self):
+    @pytest.mark.parametrize("query", ["", "身份验证失败后重试", "!!!"])
+    def test_unusable_query_reports_error(self, query):
+        # 2026-09-09：词项为空曾被当成有效零匹配。
         cache = _make_cache([("foo", "function", "foo.py", "python")])
-        results = SemanticSymbolSearch(cache).search("", limit=5)
-        assert results == []
+        with pytest.raises(ValueError, match="SEMANTIC_QUERY_NO_TERMS"):
+            SemanticSymbolSearch(cache).search(query, limit=5)
+        cache.fts_search_ranked.assert_not_called()
 
     def test_no_fts5_uses_full_scan(self):
         cache = _make_cache([("find_user", "function", "users.py", "python")])
@@ -158,7 +164,21 @@ class TestSemanticSymbolSearchBm25Path:
 
 
 class TestSemanticSymbolSearchFallbackSchema:
-    """Tests for the _symbols_from_json path used on older DB schemas."""
+    """验证旧索引回退及损坏索引的失败行为。"""
+
+    def test_locked_symbol_table_does_not_fall_back_to_legacy_rows(self):
+        # 2026-09-09：只有缺失规范表才允许旧版回退。
+        cache = _make_cache([])
+        cache._fts5_available = False
+        cache.get_conn.return_value = MagicMock()
+        cache.get_conn.return_value.execute.side_effect = sqlite3.OperationalError(
+            "database is locked"
+        )
+        searcher = SemanticSymbolSearch(cache)
+        with patch.object(searcher, "_symbols_from_json") as fallback:
+            with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+                searcher.search("authentication")
+        fallback.assert_not_called()
 
     def _make_legacy_cache(self, rows: list[tuple[str, str, str, str]]) -> Any:
         """Cache backed by ast_index (no ast_symbol_rows table)."""
@@ -191,7 +211,7 @@ class TestSemanticSymbolSearchFallbackSchema:
 
         assert any(r["name"] == "parse_token" for r in results)
 
-    def test_symbols_from_json_empty_on_corrupt_row(self):
+    def test_symbols_from_json_reports_corrupt_row(self):
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row
         conn.execute(
@@ -204,9 +224,8 @@ class TestSemanticSymbolSearchFallbackSchema:
         cache.get_conn.return_value = conn
         cache._fts5_available = False
 
-        results = SemanticSymbolSearch(cache).search("find token", limit=5)
-
-        assert results == []
+        with pytest.raises(ValueError, match="Expecting value"):
+            SemanticSymbolSearch(cache).search("find token", limit=5)
 
     def test_symbols_from_json_fallback_on_symbol_rows_error(self):
         """ast_symbol_rows raises sqlite3.Error → falls back to _symbols_from_json."""

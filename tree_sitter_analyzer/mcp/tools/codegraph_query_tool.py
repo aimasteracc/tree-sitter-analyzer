@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...codegraph_query_backend import CodeGraphQueryBackend
+from ...semantic_search import SemanticSearchError
 from ...utils import setup_logger
 from ..utils.format_helper import apply_output_format_to_response
 from . import _codegraph_explore_helpers as _h
@@ -265,6 +266,24 @@ class CodeGraphQueryTool(BaseMCPTool):
                     default_max_files=max_files,
                     default_include_code=include_code,
                 )
+            except SemanticSearchError as exc:
+                # 检索失败立即停止，不能把前序结果或后续步骤包装成成功证据。
+                result = build_response(
+                    verdict="ERROR",
+                    success=False,
+                    query=query,
+                    error=str(exc),
+                    normalized_chain=[step_to_dict(item) for item in steps],
+                    symbols=[],
+                    files=[],
+                    relationships={"callers": {}, "callees": {}},
+                    agent_summary={
+                        "summary_line": "chain: semantic retrieval failed",
+                        "verdict": "ERROR",
+                        "next_step": str(exc),
+                    },
+                )
+                return apply_output_format_to_response(result, output_format)
             except ValueError as exc:
                 warnings.append(str(exc))
 
@@ -593,8 +612,13 @@ def _semantic_queries_with_backend(
             break
         try:
             resolved.extend(backend.semantic_symbols(query, limit=remaining))
+        except SemanticSearchError:
+            raise
         except Exception as exc:
-            logger.debug("codegraph_query semantic(%r) failed: %s", query, exc)
+            raise SemanticSearchError(
+                f"SEMANTIC_SEARCH_FAILED: {exc}. Check index status and retry; "
+                "this failure does not establish that matching code is absent."
+            ) from exc
         resolved = _dedupe_symbols(resolved)
     return resolved[:limit]
 

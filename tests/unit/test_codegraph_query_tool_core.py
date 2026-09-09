@@ -15,6 +15,66 @@ from tree_sitter_analyzer.mcp.tools.codegraph_query_tool import (
 
 
 class TestCodeGraphQueryTool:
+    @pytest.mark.asyncio
+    async def test_semantic_denied_index_read_is_an_error(self, tmp_path):
+        # 2026-09-09：真实 SQLite 拒读不能被旧表回退掩盖。
+        tool = CodeGraphQueryTool(str(tmp_path))
+        cache = tool.get_cache()
+        cache._fts5_available = False
+        conn = cache.get_conn()
+        conn.set_authorizer(lambda *_: sqlite3.SQLITE_DENY)
+        try:
+            result = await tool.execute({"query": "semantic('authentication')"})
+        finally:
+            conn.set_authorizer(None)
+            cache.close()
+        assert result["success"] is False
+        assert result["verdict"] == "ERROR"
+        assert "SEMANTIC_SEARCH_FAILED" in result["error"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("partial", [False, True])
+    async def test_semantic_backend_failure_is_not_a_negative_result(
+        self, tmp_path, partial
+    ):
+        # 2026-09-09：后端异常被吞掉后曾返回 NOT_FOUND。
+        failure = sqlite3.OperationalError("database is locked")
+        outcomes = (
+            [[{"name": "authenticate", "file": "auth.py", "line": 1}], failure]
+            if partial
+            else [failure]
+        )
+        with patch(
+            "tree_sitter_analyzer.codegraph_query_backend.CodeGraphQueryBackend.semantic_symbols",
+            side_effect=outcomes,
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {"query": "semantic(['authentication', 'credentials']).callers()"}
+            )
+        assert result["success"] is False
+        assert result["verdict"] == "ERROR"
+        assert "SEMANTIC_SEARCH_FAILED" in result["error"]
+        assert result["symbols"] == []
+
+    @pytest.mark.asyncio
+    async def test_semantic_chinese_query_explains_tokenizer_limit(self, tmp_path):
+        result = await CodeGraphQueryTool(str(tmp_path)).execute(
+            {"query": "semantic('身份验证失败后重试')"}
+        )
+        assert result["success"] is False
+        assert result["verdict"] == "ERROR"
+        assert "SEMANTIC_QUERY_NO_TERMS" in result["error"]
+        assert "ASCII" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_semantic_valid_zero_matches_remains_not_found(self, tmp_path):
+        result = await CodeGraphQueryTool(str(tmp_path)).execute(
+            {"query": "semantic('authentication')"}
+        )
+        assert result["success"] is True
+        assert result["verdict"] == "NOT_FOUND"
+        assert result["symbols"] == []
+
     def test_definition(self):
         definition = CodeGraphQueryTool().get_tool_definition()
 
