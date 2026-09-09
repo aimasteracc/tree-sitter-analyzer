@@ -1349,3 +1349,88 @@ def test_project_health_stores_ready_scores_before_remaining_git_queries_finish(
     assert observed == [True, True, True]
     assert len(scores) == stats["total_files_scored"] == 4
     assert [score.file_path for score in scores] == [str(path) for path in files]
+
+
+def test_project_git_fallback_shares_four_workers_after_dependency_invalidation(
+    tmp_path, monkeypatch
+):
+    """#1437：依赖失效的暖文件与冷文件共用四路历史查询预算。"""
+    import concurrent.futures
+    import threading
+
+    from tree_sitter_analyzer import health_scorer as health
+    from tree_sitter_analyzer.registry.health_score_cache import HealthScoreCache
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname="probe"\n', encoding="utf-8"
+    )
+    warm = tmp_path / "warm.py"
+    warm.write_text("value=1\n", encoding="utf-8")
+    monkeypatch.setattr(health, "calculate_git_hotspot", lambda *_: 90.0)
+    for index in range(2):
+        (tmp_path / f"existing{index}.py").write_text("import warm\n", encoding="utf-8")
+    scorer = health.HealthScorer()
+    monkeypatch.setattr(scorer, "_iter_source_files", lambda *_: ([warm], 0))
+    initial = scorer.score_project(str(tmp_path))
+    assert initial[0].dimensions["dependencies"] == 100.0
+    cold = [tmp_path / f"cold{index}.py" for index in range(4)]
+    for path in cold:
+        path.write_text("import warm\n", encoding="utf-8")
+    all_started = threading.Event()
+    release = threading.Event()
+    stored = threading.Event()
+    original_store = HealthScoreCache.store
+
+    def store(self, score, **kwargs):
+        result = original_store(self, score, **kwargs)
+        if score.file_path == str(cold[0]):
+            stored.set()
+        return result
+
+    lock = threading.Lock()
+    active = maximum = 0
+    queried = []
+
+    class ObservedPool(concurrent.futures.ThreadPoolExecutor):
+        def submit(self, fn, path, *args, **kwargs):
+            future = super().submit(fn, path, *args, **kwargs)
+            if path == str(warm):
+                # 暖文件入队后释放四个冷任务，不依赖线程调度或休眠。
+                assert all_started.wait(timeout=3)
+                release.set()
+            return future
+
+    def query(path, low, high):
+        nonlocal active, maximum
+        if path == str(warm):
+            assert all_started.wait(timeout=3)
+        with lock:
+            active += 1
+            maximum = max(maximum, active)
+            queried.append(path)
+            if len(queried) == 4:
+                all_started.set()
+        try:
+            if path == str(warm):
+                # 旧实现直接在主线程调用，能在四个冷任务阻塞时暴露峰值五。
+                release.set()
+                # 暖查询尚未完成时，已就绪冷文件必须能够发布缓存。
+                assert stored.wait(timeout=3)
+            assert release.wait(timeout=3)
+            return 80.0
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(concurrent.futures, "ThreadPoolExecutor", ObservedPool)
+    monkeypatch.setattr(health, "calculate_git_hotspot", query)
+    monkeypatch.setattr(HealthScoreCache, "store", store)
+    monkeypatch.setattr(scorer, "_iter_source_files", lambda *_: ([warm, *cold], 0))
+    scores, stats = scorer.score_project_with_stats(str(tmp_path))
+    assert stats["total_files_scored"] == 5
+    assert stats["total_files_skipped"] == 0
+    assert maximum == 4
+    assert sorted(queried) == sorted(str(path) for path in [warm, *cold])
+    by_path = {score.file_path: score for score in scores}
+    assert by_path[str(warm)].dimensions["dependencies"] == 99.1
+    assert by_path[str(warm)].dimensions["git_hotspot"] == 80.0

@@ -14,6 +14,7 @@ Computes a 0-100 health score for source files based on weighted dimensions:
 import json
 import logging
 import os
+from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -405,11 +406,22 @@ class HealthScorer:
                 and (cache is None or cache.lookup(str(f)) is None)
             }
 
-            def collect(path: str) -> None:
+            def collect(path: str, *, defer_cold: bool = False) -> None:
                 nonlocal scoring_failed
-                score = self._score_file_with_cache(path, cache)
+                deferred = False
+
+                def defer_score(file_path: str) -> None:
+                    nonlocal deferred
+                    # 暖缓存失效也进入同一队列，不阻塞已就绪冷文件的评分。
+                    pending[pool.submit(score_git_hotspot, file_path)] = file_path
+                    deferred = True
+
+                score = self._score_file_with_cache(
+                    path, cache, defer_score if defer_cold else None
+                )
                 if score is None:
-                    scoring_failed += 1
+                    if not deferred:
+                        scoring_failed += 1
                 else:
                     results.append(score)
 
@@ -428,7 +440,7 @@ class HealthScorer:
                             continue
                         path = str(f)
                         if path not in cold_paths:
-                            collect(path)
+                            collect(path, defer_cold=True)
                     for future in as_completed(pending):
                         path = pending[future]
                         hotspots[path] = future.result()
@@ -460,8 +472,9 @@ class HealthScorer:
         self,
         file_path: str,
         cache: Any,
+        defer_score: Callable[[str], None] | None = None,
     ) -> HealthScore | None:
-        """复用当前内容的评分；评分期间变化的文件不发布缓存。"""
+        """复用当前评分；可延后冷评分，评分期间变化的文件不发布缓存。"""
         from .registry.health_score_cache import _Fingerprint
 
         before = _Fingerprint.from_path(file_path) if cache is not None else None
@@ -479,6 +492,10 @@ class HealthScorer:
                     total=cached["total"],
                     dimensions=cached.get("dimensions", {}),
                 )
+
+        if defer_score is not None:
+            defer_score(file_path)
+            return None
 
         try:
             score = self.score_file(file_path)
