@@ -53,10 +53,8 @@ from tree_sitter_analyzer.mcp.tools.project_facade import build_project_facade
 
 _ALL_ACTIONS = {
     "overview",
-    "files",
     "smart",
     "parser",
-    "tools",
     "metrics",
     "skills",
     "workflow",
@@ -91,7 +89,7 @@ def test_all_actions_in_action_map_not_bespoke() -> None:
     """All project facade actions are normal delegates (no bespoke routes)."""
     facade = build_project_facade(project_root=None)
     assert len(facade.bespoke_map) == 0
-    assert len(facade.action_map) == 11
+    assert len(facade.action_map) == 9
 
 
 def test_index_actions_not_in_project_facade() -> None:
@@ -433,3 +431,13 @@ def test_smart_action_documented_params_subset_of_inner_schema() -> None:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+def test_card_without_entry_point_recommends_indexed_sitemap(tmp_path):
+    """缺少入口文件时，项目卡片指向仍可调用的索引结构入口。"""
+    (tmp_path / "settings.py").write_text("ENABLED = True\n", encoding="utf-8")
+    facade = build_project_facade(str(tmp_path))
+    result = asyncio.run(facade.execute({"action": "card"}))
+    assert result["agent_summary"]["next_step"] == (
+        "structure action=sitemap for a per-directory view"
+    )

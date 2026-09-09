@@ -1,5 +1,4 @@
-"""Advanced argument groups: trace-impact, environment probe, modification guard,
-decision journal, and batch search."""
+"""高级参数：符号引用核验、项目索引、修改守卫与决策日志。"""
 
 from __future__ import annotations
 
@@ -39,12 +38,7 @@ def _add_trace_impact_options(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_environment_probe_options(parser: argparse.ArgumentParser) -> None:
-    """``--check-tools`` + ``--build-project-index`` (env probes + index rebuild)."""
-    parser.add_argument(
-        "--check-tools",
-        action="store_true",
-        help="Check whether fd and ripgrep are installed and return their versions",
-    )
+    """项目索引重建参数。"""
     parser.add_argument(
         "--build-project-index",
         action="store_true",
@@ -72,8 +66,8 @@ def _add_modification_guard_options(parser: argparse.ArgumentParser) -> None:
     """``--modification-guard`` family (T1 round-37c CLI-MCP parity).
 
     CLAUDE.md hard requirement — every MCP tool must have a CLI equivalent.
-    J12 added trace-impact / check-tools / build-project-index; this
-    closes the same gap for modification_guard.
+    在已有引用核验与项目索引参数之外，此参数族
+    补齐修改守卫的 CLI 与 MCP 对应关系。
     """
     parser.add_argument(
         "--modification-guard",
@@ -187,36 +181,6 @@ def _add_decision_journal_options(parser: argparse.ArgumentParser) -> None:
         default=20,
         metavar="N",
         help="Max results for search (default: 20, max: 100).",
-    )
-
-
-def _add_batch_search_options(parser: argparse.ArgumentParser) -> None:
-    """``--batch-search`` family (T2 round-37d CLI-MCP parity).
-
-    CLAUDE.md hard requirement — every MCP tool must have a CLI equivalent.
-    batch_search needs 2-10 queries, each with pattern + optional roots.
-    The CLI accepts a JSON file with the queries array, mirroring how the
-    MCP tool consumes them.
-    """
-    parser.add_argument(
-        "--batch-search",
-        action="store_true",
-        help=(
-            "Run 2-10 ripgrep searches in parallel and return their results. "
-            "Requires --batch-search-queries-json FILE pointing to a JSON "
-            "array of {pattern, roots?, literal?, case_sensitive?, label?} "
-            "query objects."
-        ),
-    )
-    parser.add_argument(
-        "--batch-search-queries-json",
-        metavar="PATH",
-        help=(
-            "Path to JSON file containing the batch_search queries array "
-            "(required for --batch-search; 2-10 items, each with at least "
-            "a 'pattern' key). See BatchSearchTool inputSchema for the "
-            "full per-query shape."
-        ),
     )
 
 

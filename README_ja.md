@@ -56,9 +56,6 @@ claude mcp add tree-sitter-analyzer \
 curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-# fd + ripgrep (検索機能で必須)
-brew install fd ripgrep                                # macOS
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```
 
 #### 2. Tree-sitter Analyzer をインストール
@@ -158,7 +155,7 @@ TSA は `.claude/skills/tsa-*/` 下にキュレーション済みワークフロ
 
 各 skill は `allowed-tools` ツール サブセット + 手順レシピ + 決定面スキーマを同梱し、エージェントは 8 個のツールから毎回選別する必要がありません。
 
-### 356 の CLI フラグ
+### 353 の CLI フラグ
 
 CodeGraph の CLI の厳密な上位互換。主なもの:
 

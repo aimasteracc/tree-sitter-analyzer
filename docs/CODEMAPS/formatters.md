@@ -145,7 +145,6 @@ major version bump (semver).
 
 ## Cache & File Output
 
-- `mcp/utils/search_cache.py` — LRU for fd/ripgrep results (in-process)
 - `mcp/utils/file_output_factory.py` — atomic write for large payloads
 - `TREE_SITTER_OUTPUT_PATH` env var sets the default output directory
 

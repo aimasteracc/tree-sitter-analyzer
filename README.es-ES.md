@@ -61,9 +61,6 @@ Equivalente en CLI (sin agente): `tree-sitter-analyzer --codegraph-status`
 curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-# fd + ripgrep (required for `search action=content` text search; symbol search uses SQLite FTS5 and needs neither)
-brew install fd ripgrep                                # macOS
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```
 
 #### 2. Instalar Tree-sitter Analyzer
@@ -183,13 +180,7 @@ tree-sitter-analyzer --safe-to-edit <file>        # refuse if risky
 tree-sitter-analyzer --uml class                  # Mermaid UML class diagram
 ```
 
-Instalar el paquete también registra tres utilidades de búsqueda independientes (puntos de entrada delgados sobre el mismo motor, útiles en pipelines de shell):
-
-```bash
-list-files <dir>          # fd-style file discovery
-search-content <pattern>  # ripgrep-style content search
-find-and-grep <pattern>   # two-stage fd + ripgrep
-```
+TSA realiza la búsqueda indexada y la verificación de código fuente en el mismo proceso, sin instalar ripgrep ni fd.
 
 Consulta [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) para la superficie completa.
 

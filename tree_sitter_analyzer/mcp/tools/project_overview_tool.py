@@ -174,7 +174,7 @@ class ProjectOverviewTool(BaseMCPTool):
                 "WHEN NOT TO USE:\n"
                 "- To read a single file — use partial_read or get_code_outline\n"
                 "- For per-file quality grades — use file_health\n"
-                "- To list files matching a pattern — use list_files\n"
+                "- To list files matching a pattern — use structure action=sitemap\n"
                 "- For dependency graph queries — use dependency_analysis"
             ),
             "inputSchema": TOOL_SCHEMA,
@@ -681,7 +681,7 @@ def _build_tool_routing() -> dict[str, str]:
         "find_symbol": (
             "search action=symbol query='...'  # wildcards: *Service, fuzzy: ~analyz"
         ),
-        "find_files": "project action=files path='.' extensions=['py']",
+        "find_files": "structure action=sitemap mode=flat language=python",
         # Deep analysis
         "deps": "health action=deps mode='summary'",
         "call_graph": "nav action=callers scope=graph",

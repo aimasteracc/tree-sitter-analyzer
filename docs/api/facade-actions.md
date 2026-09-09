@@ -3,7 +3,7 @@
 > **AUTO-GENERATED — do not edit by hand.** Regenerate with `uv run python scripts/generate_facade_actions_doc.py`.
 > Drift-gated by `tests/unit/docs/test_facade_actions_doc_drift.py` (regenerates in-memory and diffs).
 
-The MCP server exposes **8 facade tools** routing **87 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
+The MCP server exposes **8 facade tools** routing **84 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
 
 Reading the tables:
 
@@ -12,11 +12,10 @@ Reading the tables:
 - **CLI twin** — the CLI flag (or console script) covering the same capability, from the CLI-parity contract. 4 actions have no authoritative CLI mapping and show — (honest gap, not an omission).
 - *Bespoke routes* (closures with hand-rolled arg handling, e.g. `nav action=test_map`) have their params pinned in the generator with source provenance; the generator fails if the live route set drifts from those pins.
 
-## `search` — 10 actions
+## `search` — 9 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
-| `batch` | `queries`* | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--batch-search` |
 | `chain` | `query`*, `compact`, `include_code`, `max_files`, `max_symbols`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-query` |
 | `query` | `file_path`, `filter`, `find_references`, `language`, `max_count`, `output_file`, `output_format`, `query_key`, `query_string`, `result_format`, `suppress_output`, `symbol`, `symbol_type` — requires `file_path` or `symbol`; file-scoped queries take exactly one of `query_key`/`query_string` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--query-key` |
 | `select` | `selector`*, `max_results`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
@@ -101,20 +100,18 @@ Reading the tables:
 | `safe` | `file_path`*, `access_mode`, `edit_type`, `output_format`, `snapshot_id`, `source_generation` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--safe-to-edit` |
 | `verify` | `request`*, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--verify-plan` |
 
-## `project` — 11 actions
+## `project` — 9 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
 | `card` | `force_refresh`, `format`, `include_notes`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--project-card` |
 | `doc_sync` | `doc_patterns`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--doc-sync` |
-| `files` | `absolute`, `changed_before`, `changed_within`, `count_only`, `depth`, `exclude`, `extensions`, `follow_symlinks`, `full_path_match`, `glob`, `hidden`, `limit`, `min_depth`, `no_ignore`, `one_file_system`, `output_file`, `output_format`, `path`, `pattern`, `prune`, `roots`, `show_errors`, `size`, `strip_cwd_prefix`, `suppress_output`, `threads`, `types` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `list-files` (console script) |
 | `journal` | `alternatives`, `id`, `limit`, `mode`, `new_id`, `output_format`, `path_scope`, `query`, `rationale`, `related_symbols`, `scope_paths`, `tags`, `title`, `verdict`, `verdict_filter` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--decision-journal` |
 | `metrics` | `output_format`, `sections` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-metrics` |
 | `overview` | `include_health`, `max_depth`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--overview` |
 | `parser` | `include_supported`, `language`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--parser-readiness` |
 | `skills` | `output_format`, `skills_root` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--agent-skills` |
 | `smart` | `file_path`*, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--smart-context` |
-| `tools` | (none) | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--check-tools` |
 | `workflow` | `output_format`, `target_path` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--agent-workflow` |
 
 ## `index` — 8 actions

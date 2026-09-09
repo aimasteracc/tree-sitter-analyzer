@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -107,57 +106,10 @@ def _build_safe_to_edit_tool_args(args: Any, output_format: str) -> dict[str, An
     )
 
 
-def _build_batch_search_tool_args(args: Any, output_format: str) -> dict[str, Any]:
-    """Build tool args for --batch-search (T2 round-37d parity fix).
-
-    BatchSearchTool's schema is ``{queries: array<{pattern, roots?, ...}>}``.
-    The CLI accepts a JSON file with the queries array (a single CLI flag
-    cannot encode a list of dicts cleanly). Validation, schema strictness,
-    and the 2-10 queries cap are enforced by the tool itself.
-
-    ``output_format`` is not on the schema (additionalProperties: false),
-    so we don't forward it — the CLI's format handler emits the response
-    in the requested format after the tool returns.
-    """
-    del output_format  # BatchSearchTool currently ignores output_format
-    queries_path = getattr(args, "batch_search_queries_json", None)
-    if not queries_path:
-        raise ValueError(
-            "--batch-search requires --batch-search-queries-json PATH "
-            "pointing to a JSON array of query objects"
-        )
-
-    try:
-        text = Path(queries_path).read_text(encoding="utf-8")
-    except OSError as exc:
-        raise ValueError(
-            f"Cannot read batch_search queries file '{queries_path}': {exc}"
-        ) from exc
-    try:
-        queries = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise ValueError(
-            f"--batch-search-queries-json '{queries_path}' is not valid JSON: {exc}"
-        ) from exc
-    if not isinstance(queries, list):
-        raise ValueError(
-            f"--batch-search-queries-json '{queries_path}' must contain a JSON array"
-        )
-    return {"queries": queries}
-
-
 def _build_modification_guard_tool_args(
     args: Any, output_format: str
 ) -> dict[str, Any]:
-    """Build tool args for --modification-guard (T1 round-37c parity fix).
-
-    Schema requires ``symbol`` + ``modification_type``; ``file_path`` is
-    optional. ModificationGuardTool's schema does not accept
-    ``output_format`` (same as trace_impact / check_tools /
-    build_project_index — see R4), so we don't forward it. The CLI's
-    own format handler still emits the response in the requested format
-    after the tool returns.
-    """
+    """构造修改守卫参数；输出格式由 CLI 处理，不传入工具。"""
     del output_format  # ModificationGuardTool currently ignores output_format
     symbol = getattr(args, "modification_guard_symbol", None) or ""
     mod_type = getattr(args, "modification_guard_type", None) or ""
@@ -206,16 +158,6 @@ def _build_decision_journal_tool_args(args: Any, output_format: str) -> dict[str
         if (new_id := getattr(args, "decision_journal_new_id", None)) is not None:
             tool_args["new_id"] = new_id
     return tool_args
-
-
-def _build_check_tools_tool_args(args: Any, output_format: str) -> dict[str, Any]:
-    """Build tool args for --check-tools.
-
-    The CheckToolsTool schema accepts no input properties (only checks
-    whether fd/rg are available), so we forward an empty dict.
-    """
-    del args, output_format  # CheckToolsTool takes no inputs
-    return {}
 
 
 def _build_build_project_index_tool_args(

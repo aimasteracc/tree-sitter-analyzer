@@ -295,7 +295,7 @@ def golden_tester():
 
 
 @pytest.fixture
-def temp_test_file():
+def temp_test_file(mcp_server):
     """创建临时测试文件（每个测试独立目录）"""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
@@ -311,7 +311,20 @@ class ExampleClass:
         pass
 '''
         test_file.write_text(content, encoding="utf-8")
+        mcp_server.set_project_path(str(tmpdir_path))
         yield test_file
+
+
+def _index_fixture(server, path):
+    """为意图别名核验建立单文件索引。"""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    server.set_project_path(str(path.parent))
+    cache = ASTCache(str(path.parent))
+    try:
+        cache.index_file(str(path))
+    finally:
+        cache.close()
 
 
 class TestIntentAliasInvariance:
@@ -322,75 +335,45 @@ class TestIntentAliasInvariance:
     """
 
     @pytest.mark.asyncio
-    @pytest.mark.requires_ripgrep
-    async def test_locate_usage_search_invariance(
-        self, mcp_server, temp_test_file
-    ):
-        """locate_usage 和 search action=batch 必须返回相同结果"""
-        # search_content は廃止済み。locate_usage は search (action=batch) で代替検証。
+    async def test_locate_usage_search_invariance(self, mcp_server, temp_test_file):
+        """locate_usage 和 search action=symbol 必须返回相同结果"""
+        # search_content は廃止済み。locate_usage は search (action=symbol) で代替検証。
+        _index_fixture(mcp_server, temp_test_file)
         batch_args = {
-            "action": "batch",
-            "queries": [
-                {
-                    "pattern": "example_function",
-                    "roots": [str(temp_test_file.parent)],
-                    "label": "q1",
-                },
-                {
-                    "pattern": "ExampleClass",
-                    "roots": [str(temp_test_file.parent)],
-                    "label": "q2",
-                },
-            ],
+            "action": "symbol",
+            "query": "example_function",
             "output_format": "json",
         }
 
         result_alias = await mcp_server.call_tool("locate_usage", arguments=batch_args)
         result_original = await mcp_server.call_tool("search", arguments=batch_args)
 
+        assert result_alias["success"] is True
         # 必须完全相同（语义上）
         matches, diff = SemanticComparator.compare_tool_responses(
             result_alias, result_original
         )
 
         assert matches, (
-            f"Intent alias 'locate_usage' 与 'search action=batch' 返回不同结果:\n{diff}\n\n"
+            f"Intent alias 'locate_usage' 与 'search action=symbol' 返回不同结果:\n{diff}\n\n"
             f"Alias result: {json.dumps(result_alias, indent=2, ensure_ascii=False)}\n\n"
             f"Original result: {json.dumps(result_original, indent=2, ensure_ascii=False)}"
         )
 
     @pytest.mark.asyncio
-    async def test_map_structure_list_files_invariance(
-        self, mcp_server, temp_test_file
-    ):
-        """map_structure 和 list_files 必须返回相同结果"""
-        result_alias = await mcp_server.call_tool(
-            "map_structure",
-            arguments={
-                "roots": [str(temp_test_file.parent)],
-                "pattern": "*.py",
-                "glob": True,
-                "output_format": "json",
-            },
+    async def test_map_structure_sitemap_invariance(self, mcp_server, temp_test_file):
+        """结构别名与公开 sitemap 对同一真实索引给出相同结果。"""
+        _index_fixture(mcp_server, temp_test_file)
+        actual = await mcp_server.call_tool("map_structure", arguments={"mode": "flat"})
+        expected = await mcp_server.call_tool(
+            "structure", arguments={"action": "sitemap", "mode": "flat"}
         )
-
-        result_original = await mcp_server.call_tool(
-            "list_files",
-            arguments={
-                "roots": [str(temp_test_file.parent)],
-                "pattern": "*.py",
-                "glob": True,
-                "output_format": "json",
-            },
-        )
-
+        assert actual["success"] is True
+        assert actual["file_count"] == 1
         matches, diff = SemanticComparator.compare_tool_responses(
-            result_alias, result_original
+            actual, expected, ignore_fields={"deprecation"}
         )
-
-        assert matches, (
-            f"Intent alias 'map_structure' 与原始工具 'list_files' 返回不同结果:\n{diff}"
-        )
+        assert matches, diff
 
     @pytest.mark.asyncio
     async def test_extract_structure_analyze_code_structure_invariance(
@@ -487,34 +470,24 @@ class TestIntentAliasInvariance:
         )
 
     @pytest.mark.asyncio
-    @pytest.mark.requires_ripgrep
     async def test_multiple_aliases_same_tool_invariance(
         self, mcp_server, temp_test_file
     ):
         """测试同一工具的多个 alias 返回相同结果 (find_usage 和 locate_usage)"""
+        _index_fixture(mcp_server, temp_test_file)
         batch_args = {
-            "action": "batch",
-            "queries": [
-                {
-                    "pattern": "example_function",
-                    "roots": [str(temp_test_file.parent)],
-                    "label": "q1",
-                },
-                {
-                    "pattern": "ExampleClass",
-                    "roots": [str(temp_test_file.parent)],
-                    "label": "q2",
-                },
-            ],
+            "action": "symbol",
+            "query": "example_function",
             "output_format": "json",
         }
 
         result_alias1 = await mcp_server.call_tool("locate_usage", arguments=batch_args)
         result_alias2 = await mcp_server.call_tool("find_usage", arguments=batch_args)
 
-        # search action=batch との比較
+        # search action=symbol との比較
         result_original = await mcp_server.call_tool("search", arguments=batch_args)
 
+        assert result_original["success"] is True
         # 两个 alias 都应该和原始工具返回相同结果
         matches1, diff1 = SemanticComparator.compare_tool_responses(
             result_alias1, result_original
@@ -523,8 +496,8 @@ class TestIntentAliasInvariance:
             result_alias2, result_original
         )
 
-        assert matches1, f"locate_usage 与 search action=batch 不匹配:\n{diff1}"
-        assert matches2, f"find_usage 与 search action=batch 不匹配:\n{diff2}"
+        assert matches1, f"locate_usage 与 search action=symbol 不匹配:\n{diff1}"
+        assert matches2, f"find_usage 与 search action=symbol 不匹配:\n{diff2}"
 
         # 两个 alias 之间也应该完全相同
         matches_aliases, diff_aliases = SemanticComparator.compare_tool_responses(
@@ -552,15 +525,6 @@ class TestIncompleteModificationDetection:
         required_fields = {"success"}
 
         tools_to_test = [
-            (
-                "list_files",
-                {
-                    "roots": [str(temp_test_file.parent)],
-                    "pattern": "*.py",
-                    "glob": True,
-                    "output_format": "json",
-                },
-            ),
             (
                 "analyze_code_structure",
                 {

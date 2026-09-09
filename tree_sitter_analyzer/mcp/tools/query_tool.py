@@ -81,7 +81,7 @@ class QueryTool(BaseMCPTool):
                 "use CC Grep tool\n"
                 "- To find usages / callers of a symbol — use trace_impact\n"
                 "- For a hierarchical file outline — use get_code_outline\n"
-                "- To search file names — use list_files"
+                "- To search file names — use structure action=sitemap"
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {

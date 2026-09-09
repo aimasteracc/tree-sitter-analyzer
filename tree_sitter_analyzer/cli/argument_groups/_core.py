@@ -144,7 +144,7 @@ def _add_batch_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--doctor",
         action="store_true",
-        help="Run installation diagnostics: check uv/uvx/fd/rg, TREE_SITTER_PROJECT_ROOT, and agent config files.",
+        help="Run installation diagnostics: check uv/uvx, TREE_SITTER_PROJECT_ROOT, and agent config files.",
     )
     parser.add_argument(
         "--doctor-json",

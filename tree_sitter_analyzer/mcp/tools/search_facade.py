@@ -8,7 +8,6 @@ action      inner / route                         engine
 ==========  ====================================  ==================================
 symbol      ``codegraph_symbol_search``           BM25 FTS5 symbol lookup
 query       ``query_code`` (QueryTool)            tree-sitter ``.scm`` query DSL  (F3)
-batch       ``batch_search``                      multi-query batch
 ==========  ====================================  ==================================
 
 F3 (PRD §0): ``query`` (tree-sitter ``.scm`` DSL) and ``symbol`` (BM25 FTS)
@@ -39,17 +38,13 @@ _SEARCH_ANNOTATIONS: dict[str, Any] = {
 _SEARCH_DESCRIPTION = (
     "Code-intelligence (codegraph-compatible) search facade. "
     "Covers codegraph_symbol_search (BM25), codegraph_query (tree-sitter AST), "
-    "codegraph_query chain DSL, and ripgrep/fd text search in one tool. "
+    "codegraph_query chain DSL, TQL, and semantic symbol retrieval. "
     "Pick a capability via `action`:\n"
     "- action=symbol — BM25 FTS lookup of a symbol by name (fast 'where is X "
     "defined', codegraph_symbol_search equivalent). "
     "Params: query, language, kind, limit.\n"
     "- action=query — tree-sitter .scm query DSL (semantic AST match, NOT the "
     "same as symbol). Params: query_key, query_string, filter, file_path.\n"
-    "- action=batch — run multiple ripgrep searches in one call. "
-    "Params: queries (required array of 2-10 items; each item requires "
-    "`pattern` and may include roots/include_globs/exclude_globs/max_results/label), "
-    "output_format.\n"
     "- action=chain — jQuery-style codegraph chain DSL: compose search / "
     "explore / callers / callees in one process. Steps are separated by '.' "
     "(NOT '|'), e.g. query=\"search('IndexShard').callers()\" or "
@@ -90,7 +85,6 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
     that don't build the facade (matches the lazy-import convention in
     ``_tool_registry.py``).
     """
-    from .batch_search_tool import BatchSearchTool
     from .codegraph_query_tool import CodeGraphQueryTool
     from .hyphae_select_tool import HyphaeSelectTool
     from .hyphae_subscribe_tool import HyphaeSubscribeTool, HyphaeUnsubscribeTool
@@ -104,7 +98,6 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
         action_map={
             "symbol": CodeGraphSymbolSearchTool(project_root),  # BM25 FTS
             "query": QueryTool(project_root),  # F3: tree-sitter .scm DSL
-            "batch": BatchSearchTool(project_root),  # multi-query batch
             # jQuery-style graph chain DSL (search().explore().callees()...),
             # folded here from the standalone ``codegraph_query`` tool so the
             # whole 62-row capability surface survives the facade cutover.

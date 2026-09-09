@@ -37,31 +37,9 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 uv --version
 ```
 
-### 2. Install fd and ripgrep (Required for search functionality)
+### 2. Git and native search
 
-**fd** and **ripgrep** are high-performance file and content search tools used for advanced MCP functionality.
-
-| Operating System | Package Manager | Installation Command | Notes |
-|-----------------|----------------|---------------------|-------|
-| **macOS** | Homebrew | `brew install fd ripgrep` | Recommended |
-| **Windows** | winget | `winget install sharkdp.fd BurntSushi.ripgrep.MSVC` | Recommended |
-| | Chocolatey | `choco install fd ripgrep` | Alternative |
-| | Scoop | `scoop install fd ripgrep` | Alternative |
-| **Ubuntu/Debian** | apt | `sudo apt install fd-find ripgrep` | Use `fdfind` alias |
-| **CentOS/RHEL/Fedora** | dnf | `sudo dnf install fd-find ripgrep` | Official repository |
-| **Arch Linux** | pacman | `sudo pacman -S fd ripgrep` | Official repository |
-
-#### Verify fd and ripgrep installation
-
-```bash
-fd --version
-rg --version
-```
-
-> **⚠️ Important Note:** 
-> - **uv** is required for running all functionality
-> - **fd** and **ripgrep** are required for using advanced file search and content analysis features
-> - If fd and ripgrep are not installed, basic code analysis functionality will still be available, but file search features will not work
+Install Git for history and change analysis. File discovery and source verification run in Python; TSA does not require ripgrep or fd.
 
 ## Installation Methods
 
@@ -161,13 +139,13 @@ uv run pytest tests/ -v --tb=short
 
 1. Install Python 3.10+ from [python.org](https://python.org) or Microsoft Store
 2. Install uv using PowerShell (see above)
-3. Install fd and ripgrep using winget or Chocolatey
+3. Install Git for Windows
 4. Configure PATH if necessary
 
 ### macOS
 
 1. Install Homebrew: `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`
-2. Install dependencies: `brew install python@3.10 fd ripgrep`
+2. Install dependencies: `brew install python@3.10 git`
 3. Install uv (see above)
 
 ### Linux (Ubuntu/Debian)
@@ -177,12 +155,8 @@ uv run pytest tests/ -v --tb=short
 sudo apt update
 sudo apt install python3.10 python3.10-venv
 
-# Install fd and ripgrep
-sudo apt install fd-find ripgrep
-
-# Note: fd is installed as 'fdfind' on Debian-based systems
-# Create alias if needed:
-alias fd='fdfind'
+# Install Git
+sudo apt install git
 
 # Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -215,10 +189,10 @@ After configuring your AI client:
 
 ```bash
 # Test file search
-uv run list-files . --extensions py
+uv run tree-sitter-analyzer --project-card
 
-# Test content search
-uv run search-content --roots . --query "def " --include-globs "*.py"
+# Verify live source references
+uv run tree-sitter-analyzer --trace-impact --trace-impact-symbol main --format json
 
 # Test code analysis
 uv run tree-sitter-analyzer examples/BigService.java --table full
@@ -239,19 +213,6 @@ where uv  # Windows
 # Re-install if necessary
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
-
-#### "fd: command not found"
-
-Install fd using your package manager (see Prerequisites).
-
-For Debian/Ubuntu, note that fd is installed as `fdfind`:
-```bash
-alias fd='fdfind'
-```
-
-#### "rg: command not found"
-
-Install ripgrep using your package manager (see Prerequisites).
 
 #### MCP Server Not Responding
 

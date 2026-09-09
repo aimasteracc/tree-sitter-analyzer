@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+### Breaking changes
+
+- Complete the removal of external-search wrappers: `search.batch`, `project.files`, `project.tools`, `--batch-search`, `--batch-search-queries-json`, `--check-tools`, and the `list-files` console script are retired. The earlier `search.content`/`search.grep` removal remains in effect.
+- TSA no longer requires ripgrep or fd. Project discovery and live symbol verification run in process; symbol, graph, AST and semantic retrieval remain available.
+- The develop API uses JSON-only output. Update clients that still request the retired format.
+
+### Fixed
+
+- Python 3.10 SQLite fault-injection cleanup now restores an explicit allow callback. Verification cleanup uses retained process identities rather than signaling an exited process group.
+- Isolate AST index publication and readers; execute long verification plans through bounded replay descriptors without dropping targets.
+
+
 ## [1.29.5] - 2026-09-08
 
 **Develop merge-back:** retains all three published routes alongside existing preview-only planning and snapshot controls. Develop uses JSON-only output, exposes 355 CLI flags / 86 facade actions, and keeps its newer extractor version 39; the main-release details below describe the v1.29.5 release baseline.

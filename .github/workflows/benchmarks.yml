@@ -15,7 +15,6 @@ on:
       - "benchmarks/**"
       - "tests/benchmarks/**"
       - "tree_sitter_analyzer/ast_cache.py"
-      - "tree_sitter_analyzer/mcp/tools/utils/search_cache.py"
       - "tree_sitter_analyzer/mcp/tools/utils/change_impact_cached_graph.py"
       - ".github/workflows/benchmarks.yml"
   push:
@@ -24,7 +23,6 @@ on:
       - "benchmarks/**"
       - "tests/benchmarks/**"
       - "tree_sitter_analyzer/ast_cache.py"
-      - "tree_sitter_analyzer/mcp/tools/utils/search_cache.py"
       - "tree_sitter_analyzer/mcp/tools/utils/change_impact_cached_graph.py"
       - ".github/workflows/benchmarks.yml"
   schedule:
@@ -99,8 +97,10 @@ jobs:
     - name: Run Analysis Benchmarks
       if: env.BENCHMARK_SCOPE == 'all' || env.BENCHMARK_SCOPE == 'analysis'
       run: |
-        echo "### ⚡ Analysis Benchmarks" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        {
+          echo "### ⚡ Analysis Benchmarks"
+          echo ""
+        } >> "$GITHUB_STEP_SUMMARY"
 
         uv run pytest tests/benchmarks/test_large_file_performance.py \
           -v \
@@ -117,16 +117,20 @@ jobs:
 
         cat benchmark-analysis-output.txt
 
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        tail -n 50 benchmark-analysis-output.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
+        {
+          echo '```text'
+          tail -n 50 benchmark-analysis-output.txt
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
       shell: bash
 
     - name: Run Query Benchmarks
       if: env.BENCHMARK_SCOPE == 'all' || env.BENCHMARK_SCOPE == 'query'
       run: |
-        echo "### 🔍 Query Benchmarks" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        {
+          echo "### 🔍 Query Benchmarks"
+          echo ""
+        } >> "$GITHUB_STEP_SUMMARY"
 
         uv run pytest tests/benchmarks/test_query_performance.py \
           -v \
@@ -142,16 +146,20 @@ jobs:
 
         cat benchmark-query-output.txt
 
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        tail -n 50 benchmark-query-output.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
+        {
+          echo '```text'
+          tail -n 50 benchmark-query-output.txt
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
       shell: bash
 
     - name: Run Cache Benchmarks
       if: env.BENCHMARK_SCOPE == 'all' || env.BENCHMARK_SCOPE == 'cache'
       run: |
-        echo "### 💾 Cache Benchmarks" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        {
+          echo "### 💾 Cache Benchmarks"
+          echo ""
+        } >> "$GITHUB_STEP_SUMMARY"
 
         uv run pytest tests/benchmarks/test_large_file_performance.py \
           -v \
@@ -168,55 +176,67 @@ jobs:
 
         cat benchmark-cache-output.txt
 
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        tail -n 50 benchmark-cache-output.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
+        {
+          echo '```text'
+          tail -n 50 benchmark-cache-output.txt
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
       shell: bash
 
     - name: Run Formatting Benchmarks
       if: env.BENCHMARK_SCOPE == 'all' || env.BENCHMARK_SCOPE == 'formatting'
       run: |
-        echo "### 📝 Formatting Benchmarks" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        {
+          echo "### 📝 Formatting Benchmarks"
+          echo ""
+        } >> "$GITHUB_STEP_SUMMARY"
 
         echo "No formatter benchmark pytest module exists in tests/benchmarks yet." \
           > benchmark-formatting-output.txt
 
         cat benchmark-formatting-output.txt
 
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        tail -n 50 benchmark-formatting-output.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
+        {
+          echo '```text'
+          tail -n 50 benchmark-formatting-output.txt
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
       shell: bash
 
     - name: Compare with baseline
       if: inputs.compare-baseline != false && always()
       run: |
-        echo "### 📊 Performance Comparison" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        {
+          echo "### 📊 Performance Comparison"
+          echo ""
+        } >> "$GITHUB_STEP_SUMMARY"
 
         if [ -d ".benchmark/baseline" ]; then
-          echo "Comparing against baseline..." >> $GITHUB_STEP_SUMMARY
+          echo "Comparing against baseline..." >> "$GITHUB_STEP_SUMMARY"
 
           for json_file in benchmark-*.json; do
             if [ -f "$json_file" ]; then
-              echo "#### $(basename $json_file .json | sed 's/benchmark-//')" >> $GITHUB_STEP_SUMMARY
-              echo '```text' >> $GITHUB_STEP_SUMMARY
-              uv run pytest-benchmark compare "$json_file" ".benchmark/baseline/$(basename $json_file)" \
-                2>&1 | head -n 50 >> $GITHUB_STEP_SUMMARY || echo "Comparison not available"
-              echo '```' >> $GITHUB_STEP_SUMMARY
+              {
+                echo "#### $(basename "$json_file" .json | sed 's/benchmark-//')"
+                echo '```text'
+              } >> "$GITHUB_STEP_SUMMARY"
+              uv run pytest-benchmark compare "$json_file" ".benchmark/baseline/$(basename "$json_file")" \
+                2>&1 | head -n 50 >> "$GITHUB_STEP_SUMMARY" || echo "Comparison not available"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
             fi
           done
         else
-          echo "No baseline data available for comparison." >> $GITHUB_STEP_SUMMARY
+          echo "No baseline data available for comparison." >> "$GITHUB_STEP_SUMMARY"
         fi
       shell: bash
 
     - name: Check for performance regression
       if: inputs.compare-baseline != false && always()
       run: |
-        echo "### ⚠️ Performance Regression Check" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        {
+          echo "### ⚠️ Performance Regression Check"
+          echo ""
+        } >> "$GITHUB_STEP_SUMMARY"
 
         REGRESSION_DETECTED=false
 
@@ -234,33 +254,43 @@ jobs:
         done
 
         if [ "$REGRESSION_DETECTED" = true ]; then
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "❌ **Performance Regression Detected!**" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Performance has degraded by more than ${{ env.PERFORMANCE_REGRESSION_THRESHOLD }}%." >> $GITHUB_STEP_SUMMARY
-          echo "Please review changes and consider optimizing code." >> $GITHUB_STEP_SUMMARY
+          {
+            echo ""
+            echo "❌ **Performance Regression Detected!**"
+            echo ""
+            echo "Performance has degraded by more than ${{ env.PERFORMANCE_REGRESSION_THRESHOLD }}%."
+            echo "Please review changes and consider optimizing code."
+          } >> "$GITHUB_STEP_SUMMARY"
         else
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **No Performance Regression Detected**" >> $GITHUB_STEP_SUMMARY
+          {
+            echo ""
+            echo "✅ **No Performance Regression Detected**"
+          } >> "$GITHUB_STEP_SUMMARY"
         fi
       shell: bash
 
     - name: Generate Benchmark Summary
       if: always()
       run: |
-        echo "### 📈 Benchmark Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        {
+          echo "### 📈 Benchmark Summary"
+          echo ""
+        } >> "$GITHUB_STEP_SUMMARY"
 
         TOTAL_BENCHMARKS=$(uv run pytest tests/benchmarks/ \
           --collect-only -q --benchmark-enable --benchmark-only -n 0 --session-timeout=0 2>/dev/null | grep -c "test_" || echo "0")
-        echo "**Total Benchmarks:** $TOTAL_BENCHMARKS" >> $GITHUB_STEP_SUMMARY
+        echo "**Total Benchmarks:** $TOTAL_BENCHMARKS" >> "$GITHUB_STEP_SUMMARY"
 
         if [ -f benchmark_failed ]; then
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "⚠️ **Some benchmarks failed to complete**" >> $GITHUB_STEP_SUMMARY
+          {
+            echo ""
+            echo "⚠️ **Some benchmarks failed to complete**"
+          } >> "$GITHUB_STEP_SUMMARY"
         else
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **All benchmarks completed successfully**" >> $GITHUB_STEP_SUMMARY
+          {
+            echo ""
+            echo "✅ **All benchmarks completed successfully**"
+          } >> "$GITHUB_STEP_SUMMARY"
         fi
       shell: bash
 
@@ -338,29 +368,27 @@ jobs:
 
     - name: Generate trend report
       run: |
-        echo "### 📊 Performance Trend Analysis" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-
-        echo "Analyzing performance trends over time..." >> $GITHUB_STEP_SUMMARY
-
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        echo "Benchmark Trend Report" >> $GITHUB_STEP_SUMMARY
-        echo "Generated: $(date -u)" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-
-        for json_file in benchmark-results/benchmark-*.json; do
-          if [ -f "$json_file" ]; then
-            echo "=== $(basename $json_file .json | sed 's/benchmark-//') ===" >> $GITHUB_STEP_SUMMARY
-            uv run python scripts/generate_benchmark_trend.py "$json_file" >> $GITHUB_STEP_SUMMARY 2>&1 || true
-          fi
-        done
-        echo '```' >> $GITHUB_STEP_SUMMARY
+        {
+          echo "### 📊 Performance Trend Analysis"
+          echo ""
+          echo "Analyzing performance trends over time..."
+          echo '```text'
+          echo "Benchmark Trend Report"
+          echo "Generated: $(date -u)"
+          echo ""
+          for json_file in benchmark-results/benchmark-*.json; do
+            if [ -f "$json_file" ]; then
+              echo "=== $(basename "$json_file" .json | sed 's/benchmark-//') ==="
+              uv run python scripts/generate_benchmark_trend.py "$json_file" 2>&1 || true
+            fi
+          done
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
       shell: bash
 
     - name: Store trend data
       run: |
         mkdir -p .benchmark/history
-        TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
         cp benchmark-results/benchmark-*.json .benchmark/history/ 2>/dev/null || true
       shell: bash
 

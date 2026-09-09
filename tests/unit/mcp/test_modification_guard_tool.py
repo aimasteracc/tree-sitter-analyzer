@@ -217,10 +217,10 @@ class TestModificationGuardToolExecution:
 
         assert result["safety_verdict"] == "CAUTION"
         assert result["total_callers"] == 3
-        assert result["ripgrep_occurrences"] == 3
-        assert result["count_unit"] == "ripgrep_occurrences"
+        assert result["source_occurrences"] == 3
+        assert result["count_unit"] == "source_occurrences"
         assert "callers=3" not in result["summary_line"]
-        assert "ripgrep_occurrences=3" in result["summary_line"]
+        assert "source_occurrences=3" in result["summary_line"]
         assert "count_caveat" in result
 
     @pytest.mark.asyncio
@@ -260,8 +260,8 @@ class TestModificationGuardToolExecution:
 
         assert result["safety_verdict"] == "UNSAFE"
         assert result["total_callers"] == 25
-        assert result["impact_badge"] == "🚨 HIGH IMPACT — 25 RIPGREP OCCURRENCES"
-        assert "source ripgrep occurrence(s)" in result["impact_guidance"]
+        assert result["impact_badge"] == "🚨 HIGH IMPACT — 25 SOURCE OCCURRENCES"
+        assert "source occurrence(s)" in result["impact_guidance"]
 
     @pytest.mark.asyncio
     async def test_ast_caller_count_surfaced_when_file_path_given(
@@ -292,7 +292,7 @@ class TestModificationGuardToolExecution:
             )
 
         mock_ast_count.assert_awaited_once_with("bigFunc", "src/big.py")
-        assert result["ripgrep_occurrences"] == 25
+        assert result["source_occurrences"] == 25
         assert result["ast_caller_count"] == 11
 
     @pytest.mark.asyncio

@@ -9,7 +9,6 @@ import pytest
 
 from tree_sitter_analyzer.exceptions import SecurityError, ValidationError
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
-from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
 from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
 from tree_sitter_analyzer.mcp.utils.error_handler import AnalysisError
@@ -41,48 +40,6 @@ EXPECTED_PATH_REJECTION_EXCEPTIONS = (
     ValueError,
     AnalysisError,
 )
-
-
-async def assert_directory_paths_rejected(malicious_paths: list[str]) -> None:
-    """Assert list-files rejects malicious directory roots."""
-    tool = ListFilesTool()
-    for malicious_path in malicious_paths:
-        await assert_directory_path_rejected(tool, malicious_path)
-
-
-async def assert_directory_path_rejected(
-    tool: ListFilesTool, malicious_path: str
-) -> None:
-    """Assert one malicious directory root is rejected."""
-    try:
-        result = await tool.execute({"roots": [malicious_path]})
-    except EXPECTED_PATH_REJECTION_EXCEPTIONS:
-        return
-
-    if isinstance(result, dict) and not result.get("success", True):
-        return
-
-    pytest.fail(f"Expected exception for malicious path: {malicious_path}")
-
-
-async def assert_absolute_paths_restricted(absolute_paths: list[str]) -> None:
-    """Assert absolute roots are rejected by list-files."""
-    tool = ListFilesTool()
-    for abs_path in absolute_paths:
-        await assert_absolute_path_restricted(tool, abs_path)
-
-
-async def assert_absolute_path_restricted(tool: ListFilesTool, abs_path: str) -> None:
-    """Assert one absolute root is rejected."""
-    try:
-        result = await tool.execute({"roots": [abs_path]})
-    except (SecurityError, ValidationError, ValueError, AnalysisError):
-        return
-
-    if isinstance(result, dict) and not result.get("success", True):
-        return
-
-    pytest.fail(f"Expected security block for absolute path: {abs_path}")
 
 
 async def assert_query_paths_rejected(malicious_paths: list[str]) -> None:
@@ -180,44 +137,6 @@ def assert_symlink_error_message(message: str) -> None:
     if any(term in error_msg for term in SYMLINK_ERROR_TERMS):
         return
     pytest.fail(f"シンボリックリンクが検出されませんでした。エラー: {message}")
-
-
-async def assert_project_root_enforcement(safe_project_structure: str) -> None:
-    """Assert external project roots are rejected or safely ignored."""
-    tool = ListFilesTool()
-    external_paths = [
-        str(Path(safe_project_structure).parent),
-        str(Path(safe_project_structure).parent.parent),
-        "/tmp",
-        "C:\\Temp",
-    ]
-
-    for external_path in external_paths:
-        if Path(external_path).exists():
-            await assert_external_path_blocked_or_temp_allowed(tool, external_path)
-
-
-async def assert_external_path_blocked_or_temp_allowed(
-    tool: ListFilesTool, external_path: str
-) -> None:
-    """Assert an external root is blocked unless it is an allowed temp path."""
-    # Allowed-temp paths pass by the pure predicate. Short-circuit BEFORE running
-    # the tool: every path in this suite lives under the system temp dir, so the
-    # old code actually ran FindAndGrep over huge dirs like /tmp (~277s) only to
-    # discard the result and return on the temp check below. The search never
-    # affected the assertion — skip it.
-    if path_is_allowed_temp(external_path):
-        return
-
-    try:
-        result = await tool.execute({"roots": [external_path]})
-    except (SecurityError, ValidationError, ValueError, AnalysisError):
-        return
-
-    if isinstance(result, dict) and not result.get("success", True):
-        return
-
-    pytest.fail(f"Expected security block for external path: {external_path}")
 
 
 def path_is_allowed_temp(path: str) -> bool:

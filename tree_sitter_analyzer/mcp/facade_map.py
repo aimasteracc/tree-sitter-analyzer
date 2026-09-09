@@ -59,7 +59,6 @@ LEGACY_TOOL_MAP: dict[str, tuple[str, str]] = {
     # -- search ------------------------------------------------------------
     "codegraph_symbol_search": ("search", "symbol"),
     "query_code": ("search", "query"),  # F3: tree-sitter .scm DSL (NOT symbol)
-    "batch_search": ("search", "batch"),
     "codegraph_query": ("search", "chain"),
     # -- nav ---------------------------------------------------------------
     "codegraph_navigate": ("nav", "navigate"),
@@ -113,10 +112,8 @@ LEGACY_TOOL_MAP: dict[str, tuple[str, str]] = {
     "ast_diff": ("edit", "ast_diff"),
     # -- project -----------------------------------------------------------
     "get_project_overview": ("project", "overview"),
-    "list_files": ("project", "files"),
     "smart_context": ("project", "smart"),
     "advise_parser_readiness": ("project", "parser"),
-    "check_tools": ("project", "tools"),
     "codegraph_metrics": ("project", "metrics"),
     "list_agent_skills": ("project", "skills"),
     "get_agent_workflow": ("project", "workflow"),

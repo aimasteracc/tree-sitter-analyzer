@@ -510,24 +510,12 @@ def test_search_facade_builds_and_routes() -> None:
     facade = build_search_facade(project_root=None)
     assert facade.facade_name == "search"
     # All remaining actions present (content and grep removed by PR).
-    for action in ("symbol", "query", "batch", "chain", "select", "subscribe", "unsubscribe"):
+    for action in ("symbol", "query", "chain", "select", "subscribe", "unsubscribe"):
         assert action in facade.action_map or action in facade.bespoke_map
     # F3: query (.scm DSL) and symbol (BM25) are DISTINCT actions.
     assert "query" in facade.action_map
     assert "symbol" in facade.action_map
     assert facade.action_map["query"] is not facade.action_map["symbol"]
-
-
-def test_search_facade_batch_description_documents_query_item_shape() -> None:
-    """#569: schema-reading agents must see batch query items use pattern."""
-    from tree_sitter_analyzer.mcp.tools.search_facade import build_search_facade
-
-    definition = build_search_facade(project_root=None).get_tool_definition()
-    description = definition["description"]
-    assert "action=batch" in description
-    assert "queries (required array of 2-10 items" in description
-    assert "each item requires `pattern`" in description
-    assert "output_format" in description
 
 
 def test_search_facade_symbol_action_does_not_raise_strict(tmp_path: Any) -> None:

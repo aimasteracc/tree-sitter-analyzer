@@ -10,12 +10,12 @@ tree_sitter_analyzer/
 ├── cli/              ← CLI entry points + commands           (cli.md)
 ├── mcp/              ← MCP server + 8 facade tools             (mcp-tools.md)
 │   ├── server.py     ← stdio transport, tool registration
-│   ├── tools/        ← 146 modules / 79 inner tool classes (delegated from facades)
+│   ├── tools/        ← inner tool implementations (delegated from facades)
 │   ├── server_utils/ ← registration / smart_prompts / intent
-│   ├── utils/        ← project_index, search_cache, file_output_factory
+│   ├── utils/        ← project_index, file_output_factory
 │   └── resources/    ← MCP resources (read-only data exposed to AI)
 ├── languages/        ← 22 tree-sitter plugins                (languages.md)
-├── formatters/       ← TOON / JSON / table / CSV / YAML      (formatters.md)
+├── formatters/       ← JSON / table      (formatters.md)
 ├── core/             ← Parser, engine, AnalysisSession, AnalysisRequest
 ├── models/           ← AnalysisResult + Class/Function/Variable/Import models
 ├── plugins/          ← LanguagePlugin / ElementExtractor base + registry
@@ -25,6 +25,7 @@ tree_sitter_analyzer/
 ├── graph/            ← edge_store.py — single-edge-table call-graph store (B1)
 ├── constraints/      ← architectural-constraints.yml evaluator/parser/schema
 ├── hyphae/           ← Hyphae selector DSL (lexer/parser/ast/evaluator) — RFC-0001 reactive push
+├── source_lines.py ← 原生文件发现、忽略规则与实时符号文本核验
 ├── verification_plan.py ← 有界描述符、完整 argv 计划与阶段摘要
 ├── verification_runner.py ← 重新分析校验、顺序执行、日志预算与进程回收
 ├── skills/           ← 13 bundled tsa-* agent skills
@@ -48,7 +49,7 @@ languages/<lang>_plugin.analyze_file ← tree-sitter parse + extract elements
   ↓
 models.AnalysisResult               ← Class/Function/Variable/Import/Annotation
   ↓
-formatters/<fmt>_formatter          ← TOON (default for MCP) / JSON / table
+formatters/<fmt>_formatter          ← JSON / table
   ↓
 agent_summary envelope              ← verdict (SAFE/REVIEW/CAUTION/UNSAFE)
   ↓
@@ -98,8 +99,7 @@ POSIX 发布包含文件与目录同步；Windows 目录掉电持久性仍不作
 1. `ast_cache.py` — persistent SQLite store of parsed AST symbols/imports/structure
 2. `_route_cache.py` — SQLite store of detected routes (Flask/Django/Express/Spring)
 3. `core/cache_service.py` — in-process LRU for formatter outputs
-4. `mcp/utils/search_cache.py` — fd/ripgrep result cache
-5. `registry/health_score_cache.py` — persistent per-file health scores keyed by
+4. `registry/health_score_cache.py` — persistent per-file health scores keyed by
    source fingerprint plus coverage, weights, moving-window, repository-specific
    git metadata, and scoring-version context
 
@@ -115,7 +115,6 @@ contract violation.**
 | `tree-sitter-analyzer` CLI | `cli_main.py` → `cli/` | Human-facing, JSON default |
 | `tree-sitter-analyzer-mcp` MCP stdio server | `mcp/server.py` | AI-agent-facing, JSON output |
 | `miswire-audit` | `miswire_audit.py` | Run-on-your-repo cross-language correctness demo |
-| `list-files` / `search-content` / `find-and-grep` | `cli/commands/*_cli.py` | fd / ripgrep / fd+rg standalone utilities |
 | Python API (no console script) | `api/__init__.py` | Authoritative implementation of the existing `tree_sitter_analyzer.api` API; Pulse/serialization/semantic live in explicit submodules |
 
 The former sibling `api.py` has been removed. Existing Python imports and public

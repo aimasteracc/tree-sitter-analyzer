@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""
-CodeGraph Status MCP Tool — INDEX HEALTH at-a-glance (CodeGraph parity).
-
-Consolidates ast_cache + codegraph_autoindex + check_tools signals into a
-single read-only call so agents know whether the index is ready, how stale
-it is, and where to look. Replaces 3-4 separate tool calls.
-"""
+"""汇总 AST 索引、自动索引状态与新鲜度的只读诊断工具。"""
 
 from __future__ import annotations
 
@@ -36,8 +30,7 @@ class CodeGraphStatusTool(BaseMCPTool):
                 "One call returns: indexed yes/no, total files, total symbols, "
                 "schema version, FTS5 availability, cache lag vs newest source. "
                 "Use BEFORE any codegraph_* navigation call to decide whether to "
-                "warm the cache first. Replaces ast_cache + codegraph_autoindex "
-                "+ check_tools triangulation."
+                "warm the cache first. Combines AST cache and auto-index diagnostics."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {

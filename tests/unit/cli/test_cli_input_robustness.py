@@ -50,44 +50,6 @@ def _assert_no_traceback(proc: subprocess.CompletedProcess[str]) -> None:
     assert "Traceback (most recent call last)" not in proc.stderr
 
 
-class TestBatchSearchInputRobustness:
-    """#1003 — no raw traceback for bad --batch-search-queries-json."""
-
-    def test_batch_search_missing_queries_json_returns_structured_error(self) -> None:
-        proc = _run_cli(
-            "--batch-search",
-            "--batch-search-queries-json",
-            "/nonexistent/path/does/not/exist.json",
-            "--format",
-            "json",
-        )
-        _assert_no_traceback(proc)
-        assert proc.returncode == 1
-        payload = json.loads(proc.stdout)
-        assert payload["success"] is False
-        assert payload["verdict"] == "ERROR"
-        assert isinstance(payload["error"], str)
-
-    def test_batch_search_malformed_json_returns_structured_error(
-        self, tmp_path: Path
-    ) -> None:
-        bad = tmp_path / "bad.json"
-        bad.write_text("not-json{]", encoding="utf-8")
-        proc = _run_cli(
-            "--batch-search",
-            "--batch-search-queries-json",
-            str(bad),
-            "--format",
-            "json",
-        )
-        _assert_no_traceback(proc)
-        assert proc.returncode == 1
-        payload = json.loads(proc.stdout)
-        assert payload["success"] is False
-        assert payload["verdict"] == "ERROR"
-        assert isinstance(payload["error"], str)
-
-
 class TestSafeToEditDirectoryRejection:
     """#1002 finding 1 — --safe-to-edit must reject a directory."""
 

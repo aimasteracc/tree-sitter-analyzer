@@ -100,9 +100,6 @@ CLI equivalent (no agent needed): `tree-sitter-analyzer --codegraph-status`
 curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-# fd + ripgrep (required for `search action=content` text search; symbol search uses SQLite FTS5 and needs neither)
-brew install fd ripgrep                                # macOS
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```
 
 #### 2. Install Tree-sitter Analyzer
@@ -203,7 +200,7 @@ TSA ships curated workflows under `.claude/skills/tsa-*/`:
 
 Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
 
-### 356 CLI flags
+### 353 CLI flags
 
 Superset of CodeGraph's CLI surface. Highlights:
 
@@ -222,14 +219,7 @@ tree-sitter-analyzer --safe-to-edit <file>        # refuse if risky
 tree-sitter-analyzer --uml class                  # Mermaid UML class diagram
 ```
 
-Installing the package also registers standalone search helpers (thin
-entry points over the same engine, handy in shell pipelines):
-
-```bash
-list-files <dir>          # fd-style file discovery
-search-content <pattern>  # ripgrep-style content search
-find-and-grep <pattern>   # two-stage fd + ripgrep
-```
+TSA performs indexed code search and live source verification in process. No ripgrep or fd installation is required.
 
 See [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) for the full surface.
 

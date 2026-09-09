@@ -1,24 +1,11 @@
 ---
 name: tsa-find
-version: 2.0.0
+version: 3.0.0
 description: |
-  Fast file + content search with code-aware sizing. Use CC built-in Grep/Glob
-  for routine "grep for X" or "find files matching pattern" questions.
-  Use TSA MCP tools for code-intelligence searches (symbol, batch, chain, select).
-
-  Use when:
-  - "Find files matching <pattern>" / "show me all *.yml under config/"
-    -> CC Glob tool (single pattern) or project action=files
-  - "Grep for 'TODO' / 'FIXME' / regex anywhere"
-    -> CC Grep tool
-  - "Find all files matching name + containing string" (2-step)
-    -> CC Glob tool to find files, then CC Grep tool for content
-  - "How big is <file>" / "is this file too large to read fully"
-    -> health action=scale
-  - "Show me lines 50-80 of <file>"
-    -> structure action=read
+  Locate code with TSA symbol, graph, AST and optional semantic indexes, then verify bounded live source. Works with OpenCode and other MCP hosts without requiring ripgrep or fd.
 allowed-tools:
   - mcp__tree-sitter-analyzer__search
+  - mcp__tree-sitter-analyzer__nav
   - mcp__tree-sitter-analyzer__project
   - mcp__tree-sitter-analyzer__structure
   - mcp__tree-sitter-analyzer__health
@@ -26,74 +13,43 @@ allowed-tools:
   - Read
 ---
 
-# tsa-find — File / text search, sized for agents
+# tsa-find — locate, rank, verify
 
-> The "I just want to find X" skill. Wraps `fd` + `rg` + sized partial reads
-> with consistent output formatting.
+Use indexed retrieval to narrow the candidate set before reading or scanning files.
+TSA does not require external ripgrep or fd executables. A host's optional text-search
+feature is separate from TSA and may have its own implementation requirements.
 
-## Tool routing
+| Need | TSA action |
+|---|---|
+| Known identifier | `search action=symbol query="Name"` |
+| Unknown entry point / concept | `nav action=context task="Describe the task"` |
+| Meaning-based retrieval, when embeddings are ready | `search action=semantic query="Describe behavior"` |
+| AST pattern in a file | `search action=query file_path="..." query_key="functions"` |
+| Callers / downstream impact | `nav action=callers` / `nav action=impact` |
+| File structure from the index | `structure action=sitemap` |
+| Live symbol mentions | `nav action=trace symbol="Name"` |
+| Exact source evidence | `structure action=read file_path="..." start_line=10 end_line=30` |
 
-| Question                                  | Tool                        |
-|-------------------------------------------|-----------------------------|
-| Filename pattern only                     | `project action=files`      |
-| Content pattern only (regex / literal)    | **Grep tool** (CC built-in) |
-| Filename pattern AND content              | **Glob tool** + **Grep tool** (2-step) |
-| Several patterns in one call (≥2)        | `search action=batch`       |
-| Read specific lines of one file           | `structure action=read`     |
-| "Is this file too big to read fully?"     | `health action=scale`       |
+1. Start with the known identifier or a concise task description. Keep the result limit small.
+2. Follow returned source paths and line ranges. Semantic similarity is candidate discovery,
+   not proof of a call relationship; use graph navigation and live source to confirm it.
+3. Check index status and freshness. Refresh when needed; do not treat a missing/stale index
+   as proof that a symbol or file does not exist. Missing embeddings are not a lexical miss.
+4. Use live symbol verification only after narrowing the scope when possible. Its Python
+   scanner preserves complete counts before display truncation and reports budget failures;
+   it does not promise ripgrep's whole-repository scan speed.
+5. For arbitrary prose or regular expressions, use the host's text-search tool if available,
+   or a bounded Python standard-library search over the already selected files.
 
-## Procedure
-
-### Single search
-
-Use the CC built-in **Grep tool** for single content-pattern searches:
-
-  pattern: "TODO"
-  path: tree_sitter_analyzer/
-  glob: "*.py"
-
-Returns: file paths + line numbers. No MCP call needed.
-
-### Sized partial read (the killer feature)
-
-Before reading a large file blind, use:
-
-```yaml
-health action=scale file_path="tree_sitter_analyzer/ast_cache.py"
-# returns {line_count: 938, file_metrics: {file_size_bytes: 38918, total_lines: 938, code_lines: 661, ...},
-#          llm_guidance: {analysis_strategy: "This is a large file...", recommended_tools: ["structure action=read", ...]}}
-# (there is no top-level is_large / recommendation — judge size from line_count / file_metrics.file_size_bytes,
-#  and read llm_guidance.recommended_tools for the next-step suggestion)
-```
-
-Then extract only what you need:
-
-```yaml
-structure action=read file_path="..." start_line=800 end_line=870
-```
-
-Avoids reading 80KB when you need 2KB.
-
-### Combined find+grep
-
-Use CC built-in **Glob tool** + **Grep tool** in two steps:
-
-  Step 1 -- Glob tool:  pattern="test_*.py"  (find candidate files)
-  Step 2 -- Grep tool:  pattern="def test_synapse"  path=<result of step 1>
-
-Returns file paths + matching lines. More composable than a single MCP call.
-
-## CLI equivalents
+CLI examples:
 
 ```bash
-uv run tree-sitter-analyzer --project-root . --outline   # list project files
-uv run tree-sitter-analyzer --check-tools                # verify fd/rg available
-uv run tree-sitter-analyzer <file> --partial-read        # sized read with --start-line / --end-line
+uv run tree-sitter-analyzer --symbol-search Name
+uv run tree-sitter-analyzer --codegraph-context "Describe the task"
+uv run tree-sitter-analyzer --trace-impact --trace-impact-symbol Name
+uv run tree-sitter-analyzer path/to/file.py --partial-read --start-line 10 --end-line 30
 ```
 
-## Anti-patterns
-
-- DON'T `Read` a large file before checking scale — burns tokens
-- DON'T `Bash grep -rn` — use the CC built-in **Grep tool** instead (structured output, no shell escaping)
-- DON'T call `search action=batch` with a single query — it enforces a ≥2-query minimum (raises "must be at least 2 queries"); use the **CC Grep tool** for a single pattern
-- DON'T re-search the same query twice in one session — cache the result mentally
+Do not call retired `search.content`, `search.grep`, `search.batch`, `project.files`,
+`project.tools`, `list-files`, `search-content`, or `find-and-grep`.
+Do not replace exact source evidence with an embedding score or a stale index result.
