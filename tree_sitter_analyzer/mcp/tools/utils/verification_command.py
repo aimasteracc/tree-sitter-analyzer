@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import shlex
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -76,24 +78,68 @@ def certified_default_test_command(
     return None
 
 
+_TARGETED_RUNNERS = frozenset({"pytest", "npm", "pnpm", "yarn", "bun"})
+
+
+def _test_argv(default_command: DefaultTestCommand, targets: list[str]) -> list[str]:
+    """从结构化目标直接构造参数，命令文本只在最后渲染。"""
+    runner = default_command.runner
+    if not targets or runner not in _TARGETED_RUNNERS:
+        return shlex.split(default_command.command)
+    if runner == "pytest":
+        return ["uv", "run", "pytest", *targets, "-q"]
+    separator = ["--"] if runner in {"npm", "pnpm"} else []
+    return [runner, "test", *separator, *targets]
+
+
 def build_test_command(
     default_command: DefaultTestCommand,
     tests_to_run: list[str],
 ) -> str:
-    """Build a verification command, using targeted tests when the runner supports it."""
-    if not tests_to_run:
+    """支持定向执行时渲染精确参数，其余情况保留项目默认命令。"""
+    if not tests_to_run or default_command.runner not in _TARGETED_RUNNERS:
         return default_command.command
+    return shlex.join(_test_argv(default_command, tests_to_run))
 
-    quoted_tests = shlex.join(tests_to_run)
-    if default_command.runner == "pytest":
-        return f"uv run pytest {quoted_tests} -q"
-    if default_command.runner in {"npm", "pnpm"}:
-        return f"{default_command.runner} test -- {quoted_tests}"
-    if default_command.runner == "yarn":
-        return f"yarn test {quoted_tests}"
-    if default_command.runner == "bun":
-        return f"bun test {quoted_tests}"
-    return default_command.command
+
+def _argv_within_budget(argv: list[str]) -> bool:
+    """同时检查 POSIX 命令字节数和 Windows 引用后的 UTF-16 启动长度。"""
+    return (
+        len(shlex.join(argv).encode("utf-8")) <= 6000
+        and len(subprocess.list2cmdline(argv).encode("utf-16-le")) // 2 + 1 <= 6000
+    )
+
+
+def build_test_argv_batches(
+    default_command: DefaultTestCommand, tests_to_run: list[str]
+) -> list[list[str]]:
+    """编译完整有序批次，保留重复目标，且不经过 shell 文本反向解析。"""
+    if not tests_to_run or default_command.runner not in _TARGETED_RUNNERS:
+        return [_test_argv(default_command, [])]
+    batches: list[list[str]] = []
+    batch: list[str] = []
+    for target in tests_to_run:
+        if not _argv_within_budget(_test_argv(default_command, [target])):
+            raise ValueError("TEST_TARGET_EXCEEDS_COMMAND_BUDGET")
+        candidate = _test_argv(default_command, [*batch, target])
+        if batch and (len(batch) == 20 or not _argv_within_budget(candidate)):
+            batches.append(_test_argv(default_command, batch))
+            batch = []
+        batch.append(target)
+    batches.append(_test_argv(default_command, batch))
+    return batches
+
+
+def build_test_commands(
+    default_command: DefaultTestCommand, tests_to_run: list[str]
+) -> list[str]:
+    """复用结构化批次渲染命令，避免计划与可复制文本丢失不同的目标。"""
+    if not tests_to_run or default_command.runner not in _TARGETED_RUNNERS:
+        return [default_command.command]
+    return [
+        shlex.join(argv)
+        for argv in build_test_argv_batches(default_command, tests_to_run)
+    ]
 
 
 def _package_json_has_test_script(package_json: Path) -> bool:
@@ -115,3 +161,24 @@ def _node_test_command(root: Path) -> DefaultTestCommand:
     if (root / "yarn.lock").exists():
         return DefaultTestCommand("yarn", "yarn test")
     return DefaultTestCommand("npm", "npm test")
+
+
+def join_verification_steps(steps: list[str]) -> str:
+    """组合内部 POSIX 引用的命令；Windows 使用 PowerShell 5.1 的失败即停语法。"""
+    if sys.platform == "win32" and len(steps) > 1:
+        return _powershell_verification_steps(steps)
+    return " && ".join(steps)
+
+
+def _powershell_verification_steps(steps: list[str]) -> str:
+    """把各步骤的参数原样传给 PowerShell；检查每一步的退出状态。"""
+    commands = []
+    for step in steps:
+        arguments = shlex.split(step)
+        quoted = " ".join(
+            "'" + argument.replace("'", "''") + "'" for argument in arguments
+        )
+        commands.append(
+            "& " + quoted + "; if (-not $?) { throw 'Verification failed' }"
+        )
+    return "& { " + "; ".join(commands) + " }"

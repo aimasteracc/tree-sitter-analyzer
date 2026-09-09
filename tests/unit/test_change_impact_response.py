@@ -653,3 +653,60 @@ def test_verdict_severity_rank_matches_journal_rank():
     )
 
     assert _VERDICT_SEVERITY == _JOURNAL_VERDICT_RANK
+
+
+def test_legacy_strategy_without_steps_preserves_verification_command():
+    """#1407：没有分步字段的旧内部调用仍返回已有完整命令。"""
+    summary = build_agent_summary(
+        AgentSummaryContext(
+            risk="low",
+            changed_files=["runtime.py"],
+            scope_paths=None,
+            verification=_make_verification(verification_command="uv run pytest -q"),
+            strategy=_make_strategy(verification_steps=[], focused_test_command=""),
+            affected_count=1,
+            tests_to_run_count=0,
+        )
+    )
+    assert summary["verification_command"] == "uv run pytest -q"
+
+
+def test_high_risk_batches_keep_default_queue_boundary():
+    # #1407：分批不能覆盖高风险变更的默认门禁要求。
+    summary = build_agent_summary(
+        AgentSummaryContext(
+            risk="high",
+            changed_files=["src/core.py"],
+            scope_paths=None,
+            verification=_make_verification(),
+            strategy=_make_strategy(
+                verification_steps=["pytest tests/test_a.py", "pytest tests/test_b.py"]
+            ),
+            affected_count=30,
+            tests_to_run_count=25,
+        )
+    )
+    assert summary["stop_condition"] == (
+        "All verification steps pass in order: pytest tests/test_a.py; "
+        "pytest tests/test_b.py; run pytest at the queue boundary."
+    )
+
+
+def test_high_risk_batches_with_default_do_not_request_duplicate_run():
+    # #1407：已有默认门禁的完整序列只需执行一次。
+    summary = build_agent_summary(
+        AgentSummaryContext(
+            risk="high",
+            changed_files=["src/core.py"],
+            scope_paths=None,
+            verification=_make_verification(),
+            strategy=_make_strategy(
+                verification_steps=["pytest tests/test_a.py", "pytest"]
+            ),
+            affected_count=30,
+            tests_to_run_count=25,
+        )
+    )
+    assert summary["stop_condition"] == (
+        "All verification steps pass in order: pytest tests/test_a.py; pytest."
+    )

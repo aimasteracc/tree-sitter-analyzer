@@ -88,6 +88,7 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0029](0029-does-this-test-constrain-this-code.md) | "Does this test constrain this code?" — interactive mutation query | draft |
 
 | [0030](0030-pulse-source-evidence.md) | Pulse source-version evidence | draft |
+| [0031](0031-bounded-verification-execution.md) | Bounded verification command and plan replay | draft |
 | [0032](0032-index-writer-ownership.md) | Index writer ownership and obsolete-candidate fencing | draft |
 
 ## Roadmap

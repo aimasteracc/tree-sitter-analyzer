@@ -345,7 +345,7 @@ def test_change_impact_result_uses_complete_mapped_tests_for_verification(monkey
     assert (
         result["verification_reason"] == "targeted tests cover mapped runtime changes"
     )
-    assert result["agent_summary"]["verification_strategy"] == "default_for_large_diff"
+    assert result["agent_summary"]["verification_strategy"] == "single_command"
     assert result["agent_summary"]["tests_to_run_count"] == 32
 
 

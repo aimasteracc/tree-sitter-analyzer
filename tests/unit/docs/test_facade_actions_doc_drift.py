@@ -80,7 +80,7 @@ def test_facade_actions_surface_pins() -> None:
         "viz",
     ]
     total_actions = sum(len(rows) for rows in rows_by_facade.values())
-    assert total_actions == 86
+    assert total_actions == 87
 
     gaps = sorted(
         (facade, row.action)

@@ -23,6 +23,17 @@ from ._read_existing_bridge import _forward_read_existing_controls
 
 _CORE_SPECS: tuple[McpCommandSpec, ...] = (
     McpCommandSpec(
+        flag_name="verify_plan",
+        tool_attr="VerificationTool",
+        label="Verification plan",
+        value_arg_name="verify_plan",
+        required_value_error="--verify-plan requires a descriptor",
+        build_tool_args=lambda args, output_format: {
+            "request": args.verify_plan,
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
         flag_name="rename",
         tool_attr="CodeGraphRefactorTool",
         label="AST-aware rename",

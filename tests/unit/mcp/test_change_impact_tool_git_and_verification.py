@@ -309,11 +309,15 @@ def test_low_impact_profile_rewrites_focused_pytest_for_local_agents(monkeypatch
     )
     assert strategy["local_verification_command"] == (
         "nice -n 15 uv run pytest tests/unit/cli/test_cli_main_module.py -n 2 -q"
+        " && nice -n 15 uv run pytest -n 2 -q"
     )
-    assert strategy["ci_verification_command"] == "uv run pytest -q"
+    assert strategy["ci_verification_command"] == (
+        "uv run pytest tests/unit/cli/test_cli_main_module.py -q && uv run pytest -q"
+    )
     assert strategy["verification_strategy"] == "local_low_impact_focused_then_ci"
     assert strategy["verification_steps"] == [
-        "nice -n 15 uv run pytest tests/unit/cli/test_cli_main_module.py -n 2 -q"
+        "nice -n 15 uv run pytest tests/unit/cli/test_cli_main_module.py -n 2 -q",
+        "nice -n 15 uv run pytest -n 2 -q",
     ]
 
 
@@ -422,8 +426,11 @@ def test_low_impact_pytest_command_replaces_existing_worker_flags(monkeypatch):
     )
 
 
-def test_verification_strategy_avoids_huge_focused_commands():
-    """Very broad diffs should not produce copy-paste hostile focused commands."""
+def test_verification_strategy_retains_all_mapped_targets(monkeypatch):
+    """2026-09-08：超过展示阈值也不能丢弃已知相关测试。"""
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
     plan = verification_tool._build_verification_plan(
         ["tree_sitter_analyzer/runtime.py"],
         [f"tests/unit/test_feature_{index:02d}.py" for index in range(25)],
@@ -435,13 +442,17 @@ def test_verification_strategy_avoids_huge_focused_commands():
         verification=plan,
     )
 
-    assert strategy["focused_test_command"] == ""
-    assert strategy["verification_strategy"] == "default_for_large_diff"
-    assert strategy["verification_steps"] == ["uv run pytest -q"]
-    assert (
-        "25 mapped tests exceed the focused command limit"
-        in strategy["verification_hint"]
-    )
+    expected_steps = [
+        "uv run pytest "
+        + " ".join(
+            f"tests/unit/test_feature_{index:02d}.py" for index in range(start, end)
+        )
+        + " -q"
+        for start, end in [(0, 20), (20, 25)]
+    ]
+    assert strategy["focused_test_command"] == " && ".join(expected_steps)
+    assert strategy["verification_strategy"] == "single_command"
+    assert strategy["verification_steps"] == expected_steps
 
 
 def test_code_change_verification_plan_falls_back_to_default_suite():
@@ -690,3 +701,52 @@ def test_low_impact_pytest_command_portable_on_windows(monkeypatch):
         f"nice(1) must not appear on Windows; got {result!r}"
     )
     assert "uv run pytest" in result
+
+
+def test_mixed_mapping_summary_requires_known_tests_before_default():
+    """2026-09-08：默认快速门禁通过不能替代已知相关测试。"""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+        AgentSummaryContext,
+        build_agent_summary,
+    )
+
+    targets = [f"tests/unit/test_feature_{index:02d}.py" for index in range(25)]
+    changed = ["runtime.py", "unknown.py"]
+    plan = verification_tool._build_verification_plan(
+        changed,
+        targets,
+        {
+            "runtime.py": targets,
+            "unknown.py": [verification_tool.AUTO_DISCOVER_TEST_HINT],
+        },
+    )
+    strategy = change_impact_tool._build_verification_strategy(
+        changed_count=2,
+        tests_to_run=targets,
+        verification=plan,
+    )
+    summary = build_agent_summary(
+        AgentSummaryContext(
+            risk="high",
+            changed_files=changed,
+            scope_paths=None,
+            verification=plan,
+            strategy=strategy,
+            affected_count=2,
+            tests_to_run_count=25,
+        )
+    )
+    focused_steps = [
+        "uv run pytest " + " ".join(targets[start:end]) + " -q"
+        for start, end in [(0, 20), (20, 25)]
+    ]
+    steps = [*focused_steps, "uv run pytest -q"]
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        join_verification_steps,
+    )
+
+    assert summary["verification_command"] == join_verification_steps(steps)
+    assert strategy["verification_steps"] == steps
+    assert summary["stop_condition"] == (
+        "All verification steps pass in order: " + "; ".join(steps) + "."
+    )

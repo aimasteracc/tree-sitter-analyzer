@@ -25,6 +25,8 @@ tree_sitter_analyzer/
 ├── graph/            ← edge_store.py — single-edge-table call-graph store (B1)
 ├── constraints/      ← architectural-constraints.yml evaluator/parser/schema
 ├── hyphae/           ← Hyphae selector DSL (lexer/parser/ast/evaluator) — RFC-0001 reactive push
+├── verification_plan.py ← 有界描述符、完整 argv 计划与阶段摘要
+├── verification_runner.py ← 重新分析校验、顺序执行、日志预算与进程回收
 ├── skills/           ← 13 bundled tsa-* agent skills
 ├── security/         ← Boundary manager, path validator      (security.md)
 ├── grammar_coverage/ ← Coverage validator + auto-discovery

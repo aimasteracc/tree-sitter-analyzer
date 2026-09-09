@@ -461,7 +461,7 @@ def test_translated_readmes_reject_unregistered_quantitative_marketing(
                 "8 MCP ツール",
                 # Re-pinned 2026-09-05: +6 for --pulse/--pulse-batch/
                 # --project-schema/--tql-schema/--tql/--semantic-neighbors.
-                "### 355 の CLI フラグ",
+                "### 356 の CLI フラグ",
                 "22 言語プラグイン",
                 "13 は `pipeline_registered`",
                 "3 は `index_admitted`",
@@ -475,7 +475,7 @@ def test_translated_readmes_reject_unregistered_quantitative_marketing(
                 "8 个 MCP 工具",
                 # Re-pinned 2026-09-05: +6 for --pulse/--pulse-batch/
                 # --project-schema/--tql-schema/--tql/--semantic-neighbors.
-                "### 355 个 CLI flag",
+                "### 356 个 CLI flag",
                 "22 个语言插件",
                 "13 个为 `pipeline_registered`",
                 "3 个为 `index_admitted`",

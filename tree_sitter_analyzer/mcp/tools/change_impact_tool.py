@@ -308,9 +308,7 @@ class ChangeImpactTool(BaseMCPTool):
             # agent_summary so direct callers (tests, hive-mind workers)
             # see the same envelope shape as MCP-routed callers.
             result = mirror_summary_line(result)
-            return apply_output_format_to_response(
-                result, output_format
-            )
+            return apply_output_format_to_response(result, output_format)
 
         diff_stat = _get_diff_stat(mode, self.project_root, scope_paths)
         result = _build_change_impact_result(
@@ -354,9 +352,7 @@ class ChangeImpactTool(BaseMCPTool):
         # agent_summary so direct callers see the same envelope shape as
         # MCP-routed callers.
         result = mirror_summary_line(result)
-        return apply_output_format_to_response(
-            result, output_format
-        )
+        return apply_output_format_to_response(result, output_format)
 
     async def _execute_read_existing(
         self,
@@ -424,9 +420,7 @@ class ChangeImpactTool(BaseMCPTool):
         finally:
             frozen_consumer.release()
 
-    def _read_existing_error(
-        self, code: str, output_format: str
-    ) -> dict[str, Any]:
+    def _read_existing_error(self, code: str, output_format: str) -> dict[str, Any]:
         """Classify one read-existing producer failure with access evidence."""
         state = (
             "missing"
@@ -533,9 +527,7 @@ class ChangeImpactTool(BaseMCPTool):
         result["output_format"] = output_format
         _canonicalize_change_impact_verdict(result)
         result = mirror_summary_line(result)
-        formatted = apply_output_format_to_response(
-            result, output_format
-        )
+        formatted = apply_output_format_to_response(result, output_format)
         # Keep this as the final operation before the snapshot is exposed.
         publish_error = REGISTRY.validate_publish(consumer)
         if publish_error:
@@ -604,6 +596,7 @@ class ChangeImpactTool(BaseMCPTool):
         result = _build_change_impact_result(
             ChangeImpactRequest(
                 mode="pr",
+                pr_url=f"https://github.com/{parsed.slug}/pull/{parsed.pr_number}",
                 changed_files=changed_files,
                 diff_stat=diff_stat,
                 project_root=self.project_root,
