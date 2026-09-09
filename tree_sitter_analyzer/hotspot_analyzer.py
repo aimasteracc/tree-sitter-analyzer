@@ -1,10 +1,12 @@
 """Hotspot scorer: Ca x MaxCC ranking with alias-aware Ca."""
+
 from __future__ import annotations
 
 import re
 import sys
 from collections.abc import Iterator
 from pathlib import Path
+from types import ModuleType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -28,6 +30,7 @@ SUGGESTION_BY_SEVERITY = {
 
 # ── Ca helpers ────────────────────────────────────────────────────────────────
 
+
 def build_ca_raw_map(dm: DependencyMatrix) -> dict[str, int]:
     """Return {file: afferent_coupling} from DependencyMatrix module_stats.
 
@@ -41,18 +44,40 @@ def build_ca_raw_map(dm: DependencyMatrix) -> dict[str, int]:
 
 # ── Heatmap helpers ───────────────────────────────────────────────────────────
 
+
 def build_heatmap_map(heatmap_files: list[FileHeatmap]) -> dict[str, FileHeatmap]:
     """Return {file: FileHeatmap} for O(1) lookup (forward-slash normalized)."""
     return {fh.file.replace("\\", "/"): fh for fh in heatmap_files}
 
 
 # Directories that are clearly not the main source package
-_NON_SOURCE_DIRS = frozenset({
-    "tests", "test", "benchmarks", "bench", "docs", "doc", "examples",
-    "example", "scripts", "script", "fixtures", "compatibility_test",
-    "build", "dist", "e2e", "spec", "integration", "functional",
-    "performance", "samples", "demo", "demos", "corpus",
-})
+_NON_SOURCE_DIRS = frozenset(
+    {
+        "tests",
+        "test",
+        "benchmarks",
+        "bench",
+        "docs",
+        "doc",
+        "examples",
+        "example",
+        "scripts",
+        "script",
+        "fixtures",
+        "compatibility_test",
+        "build",
+        "dist",
+        "e2e",
+        "spec",
+        "integration",
+        "functional",
+        "performance",
+        "samples",
+        "demo",
+        "demos",
+        "corpus",
+    }
+)
 
 
 def _detect_source_dir(project_root: str) -> str | None:
@@ -67,6 +92,7 @@ def _detect_source_dir(project_root: str) -> str | None:
     # Try pyproject.toml (hatch, setuptools, flit)
     pyproject = root / "pyproject.toml"
     if pyproject.exists():
+        tomllib: ModuleType | None
         if sys.version_info >= (3, 11):
             import tomllib  # noqa: I001
         else:  # pragma: no cover
@@ -89,9 +115,7 @@ def _detect_source_dir(project_root: str) -> str | None:
                 # setuptools: [tool.setuptools] packages = ["mypkg"] or find
                 if not pkgs:
                     pkgs = (
-                        data.get("tool", {})
-                        .get("setuptools", {})
-                        .get("packages", [])
+                        data.get("tool", {}).get("setuptools", {}).get("packages", [])
                     )
                 if pkgs and isinstance(pkgs, list):
                     pkg = pkgs[0]
@@ -116,7 +140,9 @@ def _detect_source_dir(project_root: str) -> str | None:
     return None
 
 
-def heatmaps_from_project_analysis(project_root: str, max_files: int = 200) -> list[FileHeatmap]:
+def heatmaps_from_project_analysis(
+    project_root: str, max_files: int = 200
+) -> list[FileHeatmap]:
     """Build FileHeatmap list using analyze_project_heatmap() result.
 
     Scopes to the main source package (via __init__.py detection) to avoid
@@ -157,14 +183,16 @@ def heatmaps_from_project_analysis(project_root: str, max_files: int = 200) -> l
             )
             for f in top_funcs
         ]
-        heatmaps.append(_FileHeatmap(
-            file=fh_dict.get("file", ""),
-            language=fh_dict.get("language", ""),
-            functions=funcs,
-            total_complexity=fh_dict.get("total_complexity", 0),
-            avg_complexity=fh_dict.get("avg_complexity", 0.0),
-            max_complexity=fh_dict.get("max_complexity", 0),
-        ))
+        heatmaps.append(
+            _FileHeatmap(
+                file=fh_dict.get("file", ""),
+                language=fh_dict.get("language", ""),
+                functions=funcs,
+                total_complexity=fh_dict.get("total_complexity", 0),
+                avg_complexity=fh_dict.get("avg_complexity", 0.0),
+                max_complexity=fh_dict.get("max_complexity", 0),
+            )
+        )
     return heatmaps
 
 
@@ -304,7 +332,10 @@ def build_ca_from_source_imports(
     root = Path(project_root)
 
     scan_norm = [p.replace("\\", "/") for p in scan_files]
-    target_norm = [p.replace("\\", "/") for p in (target_files if target_files is not None else scan_files)]
+    target_norm = [
+        p.replace("\\", "/")
+        for p in (target_files if target_files is not None else scan_files)
+    ]
     file_set = set(target_norm)
     ca_count: dict[str, int] = {}
 
@@ -323,6 +354,7 @@ def build_ca_from_source_imports(
 
 
 # ── Severity & test_focus ─────────────────────────────────────────────────────
+
 
 def classify_severity(score: float) -> str:
     if score >= SEVERITY_CRITICAL:
@@ -351,11 +383,12 @@ def build_test_focus(file_heatmap: FileHeatmap, severity: str) -> TestFocus:
 
 # ── Main scorer ───────────────────────────────────────────────────────────────
 
+
 def compute_scores(
-    ca_map: dict[str, int],          # {file: ca_raw}
+    ca_map: dict[str, int],  # {file: ca_raw}
     heatmap_map: dict[str, FileHeatmap],
     alias_ca_map: dict[str, int] | None = None,  # {file: ca_alias} — None = P2
-    reachable: dict[str, int] | None = None,      # {file: hops}  — None = global mode
+    reachable: dict[str, int] | None = None,  # {file: hops}  — None = global mode
     top_n: int = 20,
     show_alias_diff: bool = False,
 ) -> list[HotspotEntry]:
@@ -378,30 +411,34 @@ def compute_scores(
         score = float(ca_alias * max_cc)
         severity = classify_severity(score)
         test_focus = (
-            build_test_focus(fh, severity) if fh
+            build_test_focus(fh, severity)
+            if fh
             else TestFocus("(unknown)", 0, SUGGESTION_BY_SEVERITY[severity])
         )
         hops = reachable[f] if reachable is not None else None
-        entries.append(HotspotEntry(
-            rank=0,  # assigned below
-            file=f,
-            severity=severity,
-            score=score,
-            ca_raw=ca_raw,
-            ca_alias=ca_alias,
-            max_cc=max_cc,
-            test_focus=test_focus,
-            hops=hops,
-        ))
+        entries.append(
+            HotspotEntry(
+                rank=0,  # assigned below
+                file=f,
+                severity=severity,
+                score=score,
+                ca_raw=ca_raw,
+                ca_alias=ca_alias,
+                max_cc=max_cc,
+                test_focus=test_focus,
+                hops=hops,
+            )
+        )
 
     entries.sort(key=lambda e: (-e.score, e.file))
-    entries = entries[:max(0, top_n)]
+    entries = entries[: max(0, top_n)]
     for i, e in enumerate(entries, 1):
         e.rank = i
     return entries
 
 
 # ── P3: alias-aware Ca ────────────────────────────────────────────────────────
+
 
 def _parse_python_reexports(init_path: Path) -> list[str]:
     """Return list of module names re-exported from __init__.py.
@@ -419,7 +456,7 @@ def _parse_python_reexports(init_path: Path) -> list[str]:
     for line in text.splitlines():
         line = line.strip()
         if line.startswith("from .") and " import " in line:
-            after_from = line[len("from ."):].split(" import ")[0].strip()
+            after_from = line[len("from .") :].split(" import ")[0].strip()
             if after_from and "*" not in line:
                 # convert dotted to path
                 results.append(after_from.replace(".", "/"))
@@ -469,9 +506,7 @@ def build_alias_ca_map(
 
     # Use pre-collected file list to avoid slow rglob on large directory trees
     if known_files is not None:
-        _init_py_paths = [
-            root / p for p in known_files if p.endswith("__init__.py")
-        ]
+        _init_py_paths = [root / p for p in known_files if p.endswith("__init__.py")]
     else:
         _init_py_paths = list(root.rglob("__init__.py"))
 
@@ -495,14 +530,17 @@ def build_alias_ca_map(
                         canonical = str(candidate.relative_to(root)).replace("\\", "/")
                     except ValueError:  # pragma: no cover
                         continue
-                    alias_extra[canonical] = alias_extra.get(canonical, 0) + importers_of_init
+                    alias_extra[canonical] = (
+                        alias_extra.get(canonical, 0) + importers_of_init
+                    )
                     break
 
     # Find all index.ts / index.js files
     for index_name in ("index.ts", "index.js"):
         if known_files is not None:
             _index_paths: list[Path] = [
-                root / p for p in known_files
+                root / p
+                for p in known_files
                 if p.endswith(f"/{index_name}") or p == index_name
             ]
         else:
@@ -522,10 +560,14 @@ def build_alias_ca_map(
                     candidate = index_path.parent / suffix
                     if candidate.exists():
                         try:
-                            canonical = str(candidate.relative_to(root)).replace("\\", "/")
+                            canonical = str(candidate.relative_to(root)).replace(
+                                "\\", "/"
+                            )
                         except ValueError:  # pragma: no cover
                             continue
-                        alias_extra[canonical] = alias_extra.get(canonical, 0) + importers_of_index
+                        alias_extra[canonical] = (
+                            alias_extra.get(canonical, 0) + importers_of_index
+                        )
                         break
 
     result = dict(ca_raw_map)
