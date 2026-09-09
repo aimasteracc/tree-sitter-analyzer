@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import CodeGraphContextTool
 
 
 @pytest.fixture
@@ -2074,3 +2075,56 @@ def test_next_step_lean_production_anchor() -> None:
     eps = [{"name": "handle_call_tool", "file": "pkg/server.py"}]
     msg = _next_step_lean(True, True, entry_points=eps)
     assert "handle_call_tool" in msg
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("indexed", [False, True])
+async def test_empty_index_does_not_claim_symbol_absence(tmp_path, indexed):
+    # 2026-09-09：冷索引曾将真实存在的函数报告为 NOT_FOUND。
+    source = tmp_path / "auth.py"
+    source.write_text(
+        "def authenticate_user(token): return bool(token)\n", encoding="utf-8"
+    )
+    cache = ASTCache(str(tmp_path))
+    tool = CodeGraphContextTool(str(tmp_path))
+    try:
+        if indexed:
+            cache.index_file(str(source))
+        result = await tool.execute(
+            {"task": "authenticate_user", "output_format": "json"}
+        )
+        assert (result["success"], result["verdict"]) == (
+            (True, "INFO") if indexed else (False, "ERROR")
+        )
+        if not indexed:
+            assert result["error_code"] == "INDEX_NOT_READY"
+            assert result["entry_points"] == []
+            assert "--ast-cache-mode index" in result["next_step"]
+    finally:
+        cache.close()
+        if tool._cache is not None:
+            tool._cache.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("empty_project", [False, True])
+async def test_indexed_zero_symbols_can_report_not_found(tmp_path, empty_project):
+    # 2026-09-09：零符号文件和已完成的空项目不能被误判为尚未建索引。
+    if not empty_project:
+        (tmp_path / "empty.py").write_text("# 空模块\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    tool = CodeGraphContextTool(str(tmp_path))
+    try:
+        cache.index_project(max_files=20)
+        result = await tool.execute(
+            {"task": "authenticate_user", "output_format": "json"}
+        )
+        assert (result["success"], result["verdict"], result["entry_points"]) == (
+            True,
+            "NOT_FOUND",
+            [],
+        )
+    finally:
+        cache.close()
+        if tool._cache is not None:
+            tool._cache.close()

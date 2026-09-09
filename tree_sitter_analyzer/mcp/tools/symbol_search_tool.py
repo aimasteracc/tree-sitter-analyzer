@@ -200,6 +200,10 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                     f"Run structure action=explore query={query!r} before "
                     "raw grep/read to bulk-fetch related symbols and concept matches."
                 )
+        if not results:
+            from ..utils.auto_index_guard import empty_index_diagnostic
+
+            result.update(empty_index_diagnostic(cache))
         if language:
             result["language_filter"] = language
         if kind != "any":

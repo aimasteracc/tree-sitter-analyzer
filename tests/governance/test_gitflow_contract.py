@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import ast
 import configparser
+import json
 import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -141,3 +144,247 @@ def test_release_and_hotfix_finalize_prs_do_not_mask_closed_prs() -> None:
         assert "refusing to treat finalization as successful" in body, workflow_name
         assert "exit 1" in body, workflow_name
         assert "|| gh pr view" not in body, workflow_name
+
+
+def test_release_registry_versions_match_package_version() -> None:
+    """2026-09-09 发布审计：注册表不能继续指向旧 PyPI 版本。"""
+    project = tomllib.loads(
+        (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    registry = json.loads((PROJECT_ROOT / "server.json").read_text(encoding="utf-8"))
+    version = project["project"]["version"]
+    assert registry["version"] == version
+    assert [
+        package["version"]
+        for package in registry["packages"]
+        if package["registryType"] == "pypi"
+        and package["identifier"] == "tree-sitter-analyzer"
+    ] == [version]
+
+
+@pytest.fixture
+def version_sync_project(tmp_path: Path) -> Path:
+    """在隔离目录执行真实版本脚本，避免写入工作区。"""
+    (tmp_path / "scripts").mkdir()
+    for filename in ("sync_version.py", "sync_version_minimal.py"):
+        (tmp_path / "scripts" / filename).write_bytes(
+            (PROJECT_ROOT / "scripts" / filename).read_bytes()
+        )
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nversion = "1.29.5"\n[tool.mcp]\nserver_version = "1.29.5"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "tree_sitter_analyzer").mkdir()
+    (tmp_path / "tree_sitter_analyzer" / "__init__.py").write_text(
+        '__version__ = "1.29.5"\n', encoding="utf-8"
+    )
+    (tmp_path / "server.json").write_text(
+        json.dumps(
+            {
+                "version": "1.29.5",
+                "description": "保留描述",
+                "packages": [
+                    {
+                        "registryType": "pypi",
+                        "identifier": "tree-sitter-analyzer",
+                        "version": "1.29.5",
+                        "transport": {"type": "stdio"},
+                    },
+                    {
+                        "registryType": "npm",
+                        "identifier": "other-tool",
+                        "version": "0.1.0",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+@pytest.mark.parametrize("script", ["sync_version.py", "sync_version_minimal.py"])
+@pytest.mark.parametrize("field", ["server", "package"])
+def test_version_check_rejects_registry_drift_without_writing(
+    version_sync_project: Path, script: str, field: str
+) -> None:
+    """2026-09-09 发布审计：任一注册表版本漂移都必须让检查失败。"""
+    root = version_sync_project
+    path = root / "server.json"
+    metadata = json.loads(path.read_text(encoding="utf-8"))
+    target = metadata if field == "server" else metadata["packages"][0]
+    target["version"] = "1.29.0"
+    path.write_text(json.dumps(metadata), encoding="utf-8")
+    before = path.read_bytes()
+    result = subprocess.run(
+        [sys.executable, str(root / "scripts" / script), "--check"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("script", ["sync_version.py", "sync_version_minimal.py"])
+def test_version_sync_updates_only_owned_registry_versions(
+    version_sync_project: Path, script: str
+) -> None:
+    """同步两个归属版本，保留其他包和元数据，再次同步不改字节。"""
+    root = version_sync_project
+    path = root / "server.json"
+    expected = json.loads(path.read_text(encoding="utf-8"))
+    stale = json.loads(path.read_text(encoding="utf-8"))
+    stale["version"] = "1.29.0"
+    stale["packages"][0]["version"] = "1.29.1"
+    path.write_text(json.dumps(stale), encoding="utf-8")
+    command = [sys.executable, str(root / "scripts" / script)]
+    synchronized_bytes = None
+    for args in (command, command + ["--check"], command):
+        result = subprocess.run(
+            args,
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            encoding="utf-8",
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert json.loads(path.read_text(encoding="utf-8")) == expected
+        if synchronized_bytes is None:
+            synchronized_bytes = path.read_bytes()
+        else:
+            assert path.read_bytes() == synchronized_bytes
+    assert (
+        path.read_text(encoding="utf-8")
+        == json.dumps(expected, indent=2, ensure_ascii=False) + "\n"
+    )
+
+
+@pytest.mark.parametrize("script", ["sync_version.py", "sync_version_minimal.py"])
+def test_version_sync_rejects_missing_registry_package(
+    version_sync_project: Path, script: str
+) -> None:
+    """缺失本项目包时同步失败，不能输出成功却留下不完整注册表。"""
+    root = version_sync_project
+    path = root / "server.json"
+    metadata = json.loads(path.read_text(encoding="utf-8"))
+    metadata["packages"] = metadata["packages"][1:]
+    path.write_text(json.dumps(metadata), encoding="utf-8")
+    before = path.read_bytes()
+    result = subprocess.run(
+        [sys.executable, str(root / "scripts" / script)],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("sync_succeeds", [False, True])
+def test_release_preparation_requires_synced_and_staged_registry(
+    version_sync_project: Path, monkeypatch: pytest.MonkeyPatch, sync_succeeds: bool
+) -> None:
+    """2026-09-09 发布审计：同步失败停止准备；成功时提交注册表。"""
+    from unittest.mock import Mock
+
+    from scripts.gitflow_release_automation import GitFlowReleaseAutomation
+
+    root = version_sync_project
+    changelog = root / "CHANGELOG.md"
+    changelog.write_text("# Changelog\n", encoding="utf-8")
+    release = GitFlowReleaseAutomation("v1.29.5")
+    release.project_root = root
+    run_git = Mock(
+        return_value=subprocess.CompletedProcess([], 0, stdout="", stderr="")
+    )
+    monkeypatch.setattr(release, "run_command", run_git)
+    sync = Mock(
+        return_value=subprocess.CompletedProcess([], 0),
+        side_effect=None if sync_succeeds else subprocess.CalledProcessError(1, "sync"),
+    )
+    monkeypatch.setattr("scripts.gitflow_release_automation.subprocess.run", sync)
+    assert release.create_release_branch() is sync_succeeds
+    sync.assert_called_once_with(
+        ["uv", "run", "python", "scripts/sync_version_minimal.py"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    commands = [call.args[0] for call in run_git.call_args_list]
+    expected = [["git", "checkout", "-b", "release/v1.29.5"]]
+    if sync_succeeds:
+        expected.extend(
+            [
+                ["git", "add", "pyproject.toml", "server.json", "CHANGELOG.md"],
+                ["git", "add", "tree_sitter_analyzer/"],
+                ["git", "commit", "-m", "chore: Prepare release v1.29.5"],
+            ]
+        )
+    else:
+        assert changelog.read_text(encoding="utf-8") == "# Changelog\n"
+    assert commands == expected
+
+
+@pytest.mark.parametrize("check_only", [False, True])
+@pytest.mark.parametrize("missing", ["package_file", "package_version", "mcp_version"])
+def test_essential_version_sync_rejects_missing_version_fields(
+    version_sync_project: Path, missing: str, check_only: bool
+) -> None:
+    """必需文件或版本字段缺失时，同步和检查都不能报告成功。"""
+    root = version_sync_project
+    package = root / "tree_sitter_analyzer" / "__init__.py"
+    if missing == "package_file":
+        package.unlink()
+    elif missing == "package_version":
+        package.write_text("", encoding="utf-8")
+    else:
+        (root / "pyproject.toml").write_text(
+            '[project]\nversion = "1.29.5"\n[tool.mcp]\n', encoding="utf-8"
+        )
+    command = [sys.executable, str(root / "scripts" / "sync_version_minimal.py")]
+    if check_only:
+        command.append("--check")
+    result = subprocess.run(
+        command,
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+
+
+def test_essential_version_sync_propagates_package_write_failure(
+    version_sync_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """包版本写入失败必须向发布调用方传播，不能被当作无需同步。"""
+    from scripts.sync_version_minimal import check_versions
+
+    root = version_sync_project
+    package = root / "tree_sitter_analyzer" / "__init__.py"
+    package.write_text('__version__ = "1.29.0"\n', encoding="utf-8")
+    before = package.read_bytes()
+    monkeypatch.chdir(root)
+    write_text = Path.write_text
+
+    def deny_package_write(path: Path, *args: object, **kwargs: object) -> int:
+        if path.name == "__init__.py":
+            raise PermissionError("package write denied")
+        return write_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", deny_package_write)
+    with pytest.raises(OSError, match="Failed to write.*package write denied"):
+        check_versions()
+    assert package.read_bytes() == before
