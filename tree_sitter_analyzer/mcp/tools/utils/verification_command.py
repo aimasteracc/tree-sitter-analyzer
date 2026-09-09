@@ -92,6 +92,18 @@ def _test_argv(default_command: DefaultTestCommand, targets: list[str]) -> list[
     return [runner, "test", *separator, *targets]
 
 
+def _shell_test_argv(
+    default_command: DefaultTestCommand, target: str
+) -> list[str] | None:
+    """Python 项目的 shell 测试单独交给 Bash；保留 pytest 节点选择器语义。"""
+    file_part, separator, _ = target.partition("::")
+    if separator and Path(file_part).suffix.lower() == ".py":
+        return None
+    if default_command.runner == "pytest" and Path(target).suffix.lower() == ".sh":
+        return ["bash", "--", target]
+    return None
+
+
 def build_test_command(
     default_command: DefaultTestCommand,
     tests_to_run: list[str],
@@ -99,6 +111,10 @@ def build_test_command(
     """支持定向执行时渲染精确参数，其余情况保留项目默认命令。"""
     if not tests_to_run or default_command.runner not in _TARGETED_RUNNERS:
         return default_command.command
+    if any(_shell_test_argv(default_command, target) for target in tests_to_run):
+        return join_verification_steps(
+            build_test_commands(default_command, tests_to_run)
+        )
     return shlex.join(_test_argv(default_command, tests_to_run))
 
 
@@ -119,6 +135,15 @@ def build_test_argv_batches(
     batches: list[list[str]] = []
     batch: list[str] = []
     for target in tests_to_run:
+        shell_argv = _shell_test_argv(default_command, target)
+        if shell_argv is not None:
+            if not _argv_within_budget(shell_argv):
+                raise ValueError("TEST_TARGET_EXCEEDS_COMMAND_BUDGET")
+            if batch:
+                batches.append(_test_argv(default_command, batch))
+                batch = []
+            batches.append(shell_argv)
+            continue
         if not _argv_within_budget(_test_argv(default_command, [target])):
             raise ValueError("TEST_TARGET_EXCEEDS_COMMAND_BUDGET")
         candidate = _test_argv(default_command, [*batch, target])
@@ -126,7 +151,8 @@ def build_test_argv_batches(
             batches.append(_test_argv(default_command, batch))
             batch = []
         batch.append(target)
-    batches.append(_test_argv(default_command, batch))
+    if batch:
+        batches.append(_test_argv(default_command, batch))
     return batches
 
 

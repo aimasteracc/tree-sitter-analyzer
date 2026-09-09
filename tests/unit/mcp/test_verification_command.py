@@ -265,3 +265,112 @@ def test_argv_batches_preserve_default_runner_semantics():
     assert build_test_argv_batches(
         DefaultTestCommand("pytest", "uv run pytest -q"), []
     ) == [["uv", "run", "pytest", "-q"]]
+
+
+def test_shell_targets_use_independent_bash_processes_in_order():
+    # 2026-09-09：TSA 把 .sh 交给 pytest，导致 shell 检查完全未执行。
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        PYTEST_COMMAND,
+        build_test_argv_batches,
+    )
+
+    assert build_test_argv_batches(
+        PYTEST_COMMAND,
+        [
+            "tests/test_a.py",
+            "tests/test one.sh",
+            "tests/test_two.sh",
+            "tests/test_b.py",
+        ],
+    ) == [
+        ["uv", "run", "pytest", "tests/test_a.py", "-q"],
+        ["bash", "--", "tests/test one.sh"],
+        ["bash", "--", "tests/test_two.sh"],
+        ["uv", "run", "pytest", "tests/test_b.py", "-q"],
+    ]
+
+
+def test_shell_command_uses_quoted_literal_path():
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import PYTEST_COMMAND
+
+    assert build_test_command(PYTEST_COMMAND, ["tests/test $HOME.sh"]) == (
+        "bash -- 'tests/test $HOME.sh'"
+    )
+
+
+def test_pytest_node_id_ending_in_sh_stays_with_pytest():
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        PYTEST_COMMAND,
+        build_test_argv_batches,
+    )
+
+    target = "tests/test_files.py::test_script.sh"
+    assert build_test_argv_batches(PYTEST_COMMAND, [target]) == [
+        ["uv", "run", "pytest", target, "-q"]
+    ]
+
+
+def test_shell_only_plan_does_not_claim_pytest_is_required():
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_verification import (
+        _build_verification_plan,
+    )
+
+    path = "tests/test_check.sh"
+    plan = _build_verification_plan([path], [path])
+    assert plan["verification_command"] == "bash -- tests/test_check.sh"
+    assert plan["test_required"] is True
+    assert plan["pytest_required"] is False
+    assert plan["pytest_command"] == ""
+
+
+def test_shell_target_still_has_a_command_length_budget():
+    import pytest
+
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        PYTEST_COMMAND,
+        build_test_argv_batches,
+    )
+
+    with pytest.raises(ValueError, match="TEST_TARGET_EXCEEDS_COMMAND_BUDGET"):
+        build_test_argv_batches(PYTEST_COMMAND, ["tests/" + "路径" * 4000 + ".sh"])
+
+
+def test_shell_only_cli_plan_executes_the_actual_script(tmp_path):
+    # 2026-09-09：用真实 CLI 和新仓库确认不会再返回 pytest 的空收集命令。
+    import json
+    import shlex
+    import subprocess
+    import sys
+
+    def run(argv):
+        return subprocess.run(
+            argv, cwd=tmp_path, capture_output=True, text=True, check=True
+        )
+
+    run(["git", "init", "-q"])
+    run(["git", "config", "user.email", "test@example.com"])
+    run(["git", "config", "user.name", "test"])
+    path = tmp_path / "tests/test_smoke.sh"
+    path.parent.mkdir()
+    path.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    run(["git", "add", "."])
+    run(["git", "-c", "commit.gpgsign=false", "commit", "-qm", "baseline"])
+    path.write_text(
+        "#!/usr/bin/env bash\nprintf shell-verified > receipt\n", encoding="utf-8"
+    )
+    response = run(
+        [
+            sys.executable,
+            "-m",
+            "tree_sitter_analyzer",
+            "--change-impact",
+            "--change-impact-full",
+            "--format",
+            "json",
+        ]
+    )
+    plan = json.loads(response.stdout)
+    assert plan["pytest_required"] is False
+    assert plan["test_required"] is True
+    run(shlex.split(plan["verification_command"]))
+    assert (tmp_path / "receipt").read_text(encoding="utf-8") == "shell-verified"
