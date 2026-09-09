@@ -95,12 +95,13 @@ def _test_argv(default_command: DefaultTestCommand, targets: list[str]) -> list[
 def _shell_test_argv(
     default_command: DefaultTestCommand, target: str
 ) -> list[str] | None:
-    """Python 项目的 shell 测试单独交给 Bash；保留 pytest 节点选择器语义。"""
+    """shell 测试交给 Bash，Python 项目保留 uv 环境与 pytest 节点语义。"""
     file_part, separator, _ = target.partition("::")
     if separator and Path(file_part).suffix.lower() == ".py":
         return None
-    if default_command.runner == "pytest" and Path(target).suffix.lower() == ".sh":
-        return ["uv", "run", "bash", "--", target]
+    if Path(target).suffix.lower() == ".sh":
+        prefix = ["uv", "run"] if default_command.runner == "pytest" else []
+        return [*prefix, "bash", "--", target]
     return None
 
 
@@ -191,7 +192,7 @@ def _node_test_command(root: Path) -> DefaultTestCommand:
 
 def join_verification_steps(steps: list[str]) -> str:
     """组合内部 POSIX 引用的命令；Windows 使用 PowerShell 5.1 的失败即停语法。"""
-    if sys.platform == "win32" and len(steps) > 1:
+    if sys.platform == "win32" and (len(steps) > 1 or (steps and "'" in steps[0])):
         return _powershell_verification_steps(steps)
     return " && ".join(steps)
 
