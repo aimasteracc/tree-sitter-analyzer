@@ -204,7 +204,7 @@ tree-sitter-analyzer --safe-to-edit <file>        # 风险时拒绝
                        MCP 客户端 / CLI 消费者
 ```
 
-索引首次查询时懒构建，文件变更时通过内容哈希增量刷新（`index` action=sync）。所有 8 个工具共享同一份 `.ast-cache/`，查询与跟进调用共享工作量。
+这 8 个 MCP 工具提供索引查询和直接源代码分析。在查询索引中的符号或上下文前，先运行 `tree-sitter-analyzer --ast-cache --ast-cache-mode index --format json` 建立 AST 索引。源文件变更后使用 `index` action=sync 更新。索引查询复用已有 AST 数据；是否自动建索引取决于具体工具。
 
 ---
 
@@ -352,7 +352,7 @@ uv run python check_quality.py --new-code-only  # 质量闸门
 | `.swift / .kt / .rb / .php / .cs` 显示 `unsupported language` | 升级到 ≥ 1.12.x — 5 语言 gap 已在 commit `50e99a8f` 中修复。extras 门控语言的语法模块不随基础安装捆绑;运行 `pip install "tree-sitter-analyzer[swift]"`(或 `kotlin`、`ruby`、`php`、`csharp`)补装 |
 | MCP 服务在客户端中不出现 | `TREE_SITTER_PROJECT_ROOT` 必须是**绝对路径**；编辑配置后重启客户端。另见 [TREE\_SITTER\_PROJECT\_ROOT 使用了相对路径](#tree_sitter_project_root-使用了相对路径) |
 | `database is locked` | 关闭其他占用 `.ast-cache/index.db` 的进程；持续存在则 `rm -rf .ast-cache && tree-sitter-analyzer --autoindex` |
-| 首次调用慢 | 首次调用会建索引。后续亚秒。预先跑 `--full-index` 即可分摊 |
+| 首次调用慢或提示缺少索引 | 部分工具会自动建索引；可在索引查询前先运行 `--full-index`。 |
 | Agent 选错工具 | 使用 `tsa-*` skill（`/tsa-graph`、`/tsa-find` 等）— 每个 skill 把可见工具限定到一个工作流 |
 
 ### TREE\_SITTER\_PROJECT\_ROOT 使用了相对路径
