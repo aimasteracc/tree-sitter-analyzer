@@ -394,39 +394,56 @@ class HealthScorer:
         hotspots: dict[str, float | None] = {}
         hotspot_token = _PROJECT_HOTSPOT_SCORES.set(hotspots)
         try:
-            from concurrent.futures import ThreadPoolExecutor
+            from concurrent.futures import ThreadPoolExecutor, as_completed
 
             files, pruned_directories = self._iter_source_files(root)
-            cold_paths = [
+            file_order = {str(path): index for index, path in enumerate(files)}
+            cold_paths = {
                 str(f)
                 for f in files
                 if not self._is_excluded(f, root)
                 and (cache is None or cache.lookup(str(f)) is None)
-            ]
-            # 保留逐路径 git log 的合并历史语义，仅限制并发查询数量。
-            with ThreadPoolExecutor(max_workers=4) as pool:
-                hotspots.update(
-                    zip(
-                        cold_paths, pool.map(score_git_hotspot, cold_paths), strict=True
-                    )
-                )
-            for f in files:
-                scanned += 1
-                if self._is_excluded(f, root):
-                    excluded_files += 1
-                    continue
-                score = self._score_file_with_cache(str(f), cache)
+            }
+
+            def collect(path: str) -> None:
+                nonlocal scoring_failed
+                score = self._score_file_with_cache(path, cache)
                 if score is None:
                     scoring_failed += 1
-                    continue
-                results.append(score)
+                else:
+                    results.append(score)
+
+            # 逐路径历史查询与评分流水执行，已就绪文件不等待全部历史完成。
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                try:
+                    pending = {
+                        pool.submit(score_git_hotspot, str(path)): str(path)
+                        for path in files
+                        if str(path) in cold_paths
+                    }
+                    for f in files:
+                        scanned += 1
+                        if self._is_excluded(f, root):
+                            excluded_files += 1
+                            continue
+                        path = str(f)
+                        if path not in cold_paths:
+                            collect(path)
+                    for future in as_completed(pending):
+                        path = pending[future]
+                        hotspots[path] = future.result()
+                        collect(path)
+                finally:
+                    # 也取消已入队但尚未登记的任务，并等待已启动查询退出。
+                    pool.shutdown(wait=True, cancel_futures=True)
         finally:
             _PROJECT_HOTSPOT_SCORES.reset(hotspot_token)
             _PROJECT_DEPENDENCY_GRAPHS.reset(graph_token)
             if cache is not None:
                 cache.close()
 
-        results.sort(key=lambda r: r.total, reverse=True)
+        # 就绪顺序只影响执行；同分文件仍按原始枚举顺序返回。
+        results.sort(key=lambda r: (-r.total, file_order[r.file_path]))
         stats: dict[str, Any] = {
             "total_files_scanned": scanned,
             "total_files_scored": len(results),

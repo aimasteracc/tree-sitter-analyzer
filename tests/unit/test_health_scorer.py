@@ -1247,11 +1247,12 @@ def test_project_git_prefetch_preserves_warm_hits_and_resets_scope(
     assert calls == [str(target)] * 3
 
 
+@pytest.mark.parametrize("interrupt_at", ["query", "submit"])
 def test_project_git_prefetch_cancels_queued_queries_on_interrupt(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, interrupt_at
 ):
-    """中断后取消未启动的查询，并等待已经启动的工作退出。"""
-    # 2026-09-08：以实际首次调用触发中断，不假定文件枚举顺序。
+    """查询或提交中断后取消排队任务，并回收已启动工作及恢复上下文。"""
+    # 2026-09-09：submit 已入队但未返回时，中断也必须取消未登记任务。
     import concurrent.futures
     import threading
 
@@ -1259,23 +1260,38 @@ def test_project_git_prefetch_cancels_queued_queries_on_interrupt(
 
     futures = []
     release = threading.Event()
+    started = threading.Event()
     lock = threading.Lock()
     calls = 0
+    outer_graphs = health._PROJECT_DEPENDENCY_GRAPHS.get()
+    outer_hotspots = health._PROJECT_HOTSPOT_SCORES.get()
 
     class ObservedPool(concurrent.futures.ThreadPoolExecutor):
         def submit(self, *args, **kwargs):
             future = super().submit(*args, **kwargs)
             futures.append(future)
+            if interrupt_at == "submit" and len(futures) == 9:
+                assert started.wait(timeout=3)
+                # 第九个任务已入队，但调用方尚未收到并登记它的 future。
+                raise KeyboardInterrupt("cancel prefetch")
             return future
+
+        def shutdown(self, wait=True, *, cancel_futures=False):
+            # 先执行真实取消，再释放工作线程，避免用休眠制造调度竞态。
+            super().shutdown(wait=False, cancel_futures=cancel_futures)
+            release.set()
+            super().shutdown(wait=wait, cancel_futures=cancel_futures)
 
     def query(*args):
         nonlocal calls
         with lock:
             calls += 1
             first = calls == 1
-        if first:
+            if calls == 4:
+                started.set()
+        if interrupt_at == "query" and first:
             raise KeyboardInterrupt("cancel prefetch")
-        release.wait(timeout=0.1)
+        assert release.wait(timeout=3)
         return 100.0
 
     for index in range(40):
@@ -1284,7 +1300,52 @@ def test_project_git_prefetch_cancels_queued_queries_on_interrupt(
     monkeypatch.setattr(health, "calculate_git_hotspot", query)
     with pytest.raises(KeyboardInterrupt, match="cancel prefetch"):
         health.HealthScorer().score_project_with_stats(str(tmp_path), use_cache=False)
-    assert len(futures) == 40
+    assert len(futures) == (9 if interrupt_at == "submit" else 40)
     # 调度顺序决定取消数量；不变量是存在取消且没有未结束的任务。
     assert any(f.cancelled() for f in futures)
     assert all(f.done() for f in futures)
+    if interrupt_at == "submit":
+        assert calls == 4
+        assert sum(f.cancelled() for f in futures) == 5
+        assert futures[-1].cancelled()
+    assert health._PROJECT_DEPENDENCY_GRAPHS.get() is outer_graphs
+    assert health._PROJECT_HOTSPOT_SCORES.get() is outer_hotspots
+
+
+@pytest.mark.parametrize("ready_index", [0, 3])
+def test_project_health_stores_ready_scores_before_remaining_git_queries_finish(
+    tmp_path, monkeypatch, ready_index
+):
+    """2026-09-09：慢历史查询不能阻止已就绪文件评分与发布缓存。"""
+    import threading
+
+    from tree_sitter_analyzer import health_scorer as health
+    from tree_sitter_analyzer.registry.health_score_cache import HealthScoreCache
+
+    files = [tmp_path / f"f{index}.py" for index in range(4)]
+    for path in files:
+        path.write_text("value=1\n", encoding="utf-8")
+    stored = threading.Event()
+    observed = []
+    original_store = HealthScoreCache.store
+
+    def store(self, score, **kwargs):
+        result = original_store(self, score, **kwargs)
+        if score.file_path == str(files[ready_index]):
+            stored.set()
+        return result
+
+    def query(path, low, high):
+        if path != str(files[ready_index]):
+            observed.append(stored.wait(timeout=3))
+        return 100.0
+
+    monkeypatch.setattr(HealthScoreCache, "store", store)
+    monkeypatch.setattr(health, "calculate_git_hotspot", query)
+    monkeypatch.setattr(
+        health.HealthScorer, "_iter_source_files", lambda *_: (files, 0)
+    )
+    scores, stats = health.HealthScorer().score_project_with_stats(str(tmp_path))
+    assert observed == [True, True, True]
+    assert len(scores) == stats["total_files_scored"] == 4
+    assert [score.file_path for score in scores] == [str(path) for path in files]
