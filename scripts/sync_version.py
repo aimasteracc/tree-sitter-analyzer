@@ -9,6 +9,12 @@ It reads the version from pyproject.toml and updates all other locations.
 import re
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING or __package__:
+    from .sync_version_minimal import update_registry_version
+else:
+    from sync_version_minimal import update_registry_version
 
 
 class VersionSynchronizer:
@@ -102,6 +108,12 @@ class VersionSynchronizer:
         print(f"Synchronizing all versions to: {target_version}")
 
         updated_files = []
+        registry_changed, registry_message = update_registry_version(
+            target_version, project_root=self.project_root
+        )
+        print(registry_message)
+        if registry_changed:
+            updated_files.append("server.json")
 
         for file_name, patterns in self.version_patterns.items():
             file_path = self.project_root / file_name
@@ -121,6 +133,12 @@ class VersionSynchronizer:
         print(f"Checking version consistency (reference: {current_version})")
 
         inconsistent_files = []
+        registry_changed, registry_message = update_registry_version(
+            current_version, check_only=True, project_root=self.project_root
+        )
+        print(registry_message)
+        if registry_changed:
+            inconsistent_files.append("server.json")
 
         for file_name, patterns in self.version_patterns.items():
             file_path = self.project_root / file_name
