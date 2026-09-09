@@ -151,7 +151,11 @@ jobs:
           pytest-output.txt --nodeids-output windows-budget-retry.txt; then
           exit "$test_status"
         fi
-        mapfile -t retry_nodeids < windows-budget-retry.txt
+        # macOS 自带 Bash 3 不支持 mapfile；逐行保留节点中的空格、反斜杠和通配符。
+        retry_nodeids=()
+        while IFS= read -r nodeid; do
+          retry_nodeids+=("$nodeid")
+        done < windows-budget-retry.txt
         echo "Runner degradation suspected ($RUNNER_OS); retrying budget-only failures once."
         uv run pytest "${retry_nodeids[@]}" -n auto -q --tb=short --maxfail=200
       shell: bash
@@ -286,7 +290,11 @@ jobs:
           pytest-output.txt --nodeids-output windows-budget-retry.txt; then
           exit "$test_status"
         fi
-        mapfile -t retry_nodeids < windows-budget-retry.txt
+        # macOS 自带 Bash 3 不支持 mapfile；逐行保留节点中的空格、反斜杠和通配符。
+        retry_nodeids=()
+        while IFS= read -r nodeid; do
+          retry_nodeids+=("$nodeid")
+        done < windows-budget-retry.txt
         echo "Runner degradation suspected ($RUNNER_OS); retrying budget-only failures once."
         uv run pytest "${retry_nodeids[@]}" -n auto -q --tb=short --maxfail=200
       shell: bash
