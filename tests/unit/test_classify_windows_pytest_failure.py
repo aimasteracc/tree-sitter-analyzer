@@ -167,7 +167,11 @@ test_status=1
         [bash, "--noprofile", "--norc", "-e", "-c", prefix + command],
         cwd=tmp_path,
         capture_output=True,
-        env={**os.environ, "TSA_TEST_PYTHON": sys.executable, "RUNNER_OS": "test"},
+        env={
+            **os.environ,
+            "TSA_TEST_PYTHON": Path(sys.executable).as_posix(),
+            "RUNNER_OS": "test",
+        },
     )
     assert result.returncode == (0 if budget_only else 1), result.stderr
     receipt = tmp_path / "retry-argv.bin"
