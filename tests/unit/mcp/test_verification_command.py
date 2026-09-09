@@ -274,7 +274,8 @@ def test_argv_batches_preserve_default_runner_semantics():
     ) == [["uv", "run", "pytest", "-q"]]
 
 
-def test_shell_targets_use_independent_bash_processes_in_order():
+def test_posix_shell_targets_use_independent_bash_processes_in_order(monkeypatch):
+    monkeypatch.setattr("sys.platform", "linux")
     # 2026-09-09：TSA 把 .sh 交给 pytest，导致 shell 检查完全未执行。
     from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
         PYTEST_COMMAND,
@@ -297,7 +298,8 @@ def test_shell_targets_use_independent_bash_processes_in_order():
     ]
 
 
-def test_shell_command_uses_quoted_literal_path():
+def test_posix_shell_command_uses_quoted_literal_path(monkeypatch):
+    monkeypatch.setattr("sys.platform", "linux")
     from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
         PYTEST_COMMAND,
         join_verification_steps,
@@ -327,7 +329,7 @@ def test_shell_only_plan_does_not_claim_pytest_is_required():
 
     path = "tests/test_check.sh"
     plan = _build_verification_plan([path], [path])
-    assert plan["verification_command"] == "uv run bash -- tests/test_check.sh"
+    assert plan["verification_command"] == build_test_command(PYTEST_COMMAND, [path])
     assert plan["test_required"] is True
     assert plan["pytest_required"] is False
     assert plan["pytest_command"] == ""
@@ -405,27 +407,23 @@ def test_shell_only_cli_plan_executes_the_actual_script(tmp_path, project_kind):
 
 
 @pytest.mark.parametrize("runner", ["npm", "pnpm", "yarn", "bun"])
-def test_node_shell_targets_bypass_the_package_test_runner(runner):
+def test_node_shell_targets_bypass_the_package_test_runner(runner, monkeypatch):
     """Node 的 shell 检查也必须由 Bash 执行，不能传入 Jest/Vitest。"""
     default = DefaultTestCommand(runner, f"{runner} test")
-    import shutil
-    import sys
-
-    executable = shutil.which("bash") if sys.platform == "win32" else "bash"
+    monkeypatch.setattr("sys.platform", "linux")
     assert build_test_argv_batches(default, ["tests/test_smoke.sh"]) == [
-        [executable, "--", "tests/test_smoke.sh"]
+        ["bash", "--", "tests/test_smoke.sh"]
     ]
 
 
-def test_single_shell_target_uses_powershell_literal_quoting(monkeypatch):
-    """单条 shell 命令中的撇号和美元符号也按 PowerShell 字面量传递。"""
+def test_windows_shell_argument_protects_msys_literal_path(monkeypatch):
+    """完整命令的外层引用与 Bash 内层引用共同保留撇号和美元符号。"""
     from tree_sitter_analyzer.mcp.tools.utils import verification_command as module
 
     monkeypatch.setattr(module.sys, "platform", "win32")
-    assert module.build_test_command(PYTEST_COMMAND, ["tests/a'b$HOME.sh"]) == (
-        "& { & 'uv' 'run' 'bash' '--' 'tests/a''b$HOME.sh'; "
-        "if (-not $?) { throw 'Verification failed' } }"
-    )
+    assert module.build_test_argv_batches(PYTEST_COMMAND, ["tests/a'b$HOME.sh"]) == [
+        ["uv", "run", "bash", "-c", "exec bash -- 'tests/a'\\''b$HOME.sh'"]
+    ]
 
 
 @pytest.mark.parametrize("bash_path", ["C:/Program Files/Git/bin/bash.exe", None])
@@ -445,5 +443,5 @@ def test_windows_node_shell_resolves_the_path_executable(monkeypatch, bash_path)
             build_test_argv_batches(default, ["tests/test_smoke.sh"])
     else:
         assert build_test_argv_batches(default, ["tests/test_smoke.sh"]) == [
-            [bash_path, "--", "tests/test_smoke.sh"]
+            [bash_path, "-c", "exec bash -- 'tests/test_smoke.sh'"]
         ]

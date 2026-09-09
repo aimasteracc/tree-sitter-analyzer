@@ -108,6 +108,10 @@ def _shell_test_argv(
             executable = shutil.which("bash") or ""
             if not executable:
                 raise ValueError("BASH_EXECUTABLE_NOT_FOUND")
+        if sys.platform == "win32":
+            # MSYS 会剥掉原生未引用参数中的撇号；整条含空格命令获得外层引用。
+            quoted_target = "'" + target.replace("'", "'\\''") + "'"
+            return [*prefix, executable, "-c", f"exec bash -- {quoted_target}"]
         return [*prefix, executable, "--", target]
     return None
 
