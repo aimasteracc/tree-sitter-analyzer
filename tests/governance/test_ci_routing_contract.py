@@ -289,6 +289,8 @@ def test_docs_check_fetches_history_for_contract_subjects() -> None:
     checkout_end = docs_job.index("\n      - name:", checkout_start)
     checkout_step = docs_job[checkout_start:checkout_end]
     assert checkout_step.splitlines().count("          fetch-depth: 0") == 1
+    # 2026-09-09：PR #1430 的文档门禁遗漏声明注册表扫描，直到完整矩阵才发现漂移。
+    assert "tests/unit/test_claim_registry.py" in docs_job
 
 
 def test_dogfood_reads_complete_pr_diff_instead_of_output_files(tmp_path: Path) -> None:
