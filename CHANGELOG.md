@@ -1,8 +1,34 @@
 # Changelog
 
-## [1.29.5] - 2026-09-08
+## [Unreleased]
 
-**Develop merge-back:** retains all three published routes alongside existing preview-only planning and snapshot controls. Develop uses JSON-only output, exposes 355 CLI flags / 86 facade actions, and keeps its newer extractor version 39; the main-release details below describe the v1.29.5 release baseline.
+These changes describe develop relative to published v1.29.5. A release version
+has not been assigned here; older sections retain their published behavior.
+
+### Changed
+
+- MCP and CLI machine-readable output is JSON-only. Remove TOON decoders from clients; retain the structured response envelope. Table rendering supports `full` and `signatures`; legacy `compact` and `csv` table modes are removed.
+- Internal project file discovery and live symbol tracing use native discovery and a bounded Python source-scanning worker. This does not remove the remaining public fd/ripgrep wrappers or establish throughput parity.
+- Develop retains the published `edit.rename`, `health.unreachable`, and `health.middleware` routes alongside preview-only planning and process-local snapshot controls. Its current surface is 356 unique long CLI flags, 87 facade actions, and seven console scripts; extractor version 39 is retained.
+- Intent aliases `locate_usage` / `find_usage` now route to symbol search, and `find_impacted_code` routes to AST queries. These are code-intelligence routes, not arbitrary text-search equivalents.
+
+### Removed
+
+- `search.content` / legacy `search_content` / `search-content`, and `search.grep` / legacy `find_and_grep` / `find-and-grep`. For arbitrary text and file search, use the host's search tools or a suitable search program directly.
+
+### Fixed
+
+- Semantic chain queries distinguish unprocessable input, unavailable indexes and backend failures from a successful search with no matches.
+- Generated verification plans execute mapped shell tests with Bash, preserve project environments, and quote Windows shell arguments safely.
+
+### Migration
+
+See [the migration guide](docs/MIGRATION.md) for JSON, removed wrappers and current
+legacy-name mappings. `search.batch`, `project.files`, `project.tools`, `list-files`
+and `--check-tools` remain available. Further retirement and optional rg/fd
+integration remain separate proposals; neither is enabled by these notes.
+
+## [1.29.5] - 2026-09-08
 
 Hotfix for symbol extraction, safe Python renaming, and missing MCP/CLI routes.
 
@@ -90,28 +116,6 @@ Hotfix: index robustness and storage hygiene, from the 2026-09-05 agent dogfood 
 
 - AGENTS.md: new 注释语言规范 section — all new/modified code comments and docstrings in Chinese (leader ruling 2026-09-05).
 
-
-## [Unreleased] - search_content / find_and_grep 廃止
-
-### Removed
-
-- **`search_content` (SearchContentTool)**: 廃止・削除。テキストグレップには CC 組み込みの Grep tool を使用すること。
-- **`find_and_grep` (FindAndGrepTool)**: 廃止・削除。ファイル絞り込み + テキスト検索には CC 組み込みの Glob tool + Grep tool (2ステップ) を使用すること。
-- **Intent aliases の更新**:
-  - `locate_usage` / `find_usage` → `"search"` (search action=symbol) にルーティング変更
-  - `find_impacted_code` → `"query"` (query_code) にルーティング変更
-
-### Migration
-
-```
-旧: search_content(query="class Foo")
-新: CC 組み込み Grep tool で "class Foo" を検索
-
-旧: find_and_grep(pattern="*.py", query="class Foo")
-新: CC 組み込み Glob tool で *.py を取得 → Grep tool で "class Foo" を検索
-```
-
----
 
 ## [1.29.0] - 2026-07-04
 
@@ -1318,7 +1322,10 @@ in `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md`.
 - **ruff clean** across the whole repo.
 - **100 % coverage on the 5-language unblock regression suite**.
 
-## [Unreleased]
+## Historical development notes (release attribution unrecorded)
+
+These pre-existing notes are retained as historical context, not as changes awaiting
+the current release. Their original release attribution was not recorded here.
 
 ### Fixed
 
@@ -2545,9 +2552,6 @@ These languages are fully integrated into CLI, API, and MCP interfaces with prop
 ### 📚 Documentation
 - **Test Guide Added**: Documented golden master testing best practices
 - **Multi-language README Updates**: Synchronized version info and test counts
-
-## [Unreleased]
-
 
 ## [1.9.5] - 2025-11-06
 

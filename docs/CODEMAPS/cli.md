@@ -1,7 +1,7 @@
 <!-- Generated: 2026-05-22; doc-code re-sync: 2026-08-19 -->
 # CLI Codemap
 
-Five console-script entry points + flag-based dispatch through `cli_main.py`.
+Seven console-script entry points + flag-based dispatch through `cli_main.py`.
 
 ## Entry Points
 
@@ -9,11 +9,16 @@ Five console-script entry points + flag-based dispatch through `cli_main.py`.
 |---|---|---|
 | `tree-sitter-analyzer` | `cli_main.py` | `json` |
 | `tree-sitter-analyzer-mcp` | `mcp/server.py` (stdio) | `json` |
-| ~~`find-and-grep`~~ | *(廃止済み)* | — |
+| `tree-sitter-analyzer-doctor` | `cli_main.py:main_doctor` | text; `--doctor-json` for JSON |
+| `miswire-audit` | `miswire_audit.py` | text; `--card` adds Markdown |
+| `code-analyzer` | `cli_main.py` (alias) | `json` |
+| `java-analyzer` | `cli_main.py` (alias) | `json` |
 | `list-files` | `cli/commands/list_files_cli.py` | `json` |
-| ~~`search-content`~~ | *(廃止済み)* | — |
 
-All output formats are JSON. TOON has been removed.
+MCP and CLI machine-readable envelopes use JSON. Human-readable CLI paths remain
+as documented below; TOON has been removed. The `search-content` and
+`find-and-grep` console scripts are removed on develop. `list-files`, batch search
+and external-tool checks remain available; see the [migration guide](../MIGRATION.md).
 
 ## Command Modules
 
@@ -27,9 +32,7 @@ cli/commands/
 ├── structure_command.py        ← --table full
 ├── summary_command.py          ← --summary
 ├── table_command.py            ← table rendering helpers
-├── find_and_grep_cli.py        ← fd + ripgrep subcommands (廃止済み)
 ├── list_files_cli.py           ← `list-files` subcommand
-├── search_content_cli.py       ← `search-content` subcommand (廃止済み)
 ├── mcp_commands/               ← MCP-equivalent CLI flags (parity contract; package)
 └── codegraph_index_commands.py ← cache commands: autoindex / full-index / incremental-sync / metrics / knowledge graph index
 ```
@@ -84,7 +87,7 @@ Categories of CLI surface:
 - `--detect-routes` — framework route detection
 
 ### Cache & Index
-- `--ast-cache index|stats|lookup|invalidate` — AST cache ops (project index default cap: 20k files)
+- `--ast-cache --ast-cache-mode index|stats|lookup|search|sync|changes|watch_start|watch_stop|watch_status|invalidate` — AST cache ops (project index default cap: 20k files)
 - `--ast-cache-include-activation` — opt in to slower temporal git activation during project indexing
 - `--autoindex [--autoindex-mode status|warm|reset]` — transparent auto-index
 - `--full-index [--full-index-mode rebuild|stats|clear]` — one-shot complete index (default cap: 20k files)
@@ -136,7 +139,6 @@ Categories of CLI surface:
 | `json` | All outputs | jq-pipe friendly, human-readable |
 | `text` | `--output-format text` | human-readable output for legacy text paths |
 | `table` | `--table` flag | Box-drawing chars, terminal only |
-| `csv` | `--table csv` | spreadsheet ingestion |
 
 `--format` is intentionally narrower than `--output-format` and `--table`:
 use `--format json` for agent envelopes, `--output-format text` for the
