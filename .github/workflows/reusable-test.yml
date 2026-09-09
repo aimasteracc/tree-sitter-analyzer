@@ -99,6 +99,12 @@ jobs:
       run: uv run pytest -q
       shell: bash
 
+    - name: Check Windows verification command execution
+      if: runner.os == 'Windows'
+      timeout-minutes: 3
+      run: uv run pytest tests/unit/mcp/test_verification_command.py -q --reruns 0 --tb=long
+      shell: bash
+
     - name: Run Tests with Coverage
       if: matrix.coverage
       id: test-coverage
@@ -227,6 +233,12 @@ jobs:
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
       timeout-minutes: 5
       run: uv run pytest -q
+      shell: bash
+
+    - name: Check Windows verification command execution
+      if: runner.os == 'Windows'
+      timeout-minutes: 3
+      run: uv run pytest tests/unit/mcp/test_verification_command.py -q --reruns 0 --tb=long
       shell: bash
 
     - name: Run Tests with Coverage

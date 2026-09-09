@@ -357,7 +357,11 @@ def test_shell_only_cli_plan_executes_the_actual_script(tmp_path, project_kind):
         result = subprocess.run(
             argv, cwd=tmp_path, capture_output=True, text=True, check=False
         )
-        assert result.returncode == 0, (argv, result.stdout, result.stderr)
+        if result.returncode:
+            print("command:", argv)
+            print("stdout:", result.stdout)
+            print("stderr:", result.stderr)
+        assert result.returncode == 0
         return result
 
     if project_kind == "node":
