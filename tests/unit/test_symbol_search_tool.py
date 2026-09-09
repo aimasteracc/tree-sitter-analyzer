@@ -684,6 +684,9 @@ async def test_empty_index_does_not_claim_symbol_absence(tmp_path, indexed):
         )
         if not indexed:
             assert result["error_code"] == "INDEX_NOT_READY"
+            assert result["error_type"] == "validation"
+            assert result["recovery_hint"] == result["next_step"]
+            assert result["agent_summary"]["next_step"] == result["next_step"]
             assert result["results"] == []
             assert "--ast-cache-mode index" in result["next_step"]
     finally:

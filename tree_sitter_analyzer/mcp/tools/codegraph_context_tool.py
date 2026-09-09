@@ -299,12 +299,7 @@ class CodeGraphContextTool(BaseMCPTool):
         if not entry_points:
             from ..utils.auto_index_guard import empty_index_diagnostic
 
-            diagnostic = empty_index_diagnostic(self._get_cache())
-            result.update(diagnostic)
-            if diagnostic:
-                result["agent_summary"].update(
-                    verdict="ERROR", next_step=diagnostic["next_step"]
-                )
+            result.update(empty_index_diagnostic(self._get_cache()))
 
         from ..utils.format_helper import apply_output_format_to_response
 

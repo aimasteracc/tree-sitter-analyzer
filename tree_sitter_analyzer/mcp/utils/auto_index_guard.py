@@ -195,13 +195,24 @@ def empty_index_diagnostic(cache: Any) -> dict[str, Any]:
     ).fetchone()[0]
     if populated or _call_graph_marker_is_current(cache):
         return {}
+    next_step = (
+        "From the project root, run tree-sitter-analyzer --ast-cache "
+        "--ast-cache-mode index --format json, or call index action=cache mode=index "
+        "for the bound project, then retry the query."
+    )
     return {
         "success": False,
         "verdict": "ERROR",
+        "error_type": "validation",
         "error_code": "INDEX_NOT_READY",
         "error": "INDEX_NOT_READY: No indexed files or completed indexing run. "
         "An empty lookup cannot establish that the requested symbol is absent.",
-        "next_step": "From the project root, run tree-sitter-analyzer --ast-cache "
-        "--ast-cache-mode index --format json, or call index action=cache mode=index "
-        "for the bound project, then retry the query.",
+        "next_step": next_step,
+        "recovery_hint": next_step,
+        "suggested_tool": "index action=cache mode=index",
+        "agent_summary": {
+            "verdict": "ERROR",
+            "summary_line": "INDEX_NOT_READY: Build the index before querying symbols.",
+            "next_step": next_step,
+        },
     }
