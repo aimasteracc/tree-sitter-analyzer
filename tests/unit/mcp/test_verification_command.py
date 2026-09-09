@@ -284,8 +284,8 @@ def test_shell_targets_use_independent_bash_processes_in_order():
         ],
     ) == [
         ["uv", "run", "pytest", "tests/test_a.py", "-q"],
-        ["bash", "--", "tests/test one.sh"],
-        ["bash", "--", "tests/test_two.sh"],
+        ["uv", "run", "bash", "--", "tests/test one.sh"],
+        ["uv", "run", "bash", "--", "tests/test_two.sh"],
         ["uv", "run", "pytest", "tests/test_b.py", "-q"],
     ]
 
@@ -294,7 +294,7 @@ def test_shell_command_uses_quoted_literal_path():
     from tree_sitter_analyzer.mcp.tools.utils.verification_command import PYTEST_COMMAND
 
     assert build_test_command(PYTEST_COMMAND, ["tests/test $HOME.sh"]) == (
-        "bash -- 'tests/test $HOME.sh'"
+        "uv run bash -- 'tests/test $HOME.sh'"
     )
 
 
@@ -317,7 +317,7 @@ def test_shell_only_plan_does_not_claim_pytest_is_required():
 
     path = "tests/test_check.sh"
     plan = _build_verification_plan([path], [path])
-    assert plan["verification_command"] == "bash -- tests/test_check.sh"
+    assert plan["verification_command"] == "uv run bash -- tests/test_check.sh"
     assert plan["test_required"] is True
     assert plan["pytest_required"] is False
     assert plan["pytest_command"] == ""
@@ -356,7 +356,8 @@ def test_shell_only_cli_plan_executes_the_actual_script(tmp_path):
     run(["git", "add", "."])
     run(["git", "-c", "commit.gpgsign=false", "commit", "-qm", "baseline"])
     path.write_text(
-        "#!/usr/bin/env bash\nprintf shell-verified > receipt\n", encoding="utf-8"
+        '#!/usr/bin/env bash\npython -c \'print("shell-verified", end="")\' > receipt\n',
+        encoding="utf-8",
     )
     response = run(
         [

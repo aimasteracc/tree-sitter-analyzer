@@ -100,7 +100,7 @@ def _shell_test_argv(
     if separator and Path(file_part).suffix.lower() == ".py":
         return None
     if default_command.runner == "pytest" and Path(target).suffix.lower() == ".sh":
-        return ["bash", "--", target]
+        return ["uv", "run", "bash", "--", target]
     return None
 
 
