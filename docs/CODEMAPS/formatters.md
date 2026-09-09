@@ -1,17 +1,26 @@
 <!-- Generated: 2026-05-30; doc-code re-sync: 2026-06-17 -->
 # Formatters Codemap
 
-Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/formatters/`.
+JSON response formatting and explicit terminal views. Located in
+`tree_sitter_analyzer/formatters/`; a language formatter name describes its input
+language, not an additional MCP or CLI wire encoding.
 
 ## Format Registry
 
 | Format | Module | Default for | Use case |
 |---|---|---|---|
-| `json` | `formatters/json_formatter.py` | **MCP + CLI** | Canonical structured response format; `jq`-friendly programmatic ingestion |
-| `table` | `formatters/table_formatter.py` (canonical, re-exports `LegacyTableFormatter`) + `tree_sitter_analyzer/default_table_formatter.py` + `legacy_table_formatter.py` | `--table` flag | Terminal viewing with box-drawing chars |
-| `csv` | via `tree_sitter_analyzer/_legacy_table_formatter_csv.py` | `--table csv` | Spreadsheet ingestion |
-| `signatures` | `formatters/_java_formatter_signatures_mixin.py` (Java); `formatters/_python_formatter_signatures_table.py` (Python); `formatters/_typescript_formatter_signatures_table.py` (TypeScript); `default_table_formatter.py` (fallback) | `--table signatures` | Lightweight method-directory for large files — ~25-80% of full tokens; agent-first, then `--partial-read` for bodies |
-| `yaml` | `formatters/yaml_formatter.py` | explicit `--format yaml` | Human-readable structured |
+| `json` | Standard JSON serialization; `mcp/server_utils/tool_registration.py` serializes MCP results | **MCP + CLI** | Canonical structured response format; `jq`-friendly programmatic ingestion |
+| `full` table | `formatters/table_formatter.py` (canonical, re-exports `LegacyTableFormatter`) + `tree_sitter_analyzer/default_table_formatter.py` + `legacy_table_formatter.py` | `--table full` | Terminal structure view |
+| `signatures` | `formatters/_java_formatter_signatures_mixin.py` (Java); `formatters/_python_formatter_signatures_table.py` (Python); `formatters/_typescript_formatter_signatures_table.py` (TypeScript); `default_table_formatter.py` (fallback) | `--table signatures` | Method directory; use `--partial-read` for bodies |
+
+The generic `FormatterRegistry` registers exactly `json` and `full`; these
+`CodeElement` formatters are separate from the language-specific table registry.
+The main CLI accepts only `--format json` and `--table {full,signatures}`.
+Command-specific `--output-format` also permits `text`; CSV, YAML, and compact
+are not CLI format choices.
+`formatters/json_formatter.py` and `formatters/yaml_formatter.py` format analysis
+of JSON and YAML source files respectively; the latter does not provide a
+`--format yaml` response encoding.
 
 ## Why JSON for MCP and CLI?
 
@@ -32,12 +41,11 @@ Interfaces live in `formatters/_formatter_interface.py` (no upward imports — b
 
 | Interface | Implementors | Purpose |
 |---|---|---|
-| `IFormatter` | `HtmlFormatter`, `JsonFormatter`, `CsvFormatter`, … | `format(elements)` → str |
+| `IFormatter` | `HtmlFormatter`, `JsonFormatter`, `FullFormatter`, … | `format(elements)` → str |
 | `IStructureFormatter` | legacy adapters | `format_structure(dict)` → str |
 
 `formatters/formatter_registry.py` re-exports both for backward compat.
-Generic `CodeElement` implementations (`JsonFormatter`, `CsvFormatter`,
-`FullFormatter`, and `CompactFormatter`) live in
+Generic `CodeElement` implementations (`JsonFormatter` and `FullFormatter`) live in
 `formatters/_builtin_formatters.py`; the registry remains their stable import
 facade. `formatters/_language_formatter_registration.py` owns bundled-language
 registration and defers only the legacy default formatter during circular
@@ -48,7 +56,7 @@ the language-specific registry.
 
 ## Formatter Architecture
 
-Each formatter inherits from `formatters/base_formatter.py`:
+Language formatters use `formatters/base_formatter.py`:
 
 ```python
 class BaseFormatter(ABC):
@@ -59,10 +67,9 @@ class BaseFormatter(ABC):
     def format_table(self, ...) -> str: ...
 
 class BaseTableFormatter(BaseFormatter):
-    # table-flavour helpers live here, not on BaseFormatter
+    # 表格辅助方法位于此处；紧凑摘要方法仅为子类兼容保留。
     def _format_full_table(self, ...) -> str: ...
     def _format_compact_table(self, ...) -> str: ...
-    def _format_csv(self, ...) -> str: ...
 ```
 
 Per-language formatter mixins live alongside (`_java_formatter_*_mixin.py`,
@@ -70,16 +77,17 @@ Per-language formatter mixins live alongside (`_java_formatter_*_mixin.py`,
 classes via Python's MRO.
 
 Standalone per-language formatters (self-contained, no mixin composition):
-- `formatters/go_formatter.py` — `GoTableFormatter`; full/compact/csv/json; renders
+- `formatters/go_formatter.py` — `GoTableFormatter`; full-table and JSON rendering;
+  retains an internal compact summary method. The full table renders
   `| Func | Signature | Vis | Lines | Cx | Doc |` (functions) and
   `| Receiver | Func | Signature | Vis | Lines | Cx | Doc |` (methods)
 - `formatters/bash_formatter.py` — `BashTableFormatter`; registered for "bash" / "sh";
-  renders `| Name | Signature | Vis | Lines | Cx | Doc |` (full) and
-  `| Name | Sig | V | L | Cx | Doc |` (compact)
+  renders `| Name | Signature | Vis | Lines | Cx | Doc |` in the full table;
+  also retains an internal compact summary method. These summary methods do
+  not restore a public `--table compact` choice.
 
 Key mixins for the Java formatter:
 - `formatters/_java_formatter_full_mixin.py` — `_format_full_table`
-- `formatters/_java_formatter_compact_mixin.py` — `_format_compact_table`
 - `formatters/_java_formatter_signatures_mixin.py` — `_format_signatures_table` (lightweight
   method-directory; lists methods as `name →returnType(Np) L-L`, no bodies)
 
@@ -102,23 +110,9 @@ TS/JS full-table module-level functions:
   methods). JS reads both `methods` (class methods) and `functions` (top-level)
   since the JS plugin stores them in disjoint lists.
 
-## CSV Control-Char Safety
-
-`formatters/_csv_safety.py` (`csv_safe_row` / `csv_safe_cell`) strips
-C0/DEL control characters (NULL etc.) from CSV cells before they reach
-`csv.writer`. Python 3.10's `csv.writer` raises `_csv.Error: need to escape,
-but no escapechar set` on a NULL byte; setting `escapechar` would silence it
-but double literal backslashes in ordinary fields (a format regression). Tab
-and newline are preserved (the writer quotes them on every version); a bare
-carriage return is **stripped** because Python 3.10 emits it unquoted, yielding
-an unreadable CSV. Used by `CsvFormatter`, `format_html_csv`, and
-`format_csv_output`.
-
 ## JSON Format
 
 JSON emits a standard structured object with stable field names and nested response data.
-
-<!-- Legacy compact-format implementation removed; historical references belong in changelog/postmortems only. -->
 
 JSON example:
 
@@ -131,7 +125,7 @@ JSON example:
 ```
 
 The JSON serializer is the sole wire-format implementation. Language-specific
-formatters remain available for explicit terminal table/CSV views.
+formatters remain available for explicit terminal table views.
 
 ## Format Stability Contract
 
@@ -145,7 +139,6 @@ major version bump (semver).
 
 ## Cache & File Output
 
-- `mcp/utils/search_cache.py` — LRU for fd/ripgrep results (in-process)
 - `mcp/utils/file_output_factory.py` — atomic write for large payloads
 - `TREE_SITTER_OUTPUT_PATH` env var sets the default output directory
 
@@ -158,8 +151,6 @@ extracted from the monolithic `legacy_table_formatter.py`:
 |---|---|
 | `formatters/legacy/__init__.py` | Re-exports the public `LegacyTableFormatter` surface |
 | `formatters/legacy/common.py` | Shared constants and helper types used across legacy modules |
-| `formatters/legacy/compact.py` | `_format_compact_table` implementation for the legacy formatter |
-| `formatters/legacy/csv.py` | `_format_csv` implementation for the legacy formatter |
 | `formatters/legacy/detail.py` | Detail-row rendering helpers |
 | `formatters/legacy/full.py` | `_format_full_table` implementation for the legacy formatter |
 | `formatters/legacy/helpers.py` | General rendering helpers (column widths, header lines, etc.) |

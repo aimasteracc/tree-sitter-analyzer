@@ -15,7 +15,7 @@ tree_sitter_analyzer/
 │   ├── utils/        ← project_index, search_cache, file_output_factory
 │   └── resources/    ← MCP resources (read-only data exposed to AI)
 ├── languages/        ← 22 tree-sitter plugins                (languages.md)
-├── formatters/       ← TOON / JSON / table / CSV / YAML      (formatters.md)
+├── formatters/       ← JSON + explicit table/text views     (formatters.md)
 ├── core/             ← Parser, engine, AnalysisSession, AnalysisRequest
 ├── models/           ← AnalysisResult + Class/Function/Variable/Import models
 ├── plugins/          ← LanguagePlugin / ElementExtractor base + registry
@@ -48,7 +48,7 @@ languages/<lang>_plugin.analyze_file ← tree-sitter parse + extract elements
   ↓
 models.AnalysisResult               ← Class/Function/Variable/Import/Annotation
   ↓
-formatters/<fmt>_formatter          ← TOON (default for MCP) / JSON / table
+formatters/<fmt>_formatter          ← JSON / explicit terminal table views
   ↓
 agent_summary envelope              ← verdict (SAFE/REVIEW/CAUTION/UNSAFE)
   ↓
@@ -62,7 +62,9 @@ Every path is validated against `TREE_SITTER_PROJECT_ROOT` by `security/validato
 **No tool ever reads outside the project root.** `ProjectBoundaryManager` is the single source of truth.
 
 ### Response format
-- **JSON** is the only MCP and CLI response format. There is no alternate compact wire encoding.
+- **JSON** is the canonical MCP and CLI machine-readable response format.
+  CLI terminal views remain available through `--table full`, `--table signatures`,
+  and command-specific text output. There is no alternate compact wire encoding.
 - AST results are stored in **SQLite** via `ast_cache.py` (content-hash keyed).
 - `incremental_sync.py` reindexes only changed files (mtime + SHA-256).
 - `indexing_snapshot.py` freezes one ordered project scope for both full-index
@@ -98,10 +100,12 @@ POSIX 发布包含文件与目录同步；Windows 目录掉电持久性仍不作
 1. `ast_cache.py` — persistent SQLite store of parsed AST symbols/imports/structure
 2. `_route_cache.py` — SQLite store of detected routes (Flask/Django/Express/Spring)
 3. `core/cache_service.py` — in-process LRU for formatter outputs
-4. `mcp/utils/search_cache.py` — fd/ripgrep result cache
-5. `registry/health_score_cache.py` — persistent per-file health scores keyed by
+4. `registry/health_score_cache.py` — persistent per-file health scores keyed by
    source fingerprint plus coverage, weights, moving-window, repository-specific
    git metadata, and scoring-version context
+
+`mcp/utils/search_cache.py` remains in the source tree, but has no production
+callers; it is not an active caching layer for the current search tools.
 
 ### MCP / CLI parity
 Every MCP tool has a CLI equivalent — enforced by `tests/contracts/test_mcp_cli_parity_contract.py`
@@ -112,11 +116,17 @@ contract violation.**
 
 | Surface | Module | Notes |
 |---|---|---|
-| `tree-sitter-analyzer` CLI | `cli_main.py` → `cli/` | Human-facing, JSON default |
+| `tree-sitter-analyzer` CLI; `code-analyzer` / `java-analyzer` aliases | `cli_main.py` → `cli/` | Human-facing, JSON default |
 | `tree-sitter-analyzer-mcp` MCP stdio server | `mcp/server.py` | AI-agent-facing, JSON output |
+| `tree-sitter-analyzer-doctor` | `cli_main.py:main_doctor` | Environment diagnostics |
 | `miswire-audit` | `miswire_audit.py` | Run-on-your-repo cross-language correctness demo |
-| `list-files` / `search-content` / `find-and-grep` | `cli/commands/*_cli.py` | fd / ripgrep / fd+rg standalone utilities |
+| `list-files` | `cli/commands/list_files_cli.py` | Retained fd-based file listing |
 | Python API (no console script) | `api/__init__.py` | Authoritative implementation of the existing `tree_sitter_analyzer.api` API; Pulse/serialization/semantic live in explicit submodules |
+
+The `search-content` and `find-and-grep` console scripts have been removed.
+The current facades still expose `search.batch` (ripgrep), `project.files` (fd),
+and `project.tools` (availability checks); their removal is not part of this surface.
+See [CLI](cli.md) and [MCP tools](mcp-tools.md) for the complete action mapping.
 
 The former sibling `api.py` has been removed. Existing Python imports and public
 function signatures remain unchanged; consumers must not load the removed file
@@ -179,7 +189,7 @@ has no winner or dominance/unlock authority.
 
 ## Critical Invariants (do NOT change without reading [`CLAUDE.md`](../../CLAUDE.md))
 
-1. **MCP and CLI `output_format` = `"json"`** — locked. One response contract serves agents, humans, and `jq`.
+1. **MCP and CLI machine-readable output = JSON** — locked. Explicit terminal views are documented separately in [CLI](cli.md).
 3. **`project_root` resolution must NOT be naively re-canonicalised in `BaseMCPTool.__init__`** — `SecurityValidator`, `PathResolver`, and the test fixtures already agree on a `Path.resolve()` (realpath) resolution; the macOS `/var → /private/var` symlink means a mismatched re-canonicalisation diverges. r36's attempt broke 164 tests on macOS (rolled back).
 4. **CLI diagnostic output → stderr; payload → stdout** — never mix.
 5. **markdown files** are NOT scored by `project_health` — use `markdown_health` for that.
