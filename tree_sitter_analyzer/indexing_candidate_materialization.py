@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import codecs
 import logging
 import os
 import stat
@@ -14,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .indexing_snapshot import IndexCandidateSnapshot, IndexFileFingerprint
 
-from .indexing_snapshot import index_source_content_hash
+from .indexing_snapshot import decode_index_source, index_source_content_hash
 from .source_oracle import SourceOracleError, safe_workspace_path
 
 logger = logging.getLogger(__name__)
@@ -102,6 +101,12 @@ def index_candidate_cache_hierarchy_is_current(
     snapshot: Any, cache: Any, *, root_fd: int | None = None
 ) -> bool:
     """Require the pinned cache directory to remain visible below the captured root."""
+    generation_guard = getattr(cache, "_generation_guard", None)
+    if generation_guard is not None:
+        try:
+            generation_guard()
+        except (OSError, RuntimeError, ValueError):
+            return False
     if not getattr(cache, "_uses_project_mirror", True):
         return True
     cache_fd = getattr(cache, "_cache_dir_fd", None)
@@ -196,8 +201,7 @@ def read_frozen_candidate(
         if expected is not None and info.st_size != expected.file_size:
             raise OSError("frozen candidate source size changed")
 
-        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
-        pieces: list[str] = []
+        pieces: list[bytes] = []
         total = 0
         while True:
             if time.monotonic() >= deadline:
@@ -210,9 +214,8 @@ def read_frozen_candidate(
             total += len(chunk)
             if total > limit:
                 raise OSError("frozen candidate exceeds byte limit")
-            pieces.append(decoder.decode(chunk, final=False))
-        pieces.append(decoder.decode(b"", final=True))
-        source = "".join(pieces).replace("\r\n", "\n").replace("\r", "\n")
+            pieces.append(chunk)
+        source = decode_index_source(b"".join(pieces))
         if expected is not None and (
             total != expected.file_size
             or index_source_content_hash(source) != expected.content_hash
@@ -439,11 +442,7 @@ def materialize_index_candidate_snapshot(
                 )
             if (
                 len(data) != fingerprint.file_size
-                or index_source_content_hash(
-                    data.decode("utf-8", errors="replace")
-                    .replace("\r\n", "\n")
-                    .replace("\r", "\n")
-                )
+                or index_source_content_hash(decode_index_source(data))
                 != fingerprint.content_hash
             ):
                 raise CandidateMaterializationError("INDEX_CANDIDATE_SOURCE_CHANGED")

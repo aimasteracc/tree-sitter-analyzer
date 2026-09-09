@@ -1,20 +1,7 @@
-"""SQLite-backed persistent cache for ``HealthScore`` results.
+"""持久化健康评分缓存，按源码内容和外部评分上下文决定复用。
 
-The cache makes ``HealthScorer.score_project`` fast on warm runs by reusing
-scores whose source and external scoring context are unchanged.
-
-The cache is best-effort: if SQLite is unavailable or its directory cannot be
-created, scoring proceeds without caching (no warning, no failure).
-- Stale rows are silently overwritten by ``store``.
-- Legacy schemas are migrated in place and their context-free rows miss once.
-- ``invalidate_changed`` clears entries whose fingerprint no longer matches
-  (called from ``IncrementalSync`` when files change).
-
-The cache deliberately stores no project-aggregate state — it is a pure
-per-file score store. Aggregates (grade distribution, etc.) are rebuilt
-in-memory each run.
-
-agent-ux: tsa-landing dogfood saw 130s scans; warm cache target <2s.
+SQLite 故障降级为重新评分；旧行由 store 覆盖，旧结构补齐上下文列。
+项目汇总始终在内存重建；缓存不代表并发项目快照。
 """
 
 from __future__ import annotations
@@ -27,13 +14,14 @@ import sqlite3
 import stat
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .health_score_fingerprint import _Fingerprint
+
 logger = logging.getLogger(__name__)
 
-_CACHE_CONTEXT_VERSION = "health-score-v3"
+_CACHE_CONTEXT_VERSION = "health-score-v4"
 _CONTEXT_COLUMN = "context_fingerprint"
 _MAX_GIT_METADATA_BYTES = 64 * 1024
 _MAX_SYMBOLIC_REF_DEPTH = 16
@@ -52,22 +40,6 @@ CREATE TABLE IF NOT EXISTS health_scores (
 );
 CREATE INDEX IF NOT EXISTS idx_health_scores_mtime ON health_scores(mtime_ns);
 """
-
-
-@dataclass(frozen=True)
-class _Fingerprint:
-    """File-system fingerprint used to detect staleness without re-reading."""
-
-    mtime_ns: int
-    size_bytes: int
-
-    @classmethod
-    def from_path(cls, path: str) -> _Fingerprint | None:
-        try:
-            st = os.stat(path)
-        except OSError:
-            return None
-        return cls(mtime_ns=st.st_mtime_ns, size_bytes=st.st_size)
 
 
 def _metadata_signature(path: Path) -> str:
@@ -284,12 +256,7 @@ def _base_score_context_digest(weights: Mapping[str, float] | None) -> str:
 
 
 class HealthScoreCache:
-    """Per-file persistent cache for :class:`HealthScore` instances.
-
-    The cache must remain crash-safe (we use SQLite's default journaling
-    via WAL) and must not raise on a corrupted or missing DB — callers
-    treat any cache failure as a miss and proceed to score normally.
-    """
+    """逐文件评分缓存；数据库缺失或损坏时退回正常评分。"""
 
     def __init__(
         self,
@@ -382,12 +349,7 @@ class HealthScoreCache:
     # ---- read path -----------------------------------------------------
 
     def lookup(self, file_path: str) -> dict[str, Any] | None:
-        """Return cached score dict iff the on-disk fingerprint still matches.
-
-        Returns ``None`` on miss, stale entry, or any cache error.
-        The returned dict matches :meth:`HealthScore.to_dict` so callers can
-        rebuild a :class:`HealthScore` directly via dataclass construction.
-        """
+        """源码和上下文一致时返回缓存评分，否则返回 None。"""
         if not self.enabled or self._conn is None:
             return None
 
@@ -410,7 +372,7 @@ class HealthScoreCache:
         cached_mtime, cached_size, total, grade, dim_json, context = row
         if cached_mtime != fp.mtime_ns or cached_size != fp.size_bytes:
             return None
-        if context != self._context_for_file(file_path):
+        if context != self._source_context(file_path, fp):
             return None
 
         try:
@@ -425,15 +387,16 @@ class HealthScoreCache:
             "dimensions": dimensions,
         }
 
+    def _source_context(self, file_path: str, fp: _Fingerprint) -> str:
+        """将内容指纹加入现有上下文字段，无需数据库结构变更。"""
+        return hashlib.sha256(
+            f"{self._context_for_file(file_path)}\0{fp.content_hash}".encode()
+        ).hexdigest()
+
     # ---- write path ----------------------------------------------------
 
-    def store(self, score: Any) -> None:
-        """Persist a :class:`HealthScore` keyed by current fingerprint.
-
-        ``score`` is a duck-typed HealthScore (has ``file_path``, ``total``,
-        ``grade``, ``dimensions``). The caller is responsible for invoking
-        this only on successful scores; failed/empty scores are skipped.
-        """
+    def store(self, score: Any, *, _expected: _Fingerprint | None = None) -> None:
+        """保存成功评分；提供评分前指纹时，只发布内容仍一致的结果。"""
         if not self.enabled or self._conn is None:
             return
 
@@ -441,7 +404,7 @@ class HealthScoreCache:
         if not file_path:
             return
         fp = _Fingerprint.from_path(file_path)
-        if fp is None:
+        if fp is None or (_expected is not None and fp != _expected):
             return
 
         dimensions = getattr(score, "dimensions", {}) or {}
@@ -457,7 +420,7 @@ class HealthScoreCache:
             float(getattr(score, "total", 0.0)),
             str(getattr(score, "grade", "F")),
             dim_json,
-            self._context_for_file(file_path),
+            self._source_context(file_path, fp),
         )
         try:
             self._conn.execute(

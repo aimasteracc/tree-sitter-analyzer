@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from ....project_graph import BlastRadius, DependencyGraph
 from .call_graph_impact import compute_call_graph_impact
 from .change_impact_cached_graph import load_cached_dependency_graph
@@ -974,7 +976,7 @@ def _hot_zone_symbols_for_files(
     changed_files: list[str],
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """仅读取改动文件的已计算热度，同时区分正常无热点与不可用证据。"""
-    db_path = Path(project_root) / ".ast-cache" / "index.db"
+    db_path = resolve_index_path(project_root)
     if not db_path.is_file():
         return [], {"available": False, "reason": "ACTIVATION_INDEX_MISSING"}
 

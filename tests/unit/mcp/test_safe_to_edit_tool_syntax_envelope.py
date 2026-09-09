@@ -252,3 +252,20 @@ def test_snapshot_syntax_envelope_marks_incomplete_import_projection_unavailable
         "verification_command": None,
         "stale_edges": None,
     }
+
+
+def test_live_syntax_error_response_preserves_json_envelope(tmp_path):
+    """损坏源码通过实际工具入口返回明确错误封套。"""
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+
+    (tmp_path / "broken.py").write_text("def broken(:\n", encoding="utf-8")
+    result = asyncio.run(
+        SafeToEditTool(str(tmp_path)).execute(
+            {"file_path": "broken.py", "output_format": "json"}
+        )
+    )
+    assert result["verdict"] == "ERROR"
+    assert result["signal"] == "syntax_error"
+    assert result["output_format"] == "json"

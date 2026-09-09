@@ -49,7 +49,10 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from pathlib import Path
 from typing import Any
+
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 
 from ...latency import (
     NO_OBSERVATIONS,
@@ -237,7 +240,7 @@ def _ast_index_report(project_root: str | None) -> dict[str, Any]:
     replaces — ``hit_rate`` is ``None`` with an explicit reason.
     """
     root = project_root or "."
-    db_path = os.path.join(root, ".ast-cache", "index.db")
+    db_path = str(resolve_index_path(root))
     report: dict[str, Any] = {
         "path": db_path,
         "present": False,
@@ -252,7 +255,9 @@ def _ast_index_report(project_root: str | None) -> dict[str, Any]:
     report["present"] = True
     try:
         report["size_bytes"] = os.path.getsize(db_path)
-        connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        connection = sqlite3.connect(
+            Path(db_path).absolute().as_uri() + "?mode=ro", uri=True
+        )
         try:
             row = connection.execute("SELECT COUNT(*) FROM ast_index").fetchone()
         finally:

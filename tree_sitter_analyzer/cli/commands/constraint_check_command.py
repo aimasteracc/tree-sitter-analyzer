@@ -21,6 +21,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from ...constraints import evaluate, load_constraints
 from ...constraints.parser import (
     ConstraintParseError,
@@ -199,7 +201,7 @@ def _evaluate_with_explicit_file(
             output_format,
         )
 
-    db_path = Path(project_root) / ".ast-cache" / "index.db"
+    db_path = resolve_index_path(project_root)
     if persist and not db_path.is_file():
         return _format_response(
             {
@@ -219,8 +221,12 @@ def _evaluate_with_explicit_file(
     min_severity_rank = _SEVERITY_ORDER.get(severity_min, 1)
     try:
         if persist:
-            violations, edge_count = _run_and_persist(
-                db_path, constraints, persist=True
+            from ...cache.generation_indexing import mutate_index_path
+
+            violations, edge_count = mutate_index_path(
+                project_root,
+                db_path,
+                lambda private: _run_and_persist(private, constraints, persist=True),
             )
             filtered = _filter_violations(
                 violations,

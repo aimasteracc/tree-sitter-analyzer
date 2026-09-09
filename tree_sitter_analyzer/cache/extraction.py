@@ -175,11 +175,10 @@ def _worker_index_file(
             ):
                 raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
         else:
-            # Windows retains legacy indexing, but cannot produce a P0.1
-            # authoritative source certification.
+            # 便携路径同样对捕获的字节执行统一编码检测。
             stat_result = os.stat(abs_path)
-            with open(abs_path, encoding="utf-8", errors="replace") as source_file:
-                source_code = source_file.read()
+            with open(abs_path, "rb") as source_file:
+                source_code = decode_index_source(source_file.read())
             opened = IndexFileFingerprint.from_stat(stat_result)
     except (OSError, SourceOracleError) as exc:
         return {

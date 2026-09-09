@@ -56,6 +56,7 @@ def reuse_snapshot(
             and existing.file_count == snapshot.file_count
             and existing.symbol_projection_exact == snapshot.symbol_projection_exact
             and existing.source_scope == snapshot.source_scope
+            and existing.database_path == snapshot.database_path
         )
         if not same_logical_identity:
             continue
@@ -97,6 +98,7 @@ class IndexSnapshot:
     physical_storage_identity: tuple[int, int, int, int, int, int] | None = None
     symbol_projection_exact: bool | None = None
     source_scope: Any | None = None
+    database_path: str | None = None
 
 
 # Phase B-2: WAL reader-slot memory overhead charged per open connection.
@@ -216,6 +218,7 @@ class IndexSnapshotRegistry:
                 snapshot.physical_storage_identity,
                 snapshot.symbol_projection_exact,
                 snapshot.source_scope,
+                snapshot.database_path,
             )
             self._entries[snapshot_id] = _WalEntry(
                 published,

@@ -16,9 +16,11 @@ if TYPE_CHECKING:
 
 from ..indexing_limits import normalize_index_max_files
 from ..indexing_snapshot import (
+    _INDEX_SOURCE_BYTE_LIMIT,
     IndexCandidateSnapshot,
     IndexFileFingerprint,
     changed_since_snapshot,
+    decode_index_source,
     validate_index_candidate_snapshot,
 )
 from .indexer import (
@@ -40,22 +42,21 @@ def check_cache_or_read(
     *,
     source_code: str | None = None,
 ) -> dict[str, Any] | tuple[str, str]:
-    """Return cached-response dict or (source_code, content_hash) if stale."""
+    """核验当前源码摘要后复用缓存；元数据相同不意味着内容相同。"""
     row = conn.execute(
         "SELECT content_hash, mtime_ns, file_size, extractor_version "
         "FROM ast_index WHERE file_path = ?",
         (rel_path,),
     ).fetchone()
-    if row is not None and (
-        row["mtime_ns"] == int(stat.st_mtime_ns)
-        and row["file_size"] == stat.st_size
-        and row["extractor_version"] >= extractor_version
-    ):
-        return {"file": rel_path, "status": "cached", "reason": "unchanged"}
     if source_code is None:
         try:
-            with open(abs_path, encoding="utf-8", errors="replace") as f:
-                source_code = f.read()
+            if stat.st_size > _INDEX_SOURCE_BYTE_LIMIT:
+                raise OSError("source exceeds indexing byte limit")
+            with open(abs_path, "rb") as f:
+                data = f.read(_INDEX_SOURCE_BYTE_LIMIT + 1)
+            if len(data) > _INDEX_SOURCE_BYTE_LIMIT:
+                raise OSError("source exceeds indexing byte limit")
+            source_code = decode_index_source(data)
         except OSError as e:
             return {"file": rel_path, "status": "error", "reason": str(e)}
     content_hash = content_hash_fn(source_code)
@@ -64,6 +65,11 @@ def check_cache_or_read(
         and row["content_hash"] == content_hash
         and row["extractor_version"] >= extractor_version
     ):
+        if (
+            row["mtime_ns"] == int(stat.st_mtime_ns)
+            and row["file_size"] == stat.st_size
+        ):
+            return {"file": rel_path, "status": "cached", "reason": "unchanged"}
         conn.execute(
             "UPDATE ast_index SET mtime_ns = ?, file_size = ? WHERE file_path = ?",
             (int(stat.st_mtime_ns), stat.st_size, rel_path),
@@ -86,7 +92,7 @@ def parse_and_write(
     *,
     source_is_frozen: bool = False,
 ) -> dict[str, Any]:
-    """Parse a file and write all cache rows. Returns result dict."""
+    """解析与内容摘要绑定的同一份源码，再写入缓存行。"""
     from .extraction import (
         _extract_call_edges,
         _extract_imports,
@@ -94,11 +100,8 @@ def parse_and_write(
         _extract_symbols,
     )
 
-    result = (
-        cache.parser.parse_code(source_code, language, filename=abs_path)
-        if source_is_frozen
-        else cache.parser.parse_file(abs_path, language)
-    )
+    # 即使不是冻结文件，也不能重新走路径/mtime 缓存，取回与当前摘要不符的旧树。
+    result = cache.parser.parse_code(source_code, language, filename=abs_path)
     if not result.success:
         return {
             "file": rel_path,

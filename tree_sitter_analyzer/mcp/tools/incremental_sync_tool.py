@@ -153,8 +153,11 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
                 cache.project_root
             )._build_candidate_snapshot(max_files, exclude_patterns)
             try:
-                sync = IncrementalSync(cache)
-                sync_result = sync.sync(
+                from ...cache.generation_indexing import run_incremental_sync
+
+                sync_result = run_incremental_sync(
+                    cache,
+                    sync_factory=IncrementalSync,
                     max_files=max_files,
                     exclude_patterns=exclude_patterns,
                     candidate_snapshot=candidate_snapshot,

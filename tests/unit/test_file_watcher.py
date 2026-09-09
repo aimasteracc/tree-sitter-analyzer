@@ -66,6 +66,35 @@ class TestWatcherLifecycle:
 
 
 class TestManualTriggerSync:
+    def test_sync_publishes_version_seen_by_new_reader_and_certified_snapshot(
+        self, watcher, cache, project
+    ):
+        # 2026-09-09：监听更新必须进入查询与快照共用的正式版本。
+        from tree_sitter_analyzer.cache.generation_routing import resolve_index_location
+        from tree_sitter_analyzer.index_snapshot import _capture_existing_snapshot
+
+        first_result = watcher.trigger_sync()
+        first = resolve_index_location(str(project))
+        assert first.published is True
+        assert first_result["completeness"] == "complete"
+        (project / "src" / "main.py").write_text(
+            "def changed(): return 3\n", encoding="utf-8"
+        )
+        second_result = watcher.trigger_sync()
+        second = resolve_index_location(str(project))
+        assert second.selector != first.selector
+        assert second_result["updated_files"] == 1
+        reader = ASTCache(str(project))
+        try:
+            assert reader.db_path == cache.db_path == str(second.path)
+            assert [row["name"] for row in reader.search_symbols("changed")] == [
+                "changed"
+            ]
+        finally:
+            reader.close()
+        snapshot = _capture_existing_snapshot(str(project))
+        assert snapshot.completeness == "complete", snapshot.reason
+
     def test_trigger_sync_indexes_new_files(self, watcher, project):
         result = watcher.trigger_sync()
         assert result["new_files"] == 2
@@ -127,36 +156,155 @@ class TestWatcherStats:
 
 
 class TestPollingDetection:
+    def test_failed_scan_preserves_snapshot_without_synthesizing_change(
+        self, watcher, project, monkeypatch
+    ):
+        """#1405：扫描失败保留基线并由下一轮重试，不触发虚假同步。"""
+        import tree_sitter_analyzer.file_watcher_polling as owner
+
+        watcher._take_snapshot()
+        before = dict(watcher._snapshot)
+        with monkeypatch.context() as patcher:
+
+            def failed(root):
+                yield "blocked", root, None
+
+            patcher.setattr(owner, "_entries", failed)
+            assert watcher._detect_changes() == []
+            watcher._take_snapshot()
+        assert watcher._snapshot == before
+        assert watcher.get_stats()["errors"] == 2
+        path = project / "src" / "main.py"
+        path.write_text("def saved():\n    pass\n", encoding="utf-8")
+        assert watcher._detect_changes() == [str(path)]
+
+    def test_native_reader_reads_actual_content(self, watcher, project):
+        """#1405：原生读取接口处理真实字节；Windows CI 使用真实 Kernel32。"""
+        import hashlib
+        from types import SimpleNamespace
+
+        if os.name != "nt":
+
+            def identity(handle):
+                info = os.fstat(handle)
+                return (
+                    info.st_dev,
+                    info.st_ino,
+                    info.st_size,
+                    info.st_mtime_ns,
+                    info.st_ctime_ns,
+                )
+
+            watcher._polling._native = SimpleNamespace(
+                open=lambda path, _directory: os.open(path, os.O_RDONLY),
+                identity=identity,
+                reader_fd=lambda handle: handle,
+                close=os.close,
+            )
+        path = project / "src" / "main.py"
+        before = path.stat()
+        path.write_text("def saved():\n    pass\n", encoding="utf-8")
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        fingerprint = watcher._polling._windows_fingerprint(
+            str(path), time.monotonic() + 1
+        )
+        assert fingerprint[0] == hashlib.sha256(path.read_bytes()).hexdigest()
+
+    @pytest.mark.parametrize("atomic", [False, True])
+    def test_detects_content_change_with_preserved_metadata(
+        self, watcher, project, atomic
+    ):
+        """等长写入与原子替换均不能借相同 mtime 绕过轮询。"""
+        # 2026-09-08 实测：保留 mtime 的保存曾被轮询遗漏。
+        path = project / "src" / "main.py"
+        watcher._take_snapshot()
+        before = path.stat()
+        target = path.with_suffix(".tmp") if atomic else path
+        target.write_text("def saved():\n    pass\n", encoding="utf-8")
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        if atomic:
+            os.replace(target, path)
+        assert (path.stat().st_size, path.stat().st_mtime_ns) == (
+            before.st_size,
+            before.st_mtime_ns,
+        )
+        assert watcher._detect_changes() == [str(path)]
+        assert watcher._detect_changes() == []
+
+    def test_detects_non_utf8_byte_change_with_preserved_metadata(
+        self, watcher, project
+    ):
+        """#1405：不同非法 UTF-8 字节不能因替换解码后的摘要相同而被遗漏。"""
+        path = project / "src" / "main.py"
+        path.write_bytes(b"# coding: cp1252\ndef caf\xe9(): pass\n")
+        watcher._take_snapshot()
+        before = path.stat()
+        path.write_bytes(b"# coding: cp1252\ndef caf\xf6(): pass\n")
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        assert watcher._detect_changes() == [str(path)]
+
+    def test_polling_survives_certification_file_cap(self, watcher, project):
+        """#1405：认证容量不足不能让普通文件的变化通知永久失效。"""
+        from tree_sitter_analyzer.index_source_snapshot import (
+            capture_current_source_snapshot,
+            make_source_scope_descriptor,
+        )
+        from tree_sitter_analyzer.portable_source_snapshot import (
+            capture_portable_source_snapshot,
+        )
+
+        capture = (
+            capture_portable_source_snapshot
+            if os.name == "nt"
+            else capture_current_source_snapshot
+        )
+        result = capture(
+            str(project),
+            make_source_scope_descriptor(
+                no_default_excludes=True, certification_max_files=1
+            ),
+            deadline=time.monotonic() + 1,
+        )
+        assert (result.state, result.reason) == ("unknown", "SOURCE_SCOPE_UNBOUNDED")
+        watcher._take_snapshot()
+        assert len(watcher._snapshot) == 2
+        path = project / "src" / "main.py"
+        path.write_text("def saved(): pass\n", encoding="utf-8")
+        assert watcher._detect_changes() == [str(path)]
+
+    def test_detects_metadata_only_save(self, watcher, project):
+        """#1405：纯元数据保存也必须保持既有通知语义。"""
+        path = project / "src" / "main.py"
+        watcher._take_snapshot()
+        before = path.stat()
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
+        assert watcher._detect_changes() == [str(path)]
+
     def test_detects_new_file(self, watcher, project, cache):
-        # The watcher snapshots the tree at start(), then detects later changes.
-        # So: start FIRST, let the initial snapshot settle, THEN create the file,
-        # and wait for the INCREMENT (>= 3). The previous version created the file
-        # before start() (already in the snapshot) and asserted >= 2 (true after
-        # trigger_sync regardless) — it never actually exercised detection.
+        # #1405：等启动对齐完成后再保存，确保测试真正经过后续轮询通知。
         watcher.trigger_sync()
         assert cache.get_stats()["total_files"] == 2
         watcher.start()
-        time.sleep(0.3)  # let the initial snapshot complete before mutating
+        assert _wait_until(lambda: watcher.get_stats()["syncs_triggered"] == 2)
         (project / "new_file.py").write_text("def world():\n    pass\n")
-        detected = _wait_until(lambda: cache.get_stats()["total_files"] >= 3)
+        detected = _wait_until(lambda: cache.get_stats()["total_files"] == 3)
         watcher.stop()
         assert detected, "watcher did not detect the newly created file"
-        assert cache.get_stats()["total_files"] >= 3  # ratchet: nondeterministic
+        assert cache.get_stats()["total_files"] == 3
 
     def test_detects_modified_file(self, watcher, project, cache):
-        # Same ordering requirement: start (snapshot) -> modify -> wait for the
-        # SECOND sync (>= 2) caused by the modification.
+        # #1405：修改必须触发启动对齐之后的第三次同步。
         watcher.trigger_sync()
         assert watcher.get_stats()["syncs_triggered"] == 1
         watcher.start()
-        time.sleep(0.3)  # let the initial snapshot complete before mutating
+        assert _wait_until(lambda: watcher.get_stats()["syncs_triggered"] == 2)
         py_file = project / "src" / "main.py"
         py_file.write_text("def hello():\n    return 42\n")
         os.utime(str(py_file), (time.time() + 1, time.time() + 1))
-        detected = _wait_until(lambda: watcher.get_stats()["syncs_triggered"] >= 2)
+        detected = _wait_until(lambda: watcher.get_stats()["syncs_triggered"] == 3)
         watcher.stop()
         assert detected, "watcher did not detect the modified file"
-        assert watcher.get_stats()["syncs_triggered"] >= 2  # ratchet: nondeterministic
+        assert watcher.get_stats()["syncs_triggered"] == 3
 
 
 class TestOnSyncCallback:
@@ -296,3 +444,77 @@ def test_watchdog_atomic_save_refreshes_index(watcher, cache, project):
     assert [tuple(row) for row in manifest] == [
         (2, index_fingerprint(conn, str(project)))
     ]
+
+
+def test_stop_timeout_leaves_cursor_owned_by_running_thread(watcher, monkeypatch):
+    """#1405：超时停止不能关闭其他线程正在使用的游标；线程退出时负责释放。"""
+    import threading
+
+    entered, release = threading.Event(), threading.Event()
+    closed = []
+
+    def baseline():
+        entered.set()
+        assert release.wait(3)
+
+    monkeypatch.setattr(watcher, "_take_snapshot", baseline)
+    monkeypatch.setattr(watcher._polling, "close", lambda: closed.append("closed"))
+    watcher.start()
+    try:
+        assert entered.wait(3)
+        watcher.stop(timeout=0)
+        assert closed == []
+        assert watcher.is_running() is True
+    finally:
+        release.set()
+        watcher._thread.join(timeout=3)
+    assert watcher.is_running() is False
+    assert closed == ["closed"]
+
+
+def test_incomplete_scan_resumes_without_full_poll_interval(watcher, monkeypatch):
+    """#1405：大项目切片之间只短暂让出，不能每片都等待完整轮询间隔。"""
+    from types import SimpleNamespace
+
+    waits, syncs = [], []
+    state = {"stopped": False}
+    polling = SimpleNamespace(in_progress=True, close=lambda: None)
+
+    def wait(timeout):
+        waits.append(timeout)
+        state["stopped"] = len(waits) == 2
+
+    def detect():
+        polling.in_progress = False
+        return []
+
+    monkeypatch.setattr(watcher, "_polling", polling)
+    monkeypatch.setattr(watcher, "_take_snapshot", lambda: None)
+    monkeypatch.setattr(watcher, "_detect_changes", detect)
+    monkeypatch.setattr(
+        watcher,
+        "_stop_event",
+        SimpleNamespace(
+            is_set=lambda: state["stopped"],
+            wait=wait,
+            set=lambda: state.update(stopped=True),
+        ),
+    )
+    monkeypatch.setattr(watcher, "_request_sync", lambda: syncs.append(len(waits)))
+    watcher._run_polling()
+    assert syncs == [1]
+    assert waits == [0.05, watcher.poll_interval]
+
+
+def test_start_reconciles_changes_before_baseline(watcher, cache, project, monkeypatch):
+    # #1405：启动线程建立基线之前发生的变更也必须进入索引。
+    watcher.trigger_sync()
+    original = watcher._take_snapshot
+
+    def baseline():
+        (project / "startup.py").write_bytes(b"def startup(): pass\n")
+        original()
+
+    monkeypatch.setattr(watcher, "_take_snapshot", baseline)
+    watcher.start()
+    assert _wait_until(lambda: cache.get_stats()["total_files"] == 3)

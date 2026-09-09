@@ -224,6 +224,54 @@ class TestIndexFile:
 
 
 class TestLookup:
+    @pytest.mark.parametrize("through_alias", [False, True])
+    @pytest.mark.parametrize("points_to_root", [False, True])
+    def test_root_alias_preserves_logical_descendant_path(
+        self, tmp_path, through_alias, points_to_root
+    ):
+        # 2026-09-08：只统一根目录；冻结后的子路径不能因活文件变成链接而重定向。
+        from tree_sitter_analyzer.cache.helpers import _canonical_project_path
+
+        root = tmp_path / "project"
+        root.mkdir()
+        alias = tmp_path / "alias"
+        alias.symlink_to(root, target_is_directory=True)
+        logical = root / "logical"
+        logical.symlink_to(
+            root if points_to_root else tmp_path, target_is_directory=True
+        )
+        supplied = (alias if through_alias else root) / "logical" / "sample.py"
+        assert _canonical_project_path(str(supplied), str(root)) == str(
+            logical / "sample.py"
+        )
+
+    @pytest.mark.parametrize("index_through_alias", [False, True])
+    def test_project_root_alias_has_one_cache_identity(
+        self, tmp_path, index_through_alias
+    ):
+        # 2026-09-08：根目录别名曾产生 ../alias 键，导致真实路径查询与删除失效。
+        root = tmp_path / "project"
+        root.mkdir()
+        alias = tmp_path / "alias"
+        alias.symlink_to(root, target_is_directory=True)
+        source = root / "sample.py"
+        source.write_text("def signal(): return 1\n", encoding="utf-8")
+        aliased = alias / source.name
+        cache = ASTCache(str(alias))
+        try:
+            result = cache.index_file(str(aliased if index_through_alias else source))
+            assert result["file"] == "sample.py"
+            row = cache.lookup(str(source))
+            assert row is not None
+            assert cache.lookup(str(aliased)) == row
+            assert cache.index_file(str(aliased))["status"] == "cached"
+            assert cache.get_stats()["total_files"] == 1
+            source.unlink()
+            assert cache.invalidate(str(aliased)) is True
+            assert cache.lookup(str(source)) is None
+        finally:
+            cache.close()
+
     def test_lookup_indexed_file(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
         cache.index_file(f)
@@ -370,3 +418,79 @@ class TestASTCacheGetConnPublicAccessor:
         conn1 = cache.get_conn()
         conn2 = cache.get_conn()
         assert conn1 is conn2
+
+
+def test_writer_lock_is_shared_by_canonical_database_path(tmp_path):
+    # #1405：路径别名必须共享锁，不同数据库不能被无关写入阻塞。
+    first = ast_cache_module._shared_writer_lock(str(tmp_path / "index.db"))
+    alias = ast_cache_module._shared_writer_lock(
+        str(tmp_path / "sub" / ".." / "index.db")
+    )
+    other = ast_cache_module._shared_writer_lock(str(tmp_path / "other.db"))
+    assert first is alias
+    assert first is not other
+
+
+def test_writer_lock_registry_does_not_retain_unused_databases(tmp_path):
+    # #1405：长期运行的服务器切换项目后不能累积永久锁注册项。
+    import gc
+    import weakref
+
+    lock = ast_cache_module._shared_writer_lock(str(tmp_path / "index.db"))
+    reference = weakref.ref(lock)
+    del lock
+    gc.collect()
+    assert reference() is None
+
+
+@pytest.mark.parametrize("growth", [False, True])
+def test_direct_cache_read_rejects_oversized_source_before_decode(
+    tmp_path, monkeypatch, growth
+):
+    # #1405：缓存核验也必须限流，且不能依赖读取之前的文件大小。
+    import io
+    from unittest.mock import Mock
+
+    from tree_sitter_analyzer.cache import indexer_io
+
+    source = tmp_path / "a.py"
+    source.write_bytes(b"x=1\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        original_row = cache.lookup(str(source))
+        admitted = source.stat()
+        source.write_bytes(b"x" * 17)
+        if not growth:
+            admitted = source.stat()
+        reads = []
+
+        class Reader(io.BytesIO):
+            def read(self, size=-1):
+                reads.append(size)
+                return super().read(size)
+
+        monkeypatch.setattr(indexer_io, "_INDEX_SOURCE_BYTE_LIMIT", 16, raising=False)
+        monkeypatch.setattr(
+            indexer_io, "open", lambda *_args: Reader(b"x" * 17), raising=False
+        )
+        decode = Mock(side_effect=AssertionError("oversized data must not be decoded"))
+        monkeypatch.setattr(indexer_io, "decode_index_source", decode)
+        result = indexer_io.check_cache_or_read(
+            cache.get_conn(),
+            "a.py",
+            str(source),
+            admitted,
+            _content_hash,
+            cache._extractor_version,
+        )
+        assert result == {
+            "file": "a.py",
+            "status": "error",
+            "reason": "source exceeds indexing byte limit",
+        }
+        assert reads == ([17] if growth else [])
+        assert cache.lookup(str(source)) == original_row
+        decode.assert_not_called()
+    finally:
+        cache.close()

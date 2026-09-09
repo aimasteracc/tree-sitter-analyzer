@@ -383,7 +383,7 @@ def test_parse_and_write_returns_exact_parser_failure():
 
     cache = SimpleNamespace(
         parser=SimpleNamespace(
-            parse_file=lambda *_args: SimpleNamespace(
+            parse_code=lambda *_args, **_kwargs: SimpleNamespace(
                 success=False, error_message="invalid source"
             )
         )
@@ -406,3 +406,51 @@ def test_parse_and_write_returns_exact_parser_failure():
         "status": "error",
         "reason": "invalid source",
     }
+
+
+def test_index_file_preserved_metadata_uses_current_source(tmp_path):
+    """单文件入口不能用相同元数据复用旧源码或旧语法树。"""
+    # 2026-09-08 实测：等长等 mtime 保存曾复用旧索引和旧语法树。
+    path = tmp_path / "app.py"
+    path.write_text("def old(): return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        assert cache.index_file(str(path))["status"] == "indexed"
+        before = path.stat()
+        path.write_text("def new(): return 2\n", encoding="utf-8")
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        assert cache.index_file(str(path))["status"] == "indexed"
+        names = cache.get_conn().execute("SELECT name FROM ast_symbol_rows").fetchall()
+        assert [row[0] for row in names] == ["new"]
+        assert cache.index_file(str(path))["status"] == "cached"
+    finally:
+        cache.close()
+
+
+def test_index_file_preserves_cp1252_identifiers(tmp_path):
+    """#1405：编码检测后的源码同时用于摘要和语法树，不能丢失重音字符。"""
+    path = tmp_path / "app.py"
+    path.write_bytes("# coding: cp1252\ndef café(): return 1\n".encode("cp1252"))
+    cache = ASTCache(str(tmp_path))
+    try:
+        assert cache.index_file(str(path))["status"] == "indexed"
+        assert [
+            r[0] for r in cache.get_conn().execute("SELECT name FROM ast_symbol_rows")
+        ] == ["café"]
+        assert cache.index_file(str(path))["status"] == "cached"
+    finally:
+        cache.close()
+
+
+def test_portable_worker_preserves_cp1252_identifiers(tmp_path, monkeypatch):
+    """#1405：便携工作进程必须保留与串行入口一致的编码语义。"""
+    import tree_sitter_analyzer.cache.extraction as owner
+
+    path = tmp_path / "app.py"
+    path.write_bytes("# coding: cp1252\ndef café(): return 1\n".encode("cp1252"))
+    monkeypatch.setattr(
+        owner, "os", SimpleNamespace(name="nt", path=os.path, stat=os.stat)
+    )
+    result = owner._worker_index_file((str(path), str(tmp_path), "python"))
+    assert result["status"] == "ok"
+    assert [row[0] for row in result["symbol_rows"]] == ["café"]

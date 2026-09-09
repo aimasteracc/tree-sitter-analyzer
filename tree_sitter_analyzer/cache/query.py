@@ -13,6 +13,7 @@ import sqlite3
 from typing import TYPE_CHECKING, Any, cast
 
 from ..utils.test_detection import query_wants_tests, rank_tier
+from .helpers import _canonical_project_path
 from .maintenance import get_db_storage_stats
 
 if TYPE_CHECKING:
@@ -48,7 +49,7 @@ def invalidate(
     """Remove all cached rows for file_path. Returns True if a row was deleted."""
     import os
 
-    abs_path = os.path.abspath(file_path)
+    abs_path = _canonical_project_path(file_path, project_root)
     try:
         rel = os.path.relpath(abs_path, project_root).replace("\\", "/")
     except ValueError:
@@ -66,7 +67,7 @@ def lookup(
     """Look up one file's cached AST metadata. Returns None if not indexed."""
     import os
 
-    abs_path = os.path.abspath(file_path)
+    abs_path = _canonical_project_path(file_path, project_root)
     try:
         rel = os.path.relpath(abs_path, project_root).replace("\\", "/")
     except ValueError:

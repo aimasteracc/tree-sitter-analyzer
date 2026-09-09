@@ -212,6 +212,12 @@ class ASTCacheGraphMixin(ASTCacheSurface):
 
     def backfill_cross_file_edges(self) -> dict[str, Any]:
         """Resolve and persist cross-file call targets."""
+        if getattr(self, "_generation_managed", False):
+            from .cache.generation_indexing import mutate_published_cache
+
+            return mutate_published_cache(
+                self, lambda writable: writable.backfill_cross_file_edges()
+            )
         return _backfill_cross_file_edges(self, self._get_conn())
 
     def get_cross_file_stats(self) -> dict[str, Any]:

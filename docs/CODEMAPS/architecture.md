@@ -66,6 +66,32 @@ Every path is validated against `TREE_SITTER_PROJECT_ROOT` by `security/validato
 - `indexing_snapshot.py` freezes one ordered project scope for both full-index
   phases and detects selected files that mutate while the operation is running.
 
+监听链路由 `file_watcher.py` 调度，`file_watcher_polling.py` 保存可续跑的扫描游标，
+比较原始内容摘要和文件元数据。片尾耗尽预算的指纹读取在新切片重试一次；
+重试仍失败则继续后续文件，保留旧指纹。异常路径只影响其自身；删除在遍历完成后确认。
+POSIX 枚举通过固定父目录描述符和 no-follow 打开，并核对目录身份；Windows
+仅在建立搜索句柄时短暂固定祖先目录，随后释放禁止重命名的句柄。
+普通源码被替换成特殊文件或超过读取上限时触发失效，只有明确永久拒绝的候选
+才清除旧索引行；临时读取或时限故障保留记录，并撤销完整认证。
+轮询完整基线建立后、原生观察器启用后，均异步请求一次索引对齐，以覆盖启动窗口；
+启动请求与后续文件通知共用防抖同步队列，不计作文件事件。
+默认 full-index、sync 和 watcher 在 `.ast-cache/index-generations/generations/<id>/index.db`
+构建私有副本；`cache/generation_store.py` 在独立 SQLite 发布租约内核对父版本和源码，
+通过原子替换 `active.json` 发布。旧进程写入 `.ast-cache/index.db` 不影响新版本。
+`cache/generation_routing.py` 统一默认读路径；已发布 ASTCache 使用只读连接，显式修改
+也经私有副本发布。`cache/generation_reads.py` 在 MCP 调用内固定版本，下次调用刷新缓存读路径；
+旧读会话继续可用，约束持久化也发布私有副本；当前不自动回收版本。
+同进程 watcher 从候选捕获到提交使用逻辑数据库共享锁；跨进程并发发布通过父身份
+比较拒绝过期候选。完成激活标记阻止选择器或版本目录丢失后退回旧库；首次激活中断仅允许
+持有发布租约的写者重试，普通读者仍拒绝缺失选择器。
+POSIX 发布包含文件与目录同步；Windows 目录掉电持久性仍不作保证。
+停止时在统一超时预算内等待监听和计时器线程；未退出的后台线程仍计入运行状态，
+并阻止启动替代线程，停止请求后的新防抖请求不再启动。
+候选捕获、发现或冻结失败，以及逐文件、回填、清单认证错误和同步异常，
+会在后台指数退避重试，间隔最高 60 秒；
+永久类型或字节上限拒绝不触发重试，已排队的文件通知不会被重试推迟。
+这些观察只用于触发同步，不能替代 `index_source_snapshot.py` 的完整范围认证。
+
 ### Caching layers
 1. `ast_cache.py` — persistent SQLite store of parsed AST symbols/imports/structure
 2. `_route_cache.py` — SQLite store of detected routes (Flask/Django/Express/Spring)

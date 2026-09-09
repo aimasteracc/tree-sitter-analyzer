@@ -215,7 +215,9 @@ def _capture_wal_snapshot(
         if not os.path.lexists(candidate):
             return _unknown("MISSING_INDEX")
         root = os.path.realpath(canonical_root)
-        if os.path.abspath(candidate) != os.path.join(root, ".ast-cache", "index.db"):
+        from .cache.generation_routing import resolve_index_path
+
+        if os.path.abspath(candidate) != str(resolve_index_path(root)):
             raise ValueError("INDEX_PATH_UNSAFE")
         acquired = _CAPTURE_LOCK.acquire(timeout=max(0.0, deadline - _clock()))
         if not acquired:
@@ -309,7 +311,7 @@ def _capture_wal_snapshot(
                 reason = "NO_EXACT_FULL_INDEX_MANIFEST"
             connection, projection_exact = _copy_projection_evidence(staged, deadline)
             if wal_frames is not None:
-                # 私有 checkpoint 的帧数必须等于捕获的完整 WAL；不接受被 SQLite 忽略的尾帧。
+                # 帧数须等于当前 salt 的完整前缀；损坏或未提交的当前代帧不能被忽略。
                 checkpoint = tuple(
                     staged.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
                 )
@@ -338,6 +340,8 @@ def _capture_wal_snapshot(
         REGISTRY.ensure_capacity(charged)
         _require_capture_budget(deadline)
 
+        if str(resolve_index_path(root)) != candidate:
+            raise ValueError("CONCURRENT_WRITER")
         snapshot = IndexSnapshot(
             None,
             current.fingerprint if current else None,
@@ -350,6 +354,7 @@ def _capture_wal_snapshot(
             _physical_storage_identity(connection),
             projection_exact,
             source_scope,
+            candidate,
         )
         published = REGISTRY.publish(snapshot, connection, charged, deadline, pin=pin)
         connection = None  # ownership transferred to registry
@@ -386,7 +391,12 @@ def _capture_existing_snapshot(
     canonical_root = os.path.realpath(project_root)
     if not os.path.isdir(canonical_root):
         return _unknown("MISSING_PROJECT_ROOT")
-    candidate = os.path.join(canonical_root, ".ast-cache", "index.db")
+    from .cache.generation_routing import resolve_index_path
+
+    try:
+        candidate = str(resolve_index_path(canonical_root))
+    except (OSError, ValueError):
+        return _unknown("INDEX_GENERATION_SELECTOR_INVALID")
     if not os.path.lexists(candidate):
         return _unknown("MISSING_INDEX")
     # Phase B-1: Replace POSIX gate with WAL read-only fallback.
@@ -413,6 +423,8 @@ def _capture_existing_snapshot(
         try:
             root, root_fd, cache_fd, db_fd = _open_bound_database(project_root)
             handles = (root_fd, cache_fd, db_fd)
+            if str(resolve_index_path(root)) != candidate:
+                raise ValueError("CONCURRENT_WRITER")
             initial = os.fstat(db_fd)
             if initial.st_size + _SNAPSHOT_OVERHEAD_BYTES > _MAX_CHARGED_BYTES:
                 raise RuntimeError("INDEX_SNAPSHOT_CAPACITY")
@@ -555,6 +567,7 @@ def _capture_existing_snapshot(
                 _physical_storage_identity(evidence),
                 projection_exact,
                 source_scope,
+                candidate,
             )
             _require_capture_budget(deadline)
             if not _hierarchy_matches_pinned_database(root, root_fd, cache_fd, db_fd):

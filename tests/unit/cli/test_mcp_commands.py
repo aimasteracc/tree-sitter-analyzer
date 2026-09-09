@@ -161,8 +161,13 @@ def test_batch_cli_project_sequence_keeps_results_and_warning_capture(
                 f"{root.name} other",
             ]
             cache = ASTCache(str(root))
+            import sqlite3
+
+            conn = sqlite3.connect(":memory:")
+            conn.row_factory = sqlite3.Row
             try:
-                conn = cache.get_conn()
+                # 告警测试在私有副本注入数据，已发布版本不能作为写入夹具。
+                cache.get_conn().backup(conn)
                 conn.execute(
                     "INSERT OR REPLACE INTO ast_symbol_activation(symbol_id,file_path,last_modified_commit,computed_at) "
                     "SELECT id,file_path,?,0 FROM ast_symbol_rows WHERE name='greet'",
@@ -181,6 +186,7 @@ def test_batch_cli_project_sequence_keeps_results_and_warning_capture(
                     "COMMIT_MESSAGE_MISSING: a.py:greet",
                 ) in caplog.record_tuples
             finally:
+                conn.close()
                 cache.close()
     finally:
         for logger, level in zip(loggers, levels, strict=True):

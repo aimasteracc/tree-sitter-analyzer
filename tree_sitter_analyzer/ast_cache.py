@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import json  # noqa: F401  # historical monkeypatch surface
 import os
+from collections.abc import Callable
 import threading
+from _thread import LockType
+from weakref import WeakValueDictionary
 from collections.abc import Iterator
 
 from .cache import indexer as _indexer
@@ -67,6 +70,21 @@ _AST_CACHE_EXTRACTOR_VERSION = 39
 SchemaIntegrityError.__module__ = __name__
 
 
+_writer_locks: WeakValueDictionary[str, LockType] = WeakValueDictionary()
+_writer_locks_guard = threading.Lock()
+
+
+def _shared_writer_lock(db_path: str) -> LockType:
+    """同进程同数据库路径共用写入锁，最后一个缓存释放后不保留注册项。"""
+    key = os.path.normcase(os.path.realpath(os.path.abspath(db_path)))
+    with _writer_locks_guard:
+        lock = _writer_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _writer_locks[key] = lock
+        return lock
+
+
 class ASTCache(
     ASTCacheDatabaseMixin,
     ASTCacheIndexMixin,
@@ -83,17 +101,32 @@ class ASTCache(
         # project through a symlink spelling.
         self.project_root = os.path.realpath(os.path.abspath(project_root))
         default_db_path = os.path.join(self.project_root, ".ast-cache", "index.db")
-        if db_path is None:
-            db_path = default_db_path
+        self._default_locator = (
+            db_path is None or os.path.abspath(db_path) == default_db_path
+        )
+        self._read_only = False
+        self._generation_managed = False
+        self._generation_guard: Callable[[], None] | None = None
+        if db_path is None or os.path.abspath(db_path) == default_db_path:
+            from .cache.generation_routing import resolve_index_location
+
+            location = resolve_index_location(self.project_root)
+            db_path = str(location.path)
+            self._read_only = location.published
+            self._generation_managed = location.published
+            self._generation_guard = location.verify
         self.db_path = db_path
         self._local = threading.local()
         self._parser = Parser()
-        self._index_lock = threading.Lock()
+        self._index_lock = _shared_writer_lock(
+            default_db_path if self._read_only else db_path
+        )
         self._fts5_available: bool | None = None
         self._cache_dir_fd: int | None = None
         self._cache_dir_identity: tuple[int, int] | None = None
         db_dir = os.path.dirname(db_path) or "."
-        os.makedirs(db_dir, exist_ok=True)
+        if not self._read_only:
+            os.makedirs(db_dir, exist_ok=True)
         cache_dir = os.path.join(self.project_root, ".ast-cache")
         uses_project_mirror = os.path.abspath(db_path) == os.path.abspath(
             default_db_path
@@ -120,7 +153,14 @@ class ASTCache(
             self._cache_dir_fd = cache_dir_fd
             self._cache_dir_identity = (info.st_dev, info.st_ino)
         try:
-            self._init_db()
+            if self._read_only:
+                self._fts5_available = bool(
+                    self._get_conn()
+                    .execute("SELECT 1 FROM sqlite_master WHERE name='ast_symbols_fts'")
+                    .fetchone()
+                )
+            else:
+                self._init_db()
             if self._cache_dir_fd is not None:  # pragma: no branch - POSIX owner
                 info = os.stat(cache_dir, follow_symlinks=False)
                 if (info.st_dev, info.st_ino) != self._cache_dir_identity:
@@ -137,6 +177,31 @@ class ASTCache(
             self.close()
         except Exception:
             return
+
+    @property
+    def db_path(self) -> str:
+        if self._default_locator:
+            from .cache.generation_reads import current_read_location
+
+            location = current_read_location(self.project_root)
+            if location is not None:
+                return str(location.path)
+        return self._db_path
+
+    @db_path.setter
+    def db_path(self, path: str) -> None:
+        self._db_path = path
+
+    def _adopt_published_generation(self) -> None:
+        """写入成功后换绑只读连接，保留调用方缓存对象和解析器配置。"""
+        from .cache.generation_routing import resolve_index_location
+
+        location = resolve_index_location(self.project_root)
+        ASTCacheDatabaseMixin.close(self)
+        self._read_only = location.published
+        self.db_path = str(location.path)
+        self._generation_managed = location.published
+        self._uses_project_mirror = False
 
 
 def _walk_source_files(project_root: str) -> Iterator[str]:

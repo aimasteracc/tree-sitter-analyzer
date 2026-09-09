@@ -49,7 +49,7 @@ Categories of CLI surface:
 ### Querying
 - `--query-key methods|classes|imports|...` — predefined queries
 - `--filter "public=true"` — field filter
-- `--query "(method_declaration) @m"` — raw tree-sitter query
+- `--query-string "(method_declaration) @m"` — raw tree-sitter query
 
 ### Project-Level
 - `--overview` — snapshot
@@ -70,10 +70,10 @@ Categories of CLI surface:
 - `--safe-to-edit` — edit risk verdict
 - `--file-health` — per-file score
 - `--symbol-lineage NAME` — symbol history
-- `--refactor-queue [--refactor-queue-top-n N]` — top-N prioritized refactor queue (RFC-0027 §L8): files ranked by `(1 - health/100) * log(1 + churn_30d) * (dead_ratio + 0.1)`, the formula that previously lived only in `.claude/skills/tsa-refactor-queue/SKILL.md`. Each row carries grade, weakest dimension, 30-day churn, dead-symbol count and a concrete action (`split` / `delete dead` / `extract`). Reports `CHURN_UNAVAILABLE` rather than a queue of zeros when `.ast-cache/index.db` has no churn. MCP twin: `health action=refactor_queue`
+- `--refactor-queue [--refactor-queue-top-n N]` — top-N prioritized refactor queue (RFC-0027 §L8): files ranked by `(1 - health/100) * log(1 + churn_30d) * (dead_ratio + 0.1)`, the formula that previously lived only in `.claude/skills/tsa-refactor-queue/SKILL.md`. Each row carries grade, weakest dimension, 30-day churn, dead-symbol count and a concrete action (`split` / `delete dead` / `extract`). Reports `CHURN_UNAVAILABLE` rather than a queue of zeros when the selected AST index has no churn. MCP twin: `health action=refactor_queue`
 - `--plan-rename SYMBOL --plan-rename-to NEW_NAME` — minimal edit set for a project-wide rename (RFC-0027 §L8): every definition and reference site an AST-aware rename would touch, plus `files_affected`. **PREVIEW ONLY** — it never writes, and `mode`/`dry_run`/`apply`/`write`/`force` are rejected with `PLAN_RENAME_IS_PREVIEW_ONLY` rather than honoured. MCP twin: `edit action=plan_rename`
 - `--mutation-probe TEST_NODE_ID --mutation-probe-to FILE:LINENO [--mutation-probe-timeout SECONDS]` — on-demand query: does this test constrain this code? (RFC-0029). Applies one AST mutation at the given source line **in memory** (never writes to disk), runs only the named test in isolation, and returns `constrains` / `does_not_constrain` / `unknown`. Fail-closed: `unknown` on any uncertainty; `constrains` only on `AssertionError`. MCP twin: `edit action=mutation_probe`
-- `--self-health` — self-proprioception (RFC-0025 Layer 5): per-`(tool, action)` p50/p95 latency by tier (cold/warm/cached), invocation counts, in-process analysis-cache hit rate, and on-disk AST-index state (`.ast-cache/index.db` presence/size/indexed-file count; its hit rate is `null` — that index keeps no hit/miss counters). Scope is the **current process**; a fresh CLI run reports `NO_OBSERVATIONS` (never a fabricated `0.0`). MCP twin: `health action=self`. Durable numbers: `scripts/measure_self_health_baseline.py` → `docs/baselines/rfc0025-l5-latency-<axis>-e0.json`
+- `--self-health` — self-proprioception (RFC-0025 Layer 5): per-`(tool, action)` p50/p95 latency by tier (cold/warm/cached), invocation counts, in-process analysis-cache hit rate, and on-disk AST-index state (selected AST index presence/size/indexed-file count; its hit rate is `null` — that index keeps no hit/miss counters). Scope is the **current process**; a fresh CLI run reports `NO_OBSERVATIONS` (never a fabricated `0.0`). MCP twin: `health action=self`. Durable numbers: `scripts/measure_self_health_baseline.py` → `docs/baselines/rfc0025-l5-latency-<axis>-e0.json`
 
 ### Discovery
 - `--project-card` — the project card (RFC-0027 §L7): purpose from the README, top code languages, entry points, key config files, and per-module descriptions of the top-level structure. Persistent — built once into `.tree-sitter-cache/project-index.json` and recalled instantly. MCP twin: `project action=card`

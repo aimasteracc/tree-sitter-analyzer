@@ -126,9 +126,20 @@ def open_bound_database(project_root: str) -> tuple[str, int, int, int]:
     except FileNotFoundError:
         raise FileNotFoundError("MISSING_PROJECT_ROOT") from None
     try:
-        cache_fd = _open_pinned_path(
-            ".ast-cache", directory_flags, dir_fd=root_fd, directory=True
-        )
+        from .cache.generation_routing import resolve_index_path
+
+        parts = resolve_index_path(root).parent.relative_to(root).parts
+        cache_fd = os.dup(root_fd)
+        try:
+            for part in parts:
+                child_fd = _open_pinned_path(
+                    part, directory_flags, dir_fd=cache_fd, directory=True
+                )
+                os.close(cache_fd)
+                cache_fd = child_fd
+        except BaseException:
+            os.close(cache_fd)
+            raise
     except FileNotFoundError:
         os.close(root_fd)
         raise FileNotFoundError("MISSING_INDEX") from None
@@ -178,29 +189,25 @@ def hierarchy_matches_pinned_database(
     canonical_root: str, root_fd: int, cache_fd: int, db_fd: int
 ) -> bool:
     """Reopen the published pathname and compare every pinned hierarchy inode."""
-    directory_flags = (
-        os.O_RDONLY
-        | getattr(os, "O_DIRECTORY", 0)
-        | getattr(os, "O_NOFOLLOW", 0)
-        | getattr(os, "O_CLOEXEC", 0)
-    )
-    current_root: int | None = None
-    current_cache: int | None = None
+    handles: tuple[int, int, int] | None = None
     try:
-        current_root = os.open(canonical_root, directory_flags)
+        _root, current_root, current_cache, current_db = open_bound_database(
+            canonical_root
+        )
+        handles = (current_root, current_cache, current_db)
         if _fd_identity(current_root) != _fd_identity(root_fd):
             return False
-        current_cache = os.open(".ast-cache", directory_flags, dir_fd=current_root)
         if _fd_identity(current_cache) != _fd_identity(cache_fd):
             return False
-        return path_matches_pinned_database(current_cache, db_fd)
-    except OSError:
+        return _fd_identity(current_db) == _fd_identity(
+            db_fd
+        ) and path_matches_pinned_database(current_cache, db_fd)
+    except (OSError, ValueError):
         return False
     finally:
-        if current_cache is not None:
-            os.close(current_cache)
-        if current_root is not None:
-            os.close(current_root)
+        if handles is not None:
+            for handle in reversed(handles):
+                os.close(handle)
 
 
 def _fd_identity(fd: int) -> tuple[int, int]:
@@ -404,6 +411,24 @@ def _copy_pinned_wal_files(
                 ):
                     raise ValueError("CONCURRENT_WRITER")
                 wal_frames = (wal_size - 32) // (24 + page_size)
+                # SQLite 重用 WAL 不必截断旧代尾部；只认证当前 salt 的连续前缀。
+                # 校验和及提交边界仍由私有 SQLite 的精确 checkpoint 帧数核验。
+                with open(os.path.join(private, "index.db-wal"), "rb") as wal:
+                    current_frames = 0
+                    old_tail = False
+                    for frame in range(wal_frames):
+                        check_deadline(deadline)
+                        wal.seek(32 + frame * (24 + page_size))
+                        frame_header = wal.read(24)
+                        if frame_header[8:16] != header[16:24]:
+                            old_tail = True
+                        elif old_tail:
+                            raise ValueError("CONCURRENT_WRITER")
+                        else:
+                            current_frames += 1
+                    if wal_frames and not current_frames:
+                        raise ValueError("CONCURRENT_WRITER")
+                    wal_frames = current_frames
         yield os.path.join(private, "index.db"), wal_frames
         # 跨主库/WAL 的完整复核发生在私有 SQLite 读取之后、发布能力之前。
         for (_, fd, expected), captured in zip(files, hashes, strict=True):

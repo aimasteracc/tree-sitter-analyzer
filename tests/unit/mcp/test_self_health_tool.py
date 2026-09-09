@@ -226,9 +226,13 @@ def test_ast_index_reacts_to_a_real_index_on_disk(tmp_path: Any) -> None:
     assert (absent["status"], present["status"]) == ("ABSENT", "OK")
 
 
-def test_ast_index_counts_indexed_files(tmp_path: Any) -> None:
+@pytest.mark.parametrize("directory", ["project", "project # % 日本語"])
+def test_ast_index_counts_indexed_files(tmp_path: Any, directory: str) -> None:
+    """路径中的 URI 保留字符和 Unicode 不能让健康报告误判索引不可读。"""
     import sqlite3
 
+    tmp_path = tmp_path / directory
+    tmp_path.mkdir()
     cache_dir = tmp_path / ".ast-cache"
     cache_dir.mkdir()
     connection = sqlite3.connect(str(cache_dir / "index.db"))

@@ -8,6 +8,7 @@ import sqlite3
 
 import pytest
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
 
 requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
@@ -37,7 +38,7 @@ class TestNonPosixSnapshotContract:
             ] == [("helper", "app.py")]
             snapshot = owner._capture_wal_snapshot(
                 str(tmp_path.resolve()),
-                str(tmp_path / ".ast-cache" / "index.db"),
+                str(resolve_index_path(str(tmp_path))),
                 deadline=owner._clock() + 10,
             )
             assert (snapshot.snapshot_id, snapshot.completeness, snapshot.reason) == (
@@ -85,7 +86,7 @@ class TestNonPosixSnapshotContract:
 
         monkeypatch.setattr(capability, "_WINDOWS_WAL_SUPPORTED", False)
 
-        cache_dir = tmp_path / ".ast-cache"
+        cache_dir = resolve_index_path(str(tmp_path)).parent
         cache_dir.mkdir()
         (cache_dir / "index.db").write_bytes(b"")
         monkeypatch.setattr(owner.os, "name", "nt")
@@ -159,7 +160,7 @@ class TestAuthoritativeSnapshotOracle:
     async def test_old_schema_returns_stable_unknown_without_migration(self, tmp_path):
         import sqlite3
 
-        cache_dir = tmp_path / ".ast-cache"
+        cache_dir = resolve_index_path(str(tmp_path)).parent
         cache_dir.mkdir()
         db_path = cache_dir / "index.db"
         conn = sqlite3.connect(db_path)
@@ -179,7 +180,7 @@ class TestAuthoritativeSnapshotOracle:
     async def test_old_schema_explicit_access_evidence_is_unknown(self, tmp_path):
         import sqlite3
 
-        cache_dir = tmp_path / ".ast-cache"
+        cache_dir = resolve_index_path(str(tmp_path)).parent
         cache_dir.mkdir()
         conn = sqlite3.connect(cache_dir / "index.db")
         conn.execute("CREATE TABLE ast_schema_version(version INTEGER)")
@@ -201,7 +202,7 @@ class TestAuthoritativeSnapshotOracle:
 
     @pytest.mark.asyncio
     async def test_corrupt_index_returns_stable_unknown(self, tmp_path):
-        cache_dir = tmp_path / ".ast-cache"
+        cache_dir = resolve_index_path(str(tmp_path)).parent
         cache_dir.mkdir()
         (cache_dir / "index.db").write_bytes(b"not sqlite")
 
@@ -339,7 +340,7 @@ class TestAuthoritativeSnapshotOracle:
         import tree_sitter_analyzer.index_snapshot as owner
 
         self._certified_cache(tmp_path)
-        db = tmp_path / ".ast-cache" / "index.db"
+        db = resolve_index_path(str(tmp_path))
         source = tmp_path / "sample.py"
         writer = sqlite3.connect(db)
         assert writer.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
@@ -399,7 +400,7 @@ class TestAuthoritativeSnapshotOracle:
         import tree_sitter_analyzer.index_snapshot as owner
 
         self._certified_cache(tmp_path)
-        db = tmp_path / ".ast-cache" / "index.db"
+        db = resolve_index_path(str(tmp_path))
         with sqlite3.connect(db) as conn:
             if change == "marker":
                 conn.execute("DELETE FROM ast_call_graph_state")
@@ -468,7 +469,7 @@ class TestAuthoritativeSnapshotOracle:
         import tree_sitter_analyzer.index_snapshot as owner
 
         self._certified_cache(tmp_path)
-        db = tmp_path / ".ast-cache" / "index.db"
+        db = resolve_index_path(str(tmp_path))
         connect = sqlite3.connect
         opened = []
 
@@ -493,7 +494,7 @@ class TestAuthoritativeSnapshotOracle:
         from tree_sitter_analyzer.cache.build_state import mark_build_in_progress
 
         self._certified_cache(tmp_path)
-        db = tmp_path / ".ast-cache" / "index.db"
+        db = resolve_index_path(str(tmp_path))
         with sqlite3.connect(db) as conn:
             mark_build_in_progress(conn)
         snapshot = owner._capture_wal_snapshot(
@@ -509,7 +510,7 @@ class TestAuthoritativeSnapshotOracle:
         monkeypatch.setattr(source_owner, "_SOURCE_ENTRY_BUDGET", 0)
         snapshot = owner._capture_wal_snapshot(
             str(tmp_path.resolve()),
-            str(tmp_path / ".ast-cache" / "index.db"),
+            str(resolve_index_path(str(tmp_path))),
             deadline=owner._clock() + 10,
         )
         assert (snapshot.snapshot_id, snapshot.completeness, snapshot.reason) == (
@@ -539,7 +540,7 @@ class TestAuthoritativeSnapshotOracle:
         monkeypatch.setattr(owner.sqlite3, "connect", fail_open)
         snapshot = owner._capture_wal_snapshot(
             str(tmp_path.resolve()),
-            str(tmp_path / ".ast-cache" / "index.db"),
+            str(resolve_index_path(str(tmp_path))),
             deadline=owner._clock() + 10,
         )
         reason = (
@@ -605,7 +606,7 @@ class TestSnapshotOpenBoundaries:
             stamp_full_index_manifest,
         )
 
-        cache_dir = tmp_path / ".ast-cache"
+        cache_dir = resolve_index_path(str(tmp_path)).parent
         cache_dir.mkdir()
         conn = sqlite3.connect(cache_dir / "index.db")
         conn.execute("PRAGMA page_size=512")
@@ -1312,6 +1313,68 @@ class TestWalSnapshotPath:
         REGISTRY.close_all()
 
     @requires_posix_snapshot
+    @pytest.mark.parametrize(
+        "fault", [None, "checksum", "current_after_old", "header_salt"]
+    )
+    async def test_recycled_wal_certifies_current_committed_prefix(
+        self, tmp_path, wal_project, fault
+    ):
+        # 2026-09-08：真实 WAL 重用留下旧尾帧，静止索引不得误报并发写入。
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        conn = wal_project
+        conn.execute("PRAGMA wal_autocheckpoint=0")
+        for value in range(12):
+            conn.execute(
+                "UPDATE ast_cache_metadata SET value=? WHERE key='wal_test'",
+                (str(value),),
+            )
+            conn.commit()
+        wal = resolve_index_path(str(tmp_path)).with_name("index.db-wal")
+        previous = wal.read_bytes()
+        checkpoint = conn.execute("PRAGMA wal_checkpoint(RESTART)").fetchone()
+        assert checkpoint[0] == 0
+        assert checkpoint[1] == checkpoint[2]
+        conn.execute(
+            "UPDATE ast_cache_metadata SET value='current' WHERE key='wal_test'"
+        )
+        conn.commit()
+        captured = wal.read_bytes()
+        assert len(captured) == len(previous)
+        assert captured[16:24] != previous[16:24]
+        if fault:
+            damaged = bytearray(captured)
+            if fault == "checksum":
+                damaged[32 + 24] ^= 1
+            elif fault == "header_salt":
+                damaged[16] ^= 1
+            else:
+                frame_size = 24 + int.from_bytes(captured[8:12], "big")
+                damaged[-frame_size + 8 : -frame_size + 16] = captured[16:24]
+            wal.write_bytes(damaged)
+            try:
+                rejected = owner.read_existing_snapshot(str(tmp_path))
+                assert (rejected.completeness, rejected.reason) == (
+                    "unknown",
+                    "CONCURRENT_WRITER",
+                )
+            finally:
+                wal.write_bytes(captured)
+            return
+        snapshot = owner.read_existing_snapshot(str(tmp_path))
+        assert (snapshot.completeness, snapshot.reason) == ("complete", None)
+        with owner.read_existing_index_scope(
+            snapshot.snapshot_id, str(tmp_path), snapshot.source_generation
+        ) as (_, reader):
+            assert (
+                reader.execute(
+                    "SELECT value FROM ast_cache_metadata WHERE key='wal_test'"
+                ).fetchone()[0]
+                == "current"
+            )
+        assert wal.read_bytes() == captured
+
+    @requires_posix_snapshot
     @pytest.mark.parametrize("sidecars", ["present", "absent"])
     async def test_wal_snapshot_does_not_change_source_directory(
         self, tmp_path, wal_project, sidecars
@@ -1322,7 +1385,7 @@ class TestWalSnapshotPath:
         import tree_sitter_analyzer.index_snapshot as owner
 
         conn = wal_project
-        db = tmp_path / ".ast-cache" / "index.db"
+        db = resolve_index_path(str(tmp_path))
         conn.execute("PRAGMA wal_autocheckpoint=0")
         main_before = db.read_bytes()
         conn.execute("CREATE TABLE wal_only(value TEXT)")
@@ -1384,7 +1447,7 @@ class TestWalSnapshotPath:
         conn = wal_project
         conn.execute("PRAGMA wal_autocheckpoint=0")
         owner.stamp_full_index_manifest(conn, str(target))
-        source_db = tmp_path / ".ast-cache" / "index.db"
+        source_db = resolve_index_path(str(tmp_path))
         source_wal = source_db.with_name("index.db-wal")
         previous_size = source_wal.stat().st_size
         conn.execute("CREATE TABLE wal_only(value TEXT)")
@@ -1430,7 +1493,7 @@ class TestWalSnapshotPath:
         conn.execute("CREATE TABLE wal_only(value TEXT)")
         conn.execute("INSERT INTO wal_only VALUES ('before')")
         owner.stamp_full_index_manifest(conn, str(tmp_path))
-        db = tmp_path / ".ast-cache" / "index.db"
+        db = resolve_index_path(str(tmp_path))
         inode = db.stat().st_ino
         read = os.read
         fired = []
@@ -1474,13 +1537,15 @@ class TestWalSnapshotPath:
             (tmp_path / "sample.py").write_text(wal_source, encoding="utf-8")
         build = await CodeGraphFullIndexTool(str(tmp_path)).execute({"mode": "full"})
         assert (build["success"], build["verdict"]) == (True, "INFO")
-        conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+        conn = sqlite3.connect(resolve_index_path(str(tmp_path)))
         try:
             assert conn.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
             # PR #1350：保持真实非空 WAL 与写端连接，核验不能依赖已 checkpoint 的主库。
             conn.execute("INSERT INTO ast_cache_metadata VALUES ('wal_test', 'active')")
             conn.commit()
-            assert (tmp_path / ".ast-cache" / "index.db-wal").read_bytes()[:4] in {
+            assert (
+                resolve_index_path(str(tmp_path)).with_name("index.db-wal")
+            ).read_bytes()[:4] in {
                 b"\x37\x7f\x06\x82",
                 b"\x37\x7f\x06\x83",
             }
@@ -1518,7 +1583,7 @@ class TestWalSnapshotPath:
 
         monkeypatch.setattr(owner, "symbol_projection_is_exact", record_validation)
         root = str(tmp_path.resolve())
-        db = tmp_path / ".ast-cache" / "index.db"
+        db = resolve_index_path(str(tmp_path))
         wal = db.with_name("index.db-wal")
         before = (db.read_bytes(), wal.read_bytes())
         snapshot = owner._capture_wal_snapshot(
@@ -1575,7 +1640,7 @@ class TestWalSnapshotPath:
         owner.stamp_full_index_manifest(conn, root)
         snapshot = owner._capture_wal_snapshot(
             root,
-            str(tmp_path / ".ast-cache" / "index.db"),
+            str(resolve_index_path(str(tmp_path))),
             deadline=owner._clock() + 10,
         )
         with pytest.raises(ValueError, match="^INDEX_SNAPSHOT_INCOMPLETE$"):
@@ -1599,7 +1664,7 @@ class TestWalSnapshotPath:
         monkeypatch.setattr(owner, "_BACKUP_BYTE_BUDGET", 0)
         snapshot = owner._capture_wal_snapshot(
             str(tmp_path.resolve()),
-            str(tmp_path / ".ast-cache" / "index.db"),
+            str(resolve_index_path(str(tmp_path))),
             deadline=owner._clock() + 10,
         )
         assert (snapshot.snapshot_id, snapshot.completeness, snapshot.reason) == (
@@ -1624,7 +1689,7 @@ class TestWalSnapshotPath:
         monkeypatch.setattr(owner, "symbol_projection_is_exact", fail_validation)
         snapshot = owner._capture_wal_snapshot(
             str(tmp_path.resolve()),
-            str(tmp_path / ".ast-cache" / "index.db"),
+            str(resolve_index_path(str(tmp_path))),
             deadline=owner._clock() + 10,
         )
         assert (snapshot.snapshot_id, snapshot.completeness, snapshot.reason) == (
@@ -1650,7 +1715,7 @@ class TestWalSnapshotPath:
         monkeypatch.setattr(owner, "_CAPTURE_LOCK", lock)
         snapshot = owner._capture_wal_snapshot(
             str(tmp_path.resolve()),
-            str(tmp_path / ".ast-cache" / "index.db"),
+            str(resolve_index_path(str(tmp_path))),
             deadline=owner._clock() + 10,
         )
         assert (snapshot.snapshot_id, snapshot.completeness, snapshot.reason) == (
@@ -1669,7 +1734,7 @@ class TestWalSnapshotPath:
         import tree_sitter_analyzer.index_snapshot as owner
         import tree_sitter_analyzer.index_snapshot_capability as capability
 
-        cache_dir = tmp_path / ".ast-cache"
+        cache_dir = resolve_index_path(str(tmp_path)).parent
         cache_dir.mkdir()
         # 缺失 schema 表的 SQLite 错误由快照打开边界归类。
         (cache_dir / "index.db").write_bytes(b"")
@@ -1794,7 +1859,7 @@ class TestWalSnapshotPath:
             (os.name == "posix" and hasattr(os, "O_NOFOLLOW"))
             or (os.name == "nt" and capability._WINDOWS_WAL_SUPPORTED)
         )
-        db = tmp_path / ".ast-cache" / "index.db"
+        db = resolve_index_path(str(tmp_path))
         before = db.stat()
         read = os.read
         changed = []
@@ -1844,7 +1909,7 @@ class TestWalSnapshotPath:
         monkeypatch.setattr(owner.sqlite3, "connect", forbidden_open)
         result = owner._capture_wal_snapshot(
             str(tmp_path.resolve()),
-            str(tmp_path / ".ast-cache" / "index.db"),
+            str(resolve_index_path(str(tmp_path))),
             deadline=owner._clock() + 10,
         )
         assert (result.completeness, result.reason) == (

@@ -28,6 +28,9 @@ from .source_oracle import (
 
 _INDEX_SOURCE_BYTE_LIMIT = 64 * 1024 * 1024
 _INDEX_SOURCE_READ_SECONDS = 5.0
+_SOURCE_NONREGULAR = "supported source is symlinked or non-regular"
+_SOURCE_TOO_LARGE = "supported source exceeds byte limit"
+_PERMANENT_SOURCE_REJECTIONS = frozenset({_SOURCE_NONREGULAR, _SOURCE_TOO_LARGE})
 _CANDIDATE_ENTRY_BUDGET = 100_000
 _CANDIDATE_PATH_BYTE_BUDGET = 16 * 1024 * 1024
 _CANDIDATE_DISCOVERY_SECONDS = 5.0
@@ -86,10 +89,10 @@ class IndexFileFingerprint:
 
 
 def decode_index_source(data: bytes) -> str:
-    """Match text-mode UTF-8 replacement and universal-newline semantics."""
-    return (
-        data.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
-    )
+    """对捕获的同一份字节检测编码并统一换行，不复用按路径缓存的编码。"""
+    from .encoding_utils import EncodingManager
+
+    return EncodingManager.normalize_line_endings(EncodingManager.safe_decode(data))
 
 
 def index_source_content_hash(source: str) -> str:
@@ -164,6 +167,8 @@ class IndexCandidateSnapshot:
     errors: int
     limited: int
     discovery_error: str | None = None
+    publication_parent: object | None = field(default=None, repr=False, compare=False)
+    publication_bound: bool = field(default=False, repr=False, compare=False)
     root_identity: tuple[str, int, int] | None = field(
         default=None, repr=False, compare=False
     )
@@ -270,9 +275,12 @@ def build_index_candidate_snapshot(
     normalized_max = normalize_index_max_files(max_files)
     logical_root = os.path.abspath(project_root)
     resolved_root = os.path.realpath(logical_root)
+    from .cache.generation_routing import resolve_index_location
+
     root_info = os.stat(resolved_root, follow_symlinks=True)
     if not stat.S_ISDIR(root_info.st_mode):
         raise ValueError("candidate project root is not a directory")
+    publication_parent = resolve_index_location(resolved_root).selector
     root_identity = (resolved_root, int(root_info.st_dev), int(root_info.st_ino))
     entries: list[IndexSnapshotEntry] = []
     present_paths: set[str] = set()
@@ -361,8 +369,13 @@ def build_index_candidate_snapshot(
                 except OSError as exc:
                     invalid_reason = str(exc)
                 else:
-                    if not stat.S_ISREG(source_info.st_mode):
-                        invalid_reason = "supported source is symlinked or non-regular"
+                    if not stat.S_ISREG(source_info.st_mode) or (
+                        getattr(source_info, "st_file_attributes", 0)
+                        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+                    ):
+                        invalid_reason = _SOURCE_NONREGULAR
+                    elif source_info.st_size > _INDEX_SOURCE_BYTE_LIMIT:
+                        invalid_reason = _SOURCE_TOO_LARGE
         if invalid_reason is not None:
             discovered += 1
             present_paths.add(rel_path)
@@ -473,6 +486,8 @@ def build_index_candidate_snapshot(
         limited=limited,
         discovery_error=discovery_error,
         root_identity=root_identity,
+        publication_parent=publication_parent,
+        publication_bound=True,
     )
     if materialize:
         from .indexing_candidate_materialization import (

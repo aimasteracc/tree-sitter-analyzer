@@ -978,7 +978,13 @@ class TestExecute:
         assert received[0] is received[1]
         assert received[0].selected_entries[0].rel_path == "app.py"
 
-    async def test_elapsed_time_includes_snapshot_discovery(self, tmp_path):
+    @pytest.mark.parametrize("path_only", [False, True])
+    async def test_elapsed_time_includes_snapshot_discovery(
+        self, tmp_path, monkeypatch, path_only
+    ):
+        monkeypatch.setattr(
+            "tree_sitter_analyzer.cache.generation_store._PATH_ONLY_SOURCE", path_only
+        )
         path = tmp_path / "app.py"
         path.write_text("value = 1\n")
         full_tool = CodeGraphFullIndexTool(str(tmp_path))
@@ -999,8 +1005,12 @@ class TestExecute:
 
         with (
             patch(
-                "tree_sitter_analyzer.mcp.tools.full_index_tool.time.monotonic",
-                side_effect=clock,
+                "tree_sitter_analyzer.mcp.tools.full_index_tool.time",
+                SimpleNamespace(monotonic=clock),
+            ),
+            patch(
+                "tree_sitter_analyzer.cache.generation_indexing.time",
+                SimpleNamespace(monotonic=clock),
             ),
             patch.object(
                 full_tool,
@@ -1049,6 +1059,10 @@ class TestExecute:
         path = tmp_path / "app.py"
         path.write_text("value = 1\n")
         full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        assert (await full_tool.execute({"mode": "full"}))["published"] is True
+        from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
+        prior_path = resolve_index_path(tmp_path)
         original_ast_phase = full_tool._phase_ast_cache
 
         def ast_then_mutate(*args, **kwargs):
@@ -1073,7 +1087,7 @@ class TestExecute:
         incremental = result["phases"]["incremental_sync"]
         assert result["verdict"] == "WARN"
         assert scope["selected"] == 1
-        # PR #1253: the complete frozen epoch remains indexed despite live drift.
+        # PR #1253：冻结候选仍被处理，但源码漂移禁止发布新版本。
         assert scope["processed"] == 1
         assert scope["changed_during_run"] == 1
         assert scope["changed_during_run_files"] == ["app.py"]
@@ -1088,6 +1102,8 @@ class TestExecute:
         assert scope["phase_totals_reconciled"] is True
         assert incremental["changed_during_run"] == 1
         assert incremental["processed"] == 1
+        assert result["published"] is False
+        assert resolve_index_path(tmp_path) == prior_path
         cache = ASTCache(str(tmp_path))
         row = (
             cache.get_conn()
