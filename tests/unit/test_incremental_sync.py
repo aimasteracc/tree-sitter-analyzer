@@ -2861,18 +2861,18 @@ def test_watcher_retry_backoff_preserves_pending_file_notification(
 
 def test_watcher_does_not_retry_permanently_oversized_source(tmp_path):
     # #1405：永久超过字节上限不能启动无意义的后台重试。
+    # 2026-09-09：直接观察重试请求，避免把首轮同步未结束误判成已安排重试。
     from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
 
     with (tmp_path / "a.py").open("wb") as source:
         source.truncate(64 * 1024 * 1024 + 1)
     cache = ASTCache(str(tmp_path))
-    results = []
-    watcher = FileWatcherDaemon(cache, debounce=0, on_sync=results.append)
+    watcher = FileWatcherDaemon(cache, debounce=0)
     try:
-        watcher._request_sync()
-        watcher._debounce_timer.join(timeout=3)
-        assert watcher.is_running() is False
-        assert [result["completeness"] for result in results] == ["incomplete"]
+        with patch.object(watcher, "_request_sync") as request_sync:
+            result = watcher.trigger_sync()
+        request_sync.assert_not_called()
+        assert result["completeness"] == "incomplete"
     finally:
         watcher.stop(timeout=3)
         cache.close()
