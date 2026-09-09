@@ -204,6 +204,7 @@ def build_agent_summary_only_response(result: dict[str, Any]) -> dict[str, Any]:
         "stop_condition": summary.get("stop_condition", ""),
     }
     for key in (
+        "error_code",
         "resource_profile",
         "local_verification_command",
         "low_impact_focused_test_command",
@@ -430,7 +431,9 @@ def build_change_impact_response(
         value = strategy.get(key)
         if value:
             response[key] = value
-    return response
+    from ....verification_plan import attach_commands
+
+    return attach_commands(response, context)
 
 
 def _agent_next_step(verification: dict[str, Any], strategy: dict[str, Any]) -> str:

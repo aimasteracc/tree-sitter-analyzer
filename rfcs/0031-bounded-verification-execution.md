@@ -1,16 +1,16 @@
 # RFC-0031: 有界验证命令与计划重建执行
 
-- **Status**: draft
+- **Status**: implementation in PR #1407; validation in progress
 - **Author(s)**: @aimasteracc / Codex
 - **Created**: 2026-09-08
-- **Last updated**: 2026-09-08
+- **Last updated**: 2026-09-09
 - **Tracking issue**: PR #1407 的 aggregate-command P2
 - **Affected source paths**:
   - `tree_sitter_analyzer/mcp/tools/utils/verification_command.py`
   - `tree_sitter_analyzer/mcp/tools/utils/change_impact_analysis.py`
   - `tree_sitter_analyzer/mcp/tools/utils/change_impact_response.py`
   - `tree_sitter_analyzer/mcp/tools/change_impact_tool.py`
-  - `tree_sitter_analyzer/verification_runner.py`（拟新增执行器）
+  - `tree_sitter_analyzer/verification_runner.py`
   - `tree_sitter_analyzer/mcp/tools/edit_facade.py`
   - `tree_sitter_analyzer/mcp/tools/edit_facade_schema.py`
   - `tree_sitter_analyzer/cli/commands/mcp_commands/`
@@ -25,7 +25,9 @@
 执行器重新分析同一项目、同一范围，核对完整计划摘要，然后以参数数组依次启动原来的
 有界测试批次。分析阶段不写计划文件、不启动测试；执行阶段不从 token 接受任意命令。
 
-这是设计草案，当前 PR 的超长命令缺陷尚未修复，也不能用本 RFC 代替实现验收。
+PR #1407 已接入 `verification_plan.py`、`verification_runner.py`、CLI 与 MCP 入口。
+真实 CLI 已运行全通过、晚批次失败和默认门禁失败场景；新 MCP 服务进程也已验证执行成功。下面的验收项仍须以最终提交的
+自动化测试、原生 CI 和补丁覆盖率为准，文档本身不替代验收。
 
 ## Motivation
 
@@ -49,10 +51,10 @@ Windows `CreateProcessW` 的命令行上限为 32,767 字符，包含终止空�
 - 完整 `scope_paths`、`include_tests`、`resource_profile`、所选 `stage`；
 - PR 模式的规范化 `pr_url` 及当次读取的 PR head/base identity；
 - 当前项目根标识摘要、变更路径集合摘要、完整有序执行计划 SHA-256；
-- 分析策略版本、执行总超时（默认 900 秒，可显式配置）。
+- 描述符协议版本、执行总超时（生成值为 900 秒，解码接受 1–900 秒）。
 
 不携带测试路径列表、shell 文本、任意 argv、回调或序列化 Python 对象。
-描述符使用规范 JSON + base64url；摘要覆盖版本、runner、所有目标、顺序、重复次数、
+描述符使用规范 JSON + base64url；协议版本独立校验，计划摘要覆盖实际 runner、所有目标、顺序、重复次数、
 资源参数以及所选阶段的默认门禁。不能对预览或截断列表计算摘要。
 
 `stage` 区分完整验证、本地降载、CI 门禁和仅聚焦测试。公开的各命令字段必须明确
@@ -60,7 +62,7 @@ Windows `CreateProcessW` 的命令行上限为 32,767 字符，包含终止空�
 
 ### 生成命令
 
-拟新增 CLI：
+CLI：
 
 ```text
 uv run python -m tree_sitter_analyzer --verify-plan <base64url-descriptor>
@@ -93,7 +95,7 @@ uv run python -m tree_sitter_analyzer --verify-plan <base64url-descriptor>
 
 ### 执行与结果
 
-MCP 拟使用 `edit(action="verify", request=<descriptor>)`，只在明确调用执行 action
+MCP 使用 `edit(action="verify", request=<descriptor>)`，只在明确调用执行 action
 时启动测试。`edit.impact` 仍只生成计划；`read_existing`、快照租约和 RFC-0022 的
 进程内例外均不扩大。无法跨进程重建的快照描述符必须明确拒绝，不伪造可重放 token。
 
@@ -102,11 +104,13 @@ MCP 拟使用 `edit(action="verify", request=<descriptor>)`，只在明确调用
 输出日志按显式预算截断并标记；截断日志不能截断测试集合或把未知结果计为通过。
 本地阶段成功不能声称 CI 阶段已通过。CLI 的非零退出码必须反映失败或拒绝状态。
 
-总超时、取消及启动失败必须回收所拥有的子进程树；不能只终止最外层 Python。
-现有 `git_subprocess.py` 有进程组及 taskkill 清理，但带 Git 专用环境和输出限制；
-`mutation_probe/runner.py` 会改变 pytest 配置，不能直接复用其测试启动命令。实现应
-抽取或采用经过原生验证的通用进程所有权部分，保留 Python 3.10 支持，不能把现有
-Git 的 best-effort 清理文字当成验证执行器已具备完整子进程回收的证据。
+总预算从重建前起算，预算耗尽后不启动后续测试；取消及退出均回收拥有的测试进程。
+重建沿用现有 Git/gh 查询超时；同步分析阶段不支持抢占，因此这不是包含任意项目分析
+耗时的硬墙钟 SLA。进程清理另有有界收尾时间，不能只终止最外层 Python。
+执行器保留已观察到的子进程身份，并通过每次运行独立的继承标记查找脱离原父进程的
+协作子进程；成功退出也执行清理，两次空扫描才报告清理完成。超时、取消、父进程先退
+和日志截断均有真实进程回归用例。这是进程生命周期管理，不是隔离任意恶意测试的沙箱。
+现有 pytest 参数不被替换；本地降载阶段只调整既有 worker/quiet 选项。
 
 ## Three-Surface impact (CLI ↔ MCP parity)
 
@@ -118,7 +122,7 @@ Git 的 best-effort 清理文字当成验证执行器已具备完整子进程回
 
 CLI 与 MCP 必须支持相同模式、范围、阶段、超时和错误。action 参数须更新真实 facade
 注册 owner、CLI dispatch、帮助及 codemap，运行真实 CLI smoke 和 parity contracts。
-目前尚未新增这些入口；表格是待实现契约。
+这些入口共用同一个描述符校验与执行器；错误响应保留非零退出状态。
 
 2026-09-08 合入 develop `a89d7229` 后重新核对：`edit_facade_schema.py` 已因
 rename/apply 声明 `readOnlyHint=False`、`destructiveHint=True`，原草案所述
@@ -128,7 +132,7 @@ rename/apply 声明 `readOnlyHint=False`、`destructiveHint=True`，原草案所
 现有 `openWorldHint=False` 不能覆盖任意项目测试：用户测试可能联网。注册执行 action
 时应将整个混合 facade 的 `openWorldHint` 改为 `True`，并更新描述与 contract；
 不能因为 TSA 自身快速套件排除了 network 标记就推断所有用户测试都是封闭的。
-这属于本 RFC 的待评审元数据变更，当前代码尚未注册该 action。
+该混合 facade 已声明 `openWorldHint=True`，动作说明明确描述测试执行的副作用。
 
 ### 完整计划摘要的边界
 
@@ -136,20 +140,20 @@ rename/apply 声明 `readOnlyHint=False`、`destructiveHint=True`，原草案所
 阶段选择、资源降载和追加检查都在该结构上完成，最后才渲染 shell 文本。不能只给
 `build_test_argv_batches` 的聚焦批次计算摘要后声称覆盖完整验证计划。
 
-摘要输入使用固定版本的规范 JSON，字段包含 runner、stage、resource_profile 和完整
-有序步骤。每一步的角色、可执行文件、参数顺序、重复参数、Unicode 和空参数都进入
+摘要输入使用固定的规范 JSON，包含完整有序步骤及其实际 runner 与资源参数；
+协议版本、stage 和 resource_profile 由描述符独立校验，并用于重建对应计划。每一步的角色、可执行文件、参数顺序、重复参数、Unicode 和空参数都进入
 SHA-256；不排序或去重步骤，不纳入计时、日志或显示截断。默认门禁被移除、阶段被替换、
 末尾追加检查改变，必须得到不同摘要。项目根、模式、范围和 PR 身份另由描述符完整绑定，
 再分析生成的这两部分均匹配才允许启动第一个子进程。
 
-`80d33fb9` 已实现纯 argv 聚焦批次编译并接入命令渲染，测试覆盖重复/Unicode 参数及
-Windows 实际启动引用预算。它没有实现上述完整阶段计划、摘要或执行器，验收项保持未勾选。
+`80d33fb9` 建立的纯 argv 聚焦批次编译器继续作为唯一的目标分批实现。
+当前执行计划在其上附加角色、默认门禁和资源阶段；降载前缀使批次超预算时继续分批。
+重建直接收集这条分析编译路径的 argv，不执行分析响应中的命令字符串。
 
 ### PR 模式的 checkout 约束
 
-当前 `_execute_pr_analysis` 只获取变更路径与 diff stat，没有把 PR head/base SHA
-传入 `ChangeImpactRequest`。执行描述符生成前必须补齐这项事实，不能从 PR URL 推断
-本地 checkout 正确。
+`_execute_pr_analysis` 传入规范化 PR URL；生成描述符时读取远端 head/base SHA，
+并检查本地 HEAD 和已跟踪差异。URL 本身不能证明本地 checkout 正确。
 
 PR 执行描述符绑定规范仓库与编号、当次远端 head/base SHA、本地 HEAD。生成和重建时均
 要求本地 HEAD 等于远端 PR head，且已跟踪文件的暂存/未暂存差异为空；不自动 checkout、

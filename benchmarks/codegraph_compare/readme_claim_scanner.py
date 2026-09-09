@@ -32,10 +32,10 @@ _SAFE_SPANS = (
     re.compile(r"13 言語は `?pipeline_registered|13 种语言为 `?pipeline_registered"),
     re.compile(r"5 言語 gap|5 语言 gap"),
     re.compile(r"1 ワークフロー|一个工作流"),
-    # v1.29.5 合并恢复三个路由及其参数，共增加 11 个选项：344 → 355。
+    # RFC-0031 增加 --verify-plan，运行时选项数量从 355 增至 356。
     # 只放行经运行时与文档契约验证的精确数量，不允许任意数字。
-    re.compile(r"\b355 CLI flags\b", re.IGNORECASE),
-    re.compile(r"355 の CLI フラグ|355 个 CLI flag", re.IGNORECASE),
+    re.compile(r"\b356 CLI flags\b", re.IGNORECASE),
+    re.compile(r"356 の CLI フラグ|356 个 CLI flag", re.IGNORECASE),
     re.compile(r"\b(?:FTS5|BM25)\b"),
     re.compile(r"\bE[0-4]\b"),
     re.compile(r"\bE2E\b", re.IGNORECASE),

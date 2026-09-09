@@ -203,6 +203,9 @@ from tree_sitter_analyzer.mcp.tools.uml_tool import CodeGraphUMLTool  # noqa: F4
 from tree_sitter_analyzer.mcp.tools.unreachable_code_tool import (
     UnreachableCodeTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.verification_tool import (
+    VerificationTool,  # noqa: F401
+)
 
 # ---------------------------------------------------------------------------
 # Sub-module imports — builders, specs, helpers
@@ -225,6 +228,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "ProjectOverviewTool",
         "SafeToEditTool",
         "ChangeImpactTool",
+        "VerificationTool",
         "DependencyAnalysisTool",
         "RefactoringSuggestionsTool",
         "SmartContextTool",

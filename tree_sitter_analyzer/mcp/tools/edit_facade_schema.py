@@ -11,7 +11,7 @@ _EDIT_ANNOTATIONS: dict[str, Any] = {
     "readOnlyHint": False,
     "destructiveHint": True,  # rename 的 apply 模式会写入源文件
     "idempotentHint": False,  # analysis results can change as index updates
-    "openWorldHint": False,
+    "openWorldHint": True,  # 显式验证会执行用户项目测试，可能联网
 }
 
 _EDIT_DESCRIPTION = (
@@ -32,6 +32,8 @@ _EDIT_DESCRIPTION = (
     "default: diff), scope_paths, output_format, access_mode, "
     "capture_diff_snapshot (boolean; explicit opt-in, same-process POSIX "
     "producer only and forbidden with access_mode).\n"
+    "- action=verify — explicitly execute a bound verification plan after rebuilding it. "
+    "Runs project tests, which may write files or access the network. Params: request, output_format.\n"
     "- action=refactor — refactoring-opportunity analysis for a source file: extract "
     "candidates, complexity hotspots, skeleton. Params: file_path, language, "
     "max_suggestions, include_extractions, include_skeleton, output_format.\n"
@@ -81,6 +83,7 @@ _EDIT_DESCRIPTION = (
     "NOTE: ``safe``/``impact``/``classify``/``constraints``/``pr``/``ast_diff``/"
     "``plan_rename``/``mutation_probe`` are "
     "read-only in practice; ``refactor``/``guard`` suggest changes but do not write "
-    "files; rename with mode=apply writes files. readOnlyHint is False and "
+    "files; rename with mode=apply writes files, and verify runs user tests with "
+    "possible file and network side effects. readOnlyHint is False and "
     "destructiveHint is True for the whole facade (mixed action set)."
 )

@@ -104,6 +104,7 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
     from .refactoring_suggestions_tool import RefactoringSuggestionsTool
     from .safe_to_edit_tool import SafeToEditTool
     from .semantic_classify_tool import SemanticClassifyTool
+    from .verification_tool import VerificationTool
 
     class _StrictEditFacade(FacadeTool):
         async def execute(self, arguments: dict[str, Any]) -> Any:
@@ -149,6 +150,7 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
             "safe": SafeToEditTool(project_root),
             "guard": ModificationGuardTool(project_root),
             "impact": impact_tool,
+            "verify": VerificationTool(project_root),
             "refactor": RefactoringSuggestionsTool(project_root),
             "rename": CodeGraphRefactorTool(project_root),
             "constraints": ConstraintCheckTool(project_root),

@@ -302,6 +302,11 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
     # RFC-0027 §L8: CLI parity for edit action=plan_rename. Preview-only —
     # there is deliberately no --apply companion flag.
     parser.add_argument(
+        "--verify-plan",
+        metavar="DESCRIPTOR",
+        help="Rebuild and execute a bound verification plan (edit action=verify).",
+    )
+    parser.add_argument(
         "--plan-rename",
         metavar="SYMBOL",
         help=(

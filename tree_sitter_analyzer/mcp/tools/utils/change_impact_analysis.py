@@ -88,6 +88,7 @@ class ChangeImpactRequest:
     agent_summary_only: bool = False
     resource_profile: str = RESOURCE_PROFILE_DEFAULT
     read_only: bool = False
+    pr_url: str = ""
 
 
 def _find_test_files(

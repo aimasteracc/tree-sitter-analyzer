@@ -402,6 +402,7 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("edit", "safe"): "SafeToEditTool",
         ("edit", "guard"): "ModificationGuardTool",
         ("edit", "impact"): "ChangeImpactTool",
+        ("edit", "verify"): "VerificationTool",
         ("edit", "refactor"): "RefactoringSuggestionsTool",
         # ``refactor`` advises, ``rename`` acts: CodeGraphRefactorTool is the
         # only write-capable AST-aware rename, so it gets its own action

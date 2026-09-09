@@ -1439,3 +1439,18 @@ def test_real_cli_recovered_routes(tmp_path):
     )
     assert applied["success"] is True
     assert source.read_text(encoding="utf-8") == original.replace("before", "after")
+
+
+@pytest.mark.parametrize("output_format", ["json", "toon"])
+def test_verify_plan_cli_forwards_descriptor_and_output_format(output_format):
+    args = create_argument_parser().parse_args(["--verify-plan", "descriptor"])
+    from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
+        find_selected_mcp_command,
+    )
+
+    spec = find_selected_mcp_command(args, mcp_commands.MCP_COMMAND_SPECS)
+    assert spec.tool_attr == "VerificationTool"
+    assert spec.build_tool_args(args, output_format) == {
+        "request": "descriptor",
+        "output_format": output_format,
+    }
