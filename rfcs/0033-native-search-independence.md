@@ -84,6 +84,8 @@ TSA 的索引发现改用进程内实现，实时源码核验使用自带 Python
 
 清单核对命令：`python -c 'import json,pathlib; rows=[json.loads(line) for p in sorted(pathlib.Path("rfcs/evidence").glob("0033-retired-tests-*.jsonl")) for line in p.read_text().splitlines()]; assert len(rows)==537; assert len({r["original_nodeid"] for r in rows})==537; assert all(r["behavior"] and r["input_partitions"] and r["failure_witness"] and r["retained_at"] for r in rows)'`。该命令检查登记完整性，不替代运行行为测试或审阅原始断言。
 
+补充清理见 [未使用的 Phase 7 helper 清单](evidence/0033-orphaned-helpers.jsonl)。这些私有模块仍导入 `ListFilesTool`，但源码查询未发现显式导入者，模块内没有 pytest 测试函数。清单保留函数名及固定提交的全部输入/断言源码；不把未执行的 helper 断言计为有效测试，也不声称现有测试逐项替代其行为。现存安全和项目资源测试继续独立运行。
+
 ## Acceptance criteria
 
 - [ ] 公开接口删除对应的具名主版本裁决完成
