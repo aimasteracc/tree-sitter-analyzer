@@ -411,8 +411,10 @@ class TestCodeGraphSymbolSearchNoCache:
         project.mkdir()
         tool = CodeGraphSymbolSearchTool(str(project))
         result = await tool.execute({"query": "anything", "output_format": "json"})
-        assert result["success"] is True
+        # 2026-09-09：没有索引时，不能断言项目里没有匹配符号。
+        assert (result["success"], result["error_code"]) == (False, "INDEX_NOT_READY")
         assert result["match_count"] == 0
+        tool._cache.close()
 
 
 class TestCodeGraphSymbolSearchSourceContext:
@@ -659,3 +661,59 @@ class TestSymbolSearchTruncation:
             {"query": "nonexistent_xyz", "output_format": "json"}
         )
         assert "truncated" in result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("indexed", [False, True])
+async def test_empty_index_does_not_claim_symbol_absence(tmp_path, indexed):
+    # 2026-09-09：冷索引曾将真实存在的函数报告为 NOT_FOUND。
+    source = tmp_path / "auth.py"
+    source.write_text(
+        "def authenticate_user(token): return bool(token)\n", encoding="utf-8"
+    )
+    cache = ASTCache(str(tmp_path))
+    tool = CodeGraphSymbolSearchTool(str(tmp_path))
+    try:
+        if indexed:
+            cache.index_file(str(source))
+        result = await tool.execute(
+            {"query": "authenticate_user", "output_format": "json"}
+        )
+        assert (result["success"], result["verdict"]) == (
+            (True, "INFO") if indexed else (False, "ERROR")
+        )
+        if not indexed:
+            assert result["error_code"] == "INDEX_NOT_READY"
+            assert result["error_type"] == "validation"
+            assert result["recovery_hint"] == result["next_step"]
+            assert result["agent_summary"]["next_step"] == result["next_step"]
+            assert result["results"] == []
+            assert "--ast-cache-mode index" in result["next_step"]
+    finally:
+        cache.close()
+        if tool._cache is not None:
+            tool._cache.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("empty_project", [False, True])
+async def test_indexed_zero_symbols_can_report_not_found(tmp_path, empty_project):
+    # 2026-09-09：零符号文件和已完成的空项目不能被误判为尚未建索引。
+    if not empty_project:
+        (tmp_path / "empty.py").write_text("# 空模块\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    tool = CodeGraphSymbolSearchTool(str(tmp_path))
+    try:
+        cache.index_project(max_files=20)
+        result = await tool.execute(
+            {"query": "authenticate_user", "output_format": "json"}
+        )
+        assert (result["success"], result["verdict"], result["results"]) == (
+            True,
+            "NOT_FOUND",
+            [],
+        )
+    finally:
+        cache.close()
+        if tool._cache is not None:
+            tool._cache.close()
