@@ -14,7 +14,8 @@ from typing import Any
 if sys.version_info >= (3, 11):
     import tomllib
 else:
-    import tomli as tomllib
+    # tomli 只随 Python 3.10 安装；检查器环境可能缺包，或已忽略缺失导入。
+    import tomli as tomllib  # type: ignore[import-not-found, unused-ignore]
 
 _CONFIG_NAMES = (
     "pytest.toml",
