@@ -444,12 +444,8 @@ class TestTraceImpactMaxResultsCoercion:
                 return_value=["/fake/root"],
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.trace_impact_tool.build_rg_command",
-                return_value=["rg", "--json", "my_func"],
-            ),
-            patch(
-                "tree_sitter_analyzer.mcp.tools.trace_impact_tool.run_command_capture",
-                return_value=(1, b"", b""),  # rc=1 → zero matches (NOT_FOUND path)
+                "tree_sitter_analyzer.mcp.tools.trace_impact_tool.scan_symbol_lines",
+                return_value=[],  # rc=1 → zero matches (NOT_FOUND path)
             ),
         ):
             resp = await tool.execute(

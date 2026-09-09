@@ -16,7 +16,7 @@ guard total_callers must also return N (they must agree on call-site count).
 from __future__ import annotations
 
 import textwrap
-from unittest.mock import AsyncMock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -190,7 +190,7 @@ def _rg_match_line(file_path: str, line_no: int, text: str) -> bytes:
 
 
 class TestTraceImpactExcludesImportAndStringMatches:
-    """End-to-end fixture: 4 ripgrep hits, only 2 are real calls."""
+    """四个源码命中中只有两个是真实调用。"""
 
     @pytest.mark.asyncio
     async def test_call_count_excludes_import_and_string_literal(
@@ -230,8 +230,18 @@ class TestTraceImpactExcludesImportAndStringMatches:
 
         tool = TraceImpactTool(str(tmp_path))
         with patch(
-            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.run_command_capture",
-            new=AsyncMock(return_value=(0, rg_stdout, b"")),
+            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.scan_symbol_lines",
+            new=Mock(
+                return_value=[
+                    {
+                        "file": data["path"]["text"],
+                        "line": data["line_number"],
+                        "text": " ".join(data["lines"]["text"].split()),
+                    }
+                    for raw in rg_stdout.splitlines()
+                    for data in [__import__("json").loads(raw)["data"]]
+                ]
+            ),
         ):
             result = await tool.execute({"symbol": "my_func"})
 
@@ -290,8 +300,18 @@ class TestTraceImpactExcludesImportAndStringMatches:
 
         tool = TraceImpactTool(str(tmp_path))
         with patch(
-            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.run_command_capture",
-            new=AsyncMock(return_value=(0, rg_stdout, b"")),
+            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.scan_symbol_lines",
+            new=Mock(
+                return_value=[
+                    {
+                        "file": data["path"]["text"],
+                        "line": data["line_number"],
+                        "text": " ".join(data["lines"]["text"].split()),
+                    }
+                    for raw in rg_stdout.splitlines()
+                    for data in [__import__("json").loads(raw)["data"]]
+                ]
+            ),
         ):
             result = await tool.execute({"symbol": "my_func"})
 

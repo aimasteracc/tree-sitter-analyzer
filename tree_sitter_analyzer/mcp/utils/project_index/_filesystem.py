@@ -1,16 +1,8 @@
-"""
-File-system scanning helpers for project_index.
-
-Provides file enumeration (fd / os.walk fallback), entry-point detection,
-top-level structure building, language distribution, and module description
-extraction.
-"""
+"""项目索引的原生文件发现、入口检测、目录结构与语言统计。"""
 
 from __future__ import annotations
 
-import os
 import re
-import subprocess  # nosec
 from pathlib import Path
 from typing import Any
 
@@ -54,48 +46,10 @@ _ARTIFACT_DIRS: frozenset[str] = frozenset(
 
 
 def list_files(roots: list[str]) -> list[str]:
-    """Return absolute paths of all regular files under *roots*.
+    """返回遵守忽略规则及符号链接边界的普通文件绝对路径。"""
+    from ....source_lines import workspace_files
 
-    Tries ``fd`` first for speed; falls back to ``os.walk``.
-    """
-    abs_roots = [str(Path(r).resolve()) for r in roots]
-
-    try:
-        result = subprocess.run(  # nosec
-            ["fd", "--type", "f", "--color", "never", "--absolute-path", "."]
-            + abs_roots,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=30,
-        )
-        if result.returncode == 0:
-            return [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        pass
-
-    # Fallback: os.walk
-    files: list[str] = []
-    skip_dirs = {
-        ".git",
-        ".tree-sitter-cache",
-        "node_modules",
-        "__pycache__",
-        ".venv",
-        "venv",
-        ".mypy_cache",
-        ".ruff_cache",
-        "dist",
-        "build",
-        "target",
-    }
-    for root_str in abs_roots:
-        for dirpath, dirnames, filenames in os.walk(root_str):
-            dirnames[:] = [d for d in dirnames if d not in skip_dirs]
-            for fname in filenames:
-                files.append(os.path.join(dirpath, fname))
-    return files
+    return [str(path) for path in workspace_files(roots)]
 
 
 def compute_language_distribution(all_files: list[str]) -> dict[str, int]:

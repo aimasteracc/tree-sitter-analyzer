@@ -2,7 +2,7 @@
 """
 Unit Tests for Trace Impact Tool
 
-Tests the trace_impact MCP tool using mocks (no real ripgrep execution).
+用模拟原生扫描结果验证 trace_impact MCP 工具。
 """
 
 from unittest.mock import patch
@@ -85,7 +85,7 @@ class TestTraceImpactToolBasic:
 
 
 class TestTraceImpactToolExecution:
-    """Test trace_impact execution with mocked ripgrep"""
+    """用模拟原生扫描结果验证执行逻辑"""
 
     def setup_method(self):
         """Set up test fixtures"""
@@ -94,11 +94,11 @@ class TestTraceImpactToolExecution:
     @pytest.mark.asyncio
     async def test_execute_no_matches(self):
         """Test execution when no matches are found"""
-        # Mock ripgrep returning no matches (rc=1)
+        # 模拟原生扫描没有命中
         with patch(
-            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.scan_symbol_lines"
         ) as mock_run:
-            mock_run.return_value = (1, b"", b"")
+            mock_run.return_value = []
 
             result = await self.tool.execute({"symbol": "nonexistent"})
 
@@ -111,14 +111,22 @@ class TestTraceImpactToolExecution:
     @pytest.mark.asyncio
     async def test_execute_with_matches(self):
         """Test execution with successful matches"""
-        # Mock ripgrep JSON output with matches
+        # 将原有命中样本转换为原生扫描结果
         json_output = b"""{"type":"match","data":{"path":{"text":"src/Service.java"},"line_number":23,"lines":{"text":"  processPayment(order);"},"submatches":[{"start":2,"end":16}]}}
 {"type":"match","data":{"path":{"text":"src/Controller.java"},"line_number":45,"lines":{"text":"    result = processPayment(req);"},"submatches":[{"start":13,"end":27}]}}
 """
         with patch(
-            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.scan_symbol_lines"
         ) as mock_run:
-            mock_run.return_value = (0, json_output, b"")
+            mock_run.return_value = [
+                {
+                    "file": data["path"]["text"],
+                    "line": data["line_number"],
+                    "text": " ".join(data["lines"]["text"].split()),
+                }
+                for raw in json_output.splitlines()
+                for data in [__import__("json").loads(raw)["data"]]
+            ]
 
             result = await self.tool.execute({"symbol": "processPayment"})
 
@@ -142,10 +150,18 @@ class TestTraceImpactToolExecution:
             mock_detect.return_value = "java"
 
             with patch(
-                "tree_sitter_analyzer.mcp.tools.trace_impact_tool.run_command_capture"
+                "tree_sitter_analyzer.mcp.tools.trace_impact_tool.scan_symbol_lines"
             ) as mock_run:
                 json_output = b"""{"type":"match","data":{"path":{"text":"Service.java"},"line_number":10,"lines":{"text":"test"},"submatches":[]}}"""
-                mock_run.return_value = (0, json_output, b"")
+                mock_run.return_value = [
+                    {
+                        "file": data["path"]["text"],
+                        "line": data["line_number"],
+                        "text": " ".join(data["lines"]["text"].split()),
+                    }
+                    for raw in json_output.splitlines()
+                    for data in [__import__("json").loads(raw)["data"]]
+                ]
 
                 result = await self.tool.execute(
                     {"symbol": "test", "file_path": "src/Service.java"}
@@ -159,7 +175,7 @@ class TestTraceImpactToolExecution:
     @pytest.mark.asyncio
     async def test_execute_with_max_results_truncation(self):
         """Test execution with max_results truncation"""
-        # Mock ripgrep with many matches
+        # 模拟大量源码命中
         json_lines = []
         for i in range(150):
             json_lines.append(
@@ -168,9 +184,17 @@ class TestTraceImpactToolExecution:
         json_output = "\n".join(json_lines).encode()
 
         with patch(
-            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.scan_symbol_lines"
         ) as mock_run:
-            mock_run.return_value = (0, json_output, b"")
+            mock_run.return_value = [
+                {
+                    "file": data["path"]["text"],
+                    "line": data["line_number"],
+                    "text": " ".join(data["lines"]["text"].split()),
+                }
+                for raw in json_output.splitlines()
+                for data in [__import__("json").loads(raw)["data"]]
+            ]
 
             result = await self.tool.execute({"symbol": "test", "max_results": 50})
 
@@ -182,47 +206,47 @@ class TestTraceImpactToolExecution:
             assert result["truncated"] is True
 
     @pytest.mark.asyncio
-    async def test_execute_ripgrep_not_installed(self):
-        """Test execution when ripgrep is not installed"""
+    async def test_execute_unavailable_root(self):
+        """扫描根目录不可用时返回失败"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.scan_symbol_lines"
         ) as mock_run:
-            mock_run.return_value = (127, b"", b"Command not found")
+            mock_run.side_effect = OSError("SOURCE_ROOT_UNAVAILABLE")
 
             result = await self.tool.execute({"symbol": "test"})
 
             assert result["success"] is False
-            assert "not installed" in result["error"]
+            assert result["error"] == "SOURCE_ROOT_UNAVAILABLE"
             assert result["call_count"] == 0
 
     @pytest.mark.asyncio
     async def test_execute_timeout(self):
         """Test execution timeout"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.scan_symbol_lines"
         ) as mock_run:
-            mock_run.return_value = (124, b"", b"Timeout")
+            mock_run.side_effect = TimeoutError("SOURCE_SCAN_BUDGET_EXCEEDED")
 
             result = await self.tool.execute({"symbol": "test"})
 
             assert result["success"] is False
-            assert "timed out" in result["error"]
+            assert result["error"] == "SOURCE_SCAN_BUDGET_EXCEEDED"
             assert result["call_count"] == 0
 
     @pytest.mark.asyncio
     async def test_execute_with_multiple_roots(self):
         """Test execution with multiple project roots"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.scan_symbol_lines"
         ) as mock_run:
-            mock_run.return_value = (1, b"", b"")
+            mock_run.return_value = []
 
             result = await self.tool.execute(
                 {"symbol": "test", "project_root": "/root1,/root2,/root3"}
             )
 
             assert result["success"] is True
-            # Verify command was called (roots are passed to ripgrep)
+            # 确认扫描器收到项目根目录
             assert mock_run.called
 
 
