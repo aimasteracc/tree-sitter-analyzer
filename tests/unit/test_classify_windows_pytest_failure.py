@@ -191,3 +191,46 @@ test_status=1
         ]
     else:
         assert receipt.exists() is False
+
+
+@pytest.mark.parametrize("profile", ["test-matrix-pr", "test-matrix-full"])
+def test_coverage_failure_retains_diagnostics(tmp_path: Path, profile: str) -> None:
+    """覆盖率失败必须在普通日志和诊断附件中保留，不能只写网页摘要。"""
+    # 2026-09-09：PR #1431 作业 102450961508 只留下 exit 1，真实 pytest 错误丢失。
+    import os
+    import shutil
+    import subprocess
+
+    import yaml
+
+    root = Path(__file__).resolve().parents[2]
+    workflow = yaml.safe_load(
+        (root / ".github/workflows/reusable-test.yml").read_text(encoding="utf-8")
+    )
+    steps = workflow["jobs"][profile]["steps"]
+    coverage = next(step for step in steps if step.get("id") == "test-coverage")
+    artifact = next(
+        step for step in steps if step.get("name") == "Upload failed test diagnostics"
+    )
+    assert artifact["if"] == "failure() && hashFiles('pytest-output.txt') != ''"
+    assert artifact["uses"] == "actions/upload-artifact@v7.0.1"
+    assert artifact["with"]["path"] == "pytest-output.txt"
+    assert artifact["with"]["name"] == (
+        "pytest-failure-${{ inputs.matrix-profile }}-${{ matrix.os }}"
+        "-py${{ matrix.python-version }}-attempt${{ github.run_attempt }}"
+    )
+    bash = "/bin/bash" if sys.platform == "darwin" else shutil.which("bash")
+    assert bash is not None
+    failure = "FAILED tests/test_subject.py::test_behavior - AssertionError: sentinel"
+    prefix = f"uv() {{ printf '%s\\n' '{failure}'; return 1; }}\n"
+    result = subprocess.run(
+        [bash, "--noprofile", "--norc", "-e", "-c", prefix + coverage["run"]],
+        cwd=tmp_path,
+        capture_output=True,
+        env={**os.environ, "GITHUB_STEP_SUMMARY": (tmp_path / "summary").as_posix()},
+    )
+    assert result.returncode == 1
+    assert failure.encode() in result.stdout
+    assert (tmp_path / "pytest-output.txt").read_text(
+        encoding="utf-8"
+    ) == failure + "\n"

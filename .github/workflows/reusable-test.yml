@@ -122,6 +122,8 @@ jobs:
         echo '```' >&3
 
         if [ -f test_failed ]; then
+          # 摘要不可通过作业日志 API 读取；失败时保留完整错误上下文。
+          cat pytest-output.txt
           echo "❌ Tests failed!" >&3
           exit 1
         fi
@@ -167,6 +169,14 @@ jobs:
         uv run pytest tests/ -n auto -q --maxfail=200 --timeout=120 \
           -m "slow and not network and not e2e and not benchmark and not full_language"
       shell: bash
+
+    - name: Upload failed test diagnostics
+      if: failure() && hashFiles('pytest-output.txt') != ''
+      uses: actions/upload-artifact@v7.0.1
+      with:
+        name: pytest-failure-${{ inputs.matrix-profile }}-${{ matrix.os }}-py${{ matrix.python-version }}-attempt${{ github.run_attempt }}
+        path: pytest-output.txt
+        retention-days: 7
 
     - name: Upload coverage to Codecov
       if: inputs.upload-coverage && matrix.coverage
@@ -305,6 +315,14 @@ jobs:
         uv run pytest tests/ -n auto -q --maxfail=200 --timeout=120 \
           -m "slow and not network and not e2e and not benchmark and not full_language"
       shell: bash
+
+    - name: Upload failed test diagnostics
+      if: failure() && hashFiles('pytest-output.txt') != ''
+      uses: actions/upload-artifact@v7.0.1
+      with:
+        name: pytest-failure-${{ inputs.matrix-profile }}-${{ matrix.os }}-py${{ matrix.python-version }}-attempt${{ github.run_attempt }}
+        path: pytest-output.txt
+        retention-days: 7
 
     - name: Upload coverage to Codecov
       if: inputs.upload-coverage && matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
