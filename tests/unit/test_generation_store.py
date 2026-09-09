@@ -2,6 +2,7 @@
 
 import multiprocessing
 import os
+import signal
 import sqlite3
 from dataclasses import replace
 from types import SimpleNamespace
@@ -339,7 +340,9 @@ def test_killed_lease_owner_does_not_block_next_publisher(store):
         assert parent.recv() == "leased"
         process.kill()
         process.join(5)
-        assert process.exitcode == (-9 if os.name == "posix" else 1)
+        assert process.exitcode == -(
+            signal.SIGKILL if os.name == "posix" else signal.SIGTERM
+        )
         assert store.active_selector() == first
         second = store.sync()
         assert second != first

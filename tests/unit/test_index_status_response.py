@@ -322,13 +322,14 @@ def test_storage_fields_ignore_missing_and_null_values():
     assert result == {"db_size_bytes": 4096}
 
 
-def test_status_lag_scans_snapshot_canonical_root(monkeypatch):
-    # PR #1253 review 3763600670: O_NOFOLLOW requires the owner-resolved root.
+def test_status_lag_scans_snapshot_canonical_root(tmp_path, monkeypatch):
+    # PR #1253：必须使用快照解析出的原生规范根路径，不能假定 POSIX 拼写。
     from contextlib import contextmanager
 
     from tree_sitter_analyzer import index_status_response as response
     from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
 
+    canonical_root = str(tmp_path.resolve())
     snapshot = IndexSnapshot(
         "idxsnap_test",
         "sha256:source",
@@ -336,7 +337,7 @@ def test_status_lag_scans_snapshot_canonical_root(monkeypatch):
         "idxsrc-v3:source",
         "complete",
         None,
-        "/canonical/project",
+        canonical_root,
         1,
     )
 
@@ -369,8 +370,8 @@ def test_status_lag_scans_snapshot_canonical_root(monkeypatch):
 
     assert observed == [
         (
-            "/canonical/project",
-            os.path.join("/canonical/project", ".ast-cache", "index.db"),
+            canonical_root,
+            os.path.join(canonical_root, ".ast-cache", "index.db"),
         )
     ]
     assert result["lag_seconds"] == 3.0
