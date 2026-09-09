@@ -222,16 +222,14 @@ tree-sitter-analyzer --safe-to-edit <file>        # refuse if risky
 tree-sitter-analyzer --uml class                  # Mermaid UML class diagram
 ```
 
-Installing the package also registers standalone search helpers (thin
-entry points over the same engine, handy in shell pipelines):
+The package retains the standalone file-listing helper:
 
 ```bash
 list-files <dir>          # fd-style file discovery
-search-content <pattern>  # ripgrep-style content search
-find-and-grep <pattern>   # two-stage fd + ripgrep
 ```
 
-See [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) for the full surface.
+`search-content` and `find-and-grep` have been removed on develop. See the
+[migration guide](docs/MIGRATION.md) and [`CLI codemap`](docs/CODEMAPS/cli.md).
 
 ---
 
@@ -266,7 +264,10 @@ Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
                               MCP client / CLI consumer
 ```
 
-The index is built lazily on first query, refreshed on file change via a content-hash diff (`index` action=sync). All 8 tools read from the same `.ast-cache/`, so a query and its follow-up share work.
+Build the AST index explicitly before indexed symbol/context queries with
+`tree-sitter-analyzer --ast-cache --ast-cache-mode index --format json`. Refresh
+it after source changes with `index` action=sync. Indexed queries reuse cached
+AST data; automatic warming is specific to individual tools.
 
 ---
 
@@ -445,7 +446,7 @@ uv run python check_quality.py --new-code-only  # quality gate
 | `unsupported language` on `.swift / .kt / .rb / .php / .cs` | Update to a current supported release — the missing-language gap was patched in commit `50e99a8f`. Grammar modules for extras-gated languages are not bundled in the base install; run `pip install "tree-sitter-analyzer[swift]"` (or `kotlin`, `ruby`, `php`, `csharp`) to add them. |
 | MCP server doesn't appear in client | `TREE_SITTER_PROJECT_ROOT` must be an **absolute path** (e.g. `$(pwd)` or `/home/user/project`); a relative path causes the server to resolve against the wrong directory. Restart the client after editing. Run `tree-sitter-analyzer --doctor` to verify. |
 | `database is locked` | Stop any other process holding `.ast-cache/index.db`; if persistent, `rm -rf .ast-cache && tree-sitter-analyzer --full-index`. |
-| Slow first call | First call builds the index. Run `--full-index` upfront to amortise future calls. |
+| Slow first call or missing index | Some tools warm the index automatically. Run `--full-index` upfront before indexed queries. |
 | Agent picks the wrong tool | Use a `tsa-*` skill (`/tsa-graph`, `/tsa-find`, ...) — each skill restricts the visible tool set to its dedicated workflow. |
 
 ---

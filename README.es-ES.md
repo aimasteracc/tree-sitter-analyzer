@@ -183,15 +183,14 @@ tree-sitter-analyzer --safe-to-edit <file>        # refuse if risky
 tree-sitter-analyzer --uml class                  # Mermaid UML class diagram
 ```
 
-Instalar el paquete también registra tres utilidades de búsqueda independientes (puntos de entrada delgados sobre el mismo motor, útiles en pipelines de shell):
+El paquete conserva la utilidad independiente para listar archivos:
 
 ```bash
 list-files <dir>          # fd-style file discovery
-search-content <pattern>  # ripgrep-style content search
-find-and-grep <pattern>   # two-stage fd + ripgrep
 ```
 
-Consulta [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) para la superficie completa.
+`search-content` y `find-and-grep` se han eliminado en develop. Consulta la
+[guía de migración](docs/MIGRATION.md) y el [mapa CLI](docs/CODEMAPS/cli.md).
 
 ---
 
@@ -304,13 +303,15 @@ Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
         nav (navigate) / structure (explore) / nav (callers) / ...
                                          ↓
                             JSON response envelope
-                            (compact for tabular output;
-                             verdict + agent_summary + data)
+                            (verdict + agent_summary + data)
                                          ↓
                               MCP client / CLI consumer
 ```
 
-El índice se construye perezosamente en la primera consulta, se actualiza ante cambios de archivo mediante una diferencia de hash de contenido (`index` action=sync). Las 8 herramientas leen del mismo `.ast-cache/`, por lo que una consulta y su seguimiento comparten trabajo.
+Antes de consultar símbolos o contexto indexados, construye el índice AST con
+`tree-sitter-analyzer --ast-cache --ast-cache-mode index --format json`. Tras
+cambiar el código, actualízalo con `index` action=sync. Las consultas indexadas
+reutilizan los datos AST; la construcción automática depende de cada herramienta.
 
 ---
 
