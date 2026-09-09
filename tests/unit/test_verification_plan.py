@@ -238,7 +238,8 @@ def test_ten_thousand_targets_do_not_expand_launcher(tmp_path):
     assert targets == request.changed_files
 
 
-def test_low_impact_prefix_rebatches_near_limit_targets(monkeypatch):
+@pytest.mark.parametrize("marker", [None, "not network and not benchmark"])
+def test_low_impact_prefix_rebatches_near_limit_targets(monkeypatch, marker):
     from types import SimpleNamespace
 
     from tree_sitter_analyzer import verification_plan
@@ -247,13 +248,19 @@ def test_low_impact_prefix_rebatches_near_limit_targets(monkeypatch):
     )
 
     monkeypatch.setattr(verification_plan, "sys", SimpleNamespace(platform="linux"))
-    prefix = "tests/" + "/".join(["x" * 50] * 57) + "/" + "x" * 60
+    prefix = (
+        "tests/"
+        + "/".join(["x" * 50] * 57)
+        + "/"
+        + "x" * (60 if marker is None else 43)
+    )
     targets = [prefix + f"/test_{suffix}.py" for suffix in ("a", "b")]
     context = SimpleNamespace(
         verification={
             "test_runner": "pytest",
             "default_test_command": "uv run pytest -q",
             "test_required": True,
+            "_pytest_marker": marker,
         },
         all_tests=targets,
         test_mapping={"a.py": targets},
@@ -269,6 +276,34 @@ def test_low_impact_prefix_rebatches_near_limit_targets(monkeypatch):
         if arg.startswith("tests/")
     ] == targets
     assert all(_argv_within_budget(step["argv"]) for step in stages["verification"])
+    if marker:
+        assert [step["argv"][6:8] for step in stages["verification"]] == [
+            ["-m", marker]
+        ] * 2
+
+
+def test_marker_policy_changes_invalidate_replayed_plan(tmp_path, monkeypatch):
+    """2026-09-09：重放必须绑定定向筛选策略，不能采用变化后的配置。"""
+    monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+    config = tmp_path / "pytest.ini"
+    config.write_text(
+        "[pytest]\naddopts = -m 'not slow and not custom'\n", encoding="utf-8"
+    )
+    request, response = make_plan(tmp_path)
+    value = descriptor(response)
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.utils.change_impact_git._get_changed_files",
+        lambda *args: request.changed_files,
+    )
+    stages = rebuild_request(value, str(tmp_path.resolve()))
+    assert [step["argv"][3:5] for step in stages] == [
+        ["-m", "not custom and not network and not benchmark"]
+    ] * 50
+    config.write_text(
+        "[pytest]\naddopts = -m 'not slow and not other'\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="VERIFICATION_PLAN_CHANGED"):
+        rebuild_request(value, str(tmp_path.resolve()))
 
 
 def test_mapped_batches_keep_unmapped_default_gate(tmp_path):

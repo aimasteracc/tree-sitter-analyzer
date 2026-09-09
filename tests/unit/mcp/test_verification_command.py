@@ -11,6 +11,54 @@ from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
 )
 
 
+@pytest.mark.parametrize("argument", ["", "x", " ", "'", '"', "\\", '\\" ', "路", "🙂"])
+def test_argument_budget_matches_full_platform_serialization(argument):
+    """2026-09-09：累加预算必须与两种平台的完整转义结果完全一致。"""
+    import shlex
+    import subprocess
+
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        _argv_within_budget,
+    )
+
+    for count in [0, 1, 20, 5990, 6000, 6001]:
+        argv = ["uv", "run", "pytest", argument * count, "-q"] if count else []
+        expected = (
+            len(shlex.join(argv).encode("utf-8")) <= 6000
+            and len(subprocess.list2cmdline(argv).encode("utf-16-le")) // 2 + 1 <= 6000
+        )
+        assert _argv_within_budget(argv) is expected
+
+
+@pytest.mark.parametrize("error", [OSError("loop"), RuntimeError("loop")])
+def test_target_resolution_failure_preserves_default_policy(
+    tmp_path, monkeypatch, error
+):
+    """2026-09-09：跨 Python 版本的链接环异常不能使验证命令生成崩溃。"""
+    from pathlib import Path
+
+    from tree_sitter_analyzer.mcp.tools.utils import (
+        verification_pytest_config as config,
+    )
+
+    class UnresolvablePath(type(tmp_path)):
+        def resolve(self, *args, **kwargs):
+            if self.name == "test_loop.py":
+                raise error
+            return self
+
+    monkeypatch.setattr(config, "Path", UnresolvablePath)
+    default = DefaultTestCommand(
+        "pytest",
+        "uv run pytest -q",
+        "not network and not benchmark",
+        str(Path(tmp_path)),
+    )
+    assert (
+        build_test_command(default, ["test_loop.py"]) == "uv run pytest test_loop.py -q"
+    )
+
+
 def test_detect_default_test_command_falls_back_to_pytest(tmp_path):
     """Unknown or Python-style projects should keep the repo's pytest contract."""
     assert detect_default_test_command(tmp_path) == DefaultTestCommand(

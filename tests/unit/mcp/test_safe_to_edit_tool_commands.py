@@ -147,7 +147,9 @@ def test_certified_commands_use_extension_runner(tmp_path: Path) -> None:
     assert "uv run pytest" in str(py_workflow.get("after_edit_commands", []))
 
 
-def test_certified_commands_ignore_live_config_files(tmp_path: Path) -> None:
+def test_certified_commands_ignore_live_config_files(
+    tmp_path: Path, monkeypatch
+) -> None:
     """Codex P2 第六轮（C28）：认证清单和工作流使用 analyzer 的 pytest 默认值，不能读取未纳入清单的实时配置文件。"""
     from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
         AgentWorkflowContext,
@@ -172,6 +174,14 @@ def test_certified_commands_ignore_live_config_files(tmp_path: Path) -> None:
         )
     )
     assert "npm test" in str(live_workflow.get("after_edit_commands", []))
+
+    (tmp_path / "pytest.ini").write_text(
+        "[pytest]\naddopts = -m 'not e2e'\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.utils.verification_pytest_config.targeted_marker_expression",
+        lambda *_: pytest.fail("认证路径不得读取实时 pytest 配置"),
+    )
 
     certified_workflow = build_agent_workflow(
         AgentWorkflowContext(

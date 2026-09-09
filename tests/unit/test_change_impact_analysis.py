@@ -20,6 +20,72 @@ from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
 )
 
 
+@pytest.mark.parametrize(
+    "name,content,expected",
+    [
+        (
+            "pytest.ini",
+            "[pytest]\naddopts = -m 'not slow and not network'",
+            "not network and not benchmark",
+        ),
+        (
+            ".pytest.ini",
+            "[pytest]\naddopts = -m 'not e2e and not custom'",
+            "not custom and not network and not benchmark",
+        ),
+        (
+            "tox.ini",
+            "[pytest]\naddopts = -m 'not full_language and not benchmark'",
+            "not benchmark and not network",
+        ),
+        (
+            "setup.cfg",
+            "[tool:pytest]\naddopts = -m 'not slow'",
+            "not network and not benchmark",
+        ),
+        (
+            "pyproject.toml",
+            '[tool.pytest.ini_options]\naddopts = ["-m", "not slow"]',
+            "not network and not benchmark",
+        ),
+        (
+            "pytest.ini",
+            "[pytest]\naddopts = -m'not slow'",
+            "not network and not benchmark",
+        ),
+        ("pytest.ini", "[pytest]\naddopts = -m 'not custom'", None),
+        ("pytest.ini", "[pytest]\naddopts = -m 'not slow or unit'", None),
+        ("pytest.ini", "[pytest]\naddopts = -m 'unit and not slow'", None),
+        ("pytest.ini", "[pytest]\naddopts = -m", None),
+        ("pytest.ini", "[pytest]\naddopts = -m 'not slow' -c other.ini", None),
+        ("pytest.ini", "[pytest]\naddopts = -m 'not slow' -o addopts=-q", None),
+        ("pytest.ini", "[pytest]\naddopts = 'unclosed", None),
+        ("pytest.ini", "invalid ini", None),
+        ("pytest.ini", "[other]\naddopts = -m 'not slow'", None),
+        ("tox.ini", "[other]\naddopts = -m 'not slow'", None),
+        ("pytest.ini", "[pytest]", None),
+        ("pyproject.toml", "[project]\nname='fixture'", None),
+        ("pyproject.toml", "invalid toml", None),
+        ("pyproject.toml", "[tool.pytest.ini_options]\naddopts=[1]", None),
+        ("pyproject.toml", "[tool]\npytest=1", None),
+        ("pyproject.toml", "[tool.pytest]\nini_options=1", None),
+    ],
+)
+def test_project_pytest_selection_preserves_unknown_policy(
+    tmp_path, monkeypatch, name, content, expected
+):
+    """2026-09-09：只解除明确的常规层级排除，不能猜测自定义测试策略。"""
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        detect_default_test_command,
+    )
+
+    monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+    (tmp_path / name).write_text(content, encoding="utf-8")
+    command = detect_default_test_command(tmp_path)
+    assert command.pytest_marker == expected
+    assert command.command == "uv run pytest -q"
+
+
 class TestChangeImpactRequest:
     def test_construction(self):
         req = ChangeImpactRequest(

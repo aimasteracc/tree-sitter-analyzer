@@ -163,6 +163,10 @@ uv run python -m tree_sitter_analyzer --change-impact --format json
 
 The command is tailored to the change: `pytest <specific tests>`, `mypy <touched module>`,
 or `git diff --check` for non-code edits.
+For explicit pytest targets, a known project exclusion such as `not slow` is
+lifted for the `e2e`, `slow`, and `full_language` tiers. Network, benchmark, and
+unknown exclusions remain in force. Unsupported or ambiguous configuration
+keeps its original selection policy; the default quick gate stays unchanged.
 For interactive agent work on a user's machine, add
 `--change-impact-resource-profile local_low_impact`; the local
 `verification_command` is capped with `nice -n 15` and `pytest -n 2`, while

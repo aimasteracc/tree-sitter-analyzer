@@ -484,6 +484,8 @@ def _build_verification_strategy(
     default_command = DefaultTestCommand(
         verification["test_runner"],
         verification["default_test_command"],
+        verification.get("_pytest_marker"),
+        verification.get("_pytest_config_root"),
     )
     # 展示长度不能改变验证集合；每个子进程使用有界批次。
     focused_steps = (
