@@ -10,7 +10,7 @@ causing impact_level to be classified as "low" when the true count is "high".
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -87,8 +87,18 @@ class TestTraceImpactCountAccuracy:
         )
 
         with patch(
-            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.run_command_capture",
-            new=AsyncMock(return_value=(0, fake_stdout, b"")),
+            "tree_sitter_analyzer.mcp.tools.trace_impact_tool.scan_symbol_lines",
+            new=Mock(
+                return_value=[
+                    {
+                        "file": data["path"]["text"],
+                        "line": data["line_number"],
+                        "text": " ".join(data["lines"]["text"].split()),
+                    }
+                    for raw in fake_stdout.splitlines()
+                    for data in [__import__("json").loads(raw)["data"]]
+                ]
+            ),
         ):
             tool = TraceImpactTool("/tmp")
             r = asyncio.run(tool.execute({"symbol": "Component", "max_results": 5}))
