@@ -191,8 +191,10 @@ class GitFlowReleaseAutomation:
                 )
                 print("Essential version synchronization completed successfully")
             except subprocess.CalledProcessError as e:
-                print(f"Warning: Version synchronization failed: {e}")
-                print("Continuing with release process...")
+                print(
+                    f"Version synchronization failed; release preparation stopped: {e}"
+                )
+                return False
 
             # Update CHANGELOG.md
             changelog_path = self.project_root / "CHANGELOG.md"
@@ -224,7 +226,9 @@ class GitFlowReleaseAutomation:
                 print("Updated CHANGELOG.md")
 
             # Commit changes
-            self.run_command(["git", "add", "pyproject.toml", "CHANGELOG.md"])
+            self.run_command(
+                ["git", "add", "pyproject.toml", "server.json", "CHANGELOG.md"]
+            )
             self.run_command(
                 ["git", "add", "tree_sitter_analyzer/"]
             )  # Add all updated __init__.py files
