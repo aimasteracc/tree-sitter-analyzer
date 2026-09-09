@@ -40,6 +40,17 @@ def _identity(info: os.stat_result) -> tuple[int, ...]:
     return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
 
+def _path_identity(info: os.stat_result) -> tuple[int, ...]:
+    """路径与句柄之间只比较同语义时间；同句柄读取前后仍检查 ctime。"""
+    # Windows 3.12 的 lstat.ctime 是创建时间，fstat.ctime 却是元数据变更时间。
+    if os.name == "nt":
+        return (
+            *_identity(info)[:-1],
+            getattr(info, "st_birthtime_ns", info.st_ctime_ns),
+        )
+    return _identity(info)
+
+
 def _read_config(path: Path) -> str:
     """只读取已核对身份的普通文件，拒绝链接、特殊文件及超大配置。"""
     before = path.lstat()
@@ -50,7 +61,9 @@ def _read_config(path: Path) -> str:
     descriptor = _open_config(path, flags)
     with os.fdopen(descriptor, "rb") as stream:
         current = os.fstat(stream.fileno())
-        if not stat.S_ISREG(current.st_mode) or _identity(before) != _identity(current):
+        if not stat.S_ISREG(current.st_mode) or _path_identity(
+            before
+        ) != _path_identity(current):
             raise ValueError("PYTEST_CONFIG_CHANGED")
         raw = stream.read(_MAX_CONFIG_BYTES + 1)
         after = os.fstat(stream.fileno())
