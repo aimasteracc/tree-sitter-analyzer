@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, replace
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -157,12 +158,27 @@ def build_test_command(
     return shlex.join(_test_argv(default_command, tests_to_run))
 
 
-def _argv_within_budget(argv: list[str]) -> bool:
-    """同时检查 POSIX 命令字节数和 Windows 引用后的 UTF-16 启动长度。"""
+@lru_cache(maxsize=128)
+def _argument_lengths(argument: str) -> tuple[int, int]:
+    """缓存单参数的纯转义长度，避免试装批次时反复转义已有路径。"""
     return (
-        len(shlex.join(argv).encode("utf-8")) <= 6000
-        and len(subprocess.list2cmdline(argv).encode("utf-16-le")) // 2 + 1 <= 6000
+        len(shlex.quote(argument).encode("utf-8")),
+        len(subprocess.list2cmdline([argument]).encode("utf-16-le")) // 2,
     )
+
+
+def _argv_within_budget(argv: list[str]) -> bool:
+    """按参数累加精确转义长度，包含分隔空格与 Windows 末尾 NUL。"""
+    posix = max(0, len(argv) - 1)
+    windows = max(1, len(argv))
+    for argument in argv:
+        # 超长参数必定超限，也不能进入有界转义缓存。
+        if len(argument) > 6000:
+            return False
+        posix_size, windows_size = _argument_lengths(argument)
+        posix += posix_size
+        windows += windows_size
+    return posix <= 6000 and windows <= 6000
 
 
 def build_test_argv_batches(
