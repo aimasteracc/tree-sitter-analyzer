@@ -2,6 +2,9 @@
 
 import base64
 import json
+import os
+import shlex
+import subprocess
 import sys
 import threading
 import time
@@ -11,6 +14,185 @@ import psutil
 import pytest
 
 from tree_sitter_analyzer import verification_runner as runner
+
+
+def test_explicit_pytest_targets_execute_excluded_tiers(tmp_path, monkeypatch):
+    """2026-09-09：显式选择必须执行层级测试，并保留默认门禁及外部限制。"""
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        build_test_command,
+        detect_default_test_command,
+    )
+
+    monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+    tiers = ["e2e", "slow", "full_language", "network", "benchmark", "quarantined"]
+    expression = " and ".join("not " + tier for tier in tiers)
+    (tmp_path / "pytest.ini").write_text(
+        '[pytest]\naddopts = -n 4 -m "'
+        + expression
+        + '"\nmarkers =\n'
+        + "".join("    " + tier + ": 选择契约\n" for tier in tiers),
+        encoding="utf-8",
+    )
+    (tmp_path / "test_selected.py").write_text(
+        "import pytest\nfrom pathlib import Path\n"
+        "def test_control():\n    Path('control.ran').touch()\n"
+        + "".join(
+            f"@pytest.mark.{tier}\ndef test_{tier}():\n    Path('{tier}.ran').touch()\n"
+            for tier in tiers
+        ),
+        encoding="utf-8",
+    )
+    default = detect_default_test_command(tmp_path)
+    env = {**os.environ, "VIRTUAL_ENV": sys.prefix, "UV_NO_SYNC": "1"}
+    for targets, expected in [
+        ([], ["control.ran"]),
+        (
+            ["test_selected.py"],
+            ["control.ran", "e2e.ran", "full_language.ran", "slow.ran"],
+        ),
+    ]:
+        result = subprocess.run(
+            shlex.split(build_test_command(default, targets)),
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert sorted(path.name for path in tmp_path.glob("*.ran")) == expected
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        "environment",
+        "new_config",
+        "precedence",
+        "nested",
+        "outside",
+        "large",
+        "directory",
+        "unreadable",
+        "native_table",
+        "defaults",
+        "uppercase",
+    ],
+)
+def test_explicit_selection_does_not_override_uncertain_configuration(
+    tmp_path, monkeypatch, condition
+):
+    """2026-09-09：未知来源或不安全配置必须保留原始 pytest 选择语义。"""
+    from tree_sitter_analyzer.mcp.tools.utils import (
+        verification_pytest_config as config,
+    )
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        build_test_command,
+        detect_default_test_command,
+    )
+
+    monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+    settings = "[pytest]\naddopts = -m 'not e2e'\n"
+    path = tmp_path / "pytest.ini"
+    path.write_text(settings, encoding="utf-8")
+    target = "tests/test_example.py"
+    if condition == "environment":
+        monkeypatch.setenv("PYTEST_ADDOPTS", "-m 'not external'")
+    elif condition == "new_config":
+        (tmp_path / "pytest.toml").write_text("[pytest]\n", encoding="utf-8")
+    elif condition == "precedence":
+        path.write_text("", encoding="utf-8")
+        (tmp_path / "tox.ini").write_text(settings, encoding="utf-8")
+    elif condition == "nested":
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "pytest.ini").write_text(settings, encoding="utf-8")
+    elif condition == "outside":
+        target = "../outside/test_example.py"
+    elif condition == "large":
+        path.write_text(settings + "#" * 65537, encoding="utf-8")
+    elif condition == "directory":
+        path.unlink()
+        path.mkdir()
+    elif condition == "native_table":
+        path.unlink()
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.pytest]\naddopts=["-m", "not external"]\n', encoding="utf-8"
+        )
+        (tmp_path / "tox.ini").write_text(settings, encoding="utf-8")
+    elif condition == "defaults":
+        path.write_text(
+            "[DEFAULT]\naddopts = -m 'not e2e'\n[pytest]\n", encoding="utf-8"
+        )
+    elif condition == "uppercase":
+        path.write_text("[pytest]\nADDOPTS = -m 'not e2e'\n", encoding="utf-8")
+    else:
+        monkeypatch.setattr(
+            config,
+            "_open_config",
+            lambda *_args: (_ for _ in ()).throw(OSError("unavailable")),
+        )
+    default = detect_default_test_command(tmp_path)
+    assert build_test_command(default, [target]) == f"uv run pytest {target} -q"
+
+
+@pytest.mark.parametrize(
+    "mutation", ["replace", "grow", "shrink", "read_grow", "read_shrink"]
+)
+def test_pytest_config_mutation_cannot_authorize_tier_override(
+    tmp_path, monkeypatch, mutation
+):
+    """2026-09-09：配置在打开或读取期间发生变化时，不得采用其策略。"""
+    from tree_sitter_analyzer.mcp.tools.utils import (
+        verification_pytest_config as config,
+    )
+
+    monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+    path = tmp_path / "pytest.ini"
+    settings = "[pytest]\naddopts = -m 'not e2e and not custom'\n"
+    path.write_text(settings, encoding="utf-8")
+    original_open = config._open_config
+
+    def mutate():
+        if mutation == "replace":
+            alternate = tmp_path / "new.ini"
+            alternate.write_text(settings, encoding="utf-8")
+            alternate.replace(path)
+        elif mutation in {"grow", "read_grow"}:
+            path.write_text(settings + "#" * 65537, encoding="utf-8")
+        else:
+            path.write_text("[pytest]\naddopts = -m 'not slow'\n", encoding="utf-8")
+
+    if mutation.startswith("read_"):
+        from types import SimpleNamespace
+
+        class ChangingReader:
+            def __init__(self, descriptor, mode):
+                self.stream = os.fdopen(descriptor, mode)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.stream.close()
+
+            def fileno(self):
+                return self.stream.fileno()
+
+            def read(self, size):
+                mutate()
+                return self.stream.read(size)
+
+        monkeypatch.setattr(
+            config, "os", SimpleNamespace(**{**vars(os), "fdopen": ChangingReader})
+        )
+    else:
+
+        def open_changed(name, flags):
+            mutate()
+            return original_open(name, flags)
+
+        monkeypatch.setattr(config, "_open_config", open_changed)
+    assert config.targeted_marker_expression(tmp_path) is None
 
 
 def request_token(tmp_path, timeout=10):

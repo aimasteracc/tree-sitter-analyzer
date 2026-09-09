@@ -246,8 +246,8 @@ def test_execute_supports_agent_summary_only(monkeypatch):
     assert "test_mapping" not in result
 
 
-def test_execute_test_only_diff_skips_expensive_analysis(monkeypatch):
-    """Changed test files are exact targets; no graph/cache walk is needed."""
+def test_execute_test_only_diff_skips_expensive_analysis(monkeypatch, tmp_path):
+    """测试文件是精确目标；在独立项目验证快路径，避免继承 TSA 自身配置。"""
     monkeypatch.setattr(
         tool_module,
         "_get_changed_files",
@@ -272,7 +272,7 @@ def test_execute_test_only_diff_skips_expensive_analysis(monkeypatch):
         fail_expensive_path,
     )
 
-    tool = tool_module.ChangeImpactTool()
+    tool = tool_module.ChangeImpactTool(project_root=str(tmp_path))
     result = asyncio.run(
         tool.execute(
             {
