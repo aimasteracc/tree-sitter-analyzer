@@ -289,6 +289,8 @@ def test_docs_check_fetches_history_for_contract_subjects() -> None:
     checkout_end = docs_job.index("\n      - name:", checkout_start)
     checkout_step = docs_job[checkout_start:checkout_end]
     assert checkout_step.splitlines().count("          fetch-depth: 0") == 1
+    # 2026-09-09：PR #1430 的文档门禁遗漏声明注册表扫描，直到完整矩阵才发现漂移。
+    assert "tests/unit/test_claim_registry.py" in docs_job
 
 
 def test_dogfood_reads_complete_pr_diff_instead_of_output_files(tmp_path: Path) -> None:
@@ -402,3 +404,95 @@ def test_ci_routing_uses_merge_parent_when_event_base_is_stale(tmp_path: Path) -
     argv = shlex.split(command)
     assert git(*argv[1 : argv.index(">")]).splitlines() == ["proposal.md"]
     assert steps[0]["with"]["ref"] == "${{ github.sha }}"
+
+
+@pytest.mark.parametrize("force_full", [False, True])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "README.md",
+        "tree_sitter_analyzer/formatters/x.py",
+        "tests/benchmarks/test_query_performance.py",
+        "tree_sitter_analyzer/grammar_coverage/x.py",
+    ],
+)
+def test_manual_full_validation_routes_real_cli(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], force_full: bool, path: str
+) -> None:
+    """手动完整验证绕过文档跳过和子范围，同时保留普通路径路由。"""
+    # 2026-09-09：CI 34340908809 的文档路由跳过了待补验的完整矩阵。
+    # PR #1431：启用集合必须对应实际消费路由的 CI 作业，不能包含独立资格工作流。
+    import json
+
+    from scripts.ci_route import main
+
+    output = tmp_path / "outputs"
+    args = [path, "--github-output", str(output)]
+    if force_full:
+        args.append("--force-full")
+    assert main(args) == 0
+    result = json.loads(capsys.readouterr().out)
+    docs_only = path == "README.md" and not force_full
+    assert result["run_docs_check"] is docs_only
+    assert result["full_suite_required"] is force_full
+    assert [result["run_benchmarks"], result["run_grammar_coverage"]] == [
+        not force_full and "benchmarks" in path,
+        not force_full and "grammar_coverage" in path,
+    ]
+    for key in ("run_quality", "run_test_matrix", "run_build", "upload_coverage"):
+        assert result[key] is (not docs_only)
+    assert result["regression_scope"] == (
+        "format" if not force_full and "/formatters/" in path else "all"
+    )
+    if force_full:
+        assert {
+            key for key, value in result.items() if key.startswith("run_") and value
+        } == set(
+            re.findall(
+                r"needs\.route\.outputs\.(run_\w+)",
+                (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"),
+            )
+        ) - {"run_docs_check"}
+        assert {"run_benchmarks", "run_grammar_coverage"}.isdisjoint(
+            result["reason_codes"]
+        )
+        assert "manual-full-validation" in result["reason_codes"]
+    assert f"run_test_matrix={str(not docs_only).lower()}\n" in output.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_manual_validation_is_non_publishing_and_concurrency_isolated() -> None:
+    """固定 SHA 的手动验证不被推送取消，且不调用发布工作流。"""
+    # 2026-09-09：CI 34340202847 被同分支的后续文档推送取消。
+    import yaml
+
+    workflow = yaml.safe_load(
+        (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    inputs = workflow[True]["workflow_dispatch"]["inputs"]
+    assert inputs["full-validation"]["type"] == "boolean"
+    assert inputs["full-validation"]["default"] is False
+    assert workflow["concurrency"]["group"] == (
+        "${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' "
+        "&& format('manual-{0}', github.run_id) || github.ref }}"
+    )
+    jobs = workflow["jobs"]
+    route = next(step for step in jobs["route"]["steps"] if step.get("id") == "route")
+    assert route["env"]["FORCE_FULL"] == (
+        "${{ github.event_name == 'workflow_dispatch' && inputs.full-validation "
+        "&& 'true' || 'false' }}"
+    )
+    assert 'if [[ "$FORCE_FULL" == "true" ]]; then' in route["run"]
+    assert "args+=(--force-full)" in route["run"]
+    assert '"${args[@]}"' in route["run"]
+    assert jobs["test"]["with"]["matrix-profile"] == (
+        "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}"
+    )
+    assert {job["uses"] for job in jobs.values() if "uses" in job} == {
+        "./.github/workflows/reusable-quality.yml",
+        "./.github/workflows/reusable-test.yml",
+        "./.github/workflows/reusable-build.yml",
+        "./.github/workflows/regression-tests.yml",
+        "./.github/workflows/sql-platform-compat.yml",
+    }

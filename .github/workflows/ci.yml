@@ -10,9 +10,16 @@ on:
   pull_request:
     branches: [ main, develop ]
   workflow_dispatch:
+    inputs:
+      full-validation:
+        description: 'Run the full test matrix and connected CI checks without publishing'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # 手动验证固定事件 SHA，后续推送和其他手动验证不能取消它。
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && format('manual-{0}', github.run_id) || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -51,7 +58,14 @@ jobs:
 
       - name: Route jobs
         id: route
-        run: python3 scripts/ci_route.py --files changed-files.txt --github-output "$GITHUB_OUTPUT"
+        env:
+          FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' && inputs.full-validation && 'true' || 'false' }}
+        run: |
+          args=()
+          if [[ "$FORCE_FULL" == "true" ]]; then
+            args+=(--force-full)
+          fi
+          python3 scripts/ci_route.py --files changed-files.txt --github-output "$GITHUB_OUTPUT" "${args[@]}"
         shell: bash
 
   docs-check:
@@ -87,6 +101,7 @@ jobs:
           uv run pytest -q \
             tests/contracts/ \
             tests/governance/ \
+            tests/unit/test_claim_registry.py \
             tests/integration/docs/test_readme_structure.py
 
   quality-check:
