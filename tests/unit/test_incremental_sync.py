@@ -2375,7 +2375,8 @@ def test_certification_write_denial_cannot_report_complete(tmp_path):
                 max_files=10, candidate_snapshot=_snapshot(tmp_path, path)
             )
         finally:
-            conn.set_authorizer(None)
+            # 2026-09-09: Python 3.10 不支持用 None 撤销授权回调，恢复明确允许。
+            conn.set_authorizer(lambda *_: sqlite3.SQLITE_OK)
         assert denied == [("ast_index", "certified_at")]
         assert (
             result.errors,
@@ -2533,7 +2534,8 @@ def test_failed_file_certification_reset_denial_rolls_back(tmp_path, truncated):
             ):
                 IncrementalSync(cache).sync(max_files=2, candidate_snapshot=snapshot)
         finally:
-            conn.set_authorizer(None)
+            # 2026-09-09: Python 3.10 不支持用 None 撤销授权回调，恢复明确允许。
+            conn.set_authorizer(lambda *_: sqlite3.SQLITE_OK)
         assert len(updates) == 3
         assert conn.in_transaction is False
         assert [

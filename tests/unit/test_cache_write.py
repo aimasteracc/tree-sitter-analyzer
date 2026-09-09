@@ -631,7 +631,8 @@ def test_activation_read_permission_failure_is_reported(tmp_path):
                 "errors": 1,
             }
         finally:
-            conn.set_authorizer(None)
+            # 2026-09-09: Python 3.10 不支持用 None 撤销授权回调，恢复明确允许。
+            conn.set_authorizer(lambda *_: sqlite3.SQLITE_OK)
         assert conn.in_transaction is False
         assert [
             r[0]
