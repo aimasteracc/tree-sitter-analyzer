@@ -10,6 +10,7 @@ Per CLAUDE.md LOCKED rule: assertion counts are exact pins, never >= / >.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -435,7 +436,7 @@ class TestTraceImpactMaxResultsCoercion:
     async def test_max_results_string_does_not_crash(self) -> None:
         from tree_sitter_analyzer.mcp.tools.trace_impact_tool import TraceImpactTool
 
-        tool = TraceImpactTool(project_root="/fake/root")
+        tool = TraceImpactTool(project_root=str(Path.cwd()))
 
         with (
             patch.object(

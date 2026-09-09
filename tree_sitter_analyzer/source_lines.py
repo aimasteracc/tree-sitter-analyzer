@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import fnmatch
+import json
 import os
 import re
 import stat
+import subprocess
+import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -17,6 +20,7 @@ _MAX_ENTRIES = 200000
 _MAX_FILE_BYTES = 10 * 1024 * 1024
 _MAX_TOTAL_BYTES = 512 * 1024 * 1024
 _MAX_MATCHES = 100000
+_MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 
 _EXCLUDED = frozenset(
     {".git", ".venv", "venv", "node_modules", "__pycache__", "build", "dist", "target"}
@@ -30,11 +34,14 @@ def workspace_files(
     seen: set[str] = set()
     entries = 0
     for value in roots:
+        if not isinstance(value, str) or not value.strip():
+            raise OSError("SOURCE_ROOT_EMPTY")
         root = Path(value).absolute()
         if root.is_symlink():
             raise OSError("SOURCE_ROOT_SYMLINK")
         if not root.is_dir():
             raise OSError("SOURCE_ROOT_UNAVAILABLE")
+        root = root.resolve(strict=True)
         rules: dict[Path, list[tuple[Path, pathspec.GitIgnoreSpec]]] = {}
         for current, directories, names in os.walk(
             root, followlinks=False, onerror=_raise_walk_error
@@ -129,9 +136,10 @@ def scan_symbol_lines(
     if word_match:
         expression = r"(?<!\w)" + expression + r"(?!\w)"
     matcher = re.compile(expression, 0 if sensitive else re.IGNORECASE)
+    exclude_globs = [pattern.removeprefix("!") for pattern in exclude_globs]
     matches = []
     total_bytes = 0
-    bases = [Path(root).absolute() for root in roots]
+    bases = [Path(root).resolve() for root in roots]
     for path in workspace_files(roots, deadline=deadline):
         relative = next(
             path.relative_to(base).as_posix()
@@ -173,3 +181,59 @@ def scan_symbol_lines(
                 if len(matches) > _MAX_MATCHES:
                     raise TimeoutError("SOURCE_MATCH_BUDGET_EXCEEDED")
     return matches
+
+
+def scan_symbol_lines_bounded(
+    symbol: str, roots: list[str], **options: Any
+) -> list[dict[str, Any]]:
+    """在自带的 Python 工作进程中扫描；阻塞 I/O 超时后终止该进程。"""
+    timeout = options.get("timeout", 5)
+    process = subprocess.Popen(
+        [sys.executable, "-I", "-X", "utf8", "-m", "tree_sitter_analyzer.source_lines"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+    )
+    try:
+        stdout, stderr = process.communicate(
+            json.dumps({"symbol": symbol, "roots": roots, **options}), timeout=timeout
+        )
+    except subprocess.TimeoutExpired as exc:
+        process.kill()
+        try:
+            process.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            raise OSError("SOURCE_WORKER_CLEANUP_FAILED") from exc
+        raise TimeoutError("SOURCE_SCAN_BUDGET_EXCEEDED") from exc
+    if process.returncode:
+        raise OSError("SOURCE_WORKER_FAILED")
+    result = json.loads(stdout)
+    if "error" in result:
+        error_type = TimeoutError if result.get("timeout") else OSError
+        raise error_type(result["error"])
+    matches = result["matches"]
+    if not isinstance(matches, list):
+        raise OSError("SOURCE_WORKER_INVALID_RESPONSE")
+    return matches
+
+
+def _main() -> None:
+    """内部工作进程协议：输入与输出均为 JSON，不输出诊断到标准输出。"""
+    result: dict[str, Any]
+    try:
+        request = json.loads(sys.stdin.read(1024 * 1024))
+        result = {"matches": scan_symbol_lines(**request)}
+    except (OSError, ValueError, TypeError) as exc:
+        result = {"error": str(exc), "timeout": isinstance(exc, TimeoutError)}
+    encoded = json.dumps(result, ensure_ascii=False)
+    if len(encoded.encode("utf-8")) > _MAX_RESPONSE_BYTES:
+        encoded = json.dumps(
+            {"error": "SOURCE_RESPONSE_BUDGET_EXCEEDED", "timeout": True}
+        )
+    print(encoded)
+
+
+if __name__ == "__main__":
+    _main()

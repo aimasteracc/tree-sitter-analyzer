@@ -15,13 +15,15 @@ from tree_sitter_analyzer.mcp.tools.trace_impact_tool import TraceImpactTool
 class TestTraceImpactToolBasic:
     """Basic functionality tests for trace_impact tool"""
 
-    def setup_method(self):
-        """Set up test fixtures"""
-        self.tool = TraceImpactTool(project_root="/test/project")
+    @pytest.fixture(autouse=True)
+    def setup_tool(self, tmp_path):
+        """为扫描边界提供真实且隔离的项目目录。"""
+        self.tool = TraceImpactTool(project_root=str(tmp_path))
+        self.project_dir = tmp_path
 
     def test_init(self):
         """Test tool initialization"""
-        assert self.tool.project_root == "/test/project"
+        assert self.tool.project_root == str(self.project_dir)
         assert self.tool.language_detector is not None
 
     def test_get_tool_definition(self):
@@ -87,9 +89,11 @@ class TestTraceImpactToolBasic:
 class TestTraceImpactToolExecution:
     """用模拟原生扫描结果验证执行逻辑"""
 
-    def setup_method(self):
-        """Set up test fixtures"""
-        self.tool = TraceImpactTool(project_root="/test/project")
+    @pytest.fixture(autouse=True)
+    def setup_tool(self, tmp_path):
+        """为扫描边界提供真实且隔离的项目目录。"""
+        self.tool = TraceImpactTool(project_root=str(tmp_path))
+        self.project_dir = tmp_path
 
     @pytest.mark.asyncio
     async def test_execute_no_matches(self):
@@ -235,14 +239,20 @@ class TestTraceImpactToolExecution:
 
     @pytest.mark.asyncio
     async def test_execute_with_multiple_roots(self):
-        """Test execution with multiple project roots"""
+        """只允许在已配置项目边界内选择多个扫描目录。"""
+        roots = [self.project_dir / name for name in ("one", "two", "three")]
+        for root in roots:
+            root.mkdir()
         with patch(
             "tree_sitter_analyzer.mcp.tools.trace_impact_tool.scan_symbol_lines"
         ) as mock_run:
             mock_run.return_value = []
 
             result = await self.tool.execute(
-                {"symbol": "test", "project_root": "/root1,/root2,/root3"}
+                {
+                    "symbol": "test",
+                    "project_root": ",".join(str(root) for root in roots),
+                }
             )
 
             assert result["success"] is True
@@ -253,9 +263,11 @@ class TestTraceImpactToolExecution:
 class TestTraceImpactToolLanguageDetection:
     """Test language detection and extension filtering"""
 
-    def setup_method(self):
-        """Set up test fixtures"""
-        self.tool = TraceImpactTool(project_root="/test/project")
+    @pytest.fixture(autouse=True)
+    def setup_tool(self, tmp_path):
+        """为扫描边界提供真实且隔离的项目目录。"""
+        self.tool = TraceImpactTool(project_root=str(tmp_path))
+        self.project_dir = tmp_path
 
     def test_get_extensions_for_language_java(self):
         """Test getting extensions for Java"""
@@ -318,3 +330,28 @@ class TestR37sImpactGuidanceGrammar:
         info = _get_impact_level(5)
         assert info["level"] == "low"
         assert "5 callers found" in info["guidance"]
+
+
+def test_trace_rejects_outside_project_root(tmp_path):
+    # 2026-09-09：调用参数不得覆盖已配置的项目边界。
+    project = tmp_path / "project"
+    project.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    with pytest.raises(ValueError):
+        TraceImpactTool(str(project))._resolve_search_roots(str(outside))
+
+
+def test_trace_rejects_empty_root_component(tmp_path):
+    with pytest.raises(ValueError, match="SOURCE_ROOT_EMPTY"):
+        TraceImpactTool(str(tmp_path))._resolve_search_roots(str(tmp_path) + ",")
+
+
+def test_display_hard_cap_keeps_complete_count():
+    from tree_sitter_analyzer.mcp.tools.trace_impact_tool import _truncate_for_display
+
+    matches = list(range(10001))
+    displayed, truncated = _truncate_for_display(matches, 1000000)
+    assert displayed == list(range(10000))
+    assert truncated is True
+    assert len(matches) == 10001

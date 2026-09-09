@@ -81,12 +81,30 @@ def test_smart_case_word_boundaries_and_unicode(tmp_path, symbol, case, word, ex
     ] == expected
 
 
-def test_globs_binary_files_and_original_line_numbers(tmp_path):
-    (tmp_path / "a.py").write_text("nothing\n  target()\n", encoding="utf-8")
+def test_exclude_globs_apply_to_root_files(tmp_path):
     (tmp_path / "skip.py").write_text("target()", encoding="utf-8")
+    assert scan(tmp_path, exclude_globs=["**/skip.py"]) == []
+
+
+def test_already_negated_exclude_globs_are_preserved(tmp_path):
+    # 2026-09-09：旧调用方会传入已经带有 ! 的排除模式。
+    (tmp_path / "skip.py").write_text("target()", encoding="utf-8")
+    assert scan(tmp_path, exclude_globs=["!**/skip.py"]) == []
+
+
+def test_nonmatching_extensions_are_excluded(tmp_path):
     (tmp_path / "notes.txt").write_text("target()", encoding="utf-8")
+    assert scan(tmp_path) == []
+
+
+def test_binary_files_are_excluded(tmp_path):
     (tmp_path / "binary.py").write_bytes(b"target()\x00")
-    assert scan(tmp_path, exclude_globs=["**/skip.py"]) == [
+    assert scan(tmp_path) == []
+
+
+def test_source_positions_preserve_line_number_and_indent(tmp_path):
+    (tmp_path / "a.py").write_text("nothing\n  target()\n", encoding="utf-8")
+    assert scan(tmp_path) == [
         {"file": str(tmp_path / "a.py"), "line": 2, "text": "  target()"}
     ]
 
@@ -100,12 +118,24 @@ def test_timeout_does_not_return_partial_matches(tmp_path):
 def test_full_count_is_independent_of_display_limit(tmp_path, monkeypatch):
     import asyncio
     import subprocess
+    import sys
 
     from tree_sitter_analyzer.mcp.tools.trace_impact_tool import TraceImpactTool
 
-    monkeypatch.setattr(
-        subprocess, "Popen", lambda *args, **kwargs: pytest.fail("核验不得启动外部进程")
-    )
+    original = subprocess.Popen
+
+    def own_worker_only(argv, *args, **kwargs):
+        assert argv == [
+            sys.executable,
+            "-I",
+            "-X",
+            "utf8",
+            "-m",
+            "tree_sitter_analyzer.source_lines",
+        ]
+        return original(argv, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", own_worker_only)
     (tmp_path / "a.py").write_text("target()\n" * 150, encoding="utf-8")
     result = asyncio.run(
         TraceImpactTool(str(tmp_path)).execute({"symbol": "target", "max_results": 3})
@@ -186,3 +216,189 @@ def test_discovery_excludes_nonregular_entries(tmp_path, monkeypatch):
 
     monkeypatch.setattr(Path, "stat", entry_stat)
     assert list(workspace_files([str(tmp_path)])) == []
+
+
+@pytest.mark.parametrize("root", ["", " "])
+def test_empty_roots_do_not_expand_to_working_directory(root):
+    # 2026-09-09：逗号分隔根列表的空分量不能偷偷引入工作目录。
+    with pytest.raises(OSError, match="SOURCE_ROOT_EMPTY"):
+        list(workspace_files([root]))
+
+
+def test_symlinked_ancestor_returns_canonical_paths(tmp_path):
+    # 2026-09-09：macOS 的 /var 与 /private/var 必须使用同一套路径表示。
+    real = tmp_path / "real"
+    project = real / "project"
+    project.mkdir(parents=True)
+    file = project / "a.py"
+    file.write_text("target()", encoding="utf-8")
+    alias = tmp_path / "alias"
+    alias.symlink_to(real, target_is_directory=True)
+    assert list(workspace_files([str(alias / "project")])) == [file.resolve()]
+
+
+def test_blocking_worker_is_killed_at_deadline(tmp_path, monkeypatch):
+    # 2026-09-09：模拟文件系统读取一直不返回，父进程仍必须结束请求并回收工作进程。
+    import subprocess
+    import sys
+    import time
+
+    import tree_sitter_analyzer.source_lines as native
+
+    original = subprocess.Popen
+    processes = []
+
+    def blocked_worker(argv, **kwargs):
+        process = original(
+            [sys.executable, "-I", "-c", "import time; time.sleep(60)"], **kwargs
+        )
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", blocked_worker)
+    started = time.monotonic()
+    with pytest.raises(TimeoutError, match="SOURCE_SCAN_BUDGET_EXCEEDED"):
+        native.scan_symbol_lines_bounded("target", [str(tmp_path)], timeout=0.1)
+    # 时间不可精确固定；上限包含 0.1 秒请求预算、一秒回收预算与调度余量。
+    assert time.monotonic() - started < 3
+    assert processes[0].poll() is not None
+
+
+def test_worker_module_json_protocol(tmp_path, monkeypatch, capsys):
+    import io
+    import json
+    import runpy
+    import sys
+
+    (tmp_path / "a.py").write_text("target()", encoding="utf-8")
+    request = {
+        "symbol": "target",
+        "roots": [str(tmp_path)],
+        "case_sensitive": True,
+        "word_match": True,
+        "include_globs": ["**/*.py"],
+        "exclude_globs": [],
+    }
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(request)))
+    # 模块入口与隔离 Python 进程使用同一协议；临时移除缓存避免 runpy 的重复导入警告。
+    monkeypatch.delitem(sys.modules, "tree_sitter_analyzer.source_lines")
+    runpy.run_module("tree_sitter_analyzer.source_lines", run_name="__main__")
+    assert json.loads(capsys.readouterr().out) == {
+        "matches": [{"file": str(tmp_path / "a.py"), "line": 1, "text": "target()"}]
+    }
+
+
+@pytest.mark.parametrize(
+    "response,exit_code,error_type,error",
+    [
+        ('{"matches": []}', 3, OSError, "SOURCE_WORKER_FAILED"),
+        (
+            '{"error": "SOURCE_ROOT_UNAVAILABLE", "timeout": false}',
+            0,
+            OSError,
+            "SOURCE_ROOT_UNAVAILABLE",
+        ),
+        (
+            '{"error": "SOURCE_SCAN_BUDGET_EXCEEDED", "timeout": true}',
+            0,
+            TimeoutError,
+            "SOURCE_SCAN_BUDGET_EXCEEDED",
+        ),
+        ('{"matches": null}', 0, OSError, "SOURCE_WORKER_INVALID_RESPONSE"),
+    ],
+)
+def test_worker_failure_is_never_reported_as_empty_success(
+    tmp_path, monkeypatch, response, exit_code, error_type, error
+):
+    from unittest.mock import Mock
+
+    import tree_sitter_analyzer.source_lines as native
+
+    process = Mock(returncode=exit_code)
+    process.communicate.return_value = (response, "")
+    monkeypatch.setattr(native.subprocess, "Popen", Mock(return_value=process))
+    with pytest.raises(error_type, match=error):
+        native.scan_symbol_lines_bounded("target", [str(tmp_path)])
+
+
+def test_unfinished_worker_cleanup_is_reported(tmp_path, monkeypatch):
+    import subprocess
+    from unittest.mock import Mock
+
+    import tree_sitter_analyzer.source_lines as native
+
+    process = Mock()
+    process.communicate.side_effect = subprocess.TimeoutExpired("worker", 1)
+    monkeypatch.setattr(native.subprocess, "Popen", Mock(return_value=process))
+    with pytest.raises(OSError, match="SOURCE_WORKER_CLEANUP_FAILED"):
+        native.scan_symbol_lines_bounded("target", [str(tmp_path)])
+    process.kill.assert_called_once_with()
+    assert process.communicate.call_args.kwargs == {"timeout": 1}
+
+
+@pytest.mark.parametrize(
+    "timeout,root_suffix,expected",
+    [
+        (5, "missing", {"error": "SOURCE_ROOT_UNAVAILABLE", "timeout": False}),
+        (0, "", {"error": "SOURCE_DISCOVERY_BUDGET_EXCEEDED", "timeout": True}),
+    ],
+)
+def test_worker_protocol_preserves_scan_errors(
+    tmp_path, monkeypatch, capsys, timeout, root_suffix, expected
+):
+    import io
+    import json
+
+    import tree_sitter_analyzer.source_lines as native
+
+    request = {
+        "symbol": "target",
+        "roots": [str(tmp_path / root_suffix)],
+        "case_sensitive": True,
+        "word_match": True,
+        "include_globs": [],
+        "exclude_globs": [],
+        "timeout": timeout,
+    }
+    monkeypatch.setattr(native.sys, "stdin", io.StringIO(json.dumps(request)))
+    native._main()
+    assert json.loads(capsys.readouterr().out) == expected
+
+
+def test_worker_protocol_rejects_oversized_payload(tmp_path, monkeypatch, capsys):
+    import io
+    import json
+
+    import tree_sitter_analyzer.source_lines as native
+
+    (tmp_path / "a.py").write_text("target()\n" * 100, encoding="utf-8")
+    request = {
+        "symbol": "target",
+        "roots": [str(tmp_path)],
+        "case_sensitive": True,
+        "word_match": True,
+        "include_globs": [],
+        "exclude_globs": [],
+    }
+    monkeypatch.setattr(native, "_MAX_RESPONSE_BYTES", 128)
+    monkeypatch.setattr(native.sys, "stdin", io.StringIO(json.dumps(request)))
+    native._main()
+    assert json.loads(capsys.readouterr().out) == {
+        "error": "SOURCE_RESPONSE_BUDGET_EXCEEDED",
+        "timeout": True,
+    }
+
+
+def test_isolated_worker_preserves_unicode_paths_and_symbols(tmp_path):
+    from tree_sitter_analyzer.source_lines import scan_symbol_lines_bounded
+
+    path = tmp_path / "名字.py"
+    path.write_text("变量()\n", encoding="utf-8")
+    assert scan_symbol_lines_bounded(
+        "变量",
+        [str(tmp_path)],
+        case_sensitive=True,
+        word_match=True,
+        include_globs=[],
+        exclude_globs=[],
+    ) == [{"file": str(path), "line": 1, "text": "变量()"}]

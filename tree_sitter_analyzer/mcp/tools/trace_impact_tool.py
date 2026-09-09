@@ -12,7 +12,7 @@ from typing import Any
 from tree_sitter_analyzer.cache.fingerprint import _SOURCE_EXTS
 
 from ...language_detector import LanguageDetector, detect_language_from_file
-from ...source_lines import scan_symbol_lines
+from ...source_lines import scan_symbol_lines_bounded as scan_symbol_lines
 from ...utils import setup_logger
 from ..utils.error_handler import handle_mcp_errors
 from .base_tool import BaseMCPTool
@@ -433,14 +433,15 @@ def _build_not_found_response(symbol: str, language: str | None) -> dict[str, An
 def _truncate_for_display(
     source_matches: list[Any], max_results: int
 ) -> tuple[list[Any], bool]:
-    """Display-cap source matches without affecting impact-level count."""
+    """展示最多一万行，不影响完整命中计数。"""
+    max_results = min(max_results, 10000)
     if len(source_matches) > max_results:
         return source_matches[:max_results], True
     return source_matches, False
 
 
 def _matches_to_usages(matches: list[Any]) -> list[dict[str, Any]]:
-    """Convert rg matches to usage dicts with both ``file``/``file_path`` aliases."""
+    """将源码命中转换为保留两种路径字段的引用结果。"""
     usages: list[dict[str, Any]] = []
     for match in matches:
         line_no = match["line"]
@@ -461,12 +462,12 @@ def _verdict_and_next_step_for_impact(level: str, total_count: int) -> tuple[str
     """K5: map impact level (magnitude vocab) → (verdict, next_step) (safety vocab)."""
     if level == "high":
         return "UNSAFE", (
-            f"nav action=trace to enumerate all {total_count} call sites before "
+            f"nav action=trace max_results={min(total_count, 10000)} with narrower project_root scopes to review {total_count} call sites before "
             "changing signature"
         )
     if level == "medium":
         return "CAUTION", (
-            f"nav action=trace to enumerate all {total_count} call sites before "
+            f"nav action=trace max_results={min(total_count, 10000)} with narrower project_root scopes to review {total_count} call sites before "
             "changing signature"
         )
     if level == "low":
@@ -533,20 +534,12 @@ def _trace_impact_apply_conditional_fields(
     truncated: bool,
     max_results: int,
 ) -> None:
-    """Mutate ``result`` with optional fields based on signal flags.
-
-    Adds in-place:
-    - ``warning`` when impact_level == "high" (advises nav action=trace)
-    - ``language`` + ``filtered_by_language`` when a language was inferred
-    - ``source_file`` when ``file_path`` was provided
-    - ``truncated`` + ``message`` when results overflowed ``max_results``
-    - ``non_source_match_count`` when raw matches exceeded source matches
-    """
+    """按影响程度、语言、文件和截断状态补充结果字段。"""
     if impact_level == "high":
         result["warning"] = (
             f"🚨 HIGH IMPACT: This symbol has {source_total} callers. "
             f"Modifying its signature requires updating all call sites. "
-            f"Use nav action=trace to locate all callers before proceeding."
+            f"Use narrower project_root scopes with nav action=trace max_results=10000 to review callers before proceeding."
         )
     if language:
         result["language"] = language
@@ -557,7 +550,7 @@ def _trace_impact_apply_conditional_fields(
         result["truncated"] = True
         result["message"] = (
             f"Results truncated to {max_results} usages. "
-            f"Consider narrowing the search scope or increasing max_results."
+            f"Narrow project_root to a smaller directory; display is capped at 10000 usages."
         )
     if true_total > source_total:
         result["non_source_match_count"] = true_total - source_total
@@ -810,7 +803,7 @@ class TraceImpactTool(BaseMCPTool):
         file_path = arguments.get("file_path")
         case_sensitive = arguments.get("case_sensitive", False)
         word_match = arguments.get("word_match", True)
-        max_results = arguments.get("max_results", 1000)
+        max_results = min(arguments.get("max_results", 1000), 10000)
         exclude_patterns = arguments.get("exclude_patterns", [])
 
         roots = self._resolve_search_roots(arguments.get("project_root"))
@@ -858,13 +851,16 @@ class TraceImpactTool(BaseMCPTool):
 
     def _resolve_search_roots(self, project_root_arg: str | None) -> list[str]:
         """按显式逗号分隔目录、工具项目目录、当前目录的顺序解析扫描根。"""
-        if project_root_arg:
-            return [root.strip() for root in project_root_arg.split(",")]
-        if self.project_root:
-            return [self.project_root]
-        from pathlib import Path
-
-        return [str(Path.cwd())]
+        values = (
+            project_root_arg.split(",")
+            if project_root_arg is not None
+            else [self.project_root or str(Path.cwd())]
+        )
+        if any(not root.strip() for root in values):
+            raise ValueError("SOURCE_ROOT_EMPTY")
+        return [
+            self.resolve_and_validate_directory_path(root.strip()) for root in values
+        ]
 
     def _detect_language_filter(
         self, file_path: str | None
