@@ -37,6 +37,69 @@ from tree_sitter_analyzer.registry import health_scorer_helpers
 _NON_ASCII_SOURCE = "# 日本語コメント\nmessage = 'こんにちは世界'\nx = 1\n"
 
 
+@pytest.mark.parametrize("linked_worktree", [False, True])
+def test_shallow_history_is_unavailable_until_unshallow(tmp_path, linked_worktree):
+    """浅克隆和关联工作树不能把缺失历史算成稳定满分。"""
+    # 2026-09-09：相同 HEAD 的七次近期变更在 depth=2 克隆中被误计为两次。
+    repo = tmp_path / "full"
+    repo.mkdir()
+
+    def git(directory, *arguments):
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=directory,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    git(repo, "init", "-q")
+    git(repo, "config", "user.email", "test@example.com")
+    git(repo, "config", "user.name", "Test")
+    for value in range(7):
+        (repo / "module.py").write_text(f"value = {value}\n", encoding="utf-8")
+        git(repo, "add", "module.py")
+        git(repo, "commit", "-qm", f"change {value}")
+    clone = tmp_path / "shallow"
+    git(tmp_path, "clone", "--depth=2", repo.as_uri(), str(clone))
+    target = clone
+    if linked_worktree:
+        target = tmp_path / "linked"
+        git(clone, "worktree", "add", "--detach", str(target))
+    head = git(repo, "rev-parse", "HEAD")
+    assert git(target, "rev-parse", "HEAD") == head
+    assert git(target, "rev-list", "--count", "HEAD", "--", "module.py") == "2"
+    assert health_scorer_helpers.count_recent_commits(repo, "module.py") == 7
+    assert (
+        health_scorer_helpers.calculate_git_hotspot(str(target / "module.py"), 5, 50)
+        is None
+    )
+    git(clone, "fetch", "--unshallow")
+    assert git(target, "rev-parse", "HEAD") == head
+    assert health_scorer_helpers.calculate_git_hotspot(
+        str(target / "module.py"), 5, 50
+    ) == health_scorer_helpers.score_commit_frequency(7, 5, 50)
+
+
+@pytest.mark.parametrize(
+    "returncode,stdout",
+    [(0, "true\n"), (0, ""), (0, "--is-shallow-repository\n"), (1, "false\n")],
+)
+def test_unknown_or_shallow_history_does_not_query_log(
+    monkeypatch, tmp_path, returncode, stdout
+):
+    """历史完整性无法确认时不执行可能给出误导计数的日志查询。"""
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, returncode, stdout=stdout)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert health_scorer_helpers.count_recent_commits(tmp_path, "module.py") is None
+    assert calls == [["git", "rev-parse", "--is-shallow-repository"]]
+
+
 @pytest.mark.parametrize("overlay", ["replace", "graft"])
 def test_recent_commit_count_ignores_replacement_and_graft_overrides(tmp_path, overlay):
     """Hotspot history must reflect immutable commits, not local Git overlays."""
