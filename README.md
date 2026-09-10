@@ -15,7 +15,7 @@ TSA indexes your codebase with tree-sitter and serves correct call graphs, symbo
 
 > Upgrading from v1.x? See [docs/MIGRATION.md](docs/MIGRATION.md).
 
-### Unreleased Nervous-System Boundaries
+### Nervous-System Boundaries (Pulse / TQL / Semantic Query)
 
 TQL temporal selectors compare modification timestamps, not modification counts.
 The `tql_schema` action documents the window and the shared default for bare
@@ -100,7 +100,7 @@ CLI equivalent (no agent needed): `tree-sitter-analyzer --codegraph-status`
 curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-# fd + ripgrep (required for `search action=content` text search; symbol search uses SQLite FTS5 and needs neither)
+# fd + ripgrep (required for `search action=batch` multi-query text search; symbol search uses SQLite FTS5 and needs neither)
 brew install fd ripgrep                                # macOS
 winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```

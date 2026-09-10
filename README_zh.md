@@ -4,16 +4,29 @@
 
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/) [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) [![Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer) [![适配 Claude Code · Cursor · MCP](https://img.shields.io/badge/适配-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20MCP-6f42c1.svg)](#supported-agents)
 
-**AI agent 可以信赖的代码情报** — 跨语言结构分析，为 agent 原生设计（MCP + CLI）。
+**AI agent 可以信赖的代码情报** — 在[受支持的语言清单](#支持的语言)范围内保持正确的跨语言结构，为 agent 原生设计（MCP + CLI）。
 
 TSA 使用 tree-sitter 索引代码库，向 AI 编程 agent 提供调用图、符号搜索与结构查询 — **8 个 MCP 工具** + CLI，完全本地运行，零遥测。
 
 **为什么不同：**
 * **跨语言正确性是护城河。** 语言族门控可阻止仅基于名称的跨语言绑定。
 * **为 agent 原生设计。** **8 个 MCP 工具**提供结构化 JSON 输出与 verdict 信封，也可通过 CLI 和精选工作流使用。
-* **广度与正确性兼备。** 13 种语言为 `pipeline_registered`（管线注册态，非 E2E：Python · Go · Rust · Java · JS · TS · C · C++ · C# · Swift · Kotlin · Ruby · PHP）。这只是注册与接线证据，不代表跨文件调用解析已经验证。
+* **广度与正确性兼备。** 13 种语言为 `pipeline_registered`（管线注册态，非 E2E）。这只是注册与接线证据，不代表已验证的跨文件调用解析。详见[自动生成的支持深度清单](#支持的语言)。
 
 > 从 v1.x 升级？见 [docs/MIGRATION.md](docs/MIGRATION.md)。
+
+### 神经系统边界 (Pulse / TQL / 语义查询)
+
+TQL 的时间选择器比较的是修改时间戳，而不是修改次数。
+`tql_schema` action 记录了裸 `:hot` 与 `:recently_modified` 共享的窗口期与默认值。深度查询保留精确的定义同一性，超出遍历上限时会明确失败。
+
+Pulse 请求返回的是快照绑定的上下文。用于身份信息、关系、反向 import 上下文以及可选的缓存 LSP 增强的 SQL 读取共享相同的 savepoint，且不会结束调用方持有的事务。这并不意味着存在 SQL 往返或延迟保证。
+
+Pulse 的 Python 反向 import 上下文使用现有的模块解析器；这并不代表跨语言模块解析已完全实现。评论上下文需要以启用评论提取的方式重建索引。旧索引以及不支持评论提取的语言会返回 `COMMENTS_NOT_INDEXED`，而不是返回空的成功结果；不需要评论上下文时，可通过文档化的 `max_comments` 设置显式省略。缺失的历史提交信息投影会变为 `pending` 以待惰性刷新；`disabled` 的激活状态会被保留。历史遗留的 NULL 激活状态同样会变为 pending，且不会清除旧消息或计数。已启用的缓存索引周期会继续进行有边界的激活刷新。Pulse 将不可用的激活状态暴露为 `null`，而时间性查询会拒绝不完整的激活证据。刷新通过有边界的批次读取真实的 Git 历史；消息读取失败时会保留为待处理，而不会声称已完成。
+
+语义查询要求使用已知的、已存储的嵌入模型，且维度必须一致。混用或未知的模型会报错，且没有 provider 回退。离线测试使用模型 double；它们不能证明真实 provider 的质量。
+
+Pulse 批处理会保留成功的条目，但只要目标中存在失败就会报告失败。TQL 将缺失或不可读的索引视为错误，这与"索引就绪但无匹配结果"是不同的情况。公开请求校验会在打开索引或调用嵌入 provider 之前，拒绝无效的类型和上限值。
 
 ---
 
@@ -29,6 +42,12 @@ curl -fsSL https://raw.githubusercontent.com/aimasteracc/tree-sitter-analyzer/ma
 
 `install.sh` 会检测 `uv` 是否已安装（未安装则自动安装），并自动检测 Claude Desktop / Claude Code / Cursor / VS Code 的配置文件，写入 MCP 配置项。安装完成后可运行 `tree-sitter-analyzer --doctor` 验证配置。
 
+> **引导信任说明：** 为方便起见，上述命令在 `uv` 缺失或版本过旧时，会通过 TLS 下载并执行官方 `uv` 安装器。该安装器是可变的、**并非内容绑定（content-bound）**的；TSA 会在下载到临时文件前发出警告，并在安装后执行严格的版本校验。如果想避免这个未经验证的引导过程，可以预先手动安装 `uv >= 0.11.0`，或使用以下安全的退出选项（需要引导时会直接退出并给出手动安装说明）：
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/aimasteracc/tree-sitter-analyzer/main/install.sh \
+>   | TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP=1 bash
+> ```
+
 为 **Claude Code** 一行安装：
 
 ```bash
@@ -38,10 +57,12 @@ claude mcp add tree-sitter-analyzer \
 ```
 
 重启 agent，对它说："用 `index` 工具调用 action=status。"
+CLI 等效命令（无需 agent）：`tree-sitter-analyzer --codegraph-status`
 
 > **PyPI / uvx 用户 — 安装 skills：** `tsa-*` skills 已打包在 wheel 中。执行一次即可安装：
 > ```bash
-> tree-sitter-analyzer --install-skills
+> tree-sitter-analyzer --install-skills              # 安装到 ./.claude/skills/（仅本项目）
+> tree-sitter-analyzer --install-skills-global       # 安装到 ~/.claude/skills/（所有项目共用）
 > ```
 > git clone 用户已在 `.claude/skills/` 下有这些文件，无需操作。
 
@@ -52,11 +73,12 @@ claude mcp add tree-sitter-analyzer \
 #### 1. 安装依赖
 
 ```bash
-# uv（必需）
+# uv（必需）。该官方便捷安装器是可变的、非内容绑定的；
+# 其他手动安装方式见 https://docs.astral.sh/uv/。
 curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-# fd + ripgrep（搜索功能必需）
+# fd + ripgrep（`search action=batch` 多查询文本搜索所需；符号搜索使用 SQLite FTS5，两者都不需要）
 brew install fd ripgrep                                # macOS
 winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```
@@ -87,6 +109,7 @@ uv tool install "tree-sitter-analyzer[all,mcp]"
 ```
 
 重启 agent 后："用 `index` 工具调用 action=status。"
+CLI 等效命令（无需 agent）：`tree-sitter-analyzer --codegraph-status`
 
 **在你自己的仓库上检查解析器行为**（无需安装，会先重建索引）：
 
@@ -174,9 +197,17 @@ tree-sitter-analyzer --affected <file...>         # 受影响的测试
 tree-sitter-analyzer --dead-code                  # 传递不可达
 tree-sitter-analyzer --check-constraints          # 架构规则
 tree-sitter-analyzer --safe-to-edit <file>        # 风险时拒绝
+tree-sitter-analyzer --uml class                  # Mermaid UML class 图
 ```
 
-完整接口见 [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md)。
+该软件包还保留了独立的文件列表辅助工具：
+
+```bash
+list-files <dir>          # fd 风格的文件发现
+```
+
+`search-content` 和 `find-and-grep` 已在 develop 分支中移除。详见
+[迁移指南](docs/MIGRATION.md) 和 [`CLI codemap`](docs/CODEMAPS/cli.md)。
 
 ---
 
@@ -223,7 +254,8 @@ claude mcp add tree-sitter-analyzer \
 
 **PyPI / uvx 用户** — 安装一次内置 skills：
 ```bash
-tree-sitter-analyzer --install-skills
+tree-sitter-analyzer --install-skills              # 安装到 ./.claude/skills/（仅本项目）
+tree-sitter-analyzer --install-skills-global       # 安装到 ~/.claude/skills/（所有项目共用）
 ```
 git clone 用户已有，无需操作。
 </details>
@@ -269,6 +301,43 @@ git clone 用户已有，无需操作。
 <summary><b>🖱 Cursor / Cline / Continue / Roo Code</b></summary>
 
 都使用 Claude Desktop 的 `mcpServers` schema。Cursor：**设置 → MCP**。Cline：MCP 面板 → 编辑设置。Continue：`~/.continue/config.json` 下 `experimental.modelContextProtocolServers`。Roo Code：MCP 面板 → 编辑 MCP 设置。
+</details>
+
+<details>
+<summary><b>🐳 Docker</b>（本地没有 Python / uv）</summary>
+
+本仓库自带 [`Dockerfile`](Dockerfile)，可从源码构建 MCP 服务器（stdio 传输），因此镜像始终与已提交的代码保持一致。
+
+```bash
+# 只需构建一次
+docker build -t tree-sitter-analyzer-mcp .
+
+# 针对当前仓库运行（服务器通过 stdio 提供 MCP；-i 保持 stdin 打开）
+docker run --rm -i --user "$(id -u):$(id -g)" \
+  -v "$PWD:/work" -w /work tree-sitter-analyzer-mcp
+```
+
+`--user "$(id -u):$(id -g)"` 会以你的宿主机 UID/GID 运行，因此绑定挂载的仓库下的 `.ast-cache/`、决策日志以及任何 `edit` 写入操作都归你所有，而不是 root。
+
+MCP 客户端配置（容器内的项目根目录是挂载点 `/work`）：
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--user", "1000:1000",
+        "-v", "/绝对路径/项目目录:/work",
+        "-w", "/work",
+        "-e", "TREE_SITTER_PROJECT_ROOT=/work",
+        "tree-sitter-analyzer-mcp"
+      ]
+    }
+  }
+}
+```
 </details>
 
 > ⚠️ `TREE_SITTER_PROJECT_ROOT` 必须是 **绝对路径**。服务通过 `SecurityValidator` 强制安全边界，防止逃逸。
@@ -335,10 +404,10 @@ snapshot token。这不代表物理索引为空，也不代表普通查询被禁
 | Pre-commit 闸门 | ruff · bandit · mypy · pyupgrade · detect-secrets · tsa-codemap-sync |
 
 ```bash
-uv run pytest -q                                # 完整套件
-uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # 开发期快速循环
-PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # 降低 CPU 负载
-PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # 平衡并行度
+uv run pytest -q                                # 有边界的本地快速闸门
+uv run pytest tests/ -q --timeout=120 -m "not e2e and not network and not benchmark"  # 全面的本地测试套件
+PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1                  # 快速闸门，单 worker（降低 CPU 负载）
+PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q --maxfail=1                  # 快速闸门，双 worker（均衡并行）
 uv run pytest --lf --maxfail=1                  # 只重跑上次失败的测试
 uv run python check_quality.py --new-code-only  # 质量闸门
 ```
@@ -349,33 +418,11 @@ uv run python check_quality.py --new-code-only  # 质量闸门
 
 | 症状 | 修复 |
 |---|---|
-| `.swift / .kt / .rb / .php / .cs` 显示 `unsupported language` | 升级到 ≥ 1.12.x — 5 语言 gap 已在 commit `50e99a8f` 中修复。extras 门控语言的语法模块不随基础安装捆绑;运行 `pip install "tree-sitter-analyzer[swift]"`(或 `kotlin`、`ruby`、`php`、`csharp`)补装 |
-| MCP 服务在客户端中不出现 | `TREE_SITTER_PROJECT_ROOT` 必须是**绝对路径**；编辑配置后重启客户端。另见 [TREE\_SITTER\_PROJECT\_ROOT 使用了相对路径](#tree_sitter_project_root-使用了相对路径) |
-| `database is locked` | 关闭其他占用 `.ast-cache/index.db` 的进程；持续存在则 `rm -rf .ast-cache && tree-sitter-analyzer --autoindex` |
-| 首次调用慢或提示缺少索引 | 部分工具会自动建索引；可在索引查询前先运行 `--full-index`。 |
-| Agent 选错工具 | 使用 `tsa-*` skill（`/tsa-graph`、`/tsa-find` 等）— 每个 skill 把可见工具限定到一个工作流 |
-
-### TREE\_SITTER\_PROJECT\_ROOT 使用了相对路径
-
-**症状：** MCP 服务启动时无报错，但 TSA 返回错误的分析结果，或出现类似 `project root not found` 的错误。
-
-**根本原因：** `TREE_SITTER_PROJECT_ROOT` 设置了相对路径（如 `./myproject`）。`uvx` 启动服务时，进程工作目录可能与安装时不同，导致相对路径解析到错误位置。
-
-**修复方法：** 始终使用绝对路径：
-
-```bash
-# 正确
-"TREE_SITTER_PROJECT_ROOT": "/home/user/myproject"
-
-# 也正确（install.sh 在安装时自动解析）
-"TREE_SITTER_PROJECT_ROOT": "$(pwd)"        # 或 $(realpath .)
-
-# 错误
-"TREE_SITTER_PROJECT_ROOT": "./myproject"
-"TREE_SITTER_PROJECT_ROOT": "myproject"
-```
-
-运行 `tree-sitter-analyzer --doctor` 可验证你的配置。
+| `.swift / .kt / .rb / .php / .cs` 显示 `unsupported language` | 请更新到当前受支持的版本 — 该语言缺失问题已在 commit `50e99a8f` 中修复。extras 门控语言的语法模块不随基础安装捆绑；运行 `pip install "tree-sitter-analyzer[swift]"`（或 `kotlin`、`ruby`、`php`、`csharp`）补装。 |
+| MCP 服务在客户端中不出现 | `TREE_SITTER_PROJECT_ROOT` 必须是**绝对路径**（例如 `$(pwd)` 或 `/home/user/project`）；相对路径会导致服务器解析到错误的目录。编辑配置后重启客户端。运行 `tree-sitter-analyzer --doctor` 可验证配置。 |
+| `database is locked` | 关闭其他占用 `.ast-cache/index.db` 的进程；持续存在则运行 `rm -rf .ast-cache && tree-sitter-analyzer --full-index`。 |
+| 首次调用慢或提示缺少索引 | 部分工具会自动预热索引。可在索引查询前先运行 `--full-index`。 |
+| Agent 选错工具 | 使用 `tsa-*` skill（`/tsa-graph`、`/tsa-find` 等）— 每个 skill 把可见工具限定到其专属工作流。 |
 
 ---
 

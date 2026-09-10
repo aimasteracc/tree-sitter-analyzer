@@ -2,19 +2,18 @@
 
 ## [Unreleased]
 
-These changes describe develop relative to published v1.29.5. A release version
-has not been assigned here; older sections retain their published behavior.
+## [1.30.0] - 2026-09-10
+
+### ⚠️ Breaking Changes
+
+- MCP and CLI machine-readable output is JSON-only. Remove TOON decoders from clients; retain the structured response envelope. Table rendering supports `full` and `signatures`; legacy `compact` and `csv` table modes are removed.
+- `search.content` / legacy `search_content` / `search-content`, and `search.grep` / legacy `find_and_grep` / `find-and-grep` are removed. For arbitrary text and file search, use the host's search tools or a suitable search program directly.
 
 ### Changed
 
-- MCP and CLI machine-readable output is JSON-only. Remove TOON decoders from clients; retain the structured response envelope. Table rendering supports `full` and `signatures`; legacy `compact` and `csv` table modes are removed.
 - Internal project file discovery and live symbol tracing use native discovery and a bounded Python source-scanning worker. This does not remove the remaining public fd/ripgrep wrappers or establish throughput parity.
 - Develop retains the published `edit.rename`, `health.unreachable`, and `health.middleware` routes alongside preview-only planning and process-local snapshot controls. Its current surface is 356 unique long CLI flags, 87 facade actions, and seven console scripts; extractor version 39 is retained.
 - Intent aliases `locate_usage` / `find_usage` now route to symbol search, and `find_impacted_code` routes to AST queries. These are code-intelligence routes, not arbitrary text-search equivalents.
-
-### Removed
-
-- `search.content` / legacy `search_content` / `search-content`, and `search.grep` / legacy `find_and_grep` / `find-and-grep`. For arbitrary text and file search, use the host's search tools or a suitable search program directly.
 
 ### Fixed
 
