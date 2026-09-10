@@ -606,6 +606,8 @@ class TestHealthScorer:
             calls.append((cmd, kwargs))
             if cmd[:3] == ["git", "rev-parse", "--show-toplevel"]:
                 return SimpleNamespace(returncode=0, stdout=f"{repo}\n")
+            if cmd == ["git", "rev-parse", "--is-shallow-repository"]:
+                return SimpleNamespace(returncode=0, stdout="false\n")
             return SimpleNamespace(returncode=0, stdout="\n".join(["abc"] * 10))
 
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -613,8 +615,8 @@ class TestHealthScorer:
         score = score_git_hotspot(str(file_path))
 
         assert score == pytest.approx(88.9, abs=0.1)
-        assert calls[1][0][-1] == "tree_sitter_analyzer/cli_main.py"
-        assert calls[1][1]["cwd"] == str(repo)
+        assert calls[2][0][-1] == "tree_sitter_analyzer/cli_main.py"
+        assert calls[2][1]["cwd"] == str(repo)
 
     def test_seven_dimensions_in_weights(self):
         """All 7 dimensions should be in DIMENSION_WEIGHTS."""

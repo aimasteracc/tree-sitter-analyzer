@@ -21,7 +21,7 @@ from .health_score_fingerprint import _Fingerprint
 
 logger = logging.getLogger(__name__)
 
-_CACHE_CONTEXT_VERSION = "health-score-v4"
+_CACHE_CONTEXT_VERSION = "health-score-v5"
 _CONTEXT_COLUMN = "context_fingerprint"
 _MAX_GIT_METADATA_BYTES = 64 * 1024
 _MAX_SYMBOLIC_REF_DEPTH = 16

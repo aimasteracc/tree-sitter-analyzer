@@ -346,14 +346,19 @@ def test_cache_misses_when_coverage_report_disappears(project, monkeypatch):
 
 
 def test_cache_misses_when_context_version_changes(project, monkeypatch):
-    """A scoring-algorithm version bump must invalidate prior rows."""
-    # Issue #1183 (2026-07-27): the cache lacked an algorithm invalidation path.
+    """当前评分算法必须拒绝旧版已经缓存的浅历史满分。"""
+    # #1183；2026-09-09：v4 会缓存浅克隆的不完整历史评分，升级后须重算。
     monkeypatch.chdir(project)
     target = project / "src" / "main.py"
-    first = HealthScoreCache(str(project))
-    first.store(HealthScore(file_path=str(target), total=82.5, dimensions={}))
-    first.close()
-    monkeypatch.setattr(cache_module, "_CACHE_CONTEXT_VERSION", "test-next-version")
+    with monkeypatch.context() as old_version:
+        old_version.setattr(cache_module, "_CACHE_CONTEXT_VERSION", "health-score-v4")
+        first = HealthScoreCache(str(project))
+        first.store(
+            HealthScore(
+                file_path=str(target), total=100.0, dimensions={"git_hotspot": 100.0}
+            )
+        )
+        first.close()
 
     second = HealthScoreCache(str(project))
 
