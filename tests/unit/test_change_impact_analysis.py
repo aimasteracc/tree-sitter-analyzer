@@ -444,3 +444,57 @@ def test_read_only_request_skips_call_graph_impact(tmp_path, monkeypatch) -> Non
     )
 
     assert result["affected_count"] == 0
+
+
+@pytest.mark.parametrize(
+    "platform,change",
+    [
+        ("nt", "none"),
+        ("nt", "legacy"),
+        ("posix", "none"),
+        ("nt", "birthtime"),
+        ("nt", "read_ctime"),
+    ],
+)
+def test_config_windows_times(tmp_path, monkeypatch, platform, change):
+    """2026-09-09：跨接口使用创建时间，同句柄继续用变更时间拒绝竞态。"""
+    import os
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools.utils import (
+        verification_pytest_config as config,
+    )
+
+    monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+    path = tmp_path / "pytest.ini"
+    path.write_text("[pytest]\naddopts = -m 'not slow'\n", encoding="utf-8")
+    original_lstat = Path.lstat
+    metadata = path.lstat()
+    names = ("st_mode", "st_dev", "st_ino", "st_size", "st_mtime_ns")
+    common = {name: getattr(metadata, name) for name in names}
+    path_info = SimpleNamespace(**common, st_ctime_ns=100)
+    handle = SimpleNamespace(**common, st_ctime_ns=100 if change == "legacy" else 200)
+    if change != "legacy":
+        path_info.st_birthtime_ns = 100
+        handle.st_birthtime_ns = 101 if change == "birthtime" else 100
+    after_info = SimpleNamespace(**vars(handle))
+    if change == "read_ctime":
+        after_info.st_ctime_ns = 300
+    observed = iter([handle, after_info])
+    monkeypatch.setattr(
+        Path, "lstat", lambda self: path_info if self == path else original_lstat(self)
+    )
+    monkeypatch.setattr(
+        config,
+        "os",
+        SimpleNamespace(
+            **{**vars(os), "name": platform, "fstat": lambda _: next(observed)}
+        ),
+    )
+    expected = (
+        "not network and not benchmark"
+        if platform == "nt" and change in {"none", "legacy"}
+        else None
+    )
+    assert config.targeted_marker_expression(tmp_path) == expected
