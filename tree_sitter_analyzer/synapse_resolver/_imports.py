@@ -65,9 +65,9 @@ def parse_imports(
     """Parse one import statement into structured rows (language dispatch).
 
     Python (``from .b import x, y`` etc.) keeps its original behaviour
-    byte-for-byte via :func:`_parse_python_imports`. Java dispatches to
-    the Java import parser. Any other language returns an empty list,
-    matching the pre-B3 non-Python behaviour (no regression).
+    byte-for-byte via :func:`_parse_python_imports`. Java and TypeScript/
+    JavaScript dispatch to their own parsers. Any other language returns an
+    empty list, matching the pre-B3 non-Python behaviour (no regression).
     """
     if language == "python":
         return _parse_python_imports(text, file_path, line)
@@ -75,6 +75,10 @@ def parse_imports(
         from ._java import parse_java_imports
 
         return parse_java_imports(text, file_path, line)
+    if language in ("typescript", "javascript"):
+        from ._typescript_imports import parse_typescript_imports
+
+        return parse_typescript_imports(text, language, file_path, line)
     return []
 
 
