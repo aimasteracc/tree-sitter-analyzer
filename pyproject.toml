@@ -1,11 +1,11 @@
 [build-system]
-requires = ["hatchling>=1.27,<1.31"]
+requires = ["hatchling>=1.27,<1.32"]
 build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "1.29.5"
-description = "MCP code-intelligence server for AI agents — a more complete and more correct call graph with classified, cross-file edges. 8 facade MCP tools, 13 curated skills, TOON-compressed output, 100% local."
+version = "1.30.0"
+description = "MCP code-intelligence server for AI agents — a more complete and more correct call graph with classified, cross-file edges. 8 facade MCP tools, 13 curated skills, structured JSON output, 100% local."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -53,36 +53,37 @@ classifiers = [
 # Core dependencies (minimal set for basic functionality)
 # Includes HTML/CSS support for comprehensive web technology analysis
 dependencies = [
-    "tree-sitter>=0.25.0",
+    "tree-sitter>=0.26.0",
     "chardet>=7.4.3",
     "cachetools>=5.0.0",
     "tree-sitter-java>=0.23.5",
     "tree-sitter-c>=0.20.0",
     "tree-sitter-cpp>=0.23.4",
     "tree-sitter-python>=0.23.6",
-    "mcp>=1.12.3,<2.0.0",
+    "mcp>=1.12.3,<3.0.0",
     "tree-sitter-javascript>=0.23.1",
     "tree-sitter-markdown>=0.3.1",
     "tree-sitter-html>=0.23.0",
     "tree-sitter-css>=0.23.0",
     "psutil>=5.9.8",
     "tree-sitter-typescript>=0.23.2",
-    "deepdiff>=6.7.1",
-    "jsonschema>=4.0.0",
+    "deepdiff>=9.1.0",
+    "jsonschema>=4.26.0",
     "tree-sitter-c-sharp>=0.23.1",
     "tree-sitter-sql>=0.3.11",
     "tree-sitter-php>=0.24.1",
     "tree-sitter-ruby>=0.23.1",
-    "tree-sitter-yaml>=0.7.0",
+    "tree-sitter-yaml>=0.7.2",
     "tree-sitter-go>=0.20.0",
     "tree-sitter-rust>=0.20.0",
-    "tree-sitter-kotlin>=0.3.0",
+    "tree-sitter-kotlin>=1.1.0",
     "detect-secrets>=1.5.0",
     "tree-sitter-json>=0.23.0",
     "networkx>=3.4.2",
     "numpy>=2.2.6",
     "pyyaml>=6.0",
     "pathspec>=0.12.1",
+    "tomli>=2.0.1; python_version < '3.11'",
     "anthropic>=0.104.1",
     "tree-sitter-bash>=0.23.0",
     "tree-sitter-scala>=0.23.0",
@@ -106,20 +107,21 @@ cpp = ["tree-sitter-cpp>=0.23.4,<0.25.0"]
 rust = ["tree-sitter-rust>=0.20.0,<0.25.0"]
 go = ["tree-sitter-go>=0.20.0,<0.25.0"]
 markdown = ["tree-sitter-markdown>=0.3.1"]
-graph = ["ladybug>=0.17.1,<0.18.0"]
+graph = ["ladybug>=0.17.1,<0.20.0"]
 html = ["tree-sitter-html>=0.23.0,<0.25.0"]  # HTML DOM analysis with element classification
 css = ["tree-sitter-css>=0.23.0,<0.25.0"]   # CSS selector and property analysis with specificity calculation
 sql = ["tree-sitter-sql>=0.3.11,<0.4.0"]   # SQL language support for database schema analysis
 csharp = ["tree-sitter-c-sharp>=0.23.1"]  # C# language support for .NET applications
 php = ["tree-sitter-php>=0.23.0,<0.25.0"]  # PHP language support for web applications
 ruby = ["tree-sitter-ruby>=0.23.0,<0.25.0"]  # Ruby language support for Rails and scripting
-yaml = ["tree-sitter-yaml>=0.7.0"]  # YAML language support for configuration files
+yaml = ["tree-sitter-yaml>=0.7.2"]  # YAML 配置文件语言支持
 kotlin = [
-    "tree-sitter-kotlin>=0.3.0",
+    "tree-sitter-kotlin>=1.1.0",
 ]  # Kotlin language support for Android and JVM applications
 swift = [
     "tree-sitter-swift>=0.7.2",
 ]  # Swift language support for Apple platform applications
+lua = ["tree-sitter-lua>=0.5.0"]  # Lua language support for scripting and game development
 
 # Language bundles for convenience
 web = [
@@ -151,7 +153,7 @@ all-languages = [
     "tree-sitter-cpp>=0.23.4,<0.25.0",
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
-    "tree-sitter-kotlin>=0.3.0",  # Kotlin language support for Android and JVM applications
+    "tree-sitter-kotlin>=1.1.0",  # Kotlin language support for Android and JVM applications
     "tree-sitter-swift>=0.7.2",  # Swift language support for Apple platform applications
     "tree-sitter-markdown>=0.3.1",
     "tree-sitter-html>=0.23.0,<0.25.0",
@@ -160,15 +162,16 @@ all-languages = [
     "tree-sitter-c-sharp>=0.23.1",  # C# language support for .NET applications
     "tree-sitter-php>=0.23.0,<0.25.0",  # PHP language support for web applications
     "tree-sitter-ruby>=0.23.0,<0.25.0",  # Ruby language support for Rails and scripting
-    "tree-sitter-yaml>=0.7.0",  # YAML language support for configuration files
+    "tree-sitter-yaml>=0.7.2",  # YAML 配置文件语言支持
     "tree-sitter-bash>=0.23.0,<0.26.0",  # Bash/shell script support
     "tree-sitter-scala>=0.23.0,<0.27.0",  # Scala language support
+    "tree-sitter-lua>=0.5.0",  # Lua language support for scripting and game development
 ]
 
 # MCP server support
 mcp = [
     "mcp>=1.12.2",
-    "anyio>=4.0.0",
+    "anyio>=4.15.0",
     "httpx>=0.27.0,<1.0.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.2.1",
@@ -186,7 +189,7 @@ dev = [
     "hypothesis>=6.0.0",
     "black>=24.0.0",
     "ruff>=0.5.0",
-    "mypy>=1.17.0",
+    "mypy==2.3.1",
     "isort>=8.0.1",
     "types-psutil>=5.9.0",
     "memory-profiler>=0.61.0",
@@ -230,7 +233,7 @@ integration = [
     "tree-sitter-typescript>=0.20.0",
     "tree-sitter-markdown>=0.3.1",
     "mcp>=1.12.2",
-    "anyio>=4.0.0",
+    "anyio>=4.15.0",
 ]
 
 # Complete development environment
@@ -246,7 +249,7 @@ full = [
     "tree-sitter-markdown>=0.3.1",
     "tree-sitter-swift>=0.7.2",
     "mcp>=1.12.2",
-    "anyio>=4.0.0",
+    "anyio>=4.15.0",
     "httpx>=0.27.0,<1.0.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.2.1",
@@ -258,7 +261,7 @@ full = [
     "pytest-timeout>=2.4.0",
     "black>=24.0.0",
     "ruff>=0.5.0",
-    "mypy>=1.17.0",
+    "mypy==2.3.1",
     "isort>=8.0.1",
     "types-psutil>=5.9.0",
     "memory-profiler>=0.61.0",
@@ -282,7 +285,7 @@ all = [
     "tree-sitter-css>=0.23.0,<0.25.0",
     "tree-sitter-sql>=0.3.11,<0.4.0",  # SQL language support for database schema analysis
     "mcp>=1.12.2",
-    "anyio>=4.0.0",
+    "anyio>=4.15.0",
     "httpx>=0.27.0,<1.0.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.2.1",
@@ -294,7 +297,7 @@ all = [
     "pytest-timeout>=2.4.0",
     "black>=24.0.0",
     "ruff>=0.5.0",
-    "mypy>=1.17.0",
+    "mypy==2.3.1",
     "isort>=8.0.1",
     "types-psutil>=5.9.0",
     "memory-profiler>=0.61.0",
@@ -314,8 +317,6 @@ miswire-audit = "tree_sitter_analyzer.miswire_audit:main"
 code-analyzer = "tree_sitter_analyzer.cli_main:main"
 java-analyzer = "tree_sitter_analyzer.cli_main:main"
 list-files = "tree_sitter_analyzer.cli.commands.list_files_cli:main"
-search-content = "tree_sitter_analyzer.cli.commands.search_content_cli:main"
-find-and-grep = "tree_sitter_analyzer.cli.commands.find_and_grep_cli:main"
 
 [project.entry-points."tree_sitter_analyzer.plugins"]
 # Core language plugins (automatically discovered)
@@ -340,6 +341,7 @@ cpp = "tree_sitter_analyzer.languages.cpp_plugin:CppPlugin"
 swift = "tree_sitter_analyzer.languages.swift_plugin:SwiftPlugin"
 bash = "tree_sitter_analyzer.languages.bash_plugin:BashPlugin"
 scala = "tree_sitter_analyzer.languages.scala_plugin:ScalaPlugin"
+lua = "tree_sitter_analyzer.languages.lua_plugin:LuaPlugin"
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"
@@ -462,11 +464,29 @@ module = [
 ]
 ignore_missing_imports = true
 
+# 模型 SDK 与 tokenizer 为运行时按需导入的可选依赖，基础环境和 CI 不要求安装。
+# 仅允许这些 vendor 命名空间缺失；保留项目代码及已安装依赖的类型检查。
+# 不加行级 ignore，避免 pre-commit 与 CI 环境差异引发 unused-ignore 循环。
+[[tool.mypy.overrides]]
+module = [
+    "torch.*",
+    "transformers.*",
+    "openai.*",
+    "tiktoken.*",
+]
+ignore_missing_imports = true
+
 # AUDIT-INFRA-1: modules that operate directly on tree-sitter Node objects
 # inherit Any-typed returns and attributes because tree-sitter has no type
 # stubs in this repo. We silence the four resulting noise codes
 # (attr-defined / no-any-return / no-untyped-def / unreachable) on
 # exactly the modules that need them, so real type errors (arg-type,
+# hotspot_analyzer uses a sys.version_info guard for tomllib/tomli that
+# produces an unused-ignore on whichever Python version mypy targets.
+[[tool.mypy.overrides]]
+module = ["tree_sitter_analyzer.hotspot_analyzer"]
+warn_unused_ignores = false
+
 # assignment, var-annotated, misc) still surface elsewhere — and on
 # clean modules these codes still fail builds. This restores pre-commit
 # mypy as a useful gate, eliminating the routine need for --no-verify.
@@ -530,10 +550,6 @@ module = [
     "tree_sitter_analyzer.mcp.server_utils.tool_registration",
     "tree_sitter_analyzer.mcp.tools.ast_cache_tool",
     "tree_sitter_analyzer.mcp.tools.code_patterns_tool",
-    "tree_sitter_analyzer.mcp.tools.find_and_grep_tool",
-    "tree_sitter_analyzer.mcp.tools.search_content_helpers",
-    "tree_sitter_analyzer.mcp.tools.search_content_response",
-    "tree_sitter_analyzer.mcp.tools.search_content_response_modes",
     "tree_sitter_analyzer.mcp.tools.utils.file_health_response",
     "tree_sitter_analyzer.mcp.tools.utils.file_health_smells",
     "tree_sitter_analyzer.mcp.tools.utils.refactoring_suggestions_helpers",
@@ -601,7 +617,7 @@ directory = "htmlcov"
 # MCP server configuration
 [tool.mcp]
 server_name = "tree-sitter-analyzer"
-server_version = "1.29.5"
+server_version = "1.30.0"
 description = "AI-era enterprise-grade code analysis MCP server with comprehensive HTML/CSS support and multi-language capabilities"
 capabilities = [
     "check_code_scale",
@@ -672,7 +688,6 @@ source_paths = [
     "tree_sitter_analyzer/semantic_change_classifier.py",
     "tree_sitter_analyzer/mcp/tools/facade_tool.py",
     "tree_sitter_analyzer/mcp/tools/query_symbol_search.py",
-    "tree_sitter_analyzer/formatters/toon_encoder.py",
 ]
 # Targeted test files per mutated module (reduces per-mutant runtime vs full suite).
 pytest_add_cli_args_test_selection = [
@@ -689,9 +704,20 @@ pytest_add_cli_args = ["-n", "0", "-x", "--timeout=30", "-q"]
 timeout_multiplier = 10.0
 timeout_constant = 10.0
 
+[tool.uv]
+required-version = ">=0.11.0"
+
 [dependency-groups]
+# Exact, independently exportable toolchain for the NO1-006B collector.
+# These packages are not part of the measured subject runtime closure.
+no1-006b-collector-tool = [
+    "hatchling==1.32.0",
+    "jsonschema==4.26.0",
+    "packaging==25.0",
+]
 dev = [
-    "build>=1.2.2.post1",
+    "build>=1.6.0",
+    "cryptography>=44.0.0",
     "pre-commit>=4.2.0",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.4.0",
@@ -701,15 +727,15 @@ dev = [
     "twine>=4.0.2",
     "black>=24.0.0",
     "isort>=8.0.1",
-    "bandit>=1.7.0",
+    "bandit>=1.9.4",
     "safety>=3.0.0,<3.9.0", # Pin to avoid typer compatibility issues
     "psutil>=5.9.8",
     "types-toml>=0.10.8.20240310",
-    "types-requests>=2.32.4.20250913",
+    "types-requests>=2.33.0.20260712",
     "types-jsonschema",
     "types-PyYAML",
     "types-cachetools",
-    "mypy==1.19.1",
+    "mypy==2.3.1",
     "hypothesis>=6.0.0",
     "pytest-xdist>=3.8.0",
     "pytest-timeout>=2.4.0",
@@ -717,5 +743,6 @@ dev = [
     "pytest-rerunfailures>=16.3",
     # Python 3.10 lacks tomllib; tests fall back via ``try/except ImportError``.
     "tomli>=2.0.0; python_version<'3.11'",
-    "mutmut>=3.6.0",
+    "mutmut>=3.7.0",
+    "cryptography>=44.0.0",
 ]

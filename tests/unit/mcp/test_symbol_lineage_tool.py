@@ -139,12 +139,6 @@ class TestExecute:
         )
         assert result["verdict"] in ("INFO", "REVIEW", "CAUTION")
 
-    def test_toon_format_includes_content(self, tool, tmp_path):
-        _write_py(tmp_path, "pkg/__init__.py", "x = 1\n")
-        result = asyncio.run(tool.execute({"symbol": "x", "output_format": "toon"}))
-        assert result["success"] is True
-        assert "toon_content" in result
-
     def test_no_project_root_raises(self, tmp_path):
         t = SymbolLineageTool(project_root=None)
         with pytest.raises(ValueError, match="Project root"):
@@ -421,14 +415,27 @@ class TestInheritanceLineage:
 
 
 class TestAstIndexStaleness:
-    def test_empty_ast_index_is_unknown_not_stale(self, tool, tmp_path):
-        """An empty DB created by a read path is not a completed stale index."""
+    @pytest.mark.parametrize("remove_during_open", [False, True])
+    def test_empty_ast_index_is_unknown_not_stale(
+        self, tool, tmp_path, monkeypatch, remove_during_open
+    ):
+        """空库或打开前消失的库均为未知；读取不能重新创建已删除数据库。"""
         from tree_sitter_analyzer.ast_cache import ASTCache
+        from tree_sitter_analyzer.cache import fingerprint
 
         _write_py(tmp_path, "pkg/a.py", "class A:\n    pass\n")
         ASTCache(str(tmp_path)).close()
+        db = tmp_path / ".ast-cache" / "index.db"
+        if remove_during_open:
+            original = fingerprint.sqlite3.connect
 
+            def removed(*args, **kwargs):
+                db.unlink()
+                return original(*args, **kwargs)
+
+            monkeypatch.setattr(fingerprint.sqlite3, "connect", removed)
         assert is_ast_index_stale(str(tmp_path)) is False
+        assert db.exists() is (not remove_during_open)
 
     def test_stale_when_supported_source_file_is_added_after_index(
         self, tool, tmp_path

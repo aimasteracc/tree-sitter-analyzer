@@ -149,6 +149,22 @@ Java edges above gives **57,030** = the full `project` + `local` total (44,113 +
 12,917). (Java has 64 resolved edges total — 58 in-language + the 6 cross-language
 ones counted separately above.)
 
+> **Measurement note (2026-07-10, `develop`@`6fe62fba`, TSA v1.29.0-line).** Both
+> figures above are the pinned **v1.21.0** measurement this report documents and are
+> left unedited. Re-running the same two queries against current `develop` gives:
+> **classification rate 94.0%** of 140,776 `calls` edges (`project` 52,077 ·
+> `builtin` 30,195 · `stdlib` 28,617 · `local` 17,861 · `external` 3,588 ·
+> `unknown` 8,438 — `unknown` grew from ~3.7% to ~6.0% as the codebase and its
+> edge-extraction surface grew over 13 releases); **cross-language edges: 10**
+> (up from 6, and no longer all-Java, reflecting the wave-2 resolvers landed since
+> v1.21.0 — see `rfcs/ROADMAP-beyond-codegraph.md`): `javascript→typescript` 6,
+> `python→java` 2, `java→go` 1, `java→kotlin` 1. Both re-measured numbers are
+> **TSA-only** (no CodeGraph index required), so refreshing them does not by itself
+> change the CodeGraph-vs-TSA ratio in Addendum 2 below — the CodeGraph arm was not
+> re-measured this session (see
+> [GAUNTLET.md](GAUNTLET.md#live-head-to-head-vs-codegraph-this-repo-same-commit)
+> for why, and for the count-vs-rate methodology note).
+
 ---
 
 ## Reproduce everything yourself
@@ -274,6 +290,17 @@ method).
 
 **TSA is ~390× cleaner on cross-language correctness — while resolving 3× more
 call edges total** (114k vs 38k; more complete, not just more conservative).
+
+> **Methodology note.** ~390× is the *rate* ratio: 1.96% ÷ 0.005% ≈ 392. The *count*
+> ratio on this same measurement (745 ÷ 6 ≈ 124.2) is quoted elsewhere (e.g.
+> GAUNTLET.md's "Live Head-to-Head" table) as **~124×** — both are derived from the
+> identical same-session pair above, just two different operations on the same two
+> raw numbers; this report does not unify them into one figure. See
+> [GAUNTLET.md](GAUNTLET.md#live-head-to-head-vs-codegraph-this-repo-same-commit)
+> for the full reconciliation and the 2026-07-10 re-verification attempt (TSA arm
+> refreshed against `develop`@`6fe62fba`, see the Headline numbers section above;
+> the CodeGraph arm could not be re-measured this session, so this 745/6/1.96%/
+> 0.005% pair remains the last valid same-session head-to-head).
 
 CodeGraph's mis-wires are not a single fluke — they span the language matrix:
 

@@ -95,6 +95,20 @@ class Config {
         names = [v.name for v in variables]
         assert names == ["host", "port", "debug"]
 
+    def test_named_field_is_preferred(self):
+        """Issue #1177 (2026-07-27): preserve the named-field fast path."""
+        from unittest.mock import MagicMock
+
+        from tree_sitter_analyzer.languages.kotlin_helpers import (
+            _extract_kotlin_property_name,
+        )
+
+        name = MagicMock()
+        node = MagicMock()
+        node.child_by_field_name.return_value = name
+
+        assert _extract_kotlin_property_name(node, lambda n: "answer") == "answer"
+
 
 class TestKotlinPropertyTypeExtraction:
     """Issue #758: declared types must be extracted, not hardcoded 'Inferred'."""

@@ -14,6 +14,10 @@ from .utils.test_detection import query_wants_tests, rank_tier
 _TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9]*")
 
 
+class SemanticSearchError(ValueError):
+    """检索未完成，调用方不得把异常转换为有效零匹配。"""
+
+
 class SemanticSymbolSearch:
     """Deterministic token-vector search for offline symbol discovery."""
 
@@ -26,7 +30,12 @@ class SemanticSymbolSearch:
     def search(self, query: str, *, limit: int = 20) -> list[dict[str, Any]]:
         query_vector = _vectorize(query)
         if not query_vector:
-            return []
+            raise SemanticSearchError(
+                "SEMANTIC_QUERY_NO_TERMS: this lexical semantic() route requires "
+                "ASCII identifier terms of at least two characters. "
+                "Use an identifier/English keyword, or the separately configured "
+                "search action=semantic embedding route for natural-language queries."
+            )
 
         # BM25 pre-filter: narrow the candidate pool before cosine reranking.
         # Avoids scanning all 40k+ symbols on every call.  Falls back to the
@@ -81,7 +90,10 @@ class SemanticSymbolSearch:
                    FROM ast_symbol_rows
                    ORDER BY file_path, line, name"""
             ).fetchall()
-        except sqlite3.Error:
+        except sqlite3.OperationalError as exc:
+            # 仅旧版缺表允许读取 JSON；锁定、权限或损坏必须向上报告。
+            if str(exc) != "no such table: ast_symbol_rows":
+                raise
             return self._symbols_from_json(conn)
         return [
             {
@@ -96,18 +108,12 @@ class SemanticSymbolSearch:
         ]
 
     def _symbols_from_json(self, conn: sqlite3.Connection) -> list[dict[str, Any]]:
-        try:
-            rows = conn.execute(
-                "SELECT file_path, symbols_json, language FROM ast_index"
-            ).fetchall()
-        except sqlite3.Error:
-            return []
+        rows = conn.execute(
+            "SELECT file_path, symbols_json, language FROM ast_index"
+        ).fetchall()
         symbols: list[dict[str, Any]] = []
         for row in rows:
-            try:
-                payload = json.loads(row["symbols_json"])
-            except (TypeError, json.JSONDecodeError):
-                continue
+            payload = json.loads(row["symbols_json"])
             for sym in payload.get("symbols", []):
                 line = int(sym.get("line", 0) or 0)
                 symbols.append(

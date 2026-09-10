@@ -23,7 +23,7 @@ from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -137,7 +137,9 @@ class CodeGraphNavigateTool(BaseMCPTool):
                     "default": "full",
                     "description": (
                         "definition=go-to-def, references=find-all-refs, "
-                        "hierarchy=callers+callees, full=all combined"
+                        "hierarchy=CALL hierarchy (callers+callees of functions/methods; "
+                        "for class inheritance use class_hierarchy tool instead), "
+                        "full=all combined"
                     ),
                 },
                 "file_path": {
@@ -151,8 +153,8 @@ class CodeGraphNavigateTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                     "description": "Output format",
                 },
             },
@@ -172,7 +174,7 @@ class CodeGraphNavigateTool(BaseMCPTool):
         mode = arguments.get("mode", "full")
         file_path = arguments.get("file_path")
         depth = min(arguments.get("depth", 2), 5)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         result: dict[str, Any] = {
             "success": True,
@@ -207,18 +209,36 @@ class CodeGraphNavigateTool(BaseMCPTool):
 
         if not result.get("definition") and not result.get("references"):
             if not hi_found:
-                result["hint"] = (
-                    f"No results for '{symbol}'. Check spelling or build AST cache "
-                    "(ast_cache mode=index)."
-                )
+                if mode == "hierarchy":
+                    result["hint"] = (
+                        f"No results for '{symbol}'. "
+                        "'hierarchy' mode returns the CALL graph (callers/callees of functions). "
+                        f"If '{symbol}' is a class, use --class-hierarchy "
+                        "--class-hierarchy-mode tree "
+                        f"--class-hierarchy-class {symbol} for inheritance hierarchy. "
+                        "Otherwise check spelling or build AST cache (ast_cache mode=index)."
+                    )
+                else:
+                    result["hint"] = (
+                        f"No results for '{symbol}'. Check spelling or build AST cache "
+                        "(ast_cache mode=index)."
+                    )
 
         # #577: uniform agent_summary across all facade actions.
         if verdict == "NOT_FOUND":
             summary_line = f"navigate: {symbol!r} not found"
-            next_step = (
-                f"Symbol '{symbol}' not in the index. "
-                "Check spelling or run index action=auto to rebuild."
-            )
+            if mode == "hierarchy":
+                next_step = (
+                    f"Symbol '{symbol}' not in the index or has no callers/callees. "
+                    "For class inheritance: --class-hierarchy --class-hierarchy-mode tree "
+                    f"--class-hierarchy-class {symbol}. "
+                    "For call graph: check spelling or run index action=auto to rebuild."
+                )
+            else:
+                next_step = (
+                    f"Symbol '{symbol}' not in the index. "
+                    "Check spelling or run index action=auto to rebuild."
+                )
         else:
             def_count = (result.get("definition") or {}).get("count", 0)
             ref_count = (result.get("references") or {}).get("reference_count", 0)
@@ -233,7 +253,7 @@ class CodeGraphNavigateTool(BaseMCPTool):
             "next_step": next_step,
         }
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _inline_definition_bodies(self, result: dict[str, Any]) -> None:
         """P2: attach a verbatim source body to each definition record.

@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
-"""Lua Language Plugin — Phase 2 extensibility demo (REQ-VAL-004).
+"""Lua plugin with an RFC-0010 resolver slot.
 
-This plugin proves that adding a new language requires ONLY this file —
-no changes to any central file (cache/extraction.py, import_extractors,
-function_extraction.py, cross_file_resolver.py).
+Lua's plugin and resolver remain self-contained, while advertising it through
+the legacy CLI/parser discovery surfaces also requires central registry entries:
+  1. This plugin package (``languages/lua_plugin/``)
+  2. A resolver in ``synapse_resolver/languages/lua.py`` (moat slot)
+  3. An entry-point in ``pyproject.toml``
+  4. An optional dep ``tree-sitter-lua``
+  5. Loader/detector mappings until those legacy registries become dynamic
 
-Capability methods default to frozenset() / None so the plugin uses the
-Phase 2 plugin-dispatch paths in the central files without any central
-if-language== branch for "lua".
+Capability methods default to ``frozenset()`` / ``None`` so the plugin uses the Phase 2
+plugin-dispatch paths in the central files without any central
+``if-language==`` branch for "lua".
+
+When ``tree-sitter-lua`` is not installed, ``get_tree_sitter_language``
+returns ``None`` and the plugin falls back to ``DefaultExtractor``.
 """
 
 from __future__ import annotations
@@ -18,12 +25,13 @@ if TYPE_CHECKING:
     from ...core.analysis_engine import AnalysisRequest
     from ...models import AnalysisResult
 
-from ...plugins.base import DefaultExtractor, ElementExtractor, LanguagePlugin
+from ...plugins.base import ElementExtractor, LanguagePlugin
 from ...utils import log_error
+from .extractor import LuaElementExtractor
 
 
 class LuaPlugin(LanguagePlugin):
-    """Lua language plugin — extensibility demo, no central file changes needed."""
+    """Lua plugin with partial function/import extraction."""
 
     def get_language_name(self) -> str:
         return "lua"
@@ -32,7 +40,7 @@ class LuaPlugin(LanguagePlugin):
         return [".lua"]
 
     def create_extractor(self) -> ElementExtractor:
-        return DefaultExtractor()
+        return LuaElementExtractor()
 
     def get_tree_sitter_language(self) -> Any:
         try:

@@ -63,11 +63,11 @@ jobs:
                 # PRs to develop MUST come from feature/*, release/v*,
                 # hotfix/*, chore/*, docs/*, test/*, or fix/*.
                 case "${HEAD}" in
-                  feature/*|release/v*|hotfix/*|chore/*|docs/*|test/*|fix/*|refactor/*|perf/*|ci/*)
+                  feature/*|release/v*|hotfix/*|chore/*|docs/*|test/*|fix/*|refactor/*|perf/*|ci/*|benchmarks/*)
                     echo "✅ ${HEAD} → develop allowed (feature/integration flow)."
                     ;;
                   *)
-                    violation="PR to develop must use a GitFlow-compatible branch name (feature/* | chore/* | docs/* | test/* | fix/* | refactor/* | perf/* | ci/*). Got: ${HEAD}."
+                    violation="PR to develop must use a GitFlow-compatible branch name (feature/* | chore/* | docs/* | test/* | fix/* | refactor/* | perf/* | ci/* | benchmarks/*). Got: ${HEAD}."
                     ;;
                 esac
                 ;;

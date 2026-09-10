@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Branch coverage tests for LegacyTableFormatter — signature branches, type abbreviations, doc/CSV helpers."""
+"""Branch coverage tests for LegacyTableFormatter — signature branches, type abbreviations, doc helpers."""
 
-from typing import Any
 
+import tree_sitter_analyzer.formatters  # noqa: F401
 from tree_sitter_analyzer.legacy_table_formatter import (
     LegacyTableFormatter,
 )
@@ -83,68 +83,6 @@ class TestAbbreviateTypeAdvanced:
 
 
 # ============================================================================
-# Coverage boost: _format_compact_table with classes=None (763-765)
-# ============================================================================
-
-
-class TestCompactTableClassesNone:
-    """Cover _format_compact_table when classes is None."""
-
-    def test_compact_with_none_classes(self) -> None:
-        formatter = LegacyTableFormatter(format_type="compact")
-        data: dict[str, Any] = {
-            "classes": None,
-            "methods": [],
-            "fields": [],
-        }
-        result = formatter.format_structure(data)
-        # Bug #778 fixed: None classes must not render '# Unknown'.
-        assert "# Unknown" not in result
-
-    def test_compact_no_package(self) -> None:
-        formatter = LegacyTableFormatter(format_type="compact")
-        data: dict[str, Any] = {
-            "classes": [{"name": "MyClass"}],
-            "methods": [],
-            "fields": [],
-        }
-        result = formatter.format_structure(data)
-        assert "# MyClass" in result
-
-    def test_compact_with_methods_and_fields(self) -> None:
-        formatter = LegacyTableFormatter(format_type="compact")
-        data: dict[str, Any] = {
-            "package": {"name": "com.example"},
-            "classes": [{"name": "Service"}],
-            "methods": [
-                {
-                    "name": "process",
-                    "parameters": [
-                        {"type": "String", "name": "input"},
-                    ],
-                    "return_type": "void",
-                    "visibility": "public",
-                    "line_range": {"start": 10, "end": 20},
-                    "complexity_score": 3,
-                },
-            ],
-            "fields": [
-                {
-                    "name": "name",
-                    "type": "String",
-                    "visibility": "private",
-                    "line_range": {"start": 5},
-                },
-            ],
-        }
-        result = formatter.format_structure(data)
-        assert "## Methods" in result
-        assert "## Fields" in result
-        assert "process" in result
-        assert "name" in result
-
-
-# ============================================================================
 # Coverage boost: _shorten_type branches (883-926)
 # ============================================================================
 
@@ -202,21 +140,3 @@ class TestDocSummaryAndCSVText:
     def test_extract_doc_empty(self) -> None:
         formatter = LegacyTableFormatter()
         assert formatter._extract_doc_summary("") == "-"
-
-    def test_clean_csv_text_with_newlines(self) -> None:
-        formatter = LegacyTableFormatter()
-        result = formatter._clean_csv_text("line1\nline2  line3")
-        assert "line1 line2 line3" == result
-
-    def test_clean_csv_text_empty(self) -> None:
-        formatter = LegacyTableFormatter()
-        assert formatter._clean_csv_text("") == "-"
-
-    def test_clean_csv_text_dash(self) -> None:
-        formatter = LegacyTableFormatter()
-        assert formatter._clean_csv_text("-") == "-"
-
-    def test_clean_csv_text_with_quotes(self) -> None:
-        formatter = LegacyTableFormatter()
-        result = formatter._clean_csv_text('say "hello"')
-        assert '""' in result

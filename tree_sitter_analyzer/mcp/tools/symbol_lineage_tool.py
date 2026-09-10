@@ -21,11 +21,12 @@ from tree_sitter_analyzer.cache.fingerprint import (
     compute_graph_fingerprint,
     is_ast_index_stale,
 )
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 
 from ...project_graph import BlastRadius, DependencyGraph
 from ...utils import setup_logger
 from ...utils.test_detection import is_test_file as _is_test_file
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
 from .query_symbol_search import execute_find_references
 
@@ -45,8 +46,8 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
         },
         "file_paths": {
             "type": "array",
@@ -216,6 +217,7 @@ class SymbolLineageTool(BaseMCPTool):
         # response cache are invalidated together — the symbol responses
         # bake in the graph's downstream/upstream sets.
         self._dep_graph_fingerprint: GraphFingerprint | None = None
+        self._graph_content_key: str | None = None
         self._dep_graph_built_at: float | None = None
         self._cache_invalidated_reason: str | None = None
         # #568: the hierarchy section is derived from the AST index (index.db),
@@ -231,6 +233,7 @@ class SymbolLineageTool(BaseMCPTool):
         self._dep_graph = None
         self._symbol_cache = {}
         self._dep_graph_fingerprint = None
+        self._graph_content_key = None
         self._dep_graph_built_at = None
         self._cache_invalidated_reason = None
         self._ast_index_mtime_ns = None
@@ -245,6 +248,7 @@ class SymbolLineageTool(BaseMCPTool):
             raise ValueError("Project root not set. Call set_project_path first.")
 
         current_fp = compute_graph_fingerprint(str(self.project_root))
+        content_key = DependencyGraph._cache_key_for(str(self.project_root))
         reason: str | None = None
         if self._dep_graph is None:
             reason = "cold"
@@ -252,6 +256,8 @@ class SymbolLineageTool(BaseMCPTool):
             reason = self._explain_fingerprint_delta(
                 self._dep_graph_fingerprint, current_fp
             )
+        elif content_key is None or self._graph_content_key != content_key:
+            reason = "source_modified"
 
         if reason is not None:
             # Invalidate downstream caches that depend on the graph.
@@ -259,6 +265,7 @@ class SymbolLineageTool(BaseMCPTool):
             try:
                 self._dep_graph = DependencyGraph(str(self.project_root))
                 self._dep_graph_fingerprint = current_fp
+                self._graph_content_key = content_key
                 self._dep_graph_built_at = time.time()
                 self._cache_invalidated_reason = reason
             except Exception as exc:  # noqa: BLE001
@@ -331,7 +338,7 @@ class SymbolLineageTool(BaseMCPTool):
         started = time.perf_counter()
         symbol = arguments["symbol"].strip()
         max_depth = int(arguments.get("max_depth", 3))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         self._validate_project_root()
         file_paths = arguments.get("file_paths") or []
         scope_files = _normalize_scope_file_paths(str(self.project_root), file_paths)
@@ -349,7 +356,7 @@ class SymbolLineageTool(BaseMCPTool):
         cache_key = (symbol, max_depth, tuple(sorted(scope_files)))
         cached_response = self._try_cached_lineage(cache_key, started)
         if cached_response is not None:
-            return apply_toon_format_to_response(cached_response, output_format)
+            return apply_output_format_to_response(cached_response, output_format)
 
         definitions, references = await self._collect_definitions_and_refs(symbol)
         if scope_files:
@@ -510,7 +517,7 @@ class SymbolLineageTool(BaseMCPTool):
         when no index exists. Called only after ``_validate_project_root``.
         """
         assert self.project_root is not None  # guaranteed by _validate_project_root
-        cache_dir = Path(self.project_root) / ".ast-cache"
+        cache_dir = resolve_index_path(self.project_root).parent
         sig = 0
         for name in ("index.db", "index.db-wal", "index.db-shm"):
             try:
@@ -676,7 +683,7 @@ class SymbolLineageTool(BaseMCPTool):
         started: float,
         output_format: str,
     ) -> dict[str, Any]:
-        """Cache a deep copy, stamp elapsed/from_cache, apply TOON formatting."""
+        """Cache a deep copy, stamp elapsed/from_cache, and return JSON."""
         self._symbol_cache[cache_key] = copy.deepcopy(response)
         # #568: record the index signature AFTER this call's own index
         # reads/writes so creating the index here doesn't evict the next
@@ -689,7 +696,7 @@ class SymbolLineageTool(BaseMCPTool):
             response["cache_age_s"] = round(time.time() - self._dep_graph_built_at, 3)
         if self._cache_invalidated_reason is not None:
             response["cache_invalidated_reason"] = self._cache_invalidated_reason
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
 
 # H12: element_type values that mean "this hit IS the symbol's definition

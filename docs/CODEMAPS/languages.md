@@ -1,32 +1,58 @@
-<!-- Generated: 2026-05-24; doc-code re-sync: 2026-06-17 -->
+<!-- Generated: 2026-08-08; doc-code re-sync: 2026-08-08 -->
 # Languages Codemap
 
-22 language plugins under `tree_sitter_analyzer/languages/` (17 single-file + 5 subdir packages).
-Each implements the `LanguagePlugin` interface (`tree_sitter_analyzer/plugins/base.py`).
+Built-in language plugins are discovered dynamically under `tree_sitter_analyzer/languages/`.
+Each implements the `LanguagePlugin` interface (`tree_sitter_analyzer/plugins/base.py`); the generated inventory below is the canonical count and support-depth breakdown.
 
-## Wiring tiers (canonical breakdown — see README "Supported Languages")
+## Wiring tiers (canonical generated inventory)
 
-Not every registered plugin is wired into the indexer to the same depth:
+<!-- BEGIN GENERATED LANGUAGE SUPPORT INVENTORY -->
+Generated from runtime registries and reviewed classifications by `scripts/generate_language_support_inventory.py`; do not edit counts or rows by hand.
 
-- **13 fully wired** (full symbol + call graph): Python, Java, JavaScript, TypeScript, Go, Rust, C, C++, C#, Swift, Kotlin, Ruby, PHP
-- **2 symbol-indexed** (call-graph wiring pending): Bash, Scala — both graduated in v1.22.0
-- **5 data/markup** (reachable via the single-file CLI path): HTML, CSS, Markdown, SQL, YAML
-- **2 scaffold** (plugin exists, indexer wiring pending): JSON, Lua
+**22 plugins**: 13 pipeline-registered, 3 index-admitted, 0 call-dispatch-only, 5 data/markup, 1 scaffold.
+
+`pipeline_registered` means index admission plus import/call dispatch and a resolver slot. It does **not** guarantee positive cross-file binding. `Cross-file call E2E` is `unknown` until a fixture proves a call resolves to a different project file.
+
+| Language | Tier | Plugin discovery | Extractor loadability | Index admission | Import dispatch | Call dispatch | Resolver slot | Framework dispatch | Cross-file call E2E | Data/markup | Scaffold |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Bash | `index_admitted` | yes | yes | yes | — | — | yes | — | not_applicable | — | — |
+| C | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| C++ | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| C# | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| CSS | `data_markup` | yes | yes | — | — | — | — | — | not_applicable | yes | — |
+| Go | `pipeline_registered` | yes | yes | yes | yes | yes | yes | yes | unknown | — | — |
+| HTML | `data_markup` | yes | yes | — | — | — | — | — | not_applicable | yes | — |
+| Java | `pipeline_registered` | yes | yes | yes | yes | yes | yes | yes | unknown | — | — |
+| JavaScript | `pipeline_registered` | yes | yes | yes | yes | yes | yes | yes | unknown | — | — |
+| JSON | `scaffold` | yes | yes | — | — | — | — | — | not_applicable | — | yes |
+| Kotlin | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| Lua | `index_admitted` | yes | yes | yes | — | yes | yes | — | not_applicable | — | — |
+| Markdown | `data_markup` | yes | yes | — | — | — | — | — | not_applicable | yes | — |
+| PHP | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| Python | `pipeline_registered` | yes | yes | yes | yes | yes | yes | yes | unknown | — | — |
+| Ruby | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| Rust | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| Scala | `index_admitted` | yes | yes | yes | — | — | yes | — | not_applicable | — | — |
+| SQL | `data_markup` | yes | yes | — | — | — | — | — | not_applicable | yes | — |
+| Swift | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| TypeScript | `pipeline_registered` | yes | yes | yes | yes | yes | yes | yes | unknown | — | — |
+| YAML | `data_markup` | yes | yes | — | — | — | — | — | not_applicable | yes | — |
+<!-- END GENERATED LANGUAGE SUPPORT INVENTORY -->
 
 ## Supported Languages
 
 | Language | Plugin module | Extractor split | Notes |
 |---|---|---|---|
-| Java | `languages/java_plugin.py` | `_java_*_helpers.py` ×4 | Spring/JPA awareness; **fixture file — DO NOT refactor** (see CLAUDE.md memory rule) |
+| Java | `languages/java_plugin.py` | `java_helpers.py` public facade; `_java_element.py` declarations; `_java_modern.py` modern constructors; `_java_element_common.py` shared metadata/class builder; `_java_extractor_support.py` extractor state/text/traversal adapters; `_java_ast.py`, `_java_import.py`, `_java_traversal.py` | Cursor traversal with byte-range identity; extracts lambdas through calls/ternaries/parentheses, static initializers, anonymous classes, compact constructors, permits and modules (#1350). Constructor ownership is unique; modern and declaration helpers depend on common helpers, never on each other cyclically. |
 | Python | `python_plugin/` | submodules | Type annotations, decorators, async; module constants include chained and same-line assignments |
-| TypeScript | `typescript_plugin/` | submodules | Interfaces, types, TSX/JSX; enum kind/export parity and class-field decorators |
+| TypeScript | `typescript_plugin/` | submodules | Interfaces, types, TSX/JSX, `.mts`/`.cts`; enum kind/export parity and class-field decorators |
 | JavaScript | `javascript_plugin/` | submodules | ES6+, JSX; `languages/javascript_plugin/_function_helpers.py` handles class-field arrow methods (is_method, is_static, computed/string/number key names — #890/#892); `queries/javascript.py` VARIABLES + "variable" query include `field_definition` (#891) |
 | C | `languages/c_plugin.py` | `_c_*_helpers.py` ×8 | functions, structs, unions, enums, preprocessor; unnamed bitfields are skipped as non-addressable fields |
 | C++ | `languages/cpp_plugin.py` | `_cpp_*_helpers.py` ×11 | classes, templates, namespaces; nested template/union type parent metadata and field-reference guards |
 | C# | `languages/csharp_plugin.py` | `languages/csharp_helpers.py` | records, async/await, attributes; block and file-scoped namespaces surface as packages |
 | Go | `languages/go_plugin.py` | `_go_*_helpers.py` ×6 | structs, interfaces, goroutines |
 | Rust | `languages/rust_plugin.py` | inline | traits, impl, macros, derive, enum variants as variables |
-| Kotlin | `languages/kotlin_plugin.py` | `languages/kotlin_helpers.py` | data classes, coroutines |
+| Kotlin | `languages/kotlin_plugin.py` | `kotlin_helpers.py` facade + `_kotlin_{core,function,class}_helpers.py` | data classes, coroutines |
 | Scala | `languages/scala_plugin.py` | inline | objects/traits, scaladoc; Scala 3 enum cases, givens, type members, extensions, and AST-cache symbol rows |
 | Swift | `languages/swift_plugin.py` | `_swift_plugin_*.py` ×3 | classes, structs, protocols; `.swift` + `.swiftinterface` (issue #131) |
 | Ruby | `languages/ruby_plugin.py` | `languages/ruby_helpers.py` | Rails patterns, metaprogramming |
@@ -38,7 +64,7 @@ Not every registered plugin is wired into the indexer to the same depth:
 | Markdown | `markdown_plugin/` | submodules | headings, code blocks, tables |
 | JSON | `languages/json_plugin.py` | inline | basic structure |
 | Bash | `languages/bash_plugin.py` | inline | functions, commands |
-| Lua | `languages/lua_plugin/` | `plugin.py` | extensibility demo; shows new language = 1 package, no central edits (Phase 2 capability system) |
+| Lua | `languages/lua_plugin/` | `plugin.py` + `extractor.py` | Loader-backed function-symbol indexing; `require()` extraction is available on the single-file plugin path but indexed imports and resolved calls remain pending; Synapse claims the resolver slot conservatively as `unknown` |
 
 ## Shared helpers
 

@@ -19,36 +19,25 @@ def _add_output_options(parser: argparse.ArgumentParser) -> None:
     """Add output formatting options."""
     parser.add_argument(
         "--output-format",
-        choices=["json", "text", "toon"],
+        choices=["json", "text"],
         default="json",
-        help="Specify output format: 'json' (default), 'text', or 'toon' (50-70%% token reduction)",
+        help="Specify output format: 'json' (default) or 'text'",
     )
     parser.add_argument(
         "--format",
-        choices=["json", "toon"],
-        help="Alias for --output-format (json or toon)",
-    )
-    parser.add_argument(
-        "--toon-use-tabs",
-        action="store_true",
-        help="Use tab delimiters instead of commas in TOON format (further compression)",
-    )
-    parser.add_argument(
-        "--compact-toon",
-        action="store_true",
-        help=(
-            "RFC-0012: with TOON output on the MCP decision tools, return only "
-            "the control surface alongside toon_content (drops metadata already "
-            "encoded in the blob). Mirrors the MCP 'compact_only' parameter."
-        ),
+        choices=["json"],
+        help="Alias for --output-format (json)",
     )
     parser.add_argument(
         "--table",
-        choices=["full", "compact", "csv", "json", "toon", "signatures"],
+        # 领导裁决(2026-09-06):compact/csv 判无用,彻底删除。
+        # 实现层已在 d4fa151b 删除,此处菜单与校验层(同提交)同步收口,
+        # 终结「菜单承诺厨房做不出的菜」的三层分裂
+        choices=["full", "signatures"],
         help=(
             "Output in table format. "
-            "'signatures' = lightweight method-directory (~25%% of full tokens); "
-            "toon = 50-70%% token reduction"
+            "'full' = all columns (default); "
+            "'signatures' = lightweight method-directory (~25%% of full tokens)"
         ),
     )
     parser.add_argument(
@@ -138,6 +127,19 @@ def _add_batch_options(parser: argparse.ArgumentParser) -> None:
         "--health-check",
         action="store_true",
         help="Project health: score all source files and report grade distribution, worst files, and refactoring targets",
+    )
+    parser.add_argument(
+        "--self-health",
+        action="store_true",
+        dest="self_health",
+        help=(
+            "Self-proprioception (RFC-0025 Layer 5): per-(tool, action) p50/p95 "
+            "latency by tier (cold/warm/cached), invocation counts, and the "
+            "in-process analysis-cache hit rate, and on-disk AST-index state "
+            "(.ast-cache/index.db). Scope is the current process, "
+            "so a fresh CLI run honestly reports NO_OBSERVATIONS; use "
+            "scripts/measure_self_health_baseline.py for real numbers."
+        ),
     )
     parser.add_argument(
         "--doctor",

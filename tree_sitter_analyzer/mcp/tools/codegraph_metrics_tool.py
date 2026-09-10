@@ -106,9 +106,9 @@ class CodeGraphMetricsTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+                    "enum": ["json"],
+                    "default": "json",
+                    "description": "Output format: JSON",
                 },
             },
             "additionalProperties": False,
@@ -134,7 +134,7 @@ class CodeGraphMetricsTool(BaseMCPTool):
             "routes",
             "health",
         ]
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         cache = self._get_cache()
         payload: dict[str, Any] = {
@@ -190,9 +190,9 @@ class CodeGraphMetricsTool(BaseMCPTool):
 
         result = build_response(verdict="INFO", **payload)
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _collect_cache_metrics(self, cache: Any) -> dict[str, Any]:
         if cache is None:

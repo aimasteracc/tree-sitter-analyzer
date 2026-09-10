@@ -337,18 +337,6 @@ class TestRustFormatterFormatTable:
         assert result is not None
         assert "# main.rs" in result
 
-    def test_format_table_compact(self):
-        """Test format_table with compact type"""
-        formatter = RustTableFormatter()
-        data = {
-            "file_path": "src/main.rs",
-            "methods": [],
-            "statistics": {"method_count": 0, "lines": 0},
-        }
-        result = formatter.format_table(data, "compact")
-        assert result is not None
-        assert "## Info" in result
-
     def test_format_table_json(self):
         """Test format_table with JSON type"""
         formatter = RustTableFormatter()
@@ -391,18 +379,6 @@ class TestRustFormatterFormatStructure:
         assert result is not None
         assert "# main.rs" in result
 
-    def test_format_structure_compact(self):
-        """Test format_structure with compact type"""
-        formatter = RustTableFormatter(format_type="compact")
-        data = {
-            "file_path": "src/main.rs",
-            "methods": [],
-            "statistics": {"method_count": 0, "lines": 0},
-        }
-        result = formatter.format_structure(data)
-        assert result is not None
-        assert "## Info" in result
-
 
 class TestRustFormatterFormatAdvanced:
     """Test format_advanced method"""
@@ -416,7 +392,9 @@ class TestRustFormatterFormatAdvanced:
         assert "{" in result or "[]" in result
 
     def test_format_advanced_csv(self):
-        """Test format_advanced with CSV output"""
+        """Test format_advanced with CSV output (csv format removed;
+        falls back to the full table, matching KotlinTableFormatter's
+        format_advanced behavior for the same removed format)."""
         formatter = RustTableFormatter()
         data = {
             "file_path": "src/main.rs",
@@ -426,7 +404,7 @@ class TestRustFormatterFormatAdvanced:
             "fields": [],
         }
         result = formatter.format_advanced(data, "csv")
-        assert result == "Type,Name,Signature,Visibility,Lines,Complexity,Doc"
+        assert isinstance(result, str)
 
     def test_format_advanced_default(self):
         """Test format_advanced with default output"""

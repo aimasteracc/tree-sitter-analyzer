@@ -28,32 +28,51 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from typing import Any
 
 # A path-looking token: starts with ``/`` (POSIX) or a drive letter +
-# ``\`` (Windows), followed by at least one non-whitespace, non-quote
-# character. Matches absolute paths inside log lines such as
+# ``\`` (Windows), followed by characters up to a clear delimiter or line
+# boundary. Spaces are intentionally allowed: unquoted paths such as
+# ``/Users/alice/My Secrets/key.txt`` must be redacted as one unit. Matches
+# absolute paths inside log lines such as
 # ``[Errno 2] No such file or directory: '/x/y.py'``.
 _ABSOLUTE_PATH_RE = re.compile(
     r"""
-    (?:                    # opening boundary that we keep
-        (?<=[\s'\"\(:])    # whitespace, quote, paren, colon
-        |
-        ^                  # or start of string
-    )
+    (?<![A-Za-z0-9])       # start or punctuation boundary such as -, _, =, [
     (
         (?:[A-Za-z]:)?     # optional Windows drive letter
         [/\\]              # leading slash
-        (?:[^\s'\"\(\)]+)  # one or more non-whitespace, non-quote chars
+        (?:[^'\"\(\)\[\]\{\}=,;\r\n]+)
     )
     """,
     re.VERBOSE,
 )
+
+_ERROR_DETAIL_TEXT_LIMIT = 500
+_ERROR_DETAIL_FIELDS = (
+    "considered",
+    "action",
+    "status",
+    "language",
+    "error_type",
+    "reason",
+    "error_message",
+    "error",
+)
+_WINDOWS_DRIVE_PATH_RE = re.compile(r"^[A-Za-z]:[/\\]")
 
 
 def _sanitize_path_token(token: str, project_root: str | None) -> str:
     """Convert one absolute-path token to a relative or redacted form."""
     if not token:
         return token
+    # ``pathlib.Path`` follows the host OS. On POSIX it treats Windows drive
+    # and UNC paths as relative, which could make ``C:\Users\...`` appear to
+    # live under the current project and leak it as ``./C:\Users\...``.
+    if os.name != "nt" and (
+        _WINDOWS_DRIVE_PATH_RE.match(token) or token.startswith("\\\\")
+    ):
+        return "<external-path>"
     try:
         resolved = Path(token).resolve(strict=False)
     except (OSError, RuntimeError):
@@ -79,9 +98,82 @@ def sanitize_message(text: str, project_root: str | None = None) -> str:
         return text
 
     def _replace(match: re.Match[str]) -> str:
+        start = match.start(1)
+        if (
+            start > 0
+            and text[start - 1] == "."
+            and (start == 1 or not text[start - 2].isalnum())
+        ):
+            # Keep an already-sanitized project-relative ``./...`` path
+            # idempotent, while still catching ``failure./etc/shadow``.
+            return match.group(1)
         return _sanitize_path_token(match.group(1), project_root)
 
     return _ABSOLUTE_PATH_RE.sub(_replace, text)
+
+
+def _sanitize_detail_file_path(value: Any, project_root: str | None) -> str:
+    """Normalize a structured file field without tokenizing on whitespace."""
+    text = str(value)
+    if not text:
+        return text
+
+    if os.name != "nt" and (
+        _WINDOWS_DRIVE_PATH_RE.match(text) or text.startswith("\\\\")
+    ):
+        return "<external-path>"
+
+    path = Path(text)
+    if path.is_absolute():
+        return _sanitize_path_token(text, project_root)
+
+    if not project_root:
+        return "<external-path>" if ".." in path.parts else text
+
+    try:
+        root_resolved = Path(project_root).resolve()
+        candidate = (root_resolved / path).resolve(strict=False)
+        candidate.relative_to(root_resolved)
+    except (OSError, RuntimeError, ValueError):
+        return "<external-path>"
+    return text
+
+
+def _bounded_sanitized_text(
+    value: Any,
+    project_root: str | None,
+) -> tuple[str, bool]:
+    safe_value = sanitize_message(str(value), project_root)
+    if len(safe_value) <= _ERROR_DETAIL_TEXT_LIMIT:
+        return safe_value, False
+    return safe_value[: _ERROR_DETAIL_TEXT_LIMIT - 3] + "...", True
+
+
+def sanitize_error_detail(
+    detail: dict[str, Any],
+    project_root: str | None = None,
+) -> dict[str, Any]:
+    """Return a safe, bounded copy of one per-file error detail.
+
+    Core indexing keeps raw diagnostics because it has no dependency on the
+    MCP layer. Responses cross the trust boundary here: paths are made
+    project-relative (or redacted), and unbounded parser/library messages are
+    capped so one pathological failure cannot inflate an MCP response.
+    """
+    cleaned: dict[str, Any] = {}
+    file_path = detail.get("file")
+    if file_path is not None:
+        cleaned["file"] = _sanitize_detail_file_path(file_path, project_root)
+
+    for field in _ERROR_DETAIL_FIELDS:
+        if field not in detail or detail[field] is None:
+            continue
+        safe_value, truncated = _bounded_sanitized_text(detail[field], project_root)
+        if truncated:
+            cleaned[f"{field}_truncated"] = True
+        cleaned[field] = safe_value
+
+    return cleaned
 
 
 def sanitize_exception(exc: BaseException, project_root: str | None = None) -> str:
@@ -118,6 +210,22 @@ def safe_error_message(
     if include_class:
         return sanitize_exception(exc, project_root)
     return sanitize_message(str(exc), project_root)
+
+
+def bounded_safe_error_message(
+    exc: BaseException,
+    project_root: str | None = None,
+    *,
+    prefix: str = "",
+    max_length: int = _ERROR_DETAIL_TEXT_LIMIT,
+) -> tuple[str, bool]:
+    """Return one bounded MCP error string and whether truncation occurred."""
+    message = f"{prefix}{safe_error_message(exc, project_root)}"
+    if len(message) <= max_length:
+        return message, False
+    if max_length <= 3:
+        return "." * max_length, True
+    return message[: max_length - 3] + "...", True
 
 
 def project_root_from_env() -> str | None:

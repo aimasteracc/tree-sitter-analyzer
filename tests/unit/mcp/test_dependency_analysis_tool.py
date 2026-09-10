@@ -117,11 +117,6 @@ class TestSummaryMode:
         assert "top_hub_files" in result
         assert "high_dependency_files" in result
 
-    def test_summary_with_toon_format(self, tool, project):
-        result = _run(tool.execute({"mode": "summary", "output_format": "toon"}))
-        assert result["success"] is True
-        assert "toon_content" in result
-
     def test_summary_empty_project(self, tmp_path):
         t = DependencyAnalysisTool(project_root=str(tmp_path))
         t.set_project_path(str(tmp_path))
@@ -151,19 +146,6 @@ class TestFileDepsMode:
         assert isinstance(result["depended_by"], list)
         assert "dependency_count" in result
         assert "dependent_count" in result
-
-    def test_file_deps_with_toon(self, tool, project):
-        result = _run(
-            tool.execute(
-                {
-                    "mode": "file_deps",
-                    "file_path": "main.py",
-                    "output_format": "toon",
-                }
-            )
-        )
-        assert result["success"] is True
-        assert "toon_content" in result
 
     def test_file_deps_file_not_found(self, tool, project):
         with pytest.raises(ValueError, match="not found"):
@@ -251,19 +233,6 @@ class TestBlastRadiusMode:
                 )
             )
 
-    def test_blast_radius_with_toon(self, tool, project):
-        result = _run(
-            tool.execute(
-                {
-                    "mode": "blast_radius",
-                    "file_path": "main.py",
-                    "output_format": "toon",
-                }
-            )
-        )
-        assert result["success"] is True
-        assert "toon_content" in result
-
 
 class TestCyclesMode:
     def test_cycles_no_cycles(self, tool, project):
@@ -281,11 +250,6 @@ class TestCyclesMode:
         result = _run(t.execute({"mode": "cycles", "output_format": "json"}))
         assert result["success"] is True
         assert result["cycle_count"] == 1
-
-    def test_cycles_with_toon(self, tool, project):
-        result = _run(tool.execute({"mode": "cycles", "output_format": "toon"}))
-        assert result["success"] is True
-        assert "toon_content" in result
 
     def test_cycles_clean_project(self, tmp_path):
         _write(tmp_path, "main.py", "import os\n")
@@ -407,10 +371,6 @@ class TestDefaultArguments:
     def test_default_mode_is_summary(self, tool, project):
         result = _run(tool.execute({"output_format": "json"}))
         assert result["mode"] == "summary"
-
-    def test_default_format_is_toon(self, tool, project):
-        result = _run(tool.execute({}))
-        assert "toon_content" in result
 
 
 class TestUnknownMode:

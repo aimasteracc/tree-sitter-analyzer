@@ -22,7 +22,7 @@ from typing import Any
 
 from ...call_graph import CallGraph, FunctionRef
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
 from .codegraph_visualization_hub import (
@@ -131,9 +131,9 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+                    "enum": ["json"],
+                    "default": "json",
+                    "description": "Output format: JSON",
                 },
             },
             "required": [],
@@ -169,11 +169,11 @@ class CodeGraphVisualizeTool(BaseMCPTool):
         max_edges = arguments.get("max_edges", _MAX_EDGES_DEFAULT)
         direction = arguments.get("direction", "TD")
         visualization_format = arguments.get("visualization_format", "mermaid")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         cg = self.get_call_graph()
         if cg is None:
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 build_error(
                     error="No project root set or project has no source files.",
                 ),
@@ -226,7 +226,7 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                 **extra,
             )
 
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
     def _edges_full(
         self, cg: CallGraph, max_edges: int

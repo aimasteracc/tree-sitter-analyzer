@@ -72,6 +72,10 @@ class TestGetToolSchema:
         assert "mode" in schema["properties"]
         assert "mode" not in schema.get("required", [])
 
+    def test_schema_requires_positive_max_files(self):
+        schema = ASTCacheTool().get_tool_schema()
+        assert schema["properties"]["max_files"]["minimum"] == 1
+
     def test_resolve_mode_defaults_to_search_with_query(self):
         # index-10: cache query=X with no mode searches instead of silently
         # returning stats and dropping the query.
@@ -176,6 +180,12 @@ class TestValidateArguments:
     def test_valid_search_with_query(self):
         tool = ASTCacheTool()
         assert tool.validate_arguments({"mode": "search", "query": "MyClass"}) is True
+
+    @pytest.mark.parametrize("value", [True, 0, -1])
+    def test_invalid_max_files_rejected(self, value):
+        tool = ASTCacheTool()
+        with pytest.raises(ValueError, match="max_files must be a positive integer"):
+            tool.validate_arguments({"mode": "index", "max_files": value})
 
 
 class TestExecute:

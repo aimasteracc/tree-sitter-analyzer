@@ -2,7 +2,7 @@
 """Tests for the ``index`` facade (Wave B, P0 geode layer).
 
 Covers the §5 required cases from the onboarding spec:
-1.  builds & routes — factory returns FacadeTool, all 7 actions present.
+1.  builds & routes — factory returns FacadeTool, all 8 actions present.
 2.  action routing — {action: X, ...} reaches the right inner.
 3.  arg projection — ``action`` is NOT in args the inner received.
 4.  sibling-param drop — a param for action A doesn't reach action B's inner.
@@ -43,8 +43,8 @@ from tree_sitter_analyzer.mcp.tools.index_facade import (
 #   - unknown action error     (success=False, available_actions listed)
 #
 # Facade-specific tests that remain in this file:
-#   - action routing to each of the 7 index lifecycle actions
-#     (status/build/full/auto/sync/cache/knowledge)
+#   - action routing to each of the 8 index lifecycle actions
+#     (status/build/full/auto/sync/cache/knowledge/schema)
 #   - sibling-param drop between actions
 #   - index facade description includes required documentation strings
 #   - end-to-end no strict leak (F4 regression guard with real inner tools)
@@ -52,7 +52,7 @@ from tree_sitter_analyzer.mcp.tools.index_facade import (
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Expected action set (7 index lifecycle actions)
+# Expected action set (8 index lifecycle actions)
 # ---------------------------------------------------------------------------
 
 _ALL_ACTIONS = {
@@ -63,6 +63,8 @@ _ALL_ACTIONS = {
     "sync",
     "cache",
     "knowledge",
+    # Nervous-system PR: re-wired from a top-level ``get_project_schema`` tool.
+    "schema",
 }
 
 
@@ -90,7 +92,7 @@ def test_cache_action_description_lists_mutating_modes() -> None:
     assert "mode" in _INDEX_DESCRIPTION
 
 
-def test_all_7_actions_registered() -> None:
+def test_all_8_actions_registered() -> None:
     facade = build_index_facade(project_root=None)
     registered = set(facade.action_map) | set(facade.bespoke_map)
     assert registered == _ALL_ACTIONS, (
@@ -102,7 +104,7 @@ def test_all_actions_in_action_map_not_bespoke() -> None:
     """All index facade actions are normal delegates (no bespoke routes)."""
     facade = build_index_facade(project_root=None)
     assert len(facade.bespoke_map) == 0
-    assert len(facade.action_map) == 7
+    assert len(facade.action_map) == 8
 
 
 # ---------------------------------------------------------------------------
@@ -319,13 +321,36 @@ def test_annotations_set_correctly() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_access_mode_schema_is_read_existing_only() -> None:
+    facade = build_index_facade(project_root=None)
+    access_mode = facade.get_tool_definition()["inputSchema"]["properties"][
+        "access_mode"
+    ]
+    assert access_mode == {
+        "type": "string",
+        "enum": ["read_existing"],
+        "default": "read_existing",
+        "description": "Status-only read mode; never creates or migrates an index.",
+    }
+
+
+def test_mutating_action_rejects_status_access_mode() -> None:
+    facade = build_index_facade(project_root=None)
+    result = asyncio.run(
+        facade.execute({"action": "full", "access_mode": "read_existing"})
+    )
+    assert result["error"] == (
+        "parameter 'access_mode' applies only to action(s): status"
+    )
+
+
 def test_schema_includes_action_and_union_params() -> None:
     facade = build_index_facade(project_root=None)
     schema = facade.get_tool_schema()
     props = schema["properties"]
     assert "action" in props
     assert "action" in schema.get("required", [])
-    # action enum must contain all 7 actions
+    # action enum must contain all 8 actions
     action_enum = set(props["action"].get("enum", []))
     assert action_enum == _ALL_ACTIONS
 

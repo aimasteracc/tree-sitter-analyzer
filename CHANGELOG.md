@@ -1,5 +1,32 @@
 # Changelog
 
+## [Unreleased]
+
+## [1.30.0] - 2026-09-10
+
+### ⚠️ Breaking Changes
+
+- MCP and CLI machine-readable output is JSON-only. Remove TOON decoders from clients; retain the structured response envelope. Table rendering supports `full` and `signatures`; legacy `compact` and `csv` table modes are removed.
+- `search.content` / legacy `search_content` / `search-content`, and `search.grep` / legacy `find_and_grep` / `find-and-grep` are removed. For arbitrary text and file search, use the host's search tools or a suitable search program directly.
+
+### Changed
+
+- Internal project file discovery and live symbol tracing use native discovery and a bounded Python source-scanning worker. This does not remove the remaining public fd/ripgrep wrappers or establish throughput parity.
+- Develop retains the published `edit.rename`, `health.unreachable`, and `health.middleware` routes alongside preview-only planning and process-local snapshot controls. Its current surface is 356 unique long CLI flags, 87 facade actions, and seven console scripts; extractor version 39 is retained.
+- Intent aliases `locate_usage` / `find_usage` now route to symbol search, and `find_impacted_code` routes to AST queries. These are code-intelligence routes, not arbitrary text-search equivalents.
+
+### Fixed
+
+- Semantic chain queries distinguish unprocessable input, unavailable indexes and backend failures from a successful search with no matches.
+- Generated verification plans execute mapped shell tests with Bash, preserve project environments, and quote Windows shell arguments safely.
+
+### Migration
+
+See [the migration guide](docs/MIGRATION.md) for JSON, removed wrappers and current
+legacy-name mappings. `search.batch`, `project.files`, `project.tools`, `list-files`
+and `--check-tools` remain available. Further retirement and optional rg/fd
+integration remain separate proposals; neither is enabled by these notes.
+
 ## [1.29.5] - 2026-09-08
 
 Hotfix for symbol extraction, safe Python renaming, and missing MCP/CLI routes.
@@ -1294,7 +1321,10 @@ in `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md`.
 - **ruff clean** across the whole repo.
 - **100 % coverage on the 5-language unblock regression suite**.
 
-## [Unreleased]
+## Historical development notes (release attribution unrecorded)
+
+These pre-existing notes are retained as historical context, not as changes awaiting
+the current release. Their original release attribution was not recorded here.
 
 ### Fixed
 
@@ -2521,9 +2551,6 @@ These languages are fully integrated into CLI, API, and MCP interfaces with prop
 ### 📚 Documentation
 - **Test Guide Added**: Documented golden master testing best practices
 - **Multi-language README Updates**: Synchronized version info and test counts
-
-## [Unreleased]
-
 
 ## [1.9.5] - 2025-11-06
 

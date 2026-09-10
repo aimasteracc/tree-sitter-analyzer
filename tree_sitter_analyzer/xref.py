@@ -300,9 +300,10 @@ class XRefEngine:
                 continue
             imports = json.loads(row["imports_json"])
             for imp in imports:
+                imp_text = imp["text"] if isinstance(imp, dict) else imp
                 if (
-                    module_name in imp
-                    or file_path.rstrip(".py").replace("/", ".") in imp
+                    module_name in imp_text
+                    or file_path.rstrip(".py").replace("/", ".") in imp_text
                 ):
                     results.append(
                         {

@@ -539,7 +539,10 @@ Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための55�
 **Performance**: < 3秒（10,000ファイル対応）  
 **Backend**: fd (fast directory traversal)
 
-### 6. search_content
+### 6. search_content *(廃止済み)*
+
+> **廃止**: `search_content` (SearchContentTool) は削除されました。
+> テキストグレップには CC 組み込みの **Grep tool** を使用してください。
 
 **Purpose**: 高性能コンテンツ検索（ripgrep統合）
 
@@ -679,7 +682,10 @@ Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための55�
 **Backend**: ripgrep (fastest text search)  
 **Token Optimization**: 5段階の最適化レベル
 
-### 7. find_and_grep
+### 7. find_and_grep *(廃止済み)*
+
+> **廃止**: `find_and_grep` (FindAndGrepTool) は削除されました。
+> ファイル絞り込み + テキスト検索には CC 組み込みの **Glob tool + Grep tool (2ステップ)** を使用してください。
 
 **Purpose**: 2段階統合検索（fd + ripgrep）
 
@@ -960,6 +966,13 @@ Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための55�
 - **FileRestrictionError**: ファイルアクセス制限
 - **PathTraversalError**: パストラバーサル攻撃
 
+For RFC-0022 explicit frozen snapshot capture, native Windows returns the stable
+`DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED` tool error before opening Git or workspace
+files. This is a fail-closed security boundary: Windows ancestor reparse points
+cannot be bound with the required `openat`/`O_NOFOLLOW` semantics, and unsafe
+`ctypes` or check-then-open fallbacks are not used. Legacy staged change-impact
+without `capture_diff_snapshot=true` remains supported on Windows.
+
 ### Error Context Sanitization
 
 エラーレスポンスは自動的に機密情報を除去します：
@@ -1056,28 +1069,11 @@ Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための55�
   }
 }
 
-# Step 2: Search content with optimization
-{
-  "tool": "search_content",
-  "arguments": {
-    "roots": ["src/"],
-    "query": "class.*Service",
-    "include_globs": ["*.py"],
-    "summary_only": true,
-    "max_count": 20
-  }
-}
+# Step 2: Search content with CC Grep tool (search_content は廃止済み)
+# Use CC built-in Grep tool with pattern "class.*Service" scoped to *.py files
 
-# Step 3: Integrated search for precision
-{
-  "tool": "find_and_grep",
-  "arguments": {
-    "roots": ["src/"],
-    "extensions": ["py"],
-    "query": "def process_",
-    "group_by_file": true
-  }
-}
+# Step 3: Integrated search for precision (find_and_grep は廃止済み)
+# Use CC built-in Glob tool to list *.py files, then CC Grep tool with pattern "def process_"
 ```
 
 ### Token-Optimized Large File Analysis
@@ -1517,6 +1513,12 @@ uv run tree-sitter-analyzer --parser-readiness --parser-readiness-include-suppor
 
 The v1.13.0 release adds 40 specialised tools for autonomous-agent workflows: AST cache + FTS5 indexing, function-level CodeGraph parity (callers/callees/blast-radius/visualise), pre-edit safety verdicts, anti-pattern / dead-code / route detection, architectural-constraint enforcement, and a persistent decision journal. All tools default to TOON output for 50-70% token savings versus JSON. Tools are listed alphabetically.
 
+For project-indexing tools, `max_files` is always a positive integer. Omitting
+it selects the tool's documented default. Zero, negative values, booleans, and
+non-integral values are rejected; zero is never an alias for “unlimited” or “no work.”
+Capped incremental results expose `truncated_by_max_files` so callers can
+distinguish a complete scan from a bounded prefix.
+
 ### 16. ast_cache
 
 **Purpose**: Pre-indexed AST cache with FTS5 search and incremental sync (CodeGraph parity). The only tool that persists AST data across sessions — other codegraph tools build on top of this cache.
@@ -1563,7 +1565,7 @@ Modes: `diff_files` (two file paths), `diff_strings` (two source strings), `diff
 
 ### 18. batch_search
 
-**Purpose**: Execute multiple ripgrep searches in parallel — significantly faster than calling `search_content` sequentially. Maximum 10 queries per batch.
+**Purpose**: Execute multiple ripgrep searches in parallel — significantly faster than running searches sequentially. Maximum 10 queries per batch. (`search_content` は廃止済み; テキスト検索は CC Grep tool を使用。)
 
 **Input**:
 ```json
@@ -1571,7 +1573,7 @@ Modes: `diff_files` (two file paths), `diff_strings` (two source strings), `diff
   "queries": [
     {"query": "AnalyzeScaleTool", "include_globs": ["*.py"]},
     {"query": "QueryTool", "include_globs": ["*.py"]},
-    {"query": "SearchContentTool", "include_globs": ["*.py"]}
+    {"query": "ListFilesTool", "include_globs": ["*.py"]}
   ]
 }
 ```
@@ -1622,7 +1624,7 @@ Call when project structure changed significantly, `get_project_summary` returns
 {}
 ```
 
-Call when `list_files`, `search_content`, or `find_and_grep` return unexpected empty results, when setting up in a new environment, or when diagnosing missing files. Verdict vocabulary: `SAFE` / `WARN` / `ERROR` / `NOT_FOUND`. The verdict is a hard environment-readiness gate — agents must surface `recommended_fix` instead of proceeding past a non-SAFE verdict.
+Call when `list_files` returns unexpected empty results, when setting up in a new environment, or when diagnosing missing files. (`search_content` と `find_and_grep` は廃止済み) Verdict vocabulary: `SAFE` / `WARN` / `ERROR` / `NOT_FOUND`. The verdict is a hard environment-readiness gate — agents must surface `recommended_fix` instead of proceeding past a non-SAFE verdict.
 
 **CLI Parity**: `uv run python -m tree_sitter_analyzer --check-tools --format json`
 
@@ -1841,6 +1843,15 @@ Modes: `summary` (stats), `matrix` (all pairs), `hotspots` (top-K coupling), `fi
 ```
 
 Modes: `full` (force re-index), `incremental` (only process changes).
+
+The response includes `candidate_snapshot` counters for `discovered`,
+`selected`, `excluded`, `skipped`, `processed`, and `changed_during_run`.
+Both AST-cache and incremental-sync phases consume the same immutable path
+ordering; exclusions and `max_files` are evaluated once. If a selected file's
+size, modification time, or change time differs after snapshot creation, that
+file is skipped for the remaining phase, the verdict becomes `WARN`, and
+`changed_during_run_details` gives the reason. New files created after the
+snapshot are intentionally deferred to the next index operation.
 
 **CLI Parity**: `uv run python -m tree_sitter_analyzer --full-index --full-index-mode incremental --format json`
 
@@ -2327,7 +2338,7 @@ Categories: `file_not_found`, `language_unsupported`, `project_not_set`, `securi
   - HTML要素の階層関係とセマンティック情報
   - CSSルールの構造化表現
 - 全MCPツールでの`set_project_path`メソッド統一実装
-  - SearchContentToolとFindAndGrepToolに新規追加
+  - 全ツール (SearchContentTool/FindAndGrepTool は後に廃止) に新規追加
   - 動的プロジェクトパス変更の統一サポート
   - FileOutputManager統合による設計一貫性確保
 

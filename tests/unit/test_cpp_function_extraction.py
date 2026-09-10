@@ -66,7 +66,7 @@ def test_cpp_class_methods_are_indexed() -> None:
 def test_cpp_function_line_numbers_correct() -> None:
     """Line numbers of C++ functions must match source."""
     symbols = _symbols(CPP_SRC)
-    by_name = {s["name"]: s for s in symbols}
+    by_name = {s["name"]: s for s in symbols if s.get("kind") == "function"}
     assert by_name["add"]["line"] == 3, f"add line={by_name['add']['line']}"
     assert by_name["multiply"]["line"] == 7
 

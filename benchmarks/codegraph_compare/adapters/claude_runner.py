@@ -21,6 +21,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from . import resolve_codegraph_executable
+
 if TYPE_CHECKING:
     from . import RunConfig
 
@@ -47,7 +49,6 @@ _TSA_TOOLS = [
     "mcp__tree-sitter-analyzer__search",
     "mcp__tree-sitter-analyzer__structure",
     "mcp__tree-sitter-analyzer__health",
-    "mcp__tree-sitter-analyzer__index",
     "mcp__tree-sitter-analyzer__project",
 ]
 
@@ -185,7 +186,7 @@ def _looks_like_index_query(command: str) -> bool:
 
 
 def _parse_codex_tool_calls_from_stream(lines: list[str]) -> tuple[int, int, int, int]:
-    """Count Codex CLI command_execution events by benchmark category."""
+    """Count Codex CLI command and MCP events by benchmark category."""
     tool_calls = 0
     file_reads = 0
     search_calls = 0
@@ -200,6 +201,10 @@ def _parse_codex_tool_calls_from_stream(lines: list[str]) -> tuple[int, int, int
             continue
 
         item = event.get("item", {})
+        if item.get("type") == "mcp_tool_call":
+            tool_calls += 1
+            index_queries += 1
+            continue
         if item.get("type") != "command_execution":
             continue
 
@@ -343,6 +348,7 @@ def _build_agent_cmd(
     agent_backend: str,
 ) -> list[str]:
     """Build the CLI command list for the given agent backend."""
+    validate_backend_arm_support(agent_backend, arm_id)
     if agent_backend == "claude":
         cmd = [
             "claude",
@@ -366,28 +372,14 @@ def _build_agent_cmd(
         mcp_cfg = _write_arm_mcp_config(arm_id, repo_path)
         cmd += ["--strict-mcp-config", "--mcp-config", str(mcp_cfg)]
         return cmd
-    # codex backend: the MCP arms (tsa*, codegraph*) need their server wired in
-    # with the SAME per-arm isolation the claude branch gets via
-    # --strict-mcp-config. `codex exec` has no equivalent strict flag here, so
-    # it would either miss the server entirely or silently inherit the
-    # developer's global ~/.codex MCP config — both invalidate the
-    # TSA-vs-CodeGraph comparison. Fail loudly rather than emit wrong numbers
-    # (Codex P2 on #290). Use --agent-backend claude for MCP arms until codex
-    # MCP wiring (codex -c mcp_servers.*) is implemented and verified.
-    if arm_id.startswith(("tsa", "codegraph")):
-        raise NotImplementedError(
-            f"Per-arm MCP isolation is not wired for the codex backend, but arm "
-            f"{arm_id!r} requires its own MCP server. Running `codex exec` here "
-            f"would miss the server or inherit the global ~/.codex MCP config, "
-            f"invalidating the comparison. Use --agent-backend claude for MCP "
-            f"arms, or wire `codex -c mcp_servers.*` before enabling this path."
-        )
     sandbox = _codex_sandbox_for_arm(arm_id)
-    return [
+    cmd = [
         "codex",
         "--ask-for-approval",
         "never",
         "exec",
+        "--ignore-user-config",
+        "--strict-config",
         "--json",
         "--ephemeral",
         "--sandbox",
@@ -398,6 +390,108 @@ def _build_agent_cmd(
         str(repo_path),
         "-",
     ]
+    cmd[4:4] = _codex_mcp_config_args(arm_id, repo_path)
+    if sandbox == "workspace-write":
+        cmd[4:4] = ["-c", "sandbox_workspace_write.network_access=false"]
+    return cmd
+
+
+def _codex_mcp_config_args(arm_id: str, repo_path: Path) -> list[str]:
+    """Return one isolated, required MCP server configuration for an arm."""
+
+    if arm_id.startswith("tsa"):
+        server_name = "tree-sitter-analyzer"
+        command = str(_ANALYZER_ROOT / ".venv" / "bin" / "python")
+        args = [
+            "-m",
+            "tree_sitter_analyzer.mcp.server",
+            "--project-root",
+            str(repo_path),
+        ]
+        enabled_tools = [name.rsplit("__", 1)[-1] for name in _TSA_TOOLS]
+    elif arm_id.startswith("codegraph"):
+        server_name = "codegraph"
+        command = str(resolve_codegraph_executable())
+        args = ["serve", "--mcp"]
+        enabled_tools = [name.rsplit("__", 1)[-1] for name in _CODEGRAPH_TOOLS]
+    else:
+        return []
+
+    values = {
+        "command": command,
+        "args": args,
+        "enabled": True,
+        "enabled_tools": enabled_tools,
+        "required": True,
+        "startup_timeout_sec": 30,
+        "tool_timeout_sec": 30,
+    }
+    if arm_id.startswith("codegraph"):
+        values["env"] = {
+            "CODEGRAPH_TELEMETRY": "0",
+            "CODEGRAPH_NO_DAEMON": "1",
+        }
+    config: list[str] = []
+    for key, value in values.items():
+        encoded = _toml_cli_value(value)
+        config.extend(["-c", f"mcp_servers.{server_name}.{key}={encoded}"])
+    return config
+
+
+def preflight_codex_arm_tools(
+    repo_paths: dict[str, Path],
+) -> dict[str, dict[str, Any]]:
+    """Validate indexed-arm MCP configuration without invoking a model."""
+
+    evidence: dict[str, dict[str, Any]] = {}
+    for arm_id, server_name in (
+        ("tsa-warm", "tree-sitter-analyzer"),
+        ("codegraph-warm", "codegraph"),
+    ):
+        repo_path = repo_paths[arm_id]
+        config = _codex_mcp_config_args(arm_id, repo_path)
+        result = subprocess.run(
+            ["codex", "mcp", *config, "list", "--json"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        servers = json.loads(result.stdout)
+        matches = [item for item in servers if item.get("name") == server_name]
+        if len(matches) != 1 or not matches[0].get("enabled"):
+            raise ValueError(f"Codex MCP preflight failed for {arm_id}")
+        transport = matches[0].get("transport")
+        if not isinstance(transport, dict):
+            raise ValueError(f"Codex MCP transport is missing for {arm_id}")
+        command = Path(str(transport.get("command") or ""))
+        if not command.is_absolute() or not command.is_file():
+            raise ValueError(f"Codex MCP executable is unavailable for {arm_id}")
+        evidence[arm_id] = {
+            "server": server_name,
+            "enabled": True,
+            "command": str(command.resolve()),
+            "args": list(transport.get("args") or []),
+        }
+    return evidence
+
+
+def _toml_cli_value(value: Any) -> str:
+    """Encode a value for Codex's ``-c key=value`` TOML parser."""
+
+    if isinstance(value, dict):
+        entries = ", ".join(
+            f"{key} = {json.dumps(item, ensure_ascii=True)}"
+            for key, item in value.items()
+        )
+        return "{ " + entries + " }"
+    return json.dumps(value, ensure_ascii=True, separators=(",", ":"))
+
+
+def validate_backend_arm_support(agent_backend: str, arm_id: str) -> None:
+    """Reject backend/arm combinations that cannot run a valid trial."""
+
+    if agent_backend not in {"claude", "codex"}:
+        raise ValueError("agent_backend must be one of: claude, codex")
 
 
 def _usage_int(usage: dict[str, Any], key: str) -> int:
@@ -533,6 +627,9 @@ def run_one(
             "files or project configuration. For indexed arms, the only allowed "
             "writes are tool-maintained cache/database side effects such as "
             ".codegraph SQLite WAL files or .ast-cache metadata. "
+            "For an indexed arm, successfully call at least one configured MCP "
+            "tool before direct source discovery; never substitute its CLI through "
+            "the shell. "
             "Answer the architecture question with concrete file citations."
         )
         user_message = f"{tool_policy}\n\n{user_message}"

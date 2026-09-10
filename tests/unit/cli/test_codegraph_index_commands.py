@@ -9,6 +9,8 @@ import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from tree_sitter_analyzer.cli.commands.codegraph_index_commands import (
     _autoindex_payload,
     _exit_code_for,
@@ -76,21 +78,11 @@ class TestExitCodeFor:
 
 
 class TestPrint:
-    def test_toon_format_prints_toon_content(self, capsys):
-        _print({"toon_content": "## Result\nsome content"}, "toon")
-        out = capsys.readouterr().out
-        assert "## Result" in out
-
     def test_json_format_prints_json(self, capsys):
         _print({"key": "value", "success": True}, "json")
         out = capsys.readouterr().out
         parsed = json.loads(out)
         assert parsed["key"] == "value"
-
-    def test_toon_format_missing_key_prints_empty(self, capsys):
-        _print({}, "toon")
-        out = capsys.readouterr().out
-        assert out.strip() == ""
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +109,10 @@ class TestAutoindexPayload:
         payload = _autoindex_payload(args, "json")
         assert payload["mode"] == "status"
 
+    def test_zero_max_files_is_rejected(self):
+        with pytest.raises(ValueError, match="max_files must be a positive integer"):
+            _autoindex_payload(_args(autoindex_max_files=0), "json")
+
 
 class TestFullIndexPayload:
     def test_default_values(self):
@@ -132,6 +128,10 @@ class TestFullIndexPayload:
         payload = _full_index_payload(args, "json")
         assert payload["include_activation"] is True
 
+    def test_zero_max_files_is_rejected(self):
+        with pytest.raises(ValueError, match="max_files must be a positive integer"):
+            _full_index_payload(_args(full_index_max_files=0), "json")
+
 
 class TestIncrementalSyncPayload:
     def test_default_values(self):
@@ -144,6 +144,10 @@ class TestIncrementalSyncPayload:
         args = _args(incremental_sync_mode="check")
         payload = _incremental_sync_payload(args, "toon")
         assert payload["mode"] == "check"
+
+    def test_zero_max_files_is_rejected(self):
+        with pytest.raises(ValueError, match="max_files must be a positive integer"):
+            _incremental_sync_payload(_args(incremental_sync_max_files=0), "json")
 
 
 class TestKnowledgeGraphIndexPayload:
@@ -161,7 +165,7 @@ class TestKnowledgeGraphIndexPayload:
     def test_custom_values(self):
         args = _args(
             knowledge_graph_index_mode="build",
-            knowledge_graph_backend="hybrid",
+            knowledge_graph_backend="ladybug",
             knowledge_graph_max_files=123,
             knowledge_graph_max_nodes=456,
             knowledge_graph_max_edges=789,
@@ -169,12 +173,19 @@ class TestKnowledgeGraphIndexPayload:
         )
         payload = _knowledge_graph_index_payload(args, "toon")
         assert payload["mode"] == "build"
-        assert payload["backend"] == "hybrid"
+        assert payload["backend"] == "ladybug"
         assert payload["max_files"] == 123
         assert payload["max_nodes"] == 456
         assert payload["max_edges"] == 789
         assert payload["include_docs"] is False
         assert payload["output_format"] == "toon"
+
+    def test_zero_max_files_is_rejected(self):
+        with pytest.raises(ValueError, match="max_files must be a positive integer"):
+            _knowledge_graph_index_payload(
+                _args(knowledge_graph_max_files=0),
+                "json",
+            )
 
 
 class TestMetricsPayload:
@@ -330,7 +341,7 @@ class TestRunKnowledgeGraphIndex:
         assert errors == ["--knowledge-graph-index failed: kg fail"]
 
     def test_success_returns_0(self, tmp_path, capsys):
-        args = _args(project_root=str(tmp_path), knowledge_graph_backend="json")
+        args = _args(project_root=str(tmp_path), knowledge_graph_backend="sqlite")
         mock_tool = MagicMock()
         mock_tool.execute = AsyncMock(
             return_value={"success": True, "toon_content": "kg ok"}

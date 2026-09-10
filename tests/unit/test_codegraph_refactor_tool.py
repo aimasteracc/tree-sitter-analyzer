@@ -32,10 +32,6 @@ class TestToolDefinition:
         assert set(mode["enum"]) == {"preview", "apply"}
         assert mode["default"] == "preview"
 
-    def test_schema_output_format_default_toon(self, tool):
-        fmt = tool.get_tool_schema()["properties"]["output_format"]
-        assert fmt["default"] == "toon"
-
     def test_no_annotations_destructive_false(self, tool):
         defn = tool.get_tool_definition()
         # refactor tool explicitly does NOT have readOnlyHint in the dict
@@ -102,13 +98,6 @@ class TestExecutePreview:
             or result.get("preview") is True
             or "sites" in result
         )
-
-    async def test_toon_format_default(self, tool_with_root):
-        result = await tool_with_root.execute(
-            {"symbol": "nonexistent_fn", "new_name": "renamed_fn"}
-        )
-        assert result["format"] == "toon"
-        assert "toon_content" in result
 
 
 @pytest.mark.asyncio
@@ -345,4 +334,27 @@ async def test_class_with_slots_cannot_be_renamed(tool_with_root, tmp_path, mode
     assert result["success"] is False
     assert result["errors"] == ["Classes with __slots__ are unsupported"]
     assert result["files_changed"] == 0
+    assert source.read_bytes() == original
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("requested_mode", ["apply", "preveiw"])
+async def test_forced_preview_ignores_caller_mode(tmp_path, requested_mode):
+    # RFC-0027：计划入口的固定预览模式优先于调用参数。
+    class PreviewTool(CodeGraphRefactorTool):
+        FORCED_MODE = "preview"
+
+    source = tmp_path / "sample.py"
+    original = b"def foo(): pass\nfoo()\n"
+    source.write_bytes(original)
+    result = await PreviewTool(str(tmp_path)).execute(
+        {"symbol": "foo", "new_name": "bar", "mode": requested_mode}
+    )
+    assert result["success"] is True
+    assert result["dry_run"] is True
+    assert result["files_changed"] == 0
+    assert [(site["line"], site["column"]) for site in result["sites"]] == [
+        (1, 4),
+        (2, 0),
+    ]
     assert source.read_bytes() == original

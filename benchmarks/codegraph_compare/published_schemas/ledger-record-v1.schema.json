@@ -1,0 +1,52 @@
+{
+  "$id": "no1-008a-ledger-record-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "challenge": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "counter": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "event": {
+      "enum": [
+        "CHALLENGED",
+        "VERIFYING",
+        "CONSUMED",
+        "FAILED"
+      ]
+    },
+    "event_at_ns": {
+      "type": "integer"
+    },
+    "issued_at_ns": {
+      "type": "integer"
+    },
+    "manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "prev_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "record_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "counter",
+    "event",
+    "challenge",
+    "manifest_sha256",
+    "issued_at_ns",
+    "event_at_ns",
+    "prev_hash",
+    "record_hash"
+  ],
+  "type": "object"
+}

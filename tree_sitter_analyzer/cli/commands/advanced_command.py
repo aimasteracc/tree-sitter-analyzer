@@ -22,14 +22,6 @@ from ...output_manager import output_data, output_json, output_section
 from .advanced_command_helpers import calculate_file_metrics
 from .base_command import BaseCommand
 
-# TOON formatter for CLI output
-try:
-    from ...formatters.toon_formatter import ToonFormatter
-
-    _toon_available = True
-except ImportError:
-    _toon_available = False
-
 if TYPE_CHECKING:
     from ...models import AnalysisResult
 
@@ -260,14 +252,10 @@ class AdvancedCommand(BaseCommand):
             "verdict": "INFO",
             "agent_summary": agent_summary,
         }
-        if self.args.output_format not in ("json", "toon"):
+        if self.args.output_format != "json":
             output_section("Statistics")
         if self.args.output_format == "json":
             output_json(stats)
-        elif self.args.output_format == "toon" and _toon_available:
-            use_tabs = getattr(self.args, "toon_use_tabs", False)
-            formatter = ToonFormatter(use_tabs=use_tabs)
-            print(formatter.format(stats))
         else:
             for key, value in stats.items():
                 output_data(f"{key}: {value}")
@@ -280,7 +268,7 @@ class AdvancedCommand(BaseCommand):
         converts AST elements via the canonical helper; ``_full_analysis_dict``
         assembles the envelope (preserves r37y agent_summary contract).
         """
-        if self.args.output_format not in ("json", "toon"):
+        if self.args.output_format != "json":
             output_section("Advanced Analysis Results")
 
         complexity = _collect_complexity_metrics(analysis_result.elements)
@@ -294,11 +282,6 @@ class AdvancedCommand(BaseCommand):
 
         if self.args.output_format == "json":
             output_json(result_dict)
-            return
-        if self.args.output_format == "toon" and _toon_available:
-            use_tabs = getattr(self.args, "toon_use_tabs", False)
-            formatter = ToonFormatter(use_tabs=use_tabs)
-            print(formatter.format(result_dict))
             return
         self._output_text_analysis(analysis_result)
 

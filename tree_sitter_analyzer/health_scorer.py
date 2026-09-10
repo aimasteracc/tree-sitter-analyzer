@@ -14,6 +14,8 @@ Computes a 0-100 health score for source files based on weighted dimensions:
 import json
 import logging
 import os
+from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -29,6 +31,11 @@ from .registry.health_scorer_helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 仅在一次项目评分内复用依赖图；上下文令牌隔离嵌套调用与并发请求。
+_PROJECT_DEPENDENCY_GRAPHS: ContextVar[dict[str, Any] | None] = ContextVar(
+    "project_health_dependency_graphs", default=None
+)
 
 # Dimension weights (must sum to 100)
 DIMENSION_WEIGHTS = {
@@ -56,6 +63,11 @@ PROJECT_HEALTH_SOURCE_EXTS = frozenset(
     # .yaml, .yml — see _lang_extension_map.py) are also excluded here since
     # they are not wired into EXT_TO_LANG.
     _EXT_TO_LANG.keys()
+)
+
+# Git 预取结果只属于本次项目调用，不在不同项目评分之间保留。
+_PROJECT_HOTSPOT_SCORES: ContextVar[dict[str, float | None] | None] = ContextVar(
+    "project_health_hotspot_scores", default=None
 )
 
 # Thresholds for scoring
@@ -169,15 +181,26 @@ class HealthScorer:
         self.weights = weights or dict(DIMENSION_WEIGHTS)
         self.source_extensions = set(source_extensions or PROJECT_HEALTH_SOURCE_EXTS)
         self._coverage_cache: dict[str, float] | None = None
+        self._coverage_casefold_cache: dict[str, float] | None = None
+        self._windows_coverage_cache: dict[str, float] | None = None
 
     def score_file(
-        self, file_path: str, *, fast_dependencies: bool = False
+        self,
+        file_path: str,
+        *,
+        fast_dependencies: bool = False,
+        certified: bool = False,
     ) -> HealthScore:
         """
         Score a single file.
 
         Args:
             file_path: Path to the source file
+            certified: True on RFC-0022 read_existing routes — the
+                ``coverage`` (coverage.json) and ``git_hotspot`` (git
+                history) dimensions are NOT part of the snapshot source
+                generation and are omitted (Codex P1 #1299 round-4); the
+                remaining dimensions renormalize.
 
         Returns:
             HealthScore with total and per-dimension scores
@@ -189,7 +212,11 @@ class HealthScorer:
 
         language = _EXT_TO_LANG.get(path.suffix.lower())
         dims = self._score_dimensions(
-            file_path, source, language, fast_dependencies=fast_dependencies
+            file_path,
+            source,
+            language,
+            fast_dependencies=fast_dependencies,
+            certified=certified,
         )
         total = calculate_weighted_total(dims, self.weights)
 
@@ -206,6 +233,7 @@ class HealthScorer:
         language: str | None,
         *,
         fast_dependencies: bool = False,
+        certified: bool = False,
     ) -> dict[str, float | None]:
         """Score each health dimension for a source file."""
         dependency_score = (
@@ -213,6 +241,19 @@ class HealthScorer:
             if fast_dependencies
             else score_dependencies(file_path)
         )
+        if certified:
+            # Codex P1 (#1299 round-4/5): coverage.json and git history are
+            # outside the snapshot source generation — a certified read must
+            # not even TOUCH them (a corrupt coverage.json must not flip a
+            # certified request to INDEX_SNAPSHOT_FAILED), so they are
+            # branched away from, never evaluated-and-discarded.
+            return {
+                "size": score_size(len(source.splitlines())),
+                "complexity": score_complexity(file_path, source, language),
+                "dependencies": dependency_score,
+                "duplication": score_duplication(source, language),
+                "structure": score_structure(file_path, source, language),
+            }
         return {
             "size": score_size(len(source.splitlines())),
             "complexity": score_complexity(file_path, source, language),
@@ -310,7 +351,7 @@ class HealthScorer:
 
         Coverage stats let an agent answer "how many files did you
         actually look at?" honestly — the difference between scanned
-        and scored files (excluded directories, parse failures) is the
+        and scored files (defensive exclusions, parse failures) is the
         kind of information that used to be silently dropped before
         ``TRUST_BUT_VERIFY_2026-05-23.md``.
 
@@ -325,11 +366,12 @@ class HealthScorer:
             Tuple of (scores, stats) where stats has shape::
 
                 {
-                    "total_files_scanned":   int,  # rglob hits, pre-filter
+                    "total_files_scanned":   int,  # candidates after dir pruning
                     "total_files_scored":    int,  # actually scored
                     "total_files_skipped":   int,  # scanned but not scored
+                    "pruned_directories":    int,  # excluded before file scanning
                     "skip_reasons": {
-                        "excluded_dir":   int,  # in self._EXCLUDE_DIRS
+                        "excluded_dir":   int,  # defensive file-level exclusions
                         "scoring_failed": int,  # score_file raised
                     },
                 }
@@ -340,34 +382,87 @@ class HealthScorer:
         from .registry.health_score_cache import HealthScoreCache
 
         root = Path(project_root)
-        cache = HealthScoreCache(str(root)) if use_cache else None
+        self._coverage_cache = None
+        self._coverage_casefold_cache = None
+        self._windows_coverage_cache = None
+        cache = HealthScoreCache(str(root), weights=self.weights) if use_cache else None
         results: list[HealthScore] = []
         scanned = 0
-        excluded_dir = 0
+        excluded_files = 0
+        pruned_directories = 0
         scoring_failed = 0
+        graph_token = _PROJECT_DEPENDENCY_GRAPHS.set({})
+        hotspots: dict[str, float | None] = {}
+        hotspot_token = _PROJECT_HOTSPOT_SCORES.set(hotspots)
         try:
-            files, excluded_dir = self._iter_source_files(root)
-            for f in files:
-                scanned += 1
-                if self._is_excluded(f, root):
-                    excluded_dir += 1
-                    continue
-                score = self._score_file_with_cache(str(f), cache)
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            files, pruned_directories = self._iter_source_files(root)
+            file_order = {str(path): index for index, path in enumerate(files)}
+            cold_paths = {
+                str(f)
+                for f in files
+                if not self._is_excluded(f, root)
+                and (cache is None or cache.lookup(str(f)) is None)
+            }
+
+            def collect(path: str, *, defer_cold: bool = False) -> None:
+                nonlocal scoring_failed
+                deferred = False
+
+                def defer_score(file_path: str) -> None:
+                    nonlocal deferred
+                    # 暖缓存失效也进入同一队列，不阻塞已就绪冷文件的评分。
+                    pending[pool.submit(score_git_hotspot, file_path)] = file_path
+                    deferred = True
+
+                score = self._score_file_with_cache(
+                    path, cache, defer_score if defer_cold else None
+                )
                 if score is None:
-                    scoring_failed += 1
-                    continue
-                results.append(score)
+                    if not deferred:
+                        scoring_failed += 1
+                else:
+                    results.append(score)
+
+            # 逐路径历史查询与评分流水执行，已就绪文件不等待全部历史完成。
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                try:
+                    pending = {
+                        pool.submit(score_git_hotspot, str(path)): str(path)
+                        for path in files
+                        if str(path) in cold_paths
+                    }
+                    for f in files:
+                        scanned += 1
+                        if self._is_excluded(f, root):
+                            excluded_files += 1
+                            continue
+                        path = str(f)
+                        if path not in cold_paths:
+                            collect(path, defer_cold=True)
+                    for future in as_completed(pending):
+                        path = pending[future]
+                        hotspots[path] = future.result()
+                        collect(path)
+                finally:
+                    # 也取消已入队但尚未登记的任务，并等待已启动查询退出。
+                    pool.shutdown(wait=True, cancel_futures=True)
         finally:
+            _PROJECT_HOTSPOT_SCORES.reset(hotspot_token)
+            _PROJECT_DEPENDENCY_GRAPHS.reset(graph_token)
             if cache is not None:
                 cache.close()
 
-        results.sort(key=lambda r: r.total, reverse=True)
+        # 就绪顺序只影响执行；同分文件仍按原始枚举顺序返回。
+        results.sort(key=lambda r: (-r.total, file_order[r.file_path]))
         stats: dict[str, Any] = {
             "total_files_scanned": scanned,
             "total_files_scored": len(results),
-            "total_files_skipped": excluded_dir + scoring_failed,
+            "total_files_skipped": excluded_files + scoring_failed,
+            "pruned_directories": pruned_directories,
             "skip_reasons": {
-                "excluded_dir": excluded_dir,
+                "excluded_dir": excluded_files,
                 "scoring_failed": scoring_failed,
             },
         }
@@ -377,27 +472,39 @@ class HealthScorer:
         self,
         file_path: str,
         cache: Any,
+        defer_score: Callable[[str], None] | None = None,
     ) -> HealthScore | None:
-        """Look up a cached score, fall back to fresh scoring on miss/error.
+        """复用当前评分；可延后冷评分，评分期间变化的文件不发布缓存。"""
+        from .registry.health_score_cache import _Fingerprint
 
-        Returns None when scoring raises; the outer loop just skips the
-        file (mirrors the original ``except Exception: continue`` flow).
-        """
+        before = _Fingerprint.from_path(file_path) if cache is not None else None
         if cache is not None:
             cached = cache.lookup(file_path)
-            if cached is not None:
+            # 2026-09-08：其他文件的导入变化也会改变当前文件的依赖分数。
+            # 项目调用共用依赖图，缓存命中只需计算当前节点的入向、出向评分。
+            if cached is not None and cached.get("dimensions", {}).get(
+                "dependencies"
+            ) == round(score_dependencies(file_path), 1):
+                if before is None or _Fingerprint.from_path(file_path) != before:
+                    return None
                 return HealthScore(
                     file_path=cached["file_path"],
                     total=cached["total"],
                     dimensions=cached.get("dimensions", {}),
                 )
 
+        if defer_score is not None:
+            defer_score(file_path)
+            return None
+
         try:
             score = self.score_file(file_path)
         except Exception:  # nosec B112
             return None
-        if cache is not None:
-            cache.store(score)
+        if cache is not None and before is not None:
+            if _Fingerprint.from_path(file_path) != before:
+                return None
+            cache.store(score, _expected=before)
         return score
 
     # ---- Dimension scoring helpers ----
@@ -411,6 +518,8 @@ class HealthScorer:
             return self._coverage_cache
 
         self._coverage_cache = {}
+        self._coverage_casefold_cache = {}
+        self._windows_coverage_cache = {}
 
         search_paths = [Path.cwd()]
         for parent in Path.cwd().parents[:3]:
@@ -432,7 +541,17 @@ class HealthScorer:
                     for file_path, file_data in files.items():
                         summary = file_data.get("summary", {})
                         pct = summary.get("percent_covered", 0.0)
-                        self._coverage_cache[file_path] = float(pct)
+                        raw_path = str(file_path)
+                        normalized_path = raw_path.replace("\\", "/")
+                        coverage = float(pct)
+                        folded_path = _coverage_path_key(
+                            normalized_path,
+                            case_insensitive=True,
+                        )
+                        self._coverage_cache[normalized_path] = coverage
+                        self._coverage_casefold_cache[folded_path] = coverage
+                        if _is_windows_style_path(raw_path):
+                            self._windows_coverage_cache[folded_path] = coverage
 
                     total = data.get("totals", {}).get("percent_covered", 0)
                     logger.info(
@@ -453,17 +572,18 @@ class HealthScorer:
         if not coverage_data:
             return None
 
+        windows_file = _is_windows_style_path(file_path)
         path = Path(file_path)
-        candidates = [str(path), path.name]
+        candidates = [str(path).replace("\\", "/"), path.name]
 
         try:
-            candidates.append(str(path.relative_to(Path.cwd())))
+            candidates.append(str(path.relative_to(Path.cwd())).replace("\\", "/"))
         except ValueError:
             pass
 
         for parent in [Path.cwd()] + list(Path.cwd().parents[:3]):
             try:
-                candidates.append(str(path.relative_to(parent)))
+                candidates.append(str(path.relative_to(parent)).replace("\\", "/"))
             except ValueError:
                 continue
 
@@ -471,12 +591,64 @@ class HealthScorer:
             if candidate in coverage_data:
                 return coverage_data[candidate]
 
-        path_str = str(path)
+        folded_coverage, windows_coverage = self._coverage_casefold_indexes(
+            coverage_data
+        )
+        insensitive_coverage = folded_coverage if windows_file else windows_coverage
+        for candidate in candidates:
+            folded_candidate = _coverage_path_key(candidate, case_insensitive=True)
+            if folded_candidate in insensitive_coverage:
+                return insensitive_coverage[folded_candidate]
+
+        path_str = str(path).replace("\\", "/")
         for cov_path, pct in coverage_data.items():
-            if path_str.endswith(cov_path) or cov_path.endswith(path_str):
+            if _path_suffix_matches(path_str, cov_path):
+                return pct
+
+        folded_path = _coverage_path_key(path_str, case_insensitive=True)
+        for folded_cov_path, pct in insensitive_coverage.items():
+            if _path_suffix_matches(folded_path, folded_cov_path):
                 return pct
 
         return None
+
+    def _coverage_casefold_indexes(
+        self,
+        coverage_data: dict[str, float],
+    ) -> tuple[dict[str, float], dict[str, float]]:
+        """Build case-folded indexes once for Windows path matching."""
+        if self._coverage_casefold_cache is None:
+            self._coverage_casefold_cache = {
+                _coverage_path_key(path, case_insensitive=True): coverage
+                for path, coverage in coverage_data.items()
+            }
+        if self._windows_coverage_cache is None:
+            self._windows_coverage_cache = {
+                _coverage_path_key(path, case_insensitive=True): coverage
+                for path, coverage in coverage_data.items()
+                if _is_windows_style_path(path)
+            }
+        return self._coverage_casefold_cache, self._windows_coverage_cache
+
+
+def _path_suffix_matches(left: str, right: str) -> bool:
+    """Return whether either normalized path ends at the other's boundary."""
+    return (
+        left == right
+        or left.endswith(f"/{right.lstrip('/')}")
+        or right.endswith(f"/{left.lstrip('/')}")
+    )
+
+
+def _is_windows_style_path(value: str) -> bool:
+    """Return whether a path uses Windows separators or a drive prefix."""
+    return "\\" in value or (len(value) >= 2 and value[1] == ":")
+
+
+def _coverage_path_key(value: str, case_insensitive: bool) -> str:
+    """Normalize separators and optionally apply Windows case folding."""
+    normalized = value.replace("\\", "/")
+    return normalized.casefold() if case_insensitive else normalized
 
 
 def _coverage_json_is_stale(cov_file: Path, coverage_db: Path) -> bool:
@@ -643,6 +815,18 @@ def _score_deps_fallback(file_path: str) -> float:
         return 50.0
 
 
+# DependencyGraph._build() does an unbounded os.walk + per-file import parse.
+# On a large foreign project root this can exceed 500 s. Cap it so that
+# health action=file always returns within a predictable wall-clock budget.
+_DEP_GRAPH_TIMEOUT_S: float = 10.0
+
+
+def _build_dep_graph(project_root_str: str) -> Any:
+    from .project_graph import DependencyGraph
+
+    return DependencyGraph(project_root_str)
+
+
 def score_dependencies(file_path: str) -> float:
     """Score based on real dependency graph (fan-out + fan-in).
 
@@ -651,17 +835,32 @@ def score_dependencies(file_path: str) -> float:
     empty graph result, and the fan-out/fan-in branches below would map
     ``0`` dependencies to a perfect 100 — a false green. A neutral score
     avoids rewarding "no dependencies we could even detect".
+
+    ``DependencyGraph`` construction is time-boxed to ``_DEP_GRAPH_TIMEOUT_S``
+    so that large foreign project roots do not cause an indefinite hang.
     """
     language = _EXT_TO_LANG.get(Path(file_path).suffix.lower())
     if language is not None and language not in _DEPENDENCY_ANALYZABLE_LANGS:
         return _NEUTRAL_DEP_SCORE
     try:
-        from .project_graph import DependencyGraph
+        import concurrent.futures
 
         path = Path(file_path).resolve()
         project_root = find_project_root(path)
 
-        graph = DependencyGraph(str(project_root))
+        graphs = _PROJECT_DEPENDENCY_GRAPHS.get()
+        root_key = str(project_root)
+        graph = graphs.get(root_key) if graphs is not None else None
+        if graph is None:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(_build_dep_graph, root_key)
+                try:
+                    graph = fut.result(timeout=_DEP_GRAPH_TIMEOUT_S)
+                except concurrent.futures.TimeoutError:
+                    return _score_deps_fallback(file_path)
+            if graphs is not None:
+                graphs[root_key] = graph
+
         rel = str(path.relative_to(project_root)).replace("\\", "/")
 
         fan_out = len(graph.dependencies_of(rel))
@@ -754,7 +953,10 @@ def score_structure(file_path: str, source: str, language: str | None) -> float:
 
 
 def score_git_hotspot(file_path: str) -> float | None:
-    """Score based on git commit frequency (Tornhill's hotspot analysis)."""
+    """根据 Git 提交频率评分，项目调用可复用本次预取结果。"""
+    prefetched = _PROJECT_HOTSPOT_SCORES.get()
+    if prefetched is not None and file_path in prefetched:
+        return prefetched[file_path]
     try:
         return calculate_git_hotspot(
             file_path,

@@ -1,0 +1,245 @@
+name: Native Install Qualification
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "tree_sitter_analyzer/**"
+      - "scripts/native_*"
+      - "scripts/qualify_native_install.py"
+      - "scripts/qualify_outdated_uv.py"
+      - "install.sh"
+      - "install.ps1"
+      - "rfcs/schemas/no1-006a-*-attestation-*.schema.json"
+      - "config/no1_uv_fixtures.json"
+      - ".github/workflows/native-install-qualification.yml"
+      - ".github/workflows/reusable-outdated-uv-qualification.yml"
+      - ".github/workflows/reusable-native-qualification-attestation.yml"
+  push:
+    branches: [develop]
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "tree_sitter_analyzer/**"
+      - "scripts/native_*"
+      - "scripts/qualify_native_install.py"
+      - "scripts/qualify_outdated_uv.py"
+      - "install.sh"
+      - "install.ps1"
+      - "rfcs/schemas/no1-006a-*-attestation-*.schema.json"
+      - "config/no1_uv_fixtures.json"
+      - ".github/workflows/native-install-qualification.yml"
+      - ".github/workflows/reusable-outdated-uv-qualification.yml"
+      - ".github/workflows/reusable-native-qualification-attestation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-once:
+    name: Build candidate wheel once
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      wheel_name: ${{ steps.inventory.outputs.wheel_name }}
+      wheel_sha256: ${{ steps.inventory.outputs.wheel_sha256 }}
+    steps:
+      - name: Create build evidence placeholder
+        run: mkdir -p qualification-build && printf '{"status":"started"}\n' > qualification-build/job-result.json
+        shell: bash
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.12.3"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6.0.0
+        with:
+          python-version: "3.10"
+      - name: Verify exact clean source
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+        shell: bash
+      - name: Build one wheel and manifest
+        id: inventory
+        run: |
+          uv build --wheel --out-dir qualification-build
+          mapfile -t wheels < <(find qualification-build -maxdepth 1 -type f -name '*.whl')
+          test "${#wheels[@]}" -eq 1
+          uv run --no-project --with packaging --with psutil python scripts/qualify_native_install.py build-manifest \
+            --wheel "${wheels[0]}" --commit "$GITHUB_SHA" \
+            --output qualification-build/wheel-manifest.json
+          echo "wheel_name=$(basename "${wheels[0]}")" >> "$GITHUB_OUTPUT"
+          echo "wheel_sha256=$(python -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "${wheels[0]}")" >> "$GITHUB_OUTPUT"
+        shell: bash
+      - name: Write build job result
+        if: always()
+        run: printf '{"job":"build-once","status":"%s"}\n' '${{ job.status }}' > qualification-build/job-result.json
+        shell: bash
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-build-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: qualification-build/
+          if-no-files-found: error
+          retention-days: 90
+
+  native-axis:
+    name: Native ${{ matrix.axis }} Python 3.10
+    needs: build-once
+    if: always()
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - axis: linux
+            runner: ubuntu-24.04
+          - axis: macos
+            runner: macos-14
+          - axis: windows
+            runner: windows-2022
+    steps:
+      - name: Create axis evidence placeholder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force qualification-artifacts | Out-Null
+          '{"status":"started"}' | Set-Content -Encoding ascii qualification-artifacts/job-result.json
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6.0.0
+        with:
+          python-version: "3.10"
+      - name: Install qualification runtime dependencies
+        run: python -m pip install --disable-pip-version-check "jsonschema>=4,<5" packaging psutil
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: native-build-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: qualification-input
+      - name: Qualify installed wheel through official MCP client
+        run: >-
+          python scripts/qualify_native_install.py axis
+          --axis ${{ matrix.axis }}
+          --wheel qualification-input/${{ needs.build-once.outputs.wheel_name }}
+          --wheel-manifest qualification-input/wheel-manifest.json
+          --output qualification-artifacts/report.json
+      - name: Write axis job result
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force qualification-artifacts | Out-Null
+          $value = @{job='native-axis'; axis='${{ matrix.axis }}'; status='${{ job.status }}'} | ConvertTo-Json -Compress
+          $value | Set-Content -Encoding ascii qualification-artifacts/job-result.json
+      - name: Upload native evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-${{ matrix.axis }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: qualification-artifacts/
+          if-no-files-found: error
+          retention-days: 90
+
+  aggregate:
+    name: Aggregate exact native axes
+    if: always()
+    needs: [build-once, native-axis]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Create aggregate evidence placeholder
+        run: mkdir -p qualification-aggregate && printf '{"status":"started"}\n' > qualification-aggregate/job-result.json
+        shell: bash
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6.0.0
+        with:
+          python-version: "3.10"
+      - name: Install aggregate runtime dependencies
+        run: python -m pip install --disable-pip-version-check "jsonschema>=4,<5" packaging psutil
+      - name: Download build manifest and wheel
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: native-build-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: downloaded/build
+      - name: Download Linux report
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: native-linux-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: downloaded/linux
+      - name: Download macOS report
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: native-macos-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: downloaded/macos
+      - name: Download Windows report
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: native-windows-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: downloaded/windows
+      - name: Aggregate candidate evidence
+        if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/develop')
+        run: >-
+          python scripts/qualify_native_install.py aggregate
+          --schema rfcs/schemas/no1-006a-native-attestation-v1.schema.json
+          --wheel downloaded/build/${{ needs.build-once.outputs.wheel_name }}
+          --wheel-manifest downloaded/build/wheel-manifest.json
+          --reports downloaded/linux/report.json downloaded/macos/report.json downloaded/windows/report.json
+          --output qualification-aggregate/aggregate.json
+        shell: bash
+      - name: Aggregate trusted develop evidence
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        run: >-
+          python scripts/qualify_native_install.py aggregate --trusted
+          --schema rfcs/schemas/no1-006a-native-attestation-v1.schema.json
+          --wheel downloaded/build/${{ needs.build-once.outputs.wheel_name }}
+          --wheel-manifest downloaded/build/wheel-manifest.json
+          --reports downloaded/linux/report.json downloaded/macos/report.json downloaded/windows/report.json
+          --output qualification-aggregate/aggregate.json
+        shell: bash
+      - name: Write aggregate job result
+        if: always()
+        run: mkdir -p qualification-aggregate && printf '{"job":"aggregate","status":"%s"}\n' '${{ job.status }}' > qualification-aggregate/job-result.json
+        shell: bash
+      - name: Upload aggregate evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-aggregate-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: qualification-aggregate/
+          if-no-files-found: error
+          retention-days: 90
+
+  outdated-uv:
+    name: Qualify real outdated uv on native axes
+    if: always()
+    needs: [build-once, native-axis, aggregate]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-outdated-uv-qualification.yml
+    with:
+      wheel-name: ${{ needs.build-once.outputs.wheel_name }}
+
+  trusted-attestation:
+    name: Externally attest trusted develop evidence
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: [build-once, aggregate, outdated-uv]
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/reusable-native-qualification-attestation.yml
+    with:
+      wheel-name: ${{ needs.build-once.outputs.wheel_name }}

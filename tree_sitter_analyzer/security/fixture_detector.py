@@ -144,12 +144,30 @@ _DISABLED = FixtureFact(
 # ---------------------------------------------------------------------------
 
 
-def is_fixture(file_path: str, project_root: str | Path) -> FixtureFact:
+def is_fixture(
+    file_path: str,
+    project_root: str | Path,
+    *,
+    certified: bool = False,
+    inventory: frozenset[str] | None = None,
+) -> FixtureFact:
     """Return whether ``file_path`` is a registered or detected fixture.
 
     ``file_path`` is interpreted relative to ``project_root`` unless it
     is already absolute. The query is O(1) on cache hit and at most
     O(tests/) on miss.
+
+    ``certified=True`` (Codex P1 #1299, RFC-0022 P0.4 zero-write certified
+    reads) keeps the probe strictly read-only AND snapshot-generation
+    bound: the live ``CLAUDE.md`` allowlist and the on-disk
+    ``fixture_index.json`` cache are outside the source generation, so a
+    certified route must not consult them (they could drift after
+    snapshot publication). Only generation-certified ``tests/`` bytes are
+    scanned, and nothing is ever persisted. ``inventory`` (the snapshot's
+    ``ast_index`` relative file set) further restricts the scan to files
+    the source oracle actually captured — files the oracle prunes (e.g.
+    ``tests/vendor/``) are outside the generation and must not influence
+    fixture escalation (Codex P1 #1299 round-3).
 
     Failure modes (corrupt cache, unreadable test file, malformed YAML)
     all return ``_NEGATIVE`` and emit one WARNING — never raise.
@@ -162,6 +180,9 @@ def is_fixture(file_path: str, project_root: str | Path) -> FixtureFact:
     relative = _to_relative(file_path, root)
     if not relative:
         return _NEGATIVE
+
+    if certified:
+        return _scan_only_fixture(root, relative, inventory=inventory)
 
     # Tier 1 — allowlist first; cheap and authoritative.
     allowlist_hit = _check_allowlist(root, relative)
@@ -305,6 +326,8 @@ def _iter_test_files(tests_dir: Path) -> list[Path]:
 def _targeted_fixture_scan(
     project_root: Path,
     relative: str,
+    *,
+    inventory: frozenset[str] | None = None,
 ) -> FixtureFact | None:
     """Fast exact-path scan for the common single-file ``is_fixture`` query."""
     tests_dir = project_root / "tests"
@@ -316,9 +339,14 @@ def _targeted_fixture_scan(
         return None
     best: FixtureFact | None = None
     for path in _iter_test_files(tests_dir):
+        if (
+            inventory is not None
+            and _safe_relative(path, project_root) not in inventory
+        ):
+            continue
         try:
             source = path.read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             continue
         evidence = (_safe_relative(path, project_root),)
         confidence = 0.0
@@ -342,16 +370,23 @@ def _targeted_fixture_scan(
     return best
 
 
-def _basename_seen_in_tests(project_root: Path, basename: str) -> bool:
+def _basename_seen_in_tests(
+    project_root: Path, basename: str, *, inventory: frozenset[str] | None = None
+) -> bool:
     """Return whether the filename appears anywhere in tests/ source."""
     tests_dir = project_root / "tests"
     if not tests_dir.is_dir() or not basename:
         return False
     for path in _iter_test_files(tests_dir):
+        if (
+            inventory is not None
+            and _safe_relative(path, project_root) not in inventory
+        ):
+            continue
         try:
             if basename in path.read_text(encoding="utf-8"):
                 return True
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             continue
     return False
 
@@ -375,6 +410,30 @@ def _load_or_build_index(project_root: Path) -> dict[str, FixtureFact]:
     return index
 
 
+def _scan_only_fixture(
+    root: Path, relative: str, *, inventory: frozenset[str] | None = None
+) -> FixtureFact:
+    """Scan-only fixture probe for certified reads (no allowlist/cache).
+
+    Consults only ``tests/`` bytes, which ARE part of the snapshot source
+    generation: the targeted scan first, then the full in-memory scan.
+    ``inventory`` restricts both scans to files the source oracle captured.
+    Never reads ``CLAUDE.md`` or ``fixture_index.json`` and never writes.
+    """
+
+    tests_dir = root / "tests"
+    if not tests_dir.is_dir():
+        return _NEGATIVE
+
+    targeted = _targeted_fixture_scan(root, relative, inventory=inventory)
+    if targeted is not None:
+        return targeted
+    if not _basename_seen_in_tests(root, Path(relative).name, inventory=inventory):
+        return _NEGATIVE
+    index = _scan_tests(tests_dir, root, inventory=inventory)
+    return index.get(relative, _NEGATIVE)
+
+
 def _tests_signature(tests_dir: Path) -> str:
     """Compute a SHA-1 over every ``tests/**/*.py``'s ``(mtime_ns, size)``."""
 
@@ -382,7 +441,7 @@ def _tests_signature(tests_dir: Path) -> str:
     for path in sorted(_iter_test_files(tests_dir)):
         try:
             st = path.stat()
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             continue
         hasher.update(f"{path}|{st.st_mtime_ns}|{st.st_size}\n".encode())
     return hasher.hexdigest()
@@ -464,14 +523,24 @@ def _write_cache(
         )
 
 
-def _scan_tests(tests_dir: Path, project_root: Path) -> dict[str, FixtureFact]:
+def _scan_tests(
+    tests_dir: Path,
+    project_root: Path,
+    *,
+    inventory: frozenset[str] | None = None,
+) -> dict[str, FixtureFact]:
     """Walk ``tests_dir`` and merge signals from every ``*.py`` file."""
 
     aggregator: dict[str, _Aggregator] = {}
     for path in _iter_test_files(tests_dir):
+        if (
+            inventory is not None
+            and _safe_relative(path, project_root) not in inventory
+        ):
+            continue
         try:
             source = path.read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             continue
         try:
             tree = ast.parse(source)
@@ -480,7 +549,14 @@ def _scan_tests(tests_dir: Path, project_root: Path) -> dict[str, FixtureFact]:
             # broken test files just get skipped.
             continue
         relative_test = _safe_relative(path, project_root)
-        _walk_module(tree, source, relative_test, project_root, aggregator)
+        _walk_module(
+            tree,
+            source,
+            relative_test,
+            project_root,
+            aggregator,
+            inventory=inventory,
+        )
 
     result: dict[str, FixtureFact] = {}
     for rel_path, agg in aggregator.items():
@@ -527,6 +603,8 @@ def _walk_module(
     relative_test: str,
     project_root: Path,
     aggregator: dict[str, _Aggregator],
+    *,
+    inventory: frozenset[str] | None = None,
 ) -> None:
     """Inspect the top-level nodes of ``tree`` and update ``aggregator``."""
 
@@ -545,7 +623,9 @@ def _walk_module(
         if isinstance(descendant, (ast.List, ast.Tuple)):
             basenames = _plugin_manifest_basenames(descendant)
             for basename in basenames:
-                rel = _basename_to_repo_relative(basename, project_root)
+                rel = _basename_to_repo_relative(
+                    basename, project_root, inventory=inventory
+                )
                 if rel:
                     agg = aggregator.setdefault(rel, _Aggregator())
                     agg.suppressed = True
@@ -554,11 +634,22 @@ def _walk_module(
     for node in tree.body:
         if isinstance(node, ast.Assign):
             _process_assign(
-                node, source, path_names, relative_test, project_root, aggregator
+                node,
+                source,
+                path_names,
+                relative_test,
+                project_root,
+                aggregator,
+                inventory=inventory,
             )
         else:
             _process_repo_relative_literals(
-                node, source, relative_test, project_root, aggregator
+                node,
+                source,
+                relative_test,
+                project_root,
+                aggregator,
+                inventory=inventory,
             )
 
 
@@ -601,6 +692,8 @@ def _process_assign(
     relative_test: str,
     project_root: Path,
     aggregator: dict[str, _Aggregator],
+    *,
+    inventory: frozenset[str] | None = None,
 ) -> None:
     """Extract signals from a top-level ``name = ...`` statement."""
 
@@ -615,7 +708,7 @@ def _process_assign(
         basename = os.path.basename(literal.replace("\\", "/"))
         if not basename.endswith(".py"):
             continue
-        rel = _basename_to_repo_relative(basename, project_root)
+        rel = _basename_to_repo_relative(basename, project_root, inventory=inventory)
         if not rel:
             continue
         agg = aggregator.setdefault(rel, _Aggregator())
@@ -635,6 +728,8 @@ def _process_repo_relative_literals(
     relative_test: str,
     project_root: Path,
     aggregator: dict[str, _Aggregator],
+    *,
+    inventory: frozenset[str] | None = None,
 ) -> None:
     """Catch repo-relative string literals outside of fixture-style assigns."""
 
@@ -647,7 +742,7 @@ def _process_repo_relative_literals(
         if not _REPO_RELATIVE_PATTERN.match(value):
             continue
         basename = os.path.basename(value)
-        rel = _basename_to_repo_relative(basename, project_root)
+        rel = _basename_to_repo_relative(basename, project_root, inventory=inventory)
         if not rel:
             continue
         agg = aggregator.setdefault(rel, _Aggregator())
@@ -741,12 +836,20 @@ def _safe_relative(path: Path, project_root: Path) -> str:
         return str(path).replace("\\", "/")
 
 
-def _basename_to_repo_relative(basename: str, project_root: Path) -> str | None:
+def _basename_to_repo_relative(
+    basename: str,
+    project_root: Path,
+    *,
+    inventory: frozenset[str] | None = None,
+) -> str | None:
     """Find the project-relative path for ``basename`` if exactly one exists.
 
     Tier-2 hits the basename layer; we need to map it back to the
     canonical project-relative path. Multiple matches resolve to
-    ``None`` because we cannot disambiguate without more context.
+    ``None`` because we cannot disambiguate without more context. On a
+    certified read, ``inventory`` restricts the lookup to snapshot-covered
+    files — an oracle-excluded duplicate (e.g. ``vendor/foo.py``) added
+    after publication must not flip the result (Codex P1 #1299 round-8).
     """
 
     if not basename or "/" in basename or "\\" in basename:
@@ -759,6 +862,10 @@ def _basename_to_repo_relative(basename: str, project_root: Path) -> str | None:
     if not src_dir.is_dir():
         return None
     matches = [path for path in src_dir.rglob(basename) if path.is_file()]
+    if inventory is not None:
+        matches = [
+            path for path in matches if _safe_relative(path, project_root) in inventory
+        ]
     if len(matches) != 1:
         return None
     return _safe_relative(matches[0], project_root)

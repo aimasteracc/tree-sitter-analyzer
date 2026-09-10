@@ -45,6 +45,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ... import read_existing_access as read_access
+from ...constants import JS_TS_MODULE_EXTS
 from .facade_tool import FacadeTool
 
 # RFC-0014 Phase B: cap for test_map test_functions list (matches _MAX_LISTED).
@@ -156,7 +158,7 @@ def _is_collectible_caller(file_path: str, name: str, language: str = "") -> boo
     if lang == "go" or file_path.endswith(".go"):
         return _is_go_test_func(name)
     if lang in ("javascript", "typescript", "js", "ts", "jsx", "tsx") or (
-        file_path.endswith((".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs"))
+        file_path.endswith(JS_TS_MODULE_EXTS)
     ):
         return _is_js_test_func(name)
     if lang == "java" or file_path.endswith(".java"):
@@ -245,7 +247,8 @@ _NAV_DESCRIPTION = (
     "search + definition + callers + callees in a single capped response "
     "(codegraph_context equivalent). "
     "Params: task (required — natural-language description or symbol name), "
-    "max_nodes, max_code_blocks, output_format.\n"
+    "max_nodes, max_code_blocks, access_mode, snapshot_id, "
+    "source_generation, output_format.\n"
     "- action=callers — who calls a function (codegraph_callers equivalent).\n"
     "  scope=point (default) → direct 1-hop callers (fast). "
     "Params: function_name/symbol (required), file_path, output_format.\n"
@@ -275,7 +278,14 @@ _NAV_DESCRIPTION = (
     "find implicit coupling that the call graph cannot see (config+code, "
     "schema+handler, proto+generated stub). Params: symbol or file_path (one "
     "required), max_commits (default 500), min_shared (default 3), "
-    "max_results (default 20), output_format."
+    "max_results (default 20), output_format.\n"
+    "- action=pulse — 1-query complete context for one symbol: callers, "
+    "callees, git heat, imports, siblings, comments. Params: file (required), "
+    "symbol (required), format (skeletal|compact|verbose), token_budget, "
+    "max_callers, max_callees, max_siblings, max_comments.\n"
+    "- action=pulse_batch — action=pulse for multiple {file, symbol} targets "
+    "in one call. Params: targets (required array of {file, symbol}), format "
+    "(skeletal|compact), token_budget_per_symbol, max_symbols."
 )
 
 
@@ -296,22 +306,19 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     from .codegraph_impact_tool import CodeGraphImpactTool
     from .codegraph_navigate_tool import CodeGraphNavigateTool
     from .codegraph_xref_tool import CodeGraphXRefTool
+    from .pulse_tool import PulseBatchTool, PulseTool
     from .symbol_lineage_tool import SymbolLineageTool
     from .symbol_resolve_tool import CodeGraphSymbolResolveTool
     from .trace_impact_tool import TraceImpactTool
 
-    # ------------------------------------------------------------------
     # R4 bespoke inners — scope-discriminated callers/callees
-    #
     # ``scope`` is a facade control key that the framework strips BEFORE
     # projecting args to an inner schema.  Because we need to READ scope
     # to choose the inner, we use bespoke closures that receive the full
     # cleaned-args dict (control keys minus ``action`` stripped, R3 copy
     # applied) and inspect ``scope`` themselves.
-    #
     # All four instances are registered via ``register_bespoke_inner``
     # (called after facade construction below) so G3 rebind reaches them.
-    # ------------------------------------------------------------------
 
     callers_point = CodeGraphCallersTool(project_root)
     callers_graph = CodeGraphCallTool(project_root)
@@ -341,6 +348,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             "max_code_blocks",
             "output_format",
             "include_graph",
+            *("access_mode", "snapshot_id", "source_generation"),
         )
         context_args: dict[str, Any] = {
             k: v for k, v in args.items() if k in inner_keys
@@ -503,7 +511,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         truncated = unique_function_count > _MAX_TEST_MAP
         capped = test_funcs_sorted[:_MAX_TEST_MAP]
 
-        output_format: str = args.get("output_format", "toon")
+        output_format: str = args.get("output_format", "json")
 
         result: dict = {
             "success": True,
@@ -523,9 +531,9 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             },
         }
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     async def _co_change_route(args: dict[str, Any]) -> Any:
         """RFC-0014 Phase C: git-history co-change coupling.
@@ -584,11 +592,11 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             max_results,
         )
 
-        output_format: str = args.get("output_format", "toon")
+        output_format: str = args.get("output_format", "json")
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(co_result, output_format)
+        return apply_output_format_to_response(co_result, output_format)
 
     facade = FacadeTool(
         facade_name="nav",
@@ -605,6 +613,10 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             # callees/callers per node (the IndexShard dogfood loss root cause).
             "callee_tree": CodeGraphCalleeTreeTool(project_root),
             "caller_tree": CodeGraphCallerTreeTool(project_root),
+            # Pulse API — 1-query symbol context for AI agents, replacing
+            # 10-20 individual tool calls.
+            "pulse": PulseTool(project_root),
+            "pulse_batch": PulseBatchTool(project_root),
         },
         bespoke_map={
             # Composed one-call context (search + node + callers + callees).
@@ -622,6 +634,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         description=_NAV_DESCRIPTION,
         annotations=_NAV_ANNOTATIONS,
         project_root=project_root,
+        **read_access.index_capability_facade_configuration("context"),
     )
 
     # G3: register all bespoke inners so set_project_path reaches them.

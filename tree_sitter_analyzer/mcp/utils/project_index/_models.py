@@ -89,6 +89,8 @@ _EXT_TO_LANGUAGE: dict[str, str] = {
     ".pyi": "python",
     ".ts": "typescript",
     ".tsx": "typescript",
+    ".mts": "typescript",
+    ".cts": "typescript",
     ".js": "javascript",
     ".jsx": "javascript",
     ".mjs": "javascript",

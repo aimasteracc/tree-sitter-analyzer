@@ -1,34 +1,39 @@
 <!-- Generated: 2026-05-30; doc-code re-sync: 2026-06-17 -->
 # Formatters Codemap
 
-Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/formatters/`.
+JSON response formatting and explicit terminal views. Located in
+`tree_sitter_analyzer/formatters/`; a language formatter name describes its input
+language, not an additional MCP or CLI wire encoding.
 
 ## Format Registry
 
 | Format | Module | Default for | Use case |
 |---|---|---|---|
-| `toon` | `formatters/toon_formatter.py` (+ `formatters/toon_encoder.py` engine) | **MCP** | LLM agents — 50-70% fewer tokens than JSON (see `CLAUDE.md` §1; enforced by `tests/unit/mcp/test_output_cost_invariants.py`) |
-| `json` | `formatters/json_formatter.py` | **CLI** | `jq` piping, programmatic ingestion |
-| `table` | `formatters/table_formatter.py` (canonical, re-exports `LegacyTableFormatter`) + `tree_sitter_analyzer/default_table_formatter.py` + `legacy_table_formatter.py` | `--table` flag | Terminal viewing with box-drawing chars |
-| `csv` | via `tree_sitter_analyzer/_legacy_table_formatter_csv.py` | `--table csv` | Spreadsheet ingestion |
-| `signatures` | `formatters/_java_formatter_signatures_mixin.py` (Java); `formatters/_python_formatter_signatures_table.py` (Python); `formatters/_typescript_formatter_signatures_table.py` (TypeScript); `default_table_formatter.py` (fallback) | `--table signatures` | Lightweight method-directory for large files — ~25-80% of full tokens; agent-first, then `--partial-read` for bodies |
-| `yaml` | `formatters/yaml_formatter.py` | explicit `--format yaml` | Human-readable structured |
+| `json` | Standard JSON serialization; `mcp/server_utils/tool_registration.py` serializes MCP results | **MCP + CLI** | Canonical structured response format; `jq`-friendly programmatic ingestion |
+| `full` table | `formatters/table_formatter.py` (canonical, re-exports `LegacyTableFormatter`) + `tree_sitter_analyzer/default_table_formatter.py` + `legacy_table_formatter.py` | `--table full` | Terminal structure view |
+| `signatures` | `formatters/_java_formatter_signatures_mixin.py` (Java); `formatters/_python_formatter_signatures_table.py` (Python); `formatters/_typescript_formatter_signatures_table.py` (TypeScript); `default_table_formatter.py` (fallback) | `--table signatures` | Method directory; use `--partial-read` for bodies |
 
-## Why TOON for MCP, JSON for CLI?
+The generic `FormatterRegistry` registers exactly `json` and `full`; these
+`CodeElement` formatters are separate from the language-specific table registry.
+The main CLI accepts only `--format json` and `--table {full,signatures}`.
+Command-specific `--output-format` also permits `text`; CSV, YAML, and compact
+are not CLI format choices.
+`formatters/json_formatter.py` and `formatters/yaml_formatter.py` format analysis
+of JSON and YAML source files respectively; the latter does not provide a
+`--format yaml` response encoding.
+
+## Why JSON for MCP and CLI?
 
 **Locked design decision** (see `CLAUDE.md`):
 
-| | TOON | JSON |
-|---|---|---|
-| Token cost | -50-70% | baseline |
-| Loss | none | none |
-| `jq` friendliness | no | yes |
-| Human readability | medium | high |
+| | JSON |
+|---|---|
+| Interoperability | standard |
+| Loss | none |
+| `jq` friendliness | yes |
+| Human readability | high |
 
-→ MCP callers are LLM agents → token cost is real money → TOON wins.
-→ CLI callers are humans / shells → `jq` & readability win → JSON wins.
-
-**Do NOT propose flipping MCP default from `toon` to `json`** — the cost analysis is settled.
+→ MCP and CLI callers share one canonical, machine-readable JSON contract.
 
 ## Formatter Interfaces
 
@@ -36,16 +41,22 @@ Interfaces live in `formatters/_formatter_interface.py` (no upward imports — b
 
 | Interface | Implementors | Purpose |
 |---|---|---|
-| `IFormatter` | `HtmlFormatter`, `JsonFormatter`, `CsvFormatter`, … | `format(elements)` → str |
+| `IFormatter` | `HtmlFormatter`, `JsonFormatter`, `FullFormatter`, … | `format(elements)` → str |
 | `IStructureFormatter` | legacy adapters | `format_structure(dict)` → str |
 
 `formatters/formatter_registry.py` re-exports both for backward compat.
+Generic `CodeElement` implementations (`JsonFormatter` and `FullFormatter`) live in
+`formatters/_builtin_formatters.py`; the registry remains their stable import
+facade. `formatters/_language_formatter_registration.py` owns bundled-language
+registration and defers only the legacy default formatter during circular
+imports, so importing `default_table_formatter` first cannot silently disable
+the language-specific registry.
 `formatters/html_formatter.py` imports directly from `formatters/_formatter_interface.py` to avoid the
 `formatter_registry ↔ html_formatter` import cycle (fixed 2026-05-30).
 
 ## Formatter Architecture
 
-Each formatter inherits from `formatters/base_formatter.py`:
+Language formatters use `formatters/base_formatter.py`:
 
 ```python
 class BaseFormatter(ABC):
@@ -56,10 +67,9 @@ class BaseFormatter(ABC):
     def format_table(self, ...) -> str: ...
 
 class BaseTableFormatter(BaseFormatter):
-    # table-flavour helpers live here, not on BaseFormatter
+    # 表格辅助方法位于此处；紧凑摘要方法仅为子类兼容保留。
     def _format_full_table(self, ...) -> str: ...
     def _format_compact_table(self, ...) -> str: ...
-    def _format_csv(self, ...) -> str: ...
 ```
 
 Per-language formatter mixins live alongside (`_java_formatter_*_mixin.py`,
@@ -67,16 +77,17 @@ Per-language formatter mixins live alongside (`_java_formatter_*_mixin.py`,
 classes via Python's MRO.
 
 Standalone per-language formatters (self-contained, no mixin composition):
-- `formatters/go_formatter.py` — `GoTableFormatter`; full/compact/csv/json; renders
+- `formatters/go_formatter.py` — `GoTableFormatter`; full-table and JSON rendering;
+  retains an internal compact summary method. The full table renders
   `| Func | Signature | Vis | Lines | Cx | Doc |` (functions) and
   `| Receiver | Func | Signature | Vis | Lines | Cx | Doc |` (methods)
 - `formatters/bash_formatter.py` — `BashTableFormatter`; registered for "bash" / "sh";
-  renders `| Name | Signature | Vis | Lines | Cx | Doc |` (full) and
-  `| Name | Sig | V | L | Cx | Doc |` (compact)
+  renders `| Name | Signature | Vis | Lines | Cx | Doc |` in the full table;
+  also retains an internal compact summary method. These summary methods do
+  not restore a public `--table compact` choice.
 
 Key mixins for the Java formatter:
 - `formatters/_java_formatter_full_mixin.py` — `_format_full_table`
-- `formatters/_java_formatter_compact_mixin.py` — `_format_compact_table`
 - `formatters/_java_formatter_signatures_mixin.py` — `_format_signatures_table` (lightweight
   method-directory; lists methods as `name →returnType(Np) L-L`, no bodies)
 
@@ -99,52 +110,22 @@ TS/JS full-table module-level functions:
   methods). JS reads both `methods` (class methods) and `functions` (top-level)
   since the JS plugin stores them in disjoint lists.
 
-## CSV Control-Char Safety
+## JSON Format
 
-`formatters/_csv_safety.py` (`csv_safe_row` / `csv_safe_cell`) strips
-C0/DEL control characters (NULL etc.) from CSV cells before they reach
-`csv.writer`. Python 3.10's `csv.writer` raises `_csv.Error: need to escape,
-but no escapechar set` on a NULL byte; setting `escapechar` would silence it
-but double literal backslashes in ordinary fields (a format regression). Tab
-and newline are preserved (the writer quotes them on every version); a bare
-carriage return is **stripped** because Python 3.10 emits it unquoted, yielding
-an unreadable CSV. Used by `CsvFormatter`, `format_html_csv`, and
-`format_csv_output`.
+JSON emits a standard structured object with stable field names and nested response data.
 
-## TOON Format
+JSON example:
 
-TOON (Token-Oriented Object Notation) emits indentation-aware key:value lines without
-JSON's punctuation overhead. Example:
-
-```
-file: src/foo.py
-language: python
-classes:
-  - name: Foo
-    line: 12
-    end_line: 80
-    methods:
-      - name: bar
-        line: 14
+```json
+{
+  "file": "src/foo.py",
+  "language": "python",
+  "classes": [{"name": "Foo", "line": 12, "end_line": 80}]
+}
 ```
 
-Same data in JSON costs noticeably more tokens for typical AST outputs (the
-50-70% TOON saving cited above; the exact ratio is pinned by `tests/unit/mcp/test_output_cost_invariants.py`).
-
-Serialization helpers: `formatters/toon_formatter.py:_emit_*` (extracted in r37dm dogfood).
-
-### TOON Encoder/Decoder internals
-
-| Module | Role |
-|---|---|
-| `formatters/toon_encoder.py` | `ToonEncoder` — iterative encoder; `encode_value` for scalars |
-| `formatters/_toon_encoder_string_helpers.py` | `needs_quotes`, `escape_string` — quoting rules |
-| `formatters/_toon_encoder_table_helpers.py` | Array-table encoding: `union_schema`, `encode_array_table_lines` |
-| `formatters/_toon_encoder_task_helpers.py` | Stack-based task dispatch helpers |
-| `formatters/toon_decoder.py` | `decode_toon(token)` — inverse of `encode_value` for scalar tokens (issue #1058); `ToonDecodeError` |
-
-The decoder is intentionally **scalar-only** (PR1 scope): it handles `null`, `true`/`false`, numbers, quoted strings, and bare words.
-Full dict/list/table parsing is deferred to RFC-0018.
+The JSON serializer is the sole wire-format implementation. Language-specific
+formatters remain available for explicit terminal table views.
 
 ## Format Stability Contract
 
@@ -158,7 +139,6 @@ major version bump (semver).
 
 ## Cache & File Output
 
-- `mcp/utils/search_cache.py` — LRU for fd/ripgrep results (in-process)
 - `mcp/utils/file_output_factory.py` — atomic write for large payloads
 - `TREE_SITTER_OUTPUT_PATH` env var sets the default output directory
 
@@ -171,8 +151,6 @@ extracted from the monolithic `legacy_table_formatter.py`:
 |---|---|
 | `formatters/legacy/__init__.py` | Re-exports the public `LegacyTableFormatter` surface |
 | `formatters/legacy/common.py` | Shared constants and helper types used across legacy modules |
-| `formatters/legacy/compact.py` | `_format_compact_table` implementation for the legacy formatter |
-| `formatters/legacy/csv.py` | `_format_csv` implementation for the legacy formatter |
 | `formatters/legacy/detail.py` | Detail-row rendering helpers |
 | `formatters/legacy/full.py` | `_format_full_table` implementation for the legacy formatter |
 | `formatters/legacy/helpers.py` | General rendering helpers (column widths, header lines, etc.) |
@@ -180,8 +158,7 @@ extracted from the monolithic `legacy_table_formatter.py`:
 
 ## See Also
 
-- [`docs/toon-format-guide.md`](../toon-format-guide.md)
 - [`docs/format_specifications.md`](../format_specifications.md)
 - [`docs/format-testing-guide.md`](../format-testing-guide.md)
-- [`CLAUDE.md` § "Deliberate design decisions"](../../CLAUDE.md) — TOON default rationale
+- [`CLAUDE.md` § "Deliberate design decisions"](../../CLAUDE.md) — JSON contract rationale
 - [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks new `formatters/*.py` without a `formatters.md` update

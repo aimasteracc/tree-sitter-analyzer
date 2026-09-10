@@ -85,7 +85,7 @@ def test_dict_get_does_not_bind_to_project_search_cache_get(tmp_path: Path) -> N
             # format_helper.py does NOT import search_cache.
             # result is a LOCAL DICT LITERAL — the extractor infers its type.
             "format_helper.py": (
-                "def apply_toon_format_to_response(raw_result):\n"
+                "def apply_output_format_to_response(raw_result):\n"
                 "    result = {}\n"
                 "    result['key'] = raw_result\n"
                 "    if result.get('format') != 'toon':\n"

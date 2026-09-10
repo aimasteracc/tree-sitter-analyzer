@@ -124,11 +124,6 @@ class TestToolDefinition:
     def test_schema_strict_no_additional_properties(self, tool):
         assert tool.get_tool_schema()["additionalProperties"] is False
 
-    def test_schema_output_format_default_is_toon(self, tool):
-        assert (
-            tool.get_tool_schema()["properties"]["output_format"]["default"] == "toon"
-        )
-
     def test_schema_caps(self, tool):
         props = tool.get_tool_schema()["properties"]
         assert props["maxFiles"]["maximum"] == 30
@@ -423,20 +418,6 @@ class TestExecuteHappyPath:
 
     def test_source_path_joins_relative_paths_with_project_root(self, tool_with_root):
         assert tool_with_root._source_path("src/app.py").endswith("src/app.py")
-
-
-class TestExecuteOutputFormat:
-    @pytest.mark.asyncio
-    async def test_toon_format_default(self, tool):
-        result = await tool.execute({"query": "foo"})
-        assert result["format"] == "toon"
-        assert "toon_content" in result
-
-    @pytest.mark.asyncio
-    async def test_json_format_no_toon_blob(self, tool):
-        result = await tool.execute({"query": "foo", "output_format": "json"})
-        assert "toon_content" not in result
-        assert result["verdict"] == "WARN"
 
 
 class TestExtractSnippet:

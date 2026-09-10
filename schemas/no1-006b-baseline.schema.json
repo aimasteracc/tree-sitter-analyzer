@@ -1,0 +1,231 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tree-sitter-analyzer.dev/schemas/no1-006b-baseline.schema.json",
+  "title": "NO1-006B receipt v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "roadmap_id",
+    "evidence_level",
+    "collection_started_at_utc",
+    "collection_finished_at_utc",
+    "collector",
+    "source",
+    "dependency_closure",
+    "environment",
+    "measurements",
+    "commands",
+    "repeats",
+    "measured_axis",
+    "platform_axes",
+    "canonical_payload_sha256"
+  ],
+  "properties": {
+    "schema_version": {"const":3},
+    "roadmap_id": {"const":"NO1-006B"},
+    "evidence_level": {"const":"E0"},
+    "collection_started_at_utc": {"type":"string","format":"date-time"},
+    "collection_finished_at_utc": {"type":"string","format":"date-time"},
+    "canonical_payload_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "collector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit","script_sha256","schema_sha256","support_sha256","tool_lock_sha256","tool_export_sha256","tool_inventory","tool_inventory_sha256"],
+      "properties": {
+        "commit": {"type":"string","pattern":"^[0-9a-f]{40}$"},
+        "script_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "schema_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "support_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "tool_lock_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "tool_export_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "tool_inventory_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "tool_inventory": {
+          "type":"array","minItems":1,"maxItems":64,"items":{
+            "type":"object","additionalProperties":false,"required":["name","version"],
+            "properties":{"name":{"type":"string","pattern":"^[a-z0-9]+(?:-[a-z0-9]+)*$","maxLength":100},"version":{"type":"string","minLength":1,"maxLength":100}}
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit","git_tree","lock_sha256","source_archive_sha256","root_wheel_filename","root_wheel_sha256","root_wheel_artifact_size_bytes"],
+      "properties": {
+        "commit": {"const":"7e0e8f6e03270fcbf4025d717415ef69c9354145"},
+        "git_tree": {"const":"fe340eff33002b67ae88b34f1174bbcca4efc370"},
+        "lock_sha256": {"const":"516430f61ddff1d9a4436409822d7b12aa6d6c9cc0a7b6fc3fa7085639dc0909"},
+        "source_archive_sha256": {"const":"52fc24594778d798257412e0137b096b0c1670d6a376a9d9714f5a49dfbe706c"},
+        "root_wheel_filename": {"type":"string","pattern":"^[^/]+\\.whl$","maxLength":200},
+        "root_wheel_sha256": {"const":"c1cb3520542fd14dad60ddec55dfac6afbdaa424e7a4a39d875be1801d98f9e8"},
+        "root_wheel_artifact_size_bytes": {"const":2209032}
+      }
+    },
+    "dependency_closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["derivation","export_sha256","lock_sha256","distributions"],
+      "properties": {
+        "derivation": {"const":"uv.lock frozen export; hashed exact requirements; project wheel installed separately with --no-deps"},
+        "export_sha256": {"const":"33b03a373e2ebeafa44a792d14121f081c1af36870e2d97198a9f6432653b6bb"},
+        "lock_sha256": {"const":"516430f61ddff1d9a4436409822d7b12aa6d6c9cc0a7b6fc3fa7085639dc0909"},
+        "distributions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name","version","role"],
+            "properties": {
+              "name": {"type":"string","pattern":"^[a-z0-9]+(?:-[a-z0-9]+)*$","maxLength":100},
+              "version": {"type":"string","minLength":1,"maxLength":100},
+              "role": {"enum":["root","direct","transitive"]}
+            }
+          }
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os","system","machine","python","build_python","build_backend","uv","network_policy","bytecode_policy","cache_protocol","sample_order","host_fingerprint"],
+      "properties": {
+        "os": {"type":"string","minLength":1,"maxLength":256},
+        "system": {"enum":["macos","linux","windows"]},
+        "machine": {"type":"string","minLength":1,"maxLength":100},
+        "python": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version","implementation","machine","system","architecture","sysconfig_platform","pointer_bits","executable","resolved_base_executable_sha256","soabi","cache_tag","abiflags","python_build","py_debug","config_args_sha256"],
+          "properties": {"version":{"type":"string","minLength":1,"maxLength":50},"implementation":{"type":"string","minLength":1,"maxLength":50},"machine":{"type":"string","minLength":1,"maxLength":100},"system":{"type":"string","minLength":1,"maxLength":100},"architecture":{"type":"string","minLength":1,"maxLength":100},"sysconfig_platform":{"type":"string","minLength":1,"maxLength":200},"pointer_bits":{"type":"integer","enum":[32,64]},"executable":{"const":"<target-venv-python>"},"resolved_base_executable_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"soabi":{"type":"string","minLength":1,"maxLength":200},"cache_tag":{"type":"string","minLength":1,"maxLength":100},"abiflags":{"type":"string","maxLength":20},"python_build":{"type":"array","prefixItems":[{"type":"string","minLength":1,"maxLength":100},{"type":"string","minLength":1,"maxLength":100}],"items":false,"minItems":2,"maxItems":2},"py_debug":{"type":"integer","enum":[0,1]},"config_args_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}}
+        },
+        "build_python": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version","implementation","machine","system","architecture","sysconfig_platform","pointer_bits","executable","resolved_base_executable_sha256","soabi","cache_tag","abiflags","python_build","py_debug","config_args_sha256"],
+          "properties": {"version":{"type":"string","minLength":1,"maxLength":50},"implementation":{"type":"string","minLength":1,"maxLength":50},"machine":{"type":"string","minLength":1,"maxLength":100},"system":{"type":"string","minLength":1,"maxLength":100},"architecture":{"type":"string","minLength":1,"maxLength":100},"sysconfig_platform":{"type":"string","minLength":1,"maxLength":200},"pointer_bits":{"type":"integer","enum":[32,64]},"executable":{"const":"<collector-sys-executable>"},"resolved_base_executable_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"soabi":{"type":"string","minLength":1,"maxLength":200},"cache_tag":{"type":"string","minLength":1,"maxLength":100},"abiflags":{"type":"string","maxLength":20},"python_build":{"type":"array","prefixItems":[{"type":"string","minLength":1,"maxLength":100},{"type":"string","minLength":1,"maxLength":100}],"items":false,"minItems":2,"maxItems":2},"py_debug":{"type":"integer","enum":[0,1]},"config_args_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}}
+        },
+        "build_backend": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name","version"],
+          "properties": {"name":{"const":"hatchling"},"version":{"const":"1.31.0"}}
+        },
+        "uv": {"type":"object","additionalProperties":false,"required":["version","sha256"],"properties":{"version":{"const":"uv 0.12.3 (507230998 2026-08-07 aarch64-apple-darwin)"},"sha256":{"const":"2b4ccdac26598ca8c300e5c36d24297fa1471c350c46d2f34c835bf06be303ab"}}},
+        "network_policy": {"const":"UV_OFFLINE=1; uv --offline; no network transfer measurement"},
+        "bytecode_policy": {"const":"PYTHONDONTWRITEBYTECODE=1"},
+        "cache_protocol": {
+          "const": "two independent fresh identical venvs; first sample bytecode-cold but OS cache uncontrolled; subsequent samples fresh-process warm"
+        },
+        "sample_order": {"const":"all CLI samples, then all MCP samples"},
+        "host_fingerprint": {
+          "type":"object",
+          "additionalProperties":false,
+          "required":["cpu","logical_cpu_count","ram_bytes","filesystem","virtualization","power"],
+          "properties": {
+            "cpu":{"type":"string","minLength":1,"maxLength":200},
+            "logical_cpu_count":{"type":"integer","minimum":1},
+            "ram_bytes":{"type":"integer","minimum":1},
+            "filesystem":{"const":"unknown; not controlled"},
+            "virtualization":{"const":"unknown; not detected"},
+            "power":{"const":"unknown; not controlled"}
+          }
+        }
+      }
+    },
+    "measurements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root_wheel_artifact_size_bytes",
+        "network_transfer_bytes",
+        "installed_size_bytes",
+        "installed_regular_file_count",
+        "installed_size_scope",
+        "direct_dependency_count",
+        "transitive_dependency_count",
+        "dependency_distribution_count_excluding_root",
+        "installed_distribution_count_including_root",
+        "cli_startup",
+        "mcp_startup"
+      ],
+      "properties": {
+        "root_wheel_artifact_size_bytes": {"const":2209032},
+        "network_transfer_bytes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status","reason"],
+          "properties": {"status":{"const":"unknown"},"reason":{"const":"offline cache artifacts do not measure network transfer"}}
+        },
+        "installed_size_bytes": {"type":"integer","minimum":1},
+        "installed_regular_file_count": {"type":"integer","minimum":1},
+        "installed_size_scope": {
+          "const": "unique resolved in-venv regular files; pyc/direct_url excluded; symlinks rejected; hardlinks inode-deduplicated; interpreter excluded"
+        },
+        "direct_dependency_count": {"type":"integer","minimum":0},
+        "transitive_dependency_count": {"type":"integer","minimum":0},
+        "dependency_distribution_count_excluding_root": {"type":"integer","minimum":0},
+        "installed_distribution_count_including_root": {"type":"integer","minimum":1},
+        "cli_startup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["definition","cold_ms","warm_ms"],
+          "properties": {
+            "definition": {"const":"clock before Popen through exact successful JSON analysis of fixture.py"},
+            "cold_ms": {"type":"number","exclusiveMinimum":0},
+            "warm_ms": {"type":"array","minItems":3,"maxItems":20,"items":{"type":"number","exclusiveMinimum":0}}
+          }
+        },
+        "mcp_startup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["definition","cold_ms","warm_ms","tool_names"],
+          "properties": {
+            "definition": {"const":"clock before Popen through successful initialize, initialized notification, and exact tools/list readiness"},
+            "cold_ms": {"type":"number","exclusiveMinimum":0},
+            "warm_ms": {"type":"array","minItems":3,"maxItems":20,"items":{"type":"number","exclusiveMinimum":0}},
+            "tool_names": {"const":["edit","health","index","nav","project","search","set_project_path","structure","viz"]}
+          }
+        }
+      }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["collector_tool_export","export","build","closure_install","root_install","cli_probe","mcp_probe"],
+      "properties": {
+        "collector_tool_export": {"const":["uv","export","--no-config","--frozen","--offline","--only-group","no1-006b-collector-tool","--no-emit-project","--format","requirements-txt"]},
+        "export": {"const":["uv","export","--no-config","--frozen","--offline","--no-dev","--no-emit-project","--format","requirements-txt"]},
+        "build": {"const":["uv","build","--no-config","--wheel","--offline","--no-build-isolation","--python","<collector-sys-executable>","--out-dir","<temp>/dist"]},
+        "closure_install": {"const":["uv","pip","install","--no-config","--offline","--no-deps","--require-hashes","-r","<locked-requirements>"]},
+        "root_install": {"const":["uv","pip","install","--no-config","--offline","--no-deps","<root-wheel>"]},
+        "cli_probe": {"const":["tree-sitter-analyzer","fixture.py","--summary","--format","json"]},
+        "mcp_probe": {"const":["tree-sitter-analyzer-mcp","--project-root","<fixture>","initialize","notifications/initialized","tools/list"]}
+      }
+    },
+    "repeats": {"type":"integer","minimum":3,"maximum":20},
+    "measured_axis": {"enum":["macos","linux","windows"]},
+    "platform_axes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["macos","linux","windows"],
+      "properties": {"macos":{"enum":["measured_e0","unknown"]},"linux":{"enum":["measured_e0","unknown"]},"windows":{"enum":["measured_e0","unknown"]}}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties":{"measured_axis":{"const":"macos"}}},
+      "then": {"properties":{"platform_axes":{"properties":{"macos":{"const":"measured_e0"},"linux":{"const":"unknown"},"windows":{"const":"unknown"}}}}}
+    },
+    {
+      "if": {"properties":{"measured_axis":{"const":"linux"}}},
+      "then": {"properties":{"platform_axes":{"properties":{"linux":{"const":"measured_e0"},"macos":{"const":"unknown"},"windows":{"const":"unknown"}}}}}
+    },
+    {
+      "if": {"properties":{"measured_axis":{"const":"windows"}}},
+      "then": {"properties":{"platform_axes":{"properties":{"windows":{"const":"measured_e0"},"macos":{"const":"unknown"},"linux":{"const":"unknown"}}}}}
+    }
+  ]
+}

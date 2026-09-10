@@ -48,6 +48,23 @@ def _discover_plugin_files() -> list[tuple[str, Path]]:
     return result
 
 
+def test_plugin_detector_and_loader_canonical_language_sets_match() -> None:
+    """Every built-in entry-point plugin has detector and loader truth entries."""
+    pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text("utf-8"))
+    plugin_languages = set(
+        pyproject["project"]["entry-points"]["tree_sitter_analyzer.plugins"]
+    )
+
+    from tree_sitter_analyzer.language_detector import LanguageDetector
+    from tree_sitter_analyzer.language_loader import LanguageLoader
+
+    loader_aliases = {"cs", "tsx", "yml"}
+    loader_languages = set(LanguageLoader.LANGUAGE_MODULES) - loader_aliases
+    detector_languages = set(LanguageDetector.SUPPORTED_LANGUAGES)
+
+    assert plugin_languages == detector_languages == loader_languages
+
+
 def test_every_plugin_class_inherits_language_plugin() -> None:
     """All XxxPlugin classes must inherit from LanguagePlugin (not ElementExtractor)."""
 
@@ -147,6 +164,40 @@ def test_no_new_single_file_plugins_in_languages_root() -> None:
         f"New single-file plugins detected: {new_plugins}. "
         f"Use languages/<lang>_plugin/ package structure instead."
     )
+
+
+def test_analyze_file_does_not_call_self_extract_elements() -> None:
+    """analyze_file must delegate to extractor.extract_xxx(), not self.extract_elements().
+
+    Calling self.extract_elements() from analyze_file bypasses the
+    create_extractor() delegation pattern the rest of the plugins follow,
+    reintroducing the same hidden-coupling risk create_extractor() exists
+    to avoid (see test_analyze_file_uses_create_extractor above).
+    """
+    violations = []
+    for _lang, path in _discover_plugin_files():
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        rel = str(path.relative_to(PROJECT_ROOT))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "analyze_file"
+            ):
+                for child in ast.walk(node):
+                    if (
+                        isinstance(child, ast.Call)
+                        and isinstance(child.func, ast.Attribute)
+                        and child.func.attr == "extract_elements"
+                        and isinstance(child.func.value, ast.Name)
+                        and child.func.value.id == "self"
+                    ):
+                        msg = (
+                            f"{rel}:{child.lineno} analyze_file calls "
+                            f"self.extract_elements() (must use extractor.extract_xxx delegation)"
+                        )
+                        violations.append(msg)
+    assert violations == [], "\n".join(violations)
 
 
 def test_analyze_file_uses_create_extractor() -> None:

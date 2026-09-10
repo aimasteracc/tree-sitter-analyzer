@@ -26,9 +26,31 @@ def is_existing_test_file(path: Path, root: Path, language: str) -> bool:
     if language == "java":
         return name.endswith(("Test.java", "Tests.java")) and in_test_dir
     if language == "javascript":
-        return name.endswith((".test.js", ".spec.js", ".test.jsx", ".spec.jsx"))
+        return name.endswith(
+            (
+                ".test.js",
+                ".spec.js",
+                ".test.jsx",
+                ".spec.jsx",
+                ".test.mjs",
+                ".spec.mjs",
+                ".test.cjs",
+                ".spec.cjs",
+            )
+        )
     if language == "typescript":
-        return name.endswith((".test.ts", ".spec.ts", ".test.tsx", ".spec.tsx"))
+        return name.endswith(
+            (
+                ".test.ts",
+                ".spec.ts",
+                ".test.tsx",
+                ".spec.tsx",
+                ".test.mts",
+                ".spec.mts",
+                ".test.cts",
+                ".spec.cts",
+            )
+        )
     if language in {"c", "cpp"}:
         return in_test_dir and name.startswith("test_")
     if language in {"csharp", "kotlin", "php"}:

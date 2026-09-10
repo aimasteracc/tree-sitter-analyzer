@@ -9,15 +9,6 @@ to ensure backward compatibility for analyze_code_structure tool.
 from typing import Any
 
 from .formatters.legacy.helpers import (
-    append_compact_fields_section as _append_compact_fields_section_helper,
-)
-from .formatters.legacy.helpers import (
-    append_compact_info_section as _append_compact_info_section_helper,
-)
-from .formatters.legacy.helpers import (
-    append_compact_methods_section as _append_compact_methods_section_helper,
-)
-from .formatters.legacy.helpers import (
     append_detail_fields_section as _append_detail_fields_section_helper,
 )
 from .formatters.legacy.helpers import (
@@ -39,12 +30,6 @@ from .formatters.legacy.helpers import (
     append_single_class_full_sections as _append_single_class_full_sections_helper,
 )
 from .formatters.legacy.helpers import (
-    clean_csv_text as _clean_csv_text_helper,
-)
-from .formatters.legacy.helpers import (
-    compact_table_header as _compact_table_header_helper,
-)
-from .formatters.legacy.helpers import (
     convert_visibility as _convert_visibility_helper,
 )
 from .formatters.legacy.helpers import (
@@ -55,9 +40,6 @@ from .formatters.legacy.helpers import (
 )
 from .formatters.legacy.helpers import (
     extract_doc_summary as _extract_doc_summary_helper,
-)
-from .formatters.legacy.helpers import (
-    format_csv as _format_csv_helper,
 )
 from .formatters.legacy.helpers import (
     full_table_header as _full_table_header_helper,
@@ -108,13 +90,11 @@ class DefaultTableFormatter:
     _get_platform_newline = staticmethod(_get_platform_newline_helper)
     _get_class_methods = staticmethod(_get_class_methods_helper)
     _get_class_fields = staticmethod(_get_class_fields_helper)
-    _format_csv = staticmethod(_format_csv_helper)
     _get_visibility_symbol = staticmethod(_get_visibility_symbol_helper)
     _create_full_signature = staticmethod(_create_full_signature_helper)
     _shorten_type = staticmethod(_shorten_type_helper)
     _convert_visibility = staticmethod(_convert_visibility_helper)
     _extract_doc_summary = staticmethod(_extract_doc_summary_helper)
-    _clean_csv_text = staticmethod(_clean_csv_text_helper)
 
     # Convert between formats: _convert_to_platform_newlines
     def _convert_to_platform_newlines(self, text: str) -> str:
@@ -140,19 +120,10 @@ class DefaultTableFormatter:
         """
         if self.format_type == "full":
             result = self._format_full_table(structure_data)
-        elif self.format_type == "compact":
-            result = self._format_compact_table(structure_data)
-        elif self.format_type == "csv":
-            result = self._format_csv(structure_data)
         elif self.format_type == "signatures":
             result = self._format_signatures_table(structure_data)
         else:
             raise ValueError(f"Unsupported format type: {self.format_type}")
-
-        # Convert to platform-specific newline characters
-        # Skip newline conversion for CSV format
-        if self.format_type in ["csv"]:
-            return result
 
         return self._convert_to_platform_newlines(result)
 
@@ -381,35 +352,9 @@ class DefaultTableFormatter:
             lines.pop()
         return "\n".join(lines)
 
-    # Format data for output: _format_compact_table
+    # Format data for output: _format_compact_table (removed)
     def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format - compliant with format specification"""
-        lines = []
-
-        package_name = data.get("package", {}).get("name", "")
-        classes = data.get("classes", [])
-        if classes is None:
-            classes = []
-        file_path = str(data.get("file_path", ""))
-
-        lines.append(
-            f"# {_compact_table_header_helper(package_name, classes, file_path)}"
+        """Compact table format (removed)"""
+        raise NotImplementedError(
+            "Compact format removed; use 'full' or 'signatures' instead"
         )
-        lines.append("")
-
-        methods = data.get("methods", []) or []
-        fields = data.get("fields", []) or []
-
-        _append_compact_info_section_helper(lines, package_name, methods, fields)
-        _append_compact_methods_section_helper(
-            lines,
-            methods,
-            self._format_compact_method_row,
-        )
-        _append_compact_fields_section_helper(lines, fields, self._abbreviate_type)
-
-        # Remove trailing empty lines
-        while lines and lines[-1] == "":
-            lines.pop()
-
-        return "\n".join(lines)

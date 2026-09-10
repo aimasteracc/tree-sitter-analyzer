@@ -220,8 +220,8 @@ class TestGetToolDefinition:
         properties = schema.get("properties", {})
         assert "output_format" in properties
         assert properties["output_format"]["type"] == "string"
-        assert properties["output_format"]["enum"] == ["json", "toon"]
-        assert properties["output_format"]["default"] == "toon"
+        assert properties["output_format"]["enum"] == ["json"]
+        assert properties["output_format"]["default"] == "json"
 
 
 class TestValidateRoots:
@@ -375,7 +375,7 @@ class TestAgentSummary:
             no_ignore=False,
         )
         assert summary["risk"] == "low"
-        assert summary["suggested_tool"] == "search_content"
+        assert summary["suggested_tool"] == "list_files"  # search_content は廃止済み
         assert summary["next_step"].startswith("Broaden roots")
 
     def test_agent_summary_for_limit_hit(self):

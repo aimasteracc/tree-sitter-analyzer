@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from tree_sitter_analyzer.mcp import MCP_INFO
+from tree_sitter_analyzer.mcp._sdk_compat import MCP2ServerAdapter, adapt_server
 from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
 from tree_sitter_analyzer.mcp.utils.error_handler import (
     ErrorCategory,
@@ -253,3 +254,137 @@ class TestMCPServerIntegration:
 
             # Server should still be initialized
             assert server.is_initialized()
+
+
+class _RawMCP2Server:
+    def __init__(self) -> None:
+        self.handlers: dict[str, object] = {}
+
+    def add_request_handler(
+        self, method: str, params_type: object, handler: object
+    ) -> None:
+        self.handlers[method] = handler
+
+
+def test_mcp2_adapter_delegates_unknown_attributes() -> None:
+    raw = _RawMCP2Server()
+    assert MCP2ServerAdapter(raw).handlers is raw.handlers
+
+
+def test_adapter_preserves_native_mcp1_server() -> None:
+    class Native:
+        def list_tools(self):
+            return None
+
+    native = Native()
+    assert adapt_server(native) is native
+
+
+@pytest.mark.asyncio
+async def test_mcp2_call_tool_adapter_maps_snake_case_params() -> None:
+    from mcp.types import TextContent
+
+    raw = _RawMCP2Server()
+    adapter = MCP2ServerAdapter(raw)
+
+    @adapter.call_tool()
+    async def called(name, arguments):
+        return [TextContent(type="text", text=f"{name}:{arguments['value']}")]
+
+    params = type("Params", (), {"name": "sample", "arguments": {"value": 7}})()
+    result = await raw.handlers["tools/call"](object(), params)
+    assert result.content[0].text == "sample:7"
+
+
+@pytest.mark.asyncio
+async def test_mcp2_list_resources_adapter_wraps_sdk_result() -> None:
+    from mcp.types import Resource
+
+    raw = _RawMCP2Server()
+    adapter = MCP2ServerAdapter(raw)
+
+    @adapter.list_resources()
+    async def listed():
+        return [Resource(uri="test://one", name="one")]
+
+    result = await raw.handlers["resources/list"](object(), object())
+    assert [resource.name for resource in result.resources] == ["one"]
+
+
+@pytest.mark.asyncio
+async def test_mcp2_read_resource_adapter_wraps_plain_text() -> None:
+    raw = _RawMCP2Server()
+    adapter = MCP2ServerAdapter(raw)
+
+    @adapter.read_resource()
+    async def read(uri):
+        return "fixture-content"
+
+    params = type("Params", (), {"uri": "test://one"})()
+    result = await raw.handlers["resources/read"](object(), params)
+    assert result.contents[0].text == "fixture-content"
+
+
+@pytest.mark.asyncio
+async def test_mcp2_list_prompts_adapter_wraps_sdk_result() -> None:
+    from mcp.types import Prompt
+
+    raw = _RawMCP2Server()
+    adapter = MCP2ServerAdapter(raw)
+
+    @adapter.list_prompts()
+    async def listed():
+        return [Prompt(name="smart", description="fixture")]
+
+    result = await raw.handlers["prompts/list"](object(), object())
+    assert [prompt.name for prompt in result.prompts] == ["smart"]
+
+
+@pytest.mark.asyncio
+async def test_mcp2_get_prompt_adapter_forwards_arguments() -> None:
+    raw = _RawMCP2Server()
+    adapter = MCP2ServerAdapter(raw)
+
+    @adapter.get_prompt()
+    async def get(name, arguments):
+        return {"description": f"{name}:{arguments['value']}", "messages": []}
+
+    params = type("Params", (), {"name": "smart", "arguments": {"value": 7}})()
+    result = await raw.handlers["prompts/get"](object(), params)
+    assert result["description"] == "smart:7"
+
+
+@pytest.mark.asyncio
+async def test_mcp2_read_resource_adapter_preserves_helper_contents() -> None:
+    raw = _RawMCP2Server()
+    adapter = MCP2ServerAdapter(raw)
+    text_item = type("Item", (), {"content": "text", "mime_type": "text/plain"})()
+    bytes_item = type("Item", (), {"content": b"bytes", "mime_type": None})()
+
+    @adapter.read_resource()
+    async def read(uri):
+        return [text_item, bytes_item]
+
+    params = type("Params", (), {"uri": "test://one"})()
+    result = await raw.handlers["resources/read"](object(), params)
+    assert [item.text for item in result.contents] == ["text", "bytes"]
+
+
+def test_create_server_passes_detected_version_to_raw_sdk(monkeypatch, tmp_path):
+    # PR #1239: MCP 2 discovery must expose the same version as initialization.
+    import tree_sitter_analyzer.mcp.server as server_module
+
+    observed = {}
+
+    class Raw:
+        def __init__(self, name, version=None):
+            observed.update(name=name, version=version)
+
+    monkeypatch.setattr(server_module, "Server", Raw)
+    monkeypatch.setattr(server_module, "adapt_server", lambda raw: raw)
+    monkeypatch.setattr(server_module, "register_tools", lambda *args: None)
+    monkeypatch.setattr(server_module, "register_resources", lambda *args: None)
+    monkeypatch.setattr(server_module, "register_prompts", lambda *args: None)
+    server = TreeSitterAnalyzerMCPServer(str(tmp_path))
+    server.create_server()
+    assert observed == {"name": server.name, "version": server.version}

@@ -32,6 +32,7 @@ class DependencyAnalysisTool(BaseMCPTool):
         # both the instance cache AND, indirectly, DependencyGraph's
         # _global_cache (whose key is now derived from the same fingerprint).
         self._graph_fingerprint: GraphFingerprint | None = None
+        self._graph_content_key: str | None = None
         self._graph_built_at: float | None = None
         self._cache_invalidated_reason: str | None = None
         super().__init__(project_root)
@@ -39,6 +40,7 @@ class DependencyAnalysisTool(BaseMCPTool):
     def _on_project_root_changed(self, project_root: str | None) -> None:
         self._graph = None
         self._graph_fingerprint = None
+        self._graph_content_key = None
         self._graph_built_at = None
         self._cache_invalidated_reason = None
 
@@ -47,6 +49,7 @@ class DependencyAnalysisTool(BaseMCPTool):
             raise ValueError("Project root not set. Call set_project_path first.")
 
         current_fp = compute_graph_fingerprint(self.project_root)
+        content_key = DependencyGraph._cache_key_for(str(self.project_root))
         reason: str | None = None
         if self._graph is None:
             reason = "cold"
@@ -54,10 +57,13 @@ class DependencyAnalysisTool(BaseMCPTool):
             reason = self._explain_fingerprint_delta(
                 self._graph_fingerprint, current_fp
             )
+        elif content_key is None or self._graph_content_key != content_key:
+            reason = "source_modified"
 
         if reason is not None:
             self._graph = DependencyGraph(self.project_root)
             self._graph_fingerprint = current_fp
+            self._graph_content_key = content_key
             self._graph_built_at = time.time()
             self._cache_invalidated_reason = reason
         else:
@@ -147,9 +153,9 @@ class DependencyAnalysisTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "enum": ["json"],
+                    "description": "Output format: JSON",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -173,7 +179,7 @@ class DependencyAnalysisTool(BaseMCPTool):
         # ``mode`` in the result is the canonical one ``summary`` —
         # matching the CLI's existing alias behaviour.
         mode = self._normalize_mode(arguments.get("mode", "summary"))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         # Cache hit fast-path: ``self._graph`` is built lazily on the first
         # call (2-5s on medium repos) and reused for the rest of the process
         # lifetime — subsequent calls finish in single-digit ms.
@@ -216,9 +222,9 @@ class DependencyAnalysisTool(BaseMCPTool):
         if self._cache_invalidated_reason is not None:
             result["cache_invalidated_reason"] = self._cache_invalidated_reason
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _resolve_file(self, file_path: str, graph: DependencyGraph) -> str:
         """Resolve file_path to a project-relative path that exists in the graph."""

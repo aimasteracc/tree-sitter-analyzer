@@ -53,16 +53,7 @@ class CacheManager:
             results["errors"].append(f"UnifiedAnalysisEngine: {str(e)}")
             logger.error(f"❌ UnifiedAnalysisEngine キャッシュクリア失敗: {e}")
 
-        # 2. SearchContentTool のキャッシュをクリア
-        try:
-            self._clear_search_content_cache()
-            results["cleared_caches"].append("SearchContentTool")
-            results["total_cleared"] += 1
-            logger.info("✅ SearchContentTool キャッシュをクリアしました")
-        except Exception as e:
-            results["failed_caches"].append("SearchContentTool")
-            results["errors"].append(f"SearchContentTool: {str(e)}")
-            logger.error(f"❌ SearchContentTool キャッシュクリア失敗: {e}")
+        # 2. SearchContentTool は廃止済み - キャッシュクリア不要
 
         # 3. その他のMCPツールキャッシュをクリア
         try:
@@ -102,20 +93,6 @@ class CacheManager:
             logger.error(f"UnifiedAnalysisEngine キャッシュクリア中にエラー: {e}")
             raise
 
-    def _clear_search_content_cache(self) -> None:
-        """SearchContentTool のキャッシュをクリア"""
-        try:
-            # SearchCache のグローバルインスタンスをクリア
-            from tree_sitter_analyzer.mcp.utils.search_cache import clear_cache
-
-            clear_cache()
-
-        except ImportError as e:
-            logger.warning(f"SearchCache インポート失敗: {e}")
-        except Exception as e:
-            logger.error(f"SearchCache キャッシュクリア中にエラー: {e}")
-            raise
-
     def _clear_other_mcp_caches(self) -> None:
         """その他のMCPツールのキャッシュをクリア"""
         try:
@@ -134,7 +111,8 @@ class CacheManager:
         Returns:
             キャッシュ統計情報
         """
-        stats = {"analysis_engine": {}, "search_content": {}, "timestamp": None}
+        # search_content キャッシュは廃止済み (SearchContentTool 削除)
+        stats = {"analysis_engine": {}, "timestamp": None}
 
         # UnifiedAnalysisEngine の統計
         try:
@@ -145,16 +123,6 @@ class CacheManager:
                 stats["analysis_engine"] = engine.get_cache_stats()
         except Exception as e:
             stats["analysis_engine"]["error"] = str(e)
-
-        # SearchContentTool の統計
-        try:
-            from tree_sitter_analyzer.mcp.utils.search_cache import get_default_cache
-
-            cache = get_default_cache()
-            if hasattr(cache, "get_stats"):
-                stats["search_content"] = cache.get_stats()
-        except Exception as e:
-            stats["search_content"]["error"] = str(e)
 
         # タイムスタンプを追加
         import datetime
@@ -177,21 +145,7 @@ class CacheManager:
             "errors": [],
         }
 
-        try:
-            # SearchContentTool のキャッシュを無効化
-            # これは新しいインスタンス作成時にキャッシュを無効にする
-            from tree_sitter_analyzer.mcp.utils.search_cache import configure_cache
-
-            configure_cache(max_size=0, ttl_seconds=0)  # サイズ0でキャッシュ無効化
-
-            results["disabled_caches"].append("SearchContentTool")
-            results["total_disabled"] += 1
-            logger.info("✅ SearchContentTool キャッシュを無効化しました")
-
-        except Exception as e:
-            results["failed_disables"].append("SearchContentTool")
-            results["errors"].append(f"SearchContentTool disable: {str(e)}")
-            logger.error(f"❌ SearchContentTool キャッシュ無効化失敗: {e}")
+        # SearchContentTool は廃止済み - キャッシュ無効化不要
 
         return results
 

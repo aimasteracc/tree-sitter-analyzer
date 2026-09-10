@@ -254,27 +254,6 @@ class TestAdvancedCommandOutputStatistics:
             assert call_args["node_count"] == 50
             assert call_args["language"] == "python"
 
-    def test_output_statistics_toon(self, command, mock_analysis_result):
-        """Test output statistics in toon format."""
-        command.args = MagicMock()
-        command.args.output_format = "toon"
-        command.args.toon_use_tabs = False
-
-        with (
-            patch("tree_sitter_analyzer.cli.commands.advanced_command.output_section"),
-            patch(
-                "tree_sitter_analyzer.cli.commands.advanced_command.ToonFormatter"
-            ) as mock_formatter,
-        ):
-            mock_formatter_instance = MagicMock()
-            mock_formatter.return_value = mock_formatter_instance
-            mock_formatter_instance.format.return_value = "formatted_output"
-
-            command._output_statistics(mock_analysis_result)
-
-            mock_formatter.assert_called_once_with(use_tabs=False)
-            mock_formatter_instance.format.assert_called_once()
-
 
 class TestAdvancedCommandOutputFullAnalysis:
     """Tests for _output_full_analysis method."""
@@ -316,27 +295,6 @@ class TestAdvancedCommandOutputFullAnalysis:
             assert call_args["line_count"] == 100
             assert call_args["element_count"] == 0
             assert call_args["success"] is True
-
-    def test_output_full_analysis_toon(self, command, mock_analysis_result):
-        """Test output full analysis in toon format."""
-        command.args = MagicMock()
-        command.args.output_format = "toon"
-        command.args.toon_use_tabs = False
-
-        with (
-            patch("tree_sitter_analyzer.cli.commands.advanced_command.output_section"),
-            patch(
-                "tree_sitter_analyzer.cli.commands.advanced_command.ToonFormatter"
-            ) as mock_formatter,
-        ):
-            mock_formatter_instance = MagicMock()
-            mock_formatter.return_value = mock_formatter_instance
-            mock_formatter_instance.format.return_value = "formatted_output"
-
-            command._output_full_analysis(mock_analysis_result)
-
-            mock_formatter.assert_called_once_with(use_tabs=False)
-            mock_formatter_instance.format.assert_called_once()
 
 
 class TestAdvancedCommandOutputTextAnalysis:

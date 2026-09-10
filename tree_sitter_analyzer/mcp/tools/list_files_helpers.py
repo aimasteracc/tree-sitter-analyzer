@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import Any
 
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
+from ..utils.format_helper import (
+    apply_output_format_to_response,
+    format_for_file_output,
+)
 from . import fd_rg_utils
 
 logger = logging.getLogger(__name__)
@@ -149,11 +152,10 @@ TOOL_SCHEMA: dict[str, Any] = {
                 "Set to true when debugging 'why did we miss this file'."
             ),
         },
-        # Token-efficient toon format by default
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
         },
         "output_file": {
             "type": "string",
@@ -321,9 +323,9 @@ def _respond_count_only(
         return normalize_envelope(file_response)
     result.update(file_response)
 
-    output_format = context.arguments.get("output_format", "toon")
+    output_format = context.arguments.get("output_format", "json")
     normalize_envelope(result)
-    return apply_toon_format_to_response(result, output_format)
+    return apply_output_format_to_response(result, output_format)
 
 
 def _attach_total_count_metadata(
@@ -426,9 +428,9 @@ def _respond_detailed(
         return normalize_envelope(file_response)
     final_result.update(file_response)
 
-    output_format = context.arguments.get("output_format", "toon")
+    output_format = context.arguments.get("output_format", "json")
     normalize_envelope(final_result)
-    return apply_toon_format_to_response(final_result, output_format)
+    return apply_output_format_to_response(final_result, output_format)
 
 
 def _save_count_output(
@@ -490,7 +492,7 @@ def _save_to_file(
 ) -> str | None:
     """Save content to output file via FileOutputManager."""
     try:
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         formatted, _ = format_for_file_output(content, output_format)
         manager = FileOutputManager(project_root)
         return manager.save_to_file(content=formatted, base_name=output_file)
@@ -616,7 +618,7 @@ def _build_list_files_next_steps(
         )
     if count == 0:
         steps.append(
-            "search_content(query=...) to grep across the project when text is known."
+            "Use CC Grep tool to grep across the project when text is known."
         )
         steps.append("Broaden roots or relax filters if you expected matches.")
         return steps
@@ -633,7 +635,7 @@ def _build_list_files_next_steps(
         )
     else:
         steps.append(
-            "find_and_grep(query=<text>, pattern=<glob>) to grep inside these files."
+            "Use CC Grep tool with a glob pattern to grep inside these files."
         )
         steps.append(
             "smart_context to focus on the most relevant subset before reading."
@@ -657,7 +659,7 @@ def _summary_next_step(
     if truncated or count >= limit:
         return "Narrow list_files with pattern, extensions, depth, or exclude filters."
     if count == 0:
-        return "Broaden roots or pattern, or use search_content when looking for text."
+        return "Broaden roots or pattern, or use CC Grep tool when looking for text."
     if count_only:
         return "Run list_files without count_only for a focused file list."
     return "Open the most relevant files with smart_context or read_partial."
@@ -669,7 +671,8 @@ def _summary_suggested_tool(
     if truncated or count >= limit:
         return "list_files"
     if count == 0:
-        return "search_content"
+        # search_content は廃止済み。テキスト検索には CC 組み込みの Grep tool を使用。
+        return "list_files"
     if count_only:
         return "list_files"
     return "smart_context"

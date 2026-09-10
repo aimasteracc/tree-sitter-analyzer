@@ -38,26 +38,6 @@ async def test_analyze_scale_metrics_batch_json() -> None:
 
 
 @pytest.mark.asyncio
-async def test_analyze_scale_metrics_batch_toon_default_strips_json_details() -> None:
-    with tempfile.TemporaryDirectory() as temp_dir:
-        p = Path(temp_dir)
-        (p / "a.py").write_text("print('a')\n", encoding="utf-8")
-
-        tool = AnalyzeScaleTool(project_root=temp_dir)
-        res = await tool.execute(
-            {
-                "file_paths": [str(p / "a.py")],
-                "metrics_only": True,
-                "output_format": "toon",
-            }
-        )
-
-        assert res.get("format") == "toon"
-        assert "toon_content" in res
-        assert "results" not in res
-
-
-@pytest.mark.asyncio
 async def test_analyze_scale_metrics_batch_requires_metrics_only() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         p = Path(temp_dir)

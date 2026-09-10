@@ -487,101 +487,6 @@ class TestFormatFullTable:
         assert isinstance(result, str)
 
 
-# ---------------------------------------------------------------------------
-# Compact table formatting
-# ---------------------------------------------------------------------------
-
-
-class TestFormatCompactTable:
-    def test_compact_basic_header(self):
-        result = _FMT._format_compact_table(_data())
-        assert "# com.example.Test" in result
-        assert "## Info" in result
-
-    def test_compact_with_methods(self):
-        result = _FMT._format_compact_table(
-            _data(
-                methods=[
-                    {
-                        "name": "test",
-                        "visibility": "public",
-                        "return_type": "void",
-                        "parameters": [],
-                        "is_constructor": False,
-                        "line_range": {"start": 10, "end": 12},
-                        "complexity_score": 1,
-                        "javadoc": "",
-                    }
-                ],
-                statistics={"method_count": 1, "field_count": 0},
-            )
-        )
-        assert "## Methods" in result
-        assert "test" in result
-
-    def test_compact_multiple_classes_with_package(self):
-        result = _FMT._format_compact_table(
-            _data(
-                file_path="path/to/MultiClass.java",
-                classes=[
-                    {
-                        "name": "ClassA",
-                        "type": "class",
-                        "visibility": "public",
-                        "line_range": {"start": 1, "end": 10},
-                    },
-                    {
-                        "name": "ClassB",
-                        "type": "class",
-                        "visibility": "public",
-                        "line_range": {"start": 11, "end": 20},
-                    },
-                ],
-            )
-        )
-        assert "com.example.MultiClass" in result
-        assert "## Info" in result
-
-    def test_compact_multiple_classes_no_package(self):
-        result = _FMT._format_compact_table(
-            _data(
-                file_path="path/to/MultiClass.java",
-                package={},
-                classes=[
-                    {
-                        "name": "ClassA",
-                        "type": "class",
-                        "visibility": "public",
-                        "line_range": {"start": 1, "end": 10},
-                    },
-                    {
-                        "name": "ClassB",
-                        "type": "class",
-                        "visibility": "public",
-                        "line_range": {"start": 11, "end": 20},
-                    },
-                ],
-            )
-        )
-        assert "MultiClass" in result
-        assert "## Info" in result
-
-    def test_compact_single_class_no_package(self):
-        result = _FMT._format_compact_table(
-            _data(
-                package={},
-                classes=[
-                    {
-                        "name": "SingleClass",
-                        "type": "class",
-                        "visibility": "public",
-                        "line_range": {"start": 1, "end": 20},
-                    }
-                ],
-            )
-        )
-        assert "# SingleClass" in result
-        assert "## Info" in result
 
 
 # ---------------------------------------------------------------------------
@@ -609,19 +514,6 @@ class TestMethodFormatting:
         row = _FMT._format_method_row(method)
         assert "Line 1" in row
 
-    def test_create_compact_signature_abbreviates_types(self):
-        method = {
-            "parameters": [
-                {"type": "String", "name": "s"},
-                {"type": "int", "name": "n"},
-            ],
-            "return_type": "boolean",
-        }
-        result = _FMT._create_compact_signature(method)
-        assert "S" in result
-        assert "i" in result
-        assert "b" in result
-
     def test_create_full_signature_includes_types(self):
         method = {
             "parameters": [{"type": "String", "name": "text"}],
@@ -632,50 +524,6 @@ class TestMethodFormatting:
         assert "void" in result
 
 
-# ---------------------------------------------------------------------------
-# Type shortening
-# ---------------------------------------------------------------------------
-
-
-class TestTypeShortening:
-    def test_primitive_types(self):
-        assert _FMT._shorten_type("int") == "i"
-        assert _FMT._shorten_type("long") == "l"
-        assert _FMT._shorten_type("double") == "d"
-        assert _FMT._shorten_type("boolean") == "b"
-        assert _FMT._shorten_type("void") == "void"
-
-    def test_common_object_types(self):
-        assert _FMT._shorten_type("String") == "S"
-        assert _FMT._shorten_type("Object") == "O"
-        assert _FMT._shorten_type("Exception") == "E"
-
-    def test_collection_types(self):
-        assert _FMT._shorten_type("List<String>") == "L<S>"
-        assert _FMT._shorten_type("Map<String,Object>") == "M<S,O>"
-
-    def test_array_types(self):
-        assert _FMT._shorten_type("String[]") == "S[]"
-        assert _FMT._shorten_type("Object[]") == "O[]"
-        assert _FMT._shorten_type("int[]") == "i[]"
-        assert _FMT._shorten_type("Unknown[]") == "U[]"
-
-    def test_none_type_returns_O(self):
-        assert _FMT._shorten_type(None) == "O"
-
-    def test_unknown_type_returns_itself(self):
-        assert _FMT._shorten_type("CustomType") == "CustomType"
-
-    def test_empty_array_type(self):
-        assert _FMT._shorten_type("[]") == "O[]"
-
-    def test_exception_abbreviations(self):
-        assert _FMT._shorten_type("RuntimeException") == "RE"
-        assert _FMT._shorten_type("SQLException") == "SE"
-        assert _FMT._shorten_type("IllegalArgumentException") == "IAE"
-
-    def test_non_string_input(self):
-        assert _FMT._shorten_type(123) == "123"
 
 
 # ---------------------------------------------------------------------------
@@ -715,7 +563,7 @@ class TestFormatDispatch:
         assert json.loads(result) is not None
 
     def test_format_summary_contains_package(self):
-        result = _FMT.format_summary(_data())
+        result = _FMT.format_structure(_data())
         assert isinstance(result, str)
         assert "com.example" in result
 

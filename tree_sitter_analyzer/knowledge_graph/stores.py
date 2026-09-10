@@ -11,48 +11,9 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from .models import KnowledgeEdge, KnowledgeGraphSnapshot, KnowledgeNode
-
-
-class JsonKnowledgeGraphStore:
-    """Small JSON sidecar used by CLI/MCP and browser exports."""
-
-    def __init__(self, project_root: str, path: str | None = None) -> None:
-        self.project_root = os.path.abspath(project_root)
-        self.path = path or os.path.join(
-            self.project_root,
-            ".ast-cache",
-            "knowledge-graph.json",
-        )
-
-    def write(self, snapshot: KnowledgeGraphSnapshot) -> dict[str, Any]:
-        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        payload = snapshot.to_dict()
-        Path(self.path).write_text(
-            json.dumps(payload, ensure_ascii=False, sort_keys=True),
-            encoding="utf-8",
-        )
-        return {"path": self.path, "bytes": os.path.getsize(self.path)}
-
-    def read(self) -> dict[str, Any]:
-        payload = json.loads(Path(self.path).read_text(encoding="utf-8"))
-        return cast(dict[str, Any], payload)
-
-    def exists(self) -> bool:
-        return os.path.exists(self.path)
-
-    def status(self) -> dict[str, Any]:
-        if not self.exists():
-            return {"exists": False, "path": self.path}
-        stat = os.stat(self.path)
-        return {
-            "exists": True,
-            "path": self.path,
-            "bytes": stat.st_size,
-            "mtime_ns": stat.st_mtime_ns,
-        }
 
 
 class LadybugUnavailableError(RuntimeError):
@@ -88,6 +49,13 @@ class LadybugKnowledgeGraphStore:
             result["fallback_error"] = str(exc)
             result["elapsed_seconds"] = round(time.perf_counter() - start, 3)
             return result
+
+    def remove_if_exists(self) -> bool:
+        """Remove the Ladybug store if present, returning whether it existed."""
+        if not os.path.exists(self.path):
+            return False
+        Path(self.path).unlink(missing_ok=True)
+        return True
 
     def _write_with_copy(
         self, lb: Any, snapshot: KnowledgeGraphSnapshot

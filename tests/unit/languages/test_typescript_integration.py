@@ -382,25 +382,6 @@ class UserService {
         assert "Test" in full_result  # Class name should be in output
         assert "class" in full_result  # Class type should be shown
 
-        # Test compact format
-        compact_formatter = FormatterRegistry.get_formatter_for_language(
-            "typescript", "compact"
-        )
-        compact_result = compact_formatter.format_structure(sample_data)
-        assert "Test" in compact_result  # Class name should be in output
-        assert "## Info" in compact_result  # Info section should exist
-
-        # Test CSV format
-        csv_formatter = FormatterRegistry.get_formatter_for_language(
-            "typescript", "csv"
-        )
-        csv_result = csv_formatter.format_structure(sample_data)
-        # Check CSV has data
-        lines = csv_result.strip().split("\n")
-        assert lines  # Should have at least header
-        # CSV format includes methods/fields, not class names directly
-        assert "test" in csv_result or "config" in csv_result
-
     def test_end_to_end_typescript_workflow(self):
         """Test complete TypeScript analysis workflow"""
         # 1. Language detection

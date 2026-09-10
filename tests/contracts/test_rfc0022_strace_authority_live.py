@@ -1,0 +1,691 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+
+from tests.contracts.test_rfc0022_strace_evidence_binding import (
+    assert_event_raw_binding,
+    assert_policy_evidence,
+    load_started_preflight,
+    logical_raw_line,
+    raw_exec_record,
+    result_class,
+    successful_exec_lines,
+)
+
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPTS = ROOT / "scripts"
+POLICY_PATH = ROOT / "config/rfc0022-linux-strace-policy.json"
+AUTHORITY = SCRIPTS / "rfc0022_strace_authority.py"
+CONTROL = SCRIPTS / "rfc0022_strace_positive_control.py"
+ADAPTER_ROUTE = SCRIPTS / "rfc0022_strace_adapter_route.py"
+LAUNCHER = SCRIPTS / "rfc0022_strace_target_launcher.py"
+SYSTEM_PYTHON = "/usr/bin/python3"
+WORKFLOW = ROOT / ".github/workflows/rfc0022-linux-write-authority.yml"
+EXPECTED_PATH = ROOT / "tests/fixtures/rfc0022_linux_expected_events.json"
+EXPECTED = json.loads(EXPECTED_PATH.read_text(encoding="utf-8"))
+EVENT_KEYS = {
+    "flags",
+    "line",
+    "operation",
+    "pid",
+    "result",
+    "syscall",
+    "target",
+    "timestamp",
+}
+TRACE_FILE_KEYS = {
+    "exit_timestamp",
+    "parent_pid",
+    "pid",
+    "role",
+    "sha256",
+    "terminal",
+}
+RAW_TRACE_KEYS = {"pid", "sha256", "size", "terminal"}
+PROCESS_EDGE = re.compile(r"^\d+\.\d+ (?:clone|clone3|fork|vfork)\(.*\)\s+= (\d+)$")
+TERMINAL = re.compile(r"\+\+\+ (?:exited with \d+|killed by .+) \+\+\+")
+
+
+def test_launcher_source_locks_native_boundary_controls() -> None:
+    source = AUTHORITY.read_text(encoding="utf-8")
+    required = {
+        '"-ff"',
+        '"-yy"',
+        "trace_dir.chmod(0o700)",
+        "prepare_target_identity(",
+        '"--kill-on-exit"',
+        "close_fds=True",
+        "start_new_session=True",
+        '"PYTHONDONTWRITEBYTECODE": "1"',
+        '"PYTHONNOUSERSITE": "1"',
+        '"XDG_CACHE_HOME"',
+        '"TMPDIR"',
+        "os.killpg(process.pid, signal.SIGKILL)",
+        "surviving traced descendants",
+    }
+    assert {item for item in required if item in source} == required
+
+
+def test_workflow_is_pinned_serial_blocking_and_artifact_preserving() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "runs-on: ubuntu-24.04" in text
+    assert "timeout-minutes: 20" in text
+    assert "permissions:\n  contents: read" in text
+    assert text.count('version: "0.12.3"') == 1
+    assert "uv sync --frozen --all-extras" in text
+    assert "minimum_strace_version" not in text
+    assert 'RFC0022_RUN_LIVE_STRACE: "1"' in text
+    assert "RFC0022_TARGET_USER: rfc0022-target" in text
+    assert text.count('"tests/fixtures/rfc0022_linux_expected_events.json"') == 2
+    assert text.count('"scripts/rfc0022_strace_preflight.py"') == 2
+    for dependency in (
+        "pytest.ini",
+        "tests/__init__.py",
+        "tests/pytest_temp_hygiene.py",
+    ):
+        assert text.count(f'"{dependency}"') == 2
+    assert "sudo useradd --system --user-group --no-create-home" in text
+    assert "sudo chmod o+x /home/runner /home/runner/work" in text
+    assert 'run: sudo chmod -R a+rX "$RFC0022_AUTHORITY_ARTIFACT_DIR"' in text
+    assert (
+        "uv run pytest tests/contracts/test_rfc0022_strace_authority.py "
+        "tests/contracts/test_rfc0022_strace_controls.py "
+        "tests/contracts/test_rfc0022_strace_evidence_binding.py "
+        "tests/contracts/test_rfc0022_strace_preflight.py "
+        "tests/contracts/test_rfc0022_strace_privilege.py "
+        "tests/contracts/test_rfc0022_strace_runtime.py "
+        "tests/contracts/test_rfc0022_strace_process_state.py "
+        "tests/contracts/test_rfc0022_strace_snapshot.py tests/contracts/test_rfc0022_strace_syntax.py "
+        "tests/contracts/test_rfc0022_strace_authority_live.py "
+        "-q -n 0 --reruns=0 --timeout=120"
+    ) in " ".join(text.split())
+    assert text.count("if: always()") == 3
+    assert "if-no-files-found: error" in text
+    assert all(item not in text for item in ("continue-on-error", "|| true"))
+    uses = [line.strip() for line in text.splitlines() if "uses:" in line]
+    assert uses == [
+        "- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
+        "- uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0",
+        "- uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0",
+        "uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1",
+    ]
+
+
+def _live_command(case: Path, artifact: Path, control: str) -> list[str]:
+    target = (
+        ["/bin/false"]
+        if control == "nonzero-exit"
+        else [sys.executable, str(CONTROL), control, "--root", str(case)]
+    )
+    if control == "absolute-write":
+        target.extend(["--absolute-target", str(case / "absolute-created.txt")])
+    if control == "permission-denied":
+        target.extend(["--absolute-target", "/sys/rfc0022-authority-denied"])
+    if control == "trace-tamper-denied":
+        target.extend(["--absolute-target", str(artifact / "trace" / "forged")])
+    return [
+        "sudo",
+        "-n",
+        SYSTEM_PYTHON,
+        "-I",
+        "-S",
+        "-B",
+        str(AUTHORITY),
+        "run",
+        "--policy",
+        str(POLICY_PATH),
+        "--trace-dir",
+        str(artifact / "trace"),
+        "--report",
+        str(artifact / "report.json"),
+        "--monitor-root",
+        str(case),
+        "--target-cwd",
+        str(case),
+        "--timeout",
+        "2" if control == "timeout-detached-descendant" else "20",
+        "--",
+        *target,
+    ]
+
+
+LIVE_CONTROLS = [
+    "absolute-write",
+    "clean",
+    "create-unlink",
+    "descendant-create-unlink",
+    "inherited-fd",
+    "mkdir-rmdir",
+    "nonzero-exit",
+    "permission-denied",
+    "rename-restore",
+    "shared-writable-mmap",
+    "sqlite-sidecar",
+    "timeout-detached-descendant",
+    "trace-tamper-denied",
+    "truncate-restore",
+    "write-then-delete",
+]
+
+
+def _adapter_route_command(case: Path, artifact: Path) -> list[str]:
+    """Authority invocation for the real read-existing producer route."""
+    target = [sys.executable, "-B", str(ADAPTER_ROUTE), "--root", str(case)]
+    return [
+        "sudo",
+        "-n",
+        SYSTEM_PYTHON,
+        "-I",
+        "-S",
+        "-B",
+        str(AUTHORITY),
+        "run",
+        "--policy",
+        str(POLICY_PATH),
+        "--trace-dir",
+        str(artifact / "trace"),
+        "--report",
+        str(artifact / "report.json"),
+        "--monitor-root",
+        str(case),
+        "--target-cwd",
+        str(case),
+        "--timeout",
+        "60",
+        "--",
+        *target,
+    ]
+
+
+def _prepare_adapter_route_fixture(case: Path) -> None:
+    """Build the git fixture as the target user (owned, readable, untraced).
+
+    The repository must be prepared before the authority's before-snapshot
+    and must be owned by the traced user so git's dubious-ownership guard
+    never fires inside the trace.
+    """
+    target_user = os.environ["RFC0022_TARGET_USER"]
+    git = ["sudo", "-n", "-u", target_user, "git", "-C", str(case)]
+    subprocess.run([*git, "init", "-q", "-b", "main"], check=True, capture_output=True)
+    for cfg in (
+        ["user.email", "rfc0022@target"],
+        ["user.name", "RFC0022 Target"],
+        ["maintenance.auto", "false"],
+        ["gc.auto", "0"],
+    ):
+        subprocess.run([*git, "config", *cfg], check=True, capture_output=True)
+    (case / "base.py").write_text("value = 1\n", encoding="utf-8")
+    subprocess.run([*git, "add", "base.py"], check=True, capture_output=True)
+    subprocess.run([*git, "commit", "-qm", "init"], check=True, capture_output=True)
+    (case / "base.py").write_text("value = 2\n", encoding="utf-8")
+    (case / "new.py").write_text("x = 1\n", encoding="utf-8")
+
+
+def test_live_read_existing_route_is_zero_write() -> None:
+    """RFC-0022 P0.4: the real read-existing route writes nothing.
+
+    The full producer invocation set (read-only capture, acquire,
+    publish revalidation) runs as the strace trace root with every git
+    descendant traced; zero violations certify the route on the pinned
+    Linux axis.
+    """
+    if os.environ.get("RFC0022_RUN_LIVE_STRACE") != "1":
+        pytest.skip(
+            "tracked: RFC-0022 P0.4 live adapter route runs in its pinned Linux job"
+        )
+    artifact_root = Path(os.environ["RFC0022_AUTHORITY_ARTIFACT_DIR"])
+    name = "adapter-route"
+    # Codex P2 (#1297): the adapter evidence must live beneath the uploaded
+    # artifact root so the 90-day workflow artifact preserves the
+    # certification report and raw traces.
+    artifact = artifact_root / name
+    shutil.rmtree(artifact, ignore_errors=True)
+    artifact.mkdir(parents=True)
+    # The case must live on a chain the isolated target user can *read*
+    # (the oracle's descriptor-chain walk opens every directory O_RDONLY;
+    # the workspace chain under /home/runner is traverse-only for it).
+    case = Path(tempfile.mkdtemp(prefix="rfc0022-adapter-route-", dir="/tmp"))
+    case.chmod(0o777)
+    _prepare_adapter_route_fixture(case)
+    target_user = os.environ["RFC0022_TARGET_USER"]
+    # Probe git as the isolated user before the route self-check.
+    probe = subprocess.run(
+        [
+            "sudo",
+            "-n",
+            "-u",
+            target_user,
+            "git",
+            "-C",
+            str(case),
+            "rev-parse",
+            "--show-toplevel",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert probe.returncode == 0, (
+        f"git probe failed as {target_user}: rc={probe.returncode} "
+        f"stdout={probe.stdout!r} stderr={probe.stderr!r}"
+    )
+    # Direct self-check: run the target as the isolated user without
+    # strace so a target-side failure surfaces its real stderr here.
+    direct = subprocess.run(
+        [
+            "sudo",
+            "-n",
+            "-u",
+            target_user,
+            sys.executable,
+            "-B",
+            str(ADAPTER_ROUTE),
+            "--root",
+            str(case),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert direct.returncode == 0, (
+        f"target self-check failed: rc={direct.returncode} "
+        f"stdout={direct.stdout!r} stderr={direct.stderr!r}"
+    )
+    command = _adapter_route_command(case, artifact)
+    requested_target = command[command.index("--") + 1 :]
+    expected_target = [os.path.realpath(requested_target[0]), *requested_target[1:]]
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    report_path = artifact / "report.json"
+    if not report_path.is_file():
+        pytest.fail(
+            "authority produced no report: "
+            f"rc={result.returncode} stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert_policy_evidence(report, POLICY_PATH)
+    assert result.returncode == 0, (
+        f"authority failed: rc={result.returncode} "
+        f"stdout={result.stdout!r} stderr={result.stderr!r} "
+        f"report_errors={report.get('errors')!r} "
+        f"authority_status={report.get('authority_status')!r} "
+        f"target={report.get('target')!r}"
+    )
+    assert report["authority_status"] == "healthy"
+    assert report["outcome"] == "clean"
+    assert report["violations"] == []
+    assert report["errors"] == []
+    assert report["snapshots"]["equal"] is True
+    assert report["target"]["expected_returncode"] == 0
+    assert report["target"]["returncode"] == 0
+    trace_dir = artifact / "trace"
+    raw_by_pid = _raw_trace_lines(report, trace_dir)
+    graph = _raw_process_graph(raw_by_pid)
+    assert graph  # the python root was traced
+    _assert_final_target_exec(expected_target, raw_by_pid)
+    # The route really produced a payload (records + patch) and git
+    # descendants were traced alongside the python root.
+    assert any("descendant" in role for role in graph)
+    # The payload summary is deterministic for the fixture; pin its hash.
+    assert (
+        report["target"]["stdout_sha256"]
+        == hashlib.sha256(
+            b'{"source_generation": "idxsrc-v3:51533d44ba261b9ce9317d0e9db1edbf08e1fa3225a2e24c9336a40912c0e3d4", '
+            b'"records": 2, "patch_size": 376, "scope": ["base.py", "new.py"], '
+            b'"consumers": {"constraints": {"success": true, "access_state": "available"}, '
+            b'"ast_diff": {"success": true, "access_state": "available"}, '
+            b'"classify": {"success": true, "access_state": "available"}}}\n'
+        ).hexdigest()
+    )
+    identity = report["target_identity"]
+    assert identity["user"] == os.environ["RFC0022_TARGET_USER"]
+    assert identity["no_new_privs"] is True
+
+
+def test_expected_live_evidence_schema_is_exact() -> None:
+    assert set(EXPECTED) == {
+        "controls",
+        "event_fields",
+        "schema_version",
+        "trace_graph_fields",
+    }
+    assert EXPECTED["schema_version"] == 1
+    assert EXPECTED["event_fields"] == [
+        "role",
+        "syscall",
+        "operation",
+        "target",
+        "flags",
+        "result_class",
+    ]
+    assert EXPECTED["trace_graph_fields"] == ["role", "parent_role"]
+    assert sorted(EXPECTED["controls"]) == sorted(LIVE_CONTROLS)
+    assert all(
+        set(expected)
+        == {
+            "authority_status",
+            "cleanup_survivor_count",
+            "errors",
+            "events",
+            "outcome",
+            "returncode",
+            "snapshots_equal",
+            "target_returncode",
+            "trace_graph",
+        }
+        for expected in EXPECTED["controls"].values()
+    )
+
+
+def _relative_target(target: str, case: Path, trace_dir: Path) -> str:
+    path = Path(target.removesuffix(" (deleted)"))
+    try:
+        trace_relative = path.relative_to(trace_dir)
+    except ValueError:
+        pass
+    else:
+        name = trace_relative.as_posix()
+        if re.fullmatch(r"trace\.\d+", name):
+            name = "trace.<pid>"
+        return f"<trace-dir>/{name}"
+    try:
+        relative = path.relative_to(case)
+    except ValueError:
+        return str(path)
+    return "." if relative == Path(".") else relative.as_posix()
+
+
+def _raw_trace_lines(
+    report: dict[str, object], trace_dir: Path
+) -> dict[int, list[str]]:
+    assert stat.S_IMODE(trace_dir.stat().st_mode) == 0o555
+    assert trace_dir.stat().st_uid == 0
+    inventory = report["raw_trace_files"]
+    assert isinstance(inventory, list)
+    assert all(set(item) == RAW_TRACE_KEYS for item in inventory)
+    assert {path.name for path in trace_dir.iterdir()} == {
+        f"trace.{item['pid']}" for item in inventory
+    }
+    raw_by_pid: dict[int, list[str]] = {}
+    for item in inventory:
+        path = trace_dir / f"trace.{item['pid']}"
+        assert stat.S_IMODE(path.stat().st_mode) == 0o444
+        assert path.stat().st_uid == 0
+        raw = path.read_bytes()
+        assert len(raw) == item["size"]
+        assert hashlib.sha256(raw).hexdigest() == item["sha256"]
+        lines = raw.decode("utf-8").splitlines()
+        body = lines[-1].partition(" ")[2] if lines else ""
+        terminal = body if TERMINAL.fullmatch(body) else None
+        assert item["terminal"] == terminal
+        raw_by_pid[item["pid"]] = lines
+    return raw_by_pid
+
+
+def _raw_process_graph(raw_by_pid: dict[int, list[str]]) -> list[list[str | None]]:
+    parents: dict[int, int] = {}
+    for parent_pid, lines in raw_by_pid.items():
+        for index, line in enumerate(lines):
+            match = PROCESS_EDGE.fullmatch(logical_raw_line(line, lines[:index]))
+            if match is not None:
+                child_pid = int(match.group(1))
+                assert child_pid in raw_by_pid
+                assert child_pid not in parents
+                parents[child_pid] = parent_pid
+    roots = set(raw_by_pid) - set(parents)
+    assert len(roots) == 1
+    root = next(iter(roots))
+    assert set(parents.values()) <= set(raw_by_pid)
+    roles = {pid: "root" if pid == root else "descendant" for pid in raw_by_pid}
+    return sorted(
+        [
+            [roles[pid], None if pid == root else roles[parents[pid]]]
+            for pid in raw_by_pid
+        ]
+    )
+
+
+def _assert_final_target_exec(
+    expected_target: list[str], raw_by_pid: dict[int, list[str]]
+) -> int:
+    graph_parents: set[int] = set()
+    for lines in raw_by_pid.values():
+        for index, line in enumerate(lines):
+            match = PROCESS_EDGE.fullmatch(logical_raw_line(line, lines[:index]))
+            if match is not None:
+                child_pid = int(match.group(1))
+                assert child_pid in raw_by_pid
+                graph_parents.add(child_pid)
+    roots = set(raw_by_pid) - graph_parents
+    assert len(roots) == 1
+    root_pid = next(iter(roots))
+    successful_execs = successful_exec_lines(raw_by_pid[root_pid])
+    assert len(successful_execs) == 2
+    assert raw_exec_record(successful_execs[-1]) == (
+        expected_target[0],
+        expected_target,
+    )
+    return root_pid
+
+
+def _normalized_evidence(
+    report: dict[str, object], case: Path, trace_dir: Path
+) -> tuple[list[list[str | None]], list[list[str | None]], dict[int, list[str]]]:
+    raw_by_pid = _raw_trace_lines(report, trace_dir)
+    raw_graph = _raw_process_graph(raw_by_pid)
+    trace_files = report["trace_files"]
+    assert isinstance(trace_files, list)
+    assert all(set(item) == TRACE_FILE_KEYS for item in trace_files)
+    role_by_pid = {item["pid"]: item["role"] for item in trace_files}
+    graph = sorted(
+        [
+            [
+                item["role"],
+                None if item["parent_pid"] is None else role_by_pid[item["parent_pid"]],
+            ]
+            for item in trace_files
+        ]
+    )
+    assert graph == raw_graph
+    for item in trace_files:
+        assert item["terminal"] == "+++ exited with 0 +++"
+        raw = (trace_dir / f"trace.{item['pid']}").read_bytes()
+        assert hashlib.sha256(raw).hexdigest() == item["sha256"]
+    violations = report["violations"]
+    assert isinstance(violations, list)
+    assert all(set(event) == EVENT_KEYS for event in violations)
+    native_timestamps: list[Decimal] = []
+    normalized: list[list[str | None]] = []
+    for event in violations:
+        pid = event["pid"]
+        if pid == 0:
+            assert event["timestamp"] == "supplemental"
+            assert event["line"] == report["monitor_roots"].index(event["target"]) + 1
+            role = "authority"
+        else:
+            role = role_by_pid[pid]
+            raw_line = raw_by_pid[pid][event["line"] - 1]
+            assert_event_raw_binding(
+                event, raw_line, raw_by_pid[pid][: event["line"] - 1]
+            )
+            native_timestamps.append(Decimal(event["timestamp"]))
+        normalized.append(
+            [
+                role,
+                event["syscall"],
+                event["operation"],
+                _relative_target(event["target"], case, trace_dir),
+                event["flags"],
+                result_class(event["result"]),
+            ]
+        )
+    assert native_timestamps == sorted(native_timestamps)
+    return normalized, graph, raw_by_pid
+
+
+@pytest.mark.parametrize("control", LIVE_CONTROLS)
+def test_live_pinned_linux_authority_controls(control: str) -> None:
+    if os.environ.get("RFC0022_RUN_LIVE_STRACE") != "1":
+        pytest.skip(
+            "tracked: RFC-0022 P0.4 live authority runs only in its pinned Linux job"
+        )
+    artifact_root = Path(os.environ["RFC0022_AUTHORITY_ARTIFACT_DIR"])
+    artifact = artifact_root / control
+    shutil.rmtree(artifact, ignore_errors=True)
+    artifact.mkdir(parents=True)
+    case = Path(os.environ["RFC0022_AUTHORITY_CASE_DIR"]) / control
+    shutil.rmtree(case, ignore_errors=True)
+    case.mkdir(mode=0o777)
+    case.chmod(0o777)
+    fixture = case / "fixture.txt"
+    fixture.write_bytes(b"fixture\n")
+    fixture.chmod(0o666)
+    command = _live_command(case, artifact, control)
+    requested_target = command[command.index("--") + 1 :]
+    expected_target = [os.path.realpath(requested_target[0]), *requested_target[1:]]
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=40,
+    )
+    report = json.loads((artifact / "report.json").read_text(encoding="utf-8"))
+    expected = EXPECTED["controls"][control]
+    assert_policy_evidence(report, POLICY_PATH)
+    assert result.returncode == expected["returncode"]
+    assert report["authority_status"] == expected["authority_status"]
+    assert report["outcome"] == expected["outcome"]
+    assert report["errors"] == expected["errors"]
+    assert report["cleanup_remaining_pids"] == []
+    assert report["snapshots"]["equal"] is expected["snapshots_equal"]
+    assert report["target"]["expected_returncode"] == 0
+    assert report["target"]["returncode"] == expected["target_returncode"]
+
+    trace_dir = artifact / "trace"
+    if report["trace_files"]:
+        normalized, graph, raw_by_pid = _normalized_evidence(report, case, trace_dir)
+        root_pid = _assert_final_target_exec(expected_target, raw_by_pid)
+    else:
+        raw_by_pid = _raw_trace_lines(report, trace_dir)
+        graph = _raw_process_graph(raw_by_pid)
+        root_pid = _assert_final_target_exec(expected_target, raw_by_pid)
+        normalized = []
+        assert report["violations"] == []
+
+    identity = report["target_identity"]
+    assert set(identity) == {"gid", "groups", "launcher", "no_new_privs", "uid", "user"}
+    assert identity["user"] == os.environ["RFC0022_TARGET_USER"]
+    assert 0 not in {identity["uid"], identity["gid"], *identity["groups"]}
+    assert identity["no_new_privs"] is True
+    launcher_python = Path(os.path.realpath(SYSTEM_PYTHON))
+    assert identity["launcher"] == {
+        "path": str(LAUNCHER.resolve()),
+        "python": {
+            "path": str(launcher_python),
+            "sha256": hashlib.sha256(launcher_python.read_bytes()).hexdigest(),
+        },
+        "sha256": hashlib.sha256(LAUNCHER.read_bytes()).hexdigest(),
+    }
+    assert report["invocation"][1:3] == ["-u", identity["user"]]
+    launcher_index = report["invocation"].index("--")
+    assert report["invocation"][launcher_index + 1 : launcher_index + 6] == [
+        str(launcher_python),
+        "-I",
+        "-S",
+        "-B",
+        str(LAUNCHER),
+    ]
+    assert report["invocation"][-len(expected_target) - 1 :] == [
+        "--",
+        *expected_target,
+    ]
+
+    expected_survivors = expected["cleanup_survivor_count"]
+    assert len(report["cleanup_survivor_pids"]) == expected_survivors
+    if control == "timeout-detached-descendant":
+        descendants = sorted(set(raw_by_pid) - {root_pid})
+        assert report["cleanup_survivor_pids"] == descendants
+        assert len(descendants) == 1
+        child_lines = raw_by_pid[descendants[0]]
+        timeout_code = "import time; time.sleep(300)"
+        assert any(
+            json.dumps(timeout_code) in line and line.endswith(" = 0")
+            for line in child_lines
+        )
+        assert child_lines[-1].startswith(tuple("0123456789"))
+        assert " pselect6(" in child_lines[-1]
+        assert " = " not in child_lines[-1]
+        root_terminal = next(
+            item["terminal"]
+            for item in report["raw_trace_files"]
+            if item["pid"] == root_pid
+        )
+        child_terminal = next(
+            item["terminal"]
+            for item in report["raw_trace_files"]
+            if item["pid"] == descendants[0]
+        )
+        assert [root_terminal, child_terminal] == ["+++ exited with 0 +++", None]
+    elif control == "nonzero-exit":
+        assert report["cleanup_survivor_pids"] == []
+        assert len(raw_by_pid) == 1
+        terminal = report["raw_trace_files"][0]["terminal"]
+        assert terminal == "+++ exited with 1 +++"
+    else:
+        assert report["cleanup_survivor_pids"] == []
+
+    assert normalized == expected["events"]
+    assert graph == expected["trace_graph"]
+
+
+def test_live_artifact_manifest_is_complete() -> None:
+    if os.environ.get("RFC0022_RUN_LIVE_STRACE") != "1":
+        pytest.skip(
+            "tracked: RFC-0022 P0.4 live artifact manifest runs in the pinned job"
+        )
+    artifact_root = Path(os.environ["RFC0022_AUTHORITY_ARTIFACT_DIR"])
+    preflight = load_started_preflight(artifact_root)
+    # The adapter-route certification case also lives under the uploaded
+    # artifact root (its report and traces are part of the preserved
+    # evidence), alongside the exact positive-control directories.
+    assert sorted(
+        path.name for path in artifact_root.iterdir() if path.is_dir()
+    ) == sorted([*LIVE_CONTROLS, "adapter-route"])
+    for control in LIVE_CONTROLS:
+        artifact = artifact_root / control
+        report_path = artifact / "report.json"
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        assert report["policy"]["strace"] == preflight["strace"]
+        traces = sorted((artifact / "trace").iterdir())
+        inventory = report["raw_trace_files"]
+        assert {path.name for path in traces} == {
+            f"trace.{item['pid']}" for item in inventory
+        }
+        assert len(traces) == len(EXPECTED["controls"][control]["trace_graph"])
+        for item in inventory:
+            raw = (artifact / "trace" / f"trace.{item['pid']}").read_bytes()
+            assert len(raw) == item["size"]
+            assert hashlib.sha256(raw).hexdigest() == item["sha256"]
+            if item["terminal"] is not None:
+                assert raw[-1:] == b"\n"
+        assert not list(artifact.glob(".report.json.*.tmp"))

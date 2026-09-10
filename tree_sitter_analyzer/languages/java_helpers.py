@@ -183,8 +183,8 @@ def java_traverse_and_extract(
     extractors: dict[str, Any],
     results: list[Any],
     element_type: str,
-    processed_nodes: set[int],
-    element_cache: dict[tuple[int, str], Any],
+    processed_nodes: set[tuple[int, int]],
+    element_cache: dict[tuple[tuple[int, int], str], Any],
 ) -> None:
     """Iterative node traversal and extraction with batch field processing."""
     _java_traverse_and_extract_impl(

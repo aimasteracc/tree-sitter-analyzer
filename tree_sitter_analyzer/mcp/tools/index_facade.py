@@ -51,14 +51,18 @@ _INDEX_DESCRIPTION = (
     "READ-ONLY:\n"
     "- action=status — check codegraph index health without writing "
     "(codegraph_status equivalent). "
-    "Returns node/edge counts, staleness, and error indicators. "
-    "Params: (none).\n"
+    "Returns node/edge counts plus an owner-issued snapshot_id, source/index "
+    "fingerprints, source_generation, and exact completeness enum. "
+    "Params: access_mode=read_existing.\n"
     "- action=cache — query the raw AST cache for symbols, types, and "
     "references (read-only modes: search, lookup, stats, changes, "
     "watch_status). NOTE: this action ALSO exposes mutating cache modes "
     "via `mode` — index, sync, invalidate, watch_start, watch_stop (and "
     "`force=true` to force a reindex). Params: mode (default search/stats), "
     "query, file_path, kind, limit, force.\n"
+    "- action=schema — index statistics: languages, symbol count, edge "
+    "count, index age, available pulse fields, Hyphae pseudo-classes. Call "
+    "before nav action=pulse. Params: (none).\n"
     "\n"
     "WRITES ON-DISK INDEX:\n"
     "- action=build — full (re)build of the project index. Slow; use "
@@ -89,13 +93,15 @@ def build_index_facade(project_root: str | None = None) -> FacadeTool:
     from .full_index_tool import CodeGraphFullIndexTool
     from .incremental_sync_tool import CodeGraphIncrementalSyncTool
     from .knowledge_graph_tool import CodeGraphKnowledgeIndexTool
+    from .pulse_tool import GetProjectSchemaTool
 
     facade = FacadeTool(
         facade_name="index",
         action_map={
             # -- read-only -------------------------------------------------
-            "status": CodeGraphStatusTool(project_root),
+            "status": CodeGraphStatusTool(project_root, read_existing_default=True),
             "cache": ASTCacheTool(project_root),
+            "schema": GetProjectSchemaTool(project_root),
             # -- writes on-disk index --------------------------------------
             "build": BuildProjectIndexTool(project_root),
             "full": CodeGraphFullIndexTool(project_root),
@@ -107,6 +113,15 @@ def build_index_facade(project_root: str | None = None) -> FacadeTool:
         description=_INDEX_DESCRIPTION,
         annotations=_INDEX_ANNOTATIONS,
         project_root=project_root,
+        extra_public_params={
+            "access_mode": {
+                "type": "string",
+                "enum": ["read_existing"],
+                "default": "read_existing",
+                "description": "Status-only read mode; never creates or migrates an index.",
+            }
+        },
+        action_scoped_params={"access_mode": frozenset({"status"})},
     )
     # No bespoke inners to register: every action routes via action_map,
     # so G3 rebind propagation is fully automatic.

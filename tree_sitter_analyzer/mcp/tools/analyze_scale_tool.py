@@ -14,7 +14,7 @@ from typing import Any, cast
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .analyze_scale_helpers import (
     BATCH_CONCURRENCY,
     TOOL_SCHEMA,
@@ -129,7 +129,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         language = arguments.get("language")
         include_details = arguments.get("include_details", False)
         include_guidance = arguments.get("include_guidance", True)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         resolved = self.resolve_and_validate_file_path(file_path)
         logger.info("Analyzing file: %s (resolved to: %s)", file_path, resolved)
@@ -233,7 +233,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                 est_tokens,
             )
 
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
     def _resolve_language(self, resolved: str, language: str | None) -> str:
         """Detect language from file extension or argument override."""
@@ -326,7 +326,7 @@ class AnalyzeScaleTool(BaseMCPTool):
 
     async def _execute_metrics_batch(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute batch metrics computation for multiple files."""
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         metrics_only = bool(arguments.get("metrics_only", False))
         file_paths = arguments.get("file_paths")
 
@@ -337,7 +337,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         response = assemble_batch_response(
             per_file, file_paths_list, output_format, metrics_only
         )
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
     async def _scatter_batch_metrics(
         self, file_paths: list[str]
@@ -366,7 +366,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         file_path: str,
         file_metrics: dict[str, Any],
         include_guidance: bool,
-        output_format: str = "toon",
+        output_format: str = "json",
     ) -> dict[str, Any]:
         """Create analysis for non-source files (JSON, YAML, etc.)."""
         return create_json_file_analysis(

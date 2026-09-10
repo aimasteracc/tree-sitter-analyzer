@@ -333,6 +333,36 @@ class TestScalaPlugin:
         assert result.success is False
         assert "no such file" in result.error_message
 
+    @pytest.mark.asyncio
+    async def test_analyze_file_extraction_exception_stays_successful(
+        self, plugin: ScalaPlugin, tmp_path: Any
+    ) -> None:
+        """Codex #1158: analyze_file must preserve extract_elements()'s
+        graceful-degradation contract — a failure inside one extract_xxx()
+        call returns a successful, empty-elements result (correct
+        source_code/line_count), not the outer except's success=False
+        empty-source error result.
+        """
+        content = "object Hello { def main() = {} }"
+        f = tmp_path / "Hello.scala"
+        f.write_text(content)
+        mock_extractor = MagicMock()
+        mock_extractor.extract_functions.side_effect = RuntimeError("boom")
+        mock_parser = MagicMock()
+        mock_parser.parse.return_value = _tree()
+        with (
+            patch.object(plugin, "get_tree_sitter_language", return_value=MagicMock()),
+            patch(
+                "tree_sitter_analyzer.languages.scala_plugin._make_scala_parser",
+                return_value=mock_parser,
+            ),
+            patch.object(plugin, "create_extractor", return_value=mock_extractor),
+        ):
+            result = await plugin.analyze_file(str(f), MagicMock())
+        assert result.success is True
+        assert result.elements == []
+        assert result.source_code == content
+
 
 # ---------------------------------------------------------------------------
 # ScalaElementExtractor helpers

@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from ....project_graph import BlastRadius, DependencyGraph
 from .call_graph_impact import compute_call_graph_impact
 from .change_impact_cached_graph import load_cached_dependency_graph
@@ -34,11 +36,23 @@ from .constraint_violation_query import (
     verdict_from_violations,
     violations_for_files,
 )
-from .test_discovery_stems import related_stem_matches, related_test_stems_for_path
+from .test_discovery_stems import (
+    module_stem_for_path,
+    raw_module_stem_for_path,
+    raw_test_file_subject_stem,
+    related_stem_matches,
+    related_test_stems_for_path,
+    source_subsystem_stems,
+    test_file_subject_stem,
+    test_path_is_unscoped,
+    test_path_subsystem_affinity_rank,
+    test_paths_have_compatible_package_scope,
+)
 from .verification_command import (
     DefaultTestCommand,
-    build_test_command,
+    build_test_commands,
     detect_default_test_command,
+    join_verification_steps,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,6 +87,8 @@ class ChangeImpactRequest:
     scope_paths: list[str] | None = None
     agent_summary_only: bool = False
     resource_profile: str = RESOURCE_PROFILE_DEFAULT
+    read_only: bool = False
+    pr_url: str = ""
 
 
 def _find_test_files(
@@ -85,6 +101,7 @@ def _find_test_files(
         for node in graph_nodes
         if _is_runnable_test_file(node, TEST_DIRS, TEST_SUFFIXES)
     }
+    known_paths = graph_nodes | set(changed_files)
 
     mapping: dict[str, list[str]] = {}
     for changed_file in changed_files:
@@ -97,22 +114,179 @@ def _find_test_files(
             for test_file in sorted(test_files)
             if _test_file_matches_change(test_file, changed_file)
         ]
-        mapping[changed_file] = related or [AUTO_DISCOVER_TEST_HINT]
+        family_related = [
+            test_file
+            for test_file in related
+            if not _test_file_has_direct_stem_match(test_file, changed_file)
+            and test_paths_have_compatible_package_scope(test_file, changed_file)
+        ]
+        direct_related = [
+            test_file
+            for test_file in related
+            if _test_file_has_direct_stem_match(test_file, changed_file)
+            and test_paths_have_compatible_package_scope(test_file, changed_file)
+        ]
+        raw_direct_related = [
+            test_file
+            for test_file in direct_related
+            if _test_file_has_raw_direct_stem_match(test_file, changed_file)
+        ]
+        if raw_direct_related and _has_case_only_path_collision(
+            changed_file,
+            known_paths,
+        ):
+            direct_related = raw_direct_related
+        has_named_subsystem = bool(source_subsystem_stems(changed_file, graph_nodes))
+        retained_direct = [
+            test_file
+            for test_file in direct_related
+            if test_path_is_unscoped(test_file) or not has_named_subsystem
+        ]
+        cross_layer_direct_variants = [
+            test_file
+            for test_file in direct_related
+            if test_file_subject_stem(test_file) != module_stem_for_path(changed_file)
+        ]
+        scoped_direct = _most_specific_affinity_matches(
+            direct_related,
+            changed_file,
+        )
+        selected_direct = sorted(
+            set(retained_direct) | set(cross_layer_direct_variants) | set(scoped_direct)
+        )
+        if not selected_direct and direct_related:
+            # All filename matches belong to another named subsystem. Only in
+            # that ambiguous case, search the available tests by source-path
+            # affinity instead of adding subsystem stems unconditionally.
+            # Any recognized direct filename may only be replaced by an
+            # independently established module-family candidate. A path or
+            # scope-bearing filename alone is weaker evidence.
+            affinity_fallback = _most_specific_affinity_matches(
+                family_related,
+                changed_file,
+            )
+            selected_direct = (
+                affinity_fallback
+                if 0 < len(affinity_fallback) <= FOCUSED_TEST_COMMAND_LIMIT
+                else direct_related
+            )
+        # Derived module-family matches deliberately span surfaces such as CLI,
+        # core, and MCP. Preserve them, while disambiguating the independent
+        # direct-stem candidate set.
+        selected = sorted(set(family_related) | set(selected_direct))
+        mapping[changed_file] = selected or [AUTO_DISCOVER_TEST_HINT]
 
     return mapping
 
 
+def _most_specific_affinity_matches(
+    test_files: list[str],
+    changed_file: str,
+) -> list[str]:
+    """Return affinity matches for the nearest matching source subsystem."""
+    ranked = [
+        (rank, test_file)
+        for test_file in test_files
+        if (rank := test_path_subsystem_affinity_rank(test_file, changed_file))
+        is not None
+    ]
+    if not ranked:
+        return []
+    best_rank = min(rank for rank, _test_file in ranked)
+    return [test_file for rank, test_file in ranked if rank == best_rank]
+
+
+def _has_case_only_path_collision(
+    changed_file: str,
+    graph_nodes: set[str],
+) -> bool:
+    """Return whether another graph path differs only by filesystem case."""
+    normalized_change = changed_file.replace("\\", "/")
+    folded_change = normalized_change.casefold()
+    return any(
+        normalized_node != normalized_change
+        and normalized_node.casefold() == folded_change
+        for node in graph_nodes
+        if (normalized_node := node.replace("\\", "/"))
+    )
+
+
 def _test_file_matches_change(test_file: str, changed_file: str) -> bool:
     """Return True when a test filename appears related to a changed file."""
-    changed_stem = Path(changed_file).stem
-    test_stem = Path(test_file).stem
-    direct_stem = test_stem.replace("_test", "").replace("test_", "")
-    if changed_stem in test_stem or direct_stem == changed_stem:
+    if _test_file_has_direct_stem_match(test_file, changed_file):
         return True
+    test_stem = Path(test_file).stem
     return any(
         related_stem_matches(test_stem, related_stem)
         for related_stem in related_test_stems_for_path(changed_file)
     )
+
+
+def _test_file_has_direct_stem_match(test_file: str, changed_file: str) -> bool:
+    """Return whether the test filename directly names the changed module."""
+    normalized_test = test_file.replace("\\", "/")
+    normalized_change = changed_file.replace("\\", "/")
+    if normalized_test == normalized_change:
+        return True
+
+    changed_stem = module_stem_for_path(normalized_change)
+    test_stem = test_file_subject_stem(normalized_test)
+    plural_stems = _pluralized_module_stems(changed_stem)
+    return f"_{changed_stem}_" in f"_{test_stem}_" or test_stem in plural_stems
+
+
+def _test_file_has_raw_direct_stem_match(
+    test_file: str,
+    changed_file: str,
+) -> bool:
+    """Return whether a test directly names a module without case folding."""
+    normalized_test = test_file.replace("\\", "/")
+    normalized_change = changed_file.replace("\\", "/")
+    if normalized_test == normalized_change:
+        return True
+
+    changed_stem = raw_module_stem_for_path(normalized_change)
+    test_stem = raw_test_file_subject_stem(normalized_test)
+    plural_stems = _pluralized_module_stems(changed_stem)
+    return f"_{changed_stem}_" in f"_{test_stem}_" or test_stem in plural_stems
+
+
+def _pluralized_module_stems(stem: str) -> tuple[str, ...]:
+    """Return accepted conventional plurals for an exact test subject."""
+    irregular_plurals = {
+        "analysis": "analyses",
+        "axis": "axes",
+        "basis": "bases",
+        "child": "children",
+        "crisis": "crises",
+        "diagnosis": "diagnoses",
+        "hypothesis": "hypotheses",
+        "index": "indices",
+        "matrix": "matrices",
+        "person": "people",
+        "synthesis": "syntheses",
+        "thesis": "theses",
+        "vertex": "vertices",
+    }
+    prefix, separator, subject = stem.rpartition("_")
+    irregular = irregular_plurals.get(subject)
+    plurals: list[str] = []
+    if irregular is not None:
+        plurals.append(f"{prefix}{separator}{irregular}")
+    if stem.endswith("zz"):
+        regular = f"{stem}es"
+    elif subject == "quiz":
+        regular = f"{stem}zes"
+    elif stem.endswith("z"):
+        regular = f"{stem}es"
+    elif stem.endswith(("s", "x", "ch", "sh")):
+        regular = f"{stem}es"
+    elif len(stem) > 1 and stem.endswith("y") and stem[-2] not in "aeiou":
+        regular = f"{stem[:-1]}ies"
+    else:
+        regular = f"{stem}s"
+    plurals.append(regular)
+    return tuple(dict.fromkeys(plurals))
 
 
 def _is_runnable_test_file(
@@ -129,9 +303,23 @@ def _is_runnable_test_file(
         normalized.startswith(directory) or f"/{directory}" in normalized
         for directory in test_dirs
     )
+    has_java_test_suffix = name.endswith("Test.java")
+    path_parts = Path(normalized).parts[:-1]
+    in_java_test_source_set = any(
+        part.lower() == "src"
+        and index + 1 < len(path_parts)
+        and (
+            path_parts[index + 1].lower() in {"it", "test"}
+            or path_parts[index + 1].endswith("Test")
+        )
+        for index, part in enumerate(path_parts)
+    )
     return (
         (in_test_dir and name.startswith("test_"))
-        or name.endswith(test_suffixes)
+        or (
+            name.endswith(test_suffixes)
+            and (not has_java_test_suffix or in_test_dir or in_java_test_source_set)
+        )
         or (in_test_dir and (".test." in name or ".spec." in name))
     )
 
@@ -296,22 +484,25 @@ def _build_verification_strategy(
     default_command = DefaultTestCommand(
         verification["test_runner"],
         verification["default_test_command"],
+        verification.get("_pytest_marker"),
+        verification.get("_pytest_config_root"),
     )
-    can_build_focused_command = 0 < len(tests_to_run) <= FOCUSED_TEST_COMMAND_LIMIT
-    focused_command = (
-        build_test_command(default_command, tests_to_run)
-        if verification["test_required"] and can_build_focused_command
-        else ""
+    # 展示长度不能改变验证集合；每个子进程使用有界批次。
+    focused_steps = (
+        build_test_commands(default_command, tests_to_run)
+        if verification["test_required"] and tests_to_run
+        else []
     )
+    focused_command = join_verification_steps(focused_steps)
     final_command = verification["verification_command"]
 
     steps, strategy, hint = _select_verification_path(
         verification=verification,
         focused_command=focused_command,
         final_command=final_command,
-        tests_to_run_count=len(tests_to_run),
-        default_command=default_command.command,
     )
+    if focused_steps and steps[0] == focused_command:
+        steps = [*focused_steps, *steps[1:]]
     hint = _append_large_dirty_hint(hint, changed_count)
 
     strategy_payload = {
@@ -325,6 +516,7 @@ def _build_verification_strategy(
             strategy_payload,
             verification=verification,
             focused_command=focused_command,
+            focused_steps=focused_steps,
             final_command=final_command,
         )
     return strategy_payload
@@ -335,14 +527,20 @@ def _with_local_low_impact_profile(
     *,
     verification: dict[str, Any],
     focused_command: str,
+    focused_steps: list[str],
     final_command: str,
 ) -> dict[str, Any]:
     """Attach local low-impact pytest commands while preserving CI intent."""
     if not verification["test_required"] or verification["test_runner"] != "pytest":
         return strategy
 
-    local_source = focused_command or final_command
-    local_command = _low_impact_pytest_command(local_source)
+    # 本地降载只调整每一步的资源参数，不得遗漏默认门禁或已知测试。
+    local_steps = [
+        _low_impact_pytest_command(command)
+        for command in strategy["verification_steps"]
+    ]
+    local_command = join_verification_steps(local_steps)
+    final_command = join_verification_steps(strategy["verification_steps"])
     label = (
         "local_low_impact_focused_then_ci"
         if focused_command and focused_command != final_command
@@ -355,11 +553,15 @@ def _with_local_low_impact_profile(
     return {
         **strategy,
         "resource_profile": RESOURCE_PROFILE_LOCAL_LOW_IMPACT,
-        "low_impact_focused_test_command": local_command if focused_command else "",
+        "low_impact_focused_test_command": (
+            join_verification_steps(
+                [_low_impact_pytest_command(step) for step in focused_steps]
+            )
+        ),
         "local_verification_command": local_command,
         "ci_verification_command": final_command,
         "verification_strategy": label,
-        "verification_steps": [local_command],
+        "verification_steps": local_steps,
         "verification_hint": hint,
     }
 
@@ -412,8 +614,6 @@ def _select_verification_path(
     verification: dict[str, Any],
     focused_command: str,
     final_command: str,
-    tests_to_run_count: int,
-    default_command: str,
 ) -> tuple[list[str], str, str]:
     """Choose verification steps, strategy label, and hint text."""
     if not verification["test_required"]:
@@ -428,14 +628,6 @@ def _select_verification_path(
             "focused_then_default",
             "Run focused tests while iterating; run the default suite once at the "
             "queue boundary because unmapped runtime changes remain.",
-        )
-    if tests_to_run_count > FOCUSED_TEST_COMMAND_LIMIT:
-        return (
-            [default_command],
-            "default_for_large_diff",
-            f"{tests_to_run_count} mapped tests exceed the focused command limit "
-            f"({FOCUSED_TEST_COMMAND_LIMIT}); use queue-specific focused tests while "
-            "editing and run the default suite once at the verification boundary.",
         )
     return (
         [final_command],
@@ -658,7 +850,7 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     visible_tests = all_tests[:TESTS_TO_RUN_DISPLAY_LIMIT]
 
     call_graph_data: dict[str, Any] | None = None
-    if request.project_root and request.changed_files:
+    if request.project_root and request.changed_files and not request.read_only:
         cg_result = compute_call_graph_impact(
             request.project_root,
             request.changed_files,
@@ -710,7 +902,11 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     if request.agent_summary_only:
         return _attach_constraint_violations(result, request, affected)
 
-    cache = _ensure_ast_cache(request.project_root, request.changed_files)
+    cache = (
+        None
+        if request.read_only
+        else _ensure_ast_cache(request.project_root, request.changed_files)
+    )
     try:
         changed_symbols = _enrich_with_cache_symbols(request.changed_files, cache)
         if changed_symbols:
@@ -744,26 +940,21 @@ def _attach_hot_zone_risk(
     result: dict[str, Any],
     request: ChangeImpactRequest,
 ) -> dict[str, Any]:
-    """Decorate the change-impact result with temporal hot-zone risk factors.
+    """用已计算的改动文件热度追加风险因子，未完成或缺失证据单独保留诊断。
 
-    For each changed file we look up its symbols in
-    ``ast_symbol_activation``. Any symbol with ``mod_count_30d >=
-    _HOT_ZONE_THRESHOLD`` is treated as a "hot zone" — editing recently-
-    churning code is higher risk than a stable one-off change.
-
-    Two effects:
-      1. A risk_factors entry containing the substring ``hot zone`` is
-         appended (key is ``factor`` per existing schema; ``reason``
-         carries human-readable detail).
-      2. The verdict is promoted to ``CAUTION`` if it was looser (INFO /
-         REVIEW). Constraint violations may further escalate to UNSAFE
-         later via ``_attach_constraint_violations`` — that path wins.
+    只有可信次数达到阈值才按既有规则提升 CAUTION；pending、disabled 和未知
+    状态不能利用遗留次数升级风险，也不能被描述为已证明无热点。
     """
     if not request.changed_files or not request.project_root:
         result.setdefault("risk_factors", result.get("risk_factors", []))
         return result
 
-    hot_rows = _hot_zone_symbols_for_files(request.project_root, request.changed_files)
+    hot_rows, diagnostic = _hot_zone_symbols_for_files(
+        request.project_root, request.changed_files
+    )
+    result["activation_diagnostic"] = diagnostic
+    # 调用方始终提供 agent_summary；精简响应必须保留同一不可用原因。
+    result["agent_summary"]["activation_diagnostic"] = diagnostic
     existing_factors = list(result.get("risk_factors", []) or [])
     if not hot_rows:
         result["risk_factors"] = existing_factors
@@ -786,41 +977,63 @@ def _attach_hot_zone_risk(
 def _hot_zone_symbols_for_files(
     project_root: str,
     changed_files: list[str],
-) -> list[dict[str, Any]]:
-    """Return per-symbol activation rows above the hot-zone threshold.
-
-    Reads ``ast_symbol_activation`` from the project's cache DB; returns
-    [] on missing table / missing DB so the gate tool keeps working on
-    fresh repos. Each row carries ``symbol_id``, ``file_path``, and
-    ``mod_count_30d``.
-    """
-    if not changed_files:
-        return []
-    db_path = Path(project_root) / ".ast-cache" / "index.db"
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """仅读取改动文件的已计算热度，同时区分正常无热点与不可用证据。"""
+    db_path = resolve_index_path(project_root)
     if not db_path.is_file():
-        return []
+        return [], {"available": False, "reason": "ACTIVATION_INDEX_MISSING"}
 
     placeholders = ",".join(["?"] * len(changed_files))
-    # placeholders is constructed from `?` literals only — values flow through
-    # parameterized binds below, so the f-string is safe.
+    # 占位符只由问号组成，所有文件名仍经绑定参数传入。
     sql = (
-        "SELECT symbol_id, file_path, mod_count_30d "  # nosec B608
+        "SELECT symbol_id, file_path, mod_count_30d, activation_state "  # nosec B608
         "FROM ast_symbol_activation "
         f"WHERE file_path IN ({placeholders}) "
-        "AND mod_count_30d >= ? "
         "ORDER BY mod_count_30d DESC"
     )
     import sqlite3
 
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(str(db_path), timeout=10)
+        conn = sqlite3.connect(
+            db_path.resolve().as_uri() + "?mode=ro", uri=True, timeout=10
+        )
         conn.row_factory = sqlite3.Row
-        rows = conn.execute(sql, [*changed_files, _HOT_ZONE_THRESHOLD]).fetchall()
-        return [dict(r) for r in rows]
-    except sqlite3.OperationalError as exc:
+        rows = conn.execute(sql, changed_files).fetchall()
+        hot: list[dict[str, Any]] = []
+        unavailable: set[str] = set()
+        seen: set[str] = set()
+        for row in rows:
+            seen.add(row["file_path"])
+            count = row["mod_count_30d"]
+            if (
+                row["activation_state"] != "computed"
+                or type(count) is not int
+                or count < 0
+            ):
+                unavailable.add(row["file_path"])
+            elif count >= _HOT_ZONE_THRESHOLD:
+                hot.append(dict(row))
+        if unavailable:
+            return hot, {
+                "available": False,
+                "reason": "ACTIVATION_NOT_COMPUTED",
+                "files": sorted(unavailable | (set(changed_files) - seen)),
+            }
+        if missing := set(changed_files) - seen:
+            return hot, {
+                "available": False,
+                "reason": "ACTIVATION_ROWS_MISSING",
+                "files": sorted(missing),
+            }
+        return hot, {"available": True, "reason": None}
+    except sqlite3.DatabaseError as exc:
         logger.debug("hot zone lookup failed: %s", exc)
-        return []
+        return [], {
+            "available": False,
+            "reason": "ACTIVATION_INDEX_UNAVAILABLE",
+            "error": str(exc),
+        }
     finally:
         if conn is not None:
             try:

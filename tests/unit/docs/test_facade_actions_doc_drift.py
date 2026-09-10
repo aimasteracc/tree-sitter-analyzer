@@ -65,7 +65,7 @@ def test_facade_actions_doc_matches_generator() -> None:
 
 @pytest.mark.slow_ok  # Loads the full facade registry + inner schemas; loaded CI runners can exceed 5s.
 def test_facade_actions_surface_pins() -> None:
-    """锁定 76 个动作及三个既存 Hyphae CLI 缺口，防止文档漏记新路由。"""
+    """锁定合并后的 86 个动作、既存 Hyphae 缺口及进程内快照例外。"""
     module = _load_generator()
     rows_by_facade = module.collect_rows()
 
@@ -80,7 +80,7 @@ def test_facade_actions_surface_pins() -> None:
         "viz",
     ]
     total_actions = sum(len(rows) for rows in rows_by_facade.values())
-    assert total_actions == 76
+    assert total_actions == 87
 
     gaps = sorted(
         (facade, row.action)
@@ -89,6 +89,9 @@ def test_facade_actions_surface_pins() -> None:
         if row.cli_twin == module.NO_CLI_TWIN
     )
     assert gaps == [
+        # RFC-0022 Phase 0 IDs are process-local to the long-lived MCP server;
+        # a one-shot CLI process cannot safely produce or consume them.
+        ("edit", "release_snapshot"),
         ("search", "select"),
         ("search", "subscribe"),
         ("search", "unsubscribe"),

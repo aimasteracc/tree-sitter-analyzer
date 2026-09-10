@@ -18,3 +18,7 @@ arms:
   - id: tsa-cold
     adapter: tree_sitter_analyzer
     index_mode: cold
+
+  - id: tsa-1tool-warm
+    adapter: tsa_1tool
+    index_mode: warm

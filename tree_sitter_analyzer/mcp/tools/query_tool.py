@@ -78,7 +78,7 @@ class QueryTool(BaseMCPTool):
                 "\n"
                 "WHEN NOT TO USE:\n"
                 "- To search arbitrary text (comments, strings, errors) — "
-                "use search_content\n"
+                "use CC Grep tool\n"
                 "- To find usages / callers of a symbol — use trace_impact\n"
                 "- For a hierarchical file outline — use get_code_outline\n"
                 "- To search file names — use list_files"

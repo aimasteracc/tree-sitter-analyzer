@@ -15,16 +15,18 @@
 
 ## Test Runtime Contract
 
-- The default full-suite command is `uv run pytest -q`.
-- Do not run the full suite serially. Project pytest config enables xdist with `--numprocesses=auto --dist=loadfile`.
-- The full suite must finish in under 5 minutes. The config enforces `--session-timeout=900` and `--timeout=30`. (Bumped from 300 in v1.13.1 — see `docs/POSTMORTEM_v1.13.md` § 9.)
+- The default local quick-gate command is `uv run pytest -q`.
+- Transition note: `main` inherits the curated quick-gate `pytest.ini` at the next release; until then bare `uv run pytest -q` on `main` still runs the full suite. When validating on `main` before that sync, use the comprehensive command explicitly — one command must mean one thing, so the canonical full-suite path is always the explicit `tests/` form above.
+- The comprehensive local command is `uv run pytest tests/ -q --timeout=120 -m "not e2e and not network and not benchmark"`; the explicit marker override restores slow and full-language tests that the quick gate excludes.
+- Do not run either tier serially. Project pytest config enables four xdist workers with work stealing.
+- The quick gate must finish in under 5 minutes. The config enforces `--session-timeout=900` and `--timeout=30`. (Bumped from 300 in v1.13.1 — see `docs/POSTMORTEM_v1.13.md` § 9.)
 - After edits, run `uv run python -m tree_sitter_analyzer --change-impact --format json` and follow its `verification_command`.
 - If `test_required` is `false`, do not run tests just to look busy; run the reported non-test verification such as `git diff --check`.
 - For targeted code feedback, prefer `verification_command`/`test_command`; `pytest_required` and `pytest_command` are retained for pytest-specific compatibility.
 - For PRs that change Python source, run focused tests with `--cov=tree_sitter_analyzer --cov-report=json`, then run `uv run python scripts/check_patch_coverage.py --base origin/develop --coverage-json coverage.json` before pushing. The local patch gate must report no added executable misses; add effective tests instead of waiting for CI Codecov to block the PR.
 - Benchmark-only runs are the exception: use `uv run pytest tests/benchmarks/ --benchmark-enable --benchmark-only -n 0 --session-timeout=0`.
 - Do not remove or weaken these pytest defaults. They prevent repeated agent mistakes: serial full-suite runs, accidental benchmark execution, hidden hangs, and >5 minute feedback loops.
-- If a test-runtime setting must change, update `tests/contracts/test_pytest_runtime_contract.py`, explain why the new setting is faster or safer, and prove `uv run pytest -q` still finishes under 5 minutes.
+- If a test-runtime setting must change, update `tests/contracts/test_pytest_runtime_contract.py`, explain why the new setting is faster or safer, and prove `uv run pytest -q` still finishes under 5 minutes. Preserve the comprehensive command above as the broad local path.
 
 ## CI Test Tier Contract
 
@@ -51,6 +53,7 @@ Memory records should capture reusable lessons, not logs: benchmark surprises, C
 - Every registered MCP tool must have a CLI access path.
 - Main CLI flags and standalone scripts are guarded by `tests/contracts/test_mcp_cli_parity_contract.py`.
 - MCP-equivalent CLI handler arguments, required file-path checks, and TOON output are guarded by `tests/unit/cli/test_mcp_commands.py`.
+- RFC-0022 Phase 0 has one narrow process-local exception: the `edit.release_snapshot` action, snapshot/generation/lease controls, and a `read_existing` sequence that requires those controls are exercised through the non-public same-process CLI-handler bridge rather than exposed as unusable cross-invocation CLI operations. Every other action-level CLI path and parameter remains mandatory; parity contracts must encode this exact exception, which does not authorize another tool, a one-shot composition command, or any other waiver.
 - When adding or changing an MCP tool, update the CLI path in the same change and run a real CLI smoke test, for example `uv run python -m tree_sitter_analyzer <file> --smart-context --format json`.
 - This keeps MCP-only features from becoming invisible to users, CI, and future agents.
 
@@ -64,20 +67,50 @@ Memory records should capture reusable lessons, not logs: benchmark surprises, C
 
 Any change touching one of these registries MUST update the corresponding `docs/CODEMAPS/*.md` in the **same commit**:
 
-| Registry file | Codemap |
+| Surface | Codemap |
 |---|---|
-| `tree_sitter_analyzer/mcp/_tool_registry.py` | `docs/CODEMAPS/mcp-tools.md` |
-| `tree_sitter_analyzer/cli/argument_parser_builder.py` | `docs/CODEMAPS/cli.md` |
+| `tree_sitter_analyzer/mcp/_tool_registry.py` — the registered tool-name set | `docs/CODEMAPS/mcp-tools.md` |
+| `tree_sitter_analyzer/cli/**/*.py` — the whole `add_argument` flag set, including the `find-and-grep` / `list-files` / `search-content` console scripts | `docs/CODEMAPS/cli.md` |
 | `tree_sitter_analyzer/languages/<lang>_plugin/*` | `docs/CODEMAPS/languages.md` |
 | `tree_sitter_analyzer/formatters/*` | `docs/CODEMAPS/formatters.md` |
 
+The mandate is defined on the **surface set**, not on a file list: the gate compares
+the set of registered tool names and the set of CLI flags at `HEAD` against the
+staged index, and fires only when a set actually changed. Reordering, renames,
+comments and docstrings therefore do not trigger it, and a *removal* does.
+
 Enforced by:
 - `scripts/codemap-sync-check.sh` (pre-commit hook + Claude PreToolUse soft-nag)
-- `test_registered_mcp_tools_have_codemap_parity` in `tests/contracts/test_mcp_surface_metadata_contract.py`
+- `test_registered_mcp_tools_have_codemap_parity` in `tests/contracts/test_mcp_surface_metadata_contract.py` — the CI net for `mcp-tools.md`
+- `test_cli_codemap_flag_count_matches_the_real_parser` in `tests/contracts/test_agent_docs_contract.py` — the CI net for `cli.md`
+- `test_codemap_sync_gate_sees_every_registered_mcp_tool` / `..._sees_every_cli_flag` /
+  `..._watches_the_whole_cli_flag_surface` in the same file — the CI net for **the gate
+  itself**, asserting exact set equality against the authoritative runtime
+  enumerations plus zero unwatched flags
 
-Escape hatch for intentional rename/rebase: `SKIP_CODEMAP_SYNC=1 git commit ...`. The pytest test still runs in CI as the final safety net — bypass is local-only.
+"Self-enforcing" is a claim about the detectors, so it has to be measured, not
+asserted. Run `bash scripts/codemap-sync-check.sh --self-check`: it fails unless the
+gate's static extractor reproduces the authoritative enumerations *exactly* and no
+`add_argument` flag under `cli/**` falls outside the watch filter. A `count > 0`
+check is not sufficient — a tree whose only match is a stale docstring mention
+passes it while the detector is dead, and a loose lower bound on a deterministic
+count is what CLAUDE.md's exact-assertion rule forbids in the first place.
 
-Why: previously the codemap drifted from 23 → 27 → 30 → 55 tools across 4 months with manual catch-up commits in between. The agent contract is now self-enforcing.
+Escape hatch: `SKIP_CODEMAP_SYNC=force git commit ...`, which bypasses **and** appends
+an audit line to `$GIT_DIR/codemap-sync-bypass.log`. The older `SKIP_CODEMAP_SYNC=1`
+now *fails* when it would have silenced a real violation, because pre-commit only
+surfaces output from failing hooks — so a warn-and-pass bypass was invisible and
+`export SKIP_CODEMAP_SYNC=1` disabled the gate for a whole session with zero signal.
+Bypass is local-only: the CI parity tests above still run.
+
+Why: previously the codemap drifted from 23 → 27 → 30 → 55 tools across 4 months with
+manual catch-up commits in between. Then the gate itself died — the MCP detector was
+still matching the pre-facade `("name", SomeTool(` shape and the CLI detector was
+watching `argument_parser_builder.py`, which holds zero `add_argument` calls — and
+`cli.md` drifted to 295 against a real 324 while every test stayed green, because the
+hook's own test fixture was a synthetic copy of the *old* shape. Both the gate and its
+fixture were rebuilt against the real surface; the contract is self-enforcing for as
+long as `--self-check` and the CI nets above stay green, and no longer than that.
 
 ## GitFlow Branching Mandate
 

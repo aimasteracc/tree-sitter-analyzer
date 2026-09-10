@@ -102,11 +102,8 @@ def _run_tool(
         project_root = getattr(args, "project_root", None) or os.getcwd()
         tool = tool_cls(project_root=project_root)
         result: dict[str, Any] = asyncio.run(tool.execute(dict(tool_args)))
-        fmt = output_format_fn()
-        if fmt == "toon":
-            print(result.get("toon_content", ""))
-        else:
-            output_json_fn(result)
+        output_format_fn()
+        output_json_fn(result)
         if not result.get("success", False):
             return 1
         if fail_on_verdict_worse_than is not None:

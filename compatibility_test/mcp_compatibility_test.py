@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-# 8つのMCPツールのリスト
+# MCPツールのリスト (find_and_grep / search_content は廃止済み)
 MCP_TOOLS = [
     "analyze_code_structure",
     "query_code",
@@ -18,8 +18,6 @@ MCP_TOOLS = [
     "extract_code_section",
     "set_project_path",
     "list_files",
-    "find_and_grep",
-    "search_content",
 ]
 
 # テスト対象バージョン
@@ -112,8 +110,7 @@ class MCPCompatibilityTester:
                 "analyze_code_structure": self.test_analyze_code_structure(),
                 "query_code": self.test_query_code(),
                 "extract_code_section": self.test_extract_code_section(),
-                "find_and_grep": self.test_find_and_grep(),
-                "search_content": self.test_search_content(),
+                # find_and_grep と search_content は廃止済み
             }
 
             test_results["basic_tests"] = basic_tests
@@ -188,29 +185,9 @@ class MCPCompatibilityTester:
             "status": "manual_verification_required",
         }
 
-    def test_find_and_grep(self) -> dict[str, Any]:
-        """find_and_grepツールのテスト"""
-        return {
-            "description": "ファイル検索とコンテンツ検索の組み合わせテスト",
-            "expected": "指定されたパターンでファイルを検索し、コンテンツ内を検索する",
-            "test_cases": [
-                {"pattern": "*.py", "query": "class"},
-                {"pattern": "*.java", "query": "public class"},
-            ],
-            "status": "manual_verification_required",
-        }
-
-    def test_search_content(self) -> dict[str, Any]:
-        """search_contentツールのテスト"""
-        return {
-            "description": "コンテンツ検索テスト",
-            "expected": "指定されたパターンでファイル内容を検索する",
-            "test_cases": [
-                {"query": "def __init__", "include_globs": ["*.py"]},
-                {"query": "public class", "include_globs": ["*.java"]},
-            ],
-            "status": "manual_verification_required",
-        }
+    # test_find_and_grep と test_search_content は廃止済み:
+    # find_and_grep (FindAndGrepTool) と search_content (SearchContentTool) が削除されたため。
+    # テキスト検索には CC 組み込みの Grep tool を使用すること。
 
     def run_compatibility_test(self) -> dict[str, Any]:
         """互換性テストの実行"""

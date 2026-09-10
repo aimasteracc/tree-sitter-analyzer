@@ -843,8 +843,6 @@ actionlint .github/workflows/*.yml
 ### Resources
 
 - [CI/CD Overview](ci-cd-overview.md)
-- [CI/CD Migration Guide](ci-cd-migration-guide.md)
-- [Testing Guide](testing-guide.md)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 
 ### Reporting Issues

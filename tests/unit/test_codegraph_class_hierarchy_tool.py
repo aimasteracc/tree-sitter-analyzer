@@ -91,11 +91,6 @@ class TestToolDefinition:
             "summary",
         }
 
-    def test_schema_output_format_default_toon(self, tool):
-        assert (
-            tool.get_tool_schema()["properties"]["output_format"]["default"] == "toon"
-        )
-
     def test_annotations_readonly(self, tool):
         hints = tool.get_tool_definition()["annotations"]
         assert hints["readOnlyHint"] is True
@@ -148,11 +143,6 @@ class TestExecute:
             {"mode": "summary", "output_format": "json"}
         )
         assert result["success"] is True
-
-    async def test_toon_format_default(self, tool_with_root):
-        result = await tool_with_root.execute({"mode": "summary"})
-        assert result["format"] == "toon"
-        assert "toon_content" in result
 
     async def test_tree_leaf_class_is_found_not_notfound(self, tool, monkeypatch):
         """Wave 1b (audit structure-01): a real leaf class (exists but has no

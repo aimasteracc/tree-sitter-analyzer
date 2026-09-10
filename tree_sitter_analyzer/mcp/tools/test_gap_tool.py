@@ -16,7 +16,7 @@ from typing import Any
 
 from ...test_gap_analyzer import analyze_coverage_gaps
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_error, build_response
 from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool
@@ -75,11 +75,11 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon", "summary", "total_only"],
-            # Wave 1b (audit health-03): default to TOON like every other MCP
-            # tool (CLAUDE.md §1 — MCP defaults to TOON). test_gap was the lone
-            # tool defaulting to json, so its envelope lacked format/toon_content.
-            "default": "toon",
+            "enum": ["json", "json", "summary", "total_only"],
+            # Wave 1b (audit health-03): default to JSON like every other MCP
+            # tool (CLAUDE.md §1 — MCP defaults to JSON). test_gap was the lone
+            # tool defaulting to json, so its envelope lacked format/json_content.
+            "default": "json",
         },
     },
     "required": [],
@@ -123,7 +123,7 @@ class CodeGraphTestGapTool(BaseMCPTool):
         max_files = int(arguments.get("max_files", 1000))
         max_gaps = int(arguments.get("max_gaps", 50))
         include_covered = arguments.get("include_covered", False)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         target_file = arguments.get("file_path") or None
         coverage_json = arguments.get("coverage_json") or None
 
@@ -150,7 +150,7 @@ class CodeGraphTestGapTool(BaseMCPTool):
         # all three modes (summary/gaps/file).
         verdict = "WARN" if result.gap_count > 0 else "SAFE"
         response = build_response(verdict=verdict, **payload)
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
     def _build_response(
         self,

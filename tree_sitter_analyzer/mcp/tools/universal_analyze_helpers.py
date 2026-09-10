@@ -131,12 +131,11 @@ TOOL_SCHEMA: dict[str, Any] = {
             "description": "Include available query information",
             "default": False,
         },
-        # Token-efficient toon format by default
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
-            "default": "toon",
+            "enum": ["json"],
+            "description": "Output format: JSON",
+            "default": "json",
         },
     },
     # file_path is the only required field

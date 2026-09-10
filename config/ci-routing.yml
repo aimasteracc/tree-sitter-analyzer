@@ -40,7 +40,7 @@ routes:
     - "tests/e2e/**"
     - ".github/workflows/ci.yml"
   run_regression:
-    - "tree_sitter_analyzer/api.py"
+    - "tree_sitter_analyzer/api/**"
     - "tree_sitter_analyzer/formatters/**"
     - "tree_sitter_analyzer/models.py"
     - "tests/regression/**"
@@ -76,7 +76,7 @@ scopes:
         - "tree_sitter_analyzer/formatters/**"
         - "tests/regression/test_format_regression.py"
       api:
-        - "tree_sitter_analyzer/api.py"
+        - "tree_sitter_analyzer/api/**"
         - "tests/regression/test_api_regression.py"
       compatibility:
         - "tests/compatibility/**"

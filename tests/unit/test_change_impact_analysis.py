@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
     ChangeImpactRequest,
     _append_large_dirty_hint,
@@ -16,6 +18,72 @@ from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
     _load_dependency_graph,
     _test_file_matches_change,
 )
+
+
+@pytest.mark.parametrize(
+    "name,content,expected",
+    [
+        (
+            "pytest.ini",
+            "[pytest]\naddopts = -m 'not slow and not network'",
+            "not network and not benchmark",
+        ),
+        (
+            ".pytest.ini",
+            "[pytest]\naddopts = -m 'not e2e and not custom'",
+            "not custom and not network and not benchmark",
+        ),
+        (
+            "tox.ini",
+            "[pytest]\naddopts = -m 'not full_language and not benchmark'",
+            "not benchmark and not network",
+        ),
+        (
+            "setup.cfg",
+            "[tool:pytest]\naddopts = -m 'not slow'",
+            "not network and not benchmark",
+        ),
+        (
+            "pyproject.toml",
+            '[tool.pytest.ini_options]\naddopts = ["-m", "not slow"]',
+            "not network and not benchmark",
+        ),
+        (
+            "pytest.ini",
+            "[pytest]\naddopts = -m'not slow'",
+            "not network and not benchmark",
+        ),
+        ("pytest.ini", "[pytest]\naddopts = -m 'not custom'", None),
+        ("pytest.ini", "[pytest]\naddopts = -m 'not slow or unit'", None),
+        ("pytest.ini", "[pytest]\naddopts = -m 'unit and not slow'", None),
+        ("pytest.ini", "[pytest]\naddopts = -m", None),
+        ("pytest.ini", "[pytest]\naddopts = -m 'not slow' -c other.ini", None),
+        ("pytest.ini", "[pytest]\naddopts = -m 'not slow' -o addopts=-q", None),
+        ("pytest.ini", "[pytest]\naddopts = 'unclosed", None),
+        ("pytest.ini", "invalid ini", None),
+        ("pytest.ini", "[other]\naddopts = -m 'not slow'", None),
+        ("tox.ini", "[other]\naddopts = -m 'not slow'", None),
+        ("pytest.ini", "[pytest]", None),
+        ("pyproject.toml", "[project]\nname='fixture'", None),
+        ("pyproject.toml", "invalid toml", None),
+        ("pyproject.toml", "[tool.pytest.ini_options]\naddopts=[1]", None),
+        ("pyproject.toml", "[tool]\npytest=1", None),
+        ("pyproject.toml", "[tool.pytest]\nini_options=1", None),
+    ],
+)
+def test_project_pytest_selection_preserves_unknown_policy(
+    tmp_path, monkeypatch, name, content, expected
+):
+    """2026-09-09：只解除明确的常规层级排除，不能猜测自定义测试策略。"""
+    from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
+        detect_default_test_command,
+    )
+
+    monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+    (tmp_path / name).write_text(content, encoding="utf-8")
+    command = detect_default_test_command(tmp_path)
+    assert command.pytest_marker == expected
+    assert command.command == "uv run pytest -q"
 
 
 class TestChangeImpactRequest:
@@ -83,6 +151,38 @@ class TestIsRunnableTestFile:
     def test_non_test_file(self):
         assert (
             _is_runnable_test_file("src/example.py", {"tests/"}, ("_test.py",)) is False
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        (
+            "examples/JavaDocTest.java",
+            "src/latest/java/FooTest.java",
+        ),
+    )
+    def test_java_suffix_requires_test_directory(self, path: str):
+        assert (
+            _is_runnable_test_file(
+                path,
+                {"tests/", "test/"},
+                ("Test.java",),
+            )
+            is False
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        (
+            "src/integrationTest/java/FooTest.java",
+            "src/androidTest/java/FooTest.java",
+            "src/it/java/FooTest.java",
+        ),
+    )
+    def test_java_source_sets_are_runnable(self, path: str):
+        assert _is_runnable_test_file(
+            path,
+            {"tests/", "test/"},
+            ("Test.java",),
         )
 
 
@@ -303,3 +403,98 @@ class TestSummaryOnlyFastPath:
 
         assert result["success"] is True
         assert result["affected_count"] == 0
+
+
+def test_read_only_request_skips_call_graph_impact(tmp_path, monkeypatch) -> None:
+    from tree_sitter_analyzer.mcp.tools.utils import change_impact_analysis as ci
+
+    class FakeGraph:
+        def nodes(self):
+            return ["src/app.py"]
+
+        def all_nodes(self):
+            return frozenset(["src/app.py"])
+
+        def dependents_of(self, file_rel):
+            return []
+
+        def dependencies_of(self, file_rel):
+            return []
+
+        def has_node(self, file_rel):
+            return file_rel == "src/app.py"
+
+    monkeypatch.setattr(ci, "_load_dependency_graph", lambda _: FakeGraph())
+    monkeypatch.setattr(
+        ci,
+        "compute_call_graph_impact",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("call graph")),
+    )
+
+    result = ci._build_change_impact_result(
+        ci.ChangeImpactRequest(
+            mode="diff",
+            changed_files=["src/app.py"],
+            diff_stat="src/app.py | 1 +",
+            project_root=str(tmp_path),
+            include_tests=False,
+            agent_summary_only=True,
+            read_only=True,
+        )
+    )
+
+    assert result["affected_count"] == 0
+
+
+@pytest.mark.parametrize(
+    "platform,change",
+    [
+        ("nt", "none"),
+        ("nt", "legacy"),
+        ("posix", "none"),
+        ("nt", "birthtime"),
+        ("nt", "read_ctime"),
+    ],
+)
+def test_config_windows_times(tmp_path, monkeypatch, platform, change):
+    """2026-09-09：跨接口使用创建时间，同句柄继续用变更时间拒绝竞态。"""
+    import os
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools.utils import (
+        verification_pytest_config as config,
+    )
+
+    monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+    path = tmp_path / "pytest.ini"
+    path.write_text("[pytest]\naddopts = -m 'not slow'\n", encoding="utf-8")
+    original_lstat = Path.lstat
+    metadata = path.lstat()
+    names = ("st_mode", "st_dev", "st_ino", "st_size", "st_mtime_ns")
+    common = {name: getattr(metadata, name) for name in names}
+    path_info = SimpleNamespace(**common, st_ctime_ns=100)
+    handle = SimpleNamespace(**common, st_ctime_ns=100 if change == "legacy" else 200)
+    if change != "legacy":
+        path_info.st_birthtime_ns = 100
+        handle.st_birthtime_ns = 101 if change == "birthtime" else 100
+    after_info = SimpleNamespace(**vars(handle))
+    if change == "read_ctime":
+        after_info.st_ctime_ns = 300
+    observed = iter([handle, after_info])
+    monkeypatch.setattr(
+        Path, "lstat", lambda self: path_info if self == path else original_lstat(self)
+    )
+    monkeypatch.setattr(
+        config,
+        "os",
+        SimpleNamespace(
+            **{**vars(os), "name": platform, "fstat": lambda _: next(observed)}
+        ),
+    )
+    expected = (
+        "not network and not benchmark"
+        if platform == "nt" and change in {"none", "legacy"}
+        else None
+    )
+    assert config.targeted_marker_expression(tmp_path) == expected

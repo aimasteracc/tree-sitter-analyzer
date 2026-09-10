@@ -17,6 +17,13 @@ if str(PROJECT_ROOT) not in sys.path:
 import pytest  # noqa: E402
 from hypothesis import settings as hypothesis_settings  # noqa: E402
 
+from tests.pytest_temp_hygiene import (  # noqa: E402
+    cleanup_pytest_temp_root,
+    configure_pytest_temp_root,
+)
+
+QUARANTINED_TESTS: list[str] = []
+
 # TEST-P3 root-cause fix: under pytest-xdist's load balancer, multiple
 # worker processes share the on-disk Hypothesis example database
 # (.hypothesis/examples), which produces flaky failures on text-generative
@@ -46,8 +53,10 @@ def pytest_xdist_auto_num_workers(config) -> int:
     return os.cpu_count() or 4
 
 
+@pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
     """Configure pytest with custom markers and safety checks."""
+    configure_pytest_temp_root(config)
     if not hasattr(config, "workerinput"):
         _cleanup_pytest_git_repos()
 
@@ -81,6 +90,10 @@ def pytest_configure(config):
         "markers",
         "slow_ok: test legitimately exceeds SLOW_TEST_BUDGET_S; "
         "opt-out of the unit-suite per-test perf budget (use sparingly)",
+    )
+    config.addinivalue_line(
+        "markers",
+        "quarantine: test is known unstable; reruns are disabled for it",
     )
 
     # HARD BLOCK: detect duplicate --cov arguments that cause memory blowup.
@@ -121,6 +134,10 @@ def pytest_collection_modifyitems(config, items):
         # Skip tests that require fd if not available
         if "requires_fd" in item.keywords and not has_fd:
             item.add_marker(skip_fd)
+
+        if "quarantine" in item.keywords:
+            item.add_marker(pytest.mark.flaky(reruns=0, reruns_delay=0))
+            QUARANTINED_TESTS.append(item.nodeid)
 
 
 @pytest.fixture(scope="session")
@@ -218,33 +235,49 @@ def pytest_sessionfinish(session, exitstatus):
         _cleanup_pytest_git_repos()
 
 
+@pytest.hookimpl(trylast=True)
+def pytest_unconfigure(config):
+    """Reclaim this process's managed pytest temp directory."""
+    cleanup_pytest_temp_root(config)
+
+
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Warn if memory usage is dangerously high at end of session."""
     try:
-        import os
-
         import psutil
-
-        process = psutil.Process(os.getpid())
-        rss_gb = process.memory_info().rss / (1024**3)
-        system_total_gb = psutil.virtual_memory().total / (1024**3)
-        usage_pct = process.memory_info().rss / psutil.virtual_memory().total * 100
-
-        if rss_gb > 2.0:
-            terminalreporter.write_sep(
-                "!",
-                f"MEMORY WARNING: pytest RSS = {rss_gb:.1f} GB "
-                f"({usage_pct:.0f}% of {system_total_gb:.0f} GB system RAM). "
-                f"Consider running fewer tests or using -x.",
-            )
-        if rss_gb > 4.0:
-            terminalreporter.write_sep(
-                "!",
-                f"MEMORY CRITICAL: pytest RSS = {rss_gb:.1f} GB! "
-                f"This can crash the system. Reduce test batch size.",
-            )
     except ImportError:
-        pass
+        psutil = None
+
+    if psutil is not None:
+        try:
+            process = psutil.Process(os.getpid())
+            rss_gb = process.memory_info().rss / (1024**3)
+            system_total_gb = psutil.virtual_memory().total / (1024**3)
+            usage_pct = process.memory_info().rss / psutil.virtual_memory().total * 100
+
+            if rss_gb > 2.0:
+                terminalreporter.write_sep(
+                    "!",
+                    f"MEMORY WARNING: pytest RSS = {rss_gb:.1f} GB "
+                    f"({usage_pct:.0f}% of {system_total_gb:.0f} GB system RAM). "
+                    f"Consider running fewer tests or using -x.",
+                )
+            if rss_gb > 4.0:
+                terminalreporter.write_sep(
+                    "!",
+                    f"MEMORY CRITICAL: pytest RSS = {rss_gb:.1f} GB! "
+                    f"This can crash the system. Reduce test batch size.",
+                )
+        except psutil.Error:
+            pass
+
+    if QUARANTINED_TESTS:
+        terminalreporter.write_sep(
+            "=",
+            f"quarantined tests ({len(QUARANTINED_TESTS)})",
+        )
+        for nodeid in QUARANTINED_TESTS:
+            terminalreporter.write_line(nodeid)
 
 
 @pytest.fixture(autouse=True)
@@ -332,7 +365,12 @@ def _reset_all_singletons():
         (
             "tree_sitter_analyzer.formatters.formatter_registry",
             "FormatterRegistry",
-            lambda cls: (cls.clear(), cls.register_builtin_formatters()),
+            lambda cls: (
+                cls.clear_registry(),
+                importlib.import_module(
+                    "tree_sitter_analyzer.formatters.formatter_registry"
+                ).register_builtin_formatters(),
+            ),
         ),
         (
             "tree_sitter_analyzer.core.engine_manager",
@@ -343,6 +381,15 @@ def _reset_all_singletons():
             "tree_sitter_analyzer.mcp.utils.file_output_factory",
             "FileOutputManagerFactory",
             lambda cls: cls._instances.clear() if hasattr(cls, "_instances") else None,
+        ),
+        # RFC-0027 L6.1: the answer cache is process-local, so an entry stored
+        # by one test would be served to the next. A leaked verdict is worse
+        # than a leaked engine — it makes an unrelated test pass on a stale
+        # answer.
+        (
+            "tree_sitter_analyzer.cache.answer_cache",
+            "reset_answer_cache",
+            lambda fn: fn(),
         ),
     ]
 
@@ -364,6 +411,10 @@ def _reset_all_singletons():
         ),
         ("tree_sitter_analyzer.language_loader", "_loader_instance", "set_none"),
         ("tree_sitter_analyzer.query_loader", "_query_loader_instance", "set_none"),
+        # RFC-0025 Layer 5: the latency recorder is process-global and every
+        # facade call feeds it. Without this reset, a test asserting the
+        # honest NO_OBSERVATIONS empty state would see another test's samples.
+        ("tree_sitter_analyzer.latency", "_recorder", "set_none"),
     ]
 
     for module_path, attr_name, action in _MODULE_ATTR_RESETS:
@@ -537,6 +588,11 @@ def verify_test_isolation():
 # (file_watcher polling, real-process file_output, etc.).
 
 SLOW_TEST_BUDGET_S: float = 8.0 if sys.platform == "win32" else 5.0
+# CI 共享 runner 的墙钟方差约 1.6×（#1364 家族第三形态：macos 轴上同一测试
+# 两次以 5.41s/6.02s 刷过 5s 预算——本机快、CI 慢，不是回归）。GitHub Actions
+# 自带 CI=true；本地保持严格 5s 不变，CI 自动放宽到 8s 与 Windows 对齐。
+if os.environ.get("CI"):
+    SLOW_TEST_BUDGET_S *= 1.6
 
 
 @pytest.hookimpl(wrapper=True)

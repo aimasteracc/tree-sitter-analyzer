@@ -59,6 +59,41 @@ def test_ast_cache_call_edge_extraction_does_not_depend_on_call_graph() -> None:
     assert "tree_sitter_analyzer.call_graph" not in imports
 
 
+def test_call_graph_supported_exts_covers_function_extraction_languages() -> None:
+    """CallGraph's file-scan allowlist must not silently narrow past what
+    function_extraction.py already knows how to walk.
+
+    Regression: found in the 2026-07-21 architecture-consistency dogfood
+    pass (PR #1157). CallGraph.build() historically hardcoded its own
+    7-language supported_exts set, independent of function_extraction's
+    per-language dispatch tables. Rust/C#/Kotlin/Ruby/PHP/Swift/Lua all had
+    working _FUNC_DEF_TYPES/_CALL_NODE_TYPES entries but were silently
+    excluded from every CodeGraph-parity tool (--call-graph, --callers,
+    --callees, dead-code detection, codegraph_* MCP tools) because the file
+    scanner dropped their files before parsing. See call_graph.py's
+    SUPPORTED_EXTS docstring.
+    """
+    from tree_sitter_analyzer.call_graph import SUPPORTED_EXTS
+    from tree_sitter_analyzer.function_extraction import SUPPORTED_LANGUAGES
+    from tree_sitter_analyzer.languages.lang_extension_map import EXT_TO_LANG
+
+    exts_by_lang: dict[str, set[str]] = {}
+    for ext, lang in EXT_TO_LANG.items():
+        exts_by_lang.setdefault(lang, set()).add(ext)
+
+    missing: dict[str, set[str]] = {}
+    for lang in SUPPORTED_LANGUAGES:
+        lang_exts = exts_by_lang.get(lang, set())
+        uncovered = lang_exts - SUPPORTED_EXTS
+        if uncovered:
+            missing[lang] = uncovered
+
+    assert missing == {}, (
+        f"function_extraction supports these languages' node types but "
+        f"CallGraph.SUPPORTED_EXTS omits their extensions: {missing}"
+    )
+
+
 def test_callee_resolution_algorithm_has_single_shared_home() -> None:
     """CallGraph/CrossFile/Synapse may expose APIs, but not bespoke algorithms."""
     call_graph = (PROJECT_ROOT / "tree_sitter_analyzer" / "call_graph.py").read_text(

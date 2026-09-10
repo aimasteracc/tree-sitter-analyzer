@@ -6,9 +6,10 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
 from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
+
+# NOTE: FindAndGrepTool (find_and_grep) and SearchContentTool (search_content)
+# are deprecated and removed. Text search is now done via CC built-in Grep tool.
 
 
 async def collect_malicious_query_results(
@@ -91,18 +92,6 @@ async def _execute_malicious_query(
     malicious_query: str,
     secure_test_project: str,
 ) -> dict[str, Any]:
-    if isinstance(tool, SearchContentTool | FindAndGrepTool):
-        return await asyncio.wait_for(
-            tool.execute(
-                {
-                    "roots": [secure_test_project],
-                    "query": malicious_query,
-                    "max_count": 10,
-                }
-            ),
-            timeout=5.0,
-        )
-
     if isinstance(tool, QueryTool):
         secure_service = (
             Path(secure_test_project)

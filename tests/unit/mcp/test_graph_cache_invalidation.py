@@ -75,6 +75,48 @@ class TestGraphFingerprint:
         fp3 = compute_graph_fingerprint(str(project_root))
         assert fp3.file_count == fp1.file_count
 
+    def test_changes_on_added_mjs_file(self, project_root: Path) -> None:
+        """A new ``.mjs`` file must bump file_count.
+
+        ``project_graph`` resolves ``.mjs``/``.cjs``/``.mts``/``.cts``, so the
+        fingerprint must admit them too — otherwise the graph cache never
+        invalidates on Node module edits and stale answers are served.
+        """
+        fp1 = compute_graph_fingerprint(str(project_root))
+        (project_root / "pkg" / "esm.mjs").write_text("export const a = 1;\n")
+        fp2 = compute_graph_fingerprint(str(project_root))
+        assert fp2.file_count == fp1.file_count + 1
+
+    def test_changes_on_added_mts_file(self, project_root: Path) -> None:
+        """A new ``.mts`` file must bump file_count."""
+        fp1 = compute_graph_fingerprint(str(project_root))
+        (project_root / "pkg" / "esm.mts").write_text("export const a: number = 1;\n")
+        fp2 = compute_graph_fingerprint(str(project_root))
+        assert fp2.file_count == fp1.file_count + 1
+
+    def test_changes_on_added_cjs_file(self, project_root: Path) -> None:
+        """A new ``.cjs`` file must bump file_count."""
+        fp1 = compute_graph_fingerprint(str(project_root))
+        (project_root / "pkg" / "legacy.cjs").write_text("module.exports = {};\n")
+        fp2 = compute_graph_fingerprint(str(project_root))
+        assert fp2.file_count == fp1.file_count + 1
+
+    def test_changes_on_added_cts_file(self, project_root: Path) -> None:
+        """A new ``.cts`` file must bump file_count."""
+        fp1 = compute_graph_fingerprint(str(project_root))
+        (project_root / "pkg" / "legacy.cts").write_text("export = {};\n")
+        fp2 = compute_graph_fingerprint(str(project_root))
+        assert fp2.file_count == fp1.file_count + 1
+
+    def test_changes_on_touched_mjs_file(self, project_root: Path) -> None:
+        """Editing an existing ``.mjs`` file must move max_mtime_ns."""
+        (project_root / "pkg" / "esm.mjs").write_text("export const a = 1;\n")
+        fp1 = compute_graph_fingerprint(str(project_root))
+        time.sleep(0.05)  # ensure mtime granularity
+        os.utime(project_root / "pkg" / "esm.mjs")
+        fp2 = compute_graph_fingerprint(str(project_root))
+        assert fp2.max_mtime_ns > fp1.max_mtime_ns
+
     def test_idempotent_when_unchanged(self, project_root: Path) -> None:
         """Calling twice without edits returns the same fingerprint."""
         fp1 = compute_graph_fingerprint(str(project_root))
@@ -166,8 +208,9 @@ class TestDependencyAnalysisCacheInvalidatesOnFileChange:
 
 
 class TestSymbolLineageCacheInvalidatesOnFileChange:
+    @pytest.mark.parametrize("preserve_mtime", [False, True])
     def test_symbol_lineage_cache_invalidates_on_file_change(
-        self, project_root: Path
+        self, project_root: Path, preserve_mtime
     ) -> None:
         tool = SymbolLineageTool(project_root=str(project_root))
 
@@ -181,8 +224,17 @@ class TestSymbolLineageCacheInvalidatesOnFileChange:
         assert r2.get("from_cache") is True
         assert tool._dep_graph is cold_graph
 
-        time.sleep(0.05)
-        os.utime(project_root / "pkg" / "a.py")
+        path = project_root / "pkg" / "a.py"
+        if preserve_mtime:
+            before = path.stat()
+            path.write_text(
+                path.read_text(encoding="utf-8").replace("def foo", "def goo"),
+                encoding="utf-8",
+            )
+            os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        else:
+            time.sleep(0.05)
+            os.utime(path)
 
         r3 = asyncio.run(tool.execute({"symbol": "bar", "output_format": "json"}))
         # Rebuild must wipe the symbol cache too, so from_cache should be
@@ -209,3 +261,121 @@ class TestDependencyGraphGlobalCacheRespectsFingerprint:
         g2 = DependencyGraph(str(project_root))
         # Different fingerprints -> different cache keys -> different objects.
         assert g2 is not g1
+
+
+@pytest.mark.parametrize(
+    "padding", ["", "#" + "x" * 131072 + "\n"], ids=["short", "tail"]
+)
+def test_dependency_graph_cache_tracks_full_content(project_root, padding):
+    """相同时间戳、长度及文件数不能掩盖导入变更，包括文件尾部。"""
+    from tree_sitter_analyzer.project_graph import DependencyGraph
+
+    importer = project_root / "pkg" / "a.py"
+    importer.write_text(padding + "from .b import bar\n", encoding="utf-8")
+    (project_root / "pkg" / "c.py").write_text(
+        "def bar(): return 2\n", encoding="utf-8"
+    )
+    first = DependencyGraph(str(project_root))
+    assert first.dependencies_of("pkg/a.py") == ["pkg/b.py"]
+    assert DependencyGraph(str(project_root)) is first
+    before = importer.stat()
+    importer.write_text(padding + "from .c import bar\n", encoding="utf-8")
+    os.utime(importer, ns=(before.st_atime_ns, before.st_mtime_ns))
+    second = DependencyGraph(str(project_root))
+    assert second.dependencies_of("pkg/a.py") == ["pkg/c.py"]
+    assert second is not first
+
+
+def test_dependency_graph_key_rejects_unreadable_walk(tmp_path, monkeypatch):
+    """遍历失败不能被当作可复用的空源码树。"""
+    from tree_sitter_analyzer.project_graph import DependencyGraph
+
+    def denied(_path):
+        raise PermissionError("unreadable tree")
+
+    monkeypatch.setattr(os, "scandir", denied)
+    assert DependencyGraph._cache_key_for(str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("failure", ["oversized", "changed_during_read"])
+def test_dependency_graph_key_rejects_unstable_input(tmp_path, monkeypatch, failure):
+    """超限或读取期间变化的文件不能产生可复用键。"""
+    from tree_sitter_analyzer.project_graph import DependencyGraph
+
+    path = tmp_path / "a.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    if failure == "oversized":
+        with path.open("ab") as stream:
+            stream.truncate(64 * 1024 * 1024 + 1)
+    else:
+        original = os.fstat
+        calls = 0
+
+        def changed(fd):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                before = path.stat()
+                os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 1000000))
+            return original(fd)
+
+        monkeypatch.setattr(os, "fstat", changed)
+    assert DependencyGraph._cache_key_for(str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("kind", ["dependency", "lineage", "smart", "safe"])
+def test_live_tool_graph_rejects_preserved_mtime_edit(project_root, kind):
+    """常驻工具的外层图缓存也必须发现等时间戳改写。"""
+    from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+    from tree_sitter_analyzer.mcp.tools.smart_context_tool import SmartContextTool
+
+    factories = {
+        "dependency": DependencyAnalysisTool,
+        "lineage": SymbolLineageTool,
+        "smart": SmartContextTool,
+        "safe": SafeToEditTool,
+    }
+    (project_root / "pkg" / "c.py").write_text(
+        "def bar(): return 2\n", encoding="utf-8"
+    )
+    tool = factories[kind](str(project_root))
+    get_graph = tool._get_dep_graph if kind == "lineage" else tool._get_graph
+    first = get_graph()
+    assert first.dependencies_of("pkg/a.py") == ["pkg/b.py"]
+    assert get_graph() is first
+    path = project_root / "pkg" / "a.py"
+    before = path.stat()
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("from .b", "from .c"), encoding="utf-8"
+    )
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert get_graph().dependencies_of("pkg/a.py") == ["pkg/c.py"]
+
+
+def test_live_call_tool_rejects_preserved_mtime_edit(project_root):
+    """重复 MCP 调用不能沿用旧函数列表。"""
+    tool = CodeGraphCallTool(str(project_root))
+    args = {"mode": "all_functions", "output_format": "json"}
+    first = asyncio.run(tool.execute(args))
+    path = project_root / "pkg" / "a.py"
+    before = path.stat()
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("def foo", "def goo"), encoding="utf-8"
+    )
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    second = asyncio.run(tool.execute(args))
+    assert {row["name"] for row in first["functions"]} == {"foo", "bar"}
+    assert {row["name"] for row in second["functions"]} == {"goo", "bar"}
+
+
+@pytest.mark.parametrize("kind", ["smart", "safe"])
+def test_live_graph_requires_project_root(kind):
+    """项目根目录被清除后不能返回此前缓存的图。"""
+    from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+    from tree_sitter_analyzer.mcp.tools.smart_context_tool import SmartContextTool
+
+    cls = SmartContextTool if kind == "smart" else SafeToEditTool
+    tool = cls()
+    tool.project_root = None
+    with pytest.raises(ValueError, match="Project root not set"):
+        tool._get_graph()

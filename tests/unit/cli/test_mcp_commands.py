@@ -29,6 +29,170 @@ MCP_COMMAND_FLAGS = (
 )
 
 
+def _certify_pulse_cli_project(root):
+    """真实 CLI 用例通过完整索引建立源码认证。"""
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    result = asyncio.run(CodeGraphFullIndexTool(str(root)).execute({"mode": "full"}))
+    assert result["scope_complete"] is True
+
+
+def test_pulse_cli_real_index_emits_json_success(tmp_path, monkeypatch, capsys):
+    # PR #1352：运行真实 CLI 解析/分发/工具/序列化，不 mock 任一业务层。
+    import json
+    import logging
+    import sys
+
+    from tree_sitter_analyzer.cli_main import main
+
+    source = tmp_path / "a.py"
+    source.write_text(
+        'def greet():\n    """Hello CLI."""\n    return 1\n', encoding="utf-8"
+    )
+    _certify_pulse_cli_project(tmp_path)
+    capsys.readouterr()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tsa",
+            "a.py",
+            "--project-root",
+            str(tmp_path),
+            "--pulse",
+            "greet",
+            "--format",
+            "json",
+        ],
+    )
+    # CLI 的日志配置属于进程级副作用；测试结束后必须还原，避免污染其他日志见证。
+    loggers = [
+        logging.getLogger(name)
+        for name in (
+            "",
+            "tree_sitter_analyzer",
+            "tree_sitter_analyzer.performance",
+            "tree_sitter_analyzer.plugins",
+            "tree_sitter_analyzer.plugins.manager",
+        )
+    ]
+    levels = [logger.level for logger in loggers]
+    try:
+        with pytest.raises(SystemExit) as exited:
+            main()
+    finally:
+        for logger, level in zip(loggers, levels, strict=True):
+            logger.setLevel(level)
+    assert exited.value.code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["success"] is True
+    assert payload["source_evidence"]["freshness"] == "fresh"
+    assert payload["result"]["sym"]["n"] == "greet"
+    assert payload["result"]["sym"]["doc"] == "Hello CLI."
+    assert [logger.level for logger in loggers] == levels
+
+
+def test_batch_cli_project_sequence_keeps_results_and_warning_capture(
+    tmp_path, monkeypatch, capsys, caplog
+):
+    # PR #1352：真实 CLI 依次访问同名项目数据，CLI 后的 WARNING 见证不依赖默认级别。
+    import json
+    import logging
+    import sys
+
+    from tree_sitter_analyzer.api.pulse import query_pulse
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cli_main import main
+
+    roots = []
+    for label in ("first", "second"):
+        root = tmp_path / label
+        root.mkdir()
+        source = root / "a.py"
+        source.write_text(
+            f'def greet():\n    """{label} greet"""\n    pass\n\ndef other():\n    """{label} other"""\n    pass\n',
+            encoding="utf-8",
+        )
+        _certify_pulse_cli_project(root)
+        roots.append(root)
+    targets = [{"file": "a.py", "symbol": name} for name in ("greet", "other")]
+    loggers = [
+        logging.getLogger(name)
+        for name in (
+            "",
+            "tree_sitter_analyzer",
+            "tree_sitter_analyzer.performance",
+            "tree_sitter_analyzer.plugins",
+            "tree_sitter_analyzer.plugins.manager",
+        )
+    ]
+    levels = [logger.level for logger in loggers]
+    try:
+        for root in (roots[0], roots[1], roots[0]):
+            capsys.readouterr()
+            monkeypatch.setattr(
+                sys,
+                "argv",
+                [
+                    "tsa",
+                    "--project-root",
+                    str(root),
+                    "--pulse-batch",
+                    json.dumps(targets),
+                    "--format",
+                    "json",
+                ],
+            )
+            with pytest.raises(SystemExit) as exited:
+                main()
+            assert exited.value.code == 0
+            payload = json.loads(capsys.readouterr().out)
+            assert payload["success"] is True
+            assert payload["source_evidence"]["freshness"] == "fresh"
+            assert (
+                payload["count"],
+                payload["error_count"],
+                payload["truncated_count"],
+            ) == (2, 0, 0)
+            assert [r["sym"]["doc"] for r in payload["results"]] == [
+                f"{root.name} greet",
+                f"{root.name} other",
+            ]
+            cache = ASTCache(str(root))
+            import sqlite3
+
+            conn = sqlite3.connect(":memory:")
+            conn.row_factory = sqlite3.Row
+            try:
+                # 告警测试在私有副本注入数据，已发布版本不能作为写入夹具。
+                cache.get_conn().backup(conn)
+                conn.execute(
+                    "INSERT OR REPLACE INTO ast_symbol_activation(symbol_id,file_path,last_modified_commit,computed_at) "
+                    "SELECT id,file_path,?,0 FROM ast_symbol_rows WHERE name='greet'",
+                    ("a" * 40,),
+                )
+                caplog.clear()
+                with caplog.at_level(
+                    logging.WARNING, logger="tree_sitter_analyzer.api.pulse"
+                ):
+                    assert (
+                        query_pulse(conn, "a.py", "greet").git_heat.commit_msg is None
+                    )
+                assert (
+                    "tree_sitter_analyzer.api.pulse",
+                    logging.WARNING,
+                    "COMMIT_MESSAGE_MISSING: a.py:greet",
+                ) in caplog.record_tuples
+            finally:
+                conn.close()
+                cache.close()
+    finally:
+        for logger, level in zip(loggers, levels, strict=True):
+            logger.setLevel(level)
+
+
 def _args(**overrides: Any) -> Namespace:
     defaults = dict.fromkeys(MCP_COMMAND_FLAGS, False)
     defaults["dependencies"] = None
@@ -70,7 +234,6 @@ def _args(**overrides: Any) -> Namespace:
             {
                 "file_path": "target.py",
                 "output_format": "json",
-                "compact_only": False,
             },
         ),
         (
@@ -89,7 +252,6 @@ def _args(**overrides: Any) -> Namespace:
                 "min_grade": "C",
                 "max_files": 30,
                 "output_format": "json",
-                "compact_only": False,
             },
         ),
         (
@@ -104,7 +266,6 @@ def _args(**overrides: Any) -> Namespace:
                 "file_path": "target.py",
                 "edit_type": "refactor",
                 "output_format": "json",
-                "compact_only": False,
             },
         ),
         (
@@ -121,7 +282,6 @@ def _args(**overrides: Any) -> Namespace:
                 # dispatcher emits the trimmed surface.
                 "agent_summary_only": True,
                 "scope_mode": "report",
-                "compact_only": False,
                 "resource_profile": "default",
             },
         ),
@@ -184,7 +344,7 @@ def test_mcp_cli_commands_delegate_to_matching_tool(
 
         async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
             seen["arguments"] = arguments
-            return {"success": True, "tool": tool_attr, "toon_content": "compact"}
+            return {"success": True, "tool": tool_attr}
 
     monkeypatch.setattr(mcp_commands, tool_attr, FakeTool)
 
@@ -200,7 +360,7 @@ def test_mcp_cli_commands_delegate_to_matching_tool(
 
     assert result == 0
     assert errors == []
-    assert output == [{"success": True, "tool": tool_attr, "toon_content": "compact"}]
+    assert output == [{"success": True, "tool": tool_attr}]
     assert seen == {
         "project_root": "/repo",
         "arguments": expected_tool_args,
@@ -234,7 +394,6 @@ def test_safe_to_edit_cli_forwards_requested_edit_type(monkeypatch) -> None:
             "file_path": "target.py",
             "edit_type": "rename",
             "output_format": "json",
-            "compact_only": False,
         },
     }
 
@@ -266,7 +425,6 @@ def test_project_health_cli_forwards_requested_max_files(monkeypatch) -> None:
             "min_grade": "C",
             "max_files": 7,
             "output_format": "json",
-            "compact_only": False,
         },
     }
 
@@ -413,32 +571,6 @@ def test_project_scoped_dependency_modes_do_not_require_file_path(
     }
 
 
-def test_mcp_cli_toon_output_prints_tool_toon_content(monkeypatch, capsys) -> None:
-    class FakeProjectOverviewTool:
-        def __init__(self, project_root: str | None = None) -> None:
-            pass
-
-        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-            return {"success": True, "toon_content": "project:compact"}
-
-    monkeypatch.setattr(mcp_commands, "ProjectOverviewTool", FakeProjectOverviewTool)
-
-    output: list[dict[str, Any]] = []
-    errors: list[str] = []
-
-    result = mcp_commands.handle_mcp_commands(
-        _args(overview=True),
-        output.append,
-        errors.append,
-        lambda: "toon",
-    )
-
-    assert result == 0
-    assert errors == []
-    assert output == []
-    assert capsys.readouterr().out == "project:compact\n"
-
-
 def test_change_impact_cli_does_not_require_file_path(monkeypatch) -> None:
     seen: dict[str, Any] = {}
 
@@ -482,7 +614,6 @@ def test_change_impact_cli_does_not_require_file_path(monkeypatch) -> None:
             # --change-impact-full is passed.
             "agent_summary_only": True,
             "scope_mode": "report",
-            "compact_only": False,
             "resource_profile": "default",
         },
     }
@@ -529,7 +660,6 @@ def test_change_impact_cli_forwards_scope_paths(monkeypatch) -> None:
             # v1.12 default flip: trimmed surface unless --change-impact-full.
             "agent_summary_only": True,
             "scope_mode": "report",
-            "compact_only": False,
             "resource_profile": "default",
         },
     }
@@ -624,7 +754,6 @@ def test_change_impact_cli_forwards_agent_summary_only(monkeypatch) -> None:
             "scope_paths": [],
             "agent_summary_only": True,
             "scope_mode": "report",
-            "compact_only": False,
             "resource_profile": "default",
         },
     }
@@ -666,7 +795,6 @@ def test_change_impact_cli_forwards_mode_and_test_discovery_toggle(monkeypatch) 
             # v1.12 default flip: trimmed surface unless --change-impact-full.
             "agent_summary_only": True,
             "scope_mode": "report",
-            "compact_only": False,
             "resource_profile": "default",
         },
     }
@@ -709,7 +837,6 @@ def test_change_impact_cli_forwards_change_impact_full(monkeypatch) -> None:
             "scope_paths": [],
             "agent_summary_only": False,
             "scope_mode": "report",
-            "compact_only": False,
             "resource_profile": "default",
         },
     }
@@ -878,7 +1005,7 @@ def test_callers_cli_delegates_to_callers_tool(monkeypatch) -> None:
 
         async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
             seen["arguments"] = arguments
-            return {"success": True, "toon_content": "callers result"}
+            return {"success": True}
 
     monkeypatch.setattr(mcp_commands, "CodeGraphCallersTool", FakeCallersTool)
 
@@ -910,7 +1037,7 @@ def test_callees_cli_delegates_to_callees_tool(monkeypatch) -> None:
 
         async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
             seen["arguments"] = arguments
-            return {"success": True, "toon_content": "callees result"}
+            return {"success": True}
 
     monkeypatch.setattr(mcp_commands, "CodeGraphCalleesTool", FakeCalleesTool)
 
@@ -942,7 +1069,7 @@ def test_symbol_resolve_cli_delegates_to_resolve_tool(monkeypatch) -> None:
 
         async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
             seen["arguments"] = arguments
-            return {"success": True, "toon_content": "resolve result"}
+            return {"success": True}
 
     monkeypatch.setattr(mcp_commands, "CodeGraphSymbolResolveTool", FakeResolveTool)
 
@@ -964,11 +1091,172 @@ def test_symbol_resolve_cli_delegates_to_resolve_tool(monkeypatch) -> None:
     }
 
 
-def test_compact_toon_cli_flag_forwards_compact_only(monkeypatch) -> None:
-    """RFC-0012 CLI parity: --compact-toon reaches the MCP compact_only arg."""
+@pytest.mark.parametrize(
+    ("flag_overrides", "tool_attr", "expected_tool_args"),
+    [
+        (
+            {
+                "safe_to_edit": True,
+                "access_mode": "read_existing",
+                "snapshot_id": "idxsnap_01",
+                "source_generation": "gen_01",
+            },
+            "SafeToEditTool",
+            {
+                "file_path": "target.py",
+                "edit_type": "refactor",
+                "output_format": "json",
+                "access_mode": "read_existing",
+                "snapshot_id": "idxsnap_01",
+                "source_generation": "gen_01",
+            },
+        ),
+        (
+            {
+                "change_impact": True,
+                "access_mode": "read_existing",
+            },
+            "ChangeImpactTool",
+            {
+                "mode": "diff",
+                "pr_url": "",
+                "include_tests": True,
+                "output_format": "json",
+                "scope_paths": [],
+                "agent_summary_only": True,
+                "scope_mode": "report",
+                "resource_profile": "default",
+                "access_mode": "read_existing",
+            },
+        ),
+        (
+            {
+                "codegraph_context": "trace target",
+                "access_mode": "read_existing",
+                "snapshot_id": "idxsnap_01",
+                "source_generation": "gen_01",
+            },
+            "CodeGraphContextTool",
+            {
+                "task": "trace target",
+                "max_nodes": 30,
+                "max_code_blocks": 8,
+                "output_format": "json",
+                "include_graph": False,
+                "access_mode": "read_existing",
+                "snapshot_id": "idxsnap_01",
+                "source_generation": "gen_01",
+            },
+        ),
+        (
+            {
+                "ast_diff": True,
+                "access_mode": "read_existing",
+                "diff_snapshot_id": "diffsnap_01",
+            },
+            "ASTDiffTool",
+            {
+                "mode": "diff_files",
+                "old_file": None,
+                "new_file": None,
+                "old_source": None,
+                "new_source": None,
+                "file_path": None,
+                "old_ref": "HEAD~1",
+                "new_ref": "HEAD",
+                "language": None,
+                "include_node_bodies": False,
+                "output_format": "json",
+                "access_mode": "read_existing",
+                "diff_snapshot_id": "diffsnap_01",
+            },
+        ),
+        (
+            {
+                "semantic_classify": True,
+                "access_mode": "read_existing",
+                "diff_snapshot_id": "diffsnap_01",
+            },
+            "SemanticClassifyTool",
+            {
+                "mode": "classify_file",
+                "file_path": "target.py",
+                "old_ref": "HEAD~1",
+                "new_ref": "HEAD",
+                "language": None,
+                "include_ast_nodes": False,
+                "hunk_cap": 50,
+                "output_format": "json",
+                "access_mode": "read_existing",
+                "diff_snapshot_id": "diffsnap_01",
+            },
+        ),
+    ],
+)
+def test_read_existing_controls_forwarded_to_tool(
+    monkeypatch,
+    flag_overrides: dict[str, Any],
+    tool_attr: str,
+    expected_tool_args: dict[str, Any],
+) -> None:
+    """RFC-0022 process-local controls reach the MCP tool on the CLI-handler path.
+
+    Codex P1 (#1257): these controls were MCP-only because the CLI bridge
+    dropped them; the in-process bridge must forward access_mode / snapshot
+    IDs verbatim so RFC-0022 routing can compose index.status, nav.context
+    and edit snapshot consumers in one process.
+    """
     seen: dict[str, Any] = {}
 
-    class FakeFileHealthTool:
+    class FakeTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True, "tool": tool_attr}
+
+    monkeypatch.setattr(mcp_commands, tool_attr, FakeTool)
+
+    output: list[dict[str, Any]] = []
+    errors: list[str] = []
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(**flag_overrides),
+        output.append,
+        errors.append,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert errors == []
+    assert output == [{"success": True, "tool": tool_attr}]
+    assert seen == {
+        "project_root": "/repo",
+        "arguments": expected_tool_args,
+    }
+
+
+@pytest.mark.parametrize(
+    ("flag_overrides", "tool_attr"),
+    [
+        ({"safe_to_edit": True}, "SafeToEditTool"),
+        ({"change_impact": True}, "ChangeImpactTool"),
+        ({"codegraph_context": "trace target"}, "CodeGraphContextTool"),
+        ({"ast_diff": True}, "ASTDiffTool"),
+        ({"semantic_classify": True}, "SemanticClassifyTool"),
+    ],
+)
+def test_read_existing_controls_absent_are_not_forwarded(
+    monkeypatch, flag_overrides: dict[str, Any], tool_attr: str
+) -> None:
+    """Ordinary CLI namespaces (the parser never populates the controls) forward none.
+
+    Keeps the bridge strictly opt-in for in-process RFC-0022 routers.
+    """
+    seen: dict[str, Any] = {}
+
+    class FakeTool:
         def __init__(self, project_root: str | None = None) -> None:
             seen["project_root"] = project_root
 
@@ -976,17 +1264,24 @@ def test_compact_toon_cli_flag_forwards_compact_only(monkeypatch) -> None:
             seen["arguments"] = arguments
             return {"success": True}
 
-    monkeypatch.setattr(mcp_commands, "FileHealthTool", FakeFileHealthTool)
+    monkeypatch.setattr(mcp_commands, tool_attr, FakeTool)
 
     result = mcp_commands.handle_mcp_commands(
-        _args(file_health=True, compact_toon=True),
+        _args(**flag_overrides),
         lambda payload: None,
         lambda error: None,
-        lambda: "toon",
+        lambda: "json",
     )
 
     assert result == 0
-    assert seen["arguments"]["compact_only"] is True
+    for control in (
+        "access_mode",
+        "snapshot_id",
+        "source_generation",
+        "diff_snapshot_id",
+        "route_lease_id",
+    ):
+        assert control not in seen["arguments"]
 
 
 @pytest.mark.parametrize(
@@ -1051,7 +1346,7 @@ def test_compact_toon_cli_flag_forwards_compact_only(monkeypatch) -> None:
         ),
     ],
 )
-@pytest.mark.parametrize("output_format", ["json", "toon"])
+@pytest.mark.parametrize("output_format", ["json"])
 def test_recovered_routes_delegate_all_arguments(
     argv, tool, expected, output_format, monkeypatch
 ):
@@ -1144,3 +1439,18 @@ def test_real_cli_recovered_routes(tmp_path):
     )
     assert applied["success"] is True
     assert source.read_text(encoding="utf-8") == original.replace("before", "after")
+
+
+@pytest.mark.parametrize("output_format", ["json", "toon"])
+def test_verify_plan_cli_forwards_descriptor_and_output_format(output_format):
+    args = create_argument_parser().parse_args(["--verify-plan", "descriptor"])
+    from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
+        find_selected_mcp_command,
+    )
+
+    spec = find_selected_mcp_command(args, mcp_commands.MCP_COMMAND_SPECS)
+    assert spec.tool_attr == "VerificationTool"
+    assert spec.build_tool_args(args, output_format) == {
+        "request": "descriptor",
+        "output_format": output_format,
+    }

@@ -4,7 +4,7 @@
 These three commands all wrap MCP tools (``codegraph_autoindex``,
 ``codegraph_full_index``, ``codegraph_metrics``). They live in a single
 module because they share the same execution shape — instantiate tool,
-build a kwargs dict, ``await tool.execute(...)``, print JSON or TOON.
+build a kwargs dict, ``await tool.execute(...)``, and print JSON.
 
 Keeping them out of :mod:`tree_sitter_analyzer.cli.commands.mcp_commands`
 avoids growing the already-large MCP_COMMAND_SPECS table and matches the
@@ -20,6 +20,11 @@ import os
 from collections.abc import Callable
 from typing import Any
 
+from ...indexing_limits import (
+    KNOWLEDGE_INDEX_MAX_FILES,
+    normalize_index_max_files,
+)
+
 OutputJsonFn = Callable[[dict[str, Any]], None]
 OutputErrorFn = Callable[[str], None]
 
@@ -31,20 +36,17 @@ def _project_root(args: Any) -> str:
 def _output_format(args: Any) -> str:
     """Map argparse-visible output format to MCP tool format.
 
-    Delegates to :func:`tree_sitter_analyzer.cli.output_format.resolve_mcp_tool_format`
+    Delegates to :func:`tree_sitter_analyzer.cli.output_format.resolve_output_format`
     so the args→tool-format mapping has one source of truth (r37an).
     """
-    from tree_sitter_analyzer.cli.output_format import resolve_mcp_tool_format
+    from tree_sitter_analyzer.cli.output_format import resolve_output_format
 
-    return resolve_mcp_tool_format(args)
+    return resolve_output_format(args)
 
 
 def _print(result: dict[str, Any], output_format: str) -> None:
     """Write the MCP tool response to stdout in the requested shape."""
-    if output_format == "toon":
-        print(result.get("toon_content", ""))
-    else:
-        print(json.dumps(result, indent=2, default=str))
+    print(json.dumps(result, indent=2, default=str))
 
 
 def _exit_code_for(result: dict[str, Any]) -> int:
@@ -54,26 +56,40 @@ def _exit_code_for(result: dict[str, Any]) -> int:
 def _autoindex_payload(args: Any, output_format: str) -> dict[str, Any]:
     return {
         "mode": getattr(args, "autoindex_mode", "status") or "status",
-        "max_files": int(getattr(args, "autoindex_max_files", 20_000)),
-        "output_format": output_format,
-    }
-
-
-def _full_index_payload(args: Any, output_format: str) -> dict[str, Any]:
-    return {
-        "mode": getattr(args, "full_index_mode", "incremental") or "incremental",
-        "max_files": int(getattr(args, "full_index_max_files", 20_000)),
-        "include_activation": bool(
-            getattr(args, "full_index_include_activation", False)
+        "max_files": normalize_index_max_files(
+            getattr(args, "autoindex_max_files", None)
         ),
         "output_format": output_format,
     }
 
 
+def _full_index_payload(args: Any, output_format: str) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "mode": getattr(args, "full_index_mode", "incremental") or "incremental",
+        "max_files": normalize_index_max_files(
+            getattr(args, "full_index_max_files", None)
+        ),
+        "include_activation": bool(
+            getattr(args, "full_index_include_activation", False)
+        ),
+        "output_format": output_format,
+    }
+    extra_patterns: list[str] = list(
+        getattr(args, "full_index_exclude_patterns", None) or []
+    )
+    if extra_patterns:
+        payload["exclude_patterns"] = extra_patterns
+    if bool(getattr(args, "full_index_no_default_excludes", False)):
+        payload["no_default_excludes"] = True
+    return payload
+
+
 def _incremental_sync_payload(args: Any, output_format: str) -> dict[str, Any]:
     return {
         "mode": getattr(args, "incremental_sync_mode", "sync") or "sync",
-        "max_files": int(getattr(args, "incremental_sync_max_files", 20_000)),
+        "max_files": normalize_index_max_files(
+            getattr(args, "incremental_sync_max_files", None)
+        ),
         "output_format": output_format,
     }
 
@@ -82,7 +98,10 @@ def _knowledge_graph_index_payload(args: Any, output_format: str) -> dict[str, A
     return {
         "mode": getattr(args, "knowledge_graph_index_mode", "update") or "update",
         "backend": getattr(args, "knowledge_graph_backend", "auto") or "auto",
-        "max_files": int(getattr(args, "knowledge_graph_max_files", 1_000_000)),
+        "max_files": normalize_index_max_files(
+            getattr(args, "knowledge_graph_max_files", None),
+            default=KNOWLEDGE_INDEX_MAX_FILES,
+        ),
         "max_nodes": int(getattr(args, "knowledge_graph_max_nodes", 0)),
         "max_edges": int(getattr(args, "knowledge_graph_max_edges", 0)),
         "include_docs": not bool(getattr(args, "knowledge_graph_no_docs", False)),

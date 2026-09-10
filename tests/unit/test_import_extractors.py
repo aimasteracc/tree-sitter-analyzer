@@ -1,5 +1,7 @@
 """Tests for import_extractors.py — multi-language import extraction."""
 
+import pytest
+
 from tree_sitter_analyzer.import_extractors import (
     _extract_cpp_imports,
     _extract_csharp_imports,
@@ -408,6 +410,27 @@ class TestWalkImports:
         imports: list[dict] = []
         walk_imports(outer, "using Foo;", "csharp", imports)
         assert len(imports) == 1
+
+    @pytest.mark.parametrize("alias", ("c_sharp", "cs"))
+    def test_csharp_alias_matches_canonical_dispatch(self, alias):
+        # Incident NO1-005A (2026-08-08): public C# aliases lacked parity coverage.
+        assert self._csharp_imports(alias) == self._csharp_imports("csharp")
+
+    @staticmethod
+    def _csharp_imports(language: str) -> list[dict]:
+        inner = MockNode(
+            "using_directive", "using Foo;", children=[MockNode("identifier", "Foo")]
+        )
+        inner.children[0].start_byte = 6
+        inner.children[0].end_byte = 9
+        imports: list[dict] = []
+        walk_imports(
+            MockNode("compilation_unit", "", children=[inner]),
+            "using Foo;",
+            language,
+            imports,
+        )
+        return imports
 
     def test_kotlin_dispatch(self):
         inner = MockNode("import", "import com.foo.Bar", children=[])

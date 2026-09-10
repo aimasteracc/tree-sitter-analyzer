@@ -90,6 +90,7 @@ uv run tree-sitter-analyzer --full-index           # index action=full
 # Prefer `--ast-cache --ast-cache-mode index` for an incremental refresh.
 # `--full-index` defaults to mode 'incremental'; pass `--full-index-mode full` for a
 # true full rebuild, and `--full-index-max-files N` (default 20000) to cap scope.
+# Indexing max-files options require N >= 1; zero is invalid, never unlimited.
 ```
 
 ## Anti-patterns

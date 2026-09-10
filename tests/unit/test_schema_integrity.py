@@ -21,6 +21,26 @@ from tree_sitter_analyzer.ast_cache import (
     SchemaIntegrityError,
 )
 
+
+def test_sqlite_upgrade_witnesses_are_not_posix_only():
+    """PR #1350/#1352：纯 SQLite 升级验收不能继承 POSIX skip，真实 fd 用例仍保留限制。"""
+    from tests.unit import test_index_snapshot_schema_validation as suite
+
+    assert getattr(suite, "pytestmark", []) == []
+    for name in (
+        "test_legacy_layout_upgrade_preserves_data_and_is_idempotent",
+        "test_entire_extension_upgrade_rolls_back_and_retries",
+        "test_future_schema_is_rejected_without_mutating_cache",
+        "test_snapshot_reader_matches_latest_real_migration",
+    ):
+        marks = getattr(getattr(suite, name), "pytestmark", [])
+        assert [mark.name for mark in marks if mark.name in ("skip", "skipif")] == []
+    assert [
+        mark.name
+        for mark in suite.test_read_existing_forces_memory_temp_store_before_fingerprint.pytestmark
+    ] == ["skipif"]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -192,6 +212,26 @@ class TestSelfCheckDetection:
         assert "ast_imports" in str(exc_info.value), (
             f"Expected error to mention ast_imports (got: {exc_info.value!r})"
         )
+
+    def test_missing_manifest_with_incomplete_projection_reports_integrity_error(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        # PR #1253: projection revocation must preserve damaged-DB diagnostics.
+        import tree_sitter_analyzer.cache.schema as cache_schema
+
+        proj_root, db_path = _make_proj(tmp_path)
+        _seed_healthy_db(str(db_path))
+        _drop_table_raw(str(db_path), "ast_index_snapshot_manifest")
+        monkeypatch.setattr(
+            cache_schema,
+            "ensure_symbol_rows_backfilled",
+            lambda *_args, **_kwargs: False,
+        )
+
+        with pytest.raises(SchemaIntegrityError) as exc_info:
+            ASTCache(str(proj_root), db_path=str(db_path))
+
+        assert "ast_index_snapshot_manifest" in str(exc_info.value)
 
     def test_self_check_error_message_lists_all_problems(self, tmp_path: Path) -> None:
         """Multiple missing things → error lists ALL of them in one raise.

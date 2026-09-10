@@ -330,3 +330,31 @@ class TestFallbackQueryCaptures:
         assert (
             fallback_query_captures(SimpleNamespace(type="x", children=[]), None) == []
         )
+
+
+class TestPluginQueryNodeComplexityScore:
+    """Tests for PluginQueryNode.complexity_score attribute (STEP 6)."""
+
+    def test_plugin_query_node_has_complexity_score(self):
+        """element with complexity_score=8 → PluginQueryNode.complexity_score == 8"""
+        elem = FakeElement()
+        elem.complexity_score = 8
+        node = PluginQueryNode(elem, "function")
+        assert node.complexity_score == 8
+
+    def test_plugin_query_node_no_complexity_score(self):
+        """element without complexity_score attribute → PluginQueryNode.complexity_score is None"""
+        elem = FakeElement()
+        # FakeElement has no complexity_score attribute by default
+        node = PluginQueryNode(elem, "function")
+        assert node.complexity_score is None
+
+    def test_element_to_capture_preserves_complexity(self):
+        """element with complexity_score=12 → _element_to_capture returns PluginQueryNode with complexity_score=12"""
+        elem = FakeElement()
+        elem.complexity_score = 12
+        result = _element_to_capture(elem, "function")
+        assert result is not None
+        node, _ = result
+        assert isinstance(node, PluginQueryNode)
+        assert node.complexity_score == 12

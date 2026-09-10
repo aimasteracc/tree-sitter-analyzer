@@ -54,6 +54,24 @@ allowed-tools:
 
 ## Procedure
 
+### Step 0 — Try the one-call route first (RFC-0027 §L8)
+
+The three-signal join and the Step 2 formula now live in code:
+
+```
+health action=refactor_queue top_n=5          # MCP
+uv run python -m tree_sitter_analyzer --refactor-queue --refactor-queue-top-n 5   # CLI
+```
+
+It returns the ranked rows directly (`rank`, `file_path`, `grade`,
+`weakest_dimension`, `churn_30d`, `dead_symbols`, `total_symbols`, `priority`,
+`action`) and echoes the `formula` it used. If it answers
+`status=CHURN_UNAVAILABLE`, the AST index has no 30-day churn — build the index
+and retry rather than hand-computing zeros.
+
+Fall through to Steps 1-4 below only when you need signals the action does not
+carry (e.g. the `heatmap` view, or a per-candidate blast radius).
+
 ### Step 1 — Single fan-out (parallel, 3 MCP calls)
 
 Call these in ONE message:
@@ -66,6 +84,11 @@ The three responses overlap on file path. Joining on `file_path` gives a
 3-signal table per candidate.
 
 ### Step 2 — Score and rank (deterministic, no LLM needed)
+
+> This formula is now implemented in `tree_sitter_analyzer/refactor_queue.py`
+> (`refactor_priority`) with exact-value tests in
+> `tests/unit/test_refactor_queue.py`. That module is the source of truth; the
+> expression below is documentation of it, not a second copy to maintain.
 
 For each file that appears in `health action=project worst_files`, compute:
 
@@ -129,12 +152,13 @@ uv run tree-sitter-analyzer --project-health --max-files 20 --output-format json
 uv run tree-sitter-analyzer --dead-code --output-format json > /tmp/dead.json
 uv run python -c "
 import sqlite3
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 sql = '''
 SELECT s.file_path, SUM(a.mod_count_30d) AS churn
 FROM ast_symbol_activation a
 JOIN ast_symbol_rows s ON s.id = a.symbol_id
 GROUP BY s.file_path ORDER BY churn DESC LIMIT 50'''
-for r in sqlite3.connect('.ast-cache/index.db').execute(sql):
+for r in sqlite3.connect(resolve_index_path('.').as_uri() + '?mode=ro', uri=True).execute(sql):
     print(*r, sep='\t')
 " > /tmp/churn.tsv
 ```
@@ -231,6 +255,7 @@ uv run tree-sitter-analyzer --overview --output-format json
 # 4. Per-file churn (no dedicated --temporal flag yet — query DB directly)
 uv run python -c "
 import sqlite3
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 sql = '''
 SELECT s.file_path, SUM(a.mod_count_30d) AS churn_30d
 FROM ast_symbol_activation a
@@ -238,7 +263,7 @@ JOIN ast_symbol_rows s ON s.id = a.symbol_id
 WHERE a.git_state = 'tracked'
 GROUP BY s.file_path
 ORDER BY churn_30d DESC LIMIT 50'''
-for r in sqlite3.connect('.ast-cache/index.db').execute(sql):
+for r in sqlite3.connect(resolve_index_path('.').as_uri() + '?mode=ro', uri=True).execute(sql):
     print(*r, sep='\t')
 "
 

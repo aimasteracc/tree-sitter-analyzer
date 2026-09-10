@@ -1,30 +1,298 @@
+# fmt: off
 """Tests for --doctor CLI command (installation diagnostics)."""
 
 from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
+import time
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+SUPPORTED_UV_RESULT = subprocess.CompletedProcess([], 0, "uv 0.11.0\n", "")
+
+
+def _probe_process(completed: subprocess.CompletedProcess):
+    process = MagicMock()
+    process.args = completed.args
+    process.returncode = completed.returncode
+    process.communicate.return_value = (completed.stdout, completed.stderr)
+    return process
+
+
+def _check_configs(paths: list[tuple[str, str]]):
+    from tree_sitter_analyzer.cli.commands.doctor import _check_agent_configs
+
+    with patch("tree_sitter_analyzer.cli.commands.doctor._agent_config_paths", return_value=paths):
+        return _check_agent_configs()
+
+
+class TestTerminateProcessTree:
+    def test_windows_uses_taskkill_for_descendants(self) -> None:
+        from tree_sitter_analyzer.cli.commands.doctor import _terminate_process_tree
+
+        process = MagicMock(pid=123)
+        terminated = subprocess.CompletedProcess([], 0)
+        with (
+            patch("tree_sitter_analyzer.cli.commands.doctor.os.name", "nt"),
+            patch(
+                "tree_sitter_analyzer.cli.commands.doctor.subprocess.run",
+                return_value=terminated,
+            ) as run,
+        ):
+            _terminate_process_tree(process)
+        assert run.call_args.args[0] == [
+            os.path.join(r"C:\Windows", "System32", "taskkill.exe"),
+            "/PID",
+            "123",
+            "/T",
+            "/F",
+        ]
+        process.kill.assert_not_called()
+
+    def test_windows_falls_back_when_taskkill_returns_failure(self) -> None:
+        from tree_sitter_analyzer.cli.commands.doctor import _terminate_process_tree
+
+        process = MagicMock(pid=123)
+        terminated = subprocess.CompletedProcess([], 1)
+        with (
+            patch("tree_sitter_analyzer.cli.commands.doctor.os.name", "nt"),
+            patch(
+                "tree_sitter_analyzer.cli.commands.doctor.subprocess.run",
+                return_value=terminated,
+            ),
+        ):
+            _terminate_process_tree(process)
+        process.kill.assert_called_once_with()
+
+    def test_windows_falls_back_when_taskkill_fails(self) -> None:
+        from tree_sitter_analyzer.cli.commands.doctor import _terminate_process_tree
+
+        process = MagicMock(pid=123)
+        with (
+            patch("tree_sitter_analyzer.cli.commands.doctor.os.name", "nt"),
+            patch(
+                "tree_sitter_analyzer.cli.commands.doctor.subprocess.run",
+                side_effect=OSError("taskkill unavailable"),
+            ),
+        ):
+            _terminate_process_tree(process)
+        process.kill.assert_called_once_with()
+
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="tracked: POSIX process-group cleanup is covered on macOS/Linux",
+    )
+    def test_posix_escalates_process_group_to_sigkill(self) -> None:
+        from tree_sitter_analyzer.cli.commands.doctor import _terminate_process_tree
+
+        process = MagicMock(pid=123)
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired([], 1),
+            (b"", b""),
+        ]
+        with (
+            patch("tree_sitter_analyzer.cli.commands.doctor.os.name", "posix"),
+            patch("tree_sitter_analyzer.cli.commands.doctor.os.killpg", create=True) as killpg,
+        ):
+            _terminate_process_tree(process)
+        assert killpg.call_args_list == [
+            ((123, 15),),
+            ((123, 0),),
+            ((123, 9),),
+        ]
+
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="tracked: POSIX process-group cleanup is covered on macOS/Linux",
+    )
+    def test_posix_tolerates_group_exiting_before_sigkill(self) -> None:
+        from tree_sitter_analyzer.cli.commands.doctor import _terminate_process_tree
+
+        process = MagicMock(pid=123)
+        with (
+            patch("tree_sitter_analyzer.cli.commands.doctor.os.name", "posix"),
+            patch(
+                "tree_sitter_analyzer.cli.commands.doctor.os.killpg",
+                side_effect=(None, None, ProcessLookupError),
+                create=True,
+            ) as killpg,
+        ):
+            _terminate_process_tree(process)
+        assert killpg.call_args_list == [
+            ((123, 15),),
+            ((123, 0),),
+            ((123, 9),),
+        ]
+
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="tracked: POSIX process-group cleanup is covered on macOS/Linux",
+    )
+    def test_posix_reaps_after_group_is_already_gone(self) -> None:
+        from tree_sitter_analyzer.cli.commands.doctor import _terminate_process_tree
+
+        process = MagicMock(pid=123)
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired([], 1),
+            subprocess.TimeoutExpired([], 1),
+            (b"", b""),
+        ]
+        with (
+            patch("tree_sitter_analyzer.cli.commands.doctor.os.name", "posix"),
+            patch(
+                "tree_sitter_analyzer.cli.commands.doctor.os.killpg",
+                side_effect=ProcessLookupError,
+                create=True,
+            ),
+        ):
+            _terminate_process_tree(process)
+        process.kill.assert_called_once_with()
 
 
 class TestCheckUv:
-    def test_pass_when_uv_found(self) -> None:
+    @pytest.mark.parametrize(
+        ("completed", "status", "message"),
+        (
+            (SUPPORTED_UV_RESULT, "PASS", "/usr/local/bin/uv (0.11.0)"),
+            (subprocess.CompletedProcess([], 0, "uv 0.10.9\n", ""), "FAIL", "0.10.9 at /usr/local/bin/uv is too old — required uv >= 0.11.0; rerun install.sh or update uv manually"),
+            (subprocess.CompletedProcess([], 0, "not-uv 0.11.0\n", ""), "FAIL", "cannot determine version at /usr/local/bin/uv — required uv >= 0.11.0"),
+            (subprocess.CompletedProcess([], 0, " uv 0.11.0\n", ""), "FAIL", "cannot determine version at /usr/local/bin/uv — required uv >= 0.11.0"),
+            (subprocess.CompletedProcess([], 0, "\nuv 0.11.0\n", ""), "FAIL", "cannot determine version at /usr/local/bin/uv — required uv >= 0.11.0"),
+            (subprocess.CompletedProcess([], 0, "uv 0.11.0.1\n", ""), "FAIL", "cannot determine version at /usr/local/bin/uv — required uv >= 0.11.0"),
+            (subprocess.CompletedProcess([], 0, "uv ٠.١١.٠\n", ""), "FAIL", "cannot determine version at /usr/local/bin/uv — required uv >= 0.11.0"),
+            (subprocess.CompletedProcess([], 0, b"uv 0.11.0\xff\n", b""), "FAIL", "undecodable version output from /usr/local/bin/uv --version"),
+        ),
+    )
+    def test_uv_version_boundary(self, completed, status, message) -> None:
         from tree_sitter_analyzer.cli.commands.doctor import _check_uv
 
-        with patch("shutil.which", return_value="/usr/local/bin/uv"):
+        with patch("shutil.which", return_value="/usr/local/bin/uv"), patch("tree_sitter_analyzer.cli.commands.doctor.subprocess.Popen", return_value=_probe_process(completed)):
             result = _check_uv()
-        assert result.status == "PASS"
-        assert result.message == "/usr/local/bin/uv"
+        assert (result.status, result.message) == (status, message)
+
+    def test_fail_when_uv_version_component_exceeds_integer_limit(self) -> None:
+        # PR #1233: adversarial numeric output must produce a diagnostic, not a traceback.
+        from tree_sitter_analyzer.cli.commands.doctor import _check_uv
+
+        completed = subprocess.CompletedProcess([], 0, f"uv {'1' * 5000}.11.0\n", "")
+        with patch("shutil.which", return_value="/usr/local/bin/uv"), patch(
+            "tree_sitter_analyzer.cli.commands.doctor.subprocess.Popen",
+            return_value=_probe_process(completed),
+        ):
+            result = _check_uv()
+        assert (result.status, result.message) == (
+            "FAIL",
+            "cannot determine version at /usr/local/bin/uv — required uv >= 0.11.0",
+        )
+
+    def test_windows_probe_starts_in_new_process_group(self) -> None:
+        from tree_sitter_analyzer.cli.commands.doctor import _check_uv
+
+        process = _probe_process(SUPPORTED_UV_RESULT)
+        with (
+            patch("shutil.which", return_value=r"C:\tools\uv.exe"),
+            patch("tree_sitter_analyzer.cli.commands.doctor.os.name", "nt"),
+            patch(
+                "tree_sitter_analyzer.cli.commands.doctor.subprocess.Popen",
+                return_value=process,
+            ) as popen,
+        ):
+            result = _check_uv()
+        assert (result.status, popen.call_args.kwargs["creationflags"]) == (
+            "PASS",
+            0x00000200,
+        )
+
+    def test_fail_when_uv_version_check_times_out(self) -> None:
+        # NO1-006A (2026-08-08): doctor must not hang on a broken uv executable.
+        from tree_sitter_analyzer.cli.commands.doctor import _check_uv
+
+        process = MagicMock()
+        process.communicate.side_effect = subprocess.TimeoutExpired(
+            ["uv", "--version"], 5
+        )
+        with (
+            patch("shutil.which", return_value="/usr/local/bin/uv"),
+            patch(
+                "tree_sitter_analyzer.cli.commands.doctor.subprocess.Popen",
+                return_value=process,
+            ),
+            patch("tree_sitter_analyzer.cli.commands.doctor._terminate_process_tree") as terminate,
+        ):
+            result = _check_uv()
+        terminate.assert_called_once_with(process)
+        assert (result.status, result.message) == (
+            "FAIL", "timed out running /usr/local/bin/uv --version"
+        )
+
+    @pytest.mark.parametrize("interruption", (KeyboardInterrupt(), BaseException("stop")))
+    def test_interruption_terminates_probe_tree_and_is_reraised(
+        self, interruption: BaseException
+    ) -> None:
+        # PR #1233: an interrupted doctor probe must not orphan its process group.
+        from tree_sitter_analyzer.cli.commands.doctor import _check_uv
+
+        process = MagicMock()
+        process.communicate.side_effect = interruption
+        with (
+            patch("shutil.which", return_value="/usr/local/bin/uv"),
+            patch(
+                "tree_sitter_analyzer.cli.commands.doctor.subprocess.Popen",
+                return_value=process,
+            ),
+            patch(
+                "tree_sitter_analyzer.cli.commands.doctor._terminate_process_tree"
+            ) as terminate,
+            pytest.raises(type(interruption), match="stop" if str(interruption) else None),
+        ):
+            _check_uv()
+        terminate.assert_called_once_with(process)
 
     def test_fail_when_uv_missing(self) -> None:
         from tree_sitter_analyzer.cli.commands.doctor import _check_uv
 
         with patch("shutil.which", return_value=None):
             result = _check_uv()
-        assert result.status == "FAIL"
-        assert "not found" in result.message
+        assert (result.status, result.message) == (
+            "FAIL", "not found — install from https://docs.astral.sh/uv/"
+        )
+
+    @pytest.mark.slow_ok
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="tracked: POSIX process-group cleanup has a separate Windows implementation",
+    )
+    def test_timeout_terminates_uv_descendant(self, tmp_path: Path) -> None:
+        # PR #1233: doctor timeout cleanup must not orphan a uv shim's child.
+        from tree_sitter_analyzer.cli.commands.doctor import _check_uv
+
+        child_pid_file = tmp_path / "child.pid"
+        uv = tmp_path / "uv"
+        uv.write_text(
+            "#!/bin/sh\nsh -c 'trap \'\' TERM; sleep 60' &\necho $! > "
+            f"{child_pid_file!s}\nwait\n",
+            encoding="utf-8",
+        )
+        uv.chmod(0o755)
+        with patch("shutil.which", return_value=str(uv)):
+            result = _check_uv()
+
+        child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+        deadline = time.monotonic() + 3
+        child_exited = False
+        while time.monotonic() < deadline:
+            try:
+                os.kill(child_pid, 0)
+            except ProcessLookupError:
+                child_exited = True
+                break
+            time.sleep(0.05)
+        assert (result.status, child_exited) == ("FAIL", True)
 
 
 class TestCheckUvx:
@@ -117,22 +385,16 @@ class TestCheckProjectRoot:
 
 class TestCheckAgentConfigs:
     def test_warn_when_no_config_files_exist(self, tmp_path: Path) -> None:
-        from tree_sitter_analyzer.cli.commands.doctor import _check_agent_configs
 
         fake_paths = [
             ("Test Agent", str(tmp_path / "nonexistent.json")),
         ]
-        with patch(
-            "tree_sitter_analyzer.cli.commands.doctor._agent_config_paths",
-            return_value=fake_paths,
-        ):
-            results = _check_agent_configs()
+        results = _check_configs(fake_paths)
         assert len(results) == 1
         assert results[0].status == "WARN"
         assert "not found" in results[0].message
 
     def test_pass_when_tsa_entry_present_and_absolute(self, tmp_path: Path) -> None:
-        from tree_sitter_analyzer.cli.commands.doctor import _check_agent_configs
 
         config = tmp_path / "mcp.json"
         config.write_text(
@@ -149,30 +411,20 @@ class TestCheckAgentConfigs:
             ),
             encoding="utf-8",
         )
-        with patch(
-            "tree_sitter_analyzer.cli.commands.doctor._agent_config_paths",
-            return_value=[("Test Agent", str(config))],
-        ):
-            results = _check_agent_configs()
+        results = _check_configs([("Test Agent", str(config))])
         assert len(results) == 1
         assert results[0].status == "PASS"
 
     def test_warn_when_tsa_entry_missing(self, tmp_path: Path) -> None:
-        from tree_sitter_analyzer.cli.commands.doctor import _check_agent_configs
 
         config = tmp_path / "mcp.json"
         config.write_text(json.dumps({"mcpServers": {}}), encoding="utf-8")
-        with patch(
-            "tree_sitter_analyzer.cli.commands.doctor._agent_config_paths",
-            return_value=[("Test Agent", str(config))],
-        ):
-            results = _check_agent_configs()
+        results = _check_configs([("Test Agent", str(config))])
         assert len(results) == 1
         assert results[0].status == "WARN"
         assert "not found" in results[0].message
 
     def test_warn_when_tsa_entry_has_relative_root(self, tmp_path: Path) -> None:
-        from tree_sitter_analyzer.cli.commands.doctor import _check_agent_configs
 
         config = tmp_path / "mcp.json"
         config.write_text(
@@ -189,28 +441,59 @@ class TestCheckAgentConfigs:
             ),
             encoding="utf-8",
         )
-        with patch(
-            "tree_sitter_analyzer.cli.commands.doctor._agent_config_paths",
-            return_value=[("Test Agent", str(config))],
-        ):
-            results = _check_agent_configs()
+        results = _check_configs([("Test Agent", str(config))])
         assert len(results) == 1
         assert results[0].status == "WARN"
         assert "relative path" in results[0].message
 
-    def test_warn_when_json_parse_error(self, tmp_path: Path) -> None:
-        from tree_sitter_analyzer.cli.commands.doctor import _check_agent_configs
+    @pytest.mark.parametrize(
+        "content",
+        ("{ invalid json }", '{"mcpServers": ' + "1" * 5000 + "}", "[" * 100_000 + "]" * 100_000),
+        ids=("syntax", "integer-limit", "nesting-limit"),
+    )
+    def test_warn_when_json_decoder_rejects_content(
+        self, tmp_path: Path, content: str
+    ) -> None:
 
         config = tmp_path / "mcp.json"
-        config.write_text("{ invalid json }", encoding="utf-8")
-        with patch(
-            "tree_sitter_analyzer.cli.commands.doctor._agent_config_paths",
-            return_value=[("Test Agent", str(config))],
-        ):
-            results = _check_agent_configs()
+        config.write_text(content, encoding="utf-8")
+        results = _check_configs([("Test Agent", str(config))])
         assert len(results) == 1
         assert results[0].status == "WARN"
-        assert "cannot read" in results[0].message
+        assert results[0].message == f"cannot read {config}: invalid JSON content"
+
+    def test_warn_when_config_open_fails(self, tmp_path: Path) -> None:
+        config = tmp_path / "mcp.json"
+        config.touch()
+        with patch("builtins.open", side_effect=OSError("denied")):
+            results = _check_configs([("Test Agent", str(config))])
+        assert results[0].status == "WARN"
+        assert results[0].message == f"cannot read {config}: denied"
+
+    @pytest.mark.parametrize(
+        ("content", "message"),
+        (
+            ("[]", "config root must be a JSON object: {config}"),
+            ('{"mcpServers": []}', "mcpServers must be a JSON object: {config}"),
+            ('{"mcpServers": {"tree-sitter-analyzer": []}}', "MCP entry 'tree-sitter-analyzer' must be a JSON object: {config}"),
+            ('{"mcpServers": {"tree-sitter-analyzer": {"env": []}}}', "MCP entry 'tree-sitter-analyzer'.env must be a JSON object: {config}"),
+            ('{"mcpServers": {"tree-sitter-analyzer": {"env": {"TREE_SITTER_PROJECT_ROOT": []}}}}', "TREE_SITTER_PROJECT_ROOT must be a string in MCP entry 'tree-sitter-analyzer': {config}"),
+        ),
+    )
+    def test_warn_when_config_boundary_is_not_object_or_string(
+        self, tmp_path: Path, content: str, message: str
+    ) -> None:
+        from tree_sitter_analyzer.cli.commands.doctor import (
+            CheckResult,
+        )
+
+        config = tmp_path / "mcp.json"
+        config.write_text(content, encoding="utf-8")
+        results = _check_configs([("Test Agent", str(config))])
+        assert results == [
+            CheckResult("agent config: Test Agent", "WARN", message.format(config=config))
+        ]
+
 
 
 class TestRunDoctor:
@@ -219,6 +502,7 @@ class TestRunDoctor:
 
         with (
             patch("shutil.which", return_value="/usr/bin/tool"),
+            patch("tree_sitter_analyzer.cli.commands.doctor.subprocess.Popen", return_value=_probe_process(SUPPORTED_UV_RESULT)),
             patch.dict(os.environ, {"TREE_SITTER_PROJECT_ROOT": str(tmp_path)}),
             patch(
                 "tree_sitter_analyzer.cli.commands.doctor._check_agent_configs",
@@ -402,6 +686,7 @@ class TestHandleDoctor:
 
         with (
             patch("shutil.which", return_value="/usr/bin/uv"),
+            patch("tree_sitter_analyzer.cli.commands.doctor.subprocess.Popen", return_value=_probe_process(SUPPORTED_UV_RESULT)),
             patch.dict(os.environ, {"TREE_SITTER_PROJECT_ROOT": str(tmp_path)}),
             patch(
                 "tree_sitter_analyzer.cli.commands.doctor._check_agent_configs",

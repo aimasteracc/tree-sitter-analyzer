@@ -91,9 +91,9 @@ class CodeGraphImportGraphTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "enum": ["json"],
+                    "description": "Output format: JSON",
+                    "default": "json",
                 },
             },
             # #575: mode is NOT required — it has a default and is inferred from
@@ -135,7 +135,7 @@ class CodeGraphImportGraphTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         mode = self._effective_mode(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         graph = self._get_graph()
 
         if mode == "summary":
@@ -233,9 +233,9 @@ class CodeGraphImportGraphTool(BaseMCPTool):
         verdict: str = result.get("verdict", "INFO")
         result["agent_summary"] = _imports_agent_summary(mode, verdict, result)
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
 
 def _imports_agent_summary(

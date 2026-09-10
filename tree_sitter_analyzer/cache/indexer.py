@@ -1,297 +1,488 @@
-"""Indexing helpers for ASTCache.
-
-Pure functions extracted from ASTCache indexing pipeline methods to
-reduce ast_cache.py line count. ASTCache keeps thin wrapper methods
-that delegate here.
-"""
+"""Indexing helpers for ASTCache."""
+# ruff: noqa: E402, F401, I001
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 import os
 import sqlite3
+from collections.abc import Iterator, Mapping
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from functools import partial
+from typing import Any, cast
 
-if TYPE_CHECKING:
-    pass
+
+from ..constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
+from ..index_candidate_walker import (
+    CandidateDiscoveryBudgetExceeded,
+    CandidateDiscoveryError,
+)
+from ..index_source_snapshot import (
+    SourceScopeDescriptor,
+    canonical_source_scope_descriptor,
+    make_source_scope_descriptor,
+    parse_source_scope_descriptor,
+    validate_full_index_source_scope,
+)
+from ..index_symbol_projection import symbol_projection_is_exact
+from ..indexing_limits import normalize_index_max_files
+from ..indexing_snapshot import (
+    IndexCandidateSnapshot,
+    IndexFileFingerprint,
+    IndexSnapshotEntry,
+    build_index_candidate_snapshot,
+    changed_since_snapshot,
+    validate_index_candidate_snapshot,
+    walk_index_candidate_entries,
+)
+from ..languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
+from ..project_graph import _language_from_ext
+from .build_state import (
+    clear_build_in_progress as _clear_build_in_progress,
+)
+from .build_state import (
+    mark_build_in_progress as _mark_build_in_progress,
+)
+from .callgraph_state import (
+    clear_call_graph_built as _clear_call_graph_built,
+)
+from .callgraph_state import (
+    clear_call_graph_built_strict as _clear_call_graph_built_strict,
+)
+from .callgraph_state import (
+    mark_call_graph_built as _mark_call_graph_built,
+)
+from .callgraph_state import (
+    mark_call_graph_built_strict as _mark_call_graph_built_strict,
+)
+from .helpers import (
+    _make_error_entry,
+    _project_index_activation_enabled,
+)
+from .schema import (
+    clear_activation_for_file as _clear_activation_for_file_fn,
+)
 
 logger = logging.getLogger(__name__)
 
-# Extractor version constant — kept in sync with ast_cache.py.
-# v3: #610 — Python module-level constants extracted as kind="constant".
-# v4: #613 — Go package-level const/var specs extracted as kind="constant".
-# v5: #613 — Rust const/static items extracted as kind="constant".
-# v6: #614 — docstring/return_type/params serialized into symbols_json.
-# v7: #624 — PHP const declarations extracted as kind="constant".
-# v8: #626 — JS/TS function-local variables no longer over-captured.
-# v9: #626 — Java function-local variables no longer over-captured.
-# v10: #628 — C# function-local variables no longer over-captured.
-# v11: #638 — call edges keep ALL same-named definition spans; calls inside
-#      the earlier of two same-named methods regain their enclosing caller.
-# v12: #779 — walker depth cap raised 20 -> 100; bump forces re-index of files
-#      cached under the old cap so deeply nested symbols are no longer truncated.
-# v13: #949 — bash variable_assignment indexing: skip command-prefix env vars
-#      (``FOO=bar make``) and unwrap subscript only for assignment targets.
-# v14: #1094 / RFC-0019 — function symbols now carry the extractor's canonical
-#      ``complexity`` so the cache-backed heatmap matches the extractor instead
-#      of re-deriving the count from the per-arm ``decision_points`` sum.
-# v15: ``from __future__ import X`` is now indexed (dedicated
-#      ``future_import_statement`` node), and a ``def`` nested inside a method
-#      is classified ``function`` rather than ``method``. Both change the
-#      persisted symbol rows, so cached entries must be re-indexed.
-# v16: C++ ``function_definition`` nodes now recover their name via
-#      ``_c_function_def_name`` (same declarator walk as C). Previously all
-#      C++ free functions and methods were absent from ast_symbol_rows.
-# v17: Kotlin companion_object members now attributed to their enclosing class;
-#      Java record_declaration added to _CLASS_LIKE so record methods/ctors are
-#      classified method instead of function. Both change persisted symbol rows.
-# v18：Scala object/trait 等类型的成员获得归属；普通 class 原本已支持。
-# v19：所有 walker 分支接入语言注册表，补充 JS/TS 具名函数表达式。
-_AST_CACHE_EXTRACTOR_VERSION = 19
+
+def _normalize_relative_path(value: str) -> str:
+    """Treat backslash as a separator only on Windows."""
+    return value.replace("\\", "/") if os.name == "nt" else value
 
 
-def check_cache_or_read(
-    conn: sqlite3.Connection,
-    rel_path: str,
-    abs_path: str,
-    stat: os.stat_result,
-    content_hash_fn: Any,
-    extractor_version: int,
-) -> dict[str, Any] | tuple[str, str]:
-    """Return cached-response dict or (source_code, content_hash) if stale."""
-    row = conn.execute(
-        "SELECT content_hash, mtime_ns, file_size, extractor_version "
-        "FROM ast_index WHERE file_path = ?",
-        (rel_path,),
-    ).fetchone()
-    if row is not None and (
-        row["mtime_ns"] == int(stat.st_mtime_ns)
-        and row["file_size"] == stat.st_size
-        and row["extractor_version"] >= extractor_version
-    ):
-        return {"file": rel_path, "status": "cached", "reason": "unchanged"}
+def _remove_ladybug_from_pinned_cache(cache_fd: int) -> bool:
+    """Remove the optional mirror relative to its identity-bound directory."""
     try:
-        with open(abs_path, encoding="utf-8", errors="replace") as f:
-            source_code = f.read()
-    except OSError as e:
-        return {"file": rel_path, "status": "error", "reason": str(e)}
-    content_hash = content_hash_fn(source_code)
-    if (
-        row is not None
-        and row["content_hash"] == content_hash
-        and row["extractor_version"] >= extractor_version
-    ):
-        conn.execute(
-            "UPDATE ast_index SET mtime_ns = ?, file_size = ? WHERE file_path = ?",
-            (int(stat.st_mtime_ns), stat.st_size, rel_path),
-        )
-        conn.commit()
-        return {"file": rel_path, "status": "cached", "reason": "content unchanged"}
-    return source_code, content_hash
+        os.stat("knowledge-graph.lbug", dir_fd=cache_fd, follow_symlinks=False)
+        os.unlink("knowledge-graph.lbug", dir_fd=cache_fd)
+        return True
+    except FileNotFoundError:
+        return False
 
 
-def parse_and_write(
-    cache: Any,
-    conn: sqlite3.Connection,
-    abs_path: str,
-    rel_path: str,
-    language: str,
-    stat: os.stat_result,
-    source_code: str,
-    content_hash: str,
-    extractor_version: int,
-) -> dict[str, Any]:
-    """Parse a file and write all cache rows. Returns result dict."""
-    from .extraction import (
-        _extract_call_edges,
-        _extract_imports,
-        _extract_structure,
-        _extract_symbols,
-    )
+def _invalidate_ladybug(cache: Any, root_fd: int | None) -> bool:
+    """Invalidate the mirror without leaving a pinned-cache mutation boundary."""
+    if root_fd is not None:
+        if not getattr(cache, "_uses_project_mirror", True):
+            return False
+        cache_fd = getattr(cache, "_cache_dir_fd", None)
+        if cache_fd is None:
+            raise OSError("AST_CACHE_DIRECTORY_UNBOUND")
+        return _remove_ladybug_from_pinned_cache(cache_fd)
+    from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
 
-    result = cache.parser.parse_file(abs_path, language)
-    if not result.success:
-        return {
-            "file": rel_path,
-            "status": "error",
-            "reason": result.error_message or "parse failed",
-        }
-    symbols = _extract_symbols(result.tree, source_code, language)
-    imports = _extract_imports(symbols)
-    structure = _extract_structure(symbols)
-    call_edges = _extract_call_edges(result.tree, source_code, language, symbols)
-    indexed_at = datetime.now(timezone.utc).isoformat()
-    conn.execute(
-        "INSERT OR REPLACE INTO ast_index "
-        "(file_path, content_hash, language, mtime_ns, file_size, "
-        "extractor_version, symbols_json, imports_json, structure_json, indexed_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            rel_path,
-            content_hash,
-            language,
-            int(stat.st_mtime_ns),
-            stat.st_size,
-            extractor_version,
-            json.dumps(symbols, ensure_ascii=False),
-            json.dumps(imports, ensure_ascii=False),
-            json.dumps(structure, ensure_ascii=False),
-            indexed_at,
-        ),
-    )
-    from . import write as _write
+    return LadybugKnowledgeGraphStore(cache.project_root).remove_if_exists()
 
-    inserted: list[dict[str, Any]] = (
-        _write.write_fts5_symbols(conn, rel_path, language, symbols)
-        if cache.fts5_available
-        else []
-    )
-    cache._write_imports_for_file(conn, rel_path, language, imports, symbols)  # noqa: SLF001
-    cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
-    # CALLS rows live in the unified ``edges`` table (B1.3 — no ast_call_edges).
-    # Write the edges first so synapse resolution can UPDATE them in place.
-    _write.write_graph_edges_for_file(
-        conn, rel_path, language, symbols, imports, call_edges
-    )
-    cache._resolve_call_edges_for_file(conn, rel_path)  # noqa: SLF001
-    conn.commit()
-    return {
-        "file": rel_path,
-        "status": "indexed",
-        "symbols": len(symbols.get("symbols", [])),
-        "call_edges": len(call_edges),
-        "content_hash": content_hash[:16],
+
+# Corpus-directory patterns excluded from full-index (REQ-E-016).
+# Uses fnmatch syntax relative to the project root (forward-slash normalised).
+_DEFAULT_EXCLUDE_PATTERNS: frozenset[str] = frozenset(
+    {
+        "tests/golden/corpus_*",
     }
+)
+
+# Extensions that have a plugin but are NOT wired for full-index
+# (REQ-E-020).  When a file with one of these extensions is encountered and
+# language_fn returns None, a one-time WARNING is emitted so callers know why
+# the file was silently skipped.
+_PLUGIN_EXTS: frozenset[str] = frozenset(
+    {
+        ".css",
+        ".html",
+        ".md",
+        ".sql",
+        ".yaml",
+        ".yml",
+    }
+)
+
+# De-duplication set: only warn once per extension per process lifetime.
+_warned_extensions: set[str] = set()
+
+# 提取版本与 ast_cache.py 保持一致，同时保留依赖加载投影的失效契约。
+# v39：按语言分类驱动提取，修复成员作用域与 C++ 函数名称恢复。
+_AST_CACHE_EXTRACTOR_VERSION = 39
 
 
-def walk_and_partition(
-    cache: Any,
-    conn: sqlite3.Connection,
+def _walk_source_files(project_root: str) -> Iterator[str]:
+    for dirpath, dirnames, filenames in os.walk(project_root):
+        retained: list[str] = []
+        for dirname in dirnames:
+            if dirname in _EXCLUDE_DIRS or dirname.startswith("."):
+                continue
+            candidate = os.path.join(dirpath, dirname)
+            if os.path.islink(candidate):
+                if os.path.splitext(dirname)[1].lower() in _EXT_TO_LANG:
+                    yield candidate
+                continue
+            retained.append(dirname)
+        dirnames[:] = retained
+        for fname in filenames:
+            ext = os.path.splitext(fname)[1].lower()
+            if ext in _EXT_TO_LANG:
+                yield os.path.join(dirpath, fname)
+
+
+def _bounded_selected_supported_paths(
+    project_root: str,
     max_files: int,
-    force: bool,
-    activation_enabled: bool,
-    walk_fn: Any,
-    language_fn: Any,
-    extractor_version: int,
-    make_error_entry: Any,
-    language_filter: str | None = None,
-) -> tuple[dict[str, Any], list[tuple[str, str]], int]:
-    """Walk source files and partition into (stats, candidates, count).
-
-    ``language_filter`` (#1018): when set, only files whose detected language
-    equals it are considered; non-matching files are skipped BEFORE any parse
-    attempt, so a Python-scoped run never tries to load an optional grammar
-    (e.g. Swift) and never surfaces a "grammar not installed" error.
-    """
-    candidates: list[tuple[str, str]] = []
-    already_cached: list[dict[str, Any]] = []
-    stats: dict[str, Any] = {
-        "mode_used": "full" if force else "incremental",
-        "indexed": 0,
-        "cached": 0,
-        "errors": 0,
-        "skipped": 0,
-        "files": [],
-        "activation_enabled": activation_enabled,
-        "truncated_by_max_files": False,
-    }
-    if force:
-        indexed_map: dict[str, tuple[int, int, int]] = {}
-    else:
-        rows = conn.execute(
-            "SELECT file_path, mtime_ns, file_size, extractor_version FROM ast_index"
-        ).fetchall()
-        indexed_map = {
-            r["file_path"]: (r["mtime_ns"], r["file_size"], r["extractor_version"])
-            for r in rows
-        }
+    language_filter: str | None,
+    exclude_patterns: frozenset[str] | None,
+) -> set[str] | None:
+    """Rediscover the candidate-less run's exact bounded persisted path scope."""
+    selected: set[str] = set()
     count = 0
-    for abs_path in walk_fn(cache.project_root):
-        if count >= max_files:
-            stats["truncated_by_max_files"] = True
-            break
-        count += 1
-        lang = language_fn(abs_path)
-        if lang is None:
-            stats["skipped"] += 1
-            continue
-        if language_filter is not None and lang != language_filter:
-            stats["skipped"] += 1
-            continue
-        rel_path = os.path.relpath(abs_path, cache.project_root).replace("\\", "/")
-        try:
-            stat = os.stat(abs_path)
-        except OSError as e:
-            stats["errors"] += 1
-            stats["files"].append(make_error_entry(rel_path, str(e)))
-            continue
-        row = indexed_map.get(rel_path)
-        if (
-            row is not None
-            and row[0] == int(stat.st_mtime_ns)
-            and row[1] == stat.st_size
-            and row[2] >= extractor_version
+
+    def legacy_candidates() -> Iterator[str]:
+        # This fallback restores the pre-P0.1 operational marker on Windows.
+        # It is never used by the authoritative manifest path, which remains
+        # POSIX descriptor-bound and reports unsupported on this platform.
+        def raise_walk_error(exc: OSError) -> None:
+            raise exc
+
+        for dirpath, dirnames, filenames in os.walk(
+            project_root, onerror=raise_walk_error
         ):
-            already_cached.append(
-                {"file": rel_path, "status": "cached", "reason": "unchanged"}
+            retained: list[str] = []
+            for dirname in dirnames:
+                if dirname in _EXCLUDE_DIRS or dirname.startswith("."):
+                    continue
+                candidate = os.path.join(dirpath, dirname)
+                if os.path.islink(candidate):
+                    if os.path.splitext(dirname)[1].lower() in _EXT_TO_LANG:
+                        yield candidate
+                    continue
+                retained.append(dirname)
+            dirnames[:] = retained
+            for filename in filenames:
+                yield os.path.join(dirpath, filename)
+
+    try:
+        candidates = (
+            walk_index_candidate_entries(
+                project_root, excluded_dir_names=frozenset(_EXCLUDE_DIRS)
             )
-            continue
-        candidates.append((abs_path, lang))
-    stats["cached"] += len(already_cached)
-    stats["files"].extend(already_cached)
-    return stats, candidates, count
+            if os.name == "posix"
+            else legacy_candidates()
+        )
+        for abs_path in candidates:
+            # Match the legacy walk's supported-extension window: unsupported
+            # entries are still charged by the authoritative walker, but do not
+            # consume max_files.
+            if os.path.splitext(abs_path)[1].lower() not in _EXT_TO_LANG:
+                continue
+            if count >= max_files:
+                return None
+            count += 1
+            rel_path = _normalize_relative_path(os.path.relpath(abs_path, project_root))
+            if exclude_patterns and any(
+                fnmatch.fnmatch(rel_path, pattern) for pattern in exclude_patterns
+            ):
+                continue
+            language = _language_from_ext(abs_path)
+            if language is None or (
+                language_filter is not None and language != language_filter
+            ):
+                continue
+            try:
+                os.stat(abs_path, follow_symlinks=False)
+            except OSError:
+                return None
+            selected.add(rel_path)
+    except (CandidateDiscoveryBudgetExceeded, CandidateDiscoveryError, OSError):
+        return None
+    return selected
 
 
-def insert_index_row(
-    cache: Any,
-    conn: sqlite3.Connection,
-    r: dict[str, Any],
-    indexed_at: str,
-    extractor_version: int,
-    include_activation: bool = True,
+def _warn_unwired_plugin_extension(abs_path: str) -> None:
+    """Emit the existing one-time warning for unsupported plugin extensions."""
+    ext = os.path.splitext(abs_path)[1].lower()
+    if ext and ext not in _warned_extensions and ext in _PLUGIN_EXTS:
+        logger.warning(
+            "Extension %s is registered in a plugin but not wired for "
+            "full-index; use single-file mode for this language. File: %s",
+            ext,
+            abs_path,
+        )
+        _warned_extensions.add(ext)
+
+
+from .indexer_io import (
+    _clear_full_rebuild_rows,
+    _delete_all_rows_if_present,
+    check_cache_or_read,
+    index_parallel,
+    insert_index_row,
+    parse_and_write,
+    walk_and_partition,
+)
+from .indexer_snapshot import (
+    _discard_snapshot_generation,
+    _record_frozen_replay_mismatches,
+    _snapshot_result_change_reason,
+    _revalidate_committed_snapshot,
+    _revalidate_snapshot_batch,
+    _snapshot_result_is_stable,
+    _unsafe_force_snapshot_result,
+)
+
+
+def _discard_with_root_lease(
+    cache: Any, conn: sqlite3.Connection, rel_path: str, root_fd: int | None
 ) -> None:
-    """Write one worker result to SQLite (main table + optional FTS5)."""
-    rel_path = r["rel_path"]
-    conn.execute(
-        """INSERT OR REPLACE INTO ast_index
-           (file_path, content_hash, language, mtime_ns, file_size,
-            extractor_version, symbols_json, imports_json, structure_json,
-            indexed_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            rel_path,
-            r["content_hash"],
-            r["language"],
-            r["mtime_ns"],
-            r["file_size"],
-            extractor_version,
-            r["symbols_json"],
-            r["imports_json"],
-            r["structure_json"],
-            indexed_at,
+    kwargs = {} if root_fd is None else {"root_fd": root_fd}
+    _discard_snapshot_generation(cache, conn, rel_path, **kwargs)
+
+
+def run_index_project(
+    cache: Any,
+    max_files: int = 20_000,
+    force: bool = False,
+    *,
+    workers: int | None = None,
+    resolve_only: bool = False,
+    include_activation: bool | None = None,
+    language_filter: str | None = None,
+    exclude_patterns: frozenset[str] | None = None,
+    candidate_snapshot: IndexCandidateSnapshot | None = None,
+    source_scope: SourceScopeDescriptor | None = None,
+    certify_manifest: bool = True,
+) -> dict[str, Any]:
+    import types
+    from .index_project_runner import run_index_project as implementation
+
+    bound = types.FunctionType(
+        implementation.__code__,
+        globals(),
+        implementation.__name__,
+        implementation.__defaults__,
+        implementation.__closure__,
+    )
+    bound.__kwdefaults__ = implementation.__kwdefaults__
+    return cast(
+        dict[str, Any],
+        bound(
+            cache,
+            max_files,
+            force,
+            workers=workers,
+            resolve_only=resolve_only,
+            include_activation=include_activation,
+            language_filter=language_filter,
+            exclude_patterns=exclude_patterns,
+            candidate_snapshot=candidate_snapshot,
+            source_scope=source_scope,
+            certify_manifest=certify_manifest,
         ),
     )
-    if not cache.fts5_available:
-        return
-    from . import write as _write
 
-    inserted_symbol_rows = _write.write_fts5_symbols_from_tuples(
-        conn, rel_path, r["language"], r["symbol_rows"]
+
+def _call_graph_marker_is_built(conn: sqlite3.Connection) -> bool:
+    """Require the shared exact current-pipeline marker predicate."""
+    from .callgraph_state import call_graph_marker_is_current
+
+    return call_graph_marker_is_current(conn)
+
+
+def _prune_to_selected_scope(
+    cache: Any,
+    conn: sqlite3.Connection,
+    candidate: IndexCandidateSnapshot,
+    *,
+    root_fd: int | None = None,
+) -> int:
+    """Transactionally remove primary and graph generations outside the scope."""
+    selected = {entry.rel_path for entry in candidate.selected_entries}
+    stale = {
+        _normalize_relative_path(str(row[0]))
+        for row in conn.execute("SELECT file_path FROM ast_index")
+        if _normalize_relative_path(str(row[0])) not in selected
+    }
+    if not stale:
+        return 0
+    try:
+        for rel_path in stale:
+            _discard_with_root_lease(cache, conn, rel_path, root_fd)
+        _clear_call_graph_built_strict(conn)
+    except Exception:
+        conn.rollback()
+        raise
+    return len(stale)
+
+
+def _candidate_paths_are_exact(
+    cache: Any,
+    conn: sqlite3.Connection,
+    candidate: IndexCandidateSnapshot | None,
+    stats: Mapping[str, Any],
+    max_files: int,
+    language_filter: str | None,
+    exclude_patterns: frozenset[str] | None,
+) -> bool:
+    paths = {
+        _normalize_relative_path(str(row[0]))
+        for row in conn.execute("SELECT file_path FROM ast_index")
+    }
+    run_is_complete = bool(
+        not stats.get("truncated_by_max_files", False)
+        and stats.get("errors", 0) == 0
+        and stats.get("backfill_errors", 0) == 0
+        and stats.get("incomplete_skips", 0) == 0
+        and stats.get("changed_during_run", 0) == 0
     )
-    call_edges = json.loads(r.get("call_edges_json", "[]"))
-    imports_list = json.loads(r.get("imports_json", "[]"))
-    symbols = json.loads(r.get("symbols_json", "{}"))
-    cache._write_imports_for_file(  # noqa: SLF001
-        conn, rel_path, r["language"], imports_list, symbols
+    if candidate is None:
+        # A cached legacy run may still contain rows for sources deleted since
+        # its previous marker.  Reapply the same bounded max/exclude/language
+        # selection semantics and certify only exact persisted path equality.
+        discovered = _bounded_selected_supported_paths(
+            cache.project_root,
+            max_files,
+            language_filter,
+            exclude_patterns,
+        )
+        return bool(run_is_complete and discovered is not None and paths == discovered)
+    selected = {entry.rel_path for entry in candidate.selected_entries}
+    return bool(
+        run_is_complete
+        and not candidate.truncated_by_max_files
+        and candidate.errors == 0
+        and paths == selected
     )
-    # CALLS rows live in the unified ``edges`` table (B1.3 — no ast_call_edges).
-    # Cross-file / synapse resolution UPDATEs these rows in the post-index pass.
-    _write.write_graph_edges_for_file(
-        conn, rel_path, r["language"], symbols, imports_list, call_edges
+
+
+def _update_authoritative_manifest(
+    cache: Any,
+    candidate_snapshot: IndexCandidateSnapshot | None,
+    stats: dict[str, Any],
+    source_scope: SourceScopeDescriptor,
+) -> None:
+    """Certify only an exact, successful full-index inventory."""
+    conn = cache._get_conn()
+    selected_paths = (
+        {entry.rel_path for entry in candidate_snapshot.selected_entries}
+        if candidate_snapshot is not None
+        else set()
     )
-    if include_activation:
-        cache._write_activation_for_file(conn, rel_path, inserted_symbol_rows)  # noqa: SLF001
-    else:
-        cache._clear_activation_for_file(conn, rel_path)  # noqa: SLF001
+    exact_paths = bool(
+        candidate_snapshot is not None
+        and candidate_snapshot.limited == 0
+        and candidate_snapshot.errors == 0
+        and stats.get("errors", 0) == 0
+        and stats.get("changed_during_run", 0) == 0
+        and stats.get("backfill_errors", 0) == 0
+        and {
+            _normalize_relative_path(str(row["file_path"]))
+            for row in conn.execute("SELECT file_path FROM ast_index")
+        }
+        == selected_paths
+    )
+    if exact_paths and _call_graph_marker_is_built(conn):
+        from ..index_snapshot_schema import stamp_full_index_manifest
+
+        try:
+            stamp_full_index_manifest(conn, cache.project_root, source_scope)
+            return
+        except Exception:
+            # The stamper rolls back its transaction, preserving the prior
+            # manifest. Revoke the prerequisite marker in a separate committed
+            # transaction so direct ASTCache readers cannot trust this run.
+            from .callgraph_state import clear_call_graph_built_strict
+
+            clear_call_graph_built_strict(conn)
+            conn.commit()
+            logger.warning(
+                "index snapshot manifest certification failed", exc_info=True
+            )
+            stats["manifest_warning"] = "INDEX_MANIFEST_CERTIFICATION_FAILED"
+            stats["manifest_certification_failed"] = True
+            stats["certification_errors"] = stats.get("certification_errors", 0) + 1
+            stats["scope_complete"] = False
+            stats["verdict"] = "WARN"
+            return
+    if exact_paths and not _call_graph_marker_is_built(conn):
+        stats["manifest_warning"] = "CALL_GRAPH_INCOMPLETE"
+    # Do not delete a manifest epoch this operation did not publish. Status
+    # compares source/index/marker fingerprints and classifies it as stale.
+
+
+def _record_backfill_result(stats: dict[str, Any], key: str, result: Any) -> None:
+    """Keep a helper diagnostic and fail closed unless it reports zero errors."""
+    stats[key] = result
+    if not isinstance(result, Mapping) or result.get("errors", 0) != 0:
+        stats["backfill_errors"] += 1
+
+
+def post_index_backfill(
+    cache: Any,
+    stats: dict[str, Any],
+    *,
+    root_fd: int | None = None,
+) -> None:
+    """Run backfills, recording suppressed failures for certification gates."""
+    stats.setdefault("backfill_errors", 0)
+    try:
+        _record_backfill_result(
+            stats, "cross_file_backfill", cache.backfill_cross_file_edges()
+        )
+    except Exception:
+        stats["backfill_errors"] += 1
+        logger.debug("cross-file backfill failed", exc_info=True)
+    try:
+        _record_backfill_result(
+            stats, "synapse_backfill", cache._run_synapse_backfill()
+        )
+    except Exception:
+        stats["backfill_errors"] += 1
+        logger.debug("synapse backfill failed", exc_info=True)
+    # ``insert_index_row`` already writes every file's graph edges during
+    # commit on every SQLite backend. Re-deriving them here is pure duplicate
+    # work: ~85 s on django (47 % of total index time) for an identical edge
+    # set (244,590 rows either way, verified).
+    try:
+        _record_backfill_result(
+            stats,
+            "unresolved_refs_backfill",
+            cache._run_unresolved_refs_backfill(),
+        )
+    except Exception:
+        stats["backfill_errors"] += 1
+        logger.debug("unresolved refs backfill failed", exc_info=True)
+    if stats["backfill_errors"] == 0:
+        try:
+            from .unresolved import mark_resolution_converged
+
+            mark_resolution_converged(cache._get_conn())
+        except Exception:
+            logger.debug("could not mark resolution converged", exc_info=True)
+    try:
+        # SQLite is the canonical graph index. LadybugDB is a derived projection
+        # and must never survive an SQLite update as an implicitly fresh mirror.
+        ladybug_removed = _invalidate_ladybug(cache, root_fd)
+        if ladybug_removed:
+            stats["knowledge_graph"] = {"ladybug_stale_removed": True}
+    except Exception:
+        logger.debug("auto knowledge graph build failed", exc_info=True)

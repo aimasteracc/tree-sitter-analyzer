@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from ...constants import EDIT_KINDS
+from ...indexing_limits import parse_index_max_files
 from ._analysis_codegraph import _add_mcp_codegraph_map_options
 from ._analysis_graph_nav import _add_mcp_graph_nav_options
 
@@ -73,6 +74,39 @@ def _add_mcp_health_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Project portrait: language distribution, file counts, health summary",
     )
+    # RFC-0027 §L7: CLI parity for project action=card.
+    parser.add_argument(
+        "--project-card",
+        action="store_true",
+        dest="project_card",
+        help=(
+            "Project card: purpose from the README, top code languages, entry "
+            "points, key config files, and per-module descriptions of the "
+            "top-level structure. Persistent — built once, recalled instantly. "
+            "CLI parity for: project action=card."
+        ),
+    )
+    # RFC-0027 §L8: CLI parity for health action=refactor_queue.
+    parser.add_argument(
+        "--refactor-queue",
+        action="store_true",
+        dest="refactor_queue",
+        help=(
+            "Top-N prioritized refactor queue ranked by "
+            "(1 - health/100) * log(1 + churn_30d) * (dead_ratio + 0.1). "
+            "Each row carries grade, weakest dimension, churn, dead symbols "
+            "and a concrete action. Reports CHURN_UNAVAILABLE rather than a "
+            "queue of zeros when the AST index has no churn. "
+            "CLI parity for: health action=refactor_queue."
+        ),
+    )
+    parser.add_argument(
+        "--refactor-queue-top-n",
+        type=int,
+        default=5,
+        metavar="N",
+        help="Number of rows for --refactor-queue (default: 5, max: 50).",
+    )
     parser.add_argument(
         "--safe-to-edit",
         action="store_true",
@@ -83,6 +117,65 @@ def _add_mcp_health_options(parser: argparse.ArgumentParser) -> None:
         default="refactor",
         choices=list(EDIT_KINDS),
         help="Planned edit type for --safe-to-edit risk scoring (default: refactor)",
+    )
+
+
+def _add_mcp_hotspot_options(parser: argparse.ArgumentParser) -> None:
+    """Add --hotspot and related flags (RFC-0028)."""
+    parser.add_argument(
+        "--hotspot",
+        action="store_true",
+        dest="hotspot",
+        help=(
+            "Rank files by hotspot_score = Ca x MaxCC. "
+            "Identifies files that are both highly coupled (many dependents) "
+            "and structurally complex — the highest-value refactoring targets."
+        ),
+    )
+    parser.add_argument(
+        "--hotspot-top-n",
+        type=int,
+        default=20,
+        dest="hotspot_top_n",
+        metavar="N",
+        help="Limit ranking to top N files before pagination (default: 20, max: 200)",
+    )
+    parser.add_argument(
+        "--hotspot-show-alias-diff",
+        action="store_true",
+        dest="hotspot_show_alias_diff",
+        help="Include alias_gap_summary showing files where ca_alias > ca_raw",
+    )
+    parser.add_argument(
+        "--trace-from",
+        metavar="ENTRY_PATH",
+        dest="trace_from",
+        default=None,
+        help=(
+            "--hotspot: restrict scoring to files reachable via BFS from ENTRY_PATH. "
+            "Combine with --depth to control traversal depth (default: 3, max: 5)."
+        ),
+    )
+    parser.add_argument(
+        "--depth",
+        type=int,
+        default=3,
+        dest="depth",
+        help="BFS depth for --trace-from (default: 3, capped at 5)",
+    )
+    parser.add_argument(
+        "--page",
+        type=int,
+        default=1,
+        dest="page",
+        help="Pagination: 1-indexed page number (default: 1)",
+    )
+    parser.add_argument(
+        "--page-size",
+        type=int,
+        default=20,
+        dest="page_size",
+        help="Pagination: results per page (default: 20, max: 100)",
     )
 
 
@@ -206,6 +299,28 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Refactoring suggestions: extraction plans with line ranges",
     )
+    # RFC-0027 §L8: CLI parity for edit action=plan_rename. Preview-only —
+    # there is deliberately no --apply companion flag.
+    parser.add_argument(
+        "--verify-plan",
+        metavar="DESCRIPTOR",
+        help="Rebuild and execute a bound verification plan (edit action=verify).",
+    )
+    parser.add_argument(
+        "--plan-rename",
+        metavar="SYMBOL",
+        help=(
+            "Minimal edit set for renaming SYMBOL project-wide: every "
+            "definition and reference site an AST-aware rename would touch. "
+            "PREVIEW ONLY — never writes. Requires --plan-rename-to. "
+            "CLI parity for: edit action=plan_rename."
+        ),
+    )
+    parser.add_argument(
+        "--plan-rename-to",
+        metavar="NEW_NAME",
+        help="The proposed new name for --plan-rename.",
+    )
     parser.add_argument(
         "--outline",
         nargs="?",
@@ -249,6 +364,62 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         "--code-patterns",
         action="store_true",
         help="Detect anti-patterns, code smells, and security issues in a file",
+    )
+    # Pulse API / TQL / semantic — nervous-system PR facade-action CLI parity.
+    parser.add_argument(
+        "--pulse",
+        metavar="SYMBOL",
+        type=str,
+        help=(
+            "1-query complete context for one symbol: callers, callees, git "
+            "heat, imports, siblings, comments. Requires a file path "
+            "positional argument. CLI parity for: nav action=pulse."
+        ),
+    )
+    parser.add_argument(
+        "--pulse-batch",
+        metavar="TARGETS_JSON",
+        type=str,
+        help=(
+            "action=pulse for multiple {file, symbol} targets in one call. "
+            "TARGETS_JSON is a JSON array of {file, symbol} objects. "
+            "CLI parity for: nav action=pulse_batch."
+        ),
+    )
+    parser.add_argument(
+        "--project-schema",
+        action="store_true",
+        help=(
+            "Index statistics: languages, symbol count, edge count, index "
+            "age, available pulse fields, Hyphae pseudo-classes. "
+            "CLI parity for: index action=schema."
+        ),
+    )
+    parser.add_argument(
+        "--tql-schema",
+        action="store_true",
+        help=(
+            "Full TQL (Temporal Query Language / extended Hyphae) DSL "
+            "reference. CLI parity for: search action=tql_schema."
+        ),
+    )
+    parser.add_argument(
+        "--tql",
+        metavar="SELECTOR",
+        type=str,
+        help=(
+            "Execute a TQL (extended Hyphae) selector over the indexed "
+            "symbol graph. CLI parity for: search action=tql_execute."
+        ),
+    )
+    parser.add_argument(
+        "--semantic-neighbors",
+        metavar="QUERY",
+        type=str,
+        help=(
+            "Find symbols semantically similar to a natural-language query "
+            "via vector embeddings. CLI parity for: search action=semantic."
+        ),
     )
     parser.add_argument(
         "--call-graph",
@@ -303,9 +474,12 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--ast-cache-max-files",
-        type=int,
+        type=parse_index_max_files,
         default=20_000,
-        help="Max files to index with --ast-cache (default: 20000)",
+        help=(
+            "Positive max files to index or sync with --ast-cache; "
+            "zero is invalid (default: 20000)"
+        ),
     )
     parser.add_argument(
         "--ast-cache-force",

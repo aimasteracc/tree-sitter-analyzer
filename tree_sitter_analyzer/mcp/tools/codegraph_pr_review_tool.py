@@ -454,8 +454,8 @@ class CodeGraphPRReviewTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -473,7 +473,7 @@ class CodeGraphPRReviewTool(BaseMCPTool):
         pr_url = arguments.get("pr_url", "") or ""
         mode = "pr" if pr_url else arguments.get("mode", "diff")
         include_cg = arguments.get("include_call_graph", True)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         # Issue #451: mode=pr without pr_url must fail loudly, not silently fall
         # through to local diff and produce "No changed files" (misinformation).
@@ -754,9 +754,9 @@ class CodeGraphPRReviewTool(BaseMCPTool):
     def _format_response(
         self, response: dict[str, Any], output_format: str
     ) -> dict[str, Any]:
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
 
 def _compute_verdict(overall_risk: str, api_changes: int, affected_funcs: int) -> str:

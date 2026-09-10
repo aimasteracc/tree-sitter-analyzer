@@ -6,7 +6,7 @@ import pkgutil
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, get_origin
 
 from ..utils import log_debug, log_error, log_warning
 from .base import LanguagePlugin
@@ -363,6 +363,7 @@ def find_plugin_classes(module: Any) -> list[type[LanguagePlugin]]:
         attr = getattr(module, attr_name)
         if (
             isinstance(attr, type)
+            and get_origin(attr) is None
             and issubclass(attr, LanguagePlugin)
             and attr is not LanguagePlugin
         ):

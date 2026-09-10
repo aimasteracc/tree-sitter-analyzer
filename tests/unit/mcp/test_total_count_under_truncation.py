@@ -1,8 +1,4 @@
-"""Regression tests for H2/H3 — total_count honesty under truncation.
-
-H2: search_content.total_count lied when ripgrep truncated. The post-fix
-contract is: when truncated=True, either total_count > displayed_count
-(real total via recount pass) OR total_count_known=False.
+"""Regression tests for H3 — total_count honesty under truncation.
 
 H3: list_files.total_count lied when fd's --max-results truncated. Same
 contract — truncated responses must carry an honest pre-truncation count
@@ -20,11 +16,9 @@ from typing import Any
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 
-# Skip the whole module on systems missing fd / rg — these are shell tools.
+# Skip the whole module on systems missing fd — this is a shell tool.
 _FD_AVAILABLE = shutil.which("fd") is not None
-_RG_AVAILABLE = shutil.which("rg") is not None
 
 
 def _assert_honest_total_count(result: dict, displayed: int, total: int) -> None:
@@ -64,48 +58,6 @@ def big_repo() -> Path:
         root = Path(tmp)
         _make_repo_with_many_def_lines(root, n_files=50)
         yield root
-
-
-# ============================================================
-# H2 — search_content total_count under truncation
-# ============================================================
-
-
-@pytest.mark.skipif(not _RG_AVAILABLE, reason="ripgrep not installed")
-class TestSearchContentTotalCountUnderTruncation:
-    def test_total_count_above_displayed_when_truncated(self, big_repo: Path) -> None:
-        """The recount pass should resolve a real total > displayed_count."""
-        tool = SearchContentTool(project_root=str(big_repo))
-        result = asyncio.run(
-            tool.execute(
-                {
-                    "query": "def ",
-                    "roots": [str(big_repo)],
-                    "max_count": 100,
-                    "output_format": "json",
-                }
-            )
-        )
-        assert isinstance(result, dict)
-        assert result.get("truncated") is True
-        displayed = int(result["displayed_count"])
-        total = int(result["total_count"])
-        _assert_honest_total_count(result, displayed, total)
-
-    def test_non_truncated_response_marks_known(self, big_repo: Path) -> None:
-        """When ripgrep didn't truncate, total_count_known must be True."""
-        tool = SearchContentTool(project_root=str(big_repo))
-        result = asyncio.run(
-            tool.execute(
-                {
-                    "query": "this_string_definitely_does_not_exist_zzz",
-                    "roots": [str(big_repo)],
-                    "output_format": "json",
-                }
-            )
-        )
-        assert isinstance(result, dict)
-        _assert_non_truncated_known(result)
 
 
 # ============================================================

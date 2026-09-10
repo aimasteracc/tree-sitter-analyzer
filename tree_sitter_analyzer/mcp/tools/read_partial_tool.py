@@ -13,7 +13,7 @@ from ...file_handler import read_file_partial
 from ...utils import setup_logger
 from ..utils.error_sanitizer import safe_error_message
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
 from .batch_executor import execute_batch
 from .read_partial_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
@@ -53,7 +53,7 @@ _TOOL_DESCRIPTION: str = (
     "- Reading an entire small file end-to-end — the built-in "
     "Read tool is simpler\n"
     "- Searching for a pattern when you don't know the line "
-    "numbers — use ``search_content`` / ``find_and_grep``\n"
+    "numbers — use CC Grep tool\n"
     "- Getting a structural overview (classes, methods, "
     "imports) — use ``get_code_outline`` /"
     " ``analyze_code_structure``"
@@ -276,7 +276,7 @@ class ReadPartialTool(BaseMCPTool):
         output_file = arguments.get("output_file")
         suppress_output = arguments.get("suppress_output", False)
         content_format = arguments.get("format", "text")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         err = self._validate_resolve(
             file_path, start_line, end_line, start_column, end_column
@@ -379,7 +379,7 @@ class ReadPartialTool(BaseMCPTool):
             output_file,
         )
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     # Validate file path and range parameters
     # Returns error dict if validation fails, None if OK
@@ -492,7 +492,7 @@ class ReadPartialTool(BaseMCPTool):
         if end_line and end_line > start_line and not (out_of_range or partial_range):
             result["next_steps"] = [
                 "query_code to find related elements in this file",
-                "search_content to find callers or usages of this code",
+                "Use CC Grep tool to find callers or usages of this code",
             ]
 
         if not suppress_output or not output_file:

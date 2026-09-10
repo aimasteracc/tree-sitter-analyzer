@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ._read_existing_bridge import _forward_read_existing_controls
+
 _DEPENDENCY_FILE_SCOPED_MODES = {"blast_radius", "file_deps"}
 _DEPENDENCY_MODE_ALIASES = {"full": "summary"}
 
@@ -64,9 +66,7 @@ def _build_trace_impact_tool_args(args: Any, output_format: str) -> dict[str, An
     """Build tool args for --trace-impact, omitting empty optional keys.
 
     The TraceImpactTool schema does not accept ``output_format``, so the
-    dispatcher must not forward it here — callers receive JSON envelopes
-    by default and can post-process to TOON via the ``toon_content`` field
-    if the tool produces one.
+    dispatcher must not forward it here — callers receive JSON envelopes.
     """
     tool_args: dict[str, Any] = {
         "symbol": getattr(args, "trace_impact_symbol", "") or "",
@@ -96,12 +96,15 @@ def _build_safe_to_edit_tool_args(args: Any, output_format: str) -> dict[str, An
         raise ValueError(
             f"--safe-to-edit expects a file, but '{file_path}' is a directory"
         )
-    return {
-        "file_path": file_path,
-        "edit_type": getattr(args, "edit_type", "refactor") or "refactor",
-        "output_format": output_format,
-        "compact_only": bool(getattr(args, "compact_toon", False)),
-    }
+    return _forward_read_existing_controls(
+        args,
+        {
+            "file_path": file_path,
+            "edit_type": getattr(args, "edit_type", "refactor") or "refactor",
+            "output_format": output_format,
+        },
+        controls=frozenset({"access_mode", "snapshot_id", "source_generation"}),
+    )
 
 
 def _build_batch_search_tool_args(args: Any, output_format: str) -> dict[str, Any]:
@@ -244,19 +247,21 @@ def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, A
         "scope_paths": getattr(args, "change_impact_scope", None) or [],
         "scope_mode": getattr(args, "change_impact_scope_mode", "report") or "report",
         "agent_summary_only": not bool(getattr(args, "change_impact_full", False)),
-        "compact_only": bool(getattr(args, "compact_toon", False)),
     }
     # Always pass resource_profile explicitly so the MCP tool's fallback default
     # ("local_low_impact" for MCP callers) never silently overrides the CLI path.
     tool_args["resource_profile"] = (
         getattr(args, "change_impact_resource_profile", "default") or "default"
     )
-    return tool_args
+    return _forward_read_existing_controls(
+        args, tool_args, controls=frozenset({"access_mode"})
+    )
 
 
 def _build_codegraph_status_tool_args(args: Any, output_format: str) -> dict[str, Any]:
     return {
         "include_lag": not bool(getattr(args, "codegraph_status_no_lag", False)),
+        "access_mode": "read_existing",
         "output_format": output_format,
     }
 

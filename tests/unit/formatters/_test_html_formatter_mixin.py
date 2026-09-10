@@ -7,7 +7,6 @@ import pytest
 
 from tree_sitter_analyzer.formatters.formatter_registry import IFormatter
 from tree_sitter_analyzer.formatters.html_formatter import (
-    HtmlCompactFormatter,
     HtmlFormatter,
     HtmlJsonFormatter,
 )
@@ -503,168 +502,6 @@ class TestHtmlJsonFormatterMixin:
         assert markup_data["attributes"]["class"] == "日本語"
 
 
-class TestHtmlCompactFormatterMixin:
-    """Test HtmlCompactFormatter functionality"""
-
-    __test__ = False
-
-    def setup_method(self):
-        """Setup test data"""
-        self.formatter = HtmlCompactFormatter()
-
-        self.test_elements = [
-            MarkupElement(
-                name="div",
-                start_line=1,
-                end_line=5,
-                tag_name="div",
-                attributes={"class": "container", "id": "main"},
-                element_class="structure",
-                language="html",
-            ),
-            MarkupElement(
-                name="img",
-                start_line=7,
-                end_line=7,
-                tag_name="img",
-                attributes={"src": "image.jpg"},
-                element_class="media",
-                language="html",
-            ),
-            StyleElement(
-                name=".container",
-                start_line=10,
-                end_line=15,
-                selector=".container",
-                properties={"width": "100%"},
-                element_class="layout",
-                language="css",
-            ),
-            Function(name="init", start_line=20, end_line=25, language="javascript"),
-        ]
-
-    def test_formatter_inheritance(self):
-        """Test that HtmlCompactFormatter inherits from IFormatter"""
-        assert isinstance(self.formatter, IFormatter)
-
-    def test_get_format_name(self):
-        """Test format name"""
-        assert self.formatter.get_format_name() == "html_compact"
-
-    def test_format_mixed_elements(self):
-        """Test compact formatting of mixed elements"""
-        result = self.formatter.format(self.test_elements)
-
-        # Check header and summary table format
-        assert "## Summary" in result
-        assert "| Element Type | Count |" in result
-
-        # Check element counts in table
-        assert "| Structure | 1 |" in result
-        assert "| Media | 1 |" in result
-        assert "| CSS Rules | 1 |" in result
-        assert "| **Total** | **4** |" in result
-
-        # Check top-level elements table
-        assert "## Top-Level Elements" in result
-        assert "| Tag | ID/Class | Lines | Children |" in result
-
-    def test_format_markup_element_with_attributes(self):
-        """Test compact formatting of MarkupElement with attributes"""
-        element = MarkupElement(
-            name="button",
-            start_line=1,
-            end_line=1,
-            tag_name="button",
-            attributes={"id": "submit-btn", "class": "btn-primary"},
-            element_class="form",
-            language="html",
-        )
-
-        result = self.formatter.format([element])
-
-        # Check that element is in top-level table
-        assert "| `button` |" in result
-        assert "| Forms | 1 |" in result
-
-    def test_format_markup_element_without_attributes(self):
-        """Test compact formatting of MarkupElement without attributes"""
-        element = MarkupElement(
-            name="br",
-            start_line=1,
-            end_line=1,
-            tag_name="br",
-            attributes={},
-            element_class="text",
-            language="html",
-        )
-
-        result = self.formatter.format([element])
-
-        # Check element is in summary table
-        assert "| Text | 1 |" in result
-        assert "| **Total** | **1** |" in result
-
-    def test_format_style_element(self):
-        """Test compact formatting of StyleElement"""
-        element = StyleElement(
-            name="#header",
-            start_line=5,
-            end_line=10,
-            selector="#header",
-            properties={"background": "blue"},
-            element_class="layout",
-            language="css",
-        )
-
-        result = self.formatter.format([element])
-
-        # Check CSS rule in summary
-        assert "| CSS Rules | 1 |" in result
-        assert "| **Total** | **1** |" in result
-
-    def test_format_other_element(self):
-        """Test compact formatting of other CodeElement"""
-        element = Variable(
-            name="config", start_line=1, end_line=1, language="javascript"
-        )
-
-        result = self.formatter.format([element])
-
-        # Non-markup elements should still be counted in total
-        assert "| **Total** | **1** |" in result
-
-    def test_format_empty_list(self):
-        """Test compact formatting of empty list"""
-        result = self.formatter.format([])
-        assert result == "No HTML elements found."
-
-    def test_format_counts_accuracy(self):
-        """Test that element counts are accurate"""
-        markup_elements = [
-            MarkupElement(name="div", start_line=1, end_line=1, tag_name="div"),
-            MarkupElement(name="p", start_line=2, end_line=2, tag_name="p"),
-        ]
-
-        style_elements = [
-            StyleElement(name=".test", start_line=3, end_line=3, selector=".test"),
-        ]
-
-        other_elements = [
-            Function(name="func1", start_line=4, end_line=4),
-            Function(name="func2", start_line=5, end_line=5),
-            Variable(name="var1", start_line=6, end_line=6),
-        ]
-
-        all_elements = markup_elements + style_elements + other_elements
-        result = self.formatter.format(all_elements)
-
-        # Check total count in new table format
-        assert "| **Total** | **6** |" in result
-        # Check CSS rules count
-        assert "| CSS Rules | 1 |" in result
-
-
 class TestHtmlFormatterRegistrationMixin:
     """Test HTML formatter registration"""
 
@@ -681,7 +518,6 @@ class TestHtmlFormatterRegistrationMixin:
 
         assert "html" in available_formats
         assert "html_json" in available_formats
-        assert "html_compact" in available_formats
 
     @pytest.mark.skip(
         reason="HTML formatters intentionally excluded in v1.6.1.4 for format specification compliance"
@@ -692,8 +528,6 @@ class TestHtmlFormatterRegistrationMixin:
 
         html_formatter = FormatterRegistry.get_formatter("html")
         html_json_formatter = FormatterRegistry.get_formatter("html_json")
-        html_compact_formatter = FormatterRegistry.get_formatter("html_compact")
 
         assert isinstance(html_formatter, HtmlFormatter)
         assert isinstance(html_json_formatter, HtmlJsonFormatter)
-        assert isinstance(html_compact_formatter, HtmlCompactFormatter)

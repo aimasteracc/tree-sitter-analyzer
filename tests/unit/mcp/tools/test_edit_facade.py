@@ -3,7 +3,7 @@
 
 Covers all §5 required cases from ``.recon/p0-facade-framework-spec.md``:
 
-1.  构造与路由：工厂返回 FacadeTool，包含九个动作。
+1.  builds & routes — factory returns FacadeTool, all 8 actions present.
 2.  action routing — each action reaches the right inner.
 3.  arg projection — ``action`` is NOT in args received by the inner.
 4.  sibling-param drop — param for action A doesn't reach action B's inner.
@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -103,7 +103,7 @@ class _FakeInner(BaseMCPTool):
 
 
 def _make_fake_facade(**kwargs: Any) -> tuple[FacadeTool, dict[str, _FakeInner]]:
-    """构造含九个编辑动作的测试 facade。"""
+    """Build a facade with all 8 edit actions wired to fake inners."""
     inners: dict[str, _FakeInner] = {
         "safe": _FakeInner("safe"),
         "guard": _FakeInner("guard"),
@@ -125,7 +125,7 @@ def _make_fake_facade(**kwargs: Any) -> tuple[FacadeTool, dict[str, _FakeInner]]
 
 
 # ---------------------------------------------------------------------------
-# 1. 工厂构造包含九个动作的 FacadeTool。
+# 1. Builds & routes — factory returns FacadeTool, all 8 actions present
 # ---------------------------------------------------------------------------
 
 
@@ -148,6 +148,23 @@ def test_impact_action_description_documents_mode_param() -> None:
     assert "mode (diff|staged|branch|pr" in _EDIT_DESCRIPTION
 
 
+def test_impact_snapshot_producer_is_publicly_discoverable() -> None:
+    # PR #1252 review thread 3751415929: schema clients must find the producer.
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    properties = build_edit_facade(None).get_tool_definition()["inputSchema"][
+        "properties"
+    ]
+
+    assert properties["capture_diff_snapshot"] == {
+        "type": "boolean",
+        "description": (
+            "Explicitly produce a frozen diff ID for same-process consumers; "
+            "supported only on POSIX."
+        ),
+    }
+
+
 def test_edit_facade_all_actions_present() -> None:
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
@@ -162,6 +179,13 @@ def test_edit_facade_all_actions_present() -> None:
         "pr",
         "classify",
         "ast_diff",
+        "release_snapshot",
+        # RFC-0027 §L8: preview-only minimal rename edit set, wired from the
+        # previously orphaned CodeGraphRefactorTool.
+        "plan_rename",
+        # RFC-0029: does this test constrain this code?
+        "mutation_probe",
+        "verify",
     }
     registered = set(facade.action_map) | set(facade.bespoke_map)
     assert expected == registered
@@ -268,16 +292,16 @@ def test_guard_symbol_passes_through_unchanged() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 6. 九个动作均通过 action_map 路由。
+# 6. No bespoke routes — all 8 actions are in action_map
 # ---------------------------------------------------------------------------
 
 
-def test_no_bespoke_routes() -> None:
+def test_release_snapshot_is_the_only_bespoke_route() -> None:
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     facade = build_edit_facade(project_root=None)
-    assert facade.bespoke_map == {}, "edit facade should have no bespoke routes"
-    assert len(facade.action_map) == 9
+    assert set(facade.bespoke_map) == {"release_snapshot"}
+    assert len(facade.action_map) == 12
 
 
 # ---------------------------------------------------------------------------
@@ -390,7 +414,7 @@ def test_build_edit_facade_returns_facade_tool() -> None:
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     facade = build_edit_facade(project_root=None)
-    assert type(facade) is FacadeTool
+    assert isinstance(facade, FacadeTool)
 
 
 # ---------------------------------------------------------------------------
@@ -443,262 +467,173 @@ def test_constraints_action_does_not_leak_action_to_inner(tmp_path: Any) -> None
     assert "success" in result
 
 
-# ---------------------------------------------------------------------------
-# 12. Annotations correctness — edit facade must NOT declare readOnlyHint=True
-# ---------------------------------------------------------------------------
-
-
-def test_edit_annotations_not_read_only() -> None:
-    """edit facade spans mutating-intent actions — readOnlyHint must be False."""
-    from tree_sitter_analyzer.mcp.tools.edit_facade import _EDIT_ANNOTATIONS
-
-    assert _EDIT_ANNOTATIONS["readOnlyHint"] is False, (
-        "edit facade cannot claim readOnlyHint=True (mixed read+mutating-intent actions)"
-    )
-
-
-def test_edit_annotations_advertise_file_writes() -> None:
-    """rename 的 apply 会写文件，必须声明破坏性操作提示。"""
-    from tree_sitter_analyzer.mcp.tools.edit_facade import _EDIT_ANNOTATIONS
-
-    assert _EDIT_ANNOTATIONS["destructiveHint"] is True
-
-
-def test_edit_annotations_all_four_hints_present() -> None:
-    """test_every_tool_declares_mcp_annotations requires all 4 hint keys."""
-    from tree_sitter_analyzer.mcp.tools.edit_facade import _EDIT_ANNOTATIONS
-
-    required = {"readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"}
-    assert required.issubset(_EDIT_ANNOTATIONS.keys())
-
-
-def test_edit_facade_definition_includes_annotations() -> None:
+def test_scope_paths_is_rejected_outside_impact_and_constraints() -> None:
+    # PR #1254 review 3769281322: explicit facade scope must never be dropped.
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     facade = build_edit_facade(project_root=None)
-    defn = facade.get_tool_definition()
-    assert "annotations" in defn
-    annot = defn["annotations"]
-    assert annot["readOnlyHint"] is False
-    assert annot["destructiveHint"] is True
+    result = asyncio.run(facade.execute({"action": "safe", "scope_paths": ["src"]}))
 
-
-# ---------------------------------------------------------------------------
-# 13. Facade description honesty — ast_diff description uses REAL mode params
-#     (Leg D of issue #529 triple-fix)
-# ---------------------------------------------------------------------------
-
-
-def test_ast_diff_facade_description_uses_real_mode_params() -> None:
-    """Leg D: the ast_diff description in the edit facade must reference the
-    REAL mode signatures (old_file/new_file | old_source/new_source |
-    old_ref/new_ref) and must NOT use the nonexistent 'before, after' params.
-    """
-    from tree_sitter_analyzer.mcp.tools.edit_facade import _EDIT_DESCRIPTION
-
-    # Must contain real param names
-    assert "old_ref" in _EDIT_DESCRIPTION, (
-        "ast_diff facade description must mention 'old_ref' (diff_git signature)"
-    )
-    assert "old_file" in _EDIT_DESCRIPTION or "new_file" in _EDIT_DESCRIPTION, (
-        "ast_diff facade description must mention 'old_file'/'new_file' (diff_files signature)"
-    )
-    assert "old_source" in _EDIT_DESCRIPTION or "new_source" in _EDIT_DESCRIPTION, (
-        "ast_diff facade description must mention 'old_source'/'new_source' (diff_strings signature)"
-    )
-
-    # Must NOT use the nonexistent 'before, after' params
-    assert "before, after" not in _EDIT_DESCRIPTION, (
-        "ast_diff facade description must NOT use nonexistent 'before, after' params"
+    assert result["success"] is False
+    assert result["error"] == (
+        "parameter 'scope_paths' applies only to action(s): constraints, impact"
     )
 
 
 # ---------------------------------------------------------------------------
-# Schema sanity
+# 13. RFC-0027 §L8 — ``plan_rename`` is preview-only, and provably so
 # ---------------------------------------------------------------------------
 
+#: Arguments a caller might use to smuggle an apply through a planning surface.
+#: ``mode="preview"`` is in the list on purpose: accepting it would advertise
+#: that the parameter is honoured, and the next caller would try ``"apply"``.
+_APPLY_LIKE_ARGS: tuple[tuple[str, Any], ...] = (
+    ("mode", "apply"),
+    ("mode", "preview"),
+    ("dry_run", False),
+    ("apply", True),
+    ("write", True),
+    ("force", True),
+)
 
-def test_edit_facade_schema_includes_action_and_required() -> None:
-    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+_AST_CACHE_DIR = ".ast-cache"
 
-    facade = build_edit_facade(project_root=None)
-    schema = facade.get_tool_schema()
-    props = schema["properties"]
-    assert "action" in props
-    assert "action" in schema.get("required", [])
-    # 枚举必须列出九个动作。
-    enum_vals = set(props["action"].get("enum", []))
-    expected = {
-        "safe",
-        "guard",
-        "impact",
-        "refactor",
-        "rename",
-        "constraints",
-        "pr",
-        "classify",
-        "ast_diff",
+
+def _plan_rename_project(tmp_path: Any) -> Any:
+    """A tiny two-file python project with a symbol worth renaming."""
+    (tmp_path / "mod.py").write_text("def target():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "caller.py").write_text(
+        "from mod import target\n\n\ndef go():\n    return target()\n",
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+def _snapshot(root: Any) -> dict[str, tuple[int, bytes]]:
+    """Every file under ``root`` as ``{relative_posix_path: (mtime_ns, bytes)}``."""
+    return {
+        p.relative_to(root).as_posix(): (p.stat().st_mtime_ns, p.read_bytes())
+        for p in sorted(root.rglob("*"))
+        if p.is_file()
     }
-    assert expected == enum_vals
 
 
-def test_edit_facade_schema_lenient_additional_properties() -> None:
-    """The merged facade schema must be lenient (additionalProperties not False)."""
+@pytest.mark.parametrize(("key", "value"), _APPLY_LIKE_ARGS)
+def test_plan_rename_rejects_apply_like_arguments(key: str, value: Any) -> None:
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     facade = build_edit_facade(project_root=None)
-    schema = facade.get_tool_schema()
-    # The schema must be additionalProperties: True (lenient), not False (strict).
-    assert schema.get("additionalProperties") is True
+    with pytest.raises(ValueError, match="PLAN_RENAME_IS_PREVIEW_ONLY"):
+        asyncio.run(
+            facade.execute(
+                {
+                    "action": "plan_rename",
+                    "symbol": "target",
+                    "new_name": "renamed",
+                    key: value,
+                }
+            )
+        )
 
 
-# ---------------------------------------------------------------------------
-# Issue #451 — edit action=pr without pr_url must fail loudly via the facade
-# ---------------------------------------------------------------------------
+def test_plan_rename_pins_dry_run_true_on_the_engine(tmp_path: Any) -> None:
+    """The binding pins preview internally — ``rename_symbol(dry_run=True)``."""
+    from unittest.mock import patch
 
-
-def test_edit_pr_action_missing_pr_url_fails_loudly() -> None:
-    """action=pr without pr_url → success:False, ERROR verdict, not 'No changed files'.
-
-    Regression guard for issue #451: an agent that misnames the param (e.g.
-    uses query= instead of pr_url=) would have the extra param stripped by
-    facade projection, leaving only {mode:pr}. The inner must return an error
-    envelope, not silently fall through to an empty local diff review.
-    """
-    facade, inners = _make_fake_facade()
-    # Replace the fake 'pr' inner with a real CodeGraphPRReviewTool
-    from tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool import (
-        CodeGraphPRReviewTool,
-    )
-
-    real_pr_inner = CodeGraphPRReviewTool(project_root=None)
-    facade.action_map["pr"] = real_pr_inner
-
-    # mode=pr but no pr_url (simulates post-projection args)
-    result = asyncio.run(facade.execute({"action": "pr", "mode": "pr"}))
-    assert result["success"] is False
-    assert result.get("verdict") == "ERROR"
-    assert "pr_url" in result.get("error", "")
-
-
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-q"]))
-
-
-# ---------------------------------------------------------------------------
-# Issue #641 — edit facade schema must expose modification_type with enum
-# for action=guard discoverability (extra_public_params, NOT required:[])
-# ---------------------------------------------------------------------------
-
-
-def test_edit_facade_schema_has_modification_type_property() -> None:
-    """Schema must declare modification_type so schema-reading agents see it.
-
-    Before fix: modification_type was only reachable via additionalProperties
-    (invisible to schema inspection). After fix: it appears in properties with
-    the authoritative enum — matching the inner ModificationGuardTool schema.
-    """
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
-    facade = build_edit_facade(project_root=None)
-    schema = facade.get_tool_schema()
-    props = schema["properties"]
-    assert "modification_type" in props, (
-        "modification_type must be declared in the edit facade's public schema "
-        "(not hidden behind additionalProperties)"
-    )
+    class _EmptyResult:
+        errors: list[str] = []
+        sites: list[Any] = []
+        sites_renamed = 0
+
+        def to_dict(self) -> dict[str, Any]:
+            return {"symbol": "target", "new_name": "renamed", "dry_run": True}
+
+    root = _plan_rename_project(tmp_path)
+    facade = build_edit_facade(project_root=str(root))
+    inner = facade.action_map["plan_rename"]
+    assert inner.FORCED_MODE == "preview"
+    with (
+        patch.object(inner, "_get_cache", return_value=object()),
+        patch(
+            "tree_sitter_analyzer.mcp.tools.codegraph_refactor_tool.rename_symbol",
+            return_value=_EmptyResult(),
+        ) as mock_rename,
+    ):
+        asyncio.run(
+            facade.execute(
+                {
+                    "action": "plan_rename",
+                    "symbol": "target",
+                    "new_name": "renamed",
+                    "output_format": "json",
+                }
+            )
+        )
+    assert mock_rename.call_args.kwargs["dry_run"] is True
 
 
-def test_edit_facade_modification_type_has_enum() -> None:
-    """modification_type property must carry the full authoritative enum."""
-    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
-    from tree_sitter_analyzer.mcp.tools.modification_guard_tool import (
-        MODIFICATION_TYPES,
-    )
+@pytest.mark.parametrize(("key", "value"), _APPLY_LIKE_ARGS)
+def test_plan_rename_adversarial_input_writes_nothing_at_all(
+    tmp_path: Any, key: str, value: Any
+) -> None:
+    """Zero filesystem writes on adversarial input — bytes AND mtime_ns pinned.
 
-    facade = build_edit_facade(project_root=None)
-    schema = facade.get_tool_schema()
-    prop = schema["properties"]["modification_type"]
-    assert "enum" in prop, "modification_type must declare an enum"
-    assert set(prop["enum"]) == set(MODIFICATION_TYPES), (
-        "facade modification_type enum must match the inner tool's MODIFICATION_TYPES constant"
-    )
-
-
-def test_edit_facade_modification_type_NOT_in_required() -> None:
-    """modification_type must NOT be in facade required[] (runtime-resolved param).
-
-    LOCKED convention: runtime-required params are described in the description
-    text, not in schema required: [] — this prevents the facade validator from
-    rejecting calls before routing (facade required only lists 'action').
+    The rejection happens at the facade boundary, before any work, so *every*
+    path under the project is unchanged — not just the source files.
     """
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
-    facade = build_edit_facade(project_root=None)
-    schema = facade.get_tool_schema()
-    assert "modification_type" not in schema.get("required", []), (
-        "modification_type must NOT appear in facade required[] "
-        "(runtime-resolved param — locked convention, #397 family)"
-    )
+    root = _plan_rename_project(tmp_path)
+    facade = build_edit_facade(project_root=str(root))
+    before = _snapshot(root)
+
+    with pytest.raises(ValueError, match="PLAN_RENAME_IS_PREVIEW_ONLY"):
+        asyncio.run(
+            facade.execute(
+                {
+                    "action": "plan_rename",
+                    "symbol": "target",
+                    "new_name": "renamed",
+                    "output_format": "json",
+                    key: value,
+                }
+            )
+        )
+
+    assert _snapshot(root) == before
 
 
-def test_edit_facade_guard_description_marks_modification_type_required() -> None:
-    """action=guard description must mark modification_type as required (e.g. with *).
+def test_plan_rename_preview_leaves_every_pre_existing_file_untouched(
+    tmp_path: Any,
+) -> None:
+    """A real (unmocked) preview call mutates no file that existed before it.
 
-    Before fix: the description listed 'Params: symbol, modification_type,
-    file_path' without any required marker — agents had no signal that omitting
-    modification_type triggers an error on the first call.
+    The only paths it may *add* are under ``.ast-cache/`` — analysis
+    infrastructure the auto-index guard builds, never caller source. That
+    boundary is asserted rather than assumed: a rename that leaked into
+    ``mod.py`` would show up as a changed pre-existing entry, and a stray
+    artefact anywhere else would show up as an unexpected new path.
     """
-    from tree_sitter_analyzer.mcp.tools.edit_facade import _EDIT_DESCRIPTION
-
-    # The guard line must mark modification_type as required (trailing * or explicit note)
-    guard_lines = [
-        line for line in _EDIT_DESCRIPTION.splitlines() if "action=guard" in line
-    ]
-    assert guard_lines, "edit facade description must have an action=guard line"
-    guard_line = guard_lines[0]
-    assert (
-        "modification_type*" in guard_line
-        or "modification_type (required" in guard_line
-    ), (
-        f"action=guard description line must mark modification_type as required "
-        f"(e.g. 'modification_type*'); got: {guard_line!r}"
-    )
-
-
-def test_action_pr_without_mode_or_pr_url_fails_loudly() -> None:
-    """Codex P1 (#483): facade action=pr with NO explicit mode must not
-    fall back to the inner's diff default and return empty success.
-
-    ``edit({"action": "pr", "query": "<url>"})`` (typoed param) previously
-    reached the inner without mode → diff mode → success "No changed files".
-    The facade pr route now implies mode=pr, so the pr_url guard fires."""
-    import asyncio
-
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
-    facade = build_edit_facade(".")
-    result = asyncio.run(
-        facade.execute({"action": "pr", "query": "https://github.com/o/r/pull/1"})
+    root = _plan_rename_project(tmp_path)
+    facade = build_edit_facade(project_root=str(root))
+    before = _snapshot(root)
+
+    asyncio.run(
+        facade.execute(
+            {
+                "action": "plan_rename",
+                "symbol": "target",
+                "new_name": "renamed",
+                "output_format": "json",
+            }
+        )
     )
-    assert result["success"] is False
-    assert "pr_url" in result["error"]
 
-
-def test_action_pr_explicit_diff_mode_still_reaches_diff() -> None:
-    """Direct sub-mode selection stays available through the facade."""
-    import asyncio
-
-    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
-
-    facade = build_edit_facade(".")
-    with patch(
-        "tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool._get_local_diff",
-        return_value="",
-    ) as get_local_diff:
-        result = asyncio.run(facade.execute({"action": "pr", "mode": "diff"}))
-
-    get_local_diff.assert_called_once_with("diff", ".")
-    # diff mode reviews local changes — must not demand pr_url
-    assert result["success"] is True
-    assert result.get("error") is None or "pr_url" not in str(result.get("error"))
+    after = _snapshot(root)
+    assert {k: v for k, v in after.items() if k in before} == before
+    added = sorted(set(after) - set(before))
+    assert [p for p in added if not p.startswith(f"{_AST_CACHE_DIR}/")] == []

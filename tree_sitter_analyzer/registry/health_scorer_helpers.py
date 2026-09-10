@@ -1,5 +1,6 @@
 """Pure helper functions for file health scoring."""
 
+import os
 import subprocess  # nosec
 from collections.abc import Mapping
 from pathlib import Path
@@ -87,10 +88,29 @@ def find_git_root(start_dir: Path) -> Path | None:
 
 
 def count_recent_commits(repo_root: Path, pathspec: str) -> int | None:
-    """Count commits touching pathspec in the last 90 days."""
+    """仅在历史完整时统计最近九十天修改指定路径的提交。"""
+    history_env = {
+        **os.environ,
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        "GIT_GRAFT_FILE": os.devnull,
+    }
+    # 2026-09-09：浅克隆的少量可见提交不能作为稳定满分的依据。
+    history = subprocess.run(  # nosec
+        ["git", "rev-parse", "--is-shallow-repository"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=5,
+        cwd=str(repo_root),
+        env=history_env,
+    )
+    if history.returncode != 0 or history.stdout.strip() != "false":
+        return None
     result = subprocess.run(  # nosec
         [
             "git",
+            "--no-replace-objects",
             "log",
             "--format=%H",
             "--after=90 days ago",
@@ -103,6 +123,7 @@ def count_recent_commits(repo_root: Path, pathspec: str) -> int | None:
         errors="replace",
         timeout=5,
         cwd=str(repo_root),
+        env=history_env,
     )
     if result.returncode != 0:
         return None

@@ -17,7 +17,6 @@ from .table_command_helpers import (
     StructureConverters,
     build_structure_format,
     collect_structure_elements,
-    convert_to_toon_format,
     get_default_package_name,
     process_parameters,
     resolve_structure_package_name,
@@ -71,7 +70,7 @@ class TableCommand(BaseCommand):
 
         r37d8 (dogfood): 113 lines → ~20 lines of phase dispatch.
         Sub-helpers: ``_resolve_table_type`` (--table vs --format precedence
-        + K11 override warning), ``_render_table_output`` (json/toon/text
+        + K11 override warning), ``_render_table_output`` (JSON/table/text
         fan-out). ``effective_table`` / ``requested_table`` (K11) and the
         r37ab canonical envelope are preserved.
         """
@@ -99,7 +98,7 @@ class TableCommand(BaseCommand):
         """Pick the effective table view, honouring ``--format`` overrides.
 
         Returns ``(table_type, user_table_request, table_was_user_specified)``.
-        K11 / DOG-3: ``--format=json|toon`` wins over ``--table=...`` when the
+        K11 / DOG-3: ``--format=json`` wins over ``--table=...`` when the
         user explicitly passed the flag (checked via ``sys.argv`` so the
         argparse default ``json`` doesn't silently break ``--table=full``).
         A stderr warning is emitted symmetric to DOG-3's TOON warning when
@@ -117,14 +116,12 @@ class TableCommand(BaseCommand):
                 or getattr(self.args, "output_format", None)
                 or ""
             ).lower()
-        if output_format == "toon" and table_type != "toon":
-            table_type = "toon"
-        elif output_format == "json" and table_type != "json":
+        if output_format == "json" and table_type != "json":
             table_type = "json"
 
         if (
             table_was_user_specified
-            and output_format in ("json", "toon")
+            and output_format == "json"
             and user_table_request != table_type
         ):
             print(
@@ -142,7 +139,7 @@ class TableCommand(BaseCommand):
         user_table_request: str,
         table_was_user_specified: bool,
     ) -> str:
-        """Render the table output string per ``table_type`` (json/toon/text)."""
+        """Render the table output string per ``table_type`` (JSON/table/text)."""
         if table_type == "json":
             return self._render_table_json(
                 analysis_result,
@@ -150,14 +147,6 @@ class TableCommand(BaseCommand):
                 table_type,
                 user_table_request,
                 table_was_user_specified,
-            )
-        if table_type == "toon":
-            return self._format_as_toon(
-                analysis_result,
-                effective_table=table_type,
-                requested_table=(
-                    user_table_request if table_was_user_specified else None
-                ),
             )
         from ...formatters.formatter_registry import FormatterRegistry
 
@@ -202,38 +191,6 @@ class TableCommand(BaseCommand):
             # agent_summary.
             _attach_table_envelope(formatted_data, analysis_result)
         return json.dumps(formatted_data, indent=2, ensure_ascii=False)
-
-    # Format data for output: _format_as_toon
-    def _format_as_toon(
-        self,
-        analysis_result: Any,
-        effective_table: str | None = None,
-        requested_table: str | None = None,
-    ) -> str:
-        """Format analysis result as TOON.
-
-        K11: when ``--table`` is silently overridden by ``--format=toon``
-        the structure carries ``effective_table`` / ``requested_table``
-        so programmatic callers can detect the override symmetrically
-        to the JSON path.
-        """
-        from ...formatters.toon_formatter import ToonFormatter
-
-        use_tabs = getattr(self.args, "toon_use_tabs", False)
-        formatter = ToonFormatter(use_tabs=use_tabs)
-
-        # Convert to structure format for TOON
-        structure_data = self._convert_to_toon_format(analysis_result)
-        if effective_table is not None and isinstance(structure_data, dict):
-            structure_data["effective_table"] = effective_table
-            if requested_table is not None:
-                structure_data["requested_table"] = requested_table
-        return formatter.format(structure_data)
-
-    # Format data for output: _convert_to_toon_format
-    def _convert_to_toon_format(self, analysis_result: Any) -> dict[str, Any]:
-        """Convert AnalysisResult to TOON-friendly format with position info."""
-        return convert_to_toon_format(analysis_result)
 
     # Format data for output: _convert_to_formatter_format
     def _convert_to_formatter_format(self, analysis_result: Any) -> dict[str, Any]:
@@ -407,7 +364,7 @@ class TableCommand(BaseCommand):
             "javadoc": javadoc,
         }
         # Propagate receiver_type as parent_class for fields too — without it
-        # multi-class files collide (User::$id vs AdminUser::$id) in CSV/TOON
+        # multi-class files collide (User::$id vs AdminUser::$id) in CSV/table
         # output (#535, Codex P2).
         receiver_type = getattr(element, "receiver_type", None)
         if receiver_type:
@@ -419,7 +376,7 @@ class TableCommand(BaseCommand):
         """Convert import element to table format.
 
         Produces the K2 canonical import shape so JSON output matches the
-        TOON ``_toon_import`` projection key-for-key. ``raw_text`` is kept
+        table projection key-for-key. ``raw_text`` is kept
         as a backward-compat alias for downstream language formatters
         (python/php/csharp/ruby/go) that still read it directly.
         """

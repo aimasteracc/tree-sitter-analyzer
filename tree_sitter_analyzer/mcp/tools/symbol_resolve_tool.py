@@ -15,7 +15,7 @@ from typing import Any
 
 from ...symbol_resolver import SymbolResolver
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -41,9 +41,9 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
-            "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+            "enum": ["json"],
+            "default": "json",
+            "description": "Output format: JSON",
         },
     },
     "required": ["symbol"],
@@ -104,13 +104,13 @@ class CodeGraphSymbolResolveTool(BaseMCPTool):
 
         symbol = arguments["symbol"]
         mode = arguments.get("mode", "resolve")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         cache = self._get_cache()
         conn = cache.get_conn()
         row_count = conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()[0]
         if row_count == 0:
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 {
                     "success": False,
                     "verdict": "ERROR",
@@ -150,4 +150,4 @@ class CodeGraphSymbolResolveTool(BaseMCPTool):
                 "Check spelling or build the AST cache with more files."
             )
 
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)

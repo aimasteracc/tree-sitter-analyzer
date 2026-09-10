@@ -1019,19 +1019,6 @@ class TestAbstractMethodSurfaced:
         r = self._run_shape(abstract_file)
         assert r["method_count"] == 3
 
-    def test_toon_output_contains_is_abstract(self, abstract_file: Path) -> None:
-        """TOON toon_content blob must include the is_abstract flag."""
-        from tree_sitter_analyzer.ast_cache import ASTCache
-
-        project_root = str(abstract_file.parent)
-        cache = ASTCache(project_root)
-        cache.index_file(str(abstract_file), language="python")
-        tool = ClassInspectTool(project_root)
-        response = _run(tool.execute({"class_name": "Shape", "output_format": "toon"}))
-        assert response.get("format") == "toon"
-        toon_blob = response.get("toon_content", "")
-        assert "is_abstract" in toon_blob
-
 
 class TestSameNameClassScoped:
     """Issue #660: when two files define a class with the same name, class_detail

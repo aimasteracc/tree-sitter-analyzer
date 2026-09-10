@@ -219,12 +219,6 @@ class TestRefactoringSuggestionsTool:
         if with_plans:
             assert "skeleton" in with_plans[0]["precise_plan"]["extractions"][0]
 
-    def test_output_format_toon(self, tool):
-        result = _run(
-            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "toon"})
-        )
-        assert result.get("format") == "toon"
-
     def test_long_function_has_precise_plan(self, tool):
         result = _run(
             tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
@@ -474,12 +468,12 @@ class TestRefactoringSuggestionsTool:
         )
 
     def test_prefix_group_skips_existing_responsibility_mixin(self, tmp_path):
-        source = tmp_path / "find_and_grep_response.py"
+        source = tmp_path / "list_files_response.py"
         source.write_text("", encoding="utf-8")
         suggestions = find_class_extractions(
             [
                 {
-                    "name": "FindAndGrepRespondMixin",
+                    "name": "ListFilesRespondMixin",
                     "line": 1,
                     "end_line": 90,
                     "method_count": 3,

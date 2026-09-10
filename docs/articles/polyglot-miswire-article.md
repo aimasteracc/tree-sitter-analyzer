@@ -32,7 +32,7 @@ sqlite3 .codegraph/codegraph.db "
   FROM edges e JOIN nodes n ON e.source = n.id
   WHERE e.target = 'method:93b946c9bfbf7d0843dca5323ecd16c4'
     AND e.kind = 'calls' AND n.file_path LIKE '%.py';"
-# → 299      (v1.21.0 index)
+# => 299      (v1.21.0 index)
 ```
 
 299 Python callers, one Swift target. The AST does not support any of these
@@ -72,27 +72,28 @@ With that context, here is what the Gauntlet found.
 
 ## The Gauntlet: Five Real Repos
 
-> The table below shows the **name-only genuine floor** column (builtins excluded) and
-> the **TSA mis-wires** column (the real measurement). The external repos are measured
-> at v1.21.0 (2026-06-07); the this-repo row is freshly measured at v1.22.0 (2026-06-10).
-> Re-run `gauntlet_runner.py --all` before publication to refresh the external repos.
-
-<!-- re-measure: external repo rows (tokenizers / ruff / polars / gin) are v1.21.0 (2026-06-07) -->
+> **Methodology note (v1.29.0 re-measurement, 2026-07-10).**
+> External repo rows (tokenizers, ruff, polars, gin) are from the v1.21.0 run
+> (2026-06-07) and are marked for re-measurement. The `tree-sitter-analyzer`
+> (this repo) row was re-measured against the v1.29.0-line develop branch on
+> 2026-07-10 (commit `6fe62fba`). That re-measurement is not a clean tag checkout
+> — see the reproducibility note in
+> [GAUNTLET.md](../../benchmarks/codegraph_compare/GAUNTLET.md) for the exact
+> protocol. Re-run `gauntlet_runner.py --all` from a clean tag checkout before
+> publication to refresh external repo rows.
 
 | repo | languages | call edges | name-only genuine floor | TSA mis-wires | measured at |
 |---|---|---|---|---|---|
-| huggingface/tokenizers | Rust+Py+JS+TS | 16,329 | **1,259** (7.71%) | **0** | v1.21.0 <!-- re-measure --> |
-| astral-sh/ruff | Rust+Py+TS | 187,418 | **7,557** (4.03%) | **0** | v1.21.0 <!-- re-measure --> |
-| pola-rs/polars | Rust+Py | 267,066 | **9,016** (3.38%) | **0** | v1.21.0 <!-- re-measure --> |
-| tree-sitter-analyzer (this repo) | 14 langs | 116,606 | **678** (0.58%) | **1** | 2026-06-10, clean checkout of tag v1.22.0 |
-| gin-gonic/gin | Go (single) | 9,134 | **0** | **0** | v1.21.0 <!-- re-measure --> |
+| huggingface/tokenizers | Rust+Py+JS+TS | 16,329 | **1,259** (7.71%) | **0** | v1.21.0 (2026-06-07) |
+| astral-sh/ruff | Rust+Py+TS | 187,418 | **7,557** (4.03%) | **0** | v1.21.0 (2026-06-07) |
+| pola-rs/polars | Rust+Py | 267,066 | **9,016** (3.38%) | **0** | v1.21.0 (2026-06-07) |
+| tree-sitter-analyzer (this repo) | 14 langs | 133,377 | **724** (0.54%) | **4** | v1.29.0-line (2026-07-10) |
+| gin-gonic/gin | Go (single) | 9,134 | **0** | **0** | v1.21.0 (2026-06-07) |
 
 Across all four polyglot repos, TSA resolves **0 cross-language mis-wires**. The
-1 on its own repo is a single genuine collision on its own test-corpus files —
-the documented ceiling without receiver-type inference.
-
-The gin result matters: a single-language repo returns 0 and 0. No false
-positives when there is nothing to cross-wire.
+4 on its own repo are genuine collisions on its own test-corpus files (Swift,
+Java, Kotlin) — the documented ceiling without receiver-type inference. The
+single-language repo (gin) correctly returns 0 and 0 — no false positives.
 
 ## Why the Moat Is Structural
 
@@ -112,27 +113,40 @@ language cannot bind to a definition in an incompatible language, regardless of
 name. The binding is left `unknown` rather than mis-wired.
 
 That conservative policy is what the Gauntlet measures: 7,557 calls in ruff that
-a name-only index would genuinely mis-wire (builtins excluded), 0 that TSA mis-wires. <!-- re-measure: ruff row is v1.21.0 -->
+a name-only index would genuinely mis-wire (builtins excluded), 0 that TSA mis-wires.
 
-## The Live Head-to-Head
+## The Live Head-to-Head (with Methodology Annotation)
 
-The Gauntlet uses a modelled "name-only" count without requiring CodeGraph to be
-installed. On this repo itself, with both tools' live indexes, the last complete
-same-session comparison (both arms, same commit, v1.21.0) measured:
+On this repo itself, with both tools' live indexes, the last complete same-session
+comparison (both arms measured in the same session, same commit) used v1.21.0:
 
-<!-- re-measure: rerun BOTH arms in one session before publication for a fresh ratio -->
 | tool | cross-language mis-wires | total call edges | mis-wire rate | measured at |
 |---|---|---|---|---|
-| CodeGraph | **745** | 38,103 | **1.96%** | v1.21.0, same session <!-- re-measure --> |
-| tree-sitter-analyzer | **6** | 114,160 | **0.005%** | v1.21.0, same session <!-- re-measure --> |
+| CodeGraph | **745** | 38,103 | **1.96%** | v1.21.0, same session |
+| tree-sitter-analyzer | **6** | 114,160 | **0.005%** | v1.21.0, same session |
 
-Same-session ratio: **~124x cleaner** while resolving 3x more call edges. TSA's
-arm alone, re-measured at v1.22.0 on a clean tag checkout, improved to **1**
-mis-wire / 116,606 edges; the CodeGraph arm has not been re-measured, so we do
-not quote an updated ratio — a number is only comparable to a number measured
-the same way at the same time.
+**Two ratios, same measurement — choose the one that fits your question:**
 
-## Run It on Your Own Code
+- **By mis-wire count: ~124x cleaner.** Raw count ratio: 745 / 6 = 124.2.
+  This answers "how many fewer wrong edges are there in absolute terms?"
+- **By mis-wire rate: ~390x cleaner.** Rate ratio: 1.96% / 0.005% = 392.
+  This answers "how much cleaner is the graph once you normalize for TSA
+  resolving 3x more call edges overall?"
+
+Both are honest; they are two different arithmetic operations on the same two raw
+numbers, not two different measurements. See
+[GAUNTLET.md](../../benchmarks/codegraph_compare/GAUNTLET.md) for the full methodology note.
+
+**Re-verification attempt (2026-07-10).** A fresh same-session CodeGraph + TSA
+re-run was attempted against current develop (v1.29.0-line). The CodeGraph arm
+could not be completed: the `codegraph` CLI invoked by the harness does not
+correspond to any publicly documented, installable package. The closest candidate
+(`codegraphcontext` / `cgc`) has a different CLI surface and backend incompatible
+with the harness's SQLite-query protocol. Because the CodeGraph arm did not
+complete, no new CodeGraph-vs-TSA ratio is claimed this session. The v1.21.0
+same-session pair above remains the last valid head-to-head.
+
+## Try It on Your Own Code
 
 The audit requires no CodeGraph install. It runs against TSA's own index:
 
@@ -141,19 +155,58 @@ uvx --from tree-sitter-analyzer miswire-audit .
 ```
 
 The output shows your total call edges, how many a name-only resolver would
-mis-wire (genuine floor — builtins excluded), how many TSA mis-wires, the
+mis-wire (genuine floor, builtins excluded), how many TSA mis-wires, the
 multiplier, and the top offending edges with file:line locations.
 
-Add `--card` to get a markdown snippet you can paste to an issue or PR.
+Add `--card` to get a self-contained markdown scorecard you can paste to an
+issue or PR:
+
+```bash
+uvx --from tree-sitter-analyzer miswire-audit . --card
+```
+
+Example output:
+
+```
+## Mis-wire scorecard: my-project
+
+| metric | value |
+|---|---|
+| total call edges | 24,831 |
+| name-only genuine floor | 1,204 (4.85%) |
+| TSA mis-wires | 0 |
+| multiplier | infinity (0 TSA vs 1,204 name-only) |
+
+Run: `uvx --from tree-sitter-analyzer miswire-audit . --card`
+```
 
 The audit is designed to work on any polyglot repo. If your codebase is
 single-language, the expected result is 0 and 0. If it is polyglot and you are
 using a name-only index for agent-assisted refactoring, the genuine-floor column
 will tell you the scale of the problem on your specific code.
 
+## Conclusion: The Agent Trust Problem
+
+Code-intelligence tools for AI agents face a different success criterion than
+tools for human developers. A human reading "sorted [Swift method]" in a call
+graph knows immediately that something is wrong — the context makes it obvious.
+An AI agent following a refactoring plan does not. It will act on the graph as
+given.
+
+That asymmetry makes mis-wires an agent-trust problem, not just a data-quality
+problem. An agent that cannot distinguish "unresolved" from "wired-to-wrong-language"
+will produce incorrect edits with high confidence. The damage scales with
+autonomy: the more the agent is trusted to act without human review, the more
+a systematic mis-wire corrupts the output.
+
+TSA's conservative policy — report unknown rather than assert wrong — is
+designed for this environment. The Gauntlet numbers demonstrate it works on
+real polyglot repos at scale.
+
 ---
 
-*Source data: [MISWIRE-AUDIT-EXAMPLES.md](../../benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)
-and [REPORT-v1.21.0.md](../../benchmarks/codegraph_compare/REPORT-v1.21.0.md).
-Numbers marked `<!-- re-measure -->` should be re-verified against a fresh index
-before publication.*
+*Source data: [GAUNTLET.md](../../benchmarks/codegraph_compare/GAUNTLET.md) and
+[REPORT-v1.21.0.md](../../benchmarks/codegraph_compare/REPORT-v1.21.0.md).
+Methodology: both count-based (~124x) and rate-based (~390x) ratios come from
+the same v1.21.0 same-session measurement — see GAUNTLET.md for the full note
+on why this project reports both rather than collapsing to a single number.*

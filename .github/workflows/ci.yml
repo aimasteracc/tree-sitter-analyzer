@@ -10,9 +10,16 @@ on:
   pull_request:
     branches: [ main, develop ]
   workflow_dispatch:
+    inputs:
+      full-validation:
+        description: 'Run the full test matrix and connected CI checks without publishing'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # 手动验证固定事件 SHA，后续推送和其他手动验证不能取消它。
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && format('manual-{0}', github.run_id) || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,13 +39,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Detect changed files
         run: |
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}" > changed-files.txt
+            # 事件中的 base SHA 可能落后于合并提交的实际第一父提交。
+            git diff --name-only "${{ github.sha }}^1" "${{ github.sha }}" > changed-files.txt
           elif [[ "${{ github.event.before || '' }}" != "" && "${{ github.event.before || '' }}" != "0000000000000000000000000000000000000000" ]]; then
             git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" > changed-files.txt
           else
@@ -49,7 +58,14 @@ jobs:
 
       - name: Route jobs
         id: route
-        run: python3 scripts/ci_route.py --files changed-files.txt --github-output "$GITHUB_OUTPUT"
+        env:
+          FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' && inputs.full-validation && 'true' || 'false' }}
+        run: |
+          args=()
+          if [[ "$FORCE_FULL" == "true" ]]; then
+            args+=(--force-full)
+          fi
+          python3 scripts/ci_route.py --files changed-files.txt --github-output "$GITHUB_OUTPUT" "${args[@]}"
         shell: bash
 
   docs-check:
@@ -60,10 +76,14 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Contract tests resolve reviewed historical subjects and create
+          # non-shallow fresh clones; the default one-commit checkout cannot.
+          fetch-depth: 0
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          version: "latest"
+          version: "0.12.3"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
       - name: Set up Python 3.11
@@ -81,6 +101,7 @@ jobs:
           uv run pytest -q \
             tests/contracts/ \
             tests/governance/ \
+            tests/unit/test_claim_registry.py \
             tests/integration/docs/test_readme_structure.py
 
   quality-check:
@@ -117,7 +138,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          version: "latest"
+          version: "0.12.3"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
@@ -135,16 +156,20 @@ jobs:
 
       - name: Run E2E smoke tests
         run: |
-          echo "### E2E Test Results" >> $GITHUB_STEP_SUMMARY
           uv run pytest tests/e2e/ -m e2e \
             --override-ini="addopts=--strict-markers --verbose --tb=short" \
             --timeout=60 -v > e2e-output.txt 2>&1 || touch e2e_failed
           cat e2e-output.txt
-          echo '```text' >> $GITHUB_STEP_SUMMARY
-          tail -n 25 e2e-output.txt >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### E2E Test Results"
+            echo '```text'
+            tail -n 25 e2e-output.txt
+            echo '```'
+            if [ -f e2e_failed ]; then
+              echo "E2E tests failed — see above for server stderr output."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
           if [ -f e2e_failed ]; then
-            echo "E2E tests failed — see above for server stderr output." >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
         shell: bash
@@ -177,7 +202,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          version: "latest"
+          version: "0.12.3"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
       - name: Set up Python 3.11
@@ -190,7 +215,7 @@ jobs:
           uv run python scripts/audit_test_quality.py --strict --output reports/test-audit.json
       - name: Upload audit report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: test-audit-report
           path: reports/test-audit.json
@@ -204,14 +229,14 @@ jobs:
     steps:
       - name: Check Overall Status
         run: |
-          echo "### 🏆 Final Quality Gate Status" >> $GITHUB_STEP_SUMMARY
+          echo "### 🏆 Final Quality Gate Status" >> "$GITHUB_STEP_SUMMARY"
           SUCCESS=true
 
           check_required() {
             local name="$1"
             local result="$2"
             if [[ "$result" != "success" ]]; then
-              echo "❌ ${name} failed: ${result}" >> $GITHUB_STEP_SUMMARY
+              echo "❌ ${name} failed: ${result}" >> "$GITHUB_STEP_SUMMARY"
               SUCCESS=false
             fi
           }
@@ -222,10 +247,10 @@ jobs:
             local name="$1"
             local result="$2"
             if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
-              echo "❌ ${name} failed: ${result}" >> $GITHUB_STEP_SUMMARY
+              echo "❌ ${name} failed: ${result}" >> "$GITHUB_STEP_SUMMARY"
               SUCCESS=false
             else
-              echo "✅ ${name}: ${result}" >> $GITHUB_STEP_SUMMARY
+              echo "✅ ${name}: ${result}" >> "$GITHUB_STEP_SUMMARY"
             fi
           }
 
@@ -253,13 +278,13 @@ jobs:
           # run where neither the test matrix nor the docs-check executed (guards
           # against a route misfire that skips everything).
           if [[ "$TEST" == "skipped" && "$DOCS" == "skipped" ]]; then
-            echo "❌ Neither Test Suite nor Docs Check ran — route misfire?" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Neither Test Suite nor Docs Check ran — route misfire?" >> "$GITHUB_STEP_SUMMARY"
             SUCCESS=false
           fi
 
           if [ "$SUCCESS" = true ]; then
-            echo "✅ All systems go! This version meets our authority standards." >> $GITHUB_STEP_SUMMARY
+            echo "✅ All systems go! This version meets our authority standards." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "⚠️ Quality Gate rejected this version." >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Quality Gate rejected this version." >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi

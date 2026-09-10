@@ -15,6 +15,7 @@ from ..plugins.manager import PluginManager
 from ..query_loader import query_loader
 from ..utils.tree_sitter_compat import get_node_text_safe
 from ._query_service_helpers import (
+    PluginQueryNode,
     fallback_query_captures,
     plugin_category_captures,
     plugin_strategy_captures,
@@ -75,6 +76,17 @@ class QueryService:
 
             results = process_captures(captures, content, self._create_result_dict)
 
+            # Only enrich complexity_score when a complexity filter is actually requested.
+            # analyze_code() re-parses the whole file, so calling it unconditionally
+            # doubles parse cost for every query.  line_span is already in result dicts
+            # and needs no enrichment.
+            if (
+                filter_expression
+                and "complexity" in filter_expression
+                and any("complexity_score" not in r for r in results)
+            ):
+                results = self._enrich_complexity_scores(results, language, content)
+
             if filter_expression and results:
                 results = self.filter.filter_results(results, filter_expression)
 
@@ -125,6 +137,10 @@ class QueryService:
         parent_name = self._extract_parent_context(node)
         if parent_name:
             result["parent"] = parent_name
+
+        # PluginQueryNode からのみ complexity_score を引き継ぐ
+        if isinstance(node, PluginQueryNode) and node.complexity_score is not None:
+            result["complexity_score"] = node.complexity_score
 
         return result
 
@@ -289,6 +305,39 @@ class QueryService:
             return query_loader.get_query_description(language, query_key)
         except Exception:
             return None
+
+    def _enrich_complexity_scores(
+        self, results: list[dict[str, Any]], language: str, source_code: str
+    ) -> list[dict[str, Any]]:
+        """Enrich results with complexity_score via analyze_code().
+
+        Native tree-sitter captures are raw Node objects without complexity_score.
+        analyze_code() runs the full plugin pipeline and returns elements with
+        complexity_score populated.  We build a start_line→score lookup and
+        backfill any result that is missing the field.
+        """
+        try:
+            from ..api import analyze_code
+
+            analysis = analyze_code(source_code, language)
+            elements: list[dict[str, Any]] = analysis.get("elements", [])
+        except Exception:
+            return results
+
+        score_by_line: dict[int, int | None] = {
+            int(el.get("start_line", -1)): el.get("complexity_score")
+            for el in elements
+            if isinstance(el, dict) and el.get("complexity_score") is not None
+        }
+
+        enriched = []
+        for r in results:
+            if "complexity_score" not in r:
+                score = score_by_line.get(r.get("start_line", -1))
+                if score is not None:
+                    r = {**r, "complexity_score": score}
+            enriched.append(r)
+        return enriched
 
     def _execute_plugin_query(
         self, root_node: Any, query_key: str | None, language: str, source_code: str

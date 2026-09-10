@@ -2,19 +2,21 @@
 name: tsa-find
 version: 2.0.0
 description: |
-  Fast file + content search with code-aware sizing. Replaces Read/Grep/find
-  for routine "where is this file" / "grep for X" / "show me lines 10-20 of Y"
-  questions. Returns file paths + line numbers + a sized chunk, not the whole file.
+  Fast file + content search with code-aware sizing. Use CC built-in Grep/Glob
+  for routine "grep for X" or "find files matching pattern" questions.
+  Use TSA MCP tools for code-intelligence searches (symbol, batch, chain, select).
 
   Use when:
   - "Find files matching <pattern>" / "show me all *.yml under config/"
-  - "Grep for 'TODO' / 'FIXME' / 'TODO\\(perf\\)' / regex anywhere"
+    -> CC Glob tool (single pattern) or project action=files
+  - "Grep for 'TODO' / 'FIXME' / regex anywhere"
+    -> CC Grep tool
+  - "Find all files matching name + containing string" (2-step)
+    -> CC Glob tool to find files, then CC Grep tool for content
   - "How big is <file>" / "is this file too large to read fully"
-  - "Show me lines 50-80 of <file>" / "read just the relevant slice"
-  - "Find all files matching name + containing string"
-
-  Replaces: native find + grep + cat invocations (~3-10k tokens for big repos)
-  with single MCP calls (200-500 tokens).
+    -> health action=scale
+  - "Show me lines 50-80 of <file>"
+    -> structure action=read
 allowed-tools:
   - mcp__tree-sitter-analyzer__search
   - mcp__tree-sitter-analyzer__project
@@ -34,8 +36,8 @@ allowed-tools:
 | Question                                  | Tool                        |
 |-------------------------------------------|-----------------------------|
 | Filename pattern only                     | `project action=files`      |
-| Content pattern only (regex / literal)    | `search action=content`     |
-| Filename pattern AND content              | `search action=grep`        |
+| Content pattern only (regex / literal)    | **Grep tool** (CC built-in) |
+| Filename pattern AND content              | **Glob tool** + **Grep tool** (2-step) |
 | Several patterns in one call (≥2)        | `search action=batch`       |
 | Read specific lines of one file           | `structure action=read`     |
 | "Is this file too big to read fully?"     | `health action=scale`       |
@@ -44,12 +46,13 @@ allowed-tools:
 
 ### Single search
 
-```yaml
-search action=content query="TODO" roots=["tree_sitter_analyzer/"] include_globs=["*.py"]
-```
+Use the CC built-in **Grep tool** for single content-pattern searches:
 
-Returns: `matches: [{file, line, content}]` with sized previews. Always
-includes file:line so the agent can cite without reading the file.
+  pattern: "TODO"
+  path: tree_sitter_analyzer/
+  glob: "*.py"
+
+Returns: file paths + line numbers. No MCP call needed.
 
 ### Sized partial read (the killer feature)
 
@@ -73,10 +76,12 @@ Avoids reading 80KB when you need 2KB.
 
 ### Combined find+grep
 
-```yaml
-search action=grep file_pattern="test_*.py" content_pattern="def test_synapse"
-# returns: list of test functions matching both criteria
-```
+Use CC built-in **Glob tool** + **Grep tool** in two steps:
+
+  Step 1 -- Glob tool:  pattern="test_*.py"  (find candidate files)
+  Step 2 -- Grep tool:  pattern="def test_synapse"  path=<result of step 1>
+
+Returns file paths + matching lines. More composable than a single MCP call.
 
 ## CLI equivalents
 
@@ -89,6 +94,6 @@ uv run tree-sitter-analyzer <file> --partial-read        # sized read with --sta
 ## Anti-patterns
 
 - DON'T `Read` a large file before checking scale — burns tokens
-- DON'T `Bash grep -rn` for things `search action=content` handles — slower + noisier
-- DON'T call `search action=batch` with a single query — it enforces a ≥2-query minimum (raises "must be at least 2 queries"); use `search action=content` for one pattern
+- DON'T `Bash grep -rn` — use the CC built-in **Grep tool** instead (structured output, no shell escaping)
+- DON'T call `search action=batch` with a single query — it enforces a ≥2-query minimum (raises "must be at least 2 queries"); use the **CC Grep tool** for a single pattern
 - DON'T re-search the same query twice in one session — cache the result mentally

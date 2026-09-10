@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 
+from ...indexing_limits import parse_index_max_files
+
 
 def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     """Add cache/index management flags (codegraph_autoindex / full_index / metrics).
@@ -29,9 +31,12 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--autoindex-max-files",
-        type=int,
+        type=parse_index_max_files,
         default=20_000,
-        help="Max files to index when --autoindex-mode=warm (default: 20000)",
+        help=(
+            "Positive max files to index when --autoindex-mode=warm; "
+            "zero is invalid (default: 20000)"
+        ),
     )
     parser.add_argument(
         "--full-index",
@@ -50,9 +55,12 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--full-index-max-files",
-        type=int,
+        type=parse_index_max_files,
         default=20_000,
-        help="Max files to index per --full-index run (default: 20000)",
+        help=(
+            "Positive max files to index per --full-index run; "
+            "zero is invalid (default: 20000)"
+        ),
     )
     parser.add_argument(
         "--full-index-include-activation",
@@ -60,6 +68,27 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
         help=(
             "Compute temporal git activation during --full-index "
             "(slower; default keeps warm-cache indexing fast)"
+        ),
+    )
+    parser.add_argument(
+        "--full-index-exclude-pattern",
+        action="append",
+        dest="full_index_exclude_patterns",
+        metavar="PAT",
+        default=[],
+        help=(
+            "Glob pattern (fnmatch, relative to project root) to exclude from "
+            "--full-index. Repeatable: --full-index-exclude-pattern 'tests/golden/*' "
+            "--full-index-exclude-pattern 'vendor/**'. Patterns accumulate."
+        ),
+    )
+    parser.add_argument(
+        "--full-index-no-default-excludes",
+        action="store_true",
+        help=(
+            "Disable the built-in default exclude patterns for --full-index "
+            "(e.g. tests/golden/corpus_*). Use with --full-index-exclude-pattern "
+            "to supply a fully custom exclude set."
         ),
     )
     parser.add_argument(
@@ -100,16 +129,19 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--incremental-sync-max-files",
-        type=int,
+        type=parse_index_max_files,
         default=20_000,
-        help="Max files for --incremental-sync (default: 20000)",
+        help=(
+            "Positive max files for --incremental-sync; "
+            "zero is invalid (default: 20000)"
+        ),
     )
     parser.add_argument(
         "--knowledge-graph-index",
         action="store_true",
         help=(
-            "Build/update the whole-project code+docs knowledge graph sidecar "
-            "(JSON by default, optional LadybugDB mirror)."
+            "Refresh the canonical SQLite code+docs knowledge graph index "
+            "and optionally build a LadybugDB projection."
         ),
     )
     parser.add_argument(
@@ -120,20 +152,21 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--knowledge-graph-backend",
-        choices=["auto", "json", "ladybug", "hybrid"],
+        choices=["auto", "sqlite", "ladybug"],
         default="auto",
         help=(
-            "Persistence backend for --knowledge-graph-index "
-            "(default: auto; writes LadybugDB when installed plus JSON fallback)"
+            "Graph backend for --knowledge-graph-index "
+            "(default: auto; LadybugDB when installed, SQLite otherwise)"
         ),
     )
     parser.add_argument(
         "--knowledge-graph-max-files",
-        type=int,
+        type=parse_index_max_files,
         default=1_000_000,
         help=(
-            "Max files for --knowledge-graph-index-mode build; update mode "
-            "uses a safe full-project scan (default: 1000000)"
+            "Positive max files for --knowledge-graph-index-mode build; zero is "
+            "invalid and update mode uses a safe full-project scan "
+            "(default: 1000000)"
         ),
     )
     parser.add_argument(
@@ -241,6 +274,15 @@ def _add_mcp_constraints_options(parser: argparse.ArgumentParser) -> None:
         help=(
             "Opt out of constraint auto-evaluation for tools that bundle it "
             "(safe_to_edit, change_impact)"
+        ),
+    )
+    parser.add_argument(
+        "--constraints-read-only",
+        action="store_true",
+        default=False,
+        help=(
+            "Evaluate constraints without creating or updating the AST cache "
+            "or persisted violation rows"
         ),
     )
     parser.add_argument(

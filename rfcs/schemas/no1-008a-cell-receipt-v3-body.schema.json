@@ -1,0 +1,62 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://tree-sitter-analyzer.invalid/schemas/no1-008a-cell-receipt-v3-body.schema.json",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "cell",
+  "plan",
+  "source",
+  "environment",
+  "counters",
+  "resources",
+  "executions",
+  "index_partition",
+  "snapshot",
+  "process_audit",
+  "oracle_approval",
+  "run_nonce",
+  "role_images"
+ ],
+ "properties": {
+  "cell": {
+   "$ref": "no1-008a-cell-receipt-v3-fields-a.schema.json#/$defs/cell"
+  },
+  "plan": {
+   "$ref": "no1-008a-cell-receipt-v3-fields-a.schema.json#/$defs/plan"
+  },
+  "source": {
+   "$ref": "no1-008a-cell-receipt-v3-fields-a.schema.json#/$defs/source"
+  },
+  "environment": {
+   "$ref": "no1-008a-cell-receipt-v3-fields-a.schema.json#/$defs/environment"
+  },
+  "counters": {
+   "$ref": "no1-008a-cell-receipt-v3-fields-a.schema.json#/$defs/counters"
+  },
+  "resources": {
+   "$ref": "no1-008a-cell-receipt-v3-fields-a.schema.json#/$defs/resources"
+  },
+  "executions": {
+   "$ref": "no1-008a-cell-receipt-v3-fields-b.schema.json#/$defs/executions"
+  },
+  "index_partition": {
+   "$ref": "no1-008a-cell-receipt-v3-fields-b.schema.json#/$defs/index_partition"
+  },
+  "snapshot": {
+   "$ref": "no1-008a-cell-receipt-v3-fields-b.schema.json#/$defs/snapshot"
+  },
+  "process_audit": {
+   "$ref": "no1-008a-cell-receipt-v3-fields-b.schema.json#/$defs/process_audit"
+  },
+  "oracle_approval": {
+   "$ref": "no1-008a-cell-receipt-v3-fields-b.schema.json#/$defs/oracle_approval"
+  },
+  "run_nonce": {
+   "$ref": "no1-008a-cell-receipt-v3-fields-b.schema.json#/$defs/run_nonce"
+  },
+  "role_images": {
+   "$ref": "no1-008a-cell-receipt-v3-fields-b.schema.json#/$defs/role_images"
+  }
+ }
+}

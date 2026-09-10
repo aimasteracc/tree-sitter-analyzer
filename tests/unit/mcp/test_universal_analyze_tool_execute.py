@@ -135,7 +135,7 @@ class TestUniversalAnalyzeToolExecute:
                 return_value=mock_analysis_result,
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.apply_toon_format_to_response",
+                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.apply_output_format_to_response",
                 return_value={"formatted": True},
             ),
         ):
@@ -175,7 +175,7 @@ class TestUniversalAnalyzeToolExecute:
                 return_value=mock_analysis_result,
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.apply_toon_format_to_response",
+                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.apply_output_format_to_response",
                 return_value={"formatted": True},
             ),
         ):
@@ -215,7 +215,7 @@ class TestUniversalAnalyzeToolExecute:
                 return_value=mock_analysis_result,
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.apply_toon_format_to_response",
+                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.apply_output_format_to_response",
                 return_value={"formatted": True},
             ),
         ):
@@ -255,7 +255,7 @@ class TestUniversalAnalyzeToolExecute:
                 return_value=mock_analysis_result,
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.apply_toon_format_to_response",
+                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.apply_output_format_to_response",
                 return_value={"formatted": True},
             ),
         ):
@@ -295,7 +295,7 @@ class TestUniversalAnalyzeToolExecute:
                 return_value=mock_analysis_result,
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.apply_toon_format_to_response",
+                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.apply_output_format_to_response",
                 return_value={"formatted": True},
             ),
         ):
@@ -341,7 +341,7 @@ class TestUniversalAnalyzeToolExecute:
                 return_value={"language": "python", "queries": []},
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.apply_toon_format_to_response",
+                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.apply_output_format_to_response",
                 return_value={"formatted": True},
             ),
         ):
@@ -381,7 +381,7 @@ class TestUniversalAnalyzeToolExecute:
                 return_value=mock_analysis_result,
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.apply_toon_format_to_response",
+                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.apply_output_format_to_response",
                 return_value={"formatted": True},
             ),
         ):

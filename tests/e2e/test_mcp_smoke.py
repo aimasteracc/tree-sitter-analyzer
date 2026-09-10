@@ -334,10 +334,13 @@ class TestStderrNoiseBudget:
     def test_no_error_lines_after_normal_tool_call(self, mcp_server: MCPClient) -> None:
         """A successful tool call must not produce any [error]-level log lines."""
         initialized(mcp_server)
+        # Keep this logging assertion independent of full-project cold-index
+        # latency.  The dedicated latency tests above warm and measure project
+        # health; this test only needs one representative successful tool call.
         mcp_server.call(
-            "check_project_health",
-            {},
-            timeout=15.0 * _CI_FACTOR,
+            "safe_to_edit",
+            {"file_path": "tree_sitter_analyzer/__init__.py"},
+            timeout=10.0 * _CI_FACTOR,
         )
         stderr = mcp_server.stderr_text()
         error_lines = [

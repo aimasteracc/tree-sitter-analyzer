@@ -162,7 +162,7 @@ TOOL_SCHEMA: dict[str, Any] = {
         # Required: file path to analyze
         "file_path": {"type": "string"},
         # Structure-table style: full | compact | csv. NOT the response
-        # envelope — that is ``output_format`` (json|toon) below. The
+        # envelope — that is ``output_format`` (json) below. The
         # response echoes this as ``table_format`` (and ``format_type``
         # as a deprecated alias kept for one release).
         "format_type": {
@@ -171,15 +171,15 @@ TOOL_SCHEMA: dict[str, Any] = {
             "default": "full",
             "description": (
                 "Structure-table style (full|compact|csv). Distinct from "
-                "output_format which controls json|toon envelope."
+                "output_format which controls the JSON envelope."
             ),
         },
         "language": {"type": "string"},
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
-            "description": "Response envelope format (json or toon).",
+            "enum": ["json"],
+            "default": "json",
+            "description": "Response envelope format: JSON.",
         },
         "output_file": {
             "type": "string",

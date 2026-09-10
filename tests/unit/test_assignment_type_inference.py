@@ -48,14 +48,14 @@ def test_pytest_fixture_return_type_typed_param():
         "import pytest\n"
         "@pytest.fixture\n"
         "def tool(project):\n"
-        "    return SearchContentTool(project)\n"
+        "    return AnalyzeScaleTool(project)\n"
         "class TestX:\n"
         "    def test_execute(self, tool):\n"
         "        tool.execute(args)\n"
     )
     calls = _calls(code)
-    assert calls["execute"]["full_name"] == "SearchContentTool.execute"
-    assert calls["execute"]["receiver_type"] == "SearchContentTool"
+    assert calls["execute"]["full_name"] == "AnalyzeScaleTool.execute"
+    assert calls["execute"]["receiver_type"] == "AnalyzeScaleTool"
 
 
 def test_fixture_return_via_local_var():

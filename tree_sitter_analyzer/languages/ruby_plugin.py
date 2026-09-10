@@ -478,7 +478,7 @@ class RubyPlugin(LanguagePlugin):
         return "ruby"
 
     def get_file_extensions(self) -> list[str]:
-        return [".rb"]
+        return [".rb", ".rake", ".gemspec", ".ru", ".rbw"]
 
     def get_tree_sitter_language(self) -> tree_sitter.Language:
         """Get the tree-sitter Language instance for Ruby (cached class-level)."""

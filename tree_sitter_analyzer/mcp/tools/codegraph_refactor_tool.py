@@ -8,7 +8,7 @@ from typing import Any
 from ...rename_symbol import rename_symbol
 from ...utils import setup_logger
 from ..utils.auto_index_guard import ensure_indexed
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -16,6 +16,13 @@ logger = setup_logger(__name__)
 
 class CodeGraphRefactorTool(BaseMCPTool):
     """MCP Tool for AST-aware symbol renaming (CodeGraph parity)."""
+
+    #: When set, ``mode`` is taken from here and the caller's value is ignored
+    #: entirely. RFC-0027 §L8's ``edit action=plan_rename`` binding sets it to
+    #: ``"preview"`` so a planning surface cannot be talked into writing. It is
+    #: a class attribute rather than an injected argument so the pin survives
+    #: the strict-parameter guard and shows up in the subclass definition.
+    FORCED_MODE: str | None = None
 
     def __init__(self, project_root: str | None = None) -> None:
         self._cache: Any = None
@@ -67,9 +74,9 @@ class CodeGraphRefactorTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+                    "enum": ["json"],
+                    "default": "json",
+                    "description": "Output format: JSON",
                 },
             },
             "required": ["symbol", "new_name"],
@@ -77,7 +84,8 @@ class CodeGraphRefactorTool(BaseMCPTool):
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        if arguments.get("mode", "preview") not in ("preview", "apply"):
+        mode = self.FORCED_MODE or arguments.get("mode", "preview")
+        if mode not in ("preview", "apply"):
             raise ValueError("mode must be preview or apply")
         symbol = arguments.get("symbol", "").strip()
         new_name = arguments.get("new_name", "").strip()
@@ -101,13 +109,13 @@ class CodeGraphRefactorTool(BaseMCPTool):
         self.validate_arguments(arguments)
         symbol = arguments["symbol"].strip()
         new_name = arguments["new_name"].strip()
-        mode = arguments.get("mode", "preview")
-        output_format = arguments.get("output_format", "toon")
+        mode = self.FORCED_MODE or arguments.get("mode", "preview")
+        output_format = arguments.get("output_format", "json")
         dry_run = mode == "preview"
 
         cache = self._get_cache()
         if cache is None:
-            return apply_toon_format_to_response(
+            return apply_output_format_to_response(
                 {
                     "success": False,
                     "error": (
@@ -153,4 +161,4 @@ class CodeGraphRefactorTool(BaseMCPTool):
                 f"{result.sites_renamed} sites renamed."
             )
 
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)

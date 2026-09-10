@@ -390,18 +390,6 @@ class TestKotlinFormatterFormatTable:
         assert result is not None
         assert "Example.kt" in result
 
-    def test_format_table_compact(self):
-        """Test format_table with compact type"""
-        formatter = KotlinTableFormatter()
-        data = {
-            "file_path": "Example.kt",
-            "methods": [],
-            "statistics": {"method_count": 0, "field_count": 0},
-        }
-        result = formatter.format_table(data, "compact")
-        assert result is not None
-        assert "## Info" in result
-
     def test_format_table_json(self):
         """Test format_table with JSON type"""
         formatter = KotlinTableFormatter()
@@ -443,18 +431,6 @@ class TestKotlinFormatterFormatStructure:
         result = formatter.format_structure(data)
         assert isinstance(result, str)
         assert "Example.kt" in result
-
-    def test_format_structure_compact(self):
-        """Test format_structure with compact type"""
-        formatter = KotlinTableFormatter(format_type="compact")
-        data = {
-            "file_path": "Example.kt",
-            "methods": [],
-            "statistics": {"method_count": 0, "field_count": 0},
-        }
-        result = formatter.format_structure(data)
-        assert isinstance(result, str)
-        assert "## Info" in result
 
 
 class TestKotlinFormatterFormatAdvanced:

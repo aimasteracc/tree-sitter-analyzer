@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -72,6 +73,108 @@ class TestSemanticClassifyValidation:
 
     def test_valid_classify_file(self, tool: SemanticClassifyTool):
         assert tool.validate_arguments({"mode": "classify_file", "file_path": "foo.py"})
+
+
+class TestSemanticClassifyReadExistingValidation:
+    @pytest.mark.parametrize(
+        "arguments",
+        [
+            pytest.param(
+                {"access_mode": "read_existing", "file_path": "x.py"},
+                id="missing",
+            ),
+            pytest.param(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": 7,
+                    "file_path": "x.py",
+                },
+                id="wrong-type",
+            ),
+            pytest.param(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "",
+                    "file_path": "x.py",
+                },
+                id="empty",
+            ),
+        ],
+    )
+    def test_requires_nonempty_snapshot_id(self, tool, arguments):
+        with pytest.raises(ValueError) as exc_info:
+            tool.validate_arguments(arguments)
+
+        assert str(exc_info.value) == "diff_snapshot_id must be a non-empty string"
+
+    @pytest.mark.parametrize(
+        "arguments",
+        [
+            pytest.param(
+                {"access_mode": "read_existing", "diff_snapshot_id": "ds"},
+                id="missing",
+            ),
+            pytest.param(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds",
+                    "file_path": 7,
+                },
+                id="wrong-type",
+            ),
+            pytest.param(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds",
+                    "file_path": "",
+                },
+                id="empty",
+            ),
+        ],
+    )
+    def test_requires_nonempty_string_file_path(self, tool, arguments):
+        with pytest.raises(ValueError) as exc_info:
+            tool.validate_arguments(arguments)
+
+        assert str(exc_info.value) == "DIFF_SNAPSHOT_FILE_REQUIRED"
+
+    def test_accepts_valid_snapshot_file(self, tool: SemanticClassifyTool, tmp_path):
+        # Codex P1 (#1257): the read_existing path boundary fails closed on an
+        # unbound project root — a valid snapshot file is accepted only once a
+        # project root is bound.
+        bound = SemanticClassifyTool(project_root=str(tmp_path))
+        assert (
+            bound.validate_arguments(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds",
+                    "file_path": "x.py",
+                }
+            )
+            is True
+        )
+
+    def test_execute_fails_closed_without_bound_project_root(self):
+        # Codex P1 (#1257): with project_root unbound the SecurityValidator
+        # receives base_path=None and skips its project-boundary layer, so an
+        # arbitrary relative path validates. The route must fail closed with
+        # the stable MISSING_PROJECT_ROOT error instead of classifying.
+        unbound = SemanticClassifyTool(project_root=None)
+        with pytest.raises(ValueError) as exc_info:
+            _run(
+                unbound,
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds",
+                    "file_path": "x.py",
+                    "output_format": "json",
+                },
+            )
+
+        assert str(exc_info.value) == (
+            "MISSING_PROJECT_ROOT: project_root must be bound before "
+            "read_existing path validation"
+        )
 
 
 class TestSemanticClassifyExecution:
@@ -489,7 +592,8 @@ class TestClassifyByteBudget:
             },
         )
         assert result["success"] is True
-        assert len(json.dumps(result)) == 4544
+        # RFC-0022 P0.5: +38 bytes for the action_version echo.
+        assert len(json.dumps(result)) == 4582
 
     def test_default_response_leq_raw_diff_bytes_git_mode(
         self, tool: SemanticClassifyTool, git_repo_with_two_commits
@@ -776,3 +880,89 @@ class TestClassifiedHunkSerializerOptIn:
             "SemanticClassification.to_dict(include_children=True) must deliver children "
             "in at least one hunk.old or hunk.new"
         )
+
+
+@pytest.mark.asyncio
+async def test_snapshot_requires_file_path(tool) -> None:
+    with pytest.raises(ValueError, match="DIFF_SNAPSHOT_FILE_REQUIRED"):
+        await tool.execute({"diff_snapshot_id": "ds"})
+
+
+@pytest.mark.asyncio
+async def test_snapshot_translates_registry_error(tool, monkeypatch) -> None:
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    monkeypatch.setattr(
+        registry.REGISTRY, "acquire", lambda *a: (None, "DIFF_SNAPSHOT_EXPIRED")
+    )
+    result = await tool.execute(
+        {"diff_snapshot_id": "ds", "file_path": "x.py", "output_format": "json"}
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_EXPIRED"
+
+
+@pytest.mark.asyncio
+async def test_snapshot_reports_missing_frozen_file(tool, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    consumer = SimpleNamespace(
+        snapshot=SimpleNamespace(file=lambda path: None), release=lambda: None
+    )
+    monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *a: (consumer, None))
+    result = await tool.execute(
+        {"diff_snapshot_id": "ds", "file_path": "x.py", "output_format": "json"}
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_FILE_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_snapshot_rejects_non_utf8_frozen_bytes(tool, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    frozen = SimpleNamespace(
+        record=SimpleNamespace(path="x.py", binary=False),
+        old_bytes=b"\xff",
+        new_bytes=b"",
+    )
+    consumer = SimpleNamespace(
+        snapshot=SimpleNamespace(file=lambda path: frozen), release=lambda: None
+    )
+    monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *a: (consumer, None))
+    result = await tool.execute(
+        {"diff_snapshot_id": "ds", "file_path": "x.py", "output_format": "json"}
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT"
+
+
+def test_snapshot_classify_options_are_not_source_conflicts() -> None:
+    # PR #1252 review thread 3746878597.
+    from tree_sitter_analyzer.mcp.tools.semantic_classify_tool import (
+        SemanticClassifyTool,
+    )
+
+    assert (
+        SemanticClassifyTool(".").validate_arguments(
+            {
+                "diff_snapshot_id": "ds",
+                "file_path": "module.py",
+                "include_ast_nodes": True,
+                "hunk_cap": 7,
+                "output_format": "json",
+            }
+        )
+        is True
+    )
+
+
+def test_semantic_classify_execute_rejects_unreachable_unknown_mode() -> None:
+    tool = SemanticClassifyTool(".")
+    with (
+        patch.object(tool, "validate_arguments", return_value=True),
+        patch.object(tool, "_resolve_mode", return_value="unknown"),
+        pytest.raises(ValueError, match="Unknown mode: unknown"),
+    ):
+        asyncio.run(tool.execute({"output_format": "json"}))

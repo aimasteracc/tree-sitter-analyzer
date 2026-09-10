@@ -14,11 +14,6 @@ from tests.unit.mcp.test_tools._test_read_partial_tool_batch_extra_mixins import
     ReadPartialToolBatchExtraLimitMixin,
     ReadPartialToolBatchExtraValidationMixin,
 )
-from tests.unit.mcp.test_tools._test_read_partial_tool_coverage_mixins import (
-    ReadPartialToolCoverageBatchMixin,
-    ReadPartialToolCoverageExecuteMixin,
-    ReadPartialToolCoverageValidateMixin,
-)
 from tests.unit.mcp.test_tools._test_read_partial_tool_execute_core_mixins import (
     ReadPartialToolExecuteMixin,
     ReadPartialToolReadFilePartialMixin,
@@ -26,6 +21,11 @@ from tests.unit.mcp.test_tools._test_read_partial_tool_execute_core_mixins impor
 from tests.unit.mcp.test_tools._test_read_partial_tool_execute_extra_mixins import (
     ReadPartialToolExecuteExtraContinuedMixin,
     ReadPartialToolExecuteExtraMixin,
+)
+from tests.unit.mcp.test_tools._test_read_partial_tool_mixins_extra import (
+    ReadPartialToolCoverageBatchMixin,
+    ReadPartialToolCoverageExecuteMixin,
+    ReadPartialToolCoverageValidateMixin,
 )
 from tests.unit.mcp.test_tools._test_read_partial_tool_schema_mixins import (
     ReadPartialToolGetToolDefinitionMixin,

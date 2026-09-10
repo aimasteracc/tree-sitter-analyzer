@@ -99,6 +99,19 @@ Use `project-health --max-files <n>` when working inside a noisy repository.
 It limits detailed file rows, top targets, and the agent backlog so the next
 queue head stays compact and intentional.
 
+Project-index commands use one stricter limit contract:
+`--ast-cache-max-files`, `--autoindex-max-files`, `--full-index-max-files`,
+`--incremental-sync-max-files`, and `--knowledge-graph-max-files` accept only a
+positive integer. Omitting the option selects its documented default; zero,
+negative values, and booleans are invalid. Zero never means “unlimited” or
+“process no files.”
+
+`--full-index` evaluates that limit and all exclude patterns once, then shares
+one immutable candidate ordering between its AST and incremental-sync phases.
+Its JSON result reports reconciled discovery/selection/processing counts and
+warns with `changed_during_run` details when a selected file changes while the
+operation is in progress.
+
 `file-health` JSON and TOON responses include an `agent_summary` with the weakest
 dimension and score plus the first actionable smell, its line, symbol, and detail
 when those can be inferred, so an agent can jump straight to the right function
@@ -477,3 +490,9 @@ uv run tree-sitter-analyzer large_file.java --query-key methods --filter "public
 # 4. Extract only the lines you need
 uv run tree-sitter-analyzer large_file.java --partial-read --start-line 100 --end-line 150
 ```
+
+### Constraint evaluation
+
+`--check-constraints` evaluates the project architecture rules. Add
+`--constraints-read-only` to forward `persist=false`, opening an existing cache
+read-only and leaving its schema and violation rows unchanged.

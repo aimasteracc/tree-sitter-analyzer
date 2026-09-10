@@ -5,6 +5,111 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, cast
 
+_COMMENT_NODE_TYPES: dict[str, frozenset[str]] = {
+    "python": frozenset(["comment"]),
+    "javascript": frozenset(["comment", "block_comment"]),
+    "typescript": frozenset(["comment", "block_comment"]),
+    "java": frozenset(["line_comment", "block_comment"]),
+    "go": frozenset(["comment"]),
+    "c": frozenset(["comment"]),
+    "cpp": frozenset(["comment"]),
+    "rust": frozenset(["line_comment", "block_comment"]),
+    "csharp": frozenset(["comment", "multiline_comment"]),
+    "kotlin": frozenset(["multiline_comment", "line_comment"]),
+    "ruby": frozenset(["comment"]),
+    "php": frozenset(["comment", "shell_comment"]),
+    "lua": frozenset(["comment", "long_comment"]),
+    "swift": frozenset(["comment", "multiline_comment"]),
+}
+
+_BRANCH_NODE_TYPES: dict[str, dict[str, tuple[str, ...]]] = {
+    "python": {
+        "if_statement": ("if_true", "if_false"),
+        "try_statement": ("try", "except", "finally"),
+        "for_statement": ("loop",),
+        "while_statement": ("loop",),
+        "with_statement": ("with",),
+    },
+    "javascript": {
+        "if_statement": ("if_true", "if_false"),
+        "try_statement": ("try", "catch", "finally"),
+        "for_statement": ("loop",),
+        "while_statement": ("loop",),
+    },
+    "typescript": {
+        "if_statement": ("if_true", "if_false"),
+        "try_statement": ("try", "catch", "finally"),
+        "for_statement": ("loop",),
+        "while_statement": ("loop",),
+    },
+    "java": {
+        "if_statement": ("if_true", "if_false"),
+        "try_statement": ("try", "catch", "finally"),
+        "enhanced_for_statement": ("loop",),
+        "while_statement": ("loop",),
+    },
+    "go": {
+        "if_statement": ("if_true", "if_false"),
+        "for_statement": ("loop",),
+    },
+    "rust": {
+        "if_expression": ("if_true", "if_false"),
+        "loop_expression": ("loop",),
+        "for_expression": ("loop",),
+        "while_expression": ("loop",),
+    },
+    "c": {
+        "if_statement": ("if_true", "if_false"),
+        "for_statement": ("loop",),
+        "while_statement": ("loop",),
+        "try_statement": ("try",),
+    },
+    "cpp": {
+        "if_statement": ("if_true", "if_false"),
+        "for_statement": ("loop",),
+        "while_statement": ("loop",),
+        "try_statement": ("try", "catch"),
+    },
+    "csharp": {
+        "if_statement": ("if_true", "if_false"),
+        "try_statement": ("try", "catch", "finally"),
+        "for_statement": ("loop",),
+        "while_statement": ("loop",),
+    },
+    "kotlin": {
+        "if_expression": ("if_true", "if_false"),
+        "try_expression": ("try", "catch", "finally"),
+        "for_statement": ("loop",),
+        "while_statement": ("loop",),
+    },
+    "ruby": {
+        "if": ("if_true",),
+        "unless": ("if_false",),
+        "while": ("loop",),
+        "for": ("loop",),
+        "begin": ("try",),
+        "rescue": ("except",),
+    },
+    "php": {
+        "if_statement": ("if_true", "if_false"),
+        "try_statement": ("try", "catch", "finally"),
+        "for_statement": ("loop",),
+        "while_statement": ("loop",),
+    },
+    "lua": {
+        "if_statement": ("if_true", "if_false"),
+        "for_statement": ("loop",),
+        "while_statement": ("loop",),
+    },
+    "swift": {
+        "if_statement": ("if_true", "if_false"),
+        "do_statement": ("try",),
+        "catch_clause": ("except",),
+        "for_in_statement": ("loop",),
+        "while_statement": ("loop",),
+    },
+}
+
 _CALL_NODE_TYPES = {
     "python": {"call"},
     "javascript": {"call_expression"},
@@ -23,6 +128,7 @@ _CALL_NODE_TYPES = {
         "member_call_expression",
         "scoped_call_expression",
     },
+    "lua": {"function_call"},
     "swift": {"call_expression"},
 }
 
@@ -39,10 +145,19 @@ _FUNC_DEF_TYPES = {
     "kotlin": {"function_declaration"},
     "ruby": {"method", "singleton_method"},
     "php": {"function_definition", "method_declaration"},
+    "lua": {"function_declaration"},
     # protocol stubs have no body + duplicate the impl name -> last-writer-wins
     # in file_funcs would steal caller attribution; keep only concrete defs.
     "swift": {"function_declaration"},
 }
+
+# Languages this module can extract function definitions and call sites
+# for. Single source of truth for callers (e.g. CallGraph.build()) that
+# need to know which files are worth walking — do NOT re-derive this list
+# independently; a hardcoded copy is exactly what let call_graph.py's file
+# scanner silently exclude rust/csharp/kotlin/ruby/php/swift/lua for
+# months even after their dispatch entries above were added.
+SUPPORTED_LANGUAGES = frozenset(_FUNC_DEF_TYPES) | frozenset(_CALL_NODE_TYPES)
 
 # ---------------------------------------------------------------------------
 # Per-language function-name extractors
@@ -281,6 +396,14 @@ def _call_info_php(node: Any, source: str) -> dict[str, Any] | None:
     return None
 
 
+def _call_info_lua(node: Any, source: str) -> dict[str, Any] | None:
+    """Lua ``function_call``: callee is in the ``name`` field."""
+    name_node = node.child_by_field_name("name")
+    if name_node is None:
+        return None
+    return _call_from_text(_node_text(name_node, source), node)
+
+
 _CALL_DISPATCH: dict[str, Callable] = {
     "python": _call_info_field,
     "javascript": _call_info_field,
@@ -296,14 +419,109 @@ _CALL_DISPATCH: dict[str, Callable] = {
     "kotlin": _call_info_kotlin,
     "ruby": _call_info_ruby,
     "php": _call_info_php,
+    "lua": _call_info_lua,
     # Swift call_expression: callee is the first child (simple_identifier or
     # navigation_expression) — same shape as Kotlin.
     "swift": _call_info_kotlin,
 }
 
+
+def _func_name_lua(node: Any) -> str | None:
+    """Lua ``function_declaration`` exposes the function name in ``name``."""
+    name_node = node.child_by_field_name("name")
+    if name_node is not None:
+        return _node_text_value(name_node)
+    return None
+
+
+_FUNC_NAME_DISPATCH["lua"] = _func_name_lua
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+
+def extract_comments_from_body(root_node: Any, language: str) -> list[dict[str, Any]]:
+    """Walk ``root_node`` and collect comment nodes for the given language.
+
+    Returns a list of ``{"line": int, "text": str, "kind": str}`` dicts where
+    ``text`` has leading comment markers stripped and is capped at 80 chars.
+    ``kind`` is ``"block"`` when the node type contains "block", else ``"inline"``.
+    """
+    comment_types = _COMMENT_NODE_TYPES.get(language, frozenset())
+    if not comment_types:
+        return []
+
+    results: list[dict[str, Any]] = []
+
+    def _walk(node: Any) -> None:
+        if node.type in comment_types:
+            raw = _node_text_value(node)
+            # Strip leading comment markers and surrounding whitespace.
+            cleaned = raw.strip()
+            for prefix in ("/**", "/*", "//", "#", "*", "///", "--"):
+                if cleaned.startswith(prefix):
+                    cleaned = cleaned[len(prefix) :].strip()
+                    break
+            cleaned = cleaned.rstrip("*/").strip()
+            kind = "block" if "block" in node.type else "inline"
+            results.append(
+                {
+                    "line": node.start_point[0] + 1,
+                    "text": cleaned[:80],
+                    "kind": kind,
+                }
+            )
+            return  # do not recurse into comment children
+        for child in getattr(node, "children", []):
+            _walk(child)
+
+    _walk(root_node)
+    return results
+
+
+def extract_branch_context(call_node: Any, language: str) -> dict[str, Any]:
+    """Walk up from ``call_node`` to find the nearest enclosing branch node.
+
+    Returns a dict suitable for embedding in edge metadata:
+    ``{"kind": str, "condition_text": str|None, "nesting_depth": int}``.
+    When no branch is found, ``kind`` is ``"unconditional"``.
+    """
+    branch_types = _BRANCH_NODE_TYPES.get(language, {})
+    if not branch_types:
+        return {"kind": "unconditional", "nesting_depth": 0, "condition_text": None}
+
+    node = getattr(call_node, "parent", None)
+    nesting_depth = 0
+    first_match: dict[str, Any] | None = None
+
+    while node is not None:
+        node_type = getattr(node, "type", "")
+        if node_type in branch_types:
+            if first_match is None:
+                kind = branch_types[node_type][0]
+                condition_node = (
+                    node.child_by_field_name("condition")
+                    if hasattr(node, "child_by_field_name")
+                    else None
+                )
+                condition_text: str | None = None
+                if condition_node is not None:
+                    condition_text = _node_text_value(condition_node)[:80]
+                first_match = {
+                    "kind": kind,
+                    "condition_text": condition_text,
+                    "nesting_depth": 0,
+                }
+            else:
+                nesting_depth += 1
+        node = getattr(node, "parent", None)
+
+    if first_match is None:
+        return {"kind": "unconditional", "nesting_depth": 0, "condition_text": None}
+
+    first_match["nesting_depth"] = nesting_depth
+    return first_match
 
 
 def walk_tree(node: Any, source: str, language: str) -> tuple[list[dict], list[dict]]:
@@ -440,8 +658,8 @@ def _collect_fixture_types(
 
     A pytest test parameter is named after a fixture function; if that fixture
     returns ``ClassName(...)``, the test's parameter has that type. This is the
-    dominant test pattern (``def tool(): return SearchContentTool()`` +
-    ``def test(self, tool): tool.execute()`` → tool: SearchContentTool). Static,
+    dominant test pattern (``def tool(): return SomeTool()`` +
+    ``def test(self, tool): tool.execute()`` → tool: SomeTool). Static,
     no runtime. Python only.
     """
     if language != "python":
@@ -539,6 +757,8 @@ def _extract_recursive(
                 if (node.start_point[0] + 1) >= bind_line:
                     call_info["receiver_type"] = cls
                     call_info["full_name"] = f"{cls}.{call_info['name']}"
+            # Embed branch context in the call dict so edge metadata can carry it.
+            call_info["branch"] = extract_branch_context(node, language)
             calls.append(call_info)
 
     for child in node.children:

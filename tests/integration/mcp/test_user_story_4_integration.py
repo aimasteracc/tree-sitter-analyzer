@@ -3,15 +3,16 @@ User Story 4 統合テスト: 統合ワークフロー・プロジェクト管�
 
 このテストスイートは、User Story 4の統合ワークフロー機能を検証します：
 - set_project_path による動的プロジェクト境界管理
-- find_and_grep ツールによる2段階検索
 - MCPリソース（code_file、project_stats）による情報アクセス
 - 複合ワークフローでの統合動作
 
 テスト対象:
 - T015: set_project_path 機能
-- T016: find_and_grep ツール
 - T017: MCPリソース（code_file、project_stats）
 - 統合ワークフローシナリオ
+
+Note: T016 (find_and_grep ツール) は廃止済みのため skip。
+テキスト検索は CC 組み込みの Grep tool を使用すること。
 """
 
 import asyncio
@@ -195,7 +196,7 @@ This will find all Java files and count TODO comments.
         assert mcp_server.project_stats_resource._project_path == temp_project
 
         # 各ツールのプロジェクトパスが更新されたことを確認
-        assert mcp_server.find_and_grep_tool.project_root == temp_project
+        # find_and_grep_tool は廃止済みのためチェックなし
         assert mcp_server.query_tool.project_root == temp_project
         assert mcp_server.read_partial_tool.project_root == temp_project
 
@@ -211,11 +212,12 @@ This will find all Java files and count TODO comments.
             mcp_server.set_project_path("")
         assert "cannot be empty" in str(exc_info.value)
 
+    @pytest.mark.skip(reason="find_and_grep (FindAndGrepTool) は廃止済み。CC Glob + Grep tool を使用。")
     @pytest.mark.requires_fd
     @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_find_and_grep_tool_basic(self, mcp_server, temp_project):
-        """T016: find_and_grep ツールの基本機能テスト"""
+        """T016: find_and_grep ツールの基本機能テスト (廃止済み)"""
 
         # Java ファイルを検索してTODOコメントを探す (use JSON output_format for test assertions)
         result = await mcp_server.find_and_grep_tool.execute(
@@ -245,13 +247,12 @@ This will find all Java files and count TODO comments.
 
         assert found_todos, "TODO comments should be found in Java files"
 
-    @pytest.mark.requires_fd
-    @pytest.mark.requires_ripgrep
+    @pytest.mark.skip(reason="find_and_grep (FindAndGrepTool) は廃止済み。CC Glob + Grep tool を使用。")
     @pytest.mark.requires_fd
     @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_find_and_grep_two_stage_search(self, mcp_server, temp_project):
-        """find_and_grep ツールの2段階検索テスト"""
+        """find_and_grep ツールの2段階検索テスト (廃止済み)"""
 
         # 第1段階: Pythonファイルを見つける
         # 第2段階: その中で特定の関数を検索 (use JSON output_format for test assertions)
@@ -279,11 +280,12 @@ This will find all Java files and count TODO comments.
 
         assert found_function, "find_java_files function should be found"
 
+    @pytest.mark.skip(reason="find_and_grep (FindAndGrepTool) は廃止済み。CC Glob + Grep tool を使用。")
     @pytest.mark.requires_fd
     @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_find_and_grep_optimization_features(self, mcp_server, temp_project):
-        """find_and_grep ツールの最適化機能テスト"""
+        """find_and_grep ツールの最適化機能テスト (廃止済み)"""
 
         # total_only モードテスト
         result = await mcp_server.find_and_grep_tool.execute(
@@ -416,6 +418,7 @@ This will find all Java files and count TODO comments.
 
         assert service_java_found, "Service.java should be in file statistics"
 
+    @pytest.mark.skip(reason="find_and_grep (FindAndGrepTool) は廃止済み。CC Grep tool を使用。")
     @pytest.mark.requires_fd
     @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
@@ -455,8 +458,7 @@ This will find all Java files and count TODO comments.
                 assert "TODO: implement data processing" in file_content
                 break
 
-    @pytest.mark.requires_fd
-    @pytest.mark.requires_ripgrep
+    @pytest.mark.skip(reason="find_and_grep (FindAndGrepTool) は廃止済み。CC Grep tool を使用。")
     @pytest.mark.requires_fd
     @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
@@ -502,6 +504,7 @@ This will find all Java files and count TODO comments.
         assert "total_files_analyzed" in complexity
         assert complexity["total_files_analyzed"] == 2
 
+    @pytest.mark.skip(reason="find_and_grep (FindAndGrepTool) は廃止済み。CC Grep tool を使用。")
     @pytest.mark.requires_fd
     @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
@@ -575,17 +578,7 @@ public class NewService {
 
         assert "Unsupported statistics type" in str(exc_info.value)
 
-        # 無効な検索パラメータ（空のrootsリストは実際にはエラーにならない場合がある）
-        # 代わりに無効なqueryパラメータをテスト
-        try:
-            await mcp_server.find_and_grep_tool.execute(
-                {
-                    "roots": [temp_project],
-                    "query": "",  # 空のクエリ
-                }
-            )
-        except Exception:
-            pass  # エラーが発生することを期待するが、必須ではない
+        # find_and_grep_tool は廃止済み。CC Glob + Grep tool を使用すること。
 
     @pytest.mark.asyncio
     async def test_performance_integration(self, mcp_server, temp_project):
@@ -620,6 +613,7 @@ public class NewService {
             assert isinstance(stats, dict)
             assert len(stats) == expected_lens[i]
 
+    @pytest.mark.skip(reason="find_and_grep (FindAndGrepTool) は廃止済み。CC Grep tool を使用。")
     @pytest.mark.asyncio
     async def test_concurrent_access_integration(self, mcp_server, temp_project):
         """並行アクセス統合テスト"""

@@ -126,26 +126,52 @@ def build_in_progress(
 
     Never raises.
     """
+    valid = (
+        "typeof(id) = 'integer' AND id = 1 "
+        "AND typeof(building) = 'integer' AND building IN (0, 1) "
+        "AND typeof(pid) = 'integer' "
+        "AND typeof(started_at) IN ('integer', 'real') "
+        "AND started_at BETWEEN -1.7976931348623157e308 "
+        "AND 1.7976931348623157e308"
+    )
     try:
-        row = conn.execute(
-            "SELECT building, started_at, pid FROM ast_build_state WHERE id = 1"
-        ).fetchone()
-    except sqlite3.OperationalError:
-        return False
+        cursor = conn.execute(
+            "SELECT "
+            f"CASE WHEN {valid} THEN building ELSE -1 END, "
+            f"CASE WHEN {valid} THEN pid ELSE 0 END, "
+            f"CASE WHEN {valid} THEN started_at ELSE 0 END "
+            "FROM ast_build_state LIMIT 2"
+        )
+        row = cursor.fetchone()
+        extra_row = cursor.fetchone()
+    except sqlite3.OperationalError as exc:
+        return False if "no such table" in str(exc).lower() else True
+    except sqlite3.DatabaseError:
+        return True
     if row is None:
         return False
-    if isinstance(row, sqlite3.Row):
-        building, started_at, pid = row["building"], row["started_at"], row["pid"]
-    else:
-        building, started_at, pid = row[0], row[1], row[2]
-    if not building:
-        return False
-    now = time.time()
-    started = float(started_at)
-    if started > now + _CLOCK_SKEW_GRACE_SECONDS:
-        return False  # clock stepped backward — bogus future timestamp
-    if (now - started) >= ttl_seconds:
-        return False  # TTL backstop for a wedged/crashed marker
-    if not _pid_alive(int(pid)):
-        return False  # rebuilder process gone — crashed, stale now
+    if extra_row is not None:
+        return True
+    try:
+        building, pid, started_at = row[0], row[1], row[2]
+        if (
+            type(building) is not int
+            or type(pid) is not int
+            or type(started_at) not in (int, float)
+            or building not in (-1, 0, 1)
+        ):
+            return True
+        if building == -1:
+            return True
+        if building == 0:
+            return False
+        now = time.time()
+        if started_at > now + _CLOCK_SKEW_GRACE_SECONDS:
+            return False  # clock stepped backward — bogus future timestamp
+        if (now - started_at) >= ttl_seconds:
+            return False  # TTL backstop for a wedged/crashed marker
+        if not _pid_alive(pid):
+            return False  # rebuilder process gone — crashed, stale now
+    except (ArithmeticError, TypeError, ValueError):
+        return True
     return True

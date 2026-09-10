@@ -76,13 +76,21 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--codegraph-navigate",
         metavar="SYMBOL",
-        help="Unified symbol navigation: go-to-def + references + call hierarchy in one call",
+        help=(
+            "Unified symbol navigation: go-to-def + references + call hierarchy in one call. "
+            "NOTE: 'hierarchy' mode returns the CALL graph (callers/callees of functions). "
+            "For CLASS inheritance hierarchy use --class-hierarchy instead."
+        ),
     )
     parser.add_argument(
         "--codegraph-navigate-mode",
         choices=["definition", "references", "hierarchy", "full"],
         default="full",
-        help="Mode for --codegraph-navigate (default: full)",
+        help=(
+            "Mode for --codegraph-navigate (default: full). "
+            "hierarchy = CALL hierarchy (callers + callees of a function/method). "
+            "For class inheritance use --class-hierarchy."
+        ),
     )
     parser.add_argument(
         "--codegraph-navigate-file",

@@ -1,10 +1,14 @@
-"""Tests for the pre-indexed AST cache (ast_cache module)."""
+"""#1376：test_ast_cache 行为组；测试主体保留，中文文档和 UTF-8 修正单独校验。"""
 
 import sqlite3
+from types import SimpleNamespace
+from typing import get_type_hints
 from unittest.mock import patch
 
 import pytest
 
+import tests.unit._ast_cache_helpers as _fixtures
+import tree_sitter_analyzer.ast_cache as ast_cache_module
 from tree_sitter_analyzer.ast_cache import (
     _AST_CACHE_EXTRACTOR_VERSION,
     _EXT_TO_LANG,
@@ -13,30 +17,11 @@ from tree_sitter_analyzer.ast_cache import (
     _extract_symbols,
     _has_fts5,
 )
+from tree_sitter_analyzer.core.parser import Parser
 
-
-@pytest.fixture
-def tmp_project(tmp_path):
-    src = tmp_path / "src"
-    src.mkdir()
-    (src / "main.py").write_text(
-        "def hello():\n    print('hello')\n\nclass Foo:\n    pass\n"
-    )
-    (src / "util.js").write_text("function add(a, b) { return a + b; }\n")
-    (src / "readme.md").write_text("# Readme\n")
-    return tmp_path
-
-
-@pytest.fixture
-def cache(tmp_project):
-    c = ASTCache(str(tmp_project))
-    yield c
-    c.close()
-
-
-def _query_plan(conn: sqlite3.Connection, sql: str, params: tuple[str, ...]) -> str:
-    rows = conn.execute(f"EXPLAIN QUERY PLAN {sql}", params).fetchall()
-    return " ".join(str(row[3]) for row in rows)
+tmp_project = _fixtures.tmp_project
+cache = _fixtures.cache
+method_project = _fixtures.method_project
 
 
 class TestContentHash:
@@ -50,38 +35,60 @@ class TestContentHash:
         assert _content_hash(b"hello") == _content_hash("hello")
 
 
-class TestAstCacheWriteHelpers:
-    def test_empty_fts5_symbol_batches_return_empty(self):
-        from tree_sitter_analyzer.cache.write import (
-            write_fts5_symbols,
-            write_fts5_symbols_from_tuples,
-        )
+def test_check_cache_read_reports_source_open_error(tmp_path):
+    # PR #1253: 不可读的过期源码必须返回精确的逐文件归因。
+    from tree_sitter_analyzer.cache.indexer import check_cache_or_read
 
-        conn = sqlite3.connect(":memory:")
-        conn.execute(
-            "CREATE TABLE ast_symbol_rows ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, kind TEXT, "
-            "file_path TEXT, language TEXT, line INTEGER, end_line INTEGER)"
-        )
-        conn.execute(
-            "CREATE VIRTUAL TABLE ast_symbols_fts "
-            "USING fts5(name, kind, file_path, language, content='')"
-        )
+    cache = ASTCache(str(tmp_path))
+    try:
+        with patch("builtins.open", side_effect=OSError("read denied")):
+            result = check_cache_or_read(
+                cache.get_conn(),
+                "missing.py",
+                str(tmp_path / "missing.py"),
+                SimpleNamespace(st_mtime_ns=1, st_size=2),
+                lambda source: source,
+                _AST_CACHE_EXTRACTOR_VERSION,
+            )
+    finally:
+        cache.close()
 
-        assert write_fts5_symbols(conn, "empty.py", "python", {"symbols": []}) == []
-        assert write_fts5_symbols_from_tuples(conn, "empty.py", "python", []) == []
+    assert result == {
+        "file": "missing.py",
+        "status": "error",
+        "reason": "read denied",
+    }
 
 
-class TestAstExtractionWorker:
-    def test_init_worker_parser_sets_reusable_parser(self):
-        import tree_sitter_analyzer.cache.extraction as extraction
+def test_facade_fts_hook_controls_schema_initialization(tmp_project, monkeypatch):
+    """实现拆分之后，保留的 facade hook 必须仍生效。"""
+    # PR #1187 Codex review (2026-07-27): 复制的绑定曾忽略 monkeypatch。
+    monkeypatch.setattr(ast_cache_module, "_has_fts5", lambda _conn: False)
 
-        extraction._worker_parser = None
+    cache = ASTCache(str(tmp_project), str(tmp_project / "no-fts.db"))
 
-        extraction._init_worker_parser()
+    assert cache.fts5_available is False
+    cache.close()
 
-        assert extraction._worker_parser is not None
-        assert hasattr(extraction._worker_parser, "parse_file")
+
+def test_parser_property_type_hint_resolves_at_runtime() -> None:
+    """运行时 API 内省必须能够解析公开的 parser 类型注解。"""
+    # PR #1187 Codex review (2026-07-27): TYPE_CHECKING 曾在运行时隐藏 Parser。
+    assert get_type_hints(ASTCache.parser.fget)["return"] is Parser
+
+
+def test_symbol_query_propagates_connection_acquisition_failures(monkeypatch) -> None:
+    """数据库不可用不能伪装成空的旧版表。"""
+    # PR #1187 Codex review (2026-07-27): 只有旧版查询采用尽力而为策略。
+    cache = ASTCache.__new__(ASTCache)
+
+    def fail_connection():
+        raise sqlite3.OperationalError("database unavailable")
+
+    monkeypatch.setattr(cache, "_get_conn", fail_connection)
+
+    with pytest.raises(sqlite3.OperationalError, match="database unavailable"):
+        cache.get_symbols_by_kind("class")
 
 
 class TestIndexFile:
@@ -179,45 +186,36 @@ class TestIndexFile:
         finally:
             migrated.close()
 
-    def test_init_tolerates_extractor_version_migration_operational_error(
+    def test_init_reports_migration_metadata_failure_and_closes_connection(
         self, tmp_path, monkeypatch
     ):
-        class FlakyConnection:
-            def __init__(self):
-                self._conn = sqlite3.connect(":memory:")
-                self._conn.row_factory = sqlite3.Row
-
+        # PR #1350：使用真实 SQLite connection 的故障边界，不绕过 schema 校验器。
+        class FlakyConnection(sqlite3.Connection):
             def execute(self, sql, *args, **kwargs):
                 if "PRAGMA table_info(ast_index)" in sql:
                     raise sqlite3.OperationalError("metadata temporarily unavailable")
-                return self._conn.execute(sql, *args, **kwargs)
+                return super().execute(sql, *args, **kwargs)
 
-            def executescript(self, *args, **kwargs):
-                return self._conn.executescript(*args, **kwargs)
+        connect = sqlite3.connect
+        opened = []
 
-            def commit(self):
-                self._conn.commit()
+        def connect_with_failure(*args, **kwargs):
+            conn = connect(*args, **kwargs, factory=FlakyConnection)
+            opened.append(conn)
+            return conn
 
-            def close(self):
-                self._conn.close()
-
-        class FlakyASTCache(ASTCache):
-            def _get_conn(self):
-                conn = getattr(self._local, "conn", None)
-                if conn is None:
-                    conn = FlakyConnection()
-                    self._local.conn = conn
-                return conn
-
-        monkeypatch.setattr(
-            ASTCache, "_verify_schema_integrity", lambda self, conn: None
-        )
-
-        cache = FlakyASTCache(str(tmp_path), db_path=str(tmp_path / "flaky.db"))
+        monkeypatch.setattr(sqlite3, "connect", connect_with_failure)
         try:
-            assert cache.project_root == str(tmp_path)
+            with pytest.raises(
+                sqlite3.OperationalError, match="metadata temporarily unavailable"
+            ):
+                ASTCache(str(tmp_path), db_path=str(tmp_path / "flaky.db"))
+            assert len(opened) == 1
+            with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                opened[0].execute("SELECT 1")
         finally:
-            cache.close()
+            for conn in opened:
+                conn.close()
 
     def test_index_with_explicit_language(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
@@ -225,162 +223,55 @@ class TestIndexFile:
         assert result["status"] == "indexed"
 
 
-class TestIndexProject:
-    def test_index_project(self, cache):
-        result = cache.index_project()
-        assert result["total_files"] == 2
-        assert result["indexed"] == 2
-
-    def test_index_project_language_filter_indexes_only_matching(self, cache):
-        """#1018: language_filter restricts the walk to that language's files.
-
-        The fixture project has main.py + util.js (readme.md is an unsupported
-        extension and never counted). With language_filter="python", only the
-        single .py file is indexed; the .js file is skipped BEFORE any parse,
-        and no parse-error is produced for the filtered-out language.
-        """
-        result = cache.index_project(language_filter="python")
-        assert result["indexed"] == 1
-        assert result["skipped"] == 1
-        assert result["errors"] == 0
-
-    def test_index_project_cached(self, cache):
-        cache.index_project()
-        result = cache.index_project()
-        assert result["cached"] == 2
-
-    def test_index_project_reindexes_stale_extractor_version(self, cache):
-        cache.index_project(workers=0)
-        conn = cache._get_conn()
-        conn.execute("UPDATE ast_index SET extractor_version = 0")
-        conn.commit()
-
-        result = cache.index_project(workers=0)
-
-        assert result["indexed"] == 2
-        assert result["cached"] == 0
-
-    def test_index_project_force(self, cache):
-        cache.index_project()
-        result = cache.index_project(force=True)
-        assert result["indexed"] == 2
-
-    def test_index_project_max_files(self, cache):
-        result = cache.index_project(max_files=1)
-        assert result["total_files"] <= 1
-
-    def test_index_project_workers_field_in_stats(self, cache):
-        """PERF-4: stats include the resolved worker count."""
-        result = cache.index_project(workers=0)
-        assert "workers" in result
-        assert result["workers"] == 0
-
-    def test_index_project_serial_and_parallel_agree(self, tmp_project):
-        """PERF-4 correctness: parallel and serial paths must produce
-        identical indexed counts and SQLite contents."""
-        from tree_sitter_analyzer.ast_cache import ASTCache
-
-        db_serial = tmp_project / "ser.db"
-        db_parallel = tmp_project / "par.db"
-        for db in (db_serial, db_parallel):
-            if db.exists():
-                db.unlink()
-
-        serial_cache = ASTCache(str(tmp_project), db_path=str(db_serial))
-        serial_result = serial_cache.index_project(workers=0)
-
-        parallel_cache = ASTCache(str(tmp_project), db_path=str(db_parallel))
-        # 2 workers is enough to exercise the spawn + IPC path.
-        parallel_result = parallel_cache.index_project(workers=2)
-
-        assert serial_result["indexed"] == parallel_result["indexed"]
-        assert serial_result["errors"] == parallel_result["errors"]
-
-        # Compare actual row sets — same files, same content_hash, same
-        # symbols payload. Done in-process to avoid worker spawn here.
-        serial_conn = serial_cache._get_conn()
-        parallel_conn = parallel_cache._get_conn()
-        s_rows = sorted(
-            tuple(r)
-            for r in serial_conn.execute(
-                "SELECT file_path, content_hash, language FROM ast_index"
-            ).fetchall()
-        )
-        p_rows = sorted(
-            tuple(r)
-            for r in parallel_conn.execute(
-                "SELECT file_path, content_hash, language FROM ast_index"
-            ).fetchall()
-        )
-        assert s_rows == p_rows
-
-        symbol_sql = (
-            "SELECT name, kind, file_path, language, line, end_line "
-            "FROM ast_symbol_rows ORDER BY file_path, name, kind, line"
-        )
-        assert [tuple(r) for r in serial_conn.execute(symbol_sql).fetchall()] == [
-            tuple(r) for r in parallel_conn.execute(symbol_sql).fetchall()
-        ]
-
-        # B1.3: CALLS rows live in the unified ``edges`` table; ``file_path`` is
-        # the caller's file (== legacy caller_file), ``callee_line`` the call site.
-        edge_sql = (
-            "SELECT caller_name, file_path AS caller_file, caller_line, callee_name, "
-            "callee_full, callee_line, file_path, language "
-            "FROM edges WHERE kind = 'calls' "
-            "ORDER BY file_path, caller_name, callee_name, callee_line"
-        )
-        assert [tuple(r) for r in serial_conn.execute(edge_sql).fetchall()] == [
-            tuple(r) for r in parallel_conn.execute(edge_sql).fetchall()
-        ]
-
-    def test_index_project_env_workers_override(self, cache, monkeypatch):
-        """PERF-4: TSA_INDEX_WORKERS env var overrides the workers kwarg."""
-        monkeypatch.setenv("TSA_INDEX_WORKERS", "0")
-        # Pass workers=4 explicitly; env should win and force serial.
-        result = cache.index_project(workers=4)
-        assert result["workers"] == 0
-
-    def test_index_project_skips_activation_by_default(self, cache, monkeypatch):
-        """Large-repo warm-cache builds must not run per-file git history by default."""
-        monkeypatch.delenv("TSA_INDEX_ACTIVATION", raising=False)
-        with patch(
-            "tree_sitter_analyzer.git_activation.compute_symbol_activation"
-        ) as compute:
-            result = cache.index_project(workers=0)
-
-        assert result["activation_enabled"] is False
-        compute.assert_not_called()
-        conn = cache._get_conn()
-        activation_rows = conn.execute(
-            "SELECT COUNT(*) FROM ast_symbol_activation"
-        ).fetchone()[0]
-        assert activation_rows == 0
-
-    def test_index_project_activation_opt_in_via_argument(self, cache, monkeypatch):
-        monkeypatch.delenv("TSA_INDEX_ACTIVATION", raising=False)
-        with patch(
-            "tree_sitter_analyzer.git_activation.compute_symbol_activation",
-            return_value=[],
-        ) as compute:
-            result = cache.index_project(workers=0, include_activation=True)
-
-        assert result["activation_enabled"] is True
-        assert compute.called
-
-    def test_index_project_activation_opt_in_via_env(self, cache, monkeypatch):
-        monkeypatch.setenv("TSA_INDEX_ACTIVATION", "1")
-        with patch(
-            "tree_sitter_analyzer.git_activation.compute_symbol_activation",
-            return_value=[],
-        ) as compute:
-            result = cache.index_project(workers=0)
-
-        assert result["activation_enabled"] is True
-        assert compute.called
-
-
 class TestLookup:
+    @pytest.mark.parametrize("through_alias", [False, True])
+    @pytest.mark.parametrize("points_to_root", [False, True])
+    def test_root_alias_preserves_logical_descendant_path(
+        self, tmp_path, through_alias, points_to_root
+    ):
+        # 2026-09-08：只统一根目录；冻结后的子路径不能因活文件变成链接而重定向。
+        from tree_sitter_analyzer.cache.helpers import _canonical_project_path
+
+        root = tmp_path / "project"
+        root.mkdir()
+        alias = tmp_path / "alias"
+        alias.symlink_to(root, target_is_directory=True)
+        logical = root / "logical"
+        logical.symlink_to(
+            root if points_to_root else tmp_path, target_is_directory=True
+        )
+        supplied = (alias if through_alias else root) / "logical" / "sample.py"
+        assert _canonical_project_path(str(supplied), str(root)) == str(
+            logical / "sample.py"
+        )
+
+    @pytest.mark.parametrize("index_through_alias", [False, True])
+    def test_project_root_alias_has_one_cache_identity(
+        self, tmp_path, index_through_alias
+    ):
+        # 2026-09-08：根目录别名曾产生 ../alias 键，导致真实路径查询与删除失效。
+        root = tmp_path / "project"
+        root.mkdir()
+        alias = tmp_path / "alias"
+        alias.symlink_to(root, target_is_directory=True)
+        source = root / "sample.py"
+        source.write_text("def signal(): return 1\n", encoding="utf-8")
+        aliased = alias / source.name
+        cache = ASTCache(str(alias))
+        try:
+            result = cache.index_file(str(aliased if index_through_alias else source))
+            assert result["file"] == "sample.py"
+            row = cache.lookup(str(source))
+            assert row is not None
+            assert cache.lookup(str(aliased)) == row
+            assert cache.index_file(str(aliased))["status"] == "cached"
+            assert cache.get_stats()["total_files"] == 1
+            source.unlink()
+            assert cache.invalidate(str(aliased)) is True
+            assert cache.lookup(str(source)) is None
+        finally:
+            cache.close()
+
     def test_lookup_indexed_file(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
         cache.index_file(f)
@@ -393,32 +284,6 @@ class TestLookup:
     def test_lookup_missing_file(self, cache):
         result = cache.lookup("/nonexistent/file.py")
         assert result is None
-
-
-class TestSearchSymbols:
-    def test_search_by_name(self, cache, tmp_project):
-        cache.index_project()
-        results = cache.search_symbols("hello")
-        assert len(results) == 1
-        assert any(r["name"] == "hello" for r in results)
-
-    def test_search_by_language(self, cache, tmp_project):
-        cache.index_project()
-        results = cache.search_symbols("add", language="javascript")
-        assert len(results) == 1
-
-    def test_search_no_results(self, cache, tmp_project):
-        cache.index_project()
-        results = cache.search_symbols("zzz_nonexistent_xyz")
-        assert len(results) == 0
-
-    def test_search_symbols_uses_linear_when_fts_disabled(self, cache, tmp_project):
-        """search_symbols() falls back to linear scan when _fts5_available is False."""
-        cache.index_project()
-        cache._fts5_available = False
-        results = cache.search_symbols("hello")
-        assert len(results) == 1
-        assert any(r["name"] == "hello" for r in results)
 
 
 class TestStats:
@@ -450,7 +315,7 @@ class TestStats:
 
     def test_stats_falls_back_to_symbols_json_without_fts(self, cache):
         cache.index_project()
-        cache._fts5_available = False  # force non-FTS5 path for testing
+        cache._fts5_available = False  # 强制使用非 FTS5 路径进行测试。
 
         stats = cache.get_stats()
 
@@ -474,113 +339,6 @@ class TestStats:
 
         ASTCache._clear_activation_for_file(conn, "src/main.py")
 
-        conn.close()
-
-
-class TestLargeRepoHotPathIndexes:
-    def test_large_repo_hot_path_indexes_exist(self, cache):
-        if not cache.fts5_available:
-            pytest.skip("tracked: large-repo-hotpath-indexes require FTS5")
-        conn = cache._get_conn()
-        index_names = {
-            row["name"]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'index'"
-            ).fetchall()
-        }
-
-        assert "idx_sym_rows_name_kind_path_line" in index_names
-        assert "idx_sym_rows_file_name_kind_line" in index_names
-        # B1.3: CALLS hot-path indexes live on the unified ``edges`` table.
-        assert "idx_edges_callee_name" in index_names
-        assert "idx_edges_caller_name" in index_names
-        assert "idx_edges_file_path" in index_names
-
-    def test_symbol_resolver_hot_queries_use_composite_indexes(self, cache):
-        if not cache.fts5_available:
-            pytest.skip("tracked: large-repo-hotpath-indexes require FTS5")
-        conn = cache._get_conn()
-
-        symbol_plan = _query_plan(
-            conn,
-            """SELECT name, kind, file_path, language, line, end_line
-               FROM ast_symbol_rows
-               WHERE name = ? AND kind IN ('function', 'class', 'method', 'variable')
-               ORDER BY file_path, line""",
-            ("target",),
-        )
-        scoped_symbol_plan = _query_plan(
-            conn,
-            """SELECT name, kind, file_path, language, line, end_line
-               FROM ast_symbol_rows
-               WHERE file_path = ? AND name = ? AND kind IN ('function', 'class', 'method')
-               ORDER BY line""",
-            ("src/main.py", "target"),
-        )
-
-        assert "idx_sym_rows_name_kind_path_line" in symbol_plan
-        assert "idx_sym_rows_file_name_kind_line" in scoped_symbol_plan
-
-    def test_call_graph_hot_queries_use_composite_indexes(self, cache):
-        # B1.3: CALLS rows + their name/file/resolution columns are in the
-        # unified ``edges`` table, served by the EdgeStore name/file indexes.
-        conn = cache._get_conn()
-
-        callers_plan = _query_plan(
-            conn,
-            """SELECT caller_name, file_path, caller_line, callee_name,
-                      callee_line, callee_resolved_file
-               FROM edges
-               WHERE kind = 'calls' AND callee_name = ?""",
-            ("render",),
-        )
-        callees_plan = _query_plan(
-            conn,
-            """SELECT caller_name, file_path, caller_line, callee_name,
-                      callee_full, callee_line, callee_resolved_file
-               FROM edges
-               WHERE kind = 'calls' AND caller_name = ?""",
-            ("handle",),
-        )
-        file_scope_plan = _query_plan(
-            conn,
-            "SELECT id FROM edges WHERE kind = 'calls' AND file_path = ?",
-            ("src/handler.py",),
-        )
-
-        assert "idx_edges_callee_name" in callers_plan
-        assert "idx_edges_caller_name" in callees_plan
-        assert "idx_edges_file_path" in file_scope_plan
-
-    def test_large_repo_index_helper_skips_missing_tables(self):
-        conn = sqlite3.connect(":memory:")
-
-        ASTCache._ensure_large_repo_indexes(conn)
-
-        assert (
-            conn.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'index'"
-            ).fetchall()
-            == []
-        )
-        conn.close()
-
-    def test_large_repo_index_helper_tolerates_legacy_partial_tables(self):
-        # B1.3: ast_call_edges hot-path indexes were removed; the helper now
-        # only builds the ast_symbol_rows composites and tolerates a partial
-        # legacy table without erroring.
-        conn = sqlite3.connect(":memory:")
-        conn.execute("CREATE TABLE ast_symbol_rows (name TEXT)")
-
-        ASTCache._ensure_large_repo_indexes(conn)
-
-        index_names = {
-            row[0]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'index'"
-            ).fetchall()
-        }
-        assert "idx_ce_callee_name_resolved_file" not in index_names
         conn.close()
 
 
@@ -635,446 +393,104 @@ class TestHasFts5:
         assert isinstance(result, bool)
 
 
-@pytest.mark.skipif(
-    not _has_fts5(sqlite3.connect(":memory:")), reason="FTS5 not available"
-)
-class TestFtsSearch:
-    def test_fts_search_basic(self, cache, tmp_project):
-        cache.index_project()
-        results = cache.fts_search("hello")
-        assert len(results) == 1
-        assert any(r["name"] == "hello" for r in results)
-
-    def test_fts_search_by_language(self, cache, tmp_project):
-        cache.index_project()
-        results = cache.fts_search("add", language="javascript")
-        assert len(results) == 1
-        assert all(r["language"] == "javascript" for r in results)
-
-    def test_fts_search_no_results(self, cache, tmp_project):
-        cache.index_project()
-        results = cache.fts_search("zzz_nonexistent_xyz")
-        assert len(results) == 0
-
-    def test_fts_search_multi_term(self, cache, tmp_project):
-        cache.index_project()
-        results = cache.fts_search("hello foo")
-        assert len(results) == 2
-
-    def test_fts_search_with_limit(self, cache, tmp_project):
-        cache.index_project()
-        results = cache.fts_search("hello", limit=1)
-        assert len(results) <= 1
-
-    def test_fts_search_returns_ranked(self, cache, tmp_project):
-        cache.index_project()
-        results = cache.fts_search("hello")
-        assert len(results) == 1
-        for r in results:
-            assert "file" in r
-            assert "name" in r
-            assert "kind" in r
-            assert "line" in r
-
-    def test_search_symbols_uses_fts5_when_available(self, cache, tmp_project):
-        cache.index_project()
-        results = cache.search_symbols("hello")
-        assert len(results) == 1
-        if cache.fts5_available:
-            assert any(r["name"] == "hello" for r in results)
-
-    def test_fts_indexed_symbols_in_stats(self, cache, tmp_project):
-        cache.index_project()
-        stats = cache.get_stats()
-        if cache.fts5_available:
-            assert stats["fts5_available"] is True
-            assert "fts_indexed_symbols" in stats
-            assert stats["fts_indexed_symbols"] == 3
-
-    def test_invalidate_removes_fts_rows(self, cache, tmp_project):
-        f = str(tmp_project / "src" / "main.py")
-        cache.index_file(f)
-        if cache.fts5_available:
-            results_before = cache.fts_search("hello")
-            assert len(results_before) == 1
-            cache.invalidate(f)
-            results_after = cache.fts_search("hello")
-            assert len(results_after) == 0
-
-    def test_fts_search_after_reindex(self, cache, tmp_project):
-        f = str(tmp_project / "src" / "main.py")
-        cache.index_file(f)
-        if cache.fts5_available:
-            cache.invalidate(f)
-            cache.index_file(f)
-            results = cache.fts_search("hello")
-            assert len(results) == 1
-
-    def test_fts_search_falls_back_to_linear_when_fts_disabled(
-        self, cache, tmp_project
-    ):
-        """fts_search() falls back to linear scan when _fts5_available is False."""
-        cache.index_project()
-        cache._fts5_available = False
-        results = cache.fts_search("hello")
-        assert len(results) == 1
-        assert any(r["name"] == "hello" for r in results)
-
-    def test_get_functions_by_file_returns_functions_for_indexed_file(
-        self, cache, tmp_project
-    ):
-        """get_functions_by_file() returns function entries for an indexed file."""
-        f = str(tmp_project / "src" / "main.py")
-        cache.index_file(f)
-        funcs = cache.get_functions_by_file("src/main.py")
-        assert len(funcs) == 1
-        for fn in funcs:
-            assert "name" in fn
-            assert "file" in fn
-            assert "line" in fn
-
-
-class TestSQLNativeCallGraph:
-    """Tests for query_callers / query_callees SQL-native methods."""
-
-    @pytest.fixture
-    def call_project(self, tmp_path):
-        src = tmp_path / "src"
-        src.mkdir()
-        (src / "a.py").write_text(
-            "from src.b import bar\n\n"
-            "def foo():\n"
-            "    bar()\n"
-            "    baz()\n\n"
-            "def baz():\n"
-            "    pass\n"
-        )
-        (src / "b.py").write_text("def bar():\n    pass\n")
-        return tmp_path
-
-    @pytest.fixture
-    def call_cache(self, call_project):
-        c = ASTCache(str(call_project))
-        c.index_project()
-        yield c
-        c.close()
-
-    def test_query_callees_finds_direct_calls(self, call_cache):
-        callees = call_cache.query_callees("foo")
-        callee_names = [e["callee_name"] for e in callees]
-        assert "bar" in callee_names
-
-    def test_query_callees_finds_go_method_selector_calls(self, tmp_path):
-        src = tmp_path / "src"
-        src.mkdir()
-        (src / "gin.go").write_text(
-            "package gin\n\n"
-            "type Engine struct{}\n\n"
-            "func (engine *Engine) ServeHTTP() {\n"
-            "    engine.handleHTTPRequest()\n"
-            "}\n\n"
-            "func (engine *Engine) handleHTTPRequest() {}\n",
-            encoding="utf-8",
-        )
-        cache = ASTCache(str(tmp_path))
-        try:
-            cache.index_project()
-
-            callees = cache.query_callees("ServeHTTP", caller_file="src/gin.go")
-            assert [edge["callee_name"] for edge in callees] == ["handleHTTPRequest"]
-            assert [edge["callee_full"] for edge in callees] == [
-                "engine.handleHTTPRequest"
-            ]
-
-            callers = cache.query_callers("handleHTTPRequest", callee_file="src/gin.go")
-            assert [edge["caller_name"] for edge in callers] == ["ServeHTTP"]
-
-            full_callers = cache.query_callers(
-                "engine.handleHTTPRequest", callee_file="src/gin.go"
-            )
-            assert [edge["caller_name"] for edge in full_callers] == ["ServeHTTP"]
-        finally:
-            cache.close()
-
-    def test_query_callers_finds_caller(self, call_cache):
-        callers = call_cache.query_callers("bar")
-        caller_names = [e["caller_name"] for e in callers]
-        assert "foo" in caller_names
-
-    def test_query_callers_empty_for_unknown(self, call_cache):
-        callers = call_cache.query_callers("nonexistent_func_xyz")
-        assert callers == []
-
-    def test_query_callees_empty_for_leaf(self, call_cache):
-        callees = call_cache.query_callees("baz")
-        assert callees == []
-
-    def test_query_callees_with_file_filter(self, call_cache):
-        callees = call_cache.query_callees("foo", caller_file="src/a.py")
-        assert len(callees) == 2
-        for e in callees:
-            assert e["caller_file"] == "src/a.py"
-
-    def test_query_callers_with_file_filter(self, call_cache):
-        callers = call_cache.query_callers("bar", callee_file="src/a.py")
-        assert len(callers) == 1
-
-    def test_query_callers_transitive(self, call_cache):
-        callers = call_cache.query_callers("bar", max_depth=3)
-        assert len(callers) == 1
-
-    def test_query_callees_transitive(self, call_cache):
-        callees = call_cache.query_callees("foo", max_depth=3)
-        assert len(callees) == 2
-
-    def test_has_call_edges(self, call_cache):
-        assert call_cache.has_call_edges() is True
-
-    def test_has_call_edges_empty_cache(self, tmp_path):
-        c = ASTCache(str(tmp_path))
-        assert c.has_call_edges() is False
-        c.close()
-
-    def test_query_results_have_required_keys(self, call_cache):
-        callees = call_cache.query_callees("foo")
-        if callees:
-            e = callees[0]
-            assert "caller_name" in e
-            assert "caller_file" in e
-            assert "caller_line" in e
-            assert "callee_name" in e
-            assert "callee_file" in e
-            assert "callee_line" in e
-            assert "depth" in e
-
-    def test_depth_1_is_default(self, call_cache):
-        callees = call_cache.query_callees("foo", max_depth=1)
-        for e in callees:
-            assert e["depth"] == 1
-
-    def test_query_callers_returns_depth(self, call_cache):
-        callers = call_cache.query_callers("bar")
-        for e in callers:
-            assert e["depth"] == 1
-
-
 # ---------------------------------------------------------------------------
-# ASTCache.get_conn() public accessor (TDD — replaces private _get_conn usage)
+# ASTCache.get_conn() 公共访问器，以 TDD 替换私有 _get_conn 用法。
 # ---------------------------------------------------------------------------
 
 
 class TestASTCacheGetConnPublicAccessor:
-    """get_conn() must expose the same SQLite connection as _get_conn()."""
+    """get_conn() 必须暴露与 _get_conn() 相同的 SQLite 连接。"""
 
     def test_get_conn_returns_sqlite_connection(self, tmp_project):
-        """get_conn() must return a live sqlite3.Connection, not None."""
+        """get_conn() 必须返回存活的 sqlite3.Connection，而不是 None。"""
         cache = ASTCache(str(tmp_project))
         conn = cache.get_conn()
         assert isinstance(conn, sqlite3.Connection)
 
     def test_get_conn_same_as_private_get_conn(self, tmp_project):
-        """get_conn() and _get_conn() must return the same connection object."""
+        """get_conn() 和 _get_conn() 必须返回同一个连接对象。"""
         cache = ASTCache(str(tmp_project))
         assert cache.get_conn() is cache._get_conn()
 
     def test_get_conn_thread_local_stable(self, tmp_project):
-        """Repeated calls to get_conn() within the same thread return the same object."""
+        """同一线程中重复调用 get_conn() 必须返回同一个对象。"""
         cache = ASTCache(str(tmp_project))
         conn1 = cache.get_conn()
         conn2 = cache.get_conn()
         assert conn1 is conn2
 
 
-class TestPostIndexEdgeRefreshSkip:
-    """Edges are written by insert during commit; the post-index refresh is
-    redundant when FTS5 is available (the common path) and must be skipped —
-    it was ~47% of django's index time for an identical edge set."""
-
-    def test_refresh_skipped_when_fts5_available(self, tmp_project, monkeypatch):
-        from tree_sitter_analyzer.ast_cache import ASTCache
-
-        c = ASTCache(str(tmp_project))
-        if not c.fts5_available:
-            c.close()
-            pytest.skip("SQLite built without FTS5 — refresh-skip path needs FTS5")
-        try:
-            calls = {"n": 0}
-            orig = c._refresh_graph_edges_from_cache
-
-            def spy(*a, **k):
-                calls["n"] += 1
-                return orig(*a, **k)
-
-            monkeypatch.setattr(c, "_refresh_graph_edges_from_cache", spy)
-            c.index_project(force=True)
-
-            # FTS5 path → insert already wrote edges → refresh NOT invoked.
-            assert c.fts5_available is True
-            assert calls["n"] == 0
-            # ...and the edges are present regardless.
-            conn = c._get_conn()
-            assert conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0] == 1
-        finally:
-            c.close()
-
-    def test_refresh_runs_when_fts5_unavailable(self, tmp_project, monkeypatch):
-        from tree_sitter_analyzer.ast_cache import ASTCache
-
-        c = ASTCache(str(tmp_project))
-        try:
-            # Force the no-FTS5 path so the refresh becomes the sole edge writer.
-            monkeypatch.setattr(type(c), "fts5_available", property(lambda self: False))
-            calls = {"n": 0}
-            orig = c._refresh_graph_edges_from_cache
-
-            def spy(*a, **k):
-                calls["n"] += 1
-                return orig(*a, **k)
-
-            monkeypatch.setattr(c, "_refresh_graph_edges_from_cache", spy)
-            c.index_project(force=True)
-
-            assert calls["n"] == 1
-        finally:
-            c.close()
-
-
-# ---------------------------------------------------------------------------
-# kind="method" classification (RED-first, see feature/kind-method-classification)
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def method_project(tmp_path):
-    """A minimal Python project with one class method and one top-level function."""
-    src = tmp_path / "src"
-    src.mkdir()
-    (src / "animals.py").write_text(
-        "class Dog:\n"
-        "    def bark(self):\n"
-        "        return 'woof'\n"
-        "\n"
-        "def standalone():\n"
-        "    pass\n"
+def test_writer_lock_is_shared_by_canonical_database_path(tmp_path):
+    # #1405：路径别名必须共享锁，不同数据库不能被无关写入阻塞。
+    first = ast_cache_module._shared_writer_lock(str(tmp_path / "index.db"))
+    alias = ast_cache_module._shared_writer_lock(
+        str(tmp_path / "sub" / ".." / "index.db")
     )
-    return tmp_path
+    other = ast_cache_module._shared_writer_lock(str(tmp_path / "other.db"))
+    assert first is alias
+    assert first is not other
 
 
-class TestMethodKindClassification:
-    """Verify that class methods are stored as kind='method', not kind='function'."""
+def test_writer_lock_registry_does_not_retain_unused_databases(tmp_path):
+    # #1405：长期运行的服务器切换项目后不能累积永久锁注册项。
+    import gc
+    import weakref
 
-    def test_method_stored_as_kind_method(self, method_project):
-        """After indexing a file with a class method, ast_symbol_rows must have
-        at least one row with kind='method'."""
-        from tree_sitter_analyzer.ast_cache import ASTCache
+    lock = ast_cache_module._shared_writer_lock(str(tmp_path / "index.db"))
+    reference = weakref.ref(lock)
+    del lock
+    gc.collect()
+    assert reference() is None
 
-        c = ASTCache(str(method_project))
-        try:
-            c.index_project()
-            conn = c._get_conn()
-            method_count = conn.execute(
-                "SELECT COUNT(*) FROM ast_symbol_rows WHERE kind='method'"
-            ).fetchone()[0]
-            assert method_count == 1, (
-                "Expected exactly one kind='method' row but got "
-                f"{method_count}. "
-                "Class methods are being incorrectly stored as kind='function'."
-            )
-        finally:
-            c.close()
 
-    def test_method_kind_bark_found(self, method_project):
-        """The method 'bark' inside class Dog must be stored with kind='method'."""
-        from tree_sitter_analyzer.ast_cache import ASTCache
+@pytest.mark.parametrize("growth", [False, True])
+def test_direct_cache_read_rejects_oversized_source_before_decode(
+    tmp_path, monkeypatch, growth
+):
+    # #1405：缓存核验也必须限流，且不能依赖读取之前的文件大小。
+    import io
+    from unittest.mock import Mock
 
-        c = ASTCache(str(method_project))
-        try:
-            c.index_project()
-            conn = c._get_conn()
-            row = conn.execute(
-                "SELECT kind FROM ast_symbol_rows WHERE name='bark'"
-            ).fetchone()
-            assert row is not None, "Symbol 'bark' not found in ast_symbol_rows"
-            assert row[0] == "method", (
-                f"Expected kind='method' for 'bark' but got kind='{row[0]}'"
-            )
-        finally:
-            c.close()
+    from tree_sitter_analyzer.cache import indexer_io
 
-    def test_top_level_function_stays_kind_function(self, method_project):
-        """Top-level functions (no parent class) must keep kind='function'."""
-        from tree_sitter_analyzer.ast_cache import ASTCache
+    source = tmp_path / "a.py"
+    source.write_bytes(b"x=1\n")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        original_row = cache.lookup(str(source))
+        admitted = source.stat()
+        source.write_bytes(b"x" * 17)
+        if not growth:
+            admitted = source.stat()
+        reads = []
 
-        c = ASTCache(str(method_project))
-        try:
-            c.index_project()
-            conn = c._get_conn()
-            row = conn.execute(
-                "SELECT kind FROM ast_symbol_rows WHERE name='standalone'"
-            ).fetchone()
-            assert row is not None, "Symbol 'standalone' not found"
-            assert row[0] == "function", (
-                f"Expected kind='function' for 'standalone' but got kind='{row[0]}'"
-            )
-        finally:
-            c.close()
+        class Reader(io.BytesIO):
+            def read(self, size=-1):
+                reads.append(size)
+                return super().read(size)
 
-    @pytest.mark.skipif(
-        not _has_fts5(sqlite3.connect(":memory:")), reason="FTS5 not available"
-    )
-    def test_fts_search_finds_method_by_kind(self, method_project):
-        """fts_search results for 'bark' must include kind='method' entry in FTS."""
-        from tree_sitter_analyzer.ast_cache import ASTCache
-
-        c = ASTCache(str(method_project))
-        try:
-            c.index_project()
-            conn = c._get_conn()
-            rows = conn.execute(
-                "SELECT name, kind FROM ast_symbol_rows WHERE name='bark'"
-            ).fetchall()
-            assert any(r[1] == "method" for r in rows), (
-                "FTS5 / ast_symbol_rows has no kind='method' row for 'bark'"
-            )
-        finally:
-            c.close()
-
-    def test_serial_and_parallel_agree_on_method_kind(self, method_project):
-        """Both the serial (workers=0) and parallel (workers=2) indexing paths
-        must produce the same kind='method' rows (regression guard for the
-        worker tuple serialization path)."""
-        from tree_sitter_analyzer.ast_cache import ASTCache
-
-        db_serial = method_project / "ser.db"
-        db_parallel = method_project / "par.db"
-
-        serial_cache = ASTCache(str(method_project), db_path=str(db_serial))
-        serial_cache.index_project(workers=0)
-
-        parallel_cache = ASTCache(str(method_project), db_path=str(db_parallel))
-        parallel_cache.index_project(workers=2)
-
-        try:
-            symbol_sql = (
-                "SELECT name, kind FROM ast_symbol_rows "
-                "WHERE name IN ('bark', 'standalone') "
-                "ORDER BY name"
-            )
-            s_rows = [
-                tuple(r)
-                for r in serial_cache._get_conn().execute(symbol_sql).fetchall()
-            ]
-            p_rows = [
-                tuple(r)
-                for r in parallel_cache._get_conn().execute(symbol_sql).fetchall()
-            ]
-            assert s_rows == p_rows, (
-                f"Serial and parallel paths disagree on method kind:\n"
-                f"  serial={s_rows}\n  parallel={p_rows}"
-            )
-            assert ("bark", "method") in s_rows, (
-                f"'bark' not classified as method in serial path: {s_rows}"
-            )
-        finally:
-            serial_cache.close()
-            parallel_cache.close()
+        monkeypatch.setattr(indexer_io, "_INDEX_SOURCE_BYTE_LIMIT", 16, raising=False)
+        monkeypatch.setattr(
+            indexer_io, "open", lambda *_args: Reader(b"x" * 17), raising=False
+        )
+        decode = Mock(side_effect=AssertionError("oversized data must not be decoded"))
+        monkeypatch.setattr(indexer_io, "decode_index_source", decode)
+        result = indexer_io.check_cache_or_read(
+            cache.get_conn(),
+            "a.py",
+            str(source),
+            admitted,
+            _content_hash,
+            cache._extractor_version,
+        )
+        assert result == {
+            "file": "a.py",
+            "status": "error",
+            "reason": "source exceeds indexing byte limit",
+        }
+        assert reads == ([17] if growth else [])
+        assert cache.lookup(str(source)) == original_row
+        decode.assert_not_called()
+    finally:
+        cache.close()

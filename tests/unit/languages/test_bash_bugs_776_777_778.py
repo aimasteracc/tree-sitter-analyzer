@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import tree_sitter
 
+import tree_sitter_analyzer.formatters  # noqa: F401
 from tree_sitter_analyzer.languages.bash_plugin import BashPlugin
 
 
@@ -88,81 +89,3 @@ class TestNoPhantomElements:
         assert [f.name for f in elements["functions"]] == ["deploy"]
 
 
-# ── Bug #778 ─────────────────────────────────────────────────────────────────
-
-
-class TestCompactTableHeaderNoUnknown:
-    """Bug #778: compact_table_header must not render '# Unknown' for class-less
-    files (like Bash scripts)."""
-
-    def test_no_unknown_when_classes_empty(self) -> None:
-        """compact_table_header must not return 'Unknown' when classes is []."""
-        from tree_sitter_analyzer.formatters.legacy.compact import (
-            compact_table_header,
-        )
-
-        result = compact_table_header(
-            package_name="", classes=[], file_path="/scripts/deploy.sh"
-        )
-        assert result != "Unknown"
-        assert "Unknown" not in result
-
-    def test_uses_filename_stem_when_no_classes(self) -> None:
-        """When classes is empty, the header must use the filename without extension."""
-        from tree_sitter_analyzer.formatters.legacy.compact import (
-            compact_table_header,
-        )
-
-        result = compact_table_header(
-            package_name="", classes=[], file_path="/scripts/deploy.sh"
-        )
-        assert result == "deploy"
-
-    def test_class_name_still_used_when_classes_present(self) -> None:
-        """When classes are present the class name must still be used (not filename)."""
-        from tree_sitter_analyzer.formatters.legacy.compact import (
-            compact_table_header,
-        )
-
-        result = compact_table_header(
-            package_name="",
-            classes=[{"name": "MyClass"}],
-            file_path="/src/MyClass.java",
-        )
-        assert result == "MyClass"
-
-    def test_package_plus_class_unchanged(self) -> None:
-        """Package.ClassName format must be preserved when both are present."""
-        from tree_sitter_analyzer.formatters.legacy.compact import (
-            compact_table_header,
-        )
-
-        result = compact_table_header(
-            package_name="com.example",
-            classes=[{"name": "Foo"}],
-            file_path="/src/Foo.java",
-        )
-        assert result == "com.example.Foo"
-
-    def test_compact_table_output_no_unknown_for_bash_data(self) -> None:
-        """The full compact table output for a Bash-like structure dict must not
-        contain '# Unknown' on the header line."""
-        from tree_sitter_analyzer.legacy_table_formatter import LegacyTableFormatter
-
-        formatter = LegacyTableFormatter(format_type="compact", language="bash")
-        output = formatter.format_structure(
-            {
-                "file_path": "/scripts/deploy.sh",
-                "package": {"name": ""},
-                "classes": [],
-                "methods": [],
-                "fields": [],
-            }
-        )
-        first_line = output.splitlines()[0]
-        assert first_line != "# Unknown", (
-            f"First line is '# Unknown', expected a filename-based header: {first_line!r}"
-        )
-        assert "Unknown" not in first_line, (
-            f"'Unknown' appeared in compact header: {first_line!r}"
-        )

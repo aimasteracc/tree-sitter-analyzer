@@ -264,6 +264,11 @@ class TestDetectFileLanguageDispatch:
         f.write_text("hello")
         assert RouteDetector(str(tmp_path)).detect_file(str(f)) == []
 
+    def test_known_non_route_language_returns_empty(self, tmp_path: Path):
+        f = tmp_path / "main.c"
+        f.write_text("int main(void) { return 0; }")
+        assert RouteDetector(str(tmp_path)).detect_file(str(f)) == []
+
 
 # ---------------------------------------------------------------------------
 # Filesystem walk: excluded directories

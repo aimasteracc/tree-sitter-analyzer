@@ -124,19 +124,6 @@ class TestSmartContextTool:
         with pytest.raises(ValueError, match="File not found"):
             _run(tool.execute({"file_path": "nonexistent_file.py"}))
 
-    def test_toon_format_works(self, tool):
-        result = _run(
-            tool.execute(
-                {
-                    "file_path": TARGET_FILE,
-                    "output_format": "toon",
-                }
-            )
-        )
-        # TOON strips bulk dicts; health data is encoded inside toon_content.
-        assert result.get("format") == "toon"
-        assert "health" in result["toon_content"]
-
     def test_json_format_works(self, tool):
         result = _run(
             tool.execute(

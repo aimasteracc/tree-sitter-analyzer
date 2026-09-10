@@ -241,20 +241,6 @@ class TestQueryCommandOutput:
                 mock_json.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_execute_async_outputs_toon(self, command):
-        """Test execute_async outputs TOON format."""
-        command.args.query_key = "methods"
-        command.args.output_format = "toon"
-        with patch.object(
-            command, "execute_query", new_callable=AsyncMock
-        ) as mock_execute:
-            mock_execute.return_value = [{"name": "test"}]
-            with patch("builtins.print") as mock_print:
-                result = await command.execute_async("python")
-                assert result == 0
-                mock_print.assert_called_once()
-
-    @pytest.mark.asyncio
     async def test_execute_async_outputs_text(self, command):
         """Test execute_async outputs text format."""
         command.args.query_key = "methods"

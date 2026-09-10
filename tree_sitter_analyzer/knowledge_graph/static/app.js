@@ -148,7 +148,7 @@ function renderLegend() {
 // ── Metrics / HUD ─────────────────────────────────────────────────────────────
 function renderMetrics() {
   const s = state.graph?.stats || {}, a = state.graph?.attributes || {};
-  $("backend").textContent = a.backend || s.backend || "json";
+  $("backend").textContent = a.backend || s.backend || "sqlite";
   $("viewCount").textContent = `${state.nodes.length} / ${state.edges.length}`;
   $("modePill").textContent = `${state.view} · ${state.lod}`;
   $("metrics").innerHTML = metric("nodes", state.nodes.length) + metric("edges", state.edges.length) + metric("total nodes", s.node_count || 0) + metric("total edges", s.edge_count || 0);

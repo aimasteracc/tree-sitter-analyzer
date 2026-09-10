@@ -390,6 +390,13 @@ class TestPluginManagerFindPluginClasses:
         assert MockPlugin2 in plugin_classes
         assert object not in plugin_classes
 
+    def test_find_plugin_classes_ignores_parameterized_alias(self) -> None:
+        # 2026-09-09：Python 3.10 会把 Ruby 模块中的 GenericAlias 误认作 type。
+        from types import SimpleNamespace
+
+        module = SimpleNamespace(Alias=tuple[tuple[int, int], str], Plugin=MockPlugin)
+        assert PluginManager()._find_plugin_classes(module) == [MockPlugin]
+
     def test_find_plugin_classes_excludes_base(self) -> None:
         """Test that LanguagePlugin base class is excluded"""
         manager = PluginManager()

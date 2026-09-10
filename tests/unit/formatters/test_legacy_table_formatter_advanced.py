@@ -10,6 +10,12 @@ from typing import Any
 
 import pytest
 
+# Import the formatters package first to avoid a circular-import failure when
+# tree_sitter_analyzer.legacy_table_formatter is the very first
+# tree_sitter_analyzer submodule imported in a process (formatters/__init__.py
+# -> formatters.table_formatter -> legacy_table_formatter would otherwise hit
+# a partially-initialized module).
+import tree_sitter_analyzer.formatters  # noqa: F401
 from tree_sitter_analyzer.legacy_table_formatter import LegacyTableFormatter
 
 
@@ -28,14 +34,6 @@ class TestPlatformNewlines:
             assert "\r\n" in result or "\n" in result
         else:
             assert result == text
-
-    def test_csv_skips_newline_conversion(self) -> None:
-        formatter = LegacyTableFormatter(format_type="csv")
-        data = {"classes": [{"name": "Test"}]}
-        result = formatter.format_structure(data)
-
-        if os.name == "nt":
-            assert "\r\r\n" not in result
 
 
 class TestEdgeCases:
@@ -307,143 +305,6 @@ class TestFullTableMultiClassParamTypes:
         assert "42" in result
 
 
-class TestCSVFieldAndParamCoverage:
-    def test_csv_with_field_rows(self) -> None:
-        formatter = LegacyTableFormatter(format_type="csv")
-        data: dict[str, Any] = {
-            "fields": [
-                {
-                    "name": "count",
-                    "type": "int",
-                    "visibility": "private",
-                    "modifiers": ["static", "final"],
-                    "line_range": {"start": 5},
-                },
-            ],
-        }
-        result = formatter.format_structure(data)
-        assert "field" in result
-        assert "count" in result
-        assert "true" in result
-
-    def test_csv_method_with_string_params(self) -> None:
-        formatter = LegacyTableFormatter(format_type="csv")
-        data: dict[str, Any] = {
-            "methods": [
-                {
-                    "name": "hello",
-                    "parameters": ["int x"],
-                    "return_type": "void",
-                    "visibility": "public",
-                    "line_range": {"start": 10},
-                },
-            ],
-        }
-        result = formatter.format_structure(data)
-        assert "x:int" in result
-
-    def test_csv_method_with_fallback_params(self) -> None:
-        formatter = LegacyTableFormatter(format_type="csv")
-        data: dict[str, Any] = {
-            "methods": [
-                {
-                    "name": "hello",
-                    "parameters": [42],
-                    "return_type": "void",
-                    "visibility": "public",
-                    "line_range": {"start": 10},
-                },
-            ],
-        }
-        result = formatter.format_structure(data)
-        assert "42" in result
-
-    def test_csv_method_is_static(self) -> None:
-        formatter = LegacyTableFormatter(format_type="csv")
-        data: dict[str, Any] = {
-            "methods": [
-                {
-                    "name": "main",
-                    "parameters": [],
-                    "return_type": "void",
-                    "visibility": "public",
-                    "is_static": True,
-                    "line_range": {"start": 10},
-                },
-            ],
-        }
-        result = formatter.format_structure(data)
-        assert "true" in result
-
-    def test_csv_method_is_final(self) -> None:
-        formatter = LegacyTableFormatter(format_type="csv")
-        data: dict[str, Any] = {
-            "methods": [
-                {
-                    "name": "run",
-                    "parameters": [],
-                    "return_type": "void",
-                    "visibility": "public",
-                    "is_final": True,
-                    "line_range": {"start": 10},
-                },
-            ],
-        }
-        result = formatter.format_structure(data)
-        assert "true" in result
-
-    def test_csv_constructor(self) -> None:
-        formatter = LegacyTableFormatter(format_type="csv")
-        data: dict[str, Any] = {
-            "methods": [
-                {
-                    "name": "MyClass",
-                    "parameters": [],
-                    "return_type": "void",
-                    "visibility": "public",
-                    "is_constructor": True,
-                    "line_range": {"start": 5},
-                },
-            ],
-        }
-        result = formatter.format_structure(data)
-        assert "constructor" in result
-
-    def test_csv_class_with_final_modifier(self) -> None:
-        formatter = LegacyTableFormatter(format_type="csv")
-        data: dict[str, Any] = {
-            "classes": [
-                {
-                    "name": "Util",
-                    "type": "class",
-                    "visibility": "public",
-                    "modifiers": ["final"],
-                    "line_range": {"start": 1},
-                },
-            ],
-        }
-        result = formatter.format_structure(data)
-        assert "Util" in result
-        assert "true" in result
-
-    def test_csv_field_with_is_static_flag(self) -> None:
-        formatter = LegacyTableFormatter(format_type="csv")
-        data: dict[str, Any] = {
-            "fields": [
-                {
-                    "name": "instance",
-                    "type": "Object",
-                    "visibility": "public",
-                    "is_static": True,
-                    "line_range": {"start": 3},
-                },
-            ],
-        }
-        result = formatter.format_structure(data)
-        assert "field" in result
-        assert "instance" in result
-
-
 class TestCreateFullSignatureBranches:
     def test_static_method_signature(self) -> None:
         formatter = LegacyTableFormatter(format_type="full")
@@ -509,62 +370,6 @@ class TestAbbreviateTypeAdvanced:
         assert result == "C"
 
 
-class TestCompactTableClassesNone:
-    def test_compact_with_none_classes(self) -> None:
-        # Bug #778 fixed: classes=None no longer yields '# Unknown'.
-        # When no file_path is supplied the header is blank (but no phantom label).
-        formatter = LegacyTableFormatter(format_type="compact")
-        data: dict[str, Any] = {
-            "classes": None,
-            "methods": [],
-            "fields": [],
-        }
-        result = formatter.format_structure(data)
-        assert "# Unknown" not in result
-
-    def test_compact_no_package(self) -> None:
-        formatter = LegacyTableFormatter(format_type="compact")
-        data: dict[str, Any] = {
-            "classes": [{"name": "MyClass"}],
-            "methods": [],
-            "fields": [],
-        }
-        result = formatter.format_structure(data)
-        assert "# MyClass" in result
-
-    def test_compact_with_methods_and_fields(self) -> None:
-        formatter = LegacyTableFormatter(format_type="compact")
-        data: dict[str, Any] = {
-            "package": {"name": "com.example"},
-            "classes": [{"name": "Service"}],
-            "methods": [
-                {
-                    "name": "process",
-                    "parameters": [
-                        {"type": "String", "name": "input"},
-                    ],
-                    "return_type": "void",
-                    "visibility": "public",
-                    "line_range": {"start": 10, "end": 20},
-                    "complexity_score": 3,
-                },
-            ],
-            "fields": [
-                {
-                    "name": "name",
-                    "type": "String",
-                    "visibility": "private",
-                    "line_range": {"start": 5},
-                },
-            ],
-        }
-        result = formatter.format_structure(data)
-        assert "## Methods" in result
-        assert "## Fields" in result
-        assert "process" in result
-        assert "name" in result
-
-
 class TestShortenTypeBranches:
     def test_none_type(self) -> None:
         formatter = LegacyTableFormatter(format_type="full")
@@ -609,21 +414,3 @@ class TestDocSummaryAndCSVText:
     def test_extract_doc_empty(self) -> None:
         formatter = LegacyTableFormatter()
         assert formatter._extract_doc_summary("") == "-"
-
-    def test_clean_csv_text_with_newlines(self) -> None:
-        formatter = LegacyTableFormatter()
-        result = formatter._clean_csv_text("line1\nline2  line3")
-        assert "line1 line2 line3" == result
-
-    def test_clean_csv_text_empty(self) -> None:
-        formatter = LegacyTableFormatter()
-        assert formatter._clean_csv_text("") == "-"
-
-    def test_clean_csv_text_dash(self) -> None:
-        formatter = LegacyTableFormatter()
-        assert formatter._clean_csv_text("-") == "-"
-
-    def test_clean_csv_text_with_quotes(self) -> None:
-        formatter = LegacyTableFormatter()
-        result = formatter._clean_csv_text('say "hello"')
-        assert '""' in result

@@ -131,34 +131,6 @@ class TestRunMcpToolSync:
         output_json.assert_called_once_with(result_payload)
         assert rc == 0
 
-    def test_print_result_uses_output_toon_in_toon_mode(self, monkeypatch) -> None:
-        """TOON path: ``_print_result`` routes through ``output_toon`` helper."""
-        result_payload = {"success": True, "toon_content": "k:v"}
-        tool_cls = MagicMock(name="ToolCls")
-        tool_cls.return_value.execute = MagicMock(return_value="awaitable")
-        asyncio_run = MagicMock(return_value=result_payload)
-        output_json = MagicMock()
-        context = _make_context(asyncio_run, output_json)
-
-        captured_toon: list[str] = []
-        monkeypatch.setattr(
-            "tree_sitter_analyzer.output_manager.output_toon",
-            lambda s: captured_toon.append(s),
-        )
-
-        rc = _run_mcp_tool_sync(
-            tool_cls,
-            {},
-            project_root=".",
-            args=_make_args("toon"),
-            context=context,
-        )
-
-        assert captured_toon == ["k:v"]
-        # JSON output channel is NOT called when TOON is active.
-        output_json.assert_not_called()
-        assert rc == 0
-
 
 class TestAntiDuplicationGuard:
     """Lock down the helper as the only inline-asyncio-execute site.

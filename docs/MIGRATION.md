@@ -1,94 +1,110 @@
-# Migration Guide: v1.x → v2.0 (66 Tools → 8 Facades)
+# Migration Guide: published v1.29.5 → Unreleased develop
 
-## Why 66 → 8?
+This guide describes the current develop implementation, compared with the published
+v1.29.5 baseline. It does not assign a release version or announce a publication.
+Both already expose **8 MCP facades plus `set_project_path`**; the facade cutover is
+not a new change in this migration.
 
-Tree-sitter Analyzer v1.x registered **66 discrete MCP tools** into every connected client.
-That worked on the CLI and in curl-style clients, but it created two real problems:
+## Changes callers must handle
 
-**Token cost.** Every MCP client (Roo Code, Cline, Copilot, Cursor) injects all tool
-definitions into every prompt. With 66 tools the eager payload hit **24,318 tokens of
-pure tool-definition overhead per session** — exactly the waste that TOON output was
-designed to avoid. The irony: the server that saved 50-70% on *response* tokens was
-burning 24k tokens on *discovery*.
+| Surface | Published v1.29.5 | Unreleased develop |
+|---|---|---|
+| MCP response encoding | TOON by default | JSON only; remove TOON decoding and consume the structured response envelope |
+| CLI machine-readable encoding | JSON available | `--format json`; TOON is removed |
+| Table rendering | Additional legacy table formats | `--table full` or `--table signatures`; compact/csv table modes are removed |
+| Text-search wrappers | `search.content`, `search.grep`; legacy `search_content`, `find_and_grep`; `search-content`, `find-and-grep` commands | Removed; use the host's text/file search tools, or invoke a suitable text-search program directly |
+| Remaining external-tool wrappers | Batch text search, file listing, tool checks | Still available: `search.batch`, `project.files`, `project.tools`, `list-files`, `--check-tools` |
+| Internal file discovery and live symbol tracing | External search processes | Native discovery and a bounded Python source-scanning worker |
 
-**Client breakage.** Cursor caps composed MCP tool names at 60 characters
-(`<server>__<tool>`). Several v1.x names were approaching that limit. Roo Code reports
-degraded tool-selection accuracy above ~50 tools because the LLM's tool picker is
-overwhelmed by near-duplicate names (`codegraph_callers` vs
-`codegraph_call_graph mode=callers`).
+Indexed symbol search and AST queries serve code-intelligence tasks. They are not
+replacements for arbitrary text search in unindexed files. Likewise, indexed
+`structure action=sitemap` is not a live filesystem listing. Native source
+occurrences are heuristic text evidence, not proof of AST call relationships.
 
-v2.0 collapses all 66 tools into **8 domain facades** (`search`, `nav`, `structure`,
-`health`, `edit`, `project`, `index`, `viz`). Each facade exposes an `action` parameter
-that routes to the same inner logic. **No capability is removed** — every tool is
-reachable via `(facade, action)`. The token cost drops to **~4,873 tokens (~80% less)**
-day-one.
+Develop currently has **87 facade actions, 356 unique long CLI flags, and seven
+console-script entry points**. The three published v1.29.5 routes `edit.rename`,
+`health.unreachable`, and `health.middleware` remain available. Explicit rename
+apply can write files; `edit.plan_rename` remains preview-only.
 
-Comparison (tool count in eager MCP surface):
+The remaining wrapper retirement is a separate proposal, not part of the current
+implementation. Optional rg/fd integration is also under qualification; their
+presence on PATH does not select a new core backend. See
+[RFC-0033](../rfcs/0033-native-search-independence.md) and
+[RFC-0034](../rfcs/0034-optional-search-backend-qualification.md).
 
-| Server | Tools |
-|---|---|
-| CodeGraph | ~12 |
-| Rhizome / mycelium | 1 (unified) |
-| **Tree-sitter Analyzer v2.0** | **8 (rich-output: verdict + TOON)** |
-| Tree-sitter Analyzer v1.x | 66 |
+## JSON and index migration
 
----
+Update clients to parse JSON and preserve the response envelope, including error,
+truncation and evidence fields. CLI diagnostics stay on stderr. Human-readable
+legacy CLI paths may still use `--output-format text`; this is not an alternate
+MCP encoding. No global `--format text`, `--format toon`, or `--table csv` exists.
 
-## Shim: one release cycle, then removed
+Rebuild indexes after upgrading when extractor/schema compatibility requires it.
+For an explicit AST index build and subsequent indexed structure view:
 
-v2.0 ships a **backwards-compatibility shim** in the MCP server layer. Any call that
-arrives using a v1.x tool name is transparently forwarded to the correct facade action.
-The shim emits a deprecation warning on **stderr** and includes a `deprecation` field in
-the response envelope so agent-side code can detect it:
+```bash
+uv run python -m tree_sitter_analyzer --ast-cache --ast-cache-mode index --format json
+uv run python -m tree_sitter_analyzer --codegraph-sitemap --codegraph-sitemap-mode flat --format json
+```
+
+## Legacy-name compatibility
+
+The current shim forwards the **65 names** in
+[`LEGACY_TOOL_MAP`](../tree_sitter_analyzer/mcp/facade_map.py). The removed
+`search_content` and `find_and_grep` names are not forwarded. Callers should migrate
+to facades rather than assume every historical name remains supported.
+
+A forwarded dictionary response receives a `deprecation` object; the shim also
+emits a warning on stderr. Example of that field, with the tool-specific response
+fields omitted:
 
 ```json
 {
-  "verdict": "INFO",
-  "deprecation": "codegraph_callers is deprecated (v1.x). Use: nav action=callers",
-  "data": { ... }
+  "deprecation": {
+    "deprecated": true,
+    "old_name": "codegraph_callers",
+    "facade": "nav",
+    "action": "callers",
+    "message": "'codegraph_callers' is deprecated; call 'nav' with action='callers'. The legacy name works for one release cycle."
+  }
 }
 ```
 
-The shim is present in **v2.0 and v2.1** and will be removed in **v2.2**.
+This describes present behavior, not a new promise about a future shim-removal
+version. Follow the migration notes for the selected release before upgrading.
 
----
+## Pin the published baseline
 
-## Pin to v1.x (escape hatch)
-
-If you need uninterrupted v1.x behaviour while your tooling migrates, pin:
+To keep the published behavior while migrating, pin its exact version:
 
 ```bash
-pip install "tree-sitter-analyzer<2"
+pip install "tree-sitter-analyzer==1.29.5"
 ```
 
-Or in `pyproject.toml`:
+For a project, use the normal dependency specification:
 
 ```toml
-[tool.uv.sources]
-tree-sitter-analyzer = { version = "<2" }
+[project]
+dependencies = ["tree-sitter-analyzer==1.29.5"]
 ```
 
----
+## Legacy name → current facade crosswalk
 
-## Old → New crosswalk (all 66 legacy tools)
-
-The table below is the canonical mapping maintained in
-`tree_sitter_analyzer/mcp/facade_map.py`. The shim is derived from this same table.
+This table covers every name in the current `LEGACY_TOOL_MAP`. New facade-only
+actions are listed in the [MCP codemap](CODEMAPS/mcp-tools.md).
 
 ### search facade
 
-| v1.x tool name | v2.0 call |
+| Legacy tool name | Current call |
 |---|---|
 | `codegraph_symbol_search` | `search` `action=symbol` |
-| `query_code` | `search` `action=query` (tree-sitter .scm DSL — distinct from symbol search) |
-| `search_content` | `search` `action=content` |
-| `find_and_grep` | `search` `action=grep` |
+| `query_code` | `search` `action=query` |
 | `batch_search` | `search` `action=batch` |
 | `codegraph_query` | `search` `action=chain` |
 
 ### nav facade
 
-| v1.x tool name | v2.0 call |
+| Legacy tool name | Current call |
 |---|---|
 | `codegraph_navigate` | `nav` `action=navigate` |
 | `codegraph_call_path` | `nav` `action=call_path` |
@@ -98,15 +114,15 @@ The table below is the canonical mapping maintained in
 | `codegraph_impact` | `nav` `action=impact` |
 | `trace_impact` | `nav` `action=trace` |
 | `codegraph_context` | `nav` `action=context` |
-| `codegraph_callers` | `nav` `action=callers` (default `scope=point`) |
-| `codegraph_callees` | `nav` `action=callees` (default `scope=point`) |
-| `codegraph_call_graph` | `nav` `action=callers` `scope=graph` |
+| `codegraph_callers` | `nav` `action=callers` |
+| `codegraph_callees` | `nav` `action=callees` |
 | `codegraph_callee_tree` | `nav` `action=callee_tree` |
 | `codegraph_caller_tree` | `nav` `action=caller_tree` |
+| `codegraph_call_graph` | `nav` `action=callers` `scope=graph` |
 
 ### structure facade
 
-| v1.x tool name | v2.0 call |
+| Legacy tool name | Current call |
 |---|---|
 | `get_code_outline` | `structure` `action=outline` |
 | `analyze_code_structure` | `structure` `action=analyze` |
@@ -119,7 +135,7 @@ The table below is the canonical mapping maintained in
 
 ### health facade
 
-| v1.x tool name | v2.0 call |
+| Legacy tool name | Current call |
 |---|---|
 | `check_project_health` | `health` `action=project` |
 | `check_file_health` | `health` `action=file` |
@@ -136,7 +152,7 @@ The table below is the canonical mapping maintained in
 
 ### edit facade
 
-| v1.x tool name | v2.0 call |
+| Legacy tool name | Current call |
 |---|---|
 | `safe_to_edit` | `edit` `action=safe` |
 | `modification_guard` | `edit` `action=guard` |
@@ -149,7 +165,7 @@ The table below is the canonical mapping maintained in
 
 ### project facade
 
-| v1.x tool name | v2.0 call |
+| Legacy tool name | Current call |
 |---|---|
 | `get_project_overview` | `project` `action=overview` |
 | `list_files` | `project` `action=files` |
@@ -161,10 +177,11 @@ The table below is the canonical mapping maintained in
 | `get_agent_workflow` | `project` `action=workflow` |
 | `decision_journal` | `project` `action=journal` |
 | `doc_sync` | `project` `action=doc_sync` |
+| `get_project_summary` | `project` `action=card` |
 
 ### index facade
 
-| v1.x tool name | v2.0 call |
+| Legacy tool name | Current call |
 |---|---|
 | `codegraph_status` | `index` `action=status` |
 | `ast_cache` | `index` `action=cache` |
@@ -175,37 +192,35 @@ The table below is the canonical mapping maintained in
 
 ### viz facade
 
-| v1.x tool name | v2.0 call |
+| Legacy tool name | Current call |
 |---|---|
 | `codegraph_uml` | `viz` `action=uml` |
 | `codegraph_visualize` | `viz` `action=graph` |
 | `codegraph_similarity` | `viz` `action=similarity` |
 
----
-
 ## Infrastructure tool (not shimmed)
 
 `set_project_path` is **not a facade** and not in the crosswalk above. It mutates
 server-level state (analysis engine, security validator, inner-instance rebind) that
-no inner tool can reach, so it stays as a standalone entry in v2.0. No migration needed.
+no inner tool can reach, so it stays as a standalone entry in both baselines. No migration needed.
 
 ---
 
 ## MCP call examples
 
-**v1.x style (still works via shim through v2.1):**
+**Legacy name (currently forwarded by the shim):**
 
 ```json
 { "tool": "codegraph_callers", "arguments": { "function_name": "execute" } }
 ```
 
-**v2.0 style (preferred):**
+**Facade call (preferred):**
 
 ```json
 { "tool": "nav", "arguments": { "action": "callers", "function_name": "execute" } }
 ```
 
-**v2.0 graph scope (was `codegraph_call_graph`):**
+**Graph scope (legacy `codegraph_call_graph`):**
 
 ```json
 { "tool": "nav", "arguments": { "action": "callers", "function_name": "execute", "scope": "graph" } }
@@ -231,18 +246,7 @@ allowed-tools:
   - mcp__tree-sitter-analyzer__search
 ```
 
-The bundled `tsa-*` skills are updated in v2.0 as part of Wave D / G1.
-
----
-
-## Deprecation timeline
-
-| Version | Status |
-|---|---|
-| v1.x | All 66 tools live, no deprecation |
-| **v2.0** | 8 facades live; shim forwards 66 legacy names with `deprecation` field |
-| v2.1 | Shim still present; legacy names emit louder stderr warning |
-| **v2.2** | Shim removed; legacy names return `NOT_FOUND` |
+Use the bundled `tsa-*` skills that match the installed TSA version.
 
 ---
 

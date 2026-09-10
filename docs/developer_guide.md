@@ -63,9 +63,10 @@
 
 ## 5. テスト
 
-- **テストの実行**: プロジェクト全体のテストは、プロジェクト環境と5分以内の実行契約を使うため `uv run pytest -q` で実行します。
+- **テストの実行**: 5分以内のローカル門禁は `uv run pytest -q`、包括的なローカル検証は `uv run pytest tests/ -q --timeout=120 -m "not e2e and not network and not benchmark"` で実行します。
   ```bash
   uv run pytest -q
+  uv run pytest tests/ -q --timeout=120 -m "not e2e and not network and not benchmark"
   ```
 
   開発中の反復確認は、重い全言語/高速化しきれない suite を外すと体感が安定します。

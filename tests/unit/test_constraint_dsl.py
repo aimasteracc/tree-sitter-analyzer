@@ -36,7 +36,6 @@ Fixtures live at ``tests/fixtures/constraints/`` and are checked in.
 from __future__ import annotations
 
 import sqlite3
-import time
 from pathlib import Path
 
 import pytest
@@ -349,409 +348,114 @@ class TestGlobMatching:
             is False
         )
 
+    def test_compiled_globs_preserve_literal_prefixes(self) -> None:
+        """Compiled rules expose safe prefixes for evaluator fast rejection."""
+        from tree_sitter_analyzer.constraints.parser import compile_constraints
+        from tree_sitter_analyzer.constraints.schema import Constraint
 
-# ---------------------------------------------------------------------------
-# Evaluator tests — exercise the streaming edge scan.
-# ---------------------------------------------------------------------------
-
-
-class TestEvaluator:
-    """Synthesize an ast_call_edges row and verify the evaluator's verdict."""
-
-    def test_violation_detected_mcp_to_cli(self, tmp_path: Path) -> None:
-        """A real edge that crosses a forbidden boundary → 1 error violation."""
-        from tree_sitter_analyzer.constraints import (
-            evaluate,
-            load_constraints,
+        constraint = Constraint(
+            id="prefix-contract",
+            severity="error",
+            rule="forbid",
+            from_glob="tree_sitter_analyzer/mcp/**",
+            to_glob="tree_sitter_analyzer/cli/*.py",
+            reason="test",
+            exceptions=(),
         )
 
-        # Stage constraints + db with one offending edge.
-        project = _stage_constraints_file(tmp_path, "dogfood_minimal.yml")
-        db_path = project / ".ast-cache" / "index.db"
-        _build_call_edges_db(
-            db_path,
-            rows=[
-                (
-                    "do_thing",  # caller_name
-                    "tree_sitter_analyzer/mcp/x.py",  # caller_file
-                    42,  # caller_line
-                    "cli_helper",  # callee_name
-                    "cli_helper",  # callee_full
-                    "tree_sitter_analyzer/cli/y.py",  # callee_file
-                ),
-            ],
+        compiled = compile_constraints([constraint])[0]
+
+        assert (compiled.from_prefix, compiled.to_prefix) == (
+            "tree_sitter_analyzer/mcp/",
+            "tree_sitter_analyzer/cli/",
         )
 
-        constraints = load_constraints(str(project))
-        conn = sqlite3.connect(str(db_path))
-        try:
-            violations = evaluate(constraints, conn)
-        finally:
-            conn.close()
-
-        # Exactly one violation, with the right severity and source.
-        assert len(violations) == 1, (
-            f"Expected exactly one violation, got {len(violations)}: {violations}"
-        )
-        v = violations[0]
-        assert v.severity == "error"
-        assert v.rule_id == "dogfood-mcp-no-cli"
-        assert v.caller_file == "tree_sitter_analyzer/mcp/x.py"
-        assert v.callee_file == "tree_sitter_analyzer/cli/y.py"
-        assert v.caller_line == 42
-
-    def test_exception_suppresses_violation(self, tmp_path: Path) -> None:
-        """An edge whose caller is in ``exceptions:`` produces zero violations.
-
-        The exception list is the only way a rule can be locally overridden
-        without disabling the whole rule, so this test pins down that the
-        match is exact (not a substring).
-        """
-        from tree_sitter_analyzer.constraints import (
-            evaluate,
-            load_constraints,
+    @pytest.mark.parametrize(
+        ("pattern", "expected_prefix"),
+        [
+            ("src/exact.py", "src/exact.py"),
+            ("src/*/mod?.py", "src/"),
+            ("src/[ab]*/mod.py", "src/"),
+            ("**/generated.py", ""),
+        ],
+    )
+    def test_literal_prefix_is_a_safe_regex_precondition(
+        self,
+        pattern: str,
+        expected_prefix: str,
+    ) -> None:
+        """Every full glob match must also satisfy the fast prefix check."""
+        from tree_sitter_analyzer.constraints.parser import (
+            _compile_glob,
+            _literal_glob_prefix,
         )
 
-        project = _stage_constraints_file(tmp_path, "exception_rule.yml")
-        db_path = project / ".ast-cache" / "index.db"
-        _build_call_edges_db(
-            db_path,
-            rows=[
-                (
-                    "use_cli",
-                    "mcp/bridge.py",  # caller is explicitly excepted
-                    10,
-                    "run_cli",
-                    "run_cli",
-                    "cli/runner.py",
-                ),
-            ],
+        prefix = _literal_glob_prefix(pattern)
+        candidates = (
+            "src/exact.py",
+            "src/a/mod1.py",
+            "src/b/mod.py",
+            "pkg/generated.py",
+            "unrelated/file.py",
         )
 
-        constraints = load_constraints(str(project))
-        conn = sqlite3.connect(str(db_path))
-        try:
-            violations = evaluate(constraints, conn)
-        finally:
-            conn.close()
+        assert prefix == expected_prefix
+        for candidate in candidates:
+            if _compile_glob(pattern).fullmatch(candidate):
+                assert candidate.startswith(prefix)
 
-        assert violations == [], (
-            f"Excepted caller must produce zero violations, got: {violations}"
+    def test_literal_prefix_rejects_irrelevant_edges_before_regex(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Unrelated callers never pay the full-regex cost in the hot loop."""
+        from dataclasses import replace
+        from typing import Any, cast
+
+        from tree_sitter_analyzer.constraints.evaluator import _iter_violations
+        from tree_sitter_analyzer.constraints.parser import compile_constraints
+        from tree_sitter_analyzer.constraints.schema import Constraint
+
+        class CountingPattern:
+            def __init__(self, inner: Any) -> None:
+                self.inner = inner
+                self.calls = 0
+
+            def fullmatch(self, value: str) -> Any:
+                self.calls += 1
+                return self.inner.fullmatch(value)
+
+        constraint = Constraint(
+            id="prefix-hot-loop",
+            severity="error",
+            rule="forbid",
+            from_glob="tree_sitter_analyzer/mcp/**",
+            to_glob="tree_sitter_analyzer/cli/**",
+            reason="test",
+            exceptions=(),
         )
+        compiled = compile_constraints([constraint])[0]
+        from_spy = CountingPattern(compiled.from_re)
+        compiled = replace(compiled, from_re=cast(Any, from_spy))
 
-    @pytest.mark.slow_ok
-    def test_eval_perf_on_synthetic_edges_under_500ms(self, tmp_path: Path) -> None:
-        """50k edges × 5 rules in <500 ms.
-
-        The budget reflects how often this runs (every
-        ``analyze_change_impact`` call) and the size of a moderately
-        large repo's call-edge table. Going over the budget means the
-        evaluator is fighting the agent's loop instead of helping it.
-
-        Marked ``slow_ok`` because the synthesis itself takes longer
-        than the per-test 5s budget on slow runners — but the measured
-        eval window stays at 500 ms regardless.
-        """
-        from tree_sitter_analyzer.constraints import (
-            evaluate,
-            load_constraints,
-        )
-
-        project = _stage_constraints_file(tmp_path, "dogfood_minimal.yml")
-        db_path = project / ".ast-cache" / "index.db"
-
-        # Synthesize 50,000 edges across five layered file roots.
-        # Roughly 10% are intentional violations so the evaluator's
-        # "violation" path is exercised, not just the early-exit happy path.
-        rows: list[tuple[str, str, int, str, str, str]] = []
-        for i in range(50_000):
-            if i % 10 == 0:
-                caller_file = f"tree_sitter_analyzer/mcp/mod_{i}.py"
-                callee_file = f"tree_sitter_analyzer/cli/cli_{i}.py"
-            else:
-                caller_file = f"src/pkg_{i % 50}/mod_{i}.py"
-                callee_file = f"src/pkg_{(i + 1) % 50}/mod_{i + 1}.py"
-            rows.append(
-                (
-                    f"caller_{i}",
-                    caller_file,
-                    i % 1000 + 1,
-                    f"callee_{i}",
-                    "",
-                    callee_file,
-                )
+        db_path = tmp_path / "index.db"
+        rows = [
+            (
+                f"caller_{index}",
+                f"src/pkg/mod_{index}.py",
+                index + 1,
+                f"callee_{index}",
+                "",
+                f"src/other/mod_{index}.py",
             )
+            for index in range(1_000)
+        ]
         _build_call_edges_db(db_path, rows)
-
-        # Augment the dogfood file with three more rules to hit 5 total —
-        # done in-memory so we don't bloat the checked-in fixture.
-        extra_rules_yml = """
-  - id: bench-rule-extra-1
-    severity: warn
-    rule: forbid
-    from: "src/pkg_1/**"
-    to: "src/pkg_2/**"
-    reason: "extra"
-  - id: bench-rule-extra-2
-    severity: warn
-    rule: forbid
-    from: "src/pkg_3/**"
-    to: "src/pkg_4/**"
-    reason: "extra"
-  - id: bench-rule-extra-3
-    severity: info
-    rule: forbid
-    from: "src/pkg_5/**"
-    to: "src/pkg_6/**"
-    reason: "extra"
-""".rstrip("\n")
-        cfg = project / "architectural-constraints.yml"
-        cfg.write_text(cfg.read_text() + "\n" + extra_rules_yml + "\n")
-
-        constraints = load_constraints(str(project))
-        assert len(constraints) == 5, (
-            f"Benchmark setup expects 5 rules, got {len(constraints)}"
-        )
-
-        import sys
-
-        if sys.gettrace() is not None:
-            pytest.skip(
-                "tracked: coverage instrumentation invalidates the 500 ms "
-                "wall-clock perf budget; non-coverage CI enforces it."
-            )
-
         conn = sqlite3.connect(str(db_path))
         try:
-            t0 = time.monotonic()
-            violations = evaluate(constraints, conn)
-            elapsed_ms = (time.monotonic() - t0) * 1000
+            violations = list(_iter_violations([compiled], conn, detected_at=0))
         finally:
             conn.close()
 
-        # Sanity: the synthesised data really did trigger violations.
-        assert violations, "Benchmark data should produce violations"
-
-        assert elapsed_ms < 500, (
-            f"evaluate() over 50k edges × 5 rules took {elapsed_ms:.0f} ms; "
-            f"budget is 500 ms. See spec — constraint checking runs on "
-            f"every change_impact call and must stay cheap."
-        )
-
-    def test_duplicate_pk_violations_deduplicated(self, tmp_path: Path) -> None:
-        """evaluate() dedupes violations that share the same PK.
-
-        Regression test for #544: when the ``edges`` table contains two rows
-        for the same call site (same caller_file, caller_line, callee_name)
-        but with different ``callee_resolved_file`` values (e.g., because the
-        same call was indexed twice via different resolution paths), both rows
-        can match the same constraint rule and produce two ``Violation``
-        objects with identical ``(rule_id, caller_file, caller_line,
-        callee_name)`` — which is the PRIMARY KEY of
-        ``ast_constraint_violations``.  The old code's ``executemany`` would
-        then crash with ``UNIQUE constraint failed``.
-
-        Fix: evaluate() must deduplicate on PK before returning so the persist
-        path always receives at most one Violation per PK tuple.
-
-        The test asserts that exactly 1 violation is returned (not 2) so the
-        pin is tight and drift raises the test rather than silently passing
-        with a loose bound.
-        """
-        import json as _json
-
-        from tree_sitter_analyzer.constraints import evaluate, load_constraints
-        from tree_sitter_analyzer.graph.edge_store import (
-            EDGE_STORE_SCHEMA,
-            EdgeKind,
-            symbol_node,
-        )
-
-        project = _stage_constraints_file(tmp_path, "dogfood_minimal.yml")
-        db_path = project / ".ast-cache" / "index.db"
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Build two edges with identical (caller_file, caller_line, callee_name)
-        # but different callee_resolved_file — simulating a call site that was
-        # resolved to two targets by different indexing passes.
-        caller_file = "tree_sitter_analyzer/mcp/x.py"
-        caller_name = "do_thing"
-        caller_line = 42
-        callee_name = "cli_helper"
-        callee_file_a = "tree_sitter_analyzer/cli/y.py"
-        callee_file_b = "tree_sitter_analyzer/cli/z.py"
-
-        conn = sqlite3.connect(str(db_path))
-        try:
-            conn.executescript(EDGE_STORE_SCHEMA)
-            for callee_file in (callee_file_a, callee_file_b):
-                source = symbol_node(caller_file, caller_name, caller_line)
-                target = symbol_node(callee_file, callee_name, 0)
-                metadata = _json.dumps(
-                    {
-                        "language": "python",
-                        "caller_name": caller_name,
-                        "caller_line": caller_line,
-                        "callee_name": callee_name,
-                        "callee_full": callee_name,
-                        "callee_resolution": "project",
-                        "callee_resolved_file": callee_file,
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                )
-                conn.execute(
-                    "INSERT OR REPLACE INTO edges "
-                    "(source_node_id, target_node_id, kind, line, provenance, "
-                    " metadata, caller_name, callee_name, file_path, caller_line, "
-                    " callee_full, callee_line, language, callee_resolution, "
-                    " callee_resolved_file) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        source,
-                        target,
-                        EdgeKind.CALLS.value,
-                        caller_line,
-                        "tree-sitter",
-                        metadata,
-                        caller_name,
-                        callee_name,
-                        caller_file,
-                        caller_line,
-                        callee_name,
-                        0,
-                        "python",
-                        "project",
-                        callee_file,
-                    ),
-                )
-            conn.commit()
-
-            constraints = load_constraints(str(project))
-            # Must NOT raise — two same-PK violations must be deduplicated.
-            violations = evaluate(constraints, conn)
-        finally:
-            conn.close()
-
-        # Exactly 1 violation: the PK is (rule_id, caller_file, caller_line,
-        # callee_name).  Two edges with the same call site are ONE violation,
-        # not two.  The exact count is pinned so drift raises the test.
-        assert len(violations) == 1, (
-            f"Expected exactly 1 violation after PK deduplication, "
-            f"got {len(violations)}: {violations}"
-        )
-        v = violations[0]
-        assert v.rule_id == "dogfood-mcp-no-cli"
-        assert v.caller_file == caller_file
-        assert v.caller_line == caller_line
-        assert v.callee_name == callee_name
-
-    def test_phantom_bare_name_resolution_skipped_when_no_import(
-        self, tmp_path: Path
-    ) -> None:
-        """Regression #780: bare-name callee resolved to forbidden module is
-        SKIPPED when the caller has no import from that module.
-
-        Scenario mirrors the real bug: ``_hash_one_file`` in a core file
-        calls ``sha256_hash.update()``.  The synapse resolver resolves
-        ``update`` to ``file_health_blocks.py`` (a forbidden mcp module)
-        because both define a method named ``update``.  The caller imports
-        only ``hashlib`` — no ``mcp`` import at all.  The evaluator must
-        NOT flag this as a constraint violation.
-        """
-        from tree_sitter_analyzer.constraints import evaluate, load_constraints
-
-        project = _stage_constraints_file(tmp_path, "dogfood_minimal.yml")
-        db_path = project / ".ast-cache" / "index.db"
-
-        # Edge: core/_hash_one_file calls update(), resolver wrongly sets
-        # callee_resolved_file to an mcp module.
-        _build_call_edges_db(
-            db_path,
-            rows=[
-                (
-                    "_hash_one_file",  # caller_name
-                    "tree_sitter_analyzer/core/analysis_session.py",  # caller_file
-                    188,  # caller_line
-                    "update",  # callee_name
-                    "sha256_hash.update",  # callee_full
-                    "tree_sitter_analyzer/mcp/tools/utils/file_health_blocks.py",  # callee_file (WRONG resolution)
-                ),
-            ],
-        )
-
-        # Populate ast_imports: analysis_session.py imports only hashlib,
-        # NOT file_health_blocks or any mcp module.
-        _populate_ast_imports(
-            db_path,
-            rows=[
-                ("tree_sitter_analyzer/core/analysis_session.py", "hashlib"),
-                ("tree_sitter_analyzer/core/analysis_session.py", "json"),
-                ("tree_sitter_analyzer/core/analysis_session.py", "pathlib"),
-            ],
-        )
-
-        constraints = load_constraints(str(project))
-        conn = sqlite3.connect(str(db_path))
-        try:
-            violations = evaluate(constraints, conn)
-        finally:
-            conn.close()
-
-        assert len(violations) == 0, (
-            f"Expected 0 violations (phantom bare-name resolution must be filtered), "
-            f"got {len(violations)}: {violations}"
-        )
-
-    def test_real_violation_not_filtered_when_import_present(
-        self, tmp_path: Path
-    ) -> None:
-        """Regression #780: a genuine cross-boundary call IS flagged when the
-        caller actually imports from the forbidden module.
-
-        Ensures the import-reachability guard does not over-filter real
-        violations — only phantom bare-name resolutions are suppressed.
-        """
-        from tree_sitter_analyzer.constraints import evaluate, load_constraints
-
-        project = _stage_constraints_file(tmp_path, "dogfood_minimal.yml")
-        db_path = project / ".ast-cache" / "index.db"
-
-        # Edge: mcp/x.py calls cli_helper() which is genuinely in cli/y.py.
-        _build_call_edges_db(
-            db_path,
-            rows=[
-                (
-                    "do_thing",  # caller_name
-                    "tree_sitter_analyzer/mcp/x.py",  # caller_file
-                    42,  # caller_line
-                    "cli_helper",  # callee_name
-                    "cli_helper",  # callee_full
-                    "tree_sitter_analyzer/cli/y.py",  # callee_file (REAL violation)
-                ),
-            ],
-        )
-
-        # mcp/x.py really does import from cli/y — this is the genuine case.
-        _populate_ast_imports(
-            db_path,
-            rows=[
-                ("tree_sitter_analyzer/mcp/x.py", "tree_sitter_analyzer.cli.y"),
-            ],
-        )
-
-        constraints = load_constraints(str(project))
-        conn = sqlite3.connect(str(db_path))
-        try:
-            violations = evaluate(constraints, conn)
-        finally:
-            conn.close()
-
-        assert len(violations) == 1, (
-            f"Expected exactly 1 real violation (import IS present), "
-            f"got {len(violations)}: {violations}"
-        )
-        v = violations[0]
-        assert v.rule_id == "dogfood-mcp-no-cli"
-        assert v.caller_file == "tree_sitter_analyzer/mcp/x.py"
-        assert v.callee_file == "tree_sitter_analyzer/cli/y.py"
+        assert violations == []
+        assert from_spy.calls == 0

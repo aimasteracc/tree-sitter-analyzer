@@ -82,7 +82,7 @@ def test_cli_has_dir() -> None:
 @pytest.mark.skip(
     reason="This test pollutes sys.modules/sys.meta_path in a way that "
     "leaks into neighbouring tests on xdist loadfile workers — "
-    "test_cli_exports / test_find_and_grep_cli observe a None-fallback "
+    "test_cli_exports observe a None-fallback "
     "cli module afterwards on macOS+Windows. The fallback path it "
     "guards is defensive (imports already work in real installs); "
     "skip until the test is rewritten with subprocess isolation."

@@ -87,9 +87,9 @@ class CodeGraphASTPathTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "enum": ["json"],
+                    "description": "Output format: JSON",
+                    "default": "json",
                 },
             },
             "required": ["file_path"],
@@ -112,7 +112,7 @@ class CodeGraphASTPathTool(BaseMCPTool):
         line = arguments.get("line")
         language = arguments.get("language")
         max_depth = int(arguments.get("max_depth", 3))
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         resolved = self.resolve_and_validate_file_path(file_path)
         nav = self._get_navigator()
@@ -175,6 +175,6 @@ class CodeGraphASTPathTool(BaseMCPTool):
             },
         }
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)

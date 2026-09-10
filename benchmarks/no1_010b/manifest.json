@@ -1,0 +1,48 @@
+{
+  "schema": "no1-010b/manifest/1",
+  "note": "In-repository drift detector for the NO1-010B corpus: preflight recomputes these digests and fails on mismatch. It is NOT the C14/C27 external registration anchor - a git-committed file cannot establish pre-execution ordering. Digests normalise CRLF to LF so they never depend on checkout configuration.",
+  "corpus_sha256": "310c00a661df851d7eb3191507561c3d452a6103e571906d67855cf188f6e43b",
+  "fixture_tree_sha256": "f51055a82726490d52d95cdec7c529c078e43d1eeb4f641e0c47853353995c6b",
+  "oracles": [
+    {
+      "oracle": "oracles/0001.py",
+      "oracle_sha256": "daa597f17ab8b189d2017ae806f4a75110d5ccf14bfed183936ad97839730671"
+    },
+    {
+      "oracle": "oracles/0002.py",
+      "oracle_sha256": "84f9243397661b6b6c843d3cf519ed855dbede397061bd8c514012eb9884d820"
+    },
+    {
+      "oracle": "oracles/0003.py",
+      "oracle_sha256": "8181fa461582ef4d5463e8b5d53ec84fc827c399f7d2a893bf1ef40aee0b75de"
+    },
+    {
+      "oracle": "oracles/0004.py",
+      "oracle_sha256": "e8f79a8364f05e23defa478c706e15c7c76b4f446f6aefaf86f18bec93ca20f1"
+    },
+    {
+      "oracle": "oracles/0005.py",
+      "oracle_sha256": "6e01c58c5387dad4f725faab59bf068408ed4ae76b5b44d776fef11a2d95ccff"
+    },
+    {
+      "oracle": "oracles/0006.py",
+      "oracle_sha256": "db01378d32007c17015ab31f1632fcfb7cd11e47329940d2360e131faf4a913a"
+    },
+    {
+      "oracle": "oracles/0007.py",
+      "oracle_sha256": "606b9a8a11c074f41dd187ac984fdf9b38f17868715ce6d47bc446b08e2c3319"
+    },
+    {
+      "oracle": "oracles/0008.py",
+      "oracle_sha256": "0fb72e200c88665598904c70d157243601fe3ae33daaed5fd71863f6fcb40112"
+    },
+    {
+      "oracle": "oracles/0009.py",
+      "oracle_sha256": "8686b1856cc25393048b54a56985e91df1415676a5f59ba1342975ff785006b0"
+    },
+    {
+      "oracle": "oracles/0010.py",
+      "oracle_sha256": "437cf9d0814a17ae2203c9eff8b763cbc3093349fb43c10ee5de3af961ba3fda"
+    }
+  ]
+}

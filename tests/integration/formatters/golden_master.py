@@ -21,7 +21,7 @@ class GoldenMasterTester:
         Initialize golden master tester
 
         Args:
-            format_type: Format type (full, compact, csv)
+            format_type: Format type (full)
             test_data_dir: Base directory for test data (defaults to tests/golden_masters)
         """
         self.format_type = format_type
@@ -104,7 +104,7 @@ class GoldenMasterTester:
 
     def _get_file_extension(self) -> str:
         """Get appropriate file extension for format type"""
-        extension_map = {"full": "md", "compact": "md", "csv": "csv", "json": "json"}
+        extension_map = {"full": "md", "json": "json"}
         return extension_map.get(self.format_type, "txt")
 
     def _generate_diff(self, expected: str, actual: str, test_name: str) -> str:
@@ -178,7 +178,7 @@ class GoldenMasterManager:
         Get or create a golden master tester for format type
 
         Args:
-            format_type: Format type (full, compact, csv)
+            format_type: Format type (full)
 
         Returns:
             GoldenMasterTester instance
@@ -196,7 +196,7 @@ class GoldenMasterManager:
         Validate outputs for all formats against golden masters
 
         Args:
-            outputs: Dictionary mapping format_type to output content
+            outputs: Dictionary mapping format_type to output content (full only)
             test_name: Name of the test case
             update_golden: If True, update golden masters
         """
@@ -249,13 +249,3 @@ def full_format_golden_tester():
     return GoldenMasterTester("full")
 
 
-@pytest.fixture
-def compact_format_golden_tester():
-    """Fixture providing golden master tester for compact format"""
-    return GoldenMasterTester("compact")
-
-
-@pytest.fixture
-def csv_format_golden_tester():
-    """Fixture providing golden master tester for CSV format"""
-    return GoldenMasterTester("csv")

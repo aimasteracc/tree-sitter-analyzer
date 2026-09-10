@@ -21,13 +21,26 @@ import time
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from ...constraints import evaluate, load_constraints
-from ...constraints.parser import ConstraintParseError, _compile_glob
+from ...constraints.parser import (
+    ConstraintParseError,
+    _compile_glob,
+    load_constraints_bytes,
+)
 from ...mcp.tools.constraint_check_tool import ConstraintCheckTool
+from .constraint_check_execution import (
+    ExplicitConfigEvidence,
+    explicit_config_evidence,
+)
+from .constraint_check_persistence import run_and_persist
 
 _SEVERITY_ORDER: dict[str, int] = {"info": 0, "warn": 1, "error": 2}
 _BLOCKING_SEVERITIES: frozenset[str] = frozenset({"error"})
 _WARNING_SEVERITIES: frozenset[str] = frozenset({"warn"})
+_EXPLICIT_CONFIG_BYTE_LIMIT = 1024 * 1024
+_EXPLICIT_CONFIG_READ_SECONDS = 10.0
 
 # Exit-code contract for CI/CD wrappers. UNSAFE blocks (exit 1) so a
 # `--check-constraints` step in a Makefile/Husky hook fails the pipeline
@@ -57,6 +70,20 @@ def run_check_constraints(args: Any, project_root: str) -> int:
     severity_min = getattr(args, "severity_min", None) or "warn"
     path_filter = getattr(args, "constraint_path_filter", "") or ""
     constraint_file = getattr(args, "constraint_file", None)
+    read_only = bool(getattr(args, "constraints_read_only", False))
+
+    # Codex P1 (#1257): the RFC-0022 read-existing consumer route forwards
+    # its process-local controls through the same in-process bridge the
+    # other CLI handler routes use.
+    from .mcp_commands._read_existing_bridge import _forward_read_existing_controls
+
+    read_existing_controls = _forward_read_existing_controls(
+        args,
+        {},
+        controls=frozenset(
+            {"access_mode", "diff_snapshot_id", "snapshot_id", "source_generation"}
+        ),
+    )
 
     if constraint_file:
         # CLI-only path: explicit constraint file, evaluate directly so
@@ -68,6 +95,7 @@ def run_check_constraints(args: Any, project_root: str) -> int:
             severity_min=severity_min,
             path_filter=path_filter,
             output_format=output_format,
+            persist=not read_only,
         )
     else:
         # Default path: delegate to the MCP tool so CLI and MCP share a
@@ -78,6 +106,8 @@ def run_check_constraints(args: Any, project_root: str) -> int:
                 severity_min=severity_min,
                 path_filter=path_filter,
                 output_format=output_format,
+                persist=not read_only,
+                read_existing_controls=read_existing_controls,
             )
         )
 
@@ -90,16 +120,36 @@ def _run_tool(
     severity_min: str,
     path_filter: str,
     output_format: str,
+    persist: bool = True,
+    read_existing_controls: dict[str, Any] | None = None,
 ) -> Any:
     """Await the MCP ConstraintCheckTool with CLI-supplied arguments."""
     tool = ConstraintCheckTool(project_root=project_root)
-    return tool.execute(
-        {
-            "path_filter": path_filter,
-            "severity_min": severity_min,
-            "output_format": output_format,
-        }
-    )
+    tool_arguments: dict[str, Any] = {
+        "path_filter": path_filter,
+        "severity_min": severity_min,
+        "output_format": output_format,
+    }
+    if not persist:
+        tool_arguments["persist"] = False
+    if read_existing_controls:
+        tool_arguments.update(read_existing_controls)
+    return tool.execute(tool_arguments)
+
+
+def _explicit_config_evidence(
+    config_path: Path, deadline: float
+) -> ExplicitConfigEvidence:
+    return explicit_config_evidence(config_path, deadline)
+
+
+def _explicit_config_changed(
+    config_path: Path, before: ExplicitConfigEvidence, deadline: float
+) -> bool:
+    try:
+        return _explicit_config_evidence(config_path, deadline) != before
+    except (OSError, RuntimeError):
+        return True
 
 
 def _evaluate_with_explicit_file(
@@ -109,6 +159,7 @@ def _evaluate_with_explicit_file(
     severity_min: str,
     path_filter: str,
     output_format: str,
+    persist: bool = True,
 ) -> dict[str, Any]:
     """Evaluate against an explicit constraint file (CLI-only override).
 
@@ -123,16 +174,35 @@ def _evaluate_with_explicit_file(
             f"constraint file not found: {constraint_file}", output_format
         )
 
-    # ``load_constraints`` discovers the file under project_root, so we
-    # temporarily point it at the YAML's parent — keeping the parse path
-    # identical to the default flow.
+    config_deadline = time.monotonic() + _EXPLICIT_CONFIG_READ_SECONDS
+    config_before: ExplicitConfigEvidence | None = None
     try:
-        constraints = _load_explicit(config_path)
-    except ConstraintParseError as exc:
+        if not persist:
+            config_before = _explicit_config_evidence(config_path, config_deadline)
+            constraints = load_constraints_bytes(config_before[0], config_path)
+        else:
+            constraints = _load_explicit(config_path)
+    except (ConstraintParseError, OSError, RuntimeError) as exc:
         return _failure_envelope(f"constraint parse error: {exc}", output_format)
 
-    db_path = Path(project_root) / ".ast-cache" / "index.db"
-    if not db_path.is_file():
+    if not constraints and not persist:
+        assert config_before is not None
+        if _explicit_config_changed(config_path, config_before, config_deadline):
+            return _config_changed_envelope(0, output_format)
+        return _format_response(
+            {
+                "success": True,
+                "verdict": "SAFE",
+                "violations": [],
+                "rule_count": 0,
+                "evaluated_edge_count": 0,
+                "constraint_file": str(config_path),
+            },
+            output_format,
+        )
+
+    db_path = resolve_index_path(project_root)
+    if persist and not db_path.is_file():
         return _format_response(
             {
                 "success": True,
@@ -149,12 +219,59 @@ def _evaluate_with_explicit_file(
         )
 
     min_severity_rank = _SEVERITY_ORDER.get(severity_min, 1)
-    violations, edge_count = _run_and_persist(db_path, constraints)
-    filtered = _filter_violations(
-        violations,
-        path_filter=path_filter,
-        min_severity_rank=min_severity_rank,
-    )
+    try:
+        if persist:
+            from ...cache.generation_indexing import mutate_index_path
+
+            violations, edge_count = mutate_index_path(
+                project_root,
+                db_path,
+                lambda private: _run_and_persist(private, constraints, persist=True),
+            )
+            filtered = _filter_violations(
+                violations,
+                path_filter=path_filter,
+                min_severity_rank=min_severity_rank,
+            )
+        else:
+            filtered, edge_count = ConstraintCheckTool(
+                project_root=project_root
+            )._run_read_only(
+                db_path,
+                constraints,
+                path_filter=path_filter,
+                min_severity_rank=min_severity_rank,
+                evaluator=evaluate,
+                deadline=config_deadline,
+            )
+    except (
+        sqlite3.DatabaseError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        AttributeError,
+    ) as exc:
+        error_code = (
+            "CONSTRAINT_EVALUATION_CAPACITY"
+            if str(exc) == "CONSTRAINT_EVALUATION_CAPACITY"
+            else "CONSTRAINT_INDEX_UNKNOWN"
+        )
+        return _format_response(
+            {
+                "success": False,
+                "verdict": "ERROR",
+                "error_code": error_code,
+                "error": str(exc),
+                "violations": [],
+                "rule_count": len(constraints),
+            },
+            output_format,
+        )
+    if not persist:
+        assert config_before is not None
+        if _explicit_config_changed(config_path, config_before, config_deadline):
+            return _config_changed_envelope(len(constraints), output_format)
     verdict = _compute_verdict(filtered)
     return _format_response(
         {
@@ -195,53 +312,16 @@ def _load_explicit(config_path: Path) -> list[Any]:
 def _run_and_persist(
     db_path: Path,
     constraints: list[Any],
+    *,
+    persist: bool = True,
 ) -> tuple[list[Any], int]:
-    """Run evaluator + persist violations (mirrors the MCP tool's path)."""
-    conn = sqlite3.connect(str(db_path))
-    try:
-        conn.execute(_violations_ddl())
-        try:
-            edge_count = int(
-                conn.execute(
-                    "SELECT COUNT(*) FROM edges WHERE kind = 'calls'"
-                ).fetchone()[0]
-            )
-        except sqlite3.OperationalError:
-            edge_count = 0
-        if edge_count == 0:
-            return [], 0
-        try:
-            violations = evaluate(constraints, conn)
-        except Exception:  # noqa: BLE001 — degrade rather than crash CLI
-            return [], edge_count
-
-        conn.execute("DELETE FROM ast_constraint_violations")
-        now = int(time.time())
-        conn.executemany(
-            """
-            INSERT OR IGNORE INTO ast_constraint_violations
-                (rule_id, caller_file, caller_name, caller_line,
-                 callee_name, callee_file, severity, detected_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    v.rule_id,
-                    v.caller_file,
-                    v.caller_name,
-                    v.caller_line,
-                    v.callee_name,
-                    v.callee_file,
-                    v.severity,
-                    v.detected_at or now,
-                )
-                for v in violations
-            ],
-        )
-        conn.commit()
-        return violations, edge_count
-    finally:
-        conn.close()
+    return run_and_persist(
+        db_path,
+        constraints,
+        persist=persist,
+        evaluator=evaluate,
+        violations_ddl=_violations_ddl,
+    )
 
 
 def _filter_violations(
@@ -303,10 +383,22 @@ def _violations_ddl() -> str:
 
 
 def _format_response(payload: dict[str, Any], output_format: str) -> dict[str, Any]:
-    """Apply TOON formatting when requested, identical to MCP tool helper."""
-    from ...mcp.utils.format_helper import apply_toon_format_to_response
+    """Normalize the command payload through the JSON response helper."""
+    from ...mcp.utils.format_helper import apply_output_format_to_response
 
-    return apply_toon_format_to_response(payload, output_format)
+    return apply_output_format_to_response(payload, output_format)
+
+
+def _config_changed_envelope(rule_count: int, output_format: str) -> dict[str, Any]:
+    payload = {
+        "success": False,
+        "verdict": "ERROR",
+        "violations": [],
+        "error_code": "CONSTRAINT_CONFIG_CHANGED",
+        "error": "CONSTRAINT_CONFIG_CHANGED",
+        "rule_count": rule_count,
+    }
+    return _format_response(payload, output_format)
 
 
 def _failure_envelope(message: str, output_format: str) -> dict[str, Any]:
@@ -324,22 +416,19 @@ def _failure_envelope(message: str, output_format: str) -> dict[str, Any]:
 
 
 def _resolve_output_format(args: Any) -> str:
-    """Return ``json`` or ``toon`` based on argparse-visible format flags.
+    """Return the canonical JSON output format.
 
-    Delegates to :func:`tree_sitter_analyzer.cli.output_format.resolve_mcp_tool_format`
-    so the args→tool-format mapping has one source of truth (r37an).
+    Delegates to :func:`tree_sitter_analyzer.cli.output_format.resolve_output_format`
+    so the args-to-tool-format mapping has one source of truth.
     """
-    from tree_sitter_analyzer.cli.output_format import resolve_mcp_tool_format
+    from tree_sitter_analyzer.cli.output_format import resolve_output_format
 
-    return resolve_mcp_tool_format(args)
+    return resolve_output_format(args)
 
 
 def _print_result(result: dict[str, Any], output_format: str) -> None:
     """Write the response to stdout in the requested format."""
-    if output_format == "toon":
-        print(result.get("toon_content", ""))
-    else:
-        print(json.dumps(result, indent=2, default=str))
+    print(json.dumps(result, indent=2, default=str))
 
 
 def _exit_code_for(result: dict[str, Any]) -> int:

@@ -115,9 +115,9 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
+                    "enum": ["json"],
+                    "description": "Output format: JSON",
+                    "default": "json",
                 },
             },
             "required": ["query"],
@@ -143,7 +143,7 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         # hits are plenty to judge relevance; callers raise ``limit`` for a
         # wider sweep.
         limit = arguments.get("limit", DEFAULT_SYMBOL_SEARCH_LIMIT)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         cache = self._get_cache()
 
         raw_results = self._search(cache, query, language, kind, limit)
@@ -200,14 +200,18 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                     f"Run structure action=explore query={query!r} before "
                     "raw grep/read to bulk-fetch related symbols and concept matches."
                 )
+        if not results:
+            from ..utils.auto_index_guard import empty_index_diagnostic
+
+            result.update(empty_index_diagnostic(cache))
         if language:
             result["language_filter"] = language
         if kind != "any":
             result["kind_filter"] = kind
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _search(
         self,

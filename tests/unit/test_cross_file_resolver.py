@@ -99,6 +99,94 @@ class TestCrossFileResolverBuild:
         assert "utils" in mod_paths
 
 
+@pytest.fixture
+def mts_project(tmp_path):
+    """A real indexed project whose .mts entry imports an extensionless sibling."""
+    project = tmp_path / "mtsproj"
+    project.mkdir()
+    (project / "src").mkdir()
+
+    (project / "src" / "util.mts").write_text(
+        "export function run(value: number): number {\n    return value + 1;\n}\n"
+    )
+    (project / "src" / "app.mts").write_text(
+        "import { run } from './util';\n"
+        "\n"
+        "export function main(): number {\n"
+        "    return run(1);\n"
+        "}\n"
+    )
+
+    cache = ASTCache(str(project))
+    cache.index_project(max_files=100)
+    yield project, cache
+    cache.close()
+
+
+class TestNodeModuleCrossFileResolution:
+    """PUBLIC API: an ESM import in a .mts file must bind across files.
+
+    Regression for the Codex finding on #1312: ``_register_module_path``
+    registered ``src/util.mts`` correctly, but the LOOKUP in
+    ``_resolve_module_to_file`` probed only ``("", ".py", ".js", ".ts",
+    "/__init__.py")`` — so the relative ``./util`` never matched and the
+    binding was dropped. Registration worked; resolution did not.
+    """
+
+    def test_esm_relative_import_binds_to_mts_sibling(self, mts_project):
+        _project, cache = mts_project
+        resolver = CrossFileResolver(cache)
+        resolver.build()
+        assert resolver._name_to_source["src/app.mts"]["run"] == "src/util.mts"
+
+    def test_resolve_callee_finds_cross_file_mts_definition(self, mts_project):
+        _project, cache = mts_project
+        resolver = CrossFileResolver(cache)
+        resolver.build()
+        files = [
+            path for path, _confidence in resolver.resolve_callee("run", "src/app.mts")
+        ]
+        assert "src/util.mts" in files
+
+
+class TestRegisterNodeModulePaths:
+    """``_register_module_path`` must strip the full Node module suffix.
+
+    ``"src/util.mts".endswith(".ts")`` is True, so a probe table that lists
+    ``.ts`` before ``.mts`` mangles the module name into ``src.util.m`` and
+    every ``./util`` import against it fails to resolve.
+    """
+
+    @staticmethod
+    def _register(fp: str, language: str) -> dict[str, str]:
+        resolver = CrossFileResolver(None)
+        resolver._register_module_path(fp, language)
+        return resolver._module_to_file
+
+    def test_mts_dotted_module_name(self):
+        assert (
+            self._register("src/util.mts", "typescript")["src.util"] == "src/util.mts"
+        )
+
+    def test_mts_short_module_name(self):
+        assert self._register("src/util.mts", "typescript")["util"] == "src/util.mts"
+
+    def test_cts_dotted_module_name(self):
+        assert (
+            self._register("src/util.cts", "typescript")["src.util"] == "src/util.cts"
+        )
+
+    def test_mjs_dotted_module_name(self):
+        assert (
+            self._register("src/util.mjs", "javascript")["src.util"] == "src/util.mjs"
+        )
+
+    def test_cjs_dotted_module_name(self):
+        assert (
+            self._register("src/util.cjs", "javascript")["src.util"] == "src/util.cjs"
+        )
+
+
 class TestCrossFileResolution:
     def test_resolve_same_file_callee(self, multi_file_project):
         _project, cache = multi_file_project

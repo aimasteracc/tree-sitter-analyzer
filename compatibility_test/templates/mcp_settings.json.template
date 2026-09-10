@@ -16,9 +16,7 @@
         "check_code_scale",
         "extract_code_section",
         "set_project_path",
-        "list_files",
-        "find_and_grep",
-        "search_content"
+        "list_files"
       ],
       "timeout": 3600,
       "disabled": true
@@ -39,9 +37,7 @@
         "check_code_scale",
         "extract_code_section",
         "set_project_path",
-        "list_files",
-        "find_and_grep",
-        "search_content"
+        "list_files"
       ],
       "timeout": 3600,
       "disabled": true

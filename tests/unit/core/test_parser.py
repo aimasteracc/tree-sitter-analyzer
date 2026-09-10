@@ -201,13 +201,14 @@ class TestParserLanguageSupport:
         """Test getting list of supported languages."""
         languages = parser.get_supported_languages()
         assert isinstance(languages, list)
-        # 24 in CI (full grammar set). 23 locally when optional wheels such as
-        # tree-sitter-swift are absent. Acceptable range: [23, 24].
-        # A grammar add/remove outside this range should trip this test.
+        # 25 with both optional Swift and Lua grammars installed; otherwise the
+        # expectation subtracts each missing wheel exactly so a legitimate
+        # minimal install stays green and registry drift still trips the test.
         import importlib.util
 
         swift_available = importlib.util.find_spec("tree_sitter_swift") is not None
-        expected = 24 if swift_available else 23
+        lua_available = importlib.util.find_spec("tree_sitter_lua") is not None
+        expected = 23 + int(swift_available) + int(lua_available)
         assert len(languages) == expected, (
             f"expected {expected}, got {len(languages)}: {languages}"
         )
@@ -418,3 +419,24 @@ def temp_file() -> Path:
         temp_path.unlink()
     except Exception:
         pass
+
+
+@pytest.mark.parametrize("clear_stat", [False, True])
+def test_parse_file_cache_uses_current_content(tmp_path, clear_stat):
+    """保留时间戳和大小的改写不能复用旧 AST。"""
+    import os
+
+    path = tmp_path / "same.py"
+    path.write_text("before = 1\n", encoding="utf-8")
+    parser = Parser()
+    first = parser.parse_file(path, "python")
+    before = path.stat()
+    path.write_text("after_ = 2\n", encoding="utf-8")
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    if clear_stat:
+        Parser.invalidate_stat_cache()
+    second = parser.parse_file(path, "python")
+    assert first.source_code == "before = 1\n"
+    assert second.source_code == "after_ = 2\n"
+    assert second.tree.root_node.text == b"after_ = 2\n"
+    assert parser.parse_file(path, "python") is second

@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .verification_command import join_verification_steps
+
 LARGE_DIRTY_DIFF_THRESHOLD = 25
 
 # Pol3 (round-21): the in-response preview lists (``changed_preview``,
@@ -202,6 +204,7 @@ def build_agent_summary_only_response(result: dict[str, Any]) -> dict[str, Any]:
         "stop_condition": summary.get("stop_condition", ""),
     }
     for key in (
+        "error_code",
         "resource_profile",
         "local_verification_command",
         "low_impact_focused_test_command",
@@ -406,8 +409,10 @@ def build_change_impact_response(
         "test_runner": verification["test_runner"],
         "default_test_command": verification["default_test_command"],
         "pytest_required": verification["pytest_required"],
-        "pytest_command": verification["pytest_command"],
-        "test_command": verification["test_command"],
+        "pytest_command": verification_command
+        if verification["pytest_required"]
+        else "",
+        "test_command": verification_command if verification["test_required"] else "",
         "verification_command": verification_command,
         "verification_reason": verification["verification_reason"],
         "focused_test_command": strategy["focused_test_command"],
@@ -426,7 +431,9 @@ def build_change_impact_response(
         value = strategy.get(key)
         if value:
             response[key] = value
-    return response
+    from ....verification_plan import attach_commands
+
+    return attach_commands(response, context)
 
 
 def _agent_next_step(verification: dict[str, Any], strategy: dict[str, Any]) -> str:
@@ -470,6 +477,15 @@ def _agent_stop_condition(
                 "or queue-boundary command."
             )
         return f"{local} exits successfully locally."
+    steps = strategy.get("verification_steps") or [verification["verification_command"]]
+    if len(steps) > 1:
+        completion = "All verification steps pass in order: " + "; ".join(steps)
+        if risk == "high" and verification["default_test_command"] not in steps:
+            return (
+                completion
+                + f"; run {verification['default_test_command']} at the queue boundary."
+            )
+        return completion + "."
     if (
         risk == "high"
         and verification["verification_command"] != verification["default_test_command"]
@@ -490,6 +506,9 @@ def _effective_verification_command(
     local_command = strategy.get("local_verification_command")
     if isinstance(local_command, str) and local_command:
         return local_command
+    steps = strategy.get("verification_steps")
+    if steps:
+        return join_verification_steps(steps)
     command = verification["verification_command"]
     return command if isinstance(command, str) else str(command)
 

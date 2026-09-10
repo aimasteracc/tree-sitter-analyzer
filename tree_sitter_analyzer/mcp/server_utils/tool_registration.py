@@ -9,7 +9,6 @@ except ImportError:
     Tool = Any
 
 from ...utils import setup_logger
-from ..utils.format_helper import reduce_to_control_surface
 from ..utils.schema_strictness import enforce_strict_params
 from .error_recovery import (
     build_agent_friendly_error,
@@ -63,8 +62,8 @@ def register_tools(server: Any, server_instance: Any) -> None:
             server_instance.validate_file_path_security(arguments)
             result = await _dispatch_tool(server_instance, name, arguments)
             # Central envelope normalization: tools that return their own
-            # ``{success: False, ...}`` dicts (find_and_grep, refactoring_suggestions,
-            # read_partial, query, search_content) get the canonical
+            # ``{success: False, ...}`` dicts (refactoring_suggestions,
+            # read_partial, query) get the canonical
             # ``agent_summary``/``summary_line``/``error_type`` keys added here
             # — without losing any tool-specific fields they already set.
             if isinstance(result, dict) and result.get("success") is False:
@@ -77,23 +76,10 @@ def register_tools(server: Any, server_instance: Any) -> None:
                 # that build an agent_summary but never set summary_line
                 # (FileHealth, ProjectHealth, RefactoringSuggestions, ...).
                 # Idempotent — tools that already set ``summary_line`` keep
-                # their value. Applies to TOON responses too because TOON
-                # mode keeps ``agent_summary``/``summary_line`` as metadata
-                # alongside the ``toon_content`` blob.
+                # their value.
                 result = ensure_canonical_success_envelope(
                     name, result, arguments=arguments
                 )
-            # RFC-0012 Phase 1: the compact reduction MUST run here, AFTER the
-            # canonical envelope normalization above (which re-adds
-            # summary_line/agent_summary). Keyed on the caller's
-            # ``compact_only`` request and only touching TOON responses; it is
-            # idempotent, so a tool's execute may also have reduced already.
-            if (
-                isinstance(result, dict)
-                and arguments.get("compact_only")
-                and result.get("format") == "toon"
-            ):
-                result = reduce_to_control_surface(result)
             return [
                 TextContent(
                     type="text",

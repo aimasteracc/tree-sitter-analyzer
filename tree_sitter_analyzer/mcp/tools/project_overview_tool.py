@@ -139,9 +139,9 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
+            "enum": ["json"],
             "description": "Output format",
-            "default": "toon",
+            "default": "json",
         },
     },
     "additionalProperties": False,
@@ -210,7 +210,7 @@ class ProjectOverviewTool(BaseMCPTool):
 
         include_health = arguments.get("include_health", False)
         max_depth = arguments.get("max_depth", 5)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         root = Path(self.project_root).resolve()
         if not root.is_dir():
@@ -219,16 +219,16 @@ class ProjectOverviewTool(BaseMCPTool):
         scan = _scan_project(root, max_depth)
         result = _build_result(root, scan, include_health)
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
 
 def _load_gitignore_patterns(root: Path) -> pathspec.PathSpec | None:
     """Load .gitignore patterns from the project root.
 
     Returns a pathspec.PathSpec object if .gitignore exists, None otherwise.
-    Uses gitwildmatch syntax to match git's semantics.
+    Uses gitignore syntax to match git's semantics.
     """
     gitignore_path = root / ".gitignore"
     if not gitignore_path.exists():
@@ -246,7 +246,7 @@ def _load_gitignore_patterns(root: Path) -> pathspec.PathSpec | None:
         if not patterns:
             return None
 
-        return pathspec.PathSpec.from_lines("gitwildmatch", patterns)
+        return pathspec.GitIgnoreSpec.from_lines(patterns)
     except Exception as e:
         logger.warning(f"Failed to load .gitignore from {gitignore_path}: {e}")
         return None
@@ -677,13 +677,11 @@ def _build_tool_routing() -> dict[str, str]:
         "read_lines": (
             "structure action=read file_path='...' start_line=1 end_line=100"
         ),
-        # Symbol + text search (8-facade names — Wave C2 surface)
+        # Symbol + text search (facade names — Wave C2 surface)
         "find_symbol": (
             "search action=symbol query='...'  # wildcards: *Service, fuzzy: ~analyz"
         ),
-        "search_text": ("search action=content query='...' total_only=true  # ~10 tok"),
         "find_files": "project action=files path='.' extensions=['py']",
-        "find_and_grep": "search action=grep query='...' roots=['.']",
         # Deep analysis
         "deps": "health action=deps mode='summary'",
         "call_graph": "nav action=callers scope=graph",

@@ -58,7 +58,15 @@ class BaseCommand(ABC):
 
         from pathlib import Path
 
-        if not Path(self.args.file_path).exists():
+        path = Path(self.args.file_path)
+        if path.is_dir():
+            output_error(f"Path is a directory, not a file: {self.args.file_path}")
+            output_info(
+                "Provide a single file path. "
+                "For project-level analysis use --overview or --project-card."
+            )
+            return False
+        if not path.is_file():
             output_error(f"File not found: {self.args.file_path}")
             output_info("Check the file path and try again.")
             return False
@@ -105,7 +113,7 @@ class BaseCommand(ABC):
 
         Matches the MCP ``ToolResponse`` shape: ``success=False``,
         ``error_type='validation'``, top-level ``summary_line`` mirrored
-        in ``agent_summary``, and ``verdict='ERROR'``. JSON/TOON go to
+        in ``agent_summary``, and ``verdict='ERROR'``. JSON goes to
         stdout so callers can ``json.loads(stdout)``; text mode falls
         back to ``output_error`` (stderr).
         """
@@ -146,19 +154,6 @@ class BaseCommand(ABC):
             # stdout is the machine-readable channel — keep it parseable.
             print(json.dumps(envelope, ensure_ascii=False))
             return
-
-        if output_format == "toon":
-            try:
-                from ...formatters.toon_formatter import ToonFormatter
-
-                use_tabs = getattr(self.args, "toon_use_tabs", False)
-                print(ToonFormatter(use_tabs=use_tabs).format(envelope))
-                return
-            except Exception:
-                # If TOON formatter unavailable, fall back to JSON so the
-                # caller still gets a parseable envelope.
-                print(json.dumps(envelope, ensure_ascii=False))
-                return
 
         # Text mode — emit to stderr like every other error.
         output_error(error_message)

@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from tree_sitter_analyzer.cache.extraction import (
     _content_hash,
     _count_decision_points,
@@ -84,6 +86,39 @@ class TestWorkerIndexFile:
         assert "content_hash" in result
         assert "mtime_ns" in result
 
+    def test_uses_facade_symbol_extractor_hook(self, tmp_path, monkeypatch):
+        """Worker dispatch keeps the extraction module's live compatibility hook."""
+        import json
+
+        import tree_sitter_analyzer.cache.extraction as extraction
+
+        f = tmp_path / "module.py"
+        f.write_text("value = 1\n")
+        expected_symbols = {
+            "symbols": [
+                {
+                    "kind": "variable",
+                    "name": "facade_hook",
+                    "line": 1,
+                    "language": "python",
+                }
+            ],
+            "node_count": 1,
+            "truncated_depth": False,
+        }
+        monkeypatch.setattr(extraction, "_worker_parser", None)
+        monkeypatch.setattr(
+            extraction,
+            "_extract_symbols",
+            lambda _tree, _source, _language: expected_symbols,
+        )
+
+        result = extraction._worker_index_file((str(f), str(tmp_path), "python"))
+
+        assert result["status"] == "ok"
+        assert result["symbols_count"] == 1
+        assert json.loads(result["symbols_json"]) == expected_symbols
+
     def test_returns_ok_for_class_with_inheritance(self, tmp_path):
         """Python class with base class → extracted symbols include parent."""
         src = "class Dog(Animal):\n    def bark(self):\n        pass\n"
@@ -136,6 +171,12 @@ class TestNodeText:
         node = SimpleNamespace(text=None, start_byte=999, end_byte=1000)
         assert _node_text(node, "short") == ""
 
+    def test_returns_empty_when_byte_offsets_are_invalid(self):
+        """PR #1193: invalid legacy offsets take the guarded fallback."""
+        node = SimpleNamespace(text=None, start_byte="invalid", end_byte=1)
+
+        assert _node_text(node, "source") == ""
+
 
 # ---------------------------------------------------------------------------
 # _count_decision_points()
@@ -173,6 +214,39 @@ class TestCountDecisionPoints:
         root.children = [child]
         result = _count_decision_points(root, "python")
         assert result.get("if_statement", 0) == 1
+
+
+class TestAnnotateCanonicalComplexity:
+    def test_missing_plugin_leaves_symbols_unchanged(self, monkeypatch):
+        """PR #1193: languages without a plugin exit without annotations."""
+        from tree_sitter_analyzer.cache.extraction import (
+            _annotate_canonical_complexity,
+        )
+        from tree_sitter_analyzer.plugins.manager import PluginManager
+
+        monkeypatch.setattr(PluginManager, "get_plugin", lambda _self, _lang: None)
+        symbols = [{"kind": "function", "name": "run", "line": 1}]
+
+        _annotate_canonical_complexity(symbols, None, "", "unknown")
+
+        assert symbols == [{"kind": "function", "name": "run", "line": 1}]
+
+    def test_plugin_lookup_failure_leaves_symbols_unchanged(self, monkeypatch):
+        """PR #1193: plugin lookup failures remain non-fatal."""
+        from tree_sitter_analyzer.cache.extraction import (
+            _annotate_canonical_complexity,
+        )
+        from tree_sitter_analyzer.plugins.manager import PluginManager
+
+        def fail_lookup(_self, _language):
+            raise RuntimeError("plugin registry unavailable")
+
+        monkeypatch.setattr(PluginManager, "get_plugin", fail_lookup)
+        symbols = [{"kind": "function", "name": "run", "line": 1}]
+
+        _annotate_canonical_complexity(symbols, None, "", "python")
+
+        assert symbols == [{"kind": "function", "name": "run", "line": 1}]
 
 
 # ---------------------------------------------------------------------------
@@ -240,11 +314,40 @@ class TestExtractParentClasses:
 
     def test_extract_parent_classes_exception_swallowed(self):
         """If node iteration raises, the except clause returns empty list."""
-        node = MagicMock()
-        node.children = MagicMock(side_effect=RuntimeError("boom"))
-        # Should not raise
+        node = SimpleNamespace(children=1)
+
         result = _extract_parent_classes(node, "", "python")
-        assert isinstance(result, list)
+
+        assert result == []
+
+    def test_cpp_base_class_clause_is_extracted(self):
+        """PR #1193: the C/C++ parent extractor remains directly covered."""
+        parent = SimpleNamespace(type="type_identifier", text=b"Base")
+        clause = SimpleNamespace(type="base_class_clause", children=[parent])
+        node = SimpleNamespace(children=[clause])
+
+        result = _extract_parent_classes(node, "", "cpp")
+
+        assert result == ["Base"]
+
+    def test_impl_without_type_field_continues_parent_search(self):
+        """PR #1193: a malformed Rust impl does not invent a parent class."""
+        from tree_sitter_analyzer.cache.extraction import _find_parent_class
+
+        outer_name = SimpleNamespace(text=b"Outer")
+        outer = SimpleNamespace(
+            type="class_definition",
+            child_by_field_name=lambda field: outer_name if field == "name" else None,
+            parent=None,
+        )
+        impl = SimpleNamespace(
+            type="impl_item",
+            child_by_field_name=lambda _field: None,
+            parent=outer,
+        )
+        node = SimpleNamespace(parent=impl)
+
+        assert _find_parent_class(node, "") == "Outer"
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +380,49 @@ class TestWalkForSymbols:
         # symbols is empty because node.type='module' is not in _FUNCTION_LIKE/_CLASS_LIKE
         # but the key guarantee is: no early return at depth=21
         assert symbols == []  # no crash = depth guard didn't fire
+
+    def test_scala_class_like_without_name_is_skipped(self):
+        """PR #1193: the staged Scala handler keeps its empty-symbol branch."""
+        node = MagicMock()
+        node.type = "object_definition"
+        node.child_by_field_name.return_value = None
+        node.children = []
+        symbols: list[dict] = []
+
+        _walk_for_symbols(node, "", symbols, "scala")
+
+        assert symbols == []
+
+    def test_class_with_empty_name_is_skipped(self):
+        """PR #1193: empty class-name nodes do not produce cache rows."""
+        name_node = SimpleNamespace(type="identifier", text=b"")
+        node = MagicMock()
+        node.type = "class_definition"
+        node.child_by_field_name.side_effect = lambda field: (
+            name_node if field == "name" else None
+        )
+        node.children = []
+        symbols: list[dict] = []
+
+        _walk_for_symbols(node, "", symbols, "python")
+
+        assert symbols == []
+
+    def test_variable_with_empty_name_is_skipped(self):
+        """PR #1193: empty variable-name nodes do not produce cache rows."""
+        name_node = SimpleNamespace(type="identifier", text=b"")
+        node = MagicMock()
+        node.type = "variable_declarator"
+        node.parent = None
+        node.child_by_field_name.side_effect = lambda field: (
+            name_node if field == "name" else None
+        )
+        node.children = []
+        symbols: list[dict] = []
+
+        _walk_for_symbols(node, "", symbols, "python")
+
+        assert symbols == []
 
     def test_extract_symbols_truncated_depth_flag_when_deeply_nested(self):
         """_extract_symbols returns truncated_depth=True when AST depth exceeds limit.
@@ -434,6 +580,21 @@ class TestCDeclaratorName:
             type="parenthesized_declarator",
             children=[SimpleNamespace(type="(", children=[])],
         )
+        assert _c_declarator_name(paren, "", 0) is None
+
+    def test_parenthesized_wrapper_without_identifier_returns_none(self):
+        """PR #1193: a recognized wrapper may still contain no identifier."""
+        from tree_sitter_analyzer.cache.extraction import _c_declarator_name
+
+        wrapper = SimpleNamespace(
+            type="function_declarator",
+            child_by_field_name=lambda _field: None,
+        )
+        paren = SimpleNamespace(
+            type="parenthesized_declarator",
+            children=[wrapper],
+        )
+
         assert _c_declarator_name(paren, "", 0) is None
 
 
@@ -1723,6 +1884,17 @@ class TestScalaHelpers:
         result = _scala_symbol_name(node, "")
         assert result == "MyTrait"
 
+    def test_scala_symbol_name_non_given_without_name_returns_none(self):
+        """PR #1193: an unnamed non-given Scala node has no synthetic name."""
+        from tree_sitter_analyzer.cache.extraction import _scala_symbol_name
+
+        node = MagicMock()
+        node.type = "object_definition"
+        node.child_by_field_name.return_value = None
+        node.children = []
+
+        assert _scala_symbol_name(node, "") is None
+
     def test_scala_symbol_name_given_definition_with_generic_type(self):
         """given_definition with a generic_type child (not identifier) → 'given <type>'.
 
@@ -1861,7 +2033,49 @@ class TestPythonDocstring:
 # ---------------------------------------------------------------------------
 
 
+def _mixed_scope_call_edges():
+    from tree_sitter_analyzer.core.parser import Parser
+
+    src = "def helper():\n    pass\n\ndef main():\n    helper()\nprint()\n"
+    result = Parser().parse_code(src, "python")
+    assert result.success and result.tree is not None
+    return _extract_call_edges(result.tree, src, "python", {"symbols": []})
+
+
 class TestExtractCallEdgesReal:
+    def test_call_edge_mapping_preserves_exact_shape(self):
+        # #1173 的五个字段保持不变；PR #1352 新增的 branch 也必须完整透传。
+        edge = _mixed_scope_call_edges()[0]
+
+        assert tuple(edge) == (
+            "caller_name",
+            "caller_line",
+            "callee_name",
+            "callee_full",
+            "callee_line",
+            "branch",
+        )
+        assert edge["branch"] == {
+            "kind": "unconditional",
+            "nesting_depth": 0,
+            "condition_text": None,
+        }
+
+    def test_call_edges_preserve_source_order(self):
+        # Issue #1173 (2026-07-27): extraction must retain walker ordering.
+        edges = _mixed_scope_call_edges()
+
+        assert [edge["callee_name"] for edge in edges] == ["helper", "print"]
+
+    def test_call_edges_preserve_scope_attribution(self):
+        # Issue #1173 (2026-07-27): module calls must remain unattributed.
+        edges = _mixed_scope_call_edges()
+
+        assert [(edge["caller_name"], edge["caller_line"]) for edge in edges] == [
+            ("main", 4),
+            ("", 0),
+        ]
+
     def test_call_edges_python_simple_caller(self):
         """A function that calls another produces a non-empty edge list."""
         from tree_sitter_analyzer.cache.extraction import _extract_symbols
@@ -1889,6 +2103,52 @@ class TestExtractCallEdgesReal:
         helper_edges = [e for e in edges if e["callee_name"] == "helper"]
         assert len(helper_edges) == 1
         assert helper_edges[0]["caller_name"] == "main"
+
+
+@pytest.mark.parametrize(
+    ("language", "inner_type", "inner_name", "type_text", "expected"),
+    [
+        (None, "impl_item", None, "Container<T>", "Container"),
+        (None, "class_definition", None, None, "Outer"),
+        ("rust", "impl_item", None, None, None),
+        ("rust", "impl_item", None, "   ", None),
+        ("kotlin", "companion_object", None, None, "Outer"),
+        ("java", "class_declaration", None, None, None),
+    ],
+)
+def test_parent_attribution_respects_unnamed_scope_boundaries(
+    language, inner_type, inner_name, type_text, expected
+):
+    """具名外层类不能越过匿名或缺损所属类型抢占方法；兼容旧调用方式。"""
+    from tree_sitter_analyzer.cache.extraction import _find_parent_class
+
+    outer = SimpleNamespace(
+        type="class_declaration",
+        child_by_field_name=lambda field: (
+            SimpleNamespace(text=b"Outer") if field == "name" else None
+        ),
+        parent=None,
+    )
+    fields = {
+        "name": SimpleNamespace(text=inner_name.encode())
+        if inner_name is not None
+        else None,
+        "type": SimpleNamespace(text=type_text.encode())
+        if type_text is not None
+        else None,
+    }
+    inner = SimpleNamespace(
+        type=inner_type, child_by_field_name=fields.get, parent=outer
+    )
+    node = SimpleNamespace(type="method_declaration", parent=inner)
+    assert _find_parent_class(node, "", language) == expected
+
+
+def test_legacy_parent_lookup_without_ancestors_returns_none():
+    """两参数历史入口对无所属类型的节点返回空结果。"""
+    from tree_sitter_analyzer.cache.extraction import _find_parent_class
+
+    assert _find_parent_class(SimpleNamespace(parent=None), "") is None
 
 
 def test_anonymous_javascript_class_does_not_borrow_outer_member_owner():

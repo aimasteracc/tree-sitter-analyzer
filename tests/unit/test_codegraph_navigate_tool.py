@@ -186,6 +186,54 @@ class TestExecuteHierarchy:
         assert h["lists_truncated"] is True
         assert h["listed_cap"] == _MAX_LISTED
 
+    @pytest.mark.asyncio
+    async def test_hierarchy_not_found_hint_suggests_class_hierarchy(self, tool):
+        """Hierarchy mode NOT_FOUND: hint must redirect to --class-hierarchy."""
+        mock_graph = MagicMock()
+        mock_graph.build.side_effect = Exception("no graph")
+        with patch.object(tool, "get_call_graph", return_value=mock_graph):
+            result = await tool.execute(
+                {"symbol": "MyClass", "mode": "hierarchy", "output_format": "json"}
+            )
+        assert result["verdict"] == "NOT_FOUND"
+        assert "--class-hierarchy" in result["hint"]
+        assert "--class-hierarchy-class MyClass" in result["hint"]
+        # PR #1350：默认 summary 模式忽略类名，提示必须显式选择 tree。
+        assert "--class-hierarchy-mode tree" in result["hint"]
+        assert "CALL graph" in result["hint"]
+
+    @pytest.mark.asyncio
+    async def test_hierarchy_not_found_agent_summary_mentions_class_hierarchy(
+        self, tool
+    ):
+        """agent_summary.next_step for hierarchy NOT_FOUND must reference --class-hierarchy."""
+        mock_graph = MagicMock()
+        mock_graph.build.side_effect = Exception("no graph")
+        with patch.object(tool, "get_call_graph", return_value=mock_graph):
+            result = await tool.execute(
+                {"symbol": "MyClass", "mode": "hierarchy", "output_format": "json"}
+            )
+        next_step = result["agent_summary"]["next_step"]
+        assert "--class-hierarchy" in next_step
+        assert "--class-hierarchy-mode tree" in next_step
+        assert "MyClass" in next_step
+
+    @pytest.mark.asyncio
+    async def test_non_hierarchy_not_found_uses_generic_hint(self, tool):
+        """Full mode NOT_FOUND: hint must NOT inject class-hierarchy suggestion."""
+        mock_graph = MagicMock()
+        mock_graph.build.side_effect = Exception("no graph")
+        with (
+            patch.object(tool, "get_cache", return_value=None),
+            patch.object(tool, "get_call_graph", return_value=mock_graph),
+        ):
+            result = await tool.execute(
+                {"symbol": "unknown_fn", "mode": "full", "output_format": "json"}
+            )
+        assert result["verdict"] == "NOT_FOUND"
+        hint = result.get("hint", "")
+        assert "--class-hierarchy" not in hint
+
 
 class TestExecuteFull:
     @pytest.mark.asyncio
@@ -208,17 +256,6 @@ class TestExecuteFull:
 
 
 class TestExecuteOutputFormat:
-    @pytest.mark.asyncio
-    async def test_toon_format(self, tool):
-        mock_graph = MagicMock()
-        mock_graph.build.side_effect = Exception("no project")
-        with patch.object(tool, "get_call_graph", return_value=mock_graph):
-            result = await tool.execute(
-                {"symbol": "foo", "mode": "hierarchy", "output_format": "toon"}
-            )
-        assert result["format"] == "toon"
-        assert "toon_content" in result
-
     @pytest.mark.asyncio
     async def test_json_format(self, tool):
         mock_graph = MagicMock()
@@ -308,12 +345,3 @@ class TestDefinitionBodyInlining:
         assert bodied, "definition must carry an inlined body"
         assert "FOUND_MARKER" in bodied[0]["body"]["content"]
         assert "no Read needed" in result["next_step"]
-
-    @pytest.mark.asyncio
-    async def test_definition_body_survives_toon(self, indexed):
-        tool = CodeGraphNavigateTool(indexed)
-        result = await tool.execute(
-            {"symbol": "_find", "mode": "definition", "output_format": "toon"}
-        )
-        assert result.get("format") == "toon"
-        assert "FOUND_MARKER" in result["toon_content"]

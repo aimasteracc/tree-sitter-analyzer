@@ -54,11 +54,10 @@ TOOL_SCHEMA: dict[str, Any] = {
             "enum": ["json", "summary"],
             "default": "json",
         },
-        # Token-efficient toon format by default
         "output_format": {
             "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
+            "enum": ["json"],
+            "default": "json",
         },
         "output_file": {
             "type": "string",
@@ -100,7 +99,7 @@ def _query_risk_and_step(
     if count == 0:
         return (
             "low",
-            "Try a broader query_key, or use search_content to find the symbol by text.",
+            "Try a broader query_key, or use CC Grep tool to find the symbol by text.",
         )
     if truncated:
         return (
@@ -263,7 +262,7 @@ def build_next_steps(
     if named and query_used in _query_types:
         names = [r["name"] for r in named[:3]]
         steps.append(
-            f"search_content(query='{'|'.join(names)}') to find callers of these elements"
+            f"Use CC Grep tool with pattern '{'|'.join(names)}' to find callers of these elements"
         )
 
     return steps[:3]
@@ -302,7 +301,7 @@ def validate_query_arguments(arguments: dict[str, Any]) -> bool:
     _validate_string_arg(arguments, "language")
     _validate_string_arg(arguments, "filter")
     _validate_string_arg(arguments, "result_format", allowed=["json", "summary"])
-    _validate_string_arg(arguments, "output_format", allowed=["json", "toon"])
+    _validate_string_arg(arguments, "output_format", allowed=["json", "json"])
     _validate_string_arg(arguments, "output_file", non_empty=True)
     if "suppress_output" in arguments and not isinstance(
         arguments["suppress_output"], bool
@@ -390,11 +389,11 @@ def handle_query_output(
     file_output_manager: Any,
 ) -> dict[str, Any]:
     """Handle file output and suppress logic for query results."""
-    from ..utils.format_helper import apply_toon_format_to_response as _apply_toon
+    from ..utils.format_helper import apply_output_format_to_response
 
     output_file = arguments.get("output_file")
     suppress_output = arguments.get("suppress_output", False)
-    output_format = arguments.get("output_format", "toon")
+    output_format = arguments.get("output_format", "json")
 
     if output_file:
         _save_query_output(
@@ -404,4 +403,4 @@ def handle_query_output(
     if suppress_output and output_file:
         return _build_suppress_envelope(formatted, file_path, language, query)
 
-    return _apply_toon(formatted, output_format)
+    return apply_output_format_to_response(formatted, output_format)

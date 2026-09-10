@@ -21,6 +21,9 @@ from tree_sitter_analyzer.mcp.utils.project_index import (
     ProjectIndex,
     ProjectIndexManager,
 )
+from tree_sitter_analyzer.mcp.utils.project_index._filesystem import (
+    compute_language_distribution,
+)
 
 
 @pytest.fixture
@@ -87,13 +90,7 @@ class TestProjectIndexManagerBuild:
 
     def test_build_creates_index(self, manager: ProjectIndexManager) -> None:
         """Test that build() returns a valid ProjectIndex."""
-        # Force the os.walk path: with fd installed the count differs (fd
-        # includes the __pycache__ file → 9), so pin the hermetic fallback
-        with patch(
-            "tree_sitter_analyzer.mcp.utils.project_index._filesystem.subprocess.run",
-            side_effect=FileNotFoundError("fd not found"),
-        ):
-            index = manager.build()
+        index = manager.build()
         assert isinstance(index, ProjectIndex)
         assert index.file_count == 8
 
@@ -107,6 +104,13 @@ class TestProjectIndexManagerBuild:
             lang_dist["python"] == 4
         )  # __init__.py, utils.py, test_utils.py, __main__.py
         assert lang_dist["typescript"] == 2  # index.ts, types.ts
+
+    def test_node_module_typescript_extensions_are_counted(self) -> None:
+        distribution = compute_language_distribution(
+            ["src/module.mts", "src/config.cts", "src/types.d.mts"]
+        )
+
+        assert distribution == {"typescript": 3}
 
     def test_artifact_dirs_excluded(self, manager: ProjectIndexManager) -> None:
         """Test that __pycache__ directories are not in top_level_structure."""
@@ -244,58 +248,27 @@ class TestProjectIndexManagerStaleness:
         assert manager.is_stale(index, max_age_hours=3) is False
 
 
-class TestProjectIndexManagerFdFallback:
-    """Tests for fd fallback to os.walk."""
+class TestProjectIndexManagerNativeDiscovery:
+    """项目索引独立发现文件，不调用外部文件搜索程序。"""
 
-    def test_fd_fallback_to_os_walk(
-        self, manager: ProjectIndexManager, simple_project: Path
-    ) -> None:
-        """Test that when fd is not available, os.walk is used as fallback."""
-        # Simulate fd not being available by making subprocess.run raise FileNotFoundError
-        import subprocess
-
-        original_run = subprocess.run
-
-        def mock_run(cmd: list[str], **kwargs: object) -> object:
-            if cmd[0] == "fd":
-                raise FileNotFoundError("fd not found")
-            return original_run(cmd, **kwargs)
-
-        with patch("subprocess.run", side_effect=mock_run):
+    def test_build_without_external_process(self, manager: ProjectIndexManager) -> None:
+        with patch(
+            "subprocess.Popen", side_effect=AssertionError("不得启动外部搜索程序")
+        ):
             index = manager.build()
-
-        # Should still produce a valid index with files
         assert index.file_count == 8
         assert "python" in index.language_distribution
 
-    def test_os_walk_skips_artifact_dirs(self, tmp_path: Path) -> None:
-        """Test that os.walk fallback skips artifact directories like __pycache__."""
+    def test_discovery_skips_artifact_dirs(self, tmp_path: Path) -> None:
         src = tmp_path / "src"
         src.mkdir()
-        (src / "real.py").write_text("x = 1\n")
+        real = src / "real.py"
+        real.write_text("x = 1\n", encoding="utf-8")
         pycache = src / "__pycache__"
         pycache.mkdir()
         (pycache / "cache.pyc").write_bytes(b"\x00")
-
         mgr = ProjectIndexManager(str(tmp_path))
-
-        import subprocess
-
-        def mock_run(cmd: list[str], **kwargs: object) -> object:
-            if cmd[0] == "fd":
-                raise FileNotFoundError("fd not found")
-            return (
-                subprocess.run.__wrapped__(cmd, **kwargs)
-                if hasattr(subprocess.run, "__wrapped__")
-                else subprocess.__dict__["run"].__wrapped__(cmd, **kwargs)
-            )  # type: ignore[attr-defined]
-
-        with patch("subprocess.run", side_effect=FileNotFoundError("fd not found")):
-            files = mgr._list_files([str(tmp_path)])
-
-        # __pycache__ files should not be in results
-        for f in files:
-            assert "__pycache__" not in f
+        assert mgr._list_files([str(tmp_path)]) == [str(real)]
 
 
 class TestProjectIndexDataclass:

@@ -175,7 +175,7 @@ The cache service optimizes repeated operations.
 **Location**: `tree_sitter_analyzer/mcp/tools/`
 
 The public surface is **8 facade tools + set_project_path**. Each facade delegates to
-inner tool classes (approximately 74 total). For the full action-to-tool mapping see
+inner tool classes (79 classes across 146 modules). For the full action-to-tool mapping see
 [docs/CODEMAPS/mcp-tools.md](CODEMAPS/mcp-tools.md).
 
 | Facade | Purpose |

@@ -253,33 +253,6 @@ class TestTypeScriptTableFormatter:
         assert "userId" in result
         assert "string" in result
 
-    def test_format_compact_table(self, sample_data):
-        """Test compact table formatting"""
-        formatter = TypeScriptTableFormatter("compact")
-        result = formatter.format(sample_data)
-
-        assert isinstance(result, str)
-        assert len(result.replace("\r\n", "\n")) == 416  # normalize CRLF for Windows
-
-        assert "UserService" in result
-        assert "## Info" in result
-        assert "## Methods" in result or "Methods" in result
-
-    def test_format_csv(self, sample_data):
-        """Test CSV formatting"""
-        formatter = TypeScriptTableFormatter("csv")
-        result = formatter.format(sample_data)
-
-        assert isinstance(result, str)
-        assert len(result) == 402
-
-        lines = result.split("\n")
-        assert len(lines) == 8
-        header = lines[0]
-        assert "Type" in header or "Name" in header
-        assert any("validate" in line for line in lines)
-        assert any("userId" in line for line in lines)
-
     def test_get_element_type_name(self, formatter):
         """Test element type name generation - method may not exist in new implementation"""
         if not hasattr(formatter, "_get_element_type_name"):

@@ -19,16 +19,6 @@ from ...utils import setup_logger
 logger = setup_logger(__name__)
 
 
-def _similar_comma_count(line: str, ref_count: int) -> bool:
-    """Return True if *line*'s comma count is within 1 of *ref_count*.
-
-    Extracted from FileOutputManager._detect_content_format so the
-    generator expression ``if abs(line.count(',') - ref_count) <= 1``
-    doesn't push string_start leaves to depth 21 inside the class method.
-    """
-    return abs(line.count(",") - ref_count) <= 1
-
-
 class FileOutputManager:
     """
     Manages file output for analysis results with automatic extension detection
@@ -129,7 +119,7 @@ class FileOutputManager:
             content: Content to analyze
 
         Returns:
-            Detected content type ('json', 'csv', 'markdown', 'toon', or 'text')
+            Detected content type ('json' or 'text')
         """
         content_stripped = content.strip()
 
@@ -141,105 +131,21 @@ class FileOutputManager:
             except (json.JSONDecodeError, ValueError):
                 pass
 
-        # Check for TOON format (YAML-like with array table syntax)
-        # TOON characteristics:
-        # - Lines with "key: value" format (YAML-like)
-        # - Array table headers like "[count]{schema}:"
-        # - No JSON braces/brackets at start
-        if self._is_toon_format(content_stripped):
-            return "toon"
-
-        # Check for CSV (simple heuristic)
-        lines = content_stripped.split("\n")
-        if len(lines) >= 2:
-            # Check if first few lines have consistent comma separation
-            first_line_commas = lines[0].count(",")
-            if first_line_commas > 0:
-                # Check if at least 2 more lines have similar comma counts
-                similar_comma_lines = sum(
-                    1
-                    for line in lines[1:4]
-                    if _similar_comma_count(line, first_line_commas)
-                )
-                if similar_comma_lines >= 1:
-                    return "csv"
-
-        # Check for Markdown (simple heuristic)
-        markdown_indicators = ["#", "##", "###", "|", "```", "*", "-", "+"]
-        if any(
-            content_stripped.startswith(indicator) for indicator in markdown_indicators
-        ):
-            return "markdown"
-
-        # Check for table format (pipe-separated)
-        if "|" in content and "\n" in content:
-            lines = content_stripped.split("\n")
-            pipe_lines = sum(1 for line in lines if "|" in line)
-            if pipe_lines >= 2:  # At least header and one data row
-                return "markdown"
-
         # Default to text
         return "text"
-
-    def _is_toon_format(self, content: str) -> bool:
-        """
-        Detect if content is in TOON format.
-
-        TOON format characteristics:
-        - Lines with "key: value" format (YAML-like)
-        - Array table headers like "[count]{schema}:"
-        - No JSON braces/brackets at start
-
-        Args:
-            content: Content to check
-
-        Returns:
-            True if content appears to be TOON format
-        """
-        import re
-
-        lines = content.split("\n")
-        if not lines:
-            return False
-
-        # TOON array table pattern: [count]{field1,field2,...}:
-        toon_array_pattern = re.compile(r"^\s*\[\d+\]\{[^}]+\}:\s*$")
-
-        # TOON key-value pattern: key: value (but not JSON-like)
-        toon_kv_pattern = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*:\s*.+$")
-
-        toon_indicators = 0
-        for line in lines[:20]:  # Check first 20 lines
-            line = line.strip()
-            if not line:
-                continue
-
-            # Check for TOON array table header
-            if toon_array_pattern.match(line):
-                return True  # Strong indicator
-
-            # Check for TOON key-value format
-            if toon_kv_pattern.match(line):
-                toon_indicators += 1
-
-        # If we have multiple key-value lines and no JSON indicators, likely TOON
-        return toon_indicators >= 2
 
     def get_file_extension(self, content_type: str) -> str:
         """
         Get file extension for content type.
 
         Args:
-            content_type: Content type ('json', 'csv', 'markdown', 'toon', 'text')
+            content_type: Content type ('json' or 'text')
 
         Returns:
             File extension including the dot
         """
         extension_map = {
             "json": ".json",
-            "csv": ".csv",
-            "markdown": ".md",
-            "toon": ".toon",
             "text": ".txt",
         }
         return extension_map.get(content_type, ".txt")

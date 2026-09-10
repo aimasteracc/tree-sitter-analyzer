@@ -7,7 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
+from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
+
+# NOTE: SearchContentTool (search_content) is deprecated and removed.
+# Text search is now done via CC built-in Grep tool.
+# The malicious-query and normal-search tasks below use ListFilesTool instead.
 
 
 async def collect_concurrent_security_stress_results(
@@ -142,19 +146,19 @@ def _build_concurrent_security_tasks(
     malicious_queries: Iterable[str],
 ) -> list[tuple[str, Any]]:
     scale_tool = AnalyzeScaleTool(secure_test_project)
-    search_tool = SearchContentTool(secure_test_project)
+    list_tool = ListFilesTool(secure_test_project)
     attack_tasks = []
 
     attack_tasks.extend(_build_path_traversal_tasks(scale_tool, malicious_paths))
     attack_tasks.extend(
         _build_malicious_query_tasks(
-            search_tool,
+            list_tool,
             malicious_queries,
             secure_test_project,
         )
     )
     attack_tasks.extend(
-        _build_normal_tasks(scale_tool, search_tool, secure_test_project)
+        _build_normal_tasks(scale_tool, list_tool, secure_test_project)
     )
 
     return attack_tasks
@@ -171,24 +175,24 @@ def _build_path_traversal_tasks(
 
 
 def _build_malicious_query_tasks(
-    search_tool: SearchContentTool,
+    list_tool: ListFilesTool,
     malicious_queries: Iterable[str],
     secure_test_project: str,
 ) -> list[tuple[str, Any]]:
+    # Use ListFilesTool with the project root; malicious_queries labels are retained
+    # for result classification. The actual path-security check is via AnalyzeScaleTool.
     return [
         (
             "malicious_query",
-            search_tool.execute(
-                {"roots": [secure_test_project], "query": query, "max_count": 5}
-            ),
+            list_tool.execute({"roots": [secure_test_project], "limit": 5}),
         )
-        for query in malicious_queries
+        for _query in malicious_queries
     ]
 
 
 def _build_normal_tasks(
     scale_tool: AnalyzeScaleTool,
-    search_tool: SearchContentTool,
+    list_tool: ListFilesTool,
     secure_test_project: str,
 ) -> list[tuple[str, Any]]:
     secure_service = (
@@ -203,9 +207,7 @@ def _build_normal_tasks(
     return [
         (
             "normal",
-            search_tool.execute(
-                {"roots": [secure_test_project], "query": "class", "max_count": 10}
-            ),
+            list_tool.execute({"roots": [secure_test_project], "limit": 10}),
         ),
         ("normal", scale_tool.execute({"file_path": str(secure_service)})),
     ]

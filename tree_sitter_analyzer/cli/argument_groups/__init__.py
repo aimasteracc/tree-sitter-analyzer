@@ -9,6 +9,7 @@ from ._advanced import (
     _add_decision_journal_options,
     _add_environment_probe_options,
     _add_modification_guard_options,
+    _add_mutation_probe_options,
     _add_trace_impact_options,
 )
 from ._agents import (
@@ -20,6 +21,7 @@ from ._analysis import (
     _add_mcp_analysis_options,
     _add_mcp_change_options,
     _add_mcp_health_options,
+    _add_mcp_hotspot_options,
 )
 from ._analysis_codegraph import _add_mcp_codegraph_map_options
 from ._analysis_graph_nav import _add_mcp_graph_nav_options
@@ -58,8 +60,10 @@ __all__ = [
     "_add_mcp_graph_nav_options",
     "_add_mcp_constraints_options",
     "_add_mcp_health_options",
+    "_add_mcp_hotspot_options",
     "_add_mcp_index_management_options",
     "_add_modification_guard_options",
+    "_add_mutation_probe_options",
     "_add_output_options",
     "_add_partial_read_options",
     "_add_project_and_logging_options",

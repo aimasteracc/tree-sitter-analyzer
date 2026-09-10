@@ -4,7 +4,7 @@ Tests for PartialReadCommand
 """
 
 from argparse import Namespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -186,20 +186,6 @@ class TestPartialReadCommandOutputPartialContent:
             assert call_args["content"] == content
             assert call_args["content_length"] == len(content)
 
-    def test_output_partial_content_toon(self, command):
-        """Test _output_partial_content with TOON format."""
-        command.args.output_format = "toon"
-        content = "test content"
-        with patch(
-            "tree_sitter_analyzer.cli.commands.partial_read_command.ToonFormatter"
-        ) as mock_formatter_class:
-            mock_formatter = MagicMock()
-            mock_formatter.format.return_value = "toon_output"
-            mock_formatter_class.return_value = mock_formatter
-            with patch("builtins.print") as mock_print:
-                command._output_partial_content(content)
-                mock_print.assert_called_once_with("toon_output")
-
     def test_output_partial_content_with_start_column(self, command):
         """Test _output_partial_content with start_column."""
         command.args.start_column = 5
@@ -235,20 +221,6 @@ class TestPartialReadCommandOutputPartialContent:
             command._output_partial_content(content)
             call_args = mock_output_json.call_args[0][0]
             assert call_args["range"]["end_line"] is None
-
-    def test_output_partial_content_toon_use_tabs(self, command):
-        """Test _output_partial_content with TOON and use_tabs=True."""
-        command.args.output_format = "toon"
-        command.args.toon_use_tabs = True
-        content = "test content"
-        with patch(
-            "tree_sitter_analyzer.cli.commands.partial_read_command.ToonFormatter"
-        ) as mock_formatter_class:
-            mock_formatter = MagicMock()
-            mock_formatter.format.return_value = "toon_output"
-            mock_formatter_class.return_value = mock_formatter
-            command._output_partial_content(content)
-            mock_formatter_class.assert_called_once_with(use_tabs=True)
 
 
 class TestPartialReadCommandExecuteAsync:

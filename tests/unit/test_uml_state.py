@@ -1107,6 +1107,35 @@ def test_extract_enum_members_includes_lowercase(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_named_duplicate_enum_scans_only_the_first_match() -> None:
+    """A named lookup must not traverse the full AST once per duplicate Enum."""
+    # PR #1185 Codex review (2026-07-27): selecting after extraction made
+    # duplicate nested class names multiply the full-tree transition scan.
+    from tree_sitter_analyzer._uml_state_results import collect_state_data
+
+    scanned: list[str] = []
+    enum_classes = [
+        {"name": "State", "node": ["FIRST"]},
+        {"name": "State", "node": ["SECOND"]},
+    ]
+
+    def extract_transitions(_root, name, _members):
+        scanned.append(name)
+        return []
+
+    members, transitions = collect_state_data(
+        object(),
+        enum_classes,
+        "State",
+        lambda node: node,
+        extract_transitions,
+    )
+
+    assert scanned == ["State"]
+    assert members == ["FIRST"]
+    assert transitions == []
+
+
 def test_second_enum_transitions_found_when_first_enum_has_none(
     tmp_path: Path,
 ) -> None:

@@ -1,25 +1,14 @@
-"""E2E-5 — Functional correctness tests for primary MCP tools.
+"""通过真实 MCP stdio 校验主要工具的功能和响应封装。
 
-These tests drive the server end-to-end and assert on *semantics* (not
-just latency or stderr cleanliness). Each test exercises one tool against
-the TSA checkout itself, which is a well-understood codebase, and checks
-that the response contains the expected shape of data.
-
-Design contract
----------------
-* We only assert on structural invariants ("result has key X", "value is
-  non-empty", "verdict is one of the legal set"). We do NOT pin exact
-  counts or file lists because those drift as the codebase evolves.
-* Each test calls ``initialized()`` itself so failures in initialization
-  surface clearly rather than being shadowed by the tool assertion.
-* ``java_plugin.py`` is a **negative fixture**: it's an intentionally
-  complex file with deep nesting used by unit tests to verify smell
-  detection. ``safe_to_edit`` must flag it as UNSAFE. Do not refactor it.
+所有八个门面都经过初始化、路由和序列化。搜索案例使用独立的单符号项目，
+精确验证冷索引错误、可执行恢复提示及构建后的真实命中；其余案例使用 TSA
+检出目录，保留各自的健康、安全和结构行为校验。
 """
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -31,10 +20,8 @@ FACADE_WIRE_CASES = [
     (
         "search",
         {
-            "action": "grep",
-            "query": "MCP_INFO",
-            "roots": ["tree_sitter_analyzer/mcp"],
-            "include_globs": ["__init__.py"],
+            "action": "symbol",
+            "query": "WireSearchSentinel",
             "output_format": "json",
         },
     ),
@@ -99,6 +86,12 @@ EXPECTED_FACADE_NAMES = [
     "viz",
 ]
 
+# The nav wire case cold-builds the repository-wide call graph. This is a
+# functional framing contract, not a latency assertion; dedicated smoke tests
+# own latency budgets. PR #1308 added enough indexed Python to exceed the
+# generic client wait on Linux while still completing inside pytest's 60 s cap.
+_FACADE_WIRE_TIMEOUTS = {"nav": 45.0}
+
 
 def _json_text_payload(response: dict) -> dict:
     """Return the JSON payload embedded in a JSON-RPC tools/call response."""
@@ -131,24 +124,63 @@ def _assert_agent_wire_envelope(payload: dict, facade_name: str) -> None:
 
 
 class TestFacadeWireContract:
+    @pytest.mark.timeout(60)
     @pytest.mark.parametrize(
         ("facade_name", "arguments"),
         FACADE_WIRE_CASES,
         ids=[facade_name for facade_name, _ in FACADE_WIRE_CASES],
     )
     def test_all_facades_have_stdio_tools_call_envelopes(
-        self, mcp_server: MCPClient, facade_name: str, arguments: dict
+        self,
+        mcp_server: MCPClient,
+        facade_name: str,
+        arguments: dict,
+        tmp_path: Path,
     ) -> None:
-        """Issue #691: cover the real client→stdio→tools/call boundary.
-
-        Unit tests that call ``tool.execute()`` directly cannot catch JSON-RPC
-        framing, facade dispatch, MCP content wrapping, or serialization bugs.
-        This test drives every public facade once over the actual stdio wire.
-        """
+        """#691 / #1432：八门面走真实协议；搜索必须从冷错误恢复到真实命中。"""
         client = initialized(mcp_server)
-        response = client.call(facade_name, arguments, timeout=25.0)
+        if facade_name == "search":
+            fixture_file = tmp_path / "wire_fixture.py"
+            fixture_file.write_text(
+                "class WireSearchSentinel:\n    pass\n", encoding="utf-8"
+            )
+            bound = _json_text_payload(
+                client.call(
+                    "set_project_path", {"project_path": str(tmp_path.resolve())}
+                )
+            )
+            assert bound["status"] == "success"
+            assert bound["project_root"] == str(tmp_path.resolve())
+            cold = _json_text_payload(client.call("search", arguments))
+            assert cold["success"] is False
+            assert cold["verdict"] == "ERROR"
+            assert cold["error_code"] == "INDEX_NOT_READY"
+            assert cold["results"] == []
+            assert cold["next_step"] == cold["recovery_hint"]
+            assert cold["agent_summary"]["next_step"] == cold["next_step"]
+            assert "--ast-cache-mode index" in cold["next_step"]
+            assert "index action=cache mode=index" in cold["next_step"]
+            indexed = _json_text_payload(
+                client.call(
+                    "index",
+                    {"action": "cache", "mode": "index", "output_format": "json"},
+                )
+            )
+            _assert_agent_wire_envelope(indexed, "index")
+        response = client.call(
+            facade_name,
+            arguments,
+            timeout=_FACADE_WIRE_TIMEOUTS.get(facade_name, 25.0),
+        )
         payload = _json_text_payload(response)
         _assert_agent_wire_envelope(payload, facade_name)
+        if facade_name == "search":
+            assert payload["match_count"] == 1
+            assert payload["file_count"] == 1
+            assert [
+                (item["name"], item["kind"], item["file"], item["line"])
+                for item in payload["results"]
+            ] == [("WireSearchSentinel", "class", "wire_fixture.py", 1)]
 
     def test_facade_wire_cases_cover_all_public_facades(self) -> None:
         covered_facades = sorted(facade_name for facade_name, _ in FACADE_WIRE_CASES)

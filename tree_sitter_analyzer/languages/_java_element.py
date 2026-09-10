@@ -5,15 +5,15 @@ from collections.abc import Callable
 from typing import Any
 
 from ..models import Class, Function, Variable
-
-_CLASS_TYPE_MAP = {
-    "class_declaration": "class",
-    "interface_declaration": "interface",
-    "enum_declaration": "enum",
-    # Theme-I (2026-06-10): record / annotation-type containers.
-    "record_declaration": "record",
-    "annotation_type_declaration": "annotation",
-}
+from ._java_element_common import (
+    _build_java_class,
+    _extract_javadoc_from_node,
+    _extract_node_annotations,
+    _node_line_span,
+    _qualified_class_name,
+    _raw_text_for_span,
+)
+from ._java_modern import extract_compact_constructor
 
 
 def extract_javadoc_for_line(
@@ -49,6 +49,7 @@ def extract_java_class(
     log_error_func: Callable[[str], None],
 ) -> Class | None:
     """Extract Java class/interface/enum information."""
+    docstring = _extract_javadoc_from_node(node, get_node_text)
     try:
         start_line, end_line = _node_line_span(node)
         class_name = _extract_identifier(node, get_node_text)
@@ -75,6 +76,7 @@ def extract_java_class(
             _extract_node_annotations(node, get_node_text),
             is_nested,
             find_parent_class(node) if is_nested else None,
+            docstring=docstring,
         )
     except (AttributeError, ValueError, TypeError) as e:
         log_debug_func(f"Failed to extract class info: {e}")
@@ -98,6 +100,18 @@ def extract_java_method(
     log_error_func: Callable[[str], None],
 ) -> Function | None:
     """Extract Java method/constructor information."""
+    # 紧凑构造器的协议错误由插件边界报告，不进入旧方法路径的容错捕获。
+    if node.type == "compact_constructor_declaration":
+        constructor = extract_compact_constructor(
+            node,
+            get_node_text,
+            content_lines,
+            log_debug_func=log_debug_func,
+            log_error_func=log_error_func,
+        )
+        constructor.complexity_score = calculate_complexity(node)
+        return constructor
+    docstring = _extract_javadoc_from_node(node, get_node_text)
     try:
         start_line, end_line = _node_line_span(node)
         method_info = parse_method_signature(node)
@@ -105,7 +119,22 @@ def extract_java_method(
             return None
 
         method_name, return_type, parameters, modifiers, throws = method_info
-        is_constructor = node.type == "constructor_declaration"
+        # Step 6 (2026-09-01): Use AST-based annotation extraction so only
+        # annotations that truly belong to this declaration are attributed to it
+        # (avoids proximity-based false positives).  ``find_annotations_for_line``
+        # is kept as a parameter for backward-compatibility but is no longer called.
+        annotations = _extract_node_annotations(node, get_node_text)
+        # Step 7 (2026-09-01): Use AST sibling-based JavaDoc.
+        # The line-scan heuristic is intentionally NOT used here: it searches
+        # backwards up to 10 lines and therefore incorrectly attributes a
+        # preceding method's JavaDoc to the next method when they are close
+        # together.  The AST-based approach (prev_sibling block_comment) is
+        # the authoritative source and covers all normal cases.
+        # compact_constructor_declaration is also a constructor form (Java 16+ records).
+        is_constructor = node.type in {
+            "constructor_declaration",
+            "compact_constructor_declaration",
+        }
         return Function(
             name=method_name,
             start_line=start_line,
@@ -120,8 +149,8 @@ def extract_java_method(
             is_public="public" in modifiers,
             is_constructor=is_constructor,
             visibility=determine_visibility(modifiers),
-            docstring=extract_javadoc(start_line),
-            annotations=find_annotations_for_line(start_line),
+            docstring=docstring,
+            annotations=annotations,
             throws=throws,
             complexity_score=calculate_complexity(node),
             is_abstract="abstract" in modifiers,
@@ -159,7 +188,8 @@ def extract_java_field(
         field_type, variable_names, modifiers = field_info
         raw_text = _raw_text_for_span(content_lines, start_line, end_line)
         visibility = determine_visibility(modifiers)
-        annotations = find_annotations_for_line(start_line)
+        # Step 6 (2026-09-01): AST-based annotations instead of proximity scan.
+        annotations = _extract_node_annotations(node, get_node_text)
         javadoc = extract_javadoc(start_line)
 
         fields.extend(
@@ -183,6 +213,11 @@ def extract_java_field(
     return fields
 
 
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+
 def _collect_javadoc(
     content_lines: list[str],
     start_index: int,
@@ -195,54 +230,6 @@ def _collect_javadoc(
         if doc_line.endswith("*/"):
             break
     return "\n".join(javadoc_lines)
-
-
-def _node_line_span(node: Any) -> tuple[int, int]:
-    return node.start_point[0] + 1, node.end_point[0] + 1
-
-
-_ANNOTATION_NODE_TYPES = frozenset({"annotation", "marker_annotation"})
-
-
-def _extract_node_annotations(
-    node: Any, get_node_text: Callable[..., str]
-) -> list[dict[str, Any]]:
-    """Extract annotations directly from a node's modifiers subtree.
-
-    Reads only the direct ``modifiers`` child of *node* — so only annotations
-    that actually belong to this declaration are returned, not annotations that
-    happen to be nearby (which the proximity-based fallback can confuse).
-    """
-    annotations: list[dict[str, Any]] = []
-    for child in node.children:
-        if child.type != "modifiers":
-            continue
-        for modifier in child.children:
-            if modifier.type not in _ANNOTATION_NODE_TYPES:
-                continue
-            ann_text = get_node_text(modifier)
-            ann_name = None
-            for sub in modifier.children:
-                if sub.type == "identifier":
-                    ann_name = get_node_text(sub)
-                    break
-            if not ann_name:
-                import re as _re
-
-                m = _re.search(r"@(\w+)", ann_text)
-                if m:
-                    ann_name = m.group(1)
-            if ann_name:
-                annotations.append(
-                    {
-                        "name": ann_name,
-                        "line": modifier.start_point[0] + 1,
-                        "text": ann_text,
-                        "type": "annotation",
-                    }
-                )
-        break  # only one modifiers child per declaration
-    return annotations
 
 
 def _extract_identifier(node: Any, get_node_text: Callable[..., str]) -> str | None:
@@ -276,7 +263,7 @@ def _split_respecting_generics(text: str) -> list[str]:
     token = "".join(current).strip()
     if token:
         parts.append(token)
-    # Each part may still contain leading 'implements ' keyword text from the node;
+    # Each part may still contain leading keyword text from the node;
     # strip everything before the first capital-letter word start.
     result = []
     for part in parts:
@@ -307,63 +294,19 @@ def _extract_class_relationships(
             raw = get_node_text(child)
             body = re.sub(r"^\s*extends\s*", "", raw)
             implements_interfaces = _split_respecting_generics(body)
+        elif child.type == "permits":
+            # sealed class Foo permits Bar, Baz (Java 17+).
+            # Store permitted subtypes in interfaces for discoverability.
+            raw = get_node_text(child)
+            body = re.sub(r"^\s*permits\s*", "", raw)
+            permits_types = _split_respecting_generics(body)
+            implements_interfaces.extend(permits_types)
     return extends_class, implements_interfaces
 
 
 def _extract_superclass(node: Any, get_node_text: Callable[..., str]) -> str | None:
     match = re.search(r"\b[A-Z]\w*", get_node_text(node))
     return match.group(0) if match else None
-
-
-def _qualified_class_name(package_name: str, class_name: str) -> str:
-    return f"{package_name}.{class_name}" if package_name else class_name
-
-
-def _raw_text_for_span(
-    content_lines: list[str],
-    start_line: int,
-    end_line: int,
-) -> str:
-    start_line_idx = max(0, start_line - 1)
-    end_line_idx = min(len(content_lines), end_line)
-    return "\n".join(content_lines[start_line_idx:end_line_idx])
-
-
-def _build_java_class(
-    node: Any,
-    class_name: str,
-    start_line: int,
-    end_line: int,
-    raw_text: str,
-    full_qualified_name: str,
-    package_name: str,
-    extends_class: str | None,
-    implements_interfaces: list[str],
-    modifiers: list[str],
-    visibility: str,
-    annotations: list[dict[str, Any]],
-    is_nested: bool,
-    parent_class: str | None,
-) -> Class:
-    return Class(
-        name=class_name,
-        start_line=start_line,
-        end_line=end_line,
-        raw_text=raw_text,
-        language="java",
-        class_type=_CLASS_TYPE_MAP.get(node.type, "class"),
-        full_qualified_name=full_qualified_name,
-        package_name=package_name,
-        superclass=extends_class,
-        interfaces=implements_interfaces,
-        modifiers=modifiers,
-        visibility=visibility,
-        annotations=annotations,
-        is_nested=is_nested,
-        parent_class=parent_class,
-        extends_class=extends_class,
-        implements_interfaces=implements_interfaces,
-    )
 
 
 def _build_java_fields(

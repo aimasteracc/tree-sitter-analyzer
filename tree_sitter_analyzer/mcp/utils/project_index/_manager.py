@@ -22,7 +22,6 @@ from ._filesystem import (
 )
 from ._models import ProjectIndex
 from ._pagerank import collect_critical_nodes
-from ._toon import render_toon
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,6 @@ class ProjectIndexManager:
     """Manage the persistent project index stored on disk."""
 
     CACHE_FILE = ".tree-sitter-cache/project-index.json"
-    TOON_FILE = ".tree-sitter-cache/summary.toon"
     HASHES_FILE = ".tree-sitter-cache/file_hashes.json"
     CRITICAL_FILE = ".tree-sitter-cache/critical_nodes.json"
     SCHEMA_VERSION = "2"
@@ -187,10 +185,6 @@ class ProjectIndexManager:
         self._persist_project_index(index, scan_roots, critical_nodes)
         return index
 
-    def render_toon(self, index: ProjectIndex) -> str:
-        """Render the project index as TOON-format text."""
-        return render_toon(index, self._classify_dir)
-
     # ------------------------------------------------------------------
     # Build helpers
     # ------------------------------------------------------------------
@@ -252,12 +246,10 @@ class ProjectIndexManager:
         scan_roots: list[str],
         critical_nodes: list[dict[str, Any]],
     ) -> None:
-        """Persist index + derived artifacts (hashes, TOON snapshot, nodes)."""
+        """Persist index + derived artifacts (hashes, nodes)."""
         self.save(index)
         hashes = self._compute_file_hashes(scan_roots)
         self._save_file_hashes(hashes)
-        toon = self.render_toon(index)
-        self._save_toon(toon)
         self._save_critical_nodes(critical_nodes)
 
     # ------------------------------------------------------------------
@@ -372,17 +364,6 @@ class ProjectIndexManager:
                 json.dump(hashes, fh, indent=None)
         except OSError as err:
             logger.warning("Could not save file hashes: %s", err)
-
-    def _save_toon(self, toon: str) -> None:
-        from tree_sitter_analyzer.mcp.utils.cache_paths import assert_cache_path
-
-        toon_path = Path(self.project_root) / self.TOON_FILE
-        assert_cache_path(toon_path, self.project_root)
-        toon_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            toon_path.write_text(toon, encoding="utf-8")
-        except OSError as err:
-            logger.warning("Could not save summary.toon: %s", err)
 
     def _save_critical_nodes(self, nodes: list[dict[str, Any]]) -> None:
         from tree_sitter_analyzer.mcp.utils.cache_paths import assert_cache_path

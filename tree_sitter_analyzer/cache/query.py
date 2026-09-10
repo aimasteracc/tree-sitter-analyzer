@@ -13,6 +13,7 @@ import sqlite3
 from typing import TYPE_CHECKING, Any, cast
 
 from ..utils.test_detection import query_wants_tests, rank_tier
+from .helpers import _canonical_project_path
 from .maintenance import get_db_storage_stats
 
 if TYPE_CHECKING:
@@ -48,23 +49,14 @@ def invalidate(
     """Remove all cached rows for file_path. Returns True if a row was deleted."""
     import os
 
-    abs_path = os.path.abspath(file_path)
+    abs_path = _canonical_project_path(file_path, project_root)
     try:
         rel = os.path.relpath(abs_path, project_root).replace("\\", "/")
     except ValueError:
         return False
-    if fts5_available:
-        conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel,))
-        conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel,))
-    # CALLS rows live in the unified ``edges`` table (B1.3 — no ast_call_edges).
-    # Clear them so ``get_call_edges`` reflects the invalidation.
-    try:
-        conn.execute("DELETE FROM edges WHERE kind = 'calls' AND file_path = ?", (rel,))
-    except sqlite3.OperationalError:
-        pass
-    cursor = conn.execute("DELETE FROM ast_index WHERE file_path = ?", (rel,))
-    conn.commit()
-    return cursor.rowcount > 0
+    from .write import invalidate_file_rows
+
+    return invalidate_file_rows(conn, rel, fts5_available)
 
 
 def lookup(
@@ -75,7 +67,7 @@ def lookup(
     """Look up one file's cached AST metadata. Returns None if not indexed."""
     import os
 
-    abs_path = os.path.abspath(file_path)
+    abs_path = _canonical_project_path(file_path, project_root)
     try:
         rel = os.path.relpath(abs_path, project_root).replace("\\", "/")
     except ValueError:

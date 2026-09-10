@@ -3,7 +3,7 @@
 v2.0 β hard cut: the public MCP surface is the **8 domain facades**
 (``search`` / ``nav`` / ``structure`` / ``health`` / ``edit`` / ``project`` /
 ``index`` / ``viz``) instead of the 63 discrete inner tools. Each facade fans an
-``action`` parameter out to the unchanged inner tools (verdict / TOON envelope
+``action`` parameter out to the unchanged inner tools (verdict / JSON envelope
 preserved verbatim — see ``facade_tool.py`` and PRD §7).
 
 The 63 legacy tool names are NOT registered here anymore. They remain reachable

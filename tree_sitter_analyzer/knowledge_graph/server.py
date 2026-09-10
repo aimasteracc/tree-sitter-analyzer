@@ -14,14 +14,16 @@ from importlib import resources
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
 from .query import KnowledgeGraphQueryBackend, open_query_backend
-from .stores import JsonKnowledgeGraphStore, LadybugKnowledgeGraphStore
+from .stores import LadybugKnowledgeGraphStore
 
 logger = logging.getLogger(__name__)
 
 
 class KnowledgeGraphService:
-    """Service facade over LadybugDB with JSON sidecar fallback."""
+    """Service facade over LadybugDB with canonical SQLite fallback."""
 
     def __init__(self, project_root: str) -> None:
         self.project_root = os.path.abspath(project_root)
@@ -129,7 +131,7 @@ def ensure_knowledge_graph_ready(
     *,
     force_update: bool = True,
 ) -> dict[str, Any]:
-    """Materialize graph sidecars before opening the browser service."""
+    """Refresh SQLite and the optional LadybugDB projection before serving."""
     reason = _prepare_reason(project_root)
     if not reason and not force_update:
         return {"prepared": False, "reason": "fresh"}
@@ -159,18 +161,15 @@ def ensure_knowledge_graph_ready(
 
 
 def _prepare_reason(project_root: str) -> str:
-    json_store = JsonKnowledgeGraphStore(project_root)
     ladybug_store = LadybugKnowledgeGraphStore(project_root)
-    if not json_store.exists():
-        return "json sidecar missing"
+    index_path = str(resolve_index_path(project_root))
+    if not os.path.exists(index_path):
+        return "SQLite index missing"
     if LadybugKnowledgeGraphStore.available() and not ladybug_store.exists():
         return "LadybugDB mirror missing"
-    index_mtime = _mtime_ns(os.path.join(project_root, ".ast-cache", "index.db"))
+    index_mtime = _mtime_ns(index_path)
     if index_mtime is None:
         return ""
-    json_mtime = _mtime_ns(json_store.path)
-    if json_mtime is not None and json_mtime < index_mtime:
-        return "json sidecar older than SQLite index"
     if LadybugKnowledgeGraphStore.available():
         ladybug_mtime = _mtime_ns(ladybug_store.path)
         if ladybug_mtime is not None and ladybug_mtime < index_mtime:

@@ -33,6 +33,7 @@ import asyncio
 import sqlite3
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -296,3 +297,152 @@ class TestConstraintCheckFiltering:
         assert callers == ["mcp/handler.py"], (
             f"path_filter='mcp/**' must keep only the mcp/* row. Got: {callers}"
         )
+
+
+def test_explicit_access_rejects_unhashable_severity(tmp_path: Path) -> None:
+    tool = _make_tool(tmp_path)
+
+    with pytest.raises(ValueError, match=r"^severity_min must be one of"):
+        tool.validate_arguments({"access_mode": "read_existing", "severity_min": []})
+
+
+def test_explicit_access_requires_diff_snapshot(tmp_path: Path) -> None:
+    tool = _make_tool(tmp_path)
+
+    with pytest.raises(
+        ValueError,
+        match=r"^diff_snapshot_id is required for access_mode=read_existing$",
+    ):
+        tool.validate_arguments({"access_mode": "read_existing", "persist": False})
+
+
+def test_explicit_access_defaults_unavailable_output_to_json(tmp_path: Path) -> None:
+    import sys
+
+    tool = _make_tool(tmp_path)
+
+    result = _run(
+        tool.execute(
+            {
+                "access_mode": "read_existing",
+                "persist": False,
+                "diff_snapshot_id": "ds_test",
+                "scope_paths": [],
+            }
+        )
+    )
+
+    if sys.platform.startswith("linux"):
+        # RFC-0022 P0.4: on the certified axis the consumer runs its frozen
+        # route, so a missing snapshot is an unknown acquisition failure.
+        assert result["success"] is False
+        assert result["access_mode"] == "read_existing"
+        assert result["access_state"] == "unknown"
+        assert result["access_reason"] == "DIFF_SNAPSHOT_EXPIRED"
+        assert result["error_code"] == "DIFF_SNAPSHOT_EXPIRED"
+        assert result["source_snapshots"] == []
+        assert result["action_version"] == "edit.constraints/v1"
+    else:
+        assert result == {
+            "success": True,
+            "verdict": "WARN",
+            "access_mode": "read_existing",
+            "access_state": "unknown",
+            "access_reason": "READ_EXISTING_AUTHORITY_UNCERTIFIED",
+            "source_snapshots": [],
+            # RFC-0022 P0.5: wire owner echo on the unavailable envelope.
+            "action_version": "edit.constraints/v1",
+            "output_format": "json",
+        }
+
+
+def test_execute_without_project_root_returns_setup_instruction() -> None:
+    from tree_sitter_analyzer.mcp.tools.constraint_check_tool import (
+        ConstraintCheckTool,
+    )
+
+    result = _run(ConstraintCheckTool(None).execute({}))
+
+    assert result == {
+        "success": False,
+        "error": "Project root not set. Call set_project_path first.",
+        # RFC-0022 P0.5: wire owner echo on the missing-root envelope.
+        "action_version": "edit.constraints/v1",
+    }
+
+
+def test_execute_read_existing_fails_closed_without_project_root() -> None:
+    # Codex P1 (#1257): with project_root unbound the SecurityValidator
+    # receives base_path=None and skips its project-boundary layer, so an
+    # arbitrary relative scope path validates. The route must fail closed
+    # with the stable MISSING_PROJECT_ROOT error instead of classifying.
+    from tree_sitter_analyzer.mcp.tools.constraint_check_tool import (
+        ConstraintCheckTool,
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        _run(
+            ConstraintCheckTool(None).execute(
+                {
+                    "access_mode": "read_existing",
+                    "diff_snapshot_id": "ds_test",
+                    "scope_paths": ["src/a.py"],
+                    "persist": False,
+                    "output_format": "json",
+                }
+            )
+        )
+
+    assert str(exc_info.value) == (
+        "MISSING_PROJECT_ROOT: project_root must be bound before "
+        "read_existing path validation"
+    )
+
+
+def test_persistent_unexpected_runtime_error_is_not_misclassified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stage_minimal_constraints(tmp_path)
+    db = tmp_path / ".ast-cache" / "index.db"
+    db.parent.mkdir()
+    db.touch()
+    tool = _make_tool(tmp_path)
+    monkeypatch.setattr(
+        tool,
+        "_run_and_persist",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("unexpected")),
+    )
+    with pytest.raises(RuntimeError, match="^unexpected$"):
+        _run(tool.execute({}))
+
+
+def test_read_only_reuses_one_absolute_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1254 review 3772454771: config, graph, and publish share one budget.
+    import tree_sitter_analyzer.mcp.tools.constraint_check_tool as owner
+
+    observed: list[float] = []
+    snapshot = ("architectural-constraints.yml", b"rules", ())
+    monkeypatch.setattr(owner, "time", SimpleNamespace(monotonic=lambda: 1.0))
+    monkeypatch.setattr(
+        owner,
+        "load_live_constraints",
+        lambda _root, deadline: (observed.append(deadline) or snapshot, [object()]),
+    )
+    monkeypatch.setattr(
+        owner,
+        "_live_config_snapshot",
+        lambda _root, deadline: observed.append(deadline) or snapshot,
+    )
+    tool = _make_tool(tmp_path)
+    monkeypatch.setattr(
+        tool,
+        "_run_read_only",
+        lambda *_args, deadline, **_kwargs: (observed.append(deadline) or [], 0),
+    )
+
+    result = _run(tool.execute({"persist": False, "output_format": "json"}))
+
+    assert (result["success"], result["verdict"]) == (True, "SAFE")
+    assert observed == [11.0, 11.0, 11.0]

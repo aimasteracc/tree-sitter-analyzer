@@ -35,6 +35,7 @@ def handle_special_commands(
         lambda: _handle_agent_workflow(args, context),
         lambda: _handle_batch_partial_read(args, context),
         lambda: _handle_health_check(args, context),
+        lambda: _handle_self_health(args, context),
         lambda: _handle_doctor(args, context),
         lambda: _handle_check_scale(args, context),
         lambda: _handle_outline(args, context),
@@ -53,6 +54,7 @@ def handle_special_commands(
         lambda: _handle_knowledge_graph_index(args, context),
         lambda: _handle_affected(args, context),
         lambda: _handle_nav_actions_lazy(args, context),
+        lambda: _handle_capability_actions_lazy(args, context),
         lambda: _handle_watch_health(args, context),
         lambda: _handle_mcp_commands(args, context),
         lambda: _validate_partial_read_options(args, context.output_error),
@@ -150,9 +152,8 @@ def _effective_output_format(args: Any) -> str:
 
 
 def _tool_output_format(args: Any) -> str:
-    """Return the json/toon output format accepted by MCP-equivalent tools."""
-    fmt = _effective_output_format(args)
-    return "toon" if fmt in {"toon", "text"} else "json"
+    """Return the json output format accepted by MCP-equivalent tools."""
+    return "json"
 
 
 def _print_result(
@@ -160,19 +161,8 @@ def _print_result(
     args: Any,
     output_json: OutputJsonFn,
 ) -> None:
-    """Print tool output in the requested visible format.
-
-    r37aq (dogfood): replaced inline ``print(result.get("toon_content", ""))``
-    with the shared ``output_toon`` helper. ``--code-patterns`` flagged
-    the inline ``print`` as ``AP003``; the helper is the canonical TOON
-    output channel (matches ``cli/commands/mcp_commands.py``).
-    """
-    if _effective_output_format(args) == "toon":
-        from tree_sitter_analyzer.output_manager import output_toon
-
-        output_toon(result.get("toon_content", ""))
-    else:
-        output_json(result)
+    """Print tool output as JSON."""
+    output_json(result)
 
 
 def _run_mcp_tool_sync(
@@ -307,6 +297,40 @@ def _handle_health_check(
             context,
             "health_check",
             f"Project health check failed: {exc}",
+            error_type="runtime",
+        )
+        return 1
+
+
+def _handle_self_health(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Run the self-proprioception report for --self-health (RFC-0025 Layer 5).
+
+    Routes through the same ``SelfHealthTool`` the ``health action=self`` MCP
+    action uses, so the two surfaces cannot drift (parity is asserted by
+    ``tests/unit/mcp/test_self_health_tool.py``).
+    """
+    if not getattr(args, "self_health", False):
+        return None
+    try:
+        from tree_sitter_analyzer.mcp.tools.self_health_tool import SelfHealthTool
+
+        project_root = getattr(args, "project_root", None) or os.getcwd()
+        return _run_mcp_tool_sync(
+            SelfHealthTool,
+            {"output_format": _tool_output_format(args)},
+            project_root=project_root,
+            args=args,
+            context=context,
+        )
+    except Exception as exc:
+        _emit_cli_error(
+            args,
+            context,
+            "self_health",
+            f"Self-health report failed: {exc}",
             error_type="runtime",
         )
         return 1
@@ -655,6 +679,19 @@ def _handle_nav_actions_lazy(
     from tree_sitter_analyzer.cli.nav_special_commands import handle_nav_actions
 
     return handle_nav_actions(args, context)
+
+
+def _handle_capability_actions_lazy(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Delegate the RFC-0027 §L7/§L8 flags to ``capability_commands``.
+
+    Lazy import for the same reason as the nav delegator above.
+    """
+    from tree_sitter_analyzer.cli.capability_commands import handle_capability_actions
+
+    return handle_capability_actions(args, context)
 
 
 def _handle_watch_health(

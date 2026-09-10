@@ -7,16 +7,22 @@ conventions (test_*.py, *Test.java, *_test.go, etc.).
 """
 
 import re
+from collections.abc import Iterator
 from pathlib import Path
 
 from .test_discovery_languages import find_language_specific_tests
 from .test_discovery_predicates import is_existing_test_file as _is_existing_test_file
+from .test_discovery_python import _relative_to_root
 from .test_discovery_stems import (
+    _monorepo_package_identity,
     fixture_test_stems,
     module_family_test_stems,
     python_package_test_stems,
     related_stem_matches,
     related_test_stems_for_path,
+    test_path_is_unscoped,
+    test_path_subsystem_affinity_rank,
+    test_paths_have_compatible_package_scope,
 )
 
 __all__ = [
@@ -40,8 +46,26 @@ _TEST_PATTERNS: dict[str, list[str]] = {
     "java": ["{Stem}Test.java", "{Stem}Tests.java", "Test{Stem}.java"],
     "go": ["{stem}_test.go"],
     "rust": ["{stem}_test.rs", "{stem}_tests.rs"],
-    "javascript": ["{stem}.test.js", "{stem}.spec.js", "{stem}.test.jsx"],
-    "typescript": ["{stem}.test.ts", "{stem}.spec.ts", "{stem}.test.tsx"],
+    "javascript": [
+        "{stem}.test.js",
+        "{stem}.spec.js",
+        "{stem}.test.jsx",
+        "{stem}.spec.jsx",
+        "{stem}.test.mjs",
+        "{stem}.spec.mjs",
+        "{stem}.test.cjs",
+        "{stem}.spec.cjs",
+    ],
+    "typescript": [
+        "{stem}.test.ts",
+        "{stem}.spec.ts",
+        "{stem}.test.tsx",
+        "{stem}.spec.tsx",
+        "{stem}.test.mts",
+        "{stem}.spec.mts",
+        "{stem}.test.cts",
+        "{stem}.spec.cts",
+    ],
     "c": ["test_{stem}.c", "test_{stem}.h"],
     "cpp": ["test_{stem}.cpp", "test_{stem}.hpp"],
     "csharp": ["{Stem}Test.cs", "{Stem}Tests.cs"],
@@ -74,8 +98,12 @@ _EXT_TO_LANG: dict[str, str] = {
     ".rs": "rust",
     ".js": "javascript",
     ".jsx": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
     ".ts": "typescript",
     ".tsx": "typescript",
+    ".mts": "typescript",
+    ".cts": "typescript",
     ".c": "c",
     ".h": "c",
     ".cpp": "cpp",
@@ -103,6 +131,8 @@ def find_test_files(
     """
     p = Path(file_path)
     root = Path(project_root)
+    if not p.is_absolute():
+        p = root / p
     stem = p.stem
     ext = p.suffix.lower()
     language = detect_language_from_ext(ext) or "python"
@@ -116,6 +146,7 @@ def find_test_files(
 
     _find_pattern_tests(root, stem, patterns, test_dirs, results)
     _find_colocated_tests(p, stem, patterns, root, results)
+    explicit_matches = set(results)
     _find_symbol_reference_tests(p, language, root, results)
     find_language_specific_tests(
         p,
@@ -126,6 +157,40 @@ def find_test_files(
         results,
     )
 
+    if language == "python":
+        relative_source = str(_relative_to_root(p, root) or p)
+        family_stems = related_test_stems_for_path(relative_source)
+        stems = [stem, *family_stems]
+        named_candidates = {
+            test
+            for test in results
+            if test in explicit_matches
+            or any(related_stem_matches(Path(test).stem, name) for name in stems)
+        }
+        in_monorepo = _monorepo_package_identity(relative_source) is not None
+        require_affinity = in_monorepo or any(
+            test_paths_have_compatible_package_scope(test, relative_source)
+            and test_path_subsystem_affinity_rank(test, relative_source) is not None
+            for test in named_candidates
+        )
+        # #1400：明确命名与弱回退都必须受包边界约束，不能回流其他包的候选。
+        results = [
+            test
+            for test in results
+            if test_paths_have_compatible_package_scope(test, relative_source)
+            and (
+                not require_affinity
+                or test_path_is_unscoped(test)
+                or test_path_subsystem_affinity_rank(test, relative_source) is not None
+                # 与 graph policy 一致：先通过包兼容校验，再保留跨层的已知 family。
+                or any(
+                    related_stem_matches(Path(test).stem, name) for name in family_stems
+                )
+            )
+        ]
+        # #1376：明确命名匹配保留身份，不能因弱 stem 规则而降级；仅弱候选限十项。
+        named_family = [test for test in results if test in named_candidates]
+        return list(dict.fromkeys([*named_family, *results[:10]]))
     return results[:10]
 
 
@@ -158,12 +223,16 @@ def _find_recursive_test_candidates(
     root: Path,
     results: list[str],
 ) -> None:
-    """Find matching tests recursively within a test directory."""
+    """Python 收集完整命名族，其他语言保留原有惰性候选上限。"""
     if not test_dir.is_dir():
         return
-    for candidate in test_dir.rglob(test_filename):
+    candidates: Iterator[Path] = test_dir.rglob(test_filename)
+    python_family = test_filename.endswith(".py")
+    if python_family:
+        candidates = iter(sorted(candidates))
+    for candidate in candidates:
         _add_result(results, candidate, root)
-        if len(results) >= 10:
+        if not python_family and len(results) >= 10:
             break
 
 

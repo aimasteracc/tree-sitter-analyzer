@@ -98,7 +98,6 @@ class TestAnalyzeScaleToolGetToolSchema:
         assert schema["properties"]["output_format"]["type"] == "string"
         assert "enum" in schema["properties"]["output_format"]
         assert "json" in schema["properties"]["output_format"]["enum"]
-        assert "toon" in schema["properties"]["output_format"]["enum"]
 
 
 class TestAnalyzeScaleToolGetToolDefinition:

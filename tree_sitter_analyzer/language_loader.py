@@ -70,6 +70,7 @@ class LanguageLoader:
         "swift": "tree_sitter_swift",
         "bash": "tree_sitter_bash",
         "scala": "tree_sitter_scala",
+        "lua": "tree_sitter_lua",
     }
 
     # TypeScript特別処理（TypeScriptとTSX）
@@ -359,6 +360,7 @@ _GRAMMAR_EXTRAS: dict[str, str] = {
     "swift": "swift",
     "bash": "bash",
     "scala": "scala",
+    "lua": "lua",
 }
 
 

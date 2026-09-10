@@ -19,7 +19,10 @@ This document provides comprehensive guidelines for testing the tree-sitter-anal
 
 The tree-sitter-analyzer project maintains high testing standards with comprehensive test coverage across all components. Our testing philosophy prioritizes:
 
-- **Comprehensive Coverage**: >80% overall coverage, with critical modules at >85%
+- **Behavioral assertions first**: every test pins a concrete fact that would fail if
+  the code returned the wrong value. Coverage is a **by-product, never a goal** —
+  CLAUDE.md rule **T-3** is a BLOCKER and writing a test to move a coverage
+  percentage is prohibited.
 - **Clear Documentation**: Self-documenting tests with descriptive names
 - **Maintainability**: DRY principles with reusable fixtures and helpers
 - **Fast Feedback**: Efficient test execution with parallelization where appropriate
@@ -75,7 +78,10 @@ disabling, and marker definitions. `pyproject.toml` must not contain
 
 Runtime-default changes must update the relevant contract tests in
 `tests/contracts/test_pytest_runtime_contract.py` and prove that
-`uv run pytest -q` remains bounded and safe.
+`uv run pytest -q` remains bounded and safe. The bare command uses a curated
+high-risk `testpaths` quick gate. The comprehensive local command explicitly
+restores slow and full-language tests while leaving e2e, network, and benchmarks
+to their dedicated lanes.
 
 ### Marker And CI Routing Expectations
 
@@ -85,7 +91,7 @@ Runtime-default changes must update the relevant contract tests in
 - `slow_ok` is a narrow exception for tests that must scan enough code to exceed
   the unit 5-second budget.
 - `benchmark` tests run only with benchmark-specific commands and are disabled
-  in the default full suite.
+  in the default quick gate.
 - `e2e` marks black-box workflow checks routed separately from the ordinary test
   matrix.
 - Platform, optional-dependency, and language-specific markers should preserve
@@ -157,7 +163,16 @@ uv run pytest tests/benchmarks/ -m benchmark --benchmark-enable --benchmark-only
 
 ### Test File Naming
 
-- Unit test files: `test_<module>_comprehensive.py` or `test_<module>.py`
+- Unit test files: `test_<module>.py` — one file per module.
+  Do NOT create a second file for an existing module. Rule T-1 is a
+  BLOCKER. Add to the existing file instead.
+  The `block-banned-test-names` hook screens the `*_comprehensive*`,
+  `*_edge_cases*`, `*_coverage*`, `*_extended*` and `*_optimized*` patterns,
+  but it is a screen and not a proof — know its two limits:
+  it inspects only **added** files (`--diff-filter=A`), so renaming an existing
+  test into a banned name passes; and it matches the whole **path**, so a
+  legitimate file under a directory such as `tests/unit/grammar_coverage/`
+  trips it. T-1 is your obligation, not the hook's.
 - Integration tests: `test_<feature>_integration.py`
 - End-to-end tests: `test_<workflow>_e2e.py`
 
@@ -350,10 +365,16 @@ uv run python scripts/check_patch_coverage.py --base origin/develop --coverage-j
 
 ## Running Tests
 
-### Run All Tests
+### Run The Local Quick Gate
 
 ```bash
 uv run pytest -q
+```
+
+### Run The Comprehensive Suite
+
+```bash
+uv run pytest tests/ -q --timeout=120 -m "not e2e and not network and not benchmark"
 ```
 
 ### Run Faster During Development
@@ -369,14 +390,14 @@ PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1 -m "not slow and no
 ### Run with Coverage
 
 ```bash
-uv run pytest --cov=tree_sitter_analyzer --cov-report=term-missing
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=term-missing
 ```
 
 ### Run Specific Test Files
 
 ```bash
 # Single file
-uv run pytest tests/unit/test_exceptions_comprehensive.py
+uv run pytest tests/unit/test_exceptions_core.py
 
 # Multiple files
 uv run pytest tests/unit/test_*.py
@@ -386,10 +407,10 @@ uv run pytest tests/unit/test_*.py
 
 ```bash
 # Specific class
-uv run pytest tests/unit/test_exceptions_comprehensive.py::TestAnalysisError
+uv run pytest tests/unit/test_exceptions_core.py::TestTreeSitterAnalyzerError
 
 # Specific test
-uv run pytest tests/unit/test_exceptions_comprehensive.py::TestAnalysisError::test_initialization_with_all_parameters
+uv run pytest tests/unit/test_exceptions_core.py::TestTreeSitterAnalyzerError::test_message_and_error_code
 ```
 
 ### Run Tests by Marker
@@ -474,13 +495,28 @@ def sample_code():
 
 @pytest.fixture
 def mock_analyzer():
-    """Provide a mock analyzer."""
-    return Mock(spec=CodeAnalyzer)
+    """Provide a mock analyzer with a configured return value.
+
+    Two traps this example exists to avoid:
+
+    1. A bare ``Mock()`` returns a fresh unconfigured ``Mock`` from every
+       call, so ``assert result.language == "python"`` would compare two
+       Mock objects and fail. Configure the value you intend to assert.
+    2. ``Mock(spec=SomeClass)`` auto-specs each attribute, and for an
+       ``async def`` method that yields an ``AsyncMock`` whose call returns
+       a **coroutine**, not your value — the assertion then fails with
+       ``AttributeError: 'coroutine' object has no attribute ...``.
+       Only spec against a class whose call shape you are actually
+       modelling, and ``await`` it if the real method is async.
+    """
+    analyzer = Mock()
+    analyzer.analyze.return_value = Mock(language="python")
+    return analyzer
 
 def test_with_fixtures(sample_code, mock_analyzer):
     """Test using fixtures."""
     result = mock_analyzer.analyze(sample_code)
-    assert result is not None
+    assert result.language == "python"
 ```
 
 ### 3. Test Error Conditions
@@ -543,7 +579,7 @@ import pytest
 async def test_async_function():
     """Test async function."""
     result = await async_function()
-    assert result is not None
+    assert result["status"] == "ok"
 ```
 
 ### 7. Clean Up Resources
@@ -630,7 +666,7 @@ def test_python_function_analysis(tmp_path):
         expected_language="python",
         require_success=True
     )
-    assert len(result["elements"]["functions"]) >= 1
+    assert len(result["elements"]["functions"]) == 1
 ```
 
 ---

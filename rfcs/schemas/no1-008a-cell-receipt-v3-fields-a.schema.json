@@ -1,0 +1,211 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://tree-sitter-analyzer.invalid/schemas/no1-008a-cell-receipt-v3-fields-a.schema.json",
+ "$defs": {
+  "cell": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "repo_id",
+    "arm_id",
+    "attempt",
+    "artifact_path"
+   ],
+   "properties": {
+    "repo_id": {
+     "enum": [
+      "vscode",
+      "excalidraw",
+      "django",
+      "tokio",
+      "okhttp",
+      "gin",
+      "alamofire"
+     ]
+    },
+    "arm_id": {
+     "enum": [
+      "tsa-warm",
+      "codegraph-warm"
+     ]
+    },
+    "attempt": {
+     "const": 1
+    },
+    "artifact_path": {
+     "type": "string",
+     "pattern": "^cells/(vscode|excalidraw|django|tokio|okhttp|gin|alamofire)/(tsa-warm|codegraph-warm)/cell-receipt\\.json$"
+    }
+   }
+  },
+  "plan": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "plan_hash",
+    "plan_set_hash",
+    "tool_sha256",
+    "config_sha256",
+    "image_digest",
+    "seccomp_sha256"
+   ],
+   "properties": {
+    "plan_hash": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "plan_set_hash": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "tool_sha256": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "config_sha256": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "seccomp_sha256": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "image_digest": {
+     "type": "string",
+     "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+   }
+  },
+  "source": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "commit",
+    "eligibility",
+    "repo_fingerprint",
+    "mount_target",
+    "read_only"
+   ],
+   "properties": {
+    "commit": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "eligibility": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/eligibility"
+    },
+    "repo_fingerprint": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "mount_target": {
+     "const": "/source"
+    },
+    "read_only": {
+     "const": true
+    }
+   }
+  },
+  "environment": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "environment_digest",
+    "image_digest",
+    "docker_security_flags",
+    "network_mode",
+    "seccomp_sha256",
+    "credentials_stripped"
+   ],
+   "properties": {
+    "environment_digest": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "image_digest": {
+     "type": "string",
+     "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "docker_security_flags": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "network_mode": {
+     "const": "none"
+    },
+    "seccomp_sha256": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "credentials_stripped": {
+     "const": true
+    }
+   }
+  },
+  "counters": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "api_cost_usd",
+    "input_tokens",
+    "model_calls",
+    "network_requests",
+    "output_tokens",
+    "provider_requests"
+   ],
+   "properties": {
+    "api_cost_usd": {
+     "type": "number",
+     "const": 0
+    },
+    "input_tokens": {
+     "type": "number",
+     "const": 0
+    },
+    "model_calls": {
+     "type": "number",
+     "const": 0
+    },
+    "network_requests": {
+     "type": "number",
+     "const": 0
+    },
+    "output_tokens": {
+     "type": "number",
+     "const": 0
+    },
+    "provider_requests": {
+     "type": "number",
+     "const": 0
+    }
+   }
+  },
+  "resources": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "plan_digest",
+    "wall_ns",
+    "cpu_usec",
+    "io_bytes",
+    "memory_peak_bytes",
+    "pids_peak"
+   ],
+   "properties": {
+    "plan_digest": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "wall_ns": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/nonnegative"
+    },
+    "cpu_usec": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/nonnegative"
+    },
+    "io_bytes": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/nonnegative"
+    },
+    "memory_peak_bytes": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/nonnegative"
+    },
+    "pids_peak": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/nonnegative"
+    }
+   }
+  }
+ }
+}

@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import ast
 import configparser
-import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -21,15 +21,38 @@ from tree_sitter_analyzer.cli_main import create_argument_parser
 from tree_sitter_analyzer.mcp.server import _create_tool_registry
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SKIPPED_SCAN_DIRS = {
-    ".git",
-    ".benchmark-repos",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".uv-cache",
-    ".venv",
-}
+
+
+def test_t1_pure_migration_exception_is_narrow_and_user_authorized() -> None:
+    """#1376：文档只允许受控纯迁移，不能放开任意插件或覆盖率碎片测试。"""
+    text = (PROJECT_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    section = text.split("### T-1:", 1)[1].split("### T-2:", 1)[0]
+    for required in (
+        "ADD to the existing `test_{plugin}.py` file. Do NOT create new files.",
+        "Controlled pure-migration exception (user-approved; tracked: #1376)",
+        "A tracking issue explicitly authorizes the migration.",
+        "No original test cases are added, removed, duplicated, or weakened",
+        "names, parameters, fixture scopes, markers, and helper dependencies",
+        "exact before/after collected nodeid mappings",
+        "including class methods\n  and parameter IDs",
+        "AST comparisons and negative mutation probes",
+        "never assertion or\n  test-input data",
+        "Existing explicit encoding values must not change",
+        "Every migrated target and new Python module must be at most 500 lines",
+        "Update live references and verification-family",
+        "New behavior must still go into the corresponding existing behavior module",
+        "not permission to create arbitrary new language-plugin or MCP-tool test",
+    ):
+        assert required in section, required
+    for pattern in (
+        "*_comprehensive*.py",
+        "*_edge_cases*.py",
+        "*_coverage_boost*.py",
+        "*_coverage*.py",
+        "*_extended*.py",
+        "*_optimized*.py",
+    ):
+        assert pattern in section, pattern
 
 
 def test_agent_facing_docs_do_not_recommend_bare_pytest() -> None:
@@ -91,36 +114,146 @@ def test_agent_docs_require_dogfood_feedback_memory_loop() -> None:
     assert "verification" in agents_text
 
 
-@pytest.mark.slow_ok  # scans the Python API source for warning-prone patterns; ~5-5.5s, tips the 5s budget under Windows full-matrix load
 def test_warning_prone_python_api_patterns_are_blocked() -> None:
     """Keep future agents from reintroducing known Python 3.14 warning sources."""
     blocked_patterns = {
-        r"\basyncio\.iscoroutinefunction\(": "use inspect.iscoroutinefunction()",
-        r"\bdatetime\.utcnow\(": "use datetime.now(UTC)",
-        r"\blang_obj\.query\(": "use tree_sitter.Query(language, query)",
-        r"\byaml_language\.query\(": "use tree_sitter.Query(language, query)",
-        r"\blanguage\.query\(": "use tree_sitter.Query(language, query)",
+        "asyncio.iscoroutinefunction(": "use inspect.iscoroutinefunction()",
+        "datetime.utcnow(": "use datetime.now(UTC)",
+        "lang_obj.query(": "use tree_sitter.Query(language, query)",
+        "yaml_language.query(": "use tree_sitter.Query(language, query)",
+        "language.query(": "use tree_sitter.Query(language, query)",
     }
 
-    newline = "\n"
-    violations: list[str] = []
-    for dirpath, dirnames, filenames in os.walk(PROJECT_ROOT):
-        dirnames[:] = [
-            name
-            for name in dirnames
-            if name not in SKIPPED_SCAN_DIRS and not name.startswith(".")
-        ]
-        for filename in filenames:
-            if not filename.endswith(".py"):
-                continue
-            path = Path(dirpath) / filename
-            rel = str(path.relative_to(PROJECT_ROOT))
-            text = path.read_text(encoding="utf-8")
-            for pattern, replacement in blocked_patterns.items():
-                for match in re.finditer(pattern, text):
-                    match_start = match.start()
-                    line_number = text.count(newline, 0, match_start) + 1
-                    msg = f"{rel}:{line_number} matches {pattern}; {replacement}"
-                    violations.append(msg)
+    grep_command = ["git", "grep", "-n", "-F"]
+    for pattern in blocked_patterns:
+        grep_command.extend(["-e", pattern])
+    grep_command.extend(["--", "tree_sitter_analyzer"])
+    result = subprocess.run(
+        grep_command,
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert result.returncode in {0, 1}, result.stderr
+
+    violations = result.stdout.splitlines()
+    untracked = subprocess.run(
+        [
+            "git",
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "--",
+            "tree_sitter_analyzer",
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    for rel in untracked.stdout.splitlines():
+        path = PROJECT_ROOT / rel
+        if path.suffix != ".py":
+            continue
+        text = path.read_text(encoding="utf-8")
+        for pattern, replacement in blocked_patterns.items():
+            if pattern in text:
+                violations.append(f"{rel} matches {pattern}; {replacement}")
 
     assert violations == []
+
+
+def _load_codemap_surface():
+    """Import scripts/codemap_surface.py, the gate's static surface extractor."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "codemap_surface", PROJECT_ROOT / "scripts" / "codemap_surface.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_codemap_sync_gate_sees_every_registered_mcp_tool() -> None:
+    """The gate's static extractor must see the registry exactly, not approximately.
+
+    A ``count > 0`` self-check is not a guarantee: a tree whose only match is a
+    stale docstring mention passes it while the detector is functionally dead.
+    Exact set equality is the guarantee.
+    """
+    cs = _load_codemap_surface()
+    static_names = cs.extract_mcp_names(
+        (PROJECT_ROOT / cs.MCP_REGISTRY).read_text(encoding="utf-8")
+    )
+    runtime_names = {name for name, _ in _create_tool_registry(str(PROJECT_ROOT))[0]}
+
+    assert static_names == runtime_names
+
+
+def test_codemap_sync_gate_sees_every_cli_flag() -> None:
+    """Every option string the real parser exposes must be visible to the gate.
+
+    argparse synthesises ``-h``/``--help`` with no defining source line, so those
+    are the only permitted difference.
+    """
+    cs = _load_codemap_surface()
+    static_flags: set[str] = set()
+    for path in sorted((PROJECT_ROOT / cs.CLI_PREFIX).rglob("*.py")):
+        static_flags |= cs.extract_cli_flags(path.read_text(encoding="utf-8"))
+    runtime_flags = {
+        s for a in create_argument_parser()._actions for s in a.option_strings
+    }
+
+    assert runtime_flags - static_flags == set(cs.ARGPARSE_IMPLICIT_FLAGS)
+
+
+def test_codemap_sync_gate_watches_the_whole_cli_flag_surface() -> None:
+    """Zero add_argument flags under cli/** may fall outside the watched filter.
+
+    Before the gate repair, 82 of 405 add_argument calls were unwatched: the
+    find-and-grep / list-files / search-content console scripts, all documented
+    entry points in docs/CODEMAPS/cli.md. Coverage, not count, is the invariant
+    that would have caught that.
+    """
+    cs = _load_codemap_surface()
+    watched_root = (PROJECT_ROOT / cs.CLI_PREFIX).resolve()
+    unwatched: list[str] = []
+    for path in sorted((PROJECT_ROOT / "tree_sitter_analyzer" / "cli").rglob("*.py")):
+        if path.resolve().is_relative_to(watched_root):
+            continue
+        if cs.extract_cli_flags(path.read_text(encoding="utf-8")):
+            unwatched.append(str(path.relative_to(PROJECT_ROOT)))
+
+    assert unwatched == []
+
+
+def test_cli_codemap_flag_count_matches_the_real_parser() -> None:
+    """docs/CODEMAPS/cli.md's flag count is the CI net for a CLI-side gate bypass.
+
+    AGENTS.md claims a CI safety net exists behind the local escape hatch. That was
+    true for mcp-tools.md and false for cli.md, which had no CI check at all, so a
+    CLI-side bypass was unrecoverable. This is that net. The codemap drifted to 295
+    against a real 324 while the gate was dead.
+    """
+    codemap = (PROJECT_ROOT / "docs" / "CODEMAPS" / "cli.md").read_text(
+        encoding="utf-8"
+    )
+    match = re.search(r"\((\d+) unique flags total", codemap)
+    assert match is not None, "docs/CODEMAPS/cli.md must state '(N unique flags total'"
+    documented = int(match.group(1))
+
+    actual = len(
+        {
+            s
+            for a in create_argument_parser()._actions
+            for s in a.option_strings
+            if s.startswith("--")
+        }
+    )
+
+    assert documented == actual

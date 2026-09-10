@@ -78,13 +78,27 @@ CONDITIONAL_PARAM_NOTES: dict[tuple[str, str], str] = {
         "requires `file_path` or `symbol`; file-scoped queries take "
         "exactly one of `query_key`/`query_string`"
     ),
+    ("edit", "impact"): (
+        "`capture_diff_snapshot` is an explicit legacy producer available only "
+        "to same-process POSIX consumers and is forbidden whenever `access_mode` "
+        "is present"
+    ),
+    ("index", "status"): (
+        "`access_mode` accepts only `read_existing` (default); it is rejected "
+        "for every mutating index action"
+    ),
 }
 
 BESPOKE_ROUTE_SPECS: dict[tuple[str, str], dict[str, Any]] = {
+    ("edit", "release_snapshot"): {
+        "params": "`diff_snapshot_id`*, `route_lease_id`*, `output_format`",
+        "source": "edit_facade.py::release_snapshot",
+    },
     ("nav", "context"): {
         "params": (
             "`task`* (or `symbol`/`query` as alias), `max_nodes`, "
-            "`max_code_blocks`, `include_graph`, `output_format`"
+            "`max_code_blocks`, `include_graph`, `access_mode`, `snapshot_id`, "
+            "`source_generation`, `output_format`"
         ),
         "source": "nav_facade.py::_context_route",
     },
@@ -115,15 +129,7 @@ BESPOKE_ROUTE_SPECS: dict[tuple[str, str], dict[str, Any]] = {
         ),
         "source": "nav_facade.py::_co_change_route",
     },
-    ("search", "content"): {
-        # _content_route forwards args verbatim to SearchContentTool.execute,
-        # so the inner's strict schema is the authoritative param contract.
-        "schema_from": (
-            "tree_sitter_analyzer.mcp.tools.search_content_tool",
-            "SearchContentTool",
-        ),
-        "source": "search_facade.py::_content_route",
-    },
+    # ("search", "content"): SearchContentTool は廃止済み。CC Grep tool を使用すること。
     ("structure", "read"): {
         "params": (
             "single: `file_path`* + `start_line`* [+ `end_line`, `start_column`, "

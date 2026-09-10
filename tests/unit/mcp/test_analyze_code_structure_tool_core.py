@@ -116,7 +116,7 @@ class TestAnalyzeCodeStructureToolGetToolDefinition:
         schema = tool.get_tool_definition()["inputSchema"]
         assert "output_format" in schema["properties"]
         assert schema["properties"]["output_format"]["type"] == "string"
-        assert set(schema["properties"]["output_format"]["enum"]) == {"json", "toon"}
+        assert set(schema["properties"]["output_format"]["enum"]) == {"json"}
 
 
 class TestAnalyzeCodeStructureToolValidateArguments:
@@ -186,8 +186,7 @@ class TestAnalyzeCodeStructureToolValidateArguments:
         except ValueError as exc:
             error_msg = str(exc)
             # Verify all valid formats are enumerated
-            assert "compact" in error_msg
-            assert "csv" in error_msg
+            # (compact/csv 已按领导裁决删除,2026-09-06)
             assert "full" in error_msg
             assert "signatures" in error_msg
             assert "html" in error_msg  # The invalid value

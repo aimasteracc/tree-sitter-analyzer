@@ -5,7 +5,11 @@ import time
 from typing import Any
 
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
+from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
+
+# NOTE: SearchContentTool (search_content) is deprecated and removed.
+# Text search is now done via CC built-in Grep tool.
+# The search tasks below use ListFilesTool instead.
 
 
 async def collect_security_under_load_results(
@@ -41,13 +45,12 @@ def _build_security_under_load_tasks(
             )
         )
 
-        search_tool = SearchContentTool(secure_test_project)
-        search_params = {
+        list_tool = ListFilesTool(secure_test_project)
+        list_params = {
             "roots": [secure_test_project],
-            "query": f"test{index}",
-            "max_count": 5,
+            "limit": 5,
         }
-        concurrent_attacks.append(("search", search_tool.execute(search_params)))
+        concurrent_attacks.append(("search", list_tool.execute(list_params)))
 
     return concurrent_attacks
 

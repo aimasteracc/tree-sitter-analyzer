@@ -1,36 +1,30 @@
 #!/usr/bin/env python3
 """``health`` facade — Wave B facade for the FacadeTool framework (P0 geode layer).
 
-Folds 14 health/analysis capabilities behind one ``action`` parameter.
+通过 action 参数提供 16 个健康检查动作，包括语句级不可达检查与中间件检测。
 The ``uml`` / ``graph`` / ``similarity`` trio have been split into the
 separate ``viz`` facade (see ``viz_facade.py``).
 
-===========  ===========================================  ===================================================
-action       inner / route                                engine / purpose
-===========  ===========================================  ===================================================
-project      ``project_health``  (ProjectHealthTool)      overall project code-quality grade
-file         ``file_health``     (FileHealthTool)         per-file health metrics
-scale        ``analyze_scale``   (AnalyzeScaleTool)       LOC / complexity / size metrics
-patterns     ``code_patterns``   (CodePatternsTool)       anti-pattern detection by category
-heatmap      ``codegraph_complexity_heatmap``             complexity ranked by file / function
-imports      ``codegraph_import_graph``                   module import dependency graph
-matrix       ``codegraph_dependency_matrix``              coupling matrix, coupling ranks
-dead         ``codegraph_dead_code``                      unreferenced functions / imports / vars (function level)
-unreachable  ``unreachable_code`` (UnreachableCodeTool)   statement-level unreachable code inside live functions
-routes       ``route_detector``  (RouteDetectorTool)      HTTP route discovery
-middleware   ``detect_middleware`` (MiddlewareDetectorTool) middleware / interceptor chains per framework
-overview     ``codegraph_overview``                       entry-points / hubs / dead summary
-deps         ``analyze_dependencies`` (R5)                dependency analysis — mode sub-param:
-                                                          summary|cycles|blast|file_deps
-test_gap     ``codegraph_test_gap`` (CodeGraphTestGapTool) untested symbol discovery, complexity-ranked
-===========  ===========================================  ===================================================
-
-Complementary pairs (do NOT conflate):
-    * ``dead`` finds whole functions/imports/vars nothing references;
-      ``unreachable`` finds statements *inside* live functions that can never
-      execute (code after return/raise, if-False branches, ...).
-    * ``routes`` discovers HTTP endpoints; ``middleware`` discovers the
-      before/after interceptor chain those endpoints run through.
+==========  ===========================================  ===================================================
+action      inner / route                                engine / purpose
+==========  ===========================================  ===================================================
+project     ``project_health``  (ProjectHealthTool)      overall project code-quality grade
+file        ``file_health``     (FileHealthTool)         per-file health metrics
+scale       ``analyze_scale``   (AnalyzeScaleTool)       LOC / complexity / size metrics
+patterns    ``code_patterns``   (CodePatternsTool)       anti-pattern detection by category
+heatmap     ``codegraph_complexity_heatmap``             complexity ranked by file / function
+imports     ``codegraph_import_graph``                   module import dependency graph
+matrix      ``codegraph_dependency_matrix``              coupling matrix, coupling ranks
+dead        ``codegraph_dead_code``                      unreferenced functions / imports / vars
+routes      ``route_detector``  (RouteDetectorTool)      HTTP route discovery
+overview    ``codegraph_overview``                       entry-points / hubs / dead summary
+deps        ``analyze_dependencies`` (R5)                dependency analysis — mode sub-param:
+                                                         summary|cycles|blast|file_deps
+test_gap    ``codegraph_test_gap`` (CodeGraphTestGapTool) untested symbol discovery, complexity-ranked
+self        ``self_health``     (SelfHealthTool)         RFC-0025 Layer 5 self-proprioception: per-route
+                                                         p50/p95 latency by tier + analysis-cache hit rate + AST-index state
+refactor_queue ``refactor_queue`` (RefactorQueueTool)     RFC-0027 §L8 top-N prioritized refactor queue
+==========  ===========================================  ===================================================
 
 R5 (PRD §3): ``deps`` maps to the single ``DependencyAnalysisTool`` whose
 ``mode`` param (``summary`` / ``cycles`` / ``blast`` / ``file_deps``) is
@@ -80,24 +74,15 @@ _HEALTH_DESCRIPTION = (
     "- action=matrix — coupling matrix and top-k coupling ranks "
     "(codegraph_dependency_matrix equivalent). "
     "Params: mode, file_path, top_k, threshold.\n"
-    "- action=dead — FUNCTION-level dead code: unreferenced functions / unused "
-    "imports / unused variables (codegraph_dead_code equivalent). "
+    "- action=dead — unreferenced functions / unused imports / unused variables "
+    "(codegraph_dead_code equivalent). "
     "Params: mode, include_test_files, max_dead, max_imports, max_variables.\n"
-    "- action=unreachable — STATEMENT-level unreachable code inside live "
-    "functions: statements after return/raise/break/continue, if-False branches, "
-    "else of if-True, and code after terminal calls (sys.exit, os._exit). "
-    "Complements action=dead (which is function-level), does not replace it. "
-    "Params: mode (file|project, default: file), file_path (required for "
-    "mode=file), include_test_files, max_files, output_format.\n"
+    "- action=unreachable — statement-level unreachable code inside live functions. "
+    "Params: mode (file|project), file_path, include_test_files, max_files.\n"
+    "- action=middleware — framework middleware/interceptor chains. "
+    "Params: mode (all|summary|lookup), url_prefix, framework.\n"
     "- action=routes — HTTP route discovery across framework conventions. "
     "Params: mode, url_pattern, file_path, framework.\n"
-    "- action=middleware — middleware / interceptor chain discovery: Flask "
-    "@before_request/@after_request, Django MIDDLEWARE settings, FastAPI "
-    "@middleware decorators, Express app.use(), Spring @ControllerAdvice / "
-    "Filter / HandlerInterceptor. Complements action=routes by covering the "
-    "rest of the request pipeline. Params: mode (all|summary|lookup, default: "
-    "all), url_prefix (for mode=lookup), framework "
-    "(all|flask|django|fastapi|express|spring), output_format.\n"
     "- action=overview — entry-points / hub files / dead-code summary "
     "(codegraph_overview equivalent). "
     "Params: max_entry_points, max_hubs, max_dead, max_coupled_files.\n"
@@ -110,6 +95,17 @@ _HEALTH_DESCRIPTION = (
     "- action=test_gap — untested symbol discovery ranked by cyclomatic complexity. "
     "Params: mode (summary|gaps|file), file_path, language, max_files, max_gaps, "
     "include_covered, output_format.\n"
+    "- action=self — self-proprioception (RFC-0025 Layer 5): per-(tool, action) "
+    "p50/p95 latency split by tier (cold/warm/cached), exact invocation counts, "
+    "the in-process analysis-cache hit rate, and the on-disk AST-index state "
+    "(.ast-cache/index.db) for THIS process. No params. Unmeasured values "
+    "are `null` with status NO_OBSERVATIONS — never a fabricated 0.0.\n"
+    "- action=refactor_queue — top-N prioritized refactor queue (RFC-0027 §L8): "
+    "files ranked by (1 - health/100) * log(1 + churn_30d) * (dead_ratio + 0.1), "
+    "each row carrying grade, weakest dimension, 30-day churn, dead-symbol "
+    "count and a concrete action (split / delete dead / extract). Returns "
+    "CHURN_UNAVAILABLE rather than a queue of zeros when the AST index has no "
+    "churn to read. Params: top_n.\n"
     "For UML diagrams, call/dependency graph visualizations, and similarity "
     "analysis, use the ``viz`` facade instead."
 )
@@ -123,7 +119,7 @@ def build_health_facade(project_root: str | None = None) -> FacadeTool:
     ``_tool_registry.py``).
 
     The ``uml`` / ``graph`` / ``similarity`` trio have been moved to the
-    ``viz`` facade (``build_viz_facade``). This facade now has 14 actions.
+    ``viz`` facade (``build_viz_facade``). This facade now has 11 actions.
     """
     from .analyze_scale_tool import AnalyzeScaleTool
     from .code_patterns_tool import CodePatternsTool
@@ -136,7 +132,9 @@ def build_health_facade(project_root: str | None = None) -> FacadeTool:
     from .import_graph_tool import CodeGraphImportGraphTool
     from .middleware_detector_tool import MiddlewareDetectorTool
     from .project_health_tool import ProjectHealthTool
+    from .refactor_queue_tool import RefactorQueueTool
     from .route_detector_tool import RouteDetectorTool
+    from .self_health_tool import SelfHealthTool
     from .test_gap_tool import CodeGraphTestGapTool
     from .unreachable_code_tool import UnreachableCodeTool
 
@@ -153,20 +151,20 @@ def build_health_facade(project_root: str | None = None) -> FacadeTool:
             "imports": CodeGraphImportGraphTool(project_root),
             "matrix": CodeGraphDependencyMatrixTool(project_root),
             "dead": CodeGraphDeadCodeTool(project_root),
-            # Wiring fix: UnreachableCodeTool was implemented but never
-            # registered. It is statement-level and COMPLEMENTS ``dead``
-            # (function-level) — it must not replace it.
-            "unreachable": UnreachableCodeTool(project_root),
             "routes": RouteDetectorTool(project_root),
-            # Wiring fix: MiddlewareDetectorTool was implemented but never
-            # registered. Middleware chains complement ``routes`` (endpoints)
-            # by covering the rest of the request pipeline.
+            "unreachable": UnreachableCodeTool(project_root),
             "middleware": MiddlewareDetectorTool(project_root),
             "overview": CodeGraphOverviewTool(project_root),
             # R5: deps — multi-mode, ``mode`` kept by projection filter automatically
             "deps": DependencyAnalysisTool(project_root),
             # RFC-0003 pre-requisite: wire orphaned test-gap tool into the facade
             "test_gap": CodeGraphTestGapTool(project_root),
+            # RFC-0025 Layer 5: self-proprioception (latency p50/p95 by tier)
+            "self": SelfHealthTool(project_root),
+            # RFC-0027 §L8: the refactor-priority formula, now in code.
+            # Read-only (three signal reads, zero writes) so the facade-wide
+            # readOnlyHint=True above stays honest.
+            "refactor_queue": RefactorQueueTool(project_root),
         },
         bespoke_map={},  # no F5 bespoke routes needed for health
         description=_HEALTH_DESCRIPTION,

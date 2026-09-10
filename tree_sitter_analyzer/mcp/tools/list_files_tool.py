@@ -89,7 +89,7 @@ class ListFilesTool(BaseMCPTool):
                 "- Producing a quick structural overview\n"
                 "\n"
                 "WHEN NOT TO USE:\n"
-                "- To search file CONTENT — use search_content or find_and_grep\n"
+                "- To search file CONTENT — use CC Grep tool\n"
                 "- To analyse a single file's structure — use get_code_outline\n"
                 "- To get a semantic project map — use project_overview"
             ),

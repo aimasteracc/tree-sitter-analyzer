@@ -96,9 +96,9 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format (default: toon)",
-                    "default": "toon",
+                    "enum": ["json"],
+                    "description": "Output format: JSON.",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -125,7 +125,7 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
         max_dead = arguments.get("max_dead", 50)
         max_imports = arguments.get("max_imports", 50)
         max_variables = arguments.get("max_variables", 50)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         path = arguments.get("path") or None
 
         try:
@@ -272,9 +272,9 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
                 if key not in keep:
                     response.pop(key, None)
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(response, output_format)
+        return apply_output_format_to_response(response, output_format)
 
 
 def _under_path(file_path: str, path: str) -> bool:

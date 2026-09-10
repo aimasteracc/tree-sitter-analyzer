@@ -227,7 +227,7 @@ bash scripts/codemap-sync-check.sh
 echo "exit=$?"  # 0 = pass, 1 = block
 ```
 
-Escape hatch (intentional rename without semantic change): `SKIP_CODEMAP_SYNC=1 git commit ...`. The pytest `test_registered_mcp_tools_have_codemap_parity` is the safety net that catches abuse in CI.
+Escape hatch: `SKIP_CODEMAP_SYNC=force git commit ...` (bypasses and logs to `$GIT_DIR/codemap-sync-bypass.log`; the older `=1` now fails rather than passing silently, because pre-commit hides output from passing hooks). The pytest nets that catch abuse in CI are `test_registered_mcp_tools_have_codemap_parity` for `mcp-tools.md` and `test_cli_codemap_flag_count_matches_the_real_parser` for `cli.md`.
 
 ### Why Phase D exists
 

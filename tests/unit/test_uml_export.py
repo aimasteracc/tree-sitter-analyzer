@@ -7,7 +7,10 @@ from types import SimpleNamespace
 import pytest
 
 from tree_sitter_analyzer import uml_export
+from tree_sitter_analyzer._uml_export_builders import _prioritized_class_edges
 from tree_sitter_analyzer.uml_export import (
+    _ACTIVITY_NOT_FOUND_MERMAID,
+    UMLDiagram,
     UMLEdge,
     UMLExporter,
     _clamp_edges,
@@ -45,6 +48,26 @@ def test_render_flowchart_mermaid_supports_unlabeled_edges() -> None:
     mermaid = render_flowchart_mermaid(["cli", "core"], [UMLEdge("cli", "core")])
 
     assert "cli --> core" in mermaid
+
+
+def test_prioritized_class_edges_reserves_remaining_capacity_for_tests() -> None:
+    production = [UMLEdge("Base", "Production", "inherits")]
+    tests = [UMLEdge("Base", "TestProduction", "inherits")]
+
+    edges, truncated = _prioritized_class_edges(production, tests, max_edges=2)
+
+    assert edges == production + tests
+    assert truncated is False
+
+
+def test_prioritized_class_edges_drops_tests_when_production_fills_limit() -> None:
+    production = [UMLEdge("Base", "Production", "inherits")]
+    tests = [UMLEdge("Base", "TestProduction", "inherits")]
+
+    edges, truncated = _prioritized_class_edges(production, tests, max_edges=1)
+
+    assert edges == production
+    assert truncated is True
 
 
 def test_render_sequence_mermaid_uses_first_call_path() -> None:
@@ -309,3 +332,94 @@ def test_sequence_diagram_uses_call_path_and_marks_static_approximation(
     assert diagram.truncated is True
     assert diagram.nodes == ["entry", "service"]
     assert diagram.edges == [UMLEdge("entry", "service", "call")]
+
+
+# ── _activity_error_diagram helper (TDD RED -> GREEN) ─────────────────────────
+# These tests drive extraction of the nested error-dispatch inside
+# activity_diagram() into a dedicated _activity_error_diagram() helper,
+# reducing the deep_nesting severity from depth 7 to depth <= 3.
+
+
+def test_activity_error_diagram_file_missing_returns_not_found() -> None:
+    """_activity_error_diagram returns NOT_FOUND with file-path message for file_missing."""
+    exporter = UMLExporter("/repo", cache=object())
+    result = exporter._activity_error_diagram(
+        "file_missing: /repo/src/a.py", "my_func", "/repo/src/a.py"
+    )
+    assert isinstance(result, UMLDiagram)
+    assert result.diagram_type == "activity"
+    assert result.mermaid == _ACTIVITY_NOT_FOUND_MERMAID
+    assert result.metadata["verdict"] == "NOT_FOUND"
+    assert "/repo/src/a.py" in result.metadata["next_step"]
+    assert "next_step" in result.metadata
+    assert "error" not in result.metadata
+
+
+def test_activity_error_diagram_function_missing_returns_not_found() -> None:
+    """_activity_error_diagram returns NOT_FOUND with function-name message for function_missing."""
+    exporter = UMLExporter("/repo", cache=object())
+    result = exporter._activity_error_diagram(
+        "function_missing: my_func", "my_func", "/repo/src/a.py"
+    )
+    assert result.metadata["verdict"] == "NOT_FOUND"
+    assert "my_func" in result.metadata["next_step"]
+    assert "error" not in result.metadata
+
+
+def test_activity_error_diagram_empty_body_returns_not_found() -> None:
+    """_activity_error_diagram returns NOT_FOUND with stub message for empty_body."""
+    exporter = UMLExporter("/repo", cache=object())
+    result = exporter._activity_error_diagram(
+        "empty_body", "stub_func", "/repo/src/a.py"
+    )
+    assert result.metadata["verdict"] == "NOT_FOUND"
+    assert "stub_func" in result.metadata["next_step"]
+    assert "error" not in result.metadata
+
+
+def test_activity_error_diagram_unknown_error_includes_error_field() -> None:
+    """_activity_error_diagram falls through to PARSE_FAILED path for unknown errors."""
+    exporter = UMLExporter("/repo", cache=object())
+    result = exporter._activity_error_diagram(
+        "PARSE_FAILED: syntax error at line 42", "my_func", "/repo/src/a.py"
+    )
+    assert result.metadata["verdict"] == "NOT_FOUND"
+    assert "error" in result.metadata
+    assert result.metadata["error"] == "PARSE_FAILED: syntax error at line 42"
+
+
+def test_activity_error_diagram_returns_activity_type() -> None:
+    """_activity_error_diagram always returns diagram_type='activity'."""
+    exporter = UMLExporter("/repo", cache=object())
+    for error_str in [
+        "file_missing",
+        "function_missing",
+        "empty_body",
+        "PARSE_FAILED",
+    ]:
+        result = exporter._activity_error_diagram(error_str, "f", "/p/f.py")
+        assert result.diagram_type == "activity"
+        assert result.mermaid_type == "flowchart"
+        assert result.nodes == []
+        assert result.edges == []
+
+
+# ── _make_activity_not_found_diagram (TDD RED -> GREEN) ───────────────────────
+# Drives extraction of UMLDiagram construction from _activity_error_diagram into
+# a module-level helper, reducing deep_nesting at L655 from depth 5 to depth 2.
+
+
+def test_make_activity_not_found_diagram_returns_correct_structure() -> None:
+    """_make_activity_not_found_diagram builds a NOT_FOUND activity UMLDiagram."""
+    from tree_sitter_analyzer.uml_export import _make_activity_not_found_diagram
+
+    diagram = _make_activity_not_found_diagram("some next_step message")
+    assert isinstance(diagram, UMLDiagram)
+    assert diagram.diagram_type == "activity"
+    assert diagram.mermaid_type == "flowchart"
+    assert diagram.mermaid == _ACTIVITY_NOT_FOUND_MERMAID
+    assert diagram.nodes == []
+    assert diagram.edges == []
+    assert diagram.metadata["verdict"] == "NOT_FOUND"
+    assert diagram.metadata["next_step"] == "some next_step message"
+    assert "error" not in diagram.metadata

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .ast_cache import _EXT_TO_LANG
+from .file_watcher_polling import PollingScanner
 from .incremental_sync import IncrementalSync
 
 logger = logging.getLogger(__name__)
@@ -95,6 +96,10 @@ class FileWatcherDaemon:
     ) -> None:
         self._cache = cache
         self._sync = IncrementalSync(cache)
+        self._sync._default_generation = bool(
+            getattr(cache, "_uses_project_mirror", False)
+        )
+        self._sync_lock = cache._index_lock
         self._poll_interval = max(1.0, poll_interval)
         self._debounce = debounce
         self._backend = backend
@@ -105,13 +110,19 @@ class FileWatcherDaemon:
         self._started_at: float = 0.0
 
         self._pending: set[str] = set()
+        self._sync_requested = False
+        self._retry_attempt = 0
         self._pending_lock = threading.Lock()
         self._debounce_timer: threading.Timer | None = None
+        self._timers: set[threading.Timer] = set()
 
         self._stats = WatcherStats()
         self._stats_lock = threading.Lock()
 
-        self._snapshot: dict[str, float] = {}
+        self._polling = PollingScanner(
+            self._cache.project_root, self._record_scan_error
+        )
+        self._snapshot = self._polling.snapshot
         self._snapshot_lock = threading.Lock()
 
     @property
@@ -125,7 +136,7 @@ class FileWatcherDaemon:
         return self._backend
 
     def start(self) -> None:
-        if self._thread is not None and self._thread.is_alive():
+        if self.is_running():
             return
         self._stop_event.clear()
         self._started_at = time.monotonic()
@@ -138,16 +149,28 @@ class FileWatcherDaemon:
         logger.info("file_watcher started (backend=%s)", self._backend)
 
     def stop(self, timeout: float = 5.0) -> None:
-        self._stop_event.set()
-        if self._debounce_timer is not None:
-            self._debounce_timer.cancel()
+        deadline = time.monotonic() + max(0.0, timeout)
+        with self._pending_lock:
+            self._stop_event.set()
+            timers = tuple(self._timers)
+            for timer in timers:
+                timer.cancel()
             self._debounce_timer = None
-        if self._thread is not None and self._thread.is_alive():
-            self._thread.join(timeout=timeout)
-        logger.info("file_watcher stopped")
+        # 防抖回调可能已开始写入；取消计时器并不能终止这些线程。
+        workers = (*timers, self._thread)
+        for worker in workers:
+            if worker is not None and worker is not threading.current_thread():
+                worker.join(timeout=max(0.0, deadline - time.monotonic()))
+        if not self.is_running():
+            self._polling.close()
+            logger.info("file_watcher stopped")
+        else:
+            logger.info("file_watcher shutdown pending")
 
     def is_running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive()
+        with self._pending_lock:
+            timer_running = any(timer.is_alive() for timer in self._timers)
+        return timer_running or (self._thread is not None and self._thread.is_alive())
 
     def get_stats(self) -> dict[str, Any]:
         with self._stats_lock:
@@ -171,15 +194,25 @@ class FileWatcherDaemon:
             self._run_polling()
 
     def _run_polling(self) -> None:
-        self._take_snapshot()
-        while not self._stop_event.is_set():
-            self._stop_event.wait(timeout=self._poll_interval)
-            if self._stop_event.is_set():
-                break
-            changed = self._detect_changes()
-            for path in changed:
-                self._enqueue(path)
-        self._flush_pending()
+        try:
+            self._take_snapshot()
+            initial_sync_pending = True
+            while not self._stop_event.is_set():
+                if initial_sync_pending and not self._polling.in_progress:
+                    # #1405：完整基线建立后对齐索引，覆盖启动窗口内已被基线吸收的保存。
+                    self._request_sync()
+                    initial_sync_pending = False
+                # 未完成的扫描短暂让出后续跑；完整轮询之间才使用配置间隔。
+                delay = 0.05 if self._polling.in_progress else self._poll_interval
+                self._stop_event.wait(timeout=delay)
+                if self._stop_event.is_set():
+                    break
+                changed = self._detect_changes()
+                for path in changed:
+                    self._enqueue(path)
+        finally:
+            self._polling.close()
+            self._flush_pending()
 
     def _run_watchdog(self) -> None:
         try:
@@ -200,6 +233,8 @@ class FileWatcherDaemon:
         observer.start()
 
         try:
+            if not self._stop_event.is_set():
+                self._request_sync()
             while not self._stop_event.is_set():
                 self._stop_event.wait(timeout=1.0)
         finally:
@@ -207,56 +242,17 @@ class FileWatcherDaemon:
             observer.join(timeout=5.0)
         self._flush_pending()
 
+    def _record_scan_error(self) -> None:
+        with self._stats_lock:
+            self._stats.errors += 1
+
     def _take_snapshot(self) -> None:
-        snapshot: dict[str, float] = {}
-        project_root = self._cache.project_root
-        for dirpath, dirnames, filenames in os.walk(project_root):
-            dirnames[:] = [
-                d for d in dirnames if d not in _EXT_TO_LANG and not d.startswith(".")
-            ]
-            for fname in filenames:
-                ext = os.path.splitext(fname)[1].lower()
-                if ext not in _EXT_TO_LANG:
-                    continue
-                full = os.path.join(dirpath, fname)
-                try:
-                    mtime = os.path.getmtime(full)
-                    snapshot[full] = mtime
-                except OSError:
-                    pass
         with self._snapshot_lock:
-            self._snapshot = snapshot
+            self._polling.scan(baseline=True)
 
     def _detect_changes(self) -> list[str]:
-        current: dict[str, float] = {}
-        project_root = self._cache.project_root
-        for dirpath, dirnames, filenames in os.walk(project_root):
-            dirnames[:] = [
-                d for d in dirnames if d not in _EXT_TO_LANG and not d.startswith(".")
-            ]
-            for fname in filenames:
-                ext = os.path.splitext(fname)[1].lower()
-                if ext not in _EXT_TO_LANG:
-                    continue
-                full = os.path.join(dirpath, fname)
-                try:
-                    mtime = os.path.getmtime(full)
-                    current[full] = mtime
-                except OSError:
-                    pass
-
-        changed: list[str] = []
         with self._snapshot_lock:
-            for path, mtime in current.items():
-                old_mtime = self._snapshot.get(path)
-                if old_mtime is None or old_mtime != mtime:
-                    changed.append(path)
-            for path in self._snapshot:
-                if path not in current:
-                    changed.append(path)
-            self._snapshot = current
-
-        return changed
+            return self._polling.scan()
 
     def _enqueue(self, file_path: str) -> None:
         with self._pending_lock:
@@ -264,16 +260,38 @@ class FileWatcherDaemon:
         with self._stats_lock:
             self._stats.events_processed += 1
 
-        if self._debounce_timer is not None:
-            self._debounce_timer.cancel()
-        self._debounce_timer = threading.Timer(self._debounce, self._flush_pending)
-        self._debounce_timer.daemon = True
-        self._debounce_timer.start()
+        self._request_sync()
+
+    def _request_sync(self, *, retry: bool = False) -> None:
+        """合并通知与重试，临时故障指数退避且不推迟已排队的文件通知。"""
+        if retry and not self.is_running():
+            return
+        with self._pending_lock:
+            if self._stop_event.is_set():
+                return
+            if retry and self._sync_requested:
+                return
+            delay = self._debounce
+            if retry:
+                delay = min(60.0, self._poll_interval * 2**self._retry_attempt)
+                self._retry_attempt = min(6, self._retry_attempt + 1)
+            else:
+                self._retry_attempt = 0
+            self._sync_requested = True
+            if self._debounce_timer is not None:
+                self._debounce_timer.cancel()
+            self._timers = {timer for timer in self._timers if timer.is_alive()}
+            timer = threading.Timer(delay, self._flush_pending)
+            timer.daemon = True
+            self._debounce_timer = timer
+            self._timers.add(timer)
+            timer.start()
 
     def _flush_pending(self) -> None:
         with self._pending_lock:
-            pending = self._pending.copy()
+            pending = bool(self._pending) or self._sync_requested
             self._pending.clear()
+            self._sync_requested = False
 
         if not pending:
             return
@@ -286,16 +304,69 @@ class FileWatcherDaemon:
                 logger.debug("on_sync callback error", exc_info=True)
 
     def _do_sync(self) -> dict[str, Any]:
+        # 候选捕获至索引提交共用同一锁，防止共用缓存的监听器互相覆盖。
+        with self._sync_lock:
+            return self._perform_sync()
+
+    def _perform_sync(self) -> dict[str, Any]:
         try:
-            result = self._sync.sync()
+            from .constants import EXCLUDE_DIRS
+            from .index_source_scope import make_source_scope_descriptor
+            from .indexing_candidate_materialization import (
+                release_index_candidate_snapshot,
+            )
+            from .indexing_snapshot import (
+                _PERMANENT_SOURCE_REJECTIONS,
+                build_index_candidate_snapshot,
+                walk_index_candidate_entries,
+            )
+            from .project_graph import _language_from_ext
+
+            # 与手动同步使用相同默认范围和冻结候选，自动刷新也必须重建认证。
+            scope = make_source_scope_descriptor()
+            candidate = build_index_candidate_snapshot(
+                self._cache.project_root,
+                max_files=scope.certification_max_files,
+                exclude_patterns=scope.effective_excludes,
+                walk_fn=lambda root: walk_index_candidate_entries(
+                    root, excluded_dir_names=frozenset(EXCLUDE_DIRS)
+                ),
+                language_fn=_language_from_ext,
+            )
+            try:
+                result = self._sync.sync(
+                    max_files=scope.certification_max_files,
+                    exclude_patterns=scope.effective_excludes,
+                    candidate_snapshot=candidate,
+                    source_scope=scope,
+                )
+            finally:
+                release_index_candidate_snapshot(candidate)
             with self._stats_lock:
                 self._stats.syncs_triggered += 1
                 self._stats.last_sync_at = time.time()
+            if (
+                candidate.discovery_error
+                or candidate.frozen_error
+                or result.errors
+                or result.backfill_errors
+                or result.manifest_certification_failed
+                or any(
+                    entry.decision == "error"
+                    and entry.reason not in _PERMANENT_SOURCE_REJECTIONS
+                    for entry in candidate.entries
+                )
+            ):
+                self._request_sync(retry=True)
+            elif result.scope_complete:
+                with self._pending_lock:
+                    self._retry_attempt = 0
             return result.to_dict()
         except Exception as exc:
             with self._stats_lock:
                 self._stats.errors += 1
             logger.error("sync failed: %s", exc)
+            self._request_sync(retry=True)
             return {"error": str(exc)}
 
 
@@ -308,10 +379,10 @@ class _WatchdogHandler:
     def dispatch(self, event: Any) -> None:
         if getattr(event, "is_directory", False):
             return
-        src = getattr(event, "src_path", "")
-        if not src:
-            return
-        ext = os.path.splitext(src)[1].lower()
-        if ext not in _EXT_TO_LANG:
-            return
-        self._callback(src)
+        # 原子保存可能从临时扩展名移入源码；移动两端都要通知，并去除同路径重复。
+        paths = dict.fromkeys(
+            (getattr(event, "src_path", ""), getattr(event, "dest_path", ""))
+        )
+        for path in paths:
+            if path and os.path.splitext(path)[1].lower() in _EXT_TO_LANG:
+                self._callback(path)

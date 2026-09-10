@@ -17,6 +17,32 @@ import sqlite3
 from collections.abc import Callable
 from typing import Any
 
+from ..index_snapshot_symbols import ensure_symbol_rows_backfilled
+from .schema_extensions import (
+    CURRENT_SCHEMA_VERSION as CURRENT_SCHEMA_VERSION,
+)
+from .schema_extensions import (
+    SCHEMA_V16_COMMENTS as SCHEMA_V16_COMMENTS,
+)
+from .schema_extensions import (
+    SCHEMA_V17_LSP_CACHE as SCHEMA_V17_LSP_CACHE,
+)
+from .schema_extensions import (
+    apply_migration_v14 as apply_migration_v14,
+)
+from .schema_extensions import (
+    apply_migration_v15 as apply_migration_v15,
+)
+from .schema_extensions import (
+    apply_migration_v16 as apply_migration_v16,
+)
+from .schema_extensions import (
+    apply_migration_v17 as apply_migration_v17,
+)
+from .schema_extensions import (
+    schema_update,
+)
+
 # ---------------------------------------------------------------------------
 # Schema DDL constants
 # ---------------------------------------------------------------------------
@@ -422,6 +448,21 @@ CREATE INDEX IF NOT EXISTS idx_ast_language
     ON ast_index(language);
 """
 
+SCHEMA_SYMBOL_ROWS = """
+CREATE TABLE IF NOT EXISTS ast_symbol_rows (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    file_path  TEXT NOT NULL,
+    language   TEXT NOT NULL,
+    line       INTEGER NOT NULL DEFAULT 0,
+    end_line   INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_sym_rows_file_path
+    ON ast_symbol_rows(file_path);
+"""
+
 SCHEMA_V2_FTS = """
 CREATE VIRTUAL TABLE IF NOT EXISTS ast_symbols_fts
     USING fts5(
@@ -429,22 +470,10 @@ CREATE VIRTUAL TABLE IF NOT EXISTS ast_symbols_fts
         kind,
         file_path,
         language,
-        content='',
+        content='ast_symbol_rows',
+        content_rowid='id',
         tokenize='porter unicode61'
     );
-
-CREATE TABLE IF NOT EXISTS ast_symbol_rows (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        name      TEXT NOT NULL,
-        kind      TEXT NOT NULL,
-        file_path TEXT NOT NULL,
-        language  TEXT NOT NULL,
-        line      INTEGER NOT NULL DEFAULT 0,
-        end_line  INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE INDEX IF NOT EXISTS idx_sym_rows_file_path
-    ON ast_symbol_rows(file_path);
 """
 
 LARGE_REPO_INDEXES: tuple[tuple[str, str], ...] = (
@@ -546,6 +575,60 @@ EXPECTED_SCHEMA_VERSIONS: list[Any] = [
             ],
         },
     ),
+    (
+        13,
+        "Authoritative index snapshot manifest",
+        {"tables": ["ast_index_snapshot_manifest", "ast_symbol_projection_state"]},
+    ),
+    (
+        14,
+        "Add certified_at column to ast_index (partial certification model)",
+        {
+            "ast_index_columns": ["certified_at"],
+        },
+    ),
+    (
+        15,
+        "Add activation_state column to ast_symbol_activation (lazy activation model)",
+        {"ast_symbol_activation_columns": ["activation_state"]},
+    ),
+    (
+        16,
+        "Pulse comments and commit messages; canonical layout repair",
+        {
+            "tables": ["ast_symbol_comments"],
+            "ast_symbol_comments_columns": ["id", "symbol_id", "line", "text", "kind"],
+            "ast_symbol_activation_columns": [
+                "symbol_id",
+                "file_path",
+                "last_modified_commit",
+                "last_modified_at",
+                "mod_count_30d",
+                "mod_count_90d",
+                "mod_count_all",
+                "computed_at",
+                "git_state",
+                "activation_state",
+                "last_commit_msg",
+            ],
+        },
+    ),
+    (
+        17,
+        "LSP resolution cache",
+        {
+            "tables": ["lsp_resolution_cache"],
+            "lsp_resolution_cache_columns": [
+                "symbol_id",
+                "edge_id",
+                "resolved_type",
+                "resolved_file",
+                "resolved_line",
+                "lsp_server",
+                "cached_at",
+            ],
+        },
+    ),
 ]
 
 # ---------------------------------------------------------------------------
@@ -629,18 +712,15 @@ def already_applied_versions(conn: sqlite3.Connection) -> set[int]:
 def record_schema_version(
     conn: sqlite3.Connection, version: int, description: str
 ) -> None:
-    """Stamp a row in ast_schema_version after a migration block applies."""
+    """记录已完成的迁移；注册表由初始化器创建，写入故障交给迁移事务处理。"""
     import time as _time
 
     ts = int(_time.time())
-    try:
-        conn.execute(
-            "INSERT OR IGNORE INTO ast_schema_version "
-            "(version, applied_at, description) VALUES (?, ?, ?)",
-            (version, ts, description),
-        )
-    except sqlite3.OperationalError:
-        pass
+    conn.execute(
+        "INSERT OR IGNORE INTO ast_schema_version "
+        "(version, applied_at, description) VALUES (?, ?, ?)",
+        (version, ts, description),
+    )
 
 
 def backfill_schema_version_row(
@@ -677,6 +757,37 @@ def clear_activation_for_file(conn: sqlite3.Connection, rel_path: str) -> None:
         pass
 
 
+def _ensure_exact_fts_schema(conn: sqlite3.Connection) -> None:
+    """Upgrade legacy contentless FTS5 to an externally verifiable table."""
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='ast_symbols_fts'"
+    ).fetchone()
+    if (
+        row is not None
+        and isinstance(row[0], str)
+        and ("content='ast_symbol_rows'" in row[0] and "content_rowid='id'" in row[0])
+    ):
+        return
+    conn.execute("DROP TABLE IF EXISTS ast_symbols_fts")
+    conn.executescript(SCHEMA_V2_FTS)
+    conn.execute(
+        "INSERT INTO ast_symbols_fts(rowid, name, kind, file_path, language) "
+        "SELECT id, name, kind, file_path, language FROM ast_symbol_rows"
+    )
+
+
+def _apply_extension_migrations(
+    conn: sqlite3.Connection,
+    migrations: list[tuple[int, Any]],
+    applied: set[int],
+) -> None:
+    """v13 及之后的升级在同一事务中完成，后续版本失败不能留下半次升级。"""
+    with schema_update(conn):
+        for version, migration_fn in migrations:
+            if version >= 13 and version not in applied:
+                migration_fn(conn, record_schema_version)
+
+
 def init_db(
     conn: sqlite3.Connection,
     fts5_available: bool | None,
@@ -684,7 +795,15 @@ def init_db(
     migrations: list[tuple[int, Any]],
 ) -> bool:
     """Apply schema DDL and migrations. Returns updated fts5_available flag."""
+    applied = already_applied_versions(conn)
+    if any(version < 1 or version > CURRENT_SCHEMA_VERSION for version in applied):
+        raise ValueError("INCOMPATIBLE_SCHEMA")
+    # 支持的既有缓存先做原子升级，失败时连 bootstrap 的可选 DDL 都不能残留。
+    if any(version >= 13 for version in applied):
+        _apply_extension_migrations(conn, migrations, applied)
     conn.executescript(SCHEMA_V1)
+    # Establish the ordinary table before the externally backed FTS schema.
+    conn.executescript(SCHEMA_SYMBOL_ROWS)
     conn.executescript(SCHEMA_VERSIONS_DDL)
     conn.commit()
     if fts5_available is None:
@@ -692,13 +811,32 @@ def init_db(
     if fts5_available:
         try:
             conn.executescript(SCHEMA_V2_FTS)
+            _ensure_exact_fts_schema(conn)
             conn.commit()
         except sqlite3.OperationalError:
             fts5_available = False
     applied = already_applied_versions(conn)
     for version, migration_fn in migrations:
-        if version not in applied:
+        if version < 13 and version not in applied:
             migration_fn(conn, record_schema_version)
+    _apply_extension_migrations(conn, migrations, applied)
+    # Migration exact-state fast paths must include FTS whenever this runtime
+    # supports it; FTS-less SQLite keeps the ordinary-only projection legal.
+    projection_complete = ensure_symbol_rows_backfilled(
+        conn, require_fts=bool(fts5_available), allow_incomplete=True
+    )
+    if not projection_complete:
+        # Reopening a partially migrated projection must revoke every older
+        # completeness signal before any fast path can trust stale symbol rows.
+        from .callgraph_state import clear_call_graph_built_strict
+
+        clear_call_graph_built_strict(conn)
+        manifest_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='ast_index_snapshot_manifest'"
+        ).fetchone()
+        if manifest_exists is not None:
+            conn.execute("DELETE FROM ast_index_snapshot_manifest")
     apply_large_repo_indexes(conn)
     conn.commit()
     return bool(fts5_available)

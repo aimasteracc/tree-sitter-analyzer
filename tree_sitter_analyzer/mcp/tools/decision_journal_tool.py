@@ -26,7 +26,7 @@ from ...decision_journal import (
     DecisionRecord,
     JournalValidationError,
 )
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
 
@@ -195,8 +195,8 @@ class DecisionJournalTool(BaseMCPTool):
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100},
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
+                    "enum": ["json"],
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -225,7 +225,7 @@ class DecisionJournalTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
         mode = arguments.get("mode", "search")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         journal = self._get_journal()
 
         try:
@@ -233,7 +233,7 @@ class DecisionJournalTool(BaseMCPTool):
         except JournalValidationError as exc:
             return self._error_envelope(mode, str(exc), output_format)
 
-        return apply_toon_format_to_response(payload, output_format)
+        return apply_output_format_to_response(payload, output_format)
 
     async def _dispatch_mode(
         self,
@@ -409,6 +409,6 @@ class DecisionJournalTool(BaseMCPTool):
                 "next_step": "Fix the input and retry.",
             },
         }
-        return apply_toon_format_to_response(
+        return apply_output_format_to_response(
             mirror_summary_line(envelope), output_format
         )

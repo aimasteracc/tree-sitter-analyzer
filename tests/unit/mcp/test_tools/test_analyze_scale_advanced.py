@@ -453,7 +453,7 @@ class TestExecuteLanguageSanitization:
                 return_value=mock_analysis_result,
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_toon_format_to_response",
+                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_output_format_to_response",
                 side_effect=lambda r, f: r,
             ),
         ):
@@ -515,7 +515,7 @@ class TestExecuteMetricsBatchFullBody:
             ),
             patch("pathlib.Path.exists", return_value=False),
             patch(
-                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_toon_format_to_response",
+                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_output_format_to_response",
                 side_effect=lambda r, f: r,
             ),
         ):
@@ -526,7 +526,7 @@ class TestExecuteMetricsBatchFullBody:
     @pytest.mark.asyncio
     async def test_batch_with_non_string_path_entry(self, tool):
         with patch(
-            "tree_sitter_analyzer.mcp.utils.format_helper.apply_toon_format_to_response",
+            "tree_sitter_analyzer.mcp.utils.format_helper.apply_output_format_to_response",
             side_effect=lambda r, f: r,
         ):
             arguments = {"file_paths": [None], "metrics_only": True}
@@ -557,7 +557,7 @@ class TestExecuteMetricsBatchFullBody:
                 },
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_toon_format_to_response",
+                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_output_format_to_response",
                 side_effect=lambda r, f: r,
             ),
         ):

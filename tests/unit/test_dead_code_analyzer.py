@@ -62,10 +62,25 @@ class TestIsKnownEntry:
         assert _is_known_entry("TestMain", "go") is True
 
     def test_unknown_language(self) -> None:
-        assert _is_known_entry("main", "rust") is False
+        # ruby has no entry pattern (see _KNOWN_ENTRY_PATTERNS comment):
+        # unlike rust/csharp/kotlin/swift, it has no single canonical
+        # entry-function convention (Codex #1157 follow-up).
+        assert _is_known_entry("main", "ruby") is False
 
     def test_non_entry_name(self) -> None:
         assert _is_known_entry("helper_func", "python") is False
+
+    def test_rust_main(self) -> None:
+        assert _is_known_entry("main", "rust") is True
+
+    def test_csharp_main(self) -> None:
+        assert _is_known_entry("Main", "csharp") is True
+
+    def test_kotlin_main(self) -> None:
+        assert _is_known_entry("main", "kotlin") is True
+
+    def test_swift_main(self) -> None:
+        assert _is_known_entry("main", "swift") is True
 
 
 # ---------------------------------------------------------------------------

@@ -10,6 +10,27 @@ import os
 from typing import Any
 
 
+def _canonical_project_path(file_path: str, project_root: str) -> str:
+    """统一项目根目录别名，保留根目录内逻辑路径及冻结源码的身份。"""
+    absolute = os.path.abspath(file_path)
+    root_key = os.path.normcase(project_root)
+    absolute_key = os.path.normcase(absolute)
+    if absolute_key == root_key or absolute_key.startswith(
+        root_key.rstrip(os.sep) + os.sep
+    ):
+        return absolute
+    parent = os.path.dirname(absolute)
+    mapped = absolute
+    while True:
+        if os.path.normcase(os.path.realpath(parent)) == root_key:
+            # 子链接也可能指回根目录；必须以最外层根别名保留完整逻辑后缀。
+            mapped = os.path.join(project_root, os.path.relpath(absolute, parent))
+        ancestor = os.path.dirname(parent)
+        if ancestor == parent:
+            return mapped
+        parent = ancestor
+
+
 def _build_function_entry(
     sym: dict[str, Any], file_path: str, language: str
 ) -> dict[str, Any]:
@@ -80,6 +101,8 @@ def _commit_index_results(
     indexed_at: str,
     activation_enabled: bool,
     batch_size: int = _COMMIT_BATCH_SIZE,
+    result_guard: Any | None = None,
+    batch_guard: Any | None = None,
 ) -> None:
     """Commit worker results to the DB in bounded-size transactions.
 
@@ -89,17 +112,26 @@ def _commit_index_results(
     re-raises; previously committed batches persist.
     """
     pending = 0
+    pending_results: list[dict[str, Any]] = []
     conn.execute("BEGIN")
     try:
         for r in results:
+            if result_guard is not None and not result_guard(r):
+                continue
             _process_one_index_result(
                 r, stats, insert_fn, indexed_at, activation_enabled
             )
             pending += 1
+            pending_results.append(r)
             if pending >= batch_size:
+                if batch_guard is not None:
+                    batch_guard(pending_results)
                 conn.execute("COMMIT")
                 pending = 0
+                pending_results.clear()
                 conn.execute("BEGIN")
+        if batch_guard is not None and pending_results:
+            batch_guard(pending_results)
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")

@@ -1,20 +1,24 @@
-<!-- Generated: 2026-05-22; doc-code re-sync: 2026-06-17 -->
+<!-- Generated: 2026-05-22; doc-code re-sync: 2026-08-19 -->
 # CLI Codemap
 
-Five console-script entry points + flag-based dispatch through `cli_main.py`.
+Seven console-script entry points + flag-based dispatch through `cli_main.py`.
 
 ## Entry Points
 
 | Command | Module | Default format |
 |---|---|---|
 | `tree-sitter-analyzer` | `cli_main.py` | `json` |
-| `tree-sitter-analyzer-mcp` | `mcp/server.py` (stdio) | `toon` |
-| `find-and-grep` | `cli/commands/find_and_grep_cli.py` | `json` |
+| `tree-sitter-analyzer-mcp` | `mcp/server.py` (stdio) | `json` |
+| `tree-sitter-analyzer-doctor` | `cli_main.py:main_doctor` | text; `--doctor-json` for JSON |
+| `miswire-audit` | `miswire_audit.py` | text; `--card` adds Markdown |
+| `code-analyzer` | `cli_main.py` (alias) | `json` |
+| `java-analyzer` | `cli_main.py` (alias) | `json` |
 | `list-files` | `cli/commands/list_files_cli.py` | `json` |
-| `search-content` | `cli/commands/search_content_cli.py` | `json` |
 
-Default format divergence is **intentional** (see `CLAUDE.md`): CLI users pipe into `jq`,
-MCP callers are LLM agents and benefit from TOON's token savings.
+MCP and CLI machine-readable envelopes use JSON. Human-readable CLI paths remain
+as documented below; TOON has been removed. The `search-content` and
+`find-and-grep` console scripts are removed on develop. `list-files`, batch search
+and external-tool checks remain available; see the [migration guide](../MIGRATION.md).
 
 ## Command Modules
 
@@ -28,9 +32,7 @@ cli/commands/
 ├── structure_command.py        ← --table full
 ├── summary_command.py          ← --summary
 ├── table_command.py            ← table rendering helpers
-├── find_and_grep_cli.py        ← fd + ripgrep subcommands
 ├── list_files_cli.py           ← `list-files` subcommand
-├── search_content_cli.py       ← `search-content` subcommand
 ├── mcp_commands/               ← MCP-equivalent CLI flags (parity contract; package)
 └── codegraph_index_commands.py ← cache commands: autoindex / full-index / incremental-sync / metrics / knowledge graph index
 ```
@@ -43,47 +45,55 @@ enforced by `tests/unit/cli/test_mcp_commands.py`.
 Categories of CLI surface:
 
 ### Structural Analysis
-- `--table full|compact|csv` — full structural AST table
+- `--table full|signatures` — full structural AST table (compact/csv removed as useless, 2026-09-06)
 - `--summary` — one-screen summary
 - `--partial-read --start-line N --end-line M` — extract range
 
 ### Querying
 - `--query-key methods|classes|imports|...` — predefined queries
 - `--filter "public=true"` — field filter
-- `--query "(method_declaration) @m"` — raw tree-sitter query
+- `--query-string "(method_declaration) @m"` — raw tree-sitter query
 
 ### Project-Level
 - `--overview` — snapshot
 - `--project-health` — health-score distribution
 - `--smart-context` / `smart-context FILE` — SMART workflow context
-- `--change-impact` — blast radius (`--change-impact-resource-profile local_low_impact` emits nice/xdist-capped local pytest commands plus the original CI command)
+- `--change-impact` — blast radius (`--change-impact-resource-profile local_low_impact` emits nice/xdist-capped local pytest commands plus the original CI command); it preserves the legacy live-analysis route and never enables frozen capture implicitly.
+- Frozen workspace/staged snapshot capture is an explicit same-process MCP argument (`capture_diff_snapshot=true`); `edit action=release_snapshot` closes its ID+lease in that long-lived process. RFC-0022 Phase 0 IDs are process-local and intentionally have no cross-process CLI flag (`--diff-snapshot-id` remains absent); one-shot orchestration is Phase A-gated, while legacy CLI file/string/git-ref modes remain distinct.
 - `--call-graph` — caller/callee graph
 
 ### Code Quality
+- `--check-constraints [--constraints-read-only]` — evaluate architecture constraints; read-only mode forwards `persist=false` and never updates violation rows
 - `--code-patterns` — smell detection
 - `--refactor` — concrete refactor recipes
-- `--rename SYMBOL --rename-new-name NAME [--rename-mode preview|apply]` — rename a unique Python module-level function/class and direct imports; defaults to preview, apply writes files. Ambiguous bindings, private class names/slots and affected unsupported languages are rejected.
-- `FILE --unreachable-code [--unreachable-code-mode file|project]` — unreachable statements; project mode supports `--unreachable-code-include-tests` and `--unreachable-code-max-files N` (default 500)
-- `--detect-middleware [--detect-middleware-mode all|summary|lookup]` — middleware chains; filter with `--detect-middleware-url-prefix` and `--detect-middleware-framework`
+- `--rename SYMBOL --rename-new-name NAME [--rename-mode preview|apply]` — published v1.29.5 rename; default preview, explicit apply writes source
+- `FILE --unreachable-code [--unreachable-code-mode file|project]` — statement-level reachability; project options `--unreachable-code-include-tests`, `--unreachable-code-max-files N`
+- `--detect-middleware [--detect-middleware-mode all|summary|lookup]` — middleware chains with `--detect-middleware-framework` and `--detect-middleware-url-prefix`
 - `--outline` — hierarchical outline (package → class → method, no bodies)
 - `--safe-to-edit` — edit risk verdict
 - `--file-health` — per-file score
 - `--symbol-lineage NAME` — symbol history
+- `--refactor-queue [--refactor-queue-top-n N]` — top-N prioritized refactor queue (RFC-0027 §L8): files ranked by `(1 - health/100) * log(1 + churn_30d) * (dead_ratio + 0.1)`, the formula that previously lived only in `.claude/skills/tsa-refactor-queue/SKILL.md`. Each row carries grade, weakest dimension, 30-day churn, dead-symbol count and a concrete action (`split` / `delete dead` / `extract`). Reports `CHURN_UNAVAILABLE` rather than a queue of zeros when the selected AST index has no churn. MCP twin: `health action=refactor_queue`
+- `--plan-rename SYMBOL --plan-rename-to NEW_NAME` — minimal edit set for a project-wide rename (RFC-0027 §L8): every definition and reference site an AST-aware rename would touch, plus `files_affected`. **PREVIEW ONLY** — it never writes, and `mode`/`dry_run`/`apply`/`write`/`force` are rejected with `PLAN_RENAME_IS_PREVIEW_ONLY` rather than honoured. MCP twin: `edit action=plan_rename`
+- `--verify-plan DESCRIPTOR` — 重新分析并核对完整计划摘要后，顺序执行有界测试批次；计划变化时不启动测试。MCP twin: `edit action=verify`
+- `--mutation-probe TEST_NODE_ID --mutation-probe-to FILE:LINENO [--mutation-probe-timeout SECONDS]` — on-demand query: does this test constrain this code? (RFC-0029). Applies one AST mutation at the given source line **in memory** (never writes to disk), runs only the named test in isolation, and returns `constrains` / `does_not_constrain` / `unknown`. Fail-closed: `unknown` on any uncertainty; `constrains` only on `AssertionError`. MCP twin: `edit action=mutation_probe`
+- `--self-health` — self-proprioception (RFC-0025 Layer 5): per-`(tool, action)` p50/p95 latency by tier (cold/warm/cached), invocation counts, in-process analysis-cache hit rate, and on-disk AST-index state (selected AST index presence/size/indexed-file count; its hit rate is `null` — that index keeps no hit/miss counters). Scope is the **current process**; a fresh CLI run reports `NO_OBSERVATIONS` (never a fabricated `0.0`). MCP twin: `health action=self`. Durable numbers: `scripts/measure_self_health_baseline.py` → `docs/baselines/rfc0025-l5-latency-<axis>-e0.json`
 
 ### Discovery
+- `--project-card` — the project card (RFC-0027 §L7): purpose from the README, top code languages, entry points, key config files, and per-module descriptions of the top-level structure. Persistent — built once into `.tree-sitter-cache/project-index.json` and recalled instantly. MCP twin: `project action=card`
 - `list-files` subcommand — fd wrapper
-- `search-content` subcommand — ripgrep wrapper
-- `find-and-grep` subcommand — combined pipeline
+- ~~`search-content` subcommand~~ — *(廃止済み: CC Grep tool を使用)*
+- ~~`find-and-grep` subcommand~~ — *(廃止済み: CC Glob + Grep tool を使用)*
 - `--detect-routes` — framework route detection
 
 ### Cache & Index
-- `--ast-cache index|stats|lookup|invalidate` — AST cache ops (project index default cap: 20k files)
+- `--ast-cache --ast-cache-mode index|stats|lookup|search|sync|changes|watch_start|watch_stop|watch_status|invalidate` — AST cache ops (project index default cap: 20k files)
 - `--ast-cache-include-activation` — opt in to slower temporal git activation during project indexing
 - `--autoindex [--autoindex-mode status|warm|reset]` — transparent auto-index
 - `--full-index [--full-index-mode rebuild|stats|clear]` — one-shot complete index (default cap: 20k files)
 - `--full-index-include-activation` — opt in to temporal git activation during full-index rebuilds
 - `--incremental-sync [--incremental-sync-mode sync|changes|status]` — content-hash diff re-index (SHA-256)
-- `--knowledge-graph-index [--knowledge-graph-index-mode build|update|status]` — materialize whole-project code+docs graph sidecar; `--knowledge-graph-backend auto|json|ladybug|hybrid` defaults to LadybugDB mirror plus JSON fallback when the graph extra is installed; update mode scans the full project safely; `--knowledge-graph-max-nodes 0 --knowledge-graph-max-edges 0` means uncapped materialization
+- `--knowledge-graph-index [--knowledge-graph-index-mode build|update|status]` — refresh the canonical SQLite code+docs index and optionally materialize LadybugDB; `--knowledge-graph-backend auto|sqlite|ladybug` defaults to LadybugDB when installed and SQLite otherwise; update mode scans the full project safely; `--knowledge-graph-max-nodes 0 --knowledge-graph-max-edges 0` means uncapped materialization
 - `--knowledge-graph-serve` — start a local interactive browser service over the materialized knowledge graph; node clicks fetch callers/callees/imports/inheritance/doc links on demand
 - `--knowledge-graph-export --knowledge-graph-export-format uml --knowledge-graph-uml-kind class|package|component|sequence` — Mermaid UML exports from the materialized knowledge graph
 - `--codegraph-status [--codegraph-status-no-lag]` — index health at-a-glance (CodeGraph parity)
@@ -122,19 +132,17 @@ Categories of CLI surface:
 
 ## Output Format Selection
 
-`--format toon|json` (global machine-readable envelope alias):
+`--format json` (global machine-readable envelope):
 
-| Format | Default for | Token cost | Notes |
-|---|---|---|---|
-| `toon` | MCP | -73% vs JSON | LLM-optimized, lossless |
-| `json` | CLI | baseline | jq-pipe friendly |
-| `text` | `--output-format text` | n/a | human-readable output for legacy text paths |
-| `table` | `--table` flag | n/a | Box-drawing chars, terminal only |
-| `csv` | `--table csv` | n/a | spreadsheet ingestion |
+| Format | Default for | Notes |
+|---|---|---|
+| `json` | All outputs | jq-pipe friendly, human-readable |
+| `text` | `--output-format text` | human-readable output for legacy text paths |
+| `table` | `--table` flag | Box-drawing chars, terminal only |
 
 `--format` is intentionally narrower than `--output-format` and `--table`:
-use `--format json|toon` for agent envelopes, `--output-format text` for the
-remaining human-readable text paths, and `--table csv|full|compact|json|toon`
+use `--format json` for agent envelopes, `--output-format text` for the
+remaining human-readable text paths, and `--table full|signatures`
 for table rendering. There is no global `--format yaml` mode.
 
 ## File Output
@@ -155,6 +163,10 @@ uv run python -m tree_sitter_analyzer --change-impact --format json
 
 The command is tailored to the change: `pytest <specific tests>`, `mypy <touched module>`,
 or `git diff --check` for non-code edits.
+For explicit pytest targets, a known project exclusion such as `not slow` is
+lifted for the `e2e`, `slow`, and `full_language` tiers. Network, benchmark, and
+unknown exclusions remain in force. Unsupported or ambiguous configuration
+keeps its original selection policy; the default quick gate stays unchanged.
 For interactive agent work on a user's machine, add
 `--change-impact-resource-profile local_low_impact`; the local
 `verification_command` is capped with `nice -n 15` and `pytest -n 2`, while
@@ -163,7 +175,7 @@ boundary.
 
 ## See Also
 
-- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (295 unique flags total — this codemap is intentionally categorical, not exhaustive)
+- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (356 unique flags total — this codemap is intentionally categorical, not exhaustive)
 - [`docs/CODEMAPS/mcp-tools.md`](./mcp-tools.md) — MCP-side counterpart
 - [`tests/unit/cli/test_mcp_commands.py`](../../tests/unit/cli/test_mcp_commands.py) — Parity contract tests
-- [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks `cli/argument_parser_builder.py` changes without a `cli.md` update
+- [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks a change to the CLI **flag surface** (any `cli/**/*.py`, compared as a set) without a `cli.md` update

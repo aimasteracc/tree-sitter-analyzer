@@ -139,7 +139,7 @@ public class TestClass {
 
         args = {
             "file_path": temp_java_file,
-            "format_type": "compact",
+            "format_type": "full",
             "suppress_output": False,
         }
 
@@ -147,7 +147,7 @@ public class TestClass {
 
         # Should include table_output when suppress_output=False
         assert "table_output" in result or "toon_content" in result
-        assert result["format_type"] == "compact"
+        assert result["format_type"] == "full"
         assert result["file_path"] == temp_java_file
 
     @pytest.mark.asyncio
@@ -166,7 +166,7 @@ public class TestClass {
 
         args = {
             "file_path": temp_java_file,
-            "format_type": "compact",
+            "format_type": "full",
             "suppress_output": True,
             # No output_file specified
         }
@@ -175,7 +175,7 @@ public class TestClass {
 
         # Should include table_output when no output_file is specified, even with suppress_output=True
         assert "table_output" in result or "toon_content" in result
-        assert result["format_type"] == "compact"
+        assert result["format_type"] == "full"
         assert result["file_path"] == temp_java_file
 
     @pytest.mark.asyncio
@@ -202,7 +202,7 @@ public class TestClass {
 
         args = {
             "file_path": temp_java_file,
-            "format_type": "compact",
+            "format_type": "full",
             "output_file": "test_output.md",
             "suppress_output": True,
         }
@@ -211,7 +211,7 @@ public class TestClass {
 
         # Should NOT include table_output when suppress_output=True and output_file is specified
         assert "table_output" not in result
-        assert result["format_type"] == "compact"
+        assert result["format_type"] == "full"
         assert result["file_path"] == temp_java_file
         assert result["file_saved"] is True
         assert result["output_file_path"] == "/path/to/output.md"
@@ -240,7 +240,7 @@ public class TestClass {
 
         args = {
             "file_path": temp_java_file,
-            "format_type": "compact",
+            "format_type": "full",
             "output_file": "test_output.md",
             "suppress_output": False,
         }
@@ -249,7 +249,7 @@ public class TestClass {
 
         # Should include table_output when suppress_output=False, even with output_file
         assert "table_output" in result or "toon_content" in result
-        assert result["format_type"] == "compact"
+        assert result["format_type"] == "full"
         assert result["file_path"] == temp_java_file
         assert result["file_saved"] is True
         assert result["output_file_path"] == "/path/to/output.md"
@@ -311,7 +311,7 @@ class TestMCPServerSuppressOutputIntegration:
         # Simulate tool call with suppress_output parameter
         arguments = {
             "file_path": "test.java",
-            "format_type": "compact",
+            "format_type": "full",
             "output_file": "output.md",
             "suppress_output": True,
         }

@@ -1,17 +1,9 @@
 #!/usr/bin/env python3
-"""
-Trace Impact Tool
-
-Lightweight impact analysis tool that finds all call sites of a symbol (method/class/function)
-using ripgrep. Unlike full call graph solutions, this provides fast "usage tracing" without
-requiring a graph database.
-
-This tool is inspired by GitNexus's impact analysis but optimized for tree-sitter-analyzer's
-architecture, reusing existing ripgrep infrastructure.
-"""
+"""用原生源码扫描定位符号引用，并通过语言启发式区分调用、导入和注释。"""
 
 from __future__ import annotations
 
+import asyncio
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -20,14 +12,10 @@ from typing import Any
 from tree_sitter_analyzer.cache.fingerprint import _SOURCE_EXTS
 
 from ...language_detector import LanguageDetector, detect_language_from_file
+from ...source_lines import scan_symbol_lines_bounded as scan_symbol_lines
 from ...utils import setup_logger
 from ..utils.error_handler import handle_mcp_errors
 from .base_tool import BaseMCPTool
-from .fd_rg_utils import (
-    build_rg_command,
-    parse_rg_json_lines_to_matches,
-    run_command_capture,
-)
 
 # Set up logging
 logger = setup_logger(__name__)
@@ -37,21 +25,14 @@ logger = setup_logger(__name__)
 # Mirrors the SOURCE_EXTS list used for graph fingerprinting so the call
 # count, the dependency graph, and the impact badge all describe the same
 # universe of files. Globs are rooted at any depth (``**/*.py`` style) so
-# ripgrep ``-g`` accepts them without translation.
+# 原生扫描器在每层目录应用这些扩展名规则。
 _SOURCE_EXT_GLOBS: tuple[str, ...] = tuple(f"**/*{ext}" for ext in _SOURCE_EXTS)
 
 
 def _filter_source_matches(
     matches: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """H4 fix: drop hits whose file extension is not in ``_SOURCE_EXTS``.
-
-    The ``-g`` flag passed to ripgrep already restricts the search at the
-    boundary; this is a belt-and-braces filter so that ``call_count`` is
-    honest even when ``-g`` is bypassed (e.g. a future change adds
-    ``--no-ignore`` or a custom glob). The cost is O(n) over hits that
-    have already been parsed once.
-    """
+    """只保留源码扩展名，防止自定义 glob 扩大调用统计范围。"""
     if not matches:
         return matches
     return [match for match in matches if _is_source_file(match.get("file", ""))]
@@ -161,19 +142,7 @@ def _python_non_code_lines(text: str) -> set[int]:
 
 
 def _is_symbol_only_in_strings(line: str, symbol: str) -> bool:
-    """Return True if every occurrence of ``symbol`` in ``line`` is inside an
-    inline string literal (single or double quoted, not triple-quoted).
-
-    Used as a per-match heuristic (#655): if the only reason a line shows up
-    in ripgrep results is that the symbol name appears inside a string
-    argument (e.g. ``reason="my_func is not ready"``), it is NOT a call site.
-
-    Algorithm: walk the line character by character, tracking whether we are
-    inside a single-quoted or double-quoted string. For each position where
-    ``symbol`` starts, record whether we are inside a string at that point.
-    If ALL occurrences of ``symbol`` are inside strings → return True.
-    Returns False (not filtered) when symbol is absent (safety default).
-    """
+    """判断符号是否只出现在行内字符串中；f-string 替换表达式仍算代码，缺少符号时保守保留。"""
     if not symbol or symbol not in line:
         return False
 
@@ -336,6 +305,11 @@ def _filter_comment_docstring_matches(
         return matches
     kept: list[dict[str, Any]] = []
     for match in matches:
+        # 原生工作进程已分类的命中直接使用，避免主进程再次执行阻塞文件读取。
+        if "_source_match" in match:
+            if match["_source_match"]:
+                kept.append(match)
+            continue
         file_path = match.get("file", "")
         line_no = match.get("line")
         if not file_path or not isinstance(line_no, int):
@@ -407,13 +381,7 @@ def _build_trace_impact_globs(
     language_extensions: list[str],
     exclude_patterns: list[str],
 ) -> tuple[list[str], list[str]]:
-    """Build (include_globs, exclude_globs) for ripgrep.
-
-    r37bw: extracted from ``execute``. Adds common exclude patterns
-    (node_modules, .git, vendor, __pycache__, *.min.{js,css}) and either
-    language-specific extensions or the project-wide source extension
-    set (H4 fix).
-    """
+    """构建源码包含规则及依赖、缓存、压缩产物的排除规则。"""
     exclude_globs = list(exclude_patterns)
     exclude_globs.extend(
         [
@@ -435,55 +403,8 @@ def _build_trace_impact_globs(
     return include_globs, exclude_globs
 
 
-def _classify_rg_error(rc: int, stderr: bytes | None) -> dict[str, Any] | None:
-    """Map ripgrep exit code to an error envelope, or ``None`` on success/no-match.
-
-    r37bw: extracted from ``execute``. rc=127 means rg missing, rc=124
-    means timeout, anything other than 0/1 is a real failure. rc=0/1
-    return ``None`` so the caller continues to result parsing.
-    """
-    if rc == 127:
-        return {
-            "success": False,
-            "error": (
-                "ripgrep (rg) is not installed. Please install ripgrep "
-                "to use trace_impact."
-            ),
-            "usages": [],
-            "call_count": 0,
-        }
-    if rc == 124:
-        return {
-            "success": False,
-            "error": (
-                "Search timed out. Try narrowing the search scope or "
-                "excluding more directories."
-            ),
-            "usages": [],
-            "call_count": 0,
-        }
-    if rc not in (0, 1):
-        error_msg = (
-            stderr.decode("utf-8", errors="replace") if stderr else "Unknown error"
-        )
-        return {
-            "success": False,
-            "error": f"Search failed: {error_msg}",
-            "usages": [],
-            "call_count": 0,
-        }
-    return None
-
-
 def _build_not_found_response(symbol: str, language: str | None) -> dict[str, Any]:
-    """M11: ripgrep returned zero matches → NOT_FOUND envelope.
-
-    The typo-vs-real-zero-caller ambiguity is resolved as "verify
-    spelling first" to match symbol_lineage's behaviour. ``impact_verdict``
-    stays at the magnitude vocab (``NONE`` for zero callers) while
-    top-level ``verdict`` flips to ``NOT_FOUND`` so cross-tool readers
-    can branch on a single field.
-    """
+    """无文本命中时返回 NOT_FOUND，提示先核实符号拼写；影响量级仍为 NONE。"""
     impact = _get_impact_level(0)
     summary_line = f"trace_impact symbol={symbol} not_found"
     return {
@@ -517,14 +438,15 @@ def _build_not_found_response(symbol: str, language: str | None) -> dict[str, An
 def _truncate_for_display(
     source_matches: list[Any], max_results: int
 ) -> tuple[list[Any], bool]:
-    """Display-cap source matches without affecting impact-level count."""
+    """展示最多一万行，不影响完整命中计数。"""
+    max_results = min(max_results, 10000)
     if len(source_matches) > max_results:
         return source_matches[:max_results], True
     return source_matches, False
 
 
 def _matches_to_usages(matches: list[Any]) -> list[dict[str, Any]]:
-    """Convert rg matches to usage dicts with both ``file``/``file_path`` aliases."""
+    """将源码命中转换为保留两种路径字段的引用结果。"""
     usages: list[dict[str, Any]] = []
     for match in matches:
         line_no = match["line"]
@@ -545,12 +467,12 @@ def _verdict_and_next_step_for_impact(level: str, total_count: int) -> tuple[str
     """K5: map impact level (magnitude vocab) → (verdict, next_step) (safety vocab)."""
     if level == "high":
         return "UNSAFE", (
-            f"batch_search to enumerate all {total_count} call sites before "
+            f"nav action=trace max_results={min(total_count, 10000)} with narrower project_root scopes to review {total_count} call sites before "
             "changing signature"
         )
     if level == "medium":
         return "CAUTION", (
-            f"batch_search to enumerate all {total_count} call sites before "
+            f"nav action=trace max_results={min(total_count, 10000)} with narrower project_root scopes to review {total_count} call sites before "
             "changing signature"
         )
     if level == "low":
@@ -592,7 +514,7 @@ def _trace_impact_base_envelope(
         # (``usage_count`` counts it). The former ``"results": usages`` was an
         # exact duplicate of the SAME list object — it doubled the largest
         # field of the JSON response returned to the agent (trace emits a raw
-        # JSON dict; it does not apply TOON) for zero added signal. Dropped;
+        # JSON dict for zero added signal. Dropped;
         # consumers read ``usages``. (``results`` remains the cross-tool key
         # for *search* tools, which is unaffected — trace does not route
         # through search_envelope.)
@@ -617,20 +539,12 @@ def _trace_impact_apply_conditional_fields(
     truncated: bool,
     max_results: int,
 ) -> None:
-    """Mutate ``result`` with optional fields based on signal flags.
-
-    Adds in-place:
-    - ``warning`` when impact_level == "high" (advises batch_search)
-    - ``language`` + ``filtered_by_language`` when a language was inferred
-    - ``source_file`` when ``file_path`` was provided
-    - ``truncated`` + ``message`` when results overflowed ``max_results``
-    - ``non_source_match_count`` when raw matches exceeded source matches
-    """
+    """按影响程度、语言、文件和截断状态补充结果字段。"""
     if impact_level == "high":
         result["warning"] = (
             f"🚨 HIGH IMPACT: This symbol has {source_total} callers. "
             f"Modifying its signature requires updating all call sites. "
-            f"Use batch_search to locate all callers before proceeding."
+            f"Use narrower project_root scopes with nav action=trace max_results=10000 to review callers before proceeding."
         )
     if language:
         result["language"] = language
@@ -641,7 +555,7 @@ def _trace_impact_apply_conditional_fields(
         result["truncated"] = True
         result["message"] = (
             f"Results truncated to {max_results} usages. "
-            f"Consider narrowing the search scope or increasing max_results."
+            f"Narrow project_root to a smaller directory; display is capped at 10000 usages."
         )
     if true_total > source_total:
         result["non_source_match_count"] = true_total - source_total
@@ -785,12 +699,7 @@ _TRACE_IMPACT_INPUT_SCHEMA: dict[str, Any] = {
 
 
 class TraceImpactTool(BaseMCPTool):
-    """
-    MCP tool for tracing the impact of code changes by finding all usage sites of a symbol.
-
-    This tool uses ripgrep to efficiently search for occurrences of a method, class, or
-    function name across the project, optionally filtering by language to reduce noise.
-    """
+    """原生扫描源码中的符号引用，可按语言过滤；调用分类采用启发式规则。"""
 
     def __init__(self, project_root: str | None = None) -> None:
         """
@@ -899,7 +808,7 @@ class TraceImpactTool(BaseMCPTool):
         file_path = arguments.get("file_path")
         case_sensitive = arguments.get("case_sensitive", False)
         word_match = arguments.get("word_match", True)
-        max_results = arguments.get("max_results", 1000)
+        max_results = min(arguments.get("max_results", 1000), 10000)
         exclude_patterns = arguments.get("exclude_patterns", [])
 
         roots = self._resolve_search_roots(arguments.get("project_root"))
@@ -908,40 +817,22 @@ class TraceImpactTool(BaseMCPTool):
             language_extensions, exclude_patterns
         )
 
-        cmd = build_rg_command(
-            query=symbol,
-            case="sensitive" if case_sensitive else "smart",
-            fixed_strings=True,
-            word=word_match,
-            multiline=False,
-            include_globs=include_globs if include_globs else None,
-            exclude_globs=exclude_globs,
-            follow_symlinks=False,
-            hidden=False,
-            no_ignore=False,
-            max_filesize="10M",
-            context_before=None,
-            context_after=None,
-            encoding=None,
-            max_count=None,
-            timeout_ms=5000,
-            roots=roots,
-            files_from=None,
-            count_only_matches=False,
-        )
-        logger.debug(f"Executing ripgrep command: {' '.join(cmd)}")
-        rc, stdout, stderr = await run_command_capture(cmd, timeout_ms=5000)
-
-        rg_error = _classify_rg_error(rc, stderr)
-        if rg_error is not None:
-            return rg_error
-
-        if rc == 1:
-            # M11: ripgrep zero-match → NOT_FOUND envelope (typo vs zero-caller
-            # ambiguity resolved as "verify spelling first" per symbol_lineage).
+        try:
+            matches = await asyncio.to_thread(
+                scan_symbol_lines,
+                symbol,
+                roots,
+                case_sensitive=case_sensitive,
+                word_match=word_match,
+                include_globs=include_globs,
+                exclude_globs=exclude_globs,
+                classify_source=True,
+            )
+        except (OSError, TimeoutError) as exc:
+            return {"success": False, "error": str(exc), "usages": [], "call_count": 0}
+        if not matches:
             return _build_not_found_response(symbol, language)
 
-        matches = parse_rg_json_lines_to_matches(stdout)
         ext_filtered = _filter_source_matches(matches)
         # #655: pass symbol so import lines and inline string-literal
         # mentions are excluded from the caller count.
@@ -965,18 +856,17 @@ class TraceImpactTool(BaseMCPTool):
         )
 
     def _resolve_search_roots(self, project_root_arg: str | None) -> list[str]:
-        """Compute the project root list for ripgrep.
-
-        Order: explicit ``project_root_arg`` (comma-split) → tool default
-        → cwd. r37bw extracted from execute.
-        """
-        if project_root_arg:
-            return [root.strip() for root in project_root_arg.split(",")]
-        if self.project_root:
-            return [self.project_root]
-        from pathlib import Path
-
-        return [str(Path.cwd())]
+        """按显式逗号分隔目录、工具项目目录、当前目录的顺序解析扫描根。"""
+        values = (
+            project_root_arg.split(",")
+            if project_root_arg is not None
+            else [self.project_root or str(Path.cwd())]
+        )
+        if any(not root.strip() for root in values):
+            raise ValueError("SOURCE_ROOT_EMPTY")
+        return [
+            self.resolve_and_validate_directory_path(root.strip()) for root in values
+        ]
 
     def _detect_language_filter(
         self, file_path: str | None

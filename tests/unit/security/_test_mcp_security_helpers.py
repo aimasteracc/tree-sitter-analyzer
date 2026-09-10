@@ -9,7 +9,6 @@ import pytest
 
 from tree_sitter_analyzer.exceptions import SecurityError, ValidationError
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
-from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
 from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
@@ -185,7 +184,7 @@ def assert_symlink_error_message(message: str) -> None:
 
 async def assert_project_root_enforcement(safe_project_structure: str) -> None:
     """Assert external project roots are rejected or safely ignored."""
-    tool = FindAndGrepTool()
+    tool = ListFilesTool()
     external_paths = [
         str(Path(safe_project_structure).parent),
         str(Path(safe_project_structure).parent.parent),
@@ -199,7 +198,7 @@ async def assert_project_root_enforcement(safe_project_structure: str) -> None:
 
 
 async def assert_external_path_blocked_or_temp_allowed(
-    tool: FindAndGrepTool, external_path: str
+    tool: ListFilesTool, external_path: str
 ) -> None:
     """Assert an external root is blocked unless it is an allowed temp path."""
     # Allowed-temp paths pass by the pure predicate. Short-circuit BEFORE running
@@ -211,7 +210,7 @@ async def assert_external_path_blocked_or_temp_allowed(
         return
 
     try:
-        result = await tool.execute({"roots": [external_path], "query": "test"})
+        result = await tool.execute({"roots": [external_path]})
     except (SecurityError, ValidationError, ValueError, AnalysisError):
         return
 

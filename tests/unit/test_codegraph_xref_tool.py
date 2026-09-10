@@ -35,11 +35,6 @@ class TestToolDefinition:
         assert mode_prop["default"] == "symbol"
         assert set(mode_prop["enum"]) == {"symbol", "file"}
 
-    def test_schema_output_format_default_toon(self, tool):
-        assert (
-            tool.get_tool_schema()["properties"]["output_format"]["default"] == "toon"
-        )
-
 
 class TestValidation:
     def test_symbol_mode_requires_symbol(self, tool):
@@ -68,13 +63,6 @@ class TestExecute:
             {"mode": "symbol", "symbol": "no_such_symbol", "output_format": "json"}
         )
         assert result["verdict"] == "NOT_FOUND"
-
-    async def test_toon_format_default(self, tool_with_root):
-        result = await tool_with_root.execute(
-            {"mode": "symbol", "symbol": "any_symbol"}
-        )
-        assert result["format"] == "toon"
-        assert "toon_content" in result
 
     async def test_symbol_mode_field_in_response(self, tool_with_root):
         result = await tool_with_root.execute(

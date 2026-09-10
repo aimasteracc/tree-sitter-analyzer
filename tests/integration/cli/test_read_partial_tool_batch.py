@@ -56,33 +56,6 @@ async def test_read_partial_batch_json_structure() -> None:
 
 
 @pytest.mark.asyncio
-async def test_read_partial_batch_toon_default_strips_json_details() -> None:
-    with tempfile.TemporaryDirectory() as temp_dir:
-        p = Path(temp_dir)
-        (p / "a.txt").write_text(
-            "\n".join([f"A{i}" for i in range(1, 21)]), encoding="utf-8"
-        )
-
-        tool = ReadPartialTool(temp_dir)
-        res = await tool.execute(
-            {
-                "requests": [
-                    {
-                        "file_path": str(p / "a.txt"),
-                        "sections": [{"start_line": 1, "end_line": 3, "label": "head"}],
-                    }
-                ],
-                "output_format": "toon",
-            }
-        )
-
-        assert res.get("format") == "toon"
-        assert "toon_content" in res
-        # Token-savings requirement: JSON details must not be included in TOON response
-        assert "results" not in res
-
-
-@pytest.mark.asyncio
 async def test_read_partial_batch_mutual_exclusion() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         p = Path(temp_dir)

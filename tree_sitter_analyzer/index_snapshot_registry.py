@@ -1,0 +1,324 @@
+"""Bounded admission helpers for process-local index snapshots."""
+
+from __future__ import annotations
+
+import os
+import secrets
+import sqlite3
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from typing import Any, Literal, cast
+
+from .index_snapshot_registry_capabilities import acquire_io_lock, newest_reusable
+
+
+def ensure_capacity(
+    entries: dict[str, Any],
+    charged_bytes: int,
+    max_snapshots: int,
+    max_charged_bytes: int,
+) -> None:
+    """Evict oldest unpinned entries until one actual copy can be admitted."""
+    if charged_bytes > max_charged_bytes:
+        raise RuntimeError("INDEX_SNAPSHOT_CAPACITY")
+    while _would_exceed_capacity(
+        entries, charged_bytes, max_snapshots, max_charged_bytes
+    ):
+        candidates = [
+            (key, entry) for key, entry in entries.items() if entry.readers == 0
+        ]
+        if not candidates:
+            raise RuntimeError("INDEX_SNAPSHOT_CAPACITY")
+        key, entry = min(candidates, key=lambda item: item[1].expires_at)
+        entries.pop(key)
+        entry.connection.close()
+
+
+def reuse_snapshot(
+    entries: dict[str, Any],
+    snapshot: Any,
+    connection: Any,
+    expires_at: float,
+    capture_deadline: float,
+) -> Any | None:
+    """Reuse only an identity whose logical and physical status is unchanged."""
+    for key, entry in tuple(entries.items()):
+        existing = entry.snapshot
+        same_logical_identity = (
+            existing.canonical_root == snapshot.canonical_root
+            and existing.source_fingerprint == snapshot.source_fingerprint
+            and existing.index_fingerprint == snapshot.index_fingerprint
+            and existing.source_generation == snapshot.source_generation
+            and existing.completeness == snapshot.completeness
+            and existing.reason == snapshot.reason
+            and existing.file_count == snapshot.file_count
+            and existing.symbol_projection_exact == snapshot.symbol_projection_exact
+            and existing.source_scope == snapshot.source_scope
+            and existing.database_path == snapshot.database_path
+        )
+        if not same_logical_identity:
+            continue
+        if existing.physical_storage_identity == snapshot.physical_storage_identity:
+            entry.expires_at = expires_at
+            entry.capture_deadline = capture_deadline
+            connection.close()
+            return existing
+        # A VACUUM or other physical-only rewrite must not refresh a capability
+        # whose published metrics are stale. Retire it as soon as it is unpinned.
+        if entry.readers == 0:
+            entries.pop(key)
+            entry.connection.close()
+        else:
+            entry.expires_at = float("-inf")
+    return None
+
+
+def _would_exceed_capacity(
+    entries: dict[str, Any],
+    charged_bytes: int,
+    max_snapshots: int,
+    max_charged_bytes: int,
+) -> bool:
+    live = sum(entry.charged_bytes for entry in entries.values())
+    return len(entries) >= max_snapshots or live + charged_bytes > max_charged_bytes
+
+
+@dataclass(frozen=True, slots=True)
+class IndexSnapshot:
+    snapshot_id: str | None
+    source_fingerprint: str | None
+    index_fingerprint: str | None
+    source_generation: str | None
+    completeness: Literal["complete", "partial", "unknown"]
+    reason: str | None
+    canonical_root: str | None
+    file_count: int
+    physical_storage_identity: tuple[int, int, int, int, int, int] | None = None
+    symbol_projection_exact: bool | None = None
+    source_scope: Any | None = None
+    database_path: str | None = None
+
+
+# Phase B-2: WAL reader-slot memory overhead charged per open connection.
+# Each sqlite3.Connection opened in WAL read-only mode holds approximately
+# 2 MB of process-local state (page cache, shm mapping, connection object).
+# This constant is used as the fixed charged_bytes for every _WalEntry so
+# that the capacity budget (max_charged_bytes) reflects actual memory cost
+# rather than physical DB size.
+_WAL_CONNECTION_OVERHEAD_BYTES = 2 * 1024 * 1024  # ~2 MB per WAL reader slot
+
+
+@dataclass(slots=True)
+class _WalEntry:
+    """Registry entry for one live WAL read-only snapshot capability.
+
+    Phase B-2 completed: renamed from ``_Entry``.  Each instance holds a
+    WAL read-only sqlite3.Connection opened against the live index DB.
+
+    Memory accounting:
+    - ``charged_bytes`` is fixed at ``_WAL_CONNECTION_OVERHEAD_BYTES`` (~2 MB)
+      regardless of DB physical size, reflecting actual WAL reader overhead.
+
+    TTL guarantee:
+    - ``expires_at`` is set to ``now + _TTL_SECONDS`` (35 s) at publish time.
+    - ``_purge`` evicts entries with ``expires_at <= now and readers == 0``,
+      ensuring WAL reader slots are released within 35 s of last reader release.
+
+    Lock discipline:
+    - ``_CAPTURE_LOCK`` in index_snapshot.py is NOT acquired on the WAL path;
+      multiple concurrent WAL readers are permitted without serialisation.
+      (See index_snapshot.py Phase B-1 note.)
+    """
+
+    snapshot: IndexSnapshot
+    connection: sqlite3.Connection
+    charged_bytes: int
+    expires_at: float
+    capture_deadline: float
+    readers: int = 0
+    io_lock: Any = field(default_factory=threading.RLock)
+
+
+# _Entry = _WalEntry  # deprecated alias; no external consumers found (grep confirmed)
+
+
+class IndexSnapshotRegistry:
+    """Bounded process-local owner for immutable snapshot capabilities."""
+
+    def __init__(
+        self,
+        *,
+        clock: Callable[[], float],
+        max_snapshots: Callable[[], int],
+        max_charged_bytes: Callable[[], int],
+        ttl_seconds: Callable[[], float],
+        capture_deadline_seconds: Callable[[], float],
+    ) -> None:
+        self._clock = clock
+        self._max_snapshots = max_snapshots
+        self._max_charged_bytes = max_charged_bytes
+        self._ttl_seconds = ttl_seconds
+        self._capture_deadline_seconds = capture_deadline_seconds
+        self._lock = threading.RLock()
+        self._entries: dict[str, _WalEntry] = {}
+
+    def ensure_capacity(self, charged_bytes: int) -> None:
+        with self._lock:
+            self._purge(self._clock())
+            ensure_capacity(
+                self._entries,
+                charged_bytes,
+                self._max_snapshots(),
+                self._max_charged_bytes(),
+            )
+
+    def publish(
+        self,
+        snapshot: IndexSnapshot,
+        connection: sqlite3.Connection,
+        charged_bytes: int,
+        capture_deadline: float | None = None,
+        *,
+        pin: bool = False,
+    ) -> IndexSnapshot:
+        """Atomically publish/reuse a capability and optionally pin its entry."""
+        with self._lock:
+            now = self._clock()
+            deadline = (
+                capture_deadline
+                if capture_deadline is not None
+                else now + self._capture_deadline_seconds()
+            )
+            self._purge(now)
+            existing = reuse_snapshot(
+                self._entries,
+                snapshot,
+                connection,
+                now + self._ttl_seconds(),
+                deadline,
+            )
+            if existing is not None:
+                published = cast(IndexSnapshot, existing)
+                if pin:
+                    self._entries[cast(str, published.snapshot_id)].readers += 1
+                return published
+            self.ensure_capacity(charged_bytes)
+            snapshot_id = "idxsnap_" + secrets.token_urlsafe(24)
+            published = IndexSnapshot(
+                snapshot_id,
+                snapshot.source_fingerprint,
+                snapshot.index_fingerprint,
+                snapshot.source_generation,
+                snapshot.completeness,
+                snapshot.reason,
+                snapshot.canonical_root,
+                snapshot.file_count,
+                snapshot.physical_storage_identity,
+                snapshot.symbol_projection_exact,
+                snapshot.source_scope,
+                snapshot.database_path,
+            )
+            self._entries[snapshot_id] = _WalEntry(
+                published,
+                connection,
+                charged_bytes,
+                now + self._ttl_seconds(),
+                deadline,
+                readers=int(pin),
+            )
+            return published
+
+    def release_pin(self, snapshot_id: str) -> None:
+        with self._lock:
+            entry = self._entries.get(snapshot_id)
+            if entry is None or entry.readers <= 0:
+                raise ValueError("INDEX_SNAPSHOT_UNKNOWN")
+            entry.readers -= 1
+            self._purge(self._clock())
+
+    @contextmanager
+    def pin_reusable(self, project_root: str) -> Iterator[IndexSnapshot | None]:
+        """Pin the newest live capability for ``project_root`` without recopying it."""
+        canonical_root = os.path.realpath(os.path.abspath(project_root))
+        with self._lock:
+            now = self._clock()
+            self._purge(now)
+            entry = newest_reusable(self._entries, canonical_root, now)
+            if entry is not None:
+                entry.readers += 1
+        try:
+            yield entry.snapshot if entry is not None else None
+        finally:
+            if entry is not None:
+                with self._lock:
+                    entry.readers -= 1
+                    self._purge(self._clock())
+
+    @contextmanager
+    def acquire(
+        self,
+        snapshot_id: str,
+        project_root: str,
+        source_generation: str | None = None,
+        *,
+        deadline: float | None = None,
+    ) -> Iterator[tuple[IndexSnapshot, sqlite3.Connection]]:
+        canonical_root = os.path.realpath(os.path.abspath(project_root))
+        with self._lock:
+            now = self._clock()
+            if deadline is not None and now >= deadline:
+                raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+            self._purge(now)
+            entry = self._entries.get(snapshot_id)
+            if entry is None or entry.expires_at <= now:
+                raise ValueError("INDEX_SNAPSHOT_UNKNOWN")
+            if entry.snapshot.canonical_root != canonical_root:
+                raise ValueError("INDEX_SNAPSHOT_ROOT_MISMATCH")
+            if (
+                source_generation is not None
+                and source_generation != entry.snapshot.source_generation
+            ):
+                raise ValueError("SOURCE_GENERATION_MISMATCH")
+            entry.readers += 1
+        acquired = False
+        try:
+            acquired = acquire_io_lock(entry.io_lock, deadline, self._clock)
+            yield entry.snapshot, entry.connection
+        finally:
+            if acquired:
+                entry.io_lock.release()
+            with self._lock:
+                entry.readers -= 1
+                self._purge(self._clock())
+
+    def capture_deadline(self, snapshot_id: str) -> float:
+        with self._lock:
+            entry = self._entries.get(snapshot_id)
+            if entry is None:
+                raise ValueError("INDEX_SNAPSHOT_UNKNOWN")
+            return entry.capture_deadline
+
+    def symbol_projection_exact(self, snapshot_id: str) -> bool | None:
+        """Return the projection verdict cached during private-copy capture."""
+        with self._lock:
+            entry = self._entries.get(snapshot_id)
+            if entry is None:
+                raise ValueError("INDEX_SNAPSHOT_UNKNOWN")
+            return entry.snapshot.symbol_projection_exact
+
+    def close_all(self) -> None:
+        with self._lock:
+            entries = tuple(self._entries.values())
+            self._entries.clear()
+        for entry in entries:
+            entry.connection.close()
+
+    def _purge(self, now: float) -> None:
+        for key in [
+            key
+            for key, entry in self._entries.items()
+            if entry.expires_at <= now and entry.readers == 0
+        ]:
+            self._entries.pop(key).connection.close()

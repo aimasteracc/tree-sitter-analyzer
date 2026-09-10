@@ -76,7 +76,24 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0017](0017-test-effectiveness-mutation-and-value-invariants.md) | Test effectiveness — mutation scoring, value invariants, outside-the-loop authorship | accepted (owner 2026-06-14; phase 1 = mutation baseline) |
 | [0018](0018-response-envelope-normalization-and-adaptive-toon.md) | Correct TOON wire + envelope normalization — the real token win | accepted (PR 1 scalar quoting + decoder + round-trip oracle #1063; raw wire + envelope normalization outstanding) |
 | [0019](0019-complexity-single-source-of-truth.md) | Cyclomatic complexity — one source of truth | implemented (#1099, #1101, #1102) |
+| [0020](0020-sqlite-canonical-knowledge-graph.md) | SQLite-canonical knowledge graph | draft |
+| [0021](0021-real-world-competitive-benchmark.md) | Real-world competitive benchmark | draft |
+| [0022](0022-task-outcome-apis.md) | Static task outcomes by primitive orchestration | draft |
+| [0023](0023-edge-evidence-confidence-freshness.md) | Edge evidence, confidence, and freshness | draft |
+| [0024](0024-default-dependency-split.md) | Default dependency split, descriptive post-hoc baseline | draft |
+| [0025](0025-instant-causal-proprioception.md) | Instant causal proprioception for agent change intelligence | draft |
+| [0026](0026-no1-010b-agent-change-outcome-benchmark.md) | NO1-010B agent change-outcome benchmark (VCSR) | draft |
+| [0027](0027-agent-secretary-and-calibration.md) | Secretary layer — instant answers, comprehension, calibrated learning | draft |
+| [0028](0028-measuring-claimed-properties.md) | Measuring the properties we already claim (honesty invariants) | draft |
+| [0029](0029-does-this-test-constrain-this-code.md) | "Does this test constrain this code?" — interactive mutation query | draft |
+
+| [0030](0030-pulse-source-evidence.md) | Pulse source-version evidence | draft |
+| [0031](0031-bounded-verification-execution.md) | Bounded verification command and plan replay | draft |
+| [0032](0032-index-writer-ownership.md) | Index writer ownership and obsolete-candidate fencing | draft |
+| [0033](0033-native-search-independence.md) | Native search independence | accepted |
+| [0034](0034-optional-search-backend-qualification.md) | Optional search backend qualification | draft |
 
 ## Roadmap
 
-See [ROADMAP-beyond-codegraph.md](ROADMAP-beyond-codegraph.md) for planned future directions beyond the current correctness-moat work.
+- [ROADMAP-no1-agent-trust.md](ROADMAP-no1-agent-trust.md) — active No.1 program: trusted Agent change intelligence, evidence gates, team topology, and 90-day task ledger. Its real production canary remains bounded E0; E1 is a separate qualification and E0–E3 emit no public claim.
+- [ROADMAP-beyond-codegraph.md](ROADMAP-beyond-codegraph.md) — historical strategy and completed correctness-moat work.

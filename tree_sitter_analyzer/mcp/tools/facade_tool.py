@@ -24,9 +24,7 @@ F5 — bespoke routing
     Three production routes bypass ``registry[name].execute()``:
     ``analyze_code_structure`` -> ``table_format_tool``,
     ``extract_code_section`` -> ``handle_extract_code_section`` (batch
-    reshaping), and ``search_content`` / ``find_and_grep`` whose
-    ``execute`` returns ``dict | int`` (bare int = exit code when
-    ``suppress_output=True``). These register as ``bespoke_map`` callables;
+    reshaping). These register as ``bespoke_map`` callables;
     the facade forwards the cleaned args (control keys stripped) but does
     NOT project them to an inner schema — the bespoke callable owns its own
     arg handling — and tolerates a non-dict return.
@@ -47,7 +45,7 @@ G3 — rebind propagation
     ``_on_project_root_changed`` hook.
 
 The facade never re-wraps the inner's response: ``verdict`` / ``agent_summary``
-/ ``toon_content`` stay verbatim so the centralised envelope in
+stay verbatim so the centralised envelope in
 ``base_tool.py`` and the MCP dispatch normaliser remain the single source of
 truth.
 """
@@ -58,10 +56,30 @@ import difflib
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from ...cache.answer_cache import get_answer_cache
+from ...cache.answer_cache_policy import build_answer_key, provenance_block
+from ...latency import get_latency_recorder
 from .base_tool import BaseMCPTool
 
+
+def _with_provenance(result: Any, key: Any, served_from: str) -> Any:
+    """Attach the RFC-0027 L6.1 rule-5 visibility block to ``result``.
+
+    ``served_from`` is exactly ``"cache"`` or ``"computed"``. A cache that lies
+    about freshness is worse than no cache, so this is attached to a miss as
+    well as a hit — an agent must never have to infer which it got.
+
+    A non-dict result (an F5 bespoke exit code) is returned untouched; those
+    routes are not on the allowlist, so this is defence in depth.
+    """
+    if not isinstance(result, dict):
+        return result
+    result["provenance"] = provenance_block(key, served_from)
+    return result
+
+
 # A bespoke route may return ``dict`` (normal envelope) or ``int`` (exit code
-# when suppress_output=True, mirroring search_content / find_and_grep).
+# when suppress_output=True).
 BespokeHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 
 # Facade control keys that are never forwarded to an inner tool unless the
@@ -101,7 +119,7 @@ _CORE_FACADE_PARAMS: dict[str, dict[str, Any]] = {
     "query": {"type": "string", "description": "Search query/pattern."},
     "language": {"type": "string", "description": "Language hint (usually auto)."},
     "limit": {"type": "integer", "description": "Max results."},
-    "output_format": {"type": "string", "description": "Output format (toon|json)."},
+    "output_format": {"type": "string", "enum": ["json"], "description": "Output format: JSON."},
 }
 
 
@@ -133,6 +151,10 @@ class FacadeTool(BaseMCPTool):
         additionalProperties but was undiscoverable to schema-reading
         agents). Use sparingly — one high-value param, never a per-inner
         union (the Wave D token diet stands). Never added to ``required``.
+    action_scoped_params:
+        Optional mapping from a public parameter to the facade actions where it
+        is meaningful. Calls supplying that parameter to another action fail
+        explicitly instead of silently dropping it during inner projection.
     """
 
     def __init__(
@@ -145,6 +167,7 @@ class FacadeTool(BaseMCPTool):
         annotations: dict[str, Any] | None = None,
         project_root: str | None = None,
         extra_public_params: dict[str, dict[str, Any]] | None = None,
+        action_scoped_params: dict[str, frozenset[str]] | None = None,
     ) -> None:
         self.facade_name = facade_name
         self.action_map: dict[str, BaseMCPTool] = dict(action_map)
@@ -158,6 +181,7 @@ class FacadeTool(BaseMCPTool):
         self._extra_public_params: dict[str, dict[str, Any]] = dict(
             extra_public_params or {}
         )
+        self._action_scoped_params = dict(action_scoped_params or {})
         # BaseMCPTool.__init__ wires security/path resolver + fires
         # _on_project_root_changed (which forwards to inner instances).
         super().__init__(project_root)
@@ -342,16 +366,58 @@ class FacadeTool(BaseMCPTool):
         if not action or not isinstance(action, str):
             return self._action_error("missing required parameter 'action'")
 
+        for parameter, allowed_actions in self._action_scoped_params.items():
+            if parameter in arguments and action not in allowed_actions:
+                allowed = ", ".join(sorted(allowed_actions))
+                return self._action_error(
+                    f"parameter {parameter!r} applies only to action(s): {allowed}"
+                )
+
+        # RFC-0025 Layer 5: the facade is the public (tool, action) surface, so
+        # it is the one seam where a latency observation is unambiguous —
+        # instrumenting inner tools instead would double-count every facade
+        # call and key the reservoir by class name rather than by route.
+        # Only the two dispatching branches are timed; the argument-validation
+        # error paths below are not routes and must not pollute the p95.
+        recorder = get_latency_recorder()
+
         # Bespoke routes (F5) take precedence and bypass schema projection.
         if action in self.bespoke_map:
             handler = self.bespoke_map[action]
             cleaned = self._clean_bespoke_args(arguments)
-            return await handler(cleaned)
+            with recorder.measure(self.facade_name, action):
+                return await handler(cleaned)
 
         if action in self.action_map:
             inner = self.action_map[action]
             projected = self._project_args(inner, arguments)
-            return await inner.execute(projected)
+            # RFC-0027 L6.1: the answer cache sits on the same seam as the
+            # latency recorder, for the same reason — the facade is the public
+            # (tool, action) surface, so a key built here describes exactly the
+            # question the caller asked. Only allowlisted read-only routes are
+            # eligible; for every other action ``build_answer_key`` returns
+            # ``None`` on an allowlist lookup and the path below is unchanged.
+            #
+            # The whole cache path — key derivation, lookup, store — is INSIDE
+            # the measured window. Deriving the key costs a source-tree
+            # fingerprint (~20 ms on this repo), and the first version of this
+            # code built it outside the recorder: the baseline then reported a
+            # cache hit as 0.0 ms, i.e. the instrumentation lied about the cost
+            # the caller actually waits for. A measurement that flatters the
+            # change is worse than no measurement.
+            with recorder.measure(self.facade_name, action):
+                key = build_answer_key(
+                    self.facade_name, action, projected, self.project_root
+                )
+                if key is None:
+                    return await inner.execute(projected)
+                cache = get_answer_cache()
+                cached = cache.lookup(key)
+                if cached is not None:
+                    return _with_provenance(cached.payload, key, "cache")
+                result = await inner.execute(projected)
+                cache.store(key, result)
+                return _with_provenance(result, key, "computed")
 
         available = self._available_actions()
         valid = ", ".join(available) if available else "(none registered)"

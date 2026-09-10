@@ -46,8 +46,6 @@ class BashTableFormatter(BaseTableFormatter):
         """Advanced output for Bash."""
         if output_format == "json":
             return self._format_json(analysis_result)
-        if output_format == "csv":
-            return self._format_csv(analysis_result)
         return self._format_full_table(analysis_result)
 
     # ------------------------------------------------------------------ #

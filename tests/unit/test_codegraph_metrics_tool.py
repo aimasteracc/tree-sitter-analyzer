@@ -31,7 +31,7 @@ class TestToolDefinition:
         schema = tool.get_tool_schema()
         assert "sections" in schema["properties"]
         assert "output_format" in schema["properties"]
-        assert schema["properties"]["output_format"]["default"] == "toon"
+        assert schema["properties"]["output_format"]["default"] == "json"
 
     def test_schema_sections_enum(self, tool):
         items = tool.get_tool_schema()["properties"]["sections"]["items"]
@@ -78,11 +78,6 @@ class TestExecuteNoCache:
             )
         assert result["success"] is True
         assert result["cache"]["status"] == "empty"
-
-    async def test_toon_format_default(self, tool):
-        result = await tool.execute({})
-        assert result["format"] == "toon"
-        assert "toon_content" in result
 
     async def test_sections_included_field(self, tool_with_root):
         with patch(

@@ -27,8 +27,6 @@ Backward Compatibility:
 """
 
 from .formatter_registry import (
-    CompactFormatter,
-    CsvFormatter,
     FormatterRegistry,
     FullFormatter,
     IFormatter,
@@ -44,9 +42,7 @@ __all__ = [
     "IStructureFormatter",
     # Built-in formatters
     "JsonFormatter",
-    "CsvFormatter",
     "FullFormatter",
-    "CompactFormatter",
     # Table formatter (canonical location, Phase 7)
     "TableFormatter",
 ]

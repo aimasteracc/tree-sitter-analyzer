@@ -17,7 +17,6 @@ from ._markdown_formatter_helpers import (
     compute_robust_counts_from_file,
     format_advanced_text,
     format_compact_output,
-    format_csv_output,
     format_json_output,
 )
 from .base_formatter import BaseFormatter
@@ -160,5 +159,7 @@ class MarkdownFormatter(BaseFormatter):
         )
 
     def _format_csv(self, analysis_result: dict[str, Any]) -> str:
-        """Format CSV output for Markdown files"""
-        return format_csv_output(analysis_result)
+        """Format CSV output for Markdown files (removed)"""
+        raise NotImplementedError(
+            "CSV format removed; use 'json' or 'text' instead"
+        )

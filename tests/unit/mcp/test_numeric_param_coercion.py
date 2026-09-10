@@ -10,6 +10,7 @@ Per CLAUDE.md LOCKED rule: assertion counts are exact pins, never >= / >.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -269,12 +270,12 @@ class TestFullIndexMaxFilesCoercion:
     """full_index_tool.py:118 — max_files passed to cache.index_project()."""
 
     @pytest.mark.asyncio
-    async def test_max_files_string_does_not_crash(self) -> None:
+    async def test_max_files_string_does_not_crash(self, tmp_path) -> None:
         from tree_sitter_analyzer.mcp.tools.full_index_tool import (
             CodeGraphFullIndexTool,
         )
 
-        tool = CodeGraphFullIndexTool(project_root="/fake/root")
+        tool = CodeGraphFullIndexTool(project_root=str(tmp_path))
 
         fake_ast_result = {
             "success": True,
@@ -435,7 +436,7 @@ class TestTraceImpactMaxResultsCoercion:
     async def test_max_results_string_does_not_crash(self) -> None:
         from tree_sitter_analyzer.mcp.tools.trace_impact_tool import TraceImpactTool
 
-        tool = TraceImpactTool(project_root="/fake/root")
+        tool = TraceImpactTool(project_root=str(Path.cwd()))
 
         with (
             patch.object(
@@ -444,12 +445,8 @@ class TestTraceImpactMaxResultsCoercion:
                 return_value=["/fake/root"],
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.trace_impact_tool.build_rg_command",
-                return_value=["rg", "--json", "my_func"],
-            ),
-            patch(
-                "tree_sitter_analyzer.mcp.tools.trace_impact_tool.run_command_capture",
-                return_value=(1, b"", b""),  # rc=1 → zero matches (NOT_FOUND path)
+                "tree_sitter_analyzer.mcp.tools.trace_impact_tool.scan_symbol_lines",
+                return_value=[],  # rc=1 → zero matches (NOT_FOUND path)
             ),
         ):
             resp = await tool.execute(

@@ -63,12 +63,7 @@ def _execute_nav_facade(
 
     try:
         result: dict[str, Any] = asyncio.run(facade.execute(tool_args))
-        if output_format == "toon":
-            import sys
-
-            print(result.get("toon_content", ""), file=sys.stdout)
-        else:
-            context.output_json(result)
+        context.output_json(result)
         return 0 if result.get("success", False) else 1
     except Exception as exc:  # noqa: BLE001
         context.output_error(f"{label} failed: {exc}")

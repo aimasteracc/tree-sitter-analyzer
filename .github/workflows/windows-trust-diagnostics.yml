@@ -1,0 +1,109 @@
+name: Windows Trust Diagnostics
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/windows-trust-diagnostics.yml
+      - tests/contracts/test_collect_no1_006b_baseline.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-trust-diagnostics-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repeat-original-cases:
+    name: Original cases (Windows ${{ matrix.python-version }})
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PYTHON_VERSION: ${{ matrix.python-version }}
+      UV_PYTHON: ${{ matrix.python-version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.12.3'
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install pinned environment
+        run: uv sync --frozen --python $env:PYTHON_VERSION
+        shell: pwsh
+      - name: Repeat without hiding first failures
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $output = Join-Path $env:RUNNER_TEMP "tsa-trust-$env:PYTHON_VERSION"
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          $cases = @(
+            'tests/contracts/test_collect_no1_006b_baseline.py::test_receipt_binds_exact_collector_tool_lock_and_export',
+            'tests/contracts/test_collect_no1_006b_baseline.py::test_fresh_clone_can_resolve_and_checkout_collector_commit',
+            'tests/contracts/test_collect_no1_006b_baseline.py::test_secrets_baseline_union_contract_works_in_fresh_clone_without_remote',
+            'tests/unit/mcp/tools/test_constraint_check_portable_snapshot.py::test_portable_source_certifier_hashes_stable_supported_scope',
+            'tests/unit/test_ast_cache_force_rebuild.py::test_force_rebuild_without_secure_materialization_keeps_legacy_data_plane'
+          )
+          $failures = 0
+          for ($iteration = 1; $iteration -le 20; $iteration++) {
+            $log = Join-Path $output "iteration-$iteration.log"
+            $xml = Join-Path $output "iteration-$iteration.xml"
+            $temporary = Join-Path $output "tmp-$iteration"
+            uv run pytest @cases -q --reruns 0 --junitxml $xml --basetemp $temporary *> $log
+            $rawCode = $LASTEXITCODE
+            $code = $rawCode
+            $executed = 0
+            $skipped = 0
+            $xmlError = $null
+            try {
+              [xml]$junit = Get-Content -Raw $xml
+              foreach ($suite in @($junit.testsuites.testsuite)) {
+                $executed += [int]$suite.tests
+                $skipped += [int]$suite.skipped
+                if (([int]$suite.failures + [int]$suite.errors) -ne 0) { $code = 1 }
+              }
+            } catch {
+              $xmlError = $_.Exception.Message
+              $code = 1
+            }
+            if ($executed -ne $cases.Count -or $skipped -ne 0) { $code = 1 }
+            if ($code -ne 0) { $failures++ }
+            @{
+              sha = $env:TARGET_SHA
+              python = $env:PYTHON_VERSION
+              iteration = $iteration
+              exit_code = $rawCode
+              qualification_exit_code = $code
+              tests = $executed
+              skipped = $skipped
+              junit_error = $xmlError
+              log = "iteration-$iteration.log"
+              junit = "iteration-$iteration.xml"
+            } | ConvertTo-Json -Compress | Add-Content -Encoding utf8 (Join-Path $output 'iterations.jsonl')
+            Write-Output "Iteration $iteration/20: pytest exit $rawCode, qualification exit $code"
+          }
+          if ($failures -ne 0) { exit 1 }
+      - name: Preserve every attempt
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-trust-${{ matrix.python-version }}-${{ env.TARGET_SHA }}
+          path: |
+            ${{ runner.temp }}/tsa-trust-${{ matrix.python-version }}/*.log
+            ${{ runner.temp }}/tsa-trust-${{ matrix.python-version }}/*.xml
+            ${{ runner.temp }}/tsa-trust-${{ matrix.python-version }}/iterations.jsonl
+          if-no-files-found: error
+          retention-days: 14

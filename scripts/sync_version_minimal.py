@@ -1,20 +1,13 @@
 #!/usr/bin/env python3
-"""
-Minimal Version Synchronization Script
+"""同步发布必需的版本元数据。
 
-This script only synchronizes version numbers in essential files:
-- pyproject.toml (source of truth)
-- pyproject.toml [tool.mcp].server_version (MCP metadata)
-- tree_sitter_analyzer/__init__.py (main package version)
-
-Other __init__.py files are left unchanged to reduce complexity.
-
-Usage:
-    python scripts/sync_version_minimal.py
-    python scripts/sync_version_minimal.py --check  # Only check, don't update
+以 pyproject.toml 的项目版本为准，更新 MCP 元数据、包 __init__.py，
+以及 server.json 的服务器版本和本项目 PyPI 包版本。
+--check 只检查；发现漂移时返回非零状态。
 """
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -44,13 +37,12 @@ def get_version_from_pyproject() -> str:
 
 
 def get_essential_version_files() -> list[Path]:
-    """Get only essential files that need version synchronization"""
+    """列出必须存在的包版本文件；缺失由读取步骤报告。"""
     essential_files = [
         Path("tree_sitter_analyzer/__init__.py"),  # Main package version
     ]
 
-    # Only include files that exist
-    return [f for f in essential_files if f.exists()]
+    return essential_files
 
 
 def update_version_in_file(
@@ -77,15 +69,12 @@ def update_version_in_file(
             try:
                 file_path.write_text(new_content, encoding="utf-8")
                 return True, f"✅ Updated {file_path.relative_to(Path('.'))}"
-            except Exception as e:
-                return (
-                    False,
-                    f"❌ Failed to write {file_path.relative_to(Path('.'))}: {e}",
-                )
+            except OSError as e:
+                raise OSError(f"Failed to write {file_path}: {e}") from e
         else:
             return False, f"ℹ️  No changes needed in {file_path.relative_to(Path('.'))}"
     else:
-        return False, f"⚠️  No __version__ found in {file_path.relative_to(Path('.'))}"
+        raise ValueError(f"No __version__ found in {file_path}")
 
 
 def update_mcp_server_version(
@@ -103,7 +92,7 @@ def update_mcp_server_version(
 
     server_version_pattern = r'server_version\s*=\s*"([^"]+)"'
     if not re.search(server_version_pattern, content):
-        return False, "⚠️  No [tool.mcp].server_version found in pyproject.toml"
+        raise ValueError("No [tool.mcp].server_version found in pyproject.toml")
 
     new_content = re.sub(
         server_version_pattern, f'server_version = "{new_version}"', content
@@ -117,8 +106,38 @@ def update_mcp_server_version(
     return True, "✅ Updated pyproject.toml [tool.mcp].server_version"
 
 
-def check_versions(check_only: bool = False) -> None:
-    """Check and optionally update essential version numbers only"""
+def update_registry_version(
+    new_version: str, *, check_only: bool = False, project_root: Path = Path(".")
+) -> tuple[bool, str]:
+    """同步注册表中服务器和本项目的 PyPI 包版本，保留其他字段。"""
+    path = project_root / "server.json"
+    metadata = json.loads(path.read_text(encoding="utf-8"))
+    packages = [
+        package
+        for package in metadata["packages"]
+        if package.get("registryType") == "pypi"
+        and package.get("identifier") == "tree-sitter-analyzer"
+    ]
+    if not packages:
+        raise ValueError("server.json is missing the tree-sitter-analyzer PyPI package")
+    changed = metadata["version"] != new_version or any(
+        package["version"] != new_version for package in packages
+    )
+    if not changed:
+        return False, "No changes needed in server.json"
+    if check_only:
+        return True, "Would update server.json"
+    metadata["version"] = new_version
+    for package in packages:
+        package["version"] = new_version
+    path.write_text(
+        json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    return True, "Updated server.json"
+
+
+def check_versions(check_only: bool = False) -> bool:
+    """检查或同步必需版本，返回是否无需更改。"""
     current_version = get_version_from_pyproject()
     print(f"📦 Current version in pyproject.toml: {current_version}")
 
@@ -126,6 +145,12 @@ def check_versions(check_only: bool = False) -> None:
     print(f"🔍 Found {len(essential_files)} essential version files")
 
     updated_files = []
+    registry_changed, registry_message = update_registry_version(
+        current_version, check_only=check_only
+    )
+    if registry_changed:
+        updated_files.append(Path("server.json"))
+    print(registry_message)
 
     server_success, server_message = update_mcp_server_version(
         current_version, check_only=check_only
@@ -159,6 +184,7 @@ def check_versions(check_only: bool = False) -> None:
 
     print("\n💡 This script only updates essential version files.")
     print("   For full synchronization, use: python scripts/sync_version.py")
+    return not updated_files
 
 
 def main():
@@ -173,7 +199,9 @@ def main():
     args = parser.parse_args()
 
     try:
-        check_versions(check_only=args.check)
+        consistent = check_versions(check_only=args.check)
+        if args.check and not consistent:
+            sys.exit(1)
     except Exception as e:
         print(f"❌ Minimal version synchronization failed: {e}")
         sys.exit(1)

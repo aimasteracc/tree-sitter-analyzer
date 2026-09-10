@@ -23,13 +23,26 @@ Our test targets (matching languages we support):
   - Express (TypeScript) — web framework
 """
 
+# HISTORICAL DATA NOTE (REQ-U-028):
+# benchmark_results.json was generated with an empty index for all rows
+# (index_symbols=0 for every BenchmarkRun). The recall numbers in that file
+# (approximately 0.14, 0.29, 0.43) are INVALID — they were computed against
+# an empty symbol table, not a real indexed project. Any reader of
+# benchmark_results.json must treat those recall figures as benchmark
+# infrastructure artifacts, not real measurements.
+# Re-running with a properly built index requires network access (cloning
+# real projects) and is tracked separately.
+
 import json
+import logging as _logging
 import subprocess
 import sys
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+_bmark_logger = _logging.getLogger(__name__)
 
 # tempdir-style path; "cwqcdr3n…" looks like base64 entropy to
 # detect-secrets but is just a macOS-generated tempdir component.
@@ -270,21 +283,39 @@ def main():
         )
 
         cg = CODEGRAPH_BASELINES.get(config["comparable_cg"], {})
-        recall = len(
-            set(analysis["found_symbols"]) & set(config["expected_symbols"])
-        ) / max(len(config["expected_symbols"]), 1)
+
+        # REQ-U-027: index_symbols would be populated by a real index step.
+        # Currently no index step is implemented, so this is always 0.
+        index_symbols = 0
+
+        # REQ-U-027: skip recall computation when index_symbols == 0 to avoid
+        # producing invalid measurements against an empty symbol table.
+        if index_symbols == 0:
+            _bmark_logger.warning(
+                "[%s] index_symbols=0 after index step — recall computation skipped "
+                "(empty symbol table). See HISTORICAL DATA NOTE in this file.",
+                name,
+            )
+            recall = -1.0  # sentinel: row is invalid, not a real measurement
+        else:
+            recall = round(
+                len(set(analysis["found_symbols"]) & set(config["expected_symbols"]))
+                / max(len(config["expected_symbols"]), 1),
+                2,
+            )
 
         run = BenchmarkRun(
             project=name,
             query=config["query"],
             language=config["language"],
             index_files=file_count,
+            index_symbols=index_symbols,
             tool_calls_needed=analysis["tool_calls"],
             analysis_time_s=analysis["time_s"],
             file_reads_needed=analysis["file_reads"],
             found_symbols=analysis["found_symbols"],
             expected_symbols=config["expected_symbols"],
-            recall=round(recall, 2),
+            recall=recall,
             comparable_cg=config["comparable_cg"],
             cg_tool_calls=cg.get("tool_calls", 0),
             cg_time_s=cg.get("time_s", 0),
@@ -317,13 +348,19 @@ def main():
     avg_our_calls = sum(r.tool_calls_needed for r in results) / len(results)
     avg_cg_calls = sum(r.cg_tool_calls for r in results) / len(results)
     avg_our_reads = sum(r.file_reads_needed for r in results) / len(results)
-    avg_recall = sum(r.recall for r in results) / len(results)
+    # REQ-U-027: exclude sentinel rows (recall == -1.0) from the average
+    valid_recalls = [r.recall for r in results if r.recall >= 0]
+    avg_recall_str = (
+        f"{sum(valid_recalls) / len(valid_recalls):.0%}"
+        if valid_recalls
+        else "N/A (all rows have index_symbols=0)"
+    )
 
     print(
         f"\n  Average tool calls — Us: {avg_our_calls:.1f}, CodeGraph: {avg_cg_calls:.1f}"
     )
     print(f"  Average file reads — Us: {avg_our_reads:.1f}, CodeGraph: 0")
-    print(f"  Average recall — Us: {avg_recall:.0%}")
+    print(f"  Average recall — Us: {avg_recall_str}")
     print("\n  Key gaps:")
     print(
         f"    - File reads: CodeGraph=0, Us={avg_our_reads:.1f} (we make agents read files)"

@@ -8,9 +8,21 @@
 
 # Tests, benchmarks, docs, RFCs — not needed to run the MCP server.
 tests
-benchmarks
+benchmarks/*
+!benchmarks/codegraph_compare/
+benchmarks/codegraph_compare/*
+!benchmarks/codegraph_compare/*.py
 docs
 rfcs
+!rfcs/
+rfcs/*
+!rfcs/schemas/
+rfcs/schemas/*
+!rfcs/schemas/no1-008a-cell-receipt-v3.schema.json
+!rfcs/schemas/no1-008a-cell-receipt-v3-body.schema.json
+!rfcs/schemas/no1-008a-cell-receipt-v3-common.schema.json
+!rfcs/schemas/no1-008a-cell-receipt-v3-fields-a.schema.json
+!rfcs/schemas/no1-008a-cell-receipt-v3-fields-b.schema.json
 examples
 
 # Python caches and local envs.

@@ -46,35 +46,6 @@ class TestJavaScriptFormatterRobustness:
         assert isinstance(result, str)
         assert result == "# Unknown"
 
-    def test_format_compact_with_empty_data(self, formatter):
-        """Test compact formatting with completely empty data"""
-        data = {}
-
-        result = formatter._format_compact_table(data)
-
-        # Should handle empty data gracefully
-        assert isinstance(result, str)
-        assert result == (
-            "# Unknown\n"
-            "\n"
-            "## Info\n"
-            "| Property | Value |\n"
-            "|----------|-------|\n"
-            "| Package |  |\n"
-            "| Methods | 0 |\n"
-            "| Fields | 0 |"
-        )
-
-    def test_format_csv_with_empty_data(self, formatter):
-        """Test CSV formatting with completely empty data"""
-        data = {}
-
-        result = formatter._format_csv(data)
-
-        # Should handle empty data gracefully
-        assert isinstance(result, str)
-        assert result == "Type,Name,Signature,Visibility,Lines,Complexity,Doc"
-
     def test_format_json_with_empty_data(self, formatter):
         """Test JSON formatting with completely empty data"""
         data = {}
@@ -276,16 +247,6 @@ class TestJavaScriptFormatterRobustness:
         assert end_time - start_time < 5.0
         assert isinstance(result, str)
         assert len(result) == 3124  # exact output size for this fixed dataset
-
-        # Test compact table formatting
-        start_time = time.time()
-        result = formatter._format_compact_table(large_data)
-        end_time = time.time()
-
-        # Should complete within reasonable time (5 seconds)
-        assert end_time - start_time < 5.0
-        assert isinstance(result, str)
-        assert len(result) == 105  # exact output size for this fixed dataset
 
     def test_unicode_handling(self, formatter):
         """Test handling of Unicode characters in data"""

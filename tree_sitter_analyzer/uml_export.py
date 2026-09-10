@@ -10,10 +10,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .call_path import CallPathFinder
+from .call_path import CallPathFinder  # noqa: F401 - public monkeypatch seam
 from .class_hierarchy import ClassHierarchy
 from .import_graph import ImportGraph
-from .utils.test_detection import is_test_file
 
 _EXTERNAL_BASES = frozenset(
     {
@@ -41,6 +40,26 @@ _TRUNCATION_NOTE = (
 # because consumers cannot distinguish it from a valid empty diagram. Use this
 # sentinel string instead so the mermaid is always parseable and self-describing.
 _ACTIVITY_NOT_FOUND_MERMAID = 'flowchart TD\n  not_found["No activity flow found"]'
+
+
+def _make_activity_not_found_diagram(next_step: str) -> UMLDiagram:
+    """Build a NOT_FOUND activity UMLDiagram with the given next_step message.
+
+    Extracted from _activity_error_diagram to eliminate the deep_nesting code
+    smell (L655: depth 5 inside for→if→UMLDiagram→metadata→key).
+    """
+    return UMLDiagram(
+        diagram_type="activity",
+        mermaid_type="flowchart",
+        mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
+        nodes=[],
+        edges=[],
+        metadata={
+            "diagram_type": "activity",
+            "verdict": "NOT_FOUND",
+            "next_step": next_step,
+        },
+    )
 
 
 @dataclass(frozen=True)
@@ -436,93 +455,15 @@ class UMLExporter:
             if should_close:
                 cache.close()
 
-        # P1-C: strip test-corpus classes from whole-project view by default
-        if not include_tests:
-            classes = [c for c in classes if not is_test_file(c.get("file"))]
+        from ._uml_export_builders import build_class_diagram
 
-        internal_names = {c.get("name", "") for c in classes if c.get("name")}
-        raw_edges: list[UMLEdge] = []
-        # Bug #789: track test edges separately for whole-project include_tests view
-        raw_test_edges: list[UMLEdge] = []
-        nodes: set[str] = set()
-
-        # Determine scope label for metadata
-        if class_name is not None:
-            scope = "class_neighbourhood"
-        elif file_path is not None:
-            scope = "file"
-        else:
-            scope = "whole_project"
-
-        # P2-1: an unknown class_name must be distinguishable from a known
-        # class with an empty neighbourhood — agents can't tell them apart
-        # from an empty diagram alone.
-        not_found = class_name is not None and class_name not in internal_names
-
-        for cls in classes:
-            child = cls.get("name", "")
-            if not child:
-                continue
-
-            # P1-A scoping: apply file_path / class_name filter
-            if scope == "file":
-                cls_file = cls.get("file", "")
-                if not _file_matches(cls_file, file_path):
-                    continue
-            elif scope == "class_neighbourhood":
-                # Include: the named class itself, its direct parents, and
-                # classes that list it as a direct parent (subclasses one hop)
-                if not _is_neighbourhood(child, cls, class_name, classes):
-                    continue
-
-            nodes.add(child)
-            child_is_test = is_test_file(cls.get("file"))
-            for parent_text in cls.get("parents") or []:
-                parent = str(parent_text).rsplit(".", 1)[-1]
-                if parent in internal_names or (
-                    include_external_bases and parent in _EXTERNAL_BASES
-                ):
-                    nodes.add(parent)
-                    edge = UMLEdge(parent, child, "inherits")
-                    # Bug #789: when include_tests=True in whole-project view,
-                    # separate test-child edges so production edges are prioritised
-                    # first during clamping. Test classes fill remaining slots.
-                    if include_tests and scope == "whole_project" and child_is_test:
-                        raw_test_edges.append(edge)
-                    else:
-                        raw_edges.append(edge)
-
-        # Bug #789: production edges first; test edges fill remaining capacity.
-        if raw_test_edges:
-            prod_edges, prod_truncated = _clamp_edges(raw_edges, max_edges)
-            remaining = max_edges - len(prod_edges)
-            if remaining > 0:
-                test_edges, test_truncated = _clamp_edges(raw_test_edges, remaining)
-                edges = _dedupe_edges_by_signature(prod_edges + test_edges)
-                truncated = prod_truncated or test_truncated
-            else:
-                edges = _dedupe_edges_by_signature(prod_edges)
-                truncated = prod_truncated or bool(raw_test_edges)
-        else:
-            edges, truncated = _clamp_edges(raw_edges, max_edges)
-            edges = _dedupe_edges_by_signature(edges)
-        rendered_nodes = sorted(
-            {n for edge in edges for n in (edge.source, edge.target)}
-        )
-        if not rendered_nodes:
-            rendered_nodes = sorted(nodes)[:max_edges]
-        return UMLDiagram(
-            diagram_type="class",
-            mermaid_type="classDiagram",
-            mermaid=render_class_mermaid(rendered_nodes, edges, truncated=truncated),
-            nodes=rendered_nodes,
-            edges=edges,
-            truncated=truncated,
-            metadata={
-                "source": "class_hierarchy",
-                "scope": scope,
-                **({"not_found": True} if not_found else {}),
-            },
+        return build_class_diagram(
+            classes,
+            max_edges=max_edges,
+            include_external_bases=include_external_bases,
+            file_path=file_path,
+            class_name=class_name,
+            include_tests=include_tests,
         )
 
     def package_diagram(
@@ -593,55 +534,15 @@ class UMLExporter:
         max_paths: int = 3,
         max_hops: int = 12,
     ) -> UMLDiagram:
-        finder = CallPathFinder(self.project_root, self._cache)
-        result = finder.find_path(
-            source_function=source,
-            target_function=target,
-            max_depth=max_depth,
-            max_paths=max_paths,
-        )
-        result_dict = result.to_dict()
-        paths = result_dict.get("paths", [])
-        first_hops = paths[0].get("hops", []) if paths else []
-        nodes = sorted(
-            {
-                hop.get(key, "")
-                for hop in first_hops[:max_hops]
-                for key in ("caller", "callee")
-                if hop.get(key)
-            }
-        )
-        edges = [
-            UMLEdge(hop.get("caller", ""), hop.get("callee", ""), "call")
-            for hop in first_hops[:max_hops]
-            if hop.get("caller") and hop.get("callee")
-        ]
-        # P1-E (RFC-0015): observability label — "call_path+synapse_resolved"
-        # when at least one hop has callee_file populated (synapse resolution
-        # contributed to BFS traversal); "call_path" otherwise.
-        has_resolved = any(
-            hop.get("callee_file") for path in paths for hop in path.get("hops", [])
-        )
-        source_label = "call_path+synapse_resolved" if has_resolved else "call_path"
-        path_search_truncated = bool(
-            getattr(result, "truncated", False) and len(paths) >= max_paths
-        )
-        return UMLDiagram(
-            diagram_type="sequence",
-            mermaid_type="sequenceDiagram",
-            mermaid=render_sequence_mermaid(paths, max_hops),
-            nodes=nodes,
-            edges=edges,
-            # Bug #787: truncated reflects only whether hop list was clipped in
-            # the rendered diagram (len > max_hops). result.truncated refers to
-            # BFS path-count truncation, not hop truncation — inheriting it
-            # causes truncated=True on a 2-node/1-edge complete path.
-            truncated=path_search_truncated or len(first_hops) > max_hops,
-            metadata={
-                "source": source_label,
-                "analysis_kind": "static_approximation",
-                "path_count": len(paths),
-            },
+        from ._uml_export_builders import build_sequence_diagram
+
+        return build_sequence_diagram(
+            self,
+            source,
+            target,
+            max_depth,
+            max_paths,
+            max_hops,
         )
 
     def activity_diagram(
@@ -689,72 +590,10 @@ class UMLExporter:
         cfg = build_activity_cfg(function_name, resolved_path, max_nodes)
 
         if cfg.error:
-            if "file_missing" in cfg.error:
-                return UMLDiagram(
-                    diagram_type="activity",
-                    mermaid_type="flowchart",
-                    # Bug #788: use non-degenerate mermaid so consumers see a
-                    # self-describing diagram, not a bare "flowchart TD\n".
-                    mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
-                    nodes=[],
-                    edges=[],
-                    metadata={
-                        "diagram_type": "activity",
-                        "verdict": "NOT_FOUND",
-                        "next_step": (
-                            f"activity diagram: source file '{resolved_path}' does "
-                            "not exist; the indexed symbol's source file may have "
-                            "been deleted or moved"
-                        ),
-                    },
-                )
-            if "function_missing" in cfg.error:
-                return UMLDiagram(
-                    diagram_type="activity",
-                    mermaid_type="flowchart",
-                    mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
-                    nodes=[],
-                    edges=[],
-                    metadata={
-                        "diagram_type": "activity",
-                        "verdict": "NOT_FOUND",
-                        "next_step": (
-                            f"activity diagram: function '{function_name}' not found "
-                            f"in '{resolved_path}'"
-                        ),
-                    },
-                )
-            if "empty_body" in cfg.error:
-                return UMLDiagram(
-                    diagram_type="activity",
-                    mermaid_type="flowchart",
-                    mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
-                    nodes=[],
-                    edges=[],
-                    metadata={
-                        "diagram_type": "activity",
-                        "verdict": "NOT_FOUND",
-                        "next_step": (
-                            f"activity diagram found no control-flow nodes in "
-                            f"'{function_name}'; the function may be a stub or use "
-                            "a pattern not yet supported"
-                        ),
-                    },
-                )
-            # PARSE_FAILED or unknown error
-            return UMLDiagram(
-                diagram_type="activity",
-                mermaid_type="flowchart",
-                mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
-                nodes=[],
-                edges=[],
-                metadata={
-                    "diagram_type": "activity",
-                    "verdict": "NOT_FOUND",
-                    "error": cfg.error,
-                    "next_step": "activity diagram: parse failed; check the file is valid Python",
-                },
-            )
+            # Bug #788: use non-degenerate mermaid so consumers see a
+            # self-describing diagram, not a bare "flowchart TD\n".
+            # Dispatch delegated to helper to reduce deep_nesting (depth 7 → 2).
+            return self._activity_error_diagram(cfg.error, function_name, resolved_path)
 
         # Build Mermaid from CFG
         uml_nodes = [n.node_id for n in cfg.nodes]
@@ -802,6 +641,52 @@ class UMLExporter:
             },
         )
 
+    def _activity_error_diagram(
+        self,
+        error: str,
+        function_name: str,
+        resolved_path: str | None,
+    ) -> UMLDiagram:
+        """Return a NOT_FOUND activity UMLDiagram for a known build-cfg error.
+
+        Extracted from activity_diagram() to reduce deep_nesting (depth 7 -> 2).
+        Uses a dispatch-dict to avoid repeated nested if-in-str chains.
+        Public API of activity_diagram() is unchanged.
+        """
+        _ERROR_NEXT_STEPS: dict[str, str] = {
+            "file_missing": (
+                f"activity diagram: source file '{resolved_path}' does "
+                "not exist; the indexed symbol's source file may have "
+                "been deleted or moved"
+            ),
+            "function_missing": (
+                f"activity diagram: function '{function_name}' not found "
+                f"in '{resolved_path}'"
+            ),
+            "empty_body": (
+                f"activity diagram found no control-flow nodes in "
+                f"'{function_name}'; the function may be a stub or use "
+                "a pattern not yet supported"
+            ),
+        }
+        for key, next_step in _ERROR_NEXT_STEPS.items():
+            if key in error:
+                return _make_activity_not_found_diagram(next_step)
+        # PARSE_FAILED or unknown error
+        return UMLDiagram(
+            diagram_type="activity",
+            mermaid_type="flowchart",
+            mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
+            nodes=[],
+            edges=[],
+            metadata={
+                "diagram_type": "activity",
+                "verdict": "NOT_FOUND",
+                "error": error,
+                "next_step": "activity diagram: parse failed; check the file is valid Python",
+            },
+        )
+
     def state_diagram(
         self,
         *,
@@ -809,164 +694,12 @@ class UMLExporter:
         file_path: str | None = None,
         max_nodes: int = 50,
     ) -> UMLDiagram:
-        """Build a stateDiagram-v2 from an enum/match-driven FSM (P2-B, RFC-0015).
+        """Build an enum/match-driven state diagram from current source."""
+        from ._uml_export_builders import build_state_diagram
 
-        Static approximation: enum members become states; match/case patterns
-        with return <Enum>.<Member> become transitions.
-
-        Honesty rules (#480 update):
-        - metadata["analysis_kind"] == "static_approximation" always.
-        - metadata["note"] records that parsing is done from current file content.
-        - states found, zero transitions → verdict="INFO" with next_step note
-          (partial result — enum members extracted but FSM pattern not recognised).
-        - zero states (class missing / no enum found / file absent) → verdict="NOT_FOUND".
-        - Language coverage: Python-only; non-Python files emit a language note.
-
-        Cost: ONE disk read + ONE tree-sitter parse (rule-11 invariant).
-        """
-        from .uml_state import build_state_result
-
-        # Resolve file_path: use as-is if absolute, otherwise interpret as
-        # relative to project_root (mirrors activity_diagram path logic).
-        resolved_path = ""
-        if file_path:
-            p = Path(file_path)
-            if p.is_absolute():
-                resolved_path = str(p)
-            else:
-                resolved_path = str(Path(self.project_root) / p)
-
-        if not resolved_path:
-            # No file given — try to find via class_hierarchy if class_name provided
-            # (best-effort: use ClassHierarchy to find the file for the named class)
-            if class_name is not None:
-                cache, should_close = self._open_cache()
-                try:
-                    from .class_hierarchy import ClassHierarchy
-
-                    hierarchy = ClassHierarchy(cache)
-                    hierarchy.build()
-                    all_cls = hierarchy.all_classes()
-                    for cls_info in all_cls:
-                        if cls_info.get("name") == class_name:
-                            cf = cls_info.get("file", "") or ""
-                            if cf:
-                                cp = Path(cf)
-                                resolved_path = (
-                                    str(cp)
-                                    if cp.is_absolute()
-                                    else str(Path(self.project_root) / cp)
-                                )
-                            if resolved_path:
-                                break
-                finally:
-                    if should_close:
-                        cache.close()
-
-        if not resolved_path:
-            return UMLDiagram(
-                diagram_type="state",
-                mermaid_type="stateDiagram-v2",
-                mermaid="stateDiagram-v2\n",
-                nodes=[],
-                edges=[],
-                metadata={
-                    "analysis_kind": "static_approximation",
-                    "verdict": "NOT_FOUND",
-                    "next_step": (
-                        "state diagram: supply file_path or class_name with an indexed "
-                        "Enum class so the scanner can locate the source file"
-                    ),
-                },
-            )
-
-        # Language coverage: state extraction is Python-only (#480).
-        # Non-Python files (e.g. .ts, .java) will fail the no-enum check below,
-        # but the message should explain the scope limit, not just say "check
-        # for an Enum subclass" (which is meaningless for TypeScript).
-        _py_extensions = {".py", ".pyw"}
-        _file_is_python = Path(resolved_path).suffix.lower() in _py_extensions
-
-        result = build_state_result(
-            file_path=resolved_path,
+        return build_state_diagram(
+            self,
             class_name=class_name,
+            file_path=file_path,
             max_nodes=max_nodes,
-        )
-
-        base_metadata: dict[str, Any] = {
-            "analysis_kind": "static_approximation",
-            "note": "parsed from current file content; may differ from indexed symbols",
-        }
-        if class_name:
-            base_metadata["class_name"] = class_name
-        base_metadata["file_path"] = resolved_path
-
-        if result.error:
-            if not _file_is_python:
-                next_step_msg = (
-                    f"state diagram: state extraction supports Python only; "
-                    f"'{Path(resolved_path).name}' is not a Python file. "
-                    "Pass a .py file that contains an Enum subclass."
-                )
-            else:
-                next_step_msg = (
-                    f"state diagram: {result.error}; "
-                    "check that the file exists and contains an Enum subclass"
-                )
-            return UMLDiagram(
-                diagram_type="state",
-                mermaid_type="stateDiagram-v2",
-                mermaid="stateDiagram-v2\n",
-                nodes=[],
-                edges=[],
-                metadata={
-                    **base_metadata,
-                    "verdict": "NOT_FOUND",
-                    "next_step": next_step_msg,
-                },
-            )
-
-        # Zero transitions but states found → INFO (#480 fix).
-        # A partial result (states extracted, FSM pattern not recognised) is not
-        # "not found". Use INFO so agents can consume the extracted enum members.
-        # The mermaid [*]--> lines are still suppressed (mermaid honesty rule):
-        # an agent reading only `mermaid` would see a structurally-valid diagram;
-        # emitting only the header + NOTE guard keeps the mermaid honest.
-        if not result.transitions:
-            info_mermaid = (
-                "stateDiagram-v2\n"
-                "%% NOTE: state diagram is a static approximation.\n"
-                "%% Guard conditions, timers, and exception-driven transitions are not captured.\n"
-                "%% NOTE: no transitions detected — FSM pattern not recognised by this heuristic."
-            )
-            return UMLDiagram(
-                diagram_type="state",
-                mermaid_type="stateDiagram-v2",
-                mermaid=info_mermaid,
-                nodes=result.states,
-                edges=[],
-                metadata={
-                    **base_metadata,
-                    "verdict": "INFO",
-                    "next_step": (
-                        f"state diagram: {len(result.states)} enum member(s) extracted "
-                        "as states but no match-pattern transitions were found; "
-                        "the class may not encode a finite-state machine in a pattern "
-                        "this heuristic recognises"
-                    ),
-                },
-            )
-
-        uml_edges = [UMLEdge(t.source, t.target, t.label) for t in result.transitions]
-        mermaid = render_state_mermaid(
-            result.states, result.transitions, truncated=result.truncated
-        )
-        return UMLDiagram(
-            diagram_type="state",
-            mermaid_type="stateDiagram-v2",
-            mermaid=mermaid,
-            nodes=result.states,
-            edges=uml_edges,
-            truncated=result.truncated,
-            metadata=base_metadata,
         )

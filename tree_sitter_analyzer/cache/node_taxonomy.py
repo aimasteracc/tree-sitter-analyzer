@@ -217,6 +217,7 @@ LANGUAGE_NODES: Final[dict[str, dict[str, frozenset[str]]]] = {
             }
         ),
         "class_like": frozenset({"struct_specifier", "enum_specifier"}),
+        "import_like": frozenset({"preproc_include"}),
         "enum_like": frozenset({"enum_specifier"}),
         "var_decl_like": frozenset({"assignment_expression"}),
     },
@@ -233,6 +234,7 @@ LANGUAGE_NODES: Final[dict[str, dict[str, frozenset[str]]]] = {
         "class_like": frozenset(
             {"class_specifier", "struct_specifier", "enum_specifier"}
         ),
+        "import_like": frozenset({"preproc_include"}),
         "enum_like": frozenset({"enum_specifier"}),
         "var_decl_like": frozenset({"assignment_expression"}),
     },
@@ -354,7 +356,6 @@ LANGUAGE_NODES: Final[dict[str, dict[str, frozenset[str]]]] = {
         "import_like": frozenset({"import_declaration"}),
     },
     "lua": {
-        # 保留原联合分类已接受的 Lua 节点，不提升插件的能力声明。
         "function_like": frozenset({"function_declaration", "function_definition"}),
         "var_decl_like": frozenset({"variable_declaration"}),
     },

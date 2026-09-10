@@ -16,14 +16,30 @@ from __future__ import annotations
 from typing import Any
 
 from ...incremental_sync import IncrementalSync
+from ...index_source_snapshot import make_source_scope_descriptor
+from ...indexing_candidate_materialization import release_index_candidate_snapshot
+from ...indexing_limits import normalize_index_max_files
 from ...utils import setup_logger
 from ..utils.auto_index_guard import ensure_indexed, is_indexed
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.error_sanitizer import (
+    bounded_safe_error_message,
+    sanitize_error_detail,
+)
+from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_error, build_response
 from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool
+from .full_index_tool import CodeGraphFullIndexTool, _resolve_exclude_patterns
 
 logger = setup_logger(__name__)
+
+
+def _safe_close_cache(cache: Any) -> None:
+    """Close an owned cache without masking the primary tool result."""
+    try:
+        cache.close()
+    except Exception as exc:
+        logger.debug("AST cache close failed (%s)", type(exc).__name__)
 
 
 class CodeGraphIncrementalSyncTool(BaseMCPTool):
@@ -63,14 +79,18 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
                 },
                 "max_files": {
                     "type": "integer",
-                    "description": "Max files to scan (default: 20000)",
+                    "minimum": 1,
+                    "description": (
+                        "Positive maximum files to scan; zero is invalid "
+                        "(default: 20000)"
+                    ),
                     "default": 20000,
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format (default: toon)",
-                    "default": "toon",
+                    "enum": ["json"],
+                    "description": "Output format: JSON.",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -81,19 +101,20 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
         valid_modes = ["sync", "changes", "status"]
         if mode not in valid_modes:
             raise invalid_enum_error("mode", mode, valid_modes)
+        arguments["max_files"] = normalize_index_max_files(arguments.get("max_files"))
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
         mode = arguments.get("mode", "sync")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         if not self.project_root:
             result = build_error(error="project_root not set")
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
         if mode == "sync":
-            return self._sync(arguments.get("max_files", 20_000), output_format)
+            return self._sync(arguments["max_files"], output_format)
         elif mode == "changes":
             return self._changes(output_format)
         elif mode == "status":
@@ -101,9 +122,14 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
 
         return build_error(error=f"Unknown mode: {mode}")
 
-    def _ensure_cache(self, output_format: str) -> Any | None:
+    def _ensure_cache(
+        self,
+        output_format: str,
+        *,
+        max_files: int = 20_000,
+    ) -> Any | None:
         if not is_indexed(str(self.project_root)):
-            cache = ensure_indexed(str(self.project_root))
+            cache = ensure_indexed(str(self.project_root), max_files=max_files)
             if cache is None:
                 return None
             return cache
@@ -112,41 +138,101 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
         return ASTCache(str(self.project_root))
 
     def _sync(self, max_files: int, output_format: str) -> dict[str, Any]:
-        cache = self._ensure_cache(output_format)
+        cache = self._ensure_cache(output_format, max_files=max_files)
         if cache is None:
             result = build_error(error="Failed to initialize AST cache")
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
-        sync = IncrementalSync(cache)
         try:
-            sync_result = sync.sync(max_files=max_files)
-        except Exception as exc:
-            logger.exception("Incremental sync raised %s", type(exc).__name__)
-            result = build_error(
-                error=f"Sync failed ({type(exc).__name__}): {exc}",
+            # 与 full-index 的增量模式共享候选证据和范围，不能放宽引擎认证门槛。
+            exclude_patterns = _resolve_exclude_patterns([], False)
+            source_scope = make_source_scope_descriptor(
+                certification_max_files=max_files,
             )
-            return apply_toon_format_to_response(result, output_format)
+            candidate_snapshot = CodeGraphFullIndexTool(
+                cache.project_root
+            )._build_candidate_snapshot(max_files, exclude_patterns)
+            try:
+                from ...cache.generation_indexing import run_incremental_sync
 
+                sync_result = run_incremental_sync(
+                    cache,
+                    sync_factory=IncrementalSync,
+                    max_files=max_files,
+                    exclude_patterns=exclude_patterns,
+                    candidate_snapshot=candidate_snapshot,
+                    source_scope=source_scope,
+                )
+            finally:
+                release_index_candidate_snapshot(candidate_snapshot)
+        except Exception as exc:
+            logger.error("Incremental sync raised %s", type(exc).__name__)
+            error, truncated = bounded_safe_error_message(
+                exc,
+                str(self.project_root),
+                prefix="Sync failed: ",
+            )
+            result = build_error(
+                error=error,
+                error_truncated=truncated,
+            )
+            return apply_output_format_to_response(result, output_format)
+        finally:
+            _safe_close_cache(cache)
+
+        payload = sync_result.to_dict()
+        raw_details = payload.get("details", [])
+        details = raw_details if isinstance(raw_details, list) else []
+        payload["details"] = [
+            sanitize_error_detail(detail, str(self.project_root))
+            for detail in details
+            if isinstance(detail, dict)
+        ]
+        invalid_details_dropped = len(details) - len(payload["details"])
+        if not isinstance(raw_details, list):
+            invalid_details_dropped += 1
+        if invalid_details_dropped:
+            payload["invalid_details_dropped"] = invalid_details_dropped
+        sync_complete = bool(
+            sync_result.errors == 0
+            and sync_result.backfill_errors == 0
+            and sync_result.scope_complete
+            and payload.get("completeness") == "complete"
+            and not sync_result.manifest_certification_failed
+        )
         result = build_response(
-            verdict="INFO",
+            verdict="INFO" if sync_complete else "WARN",
+            success=sync_complete,
             project_root=self.project_root,
             mode="sync",
-            **sync_result.to_dict(),
+            **payload,
         )
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _changes(self, output_format: str) -> dict[str, Any]:
         cache = self._ensure_cache(output_format)
         if cache is None:
             result = build_error(error="Failed to initialize AST cache")
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
-        sync = IncrementalSync(cache)
         try:
-            changes = sync.get_changes()
+            sync = IncrementalSync(cache)
+            changes = sync.get_changes(
+                exclude_patterns=_resolve_exclude_patterns([], False)
+            )
         except Exception as exc:
-            result = build_error(error=f"Change detection failed: {exc}")
-            return apply_toon_format_to_response(result, output_format)
+            error, truncated = bounded_safe_error_message(
+                exc,
+                str(self.project_root),
+                prefix="Change detection failed: ",
+            )
+            result = build_error(
+                error=error,
+                error_truncated=truncated,
+            )
+            return apply_output_format_to_response(result, output_format)
+        finally:
+            _safe_close_cache(cache)
 
         new_count = len(changes.get("new", []))
         modified_count = len(changes.get("modified", []))
@@ -163,36 +249,40 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
             modified=changes.get("modified", []),
             deleted=changes.get("deleted", []),
         )
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _status(self, output_format: str) -> dict[str, Any]:
         from ...ast_cache import ASTCache
 
         cache = ASTCache(str(self.project_root))
-        stats = cache.get_stats()
-
         try:
-            sync = IncrementalSync(cache)
-            changes = sync.get_changes()
-            pending_changes = (
-                len(changes.get("new", []))
-                + len(changes.get("modified", []))
-                + len(changes.get("deleted", []))
+            stats = cache.get_stats()
+
+            try:
+                sync = IncrementalSync(cache)
+                changes = sync.get_changes(
+                    exclude_patterns=_resolve_exclude_patterns([], False)
+                )
+                pending_changes = (
+                    len(changes.get("new", []))
+                    + len(changes.get("modified", []))
+                    + len(changes.get("deleted", []))
+                )
+            except Exception:
+                pending_changes = -1
+
+            up_to_date = pending_changes == 0 if pending_changes >= 0 else None
+
+            result = build_response(
+                verdict="INFO",
+                project_root=self.project_root,
+                mode="status",
+                indexed_files=stats.get("total_files", 0),
+                total_symbols=stats.get("total_symbols", 0),
+                fts5_available=stats.get("fts5_available", False),
+                pending_changes=pending_changes,
+                up_to_date=up_to_date,
             )
-        except Exception:
-            pending_changes = -1
-            changes = {}
-
-        up_to_date = pending_changes == 0 if pending_changes >= 0 else None
-
-        result = build_response(
-            verdict="INFO",
-            project_root=self.project_root,
-            mode="status",
-            indexed_files=stats.get("total_files", 0),
-            total_symbols=stats.get("total_symbols", 0),
-            fts5_available=stats.get("fts5_available", False),
-            pending_changes=pending_changes,
-            up_to_date=up_to_date,
-        )
-        return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
+        finally:
+            _safe_close_cache(cache)

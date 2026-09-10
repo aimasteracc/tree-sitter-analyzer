@@ -123,6 +123,23 @@ class TestKotlinParameterExtraction:
         params = extract_kotlin_parameters(func_node, get_text)
         assert len(params) == 0
 
+    def test_nameless_parameter_is_skipped(self):
+        """Issue #1177 (2026-07-27): malformed parameters cannot leak blanks."""
+        from tree_sitter_analyzer.languages.kotlin_helpers import (
+            extract_kotlin_parameters,
+        )
+
+        class _Stub:
+            def __init__(self, type_: str, children=()):
+                self.type = type_
+                self.children = list(children)
+
+        parameter = _Stub("parameter", children=[_Stub("user_type")])
+        params_node = _Stub("function_value_parameters", children=[parameter])
+        function = _Stub("function_declaration", children=[params_node])
+
+        assert extract_kotlin_parameters(function, lambda n: "String") == []
+
 
 # ---------------------------------------------------------------------------
 # Go — extract_parameters in _go_common.py

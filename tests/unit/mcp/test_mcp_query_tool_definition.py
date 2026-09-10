@@ -72,7 +72,6 @@ class TestMCPQueryToolDefinition:
         assert output_format["type"] == "string"
         assert "enum" in output_format
         assert "json" in output_format["enum"]
-        assert "toon" in output_format["enum"]
 
     def test_get_available_queries(self):
         """Test getting available queries"""

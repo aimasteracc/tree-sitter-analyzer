@@ -6,7 +6,7 @@ These tests verify 6 invariants that every concrete MCP tool must satisfy:
   3. set_project_path("/tmp") does not raise.
   4. The "inputSchema" has "properties" and "required" keys.
   5. tool definition "name" is consistent with tool class identity.
-  6. The output_format property defaults to "toon" (MCP-is-toon design decision).
+  6. The output_format property defaults to "json".
 
 These tests replace per-tool boilerplate that was copy-pasted across dozens of
 test files. Any new BaseMCPTool subclass should be added to the parametrize list.
@@ -22,11 +22,9 @@ from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
 from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import ClassHierarchyTool
 from tree_sitter_analyzer.mcp.tools.code_patterns_tool import CodePatternsTool
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
-from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
 from tree_sitter_analyzer.mcp.tools.import_graph_tool import CodeGraphImportGraphTool
 from tree_sitter_analyzer.mcp.tools.project_health_tool import ProjectHealthTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 from tree_sitter_analyzer.mcp.tools.smart_context_tool import SmartContextTool
 from tree_sitter_analyzer.mcp.tools.symbol_search_tool import CodeGraphSymbolSearchTool
 
@@ -35,12 +33,10 @@ def _make_tools() -> list[object]:
     """Return one instantiated instance of each tool under contract."""
     return [
         CodeGraphCallersTool(),
-        SearchContentTool(),
         ReadPartialTool(),
         ClassHierarchyTool(),
         ChangeImpactTool(),
         ProjectHealthTool(),
-        FindAndGrepTool(),
         CodeGraphSymbolSearchTool(),
         CodePatternsTool(),
         CodeGraphImportGraphTool(),
@@ -124,11 +120,10 @@ class TestBaseMCPToolContract:
         )
 
     @pytest.mark.parametrize("tool", TOOLS, ids=_tool_id)
-    def test_output_format_defaults_to_toon(self, tool: object) -> None:
-        """Invariant 6: output_format property defaults to 'toon' (MCP token-efficiency design).
+    def test_output_format_defaults_to_json(self, tool: object) -> None:
+        """Invariant 6: output_format property defaults to 'json'.
 
-        See CLAUDE.md section 1: 'MCP defaults to TOON — LOCKED'. Any tool that
-        exposes an output_format parameter MUST declare 'toon' as its default.
+        TOON has been removed; all MCP tools now default to JSON output.
         """
         defn = tool.get_tool_definition()
         schema = defn.get("inputSchema", {})
@@ -137,9 +132,8 @@ class TestBaseMCPToolContract:
             pytest.skip(f"{_tool_id(tool)}: does not expose output_format parameter")
         of_schema = props["output_format"]
         default = of_schema.get("default")
-        assert default == "toon", (
-            f"{_tool_id(tool)}: output_format.default must be 'toon', got {default!r}. "
-            "See CLAUDE.md §1: MCP defaults to TOON — LOCKED."
+        assert default == "json", (
+            f"{_tool_id(tool)}: output_format.default must be 'json', got {default!r}."
         )
 
 

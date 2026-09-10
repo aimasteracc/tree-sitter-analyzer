@@ -33,7 +33,7 @@ SKIPPED_SCAN_DIRS = {
 
 
 def test_reusable_test_workflow_has_job_timeout() -> None:
-    """The CI matrix must fail fast instead of hanging forever on runner stalls."""
+    """The CI matrix must be bounded while leaving time for post-test cleanup."""
     workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
     text = workflow.read_text(encoding="utf-8")
 
@@ -45,9 +45,31 @@ def test_reusable_test_workflow_has_job_timeout() -> None:
 
         assert test_matrix is not None, job_name
         assert re.search(
-            r"(?m)^    timeout-minutes:\s*15\s*$",
+            r"(?m)^    timeout-minutes:\s*20\s*$",
             test_matrix.group("body"),
         ), job_name
+
+
+def test_pr_no_coverage_suite_has_runtime_headroom() -> None:
+    """The 25k-test cross-platform step needs bounded runner-variance headroom."""
+    workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
+    text = workflow.read_text(encoding="utf-8")
+    pr_matrix = re.search(
+        r"(?ms)^  test-matrix-pr:\n(?P<body>.*?)(?=^  test-matrix-full:)",
+        text,
+    )
+
+    assert pr_matrix is not None
+    no_coverage = re.search(
+        r"(?ms)^    - name: Run Tests \(no coverage\)\n"
+        r"(?P<body>.*?)(?=^    - name:|\Z)",
+        pr_matrix.group("body"),
+    )
+    assert no_coverage is not None
+    assert re.search(
+        r"(?m)^      timeout-minutes:\s*15\s*$",
+        no_coverage.group("body"),
+    )
 
 
 def test_pr_ci_uses_fast_matrix_while_release_keeps_full_matrix() -> None:
@@ -94,13 +116,65 @@ def test_ci_full_language_suite_runs_once_per_reusable_test_matrix() -> None:
     workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
     text = workflow.read_text(encoding="utf-8")
 
+    assert '-m "not slow and not e2e and not network and not benchmark"' in text
     assert (
-        '-m "not requires_ripgrep and not requires_fd and not slow and not e2e"' in text
-    )
-    assert (
-        '-m "not requires_ripgrep and not requires_fd and not slow and not e2e and not full_language"'
+        '-m "not slow and not e2e and not network and not benchmark and not full_language"'
         in text
     )
+
+
+def test_slow_suite_runs_once_per_reusable_test_matrix() -> None:
+    """Default exclusions need one explicit slow-test lane per profile."""
+    workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
+    text = workflow.read_text(encoding="utf-8")
+    slow_marker = (
+        '-m "slow and not network and not e2e and not benchmark and not full_language"'
+    )
+
+    assert text.count(slow_marker) == 2
+
+
+def test_budget_retry_is_bounded_and_budget_only() -> None:
+    """A retry may only follow a measured runner stall, never a real failure.
+
+    The platform gate this test used to pin (RUNNER_OS != Windows) was removed
+    deliberately: it decided *who got the mitigation*, not whether a functional
+    failure could be retried. The fence is the classifier, which exits non-zero
+    unless EVERY failure was a per-test wall-clock budget overrun. These
+    assertions therefore pin the fence rather than the scope. Five of six budget
+    overruns observed on 2026-08-19/20 were macOS, where the gate meant no
+    mitigation ran at all.
+    """
+    workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
+    lines = workflow.read_text(encoding="utf-8").splitlines()
+
+    classifier = "scripts/classify_windows_pytest_failure.py"
+    sites = [i for i, line in enumerate(lines) if classifier in line]
+    assert len(sites) == 2
+
+    # Each call is guarded, and a non-zero verdict aborts before any retry.
+    for i in sites:
+        assert lines[i].lstrip().startswith("if !")
+        window = " ".join(lines[i : i + 4])
+        assert 'exit "$test_status"' in window
+
+    # The retry is scoped to the classifier node ids, never a blanket re-run.
+    joined = " ".join(lines)
+    assert joined.count('uv run pytest "${retry_nodeids[@]}" -n auto') == 2
+    assert joined.count("retrying budget-only failures once") == 2
+
+    # And it never runs on a green suite.
+    assert joined.count('if [ "$test_status" -eq 0 ]; then') == 2
+
+
+def test_default_gate_has_a_real_five_minute_ci_deadline() -> None:
+    """The documented local quick-gate budget must be enforced in CI."""
+    workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
+    text = workflow.read_text(encoding="utf-8")
+
+    assert text.count("- name: Run bounded default gate") == 2
+    assert text.count("timeout-minutes: 5") == 2
+    assert text.count("run: uv run pytest -q") == 2
 
 
 def test_standalone_coverage_workflow_is_manual_only() -> None:
@@ -199,3 +273,226 @@ def test_bandit_security_scan_is_blocking_and_configured() -> None:
     assert "bandit -c pyproject.toml -r tree_sitter_analyzer/" in body
     assert "|| true" not in body
     assert 'exit "$BANDIT_STATUS"' in body
+
+
+def test_docs_check_fetches_history_for_contract_subjects() -> None:
+    """Regression for PR #1255: docs contracts require a non-shallow clone."""
+    ci_text = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+    _, marker, remainder = ci_text.partition("\n  docs-check:\n")
+    docs_job, next_marker, _ = remainder.partition("\n  quality-check:\n")
+
+    assert marker == "\n  docs-check:\n"
+    assert next_marker == "\n  quality-check:\n"
+    checkout_start = docs_job.index("      - uses: actions/checkout@v7\n")
+    checkout_end = docs_job.index("\n      - name:", checkout_start)
+    checkout_step = docs_job[checkout_start:checkout_end]
+    assert checkout_step.splitlines().count("          fetch-depth: 0") == 1
+    # 2026-09-09：PR #1430 的文档门禁遗漏声明注册表扫描，直到完整矩阵才发现漂移。
+    assert "tests/unit/test_claim_registry.py" in docs_job
+
+
+def test_dogfood_reads_complete_pr_diff_instead_of_output_files(tmp_path: Path) -> None:
+    """PR 分析覆盖全部提交，且不把自己的报告当作源码变更。"""
+    # 2026-09-08：#1418 的文档 PR 被报告为两个输出文件，真实提交完全遗漏。
+    import shlex
+    import subprocess
+
+    import yaml
+
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_git import (
+        _get_changed_files,
+    )
+
+    workflow = yaml.safe_load(
+        (PROJECT_ROOT / ".github/workflows/dogfood-pr-check.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    steps = workflow["jobs"]["claim-invariants"]["steps"]
+    checkout = next(
+        step for step in steps if "uses" in step and "checkout@" in step["uses"]
+    )
+    impact = next(step["run"] for step in steps if step.get("id") == "impact")
+    command = next(
+        line.strip() for line in impact.splitlines() if "uv run python -m" in line
+    )
+    argv = shlex.split(command.rstrip("\\").strip())[5:]
+    args = create_argument_parser().parse_args(argv)
+    source = tmp_path / "source"
+    source.mkdir()
+
+    def git(root: Path, *arguments: str) -> None:
+        subprocess.run(["git", *arguments], cwd=root, check=True, capture_output=True)
+
+    git(source, "init", "-b", "base")
+    git(source, "config", "user.name", "TSA Test")
+    git(source, "config", "user.email", "tsa@example.invalid")
+    (source / "README.md").write_text("base\n", encoding="utf-8")
+    git(source, "add", ".")
+    git(source, "commit", "-m", "base")
+    git(source, "checkout", "-b", "feature")
+    for name in ("first.py", "second.py"):
+        (source / name).write_text("value = 1\n", encoding="utf-8")
+        git(source, "add", name)
+        git(source, "commit", "-m", name)
+    git(source, "checkout", "base")
+    git(source, "merge", "--no-ff", "feature", "-m", "PR merge")
+    checkout_root = tmp_path / "checkout"
+    depth = str(checkout.get("with", {}).get("fetch-depth", 1))
+    git(tmp_path, "clone", "--depth", depth, source.as_uri(), str(checkout_root))
+    artifacts = checkout_root / "dogfood-artifacts"
+    artifacts.mkdir()
+    for suffix in ("json", "txt"):
+        (artifacts / f"change-impact.{suffix}").write_text("", encoding="utf-8")
+    assert _get_changed_files(args.change_impact_mode, str(checkout_root)) == [
+        "first.py",
+        "second.py",
+    ]
+    assert checkout["with"]["ref"] == "${{ github.sha }}"
+
+
+def test_ci_routing_uses_merge_parent_when_event_base_is_stale(tmp_path: Path) -> None:
+    """基线分支前进后，路由只看到 PR 自身的变更。"""
+    # 2026-09-09：#1412 事件中的旧 base SHA 把 develop 后续代码误计入文档 PR。
+    import shlex
+    import subprocess
+
+    import yaml
+
+    workflow = yaml.safe_load(
+        (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    steps = workflow["jobs"]["route"]["steps"]
+    detect = next(
+        step["run"] for step in steps if step.get("name") == "Detect changed files"
+    )
+    command = next(
+        line.strip() for line in detect.splitlines() if "git diff --name-only" in line
+    )
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        ).stdout.strip()
+
+    git("init", "-b", "base")
+    git("config", "user.name", "TSA Test")
+    git("config", "user.email", "tsa@example.invalid")
+    (tmp_path / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "base")
+    old_base = git("rev-parse", "HEAD")
+    git("checkout", "-b", "docs")
+    (tmp_path / "proposal.md").write_text("proposal\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "proposal")
+    git("checkout", "base")
+    (tmp_path / "unrelated.py").write_text("value = 1\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "advance base")
+    git("merge", "--no-ff", "docs", "-m", "PR merge")
+    merge_sha = git("rev-parse", "HEAD")
+    command = command.replace("${{ github.event.pull_request.base.sha }}", old_base)
+    command = command.replace("${{ github.sha }}", merge_sha)
+    argv = shlex.split(command)
+    assert git(*argv[1 : argv.index(">")]).splitlines() == ["proposal.md"]
+    assert steps[0]["with"]["ref"] == "${{ github.sha }}"
+
+
+@pytest.mark.parametrize("force_full", [False, True])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "README.md",
+        "tree_sitter_analyzer/formatters/x.py",
+        "tests/benchmarks/test_query_performance.py",
+        "tree_sitter_analyzer/grammar_coverage/x.py",
+    ],
+)
+def test_manual_full_validation_routes_real_cli(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], force_full: bool, path: str
+) -> None:
+    """手动完整验证绕过文档跳过和子范围，同时保留普通路径路由。"""
+    # 2026-09-09：CI 34340908809 的文档路由跳过了待补验的完整矩阵。
+    # PR #1431：启用集合必须对应实际消费路由的 CI 作业，不能包含独立资格工作流。
+    import json
+
+    from scripts.ci_route import main
+
+    output = tmp_path / "outputs"
+    args = [path, "--github-output", str(output)]
+    if force_full:
+        args.append("--force-full")
+    assert main(args) == 0
+    result = json.loads(capsys.readouterr().out)
+    docs_only = path == "README.md" and not force_full
+    assert result["run_docs_check"] is docs_only
+    assert result["full_suite_required"] is force_full
+    assert [result["run_benchmarks"], result["run_grammar_coverage"]] == [
+        not force_full and "benchmarks" in path,
+        not force_full and "grammar_coverage" in path,
+    ]
+    for key in ("run_quality", "run_test_matrix", "run_build", "upload_coverage"):
+        assert result[key] is (not docs_only)
+    assert result["regression_scope"] == (
+        "format" if not force_full and "/formatters/" in path else "all"
+    )
+    if force_full:
+        assert {
+            key for key, value in result.items() if key.startswith("run_") and value
+        } == set(
+            re.findall(
+                r"needs\.route\.outputs\.(run_\w+)",
+                (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"),
+            )
+        ) - {"run_docs_check"}
+        assert {"run_benchmarks", "run_grammar_coverage"}.isdisjoint(
+            result["reason_codes"]
+        )
+        assert "manual-full-validation" in result["reason_codes"]
+    assert f"run_test_matrix={str(not docs_only).lower()}\n" in output.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_manual_validation_is_non_publishing_and_concurrency_isolated() -> None:
+    """固定 SHA 的手动验证不被推送取消，且不调用发布工作流。"""
+    # 2026-09-09：CI 34340202847 被同分支的后续文档推送取消。
+    import yaml
+
+    workflow = yaml.safe_load(
+        (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    inputs = workflow[True]["workflow_dispatch"]["inputs"]
+    assert inputs["full-validation"]["type"] == "boolean"
+    assert inputs["full-validation"]["default"] is False
+    assert workflow["concurrency"]["group"] == (
+        "${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' "
+        "&& format('manual-{0}', github.run_id) || github.ref }}"
+    )
+    jobs = workflow["jobs"]
+    route = next(step for step in jobs["route"]["steps"] if step.get("id") == "route")
+    assert route["env"]["FORCE_FULL"] == (
+        "${{ github.event_name == 'workflow_dispatch' && inputs.full-validation "
+        "&& 'true' || 'false' }}"
+    )
+    assert 'if [[ "$FORCE_FULL" == "true" ]]; then' in route["run"]
+    assert "args+=(--force-full)" in route["run"]
+    assert '"${args[@]}"' in route["run"]
+    assert jobs["test"]["with"]["matrix-profile"] == (
+        "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}"
+    )
+    assert {job["uses"] for job in jobs.values() if "uses" in job} == {
+        "./.github/workflows/reusable-quality.yml",
+        "./.github/workflows/reusable-test.yml",
+        "./.github/workflows/reusable-build.yml",
+        "./.github/workflows/regression-tests.yml",
+        "./.github/workflows/sql-platform-compat.yml",
+    }

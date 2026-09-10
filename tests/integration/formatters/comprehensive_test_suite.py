@@ -9,14 +9,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ._comprehensive_suite_models import (
+from ._suite_models_extra import (
     FormatTestSuiteConfig,
     TestSuiteResults,
     create_test_suite_results,
     finalize_test_suite_results,
 )
-from ._comprehensive_suite_phases import ComprehensiveSuitePhasesMixin
-from ._comprehensive_suite_reporting import (
+from ._suite_phases_extra import ComprehensiveSuitePhasesMixin
+from ._suite_reporting_extra import (
     generate_summary_report,
     save_comprehensive_results,
     update_test_counts,

@@ -621,9 +621,7 @@ class TestRealIndexIntegration:
             assert (sym, res, f) == (None, "unknown", "")
 
     def test_local_free_function_resolves_on_real_index(self, tmp_path) -> None:
-        """C++ free functions now reach ast_symbol_rows (extractor v16+, declarator
-        walk extended to cpp), so an unqualified call to a same-file free function
-        (``helper``) resolves ``local``. xfail removed: the production gap is fixed."""
+        """C++ 名称恢复后，同文件自由函数调用必须解析为 local。"""
         _root, cpp_ctx = _index_and_build(tmp_path, {"service.cpp": _REAL_CPP})
         _sym, res, f = resolve_cpp_callee("helper", "helper", "service.cpp", cpp_ctx)
         assert res == "local"

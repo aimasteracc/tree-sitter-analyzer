@@ -121,7 +121,7 @@ class CheckToolsTool(BaseMCPTool):
                 "wrong_version / unknown) so callers can route to the right "
                 "remediation.\n\n"
                 "WHEN TO USE:\n"
-                "- Call this first if list_files, search_content, or find_and_grep "
+                "- Call this first if list_files or CC Grep tool "
                 "returns unexpected empty results.\n"
                 "- Call this when setting up tree-sitter-analyzer in a new "
                 "environment (CI runner, fresh laptop, container image).\n"
@@ -133,7 +133,7 @@ class CheckToolsTool(BaseMCPTool):
                 "- Do not call this on every session — it is a diagnostic, not a "
                 "health-check ping. Cache the verdict for the session.\n"
                 "- Do not use this to *search* for files — use list_files or "
-                "search_content for that.\n"
+                "CC Grep tool for that.\n"
                 "- Do not call this to validate other binaries (git, python, "
                 "tree-sitter). It only probes fd and rg.\n"
                 "\n"
@@ -328,7 +328,7 @@ class CheckToolsTool(BaseMCPTool):
         remediation from the failure_mode enum.
         """
         if not missing:
-            return "list_files / search_content / find_and_grep are ready to run."
+            return "list_files is ready to run. Use CC Grep tool for text search."
 
         chunks: list[str] = []
         for name, result in (("fd", fd_result), ("rg", rg_result)):

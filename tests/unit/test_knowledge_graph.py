@@ -7,10 +7,12 @@ import os
 import sys
 import threading
 import urllib.request
+import xml.etree.ElementTree as ET
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import patch
 from urllib.error import HTTPError
 
 import pytest
@@ -27,7 +29,6 @@ from tree_sitter_analyzer.cli.special_commands import (
 )
 from tree_sitter_analyzer.graph.edge_store import Edge, EdgeStore
 from tree_sitter_analyzer.knowledge_graph import (
-    JsonKnowledgeGraphStore,
     KnowledgeEdge,
     KnowledgeGraphBuilder,
     KnowledgeGraphSnapshot,
@@ -35,14 +36,18 @@ from tree_sitter_analyzer.knowledge_graph import (
     LadybugKnowledgeGraphStore,
 )
 from tree_sitter_analyzer.knowledge_graph.builder import (
+    _annotate_centrality,
     _iter_markdown_files,
     _json_obj,
     _nullable_int,
     _resolve_project_ref,
 )
 from tree_sitter_analyzer.knowledge_graph.exporters import (
+    _dot_escape,
     aggregate_package_graph,
     summarize,
+    to_dot,
+    to_graphml,
     to_graphology,
 )
 from tree_sitter_analyzer.knowledge_graph.html_viewer import to_html_viewer
@@ -50,7 +55,7 @@ from tree_sitter_analyzer.knowledge_graph.ladybug_query import (
     LadybugKnowledgeGraphQuery,
 )
 from tree_sitter_analyzer.knowledge_graph.query import (
-    JsonKnowledgeGraphQuery,
+    SQLiteKnowledgeGraphQuery,
     _empty_graph,
     _nullable_line,
     open_query_backend,
@@ -73,10 +78,72 @@ from tree_sitter_analyzer.knowledge_graph.stores import LadybugUnavailableError
 from tree_sitter_analyzer.mcp.tools.knowledge_graph_tool import (
     CodeGraphKnowledgeGraphTool,
     CodeGraphKnowledgeIndexTool,
+    _backend_ready,
     _compact_sync_report,
-    _stores_ready,
+    _sqlite_index_status,
     _sync_has_changes,
 )
+
+
+def _seed_sqlite_knowledge_graph(
+    project_root: Path, snapshot: KnowledgeGraphSnapshot
+) -> None:
+    """Persist a test snapshot in the canonical SQLite index shape."""
+    import json
+
+    cache = ASTCache(str(project_root))
+    try:
+        conn = cache.get_conn()
+        file_nodes = {
+            node.file_path: node
+            for node in snapshot.nodes
+            if node.kind == "file" and node.file_path
+        }
+        for node in snapshot.nodes:
+            if node.kind == "markdown" and node.file_path:
+                path = project_root / node.file_path
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+        for file_path, file_node in file_nodes.items():
+            symbols = [
+                {
+                    "name": node.label,
+                    "kind": node.kind,
+                    "line": int(node.metadata.get("line", 0)),
+                    "end_line": int(
+                        node.metadata.get("end_line", node.metadata.get("line", 0))
+                    ),
+                }
+                for node in snapshot.nodes
+                if node.file_path == file_path and node.kind not in {"file", "markdown"}
+            ]
+            conn.execute(
+                "INSERT OR REPLACE INTO ast_index "
+                "(file_path, content_hash, language, mtime_ns, file_size, "
+                "extractor_version, symbols_json, imports_json, structure_json, indexed_at) "
+                "VALUES (?, '', ?, 0, 0, 0, ?, '[]', '{}', 'test')",
+                (
+                    file_path,
+                    file_node.language or "python",
+                    json.dumps({"symbols": symbols}),
+                ),
+            )
+        EdgeStore(conn).upsert_edges(
+            [
+                Edge(
+                    edge.source,
+                    edge.target,
+                    edge.kind,
+                    edge.line,
+                    edge.provenance,
+                    edge.metadata,
+                )
+                for edge in snapshot.edges
+            ]
+        )
+        conn.commit()
+    finally:
+        cache.close()
 
 
 def _read_url(url: str) -> str:
@@ -414,25 +481,192 @@ def test_java_end_to_end_benchmark_generates_real_java_corpus(tmp_path: Path) ->
     assert "new Service000001().method0(value)" in first
 
 
-def test_json_store_round_trips_snapshot(tmp_path: Path) -> None:
-    snapshot = KnowledgeGraphSnapshot(
-        nodes=[
-            KnowledgeNode(id="file:a.py", kind="file", label="a.py", file_path="a.py")
-        ],
-        edges=[],
-        stats={"node_count": 1, "edge_count": 0},
+def test_incremental_index_updates_sqlite_without_json_sidecar(tmp_path: Path) -> None:
+    source = tmp_path / "app.py"
+    source.write_text("def before():\n    return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project(workers=0)
+        source.write_text("def after():\n    return 2\n", encoding="utf-8")
+
+        result = cache.index_project(workers=0)
+        snapshot = KnowledgeGraphBuilder(str(tmp_path)).build(include_docs=False)
+    finally:
+        cache.close()
+
+    labels = {node.label for node in snapshot.nodes}
+    assert "after" in labels
+    assert "before" not in labels
+    assert not (tmp_path / ".ast-cache" / "knowledge-graph.json").exists()
+    assert result["indexed"] == 1
+
+
+def test_full_index_uses_sqlite_without_json_sidecar(tmp_path: Path) -> None:
+    source = tmp_path / "app.py"
+    source.write_text("def main():\n    return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_project(force=True, workers=0)
+        snapshot = KnowledgeGraphBuilder(str(tmp_path)).build(include_docs=False)
+    finally:
+        cache.close()
+
+    assert {node.label for node in snapshot.nodes} == {
+        "<root>",
+        "app.py",
+        "main",
+    }
+    assert not (tmp_path / ".ast-cache" / "knowledge-graph.json").exists()
+    assert result["indexed"] == 1
+
+
+def test_post_index_backfill_marks_ladybug_stale_removed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    removed = {"called": False}
+
+    def _remove(self: Any) -> bool:
+        removed["called"] = True
+        return True
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.stores.LadybugKnowledgeGraphStore.remove_if_exists",
+        _remove,
     )
-    store = JsonKnowledgeGraphStore(str(tmp_path))
 
-    write_result = store.write(snapshot)
-    payload = store.read()
+    source = tmp_path / "app.py"
+    source.write_text("def f():\n    return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_project(workers=0)
+    finally:
+        cache.close()
 
-    written_path = Path(write_result["path"])
-    assert written_path.parent.name == ".ast-cache"
-    assert written_path.name == "knowledge-graph.json"
-    assert payload["schema"] == "tsa.knowledge_graph.v1"
-    assert payload["nodes"][0]["id"] == "file:a.py"
-    assert store.status()["exists"] is True
+    assert removed["called"] is True
+    assert result["knowledge_graph"]["ladybug_stale_removed"] is True
+
+
+def test_post_index_backfill_sets_ladybug_flag_when_removed_without_json_patch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "app.py"
+    source.write_text("def f():\n    return 1\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.stores.LadybugKnowledgeGraphStore.remove_if_exists",
+        lambda self: True,
+    )
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_project(workers=0)
+    finally:
+        cache.close()
+
+    assert result["knowledge_graph"]["ladybug_stale_removed"] is True
+
+
+def test_post_index_backfill_skips_ladybug_flag_when_not_removed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "app.py"
+    source.write_text("def f():\n    return 1\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.stores.LadybugKnowledgeGraphStore.remove_if_exists",
+        lambda self: False,
+    )
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_project(workers=0)
+    finally:
+        cache.close()
+
+    assert "knowledge_graph" not in result
+
+
+def test_ladybug_remove_if_exists_true_and_false(tmp_path: Path) -> None:
+    store = LadybugKnowledgeGraphStore(str(tmp_path))
+
+    # false path: file absent
+    assert store.remove_if_exists() is False
+
+    # true path: file present
+    path = Path(store.path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("x", encoding="utf-8")
+    assert path.exists() is True
+    assert store.remove_if_exists() is True
+    assert path.exists() is False
+
+
+def test_cache_indexer_post_backfill_sets_ladybug_flag_direct() -> None:
+    from tree_sitter_analyzer.cache.indexer import post_index_backfill
+
+    class _FakeCache:
+        project_root = "."
+        fts5_available = True
+
+        def _run_synapse_backfill(self) -> None:
+            return None
+
+        def _run_unresolved_refs_backfill(self) -> None:
+            return None
+
+        def _get_conn(self) -> object:
+            return object()
+
+    stats = {"files": [{"file": "app.py", "status": "indexed"}]}
+    with (
+        patch(
+            "tree_sitter_analyzer.cache.unresolved.mark_resolution_converged",
+            lambda conn: None,
+        ),
+        patch(
+            "tree_sitter_analyzer.knowledge_graph.stores.LadybugKnowledgeGraphStore.remove_if_exists",
+            lambda self: True,
+        ),
+    ):
+        post_index_backfill(_FakeCache(), stats)
+
+    assert stats["knowledge_graph"]["ladybug_stale_removed"] is True
+
+
+def test_cache_indexer_post_backfill_swallows_knowledge_graph_exception() -> None:
+    from tree_sitter_analyzer.cache.indexer import post_index_backfill
+
+    class _FakeCache:
+        project_root = "."
+        fts5_available = True
+
+        def _run_synapse_backfill(self) -> None:
+            return None
+
+        def _run_unresolved_refs_backfill(self) -> None:
+            return None
+
+        def _get_conn(self) -> object:
+            return object()
+
+    stats = {"files": [{"file": "app.py", "status": "indexed"}]}
+
+    with (
+        patch(
+            "tree_sitter_analyzer.cache.unresolved.mark_resolution_converged",
+            lambda conn: None,
+        ),
+        patch(
+            "tree_sitter_analyzer.knowledge_graph.stores.LadybugKnowledgeGraphStore.remove_if_exists",
+            lambda self: (_ for _ in ()).throw(RuntimeError("kg boom")),
+        ),
+    ):
+        # Must not raise; post_index_backfill should swallow and log.
+        post_index_backfill(_FakeCache(), stats)
+
+    assert "knowledge_graph" not in stats
 
 
 def test_graphology_export_filters_docs_lod_exactly() -> None:
@@ -479,6 +713,155 @@ def test_graphology_export_filters_docs_lod_exactly() -> None:
     assert [edge["key"] for edge in graph["edges"]] == ["edge:doc"]
     assert graph["stats"]["export_node_count"] == 2
     assert graph["stats"]["export_edge_count"] == 1
+
+
+def test_dot_escape_truncates_before_escaping() -> None:
+    value = "a" * 79 + '"tail'
+
+    assert _dot_escape(value) == "a" * 79 + '\\"'
+
+
+def test_dot_rejects_invalid_rank_direction() -> None:
+    snapshot = KnowledgeGraphSnapshot(nodes=[], edges=[], stats={})
+
+    with pytest.raises(ValueError, match="rankdir must be one of"):
+        to_dot(snapshot, rankdir='LR"] ; injected [label="bad')
+
+
+def test_dot_escapes_edge_kind() -> None:
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(id="file:a.py", kind="file", label="a.py"),
+            KnowledgeNode(id="file:b.py", kind="file", label="b.py"),
+        ],
+        edges=[
+            KnowledgeEdge(
+                id="edge:unsafe",
+                source="file:a.py",
+                target="file:b.py",
+                kind='calls"] ; injected [label="bad',
+            )
+        ],
+        stats={"node_count": 2, "edge_count": 1},
+    )
+
+    dot = to_dot(snapshot, lod="symbol")
+
+    assert 'label="calls\\"] ; injected [label=\\"bad"' in dot
+
+
+def test_dot_and_graphml_exports_preserve_graph_semantics() -> None:
+    nodes = {
+        "file:a.py": KnowledgeNode(
+            id="file:a.py",
+            kind="file",
+            label='a<&".py',
+            file_path='a<&".py',
+            language="python",
+        ),
+        "a.py:main:1": KnowledgeNode(
+            id="a.py:main:1",
+            kind="function",
+            label="main",
+            file_path="a.py",
+            language="python",
+        ),
+    }
+    edges = {
+        "edge:contains": KnowledgeEdge(
+            id="edge:contains",
+            source="file:a.py",
+            target="a.py:main:1",
+            kind="contains",
+            line=1,
+        )
+    }
+    annotated = _annotate_centrality(nodes, edges)
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[annotated["file:a.py"], annotated["a.py:main:1"]],
+        edges=list(edges.values()),
+        stats={"node_count": 2, "edge_count": 1},
+    )
+
+    dot = to_dot(snapshot, lod="symbol", max_nodes=2, max_edges=1)
+    truncated_dot = to_dot(snapshot, lod="symbol", max_nodes=1, max_edges=1)
+    graphml = to_graphml(snapshot, lod="symbol")
+    root = ET.fromstring(graphml)
+    namespace = {"g": "http://graphml.graphdrawing.org/graphml"}
+    graphml_nodes = root.findall(".//g:node", namespace)
+    graphml_edges = root.findall(".//g:edge", namespace)
+    graphml_data = [item.text for item in root.findall(".//g:data", namespace)]
+
+    assert annotated["file:a.py"].metadata == {
+        "degree_in": 0,
+        "degree_out": 1,
+        "centrality": 1.0,
+    }
+    assert annotated["a.py:main:1"].metadata == {
+        "degree_in": 1,
+        "degree_out": 0,
+        "centrality": 1.0,
+    }
+    assert dot.count(" shape=") == 2
+    assert 'label="a<&\\".py"' in dot
+    assert truncated_dot.count(" shape=") == 1
+    assert "WARNING: graph truncated" in truncated_dot
+    assert len(graphml_nodes) == 2
+    assert len(graphml_edges) == 1
+    assert 'a<&".py' in graphml_data
+    assert "1.000000" in graphml_data
+
+
+def test_graph_exports_handle_optional_metadata_and_dangling_edges(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(
+                id="file:a.py",
+                kind="file",
+                label="a.py",
+                file_path="a.py",
+            ),
+            KnowledgeNode(
+                id="file:b.py",
+                kind="file",
+                label="b.py",
+                file_path="b.py",
+            ),
+        ],
+        edges=[
+            KnowledgeEdge(
+                id="edge:valid",
+                source="file:a.py",
+                target="file:b.py",
+                kind="references",
+            ),
+            KnowledgeEdge(
+                id="edge:dangling",
+                source="file:a.py",
+                target="file:missing.py",
+                kind="custom",
+            ),
+        ],
+        stats={"node_count": 1, "edge_count": 1},
+    )
+
+    dot = to_dot(snapshot, lod="symbol", max_nodes=2, max_edges=2)
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.exporters._select",
+        lambda *args, **kwargs: (snapshot.nodes, snapshot.edges, False),
+    )
+    graphml = to_graphml(snapshot, lod="symbol")
+    root = ET.fromstring(graphml)
+    namespace = {"g": "http://graphml.graphdrawing.org/graphml"}
+    data_keys = {item.attrib["key"] for item in root.findall(".//g:data", namespace)}
+
+    assert "WARNING: graph truncated" not in dot
+    assert 'color="#94a3b8"' in dot
+    assert len(root.findall(".//g:node", namespace)) == 2
+    assert len(root.findall(".//g:edge", namespace)) == 1
+    assert data_keys == {"d_file", "d_kind", "d_label", "d_lang", "e_kind"}
 
 
 def test_graphology_export_supports_package_focus_and_empty_graph() -> None:
@@ -609,7 +992,32 @@ def test_cli_parser_accepts_knowledge_graph_uml_export_flags() -> None:
     assert args.knowledge_graph_uml_kind == "class"
 
 
-def test_knowledge_graph_service_serves_node_and_neighborhood(tmp_path: Path) -> None:
+def test_cli_parser_accepts_knowledge_graph_dot_and_graphml_export_flags() -> None:
+    from tree_sitter_analyzer.cli_main import create_argument_parser
+
+    parser = create_argument_parser()
+    dot_args = parser.parse_args(
+        [
+            "--knowledge-graph-export",
+            "--knowledge-graph-export-format",
+            "dot",
+        ]
+    )
+    graphml_args = parser.parse_args(
+        [
+            "--knowledge-graph-export",
+            "--knowledge-graph-export-format",
+            "graphml",
+        ]
+    )
+
+    assert dot_args.knowledge_graph_export_format == "dot"
+    assert graphml_args.knowledge_graph_export_format == "graphml"
+
+
+def test_knowledge_graph_service_serves_node_and_neighborhood(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     snapshot = KnowledgeGraphSnapshot(
         nodes=[
             KnowledgeNode(id="file:a.py", kind="file", label="a.py", file_path="a.py"),
@@ -656,7 +1064,7 @@ def test_knowledge_graph_service_serves_node_and_neighborhood(tmp_path: Path) ->
         ],
         stats={"node_count": 5, "edge_count": 2},
     )
-    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    monkeypatch.setattr(KnowledgeGraphBuilder, "build", lambda self: snapshot)
 
     service = KnowledgeGraphService(str(tmp_path))
     node = service.node("a.py:helper:4")
@@ -674,19 +1082,21 @@ def test_knowledge_graph_service_serves_node_and_neighborhood(tmp_path: Path) ->
     assert graph["stats"]["export_node_count"] == 2
     assert graph["stats"]["export_edge_count"] == 1
     assert service.search("helper", limit=1)["matches"][0]["id"] == "a.py:helper:4"
-    assert files["backend"] == "json"
+    assert files["backend"] == "sqlite"
     assert files["returned"] == 1
     assert files["total_matches"] == 1
     assert files["files"][0]["id"] == "file:a.py"
 
 
-def test_json_query_backend_covers_empty_missing_and_filter_edges(
+def test_sqlite_query_backend_covers_empty_missing_and_filter_edges(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    JsonKnowledgeGraphStore(str(tmp_path)).write(_graph_snapshot_for_query_tests())
+    _seed_sqlite_knowledge_graph(tmp_path, _graph_snapshot_for_query_tests())
     monkeypatch.setattr(LadybugKnowledgeGraphStore, "available", lambda: False)
+    snapshot = _graph_snapshot_for_query_tests()
+    monkeypatch.setattr(KnowledgeGraphBuilder, "build", lambda self: snapshot)
 
-    backend = JsonKnowledgeGraphQuery(str(tmp_path))
+    backend = SQLiteKnowledgeGraphQuery(str(tmp_path))
     selected = backend.node("a.py:main:1", limit=10)
     neighborhood = backend.neighborhood(
         "a.py:main:1",
@@ -697,11 +1107,11 @@ def test_json_query_backend_covers_empty_missing_and_filter_edges(
     )
     files = backend.files("", limit=10)
 
-    assert open_query_backend(str(tmp_path)).backend_name == "json"
+    assert open_query_backend(str(tmp_path)).backend_name == "sqlite"
     assert backend.search("", limit=10)["matches"] == []
     assert backend.search("HELPER", limit=1)["matches"][0]["id"] == "a.py:helper:4"
     assert backend.node("missing", limit=1) == {
-        "backend": "json",
+        "backend": "sqlite",
         "found": False,
         "id": "missing",
     }
@@ -713,7 +1123,7 @@ def test_json_query_backend_covers_empty_missing_and_filter_edges(
         "missing", depth=1, edge_kind="all", max_nodes=5, max_edges=5
     )
     assert missing_graph["nodes"] == []
-    assert neighborhood["stats"]["backend"] == "json"
+    assert neighborhood["stats"]["backend"] == "sqlite"
     assert neighborhood["stats"]["service_node_count"] == 3
     assert {node["key"] for node in neighborhood["nodes"]} == {
         "file:a.py",
@@ -731,13 +1141,13 @@ def test_json_query_backend_covers_empty_missing_and_filter_edges(
     assert _nullable_line(None) is None
     assert _nullable_line(-1) is None
     assert _nullable_line("7") == 7
-    assert _empty_graph("missing", "json")["stats"] == {
+    assert _empty_graph("missing", "sqlite")["stats"] == {
         "export_node_count": 0,
         "export_edge_count": 0,
-        "backend": "json",
+        "backend": "sqlite",
     }
-    with pytest.raises(FileNotFoundError, match="Knowledge graph sidecar is missing"):
-        JsonKnowledgeGraphQuery(str(tmp_path / "empty"))
+    monkeypatch.undo()
+    assert SQLiteKnowledgeGraphQuery(str(tmp_path / "empty")).snapshot.nodes == []
 
 
 def test_knowledge_graph_http_service_serves_static_studio_and_api(
@@ -775,7 +1185,7 @@ def test_knowledge_graph_http_service_serves_static_studio_and_api(
         ],
         stats={"node_count": 2, "edge_count": 1},
     )
-    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    _seed_sqlite_knowledge_graph(tmp_path, snapshot)
     service = KnowledgeGraphService(str(tmp_path))
     server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(service))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -806,7 +1216,7 @@ def test_knowledge_graph_http_service_serves_static_studio_and_api(
     assert "loadExplorer" in app_js
     assert ".stage" in app_css
     assert '"schema": "tsa.graphology.v1"' in graph_payload
-    assert '"backend": "json"' in graph_payload
+    assert '"backend": "sqlite"' in graph_payload
     assert '"found": true' in node_payload
     assert '"service_view": "neighborhood"' in neighborhood_payload
     assert '"matches":' in search_payload
@@ -882,7 +1292,7 @@ def test_serve_knowledge_graph_starts_and_closes_server(
 def test_prepare_reason_and_ready_error_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert _prepare_reason(str(tmp_path)) == "json sidecar missing"
+    assert _prepare_reason(str(tmp_path)) == "SQLite index missing"
     assert _mtime_ns(str(tmp_path / "missing")) is None
 
     snapshot = KnowledgeGraphSnapshot(
@@ -892,7 +1302,7 @@ def test_prepare_reason_and_ready_error_paths(
         edges=[],
         stats={},
     )
-    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    _seed_sqlite_knowledge_graph(tmp_path, snapshot)
     monkeypatch.setattr(LadybugKnowledgeGraphStore, "available", lambda: True)
     assert _prepare_reason(str(tmp_path)) == "LadybugDB mirror missing"
 
@@ -907,19 +1317,11 @@ def test_prepare_reason_and_ready_error_paths(
     ladybug_path = Path(LadybugKnowledgeGraphStore(str(tmp_path)).path)
     ladybug_path.write_bytes(b"ladybug")
 
-    mtimes = {
-        str(index_path): 30,
-        str(ast_cache / "knowledge-graph.json"): 10,
-        str(ladybug_path): 40,
-    }
+    mtimes = {str(index_path): 30, str(ladybug_path): 20}
     monkeypatch.setattr(
         "tree_sitter_analyzer.knowledge_graph.server._mtime_ns",
         lambda path: mtimes.get(path),
     )
-    assert _prepare_reason(str(tmp_path)) == "json sidecar older than SQLite index"
-
-    mtimes[str(ast_cache / "knowledge-graph.json")] = 50
-    mtimes[str(ladybug_path)] = 20
     assert _prepare_reason(str(tmp_path)) == "LadybugDB mirror older than SQLite index"
 
     mtimes[str(ladybug_path)] = 60
@@ -970,25 +1372,22 @@ def test_cli_knowledge_graph_serve_error_paths(
 
 
 def test_mcp_graph_store_ready_helpers(tmp_path: Path) -> None:
-    json_store = JsonKnowledgeGraphStore(str(tmp_path))
     ladybug_store = LadybugKnowledgeGraphStore(str(tmp_path))
+    _seed_sqlite_knowledge_graph(tmp_path, _graph_snapshot_for_query_tests())
 
     assert _sync_has_changes({"new_files": "1"}) is True
     assert _sync_has_changes({"updated_files": 0, "deleted_files": None}) is False
-    assert _stores_ready("json", json_store, ladybug_store) is False
-
-    json_store.write(_graph_snapshot_for_query_tests())
-    assert _stores_ready("json", json_store, ladybug_store) is True
-    assert _stores_ready("ladybug", json_store, ladybug_store) is False
+    assert _backend_ready("sqlite", ladybug_store) is True
+    assert _backend_ready("ladybug", ladybug_store) is False
+    assert _sqlite_index_status(str(tmp_path))["exists"] is True
 
 
-def test_ensure_knowledge_graph_ready_skips_fresh_sidecar(
+def test_ensure_knowledge_graph_ready_skips_fresh_sqlite_index(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ast_cache = tmp_path / ".ast-cache"
     ast_cache.mkdir()
-    (ast_cache / "index.db").write_bytes(b"sqlite")
     snapshot = KnowledgeGraphSnapshot(
         nodes=[
             KnowledgeNode(id="file:a.py", kind="file", label="a.py", file_path="a.py")
@@ -996,9 +1395,8 @@ def test_ensure_knowledge_graph_ready_skips_fresh_sidecar(
         edges=[],
         stats={"node_count": 1, "edge_count": 0},
     )
-    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    _seed_sqlite_knowledge_graph(tmp_path, snapshot)
     os.utime(ast_cache / "index.db", ns=(1, 1))
-    os.utime(ast_cache / "knowledge-graph.json", ns=(2, 2))
     monkeypatch.setattr(LadybugKnowledgeGraphStore, "available", lambda: False)
 
     result = ensure_knowledge_graph_ready(str(tmp_path), force_update=False)
@@ -1018,12 +1416,12 @@ def test_ensure_knowledge_graph_ready_updates_by_default_even_when_fresh(
 
         async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
             calls.append(arguments)
-            return {"success": True, "writes": {"json": {"path": "kg.json"}}}
+            return {"success": True, "writes": {}}
 
     ast_cache = tmp_path / ".ast-cache"
     ast_cache.mkdir()
-    (ast_cache / "index.db").write_bytes(b"sqlite")
-    JsonKnowledgeGraphStore(str(tmp_path)).write(
+    _seed_sqlite_knowledge_graph(
+        tmp_path,
         KnowledgeGraphSnapshot(
             nodes=[
                 KnowledgeNode(
@@ -1035,10 +1433,9 @@ def test_ensure_knowledge_graph_ready_updates_by_default_even_when_fresh(
             ],
             edges=[],
             stats={"node_count": 1, "edge_count": 0},
-        )
+        ),
     )
     os.utime(ast_cache / "index.db", ns=(1, 1))
-    os.utime(ast_cache / "knowledge-graph.json", ns=(2, 2))
     monkeypatch.setattr(LadybugKnowledgeGraphStore, "available", lambda: False)
     monkeypatch.setattr(
         "tree_sitter_analyzer.mcp.tools.knowledge_graph_tool.CodeGraphKnowledgeIndexTool",
@@ -1064,7 +1461,7 @@ def test_ensure_knowledge_graph_ready_updates_missing_sidecar(
 
         async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
             calls.append({"project_root": self.project_root, "arguments": arguments})
-            return {"success": True, "writes": {"json": {"path": "kg.json"}}}
+            return {"success": True, "writes": {}}
 
     monkeypatch.setattr(LadybugKnowledgeGraphStore, "available", lambda: False)
     monkeypatch.setattr(
@@ -1075,7 +1472,7 @@ def test_ensure_knowledge_graph_ready_updates_missing_sidecar(
     result = ensure_knowledge_graph_ready(str(tmp_path))
 
     assert result["prepared"] is True
-    assert result["reason"] == "json sidecar missing"
+    assert result["reason"] == "SQLite index missing"
     assert calls == [
         {
             "project_root": str(tmp_path),
@@ -1135,7 +1532,7 @@ def test_ladybug_query_backend_serves_node_and_neighborhood(tmp_path: Path) -> N
         ],
         stats={"node_count": 5, "edge_count": 3},
     )
-    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    _seed_sqlite_knowledge_graph(tmp_path, snapshot)
     LadybugKnowledgeGraphStore(str(tmp_path)).write(snapshot)
 
     with pytest.raises(FileNotFoundError, match="LadybugDB graph mirror is missing"):
@@ -1358,6 +1755,10 @@ def test_knowledge_index_tool_validation_rejects_bad_values(tmp_path: Path) -> N
         tool.validate_arguments({"mode": "bad"})
     with pytest.raises(ValueError, match="backend must be one of"):
         tool.validate_arguments({"backend": "bad"})
+    for value in (True, 0, -1):
+        with pytest.raises(ValueError, match="max_files must be a positive integer"):
+            tool.validate_arguments({"max_files": value})
+    assert tool.get_tool_schema()["properties"]["max_files"]["minimum"] == 1
 
 
 @pytest.mark.asyncio
@@ -1378,14 +1779,14 @@ async def test_knowledge_index_tool_status_is_readable(tmp_path: Path) -> None:
 
     assert result["success"] is True
     assert result["mode"] == "status"
-    assert result["json_store"]["exists"] is False
-    status_path = Path(result["json_store"]["path"])
+    assert result["sqlite_index"]["exists"] is False
+    status_path = Path(result["sqlite_index"]["path"])
     assert status_path.parent.name == ".ast-cache"
-    assert status_path.name == "knowledge-graph.json"
+    assert status_path.name == "index.db"
 
 
 @pytest.mark.asyncio
-async def test_knowledge_index_tool_builds_json_and_hybrid_error(
+async def test_knowledge_index_tool_builds_sqlite_and_ladybug(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     class FakeBuilder:
@@ -1416,6 +1817,9 @@ async def test_knowledge_index_tool_builds_json_and_hybrid_error(
 
         def status(self) -> dict[str, Any]:
             return {"available": False}
+
+        def remove_if_exists(self) -> bool:
+            return False
 
         def write(self, snapshot: KnowledgeGraphSnapshot) -> dict[str, Any]:
             raise LadybugUnavailableError("missing ladybug")
@@ -1449,21 +1853,18 @@ async def test_knowledge_index_tool_builds_json_and_hybrid_error(
         lambda **kwargs: {"scanned": 1, "updated_files": 1},
     )
 
-    json_result = await tool.execute(
-        {"mode": "build", "backend": "json", "output_format": "json"}
+    sqlite_result = await tool.execute(
+        {"mode": "build", "backend": "sqlite", "output_format": "json"}
     )
-    hybrid_result = await tool.execute(
-        {"mode": "build", "backend": "hybrid", "output_format": "json"}
-    )
+    assert sqlite_result["success"] is True
+    assert sqlite_result["effective_backend"] == "sqlite"
+    assert sqlite_result["writes"] == {}
 
-    assert json_result["success"] is True
-    written_graph = Path(json_result["writes"]["json"]["path"]).read_text(
-        encoding="utf-8"
+    unavailable_result = await tool.execute(
+        {"mode": "build", "backend": "ladybug", "output_format": "json"}
     )
-    assert '"schema": "tsa.knowledge_graph.v1"' in written_graph
-    assert hybrid_result["success"] is False
-    assert hybrid_result["backend"] == "hybrid"
-    assert "missing ladybug" in hybrid_result["error"]
+    assert unavailable_result["success"] is False
+    assert unavailable_result["sqlite_index"]["exists"] is False
 
     monkeypatch.setattr(
         "tree_sitter_analyzer.mcp.tools.knowledge_graph_tool.LadybugKnowledgeGraphStore",
@@ -1480,7 +1881,7 @@ async def test_knowledge_index_tool_builds_json_and_hybrid_error(
     )
     assert auto_result["success"] is True
     assert auto_result["backend"] == "auto"
-    assert auto_result["effective_backend"] == "hybrid"
+    assert auto_result["effective_backend"] == "ladybug"
 
 
 @pytest.mark.asyncio
@@ -1495,14 +1896,14 @@ async def test_knowledge_index_tool_skips_writes_when_update_has_no_changes(
         edges=[],
         stats={"node_count": 1, "edge_count": 0},
     )
-    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    _seed_sqlite_knowledge_graph(tmp_path, snapshot)
 
-    class ExplodingBuilder:
+    class FakeBuilder:
         def __init__(self, project_root: str) -> None:
             self.project_root = project_root
 
         def build(self, **kwargs: Any) -> KnowledgeGraphSnapshot:
-            raise AssertionError("builder should not run on no-op update")
+            return snapshot
 
     class FakeLadybugStore:
         def __init__(self, project_root: str) -> None:
@@ -1520,7 +1921,7 @@ async def test_knowledge_index_tool_skips_writes_when_update_has_no_changes(
 
     monkeypatch.setattr(
         "tree_sitter_analyzer.mcp.tools.knowledge_graph_tool.KnowledgeGraphBuilder",
-        ExplodingBuilder,
+        FakeBuilder,
     )
     monkeypatch.setattr(
         "tree_sitter_analyzer.mcp.tools.knowledge_graph_tool.LadybugKnowledgeGraphStore",
@@ -1543,10 +1944,61 @@ async def test_knowledge_index_tool_skips_writes_when_update_has_no_changes(
     )
 
     assert result["success"] is True
-    assert result["effective_backend"] == "json"
+    assert result["effective_backend"] == "sqlite"
     assert result["writes"] == {}
     assert result["skipped_write_reason"] == "no indexed file changes"
     assert result["graph"]["stats"]["node_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_sqlite_update_invalidates_existing_ladybug_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = KnowledgeGraphSnapshot(nodes=[], edges=[], stats={})
+    removed = {"called": False}
+
+    class FakeBuilder:
+        def __init__(self, project_root: str) -> None:
+            self.project_root = project_root
+
+        def build(self, **kwargs: Any) -> KnowledgeGraphSnapshot:
+            return snapshot
+
+    class FakeLadybugStore:
+        def __init__(self, project_root: str) -> None:
+            self.project_root = project_root
+
+        @staticmethod
+        def available() -> bool:
+            return False
+
+        def remove_if_exists(self) -> bool:
+            removed["called"] = True
+            return True
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.knowledge_graph_tool.KnowledgeGraphBuilder",
+        FakeBuilder,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.knowledge_graph_tool.LadybugKnowledgeGraphStore",
+        FakeLadybugStore,
+    )
+    tool = CodeGraphKnowledgeIndexTool(str(tmp_path))
+    monkeypatch.setattr(
+        tool,
+        "_prepare_index",
+        lambda **kwargs: {"updated_files": 1},
+    )
+
+    result = await tool.execute(
+        {"mode": "update", "backend": "sqlite", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["ladybug_invalidated"] is True
+    assert removed["called"] is True
 
 
 def test_knowledge_index_prepare_index_build_and_update(tmp_path: Path) -> None:
@@ -1581,18 +2033,22 @@ async def test_knowledge_graph_tool_requires_project_root() -> None:
 
 
 @pytest.mark.asyncio
-async def test_knowledge_graph_tool_reports_missing_sidecar(tmp_path: Path) -> None:
+async def test_knowledge_graph_tool_reads_empty_sqlite_projection(
+    tmp_path: Path,
+) -> None:
     tool = CodeGraphKnowledgeGraphTool(str(tmp_path))
 
     result = await tool.execute({"output_format": "json"})
 
-    assert result["success"] is False
-    assert result["verdict"] == "ERROR"
-    assert "knowledge graph sidecar is missing" in result["error"].lower()
+    assert result["success"] is True
+    assert result["graph"]["nodes"] == []
+    assert result["graph"]["edges"] == []
 
 
 @pytest.mark.asyncio
-async def test_knowledge_graph_tool_exports_graphology(tmp_path: Path) -> None:
+async def test_knowledge_graph_tool_exports_graphology(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     snapshot = KnowledgeGraphSnapshot(
         nodes=[
             KnowledgeNode(id="doc:README.md", kind="markdown", label="README.md"),
@@ -1608,7 +2064,7 @@ async def test_knowledge_graph_tool_exports_graphology(tmp_path: Path) -> None:
         ],
         stats={"node_count": 2, "edge_count": 1},
     )
-    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    monkeypatch.setattr(KnowledgeGraphBuilder, "build", lambda self: snapshot)
     tool = CodeGraphKnowledgeGraphTool(str(tmp_path))
 
     result = await tool.execute(
@@ -1625,7 +2081,9 @@ async def test_knowledge_graph_tool_exports_graphology(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_knowledge_graph_tool_exports_raw_and_summary(tmp_path: Path) -> None:
+async def test_knowledge_graph_tool_exports_raw_and_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     snapshot = KnowledgeGraphSnapshot(
         nodes=[
             KnowledgeNode(id="file:a.py", kind="file", label="a.py", file_path="a.py")
@@ -1633,7 +2091,7 @@ async def test_knowledge_graph_tool_exports_raw_and_summary(tmp_path: Path) -> N
         edges=[],
         stats={"node_count": 1, "edge_count": 0},
     )
-    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    monkeypatch.setattr(KnowledgeGraphBuilder, "build", lambda self: snapshot)
     tool = CodeGraphKnowledgeGraphTool(str(tmp_path))
 
     raw = await tool.execute({"export_format": "raw", "output_format": "json"})
@@ -1644,7 +2102,9 @@ async def test_knowledge_graph_tool_exports_raw_and_summary(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
-async def test_knowledge_graph_tool_exports_html_viewer(tmp_path: Path) -> None:
+async def test_knowledge_graph_tool_exports_html_viewer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     snapshot = KnowledgeGraphSnapshot(
         nodes=[
             KnowledgeNode(id="doc:README.md", kind="markdown", label="README.md"),
@@ -1660,7 +2120,7 @@ async def test_knowledge_graph_tool_exports_html_viewer(tmp_path: Path) -> None:
         ],
         stats={"node_count": 2, "edge_count": 1},
     )
-    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    monkeypatch.setattr(KnowledgeGraphBuilder, "build", lambda self: snapshot)
     tool = CodeGraphKnowledgeGraphTool(str(tmp_path))
 
     result = await tool.execute(
@@ -1679,6 +2139,68 @@ async def test_knowledge_graph_tool_exports_html_viewer(tmp_path: Path) -> None:
     assert result["graph"]["schema"] == "tsa.knowledge_graph.v1"
     assert result["export_stats"]["export_node_count"] == 2
     assert result["export_stats"]["export_edge_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_knowledge_graph_tool_exports_dot_and_graphml(tmp_path: Path) -> None:
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(
+                id="file:a.py",
+                kind="file",
+                label="a.py",
+                file_path="a.py",
+                metadata={"degree_in": 0, "degree_out": 1, "centrality": 1.0},
+            ),
+            KnowledgeNode(
+                id="a.py:main:1",
+                kind="function",
+                label="main",
+                file_path="a.py",
+                metadata={"degree_in": 1, "degree_out": 0, "centrality": 1.0},
+            ),
+        ],
+        edges=[
+            KnowledgeEdge(
+                id="edge:contains",
+                source="file:a.py",
+                target="a.py:main:1",
+                kind="contains",
+                line=1,
+            )
+        ],
+        stats={"node_count": 2, "edge_count": 1},
+    )
+    _seed_sqlite_knowledge_graph(tmp_path, snapshot)
+    tool = CodeGraphKnowledgeGraphTool(str(tmp_path))
+
+    dot = await tool.execute(
+        {
+            "export_format": "dot",
+            "lod": "symbol",
+            "max_nodes": 2,
+            "max_edges": 1,
+            "output_format": "json",
+        }
+    )
+    graphml = await tool.execute(
+        {
+            "export_format": "graphml",
+            "lod": "symbol",
+            "max_nodes": 2,
+            "max_edges": 1,
+            "output_format": "json",
+        }
+    )
+
+    assert dot["success"] is True
+    assert dot["dot"].startswith("digraph tsa_knowledge_graph {")
+    assert dot["instructions"].startswith("Render with: dot -Tsvg")
+    assert graphml["success"] is True
+    assert ET.fromstring(graphml["graphml"]).tag == (
+        "{http://graphml.graphdrawing.org/graphml}graphml"
+    )
+    assert graphml["instructions"].startswith("Open in Gephi")
 
 
 def test_compact_sync_report_drops_per_file_payloads() -> None:
@@ -2003,8 +2525,9 @@ def test_http_status_endpoint_returns_mtime_ns(tmp_path: Path) -> None:
         edges=[],
         stats={"node_count": 1, "edge_count": 0, "mtime_ns": 1234567890000000000},
     )
-    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    _seed_sqlite_knowledge_graph(tmp_path, snapshot)
     service = KnowledgeGraphService(str(tmp_path))
+    expected_mtime_ns = os.stat(tmp_path / ".ast-cache" / "index.db").st_mtime_ns
     server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(service))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -2021,7 +2544,7 @@ def test_http_status_endpoint_returns_mtime_ns(tmp_path: Path) -> None:
 
     data = _json.loads(status_payload)
     assert "stats" in data
-    assert data["stats"]["mtime_ns"] == 1234567890000000000
+    assert data["stats"]["mtime_ns"] == expected_mtime_ns
 
 
 def test_http_uml_endpoint_returns_mermaid_for_component(
@@ -2036,7 +2559,7 @@ def test_http_uml_endpoint_returns_mermaid_for_component(
         edges=[],
         stats={"node_count": 1, "edge_count": 0},
     )
-    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    _seed_sqlite_knowledge_graph(tmp_path, snapshot)
 
     def fake_uml(
         project_root: str, backend: Any, node_id: str, diagram_type: str
@@ -2081,7 +2604,7 @@ def test_http_uml_endpoint_class_falls_back_when_no_class_nodes(
         edges=[],
         stats={"node_count": 1, "edge_count": 0},
     )
-    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    _seed_sqlite_knowledge_graph(tmp_path, snapshot)
 
     # Simulate fallback: no class nodes → component diagram returned
     def fake_uml(
@@ -2135,7 +2658,7 @@ def test_http_uml_endpoint_returns_class_diagram_with_class_nodes(
         edges=[],
         stats={"node_count": 2, "edge_count": 0},
     )
-    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    _seed_sqlite_knowledge_graph(tmp_path, snapshot)
 
     def fake_uml(
         project_root: str, backend: Any, node_id: str, diagram_type: str

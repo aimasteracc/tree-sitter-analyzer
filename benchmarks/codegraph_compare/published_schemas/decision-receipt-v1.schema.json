@@ -1,0 +1,108 @@
+{
+  "$id": "no1-008a-decision-receipt-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "algorithm": {
+      "const": "Ed25519"
+    },
+    "key_id": {
+      "type": "string"
+    },
+    "receipt": {
+      "additionalProperties": false,
+      "properties": {
+        "consumed_at_ns": {
+          "type": "integer"
+        },
+        "decision_contract_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "decision_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "service_identity": {
+          "additionalProperties": false,
+          "properties": {
+            "allowed_writable_mounts": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "closure_manifest": {
+              "additionalProperties": false,
+              "patternProperties": {
+                "^.+$": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "closure_manifest_sha256": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "gid": {
+              "type": "integer"
+            },
+            "interpreter_sha256": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "rootfs_readonly": {
+              "type": "boolean"
+            },
+            "uid": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "interpreter_sha256",
+            "closure_manifest",
+            "closure_manifest_sha256",
+            "uid",
+            "gid",
+            "rootfs_readonly",
+            "allowed_writable_mounts"
+          ],
+          "type": "object"
+        },
+        "verdict_status": {
+          "const": "SETUP_QUALIFIED"
+        }
+      },
+      "required": [
+        "schema_version",
+        "decision_id",
+        "decision_contract_sha256",
+        "manifest_sha256",
+        "verdict_status",
+        "consumed_at_ns",
+        "service_identity"
+      ],
+      "type": "object"
+    },
+    "signature": {
+      "pattern": "^[0-9a-f]{128}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "receipt",
+    "key_id",
+    "algorithm",
+    "signature"
+  ],
+  "type": "object"
+}

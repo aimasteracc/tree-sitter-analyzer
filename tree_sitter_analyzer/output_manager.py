@@ -24,26 +24,10 @@ class _JsonFormatter:
         return json.dumps(data, indent=2, ensure_ascii=False)
 
 
-class _YamlFormatter:
-    """YAML formatter — defers the ``yaml`` import to ``format()``.
-
-    Registered only when ``import yaml`` succeeds (probed at registry
-    construction time); the deferred import inside ``format`` keeps the
-    class body importable even on Python builds without PyYAML.
-    """
-
-    def format(self, data: Any) -> str:
-        if isinstance(data, str):
-            return data
-        import yaml
-
-        return str(yaml.dump(data, default_flow_style=False, allow_unicode=True))
-
-
 class OutputManager:
     """Manages different types of output for CLI"""
 
-    SUPPORTED_FORMATS = ["json", "yaml", "csv", "table", "toon"]
+    SUPPORTED_FORMATS = ["json"]
 
     def __init__(
         self,
@@ -71,23 +55,10 @@ class OutputManager:
         # ``yaml`` lazily already, so deferring the import to ``format()``
         # keeps the original "yaml is optional" behaviour while letting
         # the class be defined unconditionally.
-        formatters: dict[str, Any] = {"json": _JsonFormatter()}
-        try:
-            from .formatters.toon_formatter import ToonFormatter
-
-            formatters["toon"] = ToonFormatter()
-        except ImportError:
-            pass
-        try:
-            import yaml as _yaml_probe  # noqa: F401
-
-            formatters["yaml"] = _YamlFormatter()
-        except ImportError:
-            pass
-        return formatters
+        return {"json": _JsonFormatter()}
 
     def info(self, message: str) -> None:
-        """Output informational message to user (stderr — keeps stdout clean for JSON/TOON)."""
+        """Output informational message to stderr so stdout remains machine-readable JSON."""
         if not self.quiet:
             print(message, file=sys.stderr)
 
@@ -130,7 +101,7 @@ class OutputManager:
 
         Args:
             data: Data to output
-            format_type: Format to use (json, toon, yaml, etc.)
+            format_type: Format to use (json or a legacy human-readable mode).
                         If None, uses self.output_format
         """
         fmt = format_type or self.output_format
@@ -138,22 +109,6 @@ class OutputManager:
         # Legacy compatibility: if json_output flag is set, force JSON
         if self.json_output:
             fmt = "json"
-
-        # Check if data is already TOON-formatted from MCP tool
-        # MCP tools return dict with "format": "toon" and "toon_content" when TOON is requested
-        if (
-            isinstance(data, dict)
-            and data.get("format") == "toon"
-            and "toon_content" in data
-        ):
-            if fmt == "toon":
-                # Already TOON formatted - just print the toon_content
-                print(data["toon_content"])
-                return
-            elif fmt == "json":
-                # User wants JSON but got TOON response - output as JSON
-                print(json.dumps(data, indent=2, ensure_ascii=False))
-                return
 
         # Try using registered formatter
         formatter = self._formatter_registry.get(fmt)
@@ -323,25 +278,6 @@ def output_success(message: str) -> None:
 def output_json(data: Any) -> None:
     """Output JSON data using the global output manager"""
     _output_manager.output_json(data)
-
-
-def output_toon(toon_content: str) -> None:
-    """Emit a pre-rendered TOON payload to stdout.
-
-    r37aq (dogfood): the project's own ``--code-patterns`` flagged
-    inline ``print(result.get("toon_content", ""))`` in two CLI modules
-    as ``AP003`` (use logging instead of ``print``). The right fix is
-    not ``logging`` (TOON is the user-facing data channel, not a log),
-    but a named canonical helper so:
-
-    * Both ``cli/commands/mcp_commands.py`` and
-      ``cli/special_commands.py`` route through one function.
-    * Future toon-channel changes (e.g. line-ending normalization,
-      ``--output-file`` redirection) live in one place.
-    * AP003 stops firing at those call sites — the helper is the
-      canonical TOON output path.
-    """
-    print(toon_content)  # noqa: T201 — canonical TOON output channel
 
 
 def output_list(items: str | list[Any], title: str | None = None) -> None:

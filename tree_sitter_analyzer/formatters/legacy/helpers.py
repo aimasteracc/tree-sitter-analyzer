@@ -11,13 +11,6 @@ from .common import (
     get_visibility_symbol,
     shorten_type,
 )
-from .compact import (
-    append_compact_fields_section,
-    append_compact_info_section,
-    append_compact_methods_section,
-    compact_table_header,
-)
-from .csv import format_csv
 from .detail import (
     append_detail_fields_section,
     append_detailed_methods_section,
@@ -36,9 +29,6 @@ from .full import (
 from .members import get_class_fields, get_class_methods
 
 __all__ = [
-    "append_compact_fields_section",
-    "append_compact_info_section",
-    "append_compact_methods_section",
     "append_detail_fields_section",
     "append_detailed_methods_section",
     "append_full_class_info_section",
@@ -47,12 +37,10 @@ __all__ = [
     "append_multi_class_full_sections",
     "append_single_class_full_sections",
     "clean_csv_text",
-    "compact_table_header",
     "convert_visibility",
     "create_full_signature",
     "detail_method_groups",
     "extract_doc_summary",
-    "format_csv",
     "format_simple_field_row",
     "format_simple_method_row",
     "full_table_header",

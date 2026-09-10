@@ -26,6 +26,34 @@ from tree_sitter_analyzer.callee_resolution import CalleeResolver
 _FIXTURE_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "synapse"
 
 
+def test_legacy_missing_caller_coordinate_cannot_resolve_ambiguous_self_call(tmp_path):
+    """PR #1352：旧边缺定义行且两个类有同名方法时，不得猜测 self 所属类。"""
+    from tree_sitter_analyzer.cache.synapse import resolve_call_edges_for_file
+
+    source = tmp_path / "a.py"
+    source.write_text(
+        "class First:\n    def run(self):\n        self.target()\n    def target(self):\n        pass\n"
+        "class Second:\n    def run(self):\n        self.target()\n    def target(self):\n        pass\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(source))
+        db = cache.get_conn()
+        db.execute(
+            "UPDATE edges SET caller_line=0,callee_symbol_id=NULL,callee_resolution='unknown' WHERE kind='calls'"
+        )
+        resolve_call_edges_for_file(cache, db, "a.py")
+        assert [
+            tuple(r)
+            for r in db.execute(
+                "SELECT callee_symbol_id,callee_resolution FROM edges WHERE kind='calls' ORDER BY id"
+            )
+        ] == [(None, "unknown"), (None, "unknown")]
+    finally:
+        cache.close()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -269,6 +297,37 @@ class TestResolveCrossFile:
                 assert edge["callee_resolved_file"].endswith("b.py")
                 # Cross-file: resolved file must differ from the caller's file.
                 assert edge["callee_resolved_file"] != edge["file_path"]
+        finally:
+            cache.close()
+
+    def test_import_pins_same_named_callee_file(self, tmp_path: Path) -> None:
+        # #1275 (dogfood F3): a same-named helper in several files must resolve
+        # to the file the caller actually imports, not the first by sort order.
+        # The imported module is indexed AFTER the caller (zz > caller > aa),
+        # which used to break import resolution and fall back to the global
+        # name table (aa_helpers.py winning by file-path order).
+        proj = tmp_path / "synapse_pkg"
+        proj.mkdir(parents=True, exist_ok=True)
+        (proj / "__init__.py").write_text("# pkg\n")
+        (proj / "aa_helpers.py").write_text("def helper():\n    return 'aa'\n")
+        (proj / "caller.py").write_text(
+            "from .zz_helpers import helper\n\ndef run():\n    return helper()\n"
+        )
+        (proj / "zz_helpers.py").write_text("def helper():\n    return 'zz'\n")
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project()
+            with _open_db(cache) as conn:
+                row = conn.execute(
+                    "SELECT callee_resolved_file FROM edges "
+                    "WHERE kind='calls' AND file_path LIKE 'synapse_pkg/caller.py' "
+                    "AND callee_name='helper'"
+                ).fetchone()
+                assert row is not None, "expected caller -> helper edge"
+                assert row["callee_resolved_file"].endswith("zz_helpers.py"), (
+                    "imported zz_helpers.helper must win over aa_helpers.helper, "
+                    f"got {row['callee_resolved_file']}"
+                )
         finally:
             cache.close()
 
@@ -546,6 +605,91 @@ class TestStarImportBookkeeping:
         finally:
             cache.close()
 
+    def test_commented_parenthesized_import_records_all_aliases(
+        self, tmp_path: Path
+    ) -> None:
+        # #1275 (dogfood F2): an inline comment after the opening paren of a
+        # parenthesized from-import truncated the names clause, dropping every
+        # alias of that statement from ast_imports.
+        proj = tmp_path / "synapse_pkg"
+        proj.mkdir(parents=True, exist_ok=True)
+        (proj / "__init__.py").write_text("# pkg\n")
+        (proj / "b.py").write_text("X = 1\nY = 2\n")
+        (proj / "commented.py").write_text(
+            "from .b import (  # noqa: F401\n    X,\n    Y,\n)\n"
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project()
+            with _open_db(cache) as conn:
+                rows = conn.execute(
+                    "SELECT local_name FROM ast_imports "
+                    "WHERE file_path LIKE 'synapse_pkg/commented.py' "
+                    "ORDER BY local_name"
+                ).fetchall()
+                assert [r["local_name"] for r in rows] == ["X", "Y"], (
+                    "expected both aliases X and Y to be recorded, got "
+                    f"{[r['local_name'] for r in rows]}"
+                )
+        finally:
+            cache.close()
+
+    def test_future_import_recorded_as_import_row(self, tmp_path: Path) -> None:
+        # #1275 (dogfood F1): a future import parses as future_import_statement
+        # and was dropped from the index entirely.
+        proj = tmp_path / "synapse_pkg"
+        proj.mkdir(parents=True, exist_ok=True)
+        (proj / "__init__.py").write_text("# pkg\n")
+        (proj / "future_import.py").write_text(
+            "from __future__ import annotations\nX = 1\n"
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project()
+            with _open_db(cache) as conn:
+                row = conn.execute(
+                    "SELECT module_path, local_name FROM ast_imports "
+                    "WHERE file_path LIKE 'synapse_pkg/future_import.py'"
+                ).fetchone()
+                assert row is not None, (
+                    "expected the future import recorded in ast_imports"
+                )
+                assert row["module_path"] == "__future__"
+                assert row["local_name"] == "annotations"
+        finally:
+            cache.close()
+
+    def test_import_rows_carry_statement_line(self, tmp_path: Path) -> None:
+        # #1275 (dogfood F5): ast_imports.line was always 0 because the write
+        # path stored bare statement strings; entries now carry their line.
+        proj = tmp_path / "synapse_pkg"
+        proj.mkdir(parents=True, exist_ok=True)
+        (proj / "__init__.py").write_text("# pkg\n")
+        (proj / "imports.py").write_text(
+            "import os\n"
+            "from typing import Any\n"
+            "\n"
+            "def f() -> Any:\n"
+            "    return os.getcwd()\n"
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project()
+            with _open_db(cache) as conn:
+                rows = conn.execute(
+                    "SELECT module_path, line FROM ast_imports "
+                    "WHERE file_path LIKE 'synapse_pkg/imports.py' "
+                    "ORDER BY line"
+                ).fetchall()
+                assert [(r["module_path"], r["line"]) for r in rows] == [
+                    ("os", 1),
+                    ("typing", 2),
+                ], (
+                    f"expected exact lines, got {[(r['module_path'], r['line']) for r in rows]}"
+                )
+        finally:
+            cache.close()
+
 
 # ---------------------------------------------------------------------------
 # RFC-0002 — builtin classifier + shadowing contract
@@ -787,3 +931,34 @@ class TestRFC0002HyphaeCalleeFalsePositive:
                 )
         finally:
             cache.close()
+
+
+@pytest.mark.parametrize(
+    ("statement", "bindings"),
+    [
+        ("import os  # noqa: F401", [("os", "os", "")]),
+        ("import a.b as c  # noqa: F401", [("a.b", "c", "a.b")]),
+        (
+            "from pkg import (  # noqa: F401\n    a, b\n)",
+            [("pkg", "a", ""), ("pkg", "b", "")],
+        ),
+    ],
+)
+def test_commented_import_preserves_bindings_and_source_location(statement, bindings):
+    """2026-09-08：普通导入须在正则匹配前去除注释，同时保留别名及来源坐标。"""
+    from tree_sitter_analyzer.synapse_resolver._imports import (
+        ImportEntry,
+        parse_imports,
+    )
+
+    assert parse_imports(statement, "python", "consumer.py", 7) == [
+        ImportEntry(
+            file_path="consumer.py",
+            language="python",
+            module_path=module,
+            local_name=local,
+            alias_of=alias,
+            line=7,
+        )
+        for module, local, alias in bindings
+    ]

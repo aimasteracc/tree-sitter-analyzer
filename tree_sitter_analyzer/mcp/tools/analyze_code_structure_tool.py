@@ -10,7 +10,7 @@ from ...formatters.formatter_registry import FormatterRegistry
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from ._validators import invalid_enum_error
 from .analyze_code_structure_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
 from .analyze_code_structure_helpers import (
@@ -388,7 +388,9 @@ def _validate_required_file_path(arguments: dict[str, Any]) -> None:
         raise ValueError("file_path cannot be empty")
 
 
-_VALID_FORMAT_TYPES = frozenset({"full", "compact", "csv", "signatures"})
+# 领导裁决(2026-09-06):compact/csv 判无用彻底删除(实现已随 d4fa151b 移除,
+# 本集合与其 CLI 菜单同步收口,终结 1d26baca 半回退造成的分层不一致)
+_VALID_FORMAT_TYPES = frozenset({"full", "signatures"})
 
 
 def _validate_format_type(arguments: dict[str, Any]) -> None:
@@ -577,7 +579,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             file_path=file_path,
             warning=mismatch,
         )
-        response["output_format"] = args.get("output_format", "toon")
+        response["output_format"] = args.get("output_format", "json")
         return response
 
     def _format_response(
@@ -605,7 +607,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             response[_STATS_KEY] = stats
         if options.output_file:
             self._save_output(response, table_output, options)
-        return apply_toon_format_to_response(response, options.output_format)
+        return apply_output_format_to_response(response, options.output_format)
 
     def _prepare_execution_options(self, args: dict[str, Any]) -> _ExecutionOptions:
         """Validate, sanitize, and resolve execute arguments."""
@@ -620,7 +622,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         _lang_raw = args.get("language")
         language = self._resolve_language(_lang_raw, resolved)
         _suppress = args.get("suppress_output", False)
-        _out_fmt = args.get("output_format", "toon")
+        _out_fmt = args.get("output_format", "json")
 
         return _ExecutionOptions(
             file_path=file_path,

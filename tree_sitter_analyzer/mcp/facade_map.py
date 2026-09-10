@@ -59,8 +59,6 @@ LEGACY_TOOL_MAP: dict[str, tuple[str, str]] = {
     # -- search ------------------------------------------------------------
     "codegraph_symbol_search": ("search", "symbol"),
     "query_code": ("search", "query"),  # F3: tree-sitter .scm DSL (NOT symbol)
-    "search_content": ("search", "content"),
-    "find_and_grep": ("search", "grep"),
     "batch_search": ("search", "batch"),
     "codegraph_query": ("search", "chain"),
     # -- nav ---------------------------------------------------------------
@@ -124,6 +122,12 @@ LEGACY_TOOL_MAP: dict[str, tuple[str, str]] = {
     "get_agent_workflow": ("project", "workflow"),
     "decision_journal": ("project", "journal"),
     "doc_sync": ("project", "doc_sync"),
+    # RFC-0027 §L7: ``get_project_summary`` was a real v1.x tool name that
+    # survived the facade cutover with no route — built, tested, reachable
+    # from nothing, and emitted as a ``next_step`` that resolved nowhere.
+    # It is a legacy name like any other now that ``project action=card``
+    # exists (RFC-0028 §3.1's "wire" disposition).
+    "get_project_summary": ("project", "card"),
     # -- index -------------------------------------------------------------
     "codegraph_status": ("index", "status"),
     "ast_cache": ("index", "cache"),
@@ -174,12 +178,33 @@ NEW_ACTION_PARITY: dict[str, tuple[str, str, str]] = {
     "nav_test_map": ("nav", "test_map", "--test-map"),
     # RFC-0014 Phase C: co_change is new; it was never a registered v1.x tool.
     "nav_co_change": ("nav", "co_change", "--co-change"),
+    "edit_verify": ("edit", "verify", "--verify-plan"),
     "edit_rename": ("edit", "rename", "--rename"),
     "health_unreachable": ("health", "unreachable", "--unreachable-code"),
     "health_middleware": ("health", "middleware", "--detect-middleware"),
     "structure_signatures": ("structure", "signatures", "--table"),
     "index_knowledge": ("index", "knowledge", "--knowledge-graph-index"),
     "viz_knowledge": ("viz", "knowledge", "--knowledge-graph-export"),
+    # RFC-0025 Layer 5: self-proprioception is new; never a v1.x tool.
+    "health_self": ("health", "self", "--self-health"),
+    # RFC-0027 §L8: plan_rename is a NEW action name. The inner tool's v1.x
+    # identity was ``codegraph_refactor``, which named a preview-OR-apply
+    # capability; deliberately not re-shimmed, because the registered surface
+    # is preview-only and a legacy alias would imply the apply half exists.
+    "edit_plan_rename": ("edit", "plan_rename", "--plan-rename"),
+    # RFC-0027 §L8: the refactor queue is new; it only ever lived in a skill.
+    "health_refactor_queue": ("health", "refactor_queue", "--refactor-queue"),
+    # RFC-0029: mutation probe is new; it was never a registered v1.x tool.
+    "edit_mutation_probe": ("edit", "mutation_probe", "--mutation-probe"),
+    # Nervous-system PR: pulse/pulse_batch (nav), schema (index),
+    # tql_schema/tql_execute/semantic (search) were briefly registered as
+    # new top-level MCP tools; re-wired as facade actions with CLI parity.
+    "nav_pulse": ("nav", "pulse", "--pulse"),
+    "nav_pulse_batch": ("nav", "pulse_batch", "--pulse-batch"),
+    "index_schema": ("index", "schema", "--project-schema"),
+    "search_tql_schema": ("search", "tql_schema", "--tql-schema"),
+    "search_tql_execute": ("search", "tql_execute", "--tql"),
+    "search_semantic": ("search", "semantic", "--semantic-neighbors"),
 }
 
 # 保留兼容导入；本次补全的三个动作均已有 CLI 路由。

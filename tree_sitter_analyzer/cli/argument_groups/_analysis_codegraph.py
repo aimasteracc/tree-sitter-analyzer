@@ -233,7 +233,7 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--knowledge-graph-export-format",
-        choices=["graphology", "html", "raw", "summary", "uml"],
+        choices=["graphology", "html", "dot", "graphml", "raw", "summary", "uml"],
         default="graphology",
         help="Export format for --knowledge-graph-export (default: graphology)",
     )

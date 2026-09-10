@@ -72,6 +72,59 @@ class TestCodeGraphSymbolSearchValidation:
 
 @pytest.mark.asyncio
 class TestCodeGraphSymbolSearchExecution:
+    async def test_operational_index_update_and_query_without_snapshot_manifest(
+        self, tmp_path
+    ):
+        # PR #1350/#1352：v17 操作平面仍不依赖快照认证；这不是 Windows 原生模拟验收。
+        from tree_sitter_analyzer.cache.schema_extensions import CURRENT_SCHEMA_VERSION
+        from tree_sitter_analyzer.incremental_sync import IncrementalSync
+
+        source = tmp_path / "app.py"
+        source.write_text("def original(): return 1\n", encoding="utf-8")
+        cache = ASTCache(str(tmp_path))
+        tool = CodeGraphSymbolSearchTool(str(tmp_path))
+        try:
+            assert cache.index_file(str(source))["status"] == "indexed"
+            conn = cache.get_conn()
+            assert (
+                conn.execute("SELECT MAX(version) FROM ast_schema_version").fetchone()[
+                    0
+                ]
+                == CURRENT_SCHEMA_VERSION
+                == 17
+            )
+            assert (
+                conn.execute(
+                    "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
+                ).fetchone()[0]
+                == 0
+            )
+            first = await tool.execute({"query": "original", "output_format": "json"})
+            assert (first["success"], [row["name"] for row in first["results"]]) == (
+                True,
+                ["original"],
+            )
+            source.write_text("def replacement(): return 22\n", encoding="utf-8")
+            sync = IncrementalSync(cache).sync(certify_manifest=False)
+            assert (sync.updated_files, sync.errors) == (1, 0)
+            second = await tool.execute(
+                {"query": "replacement", "output_format": "json"}
+            )
+            assert (second["success"], [row["name"] for row in second["results"]]) == (
+                True,
+                ["replacement"],
+            )
+            assert (
+                conn.execute(
+                    "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
+                ).fetchone()[0]
+                == 0
+            )
+        finally:
+            cache.close()
+            if tool._cache is not None:
+                tool._cache.close()
+
     async def test_exact_match(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "UserService", "output_format": "json"})
@@ -175,19 +228,6 @@ class TestCodeGraphSymbolSearchExecution:
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "get_user", "output_format": "json"})
         assert "no Read needed" in result["next_step"]
-
-    async def test_search_body_survives_toon(self, indexed_project):
-        """P2: inlined body survives TOON serialization (MCP default)."""
-        tool = CodeGraphSymbolSearchTool(str(indexed_project))
-        result = await tool.execute({"query": "get_user", "output_format": "toon"})
-        assert result.get("format") == "toon"
-        assert "def get_user" in result["toon_content"]
-
-    async def test_toon_output_format(self, indexed_project):
-        tool = CodeGraphSymbolSearchTool(str(indexed_project))
-        result = await tool.execute({"query": "UserService", "output_format": "toon"})
-        assert result["success"] is True
-        assert "toon_content" in result
 
     async def test_data_source_field(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
@@ -371,8 +411,10 @@ class TestCodeGraphSymbolSearchNoCache:
         project.mkdir()
         tool = CodeGraphSymbolSearchTool(str(project))
         result = await tool.execute({"query": "anything", "output_format": "json"})
-        assert result["success"] is True
+        # 2026-09-09：没有索引时，不能断言项目里没有匹配符号。
+        assert (result["success"], result["error_code"]) == (False, "INDEX_NOT_READY")
         assert result["match_count"] == 0
+        tool._cache.close()
 
 
 class TestCodeGraphSymbolSearchSourceContext:
@@ -619,3 +661,59 @@ class TestSymbolSearchTruncation:
             {"query": "nonexistent_xyz", "output_format": "json"}
         )
         assert "truncated" in result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("indexed", [False, True])
+async def test_empty_index_does_not_claim_symbol_absence(tmp_path, indexed):
+    # 2026-09-09：冷索引曾将真实存在的函数报告为 NOT_FOUND。
+    source = tmp_path / "auth.py"
+    source.write_text(
+        "def authenticate_user(token): return bool(token)\n", encoding="utf-8"
+    )
+    cache = ASTCache(str(tmp_path))
+    tool = CodeGraphSymbolSearchTool(str(tmp_path))
+    try:
+        if indexed:
+            cache.index_file(str(source))
+        result = await tool.execute(
+            {"query": "authenticate_user", "output_format": "json"}
+        )
+        assert (result["success"], result["verdict"]) == (
+            (True, "INFO") if indexed else (False, "ERROR")
+        )
+        if not indexed:
+            assert result["error_code"] == "INDEX_NOT_READY"
+            assert result["error_type"] == "validation"
+            assert result["recovery_hint"] == result["next_step"]
+            assert result["agent_summary"]["next_step"] == result["next_step"]
+            assert result["results"] == []
+            assert "--ast-cache-mode index" in result["next_step"]
+    finally:
+        cache.close()
+        if tool._cache is not None:
+            tool._cache.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("empty_project", [False, True])
+async def test_indexed_zero_symbols_can_report_not_found(tmp_path, empty_project):
+    # 2026-09-09：零符号文件和已完成的空项目不能被误判为尚未建索引。
+    if not empty_project:
+        (tmp_path / "empty.py").write_text("# 空模块\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    tool = CodeGraphSymbolSearchTool(str(tmp_path))
+    try:
+        cache.index_project(max_files=20)
+        result = await tool.execute(
+            {"query": "authenticate_user", "output_format": "json"}
+        )
+        assert (result["success"], result["verdict"], result["results"]) == (
+            True,
+            "NOT_FOUND",
+            [],
+        )
+    finally:
+        cache.close()
+        if tool._cache is not None:
+            tool._cache.close()

@@ -1,0 +1,155 @@
+{
+  "$id": "no1-008a-service-launch-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "algorithm": {
+      "const": "Ed25519"
+    },
+    "attestation": {
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "container_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "entrypoint": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "image_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "mounts": {
+          "type": "array"
+        },
+        "network_mode": {
+          "const": "none"
+        },
+        "process": {
+          "additionalProperties": false,
+          "properties": {
+            "capabilities": {
+              "additionalProperties": false,
+              "properties": {
+                "CapAmb": {"type": ["string", "null"]},
+                "CapBnd": {"type": ["string", "null"]},
+                "CapEff": {"type": ["string", "null"]},
+                "CapInh": {"type": ["string", "null"]},
+                "CapPrm": {"type": ["string", "null"]}
+              },
+              "required": ["CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"],
+              "type": "object"
+            },
+            "cgroup": {"type": "string"},
+            "cmdline": {
+              "items": {"type": "string"},
+              "type": "array"
+            },
+            "container_pid": {"type": "integer"},
+            "executable": {"type": "string"},
+            "executable_sha256": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "host_pid": {"type": "integer"},
+            "namespaces": {
+              "additionalProperties": false,
+              "properties": {
+                "cgroup": {"type": "string"},
+                "ipc": {"type": "string"},
+                "mnt": {"type": "string"},
+                "net": {"type": "string"},
+                "pid": {"type": "string"},
+                "user": {"type": "string"},
+                "uts": {"type": "string"}
+              },
+              "required": ["mnt", "pid", "net", "user", "uts", "ipc", "cgroup"],
+              "type": "object"
+            },
+            "no_new_privs": {"type": ["string", "null"]},
+            "seccomp": {"type": ["string", "null"]},
+            "seccomp_filters": {"type": ["string", "null"]},
+            "starttime": {"pattern": "^[0-9]+$", "type": "string"}
+          },
+          "required": [
+            "host_pid",
+            "container_pid",
+            "starttime",
+            "cgroup",
+            "executable",
+            "executable_sha256",
+            "cmdline",
+            "namespaces",
+            "capabilities",
+            "no_new_privs",
+            "seccomp",
+            "seccomp_filters"
+          ],
+          "type": "object"
+        },
+        "readonly_rootfs": {
+          "const": true
+        },
+        "role": {
+          "enum": [
+            "executor",
+            "approver",
+            "auditor",
+            "verifier",
+            "decision_consumer"
+          ]
+        },
+        "security_opt": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "user": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "container_id",
+        "role",
+        "image_id",
+        "cmd",
+        "entrypoint",
+        "user",
+        "readonly_rootfs",
+        "mounts",
+        "network_mode",
+        "security_opt",
+        "process"
+      ],
+      "type": "object"
+    },
+    "key_id": {
+      "type": "string"
+    },
+    "signature": {
+      "pattern": "^[0-9a-f]{128}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "attestation",
+    "key_id",
+    "algorithm",
+    "signature"
+  ],
+  "type": "object"
+}

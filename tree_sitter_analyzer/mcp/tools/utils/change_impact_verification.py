@@ -8,7 +8,10 @@ from typing import Any
 from .verification_command import (
     PYTEST_COMMAND,
     DefaultTestCommand,
+    build_test_argv_batches,
     build_test_command,
+    build_test_commands,
+    join_verification_steps,
 )
 
 AUTO_DISCOVER_TEST_HINT = "(auto-discover: run full suite)"
@@ -50,8 +53,17 @@ def _build_verification_plan(
     default_test_command: DefaultTestCommand = PYTEST_COMMAND,
 ) -> dict[str, Any]:
     """Build the smallest recommended verification command for the diff."""
+    policy = (
+        {
+            "_pytest_marker": default_test_command.pytest_marker,
+            "_pytest_config_root": default_test_command.pytest_config_root,
+        }
+        if default_test_command.pytest_marker
+        else {}
+    )
     if not _requires_pytest(changed_files):
         return {
+            **policy,
             "test_required": False,
             "test_runner": default_test_command.runner,
             "default_test_command": default_test_command.command,
@@ -65,6 +77,7 @@ def _build_verification_plan(
     if _has_runtime_auto_discovery(test_mapping or {}):
         test_command = build_test_command(default_test_command, [])
         return {
+            **policy,
             "test_required": True,
             "test_runner": default_test_command.runner,
             "default_test_command": default_test_command.command,
@@ -77,20 +90,29 @@ def _build_verification_plan(
             "verification_reason": "unmapped runtime changes remain; run the default test command",
         }
 
-    test_command = build_test_command(default_test_command, tests_to_run)
+    test_command = join_verification_steps(
+        build_test_commands(default_test_command, tests_to_run)
+    )
+    # 兼容字段只在计划确实运行 pytest 时置真；shell-only 计划仍要求验证。
+    pytest_required = default_test_command.runner == "pytest" and (
+        not tests_to_run
+        or any(
+            argv[:3] == ["uv", "run", "pytest"]
+            for argv in build_test_argv_batches(default_test_command, tests_to_run)
+        )
+    )
     reason = (
         "targeted tests cover mapped runtime changes"
         if tests_to_run
         else "no targeted tests found; run the default test command"
     )
     return {
+        **policy,
         "test_required": True,
         "test_runner": default_test_command.runner,
         "default_test_command": default_test_command.command,
-        "pytest_required": default_test_command.runner == "pytest",
-        "pytest_command": test_command
-        if default_test_command.runner == "pytest"
-        else "",
+        "pytest_required": pytest_required,
+        "pytest_command": test_command if pytest_required else "",
         "test_command": test_command,
         "verification_command": test_command,
         "verification_reason": reason,

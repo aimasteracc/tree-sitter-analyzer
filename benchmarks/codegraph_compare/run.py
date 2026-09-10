@@ -34,7 +34,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
+
+if __package__ in (None, ""):
+    repo_root = str(Path(__file__).resolve().parents[2])
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
 
 # ---------------------------------------------------------------------------
 # Path constants  (all relative to this file so the harness is portable)
@@ -94,6 +99,26 @@ PHASE_PRESETS: dict[str, PhasePreset] = {
         description="all repos, all questions, 4 repeats, cold arms",
     ),
 }
+
+
+def _reject_duplicate_json_members(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON member: {key}")
+        result[key] = value
+    return result
+
+
+def _load_strict_json(path: str | Path) -> object:
+    """Load canonical JSON while rejecting duplicate members at every depth."""
+
+    return json.loads(
+        Path(path).read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_json_members,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -332,6 +357,17 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     adapter = get_adapter(arm_id)
 
+    try:
+        from adapters.claude_runner import (  # noqa: PLC0415
+            validate_backend_arm_support,
+        )
+    except ImportError:
+        _die("Could not import adapters.claude_runner.")
+    try:
+        validate_backend_arm_support(args.agent_backend, arm_id)
+    except (ValueError, NotImplementedError) as exc:
+        _die(str(exc))
+
     # Prepare index (warm by default unless index_mode says cold)
     index_mode: str = arm_entry.get("index_mode", "warm")
     cold = index_mode == "cold"
@@ -396,48 +432,225 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _append_manifest_setup_event(manifest: Any, status: str, outcome: str) -> None:
+    from benchmarks.codegraph_compare.integrity import (  # noqa: PLC0415
+        RegistryEvent,
+        append_registry_event,
+    )
+
+    append_registry_event(
+        RESULTS_DIR / "experiment_registry.jsonl",
+        RegistryEvent(
+            manifest.experiment_id,
+            manifest.manifest_hash,
+            status,
+            outcome,
+        ),
+    )
+
+
 def cmd_run_matrix(args: argparse.Namespace) -> int:
     """Run all combinations of repos × arms × questions × repeats."""
-    repos_data = _load_yaml(REPOS_YAML)
-    arms_data = _load_yaml(ARMS_YAML)
-    questions_data = _load_yaml(QUESTIONS_YAML)
+    manifest_path = getattr(args, "manifest", None)
+    setup_only = bool(getattr(args, "setup_only", False))
+    index_evidence_path = getattr(args, "index_evidence", None)
+    workspace_evidence_path = getattr(args, "workspace_evidence", None)
+    from benchmarks.codegraph_compare.smoke_request import (  # noqa: PLC0415
+        parse_manifest_request,
+    )
 
-    # Resolve repos
-    if args.repos in ("all", None):
-        repo_entries = _all_repos(repos_data)
-    else:
-        repo_entries = [_get_repo(repos_data, rid) for rid in args.repos.split(",")]
-
-    # Resolve arms
-    if not args.arms or args.arms == "all":
-        arm_entries = _all_arms(arms_data)
-    else:
-        arm_entries = [_get_arm(arms_data, aid) for aid in args.arms.split(",")]
-
-    repeats: int = args.repeats if hasattr(args, "repeats") and args.repeats else 1
-    question_limit = getattr(args, "question_limit", None)
-    if question_limit is not None and question_limit < 1:
-        _die("--question-limit must be greater than zero")
-
-    # Lazy imports
     try:
-        from adapters import get_adapter  # noqa: PLC0415
-        from adapters.claude_runner import run_one  # noqa: PLC0415
-    except ImportError:
-        _die("Could not import adapters or adapters.claude_runner.")
+        manifest = parse_manifest_request(
+            manifest_path=manifest_path,
+            setup_only=setup_only,
+            dry_run=args.dry_run,
+            index_evidence_path=index_evidence_path,
+            workspace_evidence_path=workspace_evidence_path,
+            strict_json_loader=_load_strict_json,
+        )
+    except ValueError as exc:
+        _die(str(exc))
+
+    if manifest is not None:
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        _append_manifest_setup_event(manifest, "PLANNED", "setup_started")
+
+    supplied_index_stats = None
+    workspace = None
+    try:
+        repos_data = _load_yaml(REPOS_YAML)
+        arms_data = _load_yaml(ARMS_YAML)
+        questions_data = _load_yaml(QUESTIONS_YAML)
+        if index_evidence_path:
+            from benchmarks.codegraph_compare.setup_validation import (  # noqa: PLC0415
+                parse_index_evidence_v1,
+            )
+
+            raw_evidence = _load_strict_json(index_evidence_path)
+            supplied_index_stats = parse_index_evidence_v1(raw_evidence)
+        if workspace_evidence_path:
+            from benchmarks.codegraph_compare.smoke_workspace import (  # noqa: PLC0415
+                parse_workspace_v1,
+            )
+
+            workspace = parse_workspace_v1(
+                _load_strict_json(workspace_evidence_path)
+            )
+
+        # Resolve repos
+        if args.repos in ("all", None):
+            repo_entries = _all_repos(repos_data)
+        else:
+            repo_entries = [_get_repo(repos_data, rid) for rid in args.repos.split(",")]
+
+        # Resolve arms
+        if not args.arms or args.arms == "all":
+            arm_entries = _all_arms(arms_data)
+        else:
+            arm_entries = [_get_arm(arms_data, aid) for aid in args.arms.split(",")]
+
+        repeats: int = (
+            args.repeats if hasattr(args, "repeats") and args.repeats is not None else 1
+        )
+        if type(repeats) is not int or repeats < 1:
+            _die("--repeats must be greater than zero")
+        question_limit = getattr(args, "question_limit", None)
+        if question_limit is not None and question_limit < 1:
+            _die("--question-limit must be greater than zero")
+
+        question_entries_by_repo = {
+            repo_entry["id"]: _limited_questions_for_repo(
+                questions_data, repo_entry["id"], question_limit
+            )
+            for repo_entry in repo_entries
+        }
+    except (
+        OSError,
+        json.JSONDecodeError,
+        TypeError,
+        ValueError,
+        KeyError,
+        AttributeError,
+        SystemExit,
+    ) as exc:
+        if manifest is not None:
+            _append_manifest_setup_event(manifest, "BLOCKED", "setup_input_failed")
+        if isinstance(exc, SystemExit):
+            raise
+        _die(f"Invalid manifest setup input: {exc}")
 
     # One session id per matrix invocation so repeated runs don't overwrite each
     # other's raw transcripts (cost data must survive re-runs for n>1 analysis).
     session_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    if manifest is not None and not setup_only:
+        session_id = manifest.primary_session_id
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    question_entries_by_repo = {
-        repo_entry["id"]: _limited_questions_for_repo(
-            questions_data, repo_entry["id"], question_limit
+    if setup_only:
+        assert manifest is not None
+        from benchmarks.codegraph_compare.smoke_execution import (  # noqa: PLC0415
+            run_manifest_setup_gate,
         )
-        for repo_entry in repo_entries
-    }
+
+        try:
+            return run_manifest_setup_gate(
+                args=args,
+                manifest=manifest,
+                supplied_index_stats=supplied_index_stats,
+                workspace=workspace,
+                repo_entries=repo_entries,
+                arm_entries=arm_entries,
+                question_entries_by_repo=question_entries_by_repo,
+                repeats=repeats,
+                session_id=session_id,
+                results_dir=RESULTS_DIR,
+                repo_path_resolver=_repo_local_path,
+                append_event=_append_manifest_setup_event,
+            )
+        except Exception:
+            _append_manifest_setup_event(manifest, "BLOCKED", "setup_internal_failed")
+            raise
+
+    # Lazy imports
+    try:
+        from adapters import get_adapter  # noqa: PLC0415
+        from adapters.claude_runner import (  # noqa: PLC0415
+            run_one,
+            validate_backend_arm_support,
+        )
+    except ImportError:
+        _die("Could not import adapters or adapters.claude_runner.")
+
+    from benchmarks.codegraph_compare.smoke_execution import (  # noqa: PLC0415
+        execute_bound_manifest,
+    )
+
+    manifest_result = execute_bound_manifest(
+        manifest=manifest,
+        args=args,
+        supplied_index_stats=supplied_index_stats,
+        workspace=workspace,
+        repo_entries=repo_entries,
+        arm_entries=arm_entries,
+        question_entries_by_repo=question_entries_by_repo,
+        repeats=repeats,
+        session_id=session_id,
+        results_dir=RESULTS_DIR,
+        repo_path_resolver=_repo_local_path,
+        append_event=_append_manifest_setup_event,
+        adapter_factory=get_adapter,
+        run_one=run_one,
+    )
+    if manifest_result is not None:
+        return manifest_result
+
+    prepared_adapters: dict[tuple[str, str], Any] = {}
+    prepared_run_configs: dict[tuple[str, str, str], Any] = {}
+    if not args.dry_run:
+        try:
+            from benchmarks.codegraph_compare.setup_validation import (  # noqa: PLC0415
+                validate_matrix_setup,
+                write_setup_failure_evidence,
+            )
+        except ImportError:
+            import importlib  # noqa: PLC0415
+
+            setup_validation = importlib.import_module("setup_validation")
+            validate_matrix_setup = setup_validation.validate_matrix_setup
+            write_setup_failure_evidence = setup_validation.write_setup_failure_evidence
+
+        setup_result = validate_matrix_setup(
+            repo_entries,
+            arm_entries,
+            questions_by_repo=question_entries_by_repo,
+            repo_path_resolver=_repo_local_path,
+            adapter_factory=get_adapter,
+            backend_validator=lambda arm_id: validate_backend_arm_support(
+                args.agent_backend, arm_id
+            ),
+        )
+        if not setup_result.ok:
+            evidence_path = write_setup_failure_evidence(
+                RESULTS_DIR,
+                session_id=session_id,
+                result=setup_result,
+            )
+            print(
+                f"[setup] FAILED: {len(setup_result.failures)} indexed cell(s); "
+                "no model calls started.",
+                file=sys.stderr,
+            )
+            for failure in setup_result.failures:
+                print(
+                    f"  repo={failure.repo_id}  arm={failure.arm_id}  "
+                    f"{failure.code}: {failure.message}",
+                    file=sys.stderr,
+                )
+            print(f"Setup evidence: {evidence_path}", file=sys.stderr)
+            return 1
+        prepared_adapters = setup_result.prepared_adapters
+        prepared_run_configs = setup_result.prepared_run_configs
     total = (
         sum(len(items) for items in question_entries_by_repo.values())
         * len(arm_entries)
@@ -457,17 +670,13 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
 
         for arm_entry in arm_entries:
             arm_id: str = arm_entry["id"]
-            index_mode: str = arm_entry.get("index_mode", "warm")
-            cold = index_mode == "cold"
 
-            adapter = get_adapter(arm_id)
+            adapter = prepared_adapters.get((repo_id, arm_id)) or get_adapter(arm_id)
             if args.dry_run:
                 print(
                     f"[prepare] skipped dry-run  arm={arm_id}  repo={repo_id}",
                     file=sys.stderr,
                 )
-            else:
-                adapter.prepare_index(repo_path, cold=cold)
             run_config_cache: dict = {}
 
             for question_entry in question_entries:
@@ -475,8 +684,10 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
                 question_prompt: str = question_entry["prompt"]
 
                 if question_id not in run_config_cache:
-                    run_config_cache[question_id] = adapter.build_run_config(
-                        repo_path, question_prompt
+                    run_config_cache[question_id] = (
+                        adapter.build_run_config(repo_path, question_prompt)
+                        if args.dry_run
+                        else prepared_run_configs[(repo_id, arm_id, question_id)]
                     )
                 run_config = run_config_cache[question_id]
 
@@ -742,6 +953,35 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Limit questions per repo; useful for smoke runs.",
+    )
+    p_matrix.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help="RFC-0021 V1 manifest for setup-only or bound Smoke execution.",
+    )
+    p_matrix.add_argument(
+        "--setup-only",
+        action="store_true",
+        help=(
+            "Consume manifest-bound V1 setup evidence without starting "
+            "model-backed work. Requires --manifest."
+        ),
+    )
+    p_matrix.add_argument(
+        "--index-evidence",
+        type=Path,
+        default=None,
+        help="Strict V1 index evidence required with --manifest.",
+    )
+    p_matrix.add_argument(
+        "--workspace-evidence",
+        type=Path,
+        default=None,
+        help=(
+            "Strict V1 physical checkout/index/artifact evidence required "
+            "with --manifest."
+        ),
     )
 
     # ---- phase ----

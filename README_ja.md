@@ -4,22 +4,29 @@
 
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/) [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) [![Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer) [![対応: Claude Code · Cursor · MCP](https://img.shields.io/badge/対応-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20MCP-6f42c1.svg)](#supported-agents)
 
-**AI エージェントが信頼できるコード インテリジェンス** — 20+ 言語にわたる正確なクロスランゲージ構造解析、エージェントネイティブ設計（MCP + CLI）。
+**AI エージェントが信頼できるコード インテリジェンス** — [対応言語一覧](#サポート言語)全体で正確なクロスランゲージ構造解析、エージェントネイティブ設計（MCP + CLI）。
 
-TSA は tree-sitter でコードベースをインデックスし、正確なコール グラフ・シンボル検索・構造クエリを AI コーディング エージェントへ提供します — 完全ローカル、テレメトリなし。AI エージェントのためのコード インテリジェンス: 事前インデックス済みのトークン効率の良い MCP サーバー — **8 MCP ツール** + CLI、100% ローカル動作。
+TSA は tree-sitter でコードベースをインデックスし、コール グラフ・シンボル検索・構造クエリを AI コーディング エージェントへ提供します — **8 MCP ツール** + CLI、完全ローカル、テレメトリなし。
 
 **なぜ違うのか：**
-* **クロスランゲージ正確性がモート（堀）。** 名前照合のみのインデックスは Python `sorted()` を Swift `func sorted` に結線する。TSA はしない。競合ツール比 ~390× 少ないクロスランゲージ誤結線（[再現可能な監査](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)）。
-* **エージェントネイティブ。** **8 MCP ツール**、TOON 出力（bulk レスポンスが JSON より ~50-70% 小さい）、verdict エンベロープ、13 のキュレーテッド Skills — Claude Code・Cursor・任意の MCP クライアント向け設計。
-* **広くかつ正確に分類。** 13 言語のフルコールグラフ インデックス（Python · Go · Rust · Java · JS · TS · C · C++ · C# · Swift · Kotlin · Ruby · PHP）、他 8 言語はシンボル インデックスまたは CLI 経由でアクセス可。
-
-> **実測値：** HuggingFace `tokenizers`（Rust+Python+JS+TS）において名前照合リゾルバは **1,259** コール エッジを誤結線 — TSA は **0**。自分のリポジトリで確認: `uvx --from tree-sitter-analyzer miswire-audit .`
+* **クロスランゲージ正確性がモート（堀）。** 言語ファミリ ゲートが、名前のみを根拠にしたクロスランゲージ束縛を防ぎます。
+* **エージェントネイティブ。** **8 MCP ツール**が構造化 JSON 出力と verdict エンベロープを提供し、CLI とキュレーション済みワークフローからも利用できます。
+* **広くかつ正確に分類。** 13 言語は `pipeline_registered`（パイプライン登録済み、非 E2E）です。これは登録・配線の証拠であり、クロスファイル呼び出し解決の検証を意味しません。詳細は[生成された対応深度インベントリ](#サポート言語)を参照。
 
 > v1.x からの移行は [docs/MIGRATION.md](docs/MIGRATION.md) を参照。
 
-### v1.29.5 ホットフィックス — 2026-09-08
+### 神経系の境界 (Pulse / TQL / セマンティック クエリ)
 
-共通のノード分類でシンボル抽出を修正しました（抽出バージョン 19）。Python の名前変更には正確な AST 位置を使用し、`edit.rename` / `--rename`、`health.unreachable` / `--unreachable-code`、`health.middleware` / `--detect-middleware` の MCP・CLI 経路を復旧しました。名前変更の既定はプレビューです。一意な Python モジュール直下の関数・クラスと、直接の絶対 `from` インポートを対象とし、曖昧な参照や未対応の参照は拒否します。更新後は再度インデックスを実行して古い抽出結果を更新してください。[変更の詳細](CHANGELOG.md#1295---2026-09-08)。
+TQL の時間セレクタは変更タイムスタンプを比較するものであり、変更回数を比較するものではありません。
+`tql_schema` アクションは、素の `:hot` と `:recently_modified` が共有するウィンドウとデフォルト値を文書化します。深度クエリは正確な定義同一性を保持し、トラバーサル上限を超えた場合は明示的に失敗します。
+
+Pulse のリクエストはスナップショット境界のコンテキストを返します。識別情報・関係性・逆 import コンテキスト・任意のキャッシュ済み LSP エンリッチメントのための SQL 読み取りは、呼び出し元が保有するトランザクションを終了させることなく savepoint を共有します。これは SQL ラウンドトリップやレイテンシの保証を意味するものではありません。
+
+Pulse の Python 逆 import コンテキストは既存のモジュール リゾルバを使用します。これはクロスランゲージのモジュール解決が完全であるという主張ではありません。コメント コンテキストにはコメント抽出込みで再構築されたインデックスが必要です。古いインデックスやコメント抽出に対応していない言語では、空の成功応答ではなく `COMMENTS_NOT_INDEXED` を返します。不要な場合は、文書化された `max_comments` 設定でコメント コンテキストを明示的に省略してください。欠落しているレガシー コミット メッセージ投影は遅延リフレッシュのため `pending` になります。`disabled` の有効化状態は保持されます。レガシーの NULL 有効化状態も、古いメッセージやカウントをクリアすることなく pending になります。有効化されたキャッシュ済みインデックス作成サイクルは、境界付きの有効化リフレッシュを継続します。Pulse は利用不能な有効化状態を `null` として公開し、時間的クエリは不完全な有効化証拠を拒否します。リフレッシュは境界付きバッチを通じて実際の Git 履歴を読み取ります。メッセージ読み取りに失敗した場合は、完了したと主張せず保留中の作業として保持します。
+
+セマンティック クエリには既知の保存済み埋め込みモデルと一貫した次元数が必要です。混在または未知のモデルはエラーとなり、プロバイダのフォールバックはありません。オフライン テストではモデル ダブルを使用します。これは実運用プロバイダの品質を保証するものではありません。
+
+Pulse のバッチ処理は成功したエントリを保持しますが、対象のいずれかが失敗すると失敗を報告します。TQL は欠落または読み取り不能なインデックスをエラーとして扱い、これは「マッチなしの準備済みインデックス」とは区別されます。公開リクエストの検証は、インデックスを開いたり埋め込みプロバイダを呼び出したりする前に、無効な型や上限値を拒否します。
 
 ---
 
@@ -35,6 +42,12 @@ curl -fsSL https://raw.githubusercontent.com/aimasteracc/tree-sitter-analyzer/ma
 
 `install.sh` は `uv` の有無を確認して未インストールなら自動導入し、Claude Desktop / Claude Code / Cursor / VS Code の設定ファイルを検出して MCP エントリを自動書き込みします。セットアップ後は `tree-sitter-analyzer --doctor` で設定を確認できます。
 
+> **ブートストラップの信頼性について:** 利便性のため、上記コマンドは `uv` が未インストールまたは古い場合、公式 `uv` インストーラを TLS 経由でダウンロード・実行します。このインストーラは可変であり **content-bound ではありません**。TSA はダウンロード前に警告を表示し、インストール後に厳密なバージョン確認を行います。この未検証のブートストラップを避けたい場合は、事前に `uv >= 0.11.0` を手動でインストールするか、次のセキュアなオプトアウトを使用してください（ブートストラップが必要な場合は手動インストール手順を表示して終了します）:
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/aimasteracc/tree-sitter-analyzer/main/install.sh \
+>   | TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP=1 bash
+> ```
+
 **Claude Code** へワンライナーでインストール:
 
 ```bash
@@ -44,10 +57,12 @@ claude mcp add tree-sitter-analyzer \
 ```
 
 エージェントを再起動し、こう伝える: 「`index` ツールを action=status で呼んでください。」
+CLI での同等操作 (エージェント不要): `tree-sitter-analyzer --codegraph-status`
 
-> **PyPI / uvx ユーザーへ — スキルのインストール:** 13 個の `tsa-*` スキルはホイールに同梱されています。一度だけ次のコマンドでインストールしてください:
+> **PyPI / uvx ユーザーへ — スキルのインストール:** `tsa-*` スキルはホイールに同梱されています。一度だけ次のコマンドでインストールしてください:
 > ```bash
-> tree-sitter-analyzer --install-skills
+> tree-sitter-analyzer --install-skills              # ./.claude/skills/ へ (このプロジェクトのみ)
+> tree-sitter-analyzer --install-skills-global       # ~/.claude/skills/ へ (全プロジェクト共通)
 > ```
 > git clone ユーザーはすでに `.claude/skills/` に含まれているため、操作不要です。
 
@@ -58,11 +73,12 @@ claude mcp add tree-sitter-analyzer \
 #### 1. 依存関係をインストール
 
 ```bash
-# uv (必須)
+# uv (必須)。この公式簡易インストーラは可変で content-bound ではありません。
+# 代替の手動インストール方法は https://docs.astral.sh/uv/ を参照。
 curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-# fd + ripgrep (検索機能で必須)
+# fd + ripgrep (`search action=batch` の複数クエリ テキスト検索に必須; シンボル検索は SQLite FTS5 を使用しどちらも不要)
 brew install fd ripgrep                                # macOS
 winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```
@@ -93,25 +109,26 @@ uv tool install "tree-sitter-analyzer[all,mcp]"
 ```
 
 再起動後: 「`index` ツールを action=status で呼んでください。」
+CLI での同等操作 (エージェント不要): `tree-sitter-analyzer --codegraph-status`
 
-**自分のリポジトリで correctness の差を 1 コマンドで確認**(インストール不要・CodeGraph 不要、最初に再インデックスします):
+**自分のリポジトリでリゾルバの動作を確認**（インストール不要、最初に再インデックスします）:
 
 ```bash
 uvx --from tree-sitter-analyzer miswire-audit .
 ```
 
-name-only な code index(多くのツールが採る設計)なら、何件の呼び出しを言語をまたいで誤結線するか(例: Python の `sorted()` → Swift の func)vs TSA が何件かを表示します。実証: [HuggingFace `tokenizers`](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md) で name-only は **1,259 件**(JS `tokenize()` → Rust 等)、TSA は **0**。ruff **7557×**、polars **9016×**。単一言語リポ(gin/Go)は両方 **0** で誤検知なし。
+クロスランゲージの名前衝突候補を報告し、自分のリポジトリでリゾルバの動作を調査できます。結果は診断情報であり、競合ベンチマークの主張ではありません。
 
 ---
 
 ## なぜ Tree-sitter Analyzer か
 
-* **デフォルトでトークン効率**。全 MCP ツール応答は **TOON** — 表形式 JSON バリアントで、生 JSON 比 ~50-70% のペイロード削減（[実測済み不変量](tests/unit/mcp/test_output_cost_invariants.py); RFC-0012 で 0.52× を計測）。
-* **Verdict エンベロープ**。すべての応答に `verdict: SAFE | CAUTION | UNSAFE | INFO | WARN | ERROR | NOT_FOUND` が付き、オーケストレーターは再プロンプトなしで結果ごとに分岐可能。
-* **プロジェクト健全性 A-F グレーディング**。他のオープンソース ツールには無い — サイズ / 複雑度 / カバレッジ / 重複 / 依存 / 構造 / git-ホットスポットの 7 次元でプロジェクト全体を採点。
-* **13 のキュレーション済みワークフロー (Skills)**。「シンボル検索」「コール チェーン追跡」「健全性評価」「リファクター前の安全チェック」「PR レビュー」などの典型シナリオに対応するツール サブセットを事前パッケージ化。
-* **5 層の安全保護**。`edit action=safe` + `edit action=guard` + 制約 DSL + `edit action=impact` + verdict エンベロープ — エージェントが手を入れる前にリスクを *知る* よう設計。
-* **CodeGraph の厳密な CLI 上位互換・高速インデックス・一発クエリ DSL** ── 正直なコスト比較は[下記](#codegraph-との比較)。
+* **構造化出力。** MCP 応答は標準 JSON エンベロープを使用します。ペイロードの挙動はレスポンス契約テストで保護されています。
+* **Verdict エンベロープ。** すべての応答に `verdict: SAFE | CAUTION | UNSAFE | INFO | REVIEW | WARN | ERROR | NOT_FOUND` が付き、オーケストレーターは結果に応じて分岐できます。
+* **プロジェクト健全性 A-F グレーディング。** サイズ、複雑度、カバレッジ、重複、依存、構造、git ホットスポットを組み合わせて評価します。
+* **キュレーション済みワークフロー（Skills）。** 「シンボル検索」「コール チェーン追跡」「健全性評価」「リファクター前の安全チェック」「PR レビュー」などのツール サブセットを提供します。
+* **多層的な安全保護。** `edit action=safe` + `edit action=guard` + 制約 DSL + `edit action=impact` + verdict エンベロープで、編集前のリスク判断を支援します。
+* **CLI/MCP パリティと統合クエリ DSL。** 同じ解析プリミティブをエージェントとシェル ユーザーが利用できます。
 
 ---
 
@@ -122,7 +139,7 @@ name-only な code index(多くのツールが採る設計)なら、何件の呼
 | 能力 | TSA ツール | ステータス |
 |---|---|---|
 | シンボル検索 (FTS5 + **BM25 ランク付け**) | `search` action=symbol | **優位** — 関連スコア順にソート |
-| go-to-def / find-refs / コール階層を 1 回の呼び出しで | `nav` action=navigate | PRIMARY エントリポイント |
+| go-to-def / find-refs / コール階層をまとめて要求 | `nav` action=navigate | PRIMARY エントリポイント |
 | 関連シンボル N 個のソース + 関係マップを一括取得 | `structure` action=explore | 同等 |
 | 関数レベル blast radius + リスク スコア | `nav` action=impact | 同等 + リスク スコア |
 | X を呼ぶのは誰 / X は何を呼ぶ | `nav` action=callers / action=callees | 同等 |
@@ -134,10 +151,10 @@ name-only な code index(多くのツールが採る設計)なら、何件の呼
 
 | 能力 | TSA ツール | 説明 |
 |---|---|---|
-| **BM25 ランク付き検索** | 全検索ツール | min-max 正規化 relevance_score (最適=1.0 / 最弱=0.0); DSL で sort(by='confidence') |
-| **セマンティック検索 (BM25 事前フィルタ)** | `search` action=chain (`semantic()` DSL) | BM25 で 40k シンボル→約 400 に絞り込んでコサイン再ランク |
-| **プロジェクト A-F 健全性グレーディング** | `health` action=project | 7 次元 (サイズ/複雑度/依存/カバレッジ/重複/構造/git)、競合に対応無し |
-| **TOON 出力** | 全ツール、デフォルト `output_format: "toon"` | 50-70% トークン節約 |
+| **BM25 ランク付き検索** | 全検索ツール | 全結果に min-max 正規化した relevance_score; DSL で sort(by='confidence') |
+| **セマンティック検索 (BM25 事前フィルタ)** | `search` action=chain (`semantic()` DSL) | コサイン再ランク前に字句フィルタリング |
+| **プロジェクト A-F 健全性グレーディング** | `health` action=project | サイズ、複雑度、依存、カバレッジ、重複、構造、git ホットスポットを統合 |
+| **JSON 出力** | 全ツール、デフォルト `output_format: "json"` | 標準の構造化レスポンス エンベロープ |
 | **Verdict エンベロープ** | 全ツール | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
 | **Safe-to-edit ゲート** | `edit` action=safe / action=guard | 高リスク編集前に拒否 |
 | **アーキテクチャ制約 DSL** | `edit` action=constraints | 「モジュール A は B に依存禁止」→ 強制 |
@@ -153,18 +170,18 @@ name-only な code index(多くのツールが採る設計)なら、何件の呼
 | **agent_summary** | 全応答 | エンベロープに次ステップ ヒントを内蔵 |
 | **Synapse クロスファイル リゾルバ** | 内部 | import-aware、正規表現推測より強力 |
 | **時間的アクティベーション** | `nav` action=lineage | シンボル別 git 修正頻度 |
-| **1 回のファイル把握** | `project` action=smart | 健全性 + エクスポート + 依存 + 編集リスクを 1 コールで (3-4 コールを代替) |
+| **ファイル把握** | `project` action=smart | 健全性 + エクスポート + 依存 + 編集リスクをまとめた応答で返す |
 | **アーキテクチャ意思決定ジャーナル** | `project` action=journal | セッション間で推論を永続化 — 他に提供しているツールは無い |
 
-### Skills (13 のキュレーション済みワークフロー)
+### Skills
 
-CodeGraph には skill システムが存在しない。本ツールは `.claude/skills/tsa-*/` 下に 13 個を提供:
+TSA は `.claude/skills/tsa-*/` 下にキュレーション済みワークフローを提供します:
 
 `tsa-landing`、`tsa-find`、`tsa-graph`、`tsa-structure`、`tsa-deps`、`tsa-index`、`tsa-health-watch`、`tsa-edit-safety`、`tsa-edit-then-verify`、`tsa-constraints`、`tsa-pr-review`、`tsa-refactor-queue`、`tsa-temporal`。
 
-各 skill は `allowed-tools` ツール サブセット + 手順レシピ + 決定面スキーマを同梱し、エージェントは 8 個のツールから毎回選別する必要が無い。
+各 skill は `allowed-tools` ツール サブセット + 手順レシピ + 決定面スキーマを同梱し、エージェントは 8 個のツールから毎回選別する必要がありません。
 
-### 332 の CLI フラグ
+### 356 の CLI フラグ
 
 CodeGraph の CLI の厳密な上位互換。主なもの:
 
@@ -180,104 +197,28 @@ tree-sitter-analyzer --affected <file...>         # 影響を受けるテスト
 tree-sitter-analyzer --dead-code                  # 推移的到達不能
 tree-sitter-analyzer --check-constraints          # アーキテクチャ規則
 tree-sitter-analyzer --safe-to-edit <file>        # リスク時に拒否
+tree-sitter-analyzer --uml class                  # Mermaid UML class 図
 ```
 
-完全なインターフェースは [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) を参照。
+このパッケージにはスタンドアロンのファイル一覧ヘルパーも同梱されています:
+
+```bash
+list-files <dir>          # fd 相当のファイル探索
+```
+
+`search-content` と `find-and-grep` は develop で削除されました。詳細は
+[migration guide](docs/MIGRATION.md) と [`CLI codemap`](docs/CODEMAPS/cli.md) を参照。
 
 ---
 
-## CodeGraph との比較
+## 定量的主張のガバナンス
 
-### コールグラフの正確さ — CodeGraph が誤配線する箇所を TSA は正しく解決
+公開するベンチマーク、性能、競合比較の数値は、[`benchmarks/codegraph_compare/claim_registry.json`](benchmarks/codegraph_compare/claim_registry.json) の provenance-bound registry からのみ生成します。E4 証拠は、ツール名とバージョン、測定値、コーパス、ベンチマーク日付/バージョン、artifact digest を厳密に結び付ける必要があります。E4 未満の証拠は内部情報に留まり、公開文言を生成できません。[ベンチマーク runbook](benchmarks/codegraph_compare/README.md) を参照してください。
 
-トークンコストは一つの軸にすぎません。コードインテリジェンスツールの*第一の*仕事は**正しいグラフ**です。
+<!-- BEGIN GENERATED QUANTITATIVE CLAIMS -->
+<!-- END GENERATED QUANTITATIVE CLAIMS -->
 
-**このリポジトリでの両ツール ライブ インデックスの対決**（呼び出し元言語と callee 言語が異なる全コール エッジをカウント — 構造的に言語またがり誤結線; [再現可能](benchmarks/codegraph_compare/REPORT-v1.21.0.md)):
-
-| ツール | 異言語誤結線 | 総コール エッジ | 割合 |
-|---|---|---|---|
-| CodeGraph | **745** | 38,103 | 1.96 % |
-| **Tree-sitter Analyzer** | **6** | 114,160 | **0.005 %** |
-
-**異言語正確性で約 390× クリーン、かつ 3× 多くのコール エッジを解決。** CodeGraph の誤結線は 19+ 言語ペアにわたる(python→swift **408**、python→typescript 195、python→ruby 81、…); TSA の 6 件は全て単語 1 つの Java メソッド名による `java→python/php`。
-
-> **この表を信じないで — 自分のリポジトリで実行してください (CodeGraph インストール不要):**
-> ```bash
-> uvx --from tree-sitter-analyzer miswire-audit .
-> ```
-> コードをインデックスし、name-only リゾルバ(多くのインデックスが採用する設計)なら何件のコール エッジを言語をまたいで誤結線するか vs TSA が何件かを表示します — 問題のあるエッジ一覧付き(`Python sorted() → Swift func at file:line`)。`--card` でシェア可能なスコアカードを出力。
->
-> **実際の実行例:** [HuggingFace `tokenizers`](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md) (Rust+Python+JS+TS) で name-only リゾルバなら **1,259** 件のコール エッジを誤結線(JS `tokenize()` → Rust def を含む) — TSA: **0**。単一言語リポ(`gin`、Go)では両方 **0** — 誤検知なし。[さらなる例 →](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)
-
-具体的に:
-
-| 呼び出し(Python `_resolve_entry_points` / `build_response`) | CodeGraph | TSA |
-|---|---|---|
-| `sorted()`(Python 組み込み) | ❌ callee = **`tests/golden/corpus_swift.swift` の Swift `func sorted`**(リポジトリ全体で **299** Python 関数の callee として配線) | ✅ `builtin` — 言語をまたぐ edge を作らない |
-| `fts_search()` / `fts_search_ranked()` | ❌ 実メソッドではなく**テストモック**(`FallbackCache`)に束縛 | ✅ source メソッド(`_ast_cache_query.py` / `ast_cache.py`)に解決 |
-
-TSA の per-language リゾルバは **13 言語** (Python · Java · Go · JS · TS · C · C++ · Rust · C# · Kotlin · Ruby · PHP · Swift) にわたって全ての束縛を**言語ファミリ**でゲートし、全解決パスで非テスト呼び出し元に対して**テスト専用定義を降格**します。Python 関数が *Swift メソッドを呼ぶ*、あるいは本番コードの呼び出しがテストモックを指す、というのは誤った構造データです。
-
-#### 正確かつ完全 — コール エッジの 96.3% を分類
-
-未知エッジが多い正確なグラフは半分のグラフにすぎません。TSA の解決カスケードは現在**コール エッジの 96.3%** を分類(83.9% から向上)し、**ゼロ**の異言語またはテスト シャドウ誤結線 — 全ての向上はプロジェクトが互換言語のそのシンボルを所有しないことでゲートされ、シャドウは常に保護されます:
-
-| リゾルバ ティア | 解決対象 | ソース |
-|---|---|---|
-| binding cascade | local / self / import / unique-method / single-global | RFC-0002 |
-| stdlib **メソッド** 名 (`write_text`、`strip`、`items`) | `str` / `Path` / `dict` / `re` / `argparse` メソッド → `stdlib` | [RFC-0004](rfcs/0004-stdlib-method-resolution.md) |
-| external **ライブラリ** メソッド (`raises`、`given`、`MagicMock`) | pytest / hypothesis / mock → `external` | [RFC-0005](rfcs/0005-external-method-resolution.md) |
-
-残りの ~4% `unknown` は genuinely 解決不能なダイナミック ディスパッチ(`BaseTool.execute()`)、コンストラクタ、曖昧な同名プロジェクト メソッドが支配 — 静的解析の偽陽性の床であり、推測するのではなく正直に残されています。
-
-> **マルチ言語対応。** 異言語安全な解決はもはや Python 専用ではありません。per-language **リゾルバ レジストリ** ([RFC-0010](rfcs/0010-resolver-language-registry.md)) が各言語に独自の分類カスケードを与え、言語ファミリでゲートして束縛が非互換言語にまたがらないようにします。言語の追加は新しいリゾルバ ファイル 1 つ (RFC-0010) とわずかなコール エクストラクション配線で完了します。
-
-### TSA が優る点
-
-- **インデックス構築速度。** commit 後の冗長な edge-refresh パスを除去し、django のコールド index(約 2,950 ファイル)を **181 秒 → 97 秒(−46%)**に短縮。大規模リポジトリほど効果大。変更なしファイルの再 index は content-hash ルックアップ。
-- **厳密な CLI 上位互換。** すべての MCP ツールに CLI 等価物がある(CodeGraph の CLI はより薄い)。*振る舞い*のデフォルト(ランキング・上限・切り詰め)は両サーフェスで同期。出力フォーマットだけは意図的に分岐 ── MCP は TOON(エージェント向けトークン効率)、CLI は JSON(人間/`jq` 向け)。
-- **一発クエリの表現力。** jQuery 風 chain DSL ── `search('X').callees(depth=2).explore(include_code=true).answer(compact=true)` ── がフロー全体のサブグラフ + source を 1 コールで返す。JS 風の `true`/`false` でエージェントが自然に書ける。
-- **構造化 + トークン意識の出力。** MCP は TOON デフォルト(JSON より 50–70% 小)、per-call 切り詰めヒント、全ランキングで一貫した test ファイル降格。
-- **広さ。** ヘルス採点、safe-to-edit / change-impact ゲート、13 の curated Skills、広い言語対応。
-
-### トークン コストについて — 修正したベンチマーク
-
-> **訂正 (2026-06)。** 以前のこの節は「コスト中央値 −11% で CodeGraph に勝つ」と主張していました。そのベンチマークにはハーネスのバグがあり、TSA アームの MCP サーバが明示的なプロジェクトルート無しで起動され、対象リポジトリではなく **tree-sitter-analyzer 自身のソース**を解析していたため、数値は無意味でした。バグは修正済み(ハーネスは `--project-root` を渡す)。誇張した主張は撤回し、正直な比較を以下に示します。
-
-トークン コストは CodeGraph が優位だった唯一の軸でした。[RFC-0006](rfcs/0006-context-progressive-disclosure.md) プログレッシブ ディスクロージャにより、このギャップの大半が解消されました: `nav context` が **リーン デフォルト**を返すようになり、フラットなノード/エッジ グラフはオプトイン `include_graph=true` の後ろへ移動。このリポジトリでの計測 (4 代表的クエリ、TOON):
-
-| コンテキスト ペイロード | 文字数 |
-|---|---|
-| TSA デフォルト、RFC-0006 前 | ~13,900 |
-| **TSA デフォルト、後（リーン）** | **~6,600 (−53%)** |
-| TSA `include_graph=true` (フル、オプトイン) | ~13,900 |
-| CodeGraph ベースライン | ~4,400 |
-
-支配的なコンテキスト呼び出しが **CodeGraph の ~2.9× から ~1.5× に縮小**。
-
-修正後のハーネス(Claude Sonnet、gin + django、MCP アーム、エラーなし)でのタスクあたり**中央値コスト**:
-
-| アーム | 中央値コスト（RFC-0006 前） | tool calls | file reads |
-|---|---|---|---|
-| CodeGraph MCP | **約 $0.27** | 7 | 2 |
-| Tree-sitter Analyzer MCP | 約 $0.44 | 7 | 1 |
-| MCP なし (grep/read) | 約 $0.34 | 14 | 7 |
-
-### Reactive push + edge-kind 内訳 — CodeGraph にできない 2 つのこと
-
-- **Reactive push / サブスクリプション ([RFC-0001](rfcs/0001-reactive-push.md)、実装済み)。** `search action=subscribe` が Hyphae セレクターを登録して `tsa://hyphae/{selector}` MCP リソース URI を返します。対象コードが変更されるとサーバが resource-updated 通知を発行 — エージェントはポーリングではなくリソースを再読します。CodeGraph にプッシュやサブスクリプション チャネルはありません。
-- **`index action=status` の `edges_by_kind`。** ステータスが per-edge-kind カウント(calls / extends / implements / imports …)を返し、単純な `total_edges` ではありません。CodeGraph は平坦な合計のみを提供します。
-
-両ツールがインデックス済みの任意リポジトリで修正を再現:
-
-```bash
-# CodeGraph: 言語またぎ / test-shadow の callee を返す
-#   (例: `sorted` → corpus_swift.swift, `fts_search` → テストモック)
-# リゾルバ修正後の TSA: 言語的に正しく、source を優先
-tree-sitter-analyzer --callees _resolve_entry_points --format json
-```
-
-> コスト数値の再現: `uv run python benchmarks/codegraph_compare/run.py phase full-warm --repos gin,django`。原始エンベロープとハーネス修正は同ディレクトリ。
+生成項目がない場合、公開が承認された定量的主張は現在ありません。上記の定性的説明は境界を明示した製品能力であり、測定済みの優位性を主張するものではありません。
 
 ---
 
@@ -288,13 +229,14 @@ tree-sitter-analyzer --callees _resolve_entry_points --format json
                                           ↓
        nav (navigate) / structure (explore) / nav (callers) / ...
                                           ↓
-                            TOON 圧縮エンベロープ
+                            JSON レスポンス エンベロープ
                             (verdict + agent_summary + データ)
                                           ↓
                                MCP クライアント / CLI 消費者
 ```
 
-インデックスは最初のクエリで遅延構築され、ファイル変更時はコンテンツ ハッシュ差分で増分更新 (`index` action=sync)。8 個のファサード全てが同じ `.ast-cache/` を共有し、クエリとフォローアップは作業を共有する。
+8 個のツール（MCP）がインデックス済みクエリと直接的なソース解析を提供します。
+索引済みのシンボル/コンテキストクエリの前に、`tree-sitter-analyzer --ast-cache --ast-cache-mode index --format json` で AST インデックスを明示的に構築してください。ソース変更後は `index` action=sync でリフレッシュします。索引済みクエリはキャッシュされた AST データを再利用します。自動ウォームアップは個々のツールに固有です。
 
 ---
 
@@ -309,11 +251,12 @@ claude mcp add tree-sitter-analyzer \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
-検証: `claude mcp list`。13 の `tsa-*` skills は `.claude/skills/` から自動検出される。
+検証: `claude mcp list`。同梱の `tsa-*` skills は `.claude/skills/` から自動検出されます。
 
 **PyPI / uvx ユーザー** — 同梱スキルを一度インストール:
 ```bash
-tree-sitter-analyzer --install-skills
+tree-sitter-analyzer --install-skills              # ./.claude/skills/ へ (このプロジェクトのみ)
+tree-sitter-analyzer --install-skills-global       # ~/.claude/skills/ へ (全プロジェクト共通)
 ```
 git clone ユーザーはすでに含まれているため不要です。
 </details>
@@ -361,22 +304,61 @@ git clone ユーザーはすでに含まれているため不要です。
 すべて Claude Desktop と同じ `mcpServers` スキーマを使用。Cursor: **設定 → MCP**。Cline: MCP パネル → 設定編集。Continue: `~/.continue/config.json` の `experimental.modelContextProtocolServers`。Roo Code: MCP パネル → MCP 設定編集。
 </details>
 
+<details>
+<summary><b>🐳 Docker</b> (ローカルに Python / uv が無い場合)</summary>
+
+このリポジトリには、ソースから MCP サーバー (stdio トランスポート) をビルドする [`Dockerfile`](Dockerfile) が同梱されています。そのためイメージは常にコミット済みのコードと一致します。
+
+```bash
+# 一度だけビルド
+docker build -t tree-sitter-analyzer-mcp .
+
+# 現在のリポジトリに対して実行 (サーバーは stdio で MCP を話す; -i は stdin を開いたままにする)
+docker run --rm -i --user "$(id -u):$(id -g)" \
+  -v "$PWD:/work" -w /work tree-sitter-analyzer-mcp
+```
+
+`--user "$(id -u):$(id -g)"` はホストの UID/GID で実行するため、バインド マウントされたリポジトリ下の `.ast-cache/`、意思決定ジャーナル、`edit` による書き込みはすべて root ではなくあなたの所有になります。
+
+MCP クライアント設定 (コンテナ内のプロジェクト ルートはマウント ポイント `/work`):
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--user", "1000:1000",
+        "-v", "/絶対パス/プロジェクト:/work",
+        "-w", "/work",
+        "-e", "TREE_SITTER_PROJECT_ROOT=/work",
+        "tree-sitter-analyzer-mcp"
+      ]
+    }
+  }
+}
+```
+</details>
+
 > ⚠️ `TREE_SITTER_PROJECT_ROOT` は **絶対パス** が必須。サーバーは `SecurityValidator` でエスケープを防ぐセキュリティ境界を強制する。
 
 ---
 
 ## サポート言語
 
-21 言語プラグイン; 13 はインデクサーへ完全統合 (シンボル + コール グラフ) + 2 はシンボル インデックス済み (コール グラフ配線待ち) + 5 個 (data/markup) は CLI 単一ファイル パス + 1 個スキャフォールド (プラグインあり、インデクサー配線待ち)。bash と scala は v1.22.0 で昇格; 2026-05-24 のパッチで数か月間サイレントにスキップされていた Swift / Kotlin / Ruby / PHP / C# がアンブロック。
-
+<!-- BEGIN GENERATED LANGUAGE SUPPORT INVENTORY -->
+ランタイムレジストリから生成。**22 言語プラグイン**; 13 は `pipeline_registered`（非 E2E）、3 は `index_admitted`、0 は `call_dispatch_only`、5 個は data/markup、1 個はスキャフォールド。登録は正のクロスファイル束縛を保証しない。
 | ティア | 言語 |
 |---|---|
-| **完全インデックス + シンボル + コール グラフ** | Python · Java · JavaScript · TypeScript · Go · Rust · C · C++ · C# · Swift · Kotlin · Ruby · PHP |
-| **完全インデックス + シンボル (コール グラフ配線待ち)** | Bash · Scala |
-| **単一ファイル解析 (CLI)** | HTML · CSS · Markdown · SQL · YAML |
-| **スキャフォールド (プラグイン有 / インデクサー結線待ち)** | json |
+| **`pipeline_registered`（パイプライン登録済み、非 E2E）** | C · C++ · C# · Go · Java · JavaScript · Kotlin · PHP · Python · Ruby · Rust · Swift · TypeScript |
+| **`index_admitted`（インデックス受け入れ済み）** | Bash · Lua · Scala |
+| **`call_dispatch_only`（call dispatch のみ）** |  |
+| **単一ファイル解析 (CLI)** | CSS · HTML · Markdown · SQL · YAML |
+| **スキャフォールド (プラグイン有 / インデクサー結線待ち)** | JSON |
 
-CodeGraph も類似の集合をサポート; 両ツール共に未実装の主流コード言語は **Dart, Vue, Svelte, Lua** のみ (次スプリント バックログ)。
+Lua はインデックス受け入れ済みで call dispatch と resolver slot も持つが、import dispatch とクロスファイル E2E 証拠は未確認。
+<!-- END GENERATED LANGUAGE SUPPORT INVENTORY -->
 
 ---
 
@@ -384,10 +366,34 @@ CodeGraph も類似の集合をサポート; 両ツール共に未実装の主�
 
 基本的に設定不要。デフォルトでエージェントに接続して忘れて構わない:
 
-* **出力形式**: TOON。`output_format: "json"` で呼び出し毎にオーバーライド可。
+* **出力形式**: JSON。明示的に `output_format: "json"` を指定できます。
 * **プロジェクト ルート**: `TREE_SITTER_PROJECT_ROOT` (env, MCP) または `--project-root` (CLI)。
 * **キャッシュ場所**: `<project>/.ast-cache/`。安全に削除可 — 自動再構築される。
 * **任意**: `TREE_SITTER_OUTPUT_PATH` 大出力の書き込み先。
+
+### スナップショット証拠のプラットフォーム範囲
+
+通常のファイル解析、インデックスの作成/更新、レガシー インデックス経由のクエリは、
+認証済みスナップショット アクセスとは別物です。既存の Windows 上の操作パスは、
+新しいプライベート WAL スナップショット カーネルを必要としません。これらの操作は
+キャッシュを作成・更新できますが、認証済みの読み取り専用アクセスは別の契約に従います。
+
+このスナップショット実装が追加するのは **POSIX 専用のプライベート データベース/WAL 証拠キャプチャ**であり、
+記述子相対操作、`O_NOFOLLOW`、安全な外部一時ディレクトリ、source/manifest/projection
+チェックの成功を要求します。これは Windows の読み取り専用スナップショット パリティを提供する
+ものでも、明示的な `access_mode="read_existing"` 消費者向けの既存の資格ゲートを拡張するもの
+でもありません。
+
+Windows のスナップショット認証は develop ベースラインの時点ですでに利用不可であり
+（`SECURE_FD_SNAPSHOT_UNSUPPORTED`）、この実装でも引き続き利用できません
+（`WAL_PRIVATE_SNAPSHOT_UNSUPPORTED`、`completeness="unknown"`、スナップショット トークンなし）。
+これは物理インデックスが空であることや、通常のクエリが無効化されていることを意味するものでは
+ありません。新しいキャプチャ パスに対するネイティブ Windows 資格検証は実施されておらず、
+ローカルの能力テストはその代替にはなりません。
+
+ファイル単位の `certified_at` 状態は、完全なスナップショット権限の代替にはなりません。
+`partial_at` の永続履歴は **本 PR では未実装であり、含まれていません**。
+不完全または検証不能な projection は、認証済み消費者を許可できません。
 
 ---
 
@@ -397,15 +403,15 @@ CodeGraph も類似の集合をサポート; 両ツール共に未実装の主�
 |---|---|
 | テスト通過 | 包括的テストスイート ✅ |
 | カバレッジ | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
-| 型安全性 | 100% mypy |
-| プラットフォーム | macOS · Linux · Windows |
+| 型安全性 | mypy |
+| プラットフォーム | macOS · Linux · Windows（通常操作）。スナップショット証拠は上記のとおりより狭い範囲となる |
 | Pre-commit ゲート | ruff · bandit · mypy · pyupgrade · detect-secrets · tsa-codemap-sync |
 
 ```bash
-uv run pytest -q                                # フル スイート
-uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # 開発時の高速ループ
-PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # CPUを抑えたいとき
-PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # ほどほどな並列
+uv run pytest -q                                # 境界付きのローカル高速ゲート
+uv run pytest tests/ -q --timeout=120 -m "not e2e and not network and not benchmark"  # 包括的なローカル スイート
+PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1                  # 高速ゲート、ワーカー1 (CPU負荷を抑える)
+PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q --maxfail=1                  # 高速ゲート、ワーカー2 (バランス型)
 uv run pytest --lf --maxfail=1                  # 前回失敗したテストだけ再実行
 uv run python check_quality.py --new-code-only  # 品質ゲート
 ```
@@ -416,33 +422,11 @@ uv run python check_quality.py --new-code-only  # 品質ゲート
 
 | 症状 | 修正 |
 |---|---|
-| `.swift / .kt / .rb / .php / .cs` で `unsupported language` | ≥ 1.12.x へ更新 — 5 言語 gap は commit `50e99a8f` で修正済み。extras 区分の文法モジュールはベースインストールに同梱されません。`pip install "tree-sitter-analyzer[swift]"`(または `kotlin`、`ruby`、`php`、`csharp`)で追加してください |
-| MCP サーバーがクライアントに表示されない | `TREE_SITTER_PROJECT_ROOT` は**絶対パス**必須; 設定編集後にクライアント再起動。[TREE\_SITTER\_PROJECT\_ROOT に相対パスを指定した場合](#tree_sitter_project_root-に相対パスを指定した場合)も参照 |
-| `database is locked` | `.ast-cache/index.db` を保持する他プロセスを停止; 継続する場合は `rm -rf .ast-cache && tree-sitter-analyzer --autoindex` |
-| 初回呼び出しが遅い | 初回はインデックスを構築。後続はサブ秒。事前に `--full-index` を実行すれば償却可能 |
-| エージェントが誤ったツールを選ぶ | `tsa-*` skill (`/tsa-graph`、`/tsa-find` 等) を使用 — 各 skill は可視ツールを 1 ワークフローに制限 |
-
-### TREE\_SITTER\_PROJECT\_ROOT に相対パスを指定した場合
-
-**症状:** MCP サーバーはエラーなく起動するが、TSA が誤った解析結果を返すか `project root not found` のようなエラーが発生する。
-
-**原因:** `TREE_SITTER_PROJECT_ROOT` に相対パス（例: `./myproject`）が設定されている。`uvx` がサーバーを起動するとき、プロセスの作業ディレクトリがインストール実行時と異なる場合があり、相対パスが誤った場所に解決される。
-
-**修正:** 常に絶対パスを使用する:
-
-```bash
-# 正しい
-"TREE_SITTER_PROJECT_ROOT": "/home/user/myproject"
-
-# これも正しい（install.sh が実行時に解決する）
-"TREE_SITTER_PROJECT_ROOT": "$(pwd)"        # または $(realpath .)
-
-# 誤り
-"TREE_SITTER_PROJECT_ROOT": "./myproject"
-"TREE_SITTER_PROJECT_ROOT": "myproject"
-```
-
-`tree-sitter-analyzer --doctor` で設定を確認できます。
+| `.swift / .kt / .rb / .php / .cs` で `unsupported language` | 現行のサポート対象リリースへ更新してください — この言語欠落は commit `50e99a8f` で修正済みです。extras 区分の文法モジュールはベースインストールに同梱されません。`pip install "tree-sitter-analyzer[swift]"`(または `kotlin`、`ruby`、`php`、`csharp`)で追加してください。 |
+| MCP サーバーがクライアントに表示されない | `TREE_SITTER_PROJECT_ROOT` は**絶対パス**である必要があります（例: `$(pwd)` や `/home/user/project`）。相対パスだとサーバーが誤ったディレクトリに対して解決してしまいます。設定編集後はクライアントを再起動してください。`tree-sitter-analyzer --doctor` で確認できます。 |
+| `database is locked` | `.ast-cache/index.db` を保持する他プロセスを停止してください。継続する場合は `rm -rf .ast-cache && tree-sitter-analyzer --full-index` を実行してください。 |
+| 初回呼び出しが遅い・インデックスがない | 一部のツールは自動でインデックスをウォームアップします。索引済みクエリの前に `--full-index` を事前に実行してください。 |
+| エージェントが誤ったツールを選ぶ | `tsa-*` skill (`/tsa-graph`、`/tsa-find` 等) を使用してください — 各 skill は可視ツールを専用ワークフローに制限します。 |
 
 ---
 
@@ -465,3 +449,4 @@ uv run pytest -q
 * 💖 [スポンサー](https://github.com/sponsors/aimasteracc) — 継続的な MCP / Skills 開発を支援。
 * リード スポンサー: **[@o93](https://github.com/o93)**。
 * MIT ライセンス — [LICENSE](LICENSE) を参照。
+* リリース履歴: [CHANGELOG.md](CHANGELOG.md)。

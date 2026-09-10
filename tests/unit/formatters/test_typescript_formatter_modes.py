@@ -13,132 +13,6 @@ from tree_sitter_analyzer.formatters.typescript_formatter import (
 )
 
 
-class TestTypeScriptFormatterCompactTable:
-    """Test _format_compact_table method"""
-
-    @pytest.fixture
-    def formatter(self) -> TypeScriptTableFormatter:
-        return TypeScriptTableFormatter("compact")
-
-    def test_compact_table_with_classes(self, formatter):
-        data = {
-            "file_path": "/src/UserService.ts",
-            "classes": [
-                {
-                    "name": "UserService",
-                    "class_type": "class",
-                    "line_range": {"start": 10, "end": 30},
-                }
-            ],
-            "functions": [],
-            "variables": [],
-            "package": {"name": "com.example"},
-        }
-        result = formatter.format(data)
-        assert "# UserService" in result
-        assert "## Info" in result
-        assert "| Package | com.example |" in result
-        assert "| Methods | 0 |" in result
-        assert "| Fields | 0 |" in result
-
-    def test_compact_table_no_classes(self, formatter):
-        data = {
-            "file_path": "utils.ts",
-            "classes": [],
-            "functions": [],
-            "variables": [],
-        }
-        result = formatter.format(data)
-        assert "# utils" in result
-        assert "## Info" in result
-        assert "| Methods | 0 |" in result
-
-    def test_compact_table_with_methods(self, formatter):
-        data = {
-            "file_path": "service.ts",
-            "classes": [
-                {
-                    "name": "Svc",
-                    "class_type": "class",
-                    "line_range": {"start": 1, "end": 40},
-                }
-            ],
-            "functions": [
-                {
-                    "name": "getUser",
-                    "return_type": "User",
-                    "parameters": [{"name": "id", "type": "string"}],
-                    "visibility": "public",
-                    "line_range": {"start": 5, "end": 7},
-                    "complexity_score": 2,
-                },
-                {
-                    "name": "handle",
-                    "return_type": "void",
-                    "parameters": ["event: Event"],
-                    "visibility": "public",
-                    "line_range": {"start": 10, "end": 12},
-                    "complexity_score": 0,
-                    "javadoc": "Handles the request",
-                },
-            ],
-            "variables": [],
-        }
-        result = formatter.format(data)
-        assert "## Methods" in result
-        assert "getUser" in result
-        assert "handle" in result
-
-    def test_compact_table_with_fields(self, formatter):
-        data = {
-            "file_path": "model.ts",
-            "classes": [
-                {
-                    "name": "Model",
-                    "class_type": "class",
-                    "line_range": {"start": 1, "end": 10},
-                }
-            ],
-            "functions": [],
-            "variables": [{"name": "x"}, {"name": "y"}, {"name": "z"}],
-        }
-        result = formatter.format(data)
-        assert "| Fields | 3 |" in result
-
-    def test_compact_table_with_package_none(self, formatter):
-        data = {
-            "file_path": "a.ts",
-            "classes": [
-                {
-                    "name": "A",
-                    "class_type": "class",
-                    "line_range": {"start": 1, "end": 5},
-                }
-            ],
-            "functions": [],
-            "variables": [],
-            "package": None,
-        }
-        result = formatter.format(data)
-        assert "| Package |  |" in result
-
-    def test_compact_table_no_methods(self, formatter):
-        data = {
-            "file_path": "empty.ts",
-            "classes": [
-                {
-                    "name": "E",
-                    "class_type": "class",
-                    "line_range": {"start": 1, "end": 3},
-                }
-            ],
-            "functions": [],
-            "variables": [],
-        }
-        result = formatter.format(data)
-        assert "## Methods" not in result
-
-
 class TestTypeScriptFormatterSignatureHelpers:
     """Test _create_signature / _create_compact_signature / _create_csv_signature"""
 
@@ -159,18 +33,6 @@ class TestTypeScriptFormatterSignatureHelpers:
         assert "public readonly x:number" in result
         assert "y:string" in result
         assert "(public readonly x:number, y:string):number" == result
-
-    def test_create_csv_signature_with_modifiers(self, formatter):
-        method = {
-            "name": "bar",
-            "return_type": "void",
-            "parameters": [
-                {"name": "self", "type": "Service", "modifiers": ["public"]},
-            ],
-        }
-        result = formatter._create_csv_signature(method)
-        assert "public self:Service" in result
-        assert "(public self:Service):void" == result
 
     def test_create_compact_signature_dict_params(self, formatter):
         method = {
@@ -199,6 +61,14 @@ class TestTypeScriptFormatterFormatTable:
         return TypeScriptTableFormatter("full")
 
     def test_format_table_changes_type_temporarily(self, formatter):
+        """format_table() must restore format_type after a temporary switch.
+
+        "compact" is no longer a valid table_type (removed format), so this
+        uses "signatures" as the temporary type instead — it is still a
+        distinct, currently-supported format_type for TypeScript — while
+        preserving the original intent of the test: verifying that
+        format_type is restored to its original value afterward.
+        """
         data = {
             "file_path": "app.ts",
             "classes": [],
@@ -206,10 +76,10 @@ class TestTypeScriptFormatterFormatTable:
             "variables": [],
         }
         original = formatter.format_type
-        result = formatter.format_table(data, "compact")
+        result = formatter.format_table(data, "signatures")
         restored = formatter.format_type
         assert original == restored
-        assert "## Info" in result
+        assert "[signatures]" in result
 
     def test_format_table_default_type(self, formatter):
         data = {
@@ -236,6 +106,8 @@ class TestTypeScriptFormatterFormatSummary:
         return TypeScriptTableFormatter("full")
 
     def test_format_summary_delegates_to_compact(self, formatter):
+        """format_summary() delegates to _format_compact_table, which now
+        raises NotImplementedError since the compact format was removed."""
         data = {
             "file_path": "summary.ts",
             "classes": [
@@ -248,8 +120,8 @@ class TestTypeScriptFormatterFormatSummary:
             "functions": [],
             "variables": [],
         }
-        result = formatter.format_summary(data)
-        assert "## Info" in result
+        with pytest.raises(NotImplementedError, match="Compact format removed"):
+            formatter.format_summary(data)
 
 
 class TestTypeScriptFormatterFormatAdvanced:

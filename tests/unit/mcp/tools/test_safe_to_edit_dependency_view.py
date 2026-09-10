@@ -2,10 +2,13 @@
 
 from pathlib import Path
 
+import pytest
+
 from tree_sitter_analyzer.mcp.tools.utils import safe_to_edit_helpers
 from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
     FileDependencyView,
     _extract_import_specs,
+    _import_needles_for_target,
     _iter_dependency_source_files,
     _resolve_import_spec,
     _target_dependencies,
@@ -55,6 +58,23 @@ def test_safe_graph_lookup_does_not_match_partial_basename_suffix() -> None:
     assert safe_dependencies(view, "ain.py") == []
 
 
+def test_resolve_import_spec_with_no_matching_file_returns_none(
+    tmp_path: Path,
+) -> None:
+    """A spec whose candidates do not exist on disk resolves to None."""
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "main.py").write_text("x = 1\n", encoding="utf-8")
+
+    resolved = _resolve_import_spec("missing.module", "pkg/main.py", tmp_path)
+    assert resolved is None
+
+
+def test_import_needles_for_init_package_add_package_names() -> None:
+    """An __init__.py target yields package-level needles, not the basename."""
+    needles = _import_needles_for_target("pkg/__init__.py")
+    assert needles == {"pkg/__init__", "pkg.__init__", "pkg"}
+
+
 def test_build_file_dependency_view_finds_python_imports_and_importers(
     tmp_path: Path,
 ) -> None:
@@ -92,6 +112,120 @@ def test_build_file_dependency_view_finds_typescript_imports(tmp_path: Path) -> 
     view = build_file_dependency_view(str(target), str(tmp_path))
 
     assert view.dependencies_of("src/main.ts") == ["src/dep.ts", "src/legacy.ts"]
+
+
+def test_live_node_imports_include_static_dynamic_imports(tmp_path: Path) -> None:
+    target = _write(
+        tmp_path,
+        "src/main.ts",
+        (
+            'const quoted = import("./quoted.js");\n'
+            "const template = import(`./template.js`);\n"
+            'const options = import("./options.js", '
+            '{ with: { type: "json" } });\n'
+            "const unknown = import(`./${name}.js`);\n"
+        ),
+    )
+    _write(tmp_path, "src/quoted.ts", "export const quoted = true;\n")
+    _write(tmp_path, "src/template.ts", "export const template = true;\n")
+    _write(tmp_path, "src/options.ts", "export const options = true;\n")
+
+    view = build_file_dependency_view(str(target), str(tmp_path))
+
+    assert view.dependencies_of("src/main.ts") == [
+        "src/options.ts",
+        "src/quoted.ts",
+        "src/template.ts",
+    ]
+
+
+@pytest.mark.parametrize("suffix", ["?worker", "#fragment"])
+def test_live_node_import_strips_query_and_fragment(
+    tmp_path: Path, suffix: str
+) -> None:
+    target = _write(
+        tmp_path,
+        "src/main.ts",
+        f'import worker from "./worker.js{suffix}";\n',
+    )
+    _write(tmp_path, "src/worker.ts", "export default true;\n")
+
+    view = build_file_dependency_view(str(target), str(tmp_path))
+
+    assert view.dependencies_of("src/main.ts") == ["src/worker.ts"]
+
+
+@pytest.mark.parametrize(
+    ("source_suffix", "emitted_suffix"),
+    [(".mjs", ".mjs"), (".cjs", ".cjs"), (".mts", ".mjs"), (".cts", ".cjs")],
+)
+def test_build_file_dependency_view_supports_node_module_extensions(
+    tmp_path: Path, source_suffix: str, emitted_suffix: str
+) -> None:
+    target = _write(
+        tmp_path,
+        f"src/main{source_suffix}",
+        f"import {{ dep }} from './dep{emitted_suffix}';\n",
+    )
+    _write(tmp_path, f"src/dep{source_suffix}", "export const dep = 1;\n")
+    _write(
+        tmp_path,
+        f"src/caller{source_suffix}",
+        f"import './main{emitted_suffix}';\n",
+    )
+
+    view = build_file_dependency_view(str(target), str(tmp_path))
+
+    assert view.dependencies_of(f"src/main{source_suffix}") == [
+        f"src/dep{source_suffix}"
+    ]
+    assert view.dependents_of(f"src/main{source_suffix}") == [
+        f"src/caller{source_suffix}"
+    ]
+
+
+def test_build_file_dependency_view_parses_side_effect_node_imports(
+    tmp_path: Path,
+) -> None:
+    target = _write(tmp_path, "src/main.mts", "import './setup.mjs';\n")
+    _write(tmp_path, "src/setup.mts", "export const ready = true;\n")
+
+    view = build_file_dependency_view(str(target), str(tmp_path))
+
+    assert view.dependencies_of("src/main.mts") == ["src/setup.mts"]
+
+
+def test_live_node_import_resolves_bounded_parent_traversal(tmp_path: Path) -> None:
+    target = _write(
+        tmp_path,
+        "src/pages/view.mts",
+        'import { util } from "../util.mjs";\n',
+    )
+    _write(tmp_path, "src/util.mts", "export const util = true;\n")
+
+    view = build_file_dependency_view(str(target), str(tmp_path))
+
+    assert view.dependencies_of("src/pages/view.mts") == ["src/util.mts"]
+
+
+@pytest.mark.parametrize(
+    "specifier",
+    ["../../escape.mjs", "./../../escape.mjs", "/escape.mjs", "..\\escape.mjs"],
+)
+def test_live_node_import_rejects_repository_escape(
+    tmp_path: Path, specifier: str
+) -> None:
+    _write(tmp_path.parent, "escape.mjs", "export const escaped = true;\n")
+
+    assert _resolve_import_spec(specifier, "src/main.mts", tmp_path) is None
+
+
+def test_live_typescript_js_specifier_does_not_resolve_to_jsx(
+    tmp_path: Path,
+) -> None:
+    _write(tmp_path, "src/dep.jsx", "export const dep = 1;\n")
+
+    assert _resolve_import_spec("./dep.js", "src/main.ts", tmp_path) is None
 
 
 def test_build_file_dependency_view_finds_java_imports(tmp_path: Path) -> None:
@@ -178,9 +312,157 @@ def test_iter_dependency_source_files_skips_hidden_files(tmp_path: Path) -> None
     assert [path.name for path in files] == ["main.py"]
 
 
+def test_dynamic_import_plain_string_yields_spec() -> None:
+    assert _extract_import_specs('import("./dev.js");\n', ".js") == {"./dev.js"}
+
+
+def test_dynamic_import_with_options_object_yields_spec() -> None:
+    source = 'import("./dev.js", { with: { type: "json" } });\n'
+    assert _extract_import_specs(source, ".js") == {"./dev.js"}
+
+
+def test_dynamic_import_with_concatenated_suffix_yields_no_spec() -> None:
+    """A computed specifier must not be recorded by its literal prefix.
+
+    ``import("./dev.js" + suffix)`` selects a module that is unknowable
+    statically. Recording ``./dev.js`` invents an edge that is wrong AND
+    hides the real one, so the prefix must not be admitted at all.
+    """
+    assert _extract_import_specs('import("./dev.js" + suffix);\n', ".js") == set()
+
+
+def test_dynamic_import_template_literal_yields_spec() -> None:
+    assert _extract_import_specs("import(`./dev.js`);\n", ".js") == {"./dev.js"}
+
+
+def test_dynamic_import_template_literal_with_concat_yields_no_spec() -> None:
+    """The template-literal branch has the same computed-prefix hole."""
+    assert _extract_import_specs("import(`./dev.js` + suffix);\n", ".js") == set()
+
+
 def test_import_spec_helpers_cover_unsupported_and_unresolved_cases(
     tmp_path: Path,
 ) -> None:
     assert _extract_import_specs("package main\n", ".go") == set()
     assert _resolve_import_spec("..parent", "pkg/main.py", tmp_path) is None
     assert _resolve_import_spec("missing.module", "pkg/main.py", tmp_path) is None
+
+
+# ---------------------------------------------------------------------------
+# L1 fail-open bug tests (2026-08-21)
+# When project_root is a relative path ("." or ".."), to_relative falls back
+# to the absolute path, so safe_dependents looks up the wrong key in
+# FileDependencyView._dependents and returns []. Both bugs are proven below.
+# ---------------------------------------------------------------------------
+
+
+def test_to_relative_with_unresolved_root_falls_back_to_absolute_path(
+    tmp_path: Path,
+) -> None:
+    # Issue 2026-08-21: to_relative(abs_path, ".") raises ValueError (abs path
+    # cannot be made relative to a relative root) and falls back to abs_path.
+    # The fix applies os.path.realpath to both sides in _collect_safe_to_edit_facts.
+    import os
+
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        _normalize_relative_path,
+        to_relative,
+    )
+
+    abs_target = str(tmp_path / "pkg" / "main.py")
+    abs_root = str(tmp_path)
+
+    # With both sides absolute: correct relative path
+    good = _normalize_relative_path(to_relative(abs_target, abs_root))
+    assert good == "pkg/main.py"
+
+    # With relative root ".": falls back to absolute path (the bug)
+    bad = _normalize_relative_path(to_relative(abs_target, "."))
+    assert bad != "pkg/main.py"
+
+    # With realpath on both sides: resolves correctly regardless of input form
+    fixed = _normalize_relative_path(
+        to_relative(os.path.realpath(abs_target), os.path.realpath(abs_root))
+    )
+    assert fixed == "pkg/main.py"
+
+
+def test_safe_dependents_returns_empty_for_absolute_path_key(tmp_path: Path) -> None:
+    # Issue 2026-08-21: when rel_path is the absolute path of the target
+    # (because project_root was not realpath'd), safe_dependents returns []
+    # even though FileDependencyView._dependents has the correct relative key.
+    abs_target = str(tmp_path / "pkg" / "main.py")
+
+    view = FileDependencyView(
+        rel_path="pkg/main.py",
+        dependencies=set(),
+        dependents={"app/caller.py"},
+    )
+
+    # Correct key finds the dependents
+    assert safe_dependents(view, "pkg/main.py") == ["app/caller.py"]
+
+    # Absolute path key misses (the fail-open)
+    abs_key = abs_target.replace("\\", "/")
+    assert safe_dependents(view, abs_key) == []
+
+
+def test_uncertified_dependents_escalate_safe_verdict_to_caution(
+    tmp_path: Path,
+) -> None:
+    # Issue 2026-08-21: when FileDependencyView.dependents_answer.certified=False
+    # and the base verdict would be SAFE, _format_safe_to_edit_result must
+    # escalate to CAUTION so agents do not proceed on a false-safe signal.
+
+    from tree_sitter_analyzer.health_scorer import HealthScore
+    from tree_sitter_analyzer.mcp.tools.utils.dependents_index import DependentsAnswer
+    from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
+        SafeToEditContext,
+        SafeToEditFacts,
+        _format_safe_to_edit_result,
+    )
+
+    target = tmp_path / "pkg" / "leaf.py"
+    target.parent.mkdir()
+    target.write_text("VALUE = 1\n", encoding="utf-8")
+
+    uncertified_answer = DependentsAnswer(
+        dependents=frozenset(),
+        basis="index",
+        certified=False,
+        certification_reason="CALL_GRAPH_INCOMPLETE",
+        scanned_files=10,
+        delta_files=0,
+        unestablished=(),
+    )
+    view = FileDependencyView(
+        rel_path="pkg/leaf.py",
+        dependencies=set(),
+        dependents=set(),
+        dependents_answer=uncertified_answer,
+    )
+    health = HealthScore(file_path=str(target), total=85.0, dimensions={})
+    facts = SafeToEditFacts(
+        dependents=[],
+        dependencies=[],
+        health=health,
+        test_files=[],
+        has_tests=False,
+        risk="low",
+        risk_factors=[],
+        pre_edit_checklist=[],
+    )
+    context = SafeToEditContext(
+        file_path="pkg/leaf.py",
+        edit_type="edit",
+        resolved_path=str(target),
+        project_root=str(tmp_path),
+        graph=view,
+        scorer=None,  # type: ignore[arg-type]  # scorer only used in _collect_facts
+    )
+
+    result = _format_safe_to_edit_result(context, facts)
+
+    assert result["verdict"] == "CAUTION"
+    factor_names = [f["factor"] for f in result["risk_factors"]]
+    assert "uncertified_dependents" in factor_names

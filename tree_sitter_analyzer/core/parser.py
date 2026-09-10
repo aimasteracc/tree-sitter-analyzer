@@ -113,9 +113,7 @@ class Parser:
     # Class-level cache shared across all Parser instances. Sized for medium
     # projects.
     _cache: LRUCache = LRUCache(maxsize=_PARSER_CACHE_SIZE)
-    # Stat-only fast path: maps file_path → (mtime_ns, size, language,
-    # cache_key) so a hot warm pass can skip the SHA-256 entirely when
-    # mtime+size are unchanged. Falls back to the SHA-256 path on any miss.
+    # 记录文件属性与内容键；属性只用于命中统计，不能绕过源码读取。
     _stat_cache: dict[str, tuple[int, int, str, str]] = {}
     # Hit/miss counters — used by tests and by `cache_info()`.
     _hits = 0
@@ -151,13 +149,13 @@ class Parser:
         cls._misses = 0
         cls._stat_hits = 0
 
-    def parse_file(self, file_path: str | Path, language: str) -> ParseResult:
-        """Parse a source code file.
+    @classmethod
+    def invalidate_stat_cache(cls) -> None:
+        """清理属性命中记录，保留已按实际解析内容寻址的 AST 缓存。"""
+        cls._stat_cache.clear()
 
-        r37ax (dogfood): tool flagged this at 113 lines / nesting depth 8.
-        Split into 4 named phases — existence check, cache lookup, file
-        read with encoding fallback, parse-and-store. Behaviour preserved.
-        """
+    def parse_file(self, file_path: str | Path, language: str) -> ParseResult:
+        """读取当前源码，以同一文本查缓存或解析，避免属性键误命中。"""
         file_path_str = str(file_path)
         path_obj = Path(file_path_str)
         if not path_obj.exists():
@@ -166,14 +164,13 @@ class Parser:
             )
 
         try:
-            cache_key, cached = self._cache_lookup(file_path_str, language)
-            if cached is not None:
-                return cached
-
             read_outcome = self._read_source_code(path_obj, language)
             if isinstance(read_outcome, ParseResult):
                 return read_outcome
             source_code = read_outcome
+            cache_key, cached = self._cache_lookup(file_path_str, language, source_code)
+            if cached is not None:
+                return cached
 
             result = self.parse_code(source_code, language, filename=file_path_str)
             if result.success and cache_key:
@@ -188,13 +185,9 @@ class Parser:
             )
 
     def _cache_lookup(
-        self, file_path_str: str, language: str
+        self, file_path_str: str, language: str, source_code: str
     ) -> tuple[str | None, ParseResult | None]:
-        """Return ``(cache_key, cached_result_or_None)`` for the cache layer.
-
-        Bumps ``_hits`` / ``_misses`` / ``_stat_hits`` as a side effect.
-        Returns ``(None, None)`` on stat errors so the caller still proceeds.
-        """
+        """用同一次读取的源码查找 AST；文件属性不可替代内容身份。"""
         try:
             stat = os.stat(file_path_str)
             mtime_ns = int(stat.st_mtime_ns)
@@ -204,7 +197,7 @@ class Parser:
             return (None, None)
 
         cache_key = self._lookup_or_record_stat_key(
-            file_path_str, mtime_ns, size, language
+            file_path_str, mtime_ns, size, language, source_code
         )
         cached = Parser._cache.get(cache_key)
         if cached is not None:
@@ -215,21 +208,26 @@ class Parser:
         return (cache_key, None)
 
     def _lookup_or_record_stat_key(
-        self, file_path_str: str, mtime_ns: int, size: int, language: str
+        self,
+        file_path_str: str,
+        mtime_ns: int,
+        size: int,
+        language: str,
+        source_code: str,
     ) -> str:
-        """Return the cache key, reusing a prior stat hit when possible."""
+        """内容键绑定实际解析文本，属性一致仅增加兼容诊断计数。"""
+        identity = f"{file_path_str}\0{language}\0{source_code}"
+        cache_key = hashlib.sha256(identity.encode("utf-8")).hexdigest()
         stat_entry = Parser._stat_cache.get(file_path_str)
         if (
             stat_entry is not None
             and stat_entry[0] == mtime_ns
             and stat_entry[1] == size
             and stat_entry[2] == language
+            and stat_entry[3] == cache_key
         ):
             Parser._stat_hits += 1
-            return str(stat_entry[3])
 
-        key_string = f"{file_path_str}:{mtime_ns}:{size}:{language}"
-        cache_key = hashlib.sha256(key_string.encode("utf-8")).hexdigest()
         Parser._stat_cache[file_path_str] = (mtime_ns, size, language, cache_key)
         return cache_key
 

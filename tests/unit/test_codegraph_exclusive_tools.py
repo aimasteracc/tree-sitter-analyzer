@@ -37,10 +37,6 @@ class TestDeadCodeToolDefinition:
         assert "all" in mode["enum"]
         assert "dead_functions" in mode["enum"]
 
-    def test_toon_default(self):
-        fmt = DeadCodeTool().get_tool_schema()["properties"]["output_format"]
-        assert fmt["default"] == "toon"
-
 
 @pytest.mark.asyncio
 class TestDeadCodeToolExecute:
@@ -48,12 +44,6 @@ class TestDeadCodeToolExecute:
         tool = DeadCodeTool(str(project))
         result = await tool.execute({"output_format": "json"})
         assert result["success"] is True
-
-    async def test_toon_format_default(self, project):
-        tool = DeadCodeTool(str(project))
-        result = await tool.execute({})
-        assert result["format"] == "toon"
-        assert "toon_content" in result
 
     async def test_emits_actionable_next_step(self, project):
         # Wave 1b (audit health-10): dead_code must emit a next_step (the boundary
@@ -127,10 +117,6 @@ class TestDependencyMatrixToolDefinition:
         assert "summary" in mode["enum"]
         assert mode["default"] == "summary"
 
-    def test_toon_default(self):
-        fmt = DependencyMatrixTool().get_tool_schema()["properties"]["output_format"]
-        assert fmt["default"] == "toon"
-
 
 @pytest.mark.asyncio
 class TestDependencyMatrixToolExecute:
@@ -138,12 +124,6 @@ class TestDependencyMatrixToolExecute:
         tool = DependencyMatrixTool(str(project))
         result = await tool.execute({"output_format": "json"})
         assert result["success"] is True
-
-    async def test_toon_format_default(self, project):
-        tool = DependencyMatrixTool(str(project))
-        result = await tool.execute({})
-        assert result["format"] == "toon"
-        assert "toon_content" in result
 
 
 # ---------------------------------------------------------------------------
@@ -158,10 +138,6 @@ class TestComplexityHeatmapToolDefinition:
             == "codegraph_complexity_heatmap"
         )
 
-    def test_toon_default(self):
-        fmt = ComplexityHeatmapTool().get_tool_schema()["properties"]["output_format"]
-        assert fmt["default"] == "toon"
-
 
 @pytest.mark.asyncio
 class TestComplexityHeatmapToolExecute:
@@ -169,9 +145,3 @@ class TestComplexityHeatmapToolExecute:
         tool = ComplexityHeatmapTool(str(project))
         result = await tool.execute({"output_format": "json"})
         assert result["success"] is True
-
-    async def test_toon_format_default(self, project):
-        tool = ComplexityHeatmapTool(str(project))
-        result = await tool.execute({})
-        assert result["format"] == "toon"
-        assert "toon_content" in result

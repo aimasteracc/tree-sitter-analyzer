@@ -109,6 +109,29 @@ class TestKotlinInheritance:
         # Displayable, Serializable, Result, Success, UserManager
         assert len(classes) == 5
 
+    def test_malformed_specifier_retains_all_recoverable_metadata(self) -> None:
+        """PR #1178 (2026-07-27): mixed children retain base and interface."""
+        from tree_sitter_analyzer.languages.kotlin_helpers import (
+            _extract_kotlin_delegation,
+        )
+
+        superclass = _StubNode("user_type")
+        superclass.text = "Base"
+        constructor = _StubNode("constructor_invocation", children=[superclass])
+        interface = _StubNode("user_type")
+        interface.text = "Recoverable"
+        specifier = _StubNode(
+            "delegation_specifier",
+            children=[constructor, interface],
+        )
+        delegates = _StubNode("delegation_specifiers", children=[specifier])
+        node = _StubNode("class_declaration", children=[delegates])
+
+        assert _extract_kotlin_delegation(node, lambda child: child.text) == (
+            "Base",
+            ["Recoverable"],
+        )
+
 
 # ---------------------------------------------------------------------------
 # Gap 2 — Scala inheritance via extends_clause
@@ -280,6 +303,9 @@ class _StubNode:
         self.parent = parent
         self.children = list(children)
 
+    def child_by_field_name(self, _name: str):
+        return None
+
 
 class TestKotlinPrimaryCtorFallbacks:
     """codecov/patch on #585: anonymous fallbacks + extractor error branch."""
@@ -317,3 +343,71 @@ class TestKotlinPrimaryCtorFallbacks:
             _Exploding(parent=None), lambda n: "x", ""
         )
         assert result is None
+
+    def test_constructor_without_parameter_container_is_empty(self):
+        """Issue #1177 (2026-07-27): missing class_parameters is tolerated."""
+        from tree_sitter_analyzer.languages._kotlin_function_helpers import (
+            _kotlin_primary_constructor_parameters,
+        )
+
+        assert _kotlin_primary_constructor_parameters(_StubNode(), lambda n: "x") == []
+
+    def test_constructor_ignores_non_parameter_children(self):
+        """Issue #1177 (2026-07-27): punctuation cannot become a parameter."""
+        from tree_sitter_analyzer.languages._kotlin_function_helpers import (
+            _kotlin_primary_constructor_parameters,
+        )
+
+        params = _StubNode("class_parameters", children=[_StubNode("(")])
+        node = _StubNode(children=[params])
+
+        assert _kotlin_primary_constructor_parameters(node, lambda n: "x") == []
+
+    def test_constructor_ignores_nameless_parameter(self):
+        """Issue #1177 (2026-07-27): malformed class parameters are skipped."""
+        from tree_sitter_analyzer.languages._kotlin_function_helpers import (
+            _kotlin_primary_constructor_parameters,
+        )
+
+        params = _StubNode("class_parameters", children=[_StubNode("class_parameter")])
+        node = _StubNode(children=[params])
+
+        assert _kotlin_primary_constructor_parameters(node, lambda n: "x") == []
+
+
+class TestKotlinClassNameFallbacks:
+    """Issue #1177: pin the legacy and malformed-tree class-name behavior."""
+
+    def test_simple_identifier_fallback(self):
+        """Issue #1177 (2026-07-27): support nodes without a named field."""
+        from tree_sitter_analyzer.languages._kotlin_class_helpers import (
+            _kotlin_class_name,
+        )
+
+        name = _StubNode("simple_identifier")
+        node = _StubNode("class_declaration", children=[name])
+
+        assert _kotlin_class_name(node, lambda n: "Legacy") == "Legacy"
+
+    def test_missing_identifier_is_anonymous(self):
+        """Issue #1177 (2026-07-27): malformed declarations stay deterministic."""
+        from tree_sitter_analyzer.languages._kotlin_class_helpers import (
+            _kotlin_class_name,
+        )
+
+        node = _StubNode("class_declaration")
+
+        assert _kotlin_class_name(node, lambda n: "unused") == "anonymous"
+
+    def test_non_identifier_child_is_ignored(self):
+        """Issue #1177 (2026-07-27): modifiers cannot become class names."""
+        from tree_sitter_analyzer.languages._kotlin_class_helpers import (
+            _kotlin_class_name,
+        )
+
+        node = _StubNode(
+            "class_declaration",
+            children=[_StubNode("modifiers")],
+        )
+
+        assert _kotlin_class_name(node, lambda n: "private") == "anonymous"

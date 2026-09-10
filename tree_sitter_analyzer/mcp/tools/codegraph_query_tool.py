@@ -16,8 +16,9 @@ from __future__ import annotations
 from typing import Any
 
 from ...codegraph_query_backend import CodeGraphQueryBackend
+from ...semantic_search import SemanticSearchError
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import apply_output_format_to_response
 from . import _codegraph_explore_helpers as _h
 from . import _codegraph_query_concepts as _concepts
 from . import _codegraph_query_filters as _filters
@@ -200,9 +201,9 @@ class CodeGraphQueryTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
-                    "description": "Output format (default: toon)",
+                    "enum": ["json"],
+                    "default": "json",
+                    "description": "Output format: JSON",
                 },
             },
             "required": ["query"],
@@ -219,7 +220,7 @@ class CodeGraphQueryTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         query = str(arguments["query"]).strip()
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         max_symbols = min(int(arguments.get("max_symbols", 20) or 20), _MAX_SYMBOLS_CAP)
         max_files = min(int(arguments.get("max_files", 8) or 8), _MAX_FILES_CAP)
         include_code = bool(arguments.get("include_code", True))
@@ -247,7 +248,7 @@ class CodeGraphQueryTool(BaseMCPTool):
                     ),
                 },
             )
-            return apply_toon_format_to_response(result, output_format)
+            return apply_output_format_to_response(result, output_format)
 
         state = _QueryState(
             compact=compact,
@@ -265,6 +266,24 @@ class CodeGraphQueryTool(BaseMCPTool):
                     default_max_files=max_files,
                     default_include_code=include_code,
                 )
+            except SemanticSearchError as exc:
+                # 检索失败立即停止，不能把前序结果或后续步骤包装成成功证据。
+                result = build_response(
+                    verdict="ERROR",
+                    success=False,
+                    query=query,
+                    error=str(exc),
+                    normalized_chain=[step_to_dict(item) for item in steps],
+                    symbols=[],
+                    files=[],
+                    relationships={"callers": {}, "callees": {}},
+                    agent_summary={
+                        "summary_line": "chain: semantic retrieval failed",
+                        "verdict": "ERROR",
+                        "next_step": str(exc),
+                    },
+                )
+                return apply_output_format_to_response(result, output_format)
             except ValueError as exc:
                 warnings.append(str(exc))
 
@@ -326,7 +345,7 @@ class CodeGraphQueryTool(BaseMCPTool):
                 "next_step": next_step,
             },
         )
-        return apply_toon_format_to_response(result, output_format)
+        return apply_output_format_to_response(result, output_format)
 
     def _apply_step(
         self,
@@ -593,8 +612,13 @@ def _semantic_queries_with_backend(
             break
         try:
             resolved.extend(backend.semantic_symbols(query, limit=remaining))
+        except SemanticSearchError:
+            raise
         except Exception as exc:
-            logger.debug("codegraph_query semantic(%r) failed: %s", query, exc)
+            raise SemanticSearchError(
+                f"SEMANTIC_SEARCH_FAILED: {exc}. Check index status and retry; "
+                "this failure does not establish that matching code is absent."
+            ) from exc
         resolved = _dedupe_symbols(resolved)
     return resolved[:limit]
 

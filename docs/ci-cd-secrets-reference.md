@@ -273,5 +273,4 @@ If a secret is compromised:
 
 - [CI/CD Overview](ci-cd-overview.md)
 - [CI/CD Troubleshooting Guide](ci-cd-troubleshooting.md)
-- [CI/CD Migration Guide](ci-cd-migration-guide.md)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions/security-guides/encrypted-secrets)

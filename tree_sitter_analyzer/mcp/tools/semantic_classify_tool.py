@@ -12,11 +12,17 @@ Can operate in two modes:
 
 from typing import Any
 
+from ... import read_existing_access as read_access
 from ...ast_diff import ASTDiffer
+from ...git_path_codec import path_to_wire
 from ...project_graph import _language_from_ext
 from ...semantic_change_classifier import SemanticChangeClassifier
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ...wire_owner import EDIT_CLASSIFY_ACTION_VERSION
+from ..utils.format_helper import (
+    apply_output_format_to_response,
+    preformat_diff_snapshot_publish_errors,
+)
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -100,6 +106,15 @@ class SemanticClassifyTool(BaseMCPTool):
         return {
             "type": "object",
             "properties": {
+                "access_mode": {
+                    "type": "string",
+                    "enum": ["read_existing"],
+                    "description": "Explicit P0.4 zero-write snapshot access mode.",
+                },
+                "diff_snapshot_id": {
+                    "type": "string",
+                    "description": "RFC-0022 frozen snapshot ID; with file_path this strict path never rereads the workspace.",
+                },
                 "mode": {
                     "type": "string",
                     # pain #11 (dogfood pass 2): the tests pinned a contract
@@ -138,9 +153,9 @@ class SemanticClassifyTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
+                    "enum": ["json"],
                     "description": "Output format",
-                    "default": "toon",
+                    "default": "json",
                 },
                 # #528 — byte-budget params (opt-in, never required)
                 "include_ast_nodes": {
@@ -192,6 +207,28 @@ class SemanticClassifyTool(BaseMCPTool):
         return "classify_string"
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        read_existing = read_access.validate_read_existing_access(arguments)
+        if read_existing or arguments.get("diff_snapshot_id"):
+            allowed = {
+                "access_mode",
+                "diff_snapshot_id",
+                "file_path",
+                "include_ast_nodes",
+                "hunk_cap",
+                "output_format",
+            }
+            if set(arguments) - allowed:
+                raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
+            snapshot_id = arguments.get("diff_snapshot_id")
+            if not isinstance(snapshot_id, str) or not snapshot_id:
+                raise ValueError("diff_snapshot_id must be a non-empty string")
+            file_path = arguments.get("file_path")
+            if not isinstance(file_path, str) or not file_path:
+                raise ValueError("DIFF_SNAPSHOT_FILE_REQUIRED")
+            if read_existing:
+                read_access.validate_read_existing_paths(self, [file_path])
+                read_access.validate_read_existing_schema_values(self, arguments)
+            return True
         mode = self._resolve_mode(arguments)
         if mode == "classify_string":
             if (
@@ -210,87 +247,235 @@ class SemanticClassifyTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
+        read_existing = read_access.validate_read_existing_access(arguments)
+        if read_existing and not read_access.read_existing_platform_supported():
+            # RFC-0022 P0.4: the certified axis alone runs the consumer
+            # backends; other OSes keep the stable classified result.
+            unavailable = read_access.format_read_existing_unavailable(
+                arguments,
+                reason=read_access.READ_EXISTING_AUTHORITY_UNCERTIFIED,
+                action_version=EDIT_CLASSIFY_ACTION_VERSION,
+            )
+            if unavailable is not None:
+                return unavailable
+        # Codex P2 (#1297): attach read-existing evidence to the raw JSON
+        # response before returning the canonical response envelope.
+        if read_existing:
+            result = await self._execute_impl({**arguments, "output_format": "json"})
+        else:
+            result = await self._execute_impl(arguments)
+        if read_existing:
+            acquired: list[dict[str, str]] = []
+            snapshot_id = result.get("diff_snapshot_id")
+            generation = result.get("source_generation")
+            if isinstance(snapshot_id, str) and isinstance(generation, str):
+                acquired.append(
+                    {
+                        "kind": "diff",
+                        "snapshot_id": snapshot_id,
+                        "source_generation": generation,
+                    }
+                )
+            read_access.attach_read_existing_evidence(result, records=acquired)
+            requested = arguments.get("output_format", "json")
+            return apply_output_format_to_response(result, requested)
+        return result
 
+    async def _execute_impl(self, arguments: dict[str, Any]) -> dict[str, Any]:
         mode = self._resolve_mode(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         differ = self._get_differ()
+        snapshot_id = arguments.get("diff_snapshot_id")
+        consumer = None
+        file_path: str | None
+        try:
+            if snapshot_id:
+                from ...diff_snapshot_registry import REGISTRY
 
-        if mode == "classify_string":
-            diff_result = differ.diff_strings(
-                old_source=arguments["old_source"],
-                new_source=arguments["new_source"],
-                language=arguments["language"],
-            )
-            file_path = arguments.get("file_path")
-        elif mode == "classify_file":
-            file_path = arguments["file_path"]
-            diff_result = self._diff_git(differ, arguments)
-        else:
-            raise ValueError(f"Unknown mode: {mode}")
+                consumer, error = REGISTRY.acquire(str(snapshot_id), self.project_root)
+                if error:
+                    return apply_output_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "ERROR",
+                            "error_code": error,
+                            "error": error,
+                            "action_version": EDIT_CLASSIFY_ACTION_VERSION,
+                        },
+                        output_format,
+                    )
+                assert consumer is not None
 
-        classifier = SemanticChangeClassifier(file_path=file_path)
-        classification = classifier.classify(diff_result)
-        # Always deserialize with children so _compact_classification can
-        # strip them (default) or keep them (include_ast_nodes=True).
-        class_dict = classification.to_dict(include_children=True)
+                def snapshot_error(code: str, verdict: str = "ERROR") -> dict[str, Any]:
+                    return apply_output_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": verdict,
+                            "error_code": code,
+                            "error": code,
+                            "action_version": EDIT_CLASSIFY_ACTION_VERSION,
+                            "diff_snapshot_id": getattr(
+                                consumer.snapshot, "snapshot_id", str(snapshot_id)
+                            ),
+                            "source_generation": getattr(
+                                consumer.snapshot, "source_generation", ""
+                            ),
+                        },
+                        output_format,
+                    )
 
-        # Map risk_level to canonical verdict vocabulary (pain-01 tsa-landing
-        # contract). NOT_FOUND when there are zero classifications (identical
-        # sources) so agents skip downstream change-impact tools.
-        classifications = class_dict.get("classifications") or []
-        risk_level = class_dict.get("risk_level", "medium")
-        if not classifications:
-            verdict = "NOT_FOUND"
-        elif risk_level == "high":
-            verdict = "CAUTION"
-        elif risk_level == "medium":
-            verdict = "REVIEW"
-        else:
-            verdict = "INFO"
+                frozen = consumer.snapshot.file(arguments["file_path"])
+                if frozen is None:
+                    return snapshot_error(
+                        "DIFF_SNAPSHOT_FILE_NOT_FOUND", verdict="NOT_FOUND"
+                    )
+                file_path = frozen.record.path
+                language = _language_from_ext(file_path)
+                if not language:
+                    return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_LANGUAGE")
+                if (
+                    not getattr(
+                        frozen.record, "old_available", frozen.old_bytes is not None
+                    )
+                    or not getattr(
+                        frozen.record, "new_available", frozen.new_bytes is not None
+                    )
+                    or getattr(frozen.record, "status", None) in ("R", "C")
+                    or getattr(frozen.record, "unsupported_kind", None) is not None
+                    or frozen.record.binary
+                    or any(
+                        kind not in ("file", "missing")
+                        for kind in (
+                            getattr(frozen.record, "old_kind", "file"),
+                            getattr(frozen.record, "new_kind", "file"),
+                        )
+                    )
+                ):
+                    return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_CONTENT")
+                try:
+                    old_source = (frozen.old_bytes or b"").decode("utf-8", "strict")
+                    new_source = (frozen.new_bytes or b"").decode("utf-8", "strict")
+                except UnicodeDecodeError:
+                    return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_CONTENT")
+                diff_result = differ.diff_strings(
+                    old_source=old_source,
+                    new_source=new_source,
+                    language=language,
+                    old_file=f"{snapshot_id}:old:{file_path}",
+                    new_file=f"{snapshot_id}:new:{file_path}",
+                )
+            elif mode == "classify_string":
+                diff_result = differ.diff_strings(
+                    old_source=arguments["old_source"],
+                    new_source=arguments["new_source"],
+                    language=arguments["language"],
+                )
+                file_path = arguments.get("file_path")
+            elif mode == "classify_file":
+                file_path = arguments["file_path"]
+                diff_result = self._diff_git(differ, arguments)
+            else:
+                raise ValueError(f"Unknown mode: {mode}")
 
-        include_ast_nodes = bool(arguments.get("include_ast_nodes", False))
-        hunk_cap = int(arguments.get("hunk_cap", 50))
+            classifier = SemanticChangeClassifier(file_path=file_path)
+            classification = classifier.classify(diff_result)
+            # Always deserialize with children so _compact_classification can
+            # strip them (default) or keep them (include_ast_nodes=True).
+            class_dict = classification.to_dict(include_children=True)
 
-        # #528 — build a compact summary list by default; full AST nodes opt-in.
-        # ClassifiedHunk.to_dict() inlines the full ASTDiffHunk which carries
-        # recursive ASTNodeInfo children — up to 267 nodes per hunk on large files.
-        # Strip children (and optionally the entire hunk) unless opted in.
-        all_classifications = class_dict.get("classifications", [])
-        compact_classifications = [
-            _compact_classification(c, include_ast_nodes=include_ast_nodes)
-            for c in all_classifications
-        ]
+            # Map risk_level to canonical verdict vocabulary (pain-01 tsa-landing
+            # contract). NOT_FOUND when there are zero classifications (identical
+            # sources) so agents skip downstream change-impact tools.
+            classifications = class_dict.get("classifications") or []
+            risk_level = class_dict.get("risk_level", "medium")
+            if not classifications:
+                verdict = "NOT_FOUND"
+            elif risk_level == "high":
+                verdict = "CAUTION"
+            elif risk_level == "medium":
+                verdict = "REVIEW"
+            else:
+                verdict = "INFO"
 
-        truncated = len(compact_classifications) > hunk_cap
-        listed = compact_classifications[:hunk_cap]
+            include_ast_nodes = bool(arguments.get("include_ast_nodes", False))
+            hunk_cap = int(arguments.get("hunk_cap", 50))
 
-        # change_count is part of the agent-contract shape: a scalar that
-        # downstream tools can branch on without walking the classifications
-        # list. Tests pin this name (pain pass 2).
-        response: dict[str, Any] = {
-            "success": True,
-            "file_path": file_path,
-            "diff_hunks": len(diff_result.hunks),
-            "change_count": len(all_classifications),
-            "verdict": verdict,
-            # Scalar summary fields from SemanticClassification (no bulk lists)
-            "dominant_category": class_dict.get("dominant_category"),
-            "dominant_label": class_dict.get("dominant_label"),
-            "risk_level": class_dict.get("risk_level"),
-            "change_summary": class_dict.get("change_summary"),
-            "category_counts": class_dict.get("category_counts"),
-            "classifications": listed,
-        }
+            # #528 — build a compact summary list by default; full AST nodes opt-in.
+            # ClassifiedHunk.to_dict() inlines the full ASTDiffHunk which carries
+            # recursive ASTNodeInfo children — up to 267 nodes per hunk on large files.
+            # Strip children (and optionally the entire hunk) unless opted in.
+            all_classifications = class_dict.get("classifications", [])
+            compact_classifications = [
+                _compact_classification(c, include_ast_nodes=include_ast_nodes)
+                for c in all_classifications
+            ]
 
-        if truncated:
-            response["truncated"] = True
-            response["listed_cap"] = hunk_cap
-            response["next_step"] = (
-                f"Response capped at {hunk_cap} classifications. "
-                f"Use hunk_cap={hunk_cap * 2} to see more, or filter by category."
-            )
+            truncated = len(compact_classifications) > hunk_cap
+            listed = compact_classifications[:hunk_cap]
 
-        return apply_toon_format_to_response(response, output_format)
+            # change_count is part of the agent-contract shape: a scalar that
+            # downstream tools can branch on without walking the classifications
+            # list. Tests pin this name (pain pass 2).
+            response: dict[str, Any] = {
+                "success": True,
+                "action_version": EDIT_CLASSIFY_ACTION_VERSION,
+                "file_path": (
+                    path_to_wire(file_path)
+                    if consumer is not None and file_path is not None
+                    else file_path
+                ),
+                "diff_hunks": len(diff_result.hunks),
+                "change_count": len(all_classifications),
+                "verdict": verdict,
+                # Scalar summary fields from SemanticClassification (no bulk lists)
+                "dominant_category": class_dict.get("dominant_category"),
+                "dominant_label": class_dict.get("dominant_label"),
+                "risk_level": class_dict.get("risk_level"),
+                "change_summary": class_dict.get("change_summary"),
+                "category_counts": class_dict.get("category_counts"),
+                "classifications": listed,
+            }
+
+            if truncated:
+                response["truncated"] = True
+                response["listed_cap"] = hunk_cap
+                response["next_step"] = (
+                    f"Response capped at {hunk_cap} classifications. "
+                    f"Use hunk_cap={hunk_cap * 2} to see more, or filter by category."
+                )
+
+            if consumer is not None:
+                response["diff_snapshot_id"] = getattr(
+                    consumer.snapshot, "snapshot_id", str(snapshot_id)
+                )
+                response["source_generation"] = getattr(
+                    consumer.snapshot, "source_generation", ""
+                )
+            formatted = apply_output_format_to_response(response, output_format)
+            if consumer is not None:
+                publish_errors, publish_fallback = (
+                    preformat_diff_snapshot_publish_errors(
+                        output_format, apply_output_format_to_response
+                    )
+                )
+                error = REGISTRY.validate_publish(consumer)
+                if error:
+                    # Publish failures occur after acquisition, so the
+                    # returned envelope must still cite the diff capability
+                    # and echo its wire owner.
+                    envelope = dict(publish_errors.get(error, publish_fallback))
+                    envelope.setdefault("action_version", EDIT_CLASSIFY_ACTION_VERSION)
+                    envelope["diff_snapshot_id"] = getattr(
+                        consumer.snapshot, "snapshot_id", str(snapshot_id)
+                    )
+                    envelope["source_generation"] = getattr(
+                        consumer.snapshot, "source_generation", ""
+                    )
+                    return envelope
+            return formatted
+        finally:
+            if consumer is not None:
+                consumer.release()
 
     def _diff_git(self, differ: ASTDiffer, arguments: dict[str, Any]) -> Any:
         import subprocess

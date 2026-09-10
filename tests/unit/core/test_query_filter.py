@@ -409,6 +409,207 @@ class TestQueryFilterEdgeCases:
         assert "static" in help_text
 
 
+class TestQueryFilterParseExpressionComparison:
+    """Tests for comparison operator parsing in _parse_filter_expression."""
+
+    def test_parse_gt_operator(self, query_filter: QueryFilter) -> None:
+        """Test parsing '>' operator: complexity>10 → {"complexity": {"type": "gt", "value": 10.0}}"""
+        filters = query_filter._parse_filter_expression("complexity>10")
+        assert "complexity" in filters
+        assert filters["complexity"]["type"] == "gt"
+        assert filters["complexity"]["value"] == 10.0
+
+    def test_parse_lt_operator(self, query_filter: QueryFilter) -> None:
+        """Test parsing '<' operator: complexity<5 → {"complexity": {"type": "lt", "value": 5.0}}"""
+        filters = query_filter._parse_filter_expression("complexity<5")
+        assert "complexity" in filters
+        assert filters["complexity"]["type"] == "lt"
+        assert filters["complexity"]["value"] == 5.0
+
+    def test_parse_gte_operator(self, query_filter: QueryFilter) -> None:
+        """Test parsing '>=' operator: line_span>=20 → {"line_span": {"type": "gte", "value": 20.0}}"""
+        filters = query_filter._parse_filter_expression("line_span>=20")
+        assert "line_span" in filters
+        assert filters["line_span"]["type"] == "gte"
+        assert filters["line_span"]["value"] == 20.0
+
+    def test_parse_lte_operator(self, query_filter: QueryFilter) -> None:
+        """Test parsing '<=' operator: line_span<=50 → {"line_span": {"type": "lte", "value": 50.0}}"""
+        filters = query_filter._parse_filter_expression("line_span<=50")
+        assert "line_span" in filters
+        assert filters["line_span"]["type"] == "lte"
+        assert filters["line_span"]["value"] == 50.0
+
+    def test_parse_mixed_eq_and_gt(self, query_filter: QueryFilter) -> None:
+        """Test parsing combined eq and gt conditions: both registered."""
+        filters = query_filter._parse_filter_expression("public=true,complexity>5")
+        assert "public" in filters
+        assert filters["public"]["type"] == "exact"
+        assert filters["public"]["value"] == "true"
+        assert "complexity" in filters
+        assert filters["complexity"]["type"] == "gt"
+        assert filters["complexity"]["value"] == 5.0
+
+    def test_parse_invalid_rhs_non_numeric(self, query_filter: QueryFilter) -> None:
+        """Test parsing non-numeric rhs: complexity>abc → complexity key absent (silent fallback)."""
+        filters = query_filter._parse_filter_expression("complexity>abc")
+        assert "complexity" not in filters
+
+
+class TestQueryFilterComplexityFilter:
+    """Tests for complexity filtering via _matches_single_filter."""
+
+    def test_complexity_gt_match(self, query_filter: QueryFilter) -> None:
+        """complexity_score=15, filter gt 10 → True"""
+        result = {"complexity_score": 15, "content": "void foo() {}"}
+        assert query_filter._matches_single_filter(result, "complexity", {"type": "gt", "value": 10.0}) is True
+
+    def test_complexity_gt_no_match(self, query_filter: QueryFilter) -> None:
+        """complexity_score=5, filter gt 10 → False"""
+        result = {"complexity_score": 5, "content": "void foo() {}"}
+        assert query_filter._matches_single_filter(result, "complexity", {"type": "gt", "value": 10.0}) is False
+
+    def test_complexity_lt_match(self, query_filter: QueryFilter) -> None:
+        """complexity_score=3, filter lt 5 → True"""
+        result = {"complexity_score": 3, "content": "void foo() {}"}
+        assert query_filter._matches_single_filter(result, "complexity", {"type": "lt", "value": 5.0}) is True
+
+    def test_complexity_lt_no_match(self, query_filter: QueryFilter) -> None:
+        """complexity_score=8, filter lt 5 → False"""
+        result = {"complexity_score": 8, "content": "void foo() {}"}
+        assert query_filter._matches_single_filter(result, "complexity", {"type": "lt", "value": 5.0}) is False
+
+    def test_complexity_gte_boundary(self, query_filter: QueryFilter) -> None:
+        """complexity_score=10, filter gte 10 → True (boundary inclusive)"""
+        result = {"complexity_score": 10, "content": "void foo() {}"}
+        assert query_filter._matches_single_filter(result, "complexity", {"type": "gte", "value": 10.0}) is True
+
+    def test_complexity_lte_boundary(self, query_filter: QueryFilter) -> None:
+        """complexity_score=10, filter lte 10 → True (boundary inclusive)"""
+        result = {"complexity_score": 10, "content": "void foo() {}"}
+        assert query_filter._matches_single_filter(result, "complexity", {"type": "lte", "value": 10.0}) is True
+
+    def test_complexity_missing_field(self, query_filter: QueryFilter) -> None:
+        """result without complexity_score, filter gt 5 → False (exclude)"""
+        result = {"content": "void foo() {}"}
+        assert query_filter._matches_single_filter(result, "complexity", {"type": "gt", "value": 5.0}) is False
+
+
+class TestQueryFilterLineSpanFilter:
+    """Tests for line_span filtering via _matches_single_filter."""
+
+    def test_line_span_gt_match(self, query_filter: QueryFilter) -> None:
+        """line_span=60, filter gt 50 → True"""
+        result = {"line_span": 60, "content": "void foo() {}"}
+        assert query_filter._matches_single_filter(result, "line_span", {"type": "gt", "value": 50.0}) is True
+
+    def test_line_span_gt_no_match(self, query_filter: QueryFilter) -> None:
+        """line_span=30, filter gt 50 → False"""
+        result = {"line_span": 30, "content": "void foo() {}"}
+        assert query_filter._matches_single_filter(result, "line_span", {"type": "gt", "value": 50.0}) is False
+
+    def test_line_span_lt_match(self, query_filter: QueryFilter) -> None:
+        """line_span=10, filter lt 20 → True"""
+        result = {"line_span": 10, "content": "void foo() {}"}
+        assert query_filter._matches_single_filter(result, "line_span", {"type": "lt", "value": 20.0}) is True
+
+    def test_line_span_lt_no_match(self, query_filter: QueryFilter) -> None:
+        """line_span=25, filter lt 20 → False"""
+        result = {"line_span": 25, "content": "void foo() {}"}
+        assert query_filter._matches_single_filter(result, "line_span", {"type": "lt", "value": 20.0}) is False
+
+    def test_line_span_gte_boundary(self, query_filter: QueryFilter) -> None:
+        """line_span=20, filter gte 20 → True (boundary inclusive)"""
+        result = {"line_span": 20, "content": "void foo() {}"}
+        assert query_filter._matches_single_filter(result, "line_span", {"type": "gte", "value": 20.0}) is True
+
+    def test_line_span_lte_boundary(self, query_filter: QueryFilter) -> None:
+        """line_span=20, filter lte 20 → True (boundary inclusive)"""
+        result = {"line_span": 20, "content": "void foo() {}"}
+        assert query_filter._matches_single_filter(result, "line_span", {"type": "lte", "value": 20.0}) is True
+
+    def test_line_span_missing_field(self, query_filter: QueryFilter) -> None:
+        """result without line_span, filter gt 10 → False (exclude)"""
+        result = {"content": "void foo() {}"}
+        assert query_filter._matches_single_filter(result, "line_span", {"type": "gt", "value": 10.0}) is False
+
+
+class TestQueryFilterComparisonIntegration:
+    """Integration tests for comparison filters through filter_results."""
+
+    def test_filter_complexity_gt_full(self, query_filter: QueryFilter) -> None:
+        """3 results with scores 3, 12, 7; filter complexity>10 → 1 result (score=12)"""
+        results = [
+            {"content": "void a() {}", "complexity_score": 3},
+            {"content": "void b() {}", "complexity_score": 12},
+            {"content": "void c() {}", "complexity_score": 7},
+        ]
+        filtered = query_filter.filter_results(results, "complexity>10")
+        assert len(filtered) == 1
+        assert filtered[0]["complexity_score"] == 12
+
+    def test_filter_line_span_lt_full(self, query_filter: QueryFilter) -> None:
+        """3 results with spans 100, 20, 50; filter line_span<50 → 1 result (span=20)"""
+        results = [
+            {"content": "void a() {}", "line_span": 100},
+            {"content": "void b() {}", "line_span": 20},
+            {"content": "void c() {}", "line_span": 50},
+        ]
+        filtered = query_filter.filter_results(results, "line_span<50")
+        assert len(filtered) == 1
+        assert filtered[0]["line_span"] == 20
+
+    def test_filter_mixed_eq_and_gt(self, query_filter: QueryFilter) -> None:
+        """Mixed eq and gt filter applied as AND logic."""
+        results = [
+            {"content": "public void a() {}", "complexity_score": 10},
+            {"content": "public void b() {}", "complexity_score": 3},
+            {"content": "private void c() {}", "complexity_score": 10},
+        ]
+        filtered = query_filter.filter_results(results, "public=true,complexity>5")
+        # Should match: public=true AND complexity>5
+        # a: public=true, complexity=10>5 → match
+        # b: public=true, complexity=3 not >5 → no match
+        # c: public=false → no match
+        assert len(filtered) == 1
+        assert filtered[0]["complexity_score"] == 10
+        assert "public" in filtered[0]["content"]
+        assert "void a()" in filtered[0]["content"]
+
+    def test_filter_silent_fallback(
+        self, query_filter: QueryFilter, capsys: pytest.CaptureFixture
+    ) -> None:
+        """complexity>abc → all results returned, stderr warning emitted."""
+        results = [
+            {"content": "void a() {}", "complexity_score": 5},
+            {"content": "void b() {}", "complexity_score": 15},
+        ]
+        filtered = query_filter.filter_results(results, "complexity>abc")
+        # All results returned since the condition is skipped
+        assert len(filtered) == 2
+        captured = capsys.readouterr()
+        assert "abc" in captured.err or "complexity" in captured.err
+
+
+class TestGetFilterHelpContainsComplexity:
+    """Tests that get_filter_help includes complexity and line_span entries."""
+
+    def test_get_filter_help_contains_complexity(self, query_filter: QueryFilter) -> None:
+        """get_filter_help should mention complexity filter."""
+        help_text = query_filter.get_filter_help()
+        assert "complexity" in help_text
+
+    def test_get_filter_help_contains_line_span(self, query_filter: QueryFilter) -> None:
+        """get_filter_help should mention line_span filter."""
+        help_text = query_filter.get_filter_help()
+        assert "line_span" in help_text
+
+    def test_get_filter_help_contains_comparison_operators(self, query_filter: QueryFilter) -> None:
+        """get_filter_help should show comparison operator examples."""
+        help_text = query_filter.get_filter_help()
+        assert ">" in help_text
+
+
 # Pytest fixtures
 @pytest.fixture
 def query_filter() -> QueryFilter:

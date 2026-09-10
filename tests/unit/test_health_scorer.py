@@ -70,6 +70,67 @@ class TestHealthScorer:
         for r in results:
             assert 0 <= r.total <= 100
 
+    def test_certified_score_omits_coverage_and_git_dimensions(
+        self, scorer, tmp_path, monkeypatch
+    ):
+        # Codex P1 (#1299 round-4): coverage.json and git history are outside
+        # the snapshot source generation — certified reads must not report
+        # dimensions that can drift for the same snapshot identity, even when
+        # those inputs are present.
+        import tree_sitter_analyzer.health_scorer as health_scorer
+
+        monkeypatch.setattr(health_scorer, "score_git_hotspot", lambda file_path: 80.0)
+        monkeypatch.setattr(
+            health_scorer.HealthScorer,
+            "_score_coverage",
+            lambda self, file_path: 90.0,
+        )
+        target = tmp_path / "app.py"
+        target.write_text("def run():\n    return 1\n", encoding="utf-8")
+
+        live = scorer.score_file(str(target), fast_dependencies=True)
+        assert "coverage" in live.dimensions
+        assert "git_hotspot" in live.dimensions
+
+        certified = scorer.score_file(
+            str(target), fast_dependencies=True, certified=True
+        )
+        assert "coverage" not in certified.dimensions
+        assert "git_hotspot" not in certified.dimensions
+        assert certified.total > 0.0
+
+    def test_invalidate_stat_cache_drops_only_stat_fast_path(self) -> None:
+        from tree_sitter_analyzer.core.parser import Parser
+
+        Parser.invalidate_stat_cache()
+        assert Parser._stat_cache == {}
+        # The content-addressed cache is untouched.
+        assert isinstance(Parser._cache, object)
+
+    def test_certified_score_never_touches_coverage_or_git(
+        self, scorer, tmp_path, monkeypatch
+    ):
+        # Codex P2 round-5 (C23): the certified branch must not EVALUATE the
+        # omitted dimensions — a corrupt coverage.json must not flip a
+        # certified request into a failure.
+        import tree_sitter_analyzer.health_scorer as health_scorer
+
+        def boom_coverage(self, file_path):
+            raise ValueError("corrupt coverage.json")
+
+        monkeypatch.setattr(
+            health_scorer.HealthScorer, "_score_coverage", boom_coverage
+        )
+        monkeypatch.setattr(health_scorer, "score_git_hotspot", lambda file_path: 1 / 0)
+        target = tmp_path / "app.py"
+        target.write_text("def run():\n    return 1\n", encoding="utf-8")
+
+        certified = scorer.score_file(
+            str(target), fast_dependencies=True, certified=True
+        )
+        assert certified.total > 0.0
+        assert "coverage" not in certified.dimensions
+
     def test_score_project_includes_reported_source_extensions(self, scorer, tmp_path):
         """Project scoring should include all configured reportable extensions."""
         from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
@@ -185,7 +246,16 @@ class TestHealthScorer:
         scores, stats = scorer.score_project_with_stats(str(tmp_path), use_cache=False)
 
         assert scores == []
-        assert stats["skip_reasons"]["scoring_failed"] == 1
+        assert stats == {
+            "total_files_scanned": 1,
+            "total_files_scored": 0,
+            "total_files_skipped": 1,
+            "pruned_directories": 0,
+            "skip_reasons": {
+                "excluded_dir": 0,
+                "scoring_failed": 1,
+            },
+        }
 
     def test_score_project_counts_defensive_excluded_file(self, monkeypatch, tmp_path):
         """A defensive _is_excluded hit is still reported in project stats."""
@@ -205,8 +275,39 @@ class TestHealthScorer:
         scores, stats = scorer.score_project_with_stats(str(tmp_path), use_cache=False)
 
         assert scores == []
-        assert stats["total_files_scanned"] == 1
-        assert stats["skip_reasons"]["excluded_dir"] == 1
+        assert stats == {
+            "total_files_scanned": 1,
+            "total_files_scored": 0,
+            "total_files_skipped": 1,
+            "pruned_directories": 0,
+            "skip_reasons": {
+                "excluded_dir": 1,
+                "scoring_failed": 0,
+            },
+        }
+
+    def test_score_empty_project_has_zeroed_stats(self, tmp_path):
+        """An empty project should report an exact zero-valued partition."""
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        scores, stats = HealthScorer(
+            source_extensions={".py"}
+        ).score_project_with_stats(
+            str(tmp_path),
+            use_cache=False,
+        )
+
+        assert scores == []
+        assert stats == {
+            "total_files_scanned": 0,
+            "total_files_scored": 0,
+            "total_files_skipped": 0,
+            "pruned_directories": 0,
+            "skip_reasons": {
+                "excluded_dir": 0,
+                "scoring_failed": 0,
+            },
+        }
 
     def test_score_project_prunes_hidden_and_generated_dirs(self, tmp_path):
         """Project scoring should not descend into hidden/generated directories."""
@@ -231,7 +332,13 @@ class TestHealthScorer:
 
         assert {Path(score.file_path).name for score in scores} == {"main.py"}
         assert stats["total_files_scanned"] == 1
-        assert stats["skip_reasons"]["excluded_dir"] == 2
+        assert stats["total_files_scored"] == 1
+        assert stats["total_files_skipped"] == 0
+        assert stats["skip_reasons"] == {
+            "excluded_dir": 0,
+            "scoring_failed": 0,
+        }
+        assert stats["pruned_directories"] == 2
 
     def test_large_file_gets_penalized(self, scorer, tmp_path):
         """Files over 500 lines should have lower size score."""
@@ -499,6 +606,8 @@ class TestHealthScorer:
             calls.append((cmd, kwargs))
             if cmd[:3] == ["git", "rev-parse", "--show-toplevel"]:
                 return SimpleNamespace(returncode=0, stdout=f"{repo}\n")
+            if cmd == ["git", "rev-parse", "--is-shallow-repository"]:
+                return SimpleNamespace(returncode=0, stdout="false\n")
             return SimpleNamespace(returncode=0, stdout="\n".join(["abc"] * 10))
 
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -506,8 +615,8 @@ class TestHealthScorer:
         score = score_git_hotspot(str(file_path))
 
         assert score == pytest.approx(88.9, abs=0.1)
-        assert calls[1][0][-1] == "tree_sitter_analyzer/cli_main.py"
-        assert calls[1][1]["cwd"] == str(repo)
+        assert calls[2][0][-1] == "tree_sitter_analyzer/cli_main.py"
+        assert calls[2][1]["cwd"] == str(repo)
 
     def test_seven_dimensions_in_weights(self):
         """All 7 dimensions should be in DIMENSION_WEIGHTS."""
@@ -784,3 +893,546 @@ class TestScoreComplexityExtractorPath:
         assert score == 100.0, (
             f"4 simple Python functions must score 100.0 (avg_cc=1.0), got {score}"
         )
+
+
+def test_project_health_reuses_graph_only_within_one_call(tmp_path, monkeypatch):
+    """每次项目评分只校验一次依赖图，下次调用必须发现内容变化。"""
+    import os
+
+    from tree_sitter_analyzer.health_scorer import HealthScorer
+    from tree_sitter_analyzer.project_graph import DependencyGraph
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname="probe"\n', encoding="utf-8"
+    )
+    for name in ("b", "c"):
+        (tmp_path / f"{name}.py").write_text("value = 1\n", encoding="utf-8")
+    for index in range(6):
+        (tmp_path / f"a{index}.py").write_text("import b\n", encoding="utf-8")
+    original = DependencyGraph._cache_key_for
+    calls = []
+
+    def measured(root):
+        calls.append(root)
+        return original(root)
+
+    monkeypatch.setattr(DependencyGraph, "_cache_key_for", staticmethod(measured))
+    scorer = HealthScorer()
+    first, _ = scorer.score_project_with_stats(str(tmp_path), use_cache=False)
+    for index in range(6):
+        path = tmp_path / f"a{index}.py"
+        before = path.stat()
+        path.write_text("import c\n", encoding="utf-8")
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    second, _ = scorer.score_project_with_stats(str(tmp_path), use_cache=False)
+    assert len(calls) == 2
+
+    def by_name(scores):
+        return {
+            Path(score.file_path).name: score.dimensions["dependencies"]
+            for score in scores
+        }
+
+    assert by_name(first)["b.py"] == 99.1
+    assert by_name(second)["b.py"] == 100.0
+    assert by_name(second)["c.py"] == 99.1
+
+
+@pytest.mark.parametrize("failure_phase", ["enumeration", "prefetch"])
+def test_project_health_restores_graph_scope_after_failure(
+    tmp_path, monkeypatch, failure_phase
+):
+    """枚举或预取异常后，恢复调用方的依赖图与 Git 预取上下文。"""
+    from tree_sitter_analyzer import health_scorer as health
+
+    scorer = health.HealthScorer()
+    outer = {"outer": object()}
+    outer_hotspots = {"outer": 17.0}
+    token = health._PROJECT_DEPENDENCY_GRAPHS.set(outer)
+    hotspot_token = health._PROJECT_HOTSPOT_SCORES.set(outer_hotspots)
+    (tmp_path / "probe.py").write_text("value=1\n", encoding="utf-8")
+
+    def fail(_path):
+        raise RuntimeError("operation failed")
+
+    if failure_phase == "enumeration":
+        monkeypatch.setattr(scorer, "_iter_source_files", fail)
+    else:
+        monkeypatch.setattr(health, "score_git_hotspot", fail)
+    try:
+        with pytest.raises(RuntimeError, match="operation failed"):
+            scorer.score_project_with_stats(str(tmp_path), use_cache=False)
+        assert health._PROJECT_DEPENDENCY_GRAPHS.get() is outer
+        assert health._PROJECT_HOTSPOT_SCORES.get() is outer_hotspots
+    finally:
+        health._PROJECT_HOTSPOT_SCORES.reset(hotspot_token)
+        health._PROJECT_DEPENDENCY_GRAPHS.reset(token)
+
+
+def test_project_graph_timeout_does_not_populate_scope(tmp_path, monkeypatch):
+    """超时回退不能把未完成的图当作本次评分可复用的结果。"""
+    import time
+
+    import tree_sitter_analyzer.health_scorer as health
+
+    path = tmp_path / "a.py"
+    path.write_text("import os\n", encoding="utf-8")
+    graphs = {}
+    token = health._PROJECT_DEPENDENCY_GRAPHS.set(graphs)
+
+    def delayed(_root):
+        time.sleep(0.03)
+        return object()
+
+    monkeypatch.setattr(health, "_build_dep_graph", delayed)
+    monkeypatch.setattr(health, "_DEP_GRAPH_TIMEOUT_S", 0.001)
+    try:
+        assert health.score_dependencies(str(path)) == 100.0
+        assert graphs == {}
+    finally:
+        health._PROJECT_DEPENDENCY_GRAPHS.reset(token)
+
+
+def test_project_health_cache_tracks_changed_incoming_dependencies(tmp_path):
+    """默认磁盘缓存必须更新未改动文件的入向依赖评分。"""
+    # 2026-09-08 事件：保留时间戳的导入改写留下旧健康评分。
+    import os
+
+    from tree_sitter_analyzer.health_scorer import HealthScorer
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname="probe"\n', encoding="utf-8"
+    )
+    for name in ("b", "c"):
+        (tmp_path / f"{name}.py").write_text("value = 1\n", encoding="utf-8")
+    for index in range(6):
+        (tmp_path / f"a{index}.py").write_text("import b\n", encoding="utf-8")
+    scorer = HealthScorer()
+    scorer.score_project_with_stats(str(tmp_path))
+    for index in range(6):
+        path = tmp_path / f"a{index}.py"
+        before = path.stat()
+        path.write_text("import c\n", encoding="utf-8")
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    cached, _ = scorer.score_project_with_stats(str(tmp_path))
+    fresh, _ = scorer.score_project_with_stats(str(tmp_path), use_cache=False)
+
+    def dependencies(scores):
+        return {
+            Path(score.file_path).name: score.dimensions["dependencies"]
+            for score in scores
+            if Path(score.file_path).name in {"b.py", "c.py"}
+        }
+
+    assert dependencies(fresh) == {"b.py": 100.0, "c.py": 99.1}
+    assert dependencies(cached) == dependencies(fresh)
+
+
+@pytest.mark.parametrize("mutation_phase", ["scoring", "publication", "reuse"])
+def test_health_cache_does_not_publish_scores_for_changed_source(
+    tmp_path, monkeypatch, mutation_phase
+):
+    """评分或发布期间改写文件，不得把旧分数绑定到新内容。"""
+    # 2026-09-08 事件：保存时单独读取指纹会给旧评分贴上新内容标记。
+    import os
+
+    from tree_sitter_analyzer.health_scorer import HealthScorer
+    from tree_sitter_analyzer.registry.health_score_cache import HealthScoreCache
+
+    target = tmp_path / "probe.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    scorer = HealthScorer()
+    cache = HealthScoreCache(str(tmp_path))
+    owner, method = (
+        (scorer, "score_file") if mutation_phase == "scoring" else (cache, "store")
+    )
+    if mutation_phase == "reuse":
+        from tree_sitter_analyzer import health_scorer
+
+        scorer._score_file_with_cache(str(target), cache)
+        owner, method = health_scorer, "score_dependencies"
+    original = getattr(owner, method)
+
+    def mutate(*args, **kwargs):
+        result = original(*args, **kwargs) if mutation_phase != "publication" else None
+        before = target.stat()
+        target.write_text("value = 2\n", encoding="utf-8")
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        return result if mutation_phase != "publication" else original(*args, **kwargs)
+
+    monkeypatch.setattr(owner, method, mutate)
+    try:
+        result = scorer._score_file_with_cache(str(target), cache)
+        if mutation_phase != "publication":
+            assert result is None
+        assert cache.lookup(str(target)) is None
+    finally:
+        cache.close()
+
+
+@pytest.mark.parametrize("condition", ["special", "oversized", "changed"])
+def test_health_source_fingerprint_rejects_unstable_reads(
+    tmp_path, monkeypatch, condition
+):
+    """特殊文件、超限内容和读取中变化均不能形成缓存准入证据。"""
+    import os
+
+    from tree_sitter_analyzer.registry.health_score_cache import _Fingerprint
+
+    target = tmp_path / "probe.py"
+    target.write_bytes(b"value=1\n")
+    original = os.fstat
+    calls = 0
+
+    def observed(fd):
+        nonlocal calls
+        calls += 1
+        if condition == "changed" and calls == 2:
+            target.write_bytes(b"value=22\n")
+        if condition == "special":
+            return os.stat(tmp_path)
+        return original(fd)
+
+    if condition == "oversized":
+        with target.open("wb") as stream:
+            stream.truncate(64 * 1024 * 1024 + 1)
+    monkeypatch.setattr(os, "fstat", observed)
+    assert _Fingerprint.from_path(str(target)) is None
+
+
+@pytest.mark.parametrize("restore_mode", ["rewrite", "replace"])
+def test_health_cache_rejects_source_changed_then_restored(
+    tmp_path, monkeypatch, restore_mode
+):
+    """内容和时间戳恢复后，仍拒绝评分期间的中间版本。"""
+    # 2026-09-08 事件：中间版本 75.4 分被发布给实际应为 100 分的文件。
+    import os
+
+    from tree_sitter_analyzer.health_scorer import HealthScorer
+    from tree_sitter_analyzer.registry.health_score_cache import HealthScoreCache
+
+    target = tmp_path / "probe.py"
+    initial = "def f(x):\n    return x\n"
+    target.write_text(initial, encoding="utf-8")
+    scorer = HealthScorer()
+    cache = HealthScoreCache(str(tmp_path))
+    original = scorer.score_file
+
+    def intermediate(path):
+        before = target.stat()
+        target.write_text(
+            "def f(x):\n"
+            + "".join(f"    if x == {i}: return {i}\n" for i in range(60)),
+            encoding="utf-8",
+        )
+        score = original(path)
+        restored = target if restore_mode == "rewrite" else tmp_path / "restored.py"
+        restored.write_text(initial, encoding="utf-8")
+        if restore_mode == "replace":
+            restored.replace(target)
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        return score
+
+    monkeypatch.setattr(scorer, "score_file", intermediate)
+    try:
+        result = scorer._score_file_with_cache(str(target), cache)
+        assert original(str(target)).total == 100.0
+        assert result is None
+        assert cache.lookup(str(target)) is None
+    finally:
+        cache.close()
+
+
+@pytest.mark.parametrize("success", [True, False])
+def test_health_fingerprint_windows_change_time_binding(tmp_path, monkeypatch, success):
+    """原生查询使用真实变更时间字段，失败时不回退为创建时间。"""
+    import ctypes
+    import sys
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.registry import health_score_fingerprint as fingerprint
+
+    def query(handle, selector, pointer, size):
+        assert (handle, selector, size) == (123, 0, 40)
+        info = ctypes.cast(pointer, ctypes.POINTER(fingerprint._FileBasicInfo)).contents
+        info.creation, info.change = 11, 987654321
+        return int(success)
+
+    def library(name, *, use_last_error):
+        assert (name, use_last_error) == ("kernel32", True)
+        return SimpleNamespace(GetFileInformationByHandleEx=query)
+
+    monkeypatch.setattr(fingerprint, "_IS_WINDOWS", True)
+    monkeypatch.setattr(ctypes, "WinDLL", library, raising=False)
+    monkeypatch.setitem(
+        sys.modules, "msvcrt", SimpleNamespace(get_osfhandle=lambda fd: fd + 100)
+    )
+    fingerprint._windows_file_info.cache_clear()
+    try:
+        if success:
+            assert fingerprint._change_time(23, tmp_path.stat()) == 987654321
+        else:
+            with pytest.raises(OSError, match="change time unavailable"):
+                fingerprint._change_time(23, tmp_path.stat())
+    finally:
+        fingerprint._windows_file_info.cache_clear()
+
+
+def test_project_health_prefetches_git_scores_with_four_workers(tmp_path, monkeypatch):
+    """冷评分最多并发四路 Git 查询，并按文件保留各自结果。"""
+    import threading
+
+    from tree_sitter_analyzer import health_scorer as health
+
+    barrier = threading.Barrier(4, timeout=2)
+    lock = threading.Lock()
+    active = maximum = 0
+
+    def git_score(path, low, high):
+        nonlocal active, maximum
+        with lock:
+            active += 1
+            maximum = max(maximum, active)
+        try:
+            barrier.wait()
+            return float(Path(path).stem[1:]) * 10
+        finally:
+            with lock:
+                active -= 1
+
+    for index in range(4):
+        (tmp_path / f"f{index}.py").write_text("value=1\n", encoding="utf-8")
+    monkeypatch.setattr(health, "calculate_git_hotspot", git_score)
+    scores, _ = health.HealthScorer().score_project_with_stats(
+        str(tmp_path), use_cache=False
+    )
+    assert maximum == 4
+    assert {
+        Path(s.file_path).name: s.dimensions.get("git_hotspot") for s in scores
+    } == {
+        "f0.py": 0.0,
+        "f1.py": 10.0,
+        "f2.py": 20.0,
+        "f3.py": 30.0,
+    }
+
+
+def test_project_git_prefetch_preserves_warm_hits_and_resets_scope(
+    tmp_path, monkeypatch
+):
+    """暖缓存不查询历史；后续冷调用与单文件调用不继承旧预取结果。"""
+    from tree_sitter_analyzer import health_scorer as health
+
+    target = tmp_path / "probe.py"
+    target.write_text("value=1\n", encoding="utf-8")
+    calls = []
+    value = [90.0]
+
+    def git_score(path, low, high):
+        calls.append(path)
+        return value[0]
+
+    monkeypatch.setattr(health, "calculate_git_hotspot", git_score)
+    scorer = health.HealthScorer()
+    cold, _ = scorer.score_project_with_stats(str(tmp_path))
+    warm, _ = scorer.score_project_with_stats(str(tmp_path))
+    assert calls == [str(target)]
+    assert (
+        cold[0].dimensions["git_hotspot"] == warm[0].dimensions["git_hotspot"] == 90.0
+    )
+    value[0] = 80.0
+    target.write_text("value=2\n", encoding="utf-8")
+    changed, _ = scorer.score_project_with_stats(str(tmp_path))
+    assert changed[0].dimensions["git_hotspot"] == 80.0
+    value[0] = 70.0
+    assert health.score_git_hotspot(str(target)) == 70.0
+    assert calls == [str(target)] * 3
+
+
+@pytest.mark.parametrize("interrupt_at", ["query", "submit"])
+def test_project_git_prefetch_cancels_queued_queries_on_interrupt(
+    tmp_path, monkeypatch, interrupt_at
+):
+    """查询或提交中断后取消排队任务，并回收已启动工作及恢复上下文。"""
+    # 2026-09-09：submit 已入队但未返回时，中断也必须取消未登记任务。
+    import concurrent.futures
+    import threading
+
+    from tree_sitter_analyzer import health_scorer as health
+
+    futures = []
+    release = threading.Event()
+    started = threading.Event()
+    lock = threading.Lock()
+    calls = 0
+    outer_graphs = health._PROJECT_DEPENDENCY_GRAPHS.get()
+    outer_hotspots = health._PROJECT_HOTSPOT_SCORES.get()
+
+    class ObservedPool(concurrent.futures.ThreadPoolExecutor):
+        def submit(self, *args, **kwargs):
+            future = super().submit(*args, **kwargs)
+            futures.append(future)
+            if interrupt_at == "submit" and len(futures) == 9:
+                assert started.wait(timeout=3)
+                # 第九个任务已入队，但调用方尚未收到并登记它的 future。
+                raise KeyboardInterrupt("cancel prefetch")
+            return future
+
+        def shutdown(self, wait=True, *, cancel_futures=False):
+            # 先执行真实取消，再释放工作线程，避免用休眠制造调度竞态。
+            super().shutdown(wait=False, cancel_futures=cancel_futures)
+            release.set()
+            super().shutdown(wait=wait, cancel_futures=cancel_futures)
+
+    def query(*args):
+        nonlocal calls
+        with lock:
+            calls += 1
+            first = calls == 1
+            if calls == 4:
+                started.set()
+        if interrupt_at == "query" and first:
+            raise KeyboardInterrupt("cancel prefetch")
+        assert release.wait(timeout=3)
+        return 100.0
+
+    for index in range(40):
+        (tmp_path / f"f{index}.py").write_text("x=1\n", encoding="utf-8")
+    monkeypatch.setattr(concurrent.futures, "ThreadPoolExecutor", ObservedPool)
+    monkeypatch.setattr(health, "calculate_git_hotspot", query)
+    with pytest.raises(KeyboardInterrupt, match="cancel prefetch"):
+        health.HealthScorer().score_project_with_stats(str(tmp_path), use_cache=False)
+    assert len(futures) == (9 if interrupt_at == "submit" else 40)
+    # 调度顺序决定取消数量；不变量是存在取消且没有未结束的任务。
+    assert any(f.cancelled() for f in futures)
+    assert all(f.done() for f in futures)
+    if interrupt_at == "submit":
+        assert calls == 4
+        assert sum(f.cancelled() for f in futures) == 5
+        assert futures[-1].cancelled()
+    assert health._PROJECT_DEPENDENCY_GRAPHS.get() is outer_graphs
+    assert health._PROJECT_HOTSPOT_SCORES.get() is outer_hotspots
+
+
+@pytest.mark.parametrize("ready_index", [0, 3])
+def test_project_health_stores_ready_scores_before_remaining_git_queries_finish(
+    tmp_path, monkeypatch, ready_index
+):
+    """2026-09-09：慢历史查询不能阻止已就绪文件评分与发布缓存。"""
+    import threading
+
+    from tree_sitter_analyzer import health_scorer as health
+    from tree_sitter_analyzer.registry.health_score_cache import HealthScoreCache
+
+    files = [tmp_path / f"f{index}.py" for index in range(4)]
+    for path in files:
+        path.write_text("value=1\n", encoding="utf-8")
+    stored = threading.Event()
+    observed = []
+    original_store = HealthScoreCache.store
+
+    def store(self, score, **kwargs):
+        result = original_store(self, score, **kwargs)
+        if score.file_path == str(files[ready_index]):
+            stored.set()
+        return result
+
+    def query(path, low, high):
+        if path != str(files[ready_index]):
+            observed.append(stored.wait(timeout=3))
+        return 100.0
+
+    monkeypatch.setattr(HealthScoreCache, "store", store)
+    monkeypatch.setattr(health, "calculate_git_hotspot", query)
+    monkeypatch.setattr(
+        health.HealthScorer, "_iter_source_files", lambda *_: (files, 0)
+    )
+    scores, stats = health.HealthScorer().score_project_with_stats(str(tmp_path))
+    assert observed == [True, True, True]
+    assert len(scores) == stats["total_files_scored"] == 4
+    assert [score.file_path for score in scores] == [str(path) for path in files]
+
+
+def test_project_git_fallback_shares_four_workers_after_dependency_invalidation(
+    tmp_path, monkeypatch
+):
+    """#1437：依赖失效的暖文件与冷文件共用四路历史查询预算。"""
+    import concurrent.futures
+    import threading
+
+    from tree_sitter_analyzer import health_scorer as health
+    from tree_sitter_analyzer.registry.health_score_cache import HealthScoreCache
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname="probe"\n', encoding="utf-8"
+    )
+    warm = tmp_path / "warm.py"
+    warm.write_text("value=1\n", encoding="utf-8")
+    monkeypatch.setattr(health, "calculate_git_hotspot", lambda *_: 90.0)
+    for index in range(2):
+        (tmp_path / f"existing{index}.py").write_text("import warm\n", encoding="utf-8")
+    scorer = health.HealthScorer()
+    monkeypatch.setattr(scorer, "_iter_source_files", lambda *_: ([warm], 0))
+    initial = scorer.score_project(str(tmp_path))
+    assert initial[0].dimensions["dependencies"] == 100.0
+    cold = [tmp_path / f"cold{index}.py" for index in range(4)]
+    for path in cold:
+        path.write_text("import warm\n", encoding="utf-8")
+    all_started = threading.Event()
+    release = threading.Event()
+    stored = threading.Event()
+    original_store = HealthScoreCache.store
+
+    def store(self, score, **kwargs):
+        result = original_store(self, score, **kwargs)
+        if score.file_path == str(cold[0]):
+            stored.set()
+        return result
+
+    lock = threading.Lock()
+    active = maximum = 0
+    queried = []
+
+    class ObservedPool(concurrent.futures.ThreadPoolExecutor):
+        def submit(self, fn, path, *args, **kwargs):
+            future = super().submit(fn, path, *args, **kwargs)
+            if path == str(warm):
+                # 暖文件入队后释放四个冷任务，不依赖线程调度或休眠。
+                assert all_started.wait(timeout=3)
+                release.set()
+            return future
+
+    def query(path, low, high):
+        nonlocal active, maximum
+        if path == str(warm):
+            assert all_started.wait(timeout=3)
+        with lock:
+            active += 1
+            maximum = max(maximum, active)
+            queried.append(path)
+            if len(queried) == 4:
+                all_started.set()
+        try:
+            if path == str(warm):
+                # 旧实现直接在主线程调用，能在四个冷任务阻塞时暴露峰值五。
+                release.set()
+                # 暖查询尚未完成时，已就绪冷文件必须能够发布缓存。
+                assert stored.wait(timeout=3)
+            assert release.wait(timeout=3)
+            return 80.0
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(concurrent.futures, "ThreadPoolExecutor", ObservedPool)
+    monkeypatch.setattr(health, "calculate_git_hotspot", query)
+    monkeypatch.setattr(HealthScoreCache, "store", store)
+    monkeypatch.setattr(scorer, "_iter_source_files", lambda *_: ([warm, *cold], 0))
+    scores, stats = scorer.score_project_with_stats(str(tmp_path))
+    assert stats["total_files_scored"] == 5
+    assert stats["total_files_skipped"] == 0
+    assert maximum == 4
+    assert sorted(queried) == sorted(str(path) for path in [warm, *cold])
+    by_path = {score.file_path: score for score in scores}
+    assert by_path[str(warm)].dimensions["dependencies"] == 99.1
+    assert by_path[str(warm)].dimensions["git_hotspot"] == 80.0

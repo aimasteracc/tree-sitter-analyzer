@@ -266,7 +266,7 @@ jobs:
 
     - name: Upload benchmark results
       if: always()
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@v7.0.1
       with:
         name: benchmark-results
         path: |
@@ -330,7 +330,7 @@ jobs:
         fetch-depth: 0
 
     - name: Download benchmark results
-      uses: actions/download-artifact@v8
+      uses: actions/download-artifact@v8.0.1
       continue-on-error: true
       with:
         name: benchmark-results
@@ -365,7 +365,7 @@ jobs:
       shell: bash
 
     - name: Upload trend data
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@v7.0.1
       with:
         name: benchmark-trend-data
         path: .benchmark/history/

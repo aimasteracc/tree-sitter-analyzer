@@ -14,6 +14,15 @@ _PY_FROM_IMPORT_RE = re.compile(
     r"^from\s+(\.*)([\w.]*)\s+import\s+(.+)$", re.MULTILINE | re.DOTALL
 )
 _PY_IMPORT_RE = re.compile(r"^import\s+([\w.,\s]+)$", re.MULTILINE | re.DOTALL)
+# Inline comments inside parenthesized multi-line imports must be removed
+# per line; a plain split on the hash sign truncates the whole clause at a
+# comment that appears before the first alias (e.g. after the opening paren).
+_STRIP_LINE_COMMENTS_RE = re.compile(r"#[^\n]*")
+
+
+def _strip_line_comments(clause: str) -> str:
+    """Remove hash-comment tails from an import names clause."""
+    return _STRIP_LINE_COMMENTS_RE.sub("", clause)
 
 
 @dataclass(frozen=True)
@@ -28,23 +37,6 @@ class ImportEntry:
     is_star: bool = False
     alias_of: str = ""
     line: int = 0
-
-
-def _strip_comments(text: str) -> str:
-    """Drop ``#`` comments line by line, preserving the rest of the statement.
-
-    A parenthesised import may carry a trailing comment on its opening line::
-
-        from typing import (  # noqa: F401
-            Any,
-            Dict,
-        )
-
-    Splitting the whole statement on the first ``#`` (the previous behaviour,
-    combined with ``re.DOTALL``) discarded every bound name after it. Stripping
-    per line keeps the continuation lines intact.
-    """
-    return "\n".join(line.split("#", 1)[0] for line in text.splitlines())
 
 
 def _split_names_clause(clause: str) -> list[tuple[str, str]]:
@@ -97,11 +89,7 @@ def _parse_python_imports(
     ``import a.b as c`` -> 1 row with module_path='a.b', local_name='c'.
     """
     language = "python"
-    # Strip comments up front: ``import os  # noqa`` previously failed the
-    # ``_PY_IMPORT_RE`` character class outright (yielding no rows at all),
-    # and a trailing comment on a parenthesised ``from`` import truncated the
-    # name list. Doing it per line handles both.
-    text = _strip_comments(text).strip()
+    text = _strip_line_comments(text).strip()
     if not text:
         return []
 
@@ -109,7 +97,7 @@ def _parse_python_imports(
     if m_from:
         dots = m_from.group(1) or ""
         module_tail = m_from.group(2) or ""
-        names_clause = m_from.group(3) or ""
+        names_clause = _strip_line_comments(m_from.group(3) or "")
         module_path = dots + module_tail
         is_relative = bool(dots)
         entries: list[ImportEntry] = []
@@ -144,7 +132,7 @@ def _parse_python_imports(
 
     m_imp = _PY_IMPORT_RE.match(text)
     if m_imp:
-        body = m_imp.group(1)
+        body = _strip_line_comments(m_imp.group(1))
         entries = []
         for item, alias_of in _split_names_clause(body):
             if alias_of:

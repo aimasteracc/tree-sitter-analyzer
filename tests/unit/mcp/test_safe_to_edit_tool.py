@@ -1,58 +1,23 @@
-"""Unit tests for SafeToEditTool."""
-
-import asyncio
-from pathlib import Path
+"""#1376：test_safe_to_edit_tool 行为组；测试主体保留，中文文档和 UTF-8 修正单独校验。"""
 
 import pytest
 
+import tests.unit.mcp._safe_to_edit_tool_helpers as _fixtures
+from tests.unit.mcp._safe_to_edit_tool_helpers import (
+    PROJECT_ROOT,
+    SERVER_FILE,
+    TARGET_FILE,
+    _run,
+)
 from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import (
-    SafeToEditTool,
     _compute_risk,
     _is_init_file,
 )
+from tree_sitter_analyzer.mcp.tools.utils import safe_to_edit_helpers as helpers
 from tree_sitter_analyzer.mcp.tools.utils.test_discovery import find_test_files
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
-TARGET_FILE = "tree_sitter_analyzer/mcp/tools/safe_to_edit_tool.py"
-SERVER_FILE = "tree_sitter_analyzer/mcp/server.py"
-
-
-@pytest.fixture
-def tool(tmp_path):
-    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'sample'\n")
-
-    target = tmp_path / TARGET_FILE
-    target.parent.mkdir(parents=True)
-    target.write_text(
-        """
-class SafeToEditTool:
-    def execute(self):
-        return "safe"
-""".strip()
-    )
-
-    server = tmp_path / SERVER_FILE
-    server.write_text(
-        """
-from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
-
-
-def create_tool():
-    return SafeToEditTool()
-""".strip()
-    )
-
-    test_file = tmp_path / "tests/unit/mcp/test_safe_to_edit_tool.py"
-    test_file.parent.mkdir(parents=True)
-    test_file.write_text("def test_safe_to_edit_tool(): pass\n")
-
-    t = SafeToEditTool(str(tmp_path))
-    t.set_project_path(str(tmp_path))
-    return t
-
-
-def _run(coro):
-    return asyncio.run(coro)
+tool = _fixtures.tool
+_close_index_snapshot_registry = _fixtures._close_index_snapshot_registry
 
 
 class TestSafeToEditTool:
@@ -155,6 +120,27 @@ class TestSafeToEditTool:
         result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         assert "test_files_nearby" in result
 
+    def test_execute_marks_uncertified_causal_facts_unknown(self, tool):
+        result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
+
+        envelope = result["causal_envelope"]
+        assert set(envelope) == {
+            "dependents",
+            "dependencies",
+            "exercising_tests",
+            "constraint_verdict",
+            "verification_command",
+            "stale_edges",
+        }
+        assert envelope == {
+            "dependents": None,
+            "dependencies": None,
+            "exercising_tests": None,
+            "constraint_verdict": "unknown",
+            "verification_command": None,
+            "stale_edges": None,
+        }
+
     def test_edit_type_rename_higher_risk(self, tool):
         result_refactor = _run(
             tool.execute(
@@ -174,7 +160,7 @@ class TestSafeToEditTool:
                 }
             )
         )
-        # Rename should have at least as many risk factors
+        # 重命名应具有不少于原操作的风险因素。
         assert len(result_rename["risk_factors"]) >= len(
             result_refactor["risk_factors"]
         )
@@ -184,7 +170,7 @@ class TestSafeToEditTool:
             tool.execute(
                 {
                     "file_path": TARGET_FILE,
-                    "output_format": "toon",
+                    "output_format": "json",
                 }
             )
         )
@@ -208,9 +194,9 @@ class TestSafeToEditTool:
 
     def test_well_connected_file_has_downstream(self, tool):
         result = _run(tool.execute({"file_path": SERVER_FILE}))
-        # In this temp fixture nothing imports server.py (server.py imports
-        # safe_to_edit_tool.py, not the reverse), so its downstream count is 0.
-        # Pin the exact value: a regression to None/str/negative must go red.
+        # 此临时夹具中没有模块导入 server.py；server.py 导入
+        # safe_to_edit_tool.py，反向导入并不存在，因此下游数量是 0。
+        # 固定精确值；退化成 None、字符串或负数时必须变红。
         assert isinstance(result["downstream_count"], int)
         assert result["downstream_count"] == 0
 
@@ -302,17 +288,12 @@ class TestHelperFunctions:
 
 
 # ---------------------------------------------------------------------------
-# Issue #641 — pre_edit_checklist numbering must be sequential (no gap)
+# Issue #641：pre_edit_checklist 编号必须连续，不能留空档。
 # ---------------------------------------------------------------------------
 
 
 class TestChecklistSequentialNumbering:
-    """build_checklist must emit 1, 2, 3, 4, ... without skipping any number.
-
-    Bug: when downstream_count == 0, item 4 is absent but items for
-    rename/refactor/health were hardcoded as 5/6. This left gaps like
-    [1, 2, 3, 5] in the rendered checklist.
-    """
+    """build_checklist 必须生成连续的 1、2、3、4 等编号。缺陷：downstream_count 为 0 时缺少条目 4，但 rename/refactor/health 条目被硬编码为 5/6，导致输出中出现 [1, 2, 3, 5] 之类的空档。"""
 
     def _checklist(self, **kwargs):
         from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_risk import (
@@ -322,7 +303,7 @@ class TestChecklistSequentialNumbering:
         return build_checklist(**kwargs)
 
     def test_rename_no_downstream_sequential(self):
-        """rename + 0 downstream: must be [1, 2, 3, 4], not [1, 2, 3, 5]."""
+        """rename 且无下游时必须是 [1, 2, 3, 4]，不能是 [1, 2, 3, 5]。"""
         items = self._checklist(
             risk="safe",
             downstream_count=0,
@@ -334,7 +315,7 @@ class TestChecklistSequentialNumbering:
         assert numbers == ["1", "2", "3", "4"]
 
     def test_refactor_no_downstream_sequential(self):
-        """refactor + 0 downstream: must be [1, 2, 3, 4], not [1, 2, 3, 5]."""
+        """refactor 且无下游时必须是 [1, 2, 3, 4]，不能是 [1, 2, 3, 5]。"""
         items = self._checklist(
             risk="safe",
             downstream_count=0,
@@ -346,7 +327,7 @@ class TestChecklistSequentialNumbering:
         assert numbers == ["1", "2", "3", "4"]
 
     def test_rename_with_downstream_sequential(self):
-        """rename + 2 downstream: must be [1, 2, 3, 4, 5]."""
+        """rename 且有两个下游时必须是 [1, 2, 3, 4, 5]。"""
         items = self._checklist(
             risk="safe",
             downstream_count=2,
@@ -358,7 +339,7 @@ class TestChecklistSequentialNumbering:
         assert numbers == ["1", "2", "3", "4", "5"]
 
     def test_health_grade_no_downstream_sequential(self):
-        """poor health (D) + 0 downstream + no edit_type addon: [1, 2, 3, 4]."""
+        """健康等级较差（D）、无下游且无 edit_type 附加项时，编号为 [1, 2, 3, 4]。"""
         items = self._checklist(
             risk="caution",
             downstream_count=0,
@@ -372,7 +353,7 @@ class TestChecklistSequentialNumbering:
         assert numbers == ["1", "2", "3", "4"]
 
     def test_rename_downstream_and_health_sequential(self):
-        """rename + downstream + poor health: [1, 2, 3, 4, 5, 6]."""
+        """rename、有下游且健康较差时，编号为 [1, 2, 3, 4, 5, 6]。"""
         items = self._checklist(
             risk="caution",
             downstream_count=3,
@@ -384,3 +365,32 @@ class TestChecklistSequentialNumbering:
         )
         numbers = [item.split(".")[0] for item in items]
         assert numbers == ["1", "2", "3", "4", "5", "6"]
+
+
+def test_agent_stop_condition_covers_dangerous_single_and_empty_verification() -> None:
+    def context(risk: str) -> helpers.AgentWorkflowContext:
+        return helpers.AgentWorkflowContext(
+            file_path="app.py",
+            risk=risk,
+            edit_type="refactor",
+            has_tests=True,
+            test_files=["tests/test_app.py"],
+            health_grade="A",
+            project_root=".",
+        )
+
+    assert "smaller edit" in helpers._agent_stop_condition(
+        context("dangerous"),
+        {"after_edit_commands": ["focused"], "queue_boundary_commands": ["all"]},
+    )
+    assert (
+        helpers._agent_stop_condition(
+            context("safe"),
+            {"after_edit_commands": ["focused"], "queue_boundary_commands": []},
+        )
+        == "focused exits successfully."
+    )
+    assert "identified and run" in helpers._agent_stop_condition(
+        context("safe"),
+        {"after_edit_commands": [], "queue_boundary_commands": []},
+    )

@@ -127,18 +127,9 @@ class ProjectHealthTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
-                },
-                "compact_only": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": (
-                        "RFC-0012: with output_format=toon, return only the "
-                        "control surface alongside toon_content, dropping "
-                        "metadata already encoded in the blob."
-                    ),
+                    "enum": ["json"],
+                    "description": "Output format: JSON",
+                    "default": "json",
                 },
             },
             "additionalProperties": False,
@@ -155,8 +146,7 @@ class ProjectHealthTool(BaseMCPTool):
         root = self.project_root
         min_grade = arguments.get("min_grade", "D")
         max_files = _normalize_max_files(arguments.get("max_files", 20))
-        output_format = arguments.get("output_format", "toon")
-        compact_only = bool(arguments.get("compact_only", False))
+        output_format = arguments.get("output_format", "json")
 
         scorer = HealthScorer()
         # F9: measure the scan so the response carries an honest
@@ -175,10 +165,10 @@ class ProjectHealthTool(BaseMCPTool):
             walk_stats=walk_stats,
         )
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        from ..utils.format_helper import apply_output_format_to_response
 
-        return apply_toon_format_to_response(
-            result, output_format, compact_only=compact_only
+        return apply_output_format_to_response(
+            result, output_format
         )
 
 
@@ -310,6 +300,7 @@ def _build_project_health_result(
         payload["total_files_scanned"] = scanned
         payload["total_files_analyzed"] = analyzed
         payload["total_files_skipped"] = int(walk_stats.get("total_files_skipped", 0))
+        payload["pruned_directories"] = int(walk_stats.get("pruned_directories", 0))
         payload["skip_reasons"] = walk_stats.get(
             "skip_reasons", {"excluded_dir": 0, "scoring_failed": 0}
         )

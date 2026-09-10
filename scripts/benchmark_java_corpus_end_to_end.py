@@ -304,7 +304,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--clean", action="store_true")
     parser.add_argument(
         "--backend",
-        choices=["auto", "json", "ladybug", "hybrid"],
+        choices=["auto", "sqlite", "ladybug"],
         default="auto",
     )
     parser.add_argument(

@@ -322,18 +322,30 @@ def test_dead_node_types_are_gone(node_type: str) -> None:
             )
 
 
-def test_lua_function_admission_survives_taxonomy_migration():
-    """2026-09-08：Lua 具名函数不能因遗漏语言分类而退出缓存提取。"""
-    from tree_sitter import Language, Parser
-
+@pytest.mark.parametrize("language", ["c", "cpp"])
+def test_preprocessor_includes_preserve_dependency_projection(language):
+    """迁移分类后仍保留 develop 的头文件依赖证据。"""
     from tree_sitter_analyzer.cache.extraction import _extract_symbols
+    from tree_sitter_analyzer.core.parser import Parser
 
-    grammar = pytest.importorskip(
-        "tree_sitter_lua", reason="tracked: optional Lua grammar"
-    )
+    source = '#include "dep.h"\n'
+    parsed = Parser().parse_code(source, language)
+    result = _extract_symbols(parsed.tree, source, language)
+    assert [
+        symbol["text"] for symbol in result["symbols"] if symbol["kind"] == "import"
+    ] == ['#include "dep.h"\n']
+    assert result["import_projection_complete"] is True
+
+
+def test_lua_function_admission_survives_taxonomy_migration():
+    """Lua 已支持的具名函数不能因缺少语言分类而消失。"""
+    from tree_sitter_analyzer.cache.extraction import _extract_symbols
+    from tree_sitter_analyzer.core.parser import Parser
+
+    pytest.importorskip("tree_sitter_lua", reason="tracked: optional Lua grammar")
     source = "function greet(name) return name end\n"
-    tree = Parser(Language(grammar.language())).parse(source.encode())
-    symbols = _extract_symbols(tree, source, "lua")["symbols"]
-    assert [(symbol["name"], symbol["kind"]) for symbol in symbols] == [
+    parsed = Parser().parse_code(source, "lua")
+    result = _extract_symbols(parsed.tree, source, "lua")
+    assert [(symbol["name"], symbol["kind"]) for symbol in result["symbols"]] == [
         ("greet", "function")
     ]

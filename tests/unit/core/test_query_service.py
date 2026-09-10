@@ -637,6 +637,41 @@ class TestQueryServiceFallbackAdditionalPaths:
         assert len(captures) == 0
 
 
+class TestCreateResultDictComplexityScore:
+    """Tests for complexity_score inclusion in _create_result_dict (STEP 8)."""
+
+    def test_create_result_dict_with_complexity(self, query_service: QueryService) -> None:
+        """PluginQueryNode with complexity_score=10 → result dict has 'complexity_score': 10"""
+        from types import SimpleNamespace
+
+        from tree_sitter_analyzer.core._query_service_helpers import PluginQueryNode
+
+        elem = SimpleNamespace(
+            element_type="method",
+            start_line=1,
+            end_line=5,
+            raw_text="void foo() {}",
+            complexity_score=10,
+        )
+        node = PluginQueryNode(elem, "method")
+        assert node.complexity_score == 10
+
+        result = query_service._create_result_dict(node, "method", "void foo() {}")
+        assert "complexity_score" in result
+        assert result["complexity_score"] == 10
+
+    def test_create_result_dict_without_complexity(self, query_service: QueryService) -> None:
+        """Regular MagicMock node (no PluginQueryNode) → result dict has no 'complexity_score' key"""
+        mock_node = MagicMock()
+        mock_node.type = "function_definition"
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (5, 0)
+        mock_node.text = b"def test(): pass"
+
+        result = query_service._create_result_dict(mock_node, "test", "def test(): pass")
+        assert "complexity_score" not in result
+
+
 # Pytest fixtures
 @pytest.fixture
 def query_service() -> QueryService:

@@ -38,6 +38,27 @@ Banned name patterns — pre-commit will reject any new file matching:
 new subsystem (a new subpackage, a new MCP tool, a new CLI command) that has no
 existing test file. The file name must match the module it tests exactly.
 
+**Controlled pure-migration exception (user-approved; tracked: #1376):** An
+oversized existing suite may be split into bounded behavior modules only when
+all of the following conditions hold:
+
+- A tracking issue explicitly authorizes the migration.
+- No original test cases are added, removed, duplicated, or weakened; preserve
+  names, parameters, fixture scopes, markers, and helper dependencies.
+- Preserve exact before/after collected nodeid mappings, including class methods
+  and parameter IDs, plus AST comparisons and negative mutation probes.
+- AST normalization may cover imports, source positions, real docstring
+  translation, and separately declared UTF-8 corrections, never assertion or
+  test-input data. Existing explicit encoding values must not change.
+- Every migrated target and new Python module must be at most 500 lines.
+- Shared helpers must be non-test modules, without duplicated production logic
+  or star-imported test re-exports. Update live references and verification-family
+  mappings so the old entry file cannot silently become a partial gate.
+
+New behavior must still go into the corresponding existing behavior module.
+This is not permission to create arbitrary new language-plugin or MCP-tool test
+files, duplicate coverage fragments, or files with the banned names above.
+
 ### T-2: No weak assertions — ratchet-enforced (BLOCKER)
 
 See §"Exact assertions only" below. The `weak-assertion-ratchet` pre-commit hook
@@ -112,13 +133,14 @@ documented invariant, not a hand-waved bound on a deterministic count.
 
 These look like inconsistencies in a dogfood pass, but they are intentional and reflect the project's design priorities. Reverting them costs real value. **If a dogfood agent proposes any of the items below as a "finding", REJECT the finding and link the agent back to this section.**
 
-### 1. MCP defaults to TOON; CLI defaults to JSON — LOCKED
+### 1. MCP and CLI use JSON output — LOCKED
 
-- **Why**: TOON is 50-70% more token-efficient than JSON. MCP callers are LLM agents — token cost is real money. CLI callers are humans / shells — JSON is human-readable and pipes into `jq`.
-- **Symptom that looks like a bug**: `MCP execute()` returns `{format: "toon", toon_content: "..."}` while CLI returns a parsed dict.
-- **Correct action**: leave the defaults alone. If TOON-vs-JSON divergence causes a real bug, fix the divergence (e.g. make TOON carry the same scalar fields, per F7/N8), don't flip the default.
-- **Past incident**: r36 attempted "R3: flip MCP output_format default to json" — rolled back. The token savings outweigh the parity argument.
-- **🔒 LOCKED BY USER (r37b)**: 用户明确指示「默认使用 toon，不用使用 json，不让 ai agent 修改这个」. Any AI agent that proposes flipping MCP defaults from `toon` → `json`, or removes the `"toon"` default literal in `arguments.get("output_format", "toon")` for any MCP tool, is **violating a user-locked design decision**. The cost analysis is settled: token savings win over parity. **REJECT such proposals at the brief stage. Do not even read the dogfood agent's reasoning beyond seeing the words "flip default" or "toon to json".**
+- **Why**: MCP and CLI callers need one explicit, interoperable response contract. JSON is readable by agents and humans and pipes directly into `jq`.
+- **Evidence (measured, not asserted — §11 rule 3).** JSON is now the sole supported wire representation; there is no alternate compact formatter or token-saving claim to maintain.
+
+  JSON is emitted with the standard structured response envelope. Payload-size claims are intentionally not part of the product contract.
+- **Correct action**: keep the JSON contract consistent across MCP and CLI. Do not reintroduce a second response encoding or payload-only wrapper.
+- **Migration note**: the legacy compact wire format and its duplicate-metadata envelope were removed. The migration is complete only when implementation, schemas, tests, examples, codemaps, and all README translations agree.
 
 ### 2. project_root canonicalisation is a foundational change
 
@@ -127,7 +149,7 @@ These look like inconsistencies in a dogfood pass, but they are intentional and 
 - **Correct action**: if you fix this, study the macOS symlink behavior and the test fixture conventions FIRST. Use `os.path.abspath` only after confirming SecurityValidator / PathResolver / test fixtures all use the same resolution. Test on macOS specifically. Land it in a dedicated commit, never bundled with other fixes.
 - **Past incident**: r36 attempted "R1: canonicalise project_root in BaseMCPTool" — broke 164 tests on macOS, rolled back.
 
-### 3. CLI INFO/diagnostic output → stderr; JSON/TOON payload → stdout
+### 3. CLI INFO/diagnostic output → stderr; JSON payload → stdout
 
 - **Why**: This was correctly fixed in r34 (Q2). DO NOT revert it. `print(message)` calls in CLI code MUST go to `sys.stderr` unless they emit machine-readable data to stdout.
 
@@ -525,7 +547,24 @@ review/rollback baselines get muddy. User called it out; rule locked.
 1. `gh release create vX.Y.Z --target main --notes-file <changelog section>` — the git tag and GitHub Release are NOT auto-created.
 2. **Back-merge main → develop.** Conflict conventions: take main's authoritative test-count (measured from release CI), keep develop's newer feature surface (e.g. flag counts for develop-only params). Verify with the registry commands below, not by trusting either side.
 3. Re-verify PyPI version / main README badge / `__version__` agree.
-4. Finalization complete = release closed = develop unfreezes.
+4. **Publish to the official MCP registry.** Not automated, and `server.json` is
+   not covered by any CI check, so a stale version here is silent.
+   - `server.json` at repo root must have `version` equal to the PyPI release
+     just published, and `name` = `io.github.aimasteracc/tree-sitter-analyzer`.
+   - **PyPI ownership marker (fail-closed prerequisite):** the *published PyPI*
+     README must contain the line
+     `mcp-name: io.github.aimasteracc/tree-sitter-analyzer`
+     or `mcp-publisher publish` fails ownership verification with an opaque
+     error. The marker must be on PyPI *before* publishing to the registry, so a
+     new PyPI release is required if it is missing.
+     Ref: <https://modelcontextprotocol.io/registry/package-types#pypi-packages>
+   - Then, from the repo root: `mcp-publisher login github` → `mcp-publisher publish`
+     (install via `brew install modelcontextprotocol/tap/mcp-publisher` or the
+     binary from the registry releases page).
+   - Verify at
+     <https://registry.modelcontextprotocol.io/servers/io.github.aimasteracc%2Ftree-sitter-analyzer>
+     that `name`, `version`, and `packages` match `server.json`.
+5. Finalization complete = release closed = develop unfreezes.
 
 **Past incident (2026-05-31):** merged release/v1.17.0 → main immediately after the Release Automation `Finalize Release` step failed — before confirming PyPI had published and before README numbers were verified. The correct order is: wait for PyPI ✓, fix README, then merge.
 

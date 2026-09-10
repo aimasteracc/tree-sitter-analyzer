@@ -94,8 +94,6 @@ class CppTableFormatter(CppTableFormatterConvertMixin, BaseTableFormatter):
             return self._format_full_table(formatted_data)
         elif table_type == "compact":
             return self._format_compact_table(formatted_data)
-        elif table_type == "csv":
-            return self._format_csv(formatted_data)
         else:
             return self._format_full_table(formatted_data)
 
@@ -109,8 +107,6 @@ class CppTableFormatter(CppTableFormatterConvertMixin, BaseTableFormatter):
         """Format advanced analysis output"""
         if output_format == "json":
             return self._format_json(analysis_result)
-        elif output_format == "csv":
-            return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)
 

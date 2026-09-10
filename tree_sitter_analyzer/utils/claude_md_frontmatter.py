@@ -4,8 +4,8 @@ Many TSA tools want a machine-readable view of two kinds of project rules
 that previously lived as prose in ``CLAUDE.md`` § "Deliberate design
 decisions":
 
-* ``intentional_design`` — locked design decisions (e.g. "MCP defaults to
-  TOON; do not flip to JSON"). When an edit touches one of these files /
+* ``intentional_design`` — locked design decisions (for example, the
+  canonical JSON response contract). When an edit touches one of these files /
   symbols, downstream verdict tools (``safe_to_edit`` etc.) should escalate
   the verdict per the rule's ``action_when_touched``.
 * ``fixture_allowlist`` — files that are referenced from ``tests/`` as
@@ -64,7 +64,7 @@ _FRONTMATTER_RE = re.compile(
 class IntentionalDesignRule:
     """A locked design-decision rule extracted from ``intentional_design``.
 
-    ``file_patterns`` are pre-compiled gitwildmatch specs (so consumers do
+    ``file_patterns`` are pre-compiled gitignore specs (so consumers do
     not need to import pathspec). ``raw_globs`` preserves the original
     strings for display / debugging.
     """
@@ -183,7 +183,7 @@ def _compile_patterns(
 ) -> tuple[pathspec.PathSpec, ...] | None:
     """Compile glob strings to PathSpec objects, or ``None`` on error."""
     try:
-        return tuple(pathspec.PathSpec.from_lines("gitwildmatch", [g]) for g in globs)
+        return tuple(pathspec.GitIgnoreSpec.from_lines([g]) for g in globs)
     except (TypeError, ValueError) as exc:
         logger.warning(
             "intentional_design[%s] glob compilation failed: %s; skipping",

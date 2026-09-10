@@ -16,6 +16,39 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _resolve_indexed_callee(
+    conn: sqlite3.Connection, row: Any, ctx: Any, resolve: Any
+) -> Any:
+    """利用持久化定义行补足 self/cls 的类身份，不把同名调用者交给名字猜测。"""
+    caller_file = row["caller_file"]
+    name = row["callee_name"]
+    if ctx.file_languages.get(caller_file) == "python" and row["callee_full"] in (
+        f"self.{name}",
+        f"cls.{name}",
+    ):
+        callers = conn.execute(
+            "SELECT id FROM ast_symbol_rows WHERE file_path=? AND name=? AND line=? "
+            "AND kind IN ('function','method') LIMIT 2",
+            (caller_file, row["caller_name"], row["caller_line"]),
+        ).fetchall()
+        if len(callers) == 1:
+            owners = [
+                methods
+                for methods in ctx.file_class_methods.get(caller_file, {}).values()
+                if methods.get(row["caller_name"]) == callers[0][0]
+            ]
+            if len(owners) == 1:
+                from ..synapse_resolver import ResolvedCallee
+
+                target = owners[0].get(name)
+                return (
+                    ResolvedCallee(target, "local", caller_file)
+                    if target is not None
+                    else ResolvedCallee(None, "unknown", "")
+                )
+    return resolve(name, caller_file, ctx, row["callee_full"], row["caller_name"])
+
+
 def resolve_call_edges_for_file(
     cache: Any,
     conn: sqlite3.Connection,
@@ -40,7 +73,7 @@ def resolve_call_edges_for_file(
         return
     try:
         rows = conn.execute(
-            "SELECT id, caller_name, file_path AS caller_file, callee_name, "
+            "SELECT id, caller_name, caller_line, file_path AS caller_file, callee_name, "
             "callee_full FROM edges WHERE kind = 'calls' AND file_path = ?",
             (rel_path,),
         ).fetchall()
@@ -49,13 +82,7 @@ def resolve_call_edges_for_file(
         return
     for row in rows:
         try:
-            resolved = resolve_callee(
-                row["callee_name"],
-                row["caller_file"],
-                ctx,
-                row["callee_full"],
-                row["caller_name"],
-            )
+            resolved = _resolve_indexed_callee(conn, row, ctx, resolve_callee)
         except Exception as exc:  # pragma: no cover
             logger.debug("resolve_callee crashed on %s: %s", row["callee_name"], exc)
             continue
@@ -77,7 +104,8 @@ def resolve_call_edges_for_file(
 
 
 def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int] | None:
-    """Re-resolve every unresolved call edge. Returns stats dict or None."""
+    """Re-resolve unresolved call edges; return None only on indeterminate failure."""
+    empty_stats = {"total": 0, "resolved": 0, "unchanged": 0, "errors": 0}
     try:
         from ..synapse_resolver import (
             build_resolver_context,
@@ -88,14 +116,14 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
         logger.debug("synapse_resolver import failed: %s", exc)
         return None
     if not is_enabled():
-        return None
+        return empty_stats
     try:
         # Re-scan only edges that are still genuinely unresolved. ``external``
         # and ``stdlib`` are *terminal* resolutions (target lives outside the
         # project, no resolved_file by design) — re-selecting them on every
         # backfill is the unknown-> rescan loop B3 is meant to break.
         rows = conn.execute(
-            "SELECT id, caller_name, file_path AS caller_file, callee_name, "
+            "SELECT id, caller_name, caller_line, file_path AS caller_file, callee_name, "
             "callee_full FROM edges "
             "WHERE kind = 'calls' AND ("
             "callee_resolution = 'unknown' "
@@ -106,7 +134,7 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
         logger.debug("synapse backfill select failed: %s", exc)
         return None
     if not rows:
-        return None
+        return empty_stats
     try:
         ctx = build_resolver_context(cache)
     except Exception as exc:
@@ -117,13 +145,7 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
     updates: list[tuple[Any, str, str, int]] = []
     for row in rows:
         try:
-            result = resolve_callee(
-                row["callee_name"],
-                row["caller_file"],
-                ctx,
-                row["callee_full"],
-                row["caller_name"],
-            )
+            result = _resolve_indexed_callee(conn, row, ctx, resolve_callee)
         except Exception as exc:
             logger.debug("resolve_callee failed in backfill: %s", exc)
             errors += 1

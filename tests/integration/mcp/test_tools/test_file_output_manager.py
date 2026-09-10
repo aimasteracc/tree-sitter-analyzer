@@ -55,29 +55,29 @@ class TestFileOutputManager:
         assert content_type == "json"
 
     def test_detect_content_type_csv(self):
-        """Test content type detection for CSV content."""
+        """Test content type detection for CSV content (now returns text since csv format removed)."""
         csv_content = "Name,Age,City\nJohn,30,New York\nJane,25,Boston"
         content_type = self.manager.detect_content_type(csv_content)
-        assert content_type == "csv"
+        assert content_type == "text"
 
     def test_detect_content_type_markdown(self):
-        """Test content type detection for Markdown content."""
+        """Test content type detection for Markdown content (now returns text since markdown format removed)."""
         # Test with headers
         markdown_content = "# Title\n## Subtitle\nSome content"
         content_type = self.manager.detect_content_type(markdown_content)
-        assert content_type == "markdown"
+        assert content_type == "text"
 
         # Test with table
         table_content = (
             "| Column 1 | Column 2 |\n|----------|----------|\n| Value 1  | Value 2  |"
         )
         content_type = self.manager.detect_content_type(table_content)
-        assert content_type == "markdown"
+        assert content_type == "text"
 
         # Test with list
         list_content = "* Item 1\n* Item 2\n* Item 3"
         content_type = self.manager.detect_content_type(list_content)
-        assert content_type == "markdown"
+        assert content_type == "text"
 
     def test_detect_content_type_text(self):
         """Test content type detection for plain text content."""
@@ -86,29 +86,29 @@ class TestFileOutputManager:
         assert content_type == "text"
 
     def test_get_file_extension(self):
-        """Test file extension mapping."""
+        """Test file extension mapping (csv/markdown removed, now return .txt)."""
         assert self.manager.get_file_extension("json") == ".json"
-        assert self.manager.get_file_extension("csv") == ".csv"
-        assert self.manager.get_file_extension("markdown") == ".md"
+        assert self.manager.get_file_extension("csv") == ".txt"
+        assert self.manager.get_file_extension("markdown") == ".txt"
         assert self.manager.get_file_extension("text") == ".txt"
         assert self.manager.get_file_extension("unknown") == ".txt"
 
     def test_generate_output_filename(self):
-        """Test output filename generation."""
+        """Test output filename generation (csv/markdown now produce .txt)."""
         # Test with JSON content
         json_content = '{"key": "value"}'
         filename = self.manager.generate_output_filename("test", json_content)
         assert filename == "test.json"
 
-        # Test with CSV content
+        # Test with CSV content (now .txt since csv format removed)
         csv_content = "Name,Age\nJohn,30"
         filename = self.manager.generate_output_filename("data", csv_content)
-        assert filename == "data.csv"
+        assert filename == "data.txt"
 
-        # Test with Markdown content
+        # Test with Markdown content (now .txt since markdown format removed)
         markdown_content = "# Title\nContent"
         filename = self.manager.generate_output_filename("doc", markdown_content)
-        assert filename == "doc.md"
+        assert filename == "doc.txt"
 
         # Test with existing extension
         filename = self.manager.generate_output_filename("test.old", json_content)

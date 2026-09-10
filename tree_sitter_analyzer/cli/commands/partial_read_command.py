@@ -15,14 +15,6 @@ from ...mcp.tools.read_partial_helpers import (
 from ...output_manager import output_data, output_json, output_section
 from .base_command import BaseCommand
 
-# TOON formatter for CLI output
-try:
-    from ...formatters.toon_formatter import ToonFormatter
-
-    _toon_available = True
-except ImportError:
-    _toon_available = False
-
 if TYPE_CHECKING:
     pass
 
@@ -115,7 +107,7 @@ class PartialReadCommand(BaseCommand):
         r37d9 (dogfood): 105 lines → ~15 lines of phase dispatch.
         Sub-helpers (``_compute_partial_range_flags``, ``_build_partial_result``,
         ``_emit_partial_payload``) own the range-bounds analysis, dict
-        assembly, and json/toon/text fan-out respectively. K8 + r37ag
+        assembly, and JSON/text output respectively. K8 + r37ag
         contracts (lines_extracted from real content, top-level verdict
         mirror) are preserved.
         """
@@ -226,15 +218,10 @@ class PartialReadCommand(BaseCommand):
         return result_data
 
     def _emit_partial_payload(self, result_data: dict[str, Any], content: str) -> None:
-        """Emit ``result_data`` via json / toon / text per ``--output-format``."""
+        """Emit ``result_data`` via JSON or text per ``--output-format``."""
         output_format = getattr(self.args, "output_format", "text")
         if output_format == "json":
             output_json(result_data)
-            return
-        if output_format == "toon" and _toon_available:
-            use_tabs = getattr(self.args, "toon_use_tabs", False)
-            formatter = ToonFormatter(use_tabs=use_tabs)
-            print(formatter.format(result_data))
             return
         # Human-readable format with header.
         range_info = f"Line {self.args.start_line}"
