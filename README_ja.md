@@ -4,16 +4,29 @@
 
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/) [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) [![Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer) [![対応: Claude Code · Cursor · MCP](https://img.shields.io/badge/対応-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20MCP-6f42c1.svg)](#supported-agents)
 
-**AI エージェントが信頼できるコード インテリジェンス** — クロスランゲージ構造解析、エージェントネイティブ設計（MCP + CLI）。
+**AI エージェントが信頼できるコード インテリジェンス** — [対応言語一覧](#サポート言語)全体で正確なクロスランゲージ構造解析、エージェントネイティブ設計（MCP + CLI）。
 
 TSA は tree-sitter でコードベースをインデックスし、コール グラフ・シンボル検索・構造クエリを AI コーディング エージェントへ提供します — **8 MCP ツール** + CLI、完全ローカル、テレメトリなし。
 
 **なぜ違うのか：**
 * **クロスランゲージ正確性がモート（堀）。** 言語ファミリ ゲートが、名前のみを根拠にしたクロスランゲージ束縛を防ぎます。
 * **エージェントネイティブ。** **8 MCP ツール**が構造化 JSON 出力と verdict エンベロープを提供し、CLI とキュレーション済みワークフローからも利用できます。
-* **広くかつ正確に分類。** 13 言語は `pipeline_registered`（パイプライン登録済み、非 E2E: Python · Go · Rust · Java · JS · TS · C · C++ · C# · Swift · Kotlin · Ruby · PHP）です。これは登録・配線の証拠であり、クロスファイル呼び出し解決の検証を意味しません。
+* **広くかつ正確に分類。** [生成された対応深度インベントリ](#サポート言語)は、パイプラインの証拠と未検証のクロスファイル動作を区別します。
 
 > v1.x からの移行は [docs/MIGRATION.md](docs/MIGRATION.md) を参照。
+
+### 神経系の境界 (Pulse / TQL / セマンティック クエリ)
+
+TQL の時間セレクタは変更タイムスタンプを比較するものであり、変更回数を比較するものではありません。
+`tql_schema` アクションは、素の `:hot` と `:recently_modified` が共有するウィンドウとデフォルト値を文書化します。深度クエリは正確な定義同一性を保持し、トラバーサル上限を超えた場合は明示的に失敗します。
+
+Pulse のリクエストはスナップショット境界のコンテキストを返します。識別情報・関係性・逆 import コンテキスト・任意のキャッシュ済み LSP エンリッチメントのための SQL 読み取りは、呼び出し元が保有するトランザクションを終了させることなく savepoint を共有します。これは SQL ラウンドトリップやレイテンシの保証を意味するものではありません。
+
+Pulse の Python 逆 import コンテキストは既存のモジュール リゾルバを使用します。これはクロスランゲージのモジュール解決が完全であるという主張ではありません。コメント コンテキストにはコメント抽出込みで再構築されたインデックスが必要です。古いインデックスやコメント抽出に対応していない言語では、空の成功応答ではなく `COMMENTS_NOT_INDEXED` を返します。不要な場合は、文書化された `max_comments` 設定でコメント コンテキストを明示的に省略してください。欠落しているレガシー コミット メッセージ投影は遅延リフレッシュのため `pending` になります。`disabled` の有効化状態は保持されます。レガシーの NULL 有効化状態も、古いメッセージやカウントをクリアすることなく pending になります。有効化されたキャッシュ済みインデックス作成サイクルは、境界付きの有効化リフレッシュを継続します。Pulse は利用不能な有効化状態を `null` として公開し、時間的クエリは不完全な有効化証拠を拒否します。リフレッシュは境界付きバッチを通じて実際の Git 履歴を読み取ります。メッセージ読み取りに失敗した場合は、完了したと主張せず保留中の作業として保持します。
+
+セマンティック クエリには既知の保存済み埋め込みモデルと一貫した次元数が必要です。混在または未知のモデルはエラーとなり、プロバイダのフォールバックはありません。オフライン テストではモデル ダブルを使用します。これは実運用プロバイダの品質を保証するものではありません。
+
+Pulse のバッチ処理は成功したエントリを保持しますが、対象が 1 つでも失敗すると失敗を報告します。TQL は欠落または読み取り不能なインデックスをエラーとして扱い、これは「マッチなしの準備済みインデックス」とは区別されます。公開リクエストの検証は、インデックスを開いたり埋め込みプロバイダを呼び出したりする前に、無効な型や上限値を拒否します。
 
 ---
 
@@ -29,6 +42,12 @@ curl -fsSL https://raw.githubusercontent.com/aimasteracc/tree-sitter-analyzer/ma
 
 `install.sh` は `uv` の有無を確認して未インストールなら自動導入し、Claude Desktop / Claude Code / Cursor / VS Code の設定ファイルを検出して MCP エントリを自動書き込みします。セットアップ後は `tree-sitter-analyzer --doctor` で設定を確認できます。
 
+> **ブートストラップの信頼性について:** 利便性のため、上記コマンドは `uv` が未インストールまたは古い場合、公式 `uv` インストーラを TLS 経由でダウンロード・実行します。このインストーラは可変であり **content-bound ではありません**。TSA はダウンロード前に警告を表示し、インストール後に厳密なバージョン確認を行います。この未検証のブートストラップを避けたい場合は、事前に `uv >= 0.11.0` を手動でインストールするか、次のセキュアなオプトアウトを使用してください（ブートストラップが必要な場合は手動インストール手順を表示して終了します）:
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/aimasteracc/tree-sitter-analyzer/main/install.sh \
+>   | TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP=1 bash
+> ```
+
 **Claude Code** へワンライナーでインストール:
 
 ```bash
@@ -38,10 +57,12 @@ claude mcp add tree-sitter-analyzer \
 ```
 
 エージェントを再起動し、こう伝える: 「`index` ツールを action=status で呼んでください。」
+CLI での同等操作 (エージェント不要): `tree-sitter-analyzer --codegraph-status`
 
 > **PyPI / uvx ユーザーへ — スキルのインストール:** `tsa-*` スキルはホイールに同梱されています。一度だけ次のコマンドでインストールしてください:
 > ```bash
-> tree-sitter-analyzer --install-skills
+> tree-sitter-analyzer --install-skills              # ./.claude/skills/ へ (このプロジェクトのみ)
+> tree-sitter-analyzer --install-skills-global       # ~/.claude/skills/ へ (全プロジェクト共通)
 > ```
 > git clone ユーザーはすでに `.claude/skills/` に含まれているため、操作不要です。
 
@@ -52,11 +73,12 @@ claude mcp add tree-sitter-analyzer \
 #### 1. 依存関係をインストール
 
 ```bash
-# uv (必須)
+# uv (必須)。この公式簡易インストーラは可変で content-bound ではありません。
+# 代替の手動インストール方法は https://docs.astral.sh/uv/ を参照。
 curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-# fd + ripgrep (検索機能で必須)
+# fd + ripgrep (`search action=batch` の複数クエリ テキスト検索に必須; シンボル検索は SQLite FTS5 を使用しどちらも不要)
 brew install fd ripgrep                                # macOS
 winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```
@@ -87,6 +109,7 @@ uv tool install "tree-sitter-analyzer[all,mcp]"
 ```
 
 再起動後: 「`index` ツールを action=status で呼んでください。」
+CLI での同等操作 (エージェント不要): `tree-sitter-analyzer --codegraph-status`
 
 **自分のリポジトリでリゾルバの動作を確認**（インストール不要、最初に再インデックスします）:
 
@@ -174,9 +197,17 @@ tree-sitter-analyzer --affected <file...>         # 影響を受けるテスト
 tree-sitter-analyzer --dead-code                  # 推移的到達不能
 tree-sitter-analyzer --check-constraints          # アーキテクチャ規則
 tree-sitter-analyzer --safe-to-edit <file>        # リスク時に拒否
+tree-sitter-analyzer --uml class                  # Mermaid UML class 図
 ```
 
-完全なインターフェースは [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) を参照。
+このパッケージにはスタンドアロンのファイル一覧ヘルパーも同梱されています:
+
+```bash
+list-files <dir>          # fd 相当のファイル探索
+```
+
+`search-content` と `find-and-grep` は develop で削除されました。詳細は
+[migration guide](docs/MIGRATION.md) と [`CLI codemap`](docs/CODEMAPS/cli.md) を参照。
 
 ---
 
@@ -204,7 +235,8 @@ tree-sitter-analyzer --safe-to-edit <file>        # リスク時に拒否
                                MCP クライアント / CLI 消費者
 ```
 
-インデックスは最初のクエリで遅延構築され、ファイル変更時はコンテンツ ハッシュ差分で増分更新 (`index` action=sync)。8 個のファサード全てが同じ `.ast-cache/` を共有し、クエリとフォローアップは作業を共有する。
+8 個の MCP ツールがインデックス済みクエリと直接的なソース解析を提供します。
+索引済みのシンボル/コンテキストクエリの前に、`tree-sitter-analyzer --ast-cache --ast-cache-mode index --format json` で AST インデックスを明示的に構築してください。ソース変更後は `index` action=sync でリフレッシュします。索引済みクエリはキャッシュされた AST データを再利用します。自動ウォームアップは個々のツールに固有です。
 
 ---
 
@@ -223,7 +255,8 @@ claude mcp add tree-sitter-analyzer \
 
 **PyPI / uvx ユーザー** — 同梱スキルを一度インストール:
 ```bash
-tree-sitter-analyzer --install-skills
+tree-sitter-analyzer --install-skills              # ./.claude/skills/ へ (このプロジェクトのみ)
+tree-sitter-analyzer --install-skills-global       # ~/.claude/skills/ へ (全プロジェクト共通)
 ```
 git clone ユーザーはすでに含まれているため不要です。
 </details>
@@ -271,6 +304,43 @@ git clone ユーザーはすでに含まれているため不要です。
 すべて Claude Desktop と同じ `mcpServers` スキーマを使用。Cursor: **設定 → MCP**。Cline: MCP パネル → 設定編集。Continue: `~/.continue/config.json` の `experimental.modelContextProtocolServers`。Roo Code: MCP パネル → MCP 設定編集。
 </details>
 
+<details>
+<summary><b>🐳 Docker</b> (ローカルに Python / uv が無い場合)</summary>
+
+このリポジトリには、ソースから MCP サーバー (stdio トランスポート) をビルドする [`Dockerfile`](Dockerfile) が同梱されています。そのためイメージは常にコミット済みのコードと一致します。
+
+```bash
+# 一度だけビルド
+docker build -t tree-sitter-analyzer-mcp .
+
+# 現在のリポジトリに対して実行 (サーバーは stdio で MCP を話す; -i は stdin を開いたままにする)
+docker run --rm -i --user "$(id -u):$(id -g)" \
+  -v "$PWD:/work" -w /work tree-sitter-analyzer-mcp
+```
+
+`--user "$(id -u):$(id -g)"` はホストの UID/GID で実行するため、バインド マウントされたリポジトリ下の `.ast-cache/`、意思決定ジャーナル、`edit` による書き込みはすべて root ではなくあなたの所有になります。
+
+MCP クライアント設定 (コンテナ内のプロジェクト ルートはマウント ポイント `/work`):
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--user", "1000:1000",
+        "-v", "/絶対パス/プロジェクト:/work",
+        "-w", "/work",
+        "-e", "TREE_SITTER_PROJECT_ROOT=/work",
+        "tree-sitter-analyzer-mcp"
+      ]
+    }
+  }
+}
+```
+</details>
+
 > ⚠️ `TREE_SITTER_PROJECT_ROOT` は **絶対パス** が必須。サーバーは `SecurityValidator` でエスケープを防ぐセキュリティ境界を強制する。
 
 ---
@@ -301,6 +371,30 @@ Lua はインデックス受け入れ済みで call dispatch と resolver slot �
 * **キャッシュ場所**: `<project>/.ast-cache/`。安全に削除可 — 自動再構築される。
 * **任意**: `TREE_SITTER_OUTPUT_PATH` 大出力の書き込み先。
 
+### スナップショット証拠のプラットフォーム範囲
+
+通常のファイル解析、インデックスの作成/更新、レガシー インデックス経由のクエリは、
+認証済みスナップショット アクセスとは別物です。既存の Windows 上の操作パスは、
+新しいプライベート WAL スナップショット カーネルを必要としません。これらの操作は
+キャッシュを作成・更新できますが、認証済みの読み取り専用アクセスは別の契約に従います。
+
+このスナップショット実装が追加するのは **POSIX 専用のプライベート データベース/WAL 証拠キャプチャ**であり、
+記述子相対操作、`O_NOFOLLOW`、安全な外部一時ディレクトリ、source/manifest/projection
+チェックの成功を要求します。これは Windows の読み取り専用スナップショット パリティを提供する
+ものでも、明示的な `access_mode="read_existing"` 消費者向けの既存の資格ゲートを拡張するもの
+でもありません。
+
+Windows のスナップショット認証は develop ベースラインの時点ですでに利用不可であり
+（`SECURE_FD_SNAPSHOT_UNSUPPORTED`）、この実装でも引き続き利用できません
+（`WAL_PRIVATE_SNAPSHOT_UNSUPPORTED`、`completeness="unknown"`、スナップショット トークンなし）。
+これは物理インデックスが空であることや、通常のクエリが無効化されていることを意味するものでは
+ありません。新しいキャプチャ パスに対するネイティブ Windows 資格検証は実施されておらず、
+ローカルの能力テストはその代替にはなりません。
+
+ファイル単位の `certified_at` 状態は、完全なスナップショット権限の代替にはなりません。
+`partial_at` の永続履歴は **本 PR では未実装であり、含まれていません**。
+不完全または検証不能な projection は、認証済み消費者を許可できません。
+
 ---
 
 ## 品質とテスト
@@ -310,14 +404,14 @@ Lua はインデックス受け入れ済みで call dispatch と resolver slot �
 | テスト通過 | 包括的テストスイート ✅ |
 | カバレッジ | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | 型安全性 | mypy |
-| プラットフォーム | macOS · Linux · Windows |
+| プラットフォーム | macOS · Linux · Windows（通常操作）。スナップショット証拠は上記のとおりより狭い範囲となる |
 | Pre-commit ゲート | ruff · bandit · mypy · pyupgrade · detect-secrets · tsa-codemap-sync |
 
 ```bash
-uv run pytest -q                                # フル スイート
-uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # 開発時の高速ループ
-PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # CPUを抑えたいとき
-PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # ほどほどな並列
+uv run pytest -q                                # 境界付きのローカル高速ゲート
+uv run pytest tests/ -q --timeout=120 -m "not e2e and not network and not benchmark"  # 包括的なローカル スイート
+PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1                  # 高速ゲート、ワーカー1 (CPU負荷を抑える)
+PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q --maxfail=1                  # 高速ゲート、ワーカー2 (バランス型)
 uv run pytest --lf --maxfail=1                  # 前回失敗したテストだけ再実行
 uv run python check_quality.py --new-code-only  # 品質ゲート
 ```
@@ -328,33 +422,11 @@ uv run python check_quality.py --new-code-only  # 品質ゲート
 
 | 症状 | 修正 |
 |---|---|
-| `.swift / .kt / .rb / .php / .cs` で `unsupported language` | ≥ 1.12.x へ更新 — 5 言語 gap は commit `50e99a8f` で修正済み。extras 区分の文法モジュールはベースインストールに同梱されません。`pip install "tree-sitter-analyzer[swift]"`(または `kotlin`、`ruby`、`php`、`csharp`)で追加してください |
-| MCP サーバーがクライアントに表示されない | `TREE_SITTER_PROJECT_ROOT` は**絶対パス**必須; 設定編集後にクライアント再起動。[TREE\_SITTER\_PROJECT\_ROOT に相対パスを指定した場合](#tree_sitter_project_root-に相対パスを指定した場合)も参照 |
-| `database is locked` | `.ast-cache/index.db` を保持する他プロセスを停止; 継続する場合は `rm -rf .ast-cache && tree-sitter-analyzer --autoindex` |
-| 初回呼び出しが遅い・インデックスがない | 自動構築はツールにより異なります。索引を使う検索の前に `--full-index` を実行してください。 |
-| エージェントが誤ったツールを選ぶ | `tsa-*` skill (`/tsa-graph`、`/tsa-find` 等) を使用 — 各 skill は可視ツールを 1 ワークフローに制限 |
-
-### TREE\_SITTER\_PROJECT\_ROOT に相対パスを指定した場合
-
-**症状:** MCP サーバーはエラーなく起動するが、TSA が誤った解析結果を返すか `project root not found` のようなエラーが発生する。
-
-**原因:** `TREE_SITTER_PROJECT_ROOT` に相対パス（例: `./myproject`）が設定されている。`uvx` がサーバーを起動するとき、プロセスの作業ディレクトリがインストール実行時と異なる場合があり、相対パスが誤った場所に解決される。
-
-**修正:** 常に絶対パスを使用する:
-
-```bash
-# 正しい
-"TREE_SITTER_PROJECT_ROOT": "/home/user/myproject"
-
-# これも正しい（install.sh が実行時に解決する）
-"TREE_SITTER_PROJECT_ROOT": "$(pwd)"        # または $(realpath .)
-
-# 誤り
-"TREE_SITTER_PROJECT_ROOT": "./myproject"
-"TREE_SITTER_PROJECT_ROOT": "myproject"
-```
-
-`tree-sitter-analyzer --doctor` で設定を確認できます。
+| `.swift / .kt / .rb / .php / .cs` で `unsupported language` | 現行のサポート対象リリースへ更新してください — この言語欠落は commit `50e99a8f` で修正済みです。extras 区分の文法モジュールはベースインストールに同梱されません。`pip install "tree-sitter-analyzer[swift]"`(または `kotlin`、`ruby`、`php`、`csharp`)で追加してください。 |
+| MCP サーバーがクライアントに表示されない | `TREE_SITTER_PROJECT_ROOT` は**絶対パス**である必要があります（例: `$(pwd)` や `/home/user/project`）。相対パスだとサーバーが誤ったディレクトリに対して解決してしまいます。設定編集後はクライアントを再起動してください。`tree-sitter-analyzer --doctor` で確認できます。 |
+| `database is locked` | `.ast-cache/index.db` を保持する他プロセスを停止してください。継続する場合は `rm -rf .ast-cache && tree-sitter-analyzer --full-index` を実行してください。 |
+| 初回呼び出しが遅い・インデックスがない | 一部のツールは自動でインデックスをウォームアップします。索引済みクエリの前に `--full-index` を事前に実行してください。 |
+| エージェントが誤ったツールを選ぶ | `tsa-*` skill (`/tsa-graph`、`/tsa-find` 等) を使用してください — 各 skill は可視ツールを専用ワークフローに制限します。 |
 
 ---
 
@@ -377,3 +449,4 @@ uv run pytest -q
 * 💖 [スポンサー](https://github.com/sponsors/aimasteracc) — 継続的な MCP / Skills 開発を支援。
 * リード スポンサー: **[@o93](https://github.com/o93)**。
 * MIT ライセンス — [LICENSE](LICENSE) を参照。
+* リリース履歴: [CHANGELOG.md](CHANGELOG.md)。
