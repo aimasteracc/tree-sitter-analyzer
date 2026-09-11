@@ -15,7 +15,6 @@ project file.
 
 from __future__ import annotations
 
-import os
 import posixpath
 import re
 from collections.abc import Iterable
@@ -96,7 +95,7 @@ def resolve_typescript_specifier(
     """
     if not specifier or not _is_relative(specifier):
         return ""
-    importer_dir = posixpath.dirname(importer_file.replace(os.sep, "/"))
+    importer_dir = posixpath.dirname(importer_file.replace("\\", "/"))
     base = posixpath.normpath(posixpath.join(importer_dir, specifier))
     # normpath collapses '..' but leaves a leading '..' when the specifier
     # climbs above the root; such a path can never name an indexed file.
