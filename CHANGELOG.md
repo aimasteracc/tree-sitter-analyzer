@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [1.31.0] - 2026-09-11
+
+### Added
+
+- Pulse `imported_by` context now resolves reverse-import edges for TypeScript and JavaScript. ES-module specifiers (`./parser`, `../utils`, etc.) are resolved at index time against the indexed file set and stored in the language-neutral `callee_resolved_file` column; bare package specifiers (`react`, `@scope/pkg`, `node:fs`) are never resolved to project files. Python's existing module-name resolution path is unchanged.
+
+### Fixed
+
+- Specifier path normalization is now platform-independent: backslashes in importer paths are normalized unconditionally rather than using `os.sep`, so resolution is consistent across macOS, Linux, and Windows.
+
 ## [1.30.0] - 2026-09-10
 
 ### ⚠️ Breaking Changes
