@@ -117,11 +117,17 @@ def _is_exempt(cls: type) -> bool:
 
 
 def test_the_gate_enumerates_a_non_trivial_surface() -> None:
-    """A walk that found nothing would make every assertion below vacuous."""
+    """Exact rather than lower bounds: RFC-0028 §3.2 requires set equality.
+
+    Measured 2026-09-12: 87 tool classes enumerated and 92 reachable class names.
+    `> 20` would keep passing while either walk collapsed to a quarter of its real
+    size, which is the state this guard exists to detect.
+    """
     classes = _tool_classes()
 
-    assert len(classes) > 20, (
-        f"only {len(classes)} tool classes enumerated; the walk is probably "
+    assert len(classes) == 87, (
+        f"expected 87 tool classes, enumerated {len(classes)}; update this "
+        "constant if the tool set legitimately changed, otherwise the walk is "
         "importing nothing and the reachability gate below means nothing"
     )
     missing = [name for name in _MEASURED_ORPHANS if name not in classes]
@@ -132,9 +138,10 @@ def test_the_gate_enumerates_a_non_trivial_surface() -> None:
     # The registry walk must find a live surface, or every "unreachable" verdict
     # below is an artefact of an empty walk.
     reachable = _reachable_class_names(str(PROJECT_ROOT))
-    assert len(reachable) > 20, (
-        f"the registry walk found only {len(reachable)} reachable class names; "
-        "an empty walk would report every tool as an orphan"
+    assert len(reachable) == 92, (
+        f"expected 92 reachable class names, found {len(reachable)}; update this "
+        "constant if the registry legitimately changed, otherwise the walk is "
+        "empty and every tool would be reported as an orphan"
     )
 
 
