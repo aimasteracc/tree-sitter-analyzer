@@ -2,16 +2,15 @@
 """
 Auto-Index Guard — Transparent AST cache warming for codegraph tools.
 
-Problem: codegraph_callers, codegraph_callees, codegraph_symbol_search, etc.
-all depend on the AST cache being populated.  Today an agent must first call
-``ast_cache mode=index`` and only then call the analysis tools.  Two-step.
+Problem: codegraph_callers, codegraph_callees, codegraph_metrics and others
+read the AST cache, so an agent would otherwise have to call
+``ast_cache mode=index`` before any analysis tool.  Two-step.
 
-Solution: ``AutoIndexGuard`` is a thin singleton that any tool can call before
+Solution: ``AutoIndexGuard`` is a thin singleton that a tool calls before
 accessing the cache.  On first invocation per project-root it triggers
-``ASTCache.index_project()`` automatically, so the first ``codegraph_callers``
-call "just works" even if the agent never called ``ast_cache``.
-
-Subsequent calls are instant (one dict lookup + one SQLite COUNT).
+``ASTCache.index_project()``, so the first call warms what it needs instead of
+failing on a cold cache.  Subsequent calls are instant (one dict lookup + one
+SQLite COUNT).
 
 Usage in a tool::
 
@@ -20,10 +19,21 @@ Usage in a tool::
     if cache is not None:
         callers = cache.query_callers(func_name)
 
-Integration points:
-  - callers_tool.py, callees_tool.py: replace ``_try_get_cache()``
-  - codegraph_metrics_tool.py: replace ``_get_cache()``
-  - codegraph_symbol_search_tool.py: replace ``_get_cache()``
+Pass ``auto_build=False`` for a strictly read-only lookup that must not write
+the cache.
+
+Current call sites: ``incremental_sync_tool``, ``codegraph_visualization_hub``,
+``codegraph_refactor_tool`` and ``auto_index_tool`` warm with the default
+``auto_build=True``; ``codegraph_metrics_tool`` reads with ``auto_build=False``.
+
+``codegraph_symbol_search_tool`` is deliberately **not** a call site.  Warming
+can leave an empty or partial index, and symbol search must never convert that
+into a "the symbol is absent" verdict; it keeps an explicit ``INDEX_NOT_READY``
+with a recovery hint instead.  That guarantee is pinned by
+``test_empty_index_does_not_claim_symbol_absence`` and
+``TestCodeGraphSymbolSearchNoCache::test_search_on_empty_project`` (2026-09-09).
+Do not wire ``ensure_indexed`` into that tool, and do not read its absence there
+as a missing integration.
 """
 
 from __future__ import annotations
