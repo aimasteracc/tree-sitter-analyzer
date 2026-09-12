@@ -684,14 +684,14 @@ rather than dropping it.
 - [x] §1.1 `_LEGAL_VERDICTS` **unchanged** — no ninth verdict added
 - [x] §1.1 `next_step` no longer claims "Symbol not in the index" for an indexed
       symbol with unresolved callers
-- [ ] §1 corpus + one-directional invariant green
-- [ ] §1 ratchet wired into a **named** CI job **and** its marker set recorded,
+- [x] §1 corpus + one-directional invariant green
+- [x] §1 ratchet wired into a **named** CI job **and** its marker set recorded,
       with a proven non-zero collected count (not merely a committed file)
-- [ ] §1.2 reconciliation with `test_unknown_rate_ratchet.py` recorded in both
+- [x] §1.2 reconciliation with `test_unknown_rate_ratchet.py` recorded in both
       test files, including which gate wins on collision
-- [ ] §1.2 scope guard green: a symbol in a fully-resolved file answers
+- [x] §1.2 scope guard green: a symbol in a fully-resolved file answers
       `complete`, never `unknown`
-- [ ] §1 documented as the executable form of the conservative-resolution claim,
+- [x] §1 documented as the executable form of the conservative-resolution claim,
       cross-referenced from `ROADMAP-no1-agent-trust.md`
 - [ ] §2 **blocked until RFC-0027 is accepted and L6.2 (`QueryCost`) lands** —
       not tickable before then

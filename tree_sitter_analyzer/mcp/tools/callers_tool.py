@@ -28,6 +28,36 @@ from .index_rebuild_signal import (
 logger = setup_logger(__name__)
 
 
+def _declaring_file_unresolved(
+    cache: Any,
+    func_name: str,
+    data_source: str,
+) -> int | None:
+    """Unresolved CALLS edges inside the files that declare ``func_name``.
+
+    The RFC-0028 §1.2 scope guard: a computed dispatch site records its own
+    source text as the callee, so no per-symbol lookup can see it, and the only
+    place it can be counted from is the file it sits in.  A symbol with no
+    declaring file in this project contributes ``0`` — there is no file scope to
+    check, which is different from a scope that could not be read.
+
+    ``None`` means the question could not be answered at all; it must never read
+    as "nothing unresolved here".
+    """
+    if cache is None or data_source != "sql":
+        return None
+    declaring = cache.symbol_declaring_files(func_name)
+    if not declaring:
+        return 0
+    total = 0
+    for path in declaring:
+        count = cache.count_unresolved_calls_in_file(path)
+        if count is None:
+            return None
+        total += count
+    return total
+
+
 class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
     """MCP Tool for finding callers of a function (CodeGraph parity)."""
 
@@ -192,9 +222,19 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             if cache is not None and data_source == "sql"
             else None
         )
-        if unresolved_inbound is None:
+        # RFC-0028 §1.2 scope guard.  A computed dispatch site is recorded under
+        # its source text (`HANDLERS[name]`, `getattr(self, name)`), so it names
+        # no symbol and the per-symbol count above cannot see it.  An unresolved
+        # call inside a file that declares this symbol could target it, so the
+        # claim is gated on the declaring files as well.  A symbol in a
+        # fully-resolved file still answers complete.
+        unresolved_in_declaring_files = _declaring_file_unresolved(
+            cache, func_name, data_source
+        )
+
+        if unresolved_inbound is None or unresolved_in_declaring_files is None:
             completeness = "unknown"
-        elif unresolved_inbound == 0:
+        elif unresolved_inbound + unresolved_in_declaring_files == 0:
             completeness = "complete"
         elif total_callers:
             completeness = "incomplete"
@@ -212,6 +252,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             truncated=truncated,
             completeness=completeness,
             unresolved_inbound=unresolved_inbound,
+            unresolved_in_declaring_files=unresolved_in_declaring_files,
             callers=callers,
         )
         if unattributed_call_sites:

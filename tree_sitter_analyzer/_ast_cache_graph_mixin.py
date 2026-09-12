@@ -198,6 +198,40 @@ class ASTCacheGraphMixin(ASTCacheSurface):
         except sqlite3.OperationalError:
             return None
 
+    def count_unresolved_calls_in_file(self, file_path: str) -> int | None:
+        """Count unresolved CALLS edges originating in ``file_path``.
+
+        Returns ``None`` when the count cannot be read, for the same reason
+        :meth:`count_unresolved_callers` does: a failed read must not read as
+        "no unresolved call here".
+        """
+        try:
+            from .graph.edge_store import EdgeStore
+
+            return EdgeStore(
+                self._get_conn(), ensure_schema=False
+            ).count_unresolved_calls_in_file(file_path)
+        except sqlite3.OperationalError:
+            return None
+
+    def symbol_declaring_files(self, name: str) -> tuple[str, ...]:
+        """Return the files declaring ``name``.
+
+        Empty is the honest answer for a name this project does not define — a
+        stdlib or framework symbol such as ``SystemExit``.  RFC-0028 §1.2's
+        scope guard is evaluated per declaring file, so a caller with no
+        declaring file falls back to the per-symbol signal alone rather than
+        inventing a scope.
+        """
+        try:
+            rows = self._get_conn().execute(
+                "SELECT DISTINCT file_path FROM ast_symbol_rows WHERE name = ?",
+                (name,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return ()
+        return tuple(str(row[0]) for row in rows if row[0])
+
     def call_graph_built(self) -> bool:
         """Return whether a completed call-graph build is recorded."""
         return _call_graph_built(self._get_conn())

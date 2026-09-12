@@ -459,6 +459,24 @@ class EdgeStore:
                 count += 1
         return count
 
+    def count_unresolved_calls_in_file(self, file_path: str) -> int:
+        """Count unresolved CALLS edges originating in ``file_path``.
+
+        A computed callee is recorded under its source text — ``HANDLERS[name]``,
+        ``getattr(self, name)`` — so the row names no symbol and a per-symbol
+        lookup cannot see it. Asking the declaring file instead is what makes
+        RFC-0028 §1.2's scope guard decidable: an unresolved call inside a file
+        may target anything that file declares.
+        """
+        resolved = sorted(_RESOLVED_CALLEE_RESOLUTIONS)
+        placeholders = ", ".join("?" for _ in resolved)
+        row = self._conn.execute(
+            f"SELECT COUNT(*) FROM edges WHERE kind = ? AND file_path = ? "
+            f"AND callee_resolution NOT IN ({placeholders})",
+            (EdgeKind.CALLS.value, file_path, *resolved),
+        ).fetchone()
+        return int(row[0]) if row is not None else 0
+
     def query_callees(
         self,
         caller_name: str,

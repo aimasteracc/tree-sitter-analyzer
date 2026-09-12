@@ -70,6 +70,16 @@ _CASES: tuple[tuple[str, str, str], ...] = (
 #: and the invariant below became vacuous, so it fails loudly instead.
 _EXPECTED_CORPUS_CASES = 5
 
+#: The honesty ratchet (RFC-0028 §1.2): corpus cases answered *without* a
+#: confident empty.  It may increase or hold, never decrease.
+#:
+#: It counts honest answers rather than ``unknown`` ones on purpose.  §1.2 says
+#: the count of ``unknown`` answers may never decrease, and in the same breath
+#: that ``unknown -> resolved`` is accepted — which a decreasing count cannot
+#: express.  The transition the ratchet exists to block is
+#: ``unknown -> confident empty``, so that is what it counts.
+_HONEST_ANSWER_FLOOR = 5
+
 
 @pytest.fixture(scope="module")
 def corpus_project(tmp_path_factory) -> str:
@@ -141,16 +151,45 @@ def test_corpus_records_unresolved_dispatch_under_the_expression(corpus_project)
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "RFC-0028 §1 scope guard not yet implemented: completeness is derived "
-        "from unresolved edges *named after* the symbol, so a symbol reached "
-        "only by a computed dispatch in its own file answers complete with 0 "
-        "callers. §1.2 requires the symbol's containing file's unresolved "
-        "edges to gate the claim."
-    ),
-)
+@pytest.mark.asyncio
+async def test_a_symbol_in_a_fully_resolved_file_still_answers_complete(
+    tmp_path,
+) -> None:
+    """The scope guard cuts both ways (§1.2, against §3.1).
+
+    Answering ``unknown`` for every symbol in a project that contains any
+    dynamic construct would satisfy the invariant above while destroying what
+    the field is for.  The guard admits ``unknown`` only for a symbol whose own
+    file holds an unresolved edge, so a symbol in a fully-resolved file must
+    still answer ``complete`` even when a sibling file is full of dispatch.
+    """
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    (tmp_path / "clean.py").write_text(
+        "def helper():\n    return 1\n\n\ndef clean_symbol():\n    return helper()\n",
+        encoding="utf-8",
+    )
+    # The unresolved edge lives here, in a file that declares clean_symbol not.
+    (tmp_path / "noisy.py").write_text(
+        "def noisy():\n    return HANDLERS[name]()\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project()
+    finally:
+        cache.close()
+
+    tool = CodeGraphCallersTool(str(tmp_path))
+    result = await tool.execute({"function_name": "clean_symbol", "output_format": "json"})
+
+    assert result["completeness"] == "complete", (
+        "a symbol whose own file is fully resolved must not inherit a sibling "
+        "file's unresolved edges"
+    )
+
+
 @pytest.mark.asyncio
 async def test_undecidable_edge_is_never_reported_as_confidently_absent(
     corpus_project,
@@ -173,4 +212,32 @@ async def test_undecidable_edge_is_never_reported_as_confidently_absent(
     assert offenders == [], (
         "these corpus symbols have a real inbound edge but were answered with a "
         f"confident zero: {json.dumps(offenders, indent=2)}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_honesty_ratchet_never_decreases(corpus_project) -> None:
+    """The ratchet half of §1.2.
+
+    A change that converts an undecidable case into a confident empty lowers
+    this count, and fails here even when every other test is green.  Raising the
+    floor is allowed when the resolver genuinely improves a case (the answer
+    becomes the edge itself); relaxing it is not.
+    """
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    tool = CodeGraphCallersTool(corpus_project)
+    honest = 0
+    confident_zeros = []
+    for symbol, _declaring, _dispatch in _CASES:
+        result = await tool.execute({"function_name": symbol, "output_format": "json"})
+        if result.get("caller_count", 0) == 0 and result.get("completeness") == "complete":
+            confident_zeros.append(symbol)
+        else:
+            honest += 1
+
+    assert honest >= _HONEST_ANSWER_FLOOR, (
+        f"honest answers fell to {honest}, below the pinned floor "
+        f"{_HONEST_ANSWER_FLOOR}; these corpus cases became confident empties: "
+        f"{confident_zeros}"
     )
