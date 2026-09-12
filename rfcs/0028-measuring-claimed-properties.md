@@ -451,17 +451,26 @@ proving its detector still matches live production, asserting **exact** set
 equality — not a `count > 0` lower bound.
 
 **Scope, stated precisely, because "every blocking gate" is unimplementable.**
-`.pre-commit-config.yaml` declares **27 hooks, of which 21 are third-party**:
+`.pre-commit-config.yaml` declares **28 hooks, of which 21 are third-party**:
 `ruff` + `ruff-format`, 14 `pre-commit-hooks`, `detect-secrets`, `bandit`,
 `mypy`, `pyupgrade`, `actionlint`. You cannot add a `--self-check` mode to
 `ruff`, and requirement 2 below ("count of surface items outside the watch
 filter == 0") has **no referent at all** for `check-yaml` — it has no watched
-surface to be outside of. §3.2 therefore scopes to the **6 local hooks**:
+surface to be outside of. §3.2 therefore scopes to the **7 local hooks**:
+
+*Measured correction (2026-09-12).* This section previously read "27 hooks … 6
+local hooks" and omitted `test-encoding-ratchet` from the table below. Both
+numbers are now derived from the configuration by
+`tests/governance/test_first_party_gate_inventory.py`, which fails if this table
+and `.pre-commit-config.yaml` disagree — the omission is why that check exists,
+and the omitted hook is itself a ratchet, the same class whose dead-detector
+defect this section records as #1.
 
 | local hook | has a live surface to drift from? |
 |---|---|
 | `tsa-codemap-sync` | **yes** — the MCP/CLI registry; already rebuilt this way in #1314 |
 | `weak-assertion-ratchet` | **yes** — the set of assertions it can parse (its blind spot to markdown is defect #5) |
+| `test-encoding-ratchet` | **yes** — the count of non-UTF-8-safe test files it measures against a grandfathered baseline |
 | `block-banned-test-names` | **yes** — the banned-pattern list vs the live test-file set |
 | `workflow-consistency-tests` | **yes** — the set of workflows it checks vs `.github/workflows/*` |
 | `block-local-artifacts` | partial — a static path/glob denylist; requirement 1 applies, requirement 2 does not |
@@ -708,14 +717,29 @@ rather than dropping it.
 - [ ] §3.1 dispatch reachability asserted through public entry points
 - [ ] §3.1 zero-caller signal exempt from §1's ratchet, asserted by a test that
       fails if a genuine orphan starts answering `unknown`
-- [ ] §3.2 each of the **six first-party local hooks** has an exact-equality
-      self-check; the four with a live surface additionally have a
+- [ ] §3.2 each of the **seven first-party local hooks** has an exact-equality
+      self-check; the five with a live surface additionally have a
       coverage-invariant of exactly 0
+
+      *Partially landed (2026-09-12).* The scope itself is now enforced:
+      `tests/governance/test_first_party_gate_inventory.py` derives the hook set
+      from `.pre-commit-config.yaml`, fails if this section's table disagrees with
+      it, and asserts every hook's `entry` resolves to a file that exists. That
+      check is what establishes the count as **seven**, not six. The per-hook
+      `--self-check` modes and the coverage invariants are still open.
 - [ ] §3.2 every gate names its **marker set + workflow job** (or its pre-commit
       hook) and proves a non-zero collected count
+
+      *Partially landed.* The inventory gate asserts each scoped hook runs at the
+      `pre-commit` stage, which is the layer that enforces it. A non-zero
+      collected count per marker set is not yet asserted.
 - [ ] §3.2 the enforcement layer is named per gate: either
       `required_status_checks` added to a `develop` ruleset, or pre-commit
       declared as the blocking layer
+
+      *Partially landed.* Pre-commit is the working layer and the inventory gate
+      pins that every scoped hook is present there. The per-gate naming this item
+      asks for, and the ruleset alternative, are still open.
 - [x] §3.2 `test_unknown_rate_threshold_value` and
       `test_unknown_rate_threshold_is_documented_in_this_file` replaced by a live
       measurement
