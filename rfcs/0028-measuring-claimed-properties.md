@@ -585,6 +585,57 @@ The author of this RFC replaced a loose `>= 1` with a pinned `== 2` in
 examples — an exactly-wrong exact assertion, which is worse than the bound it
 replaced.
 
+#### §3.2 self-check landing record (2026-09-12)
+
+Six of the seven local hooks now carry a `--self-check`. The seventh is
+`workflow-consistency-tests`, which is a `pytest` invocation rather than a script,
+so it has no flag to add and is the one remaining gap against the acceptance box.
+
+| local hook | self-check asserts | red→green verified |
+|---|---|---|
+| `tsa-codemap-sync` | exact set equality, MCP and CLI surfaces; 0 flags outside the watch filter | pre-existing (#1314) |
+| `weak-assertion-ratchet` | exact violation set on a planted weak assert, no false positive on a strong one, and 100% parse coverage of `tests/**/*.py` | yes |
+| `test-encoding-ratchet` | scan base anchored to the repository, non-empty surface, every live file parses | yes |
+| `block-banned-test-names` | planted banned name detected exactly, innocent name ignored, path outside `tests/` not reported | yes |
+| `block-local-artifacts` | each blocked pattern still matches exactly, innocent paths ignored | yes |
+| `tsa-ps-ascii` | watched set vs the live `run:` surface, difference empty | yes |
+
+Two findings from the work, both instances of this RFC's subject:
+
+- **The parse-coverage arm is not decoration.** `check_loose_assertions.py`
+  returns `[]` for a file it cannot parse — "skip silently (CI lint step catches
+  syntax errors)". A tree of unparseable tests therefore reads as clean. The
+  self-check turns that silent skip into a failure; measured by planting a
+  syntax-error file under `tests/`.
+- **`block-local-artifacts` can only fire on a force-added path.** Both of its
+  patterns (`threads/`, `REDESIGN_PROPOSAL.md`) are already in `.gitignore`, so
+  `git diff --cached` cannot normally contain them. It is a backstop for
+  `git add -f`, verified by staging a force-added `REDESIGN_PROPOSAL.md` and
+  watching the gate reject it, rather than a gate that fires in normal use.
+
+The cwd-relative defect the first two self-checks found is recorded above: two
+gates resolved their watch base against the caller's cwd, so from `scripts/` they
+scanned nothing and exited `0`. Both are now anchored to the repository root, and
+`tests/governance/test_gate_self_checks.py` runs every self-check from a
+non-root directory and asserts each gate's output is byte-identical from the root
+and from `scripts/`.
+
+**Requirement 4 for this module.** The enforcement layer is CI plus the local
+quick gate: `tests/governance` is in `pytest.ini` `testpaths` so bare
+`uv run pytest` collects it, and the module is unmarked so the `reusable-test.yml`
+matrix expressions select it. Pre-commit does not run it. Collection is non-zero —
+11 collected — and the module was verified to fail on a degraded gate rather than
+merely passing.
+
+**Acceptance boxes deliberately left unchecked.** The self-check box requires all
+seven local hooks and is one short. The marker-set/non-zero-collection box
+requires a per-gate statement for every gate, which this record does not make
+beyond the seven hooks above. The enforcement-layer box requires either a
+`develop` ruleset carrying `required_status_checks` or a per-gate declaration;
+neither exists. The remaining two boxes (the tautological threshold assertions,
+and doc-example extraction) are untouched. Naming them here is the point: §3.2
+exists because "self-declared and never measured" reads as done.
+
 #### §3.3 Platform specificity
 
 For any invariant whose correctness depends on filesystem or OS semantics —
