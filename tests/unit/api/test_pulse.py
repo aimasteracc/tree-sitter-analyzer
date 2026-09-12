@@ -681,6 +681,9 @@ def test_pulse_relative_import_uses_existing_module_resolver(tmp_path, statement
         cache.close()
 
 
+# Python 反向导入缓存测试已拆至 test_pulse_import_cache.py（800 行治理阈值）。
+
+
 def test_pulse_reports_missing_legacy_commit_message(ast_cache_conn, caplog):
     # PR #1352：存量 activation 缺少消息时，保留 NULL 并发出 missing 诊断。
     caplog.set_level("WARNING", logger="tree_sitter_analyzer.api.pulse")
