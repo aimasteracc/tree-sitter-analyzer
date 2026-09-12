@@ -32,7 +32,6 @@ def _declaring_file_unresolved(
     cache: Any,
     func_name: str,
     file_path: str | None,
-    data_source: str,
 ) -> int | None:
     """Unresolved CALLS edges inside the files that declare ``func_name``.
 
@@ -50,8 +49,15 @@ def _declaring_file_unresolved(
 
     ``None`` means the question could not be answered — including a failed read of
     the declaring files, which must never degrade to "nothing unresolved here".
+
+    This reads the cache directly and is therefore answerable on every data
+    source, not only the SQL one.  Gating it on ``data_source == "sql"`` returned
+    ``None`` for a query that took the in-memory graph path, which the caller then
+    reported as "its inbound edges could not be read" — a claim of ignorance where
+    the answer was available, and measured to mislabel a genuinely absent symbol
+    as an unreadable one.
     """
-    if cache is None or data_source != "sql":
+    if cache is None:
         return None
     declaring = cache.symbol_declaring_files(func_name)
     if declaring is None:
@@ -216,6 +222,13 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 cache is not None and cache.has_call_edges()
             )
 
+        # A graph that holds no CALLS edges at all cannot support an absence
+        # claim: a zero read from it is indistinguishable from a graph that was
+        # never populated.  This is the counterpart of `has_any_call_edges`
+        # above, which trusts the marker; here the marker may be set over an
+        # empty table, so the edge probe itself is the evidence.
+        empty_evidence_base = cache is not None and not cache.has_call_edges()
+
         warnings_list: list[str] = []
         if _is_stale_resolution(callers):
             warnings_list.append(_STALE_CACHE_WARNING)
@@ -236,7 +249,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # unknown, never complete — a failed read is not evidence of absence.
         unresolved_inbound = (
             cache.count_unresolved_callers(func_name, file_path)
-            if cache is not None and data_source == "sql"
+            if cache is not None
             else None
         )
         # RFC-0028 §1.2 scope guard.  A computed dispatch site is recorded under
@@ -246,7 +259,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # claim is gated on the declaring files as well.  A symbol in a
         # fully-resolved file still answers complete.
         unresolved_in_declaring_files = _declaring_file_unresolved(
-            cache, func_name, file_path, data_source
+            cache, func_name, file_path
         )
 
         if unresolved_inbound is None or unresolved_in_declaring_files is None:
@@ -261,6 +274,13 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             # two resolved module-level callers, which reported `complete` with
             # `caller_count: 0` and "not in the index".
             completeness = "incomplete"
+        elif empty_evidence_base:
+            # Zero unresolved edges over a graph that holds no CALLS edges at all
+            # is not a fact about this symbol: the resolved-edge evidence base is
+            # empty, so a zero read from it cannot distinguish "nothing calls this"
+            # from "the graph was never populated".  A zero over a graph that holds
+            # edges elsewhere is a fact and still answers complete.
+            completeness = "unknown"
         else:
             completeness = "complete"
 
@@ -328,6 +348,18 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                         f"in a file that declares {func_name!r} and could target "
                         "it. Resolve them or read those sites directly rather "
                         "than treating this as absence."
+                    )
+                elif empty_evidence_base:
+                    # #705: an index that was built over a project with no calls
+                    # must not be told to --full-index again.  The user already
+                    # indexed; the graph is simply empty.  What must not happen
+                    # is a confident absence, so the hint disclaims rather than
+                    # instructs.
+                    index_hint = (
+                        f"No resolved caller for {func_name!r}, and the call graph "
+                        "holds no call edges at all. An empty graph cannot "
+                        "distinguish 'nothing calls it' from 'never populated', "
+                        "so do not treat this as absence."
                     )
                 else:
                     index_hint = (

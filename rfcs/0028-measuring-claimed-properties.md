@@ -281,6 +281,51 @@ containing file has at least one unresolved edge. A symbol in a fully-resolved
 file must answer `complete`, so "answer `unknown` whenever the file contains a
 dynamic construct" is not a legal way to satisfy this ratchet.
 
+#### §1.2 amendment — the scope guard counted calls that cannot be local
+
+Measured 2026-09-12 on the 2,174-file self-repo corpus (164,392 CALLS rows),
+because implementation showed the guard above was far broader than its own
+justification. The sentence "an unresolved call inside a file may target anything
+that file declares" is true of the text; it is not true of the *edges* the guard
+was counting.
+
+| | gated files | share of the 2,060 files holding CALLS edges |
+|---|---|---|
+| guard as originally written | 1,562 | 75.8% |
+| after counting `external` as terminal | 1,363 | 66.2% |
+| after excluding builtin receivers (**amended definition**) | **1,029** | **50.0%** |
+
+The largest contributors were calls that cannot name a file-local symbol at all:
+`list.append` (2,327 rows), `dict.get` (369), `conn.execute` (446), `set.add`
+(275), `logger.debug` (215), `dict.items` (152), `super().__init__` (130). Before
+the amendment, a single `logger.debug(...)` barred every symbol in its file from
+ever answering `complete` — the failure the RFC's motivation attributes to
+computed dispatch, reproduced instead by ordinary attribute access.
+
+**What the guard now counts** is unchanged in intent and narrower in fact: an
+unresolved edge gates its file unless its callee is a dotted name whose receiver
+is a builtin type (`_can_target_local_symbol`, `graph/edge_store.py`). After the
+amendment, 3,635 unresolved edges are excused on this corpus and **6,674 are
+still counted** — bare names, `self.`/`cls.`, `getattr(...)`, string-keyed
+dispatch (`handlers["read_resource"]`), and any receiver that is a local variable
+(`extractors.run`) all keep gating, because each may name something the file
+declares.
+
+**Why the remaining half is not narrowed further.** The next-largest receivers are
+`conn` (689), `self` (302), `pytest` (258), `logger` (242), `tree_sitter` (172),
+`monkeypatch` (130), `extractor` (85), `path` (71). Excusing `pytest` and
+`tree_sitter` needs the file's import table joined to a project-module test;
+`conn`, `logger`, `monkeypatch`, `extractor`, and `path` are local variables bound
+to objects, which needs dataflow rather than syntax. Neither is available to the
+edge reader today, and both can under-count, which is the one direction §1
+forbids. They are recorded here as the measured remainder rather than guessed at.
+
+**Why this is a safe narrowing and not a relaxation.** Every exclusion requires
+proving the receiver is a builtin type; nothing is excused by absence of
+information. Over-counting only holds a symbol at `incomplete`, while
+under-counting certifies absence over a real edge — so the amendment removes only
+the cases where the exclusion is provable, and the ratchet above is unchanged.
+
 ### §2 — Consultation records: making non-use visible
 
 **Claim under test:** TSA is used.

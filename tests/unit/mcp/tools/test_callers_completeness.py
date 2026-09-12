@@ -27,12 +27,17 @@ def _insert_call(
     caller_line: int,
     resolution: str,
     callee: str = _TARGET,
+    callee_full: str | None = None,
 ) -> None:
     """Insert one CALLS edge with a chosen resolution state.
 
     ``caller=""`` models a module-level call site: its source is the file node,
     which is what makes ``caller_name`` empty and the row "unattributed".
+    ``callee_full`` defaults to ``callee``; pass it to model an attribute call
+    (`list.append`) or a computed dispatch site whose full text differs from the
+    bare name the resolver recorded.
     """
+    full = callee_full if callee_full is not None else callee
     source = symbol_node("a.py", caller, caller_line) if caller else file_node("a.py")
     conn.execute(
         """INSERT INTO edges
@@ -48,7 +53,7 @@ def _insert_call(
             caller,
             callee,
             caller_line,
-            callee,
+            full,
             resolution,
             "a.py" if resolution == _RESOLVED else "",
         ),
@@ -120,7 +125,14 @@ async def test_unknown_never_reports_absence(tool_with_edges) -> None:
     # The epistemic status rides beside the existing verdict, which stays legal:
     # no ninth member is added to a closed cross-surface vocabulary.
     assert result["verdict"] in {
-        "SAFE", "CAUTION", "UNSAFE", "INFO", "REVIEW", "WARN", "ERROR", "NOT_FOUND",
+        "SAFE",
+        "CAUTION",
+        "UNSAFE",
+        "INFO",
+        "REVIEW",
+        "WARN",
+        "ERROR",
+        "NOT_FOUND",
     }
 
     next_step = str(result["next_step"])
@@ -143,7 +155,9 @@ async def test_real_zero_is_complete_and_may_say_not_in_index(tool_with_edges) -
     than from resolved edges and completeness is genuinely unknown.
     """
     tool, conn = tool_with_edges
-    _insert_call(conn, caller="alpha", caller_line=10, resolution=_RESOLVED, callee=_OTHER)
+    _insert_call(
+        conn, caller="alpha", caller_line=10, resolution=_RESOLVED, callee=_OTHER
+    )
     conn.commit()
 
     result = await _call(tool)
@@ -165,6 +179,79 @@ async def test_cold_graph_reports_unknown_not_complete(tool_with_edges) -> None:
 
     assert result["completeness"] == "unknown"
     assert "not in the index" not in str(result["next_step"])
+
+
+@pytest.mark.asyncio
+async def test_external_resolution_does_not_poison_the_declaring_file(
+    tool_with_edges,
+) -> None:
+    """``external`` is a terminal resolution, not an unresolved edge.
+
+    Measured on the 2,174-file self-repo corpus: ``external`` is 2.58% of all
+    CALLS edges (4,247 rows).  Counting it as unresolved barred 199 additional
+    files from ever answering ``complete`` — 1,562 files gated rather than
+    1,363.  ``synapse.py`` states the intent directly: ``external`` and
+    ``stdlib`` are terminal, "target lives outside the project, no
+    resolved_file by design", which is why the backfill refuses to re-select
+    them.  A marker the writer treats as finished must not read as unfinished.
+    """
+    tool, conn = tool_with_edges
+    _insert_call(
+        conn, caller="alpha", caller_line=10, resolution="external", callee=_OTHER
+    )
+    conn.commit()
+
+    result = await _call(tool)
+
+    assert result["unresolved_in_declaring_files"] == 0
+    assert result["completeness"] == "complete"
+
+
+@pytest.mark.asyncio
+async def test_external_edge_named_like_a_local_symbol_is_resolved(
+    tool_with_edges,
+) -> None:
+    """An ``external`` edge stays resolved when its name matches a local symbol.
+
+    §1 forbids presenting an *unresolved* edge as absence.  An ``external`` edge
+    is not unresolved: the resolver decided the callee lives outside the project.
+    ``_matches_callee`` compares bare names, so an external callee sharing a name
+    with a local symbol still reaches this count; excluding it is correct,
+    because the edge's target is the external symbol, not the local one.
+    """
+    tool, conn = tool_with_edges
+    _insert_call(conn, caller="alpha", caller_line=10, resolution="external")
+    conn.commit()
+
+    result = await _call(tool)
+
+    assert result["unresolved_inbound"] == 0
+    assert result["completeness"] == "complete"
+
+
+@pytest.mark.asyncio
+async def test_unresolved_inbound_and_caller_count_are_different_units(
+    tool_with_edges,
+) -> None:
+    """The two numbers answer different questions and are not meant to reconcile.
+
+    ``caller_count`` lists distinct call sites and excludes module-level rows;
+    ``unresolved_inbound`` counts every inbound edge.  A module-level unresolved
+    site is therefore counted (1) and unlisted (0) at the same time, which is the
+    intended reading rather than a contradiction.  Repeated edges cannot inflate
+    the count: ``edges`` is UNIQUE over
+    ``(source_node_id, target_node_id, kind, line)``.
+    """
+    tool, conn = tool_with_edges
+    _insert_call(conn, caller="", caller_line=0, resolution="unknown")
+    conn.commit()
+
+    result = await _call(tool)
+
+    assert result["caller_count"] == 0
+    assert result["unresolved_inbound"] == 1
+    assert result["unattributed_call_sites"] == 1
+    assert result["completeness"] == "unknown"
 
 
 @pytest.mark.asyncio
@@ -236,3 +323,105 @@ def test_unrecognised_resolution_marker_counts_as_unresolved(tmp_path) -> None:
         assert cache.count_unresolved_callers(_TARGET) == 1
     finally:
         cache.close()
+
+
+# ---------------------------------------------------------------------------
+# §1.2 scope guard: what may gate a file
+# ---------------------------------------------------------------------------
+#
+# The guard asks whether an unresolved call inside a declaring file could target
+# a symbol that file declares.  Before narrowing it counted every unresolved
+# edge, which gated 1,562 of the 2,060 files holding CALLS edges (75.8%) and
+# barred every symbol they declare from answering `complete`.  The largest
+# contributors cannot name a local symbol at all — `list.append` (2,327 rows),
+# `dict.get`, `set.add`, `conn.execute`, `logger.debug`.
+
+
+@pytest.mark.asyncio
+async def test_builtin_receiver_call_does_not_gate_the_file(tool_with_edges) -> None:
+    """`list.append` cannot target a symbol the file declares, so it must not gate it."""
+    tool, conn = tool_with_edges
+    _insert_call(
+        conn,
+        caller="alpha",
+        caller_line=10,
+        resolution="unknown",
+        callee="append",
+        callee_full="list.append",
+    )
+    conn.commit()
+
+    result = await _call(tool)
+
+    assert result["unresolved_in_declaring_files"] == 0
+    assert result["completeness"] == "complete"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("callee", "callee_full", "why"),
+    [
+        (
+            'handlers["read_resource"]',
+            'handlers["read_resource"]',
+            "string-keyed dispatch",
+        ),
+        ("getattr(self, name)", "getattr(self, name)", "reflection"),
+        ("self.handle", "self.handle", "own-class attribute"),
+        ("cls.build", "cls.build", "classmethod attribute"),
+        ("extractors.run", "extractors.run", "receiver is a local variable"),
+        ("local_helper", "local_helper", "bare name in scope"),
+        ("original", "original", "bare name bound at runtime"),
+    ],
+)
+async def test_potentially_local_callee_still_gates_the_file(
+    tool_with_edges, callee: str, callee_full: str, why: str
+) -> None:
+    """Everything that could name a local symbol keeps gating the file.
+
+    These are the cases §1.2 exists for.  Narrowing may only remove callees it
+    can *prove* cannot target the file; a receiver that is a local variable
+    (`extractors.run`) may well be a project object, so it stays counted.
+    """
+    tool, conn = tool_with_edges
+    _insert_call(
+        conn,
+        caller="alpha",
+        caller_line=10,
+        resolution="unknown",
+        callee=callee,
+        callee_full=callee_full,
+    )
+    conn.commit()
+
+    result = await _call(tool)
+
+    assert result["unresolved_in_declaring_files"] == 1, why
+    assert result["completeness"] != "complete", why
+
+
+@pytest.mark.asyncio
+async def test_dotted_callee_is_judged_by_receiver_not_by_substring(
+    tool_with_edges,
+) -> None:
+    """A dotted callee is excused by its receiver *text*, never by a substring.
+
+    `getattr(importlib.import_module(mod), cls).from_private_bytes` contains dots,
+    but its text before the first dot is `getattr(importlib` — not a builtin type
+    name.  A naive reading could excuse a real dispatch site; it must keep gating.
+    """
+    tool, conn = tool_with_edges
+    _insert_call(
+        conn,
+        caller="alpha",
+        caller_line=10,
+        resolution="unknown",
+        callee="from_private_bytes",
+        callee_full="getattr(importlib.import_module(mod), cls).from_private_bytes",
+    )
+    conn.commit()
+
+    result = await _call(tool)
+
+    assert result["unresolved_in_declaring_files"] == 1
+    assert result["completeness"] != "complete"
