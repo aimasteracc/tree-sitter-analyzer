@@ -24,6 +24,12 @@ from __future__ import annotations
 import glob
 import re
 import sys
+from pathlib import Path
+
+#: Anchor every watched path to this file's repository, never to the caller's
+#: cwd.  Measured before the fix: from `scripts/` the patterns matched 0 files
+#: and the gate exited 0 with no output at all.
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 ASCII_HI = re.compile(r"[^\x00-\x7F]")
 # Allow optional inline YAML comment after the value
@@ -141,15 +147,87 @@ def scan_file(path: str) -> list[tuple[int, int, str]]:
     return hits
 
 
-def main() -> int:
-    yaml_paths = sorted(
-        set(
-            glob.glob(".github/workflows/*.yml")
-            + glob.glob(".github/workflows/*.yaml")
-            + glob.glob(".github/actions/**/action.yml", recursive=True)
-            + glob.glob(".github/actions/**/action.yaml", recursive=True)
-        )
+def _watched_paths() -> list[str]:
+    """The YAML files this gate watches, as absolute paths.
+
+    Anchored to the repository root, never the caller's cwd.  Measured before
+    the fix: from `scripts/` or any other cwd these patterns matched 0 files and
+    the gate exited 0 with no output, which is indistinguishable from a clean
+    scan.
+    """
+    patterns = (
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml",
+        ".github/actions/**/action.yml",
+        ".github/actions/**/action.yaml",
     )
+    return sorted(
+        {
+            match
+            for pattern in patterns
+            for match in glob.glob(str(REPO_ROOT / pattern), recursive=True)
+        }
+    )
+
+
+def _relative(path: str) -> str:
+    return Path(path).relative_to(REPO_ROOT).as_posix()
+
+
+def _live_surface() -> list[str]:
+    """Every YAML under ``.github`` that carries a ``run:`` block.
+
+    That is what the rule is *about*; the watch patterns are how it is reached.
+    RFC-0028 §3.2's coverage invariant is the difference between the two.
+    """
+    live: list[str] = []
+    for path in sorted((REPO_ROOT / ".github").rglob("*.y*ml")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if re.search(r"^\s*(?:-\s*)?run\s*:", text, re.M):
+            live.append(path.relative_to(REPO_ROOT).as_posix())
+    return live
+
+
+def self_check() -> int:
+    """Assert the watch patterns cover the live surface exactly."""
+    problems: list[str] = []
+    watched = {_relative(path) for path in _watched_paths()}
+    live = set(_live_surface())
+
+    if not watched:
+        problems.append("the watch patterns matched no files at all")
+    if not live:
+        problems.append(".github holds no YAML with a `run:` block")
+
+    # Coverage invariant: nothing the rule is about may sit outside the filter.
+    outside = sorted(live - watched)
+    if outside:
+        problems.append(
+            f"{len(outside)} YAML file(s) with `run:` outside the watch filter: "
+            f"{outside[:5]}"
+        )
+
+    if problems:
+        sys.stderr.write("check_ps_ascii --self-check FAILED:\n")
+        for problem in problems:
+            sys.stderr.write(f"  {problem}\n")
+        return 1
+    print(
+        f"check_ps_ascii --self-check: {len(live)} live file(s) with `run:`, "
+        f"all within {len(watched)} watched file(s)"
+    )
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv == ["--self-check"]:
+        return self_check()
+    if argv:
+        sys.stderr.write(f"usage: {Path(__file__).name} [--self-check]\n")
+        return 2
+
+    yaml_paths = _watched_paths()
     total_hits = 0
     for path in yaml_paths:
         hits = scan_file(path)
