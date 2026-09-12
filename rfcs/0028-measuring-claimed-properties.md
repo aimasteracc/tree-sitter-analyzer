@@ -730,9 +730,20 @@ rather than dropping it.
 - [ ] §3.2 every gate names its **marker set + workflow job** (or its pre-commit
       hook) and proves a non-zero collected count
 
-      *Partially landed.* The inventory gate asserts each scoped hook runs at the
-      `pre-commit` stage, which is the layer that enforces it. A non-zero
-      collected count per marker set is not yet asserted.
+      *Partially landed.* Both halves are now enumerated and checked:
+      `tests/governance/test_first_party_gate_inventory.py` asserts every scoped
+      hook runs at the `pre-commit` stage, and
+      `tests/governance/test_workflow_marker_sets.py` derives **10 marker-driven
+      gates across 6 workflows** from the workflow YAML, names each one's job,
+      and asserts every positive marker in each expression is carried by at least
+      one test — the vacuity case, where `pytest -m "<marker>"` collects nothing
+      and always succeeds. It also pins the one shell-templated set
+      (`e2e${EXTRA_MARKS}`) as a decision rather than a silent skip.
+
+      **What is still missing is the collected count itself.** Collection costs
+      5–15 s per expression here, so five expressions would add about a minute to
+      the fast suite; the static check catches vacuity and typos without that
+      cost, and does not read a count.
 - [ ] §3.2 the enforcement layer is named per gate: either
       `required_status_checks` added to a `develop` ruleset, or pre-commit
       declared as the blocking layer
