@@ -313,6 +313,20 @@ def test_budget_uses_optional_tokenizer_without_network(monkeypatch):
     assert any("注释" in json.dumps(value, ensure_ascii=False) for value in calls)
 
 
+def test_budget_falls_back_when_tokenizer_breaks(monkeypatch):
+    """审计 P2-1：tiktoken 已安装但初始化失败（如离线冷缓存）时回退字符估算，不崩。"""
+    import sys
+    from types import SimpleNamespace
+
+    def broken(name):
+        raise RuntimeError("network unavailable")
+
+    monkeypatch.setitem(sys.modules, "tiktoken", SimpleNamespace(get_encoding=broken))
+    result = apply_budget(_make_pr_with_comments(10), token_budget=1)
+    assert result.comments == ()
+    assert result.truncated_fields == ("comments",)
+
+
 # ---------------------------------------------------------------------------
 # apply_budget — immutability
 # ---------------------------------------------------------------------------
@@ -396,6 +410,18 @@ def test_query_pulse_no_call_graph_language(ast_cache_conn):
     assert result.call_graph_available is False
     assert result.callers == ()
     assert result.callees == ()
+
+
+def test_query_pulse_imports_graph_availability_by_language(ast_cache_conn):
+    """issue #1444：无 import 边语言显式声明 iga=False，imported_by 是「声明过的空」。"""
+    _seed_symbol(ast_cache_conn, "my_query", "report.sql", language="sql")
+    result = query_pulse(ast_cache_conn, "report.sql", "my_query")
+    assert result.imports_graph_available is False
+    assert result.imported_by == ()
+
+    _seed_symbol(ast_cache_conn, "greet", "a.py")
+    py = query_pulse(ast_cache_conn, "a.py", "greet")
+    assert py.imports_graph_available is True
 
 
 def test_query_pulse_returns_none_for_missing_symbol(ast_cache_conn):
@@ -694,79 +720,39 @@ def test_pulse_legacy_comments_are_not_reported_as_empty_success(tmp_path):
         cache.close()
 
 
-@pytest.mark.parametrize("format", ["compact", "verbose"])
-def test_serialization_preserves_relationship_payloads(format):
-    # PR #1352：发布格式不能丢失关系身份、解析状态或 Git 消息。
-    from tree_sitter_analyzer.api.pulse import CalleeRef, GitHeat, ImportRef, SiblingRef
-    from tree_sitter_analyzer.api.serialization import serialize
-
-    pulse = PulseResponse(
-        symbol=_MINIMAL_SYM,
-        callers=(CallerRef("caller", "caller.py", 7, 3),),
-        callees=(CalleeRef("callee", "callee.py", 11, "resolved"),),
-        git_heat=GitHeat(
-            commit="sha", commit_msg="message", at=123, mod_30d=2, mod_90d=4, mod_all=5
-        ),
-        imports=(ImportRef("pkg", "pkg.py"),),
-        imported_by=("consumer.py",),
-        siblings=(SiblingRef("other", "function", 20),),
-        comments=(CommentRef(2, "note", "inline"),),
-    )
-    result = serialize(pulse, format)
-    if format == "compact":
-        assert result["cr"] == [{"n": "caller", "f": "caller.py", "l": 7, "h": 3}]
-        assert result["ce"] == [
-            {"n": "callee", "f": "callee.py", "l": 11, "r": "resolved"}
-        ]
-        assert result["gh"] == {
-            "sha": "sha",
-            "m": "message",
-            "at": 123,
-            "m30": 2,
-            "m90": 4,
-            "mall": 5,
-            "s": "tracked",
-        }
-        assert result["im"] == [{"m": "pkg", "f": "pkg.py"}]
-        assert result["ib"] == ["consumer.py"]
-        assert result["sib"] == [{"n": "other", "k": "function", "l": 20}]
-        assert result["cmt"] == [{"l": 2, "t": "note", "k": "inline"}]
-    else:
-        assert result["callers"] == [
-            {"name": "caller", "file": "caller.py", "line": 7, "hot30": 3}
-        ]
-        assert result["callees"] == [
-            {
-                "name": "callee",
-                "file": "callee.py",
-                "line": 11,
-                "resolution": "resolved",
-            }
-        ]
-        assert result["git_heat"] == {
-            "commit": "sha",
-            "commit_msg": "message",
-            "at": 123,
-            "mod_30d": 2,
-            "mod_90d": 4,
-            "mod_all": 5,
-            "state": "tracked",
-        }
-        assert result["imports"] == [{"module": "pkg", "file": "pkg.py"}]
-        assert result["imported_by"] == ["consumer.py"]
-        assert result["siblings"] == [{"name": "other", "kind": "function", "line": 20}]
-        assert result["comments"] == [{"line": 2, "text": "note", "kind": "inline"}]
+# 序列化视图契约测试已拆至 test_pulse_serialization.py（issue #1444/#1445
+# 测试增长使本文件越过 800 行治理阈值，断言原样迁移）。
 
 
-def test_query_pulse_import_capacity_is_an_error(ast_cache_conn):
-    """PR #1352：保留 SQL 层的反向导入资源上限见证，超限不能返回空列表。"""
+def test_query_pulse_import_capacity_degrades_instead_of_failing(ast_cache_conn):
+    """issue #1445：超资源上限时降级而非整体报错。
+
+    保留 #1352 的见证意图（超限不能静默返回空列表）：SQL 侧结果保留，
+    且 truncated_fields 必须声明 imported_by 被截断，其余字段不受影响。
+    """
     _seed_symbol(ast_cache_conn, "greet", "a.py")
     ast_cache_conn.executemany(
         "INSERT INTO ast_imports(file_path,language,module_path) VALUES ('a.py','python',?)",
         [(f"module_{i}",) for i in range(20001)],
     )
-    with pytest.raises(ValueError, match="PULSE_IMPORT_RESOURCE_LIMIT"):
-        query_pulse(ast_cache_conn, "a.py", "greet", max_comments=0)
+    result = query_pulse(ast_cache_conn, "a.py", "greet", max_comments=0)
+    assert result is not None
+    assert result.symbol.name == "greet"
+    assert "imported_by" in result.truncated_fields
+    # 降级只影响 imported_by 富化，其余上下文照常返回。
+    assert result.callers == ()
+    assert result.call_graph_available is True
+
+
+def test_apply_budget_preserves_query_side_truncated_fields():
+    """issue #1445：预算裁剪不得覆盖 query_pulse 已声明的截断（合并去重保序）。"""
+    import dataclasses
+
+    pr = dataclasses.replace(
+        _make_pr_with_comments(10), truncated_fields=("imported_by",)
+    )
+    result = apply_budget(pr, token_budget=1)
+    assert result.truncated_fields == ("imported_by", "comments")
 
 
 def test_certified_pulse_missing_index_is_read_only(tmp_path):
