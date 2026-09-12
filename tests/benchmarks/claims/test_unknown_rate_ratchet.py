@@ -13,6 +13,20 @@ Measurement SQL (run against tree-sitter-analyzer self-repo index):
   SELECT ROUND(100.0 * SUM(callee_resolution = 'unknown') / COUNT(*), 1)
   FROM edges
   WHERE kind = 'calls';
+
+Reconciliation with `test_completeness_honesty_ratchet.py` (RFC-0028 §1.2).
+The two gates point in opposite directions and do not conflict, because their
+denominators differ: this file measures **resolution quality** over every
+`kind='calls'` row repo-wide and wants the percentage down, while that file
+measures **honesty where resolution is impossible** over a hand-checked corpus
+and wants fewer silent zeros. A genuine resolver improvement satisfies both —
+this rate falls and a corpus case moves from `unknown` to a resolved edge, which
+§1 accepts, because §1 forbids only the transition `unknown -> confident empty`,
+never `unknown -> resolved`.
+
+**§1 wins on collision.** Lowering this rate by turning an undecidable case into
+a confident empty fails that file, and this threshold may be re-pinned upward
+with a reviewed decision where §1 may not be relaxed at all.
 """
 
 from __future__ import annotations
