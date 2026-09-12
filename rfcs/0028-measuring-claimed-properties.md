@@ -699,11 +699,26 @@ rather than dropping it.
       `--self-health`; CLI↔MCP parity test green
 - [ ] §2 scope limitation stated in the emitted payload, not only in this RFC,
       including that `declined_reason` is `None` until a rejection path exists
-- [ ] §3.1 registered-surface reachability green; all **six** orphans given a
+- [x] §3.1 registered-surface reachability green; all **six** orphans given a
       delete / wire / deprecate-with-expiry disposition; the test that pins an
       orphan **corrected**, not preserved; **no allowlist**
-- [ ] §3.1 abstract-base exemption is structural (`abc`-abstract / no concrete
+- [x] §3.1 abstract-base exemption is structural (`abc`-abstract / no concrete
       `execute`), not a list of three names
+
+      *Measured correction.* The gate found a **seventh** orphan the 2026-08-19
+      manual measurement did not name: `MCPTool`, a backward-compatibility
+      protocol base whose own docstring says "deprecated, use `BaseMCPTool`
+      instead". It is dispositioned `deprecate` with a removal version, not
+      exempted. That exposes a tension in this section's own wording: the stated
+      exemption rule does **not** exempt `MCPTool` or `_CallTreeBase` — both are
+      non-abstract and define a concrete `execute` — yet the text names them as
+      legitimately not registered. They are in fact reached through the MRO of
+      registered tools (`edit action=pr` holds a `_PRReviewViaFacade`, not a
+      `CodeGraphPRReviewTool`), which is the mechanism that carries them; a gate
+      comparing class identity reports a wired route as an orphan forever. The
+      exemption rule is implemented exactly as written and is exercised — the
+      probe case below depends on it — but it is not what makes those two
+      classes pass.
 - [ ] §3.1 `next_step` routability green under the token-matching formulation
 - [ ] §3.1 dispatch reachability asserted through public entry points
 - [ ] §3.1 zero-caller signal exempt from §1's ratchet, asserted by a test that
