@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+## [1.32.0] - 2026-09-12
+
+### Added
+
+- `imports_graph_available` on pulse responses: languages without import edges
+  (e.g. Go/Rust/Java/C#) now explicitly declare that `imported_by` is empty by
+  design, mirroring `call_graph_available`. Compact key `iga`; `call_graph_reason`
+  is emitted as `cgr` when `cg=false` (#1446).
+- Audit report for the `imported_by` chain published at
+  `docs/pulse-imported-by-audit-2026-09.md` (#1443).
+
+### Changed
+
+- Python reverse-import enrichment is cached with content stamps (keyed by
+  database file path; in-memory connections bypass the cache): repeat queries
+  and `pulse_batch` no longer rescan up to 30k rows per symbol (#1447).
+- Compact key legend documents `at=timestamp_seconds`, `iga` and `cgr`;
+  dead `_FIELD_BUDGETS` table removed.
+
+### Fixed
+
+- `PULSE_IMPORT_RESOURCE_LIMIT` no longer fails the entire pulse response:
+  over-limit Python enrichment degrades, keeps the SQL-side result and declares
+  `"imported_by"` in `truncated_fields` (#1446).
+- `apply_budget` merges query-side `truncated_fields` declarations with budget
+  drops instead of overwriting them.
+- Token estimation falls back to character-count estimation whenever the
+  optional tokenizer is unusable (installed but offline cold cache) instead of
+  crashing pulse.
+
 ## [1.31.0] - 2026-09-11
 
 ### Added

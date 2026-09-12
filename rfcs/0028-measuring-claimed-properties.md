@@ -478,7 +478,50 @@ defect this section records as #1.
 
 Third-party hooks are out of scope: they are versioned upstream, and a pinned
 `rev` bump is the review surface for their behaviour. Requirements 1 and 2 apply
-to the four "yes" rows; requirements 3 and 4 apply to all six.
+to the four "yes" rows; requirements 3 and 4 apply to all six. (Both counts are
+corrected below.)
+
+**Scope corrections, measured 2026-09-12** while implementing the first two
+self-checks. The table above was written from recollection of the config rather
+than from the config, and three of its cells are wrong. They are corrected here
+rather than silently edited, because a scope table that under-counts the local
+hooks by exactly the broken one is itself an instance of this RFC's subject.
+
+1. **28 hooks, 7 local — not 27 and 6.** `.pre-commit-config.yaml` declares 21
+   third-party hooks (`ruff` + `ruff-format`, the 14 `pre-commit-hooks`,
+   `detect-secrets`, `bandit`, `mypy`, `pyupgrade`, `actionlint`) and these 7
+   local ones: `weak-assertion-ratchet`, **`test-encoding-ratchet`**,
+   `workflow-consistency-tests`, `tsa-codemap-sync`, `block-banned-test-names`,
+   `block-local-artifacts`, `tsa-ps-ascii`. The omission is not cosmetic: the
+   missing row is `test-encoding-ratchet`, and its script
+   (`scripts/check_test_encoding.py`) was carrying the exact defect §3.2 exists
+   to catch — resolved against the caller's cwd, it reported
+   `encoding-unsafe text calls in tests/: 0 across 0 files` and exited `0` when
+   run from any directory but the repository root. The scope table omitted the
+   one local hook that was actually dead.
+2. **`tsa-ps-ascii` has a live surface; requirement 2 does apply.** The table
+   calls it "a static character-class check over `.ps1`". Measured, it watches
+   `.github/workflows/*.yml|*.yaml` and `.github/actions/**/action.yml|*.yaml`
+   (30 files), and the surface the rule is *about* is the 27 of those carrying a
+   `run:` block. That is a real set with a real watch filter, so the coverage
+   invariant is well-defined and is now asserted — and it fires on a planted
+   `.github/zz-probe.yml` that carries `run:` outside the filter.
+3. **`block-banned-test-names` is a staged-diff gate, not a live-tree gate.**
+   The table gives its surface as "the banned-pattern list vs the live test-file
+   set". Measured, it reads `git diff --cached --name-only --diff-filter=A`, so
+   it sees **newly added staged** test files only; the live test-file set is
+   never enumerated. Requirement 2 is still meaningful for it, but over
+   `^tests/.*\.py$` restricted to staged additions, not over the tree.
+
+One further finding, negative and therefore worth recording: the cwd defect is
+**not** systemic across the local hooks. `check_loose_assertions.py`,
+`check-test-file-names.sh`, and `check-local-artifacts.sh` were each run from
+`scripts/` and from an unrelated subdirectory and behave identically to the
+repository root — the first because it already anchors on
+`Path(__file__).resolve().parents[1]`, the latter two because
+`git diff --cached --name-only` reports repository-root-relative paths
+regardless of cwd. Measured 2026-09-12; this narrows the defect to the two
+scripts named in item 1.
 
 This is now precedent rather than proposal: #1314 rebuilt
 `scripts/codemap-sync-check.sh` this way after the old gate's `count > 0` guard
@@ -550,6 +593,57 @@ The author of this RFC replaced a loose `>= 1` with a pinned `== 2` in
 `docs/TESTING.md` where the correct value was `1`, because nothing runs those
 examples — an exactly-wrong exact assertion, which is worse than the bound it
 replaced.
+
+#### §3.2 self-check landing record (2026-09-12)
+
+Six of the seven local hooks now carry a `--self-check`. The seventh is
+`workflow-consistency-tests`, which is a `pytest` invocation rather than a script,
+so it has no flag to add and is the one remaining gap against the acceptance box.
+
+| local hook | self-check asserts | red→green verified |
+|---|---|---|
+| `tsa-codemap-sync` | exact set equality, MCP and CLI surfaces; 0 flags outside the watch filter | pre-existing (#1314) |
+| `weak-assertion-ratchet` | exact violation set on a planted weak assert, no false positive on a strong one, and 100% parse coverage of `tests/**/*.py` | yes |
+| `test-encoding-ratchet` | scan base anchored to the repository, non-empty surface, every live file parses | yes |
+| `block-banned-test-names` | planted banned name detected exactly, innocent name ignored, path outside `tests/` not reported | yes |
+| `block-local-artifacts` | each blocked pattern still matches exactly, innocent paths ignored | yes |
+| `tsa-ps-ascii` | watched set vs the live `run:` surface, difference empty | yes |
+
+Two findings from the work, both instances of this RFC's subject:
+
+- **The parse-coverage arm is not decoration.** `check_loose_assertions.py`
+  returns `[]` for a file it cannot parse — "skip silently (CI lint step catches
+  syntax errors)". A tree of unparseable tests therefore reads as clean. The
+  self-check turns that silent skip into a failure; measured by planting a
+  syntax-error file under `tests/`.
+- **`block-local-artifacts` can only fire on a force-added path.** Both of its
+  patterns (`threads/`, `REDESIGN_PROPOSAL.md`) are already in `.gitignore`, so
+  `git diff --cached` cannot normally contain them. It is a backstop for
+  `git add -f`, verified by staging a force-added `REDESIGN_PROPOSAL.md` and
+  watching the gate reject it, rather than a gate that fires in normal use.
+
+The cwd-relative defect the first two self-checks found is recorded above: two
+gates resolved their watch base against the caller's cwd, so from `scripts/` they
+scanned nothing and exited `0`. Both are now anchored to the repository root, and
+`tests/governance/test_gate_self_checks.py` runs every self-check from a
+non-root directory and asserts each gate's output is byte-identical from the root
+and from `scripts/`.
+
+**Requirement 4 for this module.** The enforcement layer is CI plus the local
+quick gate: `tests/governance` is in `pytest.ini` `testpaths` so bare
+`uv run pytest` collects it, and the module is unmarked so the `reusable-test.yml`
+matrix expressions select it. Pre-commit does not run it. Collection is non-zero —
+11 collected — and the module was verified to fail on a degraded gate rather than
+merely passing.
+
+**Acceptance boxes deliberately left unchecked.** The self-check box requires all
+seven local hooks and is one short. The marker-set/non-zero-collection box
+requires a per-gate statement for every gate, which this record does not make
+beyond the seven hooks above. The enforcement-layer box requires either a
+`develop` ruleset carrying `required_status_checks` or a per-gate declaration;
+neither exists. The remaining two boxes (the tautological threshold assertions,
+and doc-example extraction) are untouched. Naming them here is the point: §3.2
+exists because "self-declared and never measured" reads as done.
 
 #### §3.3 Platform specificity
 
