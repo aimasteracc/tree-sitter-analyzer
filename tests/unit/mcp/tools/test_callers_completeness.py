@@ -425,3 +425,73 @@ async def test_dotted_callee_is_judged_by_receiver_not_by_substring(
 
     assert result["unresolved_in_declaring_files"] == 1
     assert result["completeness"] != "complete"
+
+
+def test_declaring_scope_narrows_to_the_named_file() -> None:
+    """Naming a file narrows the §1.2 scope to it; naming nothing keeps all of them.
+
+    Measured before this existed: a symbol declared in both a clean file and a
+    noisy one answered `unknown` for a query that named the clean file, which
+    contradicts §1.2's rule that a symbol in a fully-resolved file answers
+    `complete`. The Windows separator is normalized, and a name that matches no
+    declaring file falls back to every declaring file rather than to silence.
+    """
+    from tree_sitter_analyzer.mcp.tools.callers_tool import _declaring_file_unresolved
+
+    class StubCache:
+        def symbol_declaring_files(self, name: str) -> list[str]:
+            return ["pkg/clean.py", "pkg/noisy.py"]
+
+        def count_unresolved_calls_in_file(self, path: str) -> int:
+            return 0 if path == "pkg/clean.py" else 3
+
+    cache = StubCache()
+    assert _declaring_file_unresolved(cache, "run", None) == 3
+    assert _declaring_file_unresolved(cache, "run", "pkg/clean.py") == 0
+    assert _declaring_file_unresolved(cache, "run", "pkg\\clean.py") == 0
+    assert _declaring_file_unresolved(cache, "run", "pkg/absent.py") == 3
+
+    class FailingCache(StubCache):
+        def symbol_declaring_files(self, name: str) -> None:
+            return None
+
+    # A failed read is not an empty scope: `None`, never 0.
+    assert _declaring_file_unresolved(FailingCache(), "run", None) is None
+
+    class UnreadableFileCache(StubCache):
+        def count_unresolved_calls_in_file(self, path: str) -> None:
+            return None
+
+    # The same rule one level down: one unreadable declaring file makes the whole
+    # count unknown rather than letting the readable siblings stand in for it.
+    assert _declaring_file_unresolved(UnreadableFileCache(), "run", None) is None
+
+
+@pytest.mark.asyncio
+async def test_failed_declaring_read_says_so_instead_of_claiming_a_zero(
+    tool_with_edges, monkeypatch
+) -> None:
+    """A count that could not be read must not be presented as a resolved zero.
+
+    The fail-closed path was asserted in prose but never executed: `completeness`
+    must be `unknown` and the hint must name the unreadable edge rather than
+    allow "not in the index". A resolved edge to another symbol is planted first
+    so the graph holds edges and the empty-evidence branch is not what answers.
+    """
+    tool, conn = tool_with_edges
+    _insert_call(
+        conn, caller="alpha", caller_line=10, resolution=_RESOLVED, callee=_OTHER
+    )
+    conn.commit()
+
+    def _unreadable(self, func_name, file_path=None):
+        return None
+
+    monkeypatch.setattr(ASTCache, "count_unresolved_callers", _unreadable)
+
+    result = await _call(tool)
+
+    assert result["unresolved_inbound"] is None
+    assert result["completeness"] == "unknown"
+    assert "could not be read" in str(result["next_step"])
+    assert "not in the index" not in str(result["next_step"])
