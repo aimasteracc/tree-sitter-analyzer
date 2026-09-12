@@ -126,7 +126,13 @@ async def test_unknown_never_reports_absence(tool_with_edges) -> None:
     next_step = str(result["next_step"])
     assert "not in the index" not in next_step
     assert "unresolved" in next_step
-    assert "not evidence of absence" in result["agent_summary"]["summary_line"]
+    # The summary names the caller it found rather than only disclaiming
+    # absence: a module-level site is a real caller that #638 counts rather than
+    # lists, and saying "not evidence of absence" without saying why was the
+    # weaker version of this line.
+    summary_line = result["agent_summary"]["summary_line"]
+    assert "0 caller(s)" not in summary_line
+    assert "module-level call site(s)" in summary_line
 
 
 @pytest.mark.asyncio
@@ -159,6 +165,56 @@ async def test_cold_graph_reports_unknown_not_complete(tool_with_edges) -> None:
 
     assert result["completeness"] == "unknown"
     assert "not in the index" not in str(result["next_step"])
+
+
+@pytest.mark.asyncio
+async def test_resolved_module_level_caller_is_not_a_certified_zero(
+    tool_with_edges,
+) -> None:
+    """A counted-but-unlisted caller must not become a confident zero.
+
+    #638 counts module-level call sites instead of listing them, so the listed
+    count is not a census. Measured before this test existed: a symbol with two
+    resolved module-level callers answered `complete` with `caller_count: 0`,
+    `agent_summary` "has 0 caller(s)", and the next_step "Symbol not in the
+    index" — the exact false zero RFC-0028 §1 forbids, produced by the change
+    written to prevent it. Every edge was resolved, so the per-edge signal was
+    silent; only the unattributed count knew.
+    """
+    tool, conn = tool_with_edges
+    _insert_call(conn, caller="", caller_line=0, resolution=_RESOLVED)
+    conn.commit()
+
+    result = await _call(tool)
+
+    assert result["caller_count"] == 0
+    assert result["unattributed_call_sites"] == 1
+    assert result["completeness"] == "incomplete", (
+        "a symbol with a real, resolved module-level caller must never certify "
+        "an empty caller list"
+    )
+    assert "not in the index" not in str(result["next_step"])
+    assert "0 caller(s)" not in result["agent_summary"]["summary_line"]
+
+
+@pytest.mark.asyncio
+async def test_an_unresolved_module_level_site_does_not_claim_unreadable(
+    tool_with_edges,
+) -> None:
+    """A successfully-read count is not a failure to read.
+
+    The reason chain once tested `if unresolved_inbound:`, so a read `0` beside a
+    non-zero declaring-file count fell through to "its inbound edges could not be
+    read" — a false statement about a successful read.
+    """
+    tool, conn = tool_with_edges
+    _insert_call(conn, caller="", caller_line=0, resolution="unknown")
+    conn.commit()
+
+    result = await _call(tool)
+
+    next_step = str(result["next_step"])
+    assert "could not be read" not in next_step
 
 
 def test_unrecognised_resolution_marker_counts_as_unresolved(tmp_path) -> None:

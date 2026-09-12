@@ -214,14 +214,13 @@ class ASTCacheGraphMixin(ASTCacheSurface):
         except sqlite3.OperationalError:
             return None
 
-    def symbol_declaring_files(self, name: str) -> tuple[str, ...]:
-        """Return the files declaring ``name``.
+    def symbol_declaring_files(self, name: str) -> tuple[str, ...] | None:
+        """Return the files declaring ``name``, or ``None`` when unreadable.
 
         Empty is the honest answer for a name this project does not define — a
-        stdlib or framework symbol such as ``SystemExit``.  RFC-0028 §1.2's
-        scope guard is evaluated per declaring file, so a caller with no
-        declaring file falls back to the per-symbol signal alone rather than
-        inventing a scope.
+        stdlib or framework symbol such as ``SystemExit``.  ``None`` is a failed
+        read, and the two must not collapse: a caller reading a failure as an
+        empty scope turns "I could not check" into "nothing unresolved here".
         """
         try:
             rows = self._get_conn().execute(
@@ -229,7 +228,7 @@ class ASTCacheGraphMixin(ASTCacheSurface):
                 (name,),
             ).fetchall()
         except sqlite3.OperationalError:
-            return ()
+            return None
         return tuple(str(row[0]) for row in rows if row[0])
 
     def call_graph_built(self) -> bool:
