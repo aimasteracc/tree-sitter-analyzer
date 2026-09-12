@@ -462,9 +462,13 @@ surface to be outside of. §3.2 therefore scopes to the **7 local hooks**:
 local hooks" and omitted `test-encoding-ratchet` from the table below. Both
 numbers are now derived from the configuration by
 `tests/governance/test_first_party_gate_inventory.py`, which fails if this table
-and `.pre-commit-config.yaml` disagree — the omission is why that check exists,
-and the omitted hook is itself a ratchet, the same class whose dead-detector
-defect this section records as #1.
+and `.pre-commit-config.yaml` disagree. The omission is not cosmetic: the missing
+row is `test-encoding-ratchet`, and its script (`scripts/check_test_encoding.py`)
+carried the exact defect this section exists to catch — resolved against the
+caller's cwd, it reported `encoding-unsafe text calls in tests/: 0 across 0
+files` and exited `0` when run from any directory but the repository root. The
+table omitted the one local hook that was actually dead, and that hook is itself
+a ratchet, the same class whose dead-detector defect this section records as #1.
 
 | local hook | has a live surface to drift from? |
 |---|---|
@@ -478,35 +482,22 @@ defect this section records as #1.
 
 Third-party hooks are out of scope: they are versioned upstream, and a pinned
 `rev` bump is the review surface for their behaviour. Requirements 1 and 2 apply
-to the four "yes" rows; requirements 3 and 4 apply to all six. (Both counts are
-corrected below.)
+to every row with a live surface — five in the table below, six once correction 1
+is applied; requirements 3 and 4 apply to all seven local hooks.
 
-**Scope corrections, measured 2026-09-12** while implementing the first two
+**Two further scope corrections, measured 2026-09-12** while implementing the
 self-checks. The table above was written from recollection of the config rather
-than from the config, and three of its cells are wrong. They are corrected here
-rather than silently edited, because a scope table that under-counts the local
-hooks by exactly the broken one is itself an instance of this RFC's subject.
+than from the config, and two of its remaining cells are wrong. They are
+corrected here rather than silently edited.
 
-1. **28 hooks, 7 local — not 27 and 6.** `.pre-commit-config.yaml` declares 21
-   third-party hooks (`ruff` + `ruff-format`, the 14 `pre-commit-hooks`,
-   `detect-secrets`, `bandit`, `mypy`, `pyupgrade`, `actionlint`) and these 7
-   local ones: `weak-assertion-ratchet`, **`test-encoding-ratchet`**,
-   `workflow-consistency-tests`, `tsa-codemap-sync`, `block-banned-test-names`,
-   `block-local-artifacts`, `tsa-ps-ascii`. The omission is not cosmetic: the
-   missing row is `test-encoding-ratchet`, and its script
-   (`scripts/check_test_encoding.py`) was carrying the exact defect §3.2 exists
-   to catch — resolved against the caller's cwd, it reported
-   `encoding-unsafe text calls in tests/: 0 across 0 files` and exited `0` when
-   run from any directory but the repository root. The scope table omitted the
-   one local hook that was actually dead.
-2. **`tsa-ps-ascii` has a live surface; requirement 2 does apply.** The table
+1. **`tsa-ps-ascii` has a live surface; requirement 2 does apply.** The table
    calls it "a static character-class check over `.ps1`". Measured, it watches
    `.github/workflows/*.yml|*.yaml` and `.github/actions/**/action.yml|*.yaml`
    (30 files), and the surface the rule is *about* is the 27 of those carrying a
    `run:` block. That is a real set with a real watch filter, so the coverage
    invariant is well-defined and is now asserted — and it fires on a planted
    `.github/zz-probe.yml` that carries `run:` outside the filter.
-3. **`block-banned-test-names` is a staged-diff gate, not a live-tree gate.**
+2. **`block-banned-test-names` is a staged-diff gate, not a live-tree gate.**
    The table gives its surface as "the banned-pattern list vs the live test-file
    set". Measured, it reads `git diff --cached --name-only --diff-filter=A`, so
    it sees **newly added staged** test files only; the live test-file set is
@@ -520,8 +511,8 @@ One further finding, negative and therefore worth recording: the cwd defect is
 repository root — the first because it already anchors on
 `Path(__file__).resolve().parents[1]`, the latter two because
 `git diff --cached --name-only` reports repository-root-relative paths
-regardless of cwd. Measured 2026-09-12; this narrows the defect to the two
-scripts named in item 1.
+regardless of cwd. Measured 2026-09-12; this narrows the defect to
+`check_test_encoding.py` and `check_ps_ascii.py`.
 
 This is now precedent rather than proposal: #1314 rebuilt
 `scripts/codemap-sync-check.sh` this way after the old gate's `count > 0` guard
