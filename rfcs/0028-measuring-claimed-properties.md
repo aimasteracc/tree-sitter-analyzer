@@ -441,9 +441,21 @@ asked:
    > Any `next_step` containing a token matching a known tool / facade / action
    > name must resolve to a **registered** route.
 
-   That still catches the live defect: `build_project_index_tool.py` emits
-   `next_step="get_project_summary"`, a token that matches a tool name and
-   resolves nowhere.
+   That formulation still catches the class this section records. *Measured
+   correction (2026-09-12).* The defect named here has since been fixed, and was
+   mis-located: `get_project_summary` is back in `facade_map.LEGACY_TOOL_MAP`
+   (resolving to `project action=card`), and its mention in
+   `build_project_index_tool.py` is inside the tool **description**, not a
+   `next_step`. So the live instance is gone; the class is not.
+
+   The gate that covers it (`tests/unit/mcp/test_next_step_routability.py`)
+   harvests `next_step` string constants by AST and resolves every token that
+   collides with a published name. Measuring it exposed the class this section's
+   wording cannot reach: a name a breaking change **removed** resolves nowhere by
+   construction, so a vocabulary of currently-resolving names cannot see it.
+   `facade_map.REMOVED_TOOL_NAMES` is what makes "removed" machine-checkable, and
+   injecting `search_content` into a `next_step` now fails the gate rather than
+   being silently skipped.
 3. **Dispatch reachability.** For each language-family branch in a resolver
    dispatch, at least one test must reach it **through the public entry point**,
    not by calling the private helper. *This catches defect #3, where the ESM
@@ -797,7 +809,11 @@ rather than dropping it.
    empty must fail the gate.
 3. §3.1: RED today — the registered-surface invariant must fail on the known
    orphan before the orphan is wired.
-4. §3.1: `next_step` routability must fail today on the known unroutable string.
+4. §3.1: `next_step` routability must fail on an unroutable token. RED-first was
+   not available here: the string this item named is fixed, and no unroutable
+   token remains in the tree. The gate was instead proven by injection — adding
+   `search_content` to a `next_step` fails it — which is the same evidence the
+   original RED case would have supplied. See the *Measured correction* above.
 5. §3.2: for each existing blocking gate, a self-check asserting exact set
    equality, plus its coverage-invariant-equals-zero.
 6. §3.2: doc-example extraction must fail on a deliberately wrong pinned count.
@@ -843,7 +859,7 @@ rather than dropping it.
       orphan **corrected**, not preserved; **no allowlist**
 - [ ] §3.1 abstract-base exemption is structural (`abc`-abstract / no concrete
       `execute`), not a list of three names
-- [ ] §3.1 `next_step` routability green under the token-matching formulation
+- [x] §3.1 `next_step` routability green under the token-matching formulation
 - [ ] §3.1 dispatch reachability asserted through public entry points
 - [ ] §3.1 zero-caller signal exempt from §1's ratchet, asserted by a test that
       fails if a genuine orphan starts answering `unknown`
