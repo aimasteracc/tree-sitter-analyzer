@@ -496,17 +496,30 @@ proving its detector still matches live production, asserting **exact** set
 equality — not a `count > 0` lower bound.
 
 **Scope, stated precisely, because "every blocking gate" is unimplementable.**
-`.pre-commit-config.yaml` declares **27 hooks, of which 21 are third-party**:
+`.pre-commit-config.yaml` declares **28 hooks, of which 21 are third-party**:
 `ruff` + `ruff-format`, 14 `pre-commit-hooks`, `detect-secrets`, `bandit`,
 `mypy`, `pyupgrade`, `actionlint`. You cannot add a `--self-check` mode to
 `ruff`, and requirement 2 below ("count of surface items outside the watch
 filter == 0") has **no referent at all** for `check-yaml` — it has no watched
-surface to be outside of. §3.2 therefore scopes to the **6 local hooks**:
+surface to be outside of. §3.2 therefore scopes to the **7 local hooks**:
+
+*Measured correction (2026-09-12).* This section previously read "27 hooks … 6
+local hooks" and omitted `test-encoding-ratchet` from the table below. Both
+numbers are now derived from the configuration by
+`tests/governance/test_first_party_gate_inventory.py`, which fails if this table
+and `.pre-commit-config.yaml` disagree. The omission is not cosmetic: the missing
+row is `test-encoding-ratchet`, and its script (`scripts/check_test_encoding.py`)
+carried the exact defect this section exists to catch — resolved against the
+caller's cwd, it reported `encoding-unsafe text calls in tests/: 0 across 0
+files` and exited `0` when run from any directory but the repository root. The
+table omitted the one local hook that was actually dead, and that hook is itself
+a ratchet, the same class whose dead-detector defect this section records as #1.
 
 | local hook | has a live surface to drift from? |
 |---|---|
 | `tsa-codemap-sync` | **yes** — the MCP/CLI registry; already rebuilt this way in #1314 |
 | `weak-assertion-ratchet` | **yes** — the set of assertions it can parse (its blind spot to markdown is defect #5) |
+| `test-encoding-ratchet` | **yes** — the count of non-UTF-8-safe test files it measures against a grandfathered baseline |
 | `block-banned-test-names` | **yes** — the banned-pattern list vs the live test-file set |
 | `workflow-consistency-tests` | **yes** — the set of workflows it checks vs `.github/workflows/*` |
 | `block-local-artifacts` | partial — a static path/glob denylist; requirement 1 applies, requirement 2 does not |
@@ -514,35 +527,22 @@ surface to be outside of. §3.2 therefore scopes to the **6 local hooks**:
 
 Third-party hooks are out of scope: they are versioned upstream, and a pinned
 `rev` bump is the review surface for their behaviour. Requirements 1 and 2 apply
-to the four "yes" rows; requirements 3 and 4 apply to all six. (Both counts are
-corrected below.)
+to every row with a live surface — five in the table below, six once correction 1
+is applied; requirements 3 and 4 apply to all seven local hooks.
 
-**Scope corrections, measured 2026-09-12** while implementing the first two
+**Two further scope corrections, measured 2026-09-12** while implementing the
 self-checks. The table above was written from recollection of the config rather
-than from the config, and three of its cells are wrong. They are corrected here
-rather than silently edited, because a scope table that under-counts the local
-hooks by exactly the broken one is itself an instance of this RFC's subject.
+than from the config, and two of its remaining cells are wrong. They are
+corrected here rather than silently edited.
 
-1. **28 hooks, 7 local — not 27 and 6.** `.pre-commit-config.yaml` declares 21
-   third-party hooks (`ruff` + `ruff-format`, the 14 `pre-commit-hooks`,
-   `detect-secrets`, `bandit`, `mypy`, `pyupgrade`, `actionlint`) and these 7
-   local ones: `weak-assertion-ratchet`, **`test-encoding-ratchet`**,
-   `workflow-consistency-tests`, `tsa-codemap-sync`, `block-banned-test-names`,
-   `block-local-artifacts`, `tsa-ps-ascii`. The omission is not cosmetic: the
-   missing row is `test-encoding-ratchet`, and its script
-   (`scripts/check_test_encoding.py`) was carrying the exact defect §3.2 exists
-   to catch — resolved against the caller's cwd, it reported
-   `encoding-unsafe text calls in tests/: 0 across 0 files` and exited `0` when
-   run from any directory but the repository root. The scope table omitted the
-   one local hook that was actually dead.
-2. **`tsa-ps-ascii` has a live surface; requirement 2 does apply.** The table
+1. **`tsa-ps-ascii` has a live surface; requirement 2 does apply.** The table
    calls it "a static character-class check over `.ps1`". Measured, it watches
    `.github/workflows/*.yml|*.yaml` and `.github/actions/**/action.yml|*.yaml`
    (30 files), and the surface the rule is *about* is the 27 of those carrying a
    `run:` block. That is a real set with a real watch filter, so the coverage
    invariant is well-defined and is now asserted — and it fires on a planted
    `.github/zz-probe.yml` that carries `run:` outside the filter.
-3. **`block-banned-test-names` is a staged-diff gate, not a live-tree gate.**
+2. **`block-banned-test-names` is a staged-diff gate, not a live-tree gate.**
    The table gives its surface as "the banned-pattern list vs the live test-file
    set". Measured, it reads `git diff --cached --name-only --diff-filter=A`, so
    it sees **newly added staged** test files only; the live test-file set is
@@ -556,8 +556,8 @@ One further finding, negative and therefore worth recording: the cwd defect is
 repository root — the first because it already anchors on
 `Path(__file__).resolve().parents[1]`, the latter two because
 `git diff --cached --name-only` reports repository-root-relative paths
-regardless of cwd. Measured 2026-09-12; this narrows the defect to the two
-scripts named in item 1.
+regardless of cwd. Measured 2026-09-12; this narrows the defect to
+`check_test_encoding.py` and `check_ps_ascii.py`.
 
 This is now precedent rather than proposal: #1314 rebuilt
 `scripts/codemap-sync-check.sh` this way after the old gate's `count > 0` guard
@@ -847,17 +847,56 @@ rather than dropping it.
 - [ ] §3.1 dispatch reachability asserted through public entry points
 - [ ] §3.1 zero-caller signal exempt from §1's ratchet, asserted by a test that
       fails if a genuine orphan starts answering `unknown`
-- [ ] §3.2 each of the **six first-party local hooks** has an exact-equality
-      self-check; the four with a live surface additionally have a
+- [ ] §3.2 each of the **seven first-party local hooks** has an exact-equality
+      self-check; the five with a live surface additionally have a
       coverage-invariant of exactly 0
+
+      *Partially landed (2026-09-12).* The scope itself is now enforced:
+      `tests/governance/test_first_party_gate_inventory.py` derives the hook set
+      from `.pre-commit-config.yaml`, fails if this section's table disagrees with
+      it, and asserts every hook's `entry` resolves to a file that exists. That
+      check is what establishes the count as **seven**, not six. The per-hook
+      `--self-check` modes and the coverage invariants are still open.
 - [ ] §3.2 every gate names its **marker set + workflow job** (or its pre-commit
       hook) and proves a non-zero collected count
+
+      *Partially landed.* Both halves are now enumerated and checked:
+      `tests/governance/test_first_party_gate_inventory.py` asserts every scoped
+      hook runs at the `pre-commit` stage, and
+      `tests/governance/test_workflow_marker_sets.py` derives **10 marker-driven
+      gates across 6 workflows** from the workflow YAML, names each one's job,
+      and asserts every positive marker in each expression is carried by at least
+      one test — the vacuity case, where `pytest -m "<marker>"` collects nothing
+      and always succeeds. It also pins the one shell-templated set
+      (`e2e${EXTRA_MARKS}`) as a decision rather than a silent skip.
+
+      **What is still missing is the collected count itself.** Collection costs
+      5–15 s per expression here, so five expressions would add about a minute to
+      the fast suite; the static check catches vacuity and typos without that
+      cost, and does not read a count.
 - [ ] §3.2 the enforcement layer is named per gate: either
       `required_status_checks` added to a `develop` ruleset, or pre-commit
       declared as the blocking layer
-- [ ] §3.2 `test_unknown_rate_threshold_value` and
+
+      *Partially landed.* Pre-commit is the working layer and the inventory gate
+      pins that every scoped hook is present there. The per-gate naming this item
+      asks for, and the ruleset alternative, are still open.
+- [x] §3.2 `test_unknown_rate_threshold_value` and
       `test_unknown_rate_threshold_is_documented_in_this_file` replaced by a live
-      measurement or deleted
+      measurement
+
+      Replaced, not deleted. `test_unknown_rate_is_measured_within_threshold`
+      indexes the product source (`workers=1`, ~13 s on the `full_language` axis)
+      and measures the rate against the ceiling. Measured **2026-09-12: 9.78% on
+      the product source (4,941 / 50,528 CALLS edges)** and 6.27% on a 2,174-file
+      self-repo subset, against a 6.0% ceiling — the claim is **not met**, and was
+      not met while the two self-referential tests passed. The measurement is a
+      strict `xfail`, so it is recorded rather than hidden, and it is removed only
+      by a genuine improvement. Proved by experiment: raising
+      `UNKNOWN_RATE_THRESHOLD_PCT` to 10.0 makes the assertion pass, which turns
+      the `xfail` into an unexpected pass and **fails the run** — the "never
+      increase without a reviewed decision" rule is now enforced instead of
+      documented.
 - [ ] §3.2 doc-example extraction runs agent-facing doc examples in CI
 - [ ] §3.3 path-comparison invariant covers both separator conventions
 - [ ] Docs/CODEMAPS updated
