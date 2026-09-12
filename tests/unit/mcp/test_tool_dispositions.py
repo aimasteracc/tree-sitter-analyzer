@@ -19,8 +19,9 @@ from tree_sitter_analyzer.mcp.tool_dispositions import (
     expired_dispositions,
 )
 
-#: The exact set §3.1 measured on 2026-08-19, plus nothing else. A new name
-#: here means a new orphan appeared and needs its own decision.
+#: The six names §3.1 measured on 2026-08-19, plus the one the §3.1
+#: reachability gate found afterwards. A new name here means a new orphan
+#: appeared and needs its own decision.
 _MEASURED_ORPHANS = {
     "CodeGraphPRReviewTool",
     "CodeGraphRefactorTool",
@@ -28,6 +29,7 @@ _MEASURED_ORPHANS = {
     "MiddlewareDetectorTool",
     "UniversalAnalyzeTool",
     "UnreachableCodeTool",
+    "MCPTool",
 }
 
 
@@ -39,10 +41,13 @@ def test_no_disposition_is_missing_a_reason() -> None:
     assert [n for n, d in TOOL_DISPOSITIONS.items() if not d.reason.strip()] == []
 
 
-def test_deprecations_are_exactly_the_remaining_unwired_tool() -> None:
+def test_deprecations_are_exactly_the_remaining_unwired_tools() -> None:
     deprecated = {n for n, d in TOOL_DISPOSITIONS.items() if d.kind == "deprecate"}
     assert deprecated == {
         "UniversalAnalyzeTool",
+        # Seventh orphan, found by the §3.1 reachability gate rather than by
+        # the 2026-08-19 manual measurement: a backward-compatibility base.
+        "MCPTool",
     }
 
 
@@ -57,6 +62,7 @@ def test_no_deprecation_has_expired() -> None:
 
 def test_expiry_fires_once_the_removal_version_ships() -> None:
     assert expired_dispositions("1.33.0") == [
+        "MCPTool",
         "UniversalAnalyzeTool",
     ]
 

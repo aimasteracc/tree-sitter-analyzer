@@ -838,15 +838,59 @@ rather than dropping it.
       `--self-health`; CLI↔MCP parity test green
 - [ ] §2 scope limitation stated in the emitted payload, not only in this RFC,
       including that `declined_reason` is `None` until a rejection path exists
-- [ ] §3.1 registered-surface reachability green; all **six** orphans given a
+- [x] §3.1 registered-surface reachability green; all **six** orphans given a
       delete / wire / deprecate-with-expiry disposition; the test that pins an
       orphan **corrected**, not preserved; **no allowlist**
-- [ ] §3.1 abstract-base exemption is structural (`abc`-abstract / no concrete
+- [x] §3.1 abstract-base exemption is structural (`abc`-abstract / no concrete
       `execute`), not a list of three names
+
+      *Measured correction.* The gate found a **seventh** orphan the 2026-08-19
+      manual measurement did not name: `MCPTool`, a backward-compatibility
+      protocol base whose own docstring says "deprecated, use `BaseMCPTool`
+      instead". It is dispositioned `deprecate` with a removal version, not
+      exempted. That exposes a tension in this section's own wording: the stated
+      exemption rule does **not** exempt `MCPTool` or `_CallTreeBase` — both are
+      non-abstract and define a concrete `execute` — yet the text names them as
+      legitimately not registered. They are in fact reached through the MRO of
+      registered tools (`edit action=pr` holds a `_PRReviewViaFacade`, not a
+      `CodeGraphPRReviewTool`), which is the mechanism that carries them; a gate
+      comparing class identity reports a wired route as an orphan forever. The
+      exemption rule is implemented exactly as written and is exercised — the
+      probe case below depends on it — but it is not what makes those two
+      classes pass.
 - [ ] §3.1 `next_step` routability green under the token-matching formulation
-- [ ] §3.1 dispatch reachability asserted through public entry points
-- [ ] §3.1 zero-caller signal exempt from §1's ratchet, asserted by a test that
+- [x] §3.1 zero-caller signal exempt from §1's ratchet, asserted by a test that
       fails if a genuine orphan starts answering `unknown`
+
+      Asserted as a **hard binary** rather than as a vocabulary check.
+      `_offender_reason` in `tests/unit/mcp/test_registered_surface_reachability.py`
+      is pure, so the three properties are testable directly: a genuine orphan
+      always yields a verdict; no verdict borrows §1's vocabulary
+      (`unknown` / `incomplete` / …), which is what a softened signal would look
+      like; and a live `deprecate` is the only soft outcome, bounded by its
+      removal version. The exemption holds **by construction** — §3.1 reads the
+      registry and the dispositions, never `completeness` — and these tests are
+      what keep it that way if someone later reaches for the field.
+- [x] §3.1 dispatch reachability asserted through public entry points
+
+      Asserted per **call site**, not per resolver.
+      `tests/unit/mcp/test_dispatch_reachability.py` drives `ImportGraph.build()`
+      with one fixture per language family and pairs each resolver invocation with
+      the *line inside the dispatch* that made it, then requires that set to equal
+      the resolver call sites found by parsing the dispatch. Coarse pairing would
+      pass while a second, unreachable call site sat beside a reachable one.
+
+      Doing so found defect #3's second instance, still standing after the
+      [#1312](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1312) fix:
+      the text-sniff arm that routed `require(` / `from '` / `from "` to the JS
+      resolver was reached by no public input. Every file that can carry recorded
+      imports has an extension in `EXT_TO_LANG`, so a JS/TS file is routed by
+      language before the sniff, and no other extractor (measured across C, Go,
+      Java, Rust, Lua, Ruby, PHP) emits those forms. No test called the private
+      dispatch either, which is why it went unnoticed. The dead arm is deleted
+      rather than allowlisted, and the surviving Python-shaped arm is documented
+      with the producers that actually reach it (Go's `import "x"`, Java's
+      `import a.b;`).
 - [ ] §3.2 each of the **six first-party local hooks** has an exact-equality
       self-check; the four with a live surface additionally have a
       coverage-invariant of exactly 0
