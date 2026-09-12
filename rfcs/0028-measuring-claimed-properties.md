@@ -720,9 +720,19 @@ rather than dropping it.
       probe case below depends on it — but it is not what makes those two
       classes pass.
 - [ ] §3.1 `next_step` routability green under the token-matching formulation
-- [ ] §3.1 dispatch reachability asserted through public entry points
-- [ ] §3.1 zero-caller signal exempt from §1's ratchet, asserted by a test that
+- [x] §3.1 zero-caller signal exempt from §1's ratchet, asserted by a test that
       fails if a genuine orphan starts answering `unknown`
+
+      Asserted as a **hard binary** rather than as a vocabulary check.
+      `_offender_reason` in `tests/unit/mcp/test_registered_surface_reachability.py`
+      is pure, so the three properties are testable directly: a genuine orphan
+      always yields a verdict; no verdict borrows §1's vocabulary
+      (`unknown` / `incomplete` / …), which is what a softened signal would look
+      like; and a live `deprecate` is the only soft outcome, bounded by its
+      removal version. The exemption holds **by construction** — §3.1 reads the
+      registry and the dispositions, never `completeness` — and these tests are
+      what keep it that way if someone later reaches for the field.
+- [ ] §3.1 dispatch reachability asserted through public entry points
 - [ ] §3.2 each of the **six first-party local hooks** has an exact-equality
       self-check; the four with a live surface additionally have a
       coverage-invariant of exactly 0

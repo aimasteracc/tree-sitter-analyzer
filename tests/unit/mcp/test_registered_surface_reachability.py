@@ -26,7 +26,10 @@ import inspect
 import pkgutil
 from pathlib import Path
 
-from tree_sitter_analyzer.mcp.tool_dispositions import TOOL_DISPOSITIONS
+from tree_sitter_analyzer.mcp.tool_dispositions import (
+    TOOL_DISPOSITIONS,
+    Disposition,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
@@ -135,32 +138,103 @@ def test_the_gate_enumerates_a_non_trivial_surface() -> None:
     )
 
 
+def _offender_reason(
+    name: str,
+    *,
+    exempt: bool,
+    reachable: bool,
+    disposition: Disposition | None,
+) -> str | None:
+    """Why ``name`` is an unresolved orphan, or ``None`` when it is not.
+
+    Pure, so §3.1's zero-caller signal can be tested directly for the property it
+    must keep: the verdict is a **hard binary**. A genuine orphan is an offender,
+    and there is no "unknown" or "indeterminate" outcome that could let this gate
+    go green while detecting nothing.
+
+    That matters because of §3.1's exemption from §1's ratchet. The cheapest way
+    to maximise §1's ratchet is to answer ``unknown`` whenever a file contains a
+    dynamic construct — and dynamic construction is exactly how these subjects
+    are built (a facade assembled by a function-local import, an ``importlib``
+    import). Under that implementation a genuine orphan would read as
+    indeterminate, §3.1 would silently stop detecting anything, and **both gates
+    would be green**: a fresh instance of this RFC's own defect shape.
+    """
+    if exempt or reachable:
+        return None
+    if disposition is None:
+        return f"{name}: built but reachable from nothing, and undispositioned"
+    if disposition.kind == "wire":
+        return f"{name}: disposition claims wire, but the class is unreachable"
+    if disposition.kind == "delete":
+        return f"{name}: disposition claims delete, but the class still exists"
+    # deprecate is permitted while its removal version has not shipped;
+    # test_tool_dispositions.py fails once it has.
+    return None
+
+
 def test_every_tool_class_is_reachable_or_dispositioned() -> None:
     reachable = _reachable_class_names(str(PROJECT_ROOT))
 
     offenders: list[str] = []
     for name, cls in sorted(_tool_classes().items()):
-        if _is_exempt(cls) or name in reachable:
-            continue
-        disposition = TOOL_DISPOSITIONS.get(name)
-        if disposition is None:
-            offenders.append(
-                f"{name}: built but reachable from nothing, and undispositioned"
-            )
-        elif disposition.kind == "wire":
-            offenders.append(
-                f"{name}: disposition claims wire, but the class is unreachable"
-            )
-        elif disposition.kind == "delete":
-            offenders.append(
-                f"{name}: disposition claims delete, but the class still exists"
-            )
-        # deprecate is permitted while its removal version has not shipped;
-        # test_tool_dispositions.py fails once it has.
+        reason = _offender_reason(
+            name,
+            exempt=_is_exempt(cls),
+            reachable=name in reachable,
+            disposition=TOOL_DISPOSITIONS.get(name),
+        )
+        if reason is not None:
+            offenders.append(reason)
 
     assert offenders == [], (
         "RFC-0028 §3.1 registered-surface reachability is red. Every entry needs "
         "a landing disposition — wire it, delete it, or deprecate it with a "
         "named removal version. An allowlist entry is not a disposition:\n  "
         + "\n  ".join(offenders)
+    )
+
+
+def test_the_zero_caller_signal_is_a_hard_binary() -> None:
+    """§3.1's exemption from §1's ratchet, asserted.
+
+    A genuine orphan — not exempt, not reachable, undispositioned — must produce
+    a verdict. If this ever became an ``unknown``/indeterminate outcome, §3.1
+    would stop detecting orphans while staying green, and §1 would have softened
+    the very signal §3.1 relies on.
+    """
+    reason = _offender_reason(
+        "SomeNewlyAddedTool", exempt=False, reachable=False, disposition=None
+    )
+    assert reason is not None, (
+        "a genuine orphan produced no verdict; a soft outcome here means the "
+        "reachability gate can go green while detecting nothing"
+    )
+    softened = ("unknown", "indeterminate", "incomplete", "unclear", "partial")
+    assert not any(word in reason.lower() for word in softened), (
+        f"the verdict borrowed §1's vocabulary ({reason!r}); §3.1's zero must "
+        "stay a zero and a completeness field is not a licence to soften it"
+    )
+
+
+def test_the_only_soft_outcome_is_a_live_deprecation() -> None:
+    """Pins the two-sided boundary so neither direction can drift.
+
+    Exempting everything would make the gate vacuous; soft-verdicting everything
+    would make it useless.
+    """
+    assert _offender_reason("T", exempt=True, reachable=False, disposition=None) is None
+    assert _offender_reason("T", exempt=False, reachable=True, disposition=None) is None
+    for kind in ("wire", "delete"):
+        disposition = Disposition(kind=kind, reason="x")
+        assert (
+            _offender_reason(
+                "T", exempt=False, reachable=False, disposition=disposition
+            )
+            is not None
+        )
+    deprecated = Disposition(kind="deprecate", reason="x", remove_in="99.0.0")
+    assert (
+        _offender_reason("T", exempt=False, reachable=False, disposition=deprecated)
+        is None
     )
