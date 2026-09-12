@@ -732,7 +732,26 @@ rather than dropping it.
       removal version. The exemption holds **by construction** — §3.1 reads the
       registry and the dispositions, never `completeness` — and these tests are
       what keep it that way if someone later reaches for the field.
-- [ ] §3.1 dispatch reachability asserted through public entry points
+- [x] §3.1 dispatch reachability asserted through public entry points
+
+      Asserted per **call site**, not per resolver.
+      `tests/unit/mcp/test_dispatch_reachability.py` drives `ImportGraph.build()`
+      with one fixture per language family and pairs each resolver invocation with
+      the *line inside the dispatch* that made it, then requires that set to equal
+      the resolver call sites found by parsing the dispatch. Coarse pairing would
+      pass while a second, unreachable call site sat beside a reachable one.
+
+      Doing so found defect #3's second instance, still standing after the
+      [#1312](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1312) fix:
+      the text-sniff arm that routed `require(` / `from '` / `from "` to the JS
+      resolver was reached by no public input. Every file that can carry recorded
+      imports has an extension in `EXT_TO_LANG`, so a JS/TS file is routed by
+      language before the sniff, and no other extractor (measured across C, Go,
+      Java, Rust, Lua, Ruby, PHP) emits those forms. No test called the private
+      dispatch either, which is why it went unnoticed. The dead arm is deleted
+      rather than allowlisted, and the surviving Python-shaped arm is documented
+      with the producers that actually reach it (Go's `import "x"`, Java's
+      `import a.b;`).
 - [ ] §3.2 each of the **six first-party local hooks** has an exact-equality
       self-check; the four with a live surface additionally have a
       coverage-invariant of exactly 0
