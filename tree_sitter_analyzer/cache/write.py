@@ -9,6 +9,7 @@ import re
 import sqlite3
 import time
 from collections import OrderedDict
+from collections.abc import Callable
 from typing import Any
 
 from ..index_symbol_projection import (
@@ -544,6 +545,39 @@ def write_imports_for_file(
                 return
 
 
+#: Languages whose import specifiers are importer-relative, so the resolved
+#: file must be computed at index time rather than derived from the target.
+_RELATIVE_SPECIFIER_LANGUAGES = ("typescript", "javascript")
+
+
+def _import_specifier_resolver(
+    conn: sqlite3.Connection, language: str
+) -> Callable[[str, str], str]:
+    """Return a ``(specifier, importer) -> resolved_file`` callable.
+
+    Languages without importer-relative specifiers get a no-op resolver, so
+    Python keeps matching through its module-name branch unchanged.
+    """
+    if language not in _RELATIVE_SPECIFIER_LANGUAGES:
+        return lambda specifier, importer: ""
+    try:
+        from ..synapse_resolver._typescript_imports import (
+            resolve_typescript_specifier,
+        )
+
+        indexed = {
+            str(row[0]) for row in conn.execute("SELECT file_path FROM ast_index")
+        }
+    except Exception as exc:  # pragma: no cover - resolution is best-effort
+        logger.debug("import specifier resolver unavailable: %s", exc)
+        return lambda specifier, importer: ""
+
+    def resolve(specifier: str, importer: str) -> str:
+        return resolve_typescript_specifier(specifier, importer, indexed)
+
+    return resolve
+
+
 def write_graph_edges_for_file(
     conn: sqlite3.Connection,
     rel_path: str,
@@ -617,6 +651,7 @@ def write_graph_edges_for_file(
             )
         )
 
+    resolve_specifier = _import_specifier_resolver(conn, language)
     for raw in imports or []:
         text, line = _parse_import_raw(raw)
         if not text:
@@ -635,6 +670,12 @@ def write_graph_edges_for_file(
                         "is_relative": entry.is_relative,
                         "is_star": entry.is_star,
                         "alias_of": entry.alias_of,
+                        # Importer-relative specifiers cannot be derived from
+                        # the target, so resolve here and let the query match
+                        # on the language-neutral resolved-file column.
+                        "callee_resolved_file": resolve_specifier(
+                            entry.module_path, rel_path
+                        ),
                     },
                 )
             )
