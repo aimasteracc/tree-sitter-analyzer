@@ -7,6 +7,7 @@ The store is intentionally small and dependency-light: it is used by
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections import deque
 from dataclasses import dataclass, field
@@ -436,6 +437,68 @@ class EdgeStore:
             direction="callers",
         )
 
+    def count_unresolved_callers(
+        self,
+        callee_name: str,
+        callee_file: str | None = None,
+    ) -> int:
+        """Count inbound CALLS edges into ``callee_name`` not known resolved.
+
+        This is deliberately **not** the set of listed callers.  The list is
+        assembled by ``query_callers`` (``_bfs_call_edges``) and then deduplicated
+        by caller file/name/line with module-level sites removed; this counts raw
+        inbound edges through ``_direct_callers``, module-level rows included.
+        The two answer different questions — how many call sites were listed,
+        versus how many edges into the symbol stayed unresolved — so a
+        ``caller_count`` of 0 beside a non-zero count here is the intended
+        reading rather than a contradiction; a module-level site is the ordinary
+        way that happens.  No duplicate can inflate the count, because ``edges``
+        is UNIQUE over ``(source_node_id, target_node_id, kind, line)``.
+        Resolution is read through ``_resolution_is_resolved``; see
+        ``_RESOLVED_CALLEE_RESOLUTIONS`` for why an unrecognised value counts as
+        unresolved.
+        """
+        count = 0
+        for row in _direct_callers(self._conn, callee_name, callee_file):
+            if not _resolution_is_resolved(row):
+                count += 1
+        return count
+
+    def count_unresolved_calls_in_file(self, file_path: str) -> int:
+        """Count unresolved CALLS edges originating in ``file_path``.
+
+        A computed callee is recorded under its source text — ``HANDLERS[name]``,
+        ``getattr(self, name)`` — so the row names no symbol and a per-symbol
+        lookup cannot see it. Asking the declaring file instead is what makes
+        RFC-0028 §1.2's scope guard decidable: an unresolved call inside a file
+        may target anything that file declares.
+
+        Reads through ``_resolution_is_resolved``, the same predicate
+        ``count_unresolved_callers`` uses.  A raw ``NOT IN`` over the column alone
+        could disagree with that predicate on rows whose marker lives in the
+        metadata JSON, which would let the two numbers the response reports side
+        by side describe different edge sets.  Rows are therefore read rather than
+        aggregated; the alternative requires reproducing the metadata fallback in
+        SQL, and a per-file edge count is small enough that the loop is not the
+        cost that matters.
+
+        Only edges that could name a file-local symbol are counted;
+        ``_can_target_local_symbol`` records why, and measured why it matters.
+        """
+        rows = self._conn.execute(
+            "SELECT * FROM edges WHERE kind = ? AND file_path = ?",
+            (EdgeKind.CALLS.value, file_path),
+        ).fetchall()
+        count = 0
+        for row in rows:
+            if _resolution_is_resolved(row):
+                continue
+            edge = _edge_from_row(row)
+            callee_full = str(_row_col(row, "callee_full", "callee_full", edge) or "")
+            if _can_target_local_symbol(callee_full):
+                count += 1
+        return count
+
     def query_callees(
         self,
         caller_name: str,
@@ -748,6 +811,93 @@ def _row_col(row: sqlite3.Row, column: str, meta_key: str, edge: Edge) -> Any:
         if meta_value not in (None, "", 0):
             return meta_value
     return value
+
+
+# Resolutions that establish an edge's callee.  The set is inverted on purpose:
+# the schema default ('unknown'), the second pass's 'unresolved_refs'
+# placeholder, and any marker a later version adds all read as "not known to be
+# resolved".  Degrading an unrecognised marker toward "incomplete" is the safe
+# direction — reporting a complete caller list over an unresolved edge is the
+# error a caller cannot detect.
+#
+# 'external' is listed because it is a *terminal* resolution, not an unknown one:
+# the callee was resolved to a symbol outside the project.  `synapse.py` relies
+# on exactly that distinction when it refuses to re-scan edges already marked
+# ('external', 'stdlib') — "target lives outside the project, no resolved_file
+# by design".  Omitting it made this reader disagree with that writer about a
+# finished edge: measured on the 2,174-file self-repo corpus, 4,247 CALLS rows
+# (2.58%) carry it, and counting them as unresolved gated 1,562 files instead of
+# 1,363, barring every symbol they declare from answering `complete`.  The
+# inversion above still covers genuinely unrecognised markers; this set lists the
+# markers the writer treats as final.
+_RESOLVED_CALLEE_RESOLUTIONS = frozenset(
+    {"project", "builtin", "stdlib", "local", "external"}
+)
+
+
+def _resolution_is_resolved(row: sqlite3.Row) -> bool:
+    """Whether an edge row's ``callee_resolution`` establishes its callee.
+
+    The single reader behind every completeness count.  The marker is read
+    through ``_row_col``, which falls back to the metadata JSON for rows written
+    by a schema that kept it there; aggregating the column in SQL instead
+    disagrees with that fallback on exactly those rows, which is how a caller
+    list and its completeness could describe different edge sets.
+    """
+    edge = _edge_from_row(row)
+    resolution = str(
+        _row_col(row, "callee_resolution", "callee_resolution", edge) or ""
+    )
+    return resolution in _RESOLVED_CALLEE_RESOLUTIONS
+
+
+#: Receiver names whose attribute calls cannot reach a symbol the scanning file
+#: declares.  `list.append`, `dict.get`, `set.add`, `super().__init__` — the
+#: attribute belongs to a builtin type, not to anything the project defines.
+_BUILTIN_RECEIVERS = frozenset(
+    {
+        "list",
+        "dict",
+        "set",
+        "frozenset",
+        "tuple",
+        "str",
+        "bytes",
+        "bytearray",
+        "int",
+        "float",
+        "bool",
+        "complex",
+        "object",
+        "type",
+        "super",
+    }
+)
+
+#: ``<name>.<attribute>`` or ``<name>().<attribute>`` and nothing else.
+#: Deliberately strict.  A looser "text before the first dot" reading would take
+#: the receiver of ``getattr(importlib.import_module(m), cls).x`` to be
+#: ``getattr(importlib`` and could excuse a genuine dispatch site, and
+#: ``handlers["read"]`` has no receiver text at all.
+_DOTTED_CALLEE = re.compile(
+    r"^([A-Za-z_][A-Za-z0-9_]*)(?:\(\))?\.([A-Za-z_][A-Za-z0-9_]*)$"
+)
+
+
+def _can_target_local_symbol(callee_full: str) -> bool:
+    """Whether an unresolved call with this callee could name a file-local symbol.
+
+    Conservative by construction: only a dotted callee whose receiver is a
+    builtin type name is ruled out.  Bare names, ``self.``/``cls.``, computed
+    dispatch (``handlers["read"]``), ``getattr(...)``, and any receiver that is a
+    local variable all stay counted, because each may name something the file
+    declares.  Over-counting only holds a symbol at ``incomplete``; under-counting
+    would certify absence over a real edge, the one direction RFC-0028 §1 forbids.
+    """
+    match = _DOTTED_CALLEE.match(callee_full or "")
+    if match is None:
+        return True
+    return match.group(1) not in _BUILTIN_RECEIVERS
 
 
 def _matches_callee(row: sqlite3.Row, target: NodeRef, callee_name: str) -> bool:

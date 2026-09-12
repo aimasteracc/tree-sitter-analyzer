@@ -178,6 +178,59 @@ class ASTCacheGraphMixin(ASTCacheSurface):
         except sqlite3.OperationalError:
             return False
 
+    def count_unresolved_callers(
+        self,
+        callee_name: str,
+        callee_file: str | None = None,
+    ) -> int | None:
+        """Count in-scope CALLS edges into ``callee_name`` not known resolved.
+
+        Returns ``None`` when the count cannot be read.  ``None`` is not ``0``:
+        a failed read must not become a confident "every edge is resolved", so
+        callers treat it as unknown rather than complete.
+        """
+        try:
+            from .graph.edge_store import EdgeStore
+
+            return EdgeStore(
+                self._get_conn(), ensure_schema=False
+            ).count_unresolved_callers(callee_name, callee_file)
+        except sqlite3.OperationalError:
+            return None
+
+    def count_unresolved_calls_in_file(self, file_path: str) -> int | None:
+        """Count unresolved CALLS edges originating in ``file_path``.
+
+        Returns ``None`` when the count cannot be read, for the same reason
+        :meth:`count_unresolved_callers` does: a failed read must not read as
+        "no unresolved call here".
+        """
+        try:
+            from .graph.edge_store import EdgeStore
+
+            return EdgeStore(
+                self._get_conn(), ensure_schema=False
+            ).count_unresolved_calls_in_file(file_path)
+        except sqlite3.OperationalError:
+            return None
+
+    def symbol_declaring_files(self, name: str) -> tuple[str, ...] | None:
+        """Return the files declaring ``name``, or ``None`` when unreadable.
+
+        Empty is the honest answer for a name this project does not define — a
+        stdlib or framework symbol such as ``SystemExit``.  ``None`` is a failed
+        read, and the two must not collapse: a caller reading a failure as an
+        empty scope turns "I could not check" into "nothing unresolved here".
+        """
+        try:
+            rows = self._get_conn().execute(
+                "SELECT DISTINCT file_path FROM ast_symbol_rows WHERE name = ?",
+                (name,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return None
+        return tuple(str(row[0]) for row in rows if row[0])
+
     def call_graph_built(self) -> bool:
         """Return whether a completed call-graph build is recorded."""
         return _call_graph_built(self._get_conn())
