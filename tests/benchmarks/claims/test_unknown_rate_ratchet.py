@@ -53,17 +53,27 @@ def _measure_unknown_rate() -> tuple[float, int, int]:
     cache = ASTCache(str(source_root))
     try:
         cache.index_project(workers=1)
-        row = cache.get_conn().execute(
-            "SELECT COUNT(*), SUM(callee_resolution = 'unknown') "
-            "FROM edges WHERE kind = 'calls'"
-        ).fetchone()
+        row = (
+            cache.get_conn()
+            .execute(
+                "SELECT COUNT(*), SUM(callee_resolution = 'unknown') "
+                "FROM edges WHERE kind = 'calls'"
+            )
+            .fetchone()
+        )
     finally:
         cache.close()
     total, unknown = int(row[0]), int(row[1] or 0)
-    assert total > 0, (
-        "no CALLS edges were indexed, so the rate below would divide nothing; "
-        "the measurement is broken, not the resolver"
-    )
+    if total <= 0:
+        # A precondition of the measurement, not an assertion about the
+        # repository.  An exact edge count would be worse than the bound it
+        # replaced: this test is a strict xfail, so a corpus change would move
+        # the count, the test would xfail for the wrong reason, and a genuine
+        # crossing of UNKNOWN_RATE_THRESHOLD_PCT would go unnoticed underneath.
+        raise RuntimeError(
+            "no CALLS edges were indexed, so the rate below would divide "
+            "nothing; the measurement is broken, not the resolver"
+        )
     return 100.0 * unknown / total, unknown, total
 
 

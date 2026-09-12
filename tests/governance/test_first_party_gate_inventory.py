@@ -52,10 +52,17 @@ def _rfc_scoped_hooks() -> set[str]:
 
 
 def test_the_inventory_is_not_vacuous() -> None:
+    """Exact rather than a lower bound: RFC-0028 §3.2 requires set equality.
+
+    Measured 2026-09-12: seven local hooks. Bumping this constant is expected
+    when the hook set legitimately changes — that is the point. The previous
+    `>= 6` let the count drift while the guard still passed.
+    """
     hooks = _local_hooks()
-    assert len(hooks) >= 6, (
-        f"only {len(hooks)} local hooks found in {CONFIG_PATH.name}; the parse or "
-        "the configuration changed shape and the assertions below mean nothing"
+    assert len(hooks) == 7, (
+        f"expected 7 local hooks in {CONFIG_PATH.name}, found {len(hooks)}; "
+        "update this constant deliberately if the hook set changed, otherwise "
+        "the parse broke and the assertions below mean nothing"
     )
     assert _rfc_scoped_hooks(), (
         "no hook names parsed out of the RFC section; the table format changed "
@@ -75,7 +82,10 @@ def test_every_local_hook_runs_something_that_exists() -> None:
         target = PROJECT_ROOT / match.group(0)
         if not target.exists():
             missing.append(f"{hook_id} -> {match.group(0)}")
-    assert missing == [], "these first-party hooks run a target that does not exist:\n  " + "\n  ".join(missing)
+    assert missing == [], (
+        "these first-party hooks run a target that does not exist:\n  "
+        + "\n  ".join(missing)
+    )
 
 
 def test_the_rfc_scope_matches_the_live_configuration() -> None:
@@ -112,7 +122,11 @@ def test_every_scoped_gate_names_pre_commit_as_its_enforcement_layer() -> None:
         if repo.get("repo") == "local"
         for hook in repo.get("hooks", [])
     }
-    blocked = [name for name, stage in sorted(stages.items()) if stage and "pre-commit" not in stage]
+    blocked = [
+        name
+        for name, stage in sorted(stages.items())
+        if stage and "pre-commit" not in stage
+    ]
     assert blocked == [], (
         "these first-party gates do not run at pre-commit, so nothing enforces "
         f"them: {blocked}"

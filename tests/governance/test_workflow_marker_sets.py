@@ -136,10 +136,16 @@ def marker_sets() -> list[tuple[str, str, str]]:
 
 
 def test_the_survey_found_the_gates(marker_sets) -> None:
-    """A parse that found nothing would make every assertion below vacuous."""
-    assert len(marker_sets) >= 3, (
-        f"only {len(marker_sets)} marker-driven workflows found; the parser or "
-        "the workflow shape changed and this gate no longer looks at anything"
+    """Exact rather than a lower bound: RFC-0028 §3.2 requires set equality.
+
+    Measured 2026-09-12: ten marker-driven workflows. The previous `>= 3` let the
+    survey shrink to a third of that while the guard still passed, and every
+    assertion below would have kept passing over a much smaller surface.
+    """
+    assert len(marker_sets) == 10, (
+        f"expected 10 marker-driven workflows, found {len(marker_sets)}; update "
+        "this constant deliberately if the workflow set changed, otherwise the "
+        "parser broke and this gate no longer looks at anything"
     )
     templated = [entry for entry in marker_sets if "$" in entry[2]]
     assert {entry[2] for entry in templated} <= {"e2e${EXTRA_MARKS}"}, (
@@ -161,8 +167,12 @@ def test_every_workflow_marker_set_is_registered(marker_sets) -> None:
         for token in _MARKER_NAME.findall(_resolvable(expression)):
             if token in _KEYWORDS or token in registered:
                 continue
-            unknown.append(f"{workflow}:{job} uses marker {token!r} in -m {expression!r}")
-    assert unknown == [], "these gates run under a marker nothing registers:\n  " + "\n  ".join(unknown)
+            unknown.append(
+                f"{workflow}:{job} uses marker {token!r} in -m {expression!r}"
+            )
+    assert unknown == [], (
+        "these gates run under a marker nothing registers:\n  " + "\n  ".join(unknown)
+    )
 
 
 def test_every_positive_marker_is_carried_by_a_test(marker_sets) -> None:
@@ -178,7 +188,9 @@ def test_every_positive_marker_is_carried_by_a_test(marker_sets) -> None:
             negated = re.search(rf"not\s+{re.escape(token)}\b", expression)
             if negated or token in carried:
                 continue
-            empty.append(f"{workflow}:{job} selects on {token!r}, which no test carries")
+            empty.append(
+                f"{workflow}:{job} selects on {token!r}, which no test carries"
+            )
     assert empty == [], (
         "these CI gates would collect zero tests and pass:\n  " + "\n  ".join(empty)
     )
