@@ -716,9 +716,22 @@ rather than dropping it.
 - [ ] §3.2 the enforcement layer is named per gate: either
       `required_status_checks` added to a `develop` ruleset, or pre-commit
       declared as the blocking layer
-- [ ] §3.2 `test_unknown_rate_threshold_value` and
+- [x] §3.2 `test_unknown_rate_threshold_value` and
       `test_unknown_rate_threshold_is_documented_in_this_file` replaced by a live
-      measurement or deleted
+      measurement
+
+      Replaced, not deleted. `test_unknown_rate_is_measured_within_threshold`
+      indexes the product source (`workers=1`, ~13 s on the `full_language` axis)
+      and measures the rate against the ceiling. Measured **2026-09-12: 9.78% on
+      the product source (4,941 / 50,528 CALLS edges)** and 6.27% on a 2,174-file
+      self-repo subset, against a 6.0% ceiling — the claim is **not met**, and was
+      not met while the two self-referential tests passed. The measurement is a
+      strict `xfail`, so it is recorded rather than hidden, and it is removed only
+      by a genuine improvement. Proved by experiment: raising
+      `UNKNOWN_RATE_THRESHOLD_PCT` to 10.0 makes the assertion pass, which turns
+      the `xfail` into an unexpected pass and **fails the run** — the "never
+      increase without a reviewed decision" rule is now enforced instead of
+      documented.
 - [ ] §3.2 doc-example extraction runs agent-facing doc examples in CI
 - [ ] §3.3 path-comparison invariant covers both separator conventions
 - [ ] Docs/CODEMAPS updated
