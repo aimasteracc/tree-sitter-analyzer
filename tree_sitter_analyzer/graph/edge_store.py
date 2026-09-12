@@ -436,6 +436,29 @@ class EdgeStore:
             direction="callers",
         )
 
+    def count_unresolved_callers(
+        self,
+        callee_name: str,
+        callee_file: str | None = None,
+    ) -> int:
+        """Count in-scope CALLS edges into ``callee_name`` not known resolved.
+
+        Selects through ``_direct_callers``, the same path the caller list uses,
+        so a caller list and its completeness cannot disagree about which edges
+        are in scope.  ``callee_name`` resolution is read from the edge's
+        ``callee_resolution`` scalar; see ``_RESOLVED_CALLEE_RESOLUTIONS`` for
+        why an unrecognised value counts as unresolved.
+        """
+        count = 0
+        for row in _direct_callers(self._conn, callee_name, callee_file):
+            edge = _edge_from_row(row)
+            resolution = str(
+                _row_col(row, "callee_resolution", "callee_resolution", edge) or ""
+            )
+            if resolution not in _RESOLVED_CALLEE_RESOLUTIONS:
+                count += 1
+        return count
+
     def query_callees(
         self,
         caller_name: str,
@@ -748,6 +771,15 @@ def _row_col(row: sqlite3.Row, column: str, meta_key: str, edge: Edge) -> Any:
         if meta_value not in (None, "", 0):
             return meta_value
     return value
+
+
+# Resolutions that establish an edge's callee.  The set is inverted on purpose:
+# the schema default ('unknown'), the second pass's 'unresolved_refs'
+# placeholder, and any marker a later version adds all read as "not known to be
+# resolved".  Degrading an unrecognised marker toward "incomplete" is the safe
+# direction — reporting a complete caller list over an unresolved edge is the
+# error a caller cannot detect.
+_RESOLVED_CALLEE_RESOLUTIONS = frozenset({"project", "builtin", "stdlib", "local"})
 
 
 def _matches_callee(row: sqlite3.Row, target: NodeRef, callee_name: str) -> bool:

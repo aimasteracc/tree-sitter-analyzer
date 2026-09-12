@@ -178,6 +178,26 @@ class ASTCacheGraphMixin(ASTCacheSurface):
         except sqlite3.OperationalError:
             return False
 
+    def count_unresolved_callers(
+        self,
+        callee_name: str,
+        callee_file: str | None = None,
+    ) -> int | None:
+        """Count in-scope CALLS edges into ``callee_name`` not known resolved.
+
+        Returns ``None`` when the count cannot be read.  ``None`` is not ``0``:
+        a failed read must not become a confident "every edge is resolved", so
+        callers treat it as unknown rather than complete.
+        """
+        try:
+            from .graph.edge_store import EdgeStore
+
+            return EdgeStore(
+                self._get_conn(), ensure_schema=False
+            ).count_unresolved_callers(callee_name, callee_file)
+        except sqlite3.OperationalError:
+            return None
+
     def call_graph_built(self) -> bool:
         """Return whether a completed call-graph build is recorded."""
         return _call_graph_built(self._get_conn())

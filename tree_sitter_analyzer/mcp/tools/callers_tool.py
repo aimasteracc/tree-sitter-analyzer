@@ -183,6 +183,24 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # agent answers from content, not coordinates — no Read per file:line.
         next_step = self._inline_caller_bodies(cache, callers)
 
+        # RFC-0028 §1.1: declare the epistemic status of this list.  It is
+        # assembled from resolved CALLS edges, so an unresolved inbound edge
+        # makes it a lower bound rather than a census.  An unreadable count is
+        # unknown, never complete — a failed read is not evidence of absence.
+        unresolved_inbound = (
+            cache.count_unresolved_callers(func_name, file_path)
+            if cache is not None and data_source == "sql"
+            else None
+        )
+        if unresolved_inbound is None:
+            completeness = "unknown"
+        elif unresolved_inbound == 0:
+            completeness = "complete"
+        elif total_callers:
+            completeness = "incomplete"
+        else:
+            completeness = "unknown"
+
         result = build_response(
             verdict="INFO" if callers or total_callers else "NOT_FOUND",
             warnings=warnings_list or None,
@@ -192,6 +210,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             callers_listed=len(callers),
             listed_cap=listed_cap,
             truncated=truncated,
+            completeness=completeness,
+            unresolved_inbound=unresolved_inbound,
             callers=callers,
         )
         if unattributed_call_sites:
@@ -219,6 +239,22 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     "Call-graph index is empty or has not been built yet. "
                     "Run `tree-sitter-analyzer --full-index` first, then retry."
                 )
+            elif completeness != "complete":
+                # "Not in the index" may only describe a genuine absence.  An
+                # unresolved inbound edge means this symbol may still be
+                # called, so name the unresolved edges instead (RFC-0028 §1.1).
+                if unresolved_inbound:
+                    index_hint = (
+                        f"No resolved caller for {func_name!r}, and "
+                        f"{unresolved_inbound} call edge(s) into it are "
+                        "unresolved, so it may still be called. Read those call "
+                        "sites directly rather than treating this as absence."
+                    )
+                else:
+                    index_hint = (
+                        f"No resolved caller for {func_name!r} and its inbound "
+                        "edges could not be read. Do not treat this as absence."
+                    )
             else:
                 index_hint = (
                     f"Symbol {func_name!r} not in the index. "
@@ -231,7 +267,15 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # #546 seam 3 / #577 leftover: uniform agent_summary across all nav actions.
         verdict = result.get("verdict", "NOT_FOUND")
         if verdict == "NOT_FOUND":
-            as_summary_line = f"callers: {func_name!r} has 0 caller(s)"
+            # A zero is a fact only when every inbound edge resolved; otherwise
+            # the summary must not restate the absence the verdict already
+            # implies (RFC-0028 §1.1).
+            as_summary_line = (
+                f"callers: {func_name!r} has 0 caller(s)"
+                if completeness == "complete"
+                else f"callers: {func_name!r} has 0 resolved caller(s); "
+                "this is not evidence of absence"
+            )
             as_next_step = result.get("next_step") or (
                 f"No callers found for '{func_name}'. "
                 "Check spelling or run --full-index to build the call graph."

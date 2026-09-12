@@ -679,10 +679,10 @@ rather than dropping it.
 
 ## Acceptance criteria
 
-- [ ] §1.1 `completeness` field emitted by the callers route on both surfaces;
+- [x] §1.1 `completeness` field emitted by the callers route on both surfaces;
       response-surface contract test updated; parity test green
-- [ ] §1.1 `_LEGAL_VERDICTS` **unchanged** — no ninth verdict added
-- [ ] §1.1 `next_step` no longer claims "Symbol not in the index" for an indexed
+- [x] §1.1 `_LEGAL_VERDICTS` **unchanged** — no ninth verdict added
+- [x] §1.1 `next_step` no longer claims "Symbol not in the index" for an indexed
       symbol with unresolved callers
 - [ ] §1 corpus + one-directional invariant green
 - [ ] §1 ratchet wired into a **named** CI job **and** its marker set recorded,
