@@ -15,8 +15,10 @@ COMPACT_LEGEND = (
     "sym=symbol, cr=callers, ce=callees, gh=git_heat, im=imports, ib=imported_by, "
     "sib=siblings, cmt=comments, n=name, k=kind, f=file, l=line, el=end_line, "
     "lang=language, cls=class, doc=docstring, h=hot30, r=resolution, "
-    "sha=commit, m=commit_msg, m30=mod_30d, m90=mod_90d, mall=mod_all, "
-    "s=git_state, tok=token_estimate, trunc=truncated_fields, cg=call_graph_available"
+    "sha=commit, m=commit_msg, at=timestamp_seconds, m30=mod_30d, m90=mod_90d, "
+    "mall=mod_all, s=git_state, tok=token_estimate, trunc=truncated_fields, "
+    "cg=call_graph_available, cgr=call_graph_reason (only when cg=false), "
+    "iga=imports_graph_available"
 )
 
 
@@ -48,7 +50,7 @@ def _compact(pulse: PulseResponse) -> dict[str, Any]:
     sym = pulse.symbol
     gh = pulse.git_heat
 
-    return {
+    result: dict[str, Any] = {
         "sym": {
             "n": sym.name,
             "k": sym.kind,
@@ -84,7 +86,12 @@ def _compact(pulse: PulseResponse) -> dict[str, Any]:
         "tok": pulse.token_estimate,
         "trunc": list(pulse.truncated_fields),
         "cg": pulse.call_graph_available,
+        "iga": pulse.imports_graph_available,
     }
+    # cg=false 时附原因短键，True 时省略以节约 token。
+    if not pulse.call_graph_available:
+        result["cgr"] = pulse.call_graph_reason
+    return result
 
 
 def _verbose(pulse: PulseResponse) -> dict[str, Any]:
@@ -139,4 +146,5 @@ def _verbose(pulse: PulseResponse) -> dict[str, Any]:
         "truncated_fields": list(pulse.truncated_fields),
         "call_graph_available": pulse.call_graph_available,
         "call_graph_reason": pulse.call_graph_reason,
+        "imports_graph_available": pulse.imports_graph_available,
     }

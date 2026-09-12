@@ -96,6 +96,8 @@ class PulseResponse:
     truncated_fields: tuple[str, ...] = field(default_factory=tuple)
     call_graph_available: bool = True
     call_graph_reason: str = ""
+    # 反向导入（import 边）是否支持该符号的语言；False 时 imported_by 恒为空（issue #1444）。
+    imports_graph_available: bool = True
     callers: tuple[CallerRef, ...] = field(default_factory=tuple)
     callees: tuple[CalleeRef, ...] = field(default_factory=tuple)
     git_heat: GitHeat | None = None

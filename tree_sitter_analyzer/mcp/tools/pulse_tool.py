@@ -40,6 +40,8 @@ class PulseTool(BaseMCPTool):
                 "Token budget exceeded: drops fields lowest-priority first: "
                 "comments→siblings→imported_by→imports→git_heat→callees→callers. "
                 "call_graph=false for Bash/CSS/HTML/JSON/YAML/SQL/Markdown files. "
+                "iga=false (imports_graph_available) for languages without import "
+                "edges (e.g. Go/Rust/Java/C#): imported_by is empty by design then. "
                 "Requires a complete current index; stale or uncertified source returns "
                 "SOURCE_EVIDENCE_UNAVAILABLE. source_evidence is outside the content budget."
             ),

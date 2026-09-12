@@ -66,6 +66,10 @@ _NO_CALL_GRAPH_LANGUAGES = frozenset(
     }
 )
 
+# 支持反向导入（import 边）的语言；其余语言的 imported_by 恒为空（issue #1444），
+# 用 imports_graph_available=False 显式声明，避免「没人导入」与「不支持」混淆。
+_IMPORT_GRAPH_LANGUAGES = frozenset({"python", "typescript", "javascript"})
+
 
 def _enrich_callees_with_lsp(
     conn: sqlite3.Connection,
@@ -133,6 +137,8 @@ def query_pulse(
     Python 反向 import 复用 Synapse resolver。注释必须来自新提取器写入的
     索引；旧索引或不支持注释的语言需重新索引或显式设置 max_comments=0。
     存量 activation 消息缺失时保持 NULL，并发出 COMMIT_MESSAGE_MISSING。
+    Python 反向导入富化超资源上限时降级：保留 SQL 侧结果并在
+    truncated_fields 声明 "imported_by"，不再整体报错（issue #1445）。
     """
     params: dict[str, Any] = {
         "file_path": file_path,
@@ -178,11 +184,7 @@ def _query_pulse_snapshot(
     if len(targets) != 1:
         raise ValueError(f"AMBIGUOUS_SYMBOL: {file_path}:{symbol_name}")
     params["symbol_id"] = targets[0][0]
-    from ..synapse_resolver._context import (
-        _build_module_to_file,
-        _local_name_as_submodule,
-        _resolve_module_to_file,
-    )
+    from ..synapse_resolver._context import _build_module_to_file
 
     modules = _build_module_to_file([file_path])
     params["module_node"] = "module:" + next(iter(modules), "")
@@ -220,6 +222,7 @@ def _query_pulse_snapshot(
     call_graph_reason = (
         f"{language}: call-graph not supported" if not call_graph_available else ""
     )
+    imports_graph_available = language in _IMPORT_GRAPH_LANGUAGES
 
     docstring_raw = row[7]
 
@@ -281,34 +284,15 @@ def _query_pulse_snapshot(
     )
 
     imported_by = tuple(str(f) for f in imported_by_raw if f)
+    imports_degraded = False
     if language == "python":
-        # 只读既有索引，不做仓库扫描；使用真实模块表解析相对 import 和子模块别名。
-        files = conn.execute(
-            "SELECT file_path FROM ast_index WHERE language='python' "
-            "UNION SELECT file_path FROM ast_symbol_rows WHERE language='python' LIMIT 10001"
-        ).fetchall()
-        bindings = conn.execute(
-            "SELECT module_path,is_relative,file_path,local_name,alias_of FROM ast_imports "
-            "WHERE language='python' LIMIT 20001"
-        ).fetchall()
-        if len(files) > 10000 or len(bindings) > 20000:
-            raise ValueError("PULSE_IMPORT_RESOURCE_LIMIT")
-        module_to_file = _build_module_to_file([r[0] for r in files])
-        importers = set(imported_by)
-        for module, relative, caller, local_name, alias_of in bindings:
-            resolved = _resolve_module_to_file(
-                module, bool(relative), caller, module_to_file
+        # 富化走内容戳缓存（审计 P2-2）：同一索引版本内重复查询不再全量扫描。
+        imports_degraded, importers_map = _python_importers_snapshot(conn)
+        if not imports_degraded:
+            merged_importers = set(imported_by) | importers_map.get(
+                file_path, frozenset()
             )
-            submodule = (
-                _local_name_as_submodule(
-                    local_name, alias_of, module, caller, module_to_file
-                )
-                if relative
-                else ""
-            )
-            if file_path in (resolved, submodule):
-                importers.add(caller)
-        imported_by = tuple(sorted(importers)[:20])
+            imported_by = tuple(sorted(merged_importers)[:20])
 
     siblings = tuple(
         SiblingRef(
@@ -342,6 +326,7 @@ def _query_pulse_snapshot(
         symbol=sym_info,
         call_graph_available=call_graph_available,
         call_graph_reason=call_graph_reason,
+        imports_graph_available=imports_graph_available,
         callers=callers,
         callees=callees,
         git_heat=git_heat,
@@ -349,7 +334,107 @@ def _query_pulse_snapshot(
         imported_by=imported_by,
         siblings=siblings,
         comments=comments,
+        # Python 富化降级时向消费者声明该字段被截断（issue #1445）。
+        truncated_fields=(("imported_by",) if imports_degraded else ()),
     )
+
+
+# ---------------------------------------------------------------------------
+# Python 反向导入派生表（审计 P2-2：内容戳缓存，避免每次查询全量扫描）
+# ---------------------------------------------------------------------------
+
+# 键为（数据库文件路径, 文件集内容戳, 绑定集内容戳）；内容戳变化即整体失效。
+# 内存库无稳定标识不缓存；GIL 下的字典读写对单事件循环的 MCP 服务足够。
+_PY_IMPORTERS_CACHE: dict[
+    tuple[str, tuple[object, ...], tuple[object, ...]],
+    tuple[bool, dict[str, frozenset[str]]],
+] = {}
+_PY_IMPORTERS_CACHE_MAX = 32
+
+
+def _python_importers_snapshot(
+    conn: sqlite3.Connection,
+) -> tuple[bool, dict[str, frozenset[str]]]:
+    """返回（是否超限降级, 目标文件 → 导入者集合）；文件库带内容戳缓存。"""
+    main_path = ""
+    for row in conn.execute("PRAGMA database_list").fetchall():
+        if row[1] == "main":
+            main_path = (row[2] or "").strip()
+            break
+    if not main_path:
+        # 内存库（测试与一次性连接）没有稳定身份，直接构建、不缓存。
+        return _build_python_importers(conn)
+
+    index_row = conn.execute(
+        "SELECT COUNT(*), IFNULL(MAX(indexed_at),'') FROM ast_index WHERE language='python'"
+    ).fetchone()
+    symbol_row = conn.execute(
+        # ast_symbol_rows 没有 indexed_at 列，用 rowid 上界补充捕捉符号行变化。
+        "SELECT COUNT(*), IFNULL(MAX(rowid),0) FROM ast_symbol_rows WHERE language='python'"
+    ).fetchone()
+    bindings_row = conn.execute(
+        "SELECT COUNT(*), IFNULL(MAX(rowid),0) FROM ast_imports WHERE language='python'"
+    ).fetchone()
+    key = (
+        main_path,
+        (index_row[0], index_row[1], symbol_row[0], symbol_row[1]),
+        (bindings_row[0], bindings_row[1]),
+    )
+    cached = _PY_IMPORTERS_CACHE.get(key)
+    if cached is not None:
+        return cached
+    value = _build_python_importers(conn)
+    if len(_PY_IMPORTERS_CACHE) >= _PY_IMPORTERS_CACHE_MAX:
+        # 粗粒度上限：正常场景一个仓库只有一条记录，超限说明在测试等临时目录场景。
+        _PY_IMPORTERS_CACHE.clear()
+    _PY_IMPORTERS_CACHE[key] = value
+    return value
+
+
+def _build_python_importers(
+    conn: sqlite3.Connection,
+) -> tuple[bool, dict[str, frozenset[str]]]:
+    """全量构建「目标文件 → 导入者集合」派生表；超资源上限返回 (True, {})。"""
+    from ..synapse_resolver._context import (
+        _build_module_to_file,
+        _local_name_as_submodule,
+        _resolve_module_to_file,
+    )
+
+    files = conn.execute(
+        "SELECT file_path FROM ast_index WHERE language='python' "
+        "UNION SELECT file_path FROM ast_symbol_rows WHERE language='python' LIMIT 10001"
+    ).fetchall()
+    bindings = (
+        conn.execute(
+            "SELECT module_path,is_relative,file_path,local_name,alias_of FROM ast_imports "
+            "WHERE language='python' LIMIT 20001"
+        ).fetchall()
+        if len(files) <= 10000
+        else []
+    )
+    # 超资源上限时降级（issue #1445）：调用方保留 SQL 侧结果并声明截断。
+    if len(files) > 10000 or len(bindings) > 20000:
+        return True, {}
+    module_to_file = _build_module_to_file([r[0] for r in files])
+    importers_map: dict[str, set[str]] = {}
+    for module, relative, caller, local_name, alias_of in bindings:
+        resolved = _resolve_module_to_file(
+            module, bool(relative), caller, module_to_file
+        )
+        submodule = (
+            _local_name_as_submodule(
+                local_name, alias_of, module, caller, module_to_file
+            )
+            if relative
+            else ""
+        )
+        for target in (resolved, submodule):
+            if target:
+                importers_map.setdefault(target, set()).add(caller)
+    return False, {
+        target: frozenset(importers) for target, importers in importers_map.items()
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -364,7 +449,9 @@ def _estimate_tokens(value: Any) -> int:
 
         enc = tiktoken.get_encoding("cl100k_base")
         return len(enc.encode(json.dumps(value, ensure_ascii=False, default=str)))
-    except ImportError:
+    except Exception:
+        # 有意兜底：tiktoken 未安装（ImportError）、已安装但离线冷缓存导致
+        # 初始化抛网络异常等，都退回字符数估算，不让 pulse 整体失败。
         return len(json.dumps(value, ensure_ascii=False, default=str)) // 4
 
 
@@ -382,16 +469,6 @@ _PRIORITY_ORDER = [
     "siblings",
     "comments",
 ]
-
-_FIELD_BUDGETS = {
-    "callers": 150,
-    "callees": 120,
-    "git_heat": 80,
-    "imports": 100,
-    "imported_by": 60,
-    "siblings": 120,
-    "comments": 100,
-}
 
 _FIELD_TOP_N = {
     "callers": 5,
@@ -443,6 +520,13 @@ def apply_budget(pulse: PulseResponse, token_budget: int) -> PulseResponse:
         _estimate_tokens(v) for v in field_values.values()
     )
 
+    # 合并 query_pulse 已声明的截断（如 Python 富化降级）与预算裁剪产生的截断，
+    # 去重保序；直接覆盖会丢掉查询侧的降级声明。
+    merged_truncated = list(pulse.truncated_fields)
+    for field_name in truncated:
+        if field_name not in merged_truncated:
+            merged_truncated.append(field_name)
+
     return dataclasses.replace(
         pulse,
         callers=field_values["callers"],
@@ -453,5 +537,5 @@ def apply_budget(pulse: PulseResponse, token_budget: int) -> PulseResponse:
         siblings=field_values["siblings"],
         comments=field_values["comments"],
         token_estimate=total_estimate,
-        truncated_fields=tuple(truncated),
+        truncated_fields=tuple(merged_truncated),
     )
