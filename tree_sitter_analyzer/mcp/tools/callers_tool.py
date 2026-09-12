@@ -248,7 +248,17 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             "next_step": as_next_step,
         }
 
+        # RFC-0027 L6.2: this route's cold/warm cliff (24.8 s -> 16 ms in the
+        # L5 baseline) is the largest in the product, so a caller choosing
+        # between nav actions must see which tier it is about to pay for.
+        from ...cache.query_cost import cost_fields, query_cost
         from ..utils.format_helper import apply_output_format_to_response
+
+        result.update(
+            cost_fields(
+                query_cost("nav", "callers", self.project_root, arguments)
+            )
+        )
 
         return apply_output_format_to_response(result, output_format)
 
