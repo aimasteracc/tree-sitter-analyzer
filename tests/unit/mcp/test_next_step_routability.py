@@ -76,7 +76,9 @@ def _registered_facades() -> dict[str, set[str]]:
 
 def _vocabulary_tokens(harvest: list[tuple[str, str]]) -> dict[str, set[str]]:
     """Map each route-name token found in a ``next_step`` to its modules."""
-    vocabulary = set(LEGACY_TOOL_MAP) | set(_registered_facades()) | set(REMOVED_TOOL_NAMES)
+    vocabulary = (
+        set(LEGACY_TOOL_MAP) | set(_registered_facades()) | set(REMOVED_TOOL_NAMES)
+    )
     found: dict[str, set[str]] = {}
     for module, text in harvest:
         for token in _TOKEN.findall(text):
@@ -94,26 +96,40 @@ def test_no_next_step_names_a_removed_tool() -> None:
     is what makes "removed" machine-checkable instead of prose.
     """
     tokens = _vocabulary_tokens(_next_step_strings())
-    named = {token: sorted(where) for token, where in tokens.items() if token in REMOVED_TOOL_NAMES}
+    named = {
+        token: sorted(where)
+        for token, where in tokens.items()
+        if token in REMOVED_TOOL_NAMES
+    }
     assert named == {}, (
         "a next_step names a capability a released breaking change removed, so "
         "an agent following it calls something that no longer exists:\n  "
-        + "\n  ".join(f"{token} (in {', '.join(where)})" for token, where in sorted(named.items()))
+        + "\n  ".join(
+            f"{token} (in {', '.join(where)})" for token, where in sorted(named.items())
+        )
     )
 
 
 def test_the_harvest_is_not_vacuous() -> None:
-    """A harvest that found nothing would make the invariant below meaningless."""
+    """Exact rather than lower bounds: RFC-0028 §3.2 requires set equality.
+
+    Measured 2026-09-12: 145 harvested constants, 17 route-name tokens. Update
+    these constants deliberately when the vocabulary legitimately changes — a
+    `> 50` / `>= 5` bound would keep passing while the harvest shrank to a third
+    of its real size, leaving the invariant below constraining almost nothing.
+    """
     harvest = _next_step_strings()
-    assert len(harvest) > 50, (
-        f"only {len(harvest)} next_step string constants harvested; the AST walk "
-        "is probably no longer matching how next_step is assigned"
+    assert len(harvest) == 145, (
+        f"expected 145 next_step string constants, harvested {len(harvest)}; "
+        "update this constant if the phrasing changed, otherwise the AST walk is "
+        "no longer matching how next_step is assigned"
     )
     tokens = _vocabulary_tokens(harvest)
-    assert len(tokens) >= 5, (
-        f"only {len(tokens)} route-name tokens found across {len(harvest)} "
-        "strings; the vocabulary or the tokenizer has drifted and the invariant "
-        "below no longer constrains anything"
+    assert len(tokens) == 17, (
+        f"expected 17 route-name tokens across {len(harvest)} strings, found "
+        f"{len(tokens)}; update this constant if the vocabulary changed, "
+        "otherwise the tokenizer has drifted and the invariant below no longer "
+        "constrains anything"
     )
 
 
@@ -134,8 +150,7 @@ def test_every_route_token_in_a_next_step_resolves() -> None:
                 )
         elif token not in facades:
             unresolved.append(
-                f"{token} (in {where}): matches no legacy name and no "
-                "registered facade"
+                f"{token} (in {where}): matches no legacy name and no registered facade"
             )
 
     assert unresolved == [], (
@@ -154,7 +169,9 @@ def test_the_prose_case_is_not_constrained() -> None:
     harvest = _next_step_strings()
     prose = [text for _module, text in harvest if " " in text.strip()]
     assert prose, "no prose next_step found; the corpus changed shape"
-    vocabulary = set(LEGACY_TOOL_MAP) | set(_registered_facades()) | set(REMOVED_TOOL_NAMES)
+    vocabulary = (
+        set(LEGACY_TOOL_MAP) | set(_registered_facades()) | set(REMOVED_TOOL_NAMES)
+    )
     prose_without_route = [
         text for text in prose if not (set(_TOKEN.findall(text)) & vocabulary)
     ]
