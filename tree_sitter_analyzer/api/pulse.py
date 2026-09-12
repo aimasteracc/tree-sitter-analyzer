@@ -184,11 +184,7 @@ def _query_pulse_snapshot(
     if len(targets) != 1:
         raise ValueError(f"AMBIGUOUS_SYMBOL: {file_path}:{symbol_name}")
     params["symbol_id"] = targets[0][0]
-    from ..synapse_resolver._context import (
-        _build_module_to_file,
-        _local_name_as_submodule,
-        _resolve_module_to_file,
-    )
+    from ..synapse_resolver._context import _build_module_to_file
 
     modules = _build_module_to_file([file_path])
     params["module_node"] = "module:" + next(iter(modules), "")
@@ -290,39 +286,13 @@ def _query_pulse_snapshot(
     imported_by = tuple(str(f) for f in imported_by_raw if f)
     imports_degraded = False
     if language == "python":
-        # 只读既有索引，不做仓库扫描；使用真实模块表解析相对 import 和子模块别名。
-        files = conn.execute(
-            "SELECT file_path FROM ast_index WHERE language='python' "
-            "UNION SELECT file_path FROM ast_symbol_rows WHERE language='python' LIMIT 10001"
-        ).fetchall()
-        bindings = (
-            conn.execute(
-                "SELECT module_path,is_relative,file_path,local_name,alias_of FROM ast_imports "
-                "WHERE language='python' LIMIT 20001"
-            ).fetchall()
-            if len(files) <= 10000
-            else []
-        )
-        # 超资源上限时降级（issue #1445）：保留 SQL 侧结果、跳过富化并声明截断，
-        # 不再让一个可选字段的富化拖垮整个查询。
-        imports_degraded = len(files) > 10000 or len(bindings) > 20000
+        # 富化走内容戳缓存（审计 P2-2）：同一索引版本内重复查询不再全量扫描。
+        imports_degraded, importers_map = _python_importers_snapshot(conn)
         if not imports_degraded:
-            module_to_file = _build_module_to_file([r[0] for r in files])
-            importers = set(imported_by)
-            for module, relative, caller, local_name, alias_of in bindings:
-                resolved = _resolve_module_to_file(
-                    module, bool(relative), caller, module_to_file
-                )
-                submodule = (
-                    _local_name_as_submodule(
-                        local_name, alias_of, module, caller, module_to_file
-                    )
-                    if relative
-                    else ""
-                )
-                if file_path in (resolved, submodule):
-                    importers.add(caller)
-            imported_by = tuple(sorted(importers)[:20])
+            merged_importers = set(imported_by) | importers_map.get(
+                file_path, frozenset()
+            )
+            imported_by = tuple(sorted(merged_importers)[:20])
 
     siblings = tuple(
         SiblingRef(
@@ -367,6 +337,104 @@ def _query_pulse_snapshot(
         # Python 富化降级时向消费者声明该字段被截断（issue #1445）。
         truncated_fields=(("imported_by",) if imports_degraded else ()),
     )
+
+
+# ---------------------------------------------------------------------------
+# Python 反向导入派生表（审计 P2-2：内容戳缓存，避免每次查询全量扫描）
+# ---------------------------------------------------------------------------
+
+# 键为（数据库文件路径, 文件集内容戳, 绑定集内容戳）；内容戳变化即整体失效。
+# 内存库无稳定标识不缓存；GIL 下的字典读写对单事件循环的 MCP 服务足够。
+_PY_IMPORTERS_CACHE: dict[
+    tuple[str, tuple[object, ...], tuple[object, ...]],
+    tuple[bool, dict[str, frozenset[str]]],
+] = {}
+_PY_IMPORTERS_CACHE_MAX = 32
+
+
+def _python_importers_snapshot(
+    conn: sqlite3.Connection,
+) -> tuple[bool, dict[str, frozenset[str]]]:
+    """返回（是否超限降级, 目标文件 → 导入者集合）；文件库带内容戳缓存。"""
+    main_path = ""
+    for row in conn.execute("PRAGMA database_list").fetchall():
+        if row[1] == "main":
+            main_path = (row[2] or "").strip()
+            break
+    if not main_path:
+        # 内存库（测试与一次性连接）没有稳定身份，直接构建、不缓存。
+        return _build_python_importers(conn)
+
+    index_row = conn.execute(
+        "SELECT COUNT(*), IFNULL(MAX(indexed_at),'') FROM ast_index WHERE language='python'"
+    ).fetchone()
+    symbol_row = conn.execute(
+        # ast_symbol_rows 没有 indexed_at 列，用 rowid 上界补充捕捉符号行变化。
+        "SELECT COUNT(*), IFNULL(MAX(rowid),0) FROM ast_symbol_rows WHERE language='python'"
+    ).fetchone()
+    bindings_row = conn.execute(
+        "SELECT COUNT(*), IFNULL(MAX(rowid),0) FROM ast_imports WHERE language='python'"
+    ).fetchone()
+    key = (
+        main_path,
+        (index_row[0], index_row[1], symbol_row[0], symbol_row[1]),
+        (bindings_row[0], bindings_row[1]),
+    )
+    cached = _PY_IMPORTERS_CACHE.get(key)
+    if cached is not None:
+        return cached
+    value = _build_python_importers(conn)
+    if len(_PY_IMPORTERS_CACHE) >= _PY_IMPORTERS_CACHE_MAX:
+        # 粗粒度上限：正常场景一个仓库只有一条记录，超限说明在测试等临时目录场景。
+        _PY_IMPORTERS_CACHE.clear()
+    _PY_IMPORTERS_CACHE[key] = value
+    return value
+
+
+def _build_python_importers(
+    conn: sqlite3.Connection,
+) -> tuple[bool, dict[str, frozenset[str]]]:
+    """全量构建「目标文件 → 导入者集合」派生表；超资源上限返回 (True, {})。"""
+    from ..synapse_resolver._context import (
+        _build_module_to_file,
+        _local_name_as_submodule,
+        _resolve_module_to_file,
+    )
+
+    files = conn.execute(
+        "SELECT file_path FROM ast_index WHERE language='python' "
+        "UNION SELECT file_path FROM ast_symbol_rows WHERE language='python' LIMIT 10001"
+    ).fetchall()
+    bindings = (
+        conn.execute(
+            "SELECT module_path,is_relative,file_path,local_name,alias_of FROM ast_imports "
+            "WHERE language='python' LIMIT 20001"
+        ).fetchall()
+        if len(files) <= 10000
+        else []
+    )
+    # 超资源上限时降级（issue #1445）：调用方保留 SQL 侧结果并声明截断。
+    if len(files) > 10000 or len(bindings) > 20000:
+        return True, {}
+    module_to_file = _build_module_to_file([r[0] for r in files])
+    importers_map: dict[str, set[str]] = {}
+    for module, relative, caller, local_name, alias_of in bindings:
+        resolved = _resolve_module_to_file(
+            module, bool(relative), caller, module_to_file
+        )
+        submodule = (
+            _local_name_as_submodule(
+                local_name, alias_of, module, caller, module_to_file
+            )
+            if relative
+            else ""
+        )
+        for target in (resolved, submodule):
+            if target:
+                importers_map.setdefault(target, set()).add(caller)
+    return False, {
+        target: frozenset(importers) for target, importers in importers_map.items()
+    }
 
 
 # ---------------------------------------------------------------------------
