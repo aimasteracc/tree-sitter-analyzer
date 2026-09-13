@@ -158,26 +158,28 @@ Reporta posibles colisiones de nombres entre lenguajes para que puedas inspeccio
 * **Clasificación de salud del proyecto (A–F).** TSA clasifica proyectos según tamaño, complejidad, cobertura, duplicación, dependencias, estructura y puntos calientes de git.
 * **Flujos de trabajo curados (Skills).** Subconjuntos de herramientas preconfigurados para "encontrar símbolo", "rastrear cadena de llamadas", "evaluar salud", "seguro para editar antes de refactorizar", "revisión de PR", etc.
 * **Seguridad por capas.** `edit action=safe` + `edit action=guard` + DSL de restricciones + `edit action=impact` + sobres de veredicto — diseñado para que los agentes *sepan* antes de tocar.
-* **Paridad CLI/MCP y un DSL de consulta unificado.** Las mismas primitivas de análisis están disponibles tanto para agentes como para usuarios de shell.
+* **Una superficie de consulta compartida.** Las primitivas de análisis y el DSL de consulta unificado están disponibles tanto para agentes como para shells.
 
 ---
 
 ## Características clave
 
-### Inteligencia de código pre-indexada (paridad con CodeGraph + superset)
+### Inteligencia de código pre-indexada
 
-| Capacidad | Herramienta TSA | Estado |
+El coste de un agente lo dominan los turnos, no el tamaño de cada respuesta: cada llamada extra a una herramienta reenvía la conversación completa. TSA está construido para que una llamada devuelva la evidencia necesaria para dejar de preguntar.
+
+| Pregunta | Herramienta TSA | Qué incluye la respuesta |
 |---|---|---|
-| Búsqueda de símbolos (FTS5 + **clasificado por BM25**) | `search` action=symbol | **ventaja** — resultados ordenados por puntuación de relevancia, no por ruta de archivo |
-| Ir-a-definición / buscar-referencias / jerarquía de llamadas en una sola solicitud combinada | `nav` action=navigate | punto de entrada PRINCIPAL |
-| Obtención masiva de N símbolos relacionados + mapa de relaciones | `structure` action=explore | paridad |
-| Radio de impacto a nivel de función + puntuación de riesgo | `nav` action=impact | paridad + puntuación de riesgo |
-| Quién-llama-a-X / a-qué-llama-X | `nav` action=callers / action=callees | paridad |
-| Salud del índice de un vistazo (+ conteo de bordes) | `index` action=status | **ventaja** — informa `total_edges` como señal de densidad del gráfico |
-| Caché de gráfico de llamadas pre-construido | `index` action=auto / action=full / action=sync | paridad |
-| Pruebas afectadas por un cambio (CLI) | `--affected FILE...` | paridad |
+| Dónde está este símbolo y quién lo referencia | `nav` action=navigate | ubicación de definición, referencias y jerarquía de llamadas juntas |
+| Qué se rompe si lo cambio | `nav` action=impact | dependientes transitivos con veredicto de riesgo |
+| Quién llama a esto y a qué llama | `nav` action=callers / action=callees | puntos de llamada resueltos y los que no se pudieron resolver |
+| Buscar un símbolo por nombre | `search` action=symbol | coincidencias ordenadas por relevancia (FTS5 + BM25) |
+| Obtener símbolos relacionados con su mapa de relaciones | `structure` action=explore | los símbolos solicitados y cómo se conectan |
+| ¿El índice es utilizable ahora mismo? | `index` action=status | cobertura, antigüedad y número de bordes |
+| Construir o refrescar el gráfico de llamadas | `index` action=auto / action=full / action=sync | estado del índice tras la ejecución |
+| Qué pruebas toca este cambio | `--affected FILE...` (CLI) | pruebas afectadas de forma transitiva |
 
-### Exclusivo de Tree-sitter Analyzer
+### Capacidades más allá de la navegación de código
 
 | Capacidad | Herramienta TSA | Nota |
 |---|---|---|
@@ -213,7 +215,7 @@ Cada skill incluye un subconjunto de `allowed-tools` + receta de procedimiento +
 
 ### 356 banderas de CLI
 
-Superset de la superficie CLI de CodeGraph. Destacados:
+Destacados:
 
 ```bash
 tree-sitter-analyzer --table full <file>          # method/signature/complexity table
