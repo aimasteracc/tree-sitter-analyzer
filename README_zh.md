@@ -134,20 +134,22 @@ uvx --from tree-sitter-analyzer miswire-audit .
 
 ## 核心能力
 
-### 预建代码情报（CodeGraph 对位 + 超集）
+### 预建代码情报
 
-| 能力 | TSA 工具 | 状态 |
+agent 的成本由轮数主导，而非每次响应的体积：每次额外的工具调用都会重发整个会话。TSA 的设计目标是让一次调用的响应就带上"不必再问"所需的证据。
+
+| 问题 | TSA 工具 | 响应携带的内容 |
 |---|---|---|
-| 符号搜索（FTS5 + **BM25 排名**） | `search` action=symbol | **领先** — 结果按相关性分数排序 |
-| go-to-def / find-refs / 调用层级组合请求 | `nav` action=navigate | PRIMARY 入口 |
-| 批量获取 N 个相关符号 + 关系图 | `structure` action=explore | 对位 |
-| 函数级 blast radius + 风险评分 | `nav` action=impact | 对位 + 风险评分 |
-| 谁调用 X / X 调用谁 | `nav` action=callers / action=callees | 对位 |
-| 索引健康一览（含边数统计） | `index` action=status | **领先** — 提供 `total_edges` 图密度信号 |
-| 预建调用图缓存 | `index` action=auto / action=full / action=sync | 对位 |
-| 受变更影响的测试（CLI） | `--affected FILE...` | 对位 |
+| 这个符号在哪，谁引用了它 | `nav` action=navigate | 定义位置、引用与调用层级一并返回 |
+| 改动它会破坏什么 | `nav` action=impact | 传递依赖与风险判定 |
+| 谁调用它，它调用谁 | `nav` action=callers / action=callees | 已解析的调用点，以及解析不了的位置 |
+| 按名称查找符号 | `search` action=symbol | 按相关性排序的匹配（FTS5 + BM25） |
+| 取回相关符号及其关系图 | `structure` action=explore | 请求的符号及它们的连接关系 |
+| 索引现在可用吗 | `index` action=status | 覆盖率、时效性与边数 |
+| 构建或刷新调用图 | `index` action=auto / action=full / action=sync | 执行后的索引状态 |
+| 这次改动影响哪些测试 | `--affected FILE...`（CLI） | 传递受影响的测试 |
 
-### Tree-sitter Analyzer 独占
+### 代码导航之外的能力
 
 | 能力 | TSA 工具 | 说明 |
 |---|---|---|
@@ -163,15 +165,15 @@ uvx --from tree-sitter-analyzer miswire-audit .
 | **依赖矩阵** | `health` action=matrix | 模块耦合矩阵 |
 | **死代码** | `health` action=dead | 传递不可达分析 |
 | **复杂度热点** | `health` action=heatmap | 单函数圈复杂度 + 项目视图 |
-| **AST 结构克隆检测** | `viz` action=similarity | 超越文本相似度 |
+| **AST 结构克隆检测** | `viz` action=similarity | 结构克隆而非文本匹配 |
 | **Mermaid 调用图导出** | `viz` action=graph | 直接粘贴进文档 |
 | **UML Mermaid 导出** | `viz` action=uml | class / package / component / sequence 图 |
 | **PR 评审** | `edit` action=pr | AST diff + 语义分类 + blast radius |
 | **agent_summary** | 所有响应 | 下一步提示内嵌于信封 |
-| **Synapse 跨文件解析** | 内部 | import-aware，胜过正则猜测 |
+| **Synapse 跨文件解析** | 内部 | 跨文件的 import 感知名称解析 |
 | **时间激活度** | `nav` action=lineage | 每个符号的 git 修改频率 |
 | **文件定向** | `project` action=smart | 在组合响应中返回健康度 + 导出符号 + 依赖 + 编辑风险 |
-| **架构决策日志** | `project` action=journal | 跨会话持久化推理 — 竞品均无此能力 |
+| **架构决策日志** | `project` action=journal | 跨会话持久化推理 |
 
 ### Skills
 
@@ -183,7 +185,7 @@ TSA 在 `.claude/skills/tsa-*/` 下提供精选工作流：
 
 ### 356 个 CLI flag
 
-CodeGraph CLI 的严格超集。亮点：
+亮点：
 
 ```bash
 tree-sitter-analyzer --table full <file>          # 方法/签名/复杂度表

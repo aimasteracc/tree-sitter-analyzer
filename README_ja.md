@@ -134,20 +134,22 @@ uvx --from tree-sitter-analyzer miswire-audit .
 
 ## 主要機能
 
-### 事前インデックス コード インテリジェンス (CodeGraph 相当 + 上位互換)
+### 事前インデックス コード インテリジェンス
 
-| 能力 | TSA ツール | ステータス |
+エージェントのコストは応答の大きさではなくターン数が支配します。追加のツール呼び出しは毎回、会話全体を再送します。TSA は、問いが「もう尋ねなくてよい」と判断できる根拠を応答に載せて返すように作られています。
+
+| 問い | TSA ツール | 応答に載るもの |
 |---|---|---|
-| シンボル検索 (FTS5 + **BM25 ランク付け**) | `search` action=symbol | **優位** — 関連スコア順にソート |
-| go-to-def / find-refs / コール階層をまとめて要求 | `nav` action=navigate | PRIMARY エントリポイント |
-| 関連シンボル N 個のソース + 関係マップを一括取得 | `structure` action=explore | 同等 |
-| 関数レベル blast radius + リスク スコア | `nav` action=impact | 同等 + リスク スコア |
-| X を呼ぶのは誰 / X は何を呼ぶ | `nav` action=callers / action=callees | 同等 |
-| インデックス健全性 (+ エッジ数) | `index` action=status | **優位** — `total_edges` でグラフ密度を把握 |
-| 事前構築コール グラフ キャッシュ | `index` action=auto / action=full / action=sync | 同等 |
-| 変更の影響を受けるテスト (CLI) | `--affected FILE...` | 同等 |
+| このシンボルはどこにあり、何が参照しているか | `nav` action=navigate | 定義位置、参照、コール階層をまとめて |
+| これを変えると何が壊れるか | `nav` action=impact | 推移的依存先とリスク判定 |
+| 誰がこれを呼び、これは何を呼ぶか | `nav` action=callers / action=callees | 解決済み呼び出し地点と、解決できなかった地点 |
+| 名前でシンボルを探す | `search` action=symbol | 関連度順の一致 (FTS5 + BM25) |
+| 関連シンボルを関係マップ付きで取得 | `structure` action=explore | 要求したシンボルとそのつながり |
+| インデックスは今使えるか | `index` action=status | カバレッジ、鮮度、エッジ数 |
+| コール グラフを構築・更新 | `index` action=auto / action=full / action=sync | 実行後のインデックス状態 |
+| この変更が触れるテスト | `--affected FILE...` (CLI) | 推移的に影響を受けるテスト |
 
-### Tree-sitter Analyzer 独占機能
+### コード ナビゲーション以外の機能
 
 | 能力 | TSA ツール | 説明 |
 |---|---|---|
@@ -163,15 +165,15 @@ uvx --from tree-sitter-analyzer miswire-audit .
 | **依存マトリクス** | `health` action=matrix | モジュール結合マトリクス |
 | **デッド コード** | `health` action=dead | 推移的到達不能解析 |
 | **複雑度ヒート マップ** | `health` action=heatmap | 関数別循環的複雑度 + プロジェクト ビュー |
-| **AST 構造的クローン検出** | `viz` action=similarity | テキスト類似度を超える |
+| **AST 構造的クローン検出** | `viz` action=similarity | テキスト一致ではなく構造的クローン |
 | **Mermaid コール グラフ エクスポート** | `viz` action=graph | ドキュメントへ直接貼付 |
 | **UML Mermaid エクスポート** | `viz` action=uml | class / package / component / sequence 図 |
 | **PR レビュー** | `edit` action=pr | AST diff + セマンティック分類 + blast radius |
 | **agent_summary** | 全応答 | エンベロープに次ステップ ヒントを内蔵 |
-| **Synapse クロスファイル リゾルバ** | 内部 | import-aware、正規表現推測より強力 |
+| **Synapse クロスファイル リゾルバ** | 内部 | ファイルをまたぐ import 考慮の名前解決 |
 | **時間的アクティベーション** | `nav` action=lineage | シンボル別 git 修正頻度 |
 | **ファイル把握** | `project` action=smart | 健全性 + エクスポート + 依存 + 編集リスクをまとめた応答で返す |
-| **アーキテクチャ意思決定ジャーナル** | `project` action=journal | セッション間で推論を永続化 — 他に提供しているツールは無い |
+| **アーキテクチャ意思決定ジャーナル** | `project` action=journal | セッション間で推論を永続化 |
 
 ### Skills
 
@@ -183,7 +185,7 @@ TSA は `.claude/skills/tsa-*/` 下にキュレーション済みワークフロ
 
 ### 356 の CLI フラグ
 
-CodeGraph の CLI の厳密な上位互換。主なもの:
+主なもの:
 
 ```bash
 tree-sitter-analyzer --table full <file>          # メソッド/シグネチャ/複雑度テーブル

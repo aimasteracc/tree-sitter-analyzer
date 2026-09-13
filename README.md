@@ -133,7 +133,7 @@ See **[Supported Agents](#supported-agents)**. Most clients want this MCP server
 After restart: *"Run the `index` tool with action=status."*
 CLI equivalent (no agent needed): `tree-sitter-analyzer --codegraph-status`
 
-**See the correctness edge on your own repo** — no install, no CodeGraph (it re-indexes first):
+**Check resolver behavior on your own repository** — no install required:
 
 ```bash
 uvx --from tree-sitter-analyzer miswire-audit .
@@ -150,26 +150,31 @@ It reports possible cross-language name collisions so you can inspect resolver b
 * **Project health grading (A–F).** TSA grades projects across size, complexity, coverage, duplication, dependencies, structure, and git hotspots.
 * **Curated workflows (Skills).** Pre-baked tool subsets for "find symbol", "trace call chain", "assess health", "safe-to-edit before refactor", "PR review", etc.
 * **Layered safety.** `edit action=safe` + `edit action=guard` + constraint DSL + `edit action=impact` + verdict envelopes — designed so agents *know* before they touch.
-* **CLI/MCP parity and a unified query DSL.** The same analysis primitives are available to agents and shell users.
+* **Agents and shells share a query surface.** The analysis primitives and the unified query DSL are available to both.
 
 ---
 
 ## Key Features
 
-### Pre-indexed code intelligence (CodeGraph parity + superset)
+### Pre-indexed code intelligence
 
-| Capability | TSA tool | Status |
+An agent's cost is dominated by turns, not by the size of each reply: every extra
+tool call re-sends the whole conversation. TSA is built so that a question is
+answered by a call whose response already carries the evidence needed to stop
+asking.
+
+| Question | TSA tool | What the response carries |
 |---|---|---|
-| Symbol search (FTS5 + **BM25 ranked**) | `search` action=symbol | **ahead** — results sorted by relevance score, not file path |
-| Go-to-def / find-refs / call hierarchy in a combined request | `nav` action=navigate | PRIMARY entry point |
-| Bulk-fetch N related symbols + relationship map | `structure` action=explore | parity |
-| Function-level blast radius + risk score | `nav` action=impact | parity + risk score |
-| Who-calls-X / what-X-calls | `nav` action=callers / action=callees | parity |
-| Index health at-a-glance (+ edge count) | `index` action=status | **ahead** — reports `total_edges` for graph density signal |
-| Pre-built call graph cache | `index` action=auto / action=full / action=sync | parity |
-| Tests affected by a change (CLI) | `--affected FILE...` | parity |
+| Where is this symbol, and what refers to it? | `nav` action=navigate | definition site, references, and call hierarchy together |
+| What breaks if I change this? | `nav` action=impact | transitive dependents with a risk verdict |
+| Who calls this, and what does it call? | `nav` action=callers / action=callees | resolved call sites, and the sites resolution could not resolve |
+| Find a symbol by name | `search` action=symbol | relevance-ranked matches (FTS5 + BM25) |
+| Fetch related symbols with their relationship map | `structure` action=explore | the requested symbols and how they connect |
+| Is the index usable right now? | `index` action=status | coverage, staleness, and edge count |
+| Build or refresh the call graph | `index` action=auto / action=full / action=sync | index state after the run |
+| Which tests does this change touch? | `--affected FILE...` (CLI) | transitively affected tests |
 
-### Tree-sitter Analyzer exclusive
+### Capabilities beyond code navigation
 
 | Capability | TSA tool | Note |
 |---|---|---|
@@ -185,15 +190,15 @@ It reports possible cross-language name collisions so you can inspect resolver b
 | **Dependency matrix** | `health` action=matrix | module-coupling matrix |
 | **Dead code** | `health` action=dead | transitive unreachable analysis |
 | **Complexity heatmap** | `health` action=heatmap | per-fn cyclomatic + project view |
-| **AST-structural clone detection** | `viz` action=similarity | beyond text similarity |
+| **AST-structural clone detection** | `viz` action=similarity | structural clones rather than text matches |
 | **Mermaid call-graph export** | `viz` action=graph | paste-ready in docs |
 | **UML Mermaid export** | `viz` action=uml | class / package / component / sequence diagrams |
 | **PR review** | `edit` action=pr | AST-diff + semantic classify + blast radius |
 | **agent_summary** | every response | next-step hint baked into the envelope |
-| **Synapse cross-file resolver** | internal | import-aware, beats regex guessing |
+| **Synapse cross-file resolver** | internal | import-aware name resolution across files |
 | **Temporal activation** | `nav` action=lineage | per-symbol git-modification frequency |
 | **File orientation** | `project` action=smart | health + exports + deps + edit-risk in a combined response |
-| **Architectural decision journal** | `project` action=journal | persists reasoning across sessions — uncommon among code-intel tools |
+| **Architectural decision journal** | `project` action=journal | persists reasoning across sessions |
 
 ### Skills
 
@@ -205,7 +210,7 @@ Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface
 
 ### 356 CLI flags
 
-Superset of CodeGraph's CLI surface. Highlights:
+Highlights:
 
 ```bash
 tree-sitter-analyzer --table full <file>          # method/signature/complexity table
