@@ -21,6 +21,7 @@ class must carry a disposition that has actually landed:
 
 from __future__ import annotations
 
+import ast
 import importlib
 import inspect
 import pkgutil
@@ -33,6 +34,8 @@ from tree_sitter_analyzer.mcp.tool_dispositions import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
+TOOLS_PACKAGE_DIR = PROJECT_ROOT / "tree_sitter_analyzer" / "mcp" / "tools"
+
 #: The six names §3.1 measured.  They are asserted to be *in the enumeration*
 #: below, so a broken walk cannot make this gate vacuously green.
 _MEASURED_ORPHANS = (
@@ -44,20 +47,48 @@ _MEASURED_ORPHANS = (
     "UnreachableCodeTool",
 )
 
+#: Classes the registry itself instantiates.  Pinned exactly, so an empty or
+#: partial registry walk fails here rather than reporting every tool as an
+#: orphan below.
+_REGISTERED_TOOL_CLASSES = frozenset({"FacadeTool", "_StrictEditFacade"})
+
+
+def _tool_module_names() -> set[str]:
+    """Qualified names of the modules this gate imports, and only those."""
+    import tree_sitter_analyzer.mcp.tools as tools_pkg
+
+    return {
+        f"{tools_pkg.__name__}.{module.name}"
+        for module in pkgutil.iter_modules(tools_pkg.__path__)
+    }
+
 
 def _tool_classes() -> dict[str, type]:
-    """Every importable ``BaseMCPTool`` subclass, keyed by class name.
+    """Every ``BaseMCPTool`` subclass a tool module declares, by class name.
+
+    Scoped to module-level classes the tool modules define.  Two things are
+    excluded, both for the same reason — they make the enumeration depend on
+    what else the process has already done rather than on the product:
+
+    * test doubles (``_FakeInner``, ``_StubTool``, the probes in
+      ``test_facade_tool``).  ``BaseMCPTool.__subclasses__()`` is process-wide,
+      so an unfiltered walk collects them as soon as their test module is
+      imported; the same tree yielded 87 classes in isolation and 98 under a
+      full parallel run.
+    * classes a factory creates on first call, such as ``_PRReviewViaFacade``.
+      They are real product classes, but they exist only once something has
+      asked for them, so the count would depend on test order.  The registry
+      tests cover those routes; this gate covers the declared surface.
 
     Import failures are collected rather than swallowed: a module that cannot be
     imported is not evidence that its tools are fine, and skipping it would let
     an orphan hide behind an unrelated breakage.
     """
-    import tree_sitter_analyzer.mcp.tools as tools_pkg
+    imported = _tool_module_names()
     from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool
 
     failures: list[str] = []
-    for module in pkgutil.iter_modules(tools_pkg.__path__):
-        qualified = f"{tools_pkg.__name__}.{module.name}"
+    for qualified in sorted(imported):
         try:
             importlib.import_module(qualified)
         except Exception as exc:  # noqa: BLE001 — reported, never swallowed
@@ -68,17 +99,48 @@ def _tool_classes() -> dict[str, type]:
 
     def walk(cls: type) -> None:
         for subclass in cls.__subclasses__():
-            if subclass.__name__ in found:
-                continue
-            found[subclass.__name__] = subclass
+            if subclass.__module__ in imported and (
+                subclass.__qualname__ == subclass.__name__
+            ):
+                found[subclass.__name__] = subclass
             walk(subclass)
 
     walk(BaseMCPTool)
     return found
 
 
-def _reachable_class_names(project_root: str) -> set[str]:
-    """Class names reachable from the live registry, by MRO.
+def _declared_tool_class_names() -> set[str]:
+    """Tool classes the tool modules declare at module level, read statically.
+
+    The import walk above must agree with this exactly.  It is the same
+    question — which classes exist — answered from the source instead of from
+    whatever happened to be imported, so agreement proves the walk is complete
+    and that nothing outside the tool modules leaked into it.  Classes defined
+    inside a factory are excluded: they do not exist until the factory runs.
+    """
+    bases: dict[str, set[str]] = {}
+    for path in sorted(TOOLS_PACKAGE_DIR.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef):
+                bases[node.name] = {
+                    base.id for base in node.bases if isinstance(base, ast.Name)
+                }
+
+    declared = {name for name, base in bases.items() if "BaseMCPTool" in base}
+    while True:
+        derived = {
+            name
+            for name, base in bases.items()
+            if name not in declared and base & declared
+        }
+        if not derived:
+            return declared
+        declared |= derived
+
+
+def _reachable_class_names(project_root: str) -> tuple[set[str], set[str]]:
+    """Reachable class names from the live registry, and its own tool classes.
 
     Reachability counts a registered *subclass*: ``edit action=pr`` holds a
     ``_PRReviewViaFacade`` instance, not a ``CodeGraphPRReviewTool`` one, so a
@@ -94,13 +156,15 @@ def _reachable_class_names(project_root: str) -> set[str]:
 
     tools, _lookup = create_tool_registry(project_root)
     reachable: set[str] = set()
+    registered: set[str] = set()
     for _name, tool in tools:
+        registered.add(type(tool).__name__)
         inners = [tool]
         inners.extend(getattr(tool, "action_map", {}).values())
         inners.extend(getattr(tool, "_bespoke_inners", []))
         for inner in inners:
             reachable.update(base.__name__ for base in type(inner).__mro__)
-    return reachable
+    return reachable, registered
 
 
 def _is_exempt(cls: type) -> bool:
@@ -117,12 +181,21 @@ def _is_exempt(cls: type) -> bool:
 
 
 def test_the_gate_enumerates_a_non_trivial_surface() -> None:
-    """A walk that found nothing would make every assertion below vacuous."""
+    """The walk must find the whole declared surface, and nothing else.
+
+    Set equality against the source rather than a size bound: a bound wide
+    enough to absorb the process-wide subclass tree also absorbs a walk that
+    imported a quarter of the modules, and it cannot see a stray test double.
+    """
     classes = _tool_classes()
 
-    assert len(classes) > 20, (
-        f"only {len(classes)} tool classes enumerated; the walk is probably "
-        "importing nothing and the reachability gate below means nothing"
+    declared = _declared_tool_class_names()
+    assert set(classes) == declared, (
+        "the import walk and the tool modules disagree about which tool classes "
+        f"exist. Only in the source: {sorted(declared - set(classes))}. Only in "
+        f"the walk: {sorted(set(classes) - declared)}. A name the walk cannot "
+        "see is either a module that failed to import or a class that does not "
+        "exist; a name the source does not declare is a leak into the walk."
     )
     missing = [name for name in _MEASURED_ORPHANS if name not in classes]
     assert missing == [], (
@@ -131,10 +204,14 @@ def test_the_gate_enumerates_a_non_trivial_surface() -> None:
     )
     # The registry walk must find a live surface, or every "unreachable" verdict
     # below is an artefact of an empty walk.
-    reachable = _reachable_class_names(str(PROJECT_ROOT))
-    assert len(reachable) > 20, (
-        f"the registry walk found only {len(reachable)} reachable class names; "
-        "an empty walk would report every tool as an orphan"
+    reachable, registered = _reachable_class_names(str(PROJECT_ROOT))
+    assert registered == _REGISTERED_TOOL_CLASSES, (
+        f"the registry exposed {sorted(registered)}, not the pinned public "
+        "surface; update the pin deliberately if the facade set changed"
+    )
+    assert registered <= reachable, (
+        f"the registry walk did not reach {sorted(registered - reachable)}; an "
+        "empty MRO walk would report every tool as an orphan"
     )
 
 
@@ -174,7 +251,7 @@ def _offender_reason(
 
 
 def test_every_tool_class_is_reachable_or_dispositioned() -> None:
-    reachable = _reachable_class_names(str(PROJECT_ROOT))
+    reachable, _registered = _reachable_class_names(str(PROJECT_ROOT))
 
     offenders: list[str] = []
     for name, cls in sorted(_tool_classes().items()):
