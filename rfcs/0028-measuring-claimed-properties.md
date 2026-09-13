@@ -326,6 +326,52 @@ information. Over-counting only holds a symbol at `incomplete`, while
 under-counting certifies absence over a real edge — so the amendment removes only
 the cases where the exclusion is provable, and the ratchet above is unchanged.
 
+#### §1.3 — Carry the evidence, not only the count
+
+**Problem.** §1.1 adds `completeness`, and §1.2 makes it precise, but the caller
+still receives a *number*: `unresolved_in_declaring_files: 319`. A number says how
+much is unknown and nothing about *what*. To act on it, the caller must find the
+319 edges itself — by reading the file, which is the cost the response was
+supposed to remove. A residual that cannot be located cheaply is a residual the
+caller will route around, and a tool that is routed around is not used.
+
+**Change.** The response carries `unresolved_sites`: the sites themselves, each
+with its line, its callee text, and a `mechanism` classifying the syntactic shape
+that left it unresolved — `string_keyed_dispatch`, `reflection`,
+`own_class_attribute`, `module_or_object_attribute`, `expression`, `bare_name`.
+The list is capped (`unresolved_sites_truncated`) with `unresolved_sites_total`
+beside it, the same honest-truncation pattern the caller list already uses. The
+count is `len(...)` of the same derivation, so the number and the sites cannot
+describe different edge sets. `next_step` names the first few inline.
+
+**Why this is the load-bearing half.** A count converts an unbounded search into a
+search of unknown size. Sites convert it into a bounded one. Measured on the
+2,174-file self-repo corpus, the single worst file is
+`tree_sitter_analyzer/knowledge_graph/static/app.js` with **319 unresolved CALLS
+rows**. Reported as a count, that file is permanently `incomplete` and the reader
+learns nothing. Reported as sites, the mechanism mix is immediate:
+
+| mechanism | sites |
+|---|---|
+| `module_or_object_attribute` | 141 |
+| `bare_name` | 126 |
+| `expression` | 33 |
+| `string_keyed_dispatch` | 19 |
+
+The first rows are `document.getElementById`, `fetch`, `String(v ?? "").replace`,
+`new URLSearchParams(params).toString` — **browser globals and DOM builtins, not
+project symbols**. They cannot target anything the project declares, and the
+`bare_name` majority is the same class. The count could not say this; the
+mechanisms say it at a glance, and they are the raw material for the named
+exclusions §1.3 will need next: a `runtime_global` exclusion is provable for
+`fetch` in a browser asset, and it is exactly the kind of proof that turns
+"permanently incomplete" into `complete`.
+
+**What this does not do.** It does not reduce the unknown rate by one edge. The
+count is the same before and after. What changes is whether the residual is
+*actionable* — and per §1.1's own reasoning, a residual the caller cannot act on
+is indistinguishable from one they never received.
+
 ### §2 — Consultation records: making non-use visible
 
 **Claim under test:** TSA is used.

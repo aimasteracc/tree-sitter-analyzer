@@ -27,19 +27,29 @@ from .index_rebuild_signal import (
 
 logger = setup_logger(__name__)
 
+#: How many unresolved sites the response carries. The total is reported beside
+#: it, so a capped list is never mistaken for the whole set — the same
+#: honest-truncation pattern the caller list itself uses.
+_UNRESOLVED_SITES_CAP = 20
+
+#: How many sites the next_step names inline. Small on purpose: the hint is there
+#: to make the work bounded, not to duplicate the payload.
+_UNRESOLVED_SITES_NAMED = 3
+
 
 def _declaring_file_unresolved(
     cache: Any,
     func_name: str,
     file_path: str | None,
-) -> int | None:
-    """Unresolved CALLS edges inside the files that declare ``func_name``.
+    limit: int | None = None,
+) -> list[dict[str, Any]] | None:
+    """Unresolved CALLS sites inside the files that declare ``func_name``.
 
     The RFC-0028 §1.2 scope guard: a computed dispatch site records its own
     source text as the callee, so no per-symbol lookup can see it, and the only
     place it can be counted from is the file it sits in.  A symbol this project
-    does not declare contributes ``0`` — there is no file scope to check, which is
-    different from a scope that could not be read.
+    does not declare contributes ``[]`` — there is no file scope to check, which
+    is different from a scope that could not be read.
 
     ``file_path`` narrows the scope when the caller named one.  Without it, a
     symbol declared in several files inherits every sibling's unresolved calls:
@@ -56,6 +66,10 @@ def _declaring_file_unresolved(
     reported as "its inbound edges could not be read" — a claim of ignorance where
     the answer was available, and measured to mislabel a genuinely absent symbol
     as an unreadable one.
+
+    RFC-0028 §1.3: this returns the sites, not a count of them.  The count is
+    ``len(...)`` at the call site, so the number the response reports and the
+    sites it names come from one derivation and cannot drift apart.
     """
     if cache is None:
         return None
@@ -71,14 +85,38 @@ def _declaring_file_unresolved(
         )
         declaring = narrowed or declaring
     if not declaring:
-        return 0
-    total = 0
+        return []
+    sites: list[dict[str, Any]] = []
     for path in declaring:
-        count = cache.count_unresolved_calls_in_file(path)
-        if count is None:
+        found = cache.unresolved_call_sites_in_file(path)
+        if found is None:
             return None
-        total += count
-    return total
+        sites.extend(found)
+    sites.sort(key=lambda site: (site["file"], site["line"]))
+    if limit is not None:
+        return sites[:limit]
+    return sites
+
+
+def _describe_sites(sites: list[dict[str, Any]] | None) -> str:
+    """Name the first few unresolved sites so the hint is actionable.
+
+    "3 unresolved calls sit in a file that declares X" leaves the caller to
+    re-read the file to find them.  Naming the sites, their lines and their
+    mechanisms makes the remaining work bounded — which is why the evidence is
+    carried at all (RFC-0028 §1.3).
+    """
+    if not sites:
+        return "none"
+    named = sites[:_UNRESOLVED_SITES_NAMED]
+    parts = [
+        f"{site['file']}:{site['line']} ({site['mechanism']} `{site['callee']}`)"
+        for site in named
+    ]
+    remaining = len(sites) - len(named)
+    if remaining > 0:
+        parts.append(f"and {remaining} more")
+    return "; ".join(parts)
 
 
 class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
@@ -258,8 +296,14 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # call inside a file that declares this symbol could target it, so the
         # claim is gated on the declaring files as well.  A symbol in a
         # fully-resolved file still answers complete.
-        unresolved_in_declaring_files = _declaring_file_unresolved(
-            cache, func_name, file_path
+        #
+        # RFC-0028 §1.3: the sites are carried into the response, not just their
+        # number.  A caller told only "3 unresolved calls sit in a file that
+        # declares this symbol" has to re-read the file to act; a caller given the
+        # sites and their mechanisms can go straight to them.
+        declaring_sites = _declaring_file_unresolved(cache, func_name, file_path)
+        unresolved_in_declaring_files = (
+            None if declaring_sites is None else len(declaring_sites)
         )
 
         if unresolved_inbound is None or unresolved_in_declaring_files is None:
@@ -298,6 +342,18 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             unresolved_in_declaring_files=unresolved_in_declaring_files,
             callers=callers,
         )
+        if declaring_sites is not None:
+            # The evidence behind `unresolved_in_declaring_files`: which sites,
+            # and what kind. Capped so the field stays bounded, with the total
+            # kept beside it so a capped list is never mistaken for the whole set.
+            result["unresolved_sites"] = declaring_sites[:_UNRESOLVED_SITES_CAP]
+            result["unresolved_sites_total"] = len(declaring_sites)
+            result["unresolved_sites_truncated"] = (
+                len(declaring_sites) > _UNRESOLVED_SITES_CAP
+            )
+        else:
+            result["unresolved_sites"] = None
+            result["unresolved_sites_total"] = None
         if unattributed_call_sites:
             # #638: module-level call sites have no enclosing function — they
             # are counted here instead of being emitted as un-navigable ghost
@@ -346,8 +402,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     index_hint = (
                         f"{unresolved_in_declaring_files} unresolved call(s) sit "
                         f"in a file that declares {func_name!r} and could target "
-                        "it. Resolve them or read those sites directly rather "
-                        "than treating this as absence."
+                        f"it: {_describe_sites(declaring_sites)}. Read those "
+                        "sites directly rather than treating this as absence."
                     )
                 elif empty_evidence_base:
                     # #705: an index that was built over a project with no calls
@@ -416,9 +472,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         from ..utils.format_helper import apply_output_format_to_response
 
         result.update(
-            cost_fields(
-                query_cost("nav", "callers", self.project_root, arguments)
-            )
+            cost_fields(query_cost("nav", "callers", self.project_root, arguments))
         )
 
         return apply_output_format_to_response(result, output_format)

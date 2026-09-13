@@ -473,31 +473,68 @@ class EdgeStore:
         RFC-0028 §1.2's scope guard decidable: an unresolved call inside a file
         may target anything that file declares.
 
-        Reads through ``_resolution_is_resolved``, the same predicate
-        ``count_unresolved_callers`` uses.  A raw ``NOT IN`` over the column alone
-        could disagree with that predicate on rows whose marker lives in the
-        metadata JSON, which would let the two numbers the response reports side
-        by side describe different edge sets.  Rows are therefore read rather than
-        aggregated; the alternative requires reproducing the metadata fallback in
-        SQL, and a per-file edge count is small enough that the loop is not the
-        cost that matters.
+        Derived from ``unresolved_call_sites_in_file``, so the number a response
+        reports and the sites it names can never describe different edge sets.
+        """
+        sites = self.unresolved_call_sites_in_file(file_path)
+        return len(sites)
 
-        Only edges that could name a file-local symbol are counted;
-        ``_can_target_local_symbol`` records why, and measured why it matters.
+    def unresolved_call_sites_in_file(
+        self,
+        file_path: str,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """The unresolved CALLS edges in ``file_path``, each with its mechanism.
+
+        A count tells a caller that something is unresolved; this tells it *which
+        sites* and *what kind*. RFC-0028 §1.3: the answer to "is this list a
+        census" has to be checkable, and a bare count leaves the caller to re-read
+        the whole file to find the edges the count refers to. Naming the sites
+        turns an unbounded search into a bounded one.
+
+        ``mechanism`` is the syntactic shape that left the callee unresolved —
+        ``string_keyed_dispatch``, ``reflection``, ``own_class_attribute``,
+        ``module_or_object_attribute``, ``expression``, or ``bare_name``. It is
+        the difference between "go look at line 47" and "go look at a computed
+        dispatch site at line 47".
+
+        Reads through ``_resolution_is_resolved`` and ``_can_target_local_symbol``,
+        the same predicates the per-symbol counts use. A raw ``NOT IN`` over the
+        column alone could disagree with them on rows whose marker lives in the
+        metadata JSON, which would let two numbers reported side by side describe
+        different edge sets. Rows are therefore read rather than aggregated; the
+        alternative requires reproducing the metadata fallback in SQL, and a
+        per-file edge count is small enough that the loop is not the cost that
+        matters.
+
+        ``limit`` caps the returned list after ordering by line, so the answer is
+        deterministic; ``None`` returns every site.
         """
         rows = self._conn.execute(
-            "SELECT * FROM edges WHERE kind = ? AND file_path = ?",
+            "SELECT * FROM edges WHERE kind = ? AND file_path = ? ORDER BY line",
             (EdgeKind.CALLS.value, file_path),
         ).fetchall()
-        count = 0
+        sites: list[dict[str, Any]] = []
+        normalized = file_path.replace("\\", "/")
         for row in rows:
             if _resolution_is_resolved(row):
                 continue
             edge = _edge_from_row(row)
             callee_full = str(_row_col(row, "callee_full", "callee_full", edge) or "")
-            if _can_target_local_symbol(callee_full):
-                count += 1
-        return count
+            if not _can_target_local_symbol(callee_full):
+                continue
+            line = int(row["line"] or row["caller_line"] or 0)
+            sites.append(
+                {
+                    "file": normalized,
+                    "line": line,
+                    "callee": callee_full,
+                    "mechanism": call_mechanism(callee_full),
+                }
+            )
+        if limit is not None:
+            return sites[:limit]
+        return sites
 
     def query_callees(
         self,
@@ -898,6 +935,40 @@ def _can_target_local_symbol(callee_full: str) -> bool:
     if match is None:
         return True
     return match.group(1) not in _BUILTIN_RECEIVERS
+
+
+#: Prefixes that mark a call site whose callee is computed by reflection rather
+#: than named at the call.
+_REFLECTION_PREFIXES = ("getattr(", "setattr(", "hasattr(", "globals(", "vars(")
+
+
+def call_mechanism(callee_full: str) -> str:
+    """Classify the syntactic shape that left a callee unresolved.
+
+    The point is not taxonomy.  A caller told "3 unresolved calls sit in a file
+    that declares X" still has to read the file to find them; a caller told the
+    three sites, and that two of them are string-keyed dispatch, can act on the
+    decision that actually matters — enumerate the keys, or read the site.  This
+    is the evidence half of RFC-0028 §1.3: a count says how much is unknown, a
+    mechanism says what kind of unknown it is.
+
+    Order matters.  ``getattr(self, name)`` is reflection, not an own-class
+    attribute, and ``HANDLERS[name]`` has no receiver text at all.
+    """
+    text = (callee_full or "").strip()
+    if not text:
+        return "expression"
+    if "[" in text:
+        return "string_keyed_dispatch"
+    if text.startswith(_REFLECTION_PREFIXES):
+        return "reflection"
+    if text.startswith(("self.", "cls.")):
+        return "own_class_attribute"
+    if "(" in text:
+        return "expression"
+    if "." in text:
+        return "module_or_object_attribute"
+    return "bare_name"
 
 
 def _matches_callee(row: sqlite3.Row, target: NodeRef, callee_name: str) -> bool:
