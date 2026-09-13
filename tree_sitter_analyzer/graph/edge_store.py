@@ -479,6 +479,43 @@ class EdgeStore:
         sites = self.unresolved_call_sites_in_file(file_path)
         return len(sites)
 
+    def _classified_call_sites_in_file(self, file_path: str) -> list[dict[str, Any]]:
+        """Every non-resolved CALLS edge in ``file_path``, classified with its reason.
+
+        One scan behind both public views, so the sites that gate the file and the
+        sites reported as excluded are complements of a single derivation rather
+        than two lists that can drift — the same rule §1.2's amendment applied to
+        the two counting paths.
+
+        Rows are read rather than aggregated because ``_resolution_is_resolved``
+        falls back to the metadata JSON for rows written by a schema that kept the
+        marker there; a raw ``NOT IN`` over the column alone disagrees on exactly
+        those rows.
+        """
+        rows = self._conn.execute(
+            "SELECT * FROM edges WHERE kind = ? AND file_path = ? ORDER BY line",
+            (EdgeKind.CALLS.value, file_path),
+        ).fetchall()
+        normalized = file_path.replace("\\", "/")
+        sites: list[dict[str, Any]] = []
+        for row in rows:
+            if _resolution_is_resolved(row):
+                continue
+            edge = _edge_from_row(row)
+            callee_full = str(_row_col(row, "callee_full", "callee_full", edge) or "")
+            reason = exclusion_reason(callee_full)
+            site: dict[str, Any] = {
+                "file": normalized,
+                "line": int(row["line"] or row["caller_line"] or 0),
+                "callee": callee_full,
+                "mechanism": call_mechanism(callee_full),
+                "classification": "excluded" if reason else "unresolved",
+            }
+            if reason:
+                site["reason_code"] = reason
+            sites.append(site)
+        return sites
+
     def unresolved_call_sites_in_file(
         self,
         file_path: str,
@@ -498,43 +535,36 @@ class EdgeStore:
         the difference between "go look at line 47" and "go look at a computed
         dispatch site at line 47".
 
-        Reads through ``_resolution_is_resolved`` and ``_can_target_local_symbol``,
-        the same predicates the per-symbol counts use. A raw ``NOT IN`` over the
-        column alone could disagree with them on rows whose marker lives in the
-        metadata JSON, which would let two numbers reported side by side describe
-        different edge sets. Rows are therefore read rather than aggregated; the
-        alternative requires reproducing the metadata fallback in SQL, and a
-        per-file edge count is small enough that the loop is not the cost that
-        matters.
-
         ``limit`` caps the returned list after ordering by line, so the answer is
         deterministic; ``None`` returns every site.
         """
-        rows = self._conn.execute(
-            "SELECT * FROM edges WHERE kind = ? AND file_path = ? ORDER BY line",
-            (EdgeKind.CALLS.value, file_path),
-        ).fetchall()
-        sites: list[dict[str, Any]] = []
-        normalized = file_path.replace("\\", "/")
-        for row in rows:
-            if _resolution_is_resolved(row):
-                continue
-            edge = _edge_from_row(row)
-            callee_full = str(_row_col(row, "callee_full", "callee_full", edge) or "")
-            if not _can_target_local_symbol(callee_full):
-                continue
-            line = int(row["line"] or row["caller_line"] or 0)
-            sites.append(
-                {
-                    "file": normalized,
-                    "line": line,
-                    "callee": callee_full,
-                    "mechanism": call_mechanism(callee_full),
-                }
-            )
-        if limit is not None:
-            return sites[:limit]
-        return sites
+        sites = [
+            site
+            for site in self._classified_call_sites_in_file(file_path)
+            if site["classification"] == "unresolved"
+        ]
+        return sites[:limit] if limit is not None else sites
+
+    def excluded_call_sites_in_file(
+        self,
+        file_path: str,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """The CALLS edges in ``file_path`` that were ruled out, and on what grounds.
+
+        The complement of ``unresolved_call_sites_in_file``, from the same scan.
+        RFC-0028 §1.3: without this, "this file is not a census" is an assertion
+        nobody can check — the caller cannot tell a file gated by one genuine
+        dispatch site from one gated by three hundred builtin attribute calls.
+        Measured on the self-repo corpus, that distinction is the whole difference
+        between 319 gating sites and a file that is simply a browser asset.
+        """
+        sites = [
+            site
+            for site in self._classified_call_sites_in_file(file_path)
+            if site["classification"] == "excluded"
+        ]
+        return sites[:limit] if limit is not None else sites
 
     def query_callees(
         self,
@@ -921,6 +951,29 @@ _DOTTED_CALLEE = re.compile(
 )
 
 
+def exclusion_reason(callee_full: str) -> str | None:
+    """Why this callee cannot name a file-local symbol, or ``None`` if it might.
+
+    The single place the exclusion decision is made, so the sites that gate a
+    file and the sites reported as excluded are complements of one derivation
+    rather than two lists that can drift.
+
+    ``builtin_receiver`` is the only reason today: the attribute belongs to a
+    builtin type, so no project declaration can be its target.  Every other shape
+    — bare names bound to local variables, ``self.``/``cls.``, computed dispatch,
+    reflection — stays ``None`` because it *may* name something the file declares.
+    Widening this set is the §1.3 work: each new reason needs a proof, and
+    ``runtime_global`` is the next candidate, valid only relative to a declared
+    runtime environment.
+    """
+    match = _DOTTED_CALLEE.match(callee_full or "")
+    if match is None:
+        return None
+    if match.group(1) in _BUILTIN_RECEIVERS:
+        return "builtin_receiver"
+    return None
+
+
 def _can_target_local_symbol(callee_full: str) -> bool:
     """Whether an unresolved call with this callee could name a file-local symbol.
 
@@ -931,10 +984,7 @@ def _can_target_local_symbol(callee_full: str) -> bool:
     declares.  Over-counting only holds a symbol at ``incomplete``; under-counting
     would certify absence over a real edge, the one direction RFC-0028 §1 forbids.
     """
-    match = _DOTTED_CALLEE.match(callee_full or "")
-    if match is None:
-        return True
-    return match.group(1) not in _BUILTIN_RECEIVERS
+    return exclusion_reason(callee_full) is None
 
 
 #: Prefixes that mark a call site whose callee is computed by reflection rather

@@ -367,6 +367,25 @@ exclusions §1.3 will need next: a `runtime_global` exclusion is provable for
 `fetch` in a browser asset, and it is exactly the kind of proof that turns
 "permanently incomplete" into `complete`.
 
+**The negative space is reported too.** `excluded_sites` carries the sites that
+were ruled out, each with a `reason_code` (`builtin_receiver` today), plus
+`excluded_by_reason` as the summary. Both lists come from one scan of the same
+file and one `exclusion_reason` decision, so they partition the non-resolved
+edges rather than being two lists that can drift. Measured on the self-repo
+corpus: **6,674 sites gate their files and 3,635 are excluded** — the exclusions
+account for 35.3% of non-resolved call sites, and until they were reported a
+caller could not tell a file gated by one genuine dispatch site from one gated by
+three hundred builtin attribute calls.
+
+The same measurement shows what the current proofs cannot reach. The worst file,
+`static/app.js`, has **319 sites and zero exclusions**: 141
+`module_or_object_attribute`, 126 `bare_name`, 33 `expression`, 19
+`string_keyed_dispatch`. Every one of them is a shape the builtin-receiver proof
+does not cover, and most of them are browser globals. That file does not need a
+better bound; it needs the next proof — `runtime_global`, valid relative to a
+*declared* runtime environment, with the declaration carried in the payload so
+the assumption is visible and disputable.
+
 **What this does not do.** It does not reduce the unknown rate by one edge. The
 count is the same before and after. What changes is whether the residual is
 *actionable* — and per §1.1's own reasoning, a residual the caller cannot act on
