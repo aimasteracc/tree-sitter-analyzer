@@ -427,6 +427,15 @@ async def test_dotted_callee_is_judged_by_receiver_not_by_substring(
     assert result["completeness"] != "complete"
 
 
+def _site(path: str, line: int, callee: str) -> dict:
+    return {
+        "file": path,
+        "line": line,
+        "callee": callee,
+        "mechanism": "string_keyed_dispatch",
+    }
+
+
 def test_declaring_scope_narrows_to_the_named_file() -> None:
     """Naming a file narrows the §1.2 scope to it; naming nothing keeps all of them.
 
@@ -442,29 +451,117 @@ def test_declaring_scope_narrows_to_the_named_file() -> None:
         def symbol_declaring_files(self, name: str) -> list[str]:
             return ["pkg/clean.py", "pkg/noisy.py"]
 
-        def count_unresolved_calls_in_file(self, path: str) -> int:
-            return 0 if path == "pkg/clean.py" else 3
+        def unresolved_call_sites_in_file(self, path: str) -> list[dict]:
+            if path == "pkg/clean.py":
+                return []
+            return [_site(path, 7, "HANDLERS[n]"), _site(path, 9, "HANDLERS[m]")]
 
     cache = StubCache()
-    assert _declaring_file_unresolved(cache, "run", None) == 3
-    assert _declaring_file_unresolved(cache, "run", "pkg/clean.py") == 0
-    assert _declaring_file_unresolved(cache, "run", "pkg\\clean.py") == 0
-    assert _declaring_file_unresolved(cache, "run", "pkg/absent.py") == 3
+    assert len(_declaring_file_unresolved(cache, "run", None) or []) == 2
+    assert _declaring_file_unresolved(cache, "run", "pkg/clean.py") == []
+    assert _declaring_file_unresolved(cache, "run", "pkg\\clean.py") == []
+    assert len(_declaring_file_unresolved(cache, "run", "pkg/absent.py") or []) == 2
 
     class FailingCache(StubCache):
         def symbol_declaring_files(self, name: str) -> None:
             return None
 
-    # A failed read is not an empty scope: `None`, never 0.
+    # A failed read is not an empty scope: `None`, never an empty list.
     assert _declaring_file_unresolved(FailingCache(), "run", None) is None
 
     class UnreadableFileCache(StubCache):
-        def count_unresolved_calls_in_file(self, path: str) -> None:
+        def unresolved_call_sites_in_file(self, path: str) -> None:
             return None
 
     # The same rule one level down: one unreadable declaring file makes the whole
-    # count unknown rather than letting the readable siblings stand in for it.
+    # answer unknown rather than letting the readable siblings stand in for it.
     assert _declaring_file_unresolved(UnreadableFileCache(), "run", None) is None
+
+
+@pytest.mark.asyncio
+async def test_unresolved_sites_name_the_line_and_the_mechanism(
+    tool_with_edges,
+) -> None:
+    """The response carries the sites, not just how many there are.
+
+    RFC-0028 §1.3. A caller told only "2 unresolved calls sit in a file that
+    declares this symbol" has to re-read the file to find them, which is the cost
+    the evidence exists to remove. Measured before this: the payload carried
+    `unresolved_in_declaring_files: 2` and no locations at all.
+    """
+    tool, conn = tool_with_edges
+    _insert_call(
+        conn,
+        caller="alpha",
+        caller_line=10,
+        resolution="unknown",
+        callee='HANDLERS["read"]',
+        callee_full='HANDLERS["read"]',
+    )
+    _insert_call(
+        conn,
+        caller="beta",
+        caller_line=20,
+        resolution="unknown",
+        callee="getattr(self, name)",
+        callee_full="getattr(self, name)",
+    )
+    conn.commit()
+
+    result = await _call(tool)
+
+    assert result["unresolved_in_declaring_files"] == 2
+    assert result["unresolved_sites_total"] == 2
+    assert result["unresolved_sites_truncated"] is False
+    sites = result["unresolved_sites"]
+    assert [(s["line"], s["mechanism"]) for s in sites] == [
+        (10, "string_keyed_dispatch"),
+        (20, "reflection"),
+    ]
+    assert sites[0]["callee"] == 'HANDLERS["read"]'
+    # The hint must be actionable, not just quantitative.
+    assert "string_keyed_dispatch" in str(result["next_step"])
+    assert "reflection" in str(result["next_step"])
+
+
+@pytest.mark.asyncio
+async def test_capped_unresolved_sites_never_look_like_the_whole_set(
+    tool_with_edges,
+) -> None:
+    """A capped list carries its total beside it, like the caller list does."""
+    tool, conn = tool_with_edges
+    for n in range(25):
+        _insert_call(
+            conn,
+            caller=f"caller{n}",
+            caller_line=10 + n,
+            resolution="unknown",
+            callee=f"HANDLERS[{n}]",
+            callee_full=f"HANDLERS[{n}]",
+        )
+    conn.commit()
+
+    result = await _call(tool)
+
+    assert result["unresolved_in_declaring_files"] == 25
+    assert result["unresolved_sites_total"] == 25
+    assert result["unresolved_sites_truncated"] is True
+    assert len(result["unresolved_sites"]) == 20
+
+
+def test_call_mechanism_classifies_by_shape_not_by_substring() -> None:
+    """`getattr(...)` is reflection, not an own-class attribute, and not a dot path."""
+    from tree_sitter_analyzer.graph.edge_store import call_mechanism
+
+    assert call_mechanism('HANDLERS["read"]') == "string_keyed_dispatch"
+    assert call_mechanism("getattr(self, name)") == "reflection"
+    assert call_mechanism("getattr(importlib.import_module(m), c).x") == "reflection"
+    assert call_mechanism("self.handle") == "own_class_attribute"
+    assert call_mechanism("cls.build") == "own_class_attribute"
+    assert call_mechanism("list.append") == "module_or_object_attribute"
+    assert call_mechanism("local_helper") == "bare_name"
+    assert call_mechanism("(_ for _ in ()).throw") == "expression"
+    assert call_mechanism("") == "expression"
 
 
 @pytest.mark.asyncio

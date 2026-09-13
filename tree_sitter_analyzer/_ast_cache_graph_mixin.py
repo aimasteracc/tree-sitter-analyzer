@@ -205,12 +205,25 @@ class ASTCacheGraphMixin(ASTCacheSurface):
         :meth:`count_unresolved_callers` does: a failed read must not read as
         "no unresolved call here".
         """
+        sites = self.unresolved_call_sites_in_file(file_path)
+        return None if sites is None else len(sites)
+
+    def unresolved_call_sites_in_file(
+        self, file_path: str
+    ) -> list[dict[str, object]] | None:
+        """The unresolved CALLS sites in ``file_path``, each with its mechanism.
+
+        The evidence behind :meth:`count_unresolved_calls_in_file`, and the same
+        derivation it uses, so a response's count and the sites it names cannot
+        disagree. Returns ``None`` when the read fails, for the same reason the
+        count does: a failed read must not read as "nothing unresolved here".
+        """
         try:
             from .graph.edge_store import EdgeStore
 
             return EdgeStore(
                 self._get_conn(), ensure_schema=False
-            ).count_unresolved_calls_in_file(file_path)
+            ).unresolved_call_sites_in_file(file_path)
         except sqlite3.OperationalError:
             return None
 
@@ -223,10 +236,14 @@ class ASTCacheGraphMixin(ASTCacheSurface):
         empty scope turns "I could not check" into "nothing unresolved here".
         """
         try:
-            rows = self._get_conn().execute(
-                "SELECT DISTINCT file_path FROM ast_symbol_rows WHERE name = ?",
-                (name,),
-            ).fetchall()
+            rows = (
+                self._get_conn()
+                .execute(
+                    "SELECT DISTINCT file_path FROM ast_symbol_rows WHERE name = ?",
+                    (name,),
+                )
+                .fetchall()
+            )
         except sqlite3.OperationalError:
             return None
         return tuple(str(row[0]) for row in rows if row[0])
