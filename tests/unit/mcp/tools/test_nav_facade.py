@@ -1372,5 +1372,7 @@ async def test_help_action_returns_the_per_action_prose() -> None:
 
     assert result["facade"] == "nav"
     assert "callers" in result["actions"]
-    assert len(result["description"]) > 1000
+    # Exact equality, not a length bound: the contract is that `help` serves the
+    # prose verbatim, so that is what is asserted.
+    assert result["description"] == facade.full_description()
     assert "Params:" in result["description"]
