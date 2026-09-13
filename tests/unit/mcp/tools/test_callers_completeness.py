@@ -461,6 +461,8 @@ def test_declaring_scope_narrows_to_the_named_file() -> None:
     assert _declaring_file_unresolved(cache, "run", "pkg/clean.py") == []
     assert _declaring_file_unresolved(cache, "run", "pkg\\clean.py") == []
     assert len(_declaring_file_unresolved(cache, "run", "pkg/absent.py") or []) == 2
+    # `limit` caps the sites the same way the caller-list cap does.
+    assert len(_declaring_file_unresolved(cache, "run", None, 1) or []) == 1
 
     class FailingCache(StubCache):
         def symbol_declaring_files(self, name: str) -> None:
@@ -592,3 +594,57 @@ async def test_failed_declaring_read_says_so_instead_of_claiming_a_zero(
     assert result["completeness"] == "unknown"
     assert "could not be read" in str(result["next_step"])
     assert "not in the index" not in str(result["next_step"])
+
+
+def test_the_count_and_the_sites_come_from_one_derivation(tool_with_edges) -> None:
+    """`count_unresolved_calls_in_file` must equal the length of the site list.
+
+    The docstring claims the number a response reports and the sites it names
+    cannot describe different edge sets. That claim is the whole reason the count
+    is defined in terms of the sites, so it is pinned here rather than asserted in
+    prose — the same class of drift §1.2's amendment removed from the two
+    counting paths.
+    """
+    tool, conn = tool_with_edges
+    cache = tool._try_get_cache()
+    assert cache is not None
+    for n in range(4):
+        _insert_call(
+            conn,
+            caller=f"c{n}",
+            caller_line=10 + n,
+            resolution="unknown",
+            callee=f"HANDLERS[{n}]",
+            callee_full=f"HANDLERS[{n}]",
+        )
+    _insert_call(conn, caller="ok", caller_line=99, resolution=_RESOLVED, callee=_OTHER)
+    conn.commit()
+
+    sites = cache.unresolved_call_sites_in_file("a.py")
+    assert sites is not None
+    assert len(sites) == 4
+    assert cache.count_unresolved_calls_in_file("a.py") == len(sites)
+
+    from tree_sitter_analyzer.graph.edge_store import EdgeStore
+
+    store = EdgeStore(conn, ensure_schema=False)
+    assert store.count_unresolved_calls_in_file("a.py") == len(
+        store.unresolved_call_sites_in_file("a.py")
+    )
+    # `limit` truncates without changing what the full set is.
+    assert len(store.unresolved_call_sites_in_file("a.py", limit=2)) == 2
+
+
+def test_describe_sites_says_none_rather_than_an_empty_string() -> None:
+    """The hint must never render as an empty fragment."""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import _describe_sites
+
+    assert _describe_sites([]) == "none"
+    assert _describe_sites(None) == "none"
+    many = [
+        {"file": "a.py", "line": n, "callee": f"f{n}", "mechanism": "bare_name"}
+        for n in range(5)
+    ]
+    described = _describe_sites(many)
+    assert "a.py:0" in described
+    assert "and 2 more" in described
