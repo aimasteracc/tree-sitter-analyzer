@@ -277,9 +277,10 @@ class TestPublicSchema:
         f = FacadeTool("demo", {"alpha": _RecordingInner(), "beta": _RecordingInner()})
         d = f.get_tool_definition()
         assert d["name"] == "demo"
-        assert d["description"] == (
-            "Facade dispatching 2 actions via the 'action' parameter: alpha, beta."
-        )
+        # Wave E: the always-sent line is short but still carries the action
+        # count and the full list, which is what this test is about.
+        assert "2 actions" in d["description"]
+        assert "alpha, beta" in d["description"]
         assert d["inputSchema"]["required"] == ["action"]
 
     def test_工具定义_自定义描述与注解透传(self):
@@ -290,8 +291,10 @@ class TestPublicSchema:
             annotations={"readOnlyHint": False},
         )
         d = f.get_tool_definition()
-        assert d["description"] == "my facade"
         assert d["annotations"] == {"readOnlyHint": False}
+        # Wave E: a custom description is passed through verbatim, but served by
+        # action=help rather than riding on every request's tool definition.
+        assert f.full_description() == "my facade"
 
 
 # ---------- 场景：validate_arguments ----------

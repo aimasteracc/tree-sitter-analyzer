@@ -372,8 +372,9 @@ def test_schema_includes_action_and_union_params() -> None:
 def test_journal_description_uses_real_param_names() -> None:
     """project facade journal description must reference real inner params."""
     facade = build_project_facade(project_root=None)
-    defn = facade.get_tool_definition()
-    description = defn["description"]
+    # Wave E: the per-action prose moved behind action=help; the contract it
+    # carries (documented params must be real) is unchanged.
+    description = facade.full_description()
     assert "action=journal" in description, (
         "action=journal entry missing from description"
     )
@@ -413,7 +414,7 @@ def test_smart_action_documented_params_subset_of_inner_schema() -> None:
     import re
 
     facade = build_project_facade(project_root=None)
-    desc = facade.get_tool_definition()["description"]
+    desc = facade.full_description()
     block = re.search(r"action=smart\b(.*?)(?=- action=|\Z)", desc, re.S)
     assert block, "action=smart not found in the project facade description"
     params = re.search(r"Params:\s*([^.\n]+)", block.group(1))
