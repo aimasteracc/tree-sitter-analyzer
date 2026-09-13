@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from tests.unit._ast_cache_helpers import _OsProxy
 from tree_sitter_analyzer.index_candidate_walker import (
     CandidateDiscoveryBudgetExceeded,
     CandidateDiscoveryError,
@@ -606,9 +607,7 @@ def test_posix_negated_file_is_retained(tmp_path):
     (tmp_path / "drop.log").write_text("x\n")
     (tmp_path / "keep.log").write_text("x\n")
 
-    values = _relative_all(
-        tmp_path, walk_candidate_entries(str(tmp_path), **_DEFAULTS)
-    )
+    values = _relative_all(tmp_path, walk_candidate_entries(str(tmp_path), **_DEFAULTS))
 
     assert "drop.log" not in values
     assert "keep.log" in values
@@ -623,9 +622,7 @@ def test_posix_nested_gitignore_prunes_descendant(tmp_path):
     (package / "out" / "generated.js").write_text("var g = 1\n")
     (package / "src.js").write_text("var s = 1\n")
 
-    values = _relative_all(
-        tmp_path, walk_candidate_entries(str(tmp_path), **_DEFAULTS)
-    )
+    values = _relative_all(tmp_path, walk_candidate_entries(str(tmp_path), **_DEFAULTS))
 
     assert os.path.join("pkg", "src.js") in values
     assert os.path.join("pkg", "out", "generated.js") not in values
@@ -638,11 +635,11 @@ def test_path_fallback_gitignored_directory_is_pruned(tmp_path, monkeypatch):
     (tmp_path / "lib").mkdir()
     (tmp_path / "lib" / "index.js").write_text("var a = 1\n")
     (tmp_path / "src.js").write_text("var s = 1\n")
-    monkeypatch.setattr(walker.os, "name", "nt")
+    # Patch the walker's own ``os``: the process-global ``os.name`` also steers
+    # pathlib, which then cannot build a path while pytest reports a failure.
+    monkeypatch.setattr(walker, "os", _OsProxy(name="nt"))
 
-    values = _relative_all(
-        tmp_path, walk_candidate_entries(str(tmp_path), **_DEFAULTS)
-    )
+    values = _relative_all(tmp_path, walk_candidate_entries(str(tmp_path), **_DEFAULTS))
 
     assert "src.js" in values
     assert os.path.join("lib", "index.js") not in values
