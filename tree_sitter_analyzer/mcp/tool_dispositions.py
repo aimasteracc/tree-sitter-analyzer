@@ -124,6 +124,20 @@ TOOL_DISPOSITIONS: dict[str, Disposition] = {
         ),
         remove_in="1.33.0",
     ),
+    "MCPTool": Disposition(
+        kind="deprecate",
+        reason=(
+            "A backward-compatibility protocol base, not a route. Its own "
+            "docstring says 'deprecated, use BaseMCPTool instead', and it is "
+            "reachable from nothing because every concrete tool derives from "
+            "BaseMCPTool. Found by the RFC-0028 §3.1 reachability gate, which "
+            "enumerates classes rather than consulting a list: it is a seventh "
+            "orphan the 2026-08-19 manual measurement did not name. Removal is "
+            "its own change because it is a published import path for external "
+            "users, not an internal one."
+        ),
+        remove_in="1.33.0",
+    ),
 }
 
 
