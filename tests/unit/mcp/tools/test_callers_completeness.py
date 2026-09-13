@@ -648,3 +648,73 @@ def test_describe_sites_says_none_rather_than_an_empty_string() -> None:
     described = _describe_sites(many)
     assert "a.py:0" in described
     assert "and 2 more" in described
+
+
+@pytest.mark.asyncio
+async def test_excluded_sites_and_unresolved_sites_are_complements(
+    tool_with_edges,
+) -> None:
+    """What gates the file and what was ruled out must partition the same scan.
+
+    Two lists reported side by side that could drift apart is exactly the defect
+    §1.2's amendment removed from the two counting paths. Here they come from one
+    scan of the same file, so their lengths must add up.
+    """
+    tool, conn = tool_with_edges
+    _insert_call(
+        conn,
+        caller="alpha",
+        caller_line=10,
+        resolution="unknown",
+        callee="append",
+        callee_full="list.append",
+    )
+    _insert_call(
+        conn,
+        caller="beta",
+        caller_line=20,
+        resolution="unknown",
+        callee="HANDLERS[x]",
+        callee_full="HANDLERS[x]",
+    )
+    conn.commit()
+
+    result = await _call(tool)
+
+    # Only the dispatch site gates the file.
+    assert result["unresolved_in_declaring_files"] == 1
+    assert [s["mechanism"] for s in result["unresolved_sites"]] == [
+        "string_keyed_dispatch"
+    ]
+
+    # The builtin attribute call is reported as ruled out, with its ground.
+    assert result["excluded_sites_total"] == 1
+    assert result["excluded_by_reason"] == {"builtin_receiver": 1}
+    excluded = result["excluded_sites"]
+    assert [(s["line"], s["callee"], s["reason_code"]) for s in excluded] == [
+        (10, "list.append", "builtin_receiver")
+    ]
+    assert excluded[0]["classification"] == "excluded"
+
+
+def test_exclusion_reason_is_the_single_decision_point() -> None:
+    """`_can_target_local_symbol` must be exactly the negation of the reason."""
+    from tree_sitter_analyzer.graph.edge_store import (
+        _can_target_local_symbol,
+        exclusion_reason,
+    )
+
+    for callee in ("list.append", "dict.get", "super().__init__"):
+        assert exclusion_reason(callee) == "builtin_receiver"
+        assert _can_target_local_symbol(callee) is False
+    for callee in (
+        "HANDLERS[x]",
+        "getattr(self, name)",
+        "self.handle",
+        "local_helper",
+        "conn.execute",
+        "extractors.run",
+        "",
+    ):
+        assert exclusion_reason(callee) is None
+        assert _can_target_local_symbol(callee) is True

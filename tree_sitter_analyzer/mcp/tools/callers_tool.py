@@ -73,10 +73,48 @@ def _declaring_file_unresolved(
     """
     if cache is None:
         return None
+    declaring = _declaring_files(cache, func_name, file_path)
+    if declaring is None:
+        return None
+    return _collect_sites(cache, declaring, "unresolved_call_sites_in_file", limit)
+
+
+def _declaring_file_excluded(
+    cache: Any,
+    func_name: str,
+    file_path: str | None,
+    limit: int | None = None,
+) -> list[dict[str, Any]] | None:
+    """Sites in the declaring files that were ruled out, and on what grounds.
+
+    The complement of :func:`_declaring_file_unresolved`, over the same scope.
+    RFC-0028 §1.3: a caller told only "this file is not a census" cannot tell a
+    file gated by one genuine dispatch site from one gated by three hundred
+    builtin attribute calls. Reporting the exclusions makes that checkable, and
+    the reasons are the raw material for widening the exclusion set with proofs
+    rather than with a bound.
+    """
+    if cache is None:
+        return None
+    declaring = _declaring_files(cache, func_name, file_path)
+    if declaring is None:
+        return None
+    return _collect_sites(cache, declaring, "excluded_call_sites_in_file", limit)
+
+
+def _declaring_files(
+    cache: Any,
+    func_name: str,
+    file_path: str | None,
+) -> tuple[str, ...] | None:
+    """The files declaring ``func_name``, narrowed to the one the caller named.
+
+    ``None`` when the read fails: a failed read is not an empty scope.  Computed
+    once and shared by the unresolved and excluded accessors, so the two lists a
+    response reports side by side always describe the same files.
+    """
     declaring = cache.symbol_declaring_files(func_name)
     if declaring is None:
-        # A failed read is not an empty scope; the sibling count method returns
-        # None for exactly this reason.
         return None
     if file_path:
         normalized = file_path.replace("\\", "/")
@@ -84,18 +122,28 @@ def _declaring_file_unresolved(
             path for path in declaring if path.replace("\\", "/") == normalized
         )
         declaring = narrowed or declaring
-    if not declaring:
-        return []
+    return tuple(declaring)
+
+
+def _collect_sites(
+    cache: Any,
+    declaring: tuple[str, ...],
+    accessor: str,
+    limit: int | None,
+) -> list[dict[str, Any]] | None:
+    """Gather one kind of site across ``declaring``, ordered and optionally capped.
+
+    ``None`` from any file means the whole answer is unknown rather than partial:
+    a readable sibling must not stand in for an unreadable one.
+    """
     sites: list[dict[str, Any]] = []
     for path in declaring:
-        found = cache.unresolved_call_sites_in_file(path)
+        found = getattr(cache, accessor)(path)
         if found is None:
             return None
         sites.extend(found)
     sites.sort(key=lambda site: (site["file"], site["line"]))
-    if limit is not None:
-        return sites[:limit]
-    return sites
+    return sites[:limit] if limit is not None else sites
 
 
 def _describe_sites(sites: list[dict[str, Any]] | None) -> str:
@@ -305,6 +353,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         unresolved_in_declaring_files = (
             None if declaring_sites is None else len(declaring_sites)
         )
+        # The complement of the sites above: what was ruled out, and on what
+        # grounds. Without it, "this file is not a census" cannot be checked
+        # against "this file is a browser asset full of builtin attribute calls".
+        excluded_sites = _declaring_file_excluded(cache, func_name, file_path)
 
         if unresolved_inbound is None or unresolved_in_declaring_files is None:
             completeness = "unknown"
@@ -354,6 +406,21 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         else:
             result["unresolved_sites"] = None
             result["unresolved_sites_total"] = None
+        if excluded_sites is not None:
+            # The negative space, auditable. `excluded_by_reason` is the summary a
+            # caller reads to decide whether "not a census" is alarming; the list
+            # is the detail behind it.
+            result["excluded_sites"] = excluded_sites[:_UNRESOLVED_SITES_CAP]
+            result["excluded_sites_total"] = len(excluded_sites)
+            by_reason: dict[str, int] = {}
+            for site in excluded_sites:
+                reason = str(site.get("reason_code") or "unspecified")
+                by_reason[reason] = by_reason.get(reason, 0) + 1
+            result["excluded_by_reason"] = by_reason
+        else:
+            result["excluded_sites"] = None
+            result["excluded_sites_total"] = None
+            result["excluded_by_reason"] = None
         if unattributed_call_sites:
             # #638: module-level call sites have no enclosing function — they
             # are counted here instead of being emitted as un-navigable ghost

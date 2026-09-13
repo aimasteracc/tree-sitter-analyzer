@@ -227,6 +227,24 @@ class ASTCacheGraphMixin(ASTCacheSurface):
         except sqlite3.OperationalError:
             return None
 
+    def excluded_call_sites_in_file(
+        self, file_path: str
+    ) -> list[dict[str, object]] | None:
+        """The CALLS sites in ``file_path`` that were ruled out, and why.
+
+        The complement of :meth:`unresolved_call_sites_in_file`, from the same
+        scan. Returns ``None`` when the read fails, matching the other accessors:
+        a failed read must not read as "nothing was excluded here".
+        """
+        try:
+            from .graph.edge_store import EdgeStore
+
+            return EdgeStore(
+                self._get_conn(), ensure_schema=False
+            ).excluded_call_sites_in_file(file_path)
+        except sqlite3.OperationalError:
+            return None
+
     def symbol_declaring_files(self, name: str) -> tuple[str, ...] | None:
         """Return the files declaring ``name``, or ``None`` when unreadable.
 
