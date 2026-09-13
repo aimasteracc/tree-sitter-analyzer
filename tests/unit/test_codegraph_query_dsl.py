@@ -234,7 +234,9 @@ class TestChainActionDocMatchesInner:
         from tree_sitter_analyzer.mcp.tools.search_facade import build_search_facade
 
         facade = build_search_facade(project_root=None)
-        desc = facade.get_tool_definition()["description"]
+        # Wave E: the per-action prose moved behind action=help; the drift
+        # guard it implements is unchanged.
+        desc = facade.full_description()
         block = re.search(r"action=chain\b(.*?)(?=- action=|\Z)", desc, re.S)
         assert block, "action=chain not found in search facade description"
         params = re.search(r"Params:\s*([^.\n]+)", block.group(1))

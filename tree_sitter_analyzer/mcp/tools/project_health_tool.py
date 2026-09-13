@@ -165,7 +165,16 @@ class ProjectHealthTool(BaseMCPTool):
             walk_stats=walk_stats,
         )
 
+        # RFC-0027 L6.2: the route's own ``estimated_seconds`` was advisory and
+        # agents still timed out on 4k-file repositories (see F9 above).  Carry
+        # the uniform declaration as well, which states the tier and names a
+        # cheaper scoped route rather than only a duration.
+        from ...cache.query_cost import cost_fields, query_cost
         from ..utils.format_helper import apply_output_format_to_response
+
+        result.update(
+            cost_fields(query_cost("health", "project", self.project_root, arguments))
+        )
 
         return apply_output_format_to_response(
             result, output_format

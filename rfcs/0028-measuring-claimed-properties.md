@@ -26,7 +26,7 @@
   - `tests/benchmarks/claims/test_unknown_rate_ratchet.py` (§1 reconciliation, §3.2 instance)
   - `tests/contracts/test_reachability_invariants.py` (new — §3.1)
   - `tests/contracts/test_gate_effectiveness.py` (new — §3.2)
-  - `.pre-commit-config.yaml` (§3.2 — the six first-party local hooks)
+  - `.pre-commit-config.yaml` (§3.2 — the seven first-party local hooks)
   - `.github/workflows/dogfood-pr-check.yml` (§1/§3.2 — the job that must collect)
   - `docs/CODEMAPS/*.md` (§3.2 counts)
   - *Prospective, does not exist today:* `tree_sitter_analyzer/calibration/`
@@ -281,6 +281,116 @@ containing file has at least one unresolved edge. A symbol in a fully-resolved
 file must answer `complete`, so "answer `unknown` whenever the file contains a
 dynamic construct" is not a legal way to satisfy this ratchet.
 
+#### §1.2 amendment — the scope guard counted calls that cannot be local
+
+Measured 2026-09-12 on the 2,174-file self-repo corpus (164,392 CALLS rows),
+because implementation showed the guard above was far broader than its own
+justification. The sentence "an unresolved call inside a file may target anything
+that file declares" is true of the text; it is not true of the *edges* the guard
+was counting.
+
+| | gated files | share of the 2,060 files holding CALLS edges |
+|---|---|---|
+| guard as originally written | 1,562 | 75.8% |
+| after counting `external` as terminal | 1,363 | 66.2% |
+| after excluding builtin receivers (**amended definition**) | **1,029** | **50.0%** |
+
+The largest contributors were calls that cannot name a file-local symbol at all:
+`list.append` (2,327 rows), `dict.get` (369), `conn.execute` (446), `set.add`
+(275), `logger.debug` (215), `dict.items` (152), `super().__init__` (130). Before
+the amendment, a single `logger.debug(...)` barred every symbol in its file from
+ever answering `complete` — the failure the RFC's motivation attributes to
+computed dispatch, reproduced instead by ordinary attribute access.
+
+**What the guard now counts** is unchanged in intent and narrower in fact: an
+unresolved edge gates its file unless its callee is a dotted name whose receiver
+is a builtin type (`_can_target_local_symbol`, `graph/edge_store.py`). After the
+amendment, 3,635 unresolved edges are excused on this corpus and **6,674 are
+still counted** — bare names, `self.`/`cls.`, `getattr(...)`, string-keyed
+dispatch (`handlers["read_resource"]`), and any receiver that is a local variable
+(`extractors.run`) all keep gating, because each may name something the file
+declares.
+
+**Why the remaining half is not narrowed further.** The next-largest receivers are
+`conn` (689), `self` (302), `pytest` (258), `logger` (242), `tree_sitter` (172),
+`monkeypatch` (130), `extractor` (85), `path` (71). Excusing `pytest` and
+`tree_sitter` needs the file's import table joined to a project-module test;
+`conn`, `logger`, `monkeypatch`, `extractor`, and `path` are local variables bound
+to objects, which needs dataflow rather than syntax. Neither is available to the
+edge reader today, and both can under-count, which is the one direction §1
+forbids. They are recorded here as the measured remainder rather than guessed at.
+
+**Why this is a safe narrowing and not a relaxation.** Every exclusion requires
+proving the receiver is a builtin type; nothing is excused by absence of
+information. Over-counting only holds a symbol at `incomplete`, while
+under-counting certifies absence over a real edge — so the amendment removes only
+the cases where the exclusion is provable, and the ratchet above is unchanged.
+
+#### §1.3 — Carry the evidence, not only the count
+
+**Problem.** §1.1 adds `completeness`, and §1.2 makes it precise, but the caller
+still receives a *number*: `unresolved_in_declaring_files: 319`. A number says how
+much is unknown and nothing about *what*. To act on it, the caller must find the
+319 edges itself — by reading the file, which is the cost the response was
+supposed to remove. A residual that cannot be located cheaply is a residual the
+caller will route around, and a tool that is routed around is not used.
+
+**Change.** The response carries `unresolved_sites`: the sites themselves, each
+with its line, its callee text, and a `mechanism` classifying the syntactic shape
+that left it unresolved — `string_keyed_dispatch`, `reflection`,
+`own_class_attribute`, `module_or_object_attribute`, `expression`, `bare_name`.
+The list is capped (`unresolved_sites_truncated`) with `unresolved_sites_total`
+beside it, the same honest-truncation pattern the caller list already uses. The
+count is `len(...)` of the same derivation, so the number and the sites cannot
+describe different edge sets. `next_step` names the first few inline.
+
+**Why this is the load-bearing half.** A count converts an unbounded search into a
+search of unknown size. Sites convert it into a bounded one. Measured on the
+2,174-file self-repo corpus, the single worst file is
+`tree_sitter_analyzer/knowledge_graph/static/app.js` with **319 unresolved CALLS
+rows**. Reported as a count, that file is permanently `incomplete` and the reader
+learns nothing. Reported as sites, the mechanism mix is immediate:
+
+| mechanism | sites |
+|---|---|
+| `module_or_object_attribute` | 141 |
+| `bare_name` | 126 |
+| `expression` | 33 |
+| `string_keyed_dispatch` | 19 |
+
+The first rows are `document.getElementById`, `fetch`, `String(v ?? "").replace`,
+`new URLSearchParams(params).toString` — **browser globals and DOM builtins, not
+project symbols**. They cannot target anything the project declares, and the
+`bare_name` majority is the same class. The count could not say this; the
+mechanisms say it at a glance, and they are the raw material for the named
+exclusions §1.3 will need next: a `runtime_global` exclusion is provable for
+`fetch` in a browser asset, and it is exactly the kind of proof that turns
+"permanently incomplete" into `complete`.
+
+**The negative space is reported too.** `excluded_sites` carries the sites that
+were ruled out, each with a `reason_code` (`builtin_receiver` today), plus
+`excluded_by_reason` as the summary. Both lists come from one scan of the same
+file and one `exclusion_reason` decision, so they partition the non-resolved
+edges rather than being two lists that can drift. Measured on the self-repo
+corpus: **6,674 sites gate their files and 3,635 are excluded** — the exclusions
+account for 35.3% of non-resolved call sites, and until they were reported a
+caller could not tell a file gated by one genuine dispatch site from one gated by
+three hundred builtin attribute calls.
+
+The same measurement shows what the current proofs cannot reach. The worst file,
+`static/app.js`, has **319 sites and zero exclusions**: 141
+`module_or_object_attribute`, 126 `bare_name`, 33 `expression`, 19
+`string_keyed_dispatch`. Every one of them is a shape the builtin-receiver proof
+does not cover, and most of them are browser globals. That file does not need a
+better bound; it needs the next proof — `runtime_global`, valid relative to a
+*declared* runtime environment, with the declaration carried in the payload so
+the assumption is visible and disputable.
+
+**What this does not do.** It does not reduce the unknown rate by one edge. The
+count is the same before and after. What changes is whether the residual is
+*actionable* — and per §1.1's own reasoning, a residual the caller cannot act on
+is indistinguishable from one they never received.
+
 ### §2 — Consultation records: making non-use visible
 
 **Claim under test:** TSA is used.
@@ -396,9 +506,21 @@ asked:
    > Any `next_step` containing a token matching a known tool / facade / action
    > name must resolve to a **registered** route.
 
-   That still catches the live defect: `build_project_index_tool.py` emits
-   `next_step="get_project_summary"`, a token that matches a tool name and
-   resolves nowhere.
+   That formulation still catches the class this section records. *Measured
+   correction (2026-09-12).* The defect named here has since been fixed, and was
+   mis-located: `get_project_summary` is back in `facade_map.LEGACY_TOOL_MAP`
+   (resolving to `project action=card`), and its mention in
+   `build_project_index_tool.py` is inside the tool **description**, not a
+   `next_step`. So the live instance is gone; the class is not.
+
+   The gate that covers it (`tests/unit/mcp/test_next_step_routability.py`)
+   harvests `next_step` string constants by AST and resolves every token that
+   collides with a published name. Measuring it exposed the class this section's
+   wording cannot reach: a name a breaking change **removed** resolves nowhere by
+   construction, so a vocabulary of currently-resolving names cannot see it.
+   `facade_map.REMOVED_TOOL_NAMES` is what makes "removed" machine-checkable, and
+   injecting `search_content` into a `next_step` now fails the gate rather than
+   being silently skipped.
 3. **Dispatch reachability.** For each language-family branch in a resolver
    dispatch, at least one test must reach it **through the public entry point**,
    not by calling the private helper. *This catches defect #3, where the ESM
@@ -451,17 +573,30 @@ proving its detector still matches live production, asserting **exact** set
 equality — not a `count > 0` lower bound.
 
 **Scope, stated precisely, because "every blocking gate" is unimplementable.**
-`.pre-commit-config.yaml` declares **27 hooks, of which 21 are third-party**:
+`.pre-commit-config.yaml` declares **28 hooks, of which 21 are third-party**:
 `ruff` + `ruff-format`, 14 `pre-commit-hooks`, `detect-secrets`, `bandit`,
 `mypy`, `pyupgrade`, `actionlint`. You cannot add a `--self-check` mode to
 `ruff`, and requirement 2 below ("count of surface items outside the watch
 filter == 0") has **no referent at all** for `check-yaml` — it has no watched
-surface to be outside of. §3.2 therefore scopes to the **6 local hooks**:
+surface to be outside of. §3.2 therefore scopes to the **7 local hooks**:
+
+*Measured correction (2026-09-12).* This section previously read "27 hooks … 6
+local hooks" and omitted `test-encoding-ratchet` from the table below. Both
+numbers are now derived from the configuration by
+`tests/governance/test_first_party_gate_inventory.py`, which fails if this table
+and `.pre-commit-config.yaml` disagree. The omission is not cosmetic: the missing
+row is `test-encoding-ratchet`, and its script (`scripts/check_test_encoding.py`)
+carried the exact defect this section exists to catch — resolved against the
+caller's cwd, it reported `encoding-unsafe text calls in tests/: 0 across 0
+files` and exited `0` when run from any directory but the repository root. The
+table omitted the one local hook that was actually dead, and that hook is itself
+a ratchet, the same class whose dead-detector defect this section records as #1.
 
 | local hook | has a live surface to drift from? |
 |---|---|
 | `tsa-codemap-sync` | **yes** — the MCP/CLI registry; already rebuilt this way in #1314 |
 | `weak-assertion-ratchet` | **yes** — the set of assertions it can parse (its blind spot to markdown is defect #5) |
+| `test-encoding-ratchet` | **yes** — the count of non-UTF-8-safe test files it measures against a grandfathered baseline |
 | `block-banned-test-names` | **yes** — the banned-pattern list vs the live test-file set |
 | `workflow-consistency-tests` | **yes** — the set of workflows it checks vs `.github/workflows/*` |
 | `block-local-artifacts` | partial — a static path/glob denylist; requirement 1 applies, requirement 2 does not |
@@ -469,7 +604,37 @@ surface to be outside of. §3.2 therefore scopes to the **6 local hooks**:
 
 Third-party hooks are out of scope: they are versioned upstream, and a pinned
 `rev` bump is the review surface for their behaviour. Requirements 1 and 2 apply
-to the four "yes" rows; requirements 3 and 4 apply to all six.
+to every row with a live surface — five in the table below, six once correction 1
+is applied; requirements 3 and 4 apply to all seven local hooks.
+
+**Two further scope corrections, measured 2026-09-12** while implementing the
+self-checks. The table above was written from recollection of the config rather
+than from the config, and two of its remaining cells are wrong. They are
+corrected here rather than silently edited.
+
+1. **`tsa-ps-ascii` has a live surface; requirement 2 does apply.** The table
+   calls it "a static character-class check over `.ps1`". Measured, it watches
+   `.github/workflows/*.yml|*.yaml` and `.github/actions/**/action.yml|*.yaml`
+   (30 files), and the surface the rule is *about* is the 27 of those carrying a
+   `run:` block. That is a real set with a real watch filter, so the coverage
+   invariant is well-defined and is now asserted — and it fires on a planted
+   `.github/zz-probe.yml` that carries `run:` outside the filter.
+2. **`block-banned-test-names` is a staged-diff gate, not a live-tree gate.**
+   The table gives its surface as "the banned-pattern list vs the live test-file
+   set". Measured, it reads `git diff --cached --name-only --diff-filter=A`, so
+   it sees **newly added staged** test files only; the live test-file set is
+   never enumerated. Requirement 2 is still meaningful for it, but over
+   `^tests/.*\.py$` restricted to staged additions, not over the tree.
+
+One further finding, negative and therefore worth recording: the cwd defect is
+**not** systemic across the local hooks. `check_loose_assertions.py`,
+`check-test-file-names.sh`, and `check-local-artifacts.sh` were each run from
+`scripts/` and from an unrelated subdirectory and behave identically to the
+repository root — the first because it already anchors on
+`Path(__file__).resolve().parents[1]`, the latter two because
+`git diff --cached --name-only` reports repository-root-relative paths
+regardless of cwd. Measured 2026-09-12; this narrows the defect to
+`check_test_encoding.py` and `check_ps_ascii.py`.
 
 This is now precedent rather than proposal: #1314 rebuilt
 `scripts/codemap-sync-check.sh` this way after the old gate's `count > 0` guard
@@ -541,6 +706,57 @@ The author of this RFC replaced a loose `>= 1` with a pinned `== 2` in
 `docs/TESTING.md` where the correct value was `1`, because nothing runs those
 examples — an exactly-wrong exact assertion, which is worse than the bound it
 replaced.
+
+#### §3.2 self-check landing record (2026-09-12)
+
+Six of the seven local hooks now carry a `--self-check`. The seventh is
+`workflow-consistency-tests`, which is a `pytest` invocation rather than a script,
+so it has no flag to add and is the one remaining gap against the acceptance box.
+
+| local hook | self-check asserts | red→green verified |
+|---|---|---|
+| `tsa-codemap-sync` | exact set equality, MCP and CLI surfaces; 0 flags outside the watch filter | pre-existing (#1314) |
+| `weak-assertion-ratchet` | exact violation set on a planted weak assert, no false positive on a strong one, and 100% parse coverage of `tests/**/*.py` | yes |
+| `test-encoding-ratchet` | scan base anchored to the repository, non-empty surface, every live file parses | yes |
+| `block-banned-test-names` | planted banned name detected exactly, innocent name ignored, path outside `tests/` not reported | yes |
+| `block-local-artifacts` | each blocked pattern still matches exactly, innocent paths ignored | yes |
+| `tsa-ps-ascii` | watched set vs the live `run:` surface, difference empty | yes |
+
+Two findings from the work, both instances of this RFC's subject:
+
+- **The parse-coverage arm is not decoration.** `check_loose_assertions.py`
+  returns `[]` for a file it cannot parse — "skip silently (CI lint step catches
+  syntax errors)". A tree of unparseable tests therefore reads as clean. The
+  self-check turns that silent skip into a failure; measured by planting a
+  syntax-error file under `tests/`.
+- **`block-local-artifacts` can only fire on a force-added path.** Both of its
+  patterns (`threads/`, `REDESIGN_PROPOSAL.md`) are already in `.gitignore`, so
+  `git diff --cached` cannot normally contain them. It is a backstop for
+  `git add -f`, verified by staging a force-added `REDESIGN_PROPOSAL.md` and
+  watching the gate reject it, rather than a gate that fires in normal use.
+
+The cwd-relative defect the first two self-checks found is recorded above: two
+gates resolved their watch base against the caller's cwd, so from `scripts/` they
+scanned nothing and exited `0`. Both are now anchored to the repository root, and
+`tests/governance/test_gate_self_checks.py` runs every self-check from a
+non-root directory and asserts each gate's output is byte-identical from the root
+and from `scripts/`.
+
+**Requirement 4 for this module.** The enforcement layer is CI plus the local
+quick gate: `tests/governance` is in `pytest.ini` `testpaths` so bare
+`uv run pytest` collects it, and the module is unmarked so the `reusable-test.yml`
+matrix expressions select it. Pre-commit does not run it. Collection is non-zero —
+11 collected — and the module was verified to fail on a degraded gate rather than
+merely passing.
+
+**Acceptance boxes deliberately left unchecked.** The self-check box requires all
+seven local hooks and is one short. The marker-set/non-zero-collection box
+requires a per-gate statement for every gate, which this record does not make
+beyond the seven hooks above. The enforcement-layer box requires either a
+`develop` ruleset carrying `required_status_checks` or a per-gate declaration;
+neither exists. The remaining two boxes (the tautological threshold assertions,
+and doc-example extraction) are untouched. Naming them here is the point: §3.2
+exists because "self-declared and never measured" reads as done.
 
 #### §3.3 Platform specificity
 
@@ -658,7 +874,11 @@ rather than dropping it.
    empty must fail the gate.
 3. §3.1: RED today — the registered-surface invariant must fail on the known
    orphan before the orphan is wired.
-4. §3.1: `next_step` routability must fail today on the known unroutable string.
+4. §3.1: `next_step` routability must fail on an unroutable token. RED-first was
+   not available here: the string this item named is fixed, and no unroutable
+   token remains in the tree. The gate was instead proven by injection — adding
+   `search_content` to a `next_step` fails it — which is the same evidence the
+   original RED case would have supplied. See the *Measured correction* above.
 5. §3.2: for each existing blocking gate, a self-check asserting exact set
    equality, plus its coverage-invariant-equals-zero.
 6. §3.2: doc-example extraction must fail on a deliberately wrong pinned count.
@@ -679,19 +899,19 @@ rather than dropping it.
 
 ## Acceptance criteria
 
-- [ ] §1.1 `completeness` field emitted by the callers route on both surfaces;
+- [x] §1.1 `completeness` field emitted by the callers route on both surfaces;
       response-surface contract test updated; parity test green
-- [ ] §1.1 `_LEGAL_VERDICTS` **unchanged** — no ninth verdict added
-- [ ] §1.1 `next_step` no longer claims "Symbol not in the index" for an indexed
+- [x] §1.1 `_LEGAL_VERDICTS` **unchanged** — no ninth verdict added
+- [x] §1.1 `next_step` no longer claims "Symbol not in the index" for an indexed
       symbol with unresolved callers
-- [ ] §1 corpus + one-directional invariant green
-- [ ] §1 ratchet wired into a **named** CI job **and** its marker set recorded,
+- [x] §1 corpus + one-directional invariant green
+- [x] §1 ratchet wired into a **named** CI job **and** its marker set recorded,
       with a proven non-zero collected count (not merely a committed file)
-- [ ] §1.2 reconciliation with `test_unknown_rate_ratchet.py` recorded in both
+- [x] §1.2 reconciliation with `test_unknown_rate_ratchet.py` recorded in both
       test files, including which gate wins on collision
-- [ ] §1.2 scope guard green: a symbol in a fully-resolved file answers
+- [x] §1.2 scope guard green: a symbol in a fully-resolved file answers
       `complete`, never `unknown`
-- [ ] §1 documented as the executable form of the conservative-resolution claim,
+- [x] §1 documented as the executable form of the conservative-resolution claim,
       cross-referenced from `ROADMAP-no1-agent-trust.md`
 - [ ] §2 **blocked until RFC-0027 is accepted and L6.2 (`QueryCost`) lands** —
       not tickable before then
@@ -752,17 +972,56 @@ rather than dropping it.
       rather than allowlisted, and the surviving Python-shaped arm is documented
       with the producers that actually reach it (Go's `import "x"`, Java's
       `import a.b;`).
-- [ ] §3.2 each of the **six first-party local hooks** has an exact-equality
-      self-check; the four with a live surface additionally have a
+- [ ] §3.2 each of the **seven first-party local hooks** has an exact-equality
+      self-check; the five with a live surface additionally have a
       coverage-invariant of exactly 0
+
+      *Partially landed (2026-09-12).* The scope itself is now enforced:
+      `tests/governance/test_first_party_gate_inventory.py` derives the hook set
+      from `.pre-commit-config.yaml`, fails if this section's table disagrees with
+      it, and asserts every hook's `entry` resolves to a file that exists. That
+      check is what establishes the count as **seven**, not six. The per-hook
+      `--self-check` modes and the coverage invariants are still open.
 - [ ] §3.2 every gate names its **marker set + workflow job** (or its pre-commit
       hook) and proves a non-zero collected count
+
+      *Partially landed.* Both halves are now enumerated and checked:
+      `tests/governance/test_first_party_gate_inventory.py` asserts every scoped
+      hook runs at the `pre-commit` stage, and
+      `tests/governance/test_workflow_marker_sets.py` derives **10 marker-driven
+      gates across 6 workflows** from the workflow YAML, names each one's job,
+      and asserts every positive marker in each expression is carried by at least
+      one test — the vacuity case, where `pytest -m "<marker>"` collects nothing
+      and always succeeds. It also pins the one shell-templated set
+      (`e2e${EXTRA_MARKS}`) as a decision rather than a silent skip.
+
+      **What is still missing is the collected count itself.** Collection costs
+      5–15 s per expression here, so five expressions would add about a minute to
+      the fast suite; the static check catches vacuity and typos without that
+      cost, and does not read a count.
 - [ ] §3.2 the enforcement layer is named per gate: either
       `required_status_checks` added to a `develop` ruleset, or pre-commit
       declared as the blocking layer
-- [ ] §3.2 `test_unknown_rate_threshold_value` and
+
+      *Partially landed.* Pre-commit is the working layer and the inventory gate
+      pins that every scoped hook is present there. The per-gate naming this item
+      asks for, and the ruleset alternative, are still open.
+- [x] §3.2 `test_unknown_rate_threshold_value` and
       `test_unknown_rate_threshold_is_documented_in_this_file` replaced by a live
-      measurement or deleted
+      measurement
+
+      Replaced, not deleted. `test_unknown_rate_is_measured_within_threshold`
+      indexes the product source (`workers=1`, ~13 s on the `full_language` axis)
+      and measures the rate against the ceiling. Measured **2026-09-12: 9.78% on
+      the product source (4,941 / 50,528 CALLS edges)** and 6.27% on a 2,174-file
+      self-repo subset, against a 6.0% ceiling — the claim is **not met**, and was
+      not met while the two self-referential tests passed. The measurement is a
+      strict `xfail`, so it is recorded rather than hidden, and it is removed only
+      by a genuine improvement. Proved by experiment: raising
+      `UNKNOWN_RATE_THRESHOLD_PCT` to 10.0 makes the assertion pass, which turns
+      the `xfail` into an unexpected pass and **fails the run** — the "never
+      increase without a reviewed decision" rule is now enforced instead of
+      documented.
 - [ ] §3.2 doc-example extraction runs agent-facing doc examples in CI
 - [ ] §3.3 path-comparison invariant covers both separator conventions
 - [ ] Docs/CODEMAPS updated

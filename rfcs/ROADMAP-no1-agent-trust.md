@@ -390,7 +390,7 @@ commit changes.
 ### Continue
 
 - Continue local-first operation, project-root security, MCP/CLI parity, JSON for both MCP and CLI, and fail-closed benchmarks.
-- Continue conservative resolution: a visible `unknown` is safer than a confident unsupported edge.
+- Continue conservative resolution: a visible `unknown` is safer than a confident unsupported edge. [RFC-0028 §1](0028-measuring-claimed-properties.md) is its executable form — a hand-checked undecidable corpus (`tests/benchmarks/claims/test_completeness_honesty_ratchet.py`) fails any answer that is a confident empty over an edge that genuinely exists, and the `completeness` field on the callers route is what carries the distinction to the caller.
 - Continue dogfooding before edits and following the emitted verification command after edits.
 - Continue exact behavioral tests, but prefer realistic corpus failures over coverage-only growth.
 

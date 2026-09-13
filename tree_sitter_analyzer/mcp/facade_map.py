@@ -49,6 +49,21 @@ FACADE_NAMES: tuple[str, ...] = (
     "viz",
 )
 
+# Tool aliases a released breaking change REMOVED, so no crosswalk entry exists
+# for them. They are named here because "removed" is otherwise only prose: a
+# ``next_step`` telling an agent to call one of these is a dead route, and
+# nothing machine-checkable currently distinguishes it from a live name.
+#
+# Source: CHANGELOG 1.30.0 — "search.content / legacy search_content /
+# search-content, and search.grep / legacy find_and_grep / find-and-grep are
+# removed." Listed as the identifier forms that can appear as a token.
+REMOVED_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "search_content",
+        "find_and_grep",
+    }
+)
+
 # ---------------------------------------------------------------------------
 # legacy old-tool-name -> (facade, action) crosswalk (β shim source of truth)
 #

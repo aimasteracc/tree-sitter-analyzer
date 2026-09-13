@@ -683,7 +683,7 @@ and emits a calibration report with non-placeholder numbers.
 - [x] L6.1 the harness drives the prescribed route pair **interleaved** and
       records `served_from` per call, so a 0% real-workflow hit rate cannot hide
       behind a grouped-repeat speedup
-- [ ] L6.2 `QueryCost` returned by the three most expensive routes;
+- [x] L6.2 `QueryCost` returned by the three most expensive routes;
       `estimated_ms` is `None` until observed
 - [ ] L6.3 canonical full id always present; abbreviation unique within the
       project index; `SYMBOL_ID_AMBIGUOUS` fail-closed on an ambiguous

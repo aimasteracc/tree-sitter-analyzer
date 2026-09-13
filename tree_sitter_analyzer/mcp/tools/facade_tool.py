@@ -119,7 +119,11 @@ _CORE_FACADE_PARAMS: dict[str, dict[str, Any]] = {
     "query": {"type": "string", "description": "Search query/pattern."},
     "language": {"type": "string", "description": "Language hint (usually auto)."},
     "limit": {"type": "integer", "description": "Max results."},
-    "output_format": {"type": "string", "enum": ["json"], "description": "Output format: JSON."},
+    "output_format": {
+        "type": "string",
+        "enum": ["json"],
+        "description": "Output format: JSON.",
+    },
 }
 
 
@@ -366,6 +370,23 @@ class FacadeTool(BaseMCPTool):
         if not action or not isinstance(action, str):
             return self._action_error("missing required parameter 'action'")
 
+        # Progressive disclosure (Wave E). The per-action parameter prose used to
+        # ride on every request's tool definition; it is answered here instead, so
+        # the always-sent description can stay one keyword-bearing sentence.
+        # `help` is deliberately NOT in the action enum: the enum is a pinned
+        # contract (tests assert it exactly), and the short description names
+        # this route instead.
+        if action == "help":
+            return {
+                "facade": self.facade_name,
+                "actions": self._available_actions(),
+                "description": self.full_description(),
+                "hint": (
+                    "Pass one of `actions` as `action`; the parameters each one "
+                    "accepts are listed above."
+                ),
+            }
+
         for parameter, allowed_actions in self._action_scoped_params.items():
             if parameter in arguments and action not in allowed_actions:
                 allowed = ", ".join(sorted(allowed_actions))
@@ -480,12 +501,54 @@ class FacadeTool(BaseMCPTool):
             "additionalProperties": True,
         }
 
+    def full_description(self) -> str:
+        """The per-action prose, withheld from the tool definition (Wave E).
+
+        Still the single source of the documented-per-action contract: the tests
+        that pin "a documented parameter must exist in the inner schema" read
+        this, and ``action=help`` serves it, so the drift guard keeps working
+        while the always-sent surface stays one keyword-bearing sentence.
+        """
+        return self._description or self._short_description()
+
+    def _short_description(self) -> str:
+        """The keyword-bearing first sentence, with the per-action prose behind ``help``.
+
+        Wave E tool-def token diet. Wave D moved per-action params out of the
+        schema body and into the facade description; this moves the prose out of
+        the tool definition every request pays for and behind an explicit call.
+        Measured on the eight facades: their descriptions are 23,084 of the
+        36,055 characters of tool-definition surface (~9,013 tokens), and
+        collapsing them to this form reclaims 94% of the whole surface.
+
+        The first sentence is kept because it is not decoration. It carries the
+        ``codegraph`` keyword that a headless agent's ToolSearch matches on, and
+        a test pins that. Only the per-action parameter prose — which a caller
+        needs *after* choosing an action, never before — moves behind
+        ``action=help``, where it is still one call away and nothing is lost.
+        """
+        actions = ", ".join(self._available_actions())
+        text = (self._description or "").strip()
+        if not text:
+            return (
+                f"{self.facade_name}: {len(self._available_actions())} actions via "
+                f"'action' ({actions}). Pass action=help for per-action parameters."
+            )
+        head = text.split("\n", 1)[0]
+        first = head.split(". ")[0].rstrip()
+        if not first.endswith("."):
+            first += "."
+        if len(first) > 200:
+            first = first[:197].rstrip() + "..."
+        return (
+            f"{first} Actions: {actions}. "
+            "Pass action=help for per-action parameters and examples."
+        )
+
     def get_tool_definition(self) -> dict[str, Any]:
         definition: dict[str, Any] = {
             "name": self.facade_name,
-            "description": self._description
-            or f"Facade dispatching {len(self._available_actions())} actions "
-            f"via the 'action' parameter: {', '.join(self._available_actions())}.",
+            "description": self._short_description(),
             "inputSchema": self.get_tool_schema(),
         }
         if self._annotations is not None:

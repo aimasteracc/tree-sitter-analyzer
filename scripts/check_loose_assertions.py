@@ -45,6 +45,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import NamedTuple
@@ -536,12 +537,97 @@ def count_baseline_legacy(tests_dir: Path) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Self-check (RFC-0028 §3.2)
+# ---------------------------------------------------------------------------
+
+#: One assert the detector must catch and one it must not.  §3.2 asks for a
+#: targeted mutation test: the question is whether the detector still fires, not
+#: whether it is present.
+_SELF_CHECK_WEAK = """\
+def test_probe():
+    result = compute()
+    assert result is not None
+"""
+
+_SELF_CHECK_STRONG = """\
+def test_probe():
+    result = compute()
+    assert result == 7
+"""
+
+
+def self_check() -> int:
+    """Assert the gate still reaches and matches the live test surface.
+
+    Requirement 1 is discharged by the exact-equality probe below: the detector
+    must return exactly the planted violation, not merely at least one.
+    Requirement 2 is the parse coverage — no live file may sit outside the
+    detector's reach.
+    """
+    project_root = Path(__file__).resolve().parents[1]
+    tests_dir = project_root / "tests"
+    problems: list[str] = []
+
+    # Anchoring: the resolved root must actually be the repository, not whatever
+    # directory the gate was invoked from.
+    if not (project_root / "pyproject.toml").is_file():
+        problems.append(f"{project_root} is not the repository root")
+
+    live = sorted(tests_dir.rglob("*.py"))
+    if not live:
+        problems.append(f"{tests_dir} holds no Python files; the scan is empty")
+
+    # Coverage invariant.  `check_file` returns [] for a file it cannot parse,
+    # which is indistinguishable from a clean file; the gate tolerates that
+    # because a lint hook owns syntax errors, but the self-check must not, or a
+    # whole tree of unparseable tests would read as clean.
+    unparsable: list[str] = []
+    for path in live:
+        try:
+            ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError as exc:
+            unparsable.append(f"{path.relative_to(project_root).as_posix()}: {exc.msg}")
+    if unparsable:
+        problems.append(f"{len(unparsable)} live files do not parse: {unparsable[:3]}")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        weak = Path(tmp) / "probe_weak.py"
+        weak.write_text(_SELF_CHECK_WEAK, encoding="utf-8")
+        found = {(v.lineno, v.operator, v.category) for v in check_file(weak)}
+        expected = {(3, "is-not-none", "placeholder")}
+        if found != expected:
+            problems.append(
+                f"detector on a known-weak probe: expected {expected}, got {found}"
+            )
+
+        strong = Path(tmp) / "probe_strong.py"
+        strong.write_text(_SELF_CHECK_STRONG, encoding="utf-8")
+        spurious = {(v.lineno, v.operator, v.category) for v in check_file(strong)}
+        if spurious:
+            problems.append(f"detector flagged a strong assert as weak: {spurious}")
+
+    if problems:
+        print("check_loose_assertions --self-check FAILED:", file=sys.stderr)
+        for problem in problems:
+            print(f"  {problem}", file=sys.stderr)
+        return 1
+    print(
+        f"check_loose_assertions --self-check: {len(live)} live files under tests/, "
+        "all parsed; detector finds exactly the planted violation and no false positive"
+    )
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
 
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
+
+    if "--self-check" in args:
+        return self_check()
 
     if "--staged" in args:
         return check_staged()

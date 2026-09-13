@@ -248,6 +248,14 @@ class SafeToEditTool(BaseMCPTool):
         # now propagates it into ``agent_summary``.
         result = mirror_summary_line(result)
 
+        # RFC-0027 L6.2: declare the cost beside the answer.  This is the route
+        # an agent runs before every edit, and the L5 baseline shows its first
+        # (computed) call at 3453 ms against 51-69 ms for every cached repeat,
+        # so the tier is the actionable part of the declaration.
+        from ...cache.query_cost import cost_fields, query_cost
+
+        result.update(cost_fields(query_cost("edit", "safe", self.project_root, arguments)))
+
         return apply_output_format_to_response(result, output_format)
 
     def _read_existing_payload(
